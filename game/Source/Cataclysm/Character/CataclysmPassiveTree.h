@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmPassiveTree.generated.h"
 
@@ -128,6 +129,9 @@ public:
 
 	/** The generated edge table, the same way. */
 	static const UDataTable* LoadEdgeTable();
+
+	/** The generated effect table: what a node grants. Null when missing. */
+	static const UDataTable* LoadEffectTable();
 
 	/** Every tree the node table names, in alphabetical order. */
 	static TArray<FString> TreeNames(const UDataTable* NodeTable);
@@ -263,4 +267,45 @@ public:
 	{
 		return TreeIsReachable(Tree, DamageTypes);
 	}
+
+	//~ What the spent points are worth.
+
+	/**
+	 * Add what a character's spent passive points grant to its running totals.
+	 *
+	 * WHERE AN AFFIX JOINS, AND THE SAME SHAPE.
+	 * `UCataclysmItemModifiers::AccumulateInto` does exactly this for a worn
+	 * item, and `UCataclysmPlayerClassStats::ApplyTo` runs the result. A passive
+	 * node is another authored source of the same three buckets, so it needed no
+	 * new machinery in the pipeline at all.
+	 *
+	 * A DORMANT TREE CONTRIBUTES NOTHING, which is the project owner's decision
+	 * of 2026-08-25 doing its work. Points spent in a tree no equipped weapon
+	 * reaches stay spent and are skipped here, so the character loses what the
+	 * tree granted and keeps the points.
+	 *
+	 * TIMES THE POINTS IN THE NODE. Every authored value is per point, which is
+	 * what every description that has one says.
+	 *
+	 * MOST NODES ADD NOTHING BECAUSE MOST NODES HAVE NO ROW. 26 of the 293 do.
+	 * Issue #939 measures that gap and says what each of the remaining groups
+	 * would need. A node with no row is skipped silently, which is correct: it
+	 * is not a fault, it is a node whose numbers nobody has authored.
+	 *
+	 * @param DamageTypes  what the character's equipped weapons carry. An empty
+	 *                     array reaches no tree at all, so nothing is added.
+	 * @return how many modifiers were added, so a caller can tell "nothing
+	 *         applied" from "nothing was spent"
+	 */
+	static int32 AccumulateInto(TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+								const FCataclysmPassiveAllocation& Allocation,
+								const UDataTable* NodeTable,
+								const UDataTable* EffectTable,
+								const TArray<FName>& DamageTypes);
+
+	/** The same, as a fresh map. For a caller that has no running totals. */
+	static TMap<FName, TArray<FCataclysmStatModifier>> ModifiersFor(
+		const FCataclysmPassiveAllocation& Allocation,
+		const UDataTable* NodeTable, const UDataTable* EffectTable,
+		const TArray<FName>& DamageTypes);
 };

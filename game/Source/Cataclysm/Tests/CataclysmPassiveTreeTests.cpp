@@ -7,8 +7,11 @@
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -819,6 +822,280 @@ bool FCataclysmPassiveScreenSpendsThroughThePlayerStateTest::RunTest(const FStri
 	TestEqual(TEXT("which is where the unspent count comes from"),
 			  State->PassivePointsUnspent(),
 			  State->PassivePointsAvailable() - 1);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What a spent point is worth
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPassiveEffectTest
+{
+	/** An effect table this test controls, keyed to the built node table. */
+	UDataTable* MakeEffectTable(FAutomationTestBase& Test)
+	{
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
+
+		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
+			"Name,Stat,ValueKind,ValuePerPoint,RequiredTags\r\n"
+			// A plain increase on a node that holds five points, so the
+			// multiplication by the points held is visible rather than assumed.
+			"Ravager_mid,armor,increased,3.0,\r\n"
+			// A more multiplier, which is the other bucket a passive may use.
+			"Ravager_side,damage_reduction,more,1.5,\r\n"
+			// A scoped one, to prove the tag column reaches the modifier.
+			"Ravager_root,area_of_effect,increased,10.0,Type.Trap\r\n"
+			// And one in the OTHER tree, which a Demonic character cannot reach.
+			"Bulwark_root,armor,increased,50.0,\r\n"));
+
+		for (const FString& Problem : Problems)
+		{
+			Test.AddError(Problem);
+		}
+		return Problems.Num() == 0 ? Table : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEffectsBecomeModifiersTest,
+	"Cataclysm.Passives.ASpentPointBecomesAStatModifierTimesThePointsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveEffectsBecomeModifiersTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+
+	// NOTHING SPENT GRANTS NOTHING, which is worth asserting rather than
+	// assuming: an empty allocation and a missing table would look the same to
+	// a caller that only checked the map was empty.
+	FCataclysmPassiveAllocation Allocation;
+	TestEqual(TEXT("an untouched character gets no modifiers"),
+			  UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable,
+												  EffectTable, Demonic).Num(),
+			  0);
+
+	// FOUR POINTS IN A NODE WORTH 3% EACH IS 12%, not 3%. Every authored value
+	// is per point, which is what every description that has one says, so the
+	// multiplication is the whole arithmetic and the easiest thing to leave out.
+	Allocation.Add(FName(TEXT("Ravager_mid")), 4);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Armour =
+		Modifiers.Find(FName(TEXT("armor")));
+	if (!TestNotNull(TEXT("armour got a modifier"), Armour)
+		|| !TestEqual(TEXT("exactly one"), Armour->Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("worth three per point times four points"),
+			  (*Armour)[0].Value, 12.0f);
+	TestEqual(TEXT("in the increased bucket"),
+			  static_cast<int32>((*Armour)[0].Bucket),
+			  static_cast<int32>(ECataclysmStatBucket::Increased));
+	TestTrue(TEXT("and it applies to everything, having no required tag"),
+			 (*Armour)[0].RequiredTags.IsEmpty());
+
+	// THE MORE BUCKET IS CARRIED ACROSS. Putting a multiplicative value into the
+	// increased bucket adds it to a sum instead of multiplying, which is a
+	// different number on any invested character and the same number on a fresh
+	// one -- so it looks right exactly where somebody would check it.
+	Allocation.Add(FName(TEXT("Ravager_side")), 2);
+	const TMap<FName, TArray<FCataclysmStatModifier>> WithMore =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+	const TArray<FCataclysmStatModifier>* Reduction =
+		WithMore.Find(FName(TEXT("damage_reduction")));
+	if (!TestNotNull(TEXT("damage reduction got a modifier"), Reduction))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in the more bucket"),
+			  static_cast<int32>((*Reduction)[0].Bucket),
+			  static_cast<int32>(ECataclysmStatBucket::More));
+	TestEqual(TEXT("worth one and a half per point times two"),
+			  (*Reduction)[0].Value, 3.0f);
+
+	// A REQUIRED TAG REACHES THE MODIFIER. Without this the Saboteur's trap
+	// area of effect would widen every skill in the game rather than its traps.
+	Allocation.Add(FName(TEXT("Ravager_root")), 1);
+	const TMap<FName, TArray<FCataclysmStatModifier>> WithTag =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+	const TArray<FCataclysmStatModifier>* Area =
+		WithTag.Find(FName(TEXT("area_of_effect")));
+	if (!TestNotNull(TEXT("area of effect got a modifier"), Area))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and it is scoped rather than global"),
+			  (*Area)[0].RequiredTags.IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDormantTreeGrantsNothingTest,
+	"Cataclysm.Passives.ATreeNoEquippedWeaponReachesGrantsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveDormantTreeGrantsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	// POINTS IN BOTH TREES. Bulwark is War and Ravager is Demonic, so a
+	// character carrying one damage type reaches exactly one of them.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_mid")), 1);
+	Allocation.Add(FName(TEXT("Bulwark_root")), 1);
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	const TMap<FName, TArray<FCataclysmStatModifier>> AsDemonic =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	// THE PROJECT OWNER'S DECISION OF 2026-08-25, made arithmetic. The Bulwark
+	// node is worth 50% armour and the Ravager one 3%; if the dormant tree were
+	// counted the total would be 53.
+	const TArray<FCataclysmStatModifier>* Armour =
+		AsDemonic.Find(FName(TEXT("armor")));
+	if (!TestNotNull(TEXT("armour got a modifier"), Armour)
+		|| !TestEqual(TEXT("exactly one, from the reachable tree"),
+					  Armour->Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth only what the reachable tree grants"),
+			  (*Armour)[0].Value, 3.0f);
+
+	// AND THE POINTS ARE STILL SPENT. Dormant is not refunded: the allocation is
+	// untouched by any of this.
+	TestEqual(TEXT("both points are still spent"), Allocation.Total(), 2);
+	TestEqual(TEXT("including the one in the tree that grants nothing"),
+			  Allocation.PointsIn(FName(TEXT("Bulwark_root"))), 1);
+
+	// CARRYING BOTH DAMAGE TYPES TURNS BOTH TREES ON, which is what
+	// multiclassing is.
+	const TArray<FName> Both = {FName(TEXT("Demonic")), FName(TEXT("War"))};
+	const TMap<FName, TArray<FCataclysmStatModifier>> AsBoth =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Both);
+	const TArray<FCataclysmStatModifier>* BothArmour =
+		AsBoth.Find(FName(TEXT("armor")));
+	if (!TestNotNull(TEXT("armour got modifiers"), BothArmour))
+	{
+		return false;
+	}
+	TestEqual(TEXT("now both trees contribute"), BothArmour->Num(), 2);
+
+	// AND NO WEAPON AT ALL REACHES NOTHING.
+	TestEqual(TEXT("a character carrying no damage type gets nothing"),
+			  UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable,
+												  EffectTable,
+												  TArray<FName>()).Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReachesTheCharactersArmourTest,
+	"Cataclysm.Passives.ASpentPointChangesWhatARealCharactersArmourIsWorth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	// THE REAL TABLES, because this is the end-to-end path: the point has to
+	// reach an attribute on a real character through the real pipeline.
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// A MASOCHIST NODE WORTH 3% ARMOUR PER POINT, on the Demonic tree the
+	// character reaches by default.
+	const FName Node(TEXT("Masochist_basic_fc_stem0"));
+	const FCataclysmPassiveEffectRow* Effect =
+		EffectTable->FindRow<FCataclysmPassiveEffectRow>(
+			Node, TEXT("test"), /*bWarnIfMissing=*/false);
+	if (!TestNotNull(TEXT("that node has an authored effect"), Effect))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is armour"), Effect->Stat, FString(TEXT("armor")));
+
+	const float Before = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetArmorAttribute());
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 10);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+	// THE ONE REAL ENTRY POINT. Nothing calls the passive tree directly here:
+	// refreshing the character's attributes is what a worn item change does, and
+	// it is where the passive tree was joined in.
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float After = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetArmorAttribute());
+
+	// THIRTY PER CENT MORE ARMOUR, from ten points worth three per cent each.
+	// Asserted as a relationship rather than as a figure, because the base comes
+	// from the class stat line at the character's level and pinning it here
+	// would make this test fail whenever either is tuned.
+	TestTrue(*FString::Printf(TEXT("armour rose from %.1f to %.1f"), Before, After),
+			 After > Before);
+	TestTrue(*FString::Printf(
+				 TEXT("by about thirty per cent: %.1f against %.1f expected"),
+				 After, Before * 1.30f),
+			 FMath::IsNearlyEqual(After, Before * 1.30f, Before * 0.02f));
 
 	return true;
 }

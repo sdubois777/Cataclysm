@@ -20,6 +20,98 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A passive node's numbers are authored in the design workbook, and most nodes are not numbers at all
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (a new `Passive Effects` sheet),
+`tools/generate_datatables.py`, `game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`,
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, `docs/README.md`,
+`game/README.md`. **Applied.** Issues #936 and #939.
+
+A character could earn, spend and save passive points and received nothing for
+any of them, because a node says what it does in a sentence written for a player
+and carries no stat name and no number anywhere a machine can read.
+
+### Where the numbers are authored
+
+Three routes were put to the project owner. **They chose the design workbook**, a
+`Passive Effects` sheet keyed by node, giving the stat, the bucket, the value per
+point and any required tags.
+
+**Why that one.** It is where every other tunable number in this project is
+authored, `tools/generate_datatables.py` already turns that workbook into what
+the game reads, and it needs no change to a tool outside this repository. The
+alternative that keeps a node in one place — fields beside the description in the
+tree files — means changing the schema and the editor of
+`C:\Projects\PassiveTreeCreator`, which is a separate tool.
+
+**The cost, stated plainly:** a node's words live in the tree file and its numbers
+in the workbook, and the two can drift.
+`tools/tests/test_passive_effects_match_the_node_text.py` is what stops that: it
+requires every authored value to appear as a number in that node's own
+description, and every `more` bucket entry to be on a node whose description says
+"multiplicative".
+
+### Parsing the descriptions was tried and was wrong
+
+The third route offered was to read the numbers out of the descriptions
+automatically. **It was tried first and it produced 44 rows of which about
+fifteen were wrong**, none of which would have errored:
+
+- eight melee-only bonuses were written as global increases
+- "+2% increased damage over time **duration**" was mapped to damage over time
+  **damage**
+- "+2% increased Anguish gained from health lost to **damage over time**" was
+  mapped to a damage stat, because those three words appear in it
+
+That output was discarded. The 26 rows that shipped were selected by reading each
+node, and the transcription is checked against each node's own words before it is
+written.
+
+### Most of the passive tree is not stat modifiers, and that is the real finding
+
+Every one of the 293 nodes was classified by what its description says. Measured,
+not estimated:
+
+| What the node is | Count |
+| :-- | --: |
+| Not a per-point percentage at all | 170 |
+| A per-point percentage of a stat the game has | 59 |
+| A per-point percentage of something that is not a stat | 47 |
+| A per-point percentage of a stat, scoped by a condition | 17 |
+
+**26 could be authored without inventing anything.** The other 267 are not
+waiting on typing. Each group needs machinery that does not exist: class resource
+generation rates, threshold clauses that fire at N points in a node, timed
+conditional windows, a tag for melee, and 76 keystones and capstone options that
+are rule changes rather than modifiers under any authoring scheme.
+
+Issue #939 has the group-by-group breakdown and the order the value arrives in. A
+melee tag alone makes eight more nodes expressible with no new mechanism at all.
+
+### Where a passive effect joins the character
+
+**Exactly where a worn item's affixes join**, in
+`UCataclysmEquipmentComponent::RefreshAttributes`. A passive node is another
+authored source of the same three buckets — `(base + flat) x (1 + increases) x
+more1 x more2` — so it needed no new machinery in the pipeline. Adding it
+anywhere else would have created a second place that has to be re-run whenever
+anything about the character changes.
+
+**A dormant tree contributes nothing**, which is the 2026-08-25 decision about
+unequipping doing its work: points in a tree no equipped weapon reaches stay
+spent and are skipped, so the character loses what the tree granted and keeps the
+points.
+
+### The pinned coverage number
+
+`test_passive_effects_match_the_node_text.py` pins the count at 26 of 293 rather
+than treating it as a floor. That number is the honest measure of how much of the
+passive tree does anything, and it should move because somebody decided to author
+more, not as a side effect of something else.
+
+---
+
 ## 2026-08-25 — Passive points are computed from the level rather than accumulated, and the class trees reach the game as a generated table
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPassivePoints.h` and
