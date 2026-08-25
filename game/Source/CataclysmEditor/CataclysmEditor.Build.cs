@@ -34,6 +34,19 @@ public class CataclysmEditor : ModuleRules
 			// ANavMeshBoundsVolume, for the level authoring helper that gives the
 			// sandbox level its navigation bounds.
 			"NavigationSystem",
+
+			// The widget authoring helper, which builds a Widget Blueprint's
+			// tree because the editor's Python layer cannot reach it. All four
+			// are needed together and none is spare:
+			//   UMG          UWidget, UPanelWidget, UUserWidget, UWidgetTree
+			//   UMGEditor    UWidgetBlueprint and UWidgetBlueprintFactory
+			//   Kismet       FKismetEditorUtilities::CompileBlueprint
+			//   AssetTools   IAssetTools::CreateAsset
+			// UnrealEd above already brings FBlueprintEditorUtils.
+			"UMG",
+			"UMGEditor",
+			"Kismet",
+			"AssetTools",
 		});
 	}
 }

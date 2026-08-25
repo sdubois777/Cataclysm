@@ -3,6 +3,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Interface/CataclysmHUD.h"
+#include "Interface/CataclysmCharacterCreationWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -120,6 +121,10 @@ void ACataclysmPlayerController::SetupInputComponent()
 	// the way a screen does everywhere else, rather than when it comes back up.
 	Input->BindNativeAction(Config, Names::ToggleInventory, ETriggerEvent::Started,
 		this, &ACataclysmPlayerController::Input_ToggleInventory);
+
+	Input->BindNativeAction(Config, Names::ToggleCharacterCreation,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleCharacterCreation);
 
 	TArray<uint32> BindHandles;
 	Input->BindAbilityActions(Config, this,
@@ -287,6 +292,71 @@ void ACataclysmPlayerController::Input_ToggleInventory()
 	}
 
 	InventoryScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::Input_ToggleCharacterCreation()
+{
+	ToggleCharacterCreation();
+}
+
+void ACataclysmPlayerController::ToggleCharacterCreation()
+{
+	if (!CharacterCreationScreen)
+	{
+		// LOADED SYNCHRONOUSLY, WHICH IS SAFE HERE AND WOULD NOT BE IN A DRAW
+		// PASS. `KeyForAbilitySlot` below deliberately uses `Get` rather than
+		// `LoadSynchronous` because it runs while the heads-up display is
+		// drawing. This runs once, from a key press, at a moment when the
+		// player has asked to see a screen and is waiting for one.
+		UClass* ScreenClass = CharacterCreationScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no character creator to open: %s could not be "
+						"loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *CharacterCreationScreenClass.ToString());
+			return;
+		}
+
+		CharacterCreationScreen =
+			CreateWidget<UCataclysmCharacterCreationWidget>(this, ScreenClass);
+		if (!CharacterCreationScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The character creator could not be created, so the key "
+						"that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (CharacterCreationScreen->IsInViewport())
+	{
+		// CLOSING IS NOT CONFIRMING. Whatever was half-chosen stays on the
+		// widget and is there again when the screen is reopened, and nothing
+		// about the character has changed. Only the confirm button changes
+		// anything, which is why it is the only other thing that closes the
+		// screen.
+		CharacterCreationScreen->RemoveFromParent();
+		SetInputMode(FInputModeGameOnly());
+		return;
+	}
+
+	// THE FIRST SCREEN IN THIS PROJECT DRIVEN BY CLICKING ITS OWN BUTTONS, and
+	// that needs an input mode the game has never set. The cursor is already
+	// shown -- this controller's constructor sets `bShowMouseCursor` and nothing
+	// turns it off -- but under the default Game Only mode a click goes to the
+	// game rather than to a widget, so every button on this screen would be
+	// inert. The inventory screen does not need this because it shows and does
+	// not take input; its clicks are hit-tested by this controller instead.
+	//
+	// GameAndUI RATHER THAN UIOnly, so that closing the screen with the same key
+	// still works and the game does not stop underneath it.
+	SetInputMode(FInputModeGameAndUI()
+					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
+					 .SetHideCursorDuringCapture(false));
+
+	CharacterCreationScreen->AddToViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const

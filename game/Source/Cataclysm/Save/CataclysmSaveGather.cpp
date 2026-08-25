@@ -240,6 +240,21 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		// something saves as level 40 rather than as level 1.
 		Record.Level = State->GetCharacterLevel();
 		Record.Experience = State->GetExperienceIntoLevel();
+
+		// AND WHAT WAS CHOSEN WHEN THE CHARACTER WAS CREATED, since 2026-08-25.
+		// Issue #50.
+		//
+		// WRITTEN ONLY WHEN SOMEBODY ACTUALLY CHOSE, which is the difference
+		// from the level above. `GetChosenWeaponType` answers the default for a
+		// character that has not chosen, and writing that would turn "nobody
+		// chose" into "chose the Greataxe" on the first save -- a decision the
+		// player never made, recorded permanently, on every character an
+		// automation test has ever stood up.
+		if (State->HasChosenAtCreation())
+		{
+			Record.StartingWeaponType = State->GetChosenWeaponType();
+			Record.StartingDamageType = State->GetChosenDamageType();
+		}
 	}
 
 	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The passive tree, the

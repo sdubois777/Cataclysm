@@ -280,13 +280,18 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Five native bindings, found by the names the controller uses.
+	// Six native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
 		CataclysmInputActionNames::StandStill,
 		CataclysmInputActionNames::Zoom,
 		CataclysmInputActionNames::ToggleInventory,
+		// The character creator, issue #50. It joined on 2026-08-25 and this
+		// test is what noticed, which is what "and lists no others" below is
+		// for: adding a native action without regenerating the input assets
+		// leaves a key that reaches nothing.
+		CataclysmInputActionNames::ToggleCharacterCreation,
 	};
 
 	for (const FName& Name : NativeNames)

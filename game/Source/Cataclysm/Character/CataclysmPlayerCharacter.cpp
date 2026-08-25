@@ -8,8 +8,11 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Character/CataclysmExperience.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -17,6 +20,7 @@
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -500,6 +504,18 @@ void ACataclysmPlayerCharacter::PossessedBy(AController* NewController)
 	// bound a moment ago, so the pawn's walking speed follows from this without
 	// being applied again here.
 	ApplyChosenClassStats();
+
+	// AND WHAT THE PLAYER CHOSE WHEN THE CHARACTER WAS CREATED, which is where a
+	// character coming back from the capital gets its weapon and its damage type
+	// back. It does nothing at all when nobody has chosen, so every character
+	// that existed before the creator did keeps exactly what it had. Issue #50.
+	//
+	// AFTER THE STAT LINE, NOT BEFORE. Changing the worn weapon broadcasts
+	// EquipmentChanged, which applies the whole stat line again through
+	// UCataclysmEquipmentComponent::RefreshAttributes. Doing it first would mean
+	// the line was applied twice, and the second application is the one with the
+	// right weapon in hand.
+	ApplyCreationChoice();
 }
 
 void ACataclysmPlayerCharacter::ApplyChosenClassStats()
@@ -628,6 +644,128 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon()
 	}
 
 	WeaponSlots->EquipStartingWeapon();
+}
+
+bool ACataclysmPlayerCharacter::ApplyCreationChoice()
+{
+	const ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
+	if (!State || !State->HasChosenAtCreation())
+	{
+		// NOTHING WAS CHOSEN, SO NOTHING CHANGES, AND THAT IS THE ORDINARY CASE
+		// RATHER THAN A FAILURE. Every character an automation test stands up is
+		// here, and so is every character that existed before the creator did.
+		return false;
+	}
+
+	if (!Equipment || !Inventory || !WeaponSlots)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("The creation choice cannot be applied: the character is "
+					"missing its equipment, inventory or weapon slots."));
+		return false;
+	}
+
+	const FName ChosenWeaponType = State->GetChosenWeaponType();
+	const FName ChosenDamageType = State->GetChosenDamageType();
+
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FName ChosenBase =
+		UCataclysmCharacterCreation::ItemBaseFor(BaseTable, ChosenWeaponType);
+	if (ChosenBase.IsNone())
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("No row of game/Data/ItemBases.csv carries the weapon type "
+					"%s, so the character cannot be given one."),
+			   *ChosenWeaponType.ToString());
+		return false;
+	}
+
+	// THE DAMAGE TYPE FIRST, BECAUSE IT COSTS NOTHING AND CANNOT FAIL. It is a
+	// stand-in on the weapon slots component until a rolled item carries its own
+	// types; the field's own comment says so. Setting it before the weapon means
+	// a failure to change the weapon still leaves the two agreeing, rather than
+	// a Greataxe granting Void skills.
+	WeaponSlots->SetDamageType(ChosenDamageType.ToString());
+	WeaponSlots->SetStartingWeaponType(ChosenWeaponType.ToString());
+
+	// ALREADY HOLDING ONE OF THE CHOSEN TYPE IS DONE, NOT REFUSED. Confirming
+	// the same choice twice, or confirming a choice that only changed the damage
+	// type, should not put a second axe in the bag.
+	if (Equipment->EquippedWeaponType() == ChosenWeaponType.ToString())
+	{
+		FillAbilitySlotsFromWornWeapon();
+		return true;
+	}
+
+	// ASKED BEFORE ANYTHING MOVES, which is the rule `UCataclysmWearing` keeps
+	// and the reason an item is never destroyed here either. A two-handed weapon
+	// can take two one-handed ones off, so it needs two free slots; nothing else
+	// takes more than one off.
+	FCataclysmItem Chosen;
+	Chosen.Base = ChosenBase;
+	Chosen.GearLevel = 0;
+
+	int32 WeaponsWorn = 0;
+	for (const ECataclysmGearSlot WeaponSlot : UCataclysmGearSlots::WeaponSlots())
+	{
+		if (!Equipment->SlotIsEmpty(WeaponSlot))
+		{
+			++WeaponsWorn;
+		}
+	}
+
+	if (Inventory->NumFreeSlots() < WeaponsWorn)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("The bag has %d free slots and %d worn weapons would come "
+					"off, so the creation choice was not applied and nothing "
+					"moved."),
+			   Inventory->NumFreeSlots(), WeaponsWorn);
+		return false;
+	}
+
+	FCataclysmItem CameOff;
+	FCataclysmItem AlsoCameOff;
+	ECataclysmGearSlot WentTo = ECataclysmGearSlot::Weapon1;
+	const ECataclysmEquipResult Result =
+		Equipment->Equip(Chosen, CameOff, AlsoCameOff, WentTo);
+
+	if (Result != ECataclysmEquipResult::Equipped &&
+		Result != ECataclysmEquipResult::Swapped)
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("A %s could not be worn, so the creation choice was not "
+					"applied."),
+			   *ChosenBase.ToString());
+		return false;
+	}
+
+	// WHAT CAME OFF GOES INTO THE BAG. The room for it was counted above, so
+	// neither of these can answer INDEX_NONE -- but the answer is read anyway,
+	// because a caller of AddItem that ignores it has destroyed an item.
+	for (const FCataclysmItem& Removed : {CameOff, AlsoCameOff})
+	{
+		if (Removed.Base.IsNone())
+		{
+			continue;
+		}
+
+		if (Inventory->AddItem(Removed) == INDEX_NONE)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("%s came off and the bag had no room for it after all, "
+						"so it has been lost."),
+				   *Removed.Base.ToString());
+		}
+	}
+
+	// THE SIX ABILITY SLOTS FOLLOW THE WEAPON. `Equip` broadcasts
+	// EquipmentChanged, which reaches OnEquipmentChanged, which does this --
+	// but only once the ability system exists, and this is reachable from
+	// possession where the order is not something to rely on. Running it twice
+	// refills the same six slots with the same six abilities.
+	FillAbilitySlotsFromWornWeapon();
+	return true;
 }
 
 void ACataclysmPlayerCharacter::GiveStartingWeapon()
@@ -1277,4 +1415,152 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowLevel(
 			Ar.Logf(TEXT("  %d attribute points, %d of them unspent."),
 					PlayerState->AttributePointsAvailable(),
 					PlayerState->AttributePointsUnspent());
+		}));
+
+// ---------------------------------------------------------------------------
+// Character creation
+//
+// THE SCREEN IS THE WAY THIS IS MEANT TO BE DRIVEN. `Cataclysm.CharacterCreation`
+// opens it, and the C key does the same thing without the console. These two
+// commands exist beside it for the reason every other console command in this
+// file exists: an automation test and a person checking one thing quickly both
+// need a way in that does not involve a mouse, and the screen's own logic is the
+// same code either way.
+//
+// THEY REPLACE `Cataclysm.PlayerClass` FOR NOTHING. That variable still chooses
+// which class stat line the character sits on and is unaffected by this. Which
+// class a character is has no answer yet; issue #932 is where it gets one.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmChooseAtCreation(
+	TEXT("Cataclysm.ChooseAtCreation"),
+	TEXT("Choose a starting weapon type and damage type: "
+		 "Cataclysm.ChooseAtCreation <weapon type> <damage type>. The character "
+		 "puts on a weapon of that type and its six skills come from that "
+		 "damage type. Run with no arguments to see what is on offer."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+			using namespace CataclysmEquipConsole;
+
+			const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+			const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+
+			// A WEAPON TYPE MAY BE TWO WORDS -- `2H Crossbow` is one of the
+			// fourteen -- and the console splits on spaces. So the damage type
+			// is the LAST argument and the weapon type is everything before it,
+			// rather than the first two arguments being the answer.
+			if (Args.Num() < 2)
+			{
+				Ar.Logf(TEXT("Weapon types: %s"),
+						*FString::JoinBy(
+							UCataclysmCharacterCreation::StartingWeaponTypes(Bases),
+							TEXT(", "),
+							[](const FName& Name) { return Name.ToString(); }));
+				Ar.Logf(TEXT("Damage types: %s"),
+						*FString::JoinBy(
+							UCataclysmItemModifiers::DamageTypeNames(), TEXT(", "),
+							[](const FName& Name) { return Name.ToString(); }));
+				Ar.Log(TEXT("Not every damage type is on every weapon. "
+							"Cataclysm.ShowCreation lists what the one in hand "
+							"can carry."));
+				return;
+			}
+
+			TArray<FString> WeaponWords = Args;
+			const FString DamageWord = WeaponWords.Pop();
+			const FName WeaponType(*FString::Join(WeaponWords, TEXT(" ")));
+			const FName DamageType(*DamageWord);
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			FString Reason;
+			if (!PlayerState->ChooseAtCreation(Skills, Bases, WeaponType,
+											   DamageType, Reason))
+			{
+				Ar.Logf(TEXT("Refused: %s"), *Reason);
+				return;
+			}
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (Character && !Character->ApplyCreationChoice())
+			{
+				Ar.Log(TEXT("The choice was recorded but the character could "
+							"not be changed to match it. The log says why."));
+				return;
+			}
+
+			Ar.Logf(TEXT("%s, %s. %s"), *DamageType.ToString(),
+					*WeaponType.ToString(),
+					*UCataclysmCharacterCreation::UnlockedClassesFor(
+						PlayerState->GetCreationChoice()));
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowCreation(
+	TEXT("Cataclysm.ShowCreation"),
+	TEXT("What was chosen when the character was created, which damage types "
+		 "the chosen weapon can carry, and which class trees they unlock."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+			const FCataclysmCreationChoice Choice = PlayerState->GetCreationChoice();
+
+			// SAID PLAINLY WHEN NOBODY CHOSE, because the pair below is then the
+			// stand-in every character has had since long before the creator
+			// existed, and reading it as a choice would be wrong.
+			Ar.Logf(TEXT("%s"),
+					PlayerState->HasChosenAtCreation()
+						? TEXT("Chosen at creation:")
+						: TEXT("Nothing was chosen. These are the defaults:"));
+
+			Ar.Logf(TEXT("  weapon type   %s"), *Choice.WeaponType.ToString());
+			Ar.Logf(TEXT("  damage type   %s"), *Choice.DamageType.ToString());
+			Ar.Logf(TEXT("  %s"),
+					*UCataclysmCharacterCreation::SummaryFor(Skills, Choice));
+			Ar.Logf(TEXT("  %s"),
+					*UCataclysmCharacterCreation::UnlockedClassesFor(Choice));
+
+			Ar.Logf(TEXT("A %s can carry: %s"), *Choice.WeaponType.ToString(),
+					*FString::JoinBy(
+						UCataclysmCharacterCreation::DamageTypesFor(
+							Skills, Choice.WeaponType),
+						TEXT(", "),
+						[](const FName& Name) { return Name.ToString(); }));
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterCreation(
+	TEXT("Cataclysm.CharacterCreation"),
+	TEXT("Open or close the character creation screen. The C key does the same "
+		 "thing, once the input assets have been generated."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			APlayerController* Plain =
+				World ? World->GetFirstPlayerController() : nullptr;
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(Plain);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there "
+							"is nothing to open a screen on."));
+				return;
+			}
+
+			// THE SAME FUNCTION THE KEY CALLS, rather than a second copy of
+			// opening a screen. Whatever the key does, this does.
+			Controller->ToggleCharacterCreation();
 		}));

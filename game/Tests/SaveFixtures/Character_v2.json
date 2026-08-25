@@ -19,6 +19,8 @@
 		"Efficacy": 0,
 		"Luck": 0
 	},
+	"StartingWeaponType": "Greatsword",
+	"StartingDamageType": "War",
 	"CataclysmicResidue": 13.5,
 	"CarriedSlots": [
 		{

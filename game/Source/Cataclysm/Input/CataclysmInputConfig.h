@@ -78,6 +78,17 @@ namespace CataclysmInputActionNames
 	 * Epoch all put it. Issue #731.
 	 */
 	inline const FName ToggleInventory = FName(TEXT("ToggleInventory"));
+
+	/**
+	 * Open and close the character creator. Tapped, not held.
+	 *
+	 * ONE ACTION FOR BOTH DIRECTIONS, for the reason above. C by
+	 * default, which is where Diablo, Path of Exile and Last Epoch all
+	 * put the character screen, and free in both control schemes.
+	 * Issue #50.
+	 */
+	inline const FName ToggleCharacterCreation =
+		FName(TEXT("ToggleCharacterCreation"));
 }
 
 /**

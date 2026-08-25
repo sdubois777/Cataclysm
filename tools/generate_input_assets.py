@@ -61,6 +61,10 @@ NATIVE_ACTIONS = [
     # One action for opening and for closing, because it is a screen rather than
     # a modifier. Issue #731.
     ("IA_ToggleInventory", "ToggleInventory", BOOLEAN, "Toggle Inventory"),
+    # The character creator. One action for opening and closing, for the
+    # same reason the inventory has one. Issue #50.
+    ("IA_ToggleCharacterCreation", "ToggleCharacterCreation", BOOLEAN,
+     "Toggle Character Creation"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -108,6 +112,9 @@ MOUSE_MAPPINGS = [
     # The carried inventory. I in both schemes, where Diablo, Path of Exile and
     # Last Epoch all put it, and free in both. Issue #731.
     ("IA_ToggleInventory", "I", []),
+    # The character creator. C in both schemes, where every game in the
+    # genre puts the character screen, and free in both. Issue #50.
+    ("IA_ToggleCharacterCreation", "C", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -127,6 +134,9 @@ KEYBOARD_MAPPINGS = [
     ("IA_SlotMovement", "SpaceBar", []),
     ("IA_Zoom", "MouseWheelAxis", []),
     ("IA_ToggleInventory", "I", []),
+    # The character creator. C in both schemes, where every game in the
+    # genre puts the character screen, and free in both. Issue #50.
+    ("IA_ToggleCharacterCreation", "C", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------
