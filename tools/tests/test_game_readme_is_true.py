@@ -351,7 +351,7 @@ NUMBER_WORDS = {
     13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
     17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
     21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
-    24: "twenty-four",
+    24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
 }
 
 DATATABLE_GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
@@ -384,17 +384,32 @@ def model_table_count() -> int:
     return len(_assignment(DATATABLE_GENERATOR, "MODEL_TABLES").keys)
 
 
+def tree_table_count() -> int:
+    """The tables built from the class passive tree files in `docs/`.
+
+    A THIRD SOURCE, ADDED FOR ISSUE #50. The four class trees are authored in a
+    separate tool and exported as JSON, and the game cannot read those, so the
+    generator turns them into tables like everything else.
+    """
+    return len(_assignment(DATATABLE_GENERATOR, "TREE_TABLES").keys)
+
+
+def not_from_the_workbook() -> int:
+    return model_table_count() + tree_table_count()
+
+
 def asset_count() -> int:
     return len(_assignment(ASSET_GENERATOR, "TABLES").elts)
 
 
 def test_the_two_generators_agree_on_how_many_tables_there_are() -> None:
     """Otherwise the counts below could both be right and still disagree."""
-    assert asset_count() == workbook_table_count() + model_table_count(), (
+    assert asset_count() == workbook_table_count() + not_from_the_workbook(), (
         f"tools/generate_datatable_assets.py builds an asset for "
         f"{asset_count()} tables, but tools/generate_datatables.py writes "
-        f"{workbook_table_count()} CSV files from the workbook and "
-        f"{model_table_count()} from the simulation's enemy model. One of them "
+        f"{workbook_table_count()} CSV files from the workbook, "
+        f"{model_table_count()} from the simulation's enemy model and "
+        f"{tree_table_count()} from the class passive tree files. One of them "
         f"has a table the other does not.")
 
 
@@ -403,10 +418,12 @@ def test_the_readme_states_the_right_number_of_datatable_assets() -> None:
     total = NUMBER_WORDS[asset_count()]
     from_workbook = NUMBER_WORDS[workbook_table_count()]
     from_model = NUMBER_WORDS[model_table_count()]
+    from_trees = NUMBER_WORDS[tree_table_count()]
 
     expected = (f"{total.capitalize()} DataTable assets: {from_workbook} "
-                f"imported from the design workbook, and {from_model} from the "
-                f"simulation package's enemy model.")
+                f"imported from the design workbook, {from_model} from the "
+                f"simulation package's enemy model, and {from_trees} from the "
+                f"class passive tree files.")
     assert expected in readme_text(), (
         f"game/README.md does not describe Content/Data/ as it now is. It "
         f"should say: {expected}")
@@ -414,7 +431,7 @@ def test_the_readme_states_the_right_number_of_datatable_assets() -> None:
 
 def test_the_readme_states_the_right_number_of_tables_not_from_the_workbook() -> None:
     """The sentence just above the regeneration commands."""
-    expected = (f"{NUMBER_WORDS[model_table_count()].capitalize()} of the "
+    expected = (f"{NUMBER_WORDS[not_from_the_workbook()].capitalize()} of the "
                 f"{NUMBER_WORDS[asset_count()]} do not come from the workbook.")
     assert expected in readme_text(), (
         f"game/README.md does not say how many tables come from somewhere other "

@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmExperience.h"
+#include "Character/CataclysmPassivePoints.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Net/UnrealNetwork.h"
 
@@ -51,6 +53,8 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
+	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
+	DOREPLIFETIME(ACataclysmPlayerState, DefeatedCataclysmBosses);
 }
 
 FCataclysmCreationChoice ACataclysmPlayerState::GetCreationChoice() const
@@ -216,4 +220,103 @@ bool ACataclysmPlayerState::SpendAttributePoints(const FString& Attribute,
 void ACataclysmPlayerState::ResetAttributePoints()
 {
 	SpentAttributePoints = FCataclysmAttributePoints();
+}
+
+// ---------------------------------------------------------------------------
+// Passive points
+// ---------------------------------------------------------------------------
+
+int32 ACataclysmPlayerState::PassivePointsAvailable() const
+{
+	return UCataclysmPassivePoints::Available(GetCharacterLevel(),
+											  DefeatedCataclysmBosses.Num());
+}
+
+int32 ACataclysmPlayerState::PassivePointsUnspent() const
+{
+	return PassivePointsAvailable() - PassiveAllocation.Total();
+}
+
+bool ACataclysmPlayerState::RecordCataclysmBossDefeat(FName Boss)
+{
+	if (Boss.IsNone())
+	{
+		return false;
+	}
+
+	// ALREADY BEATEN MEANS NOTHING HAPPENS, which is the design's own word:
+	// ten points for the FIRST defeat of each unique boss. Without the check a
+	// player could farm one boss for the whole 80.
+	if (DefeatedCataclysmBosses.Contains(Boss))
+	{
+		return false;
+	}
+
+	DefeatedCataclysmBosses.Add(Boss);
+	return true;
+}
+
+TArray<FString> ACataclysmPlayerState::ReachableTrees() const
+{
+	// ONE DAMAGE TYPE TODAY, AND THE SHAPE IS ALREADY THE ONE FOR SEVERAL. The
+	// design says what a character has access to "is determined by the set of
+	// damage types across ALL equipped weapons", and a weapon can carry up to
+	// eight. The game holds a single damage type on the weapon slots component
+	// as a stand-in until a rolled item carries its own; passing an array of one
+	// means nothing here changes when it does.
+	const TArray<FName> Carried = {GetChosenDamageType()};
+	return UCataclysmPassiveTree::ReachableTrees(
+		UCataclysmPassiveTree::LoadNodeTable(), Carried);
+}
+
+bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EdgeTable = UCataclysmPassiveTree::LoadEdgeTable();
+
+	// THE CHARACTER'S OWN QUESTION FIRST, BEFORE THE TREE'S RULES. Which trees
+	// are reachable follows from the damage type this character carries, which
+	// `UCataclysmPassiveTree` deliberately knows nothing about. Asking it first
+	// also means the reason a player sees is the useful one: "your weapon does
+	// not reach that tree" rather than "that node is shut".
+	const FString Tree = UCataclysmPassiveTree::TreeOf(NodeTable, Node);
+	if (!Tree.IsEmpty())
+	{
+		const TArray<FName> Carried = {GetChosenDamageType()};
+		if (!UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
+		{
+			OutReason = FString::Printf(
+				TEXT("No equipped weapon carries a damage type that unlocks the "
+					 "%s tree. This character is %s."),
+				*Tree, *GetChosenDamageType().ToString());
+			return false;
+		}
+	}
+
+	return UCataclysmPassiveTree::Spend(NodeTable, EdgeTable, PassiveAllocation,
+										Node, PassivePointsAvailable(),
+										OutReason);
+}
+
+bool ACataclysmPlayerState::ChoosePassiveOption(FName Node, int32 Option,
+												FString& OutReason)
+{
+	return UCataclysmPassiveTree::ChooseOption(
+		UCataclysmPassiveTree::LoadNodeTable(), PassiveAllocation, Node, Option,
+		OutReason);
+}
+
+void ACataclysmPlayerState::ResetPassivePoints()
+{
+	// THE CAPSTONE CHOICES GO WITH THE POINTS. Each capstone's own description
+	// ends "The choice is permanent", and a respec that returned the points
+	// while leaving the four decisions made would not be a respec at all.
+	PassiveAllocation.Clear();
+}
+
+void ACataclysmPlayerState::SetPassiveAllocation(
+	const FCataclysmPassiveAllocation& Allocation, const TArray<FName>& Bosses)
+{
+	PassiveAllocation = Allocation;
+	DefeatedCataclysmBosses = Bosses;
 }

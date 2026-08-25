@@ -255,6 +255,17 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 			Record.StartingWeaponType = State->GetChosenWeaponType();
 			Record.StartingDamageType = State->GetChosenDamageType();
 		}
+
+		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
+		//
+		// WRITTEN UNCONDITIONALLY, UNLIKE THE CREATION CHOICE ABOVE, and the
+		// difference is what an empty value means. An empty creation choice
+		// means "nobody chose" and the getters answer a default instead; an
+		// empty allocation means exactly "no points are spent", which is the
+		// truth about a character that has spent none. There is no default to
+		// mistake it for.
+		Record.PassiveAllocation = State->GetPassiveAllocation();
+		Record.DefeatedCataclysmBosses = State->GetDefeatedCataclysmBosses();
 	}
 
 	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The passive tree, the

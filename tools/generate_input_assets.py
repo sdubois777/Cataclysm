@@ -65,6 +65,9 @@ NATIVE_ACTIONS = [
     # same reason the inventory has one. Issue #50.
     ("IA_ToggleCharacterCreation", "ToggleCharacterCreation", BOOLEAN,
      "Toggle Character Creation"),
+    # The passive class tree. Issue #50.
+    ("IA_TogglePassiveTree", "TogglePassiveTree", BOOLEAN,
+     "Toggle Passive Tree"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -115,6 +118,9 @@ MOUSE_MAPPINGS = [
     # The character creator. C in both schemes, where every game in the
     # genre puts the character screen, and free in both. Issue #50.
     ("IA_ToggleCharacterCreation", "C", []),
+    # The passive tree. P in both schemes, which is where Path of Exile
+    # puts its passive tree, and free in both. Issue #50.
+    ("IA_TogglePassiveTree", "P", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -137,6 +143,9 @@ KEYBOARD_MAPPINGS = [
     # The character creator. C in both schemes, where every game in the
     # genre puts the character screen, and free in both. Issue #50.
     ("IA_ToggleCharacterCreation", "C", []),
+    # The passive tree. P in both schemes, which is where Path of Exile
+    # puts its passive tree, and free in both. Issue #50.
+    ("IA_TogglePassiveTree", "P", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

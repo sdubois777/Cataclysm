@@ -1511,3 +1511,162 @@ struct FCataclysmEnemyRarityRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Rarity")
 	float SpawnWeight = 0.0f;
 };
+
+/**
+ * One node of one class passive tree.
+ *
+ * WHERE IT COMES FROM. `docs/Berserker_Class_Tree_Final.json` and its three
+ * siblings, which are exported from `C:\Projects\PassiveTreeCreator` and are the
+ * design. `tools/generate_datatables.py` turns all four into this one table, and
+ * `tools/tests/test_class_passive_trees.py` checks the source files against the
+ * design document's stated rules.
+ *
+ * WHY A ROW NAME IS A TREE AND A NODE TOGETHER. A node identifier is unique
+ * only within its tree. Fourteen are shared by more than one of the four --
+ * `capstone_25` is in all of them -- so `Berserker_capstone_25` is the key and
+ * `capstone_25` is kept separately as `NodeId` for anyone comparing against the
+ * source file.
+ *
+ * WHAT A NODE DOES IS NOT HERE, AND THAT IS THE GAP RATHER THAN AN OMISSION.
+ * `Description` is a sentence written for a player to read: "Damage taken from
+ * damage over time effects is reduced by 1% per point." There is no stat name
+ * and no number anywhere in the source files, so nothing can apply a spent
+ * point to a character. Issue #936 has the three routes for authoring it and a
+ * recommendation. Everything else about a passive point -- earning it, spending
+ * it, the rules that bound where it may go, and saving it -- does work.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmPassiveNodeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** Berserker, Bulwark, Saboteur or Masochist. The other twenty class trees
+	 *  do not exist yet; issue #24. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Tree;
+
+	/** The identifier the source file gives this node, without the tree. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString NodeId;
+
+	/**
+	 * `basic`, `keystone` or `capstone`.
+	 *
+	 * THE THREE BEHAVE DIFFERENTLY AND NOT ONLY COSMETICALLY. A basic node holds
+	 * several points and gives a per-point bonus. A keystone holds one point,
+	 * changes a rule, and needs its parent node filled completely rather than
+	 * partly. A capstone holds one point, opens at a number of points spent in
+	 * the whole tree rather than by any path, and is a choice between three
+	 * options rather than a bonus.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Kind;
+
+	/** What the node is called. Unique within its tree. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString NodeName;
+
+	/** What it does, in words. See the note above about there being no numbers. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Description;
+
+	/** The most points this node can hold. One for a keystone and a capstone. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	int32 MaxPoints = 0;
+
+	/**
+	 * How many points must be spent anywhere in this tree before a capstone
+	 * opens: 25, 50, 100 or 200.
+	 *
+	 * ZERO FOR A BASIC NODE AND A KEYSTONE, and that is not a missing value.
+	 * Those open when the edges leading to them allow, which is a question about
+	 * a path rather than about a total.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	int32 Threshold = 0;
+
+	/**
+	 * Where the node sits on the authoring tool's canvas.
+	 *
+	 * CARRIED ACROSS SO A SCREEN CAN DRAW THE TREE IN ITS AUTHORED SHAPE, which
+	 * is the only reason it is here. The layout is a design decision made in the
+	 * authoring tool -- which limb a node is on says as much about the tree as
+	 * the node's own words -- so a screen that laid the nodes out again would be
+	 * discarding that.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	float PositionX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	float PositionY = 0.0f;
+
+	/**
+	 * The three choices a capstone offers, as three pairs.
+	 *
+	 * THREE PAIRS OF COLUMNS RATHER THAN A SECOND TABLE, because the design
+	 * fixes the count: "Player chooses one of three options per tier." A table
+	 * would be the right shape for a number that could change and the wrong one
+	 * for a number that cannot.
+	 *
+	 * EMPTY FOR EVERY NODE THAT IS NOT A CAPSTONE, and empty for the Saboteur's
+	 * four capstones as well, which offer none in the source file even though
+	 * each says to choose one of three. Issue #935. A capstone with no options
+	 * cannot be taken and the screen says so, rather than offering a choice
+	 * between nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option1Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option1Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option2Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option2Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option3Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
+	FString Option3Description;
+};
+
+/**
+ * One dependency between two nodes of the same class passive tree.
+ *
+ * AN EDGE IS A REQUIREMENT AND NOT A LINE. An edge from A to B carrying
+ * `RequiredPoints: 6` means B cannot take its first point until A holds six.
+ * Where the two nodes sit is on the node rows; nothing here is about drawing.
+ *
+ * A KEYSTONE'S EDGE ASKS FOR ITS PARENT IN FULL. The design document states it
+ * as a rule of its own: keystones "require full investment in a parent node", so
+ * a keystone's incoming edge requires exactly its source's MaxPoints.
+ * `tools/tests/test_class_passive_trees.py` holds the source files to that.
+ *
+ * CAPSTONES HAVE NO EDGES AT ALL, deliberately, and the same test asserts it. A
+ * capstone tier is reached by total points spent in the tree rather than along
+ * any path, so wiring one into the web would be a second, contradictory rule
+ * about when it opens.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmPassiveEdgeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Tree;
+
+	/** The node that must be invested in. A row name in the node table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Source;
+
+	/** The node that opens once it is. A row name in the node table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	FString Target;
+
+	/** How many points the source must hold before the target opens. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree")
+	int32 RequiredPoints = 0;
+};

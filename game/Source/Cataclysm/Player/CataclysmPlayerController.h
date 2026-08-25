@@ -13,6 +13,7 @@ class UCataclysmAbilitySystemComponent;
 class UCataclysmCharacterCreationWidget;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
+class UCataclysmPassiveTreeWidget;
 class UInputMappingContext;
 struct FInputActionValue;
 
@@ -172,6 +173,15 @@ public:
 	 */
 	void ToggleCharacterCreation();
 
+	/**
+	 * Opens and closes the passive class tree.
+	 *
+	 * THE SAME SHAPE AS THE CHARACTER CREATOR ABOVE, and public for the same
+	 * reason: `Cataclysm.PassiveTree` calls it, so a checkout whose input assets
+	 * predate the P key can still open the screen. Issue #50.
+	 */
+	void TogglePassiveTree();
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
@@ -219,6 +229,9 @@ private:
 
 	/** The key's half of it. Calls ToggleCharacterCreation below. */
 	void Input_ToggleCharacterCreation();
+
+	/** The key's half of it. Calls TogglePassiveTree above. */
+	void Input_TogglePassiveTree();
 
 	/** Puts CachedDestination under the cursor. False if the cursor hit nothing. */
 	bool UpdateCachedDestination();
@@ -312,6 +325,17 @@ private:
 	/** The character creator, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmCharacterCreationWidget> CharacterCreationScreen = nullptr;
+
+	/** Which Widget Blueprint the passive tree screen is. Soft, for the reason
+	 *  the character creator's is. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmPassiveTreeWidget> PassiveTreeScreenClass =
+		TSoftClassPtr<UCataclysmPassiveTreeWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_PassiveTree.WBP_PassiveTree_C")));
+
+	/** The passive tree screen, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmPassiveTreeWidget> PassiveTreeScreen = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

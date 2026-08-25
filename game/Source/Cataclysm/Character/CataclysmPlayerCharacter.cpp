@@ -10,6 +10,9 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmCharacterCreation.h"
+#include "Data/CataclysmDataRows.h"
+#include "Character/CataclysmPassivePoints.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Character/CataclysmExperience.h"
 #include "Player/CataclysmPlayerController.h"
@@ -1563,4 +1566,270 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterCreati
 			// THE SAME FUNCTION THE KEY CALLS, rather than a second copy of
 			// opening a screen. Whatever the key does, this does.
 			Controller->ToggleCharacterCreation();
+		}));
+
+// ---------------------------------------------------------------------------
+// Passive points
+//
+// THE SCREEN IS HOW THIS IS MEANT TO BE DRIVEN. `Cataclysm.PassiveTree` opens
+// it and the P key does the same. These exist beside it for the reason every
+// other console command in this file exists: a node's row name is long, a person
+// checking one thing quickly should not have to click twice, and an automation
+// test has no mouse.
+//
+// A NODE IS NAMED BY ITS ROW IN `game/Data/PassiveNodes.csv`, which is the tree
+// and the node identifier together -- `Masochist_basic_spine_005`. A node
+// identifier alone is unique only within its tree; fourteen are shared by more
+// than one of the four.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
+	TEXT("Cataclysm.ShowPassives"),
+	TEXT("How many passive points the character has earned and spent, which "
+		 "trees its damage type reaches, and how much is in each."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const int32 Level = PlayerState->GetCharacterLevel();
+			const int32 Bosses = PlayerState->GetDefeatedCataclysmBosses().Num();
+
+			Ar.Logf(TEXT("Passive points: %d earned, %d spent, %d left. The "
+						 "budget is %d."),
+					PlayerState->PassivePointsAvailable(),
+					PlayerState->GetPassiveAllocation().Total(),
+					PlayerState->PassivePointsUnspent(),
+					UCataclysmPassivePoints::Budget);
+
+			// WHERE THEY CAME FROM, SEPARATELY. The three sources are the whole
+			// award rule and a single total hides which of them is short.
+			Ar.Logf(TEXT("  %d from level %d, %d from %d first boss kill%s."),
+					UCataclysmPassivePoints::FromLevel(Level), Level,
+					UCataclysmPassivePoints::FromBossKills(Bosses), Bosses,
+					Bosses == 1 ? TEXT("") : TEXT("s"));
+
+			const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+			if (!NodeTable)
+			{
+				Ar.Log(TEXT("The passive node table could not be loaded. Run "
+							"python tools/run_editor_python.py "
+							"tools/generate_datatable_assets.py"));
+				return;
+			}
+
+			const TArray<FString> Reachable = PlayerState->ReachableTrees();
+			Ar.Logf(TEXT("Reachable trees (%s damage): %s"),
+					*PlayerState->GetChosenDamageType().ToString(),
+					Reachable.Num() > 0
+						? *FString::Join(Reachable, TEXT(", "))
+						: TEXT("none"));
+
+			for (const FString& Tree :
+				 UCataclysmPassiveTree::TreeNames(NodeTable))
+			{
+				const int32 Spent = UCataclysmPassiveTree::SpentInTree(
+					NodeTable, PlayerState->GetPassiveAllocation(), Tree);
+				Ar.Logf(TEXT("  %-12s %3d spent%s"), *Tree, Spent,
+						Reachable.Contains(Tree)
+							? TEXT("")
+							: TEXT("   (not reachable, so nothing in it applies)"));
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendPassivePoint(
+	TEXT("Cataclysm.SpendPassivePoint"),
+	TEXT("Put one passive point into a node: Cataclysm.SpendPassivePoint "
+		 "<node>. The node is a row name in game/Data/PassiveNodes.csv, such as "
+		 "Masochist_basic_spine_005. Run with no arguments to list what is "
+		 "open."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+			const UDataTable* EdgeTable = UCataclysmPassiveTree::LoadEdgeTable();
+			if (!NodeTable || !EdgeTable)
+			{
+				Ar.Log(TEXT("The passive tables could not be loaded. Run "
+							"python tools/run_editor_python.py "
+							"tools/generate_datatable_assets.py"));
+				return;
+			}
+
+			// NO ARGUMENT LISTS WHAT IS OPEN, which is what a person actually
+			// needs: 293 nodes exist and at any moment a handful can take a
+			// point. Listing all of them would be a wall to read.
+			if (Args.Num() < 1)
+			{
+				int32 Listed = 0;
+				for (const FString& Tree : PlayerState->ReachableTrees())
+				{
+					for (const FName& Node :
+						 UCataclysmPassiveTree::NodesIn(NodeTable, Tree))
+					{
+						if (UCataclysmPassiveTree::RefusalForSpending(
+								NodeTable, EdgeTable,
+								PlayerState->GetPassiveAllocation(), Node,
+								PlayerState->PassivePointsAvailable()).IsEmpty())
+						{
+							Ar.Logf(TEXT("  %s"), *Node.ToString());
+							++Listed;
+						}
+					}
+				}
+				if (Listed == 0)
+				{
+					Ar.Log(TEXT("Nothing can take a point right now."));
+				}
+				return;
+			}
+
+			FString Reason;
+			const FName Node(*Args[0]);
+			if (!PlayerState->SpendPassivePoint(Node, Reason))
+			{
+				Ar.Logf(TEXT("Refused: %s"), *Reason);
+				return;
+			}
+
+			Ar.Logf(TEXT("%s. %d left."),
+					*UCataclysmPassiveTree::DescribeNode(
+						NodeTable, EdgeTable,
+						PlayerState->GetPassiveAllocation(), Node,
+						PlayerState->PassivePointsAvailable()),
+					PlayerState->PassivePointsUnspent());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmChoosePassiveOption(
+	TEXT("Cataclysm.ChoosePassiveOption"),
+	TEXT("Take one of a capstone's three options: "
+		 "Cataclysm.ChoosePassiveOption <node> <1, 2 or 3>. The choice is "
+		 "permanent until the whole tree is respecced."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			if (Args.Num() < 2)
+			{
+				Ar.Log(TEXT("Name a capstone node and an option: 1, 2 or 3."));
+				return;
+			}
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const FName Node(*Args[0]);
+			FString Reason;
+			if (!PlayerState->ChoosePassiveOption(Node, FCString::Atoi(*Args[1]),
+												  Reason))
+			{
+				Ar.Logf(TEXT("Refused: %s"), *Reason);
+				return;
+			}
+
+			const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(
+				UCataclysmPassiveTree::LoadNodeTable(), Node);
+			const int32 Chosen = PlayerState->GetPassiveAllocation()
+									 .ChosenOptionIn(Node);
+			Ar.Logf(TEXT("%s: %s"), Row ? *Row->NodeName : *Node.ToString(),
+					Row ? *UCataclysmPassiveTree::OptionNamesOf(*Row)[Chosen - 1]
+						: TEXT(""));
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmResetPassivePoints(
+	TEXT("Cataclysm.ResetPassivePoints"),
+	TEXT("Return every passive point, and every capstone choice with them. "
+		 "What the Trainer sells, at a cost in days nothing charges yet."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const int32 Returned = PlayerState->GetPassiveAllocation().Total();
+			PlayerState->ResetPassivePoints();
+			Ar.Logf(TEXT("%d passive point%s returned. %d to spend."), Returned,
+					Returned == 1 ? TEXT("") : TEXT("s"),
+					PlayerState->PassivePointsUnspent());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmDefeatCataclysmBoss(
+	TEXT("Cataclysm.DefeatCataclysmBoss"),
+	TEXT("Record the first defeat of a unique Cataclysm boss, which is worth 10 "
+		 "passive points: Cataclysm.DefeatCataclysmBoss <name>. A stand-in "
+		 "until a Cataclysm boss exists in the game."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmAttributeConsole;
+
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Name a boss. Any name will do; there are none in "
+							"the game yet, and the design gives eight."));
+				return;
+			}
+
+			ACataclysmPlayerState* PlayerState = State(World, Ar);
+			if (!PlayerState)
+			{
+				return;
+			}
+
+			const FName Boss(*Args[0]);
+			if (!PlayerState->RecordCataclysmBossDefeat(Boss))
+			{
+				Ar.Logf(TEXT("%s was already beaten, so it is worth nothing "
+							 "further. Only a first defeat pays."),
+						*Boss.ToString());
+				return;
+			}
+
+			Ar.Logf(TEXT("%s beaten for the first time. %d passive points "
+						 "earned, %d left to spend."),
+					*Boss.ToString(), UCataclysmPassivePoints::PerFirstBossKill,
+					PlayerState->PassivePointsUnspent());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeScreen(
+	TEXT("Cataclysm.PassiveTree"),
+	TEXT("Open or close the passive tree screen. The P key does the same "
+		 "thing, once the input assets have been generated."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(
+					World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there "
+							"is nothing to open a screen on."));
+				return;
+			}
+
+			Controller->TogglePassiveTree();
 		}));

@@ -189,6 +189,19 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Tags sheet has exactly one row, so a ninth damage type raises this number
 	// and a missing one fails generation before it reaches here.
 	CHECK_TABLE(FCataclysmElementVisualRow,     "ElementVisuals.csv",          8)
+	// 293: every node of the four class trees that exist. Berserker holds 71
+	// and the other three hold 74 each. The design says "approximately 74
+	// nodes" per tree; the pin is what notices the generator silently dropping
+	// one, which would leave a hole in a tree the game draws. Issue #50.
+	//
+	// IT RISES A LOT WHEN THE OTHER TWENTY TREES ARRIVE, issue #24, and that
+	// is what a pin is for: a jump nobody meant is the same shape as a jump
+	// somebody did.
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          293)
+	// 278: every dependency edge of those four trees. Fewer than the nodes,
+	// because the four capstones of each tree deliberately have none -- a
+	// capstone tier is reached by total points spent rather than along a path.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          278)
 
 	#undef CHECK_TABLE
 
@@ -371,6 +384,8 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_ItemSockets"),           TEXT("ItemSockets.csv") },
 		{ TEXT("DT_MaterialTiers"),         TEXT("MaterialTiers.csv") },
 		{ TEXT("DT_MinionScaling"),         TEXT("MinionScaling.csv") },
+		{ TEXT("DT_PassiveEdges"),          TEXT("PassiveEdges.csv") },
+		{ TEXT("DT_PassiveNodes"),          TEXT("PassiveNodes.csv") },
 		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
 		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },

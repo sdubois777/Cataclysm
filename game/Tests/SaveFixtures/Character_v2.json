@@ -21,6 +21,23 @@
 	},
 	"StartingWeaponType": "Greatsword",
 	"StartingDamageType": "War",
+	"PassiveAllocation": {
+		"Nodes": [
+			{
+				"Node": "Masochist_basic_spine_000",
+				"Points": 1,
+				"ChosenOption": 0
+			},
+			{
+				"Node": "Masochist_capstone_25",
+				"Points": 1,
+				"ChosenOption": 2
+			}
+		]
+	},
+	"DefeatedCataclysmBosses": [
+		"Demonic"
+	],
 	"CataclysmicResidue": 13.5,
 	"CarriedSlots": [
 		{

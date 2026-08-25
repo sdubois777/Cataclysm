@@ -56,6 +56,7 @@ KEY_LABEL_TO_ENGINE_KEYS = {
     "R": ("R",),
     "I": ("I",),
     "C": ("C",),
+    "P": ("P",),
 }
 
 #: The words the document uses for an action, and the Input Action asset the
@@ -74,6 +75,7 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Directional movement": "IA_Move",
     "Open and close the carried inventory": "IA_ToggleInventory",
     "Open and close the character creator": "IA_ToggleCharacterCreation",
+    "Open and close the passive class tree": "IA_TogglePassiveTree",
 }
 
 #: The heading above each table in the document, and the list in the generator it

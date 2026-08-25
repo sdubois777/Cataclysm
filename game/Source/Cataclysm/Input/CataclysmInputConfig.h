@@ -89,6 +89,14 @@ namespace CataclysmInputActionNames
 	 */
 	inline const FName ToggleCharacterCreation =
 		FName(TEXT("ToggleCharacterCreation"));
+
+	/**
+	 * Open and close the passive class tree. Tapped, not held.
+	 *
+	 * P by default, which is where Path of Exile puts its passive
+	 * tree, and free in both control schemes. Issue #50.
+	 */
+	inline const FName TogglePassiveTree = FName(TEXT("TogglePassiveTree"));
 }
 
 /**

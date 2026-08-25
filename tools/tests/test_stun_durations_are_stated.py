@@ -67,6 +67,21 @@ IMMUNITY = (
     r"cannot be stunned",
     r"immune to stun",
     r"immunity to stun",
+    # ADDED WHEN THE PASSIVE TREES ARRIVED, issue #50. Two nodes grant immunity
+    # in wording the three patterns above do not reach, and both are plainly
+    # immunity rather than application:
+    #
+    #   Berserker/Juggernaut    "You cannot be staggered, stunned, or knocked
+    #                            back while above 50% Fury."
+    #   Masochist/The First Vow "You can no longer be stunned or frozen, but
+    #                            your Mana and Energy Shield no longer
+    #                            regenerate naturally."
+    #
+    # The first fails `cannot be stunned` because two other words sit between
+    # "be" and "stunned"; the second says "can no longer be" instead of
+    # "cannot be". This is the extension the docstring above says to expect.
+    r"cannot be [\w,\s]{0,40}?stunned",
+    r"can no longer be [\w,\s]{0,40}?stunned",
 )
 
 #: A stated duration: "for 1.5 seconds", "for 0.5-1 second", "for 1 second".
