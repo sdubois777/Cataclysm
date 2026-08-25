@@ -235,7 +235,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 43 FOR VICIOUS ONSLAUGHT, the first node whose bonus GROWS with a
 	// state rather than switching on and off with it. One row rather than two,
 	// because the node names Attack Damage outright. Issue #968.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         43)
+	//
+	// AND TO 44 FOR DEEPER CUTS, which adds a health cost to every skill the
+	// character uses. Issue #970.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         44)
 
 	#undef CHECK_TABLE
 

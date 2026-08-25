@@ -102,7 +102,12 @@ BUCKETS = {"flat", "increased", "more"}
 #: every 5% of your maximum health that is missing". One row rather than two
 #: because the node names Attack Damage outright. It is the first bonus whose
 #: SIZE grows with a state rather than switching on and off with it. Issue #968.
-AUTHORED_ROWS = 43
+#:
+#: AND BY ONE, for Deeper Cuts: "Your skills also cost 1% of your maximum
+#: health per point, in addition to any other cost." A `flat` row, because the
+#: stat it supplies is zero for every class and this node is its only source.
+#: Issue #970.
+AUTHORED_ROWS = 44
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -139,7 +144,11 @@ AUTHORED_ROWS = 43
 #: AND TO 38 FOR ONE MORE, Vicious Onslaught, whose bonus grows with how much
 #: health is missing. 38 of 293 altogether and 34 of the Masochist tree's own 74.
 #: Issue #968.
-AUTHORED_NODES = 38
+#:
+#: AND TO 39 FOR ONE MORE, Deeper Cuts, which adds a health cost to every
+#: skill the character uses. 39 of 293 altogether and 35 of the Masochist
+#: tree's own 74. Issue #970.
+AUTHORED_NODES = 39
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

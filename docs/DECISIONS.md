@@ -20,6 +20,66 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A skill's health cost and a character's are added, and they are measured against different things
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and
+`.cpp`, `CataclysmClassResourceAttributeSet.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet).
+**Applied.** Issues #970, #939.
+
+Only one skill in the game charges health: Blood Pyre, at 8% of current health.
+The Masochist's Deeper Cuts node adds a cost to every skill — "Your skills also
+cost 1% of your maximum health per point, in addition to any other cost" — and
+nothing let a character do that.
+
+### The two costs are measured against different things, and that decides whether they can kill
+
+| Cost | Measured against | Can it empty the character? |
+| :-- | :-- | :-- |
+| The skill's own | **current** health | no |
+| The character's added cost | **maximum** health | **yes** |
+
+This is not an accident of implementation. The entry above on the Blood Tithe
+section records the project owner drawing exactly this distinction about the
+Exsanguinate keystone:
+
+> That cost cannot kill on its own: 15% of *current* health approaches zero
+> without reaching it. The project owner pointed that out; it would kill if it
+> were a share of maximum health.
+
+Deeper Cuts is written as a share of maximum health, so it can. The same section
+has a keystone that kills outright — The Reckoning, where "if the debt exceeds
+current health you die" — so dying to this class's own mechanics is in the design
+rather than an oversight.
+
+### Added, not compounded
+
+"In addition to any other cost" is read as a sum. A character at 1000 health with
+a skill charging 8% of current and a node charging 10% of maximum pays 180, not
+172 — 172 is what either compounding order gives, and the two differ by enough to
+tell apart in a test.
+
+### The stat sits with the Fervour rates, not on the character sheet
+
+`added_health_cost` is off the character sheet for the same reasons the three
+Fervour rates are: no affix grants it, nothing scales it, it has no baseline of
+its own, and a passive node is its only source. It also belongs to the same
+economy, because the cost it adds is one of the two things that fill Fervour.
+
+A class stat row of zeroes would have been the wrong way to declare it —
+`tools/tests/test_class_sheets_match_the_model.py` refuses one, and that rule is
+right — so what supplies it is a `flat` row in the `Passive Effects` sheet,
+exactly as for the Fervour rates.
+
+### What is measured and what is not
+
+Health is clamped at zero rather than going negative, and a test pays a cost
+twice the character's whole pool to show it. **Whether reaching zero this way
+also KILLS is not established**, because the cost is taken with a direct
+attribute write rather than a gameplay effect, and the death check runs from the
+gameplay effect hook. Issue #971 carries the question and how to settle it.
+
 ## 2026-08-25 — A bonus that grows with a state counts whole steps, rounded down
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

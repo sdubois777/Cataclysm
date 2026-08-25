@@ -160,12 +160,19 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * in a model that has nothing to do with them.
 	 *
 	 * So the sheet stays at 46. The combat set grew by two and the class
-	 * resource set by three, which is what this count exists to keep honest.
+	 * THE ADDED HEALTH COST is the fifth, added under issue #970, and it is off
+	 * the sheet for the same reasons again: no affix grants it, nothing scales
+	 * it, it has no baseline of its own, and the Masochist's Deeper Cuts node is
+	 * the only thing that supplies it. `sim/cataclysm_sim/character.py` does not
+	 * model a health cost at all.
+	 *
+	 * So the sheet stays at 46. The combat set grew by two and the class
+	 * resource set by four, which is what this count exists to keep honest.
 	 */
 	constexpr int32 OffSheetCombatStats = 3;
 
-	/** The three Fervour rates. See the note above. */
-	constexpr int32 OffSheetResourceStats = 3;
+	/** The three Fervour rates, and the added health cost. See the note above. */
+	constexpr int32 OffSheetResourceStats = 4;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -188,8 +195,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
 	// Five since the three Fervour rates were added for #954: the pool, its
-	// maximum, and the three rates that move it.
-	TestEqual(TEXT("Five class resource attributes"),
+	// maximum, and the three rates that move it. Six since the added health cost
+	// joined them for #970, which is not a rate and is counted apart from the
+	// three in GetRateAttributes for that reason.
+	TestEqual(TEXT("Six class resource attributes"),
 		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,
