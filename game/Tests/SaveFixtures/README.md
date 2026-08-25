@@ -38,6 +38,13 @@ both to add a field the record had gained:
   maximum health is set by the encounter rather than by its class, and
   without it a restored creature was clamped down to its class default.
 
+`Character_v2.json` was edited once under it, on 2026-08-25, to add
+`StartingWeaponType` and `StartingDamageType`. A character now chooses a starting
+weapon type and a damage type when it is created, issue #50, and the record has
+to carry them. `Character_v1.json` was deliberately left alone: it describes
+version 1, which predates even the attribute allocation, and the completeness
+test does not walk it for that reason.
+
 **Once the game can load a save, this exception is gone.** From then on a
 file here is a file a player might have, and changing one means changing what
 an old build wrote -- which is a lie about history and defeats the whole point

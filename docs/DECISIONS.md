@@ -20,6 +20,128 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — Character creation chooses a weapon type and a damage type, the Shield is not one of them, and a tree keeps its points when the weapon comes off
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` sections IV, V and XII;
+`game/Source/Cataclysm/Character/CataclysmCharacterCreation.h` and `.cpp`;
+`game/Source/Cataclysm/Interface/CataclysmCharacterCreationWidget.h` and `.cpp`;
+`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`;
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`. **Applied**, except the
+passive tree rule below, which is decided and has nothing to apply it to yet.
+Issue #50.
+
+Four questions came up building the character creator. Three were put to the
+project owner and one was decided here and is recorded so it can be overturned.
+
+### What the creator offers, and what it does not
+
+`docs/Cataclysm_GDD_v2.md` section IV describes two halves: a starting weapon
+type and damage type, and an appearance made of preset body types, skin tones,
+hairstyles and height.
+
+**Only the first half is built.** Asked how to handle appearance, the project
+owner said: "Leave appearance out of this change." The reason it was worth asking
+is that this project has no player character art at all. The only character art
+in `game/Content/` is the Paragon packs, which are the seven enemy types, and
+`ACataclysmPlayerCharacter` has no configurable appearance of any kind. The four
+choices would have been four lists of names that changed nothing a player could
+see, on a screen whose entire purpose is to be looked at. Issue #931 carries the
+whole appearance half, including the fact that the design names no presets.
+
+**The half that is built is the half that touches other systems.** The weapon
+type decides which item the character wears and which six ability slots it fills;
+the damage type decides which of that weapon's skills exist and which three class
+passive trees the character can spend points in.
+
+### The Shield is not offered as a starting weapon
+
+**Decided here rather than asked, and it can be overturned.**
+
+The design makes the Shield a one-handed weapon: "The Shield is a one-handed
+weapon that grants no attack damage... A held weapon that grants no attack damage
+contributes nothing to the basic attack — neither damage nor swing rate." A
+single one-handed weapon has been a legal loadout since 2026-08-15.
+
+So a character created holding only a Shield is legal by the letter of the design
+and cannot hurt anything. Its basic attack deals nothing, and every skill's damage
+is a percentage of weapon damage, so all six deal nothing too. It would be an
+unplayable start reachable in one click.
+
+**Nothing else about the Shield changes.** It is still a weapon, it still has its
+own three skills, and a character may still pick one up and hold it in the second
+hand for its block chance, its armour, its affix slots and its sockets — which is
+what the design intends it for. What it may not be is the only thing a character
+begins its life holding.
+
+`UCataclysmCharacterCreation::WeaponTypeWithNoAttack` is the exclusion and
+`tools/tests/test_character_creation_matches_the_design.py` checks that the
+sentence it rests on is still in the design document, so giving the Shield attack
+damage later fails the test rather than silently leaving a stale rule behind.
+
+### A passive tree keeps its points when the weapon that unlocked it comes off
+
+**This is issue #50's open question and the project owner answered it on
+2026-08-25.** Multiclassing lets a player with several damage types on their
+weapons invest in several trees from one shared pool of 230 points. Nothing said
+what happens when they take off the weapon that granted access to a tree they had
+already invested in.
+
+**The answer: the points stay spent, and everything the tree grants stops
+applying while no equipped weapon carries its damage type.** It starts applying
+again when one does. Nothing is refunded and nothing is lost.
+
+**The genre has solved this and the shape is taken from it.** Path of Exile 2 has
+Weapon Set Passive Points: nodes allocated to a weapon set apply only while that
+set is equipped, and swapping weapons activates and deactivates them. That is
+this rule exactly.
+
+**The alternative was rejected for a specific reason, not on taste.** Path of
+Exile 1 does the other thing: unsocketing a cluster jewel refunds every passive
+point spent inside it. Copied here, a weapon swap would be an unlimited free
+respec — wear a War weapon, spend 230 in Bulwark, wear a Demonic one, get all 230
+back. This design already sells a class passive respec, at the Trainer, for a cost
+in days; an automatic full refund on a weapon swap would make that service
+worthless the day it shipped.
+
+**What it costs the player, stated plainly.** A character that spreads across two
+trees and then wears a weapon carrying one damage type is carrying dead points.
+That is the cost of multiclassing rather than a fault in the rule, and it is what
+the design already says multiclassing is: "All trees draw from the same shared
+point pool, so multiclassing means spreading investment thinner."
+
+Sources: [How Weapon Set Passive Points Work In Path Of Exile
+2](https://www.thegamer.com/path-of-exile-2-poe2-weapon-set-passive-skill-points-explained/),
+[How to use weapon set skill points in Path of Exile
+2](https://www.pcgamer.com/games/rpg/path-of-exile-2-weapon-set-skill-points/),
+[Cluster jewel, PoE Wiki](https://www.poewiki.net/wiki/Cluster_jewel).
+
+### The 230 passive point budget does require every Cataclysm boss
+
+**Confirmed by the project owner on 2026-08-25.** Section XII awards 1 passive
+point per level, 5 more every 10 levels, and 10 for a first-time kill of each
+unique Cataclysm boss. That is 150 from levelling plus up to 80 from bosses, and
+the design states a per-character budget of 230, which is the sum exactly.
+
+Issue #50 asked whether that was intended, since it means a character reaching
+level 100 without fighting a single Cataclysm boss tops out at 150 and can never
+reach the budget every class tree is designed against. **It is intended.** 230 is
+a ceiling reached by clearing the bosses, not by levelling.
+
+Nothing in the game awards a passive point yet. That is the second half of issue
+#50 and it is not built here.
+
+### What this deliberately does not decide
+
+**Which class stat line a character sits on.** A character now chooses a damage
+type, and a damage type unlocks three classes, but which of the three a character
+IS comes from where it spends passive points — which nothing does yet. Meanwhile
+every character sits on the Ravager line, including one created as War. Issue
+#932 has the three questions that need answering and why none of them can be
+settled before the missing class stat lines exist: `game/Data/ClassStats.csv`
+holds four rows, and twenty-one of the twenty-four classes have no line at all.
+
+---
+
 ## 2026-08-24 — Screens are a C++ base class with the layout in a Widget Blueprint
 
 **Affects:** every screen built from now on, and eventually the eight widgets

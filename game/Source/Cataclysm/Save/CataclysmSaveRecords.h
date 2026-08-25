@@ -293,11 +293,15 @@ public:
  * play. Losing the capital, dying in the Last Stand and being killed by the
  * corrupted double all cost the run and not the character.
  *
- * WHAT IS DELIBERATELY ABSENT: the attribute allocation, the passive class tree
- * allocation, the 18 equipped slots, and a Solo Self-Found character's private
- * empire tree allocation. Each needs a shape that does not exist in the game
- * yet, and section 5 says adding a field later with a sensible default is not a
- * version bump, so waiting costs nothing and guessing costs a migration.
+ * WHAT IS DELIBERATELY ABSENT: the passive class tree allocation, the 18
+ * equipped slots, and a Solo Self-Found character's private empire tree
+ * allocation. Each needs a shape that does not exist in the game yet, and
+ * section 5 says adding a field later with a sensible default is not a version
+ * bump, so waiting costs nothing and guessing costs a migration.
+ *
+ * THE ATTRIBUTE ALLOCATION LEFT THAT LIST ON 2026-08-24, when a character could
+ * first spend a point, and the two character creation choices left it on
+ * 2026-08-25 for the same reason. Both are issue #50.
  */
 UCLASS(BlueprintType)
 class CATACLYSM_API UCataclysmCharacterSave : public UCataclysmSaveRecord
@@ -367,6 +371,38 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmAttributePoints SpentAttributePoints;
+
+	/**
+	 * The weapon type the player chose when the character was created.
+	 *
+	 * A WeaponType in `game/Data/ItemBases.csv`, such as `Greataxe`.
+	 * `docs/Cataclysm_GDD_v2.md` section IV: it decides the character's initial
+	 * skill set together with the damage type below. Issue #50.
+	 *
+	 * NOT A VERSION BUMP. `docs/Save_System_Design.md` section 5 says a field
+	 * added later with a sensible default is not one, and the default here is
+	 * `NAME_None`, which is what a record written before the creator existed
+	 * reads back as and means "nobody chose".
+	 *
+	 * WHAT NOBODY CHOSE READS AS. `ACataclysmPlayerState::GetChosenWeaponType`
+	 * answers `UCataclysmCharacterCreation::DefaultWeaponType` for an empty
+	 * one, so an old save loads the character it always was.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FName StartingWeaponType;
+
+	/**
+	 * The damage type the player chose when the character was created.
+	 *
+	 * One of the eight. It decides which of the weapon's skills the character
+	 * has, and which three class passive trees it can spend points in.
+	 *
+	 * IT IS NOT DERIVABLE FROM THE WEAPON WORN, which is why it is stored. A
+	 * Greataxe can carry War, Demonic, Death or Chaos, and which of the four
+	 * this character is has nothing to do with the axe.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FName StartingDamageType;
 
 	/** Cataclysmic Residue the character is carrying. A cost, never a benefit. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")

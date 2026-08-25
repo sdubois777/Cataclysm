@@ -5,9 +5,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerState.h"
 #include "AbilitySystemInterface.h"
+#include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmClassStats.h"
 #include "CataclysmPlayerState.generated.h"
 
+class UDataTable;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
 class UCataclysmPrimaryAttributeSet;
@@ -142,6 +144,70 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Experience")
 	void SetLevelAndExperience(int32 NewLevel, int64 NewExperience);
 
+	// ----------------------------------------------------------------------
+	// What was chosen when the character was created
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The starting weapon type and damage type the player chose.
+	 *
+	 * HERE FOR THE REASON THE LEVEL IS HERE. A pawn is destroyed on death and
+	 * the player state is not, and a character that came back from the capital
+	 * as a different damage type would be a different character.
+	 *
+	 * BOTH EMPTY UNTIL SOMEBODY CHOOSES, and the two stand-ins that used to be
+	 * the whole answer are what a character has until then:
+	 * `UCataclysmCharacterCreation::DefaultWeaponType` and `DefaultDamageType`.
+	 * That is the same arrangement `Cataclysm.PlayerLevel` got when levelling
+	 * arrived -- see `docs/DECISIONS.md`, 2026-08-24 -- and it is why every
+	 * automation test that stands a character up without touching the creator
+	 * gets exactly the character it got before.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	FCataclysmCreationChoice GetCreationChoice() const;
+
+	/** The weapon type the character starts holding. The default until chosen. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	FName GetChosenWeaponType() const;
+
+	/** The damage type whose skills and class trees the character has. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	FName GetChosenDamageType() const;
+
+	/** Whether anybody has chosen yet, as opposed to sitting on the defaults. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	bool HasChosenAtCreation() const { return CreationChoice.IsComplete(); }
+
+	/**
+	 * Record what the player chose in the character creator.
+	 *
+	 * REFUSED RATHER THAN CLAMPED when the pair is not one the design allows,
+	 * and `OutReason` says which refusal it was, for the same reason
+	 * `SpendAttributePoints` refuses: quietly turning a Staff and War into
+	 * something else would still read as success.
+	 *
+	 * THE TABLES ARE PASSED IN rather than found, so a test can hand it a
+	 * matrix it built and set up a pairing the real one does not contain.
+	 * `ACataclysmPlayerCharacter` is what loads the real ones.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
+	bool ChooseAtCreation(const UDataTable* WeaponSkillTable,
+						  const UDataTable* BaseTable,
+						  FName WeaponType, FName DamageType,
+						  FString& OutReason);
+
+	/**
+	 * Put a saved choice back onto the character, without checking it.
+	 *
+	 * NOT VALIDATED, WHERE `ChooseAtCreation` IS, and the difference is where
+	 * the value came from. A save record holds whatever was last written to it,
+	 * and refusing it would leave a loaded character on the defaults -- which is
+	 * a different character from the one the player saved. This is the same
+	 * trust `SetLevelAndExperience` gives a saved level.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
+	void SetCreationChoice(FName WeaponType, FName DamageType);
+
 protected:
 	/**
 	 * What `CharacterLevel` holds before anything has decided one.
@@ -165,6 +231,14 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Attributes")
 	FCataclysmAttributePoints SpentAttributePoints;
+
+	/**
+	 * REPLICATED, because the client's own screens read it: which six skills
+	 * exist, which class trees can be opened, and what the gear panel says is
+	 * in hand all follow from these two names.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Creation")
+	FCataclysmCreationChoice CreationChoice;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;

@@ -100,6 +100,32 @@ public:
 	 */
 	void ApplyChosenClassStats();
 
+	/**
+	 * Makes the character match what was chosen in the character creator.
+	 *
+	 * THREE THINGS, AND ALL THREE HAVE TO MOVE TOGETHER. The chosen weapon type
+	 * decides which item is worn, the chosen damage type decides which six
+	 * skills that weapon grants, and the ability slots then have to be filled
+	 * again from the pair. Moving one without the others is exactly issue #840
+	 * one field along: a character holding a whip and swinging a Greataxe.
+	 *
+	 * IT DOES NOTHING AT ALL WHEN NOBODY HAS CHOSEN, and that is what makes it
+	 * safe to call from possession. `ACataclysmPlayerState::HasChosenAtCreation`
+	 * is false for every character stood up by an automation test and for every
+	 * character that existed before the creator did, so all of them keep exactly
+	 * the Greataxe and the Demonic damage type they had.
+	 *
+	 * THE OLD WEAPON GOES INTO THE BAG rather than being destroyed, which is the
+	 * rule `UCataclysmWearing` exists to keep.
+	 *
+	 * PUBLIC SO THE SCREEN AND A TEST CAN BOTH DRIVE IT, which is the same
+	 * reason `ApplyChosenClassStats` above is public.
+	 *
+	 * @return false when nothing was chosen, when there is no player state, or
+	 *         when the weapon could not be changed. Says so in the log.
+	 */
+	bool ApplyCreationChoice();
+
 	/** Client: the player state has replicated. There is no PossessedBy here. */
 	virtual void OnRep_PlayerState() override;
 

@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Net/UnrealNetwork.h"
@@ -49,6 +50,61 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, SpentAttributePoints);
 	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
+	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
+}
+
+FCataclysmCreationChoice ACataclysmPlayerState::GetCreationChoice() const
+{
+	// THE DEFAULTS FILL IN EACH HALF SEPARATELY, not the pair together. Nothing
+	// today writes one half without the other -- `ChooseAtCreation` refuses an
+	// incomplete pair and `SetCreationChoice` is handed both out of one record
+	// -- but a half-filled choice would otherwise answer NAME_None for the
+	// other half, and NAME_None is not a weapon type any table can be asked
+	// about.
+	FCataclysmCreationChoice Answer;
+	Answer.WeaponType = GetChosenWeaponType();
+	Answer.DamageType = GetChosenDamageType();
+	return Answer;
+}
+
+FName ACataclysmPlayerState::GetChosenWeaponType() const
+{
+	return CreationChoice.WeaponType.IsNone()
+		? UCataclysmCharacterCreation::DefaultWeaponType
+		: CreationChoice.WeaponType;
+}
+
+FName ACataclysmPlayerState::GetChosenDamageType() const
+{
+	return CreationChoice.DamageType.IsNone()
+		? UCataclysmCharacterCreation::DefaultDamageType
+		: CreationChoice.DamageType;
+}
+
+bool ACataclysmPlayerState::ChooseAtCreation(const UDataTable* WeaponSkillTable,
+											 const UDataTable* BaseTable,
+											 FName WeaponType, FName DamageType,
+											 FString& OutReason)
+{
+	FCataclysmCreationChoice Asked;
+	Asked.WeaponType = WeaponType;
+	Asked.DamageType = DamageType;
+
+	OutReason = UCataclysmCharacterCreation::RefusalFor(WeaponSkillTable,
+													   BaseTable, Asked);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	CreationChoice = Asked;
+	return true;
+}
+
+void ACataclysmPlayerState::SetCreationChoice(FName WeaponType, FName DamageType)
+{
+	CreationChoice.WeaponType = WeaponType;
+	CreationChoice.DamageType = DamageType;
 }
 
 int32 ACataclysmPlayerState::GetCharacterLevel() const

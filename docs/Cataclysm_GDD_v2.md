@@ -77,6 +77,21 @@ Amidst the dungeons' perilous challenges, heroes unearth not only artifacts but 
 
 When starting a new character, players choose a starting weapon type and damage type, which determines their initial skill set and first available passive class tree. Character appearance is customizable with preset body types, skin tones, hairstyles, and height. The character creator is intentionally streamlined — build identity comes from gear and passives, not appearance.
 
+**Thirteen of the fourteen weapon types may be chosen.** The Shield may not. It
+is a one-handed weapon and a single one-handed weapon is a legal loadout, so a
+character created holding only a Shield would be legal — and unable to hurt
+anything, because the Shield grants no attack damage and every skill's damage is
+a percentage of weapon damage. Nothing else about the Shield changes: a character
+may still pick one up and hold it in the second hand, which is what it is for.
+
+**Not every choice has skills written for it yet.** The design allows 390 pairings
+of weapon type and damage type and 58 of them have a skill designed, so the
+creator says how many of a pairing's six skills exist before the choice is taken.
+Issues #62 and #836 are the rest.
+
+**The appearance choices are not built.** The game has no player character art for
+them to change. Issue #931.
+
   
 
 ### **Difficulty Options**
@@ -201,6 +216,7 @@ The following are default controls. Players with multiple damage types can map m
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
 | I | Open and close the carried inventory |
+| C | Open and close the character creator |
 
   
 
@@ -223,6 +239,7 @@ WASD moves the character, so the Support ability moves off W to 1 and the left m
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
 | I | Open and close the carried inventory |
+| C | Open and close the character creator |
 
   
 
@@ -618,6 +635,20 @@ The node graph is `docs/Masochist_Class_Tree_Final.json`. The Ravager and Ritual
 ### **Multiclassing**
 
 Players with multiple damage types on their weapon can invest in multiple class trees simultaneously. All trees draw from the same shared point pool, so multiclassing means spreading investment thinner. The deep nodes and capstones in any single tree require focused investment to reach, creating genuine build tradeoffs.
+
+**Taking off the weapon that unlocked a tree does not refund the points spent in
+it.** The points stay spent and everything that tree grants stops applying, until
+an equipped weapon carries its damage type again. Nothing is lost and nothing is
+returned.
+
+This is what Path of Exile 2 does with Weapon Set Passive Points. The alternative
+— refunding the points, as Path of Exile 1 does when a cluster jewel is
+unsocketed — would make a weapon swap an unlimited free respec, and this design
+already sells a class passive respec at the Trainer for a cost in days.
+
+So a character that spreads across two trees and then wears a weapon carrying one
+damage type is carrying dead points. That is the cost of multiclassing rather
+than a fault: the shared pool is what makes spreading thinner mean something.
 
   
 
@@ -5667,6 +5698,13 @@ Void dungeons accumulate void stacks on cities. When stacks reach a threshold, t
 ## **Character Leveling**
 
 The max level is 100. Players earn experience by killing dungeon enemies and defeating bosses. Per level: 1 passive skill point and 1 attribute point. Every 10 levels: 5 bonus passive points. Defeating a unique Cataclysm boss for the first time: 10 bonus passive points.
+
+**Reaching the 230 passive point budget requires killing every unique Cataclysm
+boss once, and that is deliberate.** Levelling to 100 gives 150 — one a level plus
+five every ten levels — and the boss kills give the other 80. A character that
+never fights a Cataclysm boss tops out at 150 and never reaches the budget the
+class trees are designed against. 230 is a ceiling that is earned, not a figure
+every character arrives at.
 
   
 
