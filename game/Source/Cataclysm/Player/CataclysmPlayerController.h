@@ -182,6 +182,19 @@ public:
 	 */
 	void TogglePassiveTree();
 
+	/**
+	 * Scale the passive tree view, or fit the whole tree when given nothing.
+	 *
+	 * THE MOUSE WHEEL AND A DRAG ARE HOW THIS IS MEANT TO BE DRIVEN, and this
+	 * exists beside them for the reason every other console command in this
+	 * project exists: a person checking one thing quickly should not have to
+	 * find the right number of wheel notches, and neither an automation test
+	 * nor a script has a wheel.
+	 *
+	 * @param Notches  positive scales in, negative out, and zero fits the tree
+	 */
+	void ZoomPassiveTree(float Notches);
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")

@@ -1845,3 +1845,28 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeScre
 
 			Controller->TogglePassiveTree();
 		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeZoom(
+	TEXT("Cataclysm.PassiveTreeZoom"),
+	TEXT("Scale the passive tree view: Cataclysm.PassiveTreeZoom <notches>. "
+		 "Positive scales in, negative out, and no argument fits the whole tree "
+		 "in the panel. The mouse wheel does the same, and dragging with the "
+		 "right button moves the view."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(
+					World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller."));
+				return;
+			}
+
+			// NOTHING MEANS FIT, which is the thing a person wants most often
+			// after panning into a limb and losing the rest of the tree.
+			const float Notches = Args.Num() >= 1
+				? FCString::Atof(*Args[0]) : 0.0f;
+			Controller->ZoomPassiveTree(Notches);
+		}));

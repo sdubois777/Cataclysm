@@ -9,6 +9,7 @@
 
 class UButton;
 class ACataclysmPlayerState;
+class UCanvasPanel;
 class UCataclysmChoiceButton;
 class UDataTable;
 class UPanelWidget;
@@ -112,6 +113,53 @@ public:
 	/** Use these tables rather than the generated ones. For tests. */
 	void SetTables(const UDataTable* InNodeTable, const UDataTable* InEdgeTable);
 
+	//~ Looking around the tree.
+
+	/**
+	 * How far the view is scaled. One draws the tree at its authored size.
+	 *
+	 * FITTED TO THE PANEL WHEN A TREE IS FIRST SHOWN, rather than starting at
+	 * one. The Masochist tree is 3,600 units across and a panel is about 2,400
+	 * pixels, so a zoom of one would put a third of it off each side and the
+	 * player would open the screen looking at the middle of a limb.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	float GetZoom() const { return Zoom; }
+
+	/** Which point of the tree sits in the middle of the panel. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	FVector2D GetFocus() const { return Focus; }
+
+	/** Scale the view by this many mouse wheel notches. Positive zooms in. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	void ZoomBy(float Notches);
+
+	/** Move the view by this many pixels of the panel. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	void PanBy(FVector2D Pixels);
+
+	/**
+	 * Put the whole of the tree being shown inside the panel.
+	 *
+	 * WHAT OPENING THE SCREEN DOES, and what the F key does afterwards. A player
+	 * who has panned into a limb needs a way back that does not involve
+	 * scrolling until something familiar appears.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	void FitToTree();
+
+	//~ UUserWidget
+	virtual void NativeConstruct() override;
+	virtual FReply NativeOnMouseWheel(const FGeometry& Geometry,
+									  const FPointerEvent& Event) override;
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& Geometry,
+										   const FPointerEvent& Event) override;
+	virtual FReply NativeOnMouseMove(const FGeometry& Geometry,
+									 const FPointerEvent& Event) override;
+	virtual FReply NativeOnMouseButtonUp(const FGeometry& Geometry,
+										 const FPointerEvent& Event) override;
+	//~ End UUserWidget
+
 	/**
 	 * Read and write this player state rather than the owning player's.
 	 *
@@ -129,18 +177,28 @@ public:
 	 */
 	void SetPlayerStateForTests(ACataclysmPlayerState* InState);
 
-	//~ UUserWidget
-	virtual void NativeConstruct() override;
-	//~ End UUserWidget
-
 protected:
 	/** Where the tree-selector buttons go. Filled by this class. */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UPanelWidget> TreeBox;
 
-	/** Where one button per node of the shown tree goes. */
+	/**
+	 * Where the tree is drawn: one button per node, one line per edge.
+	 *
+	 * A CANVAS PANEL AND NOT A LIST, since issue #937. Every node is placed at
+	 * its own authored position, scaled and panned, so the tree keeps the shape
+	 * it was drawn in. Which limb a node is on and how far it is from the trunk
+	 * are decisions made in `C:\Projects\PassiveTreeCreator`, and a list threw
+	 * all of that away.
+	 *
+	 * THE DESIGNER PLACES THE PANEL AND THIS CLASS FILLS IT. Where the panel
+	 * sits, how big it is and what is around it are layout; where a node lands
+	 * inside it is arithmetic that no designer could do by hand for 74 nodes.
+	 * `UCataclysmPassiveTreeLayout` is that arithmetic and it is covered by
+	 * tests.
+	 */
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UPanelWidget> NodeBox;
+	TObjectPtr<UCanvasPanel> GraphCanvas;
 
 	/** Earned, spent and left. */
 	UPROPERTY(meta = (BindWidget))
@@ -175,6 +233,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Passives")
 	FText Title = NSLOCTEXT("Cataclysm", "PassiveTitle", "Passive tree");
 
+	/**
+	 * The colour a dependency line between two nodes is drawn in.
+	 *
+	 * QUIET ON PURPOSE. The lines are structure and the nodes are the thing
+	 * being read, so a line as bright as a node would compete with the words it
+	 * is there to connect. `EditAnywhere`, so a designer opening the Blueprint
+	 * owns the actual colour: which colour it is is a look, and that a line is
+	 * quieter than a node is the judgement.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Passives")
+	FLinearColor EdgeColour = FLinearColor(0.35f, 0.39f, 0.44f, 1.0f);
+
 private:
 	/** Bound to every tree-selector button. */
 	UFUNCTION()
@@ -183,6 +253,16 @@ private:
 	/** Bound to every node button. */
 	UFUNCTION()
 	void HandleNodeClicked(FName Node);
+
+	/**
+	 * Bound to every node button's hover.
+	 *
+	 * READING A NODE MUST NOT COST A POINT. A node is far too small at a
+	 * fitted zoom to hold its own description, so the description under the
+	 * tree follows the cursor instead. Spending stays on the click.
+	 */
+	UFUNCTION()
+	void HandleNodeHovered(FName Node);
 
 	const UDataTable* NodeTable() const;
 	const UDataTable* EdgeTable() const;
@@ -196,6 +276,24 @@ private:
 	/** Empty a panel and refill it, or update what is already in it. */
 	void FillPanel(UPanelWidget* Panel, const TArray<FName>& Values,
 				   bool bTrees);
+
+	/**
+	 * Place one button per node and one line per edge on the canvas.
+	 *
+	 * REBUILT WHEN THE TREE CHANGES AND MOVED WHEN THE VIEW DOES. Making 74
+	 * buttons and 69 lines is work for a click; moving them is work for a drag,
+	 * which happens every frame the mouse is down. So the two are separate.
+	 */
+	void BuildGraph();
+
+	/** Move every node and edge already on the canvas to where it now belongs. */
+	void PlaceGraph();
+
+	/** What one node's button should say and whether it can take a point. */
+	void DescribeNodeButton(class UCataclysmChoiceButton& Button, FName Node);
+
+	/** The canvas's size in pixels, or a sensible guess before it has one. */
+	FVector2D CanvasSize() const;
 
 	FString ShownTree;
 	FString LastRefusal;
@@ -216,4 +314,36 @@ private:
 	TObjectPtr<ACataclysmPlayerState> StateForTests;
 
 	bool bComplainedAboutTheChoiceButtonClass = false;
+
+	/** How far the view is scaled, and what is in the middle of it. */
+	float Zoom = 1.0f;
+	FVector2D Focus = FVector2D::ZeroVector;
+
+	/** Which tree the canvas currently holds widgets for. Empty for none. */
+	FString BuiltTree;
+
+	/**
+	 * How big a node may be drawn in the tree on the canvas, as a factor.
+	 *
+	 * WORKED OUT ONCE WHEN THE TREE IS BUILT, because it walks every pair
+	 * of nodes and does not change while one tree is being looked at.
+	 */
+	float BuiltNodeScale = 1.0f;
+
+	/** The node each button on the canvas is for, in the order they were made. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UCataclysmChoiceButton>> NodeButtons;
+
+	UPROPERTY(Transient)
+	TArray<FName> NodeButtonNames;
+
+	/** The edge images, and which two nodes each joins. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UImage>> EdgeImages;
+
+	TArray<TPair<FName, FName>> EdgeEnds;
+
+	/** Where the mouse was when a drag began. Panning is a drag. */
+	FVector2D DragFrom = FVector2D::ZeroVector;
+	bool bDragging = false;
 };

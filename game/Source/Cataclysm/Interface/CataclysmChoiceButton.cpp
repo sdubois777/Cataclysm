@@ -65,6 +65,17 @@ void UCataclysmChoiceButton::RefreshDisplay()
 	}
 }
 
+void UCataclysmChoiceButton::NativeOnMouseEnter(const FGeometry& Geometry,
+												const FPointerEvent& Event)
+{
+	Super::NativeOnMouseEnter(Geometry, Event);
+
+	// EVEN WHEN THE BUTTON IS DISABLED. A node that cannot take a point is
+	// the node a player most wants to read, because the question they have
+	// is why it cannot.
+	OnChoiceHovered.Broadcast(Value);
+}
+
 void UCataclysmChoiceButton::HandleClicked()
 {
 	Press();

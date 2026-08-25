@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "Data/CataclysmDataRows.h"
+#include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerState.h"
@@ -20,6 +21,8 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/ScopeExit.h"
+
+#include <limits>
 
 /**
  * Passive points: earning them, spending them, and the rules that bound them.
@@ -1096,6 +1099,283 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 				 TEXT("by about thirty per cent: %.1f against %.1f expected"),
 				 After, Before * 1.30f),
 			 FMath::IsNearlyEqual(After, Before * 1.30f, Before * 0.02f));
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Where the tree is drawn
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveExtentTest,
+	"Cataclysm.Passives.ATreesExtentIsTheRectangleItsNodesOccupy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveExtentTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	if (!NodeTable)
+	{
+		return false;
+	}
+
+	// The built tree's Ravager nodes sit at (0,0), (0,100), (0,200), (100,100),
+	// (-100,100), (300,0) and (300,100).
+	const FCataclysmTreeExtent Extent =
+		UCataclysmPassiveTreeLayout::ExtentOf(NodeTable, TEXT("Ravager"));
+
+	TestTrue(TEXT("nodes were found"), Extent.bAny);
+	TestEqual(TEXT("the leftmost node"), Extent.Least.X, -100.0);
+	TestEqual(TEXT("the topmost"), Extent.Least.Y, 0.0);
+	TestEqual(TEXT("the rightmost"), Extent.Most.X, 300.0);
+	TestEqual(TEXT("the lowest"), Extent.Most.Y, 200.0);
+	TestEqual(TEXT("so the centre is between them"), Extent.Centre(),
+			  FVector2D(100.0, 100.0));
+	TestEqual(TEXT("and the span is the difference"), Extent.Span(),
+			  FVector2D(400.0, 200.0));
+
+	// A TREE THAT IS NOT THERE HAS NO EXTENT, and `bAny` is how a caller tells
+	// that from a tree whose nodes all sit on one point. Fitting a view to a
+	// rectangle of nothing would divide by zero.
+	const FCataclysmTreeExtent Missing =
+		UCataclysmPassiveTreeLayout::ExtentOf(NodeTable, TEXT("Necromancer"));
+	TestFalse(TEXT("a tree that does not exist has no extent"), Missing.bAny);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveZoomToFitTest,
+	"Cataclysm.Passives.TheViewFitsTheWholeTreeInsideThePanel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveZoomToFitTest::RunTest(const FString&)
+{
+	FCataclysmTreeExtent Extent;
+	Extent.bAny = true;
+	Extent.Least = FVector2D(-500.0, -100.0);
+	Extent.Most = FVector2D(500.0, 100.0);          // 1000 wide, 200 tall
+
+	// A PANEL WITH ROOM FOR 800 BY 620 ONCE THE MARGIN IS TAKEN OFF BOTH SIDES.
+	// The width allows 800/1000 = 0.8 and the height 620/200 = 3.1.
+	const FVector2D Panel(800.0 + UCataclysmPassiveTreeLayout::FitMarginPx * 2.0,
+						  620.0 + UCataclysmPassiveTreeLayout::FitMarginPx * 2.0);
+
+	// THE SMALLER OF THE TWO, so the tree fits both ways rather than one. Taking
+	// the larger would fit the height and run a fifth of the width off each
+	// side, which is the mistake that looks right on a tall tree.
+	TestEqual(TEXT("the width binds, not the height"),
+			  UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Panel), 0.8f);
+
+	// AND THE ANSWER IS CLAMPED. A panel far larger than the tree would
+	// otherwise fit it at a zoom of ten and draw one node across the screen.
+	const FVector2D Huge(100000.0, 100000.0);
+	TestEqual(TEXT("a very large panel is capped at the largest zoom"),
+			  UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Huge),
+			  UCataclysmPassiveTreeLayout::LargestZoom);
+
+	// A PANEL SMALLER THAN THE MARGIN LEAVES NEGATIVE ROOM, which would give a
+	// negative zoom and mirror the whole tree.
+	const FVector2D Tiny(10.0, 10.0);
+	TestEqual(TEXT("a panel smaller than its own margin is capped at the "
+				   "smallest zoom"),
+			  UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Tiny),
+			  UCataclysmPassiveTreeLayout::SmallestZoom);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveScreenPositionTest,
+	"Cataclysm.Passives.WhatIsFocusedSitsInTheMiddleOfThePanelAtAnyZoom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveScreenPositionTest::RunTest(const FString&)
+{
+	const FVector2D Panel(1000.0, 600.0);
+	const FVector2D Focus(200.0, -50.0);
+
+	// THE POINT BEING LOOKED AT IS IN THE MIDDLE, WHATEVER THE ZOOM. That is
+	// what makes zooming keep looking at the same thing rather than drifting
+	// towards a corner, and it is the property the whole view rests on.
+	for (const float Zoom : {0.25f, 1.0f, 2.5f})
+	{
+		TestEqual(*FString::Printf(TEXT("the focus is centred at zoom %.2f"), Zoom),
+				  UCataclysmPassiveTreeLayout::ScreenPositionFor(Focus, Focus,
+																 Zoom, Panel),
+				  Panel * 0.5);
+	}
+
+	// A NODE 100 UNITS RIGHT OF THE FOCUS IS 100 PIXELS RIGHT AT A ZOOM OF ONE,
+	// and 200 at a zoom of two.
+	const FVector2D Right = Focus + FVector2D(100.0, 0.0);
+	TestEqual(TEXT("at a zoom of one"),
+			  UCataclysmPassiveTreeLayout::ScreenPositionFor(Right, Focus, 1.0f,
+															 Panel),
+			  Panel * 0.5 + FVector2D(100.0, 0.0));
+	TestEqual(TEXT("and twice as far at a zoom of two"),
+			  UCataclysmPassiveTreeLayout::ScreenPositionFor(Right, Focus, 2.0f,
+															 Panel),
+			  Panel * 0.5 + FVector2D(200.0, 0.0));
+
+	// AND THE REVERSE ANSWERS THE SAME POINT. Turning a click into a place in
+	// the tree is the same arithmetic backwards, so a mistake in either would
+	// show up here rather than as a click that selected the wrong node.
+	const FVector2D Somewhere(613.0, 77.0);
+	const FVector2D ThereAndBack = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+		UCataclysmPassiveTreeLayout::TreePositionFor(Somewhere, Focus, 1.7f, Panel),
+		Focus, 1.7f, Panel);
+	TestTrue(*FString::Printf(TEXT("a point survives the round trip: %s against %s"),
+							  *ThereAndBack.ToString(), *Somewhere.ToString()),
+			 ThereAndBack.Equals(Somewhere, 0.01));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEdgeGeometryTest,
+	"Cataclysm.Passives.AnEdgeIsARectangleTurnedToPointAtItsFarEnd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveEdgeGeometryTest::RunTest(const FString&)
+{
+	FVector2D At;
+	FVector2D Size;
+	float Angle = 0.0f;
+
+	// STRAIGHT RIGHT IS NO ROTATION AT ALL, which is the case that tells a sign
+	// mistake from a scale mistake.
+	UCataclysmPassiveTreeLayout::EdgeGeometry(FVector2D(10.0, 20.0),
+											  FVector2D(110.0, 20.0), 3.0f,
+											  At, Size, Angle);
+	TestEqual(TEXT("it starts at the near end"), At, FVector2D(10.0, 20.0));
+	TestEqual(TEXT("it is as long as the gap"), Size.X, 100.0);
+	TestEqual(TEXT("and as thick as asked"), Size.Y, 3.0);
+	TestEqual(TEXT("and points right"), Angle, 0.0f);
+
+	// STRAIGHT DOWN IS NINETY DEGREES, POSITIVE. Screen y grows downwards, so a
+	// line to a node below turns clockwise. Getting this sign wrong mirrors
+	// every edge about the horizontal and the tree looks plausible upside down,
+	// which is why it is asserted rather than left to be noticed.
+	UCataclysmPassiveTreeLayout::EdgeGeometry(FVector2D(0.0, 0.0),
+											  FVector2D(0.0, 50.0), 3.0f,
+											  At, Size, Angle);
+	TestEqual(TEXT("a line to a node below is fifty long"), Size.X, 50.0);
+	TestEqual(TEXT("and turns ninety degrees clockwise"), Angle, 90.0f);
+
+	// AND A DIAGONAL IS THE HYPOTENUSE.
+	UCataclysmPassiveTreeLayout::EdgeGeometry(FVector2D(0.0, 0.0),
+											  FVector2D(30.0, 40.0), 3.0f,
+											  At, Size, Angle);
+	TestEqual(TEXT("three, four, five"), Size.X, 50.0);
+
+	// TWO POINTS IN THE SAME PLACE HAVE NO DIRECTION AND MUST NOT BE AN ERROR.
+	UCataclysmPassiveTreeLayout::EdgeGeometry(FVector2D(7.0, 7.0),
+											  FVector2D(7.0, 7.0), 3.0f,
+											  At, Size, Angle);
+	TestEqual(TEXT("a zero-length edge is zero long"), Size.X, 0.0);
+	TestEqual(TEXT("and points right rather than nowhere"), Angle, 0.0f);
+
+	// A LINE IS NEVER THINNER THAN ONE PIXEL, however far the view is zoomed
+	// out. At the smallest zoom the thickness asked for is 0.3, and a rectangle
+	// less than a pixel tall is drawn as nothing at all.
+	UCataclysmPassiveTreeLayout::EdgeGeometry(FVector2D(0.0, 0.0),
+											  FVector2D(10.0, 0.0), 0.3f,
+											  At, Size, Angle);
+	TestEqual(TEXT("a very thin line is still one pixel"), Size.Y, 1.0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveZoomStepsTest,
+	"Cataclysm.Passives.EveryWheelNotchChangesTheViewByTheSameProportion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveZoomStepsTest::RunTest(const FString&)
+{
+	// A FACTOR PER NOTCH RATHER THAN AN AMOUNT. Adding a fixed step makes one
+	// notch nothing when zoomed out and an enormous jump when zoomed in.
+	const float In = UCataclysmPassiveTreeLayout::ZoomAfterNotches(1.0f, 1.0f);
+	TestTrue(TEXT("one notch in makes it larger"), In > 1.0f);
+
+	const float Back = UCataclysmPassiveTreeLayout::ZoomAfterNotches(In, -1.0f);
+	TestTrue(*FString::Printf(TEXT("and one notch back returns to where it was: "
+								   "%.4f against 1.0"), Back),
+			 FMath::IsNearlyEqual(Back, 1.0f, 0.0001f));
+
+	// THE RANGE HOLDS AT BOTH ENDS whatever is asked for.
+	TestEqual(TEXT("scrolling out forever stops at the smallest"),
+			  UCataclysmPassiveTreeLayout::ZoomAfterNotches(1.0f, -1000.0f),
+			  UCataclysmPassiveTreeLayout::SmallestZoom);
+	TestEqual(TEXT("and scrolling in forever stops at the largest"),
+			  UCataclysmPassiveTreeLayout::ZoomAfterNotches(1.0f, 1000.0f),
+			  UCataclysmPassiveTreeLayout::LargestZoom);
+
+	// NOT-A-NUMBER IS CLAMPED RATHER THAN PASSED THROUGH. Every comparison
+	// against it is false, so FMath::Clamp on its own would hand it back and
+	// every node would be placed nowhere at all.
+	TestEqual(TEXT("a zoom that is not a number becomes the smallest"),
+			  UCataclysmPassiveTreeLayout::ClampZoom(
+				  std::numeric_limits<float>::quiet_NaN()),
+			  UCataclysmPassiveTreeLayout::SmallestZoom);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRealTreesFitTest,
+	"Cataclysm.Passives.EveryRealTreeFitsAnOrdinaryPanelAtAReadableZoom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveRealTreesFitTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the passive node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	// A PANEL ABOUT THE SIZE THE SCREEN ACTUALLY GETS, measured from a play
+	// session at 2500 pixels wide.
+	const FVector2D Panel(2400.0, 900.0);
+
+	for (const FString& Tree : UCataclysmPassiveTree::TreeNames(NodeTable))
+	{
+		const FCataclysmTreeExtent Extent =
+			UCataclysmPassiveTreeLayout::ExtentOf(NodeTable, Tree);
+		TestTrue(*FString::Printf(TEXT("%s has an extent"), *Tree), Extent.bAny);
+
+		const float Fit = UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Panel);
+
+		// NOT SQUEEZED TO THE FLOOR. If a real tree needed the smallest zoom to
+		// fit, the whole thing would open as a field of dots and the fit would
+		// be useless. Measured: the widest tree is 3,600 units and the panel
+		// leaves 2,220, so the tightest fit is about 0.6.
+		TestTrue(*FString::Printf(
+					 TEXT("%s fits at a readable zoom of %.2f, not the floor"),
+					 *Tree, Fit),
+				 Fit > UCataclysmPassiveTreeLayout::SmallestZoom * 2.0f);
+
+		// AND EVERY NODE REALLY IS INSIDE THE PANEL AT THAT ZOOM, which is the
+		// thing "fit" means and the thing the arithmetic could get wrong.
+		for (const FName& Node : UCataclysmPassiveTree::NodesIn(NodeTable, Tree))
+		{
+			const FCataclysmPassiveNodeRow* Row =
+				UCataclysmPassiveTree::FindNode(NodeTable, Node);
+			if (!Row)
+			{
+				continue;
+			}
+
+			const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+				FVector2D(Row->PositionX, Row->PositionY), Extent.Centre(), Fit,
+				Panel);
+
+			TestTrue(*FString::Printf(TEXT("%s lands inside the panel at %s"),
+									  *Node.ToString(), *At.ToString()),
+					 At.X >= 0.0 && At.X <= Panel.X
+						 && At.Y >= 0.0 && At.Y <= Panel.Y);
+		}
+	}
 
 	return true;
 }
