@@ -109,6 +109,16 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase worth `Value` per whole `Step` percent of health missing. */
+	FCataclysmStatModifier IncreasedPerHealthMissing(float Value, float Step)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Scale =
+			ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+		Modifier.ScaleStep = Step;
+		return Modifier;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -459,6 +469,99 @@ bool FCataclysmPipelineHealthCostWindowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a real window is not"),
 		FPipeline::ValidateModifier(
 			IncreasedAfterHealthCost(16.0f, 2.0f)).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthMissingScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithHowMuchHealthIsMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineHealthMissingScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S VICIOUS ONSLAUGHT NODE, held at its full ten points: "+1%
+	// increased Attack Damage per point for every 5% of your maximum health that
+	// is missing", so ten percentage points per whole 5% missing. Issue #968.
+	//
+	// A DIFFERENT AXIS FROM A CONDITION, and that is the point of the shape. A
+	// condition decides whether a modifier is in the sum at all; this decides
+	// how large it is when it is.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedPerHealthMissing(10.0f, 5.0f) };
+
+	// A CHARACTER AT FULL HEALTH HAS NO STEPS AND GETS NOTHING, which is what
+	// makes the node a reward for being hurt rather than a flat bonus.
+	TestEqual(TEXT("at full health it is worth nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(100.0f)).Final,
+		100.0f, 0.01f);
+
+	// WHOLE STEPS, ROUNDED DOWN. Ten percent missing is exactly two steps;
+	// eleven and fourteen are still two, because "for every 5%" counts completed
+	// blocks. The genre agrees: Path of Exile pays a "per 10 Strength" bonus once
+	// at 15 Strength, not one and a half times.
+	TestEqual(TEXT("ten percent missing is two whole steps, so +20%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(90.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and so is eleven percent missing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(89.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and fourteen"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(86.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("fifteen percent missing is the third step"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(85.0f)).Final,
+		130.0f, 0.01f);
+
+	// A CHARACTER ON ALMOST NOTHING CARRIES TWENTY STEPS, which is what the node
+	// is worth at its largest and is worth pinning: this is the figure a balance
+	// argument would be made from.
+	TestEqual(TEXT("at no health at all it is twenty steps, so +200%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(0.0f)).Final,
+		300.0f, 0.01f);
+
+	// AN UNKNOWN STATE SCALES TO NOTHING, which is what the character sheet asks
+	// with. A scaled bonus folded into a gameplay attribute would be stale the
+	// moment health moved, so the sheet must not see it at all.
+	TestEqual(TEXT("a caller that knows nothing about the character gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, and is
+	// refused outright when the data is checked.
+	TArray<FCataclysmStatModifier> NoStep = {
+		IncreasedPerHealthMissing(10.0f, 0.0f) };
+	TestEqual(TEXT("a step of nothing is worth nothing at every state"),
+		FPipeline::Evaluate(100.0f, NoStep, NoTags, AtHealth(10.0f)).Final,
+		100.0f, 0.01f);
+	TestTrue(TEXT("and is reported as illegal when the data is checked"),
+		!FPipeline::ValidateModifier(NoStep[0]).IsEmpty());
+	TestTrue(TEXT("while a real step is not"),
+		FPipeline::ValidateModifier(Modifiers[0]).IsEmpty());
+
+	// THE TWO AXES COMBINE, and neither implies anything about the other. A
+	// modifier that both scales and carries a condition is refused entirely when
+	// the condition fails, however many steps the character has.
+	FCataclysmStatModifier BothAxes = IncreasedPerHealthMissing(10.0f, 5.0f);
+	BothAxes.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+	BothAxes.ConditionValue = 50.0f;
+	TArray<FCataclysmStatModifier> Combined = { BothAxes };
+
+	TestEqual(TEXT("above the threshold it is refused despite having steps"),
+		FPipeline::Evaluate(100.0f, Combined, NoTags, AtHealth(60.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("at the threshold it applies, scaled by ten steps"),
+		FPipeline::Evaluate(100.0f, Combined, NoTags, AtHealth(50.0f)).Final,
+		200.0f, 0.01f);
+
+	// AND A FIXED MODIFIER IS UNTOUCHED BY ANY OF THIS, which is every modifier
+	// in the game before this issue.
+	TArray<FCataclysmStatModifier> Plain = { Increased(50.0f) };
+	TestEqual(TEXT("a fixed increase is worth its value whatever the health"),
+		FPipeline::Evaluate(100.0f, Plain, NoTags, AtHealth(10.0f)).Final,
+		150.0f, 0.01f);
+	TestEqual(TEXT("and the same with no state at all"),
+		FPipeline::Evaluate(100.0f, Plain, NoTags).Final, 150.0f, 0.01f);
 
 	return true;
 }

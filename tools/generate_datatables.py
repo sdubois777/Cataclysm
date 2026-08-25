@@ -2440,6 +2440,28 @@ CONDITIONS = {
     "seconds_after_health_cost": (0.0, 60.0, "a number of seconds"),
 }
 
+#: The states a passive bonus's SIZE may grow with. Issue #968.
+#:
+#: A DIFFERENT QUESTION FROM `CONDITIONS` ABOVE. A condition decides whether the
+#: bonus applies; a scale decides how large it is when it does. A row may carry
+#: both, and neither implies anything about the other.
+#:
+#: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree.
+#: `UCataclysmPassiveTree::AccumulateInto` turns each of these names into an
+#: `ECataclysmStatScale`. A name it does not recognise is made worth NOTHING
+#: rather than worth its full value, because the full value of a scaling bonus is
+#: what a character in the most extreme state would get -- for Vicious Onslaught,
+#: the bonus for being at death's door handed to one at full health. Refusing an
+#: unknown name when the file is written is where it should be caught instead.
+#:
+#: The value is (lowest step, highest step, what the step means).
+SCALES = {
+    # "for every 5% of your maximum health that is missing" is `health_missing`
+    # with a step of 5. Steps are counted whole and rounded down, so a character
+    # 12% below full health has two of them.
+    "health_missing": (0.0, 100.0, "a percentage of maximum health"),
+}
+
 
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
@@ -2524,6 +2546,35 @@ def passive_effects(book) -> list[dict]:
                     f"of {condition_value}, and {condition!r} takes {units} "
                     f"between {low:g} and {high:g}.")
 
+        # A STATE THE BONUS'S SIZE GROWS WITH. Issue #968. Empty is a fixed
+        # value, which is every row before that issue.
+        #
+        # REFUSED IF THE GAME CANNOT JUDGE IT, and the direction of the failure
+        # is the reason. An unknown scale reaching the game is made worth nothing
+        # rather than worth its full value, so the node would silently grant
+        # nothing at all.
+        scale = clean(_cell(raw, headers, "Scale")).lower()
+        if scale and scale not in SCALES:
+            raise DataError(
+                f"Passive Effects row {index}: {node} names the scale "
+                f"{scale!r}, which the game cannot judge. Known: "
+                f"{', '.join(sorted(SCALES))}.")
+
+        scale_step = 0.0
+        if scale:
+            scale_step = number(_cell(raw, headers, "Scale Step"),
+                                "Scale Step", index)
+            low, high, units = SCALES[scale]
+
+            # A STEP OF NOTHING MAKES THE BONUS WORTH NOTHING AT EVERY STATE,
+            # which is why zero is refused here rather than only bounded.
+            if scale_step <= 0.0 or not low <= scale_step <= high:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a scaling step of "
+                    f"{scale_step}, and {scale!r} takes {units} above 0 and up "
+                    f"to {high:g}. A step of nothing is worth nothing at every "
+                    f"state.")
+
         counts[node] = counts.get(node, 0) + 1
 
         out.append({
@@ -2536,6 +2587,8 @@ def passive_effects(book) -> list[dict]:
             "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
             "Condition": condition,
             "ConditionValue": condition_value,
+            "Scale": scale,
+            "ScaleStep": scale_step,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -2546,19 +2599,23 @@ def passive_effects(book) -> list[dict]:
     # UNLESS THE TWO ARE CONDITIONED DIFFERENTLY, which is a real shape: a node
     # could give one amount always and more of it below a threshold. So the
     # condition is part of what makes a row distinct.
-    pairs: dict[tuple[str, str, str, float], int] = {}
+    #
+    # AND SO IS THE SCALE, since issue #968, for the same reason: a node could
+    # give a fixed amount and a further amount that grows with a state.
+    pairs: dict[tuple[str, str, str, float, str, float], int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
-               row["ConditionValue"])
+               row["ConditionValue"], row["Scale"], row["ScaleStep"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
-        listed = ", ".join(f"{node} granting {stat}" for node, stat, _, _ in twice)
+        listed = ", ".join(f"{key[0]} granting {key[1]}" for key in twice)
         raise DataError(
             f"the Passive Effects sheet grants the same stat twice on one "
-            f"node, under the same condition: {listed}. Two rows for one node "
-            f"are for two different stats, or for the same stat under different "
-            f"conditions; anything else is a duplicated row.")
+            f"node, under the same condition and the same scale: {listed}. Two "
+            f"rows for one node are for two different stats, or for the same "
+            f"stat under different conditions or scales; anything else is a "
+            f"duplicated row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")

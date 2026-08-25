@@ -75,6 +75,45 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	return false;
 }
 
+float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier,
+										  const FCataclysmStatConditions& State)
+{
+	switch (Modifier.Scale)
+	{
+	case ECataclysmStatScale::Fixed:
+		return Modifier.Value;
+
+	case ECataclysmStatScale::PerPercentOfMaximumHealthMissing:
+	{
+		// AN UNKNOWN HEALTH READING SCALES TO NOTHING, for the reason it refuses
+		// a condition: the character sheet has no character in hand, and a bonus
+		// whose size depends on where health is must not be written onto a
+		// gameplay attribute. Issue #968.
+		//
+		// AND A STEP OF NOTHING SCALES TO NOTHING, rather than dividing by zero.
+		// `ValidateModifier` refuses it when data is imported; this is what
+		// happens if one reaches the game anyway.
+		if (State.HealthPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN. "For every 5% of your maximum health that
+		// is missing" is a count of completed blocks: 12% down is two steps, not
+		// two and two fifths. See the enumerator for the words and the genre
+		// precedent this is read from.
+		const float Missing = 100.0f - State.HealthPercent;
+		const float Steps = FMath::FloorToFloat(Missing / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+	}
+
+	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full
+	// value. The same argument `ConditionHolds` makes: granting the whole thing
+	// would be granting something unread, silently and in the player's favour.
+	return 0.0f;
+}
+
 bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modifier,
 											 const FGameplayTagContainer& SkillTags,
 											 const FCataclysmStatConditions& State)
@@ -156,6 +195,19 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 			Modifier.ConditionValue);
 	}
 
+	// A SCALE WITH NO STEP SIZE IS WORTH NOTHING AT EVERY STATE. Issue #968.
+	// `ScaledValue` answers zero for it rather than dividing by nothing, so the
+	// modifier applies, the arithmetic runs, and the node grants nothing at all
+	// -- the same silent shape the two condition checks above exist for.
+	if (Modifier.Scale != ECataclysmStatScale::Fixed && Modifier.ScaleStep <= 0.0f)
+	{
+		return FString::Printf(
+			TEXT("a scaling step of %.1f. A modifier that grows with a state "
+				 "needs a step larger than nothing, or it is worth nothing at "
+				 "every state."),
+			Modifier.ScaleStep);
+	}
+
 	return FString();
 }
 
@@ -176,16 +228,29 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 			continue;
 		}
 
+		// WHAT IT IS WORTH RIGHT NOW, WHICH IS NOT ALWAYS WHAT IT SAYS. Issue
+		// #968. A modifier whose size grows with the character's state -- "+1%
+		// increased Attack Damage per point for every 5% of your maximum health
+		// that is missing" -- is worth its value times however many whole steps
+		// of that state the character currently has.
+		//
+		// ONE PLACE, BEFORE THE BUCKETS, so all three get the same treatment and
+		// none of them has to know that a value can scale.
+		//
+		// A FIXED MODIFIER ANSWERS ITS OWN VALUE, so nothing that existed before
+		// that issue changes by a single number.
+		const float Value = ScaledValue(Modifier, State);
+
 		switch (Modifier.Bucket)
 		{
 		case ECataclysmStatBucket::Flat:
-			Out.Flat += Modifier.Value;
+			Out.Flat += Value;
 			break;
 
 		case ECataclysmStatBucket::Increased:
 			// Everything here adds together and multiplies exactly once, which
 			// is what gives this bucket its diminishing returns.
-			Out.SumOfIncreases += Modifier.Value;
+			Out.SumOfIncreases += Value;
 			break;
 
 		case ECataclysmStatBucket::More:
@@ -200,8 +265,8 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 				break;
 			}
 			{
-				float Value = Modifier.Value;
-				if (Value < LessMultiplierFloor)
+				float MoreValue = Value;
+				if (MoreValue < LessMultiplierFloor)
 				{
 					// Clamped rather than ignored. Ignoring would make the stat
 					// larger than the data asked for; clamping keeps the
@@ -211,13 +276,14 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 					UE_LOG(LogCataclysm, Warning,
 						   TEXT("Stat pipeline clamped a Less multiplier from "
 								"%.1f%% to %.1f%%: %s"),
-						   Value, LessMultiplierFloor, *ValidateModifier(Modifier));
-					Value = LessMultiplierFloor;
+						   MoreValue, LessMultiplierFloor,
+						   *ValidateModifier(Modifier));
+					MoreValue = LessMultiplierFloor;
 				}
 				// Each source multiplies on its own. They are NOT summed first,
 				// which is the whole difference from the bucket above: two 50%
 				// More multipliers give 2.25x where two 50% increases give 2.0x.
-				Out.MoreMultiplier *= 1.0f + Value / 100.0f;
+				Out.MoreMultiplier *= 1.0f + MoreValue / 100.0f;
 				++Out.MoreSourceCount;
 			}
 			break;

@@ -20,6 +20,73 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A bonus that grows with a state counts whole steps, rounded down
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`, `tools/generate_datatables.py`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet).
+**Applied.** Issues #968, #939.
+
+A passive bonus could switch on and off with the character's state, and its size
+could not depend on that state. Several nodes need the second shape, and five of
+them are in the Masochist tree alone:
+
+| Node | What it says |
+| :-- | :-- |
+| Vicious Onslaught | +1% increased Attack Damage per point **for every 5% of your maximum health that is missing** |
+| Compound Interest | +1% increased damage per point **for every 5% of your maximum health you currently owe** |
+| Battle-Scarred | +2% increased Armor per point **for each unique debuff on you** |
+| Endurance in Suffering | **For each unique debuff on you**, +1% increased damage and +0.5% increased Damage Reduction per point |
+| Doctrine of Pain | You deal 4% more damage **for each unique debuff on you** |
+
+### How it rounds, which is the part that needed deciding
+
+**In whole steps, rounded down.** A character 12% below full health has two
+completed 5% blocks, not two and two fifths. At 14% it still has two; at 15% it
+has three.
+
+**`Cataclysm_GDD_v2.md` states no rounding rule for a "for every" bonus**, so this
+was read from two places that agree:
+
+- **The words themselves.** "For every 5%" counts completed blocks. A continuous
+  ramp would be worded "per 1%" or "proportional to".
+- **The genre.** Path of Exile pays a "per 10 Strength" bonus once at 15
+  Strength, not one and a half times. A character with 15 Strength gets the
+  bonus for 10 and nothing for the remaining 5 until it reaches 20.
+
+Sources:
+[Strength, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Strength),
+[Melee Damage and Strength, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Melee_Damage_and_Strength).
+
+### It is a second axis, not a replacement for the condition
+
+A condition decides **whether** a modifier is in the sum of increases. A scale
+decides **how large** it is when it is. A modifier may carry both and neither
+implies anything about the other, so they are separate fields and separate
+columns in the `Passive Effects` sheet.
+
+### An unrecognised scale is worth nothing, and an unrecognised condition is not
+
+The two failures point in opposite directions and so the safe answer differs:
+
+| | If the game does not recognise the name | Why that direction |
+| :-- | :-- | :-- |
+| Condition | applied with **no** condition | a bonus that holds all the time instead of some of the time |
+| Scale | made worth **nothing** | a bonus at full size at every state — for Vicious Onslaught, what a character at death's door earns, handed to one at full health |
+
+Both are silent and both favour the player, so `tools/generate_datatables.py`
+refuses an unknown name of either kind when the file is written. That is the only
+place either can be caught.
+
+### And an unknown state scales to nothing
+
+The same rule a condition already follows. The character sheet has no character
+in hand, and a bonus whose size depends on where health is must never be written
+onto a gameplay attribute: it would be stale the moment the next blow landed.
+`UCataclysmAbilitySystemComponent::StatForSkill` runs the pipeline again at the
+moment the stat is used, which is the only place such a bonus can be correct.
+
 ## 2026-08-25 — A timed window is named for the event that opens it, and it includes its last instant
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

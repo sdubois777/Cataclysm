@@ -452,6 +452,23 @@ namespace CataclysmConditionalDamageTest
 		Modifier.ConditionValue = 2.0f;
 		return Modifier;
 	}
+
+	/**
+	 * Vicious Onslaught at its full ten points: "+1% increased Attack Damage per
+	 * point for every 5% of your maximum health that is missing", so ten
+	 * percentage points per whole 5% missing. Issue #968.
+	 */
+	FCataclysmStatModifier ViciousOnslaught()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 10.0f;
+		Modifier.Scale =
+			ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+		Modifier.ScaleStep = 5.0f;
+		return Modifier;
+	}
 }
 
 CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageBelowAThresholdTest,
@@ -677,6 +694,91 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageInAWindowTest,
 
 	TestEqual(TEXT("and once the window shuts it is back to what it was"),
 		AfterItShuts, NeverPaid, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageGrowsWithMissingHealthTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageGrowsWithHowMuchHealthIsMissing")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S VICIOUS ONSLAUGHT NODE reaching a real hit. Issue #968.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a health share. This one moves the attacker's real health
+	// and lands three real hits, so it also covers the join between them: the
+	// attack damage bracket being worked out again at the moment of the hit,
+	// with the character's own health in hand.
+	//
+	// A SCALING BONUS COULD NOT REACH A HIT ANY OTHER WAY. It is never written
+	// onto the gameplay attribute, because its size is different at every health
+	// figure and the attribute is written once when gear changes.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(ViciousOnslaught());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"),
+								  AtFullHealth),
+				  AtFullHealth > 0.0f))
+	{
+		return false;
+	}
+
+	// HALF HEALTH IS TEN WHOLE STEPS OF 5%, so +100% and twice the damage.
+	Attacker.Vitals->SetHealth(50.0f);
+	const float AtHalfHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("at half health the hit is twice as large, and was %.3f times"),
+		AtHalfHealth / AtFullHealth),
+		AtHalfHealth / AtFullHealth, 2.0f, 0.01f);
+
+	// AND IT GROWS FURTHER AS THE CHARACTER IS HURT MORE, which is what
+	// separates a scaling bonus from a conditional one. A condition would give
+	// the same answer at 50% and at 25%.
+	Attacker.Vitals->SetHealth(25.0f);
+	const float AtQuarterHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("at a quarter health it is 2.5 times, and was %.3f times"),
+		AtQuarterHealth / AtFullHealth),
+		AtQuarterHealth / AtFullHealth, 2.5f, 0.01f);
+
+	TestTrue(TEXT("so it is strictly larger at a quarter than at a half"),
+		AtQuarterHealth > AtHalfHealth);
 
 	return true;
 }

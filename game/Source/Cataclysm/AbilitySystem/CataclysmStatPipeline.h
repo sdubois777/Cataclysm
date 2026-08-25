@@ -119,6 +119,43 @@ enum class ECataclysmStatCondition : uint8
 };
 
 /**
+ * A state of the character a modifier's SIZE can be made to grow with. #968.
+ *
+ * NOT THE SAME QUESTION AS `ECataclysmStatCondition`, and they are two axes
+ * rather than two spellings of one. A condition decides IF a modifier applies;
+ * this decides HOW MUCH it is worth. A modifier may carry both, and nothing
+ * about one implies anything about the other.
+ *
+ * WHOLE STEPS, ROUNDED DOWN. "For every 5% of your maximum health that is
+ * missing" grants the bonus once per completed 5%, so a character 12% down has
+ * two steps rather than two and two fifths. The design states no rounding rule,
+ * so it is read off the words -- "for every" is a count of completed blocks --
+ * and off the genre: Path of Exile pays a "per 10 Strength" bonus once at 15
+ * Strength, not one and a half times. `docs/DECISIONS.md` carries the sources.
+ *
+ * AN UNKNOWN STATE SCALES TO NOTHING, for the reason an unknown state refuses a
+ * condition. The character sheet has no character in hand, and a bonus whose
+ * size depends on where health is must not be written onto a gameplay attribute
+ * where it would be stale the moment the next blow landed.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStatScale : uint8
+{
+	/** The value is what it says. Every modifier in the game before #968. */
+	Fixed	UMETA(DisplayName = "Fixed"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of maximum health are
+	 * missing.
+	 *
+	 * MISSING, NOT REMAINING. A character at full health has no steps and gets
+	 * nothing, which is what makes the node a reward for being hurt.
+	 */
+	PerPercentOfMaximumHealthMissing
+		UMETA(DisplayName = "Per Percent Of Maximum Health Missing"),
+};
+
+/**
  * What is true of the character at the moment a stat is being worked out.
  *
  * SEPARATE FROM THE SKILL'S TAGS BECAUSE IT CHANGES WITHOUT ANYTHING BEING
@@ -227,6 +264,25 @@ struct CATACLYSM_API FCataclysmStatModifier
 	/** What the condition compares against. A percentage for the health one. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	float ConditionValue = 0.0f;
+
+	/**
+	 * A state of the CHARACTER this modifier's size grows with, or Fixed. #968.
+	 *
+	 * A SECOND AXIS BESIDE `Condition`, NOT AN ALTERNATIVE TO IT. One decides
+	 * whether the modifier is in the sum, the other how large it is when it is.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+
+	/**
+	 * How large one step of that state is, in the state's own units.
+	 *
+	 * `Value` IS WHAT ONE WHOLE STEP IS WORTH. Vicious Onslaught at ten points
+	 * is a `Value` of 10 with a `ScaleStep` of 5, so a character 12% below full
+	 * health carries two steps and gets +20%.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ScaleStep = 0.0f;
 };
 
 /**
@@ -398,6 +454,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static bool ConditionHolds(ECataclysmStatCondition Condition, float Value,
 							   const FCataclysmStatConditions& State);
+
+	/**
+	 * What this modifier is worth right now, after any scaling. Issue #968.
+	 *
+	 * `Modifier.Value` FOR A FIXED ONE, which is every modifier in the game
+	 * before that issue, so nothing that does not scale changes at all.
+	 *
+	 * ZERO WHEN THE STATE IS UNKNOWN OR THE STEP IS NOT A REAL SIZE. Both are
+	 * answers rather than errors: the character sheet has no character in hand,
+	 * and a step of zero would be a division by nothing. `ValidateModifier`
+	 * refuses the second when data is imported.
+	 *
+	 * PUBLIC SO A TEST CAN ASK IT DIRECTLY, and because a character sheet
+	 * showing a player what a node is worth right now needs the same answer.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static float ScaledValue(const FCataclysmStatModifier& Modifier,
+							 const FCataclysmStatConditions& State);
 
 	/**
 	 * Why a modifier is illegal, or an empty string if it is fine.

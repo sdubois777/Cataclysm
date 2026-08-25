@@ -1767,4 +1767,31 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	/** What the condition compares against. A percentage for the health one. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	float ConditionValue = 0.0f;
+
+	/**
+	 * A state of the CHARACTER this bonus's SIZE grows with, or empty for a
+	 * fixed one.
+	 *
+	 * A THIRD QUESTION, BESIDE THE OTHER TWO. `RequiredTags` asks about the
+	 * skill in hand, `Condition` asks whether the character is in a state, and
+	 * this asks how much of that state the character has. Vicious Onslaught is
+	 * the node: "+1% increased Attack Damage per point for every 5% of your
+	 * maximum health that is missing". Issue #968.
+	 *
+	 * ONE VALUE TODAY: `health_missing`, whose `ScaleStep` is a percentage of
+	 * maximum health. `tools/generate_datatables.py` refuses any other, so a
+	 * scale this build cannot judge cannot reach the game.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	FString Scale;
+
+	/**
+	 * How large one whole step of that state is, in the state's own units.
+	 *
+	 * `ValuePerPoint` IS WHAT ONE STEP IS WORTH, so a node reading "+1% per
+	 * point for every 5% missing" is a value of 1 and a step of 5. Steps are
+	 * counted whole and rounded down.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	float ScaleStep = 0.0f;
 };
