@@ -238,7 +238,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 44 FOR DEEPER CUTS, which adds a health cost to every skill the
 	// character uses. Issue #970.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         44)
+	//
+	// AND TO 45 FOR THE CATALYST, whose skills sometimes do not go on cooldown
+	// at all. Issue #973.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         45)
 
 	#undef CHECK_TABLE
 

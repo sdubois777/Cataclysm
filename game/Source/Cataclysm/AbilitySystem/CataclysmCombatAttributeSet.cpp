@@ -61,6 +61,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitMovementSpeed(4.0f);     // metres per second
 	InitCooldownReduction(0.0f);
 
+	// ZERO, AND IT STAYS ZERO ON THIS ATTRIBUTE BY DESIGN. Issue #973. Its only
+	// source is a passive node carrying a health condition, and a conditional
+	// bonus is never written onto a gameplay attribute. See the header.
+	InitCooldownSkipChance(0.0f);
+
 	// Magic find is an added percentage and has a flat source, the "Flat magic
 	// find" affix, so zero is right. Loot quantity is a percentage of what the
 	// dungeon would otherwise drop and every source of it is an increase, so
@@ -104,6 +109,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsVoid);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownSkipChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -121,6 +127,16 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 		// does: "Your critical hit chance cannot exceed 30%-50%". Reading the
 		// attribute rather than the constant is what gives it somewhere to land.
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxCritChance());
+		return;
+	}
+
+	// A CHANCE IS BETWEEN NOTHING AND CERTAINTY. Issue #973. A value above 100
+	// is not a larger chance and a negative one is not a smaller chance; both
+	// are data that means nothing, and clamping says so once here rather than at
+	// the roll. No node reaches 100: The Catalyst stops at 40.
+	if (Attribute == GetCooldownSkipChanceAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
 	}
 
@@ -209,6 +225,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageVsFamineAttribute(), GetDamageVsCelestialAttribute(),
 		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
+		GetCooldownSkipChanceAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -242,5 +259,6 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsChaos)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsVoid)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

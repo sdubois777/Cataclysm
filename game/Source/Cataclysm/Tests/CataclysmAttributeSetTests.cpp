@@ -166,10 +166,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * the only thing that supplies it. `sim/cataclysm_sim/character.py` does not
 	 * model a health cost at all.
 	 *
-	 * So the sheet stays at 46. The combat set grew by two and the class
+	 * THE COOLDOWN SKIP CHANCE is the sixth, added under issue #973, and it is
+	 * off the sheet for the same reasons: no affix grants it, nothing scales it,
+	 * it has no baseline of its own, and one passive node is its only source.
+	 * Its attribute holds zero even for a character holding that node, because
+	 * the node's bonus carries a health condition.
+	 *
+	 * So the sheet stays at 46. The combat set grew by three and the class
 	 * resource set by four, which is what this count exists to keep honest.
 	 */
-	constexpr int32 OffSheetCombatStats = 3;
+	constexpr int32 OffSheetCombatStats = 4;
 
 	/** The three Fervour rates, and the added health cost. See the note above. */
 	constexpr int32 OffSheetResourceStats = 4;
@@ -190,7 +196,7 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// for #205. Twenty-eight since armour penetration was added for #520 -- a
 	// SECOND penetration stat, cutting into armour where the first cuts into
 	// resistance.
-	TestEqual(TEXT("Twenty-eight combat and utility stats, plus three off the sheet"),
+	TestEqual(TEXT("Twenty-eight combat and utility stats, plus four off the sheet"),
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);

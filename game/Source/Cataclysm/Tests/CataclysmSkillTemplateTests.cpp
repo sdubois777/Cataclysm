@@ -1155,6 +1155,181 @@ bool FCataclysmLethalHealthCostTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A chance for a skill not to go on cooldown at all. Issue #973.
+//
+// THE MASOCHIST'S THE CATALYST NODE: "While at or below 5% health, your skills
+// have a 5% chance per point not to go on cooldown." Eight points, so 40%.
+//
+// THREE TESTS RATHER THAN ONE, because a skill commits a cooldown and cannot be
+// activated twice in one test. Each has its own caster and casts once.
+// --------------------------------------------------------------------------
+
+namespace CataclysmSkillTest
+{
+	/**
+	 * A character carrying The Catalyst at its full eight points.
+	 *
+	 * WRITTEN AS STAT INPUTS RATHER THAN ONTO THE ATTRIBUTE, which is the whole
+	 * point of the node. The bonus carries a health condition, so
+	 * `UCataclysmPlayerClassStats::ApplyTo` refuses it and the gameplay
+	 * attribute stays at zero; only `StatForSkill` can see it.
+	 */
+	void GiveTheCatalyst(FScopedFighter& Caster, float ChancePerNode)
+	{
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = ECataclysmStatBucket::Flat;
+		Conditional.Source = ECataclysmModifierSource::PassiveKeystone;
+		Conditional.Value = ChancePerNode;
+		Conditional.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Conditional.ConditionValue = 5.0f;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Conditional);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("cooldown_skip_chance")), Inputs);
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** Whether the slot this skill occupies is on cooldown right now. */
+	bool IsOnCooldown(const FScopedFighter& Caster, ECataclysmAbilitySlot Slot)
+	{
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+		return Tag.IsValid()
+			&& Caster.AbilitySystem->HasMatchingGameplayTag(Tag);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownSkippedTest,
+	"Cataclysm.Skills.AWoundedCharacterCanUseASkillWithoutItGoingOnCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCooldownSkippedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// FOUR PERCENT OF MAXIMUM HEALTH, which is under the node's threshold.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 40.0f);
+	GiveTheCatalyst(Caster, 40.0f);
+
+	// THE ROLL IS PINNED SO THE TEST ASSERTS RATHER THAN SAMPLES. Zero beats
+	// every chance above zero.
+	const CataclysmTestWorld::FScopedCooldownSkipRoll AlwaysSkips(0.0f);
+
+	UCataclysmProjectileSkill* Skill = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=3; Speed=0"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the skill has a cooldown to skip in the first place"),
+				  Skill->GetBaseCooldown() > 0.0f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Skill));
+
+	TestFalse(TEXT("and the slot is not on cooldown afterwards"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Special));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownNotSkippedAboveThresholdTest,
+	"Cataclysm.Skills.AHealthyCharacterWithTheSameNodeStillGoesOnCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCooldownNotSkippedAboveThresholdTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE SAME NODE, THE SAME PINNED ROLL, AND ONLY THE HEALTH DIFFERENT. This
+	// is what says the health condition is judged at the moment the skill is
+	// used, rather than the node simply always applying. Without it the test
+	// above would pass just as well for a node with no condition on it.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+	GiveTheCatalyst(Caster, 40.0f);
+
+	const CataclysmTestWorld::FScopedCooldownSkipRoll AlwaysSkips(0.0f);
+
+	UCataclysmProjectileSkill* Skill = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=3; Speed=0"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Skill));
+
+	TestTrue(TEXT("and the slot IS on cooldown, because the character is not "
+				  "wounded enough for the node to apply"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Special));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownNotSkippedOnALostRollTest,
+	"Cataclysm.Skills.AWoundedCharacterThatLosesTheRollStillGoesOnCooldown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCooldownNotSkippedOnALostRollTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WOUNDED ENOUGH AND HOLDING THE NODE, AND THE ROLL LOST. This is what says
+	// the chance is a chance rather than a certainty: without it the two tests
+	// above would both pass for an implementation that skipped the cooldown
+	// whenever the health condition held, whatever the node's value.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 40.0f);
+	GiveTheCatalyst(Caster, 40.0f);
+
+	// A HUNDRED NEVER SKIPS, because the comparison is strictly less than and a
+	// chance is capped at 100.
+	const CataclysmTestWorld::FScopedCooldownSkipRoll NeverSkips(100.0f);
+
+	UCataclysmProjectileSkill* Skill = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=3; Speed=0"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Skill));
+
+	TestTrue(TEXT("and the slot IS on cooldown, because the roll was lost"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Special));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthCostOpensAWindowTest,
 	"Cataclysm.Skills.AHealthCostOpensTheWindowAPassiveNodeReads",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

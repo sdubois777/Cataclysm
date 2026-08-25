@@ -207,6 +207,24 @@ public:
 							   const FGameplayAbilityActorInfo* ActorInfo,
 							   const FGameplayAbilityActivationInfo ActivationInfo) const override;
 
+	/**
+	 * Whether this use of the skill skips its cooldown entirely. Issue #973.
+	 *
+	 * THE MASOCHIST'S THE CATALYST NODE IS THE ONLY SOURCE: "While at or below
+	 * 5% health, your skills have a 5% chance per point not to go on cooldown."
+	 *
+	 * THE CHANCE IS ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, because the
+	 * only source carries a health condition and a conditional bonus is never
+	 * folded into a gameplay attribute. That attribute is zero at all times.
+	 *
+	 * FALSE FOR A CHARACTER WITH NO CHANCE, and no roll is made for one. This is
+	 * on the path of every skill use.
+	 *
+	 * `Cataclysm.CooldownSkipRoll` pins the roll, the way `Cataclysm.CritRoll`
+	 * pins the critical strike roll, so a test can assert rather than sample.
+	 */
+	bool CooldownIsSkipped(const UAbilitySystemComponent* AbilitySystem) const;
+
 private:
 	/**
 	 * Reads this ability's slot numbers out of the generated table, once.

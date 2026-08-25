@@ -312,6 +312,31 @@ public:
 	FGameplayAttributeData CooldownReduction;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CooldownReduction)
 
+	/**
+	 * The chance, in percent, that a skill does not go on cooldown at all.
+	 *
+	 * THE MASOCHIST'S THE CATALYST NODE IS ITS ONLY SOURCE. Issue #973. "While
+	 * at or below 5% health, your skills have a 5% chance per point not to go on
+	 * cooldown." It holds eight points, so 40% at most.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason the maximum critical
+	 * strike chance is not: no affix grants it, nothing scales it, and it has no
+	 * baseline of its own. Every class starts at zero.
+	 *
+	 * THIS ATTRIBUTE HOLDS ZERO AT ALL TIMES BY DESIGN, and a reader that took
+	 * its value would find the node doing nothing. The only source carries a
+	 * health condition, and a conditional bonus is deliberately never written
+	 * onto a gameplay attribute -- it would be stale the moment health moved.
+	 * `UCataclysmGameplayAbility::ApplyCooldown` asks
+	 * `UCataclysmAbilitySystemComponent::StatForSkill` for it instead, which
+	 * runs the pipeline again with the character's health in hand. The attribute
+	 * exists because `UCataclysmPlayerClassStats::ApplyTo` writes one per stat
+	 * and drops any stat that has none.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_CooldownSkipChance)
+	FGameplayAttributeData CooldownSkipChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CooldownSkipChance)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -371,6 +396,7 @@ protected:
 	UFUNCTION() void OnRep_DamageVsVoid(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MovementSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CooldownSkipChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

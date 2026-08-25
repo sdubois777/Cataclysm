@@ -121,6 +121,45 @@ namespace CataclysmTestWorld
 	};
 
 	/**
+	 * Pins the roll deciding whether a skill skips its cooldown. Issue #973.
+	 *
+	 * THE SAME SHAPE AS `FScopedCritRoll` ABOVE, and for the same reason: a test
+	 * asserting that a skill did or did not go on cooldown would otherwise pass
+	 * most of the time and fail the rest.
+	 *
+	 * 0 always skips for a character with any chance at all, because every
+	 * chance above zero beats it. 100 never skips.
+	 *
+	 * IT IS NOT SILENCED SUITE-WIDE, unlike the critical strike roll, and does
+	 * not need to be: the chance is zero for every character that has not spent
+	 * a point on one Masochist node, and no roll is made for a chance of zero.
+	 */
+	struct FScopedCooldownSkipRoll
+	{
+		explicit FScopedCooldownSkipRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.CooldownSkipRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedCooldownSkipRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/**
 	 * A world in which an actor spawned later actually receives `BeginPlay`.
 	 *
 	 * USE THIS BY DEFAULT. It is the one that behaves like the running game, and
