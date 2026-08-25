@@ -314,7 +314,56 @@ void ACataclysmPlayerCharacter::ApplyMovementSpeed(float MetresPerSecond)
 
 void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeData& Data)
 {
-	ApplyMovementSpeed(Data.NewValue);
+	// THE NEW VALUE IS IGNORED AND THE STAT IS ASKED FOR INSTEAD. Issue #959.
+	// `Data.NewValue` is the attribute, which by design carries no bonus that
+	// depends on the character's state, so using it here would drop the
+	// Masochist's Desperate Measures node every time gear changed.
+	RefreshMovementSpeed();
+}
+
+void ACataclysmPlayerCharacter::RefreshMovementSpeed()
+{
+	const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent();
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// THE ATTRIBUTE IS THE FALLBACK AND NOT THE ANSWER. `StatForSkill` returns
+	// it unchanged for a character whose movement speed has no modifier at all,
+	// which is every character until one is granted, so nothing without a
+	// conditional bonus behaves differently from before.
+	//
+	// AN EMPTY TAG CONTAINER, BECAUSE THERE IS NO SKILL IN HAND. Movement speed
+	// is a property of the character rather than of anything it is doing, so the
+	// only question being asked here is the character's own state.
+	const float FromAttribute = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	ApplyMovementSpeed(Cataclysm
+		? Cataclysm->StatForSkill(FName(TEXT("movement_speed")),
+								  FGameplayTagContainer(), FromAttribute)
+		: FromAttribute);
+}
+
+void ACataclysmPlayerCharacter::HealthChanged()
+{
+	Super::HealthChanged();
+
+	// HEALTH CROSSING A THRESHOLD CHANGES A SPEED AND NOTHING ELSE NOTICES.
+	// Issue #959. The movement component is told a speed once and keeps it, and
+	// the attribute-change delegate that normally re-tells it does not fire,
+	// because a conditional bonus never writes the attribute.
+	//
+	// EVERY HEALTH CHANGE RATHER THAN ONLY THE ONES THAT CROSS A THRESHOLD.
+	// Working out whether a threshold was crossed would need this to remember
+	// where the health was, and there can be several thresholds at once with
+	// different values. Re-asking is one pipeline pass over one stat's modifier
+	// list, which for a character with no conditional speed bonus is an empty
+	// list and a map lookup that misses.
+	RefreshMovementSpeed();
 }
 
 void ACataclysmPlayerCharacter::HandleDeath()
@@ -882,12 +931,11 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 		this, &ACataclysmPlayerCharacter::OnMovementSpeedChanged);
 
 	// BOUND FIRST, THEN READ. A change arriving between the two would otherwise
-	// be missed. GetNumericAttribute answers zero rather than failing when the
-	// component holds no combat attribute set, and ApplyMovementSpeed refuses
-	// zero, so a pawn whose attributes have not arrived keeps the designed
-	// default from the constructor.
-	ApplyMovementSpeed(ASC->GetNumericAttribute(
-		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute()));
+	// be missed. The read answers zero rather than failing when the component
+	// holds no combat attribute set, and ApplyMovementSpeed refuses zero, so a
+	// pawn whose attributes have not arrived keeps the designed default from the
+	// constructor.
+	RefreshMovementSpeed();
 
 	// Granting is server-only; the results replicate.
 	if (!HasAuthority())

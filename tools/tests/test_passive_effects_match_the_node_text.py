@@ -73,7 +73,10 @@ BUCKETS = {"flat", "increased", "more"}
 #: AND UP AGAIN BY TWO THE SAME DAY, for Pain Tolerance, which grants a maximum
 #: health increase and an armour increase in one sentence. That is the other node
 #: #953 was opened for and it needed no code at all.
-AUTHORED_ROWS = 36
+#:
+#: AND BY TWO MORE, for the first two nodes whose bonus depends on where the
+#: character's health is: Last Stand and Desperate Measures. Issue #959.
+AUTHORED_ROWS = 38
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -95,9 +98,10 @@ AUTHORED_ROWS = 36
 #: is gained, one scoped to damage over time, and one that reduces how much
 #: health regeneration takes back out.
 #:
-#: AND TO 33, for Pain Tolerance. 33 of 293 altogether, and 29 of the Masochist
-#: tree's own 74.
-AUTHORED_NODES = 33
+#: AND TO 33, for Pain Tolerance, then 35 for Last Stand and Desperate Measures,
+#: the first two nodes whose bonus depends on where the character's health is.
+#: 35 of 293 altogether, and 31 of the Masochist tree's own 74. Issue #959.
+AUTHORED_NODES = 35
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -193,16 +197,87 @@ def test_no_node_grants_the_same_stat_twice(effects):
     spreadsheet row and forgetting to change the stat produces. Both would apply
     and the node would be worth double what it says.
     """
-    seen: dict[tuple[str, str], int] = {}
+    seen: dict[tuple[str, str, str, str], int] = {}
     for row in effects:
-        key = (row["Node"], row["Stat"])
+        # THE CONDITION IS PART OF WHAT MAKES A ROW DISTINCT since issue #959.
+        # A node giving one amount always and more of it below a threshold is a
+        # real shape, and it is two rows on the same node and the same stat.
+        key = (row["Node"], row["Stat"], row["Condition"],
+               row["ConditionValue"])
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
     assert not twice, (
-        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node and "
-        "stat pair. Two rows on one node are for two different stats; the same "
-        "stat twice applies both and the node is worth double what it says."
+        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node, stat "
+        "and condition. Two rows on one node are for two different stats, or "
+        "for the same stat under different conditions; anything else applies "
+        "both and the node is worth double what it says."
+    )
+
+
+#: The states a bonus may depend on, and how the value is written in the
+#: description. `tools/generate_datatables.py` holds the same set of names and
+#: refuses one it does not know; this holds what the words have to say.
+CONDITION_WORDS = {
+    "health_at_or_below": "at or below",
+}
+
+
+def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
+    """A threshold in the workbook is the threshold the node's own words state.
+
+    THE SAME DRIFT THE VALUE CHECK ABOVE EXISTS FOR, one column across. A row
+    reading `health_at_or_below 35` on a node that says "at or below 20% health"
+    is a bonus that arrives at the wrong time, and nothing at run time reports
+    it: the arithmetic runs and the character simply gets it earlier or later
+    than the sentence promises.
+
+    Both halves are checked: that the words the condition implies are in the
+    description at all, and that the number is.
+    """
+    for row in effects:
+        condition = row["Condition"].strip()
+        if not condition:
+            continue
+
+        assert condition in CONDITION_WORDS, (
+            f"{row['Node']} names the condition {condition!r}, which this test "
+            f"does not know. Known: {sorted(CONDITION_WORDS)}. Add it here and "
+            "to CONDITIONS in tools/generate_datatables.py together."
+        )
+
+        words = nodes[row["Node"]]["Description"].lower()
+        expected_words = CONDITION_WORDS[condition]
+        assert expected_words in words, (
+            f"{row['Node']} carries the condition {condition!r} and its "
+            f"description does not say {expected_words!r}:\n"
+            f"    {nodes[row['Node']]['Description']}"
+        )
+
+        value = float(row["ConditionValue"])
+        printed = f"{value:g}%"
+        assert printed in nodes[row["Node"]]["Description"], (
+            f"{row['Node']} applies at {printed} of maximum health and the node "
+            f"says:\n    {nodes[row['Node']]['Description']}\n"
+            "The two have to agree. Either the workbook is stale or the tree "
+            "file changed."
+        )
+
+
+def test_a_condition_is_actually_used(effects):
+    """The two condition columns are exercised rather than merely present.
+
+    Without a row that uses one, the columns, the generator's refusal of an
+    unknown condition, and the code that turns a condition into a modifier would
+    all be untested, and the first node that needed one would find out whether it
+    worked the hard way. The same argument as the required tag check below.
+    """
+    conditioned = [row for row in effects if row["Condition"].strip()]
+    assert conditioned, (
+        "No passive effect carries a condition, so nothing exercises the "
+        "Condition columns or the code that reads them. If the last one was "
+        "deliberately removed, delete these tests with it rather than leaving "
+        "the columns untested."
     )
 
 

@@ -90,6 +90,14 @@ namespace CataclysmPassiveTest
 			// Two ways in: either satisfied edge opens it.
 			"Ravager_joined,Ravager,joined,basic,Confluence,+1% per point.,3,0,100,100,,,,,,\r\n"
 			"Ravager_side,Ravager,side,basic,Sidepath,+1% per point.,2,0,-100,100,,,,,,\r\n"
+			// A node whose bonus depends on the character's health. Issue #959.
+			//
+			// PLACED ON A CORNER THE TREE ALREADY OCCUPIES, at (-100, 200),
+			// because `ATreesExtentIsTheRectangleItsNodesOccupy` measures the
+			// rectangle these nodes fill and a node outside it would change what
+			// that test is about. Adding one anywhere new fails it, which is the
+			// test doing its job.
+			"Ravager_low,Ravager,low,basic,Cornered,While at or below 20% health.,8,0,-100,200,,,,,,\r\n"
 			// A capstone with three options, opening at four points spent.
 			"Ravager_cap,Ravager,cap,capstone,First Vow,Choose one.,1,4,300,0,Iron,Take iron.,Blood,Take blood.,Ash,Take ash.\r\n"
 			// A capstone with none, which is what the Saboteur tree has. #935.
@@ -858,21 +866,24 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0\r\n"
+			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
+			// it proves the two condition columns reach the modifier.
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,\r\n"));
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -1037,6 +1048,71 @@ bool FCataclysmPassiveNodeWithTwoEffectsTest::RunTest(const FString&)
 			  UCataclysmPassiveTree::AccumulateInto(Totals, Allocation, NodeTable,
 													EffectTable, Demonic),
 			  2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveConditionReachesTheModifierTest,
+	"Cataclysm.Passives.ANodesConditionReachesTheModifierItGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+
+	// ISSUE #959. `Ravager_low` carries `health_at_or_below` with 20, which is
+	// the shape the Masochist's Last Stand node uses. The two columns have to
+	// survive the trip from the table into the modifier; a condition dropped on
+	// the way is a bonus that applies all the time instead of some of the time,
+	// silently and in the player's favour.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Chance =
+		Modifiers.Find(FName(TEXT("crit_chance")));
+	if (!TestNotNull(TEXT("the node granted a critical strike chance"), Chance)
+		|| !TestEqual(TEXT("exactly one"), Chance->Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("three per point times eight points"), (*Chance)[0].Value,
+			  24.0f);
+	TestEqual(TEXT("and it carries the health condition"),
+			  static_cast<int32>((*Chance)[0].Condition),
+			  static_cast<int32>(ECataclysmStatCondition::HealthAtOrBelowPercent));
+	TestEqual(TEXT("at the threshold the table states"),
+			  (*Chance)[0].ConditionValue, 20.0f);
+
+	// AND A ROW WITH NO CONDITION IS UNCONDITIONAL, which is every other row in
+	// the fixture and every row in the game before this issue. Without this the
+	// test above would pass just as well if every modifier came out conditional.
+	Allocation.Add(FName(TEXT("Ravager_mid")), 1);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Both =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+	const TArray<FCataclysmStatModifier>* Armour =
+		Both.Find(FName(TEXT("armor")));
+	if (TestNotNull(TEXT("the unconditional node granted armour"), Armour))
+	{
+		TestEqual(TEXT("and it carries no condition"),
+				  static_cast<int32>((*Armour)[0].Condition),
+				  static_cast<int32>(ECataclysmStatCondition::Always));
+	}
 
 	return true;
 }

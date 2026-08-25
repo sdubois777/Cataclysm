@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the health a conditional bonus is judged against. Issue #959.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
@@ -299,7 +301,33 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// through one pass and 225 through two. FCataclysmStatInputs quotes the
 	// design's own words on it.
 	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
-											SkillTags).Final;
+											SkillTags, CurrentConditions()).Final;
+}
+
+FCataclysmStatConditions
+UCataclysmAbilitySystemComponent::CurrentConditions() const
+{
+	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
+	// Issue #959. A skill asking what its critical strike chance is should not
+	// have to fetch the character's health first, and every caller doing that
+	// separately is a place the answer can drift.
+	//
+	// ASKED FRESH EVERY TIME, not cached. That is the point of a condition: it
+	// is true at this instant and may be false at the next, which is why a
+	// conditional bonus cannot be folded into a gameplay attribute.
+	//
+	// NO VITAL ATTRIBUTE SET MEANS NOTHING IS KNOWN, and an unknown state
+	// refuses every condition. That is the ordinary answer for an ability system
+	// built without one, not a fault.
+	const UCataclysmVitalAttributeSet* Vitals =
+		GetSet<UCataclysmVitalAttributeSet>();
+	if (!Vitals)
+	{
+		return FCataclysmStatConditions();
+	}
+
+	return FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
+												Vitals->GetMaxHealth());
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)

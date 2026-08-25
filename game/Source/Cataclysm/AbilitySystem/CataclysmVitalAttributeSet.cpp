@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For asking the attacker what a stat is worth with this hit's tags and the
+// attacker's own state in hand, rather than reading the attribute. Issue #959.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For turning health lost to damage into Fervour. Issue #954.
@@ -294,6 +297,29 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							/*WarnIfNotFound=*/false,
 							/*DefaultIfNotFound=*/-1.0f);
 
+						// THE CHARACTER'S OWN CHANCE IS ASKED FOR RATHER THAN READ.
+						// Issue #959, and it is the first of the stats #947 lists
+						// to be wired. A bonus that applies only in some state --
+						// the Masochist's Last Stand gives +3% per point while at
+						// or below 20% health -- is never written onto the
+						// attribute, because it would be stale the moment health
+						// moved. `StatForSkill` runs the same pipeline again with
+						// the attacker's health in hand, and falls back to the
+						// attribute for a character that has no such bonus, so
+						// nothing without one is changed.
+						//
+						// THE ATTACKER'S STATE AND NOT THE DEFENDER'S. This is the
+						// attacker's critical strike chance, so the condition on it
+						// is about the attacker, and `StatForSkill` is asked of the
+						// attacker's own ability system.
+						const UCataclysmAbilitySystemComponent* Asking =
+							Cast<const UCataclysmAbilitySystemComponent>(Attacker);
+						const float OwnCritChance = Asking
+							? Asking->StatForSkill(FName(TEXT("crit_chance")),
+												   AssetTags,
+												   Offence->GetCritChance())
+							: Offence->GetCritChance();
+
 						// HELD UNDER THE ATTACKER'S OWN CEILING, which matters only
 						// for the stated route. The attribute was already clamped
 						// when it was written, but a skill's stated chance never
@@ -301,7 +327,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						// character an enchantment has capped at 30% would
 						// otherwise land at 80%. Issue #680.
 						Hit.CritChance = FMath::Min(
-							Stated >= 0.0f ? Stated : Offence->GetCritChance(),
+							Stated >= 0.0f ? Stated : OwnCritChance,
 							Offence->GetMaxCritChance());
 						Hit.CritMultiplier = Offence->GetCritMultiplier();
 					}

@@ -20,6 +20,102 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A passive bonus can depend on the character's state, and it is never written onto the stat
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet).
+**Applied.** Issues #959, #947, #939.
+
+Many passive nodes give a bonus only sometimes. Three shapes appear across the
+four trees and they are one mechanism with three questions:
+
+| Shape | Example |
+| :-- | :-- |
+| While a health threshold holds | "While at or below 20% health, +3% increased Critical Strike Chance per point" |
+| For a number of seconds after something happened | "+2% increased damage per point for 2 seconds after you pay a health cost" |
+| While the character carries something | "While you are Bleeding, +2% increased Attack Speed per point" |
+
+**The first is built. The other two are not**, and each needs a different
+question answered about the character rather than a different mechanism.
+
+### A condition is a refusal, not a second multiplier
+
+`FCataclysmStatModifier` could already be scoped by the tags of the skill in
+hand. A condition sits beside that and both must hold. What it decides is only
+whether the modifier is in the sum at all — the design already states the rest:
+"a conditional increase joins the increases bracket rather than becoming a third
+multiplier. That is what Diablo 4 and Last Epoch both do."
+
+### It is resolved when the stat is used, and never stored
+
+`UCataclysmPlayerClassStats::ApplyTo` writes one number per stat onto a gameplay
+attribute, and it runs when gear changes rather than continuously. **A
+conditional bonus written there would be stale the moment health moved.** So a
+caller that knows nothing about the character gets the unconditional answer, and
+`UCataclysmAbilitySystemComponent::StatForSkill` re-runs the pipeline with the
+character's health in hand at the moment the stat is needed.
+
+This is the same argument the project already made for a tag-scoped bonus, and
+the same answer.
+
+**An unknown state refuses every condition rather than granting it.** A caller
+with no character in hand is the character sheet, or a test passing plain
+numbers. Answering "the condition holds" there would show a wounded character's
+bonus on a character standing at full health.
+
+### The stat has to be asked for, which makes #947 a prerequisite
+
+This is the finding that reordered the work, and it was not previously recorded.
+**The stats these nodes name were read straight off their gameplay attribute**,
+so a conditional bonus on them was dropped before it reached anything:
+
+| Stat | Where it was read | Now |
+| :-- | :-- | :-- |
+| critical strike chance | `CataclysmVitalAttributeSet.cpp`, at the moment a hit lands | asked for, with the hit's tags and the attacker's own health |
+| movement speed | `CataclysmPlayerCharacter.cpp`, from an attribute-change delegate | asked for, from one function both that delegate and a health change call |
+
+Issue #947 lists twelve more stats in the same position. Each is the same edit
+and each is needed before a conditional bonus on that stat can work.
+
+### Movement speed needed something to notice, and health changing is it
+
+A conditional bonus never writes the attribute, so the delegate that normally
+re-tells the movement component a speed does not fire when health crosses a
+threshold. `ACataclysmCharacterBase::HealthChanged` already existed for a
+creature's health-triggered phases and is called on every write to health, so the
+player's pawn overrides it and works the speed out again.
+
+**Every health change rather than only the ones that cross a threshold.**
+Working out whether a threshold was crossed would need the pawn to remember where
+health was, and a character can carry several thresholds with different values at
+once. Re-asking is one pipeline pass over one stat's modifier list, which for a
+character with no conditional speed bonus is an empty list and a map lookup that
+misses.
+
+### An unrecognised condition is refused when the file is written
+
+`tools/generate_datatables.py` holds the list of conditions the game can judge
+and refuses a name that is not on it. The reason is the failure mode:
+`UCataclysmPassiveTree::AccumulateInto` turns a name it does not recognise into
+no condition at all, which is a bonus that holds all the time instead of some of
+the time — silently, and in the player's favour. Writing the file is the only
+place that can be caught.
+
+### What this does not do
+
+**Four more nodes with a health threshold say "increased damage" and cannot be
+authored whatever this does.** See #958. So this makes two nodes work rather than
+six.
+
+**The timed window and the "while you carry something" questions are not built.**
+Both are conditions in the same sense and neither is a health percentage.
+
+---
+
 ## 2026-08-25 — Fervour is generated by three rates, and a rate is per 1% of maximum health
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`,

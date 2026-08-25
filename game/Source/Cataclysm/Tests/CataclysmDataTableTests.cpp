@@ -219,7 +219,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 36 THE SAME DAY, for Pain Tolerance, which grants a maximum health
 	// increase and an armour increase in one sentence and needed no code at all.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         36)
+	//
+	// AND TO 38, for Last Stand and Desperate Measures, the first two nodes whose
+	// bonus depends on where the character's health is. Issue #959.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         38)
 
 	#undef CHECK_TABLE
 
