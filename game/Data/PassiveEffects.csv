@@ -39,3 +39,5 @@ Masochist_basic_ll_a1#1,Masochist_basic_ll_a1,crit_chance,increased,3.0,,health_
 Masochist_basic_ll_b0#1,Masochist_basic_ll_b0,movement_speed,increased,1.0,,health_at_or_below,50.0
 Masochist_basic_ll_a0#1,Masochist_basic_ll_a0,attack_damage,increased,2.0,,health_at_or_below,35.0
 Masochist_basic_ll_a0#2,Masochist_basic_ll_a0,spell_damage,increased,2.0,,health_at_or_below,35.0
+Masochist_basic_bt_b0#1,Masochist_basic_bt_b0,attack_damage,increased,2.0,,seconds_after_health_cost,2.0
+Masochist_basic_bt_b0#2,Masochist_basic_bt_b0,spell_damage,increased,2.0,,seconds_after_health_cost,2.0

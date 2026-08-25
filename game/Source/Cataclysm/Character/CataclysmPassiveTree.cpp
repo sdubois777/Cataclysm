@@ -741,6 +741,18 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatCondition::HealthAtOrBelowPercent;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(TEXT("seconds_after_health_cost"),
+											  ESearchCase::IgnoreCase))
+			{
+				// A WINDOW MEASURED IN SECONDS RATHER THAN A PERCENTAGE, which
+				// is the only difference between the two. Issue #962. The value
+				// column carries whichever unit the condition names, and
+				// `tools/generate_datatables.py` holds the allowed range for
+				// each so a percentage cannot be written where seconds belong.
+				Modifier.Condition =
+					ECataclysmStatCondition::WithinSecondsOfHealthCost;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
 			else if (!Effect->Condition.IsEmpty())
 			{
 				UE_LOG(LogCataclysm, Warning,

@@ -2419,10 +2419,25 @@ def passive_edges(_book=None) -> list[dict]:
 #: condition -- a bonus that holds all the time instead of some of the time,
 #: silently and in the player's favour. Refusing an unknown name when the file is
 #: written is the only place that can be caught. Issue #959.
+#:
+#: EACH CARRIES ITS OWN UNITS AND ITS OWN RANGE, since issue #962 added a window
+#: measured in seconds beside a threshold measured in percent. One shared range of
+#: 0 to 100 would have refused a window longer than a minute and, worse, accepted
+#: a percentage written where seconds belong: `seconds_after_health_cost` with 35
+#: is a thirty-five second window, which is not what anybody meant and which
+#: nothing at run time would report.
+#:
+#: The value is (lowest, highest, what the number means).
 CONDITIONS = {
-    # `Condition Value` is a percentage of maximum health. "While at or below
-    # 20% health" is `health_at_or_below` with 20.
-    "health_at_or_below",
+    # "While at or below 20% health" is `health_at_or_below` with 20.
+    "health_at_or_below": (0.0, 100.0, "a percentage of maximum health"),
+
+    # "for 2 seconds after you pay a health cost" is
+    # `seconds_after_health_cost` with 2. The upper bound is a sanity limit
+    # rather than a design rule: the design's longest window is 5 seconds, and
+    # anything past a minute is far likelier to be a percentage in the wrong
+    # column than a deliberate window.
+    "seconds_after_health_cost": (0.0, 60.0, "a number of seconds"),
 }
 
 
@@ -2502,11 +2517,12 @@ def passive_effects(book) -> list[dict]:
         if condition:
             condition_value = number(_cell(raw, headers, "Condition Value"),
                                      "Condition Value", index)
-            if not 0.0 <= condition_value <= 100.0:
+            low, high, units = CONDITIONS[condition]
+            if not low <= condition_value <= high:
                 raise DataError(
                     f"Passive Effects row {index}: {node} has a condition value "
-                    f"of {condition_value}, and {condition!r} takes a percentage "
-                    f"between 0 and 100.")
+                    f"of {condition_value}, and {condition!r} takes {units} "
+                    f"between {low:g} and {high:g}.")
 
         counts[node] = counts.get(node, 0) + 1
 

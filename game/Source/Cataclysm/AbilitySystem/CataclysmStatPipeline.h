@@ -93,6 +93,29 @@ enum class ECataclysmStatCondition : uint8
 	 * or below": a character sitting exactly on 20% health gets the bonus.
 	 */
 	HealthAtOrBelowPercent	UMETA(DisplayName = "Health At Or Below Percent"),
+
+	/**
+	 * The character paid a health cost within the last `ConditionValue` seconds.
+	 *
+	 * A WINDOW THAT OPENS ON AN EVENT AND SHUTS BY ITSELF, which is the second
+	 * shape the design uses and the first that depends on WHEN something
+	 * happened rather than on what is true now. Blood Rush is the node: "+2%
+	 * increased damage per point for 2 seconds after you pay a health cost".
+	 * Issue #962.
+	 *
+	 * NAMED FOR ITS EVENT RATHER THAN BEING A GENERAL TIMER, and deliberately.
+	 * The design's other window -- "for 5 seconds after you take damage of a
+	 * Cataclysm type other than Demonic" -- opens on a different event that
+	 * nothing records yet, and a general timer would have to carry which event
+	 * it means anyway. One enumerator per event says plainly what is being
+	 * remembered, and the character remembers exactly the events something asks
+	 * about.
+	 *
+	 * A CHARACTER THAT HAS NEVER PAID ONE REFUSES IT, which is not the same as
+	 * an expired window and does not need to be: both answer no.
+	 */
+	WithinSecondsOfHealthCost
+		UMETA(DisplayName = "Within Seconds Of A Health Cost"),
 };
 
 /**
@@ -120,6 +143,17 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** Current health as a percentage of maximum, 0 to 100. Negative is unknown. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float HealthPercent = -1.0f;
+
+	/**
+	 * Seconds since the character last paid a health cost. Issue #962.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, and the two do not have to be told
+	 * apart because both answer no. A caller with no character in hand and a
+	 * character that has never cast a skill charging health are the same
+	 * question as far as a window is concerned.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceHealthCost = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

@@ -300,6 +300,33 @@ public:
 	 */
 	FCataclysmStatConditions CurrentConditions() const;
 
+	/**
+	 * Record that this character has just paid a health cost. Issue #962.
+	 *
+	 * WHAT IT IS FOR. A passive node can grant a bonus "for 2 seconds after you
+	 * pay a health cost", and nothing on the character remembered that anything
+	 * had happened. `CurrentConditions` turns this timestamp into the seconds
+	 * since, and the pipeline compares that against the node's window.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::PayHealthCost` AND NOWHERE ELSE,
+	 * because that is the one place a health cost is taken. If a second place
+	 * ever charges health it has to call this too, and a bonus that silently
+	 * never opened its window is what would otherwise happen.
+	 *
+	 * A COST OF NOTHING IS NOT A PAYMENT. The caller only reaches this when it
+	 * actually took health, so a skill with no health cost does not open a
+	 * window every time it is used.
+	 */
+	void NoteHealthCostPaid();
+
+	/**
+	 * How long ago that was, in seconds, or -1 if it has never happened.
+	 *
+	 * -1 ALSO ANSWERS "THERE IS NO WORLD TO ASK", which a component built in a
+	 * test without one can be. Both mean the window is shut.
+	 */
+	float SecondsSinceHealthCostPaid() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -378,4 +405,17 @@ protected:
 	 */
 	int32 DisplacementCount = 0;
 	float LastDisplacedAtSeconds = -1.0f;
+
+	/**
+	 * When this character last paid a health cost, in world seconds. Issue #962.
+	 *
+	 * A NEGATIVE TIME MEANS NEVER, told apart from "paid at world time zero" for
+	 * the same reason the displacement timestamp above is: without it, a fresh
+	 * character would start every match already inside the window.
+	 *
+	 * NOT REPLICATED AND NOT SAVED. It is worth at most a couple of seconds and
+	 * is rebuilt by the next cast, so carrying it across a save or a respawn
+	 * would only let a character keep a window it did not earn.
+	 */
+	float LastHealthCostAtSeconds = -1.0f;
 };

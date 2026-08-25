@@ -20,6 +20,61 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A timed window is named for the event that opens it, and it includes its last instant
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx` (the
+`Passive Effects` sheet).
+**Applied.** Issues #962, #939.
+
+The decision above this one, on 2026-08-25, listed three shapes a conditional
+passive bonus takes. The first, a health threshold, was built on #961. This is the
+second: "for N seconds after something happened". Two judgement calls inside it are
+worth recording, because neither is obvious and both are hard to change later.
+
+### One condition per event, rather than one general timer
+
+The design uses two windows and they open on different events:
+
+| Node | Window | Opens on |
+| :-- | :-- | :-- |
+| Blood Rush (Masochist) | 2 seconds | paying a health cost |
+| Cataclysmic Resonance (Masochist) | 5 seconds | taking damage of a Cataclysm type other than Demonic |
+
+**The condition is `seconds_after_health_cost`, not `seconds_after_event` with an
+event named beside it.** A general timer would still have to carry which event it
+means, so it buys nothing in expressiveness and costs a name that says less. It
+also makes the cost of each window visible: the character has to remember when the
+event happened, and one enumerator per event means the list of remembered events
+is exactly the list something asks about, rather than a general facility with
+nothing behind most of it.
+
+The second window is not built. Nothing records that a character took damage of a
+particular type, which is its own piece of work.
+
+### The window includes its last instant
+
+A window of 2 seconds holds at exactly 2.000 seconds after the event, not up to
+it. This matches the health threshold, which is written "at or below" in every
+node that states one and is read that way.
+
+**The reason is consistency rather than the boundary itself.** No player can time
+the difference between 1.999 and 2.001 seconds. What a player can notice is two
+conditions that behave differently at their own edges, and what a programmer can
+get wrong is which of the two a given predicate uses.
+
+### The condition's value now carries units
+
+`Condition Value` in the `Passive Effects` sheet was checked against a fixed range
+of 0 to 100 with an error message about percentages, because a health threshold
+was the only condition. That range would have refused a window longer than a
+minute, and — worse — accepted a percentage written in the seconds column:
+`seconds_after_health_cost` with 35 is a thirty-five second window, which nothing
+at run time would report. `tools/generate_datatables.py` now holds a range and a
+unit description per condition.
+
 ## 2026-08-25 — "Increased damage" on a passive node means attack damage and spell damage, and not damage over time
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),

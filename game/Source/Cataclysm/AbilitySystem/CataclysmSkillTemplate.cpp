@@ -483,5 +483,24 @@ void UCataclysmSkillTemplate::PayHealthCost()
 		// share of MAXIMUM health, so a character at low health pays less and
 		// generates proportionally less. Both readings are consistent.
 		UCataclysmFervour::GainFromHealthCost(AbilitySystem, Cost);
+
+		// AND THE COST OPENS A WINDOW A PASSIVE NODE CAN READ. Issue #962. Blood
+		// Rush grants "+2% increased damage per point for 2 seconds after you
+		// pay a health cost", and nothing on the character remembered that
+		// anything had happened at all.
+		//
+		// INSIDE THIS BRANCH, so a cost that came to nothing opens nothing. A
+		// skill with no health cost returned at the top of this function; what
+		// this guards is the remaining case, a character on so little health
+		// that the percentage rounds away.
+		//
+		// THIS IS THE ONLY CALLER. A second place that charges health would have
+		// to call it too, and the failure if it did not would be silent: the
+		// node would simply never fire.
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Cataclysm->NoteHealthCostPaid();
+		}
 	}
 }

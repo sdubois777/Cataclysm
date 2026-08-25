@@ -56,6 +56,17 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// written "While at or below 20% health", so a character sitting exactly
 		// on the number gets the bonus.
 		return State.HealthPercent >= 0.0f && State.HealthPercent <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfHealthCost:
+		// A NEGATIVE READING IS "NEVER PAID ONE, OR NOT KNOWN", and both answer
+		// no, so they do not have to be told apart. Issue #962.
+		//
+		// THE WINDOW INCLUDES ITS LAST INSTANT, matching "at or below" above. A
+		// node saying "for 2 seconds after" covers the moment exactly two
+		// seconds later, which no player can time and which keeps the two
+		// predicates from disagreeing about their own boundaries.
+		return State.SecondsSinceHealthCost >= 0.0f
+			&& State.SecondsSinceHealthCost <= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -129,6 +140,19 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return FString::Printf(
 			TEXT("a health threshold of %.1f%%. A percentage of maximum health "
 				 "is between 0 and 100."),
+			Modifier.ConditionValue);
+	}
+
+	// A WINDOW OF NO LENGTH NEVER HOLDS, and a negative one is not a shorter
+	// window but a nonsensical one. Issue #962. Either is a modifier that grants
+	// nothing while looking as though it grants something, which is the same
+	// class of silent failure the threshold check above exists for.
+	if (Modifier.Condition == ECataclysmStatCondition::WithinSecondsOfHealthCost
+		&& Modifier.ConditionValue <= 0.0f)
+	{
+		return FString::Printf(
+			TEXT("a window of %.1f seconds after a health cost. A window has to "
+				 "be longer than nothing or the bonus never applies."),
 			Modifier.ConditionValue);
 	}
 

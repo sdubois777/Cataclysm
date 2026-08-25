@@ -228,7 +228,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// owner settled on 2026-08-25 that "increased damage" on a passive node
 	// means attack damage and spell damage together, and not damage over time.
 	// Issue #958.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         40)
+	//
+	// AND TO 42 FOR ONE MORE, Blood Rush, which grants the same two stats for a
+	// short window after a health cost is paid. Issue #962.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         42)
 
 	#undef CHECK_TABLE
 
