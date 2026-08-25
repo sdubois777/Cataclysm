@@ -18,6 +18,12 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	InitFervourFromDamage(0.0f);
 	InitFervourFromCost(0.0f);
 	InitFervourLostToHealing(0.0f);
+
+	// AND ZERO FOR THE ADDED HEALTH COST, for the same reason. Issue #970.
+	// A character with no point in the Masochist's Deeper Cuts node pays only
+	// whatever cost a skill states for itself, which for every skill but Blood
+	// Pyre is nothing at all.
+	InitAddedHealthCost(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -30,6 +36,7 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromDamage);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromCost);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLostToHealing);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCost);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -49,14 +56,20 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 	}
 	else if (Attribute == GetFervourFromDamageAttribute()
 		|| Attribute == GetFervourFromCostAttribute()
-		|| Attribute == GetFervourLostToHealingAttribute())
+		|| Attribute == GetFervourLostToHealingAttribute()
+		|| Attribute == GetAddedHealthCostAttribute())
 	{
-		// FLOORED AT ZERO, WHICH MEANS "THIS DOES NOT MOVE THE BAR". A negative
-		// rate would invert the rule the node states: taking damage would empty
-		// Fervour and healing would fill it. Nothing in the design asks for
-		// that, and the one node that reduces a rate -- the Masochist's Staunch,
-		// at 5% per point over at most six points -- reaches 70% of the rate and
-		// not past zero. Issue #954.
+		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
+		// A negative rate would invert the rule the node states: taking damage
+		// would empty Fervour and healing would fill it. Nothing in the design
+		// asks for that, and the one node that reduces a rate -- the Masochist's
+		// Staunch, at 5% per point over at most six points -- reaches 70% of the
+		// rate and not past zero. Issue #954.
+		//
+		// AND FOR THE ADDED HEALTH COST IT MEANS "THIS COSTS NOTHING EXTRA".
+		// Issue #970. A negative one would not be a smaller cost, it would be
+		// health handed back on every cast, which is the same class of inversion
+		// and is not what any node states.
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
 }
@@ -79,6 +92,13 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 		GetClassResourceAttribute(), GetMaxClassResourceAttribute()
 	};
 	All.Append(GetRateAttributes());
+
+	// THE ADDED HEALTH COST IS NOT A RATE, so it is listed here rather than in
+	// GetRateAttributes below. That function answers "can this character move
+	// Fervour at all", which is what decides whether the bar is drawn, and a
+	// character that pays health for its skills but converts none of it to
+	// Fervour should not be given a bar it can only read zero from. Issue #970.
+	All.Add(GetAddedHealthCostAttribute());
 	return All;
 }
 
@@ -93,3 +113,4 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, MaxClassResource)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromDamage)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromCost)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLostToHealing)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCost)

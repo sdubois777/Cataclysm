@@ -274,6 +274,16 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("a passive tree's generator node, as a flat modifier")},
 		{TEXT("fervour_lost_to_healing"),
 		 TEXT("a passive tree's generator node, as a flat modifier")},
+
+		// Issue #970. What a character adds to every skill's health cost. Zero
+		// for every class on purpose, for the same reason the three rates above
+		// are: the Masochist's Deeper Cuts node is its only source, and a
+		// character with no point in it pays only whatever a skill states for
+		// itself. A class stat row of zeroes would be refused by
+		// tools/tests/test_class_sheets_match_the_model.py, exactly as it was
+		// for those three.
+		{TEXT("added_health_cost"),
+		 TEXT("the Masochist's Deeper Cuts node, as a flat modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

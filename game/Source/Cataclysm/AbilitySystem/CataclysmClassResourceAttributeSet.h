@@ -100,6 +100,32 @@ public:
 	FGameplayAttributeData FervourLostToHealing;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourLostToHealing)
 
+	/**
+	 * A percentage of MAXIMUM health every skill costs, on top of its own cost.
+	 *
+	 * THE MASOCHIST'S DEEPER CUTS NODE IS ITS ONLY SOURCE. Issue #970. "Your
+	 * skills also cost 1% of your maximum health per point, in addition to any
+	 * other cost. This cost generates Fervour like any other." The node holds
+	 * ten points, so ten percent of maximum health at most.
+	 *
+	 * IT IS HERE RATHER THAN IN THE COMBAT SET for the reason the three rates
+	 * above are: it is zero for every class, no affix grants it, nothing scales
+	 * it, and a passive node is the only thing that supplies it. It belongs to
+	 * the same class economy -- the cost it adds is one of the two things that
+	 * fill Fervour.
+	 *
+	 * MEASURED AGAINST MAXIMUM HEALTH, WHICH MEANS IT CAN KILL, and that is the
+	 * design rather than an oversight. `docs/DECISIONS.md` draws the distinction
+	 * outright and records that the project owner drew it: a cost stated as a
+	 * share of CURRENT health "cannot kill on its own: 15% of current health
+	 * approaches zero without reaching it... it would kill if it were a share of
+	 * maximum health". A skill's own cost is a share of current health. This one
+	 * is not.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_AddedHealthCost)
+	FGameplayAttributeData AddedHealthCost;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, AddedHealthCost)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -112,4 +138,5 @@ protected:
 	UFUNCTION() void OnRep_FervourFromDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourFromCost(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourLostToHealing(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_AddedHealthCost(const FGameplayAttributeData& OldValue);
 };

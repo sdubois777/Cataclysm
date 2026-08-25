@@ -987,6 +987,174 @@ bool FCataclysmHealthCostFillsFervourTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAddedHealthCostTest,
+	"Cataclysm.Skills.ACharactersOwnHealthCostIsPaidBySkillsThatStateNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAddedHealthCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE MASOCHIST'S DEEPER CUTS NODE, held at its full ten points: "Your
+	// skills also cost 1% of your maximum health per point, in addition to any
+	// other cost." Issue #970.
+	//
+	// THE SKILL HERE STATES NO COST OF ITS OWN, which is every skill in the game
+	// except Blood Pyre, and is the whole point of the test. `PayHealthCost`
+	// used to return on its first line when the skill's own figure was zero, at
+	// which point this node would have done nothing at all.
+	//
+	// A CASTER OF ITS OWN AND A SINGLE CAST. A skill commits a cooldown, so a
+	// second activation is refused and the test would measure the refusal.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// A ROUND MAXIMUM, so the share is easy to read off the assertion.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+
+	// TEN PERCENT OF MAXIMUM HEALTH, which is Deeper Cuts at ten points.
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(), 10.0f);
+
+	// AND THE MASOCHIST'S RATE FOR HEALTH SPENT AS A COST, so the second half of
+	// the node's sentence -- "This cost generates Fervour like any other" -- is
+	// checked rather than assumed.
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetFervourFromCostAttribute(), 1.0f);
+
+	UCataclysmProjectileSkill* Plain = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0"), TEXT("A skill with no health cost"));
+	if (!Plain)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	TestEqual(TEXT("the skill states no health cost of its own"),
+		Plain->Params.HealthCostPercent, 0.0f);
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Plain));
+
+	TestEqual(TEXT("and the character's own cost was taken anyway: 10% of a "
+				   "maximum of 1000"),
+		Caster.Health(), 900.0f, 0.5f);
+
+	// ONE FERVOUR PER 1% OF MAXIMUM HEALTH SPENT, so ten percent is ten.
+	TestEqual(TEXT("and it generated Fervour like any other cost"),
+		Caster.Fervour(), 10.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoHealthCostsAddTest,
+	"Cataclysm.Skills.ASkillsOwnHealthCostAndTheCharactersAreAddedNotCompounded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoHealthCostsAddTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// BOTH COSTS ON ONE CAST. Issue #970. The node says the character's cost is
+	// "in addition to any other cost", so the two are summed rather than one
+	// being taken from what the other left.
+	//
+	// THE TWO ARE MEASURED AGAINST DIFFERENT THINGS, which is what makes the
+	// arithmetic worth pinning. The skill's own 8% is a share of CURRENT health;
+	// the character's 10% is a share of MAXIMUM health.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(), 10.0f);
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0; HealthCostPercent=8"), TEXT("Blood Pyre"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	// 8% OF 1000 CURRENT PLUS 10% OF 1000 MAXIMUM, which is 180.
+	const float Paid = 1'000.0f - Caster.Health();
+	TestEqual(FString::Printf(
+		TEXT("both costs were taken and added, and it charged %.1f"), Paid),
+		Paid, 180.0f, 0.5f);
+
+	// AND NOT COMPOUNDED, which either order would give as 172: 8% of what is
+	// left after 100, or 10% of what is left after 80. The assertion above would
+	// accept neither, and this says so out loud.
+	TestTrue(FString::Printf(
+		TEXT("and not compounded, which would have charged 172 and charged %.1f"),
+		Paid),
+		!FMath::IsNearlyEqual(Paid, 172.0f, 1.0f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLethalHealthCostTest,
+	"Cataclysm.Skills.AHealthCostLargerThanHealthLeavesTheCasterAtZeroNotBelow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLethalHealthCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// A COST MEASURED AGAINST MAXIMUM HEALTH CAN EXCEED CURRENT HEALTH, which a
+	// cost measured against current health never can. Issue #970, and
+	// `docs/DECISIONS.md` records the project owner drawing that distinction.
+	//
+	// WHAT THIS PINS IS THE FLOOR, NOT THE DEATH. Health must not go negative: a
+	// character at minus fifty health is one the health bar cannot draw and the
+	// death check cannot recognise. Whether a health cost also KILLS is a
+	// separate question about which notifications a direct attribute write runs,
+	// and it has an issue of its own.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+
+	// TWICE THE CHARACTER'S WHOLE HEALTH POOL. No node reaches this -- Deeper
+	// Cuts stops at ten percent -- but the arithmetic has to hold at the edge
+	// rather than only in the middle.
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(),
+		200.0f);
+
+	UCataclysmProjectileSkill* Plain = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0"), TEXT("A skill with no health cost"));
+	if (!Plain)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Plain));
+
+	TestEqual(TEXT("the caster is left at exactly no health, not below it"),
+		Caster.Health(), 0.0f, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthCostOpensAWindowTest,
 	"Cataclysm.Skills.AHealthCostOpensTheWindowAPassiveNodeReads",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

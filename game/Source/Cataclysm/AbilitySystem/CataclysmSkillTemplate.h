@@ -255,6 +255,35 @@ protected:
 	 */
 	ACataclysmGroundZone* LeaveGroundAlong(const FVector& Start, const FVector& End);
 
-	/** Pay HealthCostPercent of current health. Only Blood Pyre has one. */
+	/**
+	 * Take the health this cast costs, and generate Fervour from it.
+	 *
+	 * TWO COSTS, MEASURED AGAINST DIFFERENT THINGS, AND THAT IS DELIBERATE.
+	 * Issue #970.
+	 *
+	 *   the SKILL's own `HealthCostPercent` is a share of CURRENT health, which
+	 *   is what makes it self-limiting: each cast costs less than the last, so
+	 *   it cannot kill. Only Blood Pyre states one.
+	 *
+	 *   the CHARACTER's `added_health_cost` is a share of MAXIMUM health, which
+	 *   means it CAN kill. The Masochist's Deeper Cuts node is its only source,
+	 *   and `docs/DECISIONS.md` records the project owner drawing exactly that
+	 *   distinction between the two shapes.
+	 *
+	 * IT RUNS FOR EVERY SKILL, not only for one that states a cost of its own,
+	 * because the character's added cost applies to all of them.
+	 */
 	void PayHealthCost();
+
+	/**
+	 * What this character adds to every skill's health cost, as a percentage of
+	 * maximum health.
+	 *
+	 * Zero for a character with no point in Deeper Cuts, and zero for any
+	 * ability system without the class resource attribute set -- which is every
+	 * enemy, and an enemy using a skill goes through the same function.
+	 * Issue #970.
+	 */
+	static float AddedHealthCostPercent(
+		const UAbilitySystemComponent* AbilitySystem);
 };

@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
+// For the health cost a character adds to every skill. Issue #970.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -442,13 +444,27 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 											Params.GroundDuration, PerTick);
 }
 
-void UCataclysmSkillTemplate::PayHealthCost()
+float UCataclysmSkillTemplate::AddedHealthCostPercent(
+	const UAbilitySystemComponent* AbilitySystem)
 {
-	if (Params.HealthCostPercent <= 0.0f)
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Added = Resource::GetAddedHealthCostAttribute();
+
+	// AN ABILITY SYSTEM WITHOUT THE SET PAYS NOTHING EXTRA. Every player carries
+	// the class resource set; an enemy's ability system does not, and an enemy
+	// using a skill goes through this same function.
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Added))
 	{
-		return;
+		return 0.0f;
 	}
 
+	// The attribute is already floored at zero by the set's PreAttributeChange,
+	// so this guards only against a value written before that ran.
+	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
+}
+
+void UCataclysmSkillTemplate::PayHealthCost()
+{
 	UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Avatar());
 	if (!AbilitySystem)
@@ -456,12 +472,33 @@ void UCataclysmSkillTemplate::PayHealthCost()
 		return;
 	}
 
+	// THE CHECK ON THE SKILL'S OWN COST USED TO BE THE FIRST LINE OF THIS
+	// FUNCTION AND CANNOT BE ANY MORE. Issue #970. A character with a point in
+	// the Masochist's Deeper Cuts node pays health for EVERY skill, including
+	// the ones that state no cost of their own -- which is every skill in the
+	// game except Blood Pyre. Returning early on the skill's own figure would
+	// have made that node do nothing at all.
+
 	// A PERCENT OF CURRENT HEALTH, NOT OF MAXIMUM, because Blood Pyre says so:
 	// "paying 8% of your current health". That is what makes it self-limiting --
 	// each cast costs less than the last, so it cannot kill the caster.
 	const float Current = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetHealthAttribute());
-	const float Cost = Current * Params.HealthCostPercent / 100.0f;
+	const float Own = Current * FMath::Max(0.0f, Params.HealthCostPercent) / 100.0f;
+
+	// AND THE CHARACTER'S OWN ADDED COST, WHICH IS A PERCENT OF MAXIMUM HEALTH
+	// AND SO CAN KILL. Issue #970. The two are measured against different things
+	// deliberately: `docs/DECISIONS.md` records the project owner drawing that
+	// exact distinction, that a share of current health "cannot kill on its own
+	// ... it would kill if it were a share of maximum health". Deeper Cuts is
+	// written as a share of maximum health.
+	const float Maximum = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Added = Maximum * AddedHealthCostPercent(AbilitySystem) / 100.0f;
+
+	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
+	// the two are summed rather than one being applied to what the other left.
+	const float Cost = Own + Added;
 	if (Cost > 0.0f)
 	{
 		AbilitySystem->ApplyModToAttribute(

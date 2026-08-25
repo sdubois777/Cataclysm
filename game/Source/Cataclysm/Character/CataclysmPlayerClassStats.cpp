@@ -222,6 +222,15 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("fervour_lost_to_healing"),
 			 Resource::GetFervourLostToHealingAttribute()},
 
+			// WHAT EVERY SKILL COSTS IN HEALTH BEYOND ITS OWN COST. Issue #970,
+			// and here for the same reason as the three rates above: a passive
+			// node granting a stat this map does not name grants nothing and
+			// reports nothing. The Masochist's Deeper Cuts node is its only
+			// source, and it is zero for every class until a point is spent
+			// there.
+			{TEXT("added_health_cost"),
+			 Resource::GetAddedHealthCostAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 
