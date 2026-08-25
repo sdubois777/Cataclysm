@@ -20,6 +20,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
 
 #include <limits>
@@ -1109,38 +1110,37 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveScopedNodeGrantsNothingTest,
-	"Cataclysm.Passives.ATagScopedNodeGrantsNothingYet",
+	"Cataclysm.Passives.ATagScopedNodeReachesOnlyTheSkillsItNames",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * PINS A KNOWN GAP RATHER THAN A RULE. Issue #943.
+ * A passive node scoped by a tag reaches the skills it names, and no others.
  *
- * A passive effect row may name required tags, so a node's bonus reaches only
- * some skills. A row that names any tag currently reaches NOTHING: not a
- * smaller amount, nothing at all. `UCataclysmPlayerClassStats::ApplyTo`
- * resolves every stat with an empty tag container on purpose -- a character
- * sheet has no skill in hand -- and `UCataclysmStatPipeline::ModifierApplies`
- * then drops every modifier carrying a required tag. `RefreshAttributes` hands
- * the passive tree's modifiers to `ApplyTo` and there is no second path that
- * picks a scoped one up later, because the only other place the pipeline sees
- * real skill tags is `UCataclysmSkillEffects::ModifiedDamage`, and that reads a
- * list only a skill's own buff ever writes to.
+ * WHAT THIS REPLACED. Until issue #943 this test was named
+ * `ATagScopedNodeGrantsNothingYet` and asserted the opposite: that a node naming
+ * any required tag reached nothing at all. That was true and it was a defect.
+ * `UCataclysmPlayerClassStats::ApplyTo` works every stat out with an empty tag
+ * container -- correctly, because a character sheet has no skill in hand -- and
+ * then threw the base and the modifier list away, so a skill had nothing left to
+ * ask with and every scoped modifier in the game was lost.
  *
- * WHY PIN IT INSTEAD OF FIXING IT. The character sheet holds one value per
- * stat, and a stat worth one number against traps and another against
- * everything else does not fit that shape. Path of Exile and Last Epoch both
- * resolve offensive stats per skill instead of keeping one global figure.
- * Adopting that here changes how every stat in the game is read, so issue #943
- * puts it to the project owner rather than choosing it here.
+ * WHAT MAKES IT WORK NOW. `ApplyTo` keeps what each stat was worked out from, as
+ * `FCataclysmStatInputs` on the ability system component, and
+ * `UCataclysmAbilitySystemComponent::StatForSkill` runs the same pipeline over
+ * them with the skill's own tags. The project owner chose that route on
+ * 2026-08-25; it is what Path of Exile and Last Epoch both do.
  *
- * WHEN #943 LANDS THIS TEST FAILS, which is the point of it. Invert the two
- * assertions at the end: the scoped node should then widen a trap's area and
- * still leave everything else alone.
+ * THE THREE ASSERTIONS ARE A SET AND EACH ONE RULES SOMETHING OUT:
+ *
+ *   the trap skill gets it       -- or the modifier is still being discarded
+ *   the untagged skill does not  -- or scoping has been turned off altogether,
+ *                                   which would widen every skill in the game
+ *   the character sheet does not -- because a sheet has no skill in hand, and
+ *                                   that rule did not change
  *
  * THE UNSCOPED NODE IS THE CONTROL AND IT IS NOT DECORATION. Without it this
  * test would pass just as happily if the Saboteur tree were unreachable, if the
- * allocation never arrived, or if `RefreshAttributes` did nothing -- none of
- * which is what it claims to be measuring.
+ * allocation never arrived, or if `RefreshAttributes` did nothing.
  */
 bool FCataclysmPassiveScopedNodeGrantsNothingTest::RunTest(const FString&)
 {
@@ -1238,13 +1238,46 @@ bool FCataclysmPassiveScopedNodeGrantsNothingTest::RunTest(const FString&)
 			 FMath::IsNearlyEqual(ArmourAfter, ArmourBefore * 1.24f,
 								  ArmourBefore * 0.02f));
 
-	// THE GAP. Six points at 15% each would be 90% more area of effect. The
-	// player receives none of it.
+	// THE CHARACTER SHEET IS UNCHANGED, AND THAT IS CORRECT RATHER THAN THE BUG.
+	// A sheet has no skill in hand, so a bonus that applies only to traps must
+	// not be shown as though it applied to everything. Issue #943 changed where
+	// the scoped bonus is applied, not this rule.
 	TestEqual(*FString::Printf(
-				  TEXT("area of effect did not move: %.1f against %.1f, though "
-					   "six points were spent on it. Issue #943"),
+				  TEXT("the character sheet's area of effect is unchanged: "
+					   "%.1f against %.1f"),
 				  AreaAfter, AreaBefore),
 			  AreaAfter, AreaBefore);
+
+	// AND NOW THE POINT OF ALL OF IT. Six points at 15% each is 90% more area of
+	// effect, for a skill that carries the tag the node names and for no other.
+	FGameplayTagContainer TrapTags;
+	TrapTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+	if (!TestEqual(TEXT("the trap tag exists in the vocabulary"),
+				   TrapTags.Num(), 1))
+	{
+		return false;
+	}
+
+	const float ForATrap = AbilitySystem->StatForSkill(
+		FName(TEXT("area_of_effect")), TrapTags, AreaAfter);
+	const float ForAnythingElse = AbilitySystem->StatForSkill(
+		FName(TEXT("area_of_effect")), FGameplayTagContainer(), AreaAfter);
+
+	TestTrue(*FString::Printf(
+				 TEXT("a trap is widened by about ninety per cent: %.1f against "
+					  "%.1f expected, from a sheet value of %.1f"),
+				 ForATrap, AreaAfter * 1.90f, AreaAfter),
+			 FMath::IsNearlyEqual(ForATrap, AreaAfter * 1.90f,
+								  AreaAfter * 0.02f));
+
+	// WITHOUT THIS THE TEST WOULD PASS IF SCOPING WERE TURNED OFF ALTOGETHER,
+	// which would widen every skill in the game instead of the traps.
+	TestEqual(*FString::Printf(
+				  TEXT("and a skill carrying no tags is not widened: %.1f "
+					   "against %.1f"),
+				  ForAnythingElse, AreaAfter),
+			  ForAnythingElse, AreaAfter);
 
 	return true;
 }

@@ -280,6 +280,28 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 	return Handle;
 }
 
+float UCataclysmAbilitySystemComponent::StatForSkill(
+	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING WAS RECORDED FOR THIS STAT, which is ordinary rather than a
+		// fault: an enemy's ability system is never given a character stat line,
+		// and a player's has none until the first refresh. The caller's own
+		// attribute read is the right answer in both cases.
+		return Fallback;
+	}
+
+	// THE WHOLE LIST THROUGH ONE PIPELINE PASS, rather than the scoped part
+	// applied on top of a finished attribute. Increases have to sum into one
+	// bracket: a base of 100 carrying an unscoped +50% and a scoped +50% is 200
+	// through one pass and 225 through two. FCataclysmStatInputs quotes the
+	// design's own words on it.
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											SkillTags).Final;
+}
+
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)
 {
 	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);

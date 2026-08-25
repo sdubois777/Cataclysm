@@ -392,6 +392,17 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 
 	int32 Written = 0;
 
+	// WHAT EVERY STAT WAS WORKED OUT FROM, KEPT FOR THE SKILLS. Issue #943.
+	//
+	// A modifier naming a required tag cannot be judged here, because a
+	// character sheet has no skill in hand, so it contributes nothing below.
+	// Keeping the base and the modifier list is what lets a skill work the stat
+	// out again with its own tags, through
+	// `UCataclysmAbilitySystemComponent::StatForSkill`. Before this both were
+	// local variables that went out of scope, and every scoped modifier in the
+	// game was discarded and never seen again.
+	TMap<FName, FCataclysmStatInputs> Inputs;
+
 	// RESOLVING ONE STAT, USED BY BOTH PASSES BELOW. `Extra` is a modifier the
 	// caller wants applied on top of whatever `Modifiers` holds for the stat,
 	// and is only ever what the character's attributes contribute.
@@ -443,6 +454,20 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		{
 			return Base;
 		}
+
+		// KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS. Issue #943.
+		//
+		// ONLY A STAT THAT HAS MODIFIERS IS RECORDED. With none the pipeline
+		// returns the base, which is exactly what the attribute below ends up
+		// holding, so `StatForSkill` falling back to the attribute gives the
+		// same answer and the map stays small.
+		//
+		// THE WHOLE LIST, INCLUDING THE MODIFIERS THE LINE BELOW IS ABOUT TO
+		// DISCARD. Those are the scoped ones, and they are the only reason this
+		// exists.
+		FCataclysmStatInputs& Recorded = Inputs.FindOrAdd(FName(*Stat));
+		Recorded.Base = Base;
+		Recorded.Modifiers = ForStat;
 
 		// THE THREE-BUCKET PIPELINE, NOT ADDITION. A gear affix can be flat or
 		// increased, and the design's whole damage model is
@@ -538,6 +563,22 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 
 		AbilitySystem->SetNumericAttributeBase(Pair.Value, Value);
 		++Written;
+	}
+
+	// AND THE INPUTS GO ACROSS, SO A SKILL CAN ASK AGAIN. Issue #943.
+	//
+	// HERE RATHER THAN AFTER THE POOLS, because the pools are skipped entirely
+	// for a character already in play -- the early return just below -- and a
+	// character that swapped a helmet needs its scoped modifiers refreshed just
+	// as much as one arriving in the world does.
+	//
+	// WHOLESALE, NOT MERGED. This is the character's whole standing stat line;
+	// a stat that no longer has any modifier must lose its entry rather than
+	// keep the one from before the gear came off.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Cataclysm->SetStatInputs(MoveTemp(Inputs));
 	}
 
 	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling

@@ -216,6 +216,41 @@ public:
 		AttackDamageIncreases = Increases;
 	}
 
+	/**
+	 * What one stat was worked out from, or null for a stat nothing recorded.
+	 *
+	 * FOR A CALLER THAT WANTS THE WHOLE BREAKDOWN. Most callers want a number
+	 * and should use `StatForSkill` below instead.
+	 */
+	const FCataclysmStatInputs* GetStatInputs(FName Stat) const
+	{
+		return StatInputs.Find(Stat);
+	}
+
+	/** Written by UCataclysmPlayerClassStats::ApplyTo, once for every refresh. */
+	void SetStatInputs(TMap<FName, FCataclysmStatInputs>&& Inputs)
+	{
+		StatInputs = MoveTemp(Inputs);
+	}
+
+	/**
+	 * What one stat is worth to a skill carrying these tags. Issue #943.
+	 *
+	 * WHY A SKILL HAS TO ASK RATHER THAN READ THE ATTRIBUTE. The gameplay
+	 * attribute holds the value with no skill in hand, so every modifier naming
+	 * a required tag is missing from it. `UCataclysmStatPipeline` says why in its
+	 * own header: "a character's area of effect has no single value -- it is one
+	 * number for an area skill and another for a single-target one".
+	 *
+	 * `Fallback` IS RETURNED WHEN NOTHING WAS RECORDED FOR THE STAT, and that is
+	 * the ordinary case rather than a fault: an enemy's ability system is never
+	 * given a character stat line, and a player's has none until the first
+	 * refresh. Pass the attribute's own value, so the answer is unchanged from
+	 * what it was before this existed.
+	 */
+	float StatForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
+					   float Fallback) const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -244,6 +279,22 @@ protected:
 	 * changes the other in the same statement.
 	 */
 	TArray<FCataclysmStatModifier> StatModifiers;
+
+	/**
+	 * What each character-sheet stat was worked out from. Issue #943.
+	 *
+	 * SEPARATE FROM `StatModifiers` ABOVE, WHICH IS A DIFFERENT LIST FOR A
+	 * DIFFERENT PURPOSE. That one holds modifiers a live skill buff granted and
+	 * will take away again, each with a handle so it can be revoked. This one is
+	 * the character's standing stat line -- what its class, its gear and its
+	 * spent passive points come to -- rewritten wholesale by every refresh and
+	 * never revoked piecemeal.
+	 *
+	 * NOT REPLICATED, for the reason the leech list is not: what a remote client
+	 * needs is the resulting numbers, and every one of them is already a
+	 * replicated attribute. A hit is resolved on the authority.
+	 */
+	TMap<FName, FCataclysmStatInputs> StatInputs;
 
 	/**
 	 * Leech promised and not yet paid, one entry per hit. Issue #895.

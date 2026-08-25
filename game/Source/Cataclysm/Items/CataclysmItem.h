@@ -411,6 +411,18 @@ public:
 	 */
 	static const TCHAR* CritChanceStat;
 
+	/**
+	 * `area_of_effect`, how wide a skill's shape is drawn.
+	 *
+	 * NAMED HERE WITH THE OTHER THREE because a stat name is the key that ties
+	 * a sheet's row to a gameplay attribute, and a second spelling of one in
+	 * another file is a modifier that silently reaches nothing. This one is read
+	 * by `UCataclysmSkillTemplate::AreaOfEffectMultiplier` rather than by
+	 * anything about an item, which is why it did not need a name until issue
+	 * #943 gave a skill a reason to ask for the stat by name.
+	 */
+	static const TCHAR* AreaOfEffectStat;
+
 	/** Where the imported item base table lives. */
 	static const TCHAR* BaseTableAssetPath;
 

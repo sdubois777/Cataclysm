@@ -600,6 +600,29 @@ float UCataclysmSkillEffects::AsMultiplier(const UAbilitySystemComponent* Source
 	return FMath::Max(0.0f, Source->GetNumericAttribute(Stat) / 100.0f);
 }
 
+float UCataclysmSkillEffects::AsMultiplierForSkill(
+	const UAbilitySystemComponent* Source, const FGameplayAttribute& Stat,
+	FName StatName, const FGameplayTagContainer& SkillTags)
+{
+	// THE SAME TWO GUARDS AS AsMultiplier, AND THEY COME FIRST FOR THE SAME
+	// REASON. A blow dealt in someone else's name has no source, and an ability
+	// system without the attribute has nothing to scale.
+	if (!Source || !Source->HasAttributeSetForAttribute(Stat))
+	{
+		return 1.0f;
+	}
+
+	const float FromAttribute = Source->GetNumericAttribute(Stat);
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Value = Cataclysm
+		? Cataclysm->StatForSkill(StatName, SkillTags, FromAttribute)
+		: FromAttribute;
+
+	return FMath::Max(0.0f, Value / 100.0f);
+}
+
 FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	const UAbilitySystemComponent* Source, float DamagePerTick,
 	float DurationSeconds)

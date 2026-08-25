@@ -115,6 +115,44 @@ struct CATACLYSM_API FCataclysmStatModifier
 };
 
 /**
+ * Everything one stat needs to be worked out again for a particular skill.
+ *
+ * WHY THIS HAS TO BE KEPT. This class's own reason for existing, stated at the
+ * top of it, is that "a character's area of effect has no single value -- it is
+ * one number for an area skill and another for a single-target one". But
+ * `UCataclysmPlayerClassStats::ApplyTo` worked every stat out once, with no
+ * skill in hand, and wrote a single number onto the gameplay attribute. The base
+ * and the modifier list were local variables that went out of scope, so a skill
+ * had nothing left to ask with, and every modifier naming a required tag was
+ * discarded and never seen again. Issue #943.
+ *
+ * SO THE INPUTS ARE KEPT AND THE ANSWER IS NOT. `ApplyTo` stores one of these
+ * per stat on `UCataclysmAbilitySystemComponent`, and `EvaluateForSkill` runs
+ * the same pipeline over them with the skill's own tags.
+ *
+ * THE WHOLE MODIFIER LIST, NOT ONLY THE SCOPED PART, AND THAT IS THE POINT.
+ * Applying the scoped modifiers on top of an attribute that already had the
+ * unscoped ones folded in would multiply two increase brackets together instead
+ * of summing them into one. A base of 100 with an unscoped +50% and a scoped
+ * +50% is 200 through one pipeline and 225 through two. The design says
+ * increases add: `docs/DECISIONS.md`, "a conditional increase joins the
+ * increases bracket rather than becoming a third multiplier."
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatInputs
+{
+	GENERATED_BODY()
+
+	/** Where the stat starts, before anything applies. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Base = 0.0f;
+
+	/** Every modifier on it, scoped and unscoped alike. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<FCataclysmStatModifier> Modifiers;
+};
+
+/**
  * What the pipeline decided, step by step, so it can be inspected and shown.
  *
  * The counts at the end exist so a test can prove a rule fired without reading

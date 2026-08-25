@@ -15,6 +15,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
+#include "Items/CataclysmItem.h"
 
 UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 {
@@ -327,10 +328,17 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 	// A HUNDRED MEANS UNCHANGED, which is what the design gives area of effect
 	// and the three damage over time stats: "They are percentages of whatever
 	// the skill or the effect itself does, so their baseline is 100% rather than
-	// zero." AsMultiplier is the same reading those three use.
-	return UCataclysmSkillEffects::AsMultiplier(
+	// zero." AsMultiplierForSkill is the same reading those three use.
+	//
+	// THIS SKILL'S OWN TAGS, RATHER THAN A PLAIN ATTRIBUTE READ. Issue #943. The
+	// attribute holds area of effect worked out with no skill in hand, so a
+	// modifier naming a required tag is missing from it, and the Saboteur node
+	// "+15% area of effect for traps per point" widened nothing at all. Passing
+	// the tags is what makes it widen a trap and leave every other skill alone.
+	return UCataclysmSkillEffects::AsMultiplierForSkill(
 		GetAbilitySystemComponentFromActorInfo(),
-		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute());
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(),
+		FName(UCataclysmItemModifiers::AreaOfEffectStat), SkillTags);
 }
 
 float UCataclysmSkillTemplate::ScaledRadiusCm() const
