@@ -866,29 +866,33 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0\r\n"
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
-			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20\r\n"
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0\r\n"
 			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
 			// a second row on the SAME node deliberately: a new node would change
 			// the rectangle the tree occupies and move an unrelated layout test's
 			// answer.
-			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2\r\n"
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0\r\n"
+			// AND ONE WHOSE SIZE GROWS WITH A STATE rather than switching on and
+			// off with it. Issue #968. A third row on the same node, for the same
+			// reason the second one is.
+			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0\r\n"));
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -1137,6 +1141,74 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 		TestEqual(TEXT("and it carries no condition"),
 				  static_cast<int32>((*Armour)[0].Condition),
 				  static_cast<int32>(ECataclysmStatCondition::Always));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveScaleReachesTheModifierTest,
+	"Cataclysm.Passives.ANodesScaleReachesTheModifierItGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveScaleReachesTheModifierTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+
+	// ISSUE #968. `Ravager_low` carries a third row with `health_missing` and a
+	// step of 5, which is the shape Vicious Onslaught uses. The two scale
+	// columns have to survive the trip from the table into the modifier.
+	//
+	// A SCALE DROPPED ON THE WAY IS WORSE THAN A CONDITION DROPPED ON THE WAY.
+	// A lost condition grants a bonus more often than the design said; a lost
+	// scale would grant its FULL value at every state, which for a node like
+	// this is the bonus a character at death's door earns, handed to one at
+	// full health.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Health =
+		Modifiers.Find(FName(TEXT("max_health")));
+	if (!TestNotNull(TEXT("the node granted maximum health"), Health)
+		|| !TestEqual(TEXT("exactly one of it"), Health->Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("two per point times eight points"), (*Health)[0].Value,
+			  16.0f);
+	TestEqual(TEXT("and it carries the missing-health scale"),
+			  static_cast<int32>((*Health)[0].Scale),
+			  static_cast<int32>(
+				  ECataclysmStatScale::PerPercentOfMaximumHealthMissing));
+	TestEqual(TEXT("in steps of the size the table states"),
+			  (*Health)[0].ScaleStep, 5.0f);
+
+	// AND A ROW WITH NO SCALE IS FIXED, which is every other row in the fixture
+	// and every row in the game before this issue. Without this the checks above
+	// would pass just as well if every modifier came out scaling.
+	const TArray<FCataclysmStatModifier>* Chance =
+		Modifiers.Find(FName(TEXT("crit_chance")));
+	if (TestNotNull(TEXT("the unscaled row on the same node granted its stat"),
+					Chance))
+	{
+		TestEqual(TEXT("and it carries no scale"),
+				  static_cast<int32>((*Chance)[0].Scale),
+				  static_cast<int32>(ECataclysmStatScale::Fixed));
+		TestEqual(TEXT("and no step"), (*Chance)[0].ScaleStep, 0.0f);
 	}
 
 	return true;

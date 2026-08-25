@@ -763,6 +763,42 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					   *Effect->Node, *Effect->Condition);
 			}
 
+			// AND THE STATE ITS SIZE GROWS WITH, IF ANY. Issue #968. A different
+			// question from the condition above: that decides whether the bonus
+			// applies at all, this decides how large it is when it does. A row
+			// may carry both.
+			//
+			// AN UNRECOGNISED NAME IS MADE WORTH NOTHING RATHER THAN LEFT FIXED,
+			// which is the opposite of what the condition above does, and
+			// deliberately. An unknown condition left as `Always` grants a bonus
+			// more often than the design said. An unknown scale left as `Fixed`
+			// would grant its full value at EVERY state -- for Vicious Onslaught
+			// that is the bonus for a character at death's door, handed to one
+			// at full health. Zero is the safe direction here, the same way
+			// refusing is the safe direction there.
+			if (Effect->Scale.Equals(TEXT("health_missing"),
+									 ESearchCase::IgnoreCase))
+			{
+				Modifier.Scale =
+					ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
+			else if (!Effect->Scale.IsEmpty())
+			{
+				// A step of nothing makes `ScaledValue` answer zero.
+				Modifier.Scale =
+					ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+				Modifier.ScaleStep = 0.0f;
+
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("Passive node '%s' names the scale '%s', which this "
+							"build does not know. The bonus was made worth "
+							"nothing rather than worth its full value. "
+							"Regenerate game/Data/PassiveEffects.csv from the "
+							"workbook."),
+					   *Effect->Node, *Effect->Scale);
+			}
+
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
 			++Added;
 		}

@@ -97,7 +97,12 @@ BUCKETS = {"flat", "increased", "more"}
 #: damage per point for 2 seconds after you pay a health cost", so it is the same
 #: two stats, under the first condition that depends on WHEN something happened
 #: rather than on what is true now. Issue #962.
-AUTHORED_ROWS = 42
+#:
+#: AND BY ONE, for Vicious Onslaught: "+1% increased Attack Damage per point for
+#: every 5% of your maximum health that is missing". One row rather than two
+#: because the node names Attack Damage outright. It is the first bonus whose
+#: SIZE grows with a state rather than switching on and off with it. Issue #968.
+AUTHORED_ROWS = 43
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -130,7 +135,11 @@ AUTHORED_ROWS = 42
 #: AND TO 37 FOR ONE MORE, Blood Rush, which grants increased damage for a short
 #: window after a health cost is paid. 37 of 293 altogether and 33 of the
 #: Masochist tree's own 74. Issue #962.
-AUTHORED_NODES = 37
+#:
+#: AND TO 38 FOR ONE MORE, Vicious Onslaught, whose bonus grows with how much
+#: health is missing. 38 of 293 altogether and 34 of the Masochist tree's own 74.
+#: Issue #968.
+AUTHORED_NODES = 38
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -233,16 +242,20 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # THE CONDITION IS PART OF WHAT MAKES A ROW DISTINCT since issue #959.
         # A node giving one amount always and more of it below a threshold is a
         # real shape, and it is two rows on the same node and the same stat.
+        #
+        # AND SO IS THE SCALE, since issue #968, for the same reason: a node
+        # could give a fixed amount and a further amount that grows with a
+        # state. `tools/generate_datatables.py` keys its own check the same way.
         key = (row["Node"], row["Stat"], row["Condition"],
-               row["ConditionValue"])
+               row["ConditionValue"], row["Scale"], row["ScaleStep"])
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
     assert not twice, (
-        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node, stat "
-        "and condition. Two rows on one node are for two different stats, or "
-        "for the same stat under different conditions; anything else applies "
-        "both and the node is worth double what it says."
+        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node, stat, "
+        "condition and scale. Two rows on one node are for two different stats, "
+        "or for the same stat under different conditions or scales; anything "
+        "else applies both and the node is worth double what it says."
     )
 
 
@@ -322,6 +335,83 @@ def test_a_condition_is_actually_used(effects):
         "Condition columns or the code that reads them. If the last one was "
         "deliberately removed, delete these tests with it rather than leaving "
         "the columns untested."
+    )
+
+
+#: The states a bonus's SIZE may grow with: the words the node must contain, and
+#: how the step is written in that sentence. Issue #968.
+#:
+#: A SEPARATE MAP FROM `CONDITION_WORDS`, because the two answer different
+#: questions and a row may carry both. `tools/generate_datatables.py` holds the
+#: same set of names in `SCALES` and refuses one it does not know.
+SCALE_WORDS = {
+    "health_missing": ("for every", "{value:g}%"),
+}
+
+
+def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
+    """A scaling step in the workbook is the step the node's own words state.
+
+    THE SAME DRIFT THE CONDITION CHECK ABOVE EXISTS FOR, one column further
+    across. A row reading `health_missing` with a step of 10 on a node that says
+    "for every 5% of your maximum health that is missing" gives a character half
+    the bonus the sentence promises, and nothing at run time reports it: the
+    arithmetic runs and the number is simply smaller.
+
+    IT ALSO CHECKS THE STAT IS ONE THE GAME ASKS FOR AT THE RIGHT MOMENT is NOT
+    something this can check, and that is worth saying. A scaling bonus written
+    onto a stat that is read off a gameplay attribute would be dropped, because
+    a scaled value is never folded into an attribute. The engine-side tests are
+    where that is caught.
+    """
+    for row in effects:
+        scale = row["Scale"].strip()
+        if not scale:
+            continue
+
+        assert scale in SCALE_WORDS, (
+            f"{row['Node']} names the scale {scale!r}, which this test does not "
+            f"know. Known: {sorted(SCALE_WORDS)}. Add it here and to SCALES in "
+            "tools/generate_datatables.py together."
+        )
+
+        expected_words, value_form = SCALE_WORDS[scale]
+
+        words = nodes[row["Node"]]["Description"].lower()
+        assert expected_words in words, (
+            f"{row['Node']} carries the scale {scale!r} and its description "
+            f"does not say {expected_words!r}:\n"
+            f"    {nodes[row['Node']]['Description']}"
+        )
+
+        step = float(row["ScaleStep"])
+        assert step > 0.0, (
+            f"{row['Node']} carries the scale {scale!r} with a step of {step:g}. "
+            "A step of nothing makes the bonus worth nothing at every state."
+        )
+
+        printed = value_form.format(value=step)
+        assert printed.lower() in words, (
+            f"{row['Node']} scales in steps of {printed!r} and the node says:\n"
+            f"    {nodes[row['Node']]['Description']}\n"
+            "The two have to agree. Either the workbook is stale or the tree "
+            "file changed."
+        )
+
+
+def test_a_scale_is_actually_used(effects):
+    """The two scale columns are exercised rather than merely present.
+
+    The same argument as the condition check above. Without a row that uses one,
+    the columns, the generator's refusal of an unknown scale, and the code that
+    turns a scale into a modifier would all be untested.
+    """
+    scaled = [row for row in effects if row["Scale"].strip()]
+    assert scaled, (
+        "No passive effect scales with a state, so nothing exercises the Scale "
+        "columns or the code that reads them. If the last one was deliberately "
+        "removed, delete these tests with it rather than leaving the columns "
+        "untested."
     )
 
 

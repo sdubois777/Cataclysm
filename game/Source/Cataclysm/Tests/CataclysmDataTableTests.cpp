@@ -231,7 +231,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 42 FOR ONE MORE, Blood Rush, which grants the same two stats for a
 	// short window after a health cost is paid. Issue #962.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         42)
+	//
+	// AND TO 43 FOR VICIOUS ONSLAUGHT, the first node whose bonus GROWS with a
+	// state rather than switching on and off with it. One row rather than two,
+	// because the node names Attack Damage outright. Issue #968.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         43)
 
 	#undef CHECK_TABLE
 
