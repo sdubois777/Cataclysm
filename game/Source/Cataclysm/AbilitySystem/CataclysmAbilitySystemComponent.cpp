@@ -7,6 +7,9 @@
 #include "Cataclysm.h"
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
+// For the one spelling of "attack_damage" that ApplyTo records the stat under.
+// Issue #958.
+#include "Items/CataclysmItem.h"
 
 UCataclysmAbilitySystemComponent::UCataclysmAbilitySystemComponent()
 {
@@ -302,6 +305,31 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// design's own words on it.
 	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
 											SkillTags, CurrentConditions()).Final;
+}
+
+float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
+	const FGameplayTagContainer& SkillTags) const
+{
+	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
+	// the shared constant rather than a second spelling of the name, because a
+	// name that does not match falls back silently and reads as a character with
+	// no increases rather than as a fault.
+	const FCataclysmStatInputs* Inputs =
+		StatInputs.Find(FName(UCataclysmItemModifiers::AttackDamageStat));
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, so the stored figure is the whole answer. Ordinary
+		// for an enemy, whose attack damage is written straight onto the
+		// attribute, and for a player before its first stat refresh.
+		return AttackDamageIncreases;
+	}
+
+	// PERCENTAGE POINTS OUT OF THE PIPELINE AND A FRACTION OUT OF HERE, which is
+	// the conversion issue #963 was about. The two figures a hit uses have to be
+	// in the same units or one cannot be undone and the other applied.
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											SkillTags, CurrentConditions())
+			   .SumOfIncreases / 100.0f;
 }
 
 FCataclysmStatConditions

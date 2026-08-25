@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import csv
 import pathlib
+import sys
 
 import pytest
 
@@ -53,7 +54,16 @@ EFFECTS_CSV = DATA / "PassiveEffects.csv"
 NODES_CSV = DATA / "PassiveNodes.csv"
 CLASS_STATS_CSV = DATA / "ClassStats.csv"
 ATTRIBUTES_CSV = DATA / "Attributes.csv"
+ITEM_BASES_CSV = DATA / "ItemBases.csv"
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+
+# WHICH STATS GEAR SUPPLIES IS THE GENERATOR'S RULE, imported rather than written
+# out a second time here. `validate_passive_effects` in that file refuses exactly
+# the rows this file refuses, and two spellings of one rule is the drift this
+# whole file exists to catch.
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import generate_datatables as gen  # noqa: E402
 
 #: The three buckets of the damage pipeline. Anything else is a typo.
 BUCKETS = {"flat", "increased", "more"}
@@ -76,7 +86,13 @@ BUCKETS = {"flat", "increased", "more"}
 #:
 #: AND BY TWO MORE, for the first two nodes whose bonus depends on where the
 #: character's health is: Last Stand and Desperate Measures. Issue #959.
-AUTHORED_ROWS = 38
+#:
+#: AND BY TWO MORE AGAIN, both on one node. Living on the Edge reads "While at or
+#: below 35% health, +2% increased damage per point", and the project owner
+#: settled on 2026-08-25 that "increased damage" on a passive node means every
+#: kind of damage the character DEALS -- attack damage and spell damage -- and
+#: not damage over time. So it is two rows rather than one. Issue #958.
+AUTHORED_ROWS = 40
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -101,7 +117,11 @@ AUTHORED_ROWS = 38
 #: AND TO 33, for Pain Tolerance, then 35 for Last Stand and Desperate Measures,
 #: the first two nodes whose bonus depends on where the character's health is.
 #: 35 of 293 altogether, and 31 of the Masochist tree's own 74. Issue #959.
-AUTHORED_NODES = 35
+#:
+#: AND TO 36 FOR ONE NODE, Living on the Edge, which grants increased damage
+#: below a health threshold. It is 36 of 293 altogether and 32 of the Masochist
+#: tree's own 74. Issue #958.
+AUTHORED_NODES = 36
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -128,12 +148,14 @@ def nodes() -> dict[str, dict]:
 
 @pytest.fixture(scope="module")
 def stats() -> set[str]:
-    # A FLAT ROW IN THE EFFECTS FILE SUPPLIES A STAT TOO. See
-    # `test_every_stat_is_one_the_game_supplies` below for why.
+    # A FLAT ROW IN THE EFFECTS FILE SUPPLIES A STAT TOO, and so does a flat
+    # implicit on an item base. See `test_every_stat_is_one_the_game_supplies`
+    # below for why, and for why a rolled affix does not.
     return ({row["Stat"] for row in rows_of(CLASS_STATS_CSV)}
             | {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
             | {row["Stat"] for row in rows_of(EFFECTS_CSV)
-               if row["ValueKind"].strip().lower() == "flat"})
+               if row["ValueKind"].strip().lower() == "flat"}
+            | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV)))
 
 
 @pytest.fixture(scope="module")
@@ -407,6 +429,21 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     class stat row that is zero in both columns says nothing, and
     `test_class_sheets_match_the_model.py` refuses one. What supplies them is
     the Masochist's starting node, with a flat row here.
+
+    A FLAT IMPLICIT ON AN ITEM BASE COUNTS TOO, since issue #958, and the case
+    is `attack_damage`. No class stat line names it and none should: a
+    character's damage comes from the weapon in its hands, which carries an
+    `attack_damage` flat implicit, so the class base is correctly zero.
+    `UCataclysmPlayerClassStats` states that rule in its own header. The node
+    Living on the Edge grants increased damage and has a real base under it the
+    moment a weapon is held.
+
+    A ROLLED AFFIX DOES NOT COUNT, and the difference decides whether this check
+    is worth anything. An implicit is on EVERY item of that base type, so a
+    Sword always carries attack damage; an affix may never roll. A stat whose
+    only supplier is an optional affix really is zero for most characters and an
+    increase on it really is worth nothing, which is the complaint this test
+    exists to make. Counting affixes would admit twelve more stats and blunt it.
 
     WHAT THIS CANNOT CATCH, AND WHAT DOES. A name misspelt the same way in both
     a flat row and an increased row would pass here. The engine-side test

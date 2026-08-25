@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For the modifier a test hands to ApplyTo, and the units of its value. #963.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -622,6 +624,91 @@ CATACLYSM_TEST(FCataclysmPossessionAppliesTheClassLine,
 		ASC->GetNumericAttribute(MaxHealth), Expected);
 	TestNotEqual(TEXT("and it is not the placeholder the attribute set writes"),
 		ASC->GetNumericAttribute(MaxHealth), 100.0f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The units of the remembered attack damage bracket. Issue #963.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmAttackDamageBracketIsAFraction,
+	"Cataclysm.PlayerStats.TheAttackDamageBracketIsRememberedAsAFraction")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	// WHAT WENT WRONG AND WHY NOTHING SAW IT. `ApplyTo` passed
+	// `Breakdown.SumOfIncreases`, which is in percentage points, into
+	// `SetAttackDamageIncreases`, which every reader treats as a fraction, so
+	// the stored figure was a hundred times too large.
+	//
+	// THE ERROR CANCELLED WHENEVER THE CONDITIONAL PART WAS ZERO, which is why
+	// it survived. A hit is `weapon x percent x (1 + I + C) / (1 + I)`, and with
+	// C at zero that last factor is one for any I at all, right or wrong. It
+	// shows only when something else joins the bracket: one of the eight
+	// damage-against-a-type affixes, or a passive node that increases damage
+	// below a health threshold.
+	//
+	// AND THE TEST THAT EXISTED COULD NOT SEE IT.
+	// `Cataclysm.ConditionalDamage.ItAddsIntoTheSameBracketRatherThanMultiplying`
+	// sets the bracket by hand with a fraction, so it agrees with the reader and
+	// never runs the writer. This one runs the writer.
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+
+	// A WEAPON AND ONE ROLLED INCREASE, which is how attack damage really
+	// arrives: no class line names the stat, deliberately, because the damage
+	// comes from what the character is holding.
+	FCataclysmStatModifier Weapon;
+	Weapon.Bucket = ECataclysmStatBucket::Flat;
+	Weapon.Source = ECataclysmModifierSource::GearImplicit;
+	Weapon.Value = 1'000.0f;
+
+	FCataclysmStatModifier Increase;
+	Increase.Bucket = ECataclysmStatBucket::Increased;
+	Increase.Source = ECataclysmModifierSource::GearAffix;
+	Increase.Value = 125.0f;    // PERCENTAGE POINTS, which is what a row holds.
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	Modifiers.Add(FName(TEXT("attack_damage")), {Weapon, Increase});
+
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers);
+
+	// THE ATTRIBUTE IS THE FINISHED FIGURE: 1000 flat multiplied by 2.25.
+	const float Finished =
+		Character.Read(UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+	TestEqual(TEXT("the attribute carries the finished figure"),
+		Finished, 2'250.0f, 0.5f);
+
+	// AND THE REMEMBERED BRACKET IS THE FRACTION THAT PRODUCED IT. 125 here,
+	// which is what it held before this issue, is the failure.
+	const float Remembered =
+		Character.AbilitySystem->GetAttackDamageIncreases();
+	TestEqual(FString::Printf(
+		TEXT("the bracket is remembered as a fraction, and was %.2f"),
+		Remembered),
+		Remembered, 1.25f, 0.001f);
+
+	// AND IT REALLY REOPENS THE ATTRIBUTE, which is the only thing the figure is
+	// for. `UCataclysmSkillEffects::ApplyHit` divides by one plus this on every
+	// hit and has to get the flat bucket back.
+	TestEqual(TEXT("so dividing the attribute by it recovers the weapon"),
+		Finished / (1.0f + Remembered), 1'000.0f, 0.5f);
 
 	return true;
 }
