@@ -116,6 +116,30 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WithinSecondsOfHealthCost
 		UMETA(DisplayName = "Within Seconds Of A Health Cost"),
+
+	/**
+	 * The character took damage of a Cataclysm type other than its own
+	 * within the last `ConditionValue` seconds.
+	 *
+	 * THE SECOND WINDOW THE DESIGN USES, and the reason there is one
+	 * enumerator per event rather than a general timer: this one opens on
+	 * something entirely different from a health cost. Cataclysmic Resonance
+	 * is the node: "+1% increased damage per point for 5 seconds after you
+	 * take damage of a Cataclysm type other than Demonic". Issue #975.
+	 *
+	 * OTHER THAN ITS OWN, NOT LITERALLY OTHER THAN DEMONIC. The two cannot
+	 * differ for any character that can take the node -- the Masochist tree
+	 * needs a Demonic weapon to grant anything -- and hard-coding one of the
+	 * eight type names into an enumerator would be unreusable.
+	 * `docs/DECISIONS.md` carries the reading.
+	 *
+	 * A HIT THE CHARACTER DEALS NEVER OPENS IT. A player's own hit is
+	 * untyped in the field this reads, by the design decision of 2026-08-12
+	 * that a player's damage arrives untyped because an enemy holds one
+	 * generic resistance.
+	 */
+	WithinSecondsOfForeignDamage
+		UMETA(DisplayName = "Within Seconds Of Foreign Damage"),
 };
 
 /**
@@ -191,6 +215,16 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceHealthCost = -1.0f;
+
+	/**
+	 * Seconds since the character took damage of a Cataclysm type other than
+	 * its own. Issue #975.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, the same as the reading above and
+	 * for the same reason: both answer no.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceForeignDamage = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

@@ -157,6 +157,23 @@ public:
 	static FString SubTypeOf(const AActor* Actor);
 
 	/**
+	 * The Cataclysm damage type an actor's own hits carry, or empty when it has
+	 * no weapon slots at all. Issue #975.
+	 *
+	 * A STATIC FOR THE SAME REASON `SubTypeOf` ABOVE IS ONE: the attribute set
+	 * that resolves a hit needs to know whether the hit's type is the
+	 * character's own, and should not have to know how a character stores its
+	 * weapons.
+	 *
+	 * AN ENEMY ANSWERS EMPTY, because it has no weapon slots component. That is
+	 * right rather than a gap: an enemy's own type lives on the enemy and is
+	 * read by `UCataclysmSkillEffects::DamageTypeOf`, which answers empty for a
+	 * player. The two functions are opposite halves of the same question and
+	 * neither answers for the other's subject.
+	 */
+	static FString DamageTypeOf(const AActor* Actor);
+
+	/**
 	 * Uses this matrix instead of the generated one.
 	 *
 	 * For tests, which build a table they control so a case can be set up that

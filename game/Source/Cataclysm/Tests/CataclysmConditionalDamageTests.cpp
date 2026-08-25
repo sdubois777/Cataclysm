@@ -11,6 +11,9 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For giving a defender a Cataclysm type of its own, so a hit of another one
+// can be told from a hit of its own. Issue #975.
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
@@ -779,6 +782,154 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageGrowsWithMissingHealthTest,
 
 	TestTrue(TEXT("so it is strictly larger at a quarter than at a half"),
 		AtQuarterHealth > AtHalfHealth);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Taking damage of a Cataclysm type the character does not share. Issue #975.
+//
+// WHY THESE GO THROUGH A REAL HIT. The window is opened from the damage branch
+// of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which is the one
+// place a resolved hit and its type are both in hand. A test that set the
+// timestamp by hand would go on passing with that call deleted, at which point
+// the node would never fire in a real fight.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** An enemy of a named type, able to deal damage rather than only take it. */
+	ACataclysmEnemyCharacter* SpawnAttacker(UWorld* World, const TCHAR* DamageType)
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnTarget(World, DamageType);
+		if (Enemy)
+		{
+			if (UAbilitySystemComponent* AbilitySystem =
+					Enemy->GetAbilitySystemComponent())
+			{
+				AbilitySystem->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+					1'000.0f);
+			}
+		}
+		return Enemy;
+	}
+
+	/** A defender that nothing about its own defences will stop a hit reaching. */
+	void MakeReachable(FCaster& Defender)
+	{
+		Defender.Combat->SetArmor(0.0f);
+		Defender.Combat->SetEvasion(0.0f);
+		Defender.Combat->SetBlockChance(0.0f);
+		Defender.Combat->SetDamageReduction(0.0f);
+		Defender.Vitals->SetMaxHealth(1'000'000.0f);
+		Defender.Vitals->SetHealth(1'000'000.0f);
+	}
+
+	/** Give a defender a Cataclysm type of its own, the way a weapon does. */
+	void GiveOwnDamageType(FCaster& Defender, const TCHAR* DamageType)
+	{
+		UCataclysmWeaponSlotsComponent* Slots =
+			NewObject<UCataclysmWeaponSlotsComponent>(Defender.Actor);
+		Slots->RegisterComponent();
+		Slots->SetDamageType(DamageType);
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmForeignDamageOpensAWindowTest,
+	"Cataclysm.ConditionalDamage.DamageOfAnotherCataclysmTypeOpensAWindow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("a War attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the check
+	// afterwards would pass just as well if the window were open from birth.
+	TestEqual(TEXT("a character that has taken nothing has no window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a War hit on a Demonic character opens the window, now"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+
+	// AND IT AGES BY ITSELF, with nothing else happening.
+	World->TimeSeconds += 6.0f;
+	TestEqual(TEXT("and six seconds later it has been open that long"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 6.0f, 0.01f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join
+	// between this timestamp and the bonus that reads it.
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceForeignDamage,
+		6.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOwnTypeDoesNotOpenAWindowTest,
+	"Cataclysm.ConditionalDamage.DamageOfTheCharactersOwnTypeOpensNoWindow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE SAME HIT, THE SAME DEFENDER, AND ONLY THE TYPE DIFFERENT. This is
+	// what says the node is about a FOREIGN Cataclysm rather than about being
+	// hit at all. Without it the test above would pass just as well for a
+	// window that opened on any damage whatsoever.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Demonic hit on a Demonic character opens no window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
 
 	return true;
 }

@@ -109,6 +109,24 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase that applies only inside a window after foreign damage. */
+	FCataclysmStatModifier IncreasedAfterForeignDamage(float Value, float Seconds)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition =
+			ECataclysmStatCondition::WithinSecondsOfForeignDamage;
+		Modifier.ConditionValue = Seconds;
+		return Modifier;
+	}
+
+	/** A character that took damage of a foreign type this many seconds ago. */
+	FCataclysmStatConditions SinceForeignDamage(float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceForeignDamage = Seconds;
+		return State;
+	}
+
 	/** An increase worth `Value` per whole `Step` percent of health missing. */
 	FCataclysmStatModifier IncreasedPerHealthMissing(float Value, float Step)
 	{
@@ -469,6 +487,65 @@ bool FCataclysmPipelineHealthCostWindowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a real window is not"),
 		FPipeline::ValidateModifier(
 			IncreasedAfterHealthCost(16.0f, 2.0f)).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineForeignDamageWindowTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnAWindowAfterForeignDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineForeignDamageWindowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S CATACLYSMIC RESONANCE NODE, held at its full eight
+	// points: "+1% increased damage per point for 5 seconds after you take
+	// damage of a Cataclysm type other than Demonic". Issue #975.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedAfterForeignDamage(8.0f, 5.0f) };
+
+	TestEqual(TEXT("just after the hit, the bonus applies"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceForeignDamage(0.0f)).Final, 108.0f, 0.01f);
+	TestEqual(TEXT("and part way through the window"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceForeignDamage(4.0f)).Final, 108.0f, 0.01f);
+	TestEqual(TEXT("and at exactly its last instant"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceForeignDamage(5.0f)).Final, 108.0f, 0.01f);
+	TestEqual(TEXT("a moment later it is gone"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceForeignDamage(5.1f)).Final, 100.0f, 0.01f);
+
+	// A CHARACTER THAT HAS TAKEN NO SUCH HIT DOES NOT GET IT, and neither does
+	// a caller that knows nothing. Both are a negative reading.
+	TestEqual(TEXT("a character that has taken no foreign hit does not get it"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceForeignDamage(-1.0f)).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("nor does the character sheet, which knows nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+
+	// THE TWO WINDOWS ARE SEPARATE EVENTS AND SEPARATE READINGS. A character
+	// that paid a health cost a moment ago has not thereby taken foreign
+	// damage, and this is what says one enumerator per event is doing real
+	// work rather than being two names for one timer.
+	TestEqual(TEXT("paying a health cost does not open the foreign damage window"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							SinceHealthCost(0.0f)).Final, 100.0f, 0.01f);
+
+	TArray<FCataclysmStatModifier> AfterCost = {
+		IncreasedAfterHealthCost(8.0f, 5.0f) };
+	TestEqual(TEXT("and taking foreign damage does not open the health cost one"),
+		FPipeline::Evaluate(100.0f, AfterCost, NoTags,
+							SinceForeignDamage(0.0f)).Final, 100.0f, 0.01f);
+
+	// AND A WINDOW OF NO LENGTH IS REFUSED WHEN THE DATA IS CHECKED.
+	TestTrue(TEXT("a window of zero seconds is reported as illegal"),
+		!FPipeline::ValidateModifier(
+			IncreasedAfterForeignDamage(8.0f, 0.0f)).IsEmpty());
+	TestTrue(TEXT("a real one is not"),
+		FPipeline::ValidateModifier(Modifiers[0]).IsEmpty());
 
 	return true;
 }

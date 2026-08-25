@@ -327,6 +327,25 @@ public:
 	 */
 	float SecondsSinceHealthCostPaid() const;
 
+	/**
+	 * Record that this character has just taken damage of a Cataclysm type
+	 * other than its own. Issue #975.
+	 *
+	 * CALLED FROM THE DAMAGE BRANCH OF
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` AND NOWHERE
+	 * ELSE, which is the one place a resolved hit and its type are both in
+	 * hand. Whether the type is foreign is decided there, because that is where
+	 * the character's own type can be read.
+	 *
+	 * A HIT THAT LANDED FOR NOTHING IS NOT DAMAGE TAKEN. The caller only
+	 * reaches this when the hit actually removed health or energy shield, so an
+	 * evaded or wholly mitigated blow opens no window.
+	 */
+	void NoteForeignDamageTaken();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceForeignDamageTaken() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -418,4 +437,14 @@ protected:
 	 * would only let a character keep a window it did not earn.
 	 */
 	float LastHealthCostAtSeconds = -1.0f;
+
+	/**
+	 * When this character last took damage of a Cataclysm type other than
+	 * its own, in world seconds. Issue #975.
+	 *
+	 * NEGATIVE MEANS NEVER, told apart from world time zero for the reason
+	 * the two timestamps above it are. Not replicated and not saved: it is
+	 * worth a few seconds and the next hit rebuilds it.
+	 */
+	float LastForeignDamageAtSeconds = -1.0f;
 };

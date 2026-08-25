@@ -44,3 +44,5 @@ Masochist_basic_bt_b0#2,Masochist_basic_bt_b0,spell_damage,increased,2.0,,second
 Masochist_basic_fc_a0#1,Masochist_basic_fc_a0,attack_damage,increased,1.0,,,0.0,health_missing,5.0
 Masochist_basic_bt_stem1#1,Masochist_basic_bt_stem1,added_health_cost,flat,1.0,,,0.0,,0.0
 Masochist_basic_ll_a2#1,Masochist_basic_ll_a2,cooldown_skip_chance,flat,5.0,,health_at_or_below,5.0,,0.0
+Masochist_basic_spine_003#1,Masochist_basic_spine_003,attack_damage,increased,1.0,,seconds_after_foreign_damage,5.0,,0.0
+Masochist_basic_spine_003#2,Masochist_basic_spine_003,spell_damage,increased,1.0,,seconds_after_foreign_damage,5.0,,0.0

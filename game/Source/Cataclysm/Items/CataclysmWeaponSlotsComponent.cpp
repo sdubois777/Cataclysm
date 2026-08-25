@@ -86,6 +86,24 @@ FString UCataclysmWeaponSlotsComponent::SubTypeOf(const AActor* Actor)
 	return FString();
 }
 
+FString UCataclysmWeaponSlotsComponent::DamageTypeOf(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return FString();
+	}
+
+	if (const UCataclysmWeaponSlotsComponent* Slots =
+			Actor->FindComponentByClass<UCataclysmWeaponSlotsComponent>())
+	{
+		return Slots->GetDamageType();
+	}
+
+	// No weapon slots at all, which is every enemy. See the header for why
+	// empty is the right answer rather than a gap. Issue #975.
+	return FString();
+}
+
 int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponType)
 {
 	// Taken back first, and unconditionally. Refilling without emptying would

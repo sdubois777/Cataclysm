@@ -2438,6 +2438,11 @@ CONDITIONS = {
     # anything past a minute is far likelier to be a percentage in the wrong
     # column than a deliberate window.
     "seconds_after_health_cost": (0.0, 60.0, "a number of seconds"),
+
+    # "for 5 seconds after you take damage of a Cataclysm type other than
+    # Demonic" is `seconds_after_foreign_damage` with 5. Same units and
+    # same bound as the window above; a different event opens it.
+    "seconds_after_foreign_damage": (0.0, 60.0, "a number of seconds"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
