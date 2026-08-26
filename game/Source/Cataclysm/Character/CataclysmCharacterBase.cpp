@@ -4,8 +4,12 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmLeech.h"
 // For health owed falling due. Issue #991.
+// For the Fervour that arrives from the passage of time. Issue #1008.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -93,6 +97,29 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// ITS RETURN VALUE IS DROPPED, the same as the settle above and for the same
 	// reason: false is the ordinary answer and it is returned for tests.
 	UCataclysmHealthDebt::KillIfDebtExceedsHealth(this);
+
+	// AND FERVOUR MAY ARRIVE FROM THE PASSAGE OF TIME ALONE. Issue #1008. The
+	// Masochist's Low Life keystone reads "While at or below 35% health you gain
+	// 10 Fervour per second", and it is the first thing that fills the pool
+	// without health having moved at all.
+	//
+	// A FIFTH JOB ON THIS STEP RATHER THAN A TIMER OF ITS OWN, for the reason
+	// the debt gives above: this already runs several times a second, and a
+	// timer per character is one more thing to cancel when one dies.
+	//
+	// AFTER THE LETHAL CHECK, so a character that just died gains nothing. The
+	// step's own guards would catch it anyway -- the grant refuses a component
+	// with no class resource set and this one refuses a corpse -- but the order
+	// is what makes that true rather than incidental.
+	//
+	// ITS RETURN VALUE IS DROPPED, the same as the two calls above. Zero is the
+	// ordinary answer for every character in the game.
+	if (!UCataclysmSkillEffects::IsDead(this))
+	{
+		UCataclysmFervour::GainPerSecondStep(
+			UCataclysmTargeting::AbilitySystemOf(this),
+			UCataclysmRegeneration::StepSeconds);
+	}
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

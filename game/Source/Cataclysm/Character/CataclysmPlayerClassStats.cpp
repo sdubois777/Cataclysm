@@ -268,6 +268,19 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("health_debt_cleared_only_by_a_kill"),
 			 Resource::GetHealthDebtClearedOnlyByAKillAttribute()},
 
+			// AND WHETHER HEALING STOPS REMOVING FERVOUR AT ALL. Issue #1006.
+			// Zero for every class. Two Masochist keystones set it, for two
+			// different kinds of healing, and the row's required tags are what
+			// tell those apart.
+			{TEXT("fervour_loss_suppressed"),
+			 Resource::GetFervourLossSuppressedAttribute()},
+
+			// AND HOW MUCH FERVOUR ARRIVES EVERY SECOND FROM NOTHING HAPPENING.
+			// Issue #1008. Zero for every class, and the Masochist's Low Life
+			// keystone is its only source.
+			{TEXT("fervour_per_second"),
+			 Resource::GetFervourPerSecondAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

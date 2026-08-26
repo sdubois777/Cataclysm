@@ -90,7 +90,22 @@ BUCKETS = {"flat", "increased", "more"}
 #: `tools/tests/test_class_passive_trees.py` uses for the same reason, kept
 #: separate rather than imported because that file pins counts against the tree
 #: JSON while this one reads the generated CSV.
-MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
+#: AND "halved", WHICH IS A THIRD WORDING AND THE FIRST WITH NO NUMBER IN IT.
+#: Issue #1007. Sanguine Ledger reads "your Health Regeneration is halved", which
+#: is a multiplication by a half and belongs in the `more` bucket -- an increase
+#: of -50 would join the additive sum, so a character with +100% health
+#: regeneration from elsewhere would end at 1.5x rather than at 1.0x.
+#:
+#: THE BARE WORD IS SAFE HERE WHERE "more" WAS NOT. "3 or more enemies" and "more
+#: than 10 meters" are ordinary English and that is why the second pattern needs
+#: a number and a percent sign; "halved" is not used in any other sense in any of
+#: the four trees, and it means exactly one thing.
+#:
+#: ISSUE #1009 ASKS WHETHER TO REWORD THE NODE INSTEAD. Sanguine Ledger is the
+#: only node in the game that needs this pattern, and it needs two other checks
+#: widened as well, which is the signal that its wording rather than these checks
+#: is the odd thing. If the reword lands, this alternative comes back out.
+MULTIPLIES = re.compile(r"multiplicative|halved|\d+\s*%\s+(?:more|less)\b",
                         re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
@@ -189,7 +204,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: per stack. One row each rather than two, because each names a single stat:
 #: this game has no cast speed at all (#1000), and melee damage is attack damage
 #: rather than both damage stats. Issues #1002, #1003 and #1004.
-AUTHORED_ROWS = 71
+#:
+#: AND BY FOUR, FOR THE THREE NODES THAT CHANGE HOW THE FERVOUR POOL MOVES.
+#: Wounds That Feed is one `flat` flag scoped to leech healing (#1006). Sanguine
+#: Ledger is two: the same flag scoped to regeneration healing, and a `more` of
+#: -50 on health regeneration, which is its cost (#1007). Low Life is one `flat`
+#: row granting Fervour every second below a health threshold (#1008).
+AUTHORED_ROWS = 75
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -283,7 +304,13 @@ AUTHORED_ROWS = 71
 #: is answered. Their triggers and their stacks work. This count measures whether
 #: a node has an authored effect, which is not the same question as whether the
 #: effect reaches much, and that gap is worth knowing about when reading it.
-AUTHORED_NODES = 54
+#:
+#: AND TO 57 FOR THREE MORE, the three nodes that change how the Fervour pool
+#: moves: Wounds That Feed and Sanguine Ledger stop healing removing it, for
+#: leech and for regeneration respectively, and Low Life fills it every second
+#: while the character is at low health. 57 of 293 altogether and 53 of the
+#: Masochist tree's own 74. Issues #1006, #1007 and #1008.
+AUTHORED_NODES = 57
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -634,6 +661,12 @@ def test_a_scale_is_actually_used(effects):
 #: nowhere to say so.
 VALUE_FORMS = {
     "health_debt_delay_extension": "{value:g} second",
+
+    # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had
+    # no entry for. Low Life reads "you gain 10 Fervour per second", so the
+    # number is followed by the resource's name rather than by a percent sign or
+    # a unit of time. Issue #1008.
+    "fervour_per_second": "{value:g} Fervour",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -657,6 +690,24 @@ VALUE_IN_WORDS = {
         ("never taken", 100.0),
     ("Masochist_keystone_bt_kA", "health_debt_cleared_only_by_a_kill"):
         ("cleared only by killing an enemy", 1.0),
+
+    # AND THE TWO NODES THAT STOP HEALING REMOVING FERVOUR. Issues #1006 and
+    # #1007. Both are flags of 1 and neither sentence has a digit: one says
+    # "does not remove Fervour" and the other "no longer removes Fervour". A
+    # modifier cannot take a stat to zero -- the pipeline clamps a Less
+    # multiplier at -99 on purpose -- so a rule that says "does not" has to say
+    # so as a flag rather than as a 99% reduction.
+    ("Masochist_keystone_fc_kB", "fervour_loss_suppressed"):
+        ("does not remove fervour", 1.0),
+    ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
+        ("no longer removes fervour", 1.0),
+
+    # AND SANGUINE LEDGER'S COST, WHICH ITS SENTENCE STATES AS A WORD. Issue
+    # #1007. "Your Health Regeneration is halved" is a `more` of -50, and
+    # "halved" is the only place in any of the four trees where a magnitude is
+    # written without a number. Issue #1009 asks whether to reword the node,
+    # which would remove this entry and two other widenings with it.
+    ("Masochist_keystone_spine_002", "health_regen"): ("halved", -50.0),
 }
 
 
@@ -710,7 +761,13 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
 
 
 #: Words a node uses when its own effect takes something away.
-TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by")
+#:
+#: "halved" JOINED THEM FOR ISSUE #1007. Sanguine Ledger reads "your Health
+#: Regeneration is halved" and the row that carries it is a `more` of -50. The
+#: word plainly takes something away; it was missing only because no node had
+#: said it that way before. Issue #1009 asks whether to reword the node instead,
+#: which would make this entry unnecessary.
+TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by", "halved")
 
 
 def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(

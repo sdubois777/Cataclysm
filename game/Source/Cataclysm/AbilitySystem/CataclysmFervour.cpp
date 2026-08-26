@@ -10,6 +10,17 @@ const TCHAR* UCataclysmFervour::FromDamageStat = TEXT("fervour_from_damage");
 const TCHAR* UCataclysmFervour::FromCostStat = TEXT("fervour_from_cost");
 const TCHAR* UCataclysmFervour::LostToHealingStat =
 	TEXT("fervour_lost_to_healing");
+const TCHAR* UCataclysmFervour::LossSuppressedStat =
+	TEXT("fervour_loss_suppressed");
+const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
+
+FGameplayTag UCataclysmFervour::LeechTag()
+{
+	// The same refusal `RegenerationTag` makes, for the same reason: a test may
+	// run before the tag table is loaded, and an empty tag matches nothing.
+	return FGameplayTag::RequestGameplayTag(TEXT("Keyword.Leech"),
+											/*ErrorIfNotFound=*/false);
+}
 
 FGameplayTag UCataclysmFervour::RegenerationTag()
 {
@@ -141,6 +152,35 @@ const TMap<FString, FGameplayAttribute>& UCataclysmFervour::RateAttributes()
 	return Map;
 }
 
+bool UCataclysmFervour::LossIsSuppressed(
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& Healing)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm
+		|| !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// NO CLASS RESOURCE SET MEANS NO FERVOUR TO PROTECT, which is every
+		// enemy in the game, and a component that is not this project's subclass
+		// cannot be asked anything with tags in hand.
+		return false;
+	}
+
+	// ASKED WITH THE HEALING'S TAGS, WHICH IS THE WHOLE MECHANISM. Issue #1006.
+	// Sanguine Ledger's row requires `Keyword.Regeneration` and Wounds That
+	// Feed's requires `Keyword.Leech`, so the same stat answers differently for
+	// the two kinds of healing on the same character.
+	//
+	// A FALLBACK OF ZERO RATHER THAN THE ATTRIBUTE'S OWN VALUE. The attribute
+	// holds what the flag is worth with NO healing in hand, and every row that
+	// sets it requires a tag, so the attribute is zero for everybody. Passing it
+	// would be passing zero the long way round, and passing anything else would
+	// suppress the loss for healing that matched no row.
+	return Cataclysm->StatForSkill(FName(LossSuppressedStat), Healing, 0.0f)
+		> 0.0f;
+}
+
 float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 							  FName Stat, float HealthChanged,
 							  const FGameplayTagContainer& Context, float Sign)
@@ -155,6 +195,21 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	const UCataclysmVitalAttributeSet* Vitals =
 		AbilitySystem->GetSet<UCataclysmVitalAttributeSet>();
 	if (!Resource || !Vitals)
+	{
+		return 0.0f;
+	}
+
+	// SOME HEALING DOES NOT REMOVE FERVOUR AT ALL. Issue #1006. Two Masochist
+	// keystones say so: Sanguine Ledger for health regeneration and Wounds That
+	// Feed for life leech. They set one flag, and the `Required Tags` on the row
+	// decide which healing it covers -- which is why the question is asked with
+	// this healing's own tags in hand rather than read off the attribute.
+	//
+	// ONLY THE REMOVING DIRECTION. A negative sign is Fervour leaving the pool,
+	// which is healing; a positive one is damage taken or a cost paid, and no
+	// node suppresses those. Asking on the way in as well would let a node meant
+	// to protect the bar quietly stop it filling.
+	if (Sign < 0.0f && LossIsSuppressed(AbilitySystem, Context))
 	{
 		return 0.0f;
 	}
@@ -193,5 +248,65 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 
 	// MEASURED RATHER THAN ASSUMED, so a caller reporting what it did says what
 	// really happened rather than what it asked for.
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainPerSecondStep(
+	UAbilitySystemComponent* AbilitySystem, float SecondsInStep)
+{
+	if (!AbilitySystem || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE. Issue #1008. Low Life's row
+	// carries a health condition, and a conditional bonus is never folded into
+	// a gameplay attribute -- it would be stale the moment health moved -- so
+	// the attribute is zero for a character holding the keystone and a plain
+	// read would answer zero for ever with nothing reporting it.
+	//
+	// NO TAGS, because nothing is happening: this is Fervour arriving from the
+	// passage of time rather than from a hit or a heal, so there is no event
+	// whose tags could scope it.
+	const float PerSecond = Cataclysm->StatForSkill(
+		FName(PerSecondStat), FGameplayTagContainer(), 0.0f);
+	if (PerSecond <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN LOW LIFE, and
+		// every character holding it that is not hurt enough for the condition.
+		return 0.0f;
+	}
+
+	const float Wanted = PerSecond * SecondsInStep;
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the same rule `Move` above follows and for
+	// the reason it gives: `ApplyModToAttribute` writes a base value and whether
+	// that reaches `PreAttributeChange` depends on whether an aggregator happens
+	// to exist for the attribute.
+	const float Change =
+		FMath::Clamp(Before + Wanted, 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		// A FULL BAR IS THE ORDINARY CASE for a character standing at low health
+		// with this keystone, because ten a second fills it in ten seconds.
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }

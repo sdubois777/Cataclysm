@@ -33,6 +33,12 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// has an ordinary debt that falls due on a timer.
 	InitHealthDebtDelayExtension(0.0f);
 	InitHealthDebtClearedOnlyByAKill(0.0f);
+
+	// AND ZERO FOR BOTH FERVOUR RULES. Issues #1006 and #1008. A character
+	// with no point in Sanguine Ledger or Wounds That Feed has healing that
+	// removes Fervour as usual, and one without Low Life gains none on a timer.
+	InitFervourLossSuppressed(0.0f);
+	InitFervourPerSecond(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -51,6 +57,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthOwed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLossSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -86,7 +94,9 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetAddedHealthCostOfCurrentAttribute()
 		|| Attribute == GetHealthOwedAttribute()
 		|| Attribute == GetHealthDebtDelayExtensionAttribute()
-		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute())
+		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute()
+		|| Attribute == GetFervourLossSuppressedAttribute()
+		|| Attribute == GetFervourPerSecondAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -143,6 +153,8 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetHealthOwedAttribute());
 	All.Add(GetHealthDebtDelayExtensionAttribute());
 	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
+	All.Add(GetFervourLossSuppressedAttribute());
+	All.Add(GetFervourPerSecondAttribute());
 	return All;
 }
 
@@ -163,3 +175,5 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthOwed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)

@@ -79,6 +79,12 @@ public:
 	/** Fervour removed per 1% of maximum health restored. */
 	static const TCHAR* LostToHealingStat;
 
+	/** Whether healing stops removing Fervour at all. Zero for no. #1006. */
+	static const TCHAR* LossSuppressedStat;
+
+	/** How much Fervour arrives every second, from nothing happening. #1008. */
+	static const TCHAR* PerSecondStat;
+
 	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
@@ -86,10 +92,56 @@ public:
 	 * WHY THE SOURCE OF HEALING HAS TO BE SAID. The Masochist's Staunch node
 	 * reduces "the Fervour removed by your own health regeneration", which is
 	 * narrower than healing. A modifier requiring this tag applies to
-	 * regeneration and not to leech, and leech carries no tag at all, so the
-	 * scoping falls out of the existing pipeline with no new mechanism.
+	 * regeneration and not to leech, so the scoping falls out of the existing
+	 * pipeline with no new mechanism.
 	 */
 	static FGameplayTag RegenerationTag();
+
+	/**
+	 * Marks a restoration of health as coming from leech. Issue #1006.
+	 *
+	 * LEECH USED TO CARRY NO TAG AT ALL, and that was enough while the only node
+	 * asking about the source of healing was Staunch, which asks about
+	 * regeneration: leech carried nothing, the tag did not match, the node did
+	 * not apply. Wounds That Feed asks the other way round -- "healing from Life
+	 * Leech does not remove Fervour" -- and carrying nothing cannot answer that,
+	 * because a future healing source would also carry nothing and would be
+	 * caught by the same row.
+	 */
+	static FGameplayTag LeechTag();
+
+	/**
+	 * Whether this character's healing stops removing Fervour. Issue #1006.
+	 *
+	 * ASKED WITH THE HEALING'S OWN TAGS, because the two nodes that set the flag
+	 * set it for different healing: Sanguine Ledger for regeneration and Wounds
+	 * That Feed for leech. The flag is one stat and the row's required tags are
+	 * what tell the two apart.
+	 *
+	 * False for every character without one of those keystones, and false for
+	 * any ability system with no class resource attribute set.
+	 */
+	static bool LossIsSuppressed(const UAbilitySystemComponent* AbilitySystem,
+								 const FGameplayTagContainer& Healing);
+
+	/**
+	 * Add the Fervour a step this long is worth, and answer what arrived.
+	 * Issue #1008.
+	 *
+	 * THE FIRST THING THAT FILLS THE POOL WITHOUT HEALTH HAVING MOVED. The
+	 * Masochist's Low Life keystone is its only source: "While at or below 35%
+	 * health you gain 10 Fervour per second."
+	 *
+	 * ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, because that node carries a
+	 * health condition and a conditional bonus is never folded into an
+	 * attribute. A plain read would answer zero for every character for ever and
+	 * nothing at run time would report it.
+	 *
+	 * @return how much Fervour was really added, which is zero for a character
+	 *         with no such node, for a full bar, and for no class resource set
+	 */
+	static float GainPerSecondStep(UAbilitySystemComponent* AbilitySystem,
+								   float SecondsInStep);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

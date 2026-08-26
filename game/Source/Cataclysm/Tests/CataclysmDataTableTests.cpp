@@ -256,7 +256,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 71 FOR THE THREE NODES BUILT ON A COUNT OF STACKS: one row each
 	// for Sanguine Momentum, Blood Offering and Carnage. Issues #1002, #1003
 	// and #1004.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         71)
+	//
+	// AND TO 75 FOR THE THREE NODES THAT CHANGE HOW FERVOUR MOVES: one row for
+	// Wounds That Feed (#1006), two for Sanguine Ledger (#1007) and one for Low
+	// Life (#1008).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         75)
 
 	#undef CHECK_TABLE
 

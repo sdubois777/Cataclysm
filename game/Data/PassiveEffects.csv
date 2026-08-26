@@ -70,3 +70,7 @@ Masochist_keystone_bt_kA#4,Masochist_keystone_bt_kA,health_debt_cleared_only_by_
 Masochist_basic_bt_b1#1,Masochist_basic_bt_b1,attack_speed,increased,1.0,,,0.0,momentum_stacks,1.0
 Masochist_basic_fc_a1#1,Masochist_basic_fc_a1,attack_damage,increased,1.0,Type.Melee,,0.0,bloodlust_stacks,1.0
 Masochist_keystone_fc_kA#1,Masochist_keystone_fc_kA,attack_damage,more,3.0,Type.Melee,,0.0,carnage_stacks,1.0
+Masochist_keystone_fc_kB#1,Masochist_keystone_fc_kB,fervour_loss_suppressed,flat,1.0,Keyword.Leech,,0.0,,0.0
+Masochist_keystone_spine_002#1,Masochist_keystone_spine_002,fervour_loss_suppressed,flat,1.0,Keyword.Regeneration,,0.0,,0.0
+Masochist_keystone_spine_002#2,Masochist_keystone_spine_002,health_regen,more,-50.0,,,0.0,,0.0
+Masochist_keystone_ll_kC#1,Masochist_keystone_ll_kC,fervour_per_second,flat,10.0,,health_at_or_below,35.0,,0.0

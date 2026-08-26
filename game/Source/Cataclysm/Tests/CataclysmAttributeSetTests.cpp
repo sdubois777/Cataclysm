@@ -204,8 +204,13 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * reason as everything else in this count: one passive node supplies each,
 	 * no class line names either, and no player reads either as a stat. The
 	 * sheet total therefore does not move.
+	 *
+	 * ELEVEN SINCE THE THREE NODES THAT CHANGE HOW FERVOUR MOVES. Issues #1006
+	 * and #1008 added the flag for healing that does not remove Fervour, and the
+	 * Fervour that arrives every second from nothing having happened. Off the
+	 * sheet for the same reasons again, so the sheet total still does not move.
 	 */
-	constexpr int32 OffSheetResourceStats = 9;
+	constexpr int32 OffSheetResourceStats = 11;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -239,7 +244,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// a character owes; neither is a sheet stat. Eleven since #995 and #997
 	// added the seconds a further payment pushes a debt out and the flag for a
 	// debt that is never taken on a timer; neither is a sheet stat either.
-	TestEqual(TEXT("Eleven class resource attributes"),
+	// Thirteen since #1006 and #1008 added the flag for healing that does not
+	// remove Fervour and the Fervour that arrives every second; neither is a
+	// sheet stat either.
+	TestEqual(TEXT("Thirteen class resource attributes"),
 		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,
