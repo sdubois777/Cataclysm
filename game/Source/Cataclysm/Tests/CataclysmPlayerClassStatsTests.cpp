@@ -340,6 +340,26 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("fervour_per_second"),
 		 TEXT("the Masochist's Low Life node, as a flat modifier")},
 
+		// Issue #985. Whether dropping below half health turns damage taken into
+		// Bleeding. Zero for every class, and the Masochist's The Breaking Point
+		// is its only source. Unlike its neighbours above, this row carries no
+		// required tags and no condition, so it IS folded into the attribute --
+		// which is why `UCataclysmDamageConversion` passes the attribute's own
+		// value as the fallback when it asks for the stat, where the two above
+		// pass zero.
+		{TEXT("damage_to_bleeding_on_low_health"),
+		 TEXT("the Masochist's The Breaking Point node, as a flat modifier")},
+
+		// Issue #985. How many seconds one turn of that conversion lasts. THE
+		// ONLY STAT IN THIS MAP WHOSE BASE IS NEITHER A CLASS LINE NOR A
+		// MODIFIER. The node grants an `increased` of 5 per point, and 3 seconds
+		// is the base that multiplies: a constant the engine passes when it asks.
+		// `ENGINE_SUPPLIED_BASES` in tools/generate_datatables.py names it, so
+		// the check refusing an increase with no base under it can see it too.
+		{TEXT("damage_to_bleeding_window"),
+		 TEXT("UCataclysmDamageConversion::BaseWindowSeconds, with the "
+			  "Masochist's The Breaking Point node increasing it")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

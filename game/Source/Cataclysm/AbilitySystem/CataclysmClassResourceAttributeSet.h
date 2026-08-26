@@ -285,6 +285,55 @@ public:
 	FGameplayAttributeData FervourPerSecond;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerSecond)
 
+	/**
+	 * Whether dropping below half health turns damage into Bleeding. Issue #985.
+	 * Zero for no, above zero for yes.
+	 *
+	 * THE MASOCHIST'S The Breaking Point IS ITS ONLY SOURCE: "Dropping below 50%
+	 * health converts all damage you take into Bleeding over 5 seconds. The
+	 * conversion lasts 3 seconds, increased by 5% per point, and cannot happen
+	 * more than once every 10 seconds."
+	 *
+	 * A FLAG AND A DURATION, WHICH ARE TWO STATS BECAUSE THEY ANSWER TWO
+	 * QUESTIONS. This one says whether the rule applies at all;
+	 * `DamageToBleedingWindow` beside it says how long one turn of it lasts. The
+	 * duration has a base on the Masochist's class stat line, so it reads 3
+	 * seconds for every Masochist whether or not they have spent a point -- and
+	 * that is harmless precisely because this flag is what decides that the rule
+	 * runs at all.
+	 *
+	 * A FLAG RATHER THAN A DURATION OF ZERO, for the reason `FervourLossSuppressed`
+	 * above gives at length: `UCataclysmStatPipeline::LessMultiplierFloor` is -99,
+	 * so no modifier can take a stat to zero, and a rule that is off has to say so
+	 * separately rather than by being worth nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_DamageToBleedingOnLowHealth)
+	FGameplayAttributeData DamageToBleedingOnLowHealth;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
+
+	/**
+	 * How many seconds one turn of that conversion lasts. Issue #985.
+	 *
+	 * THREE SECONDS ON THE MASOCHIST'S CLASS STAT LINE, increased by 5% per point
+	 * spent in The Breaking Point, so eight points make it 4.2 seconds.
+	 *
+	 * THE BASE IS A CLASS STAT AND NOT A CONSTANT IN C++, and that is what makes
+	 * the node's row authorable at all. The passive effects sheet carries values
+	 * PER POINT; "lasts 3 seconds, increased by 5% per point" is a base plus an
+	 * increase, and an `increased` row with no base under it is worth nothing.
+	 * `test_every_stat_is_one_the_game_supplies` exists to catch exactly that.
+	 *
+	 * READ OFF THE ATTRIBUTE, unlike its neighbours, and that is safe here
+	 * BECAUSE ITS ONLY ROW CARRIES NO CONDITION AND NO SCALE. The window is
+	 * measured at the moment the conversion starts, when the character has just
+	 * been hit and nothing is being cast, so there is no skill context to ask
+	 * with. If a later node ever conditions this stat, that read has to become a
+	 * `StatForSkill` call or the row will be dropped in silence.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_DamageToBleedingWindow)
+	FGameplayAttributeData DamageToBleedingWindow;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -305,4 +354,6 @@ protected:
 	UFUNCTION() void OnRep_HealthDebtClearedOnlyByAKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourLossSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageToBleedingOnLowHealth(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageToBleedingWindow(const FGameplayAttributeData& OldValue);
 };

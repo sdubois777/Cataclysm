@@ -209,8 +209,15 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * and #1008 added the flag for healing that does not remove Fervour, and the
 	 * Fervour that arrives every second from nothing having happened. Off the
 	 * sheet for the same reasons again, so the sheet total still does not move.
+	 *
+	 * THIRTEEN SINCE THE BREAKING POINT. Issue #985 added the flag for damage
+	 * arriving as Bleeding after a drop below half health, and how many seconds
+	 * one turn of that lasts. Off the sheet for the same reasons a third time:
+	 * one passive node supplies both, no class line names either, and no player
+	 * reads either as a stat on the character sheet. The sheet total still does
+	 * not move, which is the point of counting them separately.
 	 */
-	constexpr int32 OffSheetResourceStats = 11;
+	constexpr int32 OffSheetResourceStats = 13;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

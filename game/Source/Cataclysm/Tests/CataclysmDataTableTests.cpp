@@ -260,7 +260,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 75 FOR THE THREE NODES THAT CHANGE HOW FERVOUR MOVES: one row for
 	// Wounds That Feed (#1006), two for Sanguine Ledger (#1007) and one for Low
 	// Life (#1008).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         75)
+	//
+	// AND TO 77 FOR THE BREAKING POINT, which is two rows on one node. Issue
+	// #985. A `flat` flag saying the rule applies at all, and an `increased` of
+	// 5 on how long one turn of it lasts. The 3 second base that increase
+	// multiplies is NOT a row here and could not be: this sheet carries values
+	// PER POINT, and a base is not one.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         77)
 
 	#undef CHECK_TABLE
 

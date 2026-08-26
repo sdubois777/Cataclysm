@@ -281,6 +281,17 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("fervour_per_second"),
 			 Resource::GetFervourPerSecondAttribute()},
 
+			// AND WHETHER DROPPING BELOW HALF HEALTH TURNS DAMAGE INTO BLEEDING,
+			// with how long one turn of that lasts beside it. Issue #985. The
+			// Masochist's The Breaking Point is the flag's only source; the
+			// window has a base of 3 seconds on the Masochist's own class stat
+			// line, because "lasts 3 seconds, increased by 5% per point" is a
+			// base plus an increase and an increase needs something under it.
+			{TEXT("damage_to_bleeding_on_low_health"),
+			 Resource::GetDamageToBleedingOnLowHealthAttribute()},
+			{TEXT("damage_to_bleeding_window"),
+			 Resource::GetDamageToBleedingWindowAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

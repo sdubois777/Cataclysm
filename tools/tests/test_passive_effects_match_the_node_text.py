@@ -208,7 +208,20 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Ledger is two: the same flag scoped to regeneration healing, and a `more` of
 #: -50 on health regeneration, which is its cost (#1007). Low Life is one `flat`
 #: row granting Fervour every second below a health threshold (#1008).
-AUTHORED_ROWS = 75
+#:
+#: AND BY TWO, BOTH ON ONE NODE, FOR THE BREAKING POINT. Issue #985. It reads
+#: "Dropping below 50% health converts all damage you take into Bleeding over 5
+#: seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot
+#: happen more than once every 10 seconds." That is a rule and a magnitude, so it
+#: is a `flat` flag saying the rule applies and an `increased` of 5 on how long
+#: one turn of it lasts.
+#:
+#: THE 3 SECONDS IS NOT A ROW HERE AND COULD NOT BE. This sheet carries values
+#: PER POINT, and 3 seconds is the base the node's increase multiplies, so it is
+#: on the Masochist's own line in the `Class Stats` sheet instead. An `increased`
+#: row with no base under it is worth nothing, which is what
+#: `test_every_stat_is_one_the_game_supplies` exists to refuse.
+AUTHORED_ROWS = 77
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -313,7 +326,15 @@ AUTHORED_ROWS = 75
 #: leech and for regeneration respectively, and Low Life fills it every second
 #: while the character is at low health. 57 of 293 altogether and 53 of the
 #: Masochist tree's own 74. Issues #1006, #1007 and #1008.
-AUTHORED_NODES = 57
+#:
+#: AND TO 58 FOR THE BREAKING POINT, which is worth more than one to the count
+#: it is part of. Issue #985. Eleven further Masochist nodes ask about debuffs
+#: the character is carrying -- "While you are Bleeding", "for each unique debuff
+#: on you" -- and nothing in this game put a status effect on the PLAYER at all.
+#: This node is the tree's own answer to that: a Masochist that bleeds itself
+#: needs no enemy system. 58 of 293 altogether and 54 of the Masochist tree's own
+#: 74.
+AUTHORED_NODES = 58
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -353,7 +374,14 @@ def stats() -> set[str]:
             # weapons average theirs; see `item_base_column_stats` in
             # tools/generate_datatables.py for why that is a real base under an
             # increase all the same.
-            | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV)))
+            | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
+            # AND A BASE THE ENGINE PASSES WHEN IT ASKS, since issue #985. That
+            # one cannot be seen from any CSV -- it is an argument C++ hands to
+            # `StatForSkill` -- so it is named one stat at a time, with the code
+            # that supplies it. Imported rather than restated for the reason the
+            # header of this file gives about the generator's own rule: two
+            # spellings of one rule is the drift this whole file exists to catch.
+            | set(gen.ENGINE_SUPPLIED_BASES))
 
 
 @pytest.fixture(scope="module")
@@ -704,6 +732,19 @@ VALUE_IN_WORDS = {
         ("does not remove fervour", 1.0),
     ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
         ("no longer removes fervour", 1.0),
+
+    # AND THE NODE THAT TURNS DAMAGE TAKEN INTO BLEEDING. Issue #985. Another
+    # flag of 1 whose sentence states a rule rather than a magnitude: "Dropping
+    # below 50% health converts all damage you take into Bleeding over 5
+    # seconds."
+    #
+    # THE DIGITS IN THAT SENTENCE BELONG TO OTHER THINGS, which is why none of
+    # them can stand in for this row. 50 is the health threshold, 5 is how long
+    # the Bleeding lasts, and the node's own magnitude -- "increased by 5% per
+    # point" -- is a SECOND row on `damage_to_bleeding_window`, which the
+    # ordinary check below matches against that 5 with no exemption at all.
+    ("Masochist_basic_ll_b1", "damage_to_bleeding_on_low_health"):
+        ("converts all damage you take into bleeding", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50

@@ -74,3 +74,5 @@ Masochist_keystone_fc_kB#1,Masochist_keystone_fc_kB,fervour_loss_suppressed,flat
 Masochist_keystone_spine_002#1,Masochist_keystone_spine_002,fervour_loss_suppressed,flat,1.0,Keyword.Regeneration,,0.0,,0.0
 Masochist_keystone_spine_002#2,Masochist_keystone_spine_002,health_regen,more,-50.0,,,0.0,,0.0
 Masochist_keystone_ll_kC#1,Masochist_keystone_ll_kC,fervour_per_second,flat,10.0,,health_at_or_below,35.0,,0.0
+Masochist_basic_ll_b1#1,Masochist_basic_ll_b1,damage_to_bleeding_on_low_health,flat,1.0,,,0.0,,0.0
+Masochist_basic_ll_b1#2,Masochist_basic_ll_b1,damage_to_bleeding_window,increased,5.0,,,0.0,,0.0

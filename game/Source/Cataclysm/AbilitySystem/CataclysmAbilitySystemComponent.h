@@ -390,6 +390,70 @@ public:
 	}
 
 	/**
+	 * Whether damage this character takes is being turned into Bleeding right
+	 * now. Issue #985, the Masochist's The Breaking Point.
+	 *
+	 * A WINDOW READ WHEN IT IS ASKED FOR, not a timer that fires. The same shape
+	 * the stack count beside it uses, and for the same reason: asking is cheap,
+	 * a timer per character is one more thing to cancel when one dies, and a
+	 * window that has quietly expired answers correctly with no bookkeeping.
+	 */
+	bool IsConvertingDamageToBleeding() const;
+
+	/**
+	 * Whether a new turn of that conversion is allowed to start.
+	 *
+	 * SEPARATE FROM THE WINDOW ABOVE BECAUSE THE COOLDOWN OUTLASTS IT. The node
+	 * says the conversion "cannot happen more than once every 10 seconds" while
+	 * one turn of it lasts 3 to 4.2 seconds, so there is a stretch where the
+	 * conversion is over and another may not yet begin.
+	 */
+	bool MayStartDamageConversion() const;
+
+	/**
+	 * Begin a turn of the conversion: it runs for `WindowSeconds` and no other
+	 * may begin for `CooldownSeconds` from now.
+	 *
+	 * THE COOLDOWN IS MEASURED FROM THE START AND NOT FROM THE END, which is a
+	 * reading of "cannot happen more than once every 10 seconds" rather than
+	 * something the sentence settles outright. One occurrence per ten second
+	 * period is what that phrase says in ordinary English. At eight points the
+	 * window is 4.2 seconds, so it leaves a gap of 5.8.
+	 *
+	 * NO WORLD MEANS NO CLOCK, so nothing is recorded and no conversion begins.
+	 * That is the safe direction, and the same refusal `NoteHealthDebtDueIn`
+	 * makes: a window that cannot be timed must not be opened for ever.
+	 */
+	void NoteDamageConversionStarted(float WindowSeconds, float CooldownSeconds);
+
+	/** When the current conversion ends, in world seconds. For tests. */
+	float DamageConversionEndsAt() const
+	{
+		return DamageToBleedingUntilSeconds;
+	}
+
+	/**
+	 * Whether this character's health was above half the last time it moved.
+	 *
+	 * WHAT MAKES A CROSSING TELLABLE FROM A STATE. The Breaking Point triggers on
+	 * "dropping below 50% health", which happens once; without a memory of where
+	 * health was, every hit taken at 40% would look like the same drop.
+	 *
+	 * TRUE TO BEGIN WITH, because a character is created at full health and has
+	 * therefore not dropped anywhere yet.
+	 */
+	bool WasAboveHalfHealth() const
+	{
+		return bWasAboveHalfHealth;
+	}
+
+	/** Record where health is now, for the next comparison. */
+	void NoteAboveHalfHealth(bool bAbove)
+	{
+		bWasAboveHalfHealth = bAbove;
+	}
+
+	/**
 	 * How many stacks of a kind this character is holding. Issue #1002.
 	 *
 	 * THE WINDOW IS APPLIED WHEN THE COUNT IS ASKED FOR rather than when it
@@ -552,6 +616,24 @@ protected:
 	 * the Rolling Debt node "extends the delay on what is owed", singular.
 	 */
 	float HealthDebtDueAtSeconds = -1.0f;
+
+	/**
+	 * World time at which the current turn of damage-into-Bleeding ends, and the
+	 * earliest world time another may begin. Issue #985.
+	 *
+	 * NEGATIVE MEANS NEVER, for both. A character that has never dropped below
+	 * half health with The Breaking Point has no window and no cooldown, and a
+	 * comparison against a negative time answers correctly without a separate
+	 * "has this ever happened" flag.
+	 *
+	 * TWO NUMBERS AND NOT ONE, because the cooldown outlasts the window. See
+	 * `IsConvertingDamageToBleeding` and `MayStartDamageConversion` above.
+	 */
+	float DamageToBleedingUntilSeconds = -1.0f;
+	float DamageToBleedingNextAllowedSeconds = -1.0f;
+
+	/** Where health was the last time it moved. See `WasAboveHalfHealth`. */
+	bool bWasAboveHalfHealth = true;
 
 	/**
 	 * How far the CURRENT debt has already been pushed out, in seconds.

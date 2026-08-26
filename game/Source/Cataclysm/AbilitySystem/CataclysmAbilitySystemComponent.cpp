@@ -514,6 +514,62 @@ void UCataclysmAbilitySystemComponent::ClearHealthDebtDue()
 	HealthDebtExtensionAppliedSeconds = 0.0f;
 }
 
+bool UCataclysmAbilitySystemComponent::IsConvertingDamageToBleeding() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || DamageToBleedingUntilSeconds < 0.0f)
+	{
+		return false;
+	}
+
+	// STRICTLY BEFORE, so the window is over at the instant it says it ends
+	// rather than one frame later. The debt's own comparison above is the other
+	// way round because a debt falls due AT its time; a window runs UNTIL its
+	// time. The two are opposite questions and the boundary belongs to the debt.
+	return World->GetTimeSeconds() < DamageToBleedingUntilSeconds;
+}
+
+bool UCataclysmAbilitySystemComponent::MayStartDamageConversion() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO CONVERSION, which is the safe direction: a window
+		// that cannot be timed would never close.
+		return false;
+	}
+
+	// NEVER HAPPENED IS ALLOWED. A negative time means no conversion has ever
+	// begun, so there is nothing to wait for.
+	return DamageToBleedingNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= DamageToBleedingNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteDamageConversionStarted(
+	float WindowSeconds, float CooldownSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// A WINDOW OF NOTHING OPENS NOTHING. A character whose window stat somehow
+	// resolved to zero or less would otherwise be marked as converting for an
+	// instant and start its cooldown for no benefit at all.
+	if (WindowSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	DamageToBleedingUntilSeconds = Now + WindowSeconds;
+
+	// FROM THE START AND NOT FROM THE END. See the header: "cannot happen more
+	// than once every 10 seconds" is one occurrence per ten second period.
+	DamageToBleedingNextAllowedSeconds = Now + CooldownSeconds;
+}
+
 int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
 												   float WindowSeconds) const
 {
