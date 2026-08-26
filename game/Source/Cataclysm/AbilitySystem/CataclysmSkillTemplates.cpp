@@ -174,11 +174,17 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// after this ability has ended, so it has to carry the chance rather than
 	// read it off the character on arrival. Named explicitly because the two
 	// arguments before it are defaulted. Issue #657.
+	//
+	// AND WHAT THIS SKILL JUST COST, for the same reason and with more at stake.
+	// Blood Pyre is the one skill in the game with a health cost of its own and
+	// it is a projectile, so this is the route that matters most for the
+	// Masochist's Grand Tithe node. Reading the cost when the shot landed would
+	// credit the blow with whatever the character last paid. Issue #983.
 	InFlight = ACataclysmProjectile::Fire(
 		Self, Origin, Destination, ScaledRadiusCm(), Params.SpeedCmPerSecond,
 		Params.Pierce, Params.bReturns, GetDamagePercent(), SkillTags,
 		Params.bBurns, /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
-		CritChancePercent);
+		CritChancePercent, LastHealthCostPercentOfMaximum);
 
 	if (!InFlight)
 	{

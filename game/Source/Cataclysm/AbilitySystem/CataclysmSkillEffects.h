@@ -160,6 +160,30 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float CritChancePercent = -1.0f;
 
 	/**
+	 * What the skill dealing this blow cost, as a percentage of the attacker's
+	 * maximum health, or -1 for a blow with no skill behind it.
+	 *
+	 * THE SECOND NUMBER ON THIS STRUCT, and it is here for the same reason as
+	 * the first. The Masochist's Grand Tithe node reads "a skill whose health
+	 * cost is above 10% of your maximum health deals 4% increased damage per
+	 * point", which asks about the SKILL rather than the character, so no state
+	 * built from the character alone can answer it.
+	 * `UCataclysmSkillEffects::ApplyHit` receives the skill's tags and not the
+	 * skill, so the number has to travel with the blow. Issue #983.
+	 *
+	 * -1 IS THE ORDINARY CASE. An enemy's attack, a minion's blow and a burning
+	 * patch of ground never had a skill behind them, and every one of those
+	 * correctly refuses a condition about what a skill cost.
+	 *
+	 * ZERO IS A REAL ANSWER, so it cannot be the sentinel, exactly as for the
+	 * critical strike chance above. A skill that was used and charged nothing
+	 * reports zero, which is every skill in the game except Blood Pyre for a
+	 * character with no point in the Deeper Cuts node.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float SkillHealthCostPercent = -1.0f;
+
+	/**
 	 * The `Element.*` tag of the skill dealing this blow, for colour only.
 	 *
 	 * WHAT IT IS FOR. A player's effects were all drawn white because the only
@@ -543,9 +567,14 @@ public:
 	 * missing from it. "While at or below 35% health, +2% increased damage per
 	 * point" is one of the second kind. The attribute is still the fallback, so
 	 * an ability system that recorded nothing answers exactly what it did before.
+	 *
+	 * AND WITH WHAT THE SKILL COST, since issue #983, for the same reason:
+	 * a modifier conditioned on the skill's own health cost is another the
+	 * attribute could not carry. -1 means no skill in hand and refuses it.
 	 */
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
-							   const FGameplayTagContainer& SkillTags);
+							   const FGameplayTagContainer& SkillTags,
+							   float SkillHealthCostPercent = -1.0f);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -577,9 +606,13 @@ public:
 	 * IT FALLS BACK TO `IncreasesBehindAttackDamage` when nothing was recorded
 	 * for attack damage, which is the ordinary case for an enemy and for a
 	 * player before its first stat refresh.
+	 *
+	 * AND BY THOSE CONDITIONED ON WHAT THE SKILL COST, since issue #983.
+	 * -1 means no skill in hand, which refuses such a modifier.
 	 */
 	static float IncreasesForSkill(const UAbilitySystemComponent* Source,
-								   const FGameplayTagContainer& SkillTags);
+								   const FGameplayTagContainer& SkillTags,
+								   float SkillHealthCostPercent = -1.0f);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

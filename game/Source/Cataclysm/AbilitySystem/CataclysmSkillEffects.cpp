@@ -93,7 +93,8 @@ bool UCataclysmSkillEffects::IsSpell(const FGameplayTagContainer& SkillTags)
 }
 
 float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
-										   const FGameplayTagContainer& SkillTags)
+										   const FGameplayTagContainer& SkillTags,
+										   float SkillHealthCostPercent)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -114,7 +115,7 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float Value = Cataclysm
 		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
-								  FromAttribute)
+								  FromAttribute, SkillHealthCostPercent)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -134,7 +135,8 @@ float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
 }
 
 float UCataclysmSkillEffects::IncreasesForSkill(
-	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags)
+	const UAbilitySystemComponent* Source,
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -147,7 +149,8 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	// This multiplies the whole hit, and a sum of increases below -100% would
 	// turn a blow into healing rather than into a very small blow.
 	return FMath::Max(
-		0.0f, Cataclysm->AttackDamageIncreasesForSkill(SkillTags));
+		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
+				  SkillTags, SkillHealthCostPercent));
 }
 
 float UCataclysmSkillEffects::DamageAgainstTypeOf(
@@ -279,13 +282,26 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	//
 	// THEY ARE EQUAL FOR A CHARACTER CARRYING NEITHER KIND, which is every
 	// character before this issue, so nothing else changes.
+	// AND WHAT THIS SKILL COST TRAVELS INTO BOTH OF THEM. Issue #983. Grand
+	// Tithe reads "a skill whose health cost is above 10% of your maximum
+	// health deals 4% increased damage per point", which no state built from
+	// the character alone can judge: the same character using two skills an
+	// instant apart answers it differently for each.
+	//
+	// NOT INTO `Folded`, DELIBERATELY, and that is the same split issue #958
+	// drew for a health condition. `Folded` is what was put INTO the
+	// attribute, worked out with no skill in hand, so it must stay worked out
+	// that way or the bonus would be divided straight back out again.
 	const float Folded = IncreasesBehindAttackDamage(Source);
-	const float Applying = IncreasesForSkill(Source, SkillTags);
+	const float Applying =
+		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent);
 	const float Conditional = DamageAgainstTypeOf(Source, Target);
 
 	const float BeforeIncreases =
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
-	const float Flat = IsSpell(SkillTags) ? SpellDamageOf(Source, SkillTags) : 0.0f;
+	const float Flat = IsSpell(SkillTags)
+		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent)
+		: 0.0f;
 
 	const float Damage = ModifiedDamage(
 		Source,

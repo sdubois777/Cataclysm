@@ -1105,6 +1105,80 @@ bool FCataclysmTwoHealthCostsAddTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillRecordsWhatItChargedTest,
+	"Cataclysm.Skills.ASkillRecordsWhatItChargedAsAShareOfMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillRecordsWhatItChargedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WHAT THE MASOCHIST'S GRAND TITHE NODE READS. Issue #983. The node asks
+	// about "a skill whose health cost is above 10% of your maximum health", and
+	// nothing anywhere recorded what a skill had cost.
+	//
+	// AGAINST MAXIMUM HEALTH WHATEVER EACH HALF WAS MEASURED AGAINST, which is
+	// the arithmetic worth pinning. The skill's own 8% is a share of CURRENT
+	// health and the character's 10% is a share of MAXIMUM health, and the node
+	// asks about maximum.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// HALF HEALTH, DELIBERATELY, so the two halves of the cost cannot be
+	// confused. At full health both would be a share of the same number and a
+	// division by the wrong one would give the right answer by accident.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(), 10.0f);
+
+	UCataclysmProjectileSkill* Pyre = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0; HealthCostPercent=8"), TEXT("Blood Pyre"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// NOTHING RECORDED UNTIL IT IS USED, which is what -1 means and why zero
+	// cannot be the sentinel: a skill that was used and charged nothing is a
+	// real and common answer.
+	TestTrue(TEXT("an unused skill has recorded nothing"),
+			 Pyre->LastHealthCostPercentOfMaximum < 0.0f);
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Pyre));
+
+	// 8% OF 500 CURRENT IS 40, PLUS 10% OF 1000 MAXIMUM IS 100, so 140 charged,
+	// and 140 of 1000 maximum health is 14%.
+	//
+	// NOT 18. That is what the figure would be at full health, and it is the
+	// number a reader expects, which is exactly why the character is at half.
+	//
+	// NOT 28. That is 140 measured against CURRENT health, which is the wrong
+	// denominator and the one mistake this arithmetic can make.
+	TestEqual(FString::Printf(
+		TEXT("it recorded 14%% of maximum health, and recorded %.2f"),
+		Pyre->LastHealthCostPercentOfMaximum),
+		Pyre->LastHealthCostPercentOfMaximum, 14.0f, 0.01f);
+
+	// AND THE COST WAS REALLY TAKEN, so the figure is a record of something that
+	// happened rather than of an intention.
+	TestEqual(TEXT("and 140 health was really taken"),
+			  500.0f - Caster.Health(), 140.0f, 0.5f);
+
+	// ABOVE THE DESIGN'S TEN PER CENT THRESHOLD, which is the point of the whole
+	// number. Stated here so that a change to either figure has to face the
+	// question rather than quietly making the node inert.
+	TestTrue(TEXT("which is above the ten per cent Grand Tithe asks for"),
+			 Pyre->LastHealthCostPercentOfMaximum > 10.0f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLethalHealthCostTest,
 	"Cataclysm.Skills.AHealthCostLargerThanHealthLeavesTheCasterAtZeroNotBelow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

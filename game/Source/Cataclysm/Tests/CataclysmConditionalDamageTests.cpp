@@ -141,7 +141,9 @@ namespace CataclysmConditionalDamageTest
 
 	/** How much health one hit took off it. */
 	float HealthLostTo(FCaster& Attacker, ACataclysmEnemyCharacter* Target,
-					   const FGameplayTagContainer& SkillTags)
+					   const FGameplayTagContainer& SkillTags,
+					   const FCataclysmHitDelivery& Delivery =
+						   FCataclysmHitDelivery())
 	{
 		UAbilitySystemComponent* AbilitySystem =
 			Target->GetAbilitySystemComponent();
@@ -151,8 +153,16 @@ namespace CataclysmConditionalDamageTest
 		const float Before = AbilitySystem->GetNumericAttribute(Health);
 		UCataclysmSkillEffects::ApplyHit(
 			Attacker.Actor, Target, /*DamagePercent=*/100.0f, SkillTags,
-			FCataclysmHitDelivery());
+			Delivery);
 		return Before - AbilitySystem->GetNumericAttribute(Health);
+	}
+
+	/** A blow from a skill that cost this share of maximum health. #983. */
+	FCataclysmHitDelivery FromSkillCosting(float Percent)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.SkillHealthCostPercent = Percent;
+		return Delivery;
 	}
 
 	/** The tag list of a skill that is a spell. */
@@ -457,6 +467,23 @@ namespace CataclysmConditionalDamageTest
 	}
 
 	/**
+	 * Grand Tithe at its full six points: "A skill whose health cost is
+	 * above 10% of your maximum health deals 4% increased damage per
+	 * point", so 24 points for such a skill. Issue #983.
+	 */
+	FCataclysmStatModifier GrandTithe()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 24.0f;
+		Modifier.Condition =
+			ECataclysmStatCondition::SkillHealthCostAbovePercent;
+		Modifier.ConditionValue = 10.0f;
+		return Modifier;
+	}
+
+	/**
 	 * Vicious Onslaught at its full ten points: "+1% increased Attack Damage per
 	 * point for every 5% of your maximum health that is missing", so ten
 	 * percentage points per whole 5% missing. Issue #968.
@@ -697,6 +724,104 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageInAWindowTest,
 
 	TestEqual(TEXT("and once the window shuts it is back to what it was"),
 		AfterItShuts, NeverPaid, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageFollowsTheSkillsHealthCostTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageFollowsWhatTheSkillInHandCost")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S GRAND TITHE NODE reaching a real hit. Issue #983.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a cost. This one puts the cost on the blow and lands real
+	// hits, so it also covers the join between them: `ApplyHit` taking the
+	// figure off `FCataclysmHitDelivery` and passing it into both stat lookups.
+	// Without that join the node would be authored, the modifier built, and
+	// every hit unchanged.
+	//
+	// IT IS THE FIRST BONUS THAT DIFFERS BETWEEN TWO BLOWS AT THE SAME INSTANT.
+	// Every earlier condition asks about the character, so one character has one
+	// answer; two hits landed here without a single attribute changing between
+	// them get different damage, because the two skills cost different amounts.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT: a weapon's 1000 flat attack damage, nothing that increases it all the
+	// time, and the node's 24 points which apply only to an expensive skill.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(GrandTithe());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A BLOW WITH NO SKILL BEHIND IT, MEASURED FIRST. Without this the
+	// comparison below would pass just as well if the bonus applied always,
+	// which would make the node worth its damage on every hit in the game.
+	const float NoSkill =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), NoSkill),
+				  NoSkill > 0.0f))
+	{
+		return false;
+	}
+
+	// A SKILL THAT COST NOTHING IS THE SAME, which is every skill in the game
+	// for a character with no point in the Deeper Cuts node.
+	TestEqual(TEXT("a skill that cost nothing hits for the same"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(0.0f)),
+		NoSkill, 0.01f);
+
+	// AND SO IS ONE SITTING EXACTLY ON THE THRESHOLD, which is where the Deeper
+	// Cuts node at its full ten points puts every skill: it adds exactly 10% of
+	// maximum health. The design says "above 10%", so that character gets
+	// nothing until something else adds to the cost.
+	TestEqual(TEXT("a skill costing exactly ten per cent hits for the same"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(10.0f)),
+		NoSkill, 0.01f);
+
+	// A SKILL COSTING MORE THAN THE THRESHOLD HITS HARDER. Deeper Cuts at ten
+	// points plus Blood Pyre's own 8% of current health, at full health, is 18%.
+	const float Expensive =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(18.0f));
+
+	TestEqual(FString::Printf(
+		TEXT("an expensive skill hits 24%% harder, and was %.3f times"),
+		Expensive / NoSkill),
+		Expensive / NoSkill, 1.24f, 0.01f);
+
+	// AND THE NEXT BLOW, WITH NOT ONE ATTRIBUTE CHANGED, is back to what it was.
+	// No point unspent, no stat rewritten, no health lost, no clock moved. A
+	// different skill dealt it and that is the whole difference.
+	TestEqual(TEXT("and a cheap skill immediately after is unchanged"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(0.0f)),
+		NoSkill, 0.01f);
 
 	return true;
 }

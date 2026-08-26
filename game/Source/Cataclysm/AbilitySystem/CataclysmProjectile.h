@@ -108,6 +108,9 @@ public:
 	 *   chance. -1, the default, means the skill states none and the hit takes
 	 *   the firer's own attribute, which is what an enemy's thrown rock does and
 	 *   what every player skill does today. Issue #657.
+	 * @param InSkillHealthCostPercent what the firing skill cost, as a share of
+	 *   the firer's maximum health. -1, the default, means no skill cost is
+	 *   known, which is what an enemy's thrown rock passes. Issue #983.
 	 * @return the projectile, or null if the world or the caster is missing, or if
 	 *   it was given neither a speed nor a flight time
 	 */
@@ -119,7 +122,8 @@ public:
 									  bool bInBurns,
 									  UStaticMesh* InBodyMesh = nullptr,
 									  float InFlightSeconds = 0.0f,
-									  float InCritChancePercent = -1.0f);
+									  float InCritChancePercent = -1.0f,
+									  float InSkillHealthCostPercent = -1.0f);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -457,6 +461,19 @@ private:
 	 * the character may be holding a different skill by then. Issue #657.
 	 */
 	float CritChancePercent = -1.0f;
+
+	/**
+	 * What the firing skill cost, as a share of the firer's maximum health,
+	 * or -1 for a projectile with no skill cost behind it.
+	 *
+	 * CARRIED RATHER THAN READ WHEN IT LANDS, for the same reason the critical
+	 * strike chance above is: a projectile arrives after the skill that fired
+	 * it has finished, and the character may have used something else by then.
+	 * Reading the skill's cost at impact would credit the blow with whatever
+	 * the character last paid rather than with what this shot cost.
+	 * Issue #983.
+	 */
+	float SkillHealthCostPercent = -1.0f;
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;

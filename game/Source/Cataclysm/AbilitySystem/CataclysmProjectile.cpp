@@ -135,7 +135,8 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
-	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent)
+	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent,
+	float InSkillHealthCostPercent)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InRadiusCm <= 0.0f)
@@ -248,6 +249,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->DamagePercent = InDamagePercent;
 	Projectile->SkillTags = InSkillTags;
 	Projectile->CritChancePercent = InCritChancePercent;
+	Projectile->SkillHealthCostPercent = InSkillHealthCostPercent;
 	Projectile->bBurns = bInBurns;
 
 	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
@@ -504,6 +506,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// today and every enemy attack. Issue #657.
 	FCataclysmHitDelivery Delivery;
 	Delivery.CritChancePercent = CritChancePercent;
+
+	// AND WHAT THE FIRING SKILL COST, carried since it was fired for the same
+	// reason the chance above is. A projectile lands after the skill that
+	// fired it has finished, so asking the character at impact would credit
+	// this blow with whatever was last paid. Issue #983.
+	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
 
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Firer, Target, DamagePercent, SkillTags, Delivery);

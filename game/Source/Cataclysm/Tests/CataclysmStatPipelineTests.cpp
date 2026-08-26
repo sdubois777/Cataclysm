@@ -137,6 +137,30 @@ namespace CataclysmStatTest
 		return Modifier;
 	}
 
+	/** An increase that applies only when the skill in hand cost more. */
+	FCataclysmStatModifier IncreasedAboveSkillCost(float Value, float Percent)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition =
+			ECataclysmStatCondition::SkillHealthCostAbovePercent;
+		Modifier.ConditionValue = Percent;
+		return Modifier;
+	}
+
+	/**
+	 * A blow from a skill that cost this share of maximum health.
+	 *
+	 * A NEGATIVE ARGUMENT IS "NO SKILL IN HAND", which is the character
+	 * sheet and every blow with no skill behind it, and is spelt the same
+	 * way an unknown reading is. Zero means a skill that cost nothing.
+	 */
+	FCataclysmStatConditions SkillCosting(float Percent)
+	{
+		FCataclysmStatConditions State;
+		State.SkillHealthCostPercent = Percent;
+		return State;
+	}
+
 	/** An increase worth `Value` per whole `Step` points of the class resource. */
 	FCataclysmStatModifier IncreasedPerResourceHeld(float Value, float Step)
 	{
@@ -753,6 +777,103 @@ bool FCataclysmPipelineResourceHeldScaleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("while a health bonus gets nothing from a full pool alone"),
 		FPipeline::Evaluate(100.0f, ByHealth, NoTags, HoldingResource(100.0f)).Final,
 		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineSkillCostConditionTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnWhatTheSkillInHandCost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineSkillCostConditionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S GRAND TITHE NODE, held at its full six points: "A skill
+	// whose health cost is above 10% of your maximum health deals 4% increased
+	// damage per point", so +24% for such a skill. Issue #983.
+	//
+	// WHAT MAKES THIS PREDICATE DIFFERENT FROM EVERY OTHER ONE HERE. The other
+	// three ask about the CHARACTER, so one character has one answer at any
+	// instant. This asks about the SKILL, so the same character using two skills
+	// in the same instant gets two different answers.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedAboveSkillCost(24.0f, 10.0f) };
+
+	// STRICTLY ABOVE, AND THE BOUNDARY IS THE WHOLE POINT. Every other threshold
+	// in this file is "at or below" and includes its own number. This one
+	// excludes it, because the design writes "above 10%".
+	//
+	// IT IS REACHABLE RATHER THAN PEDANTIC. The Deeper Cuts node at its full ten
+	// points adds exactly 10% of maximum health to every skill, so a character
+	// with that node and no skill of its own cost lands precisely here.
+	TestEqual(TEXT("a skill costing exactly the threshold gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(10.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and a hair under it gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(9.99f)).Final,
+		100.0f, 0.01f);
+
+	TestEqual(TEXT("a hair over it gets the whole bonus"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(10.01f)).Final,
+		124.0f, 0.01f);
+
+	// AND IT IS A SWITCH RATHER THAN A SCALE. A skill costing far more than the
+	// threshold is worth exactly the same as one barely over it, because the
+	// node states one bonus and not a bonus per point of cost.
+	TestEqual(TEXT("a skill costing far more is worth no more"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(80.0f)).Final,
+		124.0f, 0.01f);
+
+	// A SKILL THAT COST NOTHING IS A REAL ANSWER AND REFUSES, which is every
+	// skill in the game for a character with no point in Deeper Cuts.
+	TestEqual(TEXT("a skill that cost nothing gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(0.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND NO SKILL IN HAND REFUSES TOO, which is the character sheet, an enemy's
+	// plain attack and a burning patch of ground. It is a different statement
+	// from a skill that cost nothing, and both answer no.
+	TestEqual(TEXT("a caller with no skill in hand gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and one that says outright there is no skill"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// A THRESHOLD OUTSIDE 0 TO 100 IS REPORTED WHEN THE DATA IS CHECKED. A
+	// negative one would be beaten by every skill including the free ones,
+	// because the comparison is strictly greater than, so the whole node would
+	// quietly become an unconditional bonus.
+	FCataclysmStatModifier Negative = IncreasedAboveSkillCost(24.0f, -1.0f);
+	TestTrue(TEXT("a negative cost threshold is reported as illegal"),
+		!FPipeline::ValidateModifier(Negative).IsEmpty());
+	TestTrue(TEXT("and one above a hundred per cent"),
+		!FPipeline::ValidateModifier(
+			IncreasedAboveSkillCost(24.0f, 101.0f)).IsEmpty());
+	TestTrue(TEXT("while the design's own ten per cent is not"),
+		FPipeline::ValidateModifier(Modifiers[0]).IsEmpty());
+
+	// THE STATE IS INDEPENDENT OF EVERY OTHER READING, which is what makes it a
+	// separate field rather than something derived. A blow that knows what its
+	// skill cost need not know where the character's health is, and a bonus
+	// about health gets nothing from an expensive skill.
+	const FCataclysmStatConditions CostOnly = SkillCosting(50.0f);
+	TestTrue(TEXT("a state that knows the skill's cost need not know the health"),
+		CostOnly.HealthPercent < 0.0f);
+
+	TArray<FCataclysmStatModifier> ByHealth = {
+		IncreasedBelowHealth(24.0f, 20.0f) };
+	TestEqual(TEXT("a health bonus gets nothing from an expensive skill alone"),
+		FPipeline::Evaluate(100.0f, ByHealth, NoTags, CostOnly).Final,
+		100.0f, 0.01f);
+
+	// AND THE TWO COMBINE WHEN BOTH ARE KNOWN, each judged on its own reading.
+	FCataclysmStatConditions Both = SkillCosting(50.0f);
+	Both.HealthPercent = 10.0f;
+	TArray<FCataclysmStatModifier> Pair = {
+		IncreasedAboveSkillCost(24.0f, 10.0f), IncreasedBelowHealth(24.0f, 20.0f) };
+	TestEqual(TEXT("both apply and sum into one increases bracket"),
+		FPipeline::Evaluate(100.0f, Pair, NoTags, Both).Final, 148.0f, 0.01f);
 
 	return true;
 }

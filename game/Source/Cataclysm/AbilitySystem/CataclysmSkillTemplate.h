@@ -118,6 +118,37 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float CritChancePercent = -1.0f;
 
+	/**
+	 * What this skill cost the last time it was used, as a percentage of the
+	 * character's maximum health. Issue #983.
+	 *
+	 * WRITTEN BY `PayHealthCost` AND READ WHEN A BLOW IS DEALT. The Masochist's
+	 * Grand Tithe node asks about "a skill whose health cost is above 10% of
+	 * your maximum health", and nothing anywhere recorded what a skill had cost.
+	 *
+	 * WHAT WAS REALLY CHARGED, NOT WHAT THE SKILL ROW STATES. The total is the
+	 * skill's own share of CURRENT health plus the character's added share of
+	 * MAXIMUM health, so it depends on where the character's health stood at the
+	 * moment of the cast and on how many points are in Deeper Cuts. Neither is
+	 * knowable from the skill row alone.
+	 *
+	 * MEASURED AGAINST MAXIMUM HEALTH, because that is what the node asks about,
+	 * even though half the total was a share of current health.
+	 *
+	 * IT OUTLIVES THE CAST THAT WROTE IT, because an ability is instanced per
+	 * actor. That is correct rather than a leak: it belongs to this skill, and
+	 * every blow this skill deals should read it, including one from a
+	 * projectile that lands seconds later. `PayHealthCost` writes it on every
+	 * use rather than only on a use that charged something, so a skill that cost
+	 * nothing records a real zero instead of keeping the last cast's figure.
+	 *
+	 * -1 MEANS THE SKILL HAS NOT BEEN USED YET, or that maximum health could not
+	 * be read. Zero means it was used and cost nothing, which is every skill in
+	 * the game except Blood Pyre for a character with no point in Deeper Cuts.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float LastHealthCostPercentOfMaximum = -1.0f;
+
 	/** Which shape this class implements. Every subclass answers. */
 	virtual ECataclysmSkillShape Shape() const PURE_VIRTUAL(UCataclysmSkillTemplate::Shape, return ECataclysmSkillShape::None;);
 

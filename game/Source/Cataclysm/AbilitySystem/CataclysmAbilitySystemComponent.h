@@ -248,7 +248,8 @@ public:
 	 * stat refresh.
 	 */
 	float AttackDamageIncreasesForSkill(
-		const FGameplayTagContainer& SkillTags) const;
+		const FGameplayTagContainer& SkillTags,
+		float SkillHealthCostPercent = -1.0f) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -287,9 +288,18 @@ public:
 	 * character's health at the moment of the call, which is why the answer can
 	 * differ between two calls with the same arguments and why such a bonus is
 	 * never written onto the gameplay attribute.
+	 *
+	 * IT ALSO JUDGES A CONDITION ABOUT THE SKILL'S COST, since issue #983, and
+	 * that one cannot be built from the character at all. `SkillHealthCostPercent`
+	 * is what the skill in hand cost, as a share of maximum health; -1 means
+	 * there is no skill in hand, which is the right answer for the character
+	 * sheet and for any caller that does not have one, and it refuses the
+	 * condition. Every caller that existed before that issue passes nothing and
+	 * gets exactly what it got before.
 	 */
 	float StatForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
-					   float Fallback) const;
+					   float Fallback,
+					   float SkillHealthCostPercent = -1.0f) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -297,8 +307,14 @@ public:
 	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
 	 * building its own and getting a different answer. `StatForSkill` above uses
 	 * it and most callers should use that instead.
+	 *
+	 * @param SkillHealthCostPercent  what the skill in hand cost, as a share of
+	 *        maximum health, or -1 for no skill in hand. It is the one reading
+	 *        here that is not a property of the character, which is why it is
+	 *        passed in rather than read. Issue #983.
 	 */
-	FCataclysmStatConditions CurrentConditions() const;
+	FCataclysmStatConditions CurrentConditions(
+		float SkillHealthCostPercent = -1.0f) const;
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.
