@@ -238,6 +238,40 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase that applies only while the character is Bleeding. #962. */
+	FCataclysmStatModifier IncreasedWhileBleeding(float Value)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::WhileBleeding;
+		return Modifier;
+	}
+
+	/** An increase worth `Value` per whole `Step` debuffs carried. #962. */
+	FCataclysmStatModifier IncreasedPerDebuff(float Value, float Step)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Scale = ECataclysmStatScale::PerDebuffCarried;
+		Modifier.ScaleStep = Step;
+		return Modifier;
+	}
+
+	/**
+	 * A character under this many debuffs, one of which may be Bleeding.
+	 *
+	 * THE TWO ARE SET SEPARATELY BECAUSE NEITHER IMPLIES THE OTHER, which is
+	 * what the tests below check. A stunned character carries one debuff and is
+	 * not Bleeding.
+	 *
+	 * NO NEGATIVE "UNKNOWN", for the reason `Holding` above gives about stacks.
+	 */
+	FCataclysmStatConditions Carrying(int32 Debuffs, bool bBleeding = false)
+	{
+		FCataclysmStatConditions State;
+		State.DebuffsCarried = Debuffs;
+		State.bIsBleeding = bBleeding;
+		return State;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -1035,6 +1069,157 @@ bool FCataclysmPipelineStackScaleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("twenty Carnage stacks are worth twenty steps here"),
 		FPipeline::Evaluate(100.0f, Carnage, NoTags, Holding(0, 0, 20)).Final,
 		160.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineDebuffScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithTheDebuffsTheCharacterCarries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineDebuffScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S BATTLE-SCARRED NODE at its full eight points: "+2%
+	// increased Armor per point for each unique debuff on you", so sixteen
+	// percentage points a debuff. Issue #962.
+	TArray<FCataclysmStatModifier> Scarred = { IncreasedPerDebuff(16.0f, 1.0f) };
+
+	// CARRYING NOTHING IS WORTH NOTHING, which is where every character starts
+	// and is what makes the node a reward for being hurt rather than a flat
+	// bonus. This is the direction that matters: a Masochist standing untouched
+	// must not be walking around with the armour of one covered in ailments.
+	TestEqual(TEXT("no debuffs is worth nothing"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags, Carrying(0)).Final,
+		100.0f, 0.01f);
+
+	// AND EACH DEBUFF IS A STEP.
+	TestEqual(TEXT("one debuff is +16%"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags, Carrying(1)).Final,
+		116.0f, 0.01f);
+	TestEqual(TEXT("three debuffs is +48%"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags, Carrying(3)).Final,
+		148.0f, 0.01f);
+
+	// A CALLER THAT KNOWS NOTHING ABOUT THE CHARACTER GETS NOTHING, which is the
+	// character sheet and every enemy in the game. A default state carries no
+	// debuffs, so this needs no negative sentinel the way the health readings
+	// do. This is also what keeps a scaling row out of the gameplay attribute:
+	// `UCataclysmPlayerClassStats::ApplyTo` evaluates with exactly this state.
+	TestEqual(TEXT("a caller with no character in hand gets nothing"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags).Final, 100.0f, 0.01f);
+
+	// IT IS NOT A STACK COUNT AND MUST NOT READ ONE. A character holding five of
+	// every kind of stack and carrying no debuff is worth nothing to this, and a
+	// character carrying five debuffs and holding no stack is worth nothing to
+	// them. Nothing at run time would report a scale wired to the wrong field.
+	TArray<FCataclysmStatModifier> Momentum = {
+		IncreasedPerStack(10.0f, 1.0f,
+						  ECataclysmStatScale::PerStackOfSanguineMomentum) };
+	TestEqual(TEXT("a debuff bonus gets nothing from a full set of stacks"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags, Holding(5, 5, 5)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and a stack bonus gets nothing from five debuffs"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags, Carrying(5)).Final,
+		100.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, and is
+	// refused outright when the data is checked. The same rule every other scale
+	// follows, asserted here so that adding a scale cannot skip it.
+	TArray<FCataclysmStatModifier> NoStep = { IncreasedPerDebuff(10.0f, 0.0f) };
+	TestEqual(TEXT("a step of nothing is worth nothing at every count"),
+		FPipeline::Evaluate(100.0f, NoStep, NoTags, Carrying(8)).Final,
+		100.0f, 0.01f);
+	TestTrue(TEXT("and is reported as illegal when the data is checked"),
+		!FPipeline::ValidateModifier(NoStep[0]).IsEmpty());
+	TestTrue(TEXT("while a real step is not"),
+		FPipeline::ValidateModifier(Scarred[0]).IsEmpty());
+
+	// THE `more` BUCKET TOO, WHICH IS WHERE DOCTRINE OF PAIN SITS: "You deal 4%
+	// more damage for each unique debuff on you." Three debuffs is 1.04 cubed
+	// only if each is a separate multiplier; it is one multiplier of 1.12,
+	// because the scale grows the modifier's VALUE and the bucket then applies
+	// it once. Pinning the number is what says which of the two this is.
+	FCataclysmStatModifier Doctrine = IncreasedPerDebuff(4.0f, 1.0f);
+	Doctrine.Bucket = ECataclysmStatBucket::More;
+	Doctrine.Source = ECataclysmModifierSource::PassiveKeystone;
+	TArray<FCataclysmStatModifier> Multiplying = { Doctrine };
+	TestEqual(TEXT("three debuffs multiply once by 1.12, not three times"),
+		FPipeline::Evaluate(100.0f, Multiplying, NoTags, Carrying(3)).Final,
+		112.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineBleedingConditionTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnTheCharacterBleeding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineBleedingConditionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S THIRST FOR PAIN NODE at its full eight points: "While you
+	// are Bleeding, +2% increased Attack Speed per point". Issue #962.
+	TArray<FCataclysmStatModifier> Thirst = { IncreasedWhileBleeding(16.0f) };
+
+	TestEqual(TEXT("a character that is not bleeding gets nothing"),
+		FPipeline::Evaluate(100.0f, Thirst, NoTags, Carrying(0)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and one that is bleeding gets the whole bonus"),
+		FPipeline::Evaluate(100.0f, Thirst, NoTags, Carrying(1, true)).Final,
+		116.0f, 0.01f);
+
+	// CARRYING A DEBUFF IS NOT THE SAME AS BLEEDING, WHICH IS THE WHOLE REASON
+	// THE STATE HOLDS TWO READINGS. A stunned character carries one debuff and
+	// is not Bleeding, and the node says Bleeding. A build that answered this
+	// condition from the count would hand the bonus to a character the sentence
+	// never promises it to, and no arithmetic would report it.
+	TestEqual(TEXT("three debuffs and none of them Bleeding is still nothing"),
+		FPipeline::Evaluate(100.0f, Thirst, NoTags, Carrying(3)).Final,
+		100.0f, 0.01f);
+
+	// AND BLEEDING IS NOT THE SAME AS CARRYING A DEBUFF, the other direction. A
+	// scaling bonus must not read the Bleeding flag as a count of one.
+	TArray<FCataclysmStatModifier> Scarred = { IncreasedPerDebuff(16.0f, 1.0f) };
+	TestEqual(TEXT("a bleeding character with no counted debuff scales to none"),
+		FPipeline::Evaluate(100.0f, Scarred, NoTags, Carrying(0, true)).Final,
+		100.0f, 0.01f);
+
+	// A CALLER WITH NO CHARACTER IN HAND REFUSES, the same as every other
+	// condition. That is what keeps a conditional row out of the gameplay
+	// attribute: `UCataclysmPlayerClassStats::ApplyTo` evaluates with a default
+	// state, so the attribute holds the unconditional answer and only
+	// `StatForSkill` can see this bonus.
+	TestEqual(TEXT("a caller with no character in hand gets nothing"),
+		FPipeline::Evaluate(100.0f, Thirst, NoTags).Final, 100.0f, 0.01f);
+
+	// THE CONDITION READS NO VALUE, so a modifier carrying one behaves exactly
+	// as one that does not. The data check refuses a value beside this
+	// condition; this pins that the engine ignores one if it ever arrives.
+	FCataclysmStatModifier WithAStrayValue = IncreasedWhileBleeding(16.0f);
+	WithAStrayValue.ConditionValue = 99.0f;
+	TArray<FCataclysmStatModifier> Stray = { WithAStrayValue };
+	TestEqual(TEXT("a stray condition value changes nothing when bleeding"),
+		FPipeline::Evaluate(100.0f, Stray, NoTags, Carrying(1, true)).Final,
+		116.0f, 0.01f);
+	TestEqual(TEXT("and changes nothing when not bleeding"),
+		FPipeline::Evaluate(100.0f, Stray, NoTags, Carrying(0)).Final,
+		100.0f, 0.01f);
+
+	// A CONDITION AND A SCALE ARE TWO AXES AND A ROW MAY CARRY BOTH, which no
+	// authored row does today. The condition decides whether the modifier is in
+	// the sum at all and the scale decides how large it is when it is.
+	FCataclysmStatModifier BothAxes = IncreasedPerDebuff(10.0f, 1.0f);
+	BothAxes.Condition = ECataclysmStatCondition::WhileBleeding;
+	TArray<FCataclysmStatModifier> Both = { BothAxes };
+	TestEqual(TEXT("both axes: not bleeding is nothing whatever the count"),
+		FPipeline::Evaluate(100.0f, Both, NoTags, Carrying(3)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and bleeding with three debuffs is three steps"),
+		FPipeline::Evaluate(100.0f, Both, NoTags, Carrying(3, true)).Final,
+		130.0f, 0.01f);
 
 	return true;
 }

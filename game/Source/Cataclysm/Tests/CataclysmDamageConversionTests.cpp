@@ -6,7 +6,9 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -535,6 +537,74 @@ CATACLYSM_CONVERSION_TEST(FCataclysmConvertedDamageDefersFervourTest,
 			Masochist.AbilitySystem->GetNumericAttribute(
 				Resource::GetClassResourceAttribute()),
 			0.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What the converted damage IS, which is what the next five nodes read back
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONVERSION_TEST(FCataclysmConvertedDamageIsBleedingTest,
+	"Cataclysm.DamageConversion.TheConvertedDamageIsBleedingRatherThanAnyDamageOverTime")
+{
+	using namespace CataclysmDamageConversionTest;
+
+	// THE NODE SAYS "BLEEDING" AND UNTIL ISSUE #962 THE TAG SAID "DAMAGE OVER
+	// TIME". `ConvertIfActive` passed the bare `Keyword.DoT` parent, so a
+	// character this rule had just hurt was carrying damage over time that was
+	// not Bleeding -- and Thirst for Pain, the one node this whole mechanic was
+	// built to unblock, reads the word Bleeding back. It would have been false
+	// for ever and nothing at run time would have said so.
+	//
+	// BOTH DIRECTIONS ARE ASSERTED. That the character is Bleeding, which is what
+	// that node needs; and that it still answers yes to the damage over time
+	// question, which is what everything written before this needs. A tag
+	// satisfying only the first would quietly break the second.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedBleeder Masochist(World);
+
+		Masochist.TakeTheNode();
+		Masochist.MoveHealthTo(0.4f);
+		if (!TestTrue(TEXT("the window is open"), Masochist.IsConverting()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		TestFalse(TEXT("nothing is bleeding before the blow"),
+			UCataclysmDebuffs::IsBleeding(Masochist.AbilitySystem));
+		TestEqual(TEXT("and no debuff is carried before the blow"),
+			UCataclysmDebuffs::CountOn(Masochist.AbilitySystem), 0);
+
+		const float Converted = Conversion::ConvertIfActive(
+			Masochist.Actor, 100.0f, /*bIsAlreadyDamageOverTime=*/false);
+		TestEqual(TEXT("the whole blow was converted"), Converted, 100.0f, 0.01f);
+
+		TestTrue(TEXT("the character is now Bleeding, which is what Thirst for "
+					  "Pain asks"),
+			UCataclysmDebuffs::IsBleeding(Masochist.AbilitySystem));
+
+		// THE PARENT QUESTION STILL ANSWERS YES. Bleed is a child of
+		// `Keyword.DoT` and the engine counts a tag against its parents, so
+		// nothing written before this changes its answer.
+		TestTrue(TEXT("and still carries damage over time"),
+			Masochist.AbilitySystem->HasMatchingGameplayTag(
+				UCataclysmDamageCalculation::DamageOverTimeTag()));
+
+		// AND IT IS ONE DEBUFF, NOT TWO. This is the direction that would fail
+		// against a build attaching both the parent and the child.
+		TestEqual(TEXT("the Masochist carries exactly one debuff"),
+			UCataclysmDebuffs::CountOn(Masochist.AbilitySystem), 1);
 	}
 
 	World->DestroyWorld(false);

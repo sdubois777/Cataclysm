@@ -4,7 +4,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
-#include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the Bleed tag this node's damage over time carries. Issue #962.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -130,9 +131,22 @@ float UCataclysmDamageConversion::ConvertIfActive(
 	}
 
 	// THE WHOLE OF IT, NOT A SHARE. "Converts ALL damage you take."
+	//
+	// TAGGED `Keyword.DoT.Bleed` AND NOT THE BARE `Keyword.DoT` PARENT, which is
+	// what it carried until issue #962. This node's own sentence says the damage
+	// arrives as BLEEDING, and Thirst for Pain -- "While you are Bleeding, +2%
+	// increased Attack Speed per point" -- reads that word back. Under the
+	// parent tag the character was carrying damage over time that was not
+	// Bleeding, so the one node this mechanic was built to unblock would have
+	// been false for ever and nothing at run time would have reported it.
+	//
+	// NOTHING THAT ASKED THE OLD QUESTION CHANGES ITS ANSWER. Bleed is a CHILD
+	// of `Keyword.DoT` and the engine counts a tag against its parents, so
+	// anything asking whether this character carries damage over time still gets
+	// yes. `Cataclysm.DamageTypes` already proves that parent rule holds.
 	const bool bApplied = UCataclysmSkillEffects::ApplyDamageOverTime(
 		Character, Character, ToHealth / BleedingSeconds, BleedingSeconds,
-		UCataclysmDamageCalculation::DamageOverTimeTag(),
+		UCataclysmDebuffs::BleedTag(),
 		/*bScalesWithInstigator=*/false);
 
 	if (!bApplied)

@@ -76,3 +76,11 @@ Masochist_keystone_spine_002#2,Masochist_keystone_spine_002,health_regen,more,-5
 Masochist_keystone_ll_kC#1,Masochist_keystone_ll_kC,fervour_per_second,flat,10.0,,health_at_or_below,35.0,,0.0
 Masochist_basic_ll_b1#1,Masochist_basic_ll_b1,damage_to_bleeding_on_low_health,flat,1.0,,,0.0,,0.0
 Masochist_basic_ll_b1#2,Masochist_basic_ll_b1,damage_to_bleeding_window,increased,5.0,,,0.0,,0.0
+Masochist_basic_fc_a2#1,Masochist_basic_fc_a2,attack_speed,increased,2.0,,while_bleeding,0.0,,0.0
+Masochist_basic_fc_b0#1,Masochist_basic_fc_b0,armor,increased,2.0,,,0.0,debuffs_carried,1.0
+Masochist_basic_fl_a0#1,Masochist_basic_fl_a0,attack_damage,increased,1.0,,,0.0,debuffs_carried,1.0
+Masochist_basic_fl_a0#2,Masochist_basic_fl_a0,spell_damage,increased,1.0,,,0.0,debuffs_carried,1.0
+Masochist_basic_fl_a0#3,Masochist_basic_fl_a0,damage_reduction,increased,0.5,,,0.0,debuffs_carried,1.0
+Masochist_keystone_fl_kB#1,Masochist_keystone_fl_kB,attack_damage,more,4.0,,,0.0,debuffs_carried,1.0
+Masochist_keystone_fl_kB#2,Masochist_keystone_fl_kB,spell_damage,more,4.0,,,0.0,debuffs_carried,1.0
+Masochist_keystone_fl_kC#1,Masochist_keystone_fl_kC,fervour_per_second,flat,5.0,,,0.0,debuffs_carried,1.0

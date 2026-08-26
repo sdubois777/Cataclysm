@@ -2427,7 +2427,16 @@ def passive_edges(_book=None) -> list[dict]:
 #: is a thirty-five second window, which is not what anybody meant and which
 #: nothing at run time would report.
 #:
-#: The value is (lowest, highest, what the number means).
+#: The value is (lowest, highest, what the number means), or `None` for a
+#: condition that compares nothing and therefore takes no value at all.
+#:
+#: A CONDITION WITH NO NUMBER IS A REAL SHAPE, since issue #962. Four of these
+#: compare a reading against a threshold; `while_bleeding` names a kind of effect
+#: and the kind is in the name. There is no column that could hold it -- the
+#: value column is a float and a tag name is not a number -- so the name carries
+#: it, and a value typed beside it is refused rather than quietly ignored. A
+#: range of (0, 0) would have accepted a stray zero and read as a threshold of
+#: nothing, which is why this is `None` and not a degenerate range.
 CONDITIONS = {
     # "While at or below 20% health" is `health_at_or_below` with 20.
     "health_at_or_below": (0.0, 100.0, "a percentage of maximum health"),
@@ -2457,6 +2466,20 @@ CONDITIONS = {
     # character with that node and no skill of its own cost sits precisely on
     # this threshold and correctly gets nothing.
     "skill_health_cost_above": (0.0, 100.0, "a percentage of maximum health"),
+
+    # "While you are Bleeding" is `while_bleeding`, and it takes no value.
+    # Issue #962. Thirst for Pain is the node.
+    #
+    # THE FIRST CONDITION THAT ASKS WHAT THE CHARACTER IS CARRYING rather than
+    # where one of its own numbers stands, and the first that compares nothing.
+    # `UCataclysmDebuffs::IsBleeding` is what answers it.
+    #
+    # ONE NAME PER KIND OF EFFECT, rather than one name and a column saying
+    # which. The same argument the three stack scales below make: a further
+    # column here is a row struct change, so a build has to happen before the
+    # DataTable asset can be regenerated. This one could not use a column
+    # anyway, because the value column holds a number.
+    "while_bleeding": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -2524,6 +2547,22 @@ SCALES = {
     "momentum_stacks": (0.0, 10.0, "a number of stacks"),
     "bloodlust_stacks": (0.0, 10.0, "a number of stacks"),
     "carnage_stacks": (0.0, 10.0, "a number of stacks"),
+
+    # "for each unique debuff on you" is `debuffs_carried` with a step of 1.
+    # Issue #962. Four nodes read it and all four count single debuffs.
+    #
+    # NOT A FOURTH STACK COUNT, THOUGH IT IS COUNTED THE SAME WAY. A stack is
+    # granted by an event this project chose to remember and expires on a timer
+    # this project chose. A debuff is a gameplay effect somebody applied, and
+    # the ability system is already holding the list for its own reasons.
+    # `UCataclysmDebuffs` says which of those effects are harmful.
+    #
+    # THE UPPER BOUND IS A JUDGEMENT AND NOT A DESIGN RULE. Nothing caps how
+    # many debuffs a character may carry -- issue #962's own notes say the
+    # Vessel of Plagues keystone would need such a cap and there is none -- so
+    # this is a sanity limit in the shape the stack counts use. Ten distinct
+    # harmful effects at once is already far past anything the game can apply.
+    "debuffs_carried": (0.0, 10.0, "a number of debuffs"),
 }
 
 
@@ -2600,7 +2639,21 @@ def passive_effects(book) -> list[dict]:
                 f"{', '.join(sorted(CONDITIONS))}.")
 
         condition_value = 0.0
-        if condition:
+        if condition and CONDITIONS[condition] is None:
+            # A CONDITION THAT COMPARES NOTHING TAKES NO VALUE, AND A VALUE
+            # BESIDE ONE IS REFUSED RATHER THAN IGNORED. Issue #962. Somebody
+            # writing a number next to `while_bleeding` believes it does
+            # something; the game never reads it, so the row would be worth
+            # something other than what its author thought and nothing at run
+            # time would say so. This is the only place that can be caught.
+            written = clean(_cell(raw, headers, "Condition Value"))
+            if written:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} carries the condition "
+                    f"{condition!r} and a condition value of {written!r}. That "
+                    f"condition compares nothing, so the value would be "
+                    f"ignored. Leave the column empty.")
+        elif condition:
             condition_value = number(_cell(raw, headers, "Condition Value"),
                                      "Condition Value", index)
             low, high, units = CONDITIONS[condition]

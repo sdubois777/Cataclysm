@@ -144,11 +144,30 @@ class TestTheCapIsActuallyApplied:
             "not applied.")
 
     def test_the_engine_applies_it(self):
+        """THE READ IT PINS MOVED ON 2026-08-26 AND THE CAP DID NOT. Issue
+        #1022. `Resolve` used to read the defender's flat damage reduction
+        straight off its gameplay attribute, and it now asks for it through the
+        stat pipeline with the attribute as the fallback, so that a bonus
+        carrying a condition or a scale is not thrown away. What this check
+        exists for is unchanged: the figure, wherever it comes from, still has
+        to go through `EffectiveDamageReduction`.
+
+        BOTH HALVES ARE STILL PINNED, and deliberately. Asking only that the
+        function is called somewhere would pass against a build handing it a
+        constant while the real figure went round the cap, which is the exact
+        shape of the fault issue #644 found. So the argument is checked too, and
+        it has to reach the defender's own attribute.
+        """
         text = read(SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.cpp")
-        assert "EffectiveDamageReduction(Combat->GetDamageReduction())" in text, (
-            "UCataclysmDamageCalculation::Resolve no longer routes flat damage "
-            "reduction through EffectiveDamageReduction, so the cap is "
-            "declared and not applied.")
+        assert re.search(
+            r"Damage \*= 1\.0f\s*- EffectiveDamageReduction\(\s*"
+            r"DefenderStat\(Defender, TEXT\(\"damage_reduction\"\),\s*"
+            r"Combat->GetDamageReduction\(\)\)\)", text), (
+            "UCataclysmDamageCalculation::Resolve no longer routes the "
+            "defender's flat damage reduction through EffectiveDamageReduction, "
+            "so the cap is declared and not applied. The figure has to come "
+            "from DefenderStat, which asks the stat pipeline and falls back to "
+            "Combat->GetDamageReduction().")
         assert re.search(
             r"FMath::Clamp\(Reduction, 0\.0f, DamageReductionCap\)", text), (
             "EffectiveDamageReduction no longer clamps against the cap.")

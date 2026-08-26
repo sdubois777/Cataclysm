@@ -92,6 +92,21 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// a cost is never negative, and a threshold is never below zero.
 		return State.SkillHealthCostPercent >= 0.0f
 			&& State.SkillHealthCostPercent > Value;
+
+	case ECataclysmStatCondition::WhileBleeding:
+		// NO THRESHOLD, SO `Value` IS NOT READ. Issue #962. The other four
+		// predicates compare a reading against a number; this one asks whether
+		// the character is carrying a kind of effect, and the kind is the
+		// enumerator. `tools/generate_datatables.py` refuses to write a value on
+		// a row carrying this, so ignoring it here cannot hide one.
+		//
+		// NOTHING TO REFUSE AS UNKNOWN, WHICH IS WHY THERE IS NO NEGATIVE GUARD.
+		// A caller with no character in hand is not bleeding and neither is an
+		// unhurt character, and a bonus that applies while bleeding is correctly
+		// withheld from both. The readings above need the distinction because a
+		// health percentage of zero is a corpse and an unknown one is the
+		// character sheet; there is no such pair here.
+		return State.bIsBleeding;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -222,6 +237,14 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 
 	case ECataclysmStatScale::PerStackOfCarnage:
 		return StackedValue(Modifier, State.CarnageStacks);
+
+	// AND THE DEBUFFS THE CHARACTER IS UNDER, COUNTED THE SAME WAY. Issue #962.
+	// A debuff is a whole thing exactly as a stack is, so the arithmetic is
+	// shared even though what is being counted is not a stack: a stack is an
+	// event this project chose to remember, and a debuff is a gameplay effect
+	// somebody applied that the ability system is already holding.
+	case ECataclysmStatScale::PerDebuffCarried:
+		return StackedValue(Modifier, State.DebuffsCarried);
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full
