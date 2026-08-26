@@ -157,7 +157,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: cost is above 10% of your maximum health deals 4% increased damage per
 #: point", so it is the same two damage stats under the first condition that
 #: asks about the SKILL rather than about the character. Issue #983.
-AUTHORED_ROWS = 54
+#:
+#: AND BY THREE, all on one node. Exsanguinate reads "Every skill costs an
+#: additional 15% of your current health, and every skill deals 40% more
+#: damage": a `flat` row for the cost, because that stat is zero for every
+#: class and this node is its only source, and the two damage stats in the
+#: `more` bucket. It is the first node to hold rows in two different
+#: buckets. Issue #986.
+AUTHORED_ROWS = 57
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -218,7 +225,11 @@ AUTHORED_ROWS = 54
 #: AND TO 45 FOR ONE MORE, Grand Tithe, whose damage depends on what the
 #: skill in hand cost. 45 of 293 altogether and 41 of the Masochist tree's
 #: own 74. Issue #983.
-AUTHORED_NODES = 45
+#:
+#: AND TO 46 FOR ONE MORE, Exsanguinate, which charges every skill a share
+#: of current health and pays for it in damage. 46 of 293 altogether and 42
+#: of the Masochist tree's own 74. Issue #986.
+AUTHORED_NODES = 46
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -618,13 +629,24 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     THE TREES. Issue #977. See `MULTIPLIES` for the two wordings and for the
     two entries in `docs/DECISIONS.md` that say they mean the same thing.
 
-    BOTH DIRECTIONS ARE STILL ASSERTED, and the second one will have to give
-    way eventually. A node granting two stats could say one of them multiplies
-    and the other does not -- "you deal 25% more damage and gain +2% increased
-    armour" -- and then the `increased` row would sit on a node this pattern
-    matches. No authored node does that today, measured over all 51 rows, so
-    the stronger form is kept until one does rather than weakened in advance.
+    THE SECOND DIRECTION GAVE WAY ON 2026-08-26, EXACTLY AS PREDICTED HERE.
+    Issue #986. Exsanguinate reads "Every skill costs an additional 15% of your
+    current health, and every skill deals 40% more damage": one sentence, one
+    `flat` row for the cost and two `more` rows for the damage. The `flat` row
+    sits on a node whose description says "40% more", so the strict form
+    refused it.
+
+    SO THE SECOND DIRECTION NOW ASKS ONLY OF A NODE WITH NO `more` ROW AT ALL.
+    A node that has one has a description that legitimately says "more" about
+    a different clause, and there is no way to tell from the sentence which
+    clause a given row belongs to. A node with none is the case the check was
+    really for: a description saying its number multiplies while every row on
+    it lands in the additive sum.
     """
+    #: Which nodes have at least one row in the more bucket.
+    multiplying_nodes = {row["Node"] for row in effects
+                         if row["ValueKind"].strip().lower() == "more"}
+
     for row in effects:
         kind = row["ValueKind"].strip().lower()
         assert kind in BUCKETS, (
@@ -639,12 +661,12 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
                 f"number as \"30% more\" or \"50% less\":\n    "
                 f"{nodes[row['Node']]['Description']}"
             )
-        else:
+        elif row["Node"] not in multiplying_nodes:
             assert not multiplies, (
                 f"{row['Node']} says {multiplies.group(0)!r}, which multiplies, "
-                f"and is in the {kind} bucket. A multiplicative value in the "
-                "increased bucket is added to a sum instead of multiplying, "
-                "which is a different number."
+                f"and its only rows are in the {kind} bucket. A multiplicative "
+                "value in the increased bucket is added to a sum instead of "
+                "multiplying, which is a different number."
             )
 
 

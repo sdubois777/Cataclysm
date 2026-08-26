@@ -317,4 +317,37 @@ protected:
 	 */
 	static float AddedHealthCostPercent(
 		const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * What this character adds to every skill's health cost, as a percentage of
+	 * CURRENT health. Issue #986.
+	 *
+	 * A SEPARATE FIGURE FROM THE ONE ABOVE BECAUSE IT IS MEASURED AGAINST A
+	 * DIFFERENT THING, and the design draws that line itself: a share of current
+	 * health cannot kill, because each cast costs less than the last, while a
+	 * share of maximum health can. The Masochist's Exsanguinate keystone is this
+	 * one's only source, at 15%.
+	 *
+	 * Zero for a character without that keystone, and zero for any ability
+	 * system with no class resource attribute set, which is every enemy.
+	 */
+	static float AddedHealthCostOfCurrentPercent(
+		const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The least health a cost taken from CURRENT health may leave behind.
+	 *
+	 * THE DESIGN STATES IT OUTRIGHT. Exsanguinate: "A cost taken from current
+	 * health cannot reduce it below 1." Issue #986.
+	 *
+	 * IT IS NEARLY TRUE OF THE ARITHMETIC ALREADY, and the floor is here anyway.
+	 * A share of current health approaches zero without reaching it, so no
+	 * number of casts empties the bar in exact arithmetic. A float does reach
+	 * zero, and a rule that holds in algebra and fails in single precision is
+	 * not a rule.
+	 *
+	 * IT DOES NOT APPLY TO THE SHARE TAKEN FROM MAXIMUM HEALTH, which the design
+	 * allows to kill. See `AddedHealthCostPercent` above.
+	 */
+	static constexpr float LeastHealthAfterCurrentHealthCost = 1.0f;
 };

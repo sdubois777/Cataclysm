@@ -231,6 +231,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("added_health_cost"),
 			 Resource::GetAddedHealthCostAttribute()},
 
+			// AND THE SAME THING MEASURED AGAINST CURRENT HEALTH INSTEAD.
+			// Issue #986. Two stats and not one, because a share of current
+			// health cannot kill and a share of maximum health can; the
+			// project owner drew that line and `docs/DECISIONS.md` records
+			// it. The Masochist's Exsanguinate keystone is its only source.
+			{TEXT("added_health_cost_of_current"),
+			 Resource::GetAddedHealthCostOfCurrentAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

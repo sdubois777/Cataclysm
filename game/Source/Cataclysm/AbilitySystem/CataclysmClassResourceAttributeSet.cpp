@@ -24,6 +24,7 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// whatever cost a skill states for itself, which for every skill but Blood
 	// Pyre is nothing at all.
 	InitAddedHealthCost(0.0f);
+	InitAddedHealthCostOfCurrent(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -37,6 +38,7 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromCost);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLostToHealing);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCost);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -57,7 +59,8 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 	else if (Attribute == GetFervourFromDamageAttribute()
 		|| Attribute == GetFervourFromCostAttribute()
 		|| Attribute == GetFervourLostToHealingAttribute()
-		|| Attribute == GetAddedHealthCostAttribute())
+		|| Attribute == GetAddedHealthCostAttribute()
+		|| Attribute == GetAddedHealthCostOfCurrentAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -99,6 +102,7 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	// character that pays health for its skills but converts none of it to
 	// Fervour should not be given a bar it can only read zero from. Issue #970.
 	All.Add(GetAddedHealthCostAttribute());
+	All.Add(GetAddedHealthCostOfCurrentAttribute());
 	return All;
 }
 
@@ -114,3 +118,4 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromDamage)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromCost)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLostToHealing)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCost)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)

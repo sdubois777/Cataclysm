@@ -285,6 +285,14 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("added_health_cost"),
 		 TEXT("the Masochist's Deeper Cuts node, as a flat modifier")},
 
+		// Issue #986. The same thing measured against CURRENT health, which
+		// the design keeps as a separate stat because a share of current
+		// health cannot kill and a share of maximum health can. Zero for
+		// every class, and the Masochist's Exsanguinate keystone is its only
+		// source.
+		{TEXT("added_health_cost_of_current"),
+		 TEXT("the Masochist's Exsanguinate node, as a flat modifier")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

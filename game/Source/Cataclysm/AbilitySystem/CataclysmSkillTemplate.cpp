@@ -475,6 +475,23 @@ float UCataclysmSkillTemplate::AddedHealthCostPercent(
 	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
 }
 
+float UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Added =
+		Resource::GetAddedHealthCostOfCurrentAttribute();
+
+	// THE SAME TWO GUARDS AS THE READER ABOVE, and for the same reasons: an
+	// enemy's ability system carries no class resource set, and the attribute
+	// is already floored at zero when it is written. Issue #986.
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Added))
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
+}
+
 void UCataclysmSkillTemplate::PayHealthCost()
 {
 	UAbilitySystemComponent* AbilitySystem =
@@ -496,7 +513,29 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// each cast costs less than the last, so it cannot kill the caster.
 	const float Current = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetHealthAttribute());
-	const float Own = Current * FMath::Max(0.0f, Params.HealthCostPercent) / 100.0f;
+	const float OwnPercent = FMath::Max(0.0f, Params.HealthCostPercent);
+
+	// AND THE CHARACTER'S OWN ADDED SHARE OF CURRENT HEALTH JOINS IT, which is
+	// what the Masochist's Exsanguinate keystone grants: "Every skill costs an
+	// additional 15% of your current health". Issue #986.
+	//
+	// SUMMED WITH THE SKILL'S OWN PERCENTAGE BEFORE EITHER IS TAKEN, rather
+	// than charged one after the other. Two shares of current health applied in
+	// turn would compound -- the second would be a share of what the first left
+	// -- and the design says "an additional 15%", which is a sum.
+	const float FromCurrentPercent =
+		OwnPercent + AddedHealthCostOfCurrentPercent(AbilitySystem);
+
+	// FLOORED SO IT LEAVES AT LEAST ONE HEALTH BEHIND. The design states it,
+	// and it applies only to this half of the cost. See
+	// `LeastHealthAfterCurrentHealthCost` for why it is here at all when the
+	// arithmetic nearly guarantees it.
+	//
+	// NAMED FOR WHAT IT NOW HOLDS. It was `Own`, the skill's own cost, while
+	// the skill was the only thing charging a share of current health.
+	const float FromCurrent = FMath::Min(
+		Current * FromCurrentPercent / 100.0f,
+		FMath::Max(0.0f, Current - LeastHealthAfterCurrentHealthCost));
 
 	// AND THE CHARACTER'S OWN ADDED COST, WHICH IS A PERCENT OF MAXIMUM HEALTH
 	// AND SO CAN KILL. Issue #970. The two are measured against different things
@@ -510,7 +549,7 @@ void UCataclysmSkillTemplate::PayHealthCost()
 
 	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
 	// the two are summed rather than one being applied to what the other left.
-	const float Cost = Own + Added;
+	const float Cost = FromCurrent + Added;
 
 	// WHAT THIS SKILL JUST COST, AS A SHARE OF MAXIMUM HEALTH. Issue #983. Grand
 	// Tithe asks "a skill whose health cost is above 10% of your maximum health",
