@@ -431,6 +431,29 @@ private:
 	bool bPressBeganOnInterface = false;
 
 	/**
+	 * Ability slots whose current press has already acted on the inventory.
+	 *
+	 * THE SAME IDEA AS `bPressBeganOnInterface` ABOVE, FOR THE OTHER BUTTON, and
+	 * it exists because the two buttons are bound to different trigger events.
+	 * The move button reports Started once; `BindAbilityActions` binds an
+	 * ability slot to `ETriggerEvent::Triggered`, which fires EVERY FRAME the
+	 * button is held. That is right for an ability and wrong for a click.
+	 *
+	 * WHAT IT COST BEFORE IT EXISTED. Issue #1016: a right press on a carried
+	 * item wore it, and the second frame of the same press wore it back off
+	 * again. `UCataclysmWearing::WearFromCarried` empties the cell and returns
+	 * whatever came off the body to the first free slot, which is usually that
+	 * same cell, so each frame swapped the two items over. Whether the player
+	 * ended up wearing what they clicked depended on whether they held the
+	 * button for an odd or an even number of frames, and the project owner
+	 * reported it as "it will often not work on the first try".
+	 *
+	 * A SET RATHER THAN A BOOL, because two ability slots can be held at once
+	 * and only one of them may be over the screen.
+	 */
+	TSet<FGameplayTag> SlotsAlreadyPressedOnTheInventory;
+
+	/**
 	 * True while the stand-still modifier is held. Suppresses movement only.
 	 *
 	 * Shift means stand still rather than force move. Last Epoch shipped the

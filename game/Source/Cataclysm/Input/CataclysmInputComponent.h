@@ -84,6 +84,17 @@ void UCataclysmInputComponent::BindAbilityActions(const UCataclysmInputConfig* C
 		{
 			OutBindHandles.Add(
 				BindAction(Action.InputAction, ETriggerEvent::Completed, Object, ReleasedFunc, Action.SlotTag).GetHandle());
+
+			// CANCELED AS WELL AS COMPLETED. A press interrupted by the mapping
+			// context changing reports Canceled and never reports Completed, so
+			// without this the ability system is never told the key came up, and
+			// anything keeping per-press state for the slot keeps it for ever.
+			// Issue #1016 added state of exactly that kind, so this stopped
+			// being only tidy. The MoveToCursor binding in
+			// `ACataclysmPlayerController::SetupInputComponent` already binds
+			// both events for the same reason and says so there.
+			OutBindHandles.Add(
+				BindAction(Action.InputAction, ETriggerEvent::Canceled, Object, ReleasedFunc, Action.SlotTag).GetHandle());
 		}
 	}
 }

@@ -247,6 +247,33 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 	// act. Rearranging a bag is not an action the character takes.
 	if (KeyForAbilitySlot(SlotTag).IsMouseButton() && CursorIsOverInterface())
 	{
+		// ONCE PER PRESS, NOT ONCE PER FRAME, AND THAT IS THE WHOLE OF ISSUE
+		// #1016. `BindAbilityActions` binds this function to
+		// `ETriggerEvent::Triggered`, which fires EVERY FRAME the button is
+		// held. That is right for an ability -- holding the button keeps casting
+		// -- and wrong for a click on a screen.
+		//
+		// WHY IT ONLY SHOWED WHEN THE TARGET SLOT WAS ALREADY FULL, which is
+		// what the project owner noticed and what made this findable.
+		// `UCataclysmWearing::WearFromCarried` empties the carried cell and then
+		// puts whatever came off the body into the first free slot -- which is
+		// usually the cell just emptied. So the second frame of the same press
+		// found the OLD item sitting in the cell and swapped it back on, the
+		// third swapped it off again, and so on. Whether the player ended up
+		// wearing what they clicked depended on whether they held the button for
+		// an odd or an even number of frames.
+		//
+		// AN EMPTY TARGET SLOT NEVER SHOWED IT, because nothing comes off, so
+		// the cell stays empty and every later frame of the press is refused
+		// with "There is nothing there to wear". The play test log on
+		// 2026-08-26 is full of those in runs of consecutive frames, which is
+		// what a working press looks like under this defect.
+		if (SlotsAlreadyPressedOnTheInventory.Contains(SlotTag))
+		{
+			return;
+		}
+		SlotsAlreadyPressedOnTheInventory.Add(SlotTag);
+
 		RightPressOnTheInventoryScreen();
 		return;
 	}
@@ -266,6 +293,19 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 
 void ACataclysmPlayerController::Input_AbilitySlotReleased(FGameplayTag SlotTag)
 {
+	// THE PRESS IS OVER, SO THE NEXT ONE MAY ACT ON THE SCREEN AGAIN. Issue
+	// #1016. Cleared unconditionally rather than only when the cursor is still
+	// over the screen: a player who presses on a cell and drags off it has still
+	// finished that press, and leaving the tag here would make the NEXT press do
+	// nothing. That is the same reasoning `Input_MoveToCursorReleased` gives for
+	// clearing `bPressBeganOnInterface` the way it does.
+	//
+	// `BindAbilityActions` BINDS THIS TO Canceled AS WELL AS Completed, so a
+	// press interrupted by a mapping context change cannot leave a tag stuck
+	// here and make the button appear dead. The left button's own binding
+	// already did that for the same reason.
+	SlotsAlreadyPressedOnTheInventory.Remove(SlotTag);
+
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
 		ASC->AbilityInputTagReleased(SlotTag);
