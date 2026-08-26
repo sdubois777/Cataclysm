@@ -198,7 +198,7 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * for the same reason the first one is: no player reads it as a stat and no
 	 * class line names it.
 	 */
-	constexpr int32 OffSheetResourceStats = 5;
+	constexpr int32 OffSheetResourceStats = 7;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -227,8 +227,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// maximum, and the three rates that move it. Six since the added health cost
 	// joined them for #970, which is not a rate and is counted apart from the
 	// three in GetRateAttributes for that reason. Seven since #986 added the
-	// second added health cost, the one measured against current health.
-	TestEqual(TEXT("Seven class resource attributes"),
+	// second added health cost, the one measured against current health. Nine
+	// since #991 added the share of a cost that is taken later and the health
+	// a character owes; neither is a sheet stat.
+	TestEqual(TEXT("Nine class resource attributes"),
 		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,

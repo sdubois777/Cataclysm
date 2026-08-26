@@ -169,7 +169,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: cannot be healed above 50% of your maximum health, but you deal 25% more
 #: damage": a `flat` row reducing the ceiling healing may reach, and the two
 #: damage stats in the `more` bucket. Issue #988.
-AUTHORED_ROWS = 60
+#:
+#: AND BY ONE, for Deferred Payment: "10% per point of the health a skill
+#: costs is not taken when the skill is used. It is taken 3 seconds later."
+#: A `flat` row, because the stat it supplies is zero for every class and
+#: this node is its only source. Issue #991.
+AUTHORED_ROWS = 61
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -238,7 +243,11 @@ AUTHORED_ROWS = 60
 #: AND TO 47 FOR ONE MORE, Point of No Return, which trades how far healing
 #: may take the character for damage. 47 of 293 altogether and 43 of the
 #: Masochist tree's own 74. Issue #988.
-AUTHORED_NODES = 47
+#:
+#: AND TO 48 FOR ONE MORE, Deferred Payment, the first node built on a
+#: character being able to owe health. 48 of 293 altogether and 44 of the
+#: Masochist tree's own 74. Issue #991.
+AUTHORED_NODES = 48
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

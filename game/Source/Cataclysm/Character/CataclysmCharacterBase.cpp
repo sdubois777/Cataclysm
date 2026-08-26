@@ -3,6 +3,8 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmLeech.h"
+// For health owed falling due. Issue #991.
+#include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -62,6 +64,20 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// waits three seconds after damage before it regenerates, and leech must not
 	// wait, or it would stop exactly when it is meant to work.
 	UCataclysmLeech::PayOutStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND HEALTH OWED FALLS DUE ON THE SAME TIMER. Issue #991. The Masochist's
+	// Deferred Payment node takes part of a skill's health cost three seconds
+	// after the skill is used, and this is the only per-character step that
+	// already runs often enough to notice.
+	//
+	// A THIRD JOB HERE RATHER THAN A TIMER PER DEBT. A debt falling due a
+	// fraction of a second late is not something a player can perceive, and a
+	// timer per debt would be one more thing to cancel when a character dies.
+	//
+	// ITS RETURN VALUE IS DROPPED. Zero is the ordinary answer -- nothing owed,
+	// or owed and not yet due -- and it is returned for tests rather than for
+	// this caller.
+	UCataclysmHealthDebt::SettleIfDue(this);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

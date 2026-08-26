@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For the Fervour pool a health cost fills. Issue #954.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For health owed and the share of a cost taken later. Issue #991.
+#include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -1312,6 +1314,166 @@ bool FCataclysmCurrentHealthCostCannotKillTest::RunTest(const FString&)
 	TestTrue(TEXT("It activates"), Activate(Second, Another));
 	TestEqual(TEXT("a cost well clear of the floor is not floored"),
 			  Second.Health(), 10.0f, 0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeferredShareArithmeticTest,
+	"Cataclysm.Skills.WhatShareOfAHealthCostIsTakenLaterIsPlainArithmetic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeferredShareArithmeticTest::RunTest(const FString&)
+{
+	// PURE ARITHMETIC AND NO ABILITY SYSTEM, which is why this function exists
+	// apart from the one that reads the attribute. Issue #991.
+	using Debt = UCataclysmHealthDebt;
+
+	// THE MASOCHIST'S DEFERRED PAYMENT NODE at one point and at its full ten:
+	// "10% per point of the health a skill costs is not taken when the skill is
+	// used." Ten points defers the whole cost.
+	TestEqual(TEXT("one point defers a tenth"),
+			  Debt::AmountDeferred(200.0f, 10.0f), 20.0f, 0.001f);
+	TestEqual(TEXT("ten points defer the whole cost"),
+			  Debt::AmountDeferred(200.0f, 100.0f), 200.0f, 0.001f);
+
+	// A CHARACTER WITHOUT THE NODE DEFERS NOTHING, which is every character in
+	// the game until a point is spent there.
+	TestEqual(TEXT("no share defers nothing"),
+			  Debt::AmountDeferred(200.0f, 0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("and no cost defers nothing"),
+			  Debt::AmountDeferred(0.0f, 100.0f), 0.0f, 0.001f);
+
+	// NEVER MORE THAN THE COST, however the share arrives. The attribute is
+	// already held between 0 and 100 when it is written; this is what happens if
+	// a figure reaches here anyway, and handing health back would be worse than
+	// clamping.
+	TestEqual(TEXT("a share above a hundred still defers only the cost"),
+			  Debt::AmountDeferred(200.0f, 250.0f), 200.0f, 0.001f);
+	TestEqual(TEXT("and a negative share defers nothing"),
+			  Debt::AmountDeferred(200.0f, -50.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeferredHealthCostTest,
+	"Cataclysm.Skills.APartOfAHealthCostCanBeTakenLaterInsteadOfNow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeferredHealthCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST'S DEFERRED PAYMENT NODE, END TO END. Issue #991.
+	//
+	// WHAT THIS PROVES THAT THE ARITHMETIC TEST DOES NOT. That the share reaches
+	// the place a cost is worked out, that what is not taken is recorded as owed,
+	// and that the character really keeps the health in the meantime.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
+
+	// A COST OF A HUNDRED: ten per cent of maximum health, through the node that
+	// adds a cost to every skill. Half of it is deferred.
+	Caster.Set(Resource::GetAddedHealthCostAttribute(), 10.0f);
+	Caster.Set(Resource::GetDeferredHealthCostShareAttribute(), 50.0f);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	// HALF TAKEN NOW.
+	TestEqual(TEXT("half the cost was taken at once"),
+			  1'000.0f - Caster.Health(), 50.0f, 0.5f);
+
+	// AND HALF OWED.
+	TestEqual(TEXT("and the other half is owed"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 50.0f, 0.5f);
+
+	// THE DEBT IS NOT DUE YET, so a step now takes nothing. Three seconds have
+	// not passed; the world's clock has not moved at all.
+	TestEqual(TEXT("a debt that is not due yet is not taken"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("and the health is still there"), Caster.Health(), 950.0f,
+			  0.5f);
+
+	// AND THREE SECONDS LATER IT IS TAKEN. Nothing else changes: no point is
+	// spent, no stat rewritten, no skill used. The clock moves and that is all.
+	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
+	TestEqual(TEXT("once due, the whole debt is taken"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 50.0f, 0.5f);
+	TestEqual(TEXT("and the health is gone"), Caster.Health(), 900.0f, 0.5f);
+	TestEqual(TEXT("and nothing is owed any more"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 0.0f, 0.001f);
+
+	// AND IT IS NOT TAKEN TWICE. A settled debt clears its due time, so every
+	// later step finds nothing.
+	TestEqual(TEXT("a settled debt is not taken again"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("and the health is unchanged"), Caster.Health(), 900.0f,
+			  0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoDeferralTakesTheWholeCostTest,
+	"Cataclysm.Skills.ACharacterWithoutTheNodePaysItsWholeHealthCostAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoDeferralTakesTheWholeCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN DEFERRED PAYMENT.
+	// Issue #991. Without this the test above would pass just as well if the
+	// whole cost were always deferred, which would change what every existing
+	// health cost does.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
+	Caster.Set(Resource::GetAddedHealthCostAttribute(), 10.0f);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestEqual(TEXT("the whole cost was taken at once"),
+			  1'000.0f - Caster.Health(), 100.0f, 0.5f);
+	TestEqual(TEXT("and nothing is owed"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 0.0f, 0.001f);
+
+	// AND NOTHING FALLS DUE LATER EITHER, so a character without the node never
+	// acquires a due time it would then carry for the rest of its life.
+	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
+	TestEqual(TEXT("and nothing falls due later"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("and the health is unchanged"), Caster.Health(), 900.0f,
+			  0.5f);
 
 	return true;
 }

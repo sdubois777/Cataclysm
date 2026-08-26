@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For turning a health cost into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the part of a cost that is taken later instead of now. Issue #991.
+#include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -573,11 +575,36 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	LastHealthCostPercentOfMaximum =
 		Maximum > 0.0f ? Cost / Maximum * 100.0f : -1.0f;
 
+	// AND PART OF IT MAY NOT BE TAKEN YET. Issue #991. The Masochist's
+	// Deferred Payment node reads "10% per point of the health a skill costs
+	// is not taken when the skill is used. It is taken 3 seconds later."
+	//
+	// A SHARE OF THE WHOLE COST, not of one half of it. The node says "the
+	// health a skill costs", which is the total the character was about to
+	// pay, whichever pool each part of it was measured against.
+	//
+	// ZERO FOR A CHARACTER WITHOUT THE NODE, so `Immediate` is the whole cost
+	// and nothing below this line behaves differently for anybody else.
+	const float Deferred = UCataclysmHealthDebt::AmountDeferred(
+		Cost, UCataclysmHealthDebt::DeferredSharePercent(AbilitySystem));
+	const float Immediate = Cost - Deferred;
+
 	if (Cost > 0.0f)
 	{
-		AbilitySystem->ApplyModToAttribute(
-			UCataclysmVitalAttributeSet::GetHealthAttribute(),
-			EGameplayModOp::Additive, -Cost);
+		// THE BRANCH IS ON THE WHOLE COST AND THE WRITE IS ON WHAT IS TAKEN
+		// NOW, and the two differ once any of it is deferred. A character
+		// deferring the whole cost still generates Fervour and still opens the
+		// window below, because it has still committed to the cost.
+		if (Immediate > 0.0f)
+		{
+			AbilitySystem->ApplyModToAttribute(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				EGameplayModOp::Additive, -Immediate);
+		}
+
+		// AND WHAT WAS NOT TAKEN IS OWED. Nothing happens for a character
+		// without the node, whose deferred share is zero.
+		UCataclysmHealthDebt::Defer(AbilitySystem, Deferred);
 
 		// AND THE COST FILLS FERVOUR. Issue #954. The Masochist's starting node
 		// states two ways in and this is the second: "1 per 1% of maximum health

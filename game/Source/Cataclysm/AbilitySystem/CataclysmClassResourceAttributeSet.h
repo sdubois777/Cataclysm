@@ -151,6 +151,46 @@ public:
 	FGameplayAttributeData AddedHealthCostOfCurrent;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)
 
+	/**
+	 * What share of a skill's health cost is not taken when the skill is used,
+	 * as a percentage. Issue #991.
+	 *
+	 * The Masochist's Deferred Payment node is its only source: "10% per point
+	 * of the health a skill costs is not taken when the skill is used. It is
+	 * taken 3 seconds later." The node holds ten points, so at most the whole
+	 * cost is deferred.
+	 *
+	 * HELD BETWEEN 0 AND 100. Below zero it would take MORE than the cost now
+	 * and owe a negative amount; above a hundred it would defer more than was
+	 * charged and hand the character health back.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_DeferredHealthCostShare)
+	FGameplayAttributeData DeferredHealthCostShare;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare)
+
+	/**
+	 * How much health this character owes and has not yet paid. Issue #991.
+	 *
+	 * A POOL RATHER THAN A LEVER, which is why it is an attribute at all
+	 * rather than plain state on the ability system component. A player has to
+	 * be able to see it: the Blood Tithe branch's keystone, The Reckoning,
+	 * kills a character whose debt passes its current health, and a number that
+	 * can kill you has to be on screen.
+	 *
+	 * IN POINTS OF HEALTH, NOT A PERCENTAGE. Compound Interest asks about it as
+	 * "every 5% of your maximum health you currently owe", which is a
+	 * comparison against maximum health made where it is read rather than a
+	 * unit stored here. Storing points keeps it addable to what a further cast
+	 * defers without a conversion each time.
+	 *
+	 * WHEN IT FALLS DUE IS NOT HERE. That is a timestamp, held beside the other
+	 * timestamps on `UCataclysmAbilitySystemComponent`, and it is not a
+	 * quantity anybody reads.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthOwed)
+	FGameplayAttributeData HealthOwed;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthOwed)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -165,4 +205,6 @@ protected:
 	UFUNCTION() void OnRep_FervourLostToHealing(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AddedHealthCost(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AddedHealthCostOfCurrent(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DeferredHealthCostShare(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthOwed(const FGameplayAttributeData& OldValue);
 };

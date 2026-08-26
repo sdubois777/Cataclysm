@@ -20,6 +20,108 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A character can owe health, and the debt is one amount with one due time
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and
+`.cpp` (both new), `CataclysmClassResourceAttributeSet.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`,
+`CataclysmPlayerClassStats.cpp`, `docs/All_Things_Cataclysm.xlsx`. Applied.
+Issue #991.
+
+### What was decided
+
+Part of a skill's health cost may be recorded as owed rather than taken, and
+taken later. The Masochist's Deferred Payment node is the first to use it: "10%
+per point of the health a skill costs is not taken when the skill is used. It is
+taken 3 seconds later."
+
+**Three more nodes in the same branch were waiting on this and only this.**
+Compound Interest scales damage by what is owed, Rolling Debt extends the delay,
+and The Reckoning never takes costs at all and kills a character whose debt
+passes their health. None of them could be built while a character had no way to
+owe anything.
+
+### The amount owed is a gameplay attribute; the due time is not
+
+**The amount is a pool a player has to see.** The Reckoning kills a character
+whose debt exceeds their current health, and a number that can kill you belongs
+on screen. So it is a replicated attribute on the class resource set, beside the
+two added health costs, because it is part of the same economy: what a skill
+charges and when.
+
+**The due time is a timestamp nobody reads**, so it sits on the ability system
+component beside the three timestamps already there — when a health cost was last
+paid, when foreign damage was last taken, when the character was last displaced.
+
+### One amount with one due time, not a queue
+
+The design says it. Rolling Debt reads "extends the delay on **what is owed**",
+singular. A character casting twice before the first debt falls due owes one sum,
+and a second deferral takes the **earlier** of the two due times so that casting
+again cannot push an existing debt further away by accident. Making it later is
+exactly what Rolling Debt is for, and that node is not built yet.
+
+### The reward is not deferred with the cost
+
+A deferred cost still generates Fervour at the moment of the cast, and still
+opens the timed window that Blood Rush reads.
+
+**That is a judgement rather than something the design states.** The argument for
+it: deferring the pain is the node's whole point, and deferring the reward as
+well would be a second effect nobody asked for. The argument against: a character
+that has not yet paid arguably has not yet spent, and the design writes Fervour
+generation as coming from "health spent as an ability cost".
+
+The first reading was taken. If it turns out to be wrong the change is one line,
+and `Cataclysm.Skills.APartOfAHealthCostCanBeTakenLaterInsteadOfNow` would need
+one more assertion rather than a rewrite.
+
+### A settled debt is taken with no floor
+
+Issue #986 added a floor so that a cost taken from **current** health leaves at
+least one health behind. That floor applies where the cost is worked out, not
+where a deferred part of it settles.
+
+**By then it is a debt, and the design is explicit that a debt may kill.** The
+Reckoning: "If your debt ever exceeds your current health, you die." That
+keystone's own lethal rule is not built here, and nothing was added that would
+contradict it later.
+
+### It needs no timer of its own
+
+`ACataclysmCharacterBase` already runs a looping per-character timer for health
+regeneration and for paying out leech. Settling a due debt is a third job on that
+step. A timer per debt would be one more thing to cancel when a character dies,
+and a debt falling due a fraction of a second late is not something a player can
+perceive.
+
+### Where the genre puts this, and the balance question it raises
+
+**Path of Exile's Petrified Blood is the same mechanic applied to damage rather
+than to a cost**: part of a hit is not taken immediately and arrives over time
+instead. Player discussion of it is blunt about how strong that is — deferred
+damage is described as one of the strongest effects in the genre, **because the
+player can recover during the gap.** Builds deliberately pair it with life
+recovery to nullify large parts of incoming damage.
+
+That applies here. Deferred Payment at its full ten points defers the **whole**
+cost for three seconds, and this project has health regeneration and life leech.
+A Masochist could pay nothing while still generating Fervour from the cost,
+because the Fervour arrives at the moment of the cast.
+
+**The number was left as the design states it** and the concern is filed, in
+keeping with `CLAUDE.md`'s rule that constants are tuned against real play rather
+than argued to death first. What would settle it is a measurement of how much
+health a Masochist actually recovers in three seconds, which nobody has taken.
+
+Sources:
+
+- [Petrified Blood — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Petrified_Blood)
+- [Life loss from Petrified Blood and Progenesis — Path of Exile developer tracker](https://devtrackers.gg/pathofexile/p/a21061cb-life-loss-from-petrified-blood-and-progenesis-is-not-prevented-by-grace-period)
+
+---
+
 ## 2026-08-26 — A cap on how far healing may take a character is stored as a reduction of the ceiling, not as the ceiling
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h`
