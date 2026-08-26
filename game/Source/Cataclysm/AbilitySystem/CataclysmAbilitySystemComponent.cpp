@@ -288,7 +288,8 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 }
 
 float UCataclysmAbilitySystemComponent::StatForSkill(
-	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback) const
+	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
+	float SkillHealthCostPercent) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -305,12 +306,14 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// bracket: a base of 100 carrying an unscoped +50% and a scoped +50% is 200
 	// through one pass and 225 through two. FCataclysmStatInputs quotes the
 	// design's own words on it.
-	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
-											SkillTags, CurrentConditions()).Final;
+	return UCataclysmStatPipeline::Evaluate(
+			   Inputs->Base, Inputs->Modifiers, SkillTags,
+			   CurrentConditions(SkillHealthCostPercent)).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
-	const FGameplayTagContainer& SkillTags) const
+	const FGameplayTagContainer& SkillTags,
+	float SkillHealthCostPercent) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -329,13 +332,14 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	// PERCENTAGE POINTS OUT OF THE PIPELINE AND A FRACTION OUT OF HERE, which is
 	// the conversion issue #963 was about. The two figures a hit uses have to be
 	// in the same units or one cannot be undone and the other applied.
-	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
-											SkillTags, CurrentConditions())
+	return UCataclysmStatPipeline::Evaluate(
+			   Inputs->Base, Inputs->Modifiers, SkillTags,
+			   CurrentConditions(SkillHealthCostPercent))
 			   .SumOfIncreases / 100.0f;
 }
 
-FCataclysmStatConditions
-UCataclysmAbilitySystemComponent::CurrentConditions() const
+FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
+	float SkillHealthCostPercent) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -384,6 +388,19 @@ UCataclysmAbilitySystemComponent::CurrentConditions() const
 		// `AddedHealthCostPercent` guards its own.
 		State.ClassResourceHeld = FMath::Max(0.0f, Resource->GetClassResource());
 	}
+
+	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
+	// A PROPERTY OF THE CHARACTER. Issue #983. The Masochist's Grand Tithe node
+	// asks about "a skill whose health cost is above 10% of your maximum
+	// health", so two blows an instant apart from the same character can answer
+	// it differently and nothing built from the character alone could tell them
+	// apart. Whoever has the blow in hand passes it in.
+	//
+	// PASSED THROUGH UNCHANGED, INCLUDING ITS NEGATIVE DEFAULT. A caller with no
+	// skill in hand -- the character sheet, an enemy's plain attack, a burning
+	// patch of ground -- leaves it at -1 and the condition refuses, which is the
+	// same rule the readings above follow.
+	State.SkillHealthCostPercent = SkillHealthCostPercent;
 
 	return State;
 }

@@ -51,3 +51,5 @@ Masochist_keystone_fc_kC#2,Masochist_keystone_fc_kC,fervour_from_cost,more,-50.0
 Masochist_keystone_bt_kC#1,Masochist_keystone_bt_kC,fervour_from_cost,more,30.0,,,0.0,,0.0
 Masochist_keystone_bt_kC#2,Masochist_keystone_bt_kC,fervour_from_damage,more,-50.0,,,0.0,,0.0
 Masochist_keystone_spine_003#1,Masochist_keystone_spine_003,retaliation,increased,1.0,,,0.0,class_resource_held,1.0
+Masochist_basic_bt_b2#1,Masochist_basic_bt_b2,attack_damage,increased,4.0,,skill_health_cost_above,10.0,,0.0
+Masochist_basic_bt_b2#2,Masochist_basic_bt_b2,spell_damage,increased,4.0,,skill_health_cost_above,10.0,,0.0

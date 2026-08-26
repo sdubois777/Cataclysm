@@ -20,6 +20,117 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A passive bonus can depend on what the skill in hand cost, and that number travels with the blow
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.cpp`,
+`CataclysmSkillEffects.h` and `.cpp`, `CataclysmProjectile.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx`. Applied.
+Issue #983.
+
+### What was decided
+
+A passive bonus may now be conditioned on what the skill dealing the blow cost,
+as a share of the character's maximum health. The Masochist's Grand Tithe
+keystone is the node: "A skill whose health cost is above 10% of your maximum
+health deals 4% increased damage per point."
+
+**It is the first condition that asks about the SKILL rather than about the
+character**, and that is what made it a new shape rather than another entry in an
+existing list. The three conditions that existed before it — a health threshold
+and two timed windows — are all properties of the character, so one character has
+one answer at any instant. This one differs between two blows landed in the same
+instant by the same character.
+
+### So the number travels with the blow
+
+`UCataclysmSkillEffects::ApplyHit` receives the skill's tags and not the skill,
+and `UCataclysmAbilitySystemComponent::CurrentConditions` builds the character's
+state with no skill in hand at all. Neither could answer the question.
+
+`FCataclysmHitDelivery` already carried exactly this kind of number for exactly
+this reason: the skill's own critical strike chance, added under issue #657
+because "a character has no critical strike chance in the abstract". The cost
+joins it there, and reaches `ApplyHit` by the same two routes — directly from
+`UCataclysmSkillTemplate::HitTargets`, and carried through the air by
+`ACataclysmProjectile`.
+
+**The projectile route is the one that matters.** Blood Pyre is the only skill in
+the game with a health cost of its own and it is a projectile, so a shot that
+read the cost when it landed would credit the blow with whatever the character
+had last paid rather than with what that shot cost.
+
+### What is recorded is what was charged, not what the row states
+
+`UCataclysmSkillTemplate::PayHealthCost` writes the figure, because only it knows
+it. A skill's total cost is its own share of **current** health plus the
+character's added share of **maximum** health, so it depends on where the
+character's health stood at the moment of the cast and on how many points are in
+the Deeper Cuts node. Neither is knowable from the skill row.
+
+It is recorded against **maximum** health, because that is what the node asks
+about, even though half the total was a share of current health.
+
+It is written on every use rather than only on a use that charged something. An
+ability is instanced per actor, so the value outlives the cast that wrote it —
+correctly, since a projectile lands later — and a skill that cost nothing must
+record a real zero instead of keeping the last cast's figure.
+
+### Strictly above, and the boundary is reachable
+
+Every threshold in the trees before this is written "at or below" and includes its
+own number. This one is written "above" and excludes it, so the predicate does
+too.
+
+**That is not pedantry.** The Deeper Cuts node adds 1% of maximum health per
+point and holds ten points, so a character with it maxed pays exactly 10% on
+every skill — precisely the threshold, and correctly nothing.
+
+| Character | Cost as a share of maximum health | Above 10%? |
+| :-- | --: | :-- |
+| Deeper Cuts at ten points, any ordinary skill | exactly 10% | no |
+| Deeper Cuts at ten points, Blood Pyre, at full health | 18% | yes |
+| Deeper Cuts at ten points, Blood Pyre, at half health | 14% | yes |
+| Blood Pyre alone, no Deeper Cuts, at full health | 8% | no |
+
+**So Grand Tithe fires only for a character that has invested heavily in Deeper
+Cuts and is using Blood Pyre.** Both nodes are in the same branch of the tree, so
+that reads as deliberate rather than accidental, and it is recorded here rather
+than changed. It is worth revisiting if more skills gain a health cost of their
+own, because today the node depends on one skill existing.
+
+### The genre has the same idea, and stops one step short of this
+
+Path of Exile grants **"Damage with Life Cost Skills"** on its passive tree. That
+is the same thought: a skill that charges the character's own life is rewarded
+with more damage. So the idea is not novel here, and the design's instinct is
+sound.
+
+**What the genre conditions on is whether the skill costs life at all, not how
+much.** Path of Exile's version is a yes-or-no property of the skill, which is
+the kind of thing a tag could express. Grand Tithe conditions on the cost passing
+a threshold, which no tag stamped on a skill row could answer: the total depends
+on the character's own added cost and on where its health stands at the moment of
+the cast, so two casts of one skill can fall on different sides of the line.
+
+**A caution worth carrying over.** Path of Exile players have argued on the
+official forum that "Damage with life cost skills" does not apply to every skill
+that costs life, because the game decides membership in ways the wording does not
+make obvious. A rule that reads simply and behaves selectively is a support
+burden. This project's version is stated as a number against a number, which is
+harder to get wrong, and the automation test
+`Cataclysm.ConditionalDamage.IncreasedDamageFollowsWhatTheSkillInHandCost` pins
+both sides of the boundary so that it stays that way.
+
+Sources:
+
+- [Damage with Life Cost Skills — Path of Exile passive reference](http://www.vhpg.com/passive/damage-with-life-cost-skills-and-reduced-life-cost.html)
+- ["Damage with life cost skills" does not apply to all skills that cost life — official Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3150282)
+
+---
+
 ## 2026-08-25 — A passive bonus can grow with the class resource, and retaliation has to be asked for rather than read
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

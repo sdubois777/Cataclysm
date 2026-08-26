@@ -764,6 +764,18 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatCondition::WithinSecondsOfHealthCost;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(TEXT("skill_health_cost_above"),
+											  ESearchCase::IgnoreCase))
+			{
+				// A CONDITION ABOUT THE SKILL IN HAND RATHER THAN ABOUT THE
+				// CHARACTER, which is the first of its kind here. Issue #983.
+				// Grand Tithe is the node. The value is a percentage of maximum
+				// health, like the threshold two branches up, but the comparison
+				// is strictly greater than rather than at or below.
+				Modifier.Condition =
+					ECataclysmStatCondition::SkillHealthCostAbovePercent;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
 			else if (!Effect->Condition.IsEmpty())
 			{
 				UE_LOG(LogCataclysm, Warning,

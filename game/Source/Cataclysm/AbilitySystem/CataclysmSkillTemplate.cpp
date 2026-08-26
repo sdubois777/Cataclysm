@@ -231,6 +231,18 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	FCataclysmHitDelivery Delivery;
 	Delivery.CritChancePercent = CritChancePercent;
 
+	// AND WHAT THIS SKILL JUST COST TRAVELS WITH EVERY BLOW IT DEALS, for the
+	// same reason the critical strike chance does: it belongs to the skill
+	// rather than to the character, and `ApplyHit` receives the skill's tags and
+	// not the skill. The Masochist's Grand Tithe node is what reads it.
+	// Issue #983.
+	//
+	// -1 UNTIL THE SKILL HAS BEEN USED, which cannot happen here: every one of
+	// the eight skill shapes goes through `CommitAndBegin` first, and that calls
+	// `PayHealthCost`, which writes this on every use whether it charged
+	// anything or not.
+	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
+
 	float Total = 0.0f;
 	for (AActor* Target : Targets)
 	{
@@ -499,6 +511,29 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
 	// the two are summed rather than one being applied to what the other left.
 	const float Cost = Own + Added;
+
+	// WHAT THIS SKILL JUST COST, AS A SHARE OF MAXIMUM HEALTH. Issue #983. Grand
+	// Tithe asks "a skill whose health cost is above 10% of your maximum health",
+	// and nothing anywhere recorded what a skill had cost.
+	//
+	// AGAINST MAXIMUM HEALTH WHATEVER EACH HALF WAS MEASURED AGAINST. The
+	// skill's own cost is a share of CURRENT health and the character's added
+	// cost is a share of MAXIMUM health; the node asks about maximum, so the
+	// total is divided by the maximum here rather than at the far end where the
+	// two halves can no longer be told apart.
+	//
+	// OUTSIDE THE BRANCH BELOW, DELIBERATELY, so a skill that cost nothing
+	// records a real zero rather than keeping whatever the last cast recorded.
+	// The ability is instanced per actor, so this value outlives the cast that
+	// wrote it, and a stale one would hand a free skill the bonus a paid one
+	// earned.
+	//
+	// NO MAXIMUM HEALTH LEAVES IT UNKNOWN. An attribute set that has not been
+	// written yet reports zero, and dividing by it would be worse than saying
+	// nothing is known.
+	LastHealthCostPercentOfMaximum =
+		Maximum > 0.0f ? Cost / Maximum * 100.0f : -1.0f;
+
 	if (Cost > 0.0f)
 	{
 		AbilitySystem->ApplyModToAttribute(

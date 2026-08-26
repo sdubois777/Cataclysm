@@ -152,7 +152,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: each point of Fervour you currently hold." One row, and the second bonus in
 #: the project whose SIZE grows with a state rather than switching on and off
 #: with it. Issue #980.
-AUTHORED_ROWS = 52
+#:
+#: AND BY TWO, both on one node. Grand Tithe reads "A skill whose health
+#: cost is above 10% of your maximum health deals 4% increased damage per
+#: point", so it is the same two damage stats under the first condition that
+#: asks about the SKILL rather than about the character. Issue #983.
+AUTHORED_ROWS = 54
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -209,7 +214,11 @@ AUTHORED_ROWS = 52
 #: AND TO 44 FOR ONE MORE, Reciprocity, whose retaliation damage grows with how
 #: much Fervour the character is holding. 44 of 293 altogether and 40 of the
 #: Masochist tree's own 74. Issue #980.
-AUTHORED_NODES = 44
+#:
+#: AND TO 45 FOR ONE MORE, Grand Tithe, whose damage depends on what the
+#: skill in hand cost. 45 of 293 altogether and 41 of the Masochist tree's
+#: own 74. Issue #983.
+AUTHORED_NODES = 45
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -348,6 +357,12 @@ CONDITION_WORDS = {
     "seconds_after_foreign_damage": ("after you take damage of a cataclysm "
                                      "type",
                                      "{value:g} second"),
+    # THE WORDS INCLUDE "above", WHICH IS THE POINT. Issue #983. This is the one
+    # threshold in the tree written the other way round from every health
+    # threshold, and a node reworded to "at or below" while the row kept saying
+    # `skill_health_cost_above` would be worth the opposite of what a player
+    # reads. Requiring the word here is what notices.
+    "skill_health_cost_above": ("health cost is above", "{value:g}%"),
 }
 
 

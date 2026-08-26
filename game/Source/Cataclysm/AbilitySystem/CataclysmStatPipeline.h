@@ -140,6 +140,37 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WithinSecondsOfForeignDamage
 		UMETA(DisplayName = "Within Seconds Of Foreign Damage"),
+
+	/**
+	 * The skill dealing this blow cost more than `ConditionValue` percent of
+	 * the character's maximum health. Issue #983.
+	 *
+	 * THE FIRST CONDITION THAT ASKS ABOUT THE SKILL RATHER THAN THE CHARACTER,
+	 * and that is what makes it different from the three above. Grand Tithe is
+	 * the node: "A skill whose health cost is above 10% of your maximum health
+	 * deals 4% increased damage per point." Two skills used one after the other
+	 * by the same character at the same instant can answer this differently,
+	 * which is true of `RequiredTags` and of nothing else here.
+	 *
+	 * SO THE READING TRAVELS WITH THE BLOW rather than being built from the
+	 * character. `FCataclysmHitDelivery` carries it, the way it already carries
+	 * the skill's own critical strike chance and for the same reason.
+	 *
+	 * STRICTLY ABOVE, NOT AT OR BELOW. The design writes "above 10%", which is
+	 * the opposite boundary from every health threshold in the tree, and the
+	 * difference is reachable rather than theoretical: Deeper Cuts at its full
+	 * ten points adds exactly 10% of maximum health to every skill, so a
+	 * character with that and nothing else sits precisely on the number and
+	 * correctly gets nothing.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH, whatever the cost was measured against. A
+	 * skill's own cost is a share of CURRENT health and the character's added
+	 * cost is a share of MAXIMUM health; `UCataclysmSkillTemplate::PayHealthCost`
+	 * sums them and records the total against maximum health, because that is
+	 * what the node asks about.
+	 */
+	SkillHealthCostAbovePercent
+		UMETA(DisplayName = "Skill Health Cost Above Percent"),
 };
 
 /**
@@ -265,6 +296,26 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceHeld = -1.0f;
+
+	/**
+	 * What the skill dealing this blow cost, as a percentage of the character's
+	 * maximum health. Issue #983.
+	 *
+	 * NOT A STATE OF THE CHARACTER AT ALL, unlike everything above it, and it
+	 * sits here because this is what the pipeline is handed besides the skill's
+	 * tags. It is a property of the skill in hand, so two blows an instant apart
+	 * from one character can carry different values.
+	 *
+	 * NEGATIVE MEANS THE SKILL IS NOT KNOWN, which is every caller that has no
+	 * blow in hand -- the character sheet, an enemy's plain attack, a burning
+	 * patch of ground. Zero is a real reading and means the skill cost nothing,
+	 * which is every skill in the game except Blood Pyre for a character without
+	 * the Deeper Cuts node. Both answer no to a threshold above zero, so the two
+	 * do not have to be told apart by any caller; they are kept distinct because
+	 * the distinction is real.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SkillHealthCostPercent = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

@@ -2443,6 +2443,20 @@ CONDITIONS = {
     # Demonic" is `seconds_after_foreign_damage` with 5. Same units and
     # same bound as the window above; a different event opens it.
     "seconds_after_foreign_damage": (0.0, 60.0, "a number of seconds"),
+
+    # "a skill whose health cost is above 10% of your maximum health" is
+    # `skill_health_cost_above` with 10. Issue #983.
+    #
+    # THE ONLY ONE OF THESE THAT ASKS ABOUT THE SKILL RATHER THAN THE CHARACTER,
+    # so one character using two skills an instant apart answers it differently
+    # for each. Nothing the other three can express covers that.
+    #
+    # STRICTLY ABOVE, NOT AT OR BELOW, unlike `health_at_or_below`, and the
+    # difference is reachable rather than pedantic: the Deeper Cuts node at its
+    # full ten points adds exactly 10% of maximum health to every skill, so a
+    # character with that node and no skill of its own cost sits precisely on
+    # this threshold and correctly gets nothing.
+    "skill_health_cost_above": (0.0, 100.0, "a percentage of maximum health"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

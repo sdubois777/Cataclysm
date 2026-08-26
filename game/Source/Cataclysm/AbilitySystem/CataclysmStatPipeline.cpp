@@ -74,6 +74,24 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// Issue #975.
 		return State.SecondsSinceForeignDamage >= 0.0f
 			&& State.SecondsSinceForeignDamage <= Value;
+
+	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
+		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER
+		// PREDICATE HERE, and it is read straight off the design's own words:
+		// "A skill whose health cost is above 10% of your maximum health".
+		// Issue #983.
+		//
+		// THE BOUNDARY IS REACHABLE RATHER THAN THEORETICAL. Deeper Cuts at its
+		// full ten points adds exactly 10% of maximum health to every skill, so
+		// a character with that node and no skill of its own cost sits precisely
+		// on the number. Copying the "at or below" form from the neighbouring
+		// case would hand that character the bonus the design withholds.
+		//
+		// A NEGATIVE READING IS "NO SKILL IN HAND" AND REFUSES, the same as
+		// every other unknown here. It cannot be confused with a real answer:
+		// a cost is never negative, and a threshold is never below zero.
+		return State.SkillHealthCostPercent >= 0.0f
+			&& State.SkillHealthCostPercent > Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -209,6 +227,28 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return FString::Printf(
 			TEXT("a health threshold of %.1f%%. A percentage of maximum health "
 				 "is between 0 and 100."),
+			Modifier.ConditionValue);
+	}
+
+	// AND A SKILL'S COST THRESHOLD IS A PERCENTAGE OF MAXIMUM HEALTH TOO, so it
+	// is bounded the same way. Issue #983. A negative threshold would be
+	// satisfied by every skill including the ones that cost nothing, since the
+	// comparison is strictly greater than; the whole node would become an
+	// unconditional bonus.
+	//
+	// THE UPPER BOUND IS NOT 100. A skill's total cost is its own share of
+	// CURRENT health plus the character's added share of MAXIMUM health, and
+	// only the second of those is bounded by the maximum, so a cost above 100%
+	// of maximum health is arithmetically possible even though nothing in the
+	// designed data reaches it. The bound is a sanity limit on the THRESHOLD
+	// rather than on the cost: a threshold above 100% is far likelier to be a
+	// number in the wrong column than a deliberate design.
+	if (Modifier.Condition == ECataclysmStatCondition::SkillHealthCostAbovePercent
+		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
+	{
+		return FString::Printf(
+			TEXT("a skill cost threshold of %.1f%%. A percentage of maximum "
+				 "health is between 0 and 100."),
 			Modifier.ConditionValue);
 	}
 
