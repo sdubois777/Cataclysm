@@ -210,6 +210,34 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase worth `Value` per whole `Step` stacks of one kind. */
+	FCataclysmStatModifier IncreasedPerStack(float Value, float Step,
+											 ECataclysmStatScale Kind)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Scale = Kind;
+		Modifier.ScaleStep = Step;
+		return Modifier;
+	}
+
+	/**
+	 * A character holding this many stacks of each kind. Issues #1002 to #1004.
+	 *
+	 * NO NEGATIVE "UNKNOWN" HERE, unlike every other state in this file. A
+	 * caller with no character holds no stacks and a character that has earned
+	 * none holds no stacks; both are worth nothing to a bonus counting them, and
+	 * nothing can act differently on the two, so there is nothing to tell apart.
+	 */
+	FCataclysmStatConditions Holding(int32 Momentum, int32 Bloodlust,
+									 int32 Carnage)
+	{
+		FCataclysmStatConditions State;
+		State.SanguineMomentumStacks = Momentum;
+		State.BloodlustStacks = Bloodlust;
+		State.CarnageStacks = Carnage;
+		return State;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -902,6 +930,111 @@ bool FCataclysmPipelineHealthOwedScaleTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("while the missing-health bonus gets nothing from it"),
 		FPipeline::Evaluate(100.0f, ByMissing, NoTags, FullAndInDebt).Final,
 		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineStackScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithACountOfStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineStackScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S SANGUINE MOMENTUM NODE at its full six points: "Each stack
+	// gives +1% increased attack and cast speed per point", so six percentage
+	// points a stack. Issue #1002.
+	TArray<FCataclysmStatModifier> Momentum = {
+		IncreasedPerStack(6.0f, 1.0f,
+						  ECataclysmStatScale::PerStackOfSanguineMomentum) };
+
+	// HOLDING NOTHING IS WORTH NOTHING, which is where every character starts a
+	// fight and is what makes the node a reward for keeping the chain going.
+	TestEqual(TEXT("no stacks is worth nothing"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags, Holding(0, 0, 0)).Final,
+		100.0f, 0.01f);
+
+	// AND A STACK IS A STEP.
+	TestEqual(TEXT("three stacks is +18%"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags, Holding(3, 0, 0)).Final,
+		118.0f, 0.01f);
+	TestEqual(TEXT("and the node's five-stack cap is +30%"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags, Holding(5, 0, 0)).Final,
+		130.0f, 0.01f);
+
+	// A CALLER THAT KNOWS NOTHING ABOUT THE CHARACTER GETS NOTHING, which is the
+	// character sheet and every enemy in the game. A default state holds no
+	// stacks, so this needs no negative sentinel the way the other scales do.
+	TestEqual(TEXT("a caller with no character in hand gets nothing"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags).Final, 100.0f, 0.01f);
+
+	// THE THREE KINDS ARE NOT INTERCHANGEABLE, WHICH IS THE WHOLE REASON THEY
+	// ARE THREE SCALES. Each is granted by a different event and lasts a
+	// different length of time, so a build that mapped one onto another would
+	// hand a node somebody else's stacks and no arithmetic would report it.
+	TArray<FCataclysmStatModifier> Bloodlust = {
+		IncreasedPerStack(8.0f, 1.0f,
+						  ECataclysmStatScale::PerStackOfBloodlust) };
+	TArray<FCataclysmStatModifier> Carnage = {
+		IncreasedPerStack(3.0f, 1.0f,
+						  ECataclysmStatScale::PerStackOfCarnage) };
+
+	// A character holding five Momentum stacks and nothing else.
+	const FCataclysmStatConditions MomentumOnly = Holding(5, 0, 0);
+	TestEqual(TEXT("a Bloodlust bonus gets nothing from Momentum stacks"),
+		FPipeline::Evaluate(100.0f, Bloodlust, NoTags, MomentumOnly).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and a Carnage bonus gets nothing from them either"),
+		FPipeline::Evaluate(100.0f, Carnage, NoTags, MomentumOnly).Final,
+		100.0f, 0.01f);
+
+	// AND EACH READS ITS OWN, so the three are wired to three different fields
+	// rather than all to the first one.
+	const FCataclysmStatConditions AllThree = Holding(1, 2, 4);
+	TestEqual(TEXT("Momentum reads its own one stack"),
+		FPipeline::Evaluate(100.0f, Momentum, NoTags, AllThree).Final,
+		106.0f, 0.01f);
+	TestEqual(TEXT("Bloodlust reads its own two"),
+		FPipeline::Evaluate(100.0f, Bloodlust, NoTags, AllThree).Final,
+		116.0f, 0.01f);
+	TestEqual(TEXT("and Carnage reads its own four"),
+		FPipeline::Evaluate(100.0f, Carnage, NoTags, AllThree).Final,
+		112.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, and is
+	// refused outright when the data is checked. The same rule the three scales
+	// above follow, asserted here so that adding a scale cannot skip it.
+	TArray<FCataclysmStatModifier> NoStep = {
+		IncreasedPerStack(10.0f, 0.0f,
+						  ECataclysmStatScale::PerStackOfCarnage) };
+	TestEqual(TEXT("a step of nothing is worth nothing at every count"),
+		FPipeline::Evaluate(100.0f, NoStep, NoTags, Holding(0, 0, 10)).Final,
+		100.0f, 0.01f);
+	TestTrue(TEXT("and is reported as illegal when the data is checked"),
+		!FPipeline::ValidateModifier(NoStep[0]).IsEmpty());
+	TestTrue(TEXT("while a real step is not"),
+		FPipeline::ValidateModifier(Carnage[0]).IsEmpty());
+
+	// A STACK COUNT IS INDEPENDENT OF EVERY OTHER STATE. A state that knows only
+	// the stacks does not know where health is, and a health bonus gets nothing
+	// from a full set of stacks.
+	TestTrue(TEXT("a state that knows the stacks need not know the health"),
+		MomentumOnly.HealthPercent < 0.0f);
+
+	TArray<FCataclysmStatModifier> ByMissing = {
+		IncreasedPerHealthMissing(1.0f, 1.0f) };
+	TestEqual(TEXT("a missing-health bonus gets nothing from stacks alone"),
+		FPipeline::Evaluate(100.0f, ByMissing, NoTags, MomentumOnly).Final,
+		100.0f, 0.01f);
+
+	// AND A COUNT ABOVE ANY NODE'S CAP STILL COUNTS. Nothing in the pipeline
+	// caps a stack -- the cap is enforced where a stack is granted -- so this
+	// pins that the two rules live in different places and that neither has
+	// quietly been given the other's job.
+	TestEqual(TEXT("twenty Carnage stacks are worth twenty steps here"),
+		FPipeline::Evaluate(100.0f, Carnage, NoTags, Holding(0, 0, 20)).Final,
+		160.0f, 0.01f);
 
 	return true;
 }

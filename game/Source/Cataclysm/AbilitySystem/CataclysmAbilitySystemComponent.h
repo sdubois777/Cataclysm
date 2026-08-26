@@ -6,6 +6,10 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmLeech.h"
+// For the kinds of stack this component keeps a count of. Issue #1002. The
+// header carries the enumerator and forward-declares this class, so including
+// it here does not make a circle.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "CataclysmAbilitySystemComponent.generated.h"
 
@@ -386,6 +390,33 @@ public:
 	}
 
 	/**
+	 * How many stacks of a kind this character is holding. Issue #1002.
+	 *
+	 * THE WINDOW IS APPLIED WHEN THE COUNT IS ASKED FOR rather than when it
+	 * would expire, which is why a stack needs no timer at all. The same shape
+	 * `DisplacementsInWindow` above uses and for the same reason: asking does
+	 * not reset anything, and nothing has to be cancelled when a character dies.
+	 *
+	 * `UCataclysmStacks::Held` IS WHAT CALLERS SHOULD USE. It knows each kind's
+	 * own window; this takes the window as an argument so that the component
+	 * does not have to.
+	 */
+	int32 StacksHeld(ECataclysmStackKind Kind, float WindowSeconds) const;
+
+	/**
+	 * Grant one stack of a kind, capped, and refresh the whole lot's expiry.
+	 *
+	 * ONE EXPIRY FOR ALL STACKS OF A KIND, NOT ONE PER STACK. Path of Exile's
+	 * charges work this way -- gaining one resets the duration of all of them --
+	 * and the design states no rule, so it is read off the genre. It is also far
+	 * easier for a player to reason about than a queue.
+	 *
+	 * A LAPSED COUNT RESTARTS AT ONE rather than continuing. A character that
+	 * let its stacks run out and then earned another has one, not six.
+	 */
+	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap);
+
+	/**
 	 * Record that this character has just taken damage of a Cataclysm type
 	 * other than its own. Issue #975.
 	 *
@@ -535,4 +566,27 @@ protected:
 	 * one incurred afterwards are different debts.
 	 */
 	float HealthDebtExtensionAppliedSeconds = 0.0f;
+
+	/**
+	 * How many stacks of each kind this character has earned, and when the last
+	 * of that kind was granted. Issue #1002.
+	 *
+	 * PLAIN STATE RATHER THAN GAMEPLAY ATTRIBUTES, which is the same call
+	 * `DisplacementCount` above made and the opposite of the one `HealthOwed`
+	 * made. A pool a player has to watch, and that can kill them, is an
+	 * attribute; a count that only decides how large a bonus is right now is
+	 * not part of any economy, is read by nothing but the stat pipeline, and
+	 * would cost three replicated attributes for nothing. `Cataclysm.ShowStacks`
+	 * is what shows it while playing.
+	 *
+	 * ONE TIMESTAMP PER KIND, NOT ONE PER STACK. See `GrantStack`.
+	 *
+	 * A COUNT OF NOTHING NEEDS NO SENTINEL TIMESTAMP, which is why both start at
+	 * zero and neither carries the negative "never" the timestamps above use.
+	 * `StacksHeld` answers zero for a count of zero before it looks at the
+	 * clock, so a character that has never earned a stack of a kind never
+	 * reaches the comparison at all.
+	 */
+	int32 StackCounts[UCataclysmStacks::KindCount] = {};
+	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
 };

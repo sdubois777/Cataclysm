@@ -951,6 +951,16 @@ namespace CataclysmPassiveEffectTest
 			// character, so a build that mapped either name onto either
 			// enumerator would pass every check written before this row.
 			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5\r\n"
+			// AND THREE COUNTS OF STACKS, ONE PER KIND. Issues #1002, #1003 and
+			// #1004. All three are here rather than one of them, because the
+			// three names must not be interchangeable: each kind is granted by a
+			// different event and lasts a different length of time, and a build
+			// that mapped two of the names onto one enumerator would hand a node
+			// somebody else's stacks with nothing reporting it. One row cannot
+			// catch that; three can.
+			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1\r\n"
+			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1\r\n"
+			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
 
@@ -1308,6 +1318,37 @@ bool FCataclysmPassiveScaleReachesTheModifierTest::RunTest(const FString&)
 		TestTrue(TEXT("and it is not the missing-health scale"),
 				 (*Leech)[0].Scale
 					 != ECataclysmStatScale::PerPercentOfMaximumHealthMissing);
+	}
+
+	// AND THE THREE STACK NAMES REACH THREE DIFFERENT ENUMERATORS. Issues
+	// #1002, #1003 and #1004. Checked together rather than one at a time,
+	// because what would go wrong is two names landing on one enumerator, and no
+	// single row can see that: a node would count somebody else's stacks, which
+	// are granted by a different event and expire on a different clock, and the
+	// arithmetic would run perfectly.
+	const TPair<const TCHAR*, ECataclysmStatScale> Stacks[] = {
+		{TEXT("armor"), ECataclysmStatScale::PerStackOfSanguineMomentum},
+		{TEXT("magic_find"), ECataclysmStatScale::PerStackOfBloodlust},
+		{TEXT("dot_damage"), ECataclysmStatScale::PerStackOfCarnage},
+	};
+
+	for (const TPair<const TCHAR*, ECataclysmStatScale>& Each : Stacks)
+	{
+		const TArray<FCataclysmStatModifier>* Found =
+			Modifiers.Find(FName(Each.Key));
+		if (!TestNotNull(FString::Printf(TEXT("the stack row granted '%s'"),
+										 Each.Key), Found))
+		{
+			continue;
+		}
+
+		TestEqual(FString::Printf(TEXT("'%s' carries the scale its name asked "
+									   "for"), Each.Key),
+				  static_cast<int32>((*Found)[0].Scale),
+				  static_cast<int32>(Each.Value));
+		TestEqual(FString::Printf(TEXT("'%s' scales in single stacks"),
+								  Each.Key),
+				  (*Found)[0].ScaleStep, 1.0f);
 	}
 
 	return true;

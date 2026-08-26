@@ -827,6 +827,31 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
+			else if (Effect->Scale.Equals(TEXT("momentum_stacks"),
+										  ESearchCase::IgnoreCase))
+			{
+				// A COUNT OF STACKS RATHER THAN A READING OF HEALTH OR OF THE
+				// POOL. Issues #1002, #1003 and #1004. Three kinds, three names,
+				// and they must not be interchangeable: each is granted by a
+				// different event and lasts a different length of time, so a
+				// build that mapped one onto another would give a node somebody
+				// else's stacks and nothing would report it.
+				Modifier.Scale =
+					ECataclysmStatScale::PerStackOfSanguineMomentum;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
+			else if (Effect->Scale.Equals(TEXT("bloodlust_stacks"),
+										  ESearchCase::IgnoreCase))
+			{
+				Modifier.Scale = ECataclysmStatScale::PerStackOfBloodlust;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
+			else if (Effect->Scale.Equals(TEXT("carnage_stacks"),
+										  ESearchCase::IgnoreCase))
+			{
+				Modifier.Scale = ECataclysmStatScale::PerStackOfCarnage;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
 			else if (!Effect->Scale.IsEmpty())
 			{
 				// A step of nothing makes `ScaledValue` answer zero.

@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Bloodlust stack that taking damage builds. Issue #1003.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -1055,6 +1057,91 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmOwnTypeDoesNotOpenAWindowTest,
 
 	TestEqual(TEXT("a Demonic hit on a Demonic character opens no window"),
 		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	// AND YET IT STILL BUILDS A BLOODLUST STACK. Issue #1003. The two rules sit
+	// side by side in the same branch of the vital attribute set and ask
+	// different questions: the window wants a Cataclysm type the character does
+	// NOT share, and the stack wants damage of any kind from anything. A hit of
+	// the character's own type is the case that separates them, which is why
+	// this assertion is here rather than in a test of its own.
+	TestEqual(TEXT("but it does build a Bloodlust stack"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 1);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageTakenBuildsAStackTest,
+	"Cataclysm.ConditionalDamage.TakingDamageBuildsABloodlustStack")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S BLOOD OFFERING NODE'S TRIGGER, END TO END. Issue #1003:
+	// "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks."
+	//
+	// WHAT THIS PROVES THAT A LIBRARY TEST DOES NOT. That the grant is really
+	// wired into `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which
+	// is the one place a resolved hit is known about, and that a real hit
+	// reaches it.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("an attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the checks
+	// afterwards would pass just as well if a character were born with stacks.
+	TestEqual(TEXT("a character that has taken nothing holds no stacks"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 0);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("one hit is one stack"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 1);
+
+	// AND A SECOND HIT IS A SECOND STACK.
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	TestEqual(TEXT("two hits are two stacks"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 2);
+
+	// AND THEY STOP COUNTING FIVE SECONDS AFTER THE LAST ONE, with nothing else
+	// happening. The clock moves and that is all.
+	World->TimeSeconds +=
+		UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Bloodlust)
+		+ 0.1f;
+	TestEqual(TEXT("and five seconds later they are gone"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 0);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES THE COUNT, which is the join
+	// between the hit that happened and the bonus that reads it.
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	TestEqual(TEXT("a fresh hit starts the count again at one"),
+		Defender.AbilitySystem->CurrentConditions().BloodlustStacks, 1);
 
 	return true;
 }

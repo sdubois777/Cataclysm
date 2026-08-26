@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the stack a kill may build. Issue #1004.
+#include "AbilitySystem/CataclysmStacks.h"
 // For turning an ability's tag list into a container, the same way a player's
 // skill row is read. Issue #519.
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -266,6 +268,19 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// every ability system without that keystone's flag, so an ordinary
 			// deferred cost is still owed after a kill.
 			UCataclysmHealthDebt::ClearOnKill(Watching->GetPawn());
+
+			// AND A KILL MAY BUILD A STACK. Issue #1004. The Masochist's
+			// Carnage keystone reads "Killing an enemy while above 75 Fervour
+			// grants a stack of Carnage for 8 seconds, up to 10 stacks."
+			//
+			// THE FERVOUR TEST IS NOT HERE. It is a property of the killer at
+			// the moment of the kill, so it is read where the stack is granted.
+			// This file's job is to say that a kill happened and to whom.
+			//
+			// THE THIRD THING A KILL DOES, after the experience above and the
+			// health debt beside it. All three find the player through the same
+			// controller, and the two that touch attributes read the pawn.
+			UCataclysmStacks::NoteEnemyKilled(Watching->GetPawn());
 		}
 	}
 

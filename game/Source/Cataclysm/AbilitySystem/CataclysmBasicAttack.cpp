@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the attack speed attribute the swing rate falls back to. Issue #1002.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -58,6 +60,33 @@ float UCataclysmBasicAttack::SecondsBetweenSwings(float AttackSpeedPerSecond)
 	}
 
 	return FMath::Max(FastestSwingSeconds, 1.0f / AttackSpeedPerSecond);
+}
+
+float UCataclysmBasicAttack::SecondsBetweenSwingsFor(
+	const UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Speed))
+	{
+		// No combat attribute set means no rate to read. Zero is "never swing",
+		// which is what a character holding nothing already gets.
+		return 0.0f;
+	}
+
+	// THE ATTRIBUTE IS THE FALLBACK AND NOT THE ANSWER. Issue #1002.
+	// `StatForSkill` returns it unchanged for a character with no attack speed
+	// modifier recorded at all -- every enemy, and every player before its first
+	// stat refresh -- so nothing without a state-dependent node behaves
+	// differently from before this existed.
+	//
+	// NO SKILL TAGS, because the basic attack is not one of the tree's skills:
+	// it is what the character does between them. A modifier scoped to a tag
+	// therefore does not reach it, which is the same answer it got when this was
+	// a plain read of the attribute.
+	return SecondsBetweenSwings(AbilitySystem->StatForSkill(
+		FName(TEXT("attack_speed")), FGameplayTagContainer(),
+		AbilitySystem->GetNumericAttribute(Speed)));
 }
 
 bool UCataclysmBasicAttack::MaySwing(const AActor* Character)

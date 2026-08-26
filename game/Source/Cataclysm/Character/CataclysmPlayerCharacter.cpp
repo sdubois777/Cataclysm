@@ -9,6 +9,8 @@
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Cataclysm.ShowStacks console command. Issue #1002.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -237,15 +239,15 @@ void ACataclysmPlayerCharacter::BasicAttackTick()
 	UCataclysmAbilitySystemComponent* AbilitySystem =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 
-	const FGameplayAttribute Speed =
-		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
-
-	float Interval = 0.0f;
-	if (AbilitySystem && AbilitySystem->HasAttributeSetForAttribute(Speed))
-	{
-		Interval = UCataclysmBasicAttack::SecondsBetweenSwings(
-			AbilitySystem->GetNumericAttribute(Speed));
-	}
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, since issue #1002. The
+	// attribute holds what a character's attack speed is with no state taken
+	// into account, so a node whose attack speed grows with a stack count that
+	// expires -- the Masochist's Sanguine Momentum -- would be dropped entirely
+	// by a read of it. `SecondsBetweenSwingsFor` says why in full, and it is a
+	// function rather than a line here so a test can reach it: this tick runs
+	// off a timer on a possessed pawn and nothing in the suite drives it.
+	const float Interval =
+		UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
 
 	// THE RATE IS READ FRESH EVERY TIME rather than cached, so swapping a weapon
 	// or gaining an increased attack speed affix takes effect on the next swing
@@ -1395,6 +1397,46 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowFervour(
 				// reads as a broken feature otherwise.
 				Ar.Log(TEXT("  No generator. Fervour cannot move. Buy one with "
 							"Cataclysm.SpendPassivePoint Masochist_basic_spine_000"));
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowStacks(
+	TEXT("Cataclysm.ShowStacks"),
+	TEXT("How many stacks of each kind the character is holding right now, and "
+		 "how many it may hold. All are zero until the node that reads them is "
+		 "bought and the event that grants them happens."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			// WHY THERE IS A COMMAND FOR THIS AT ALL. Issues #1002 to #1004. A
+			// stack count is not a gameplay attribute, so nothing on the
+			// character sheet shows it and `Cataclysm.ShowAttributes` cannot.
+			// It expires on its own with nothing running, so a player who
+			// cannot see it has no way to tell a node that is not working from
+			// one whose stacks ran out a second ago.
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			UCataclysmAbilitySystemComponent* ASC =
+				Character
+					? Cast<UCataclysmAbilitySystemComponent>(
+						  Character->GetAbilitySystemComponent())
+					: nullptr;
+			if (!ASC)
+			{
+				Ar.Log(TEXT("No character."));
+				return;
+			}
+
+			for (int32 Index = 0; Index < UCataclysmStacks::KindCount; ++Index)
+			{
+				const ECataclysmStackKind Kind =
+					static_cast<ECataclysmStackKind>(Index);
+				Ar.Logf(TEXT("  %-18s %2d / %2d   lasts %.0fs"),
+						UCataclysmStacks::NameOf(Kind),
+						UCataclysmStacks::Held(ASC, Kind),
+						UCataclysmStacks::CapFor(Kind),
+						UCataclysmStacks::WindowSecondsFor(Kind));
 			}
 		}));
 

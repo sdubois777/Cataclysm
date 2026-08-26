@@ -252,7 +252,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// whole of every cost, multiplies damage by what is owed, and carries the
 	// flag for a debt that is never taken on a timer (#997). The count also
 	// passed 61 for nodes landed between #975 and those three.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         68)
+	//
+	// AND TO 71 FOR THE THREE NODES BUILT ON A COUNT OF STACKS: one row each
+	// for Sanguine Momentum, Blood Offering and Carnage. Issues #1002, #1003
+	// and #1004.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         71)
 
 	#undef CHECK_TABLE
 

@@ -100,6 +100,36 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	return false;
 }
 
+namespace
+{
+	/**
+	 * What a modifier is worth at this many stacks. Issues #1002 to #1004.
+	 *
+	 * SHARED BY ALL THREE STACK SCALES, because a stack count needs none of the
+	 * arithmetic the other scales do. There is no reading to divide by a step
+	 * and nothing to round: the count is already whole.
+	 *
+	 * THE STEP IS STILL HONOURED, so a bonus written "per 2 stacks" would work
+	 * if the design ever asked for one. All three of today's nodes say "each
+	 * stack", which is a step of one, and the data check refuses any other step
+	 * for a sentence that names none.
+	 *
+	 * A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, the same
+	 * rule the three scales above follow.
+	 */
+	float StackedValue(const FCataclysmStatModifier& Modifier, int32 Stacks)
+	{
+		if (Stacks <= 0 || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Steps = FMath::FloorToFloat(
+			static_cast<float>(Stacks) / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+}
+
 float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier,
 										  const FCataclysmStatConditions& State)
 {
@@ -180,6 +210,18 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 			FMath::FloorToFloat(State.HealthOwedPercent / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
+
+	// THE THREE STACK COUNTS SHARE ONE PIECE OF ARITHMETIC, because a stack is
+	// already a whole thing: there is no reading to divide and nothing to round.
+	// Issues #1002, #1003 and #1004.
+	case ECataclysmStatScale::PerStackOfSanguineMomentum:
+		return StackedValue(Modifier, State.SanguineMomentumStacks);
+
+	case ECataclysmStatScale::PerStackOfBloodlust:
+		return StackedValue(Modifier, State.BloodlustStacks);
+
+	case ECataclysmStatScale::PerStackOfCarnage:
+		return StackedValue(Modifier, State.CarnageStacks);
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

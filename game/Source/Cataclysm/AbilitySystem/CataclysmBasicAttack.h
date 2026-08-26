@@ -71,6 +71,31 @@ public:
 	static float SecondsBetweenSwings(float AttackSpeedPerSecond);
 
 	/**
+	 * Seconds between one swing and the next for a particular character.
+	 * Issue #1002.
+	 *
+	 * ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, which is the whole reason it
+	 * exists beside the arithmetic above. A gameplay attribute holds what a stat
+	 * is worth with no state taken into account, because a bonus that depends on
+	 * the character's state is never folded into one -- it would be stale the
+	 * moment the state moved. So the Masochist's Sanguine Momentum node, whose
+	 * attack speed grows with a stack count that expires, is invisible to a read
+	 * of the attribute, and nothing at run time would report that.
+	 *
+	 * THE SAME CHANGE ISSUE #982 MADE FOR RETALIATION, for the same reason.
+	 *
+	 * A FUNCTION RATHER THAN A LINE INSIDE `ACataclysmPlayerCharacter::
+	 * BasicAttackTick`, so a test can hand it a character and check what the
+	 * rate comes to. That tick runs off a timer on a possessed pawn and nothing
+	 * in the suite drives it.
+	 *
+	 * ZERO MEANS NEVER, the same contract the arithmetic above states, and it is
+	 * the answer for a component with no combat attribute set.
+	 */
+	static float SecondsBetweenSwingsFor(
+		const UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Whether a character is in a state where it may swing at all.
 	 *
 	 * Not dead, and not stunned. The design defines a stun as the target being
