@@ -11,6 +11,8 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For the part of a cost that is taken later instead of now. Issue #991.
 #include "AbilitySystem/CataclysmHealthDebt.h"
+// For the stack a cost paid soon after the last one builds. Issue #1002.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -653,6 +655,17 @@ void UCataclysmSkillTemplate::PayHealthCost()
 		if (UCataclysmAbilitySystemComponent* Cataclysm =
 				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 		{
+			// AND A COST PAID SOON AFTER THE LAST ONE BUILDS A STACK. Issue
+			// #1002. Sanguine Momentum: "Each health cost paid within 3 seconds
+			// of the last grants a stack, up to 5 stacks."
+			//
+			// BEFORE THE LINE BELOW, WHICH IS THE WHOLE ORDERING QUESTION.
+			// `NoteHealthCostPaid` on the component moves the timestamp to now,
+			// and this reads how long ago the PREVIOUS payment was. Called
+			// afterwards, every payment would be nought seconds after itself and
+			// the first health cost of a fight would grant a stack.
+			UCataclysmStacks::NoteHealthCostPaid(Cataclysm);
+
 			Cataclysm->NoteHealthCostPaid();
 		}
 	}

@@ -182,7 +182,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: deferring the whole cost, the two damage stats in the `more` bucket growing
 #: with what is owed, and a `flat` flag for the rules that a debt is never taken
 #: on a timer, is cleared by a kill, and kills a character it passes. Issue #997.
-AUTHORED_ROWS = 68
+#:
+#: AND BY THREE, ONE EACH FOR THE THREE NODES THAT NEEDED A STACK COUNT THAT
+#: BUILDS AND EXPIRES. Sanguine Momentum grants attack speed per stack, Blood
+#: Offering grants melee damage per stack, and Carnage multiplies melee damage
+#: per stack. One row each rather than two, because each names a single stat:
+#: this game has no cast speed at all (#1000), and melee damage is attack damage
+#: rather than both damage stats. Issues #1002, #1003 and #1004.
+AUTHORED_ROWS = 71
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -263,7 +270,20 @@ AUTHORED_ROWS = 68
 #: only by a kill, and kills the character if it passes their health. 51 of
 #: 293 altogether and 47 of the Masochist tree's own 74. Issues #994, #995
 #: and #997.
-AUTHORED_NODES = 51
+#:
+#: AND TO 54 FOR THREE MORE, the three nodes built on a count of stacks that
+#: builds on an event and stops counting when the character goes long enough
+#: without it: Sanguine Momentum, Blood Offering and Carnage. 54 of 293
+#: altogether and 50 of the Masochist tree's own 74. Issues #1002, #1003 and
+#: #1004.
+#:
+#: TWO OF THOSE THREE ARE SCOPED TO A TAG ALMOST NO SKILL CARRIES, and this
+#: number does not know that. Issue #999: `Type.Melee` is on 6 weapon skill rows
+#: of 398, so Blood Offering's and Carnage's bonuses reach six skills until that
+#: is answered. Their triggers and their stacks work. This count measures whether
+#: a node has an authored effect, which is not the same question as whether the
+#: effect reaches much, and that gap is worth knowing about when reading it.
+AUTHORED_NODES = 54
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -297,7 +317,13 @@ def stats() -> set[str]:
             | {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
             | {row["Stat"] for row in rows_of(EFFECTS_CSV)
                if row["ValueKind"].strip().lower() == "flat"}
-            | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV)))
+            | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
+            # AND A COLUMN ON AN ITEM BASE SUPPLIES ONE TOO, since issue #1002.
+            # A swing rate is a column rather than an implicit, because two
+            # weapons average theirs; see `item_base_column_stats` in
+            # tools/generate_datatables.py for why that is a real base under an
+            # increase all the same.
+            | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV)))
 
 
 @pytest.fixture(scope="module")
@@ -494,6 +520,22 @@ SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%"),
     "class_resource_held": (("for each point of fervour",), None),
     "health_owed": (("for every", "owe"), "{value:g}%"),
+
+    # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
+    # #1004. The words include the stack's name wherever the node gives it one,
+    # which is what stops a row counting somebody else's stacks: the three are
+    # granted by different events and last 3, 5 and 8 seconds, and nothing at run
+    # time would report a row that named the wrong one.
+    #
+    # SANGUINE MOMENTUM'S SENTENCE NAMES NO STACK, so its words are the phrase
+    # that describes when one is granted instead.
+    #
+    # A STEP FORM OF `None` FOR ALL THREE, because all three say "each stack" and
+    # name no step. The step can only be 1 and that is what is asserted, the same
+    # way `class_resource_held` handles "for each point of Fervour".
+    "momentum_stacks": (("within 3 seconds of the last", "each stack"), None),
+    "bloodlust_stacks": (("stack of bloodlust", "each stack"), None),
+    "carnage_stacks": (("stack of carnage", "each stack"), None),
 }
 
 

@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the stack that taking damage builds. Issue #1003.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmCharacterBase.h"
 // For the difficulty tier a hit resolves at. It lives on the game mode because
 // nothing smaller holds one and the design's own home for it, the dungeon, does
@@ -639,6 +641,35 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					{
 						Cataclysm->NoteForeignDamageTaken();
 					}
+				}
+			}
+
+			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue
+			// #1003. Blood Offering: "Taking damage grants a stack of Bloodlust
+			// for 5 seconds, up to 5 stacks."
+			//
+			// A SEPARATE BRANCH FROM THE WINDOW ABOVE, because the two ask
+			// different questions and the difference is the point. That one
+			// wants a Cataclysm type the character does NOT share, so it refuses
+			// an untyped hit and refuses the character's own type. This one
+			// wants damage of any kind, from anything.
+			//
+			// ANY TYPE IS A READING RATHER THAN THE NODE'S OWN WORDS. Blood
+			// Offering says "physical damage" and this game has eight damage
+			// types and no physical one. Issue #1001 carries the question and
+			// the recommendation this follows.
+			//
+			// WHAT REACHED THE CHARACTER, NOT WHAT WAS AIMED AT IT, which is the
+			// line the window above draws too: an evaded blow and one armour
+			// took to nothing removed nothing and are not damage taken, and a
+			// shield absorbing it is.
+			if (Outcome.DealtToHealth + Outcome.AbsorbedByShield > 0.0f)
+			{
+				if (UCataclysmAbilitySystemComponent* Cataclysm =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					UCataclysmStacks::NoteDamageTaken(Cataclysm);
 				}
 			}
 

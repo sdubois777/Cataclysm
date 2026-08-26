@@ -13,6 +13,8 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+// For the stack count the swing rate can now grow with. Issue #1002.
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -570,6 +572,103 @@ bool FCataclysmBasicAttackPaysNothingForAMiss::RunTest(const FString&)
 	TestEqual(TEXT("a swing that reached an enemy and dealt it nothing "
 				   "returns nothing"),
 		Armed.AbilitySystem->GetNumericAttribute(Mana), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwingRateIsAskedForTest,
+	"Cataclysm.BasicAttack.TheSwingRateIsAskedForRatherThanReadOffTheAttribute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSwingRateIsAskedForTest::RunTest(const FString&)
+{
+	using namespace CataclysmBasicAttackTest;
+
+	// WHAT THIS IS FOR. Issue #1002. The swing rate used to be read straight off
+	// the attack speed attribute, and an attribute holds what a stat is worth
+	// with no state taken into account -- a bonus that depends on the
+	// character's state is never folded into one, because it would be stale the
+	// moment the state moved. So the Masochist's Sanguine Momentum node, whose
+	// attack speed grows with a stack count that expires, was invisible to the
+	// basic attack, and nothing at run time would have said so.
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Armed = MakeArmedActor(World);
+	if (!TestNotNull(TEXT("an armed actor"), Armed.Actor))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute();
+
+	// A PLAIN CHARACTER ANSWERS EXACTLY WHAT THE ATTRIBUTE SAYS, which is every
+	// character in the game with no such node. Without this, the change could
+	// have altered every swing rate in the game and the checks below would still
+	// pass.
+	Armed.AbilitySystem->SetNumericAttributeBase(Speed, 2.0f);
+	TestEqual(TEXT("with nothing recorded, the attribute is the answer"),
+		UCataclysmBasicAttack::SecondsBetweenSwingsFor(Armed.AbilitySystem),
+		UCataclysmBasicAttack::SecondsBetweenSwings(2.0f), 0.0001f);
+
+	// NOW GIVE IT SANGUINE MOMENTUM AT ITS FULL SIX POINTS: six percentage
+	// points of increased attack speed a stack, with the attribute untouched.
+	FCataclysmStatModifier Momentum;
+	Momentum.Bucket = ECataclysmStatBucket::Increased;
+	Momentum.Source = ECataclysmModifierSource::PassiveKeystone;
+	Momentum.Value = 6.0f;
+	Momentum.Scale = ECataclysmStatScale::PerStackOfSanguineMomentum;
+	Momentum.ScaleStep = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 2.0f;
+	Inputs.Modifiers.Add(Momentum);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_speed")), Inputs);
+	Armed.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// WITH NO STACKS IT IS STILL THE PLAIN RATE.
+	const float Plain =
+		UCataclysmBasicAttack::SecondsBetweenSwingsFor(Armed.AbilitySystem);
+	TestEqual(TEXT("holding no stacks, the rate is unchanged"),
+		Plain, UCataclysmBasicAttack::SecondsBetweenSwings(2.0f), 0.0001f);
+
+	// AND FIVE STACKS MAKE IT FASTER. Two swings a second times 1.30 is 2.6,
+	// which is a shorter interval between swings.
+	for (int32 Granted = 0; Granted < 5; ++Granted)
+	{
+		Armed.AbilitySystem->GrantStack(
+			ECataclysmStackKind::SanguineMomentum,
+			UCataclysmStacks::WindowSecondsFor(
+				ECataclysmStackKind::SanguineMomentum),
+			UCataclysmStacks::CapFor(ECataclysmStackKind::SanguineMomentum));
+	}
+
+	const float Stacked =
+		UCataclysmBasicAttack::SecondsBetweenSwingsFor(Armed.AbilitySystem);
+	TestEqual(TEXT("five stacks of six points is 2.6 swings a second"),
+		Stacked, UCataclysmBasicAttack::SecondsBetweenSwings(2.6f), 0.0001f);
+	TestTrue(FString::Printf(TEXT("which is faster than the plain rate "
+								  "(%.4f against %.4f)"), Stacked, Plain),
+			 Stacked < Plain);
+
+	// AND THE ATTRIBUTE ITSELF NEVER MOVED, which is the point: a state that
+	// expires must not be written onto one.
+	TestEqual(TEXT("and the attribute was never written"),
+		Armed.AbilitySystem->GetNumericAttribute(Speed), 2.0f, 0.0001f);
+
+	// AND THE STACKS LAPSING PUTS THE RATE BACK, with nothing else happening.
+	World->TimeSeconds += UCataclysmStacks::WindowSecondsFor(
+		ECataclysmStackKind::SanguineMomentum) + 0.1f;
+	TestEqual(TEXT("once the stacks lapse the rate is the plain one again"),
+		UCataclysmBasicAttack::SecondsBetweenSwingsFor(Armed.AbilitySystem),
+		Plain, 0.0001f);
 
 	return true;
 }

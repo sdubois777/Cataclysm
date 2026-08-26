@@ -413,6 +413,24 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		}
 	}
 
+	// AND HOW MANY STACKS OF EACH KIND ARE STANDING. Issues #1002, #1003 and
+	// #1004. Three Masochist nodes grow with one of these counts.
+	//
+	// OUTSIDE THE CLASS RESOURCE BRANCH ABOVE, because a stack count is not on
+	// any attribute set. It is plain state on this component, so every character
+	// has one whether or not it has ever earned a stack, and the answer for one
+	// that has not is zero.
+	//
+	// THE WINDOW IS APPLIED HERE, BY ASKING. A stack that expired two seconds
+	// ago answers zero without anything having run in the meantime, which is
+	// what makes the whole mechanic need no timer.
+	State.SanguineMomentumStacks =
+		UCataclysmStacks::Held(this, ECataclysmStackKind::SanguineMomentum);
+	State.BloodlustStacks =
+		UCataclysmStacks::Held(this, ECataclysmStackKind::Bloodlust);
+	State.CarnageStacks =
+		UCataclysmStacks::Held(this, ECataclysmStackKind::Carnage);
+
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
 	// A PROPERTY OF THE CHARACTER. Issue #983. The Masochist's Grand Tithe node
 	// asks about "a skill whose health cost is above 10% of your maximum
@@ -494,6 +512,70 @@ void UCataclysmAbilitySystemComponent::ClearHealthDebtDue()
 	// one. Leaving the total behind would make the second debt of a fight
 	// unextendable for no reason a player could see.
 	HealthDebtExtensionAppliedSeconds = 0.0f;
+}
+
+int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
+												   float WindowSeconds) const
+{
+	const int32 Index = static_cast<int32>(Kind);
+	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
+	{
+		return 0;
+	}
+
+	// A COUNT OF NOTHING IS THE ANSWER BEFORE THE CLOCK IS ASKED. Issue #1002.
+	// It is also what lets the timestamp need no "never" sentinel: a character
+	// that has earned no stack of this kind returns here.
+	if (StackCounts[Index] <= 0)
+	{
+		return 0;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO WORLD MEANS NO CLOCK, so the window cannot be judged. Zero is the
+		// safe direction, the same one every other unreadable state takes: a
+		// bonus nobody can time must not be granted for ever.
+		return 0;
+	}
+
+	// REPORTED RATHER THAN STORED, so asking does not reset anything. The count
+	// held in the field is only meaningful inside the window; outside it the
+	// answer is zero, and the field is corrected on the next grant.
+	const float Since = World->GetTimeSeconds() - StackGrantedAtSeconds[Index];
+	return Since > FMath::Max(0.0f, WindowSeconds) ? 0 : StackCounts[Index];
+}
+
+void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
+												  float WindowSeconds,
+												  int32 Cap)
+{
+	const int32 Index = static_cast<int32>(Kind);
+	if (Index < 0 || Index >= UCataclysmStacks::KindCount || Cap <= 0)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// Nothing is recorded rather than recorded at an arbitrary time, the
+		// same refusal `NoteHealthCostPaid` and `NoteHealthDebtDueIn` make.
+		return;
+	}
+
+	// A LAPSED COUNT RESTARTS AT ONE. Asked through `StacksHeld` rather than
+	// read off the field, so the window is applied exactly once and in one
+	// place: a character whose stacks ran out has one again, not one more than
+	// it had before they ran out.
+	const int32 Standing = StacksHeld(Kind, WindowSeconds);
+
+	StackCounts[Index] = FMath::Min(Standing + 1, Cap);
+
+	// AND THE WHOLE LOT'S EXPIRY MOVES WITH IT. See the header for why this is
+	// one timestamp per kind rather than one per stack.
+	StackGrantedAtSeconds[Index] = World->GetTimeSeconds();
 }
 
 float UCataclysmAbilitySystemComponent::ExtendHealthDebtDueBy(

@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
@@ -1655,6 +1656,78 @@ bool FCataclysmRollingDebtReachesTheCostTest::RunTest(const FString&)
 			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 100.0f, 0.5f);
 	TestEqual(TEXT("and the health goes with it"), Caster.Health(), 900.0f,
 			  0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMomentumReachesTheCostTest,
+	"Cataclysm.Skills.PayingAHealthCostSoonAfterTheLastBuildsAStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMomentumReachesTheCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST'S SANGUINE MOMENTUM NODE, WIRED INTO THE PLACE A COST IS
+	// PAID. Issue #1002. `Cataclysm.Stacks.*` proves the chain rule itself; this
+	// proves that `UCataclysmSkillTemplate::PayHealthCost` runs it, and that it
+	// runs it BEFORE the component's own timestamp is moved to now.
+	//
+	// THE ORDER IS THE WHOLE POINT OF THE FIRST ASSERTION. Run afterwards, every
+	// payment would be nought seconds after itself, and the FIRST health cost of
+	// a fight would grant a stack -- which is a different node.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(Vital::GetMaxHealthAttribute(), 10'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 10'000.0f);
+
+	// A COST OF ONE PER CENT OF MAXIMUM HEALTH, so the casts below cannot kill
+	// the caster and nothing else about them can change what is measured.
+	Caster.Set(Resource::GetAddedHealthCostAttribute(), 1.0f);
+
+	// TWO SKILLS IN TWO SLOTS, BECAUSE A SKILL CANNOT BE CAST TWICE IN ONE
+	// TEST: activating commits a cooldown and the second attempt is refused.
+	UCataclysmStrikeSkill* First = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=3"),
+		TEXT("Second strike"));
+	if (!First || !Second)
+	{
+		AddError(TEXT("Could not grant both skills."));
+		return false;
+	}
+
+	TestTrue(TEXT("the first activates"), Activate(Caster, First));
+	TestEqual(TEXT("the first cost of a fight builds no stack"),
+			  UCataclysmStacks::Held(Caster.AbilitySystem,
+									 ECataclysmStackKind::SanguineMomentum), 0);
+
+	// A SECOND CAST TWO SECONDS LATER IS INSIDE THE THREE-SECOND CHAIN.
+	World->TimeSeconds += 2.0f;
+	TestTrue(TEXT("the second activates"), Activate(Caster, Second));
+	TestEqual(TEXT("a cost two seconds after the last builds one"),
+			  UCataclysmStacks::Held(Caster.AbilitySystem,
+									 ECataclysmStackKind::SanguineMomentum), 1);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join
+	// between the cast that happened and the bonus that reads it.
+	TestEqual(TEXT("and the pipeline is told about it"),
+			  Caster.AbilitySystem->CurrentConditions().SanguineMomentumStacks,
+			  1);
+
+	// AND IT LAPSES THREE SECONDS AFTER THAT CAST, with nothing else happening.
+	World->TimeSeconds += UCataclysmStacks::WindowSecondsFor(
+		ECataclysmStackKind::SanguineMomentum) + 0.1f;
+	TestEqual(TEXT("three seconds later the chain is broken and it is gone"),
+			  UCataclysmStacks::Held(Caster.AbilitySystem,
+									 ECataclysmStackKind::SanguineMomentum), 0);
 
 	return true;
 }

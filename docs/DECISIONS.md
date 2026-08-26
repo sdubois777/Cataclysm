@@ -20,6 +20,110 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A count of stacks builds on an event and stops counting when the event stops
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStacks.h` and `.cpp`
+(both new), `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmStatPipeline.h` and `.cpp`, `CataclysmBasicAttack.h` and `.cpp`,
+`CataclysmSkillTemplate.cpp`, `CataclysmVitalAttributeSet.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`,
+`CataclysmPassiveTree.cpp`, `CataclysmPlayerCharacter.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx`. Applied.
+Issues #1002, #1003 and #1004.
+
+### What was decided
+
+Three Masochist nodes are written as a count that builds on an event and lasts a
+few seconds, and none could be built without it.
+
+| Node | Granted by | Lasts | Cap |
+| :-- | :-- | --: | --: |
+| Sanguine Momentum | a health cost paid within 3 seconds of the last | 3 s | 5 |
+| Blood Offering | taking damage | 5 s | 5 |
+| Carnage | killing an enemy while above 75 Fervour | 8 s | 10 |
+
+### It needs no timer, and that is the whole shape
+
+The count and the time of the last grant are kept, and the window is applied
+**when the count is asked for** rather than when it would expire.
+`UCataclysmAbilitySystemComponent::DisplacementsInWindow` already did exactly
+this for a different count and states the reason: "reported rather than stored,
+so asking does not reset anything". Nothing has to be cancelled when a character
+dies, and nothing runs on a frame where no stack is granted and none is read.
+
+### Gaining a stack refreshes them all
+
+One expiry per kind, not one per stack. **The design states no rule**, so it was
+read off the genre: in Path of Exile, gaining a charge resets the duration of all
+accumulated charges of the same type. It is also far easier for a player to
+reason about than a queue of individually expiring stacks.
+
+Source: <https://pathofexile.fandom.com/wiki/Charge>.
+
+### A stack count is plain state, not a gameplay attribute
+
+The opposite call from the one `HealthOwed` got. A pool a player has to watch,
+and that can kill them, is an attribute; a count that only decides how large a
+bonus is right now is not part of any economy, is read by nothing but the stat
+pipeline, and would cost three replicated attributes for nothing.
+`DisplacementCount` beside it made the same call.
+
+**A console command shows it instead.** `Cataclysm.ShowStacks` prints each kind,
+how many are held, the cap and the window. Without it a player has no way to tell
+a node that is not working from one whose stacks lapsed a second ago, because
+nothing on the character sheet can show a count that is not an attribute.
+
+### Three scale names rather than one name and a column
+
+`momentum_stacks`, `bloodlust_stacks` and `carnage_stacks` are three separate
+`Scale` values, matching three enumerators. A fourth column on the `Passive
+Effects` sheet naming the kind would have been a row struct change — a build
+before the DataTable asset can be regenerated, and a column list to move — where
+three names cost three lines each and read the way the three existing scales do.
+
+**They are deliberately not interchangeable.** Each kind is granted by a
+different event and lasts a different length of time, so a row naming the wrong
+one would count somebody else's stacks and the arithmetic would run perfectly.
+
+### The swing rate is now asked for rather than read off the attribute
+
+Sanguine Momentum grants attack speed, and the basic attack read the attack speed
+**attribute** directly. A gameplay attribute holds what a stat is worth with no
+state taken into account, because a state-dependent bonus is never folded into
+one — it would be stale the moment the state moved. So the node would have been
+invisible to the basic attack and nothing at run time would have said so.
+
+This is the same change issue #982 made for retaliation, for the same reason. It
+moved into `UCataclysmBasicAttack::SecondsBetweenSwingsFor` so a test can reach
+it: the tick that used to hold the line runs off a timer on a possessed pawn and
+nothing in the suite drives it.
+
+### A weapon's column supplies a stat's base, like a weapon's implicit does
+
+`tools/generate_datatables.py` refused an `increased` row on `attack_speed`,
+because its check for "an increase with no base under it" counted a flat implicit
+on an item base and not a column. A swing rate is a **column** rather than an
+implicit — two weapons average theirs and an implicit cannot be averaged — and
+`UCataclysmPlayerClassStats::StatBasesFromWeapons` turns it into the base. The
+check now counts both, and says why.
+
+### Three of the nodes' own words name things this game does not have
+
+All three are filed for the project owner and none blocks the mechanic.
+
+| Issue | The wording | What is implemented |
+| :-- | :-- | :-- |
+| #1000 | Sanguine Momentum grants "attack and cast speed" | one row against `attack_speed`; there is no cast speed anywhere in the game |
+| #1001 | Blood Offering triggers on "physical damage" | any damage; there are eight damage types and no physical one |
+| #999 | Blood Offering and Carnage scope to melee | `Type.Melee`, which 6 weapon skill rows of 398 carry |
+
+**The third one matters most and is the one to answer.** Both those nodes'
+triggers work and their stacks build; their bonuses reach six skills until
+`Type.Melee` is on more of them. The recommendation is to put it on every skill
+that already carries `Type.Strike`, which would take it to 27.
+
+---
+
 ## 2026-08-26 — A debt may be pushed out, but only so far, and one keystone's debt is never taken at all
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and

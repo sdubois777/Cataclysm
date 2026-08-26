@@ -255,6 +255,45 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfMaximumHealthOwed
 		UMETA(DisplayName = "Per Percent Of Maximum Health Owed"),
+
+	//~ THREE STACK COUNTS, ONE PER KIND, RATHER THAN ONE ENUMERATOR AND A
+	//~ COLUMN NAMING THE KIND. Issues #1002, #1003 and #1004. A fourth column on
+	//~ the effects sheet would be a row struct change, which is a build and an
+	//~ asset regeneration and a column list to move; three names cost nothing
+	//~ but three lines each and follow what the three scales above already do.
+	//~ The count of them is expected to stay small: a stack is a mechanic a
+	//~ designer writes deliberately, not a stat anyone can add.
+
+	/**
+	 * Multiplied by how many Sanguine Momentum stacks the character holds.
+	 * Issue #1002.
+	 *
+	 * "Each health cost paid within 3 seconds of the last grants a stack, up to
+	 * 5 stacks. Each stack gives +1% increased attack and cast speed per point."
+	 * A step of 1, so the count is the stacks themselves.
+	 */
+	PerStackOfSanguineMomentum
+		UMETA(DisplayName = "Per Stack Of Sanguine Momentum"),
+
+	/**
+	 * Multiplied by how many Bloodlust stacks the character holds. Issue #1003.
+	 *
+	 * "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks.
+	 * Each stack gives +1% increased melee damage per point."
+	 */
+	PerStackOfBloodlust
+		UMETA(DisplayName = "Per Stack Of Bloodlust"),
+
+	/**
+	 * Multiplied by how many Carnage stacks the character holds. Issue #1004.
+	 *
+	 * "Killing an enemy while above 75 Fervour grants a stack of Carnage for 8
+	 * seconds, up to 10 stacks. Each stack gives 3% more melee damage." The one
+	 * stack scale used in the `more` bucket, so ten stacks is a 1.30x
+	 * multiplier rather than thirty points added to the increased sum.
+	 */
+	PerStackOfCarnage
+		UMETA(DisplayName = "Per Stack Of Carnage"),
 };
 
 /**
@@ -338,6 +377,33 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float HealthOwedPercent = -1.0f;
+
+	/**
+	 * How many stacks of each kind the character is holding. Issues #1002,
+	 * #1003 and #1004.
+	 *
+	 * ZERO IS THE ONLY "NOTHING" THESE NEED, unlike every reading above them.
+	 * The others carry a negative "unknown" because a caller with no character
+	 * in hand must be told apart from a character whose reading really is zero:
+	 * a health percentage of zero is a corpse and an unknown one is the
+	 * character sheet, and those must not be treated alike. A stack count has no
+	 * such pair. A caller with no character holds no stacks, a character that
+	 * has earned none holds no stacks, and a bonus counting them is worth
+	 * nothing for both. Nothing can act differently on the two, so there is
+	 * nothing to distinguish.
+	 *
+	 * INTEGERS, BECAUSE A STACK IS A WHOLE THING. The other scales count whole
+	 * steps of a continuous reading and round down to get there; these are
+	 * already whole and there is nothing to round.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 SanguineMomentumStacks = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 BloodlustStacks = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 CarnageStacks = 0;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

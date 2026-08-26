@@ -2504,6 +2504,26 @@ SCALES = {
     # character's maximum health -- that is what The Reckoning kills them for --
     # but a step larger than the pool would be a bonus nothing could ever reach.
     "health_owed": (0.0, 100.0, "a percentage of maximum health"),
+
+    # THREE COUNTS OF STACKS, one per kind. Issues #1002, #1003 and #1004.
+    # "Each stack gives +1% increased attack speed per point" is
+    # `momentum_stacks` with a step of 1.
+    #
+    # THREE NAMES RATHER THAN ONE NAME AND A COLUMN SAYING WHICH KIND. A fourth
+    # column on this sheet is a row struct change, which means a build before
+    # the DataTable asset can be regenerated and a column list to move; three
+    # names cost three lines each and read the way the scales above do.
+    #
+    # THEY ARE NOT INTERCHANGEABLE. Each kind is granted by a different event
+    # and lasts a different length of time -- 3, 5 and 8 seconds -- so a row
+    # naming the wrong one would count somebody else's stacks and no arithmetic
+    # would report it.
+    #
+    # THE UPPER BOUND IS THE LARGEST CAP ANY KIND HAS. A step larger than the
+    # cap would be a bonus no character could ever reach.
+    "momentum_stacks": (0.0, 10.0, "a number of stacks"),
+    "bloodlust_stacks": (0.0, 10.0, "a number of stacks"),
+    "carnage_stacks": (0.0, 10.0, "a number of stacks"),
 }
 
 
@@ -2695,6 +2715,48 @@ def item_base_flat_stats(item_bases: list[dict] | None) -> set[str]:
     return supplied
 
 
+#: An item base column that supplies a stat's base, and the stat it supplies.
+#:
+#: A SECOND ROUTE FROM A WEAPON TO A BASE, and it is not a flat implicit. Issue
+#: #1002. `attack_damage` reaches a character as an implicit on the weapon's
+#: base, which `item_base_flat_stats` above sees; a swing rate is a COLUMN
+#: instead, because two weapons average theirs and an implicit cannot be
+#: averaged. `UCataclysmPlayerClassStats::StatBasesFromWeapons` reads that column
+#: and writes the base, and the C++ test's own map of where a stat comes from
+#: says exactly this: attack speed comes from "the worn weapons, as a base
+#: override from StatBasesFromWeapons".
+#:
+#: WHY IT MATTERS TO THE CHECK BELOW. Without this, an `increased` row on
+#: `attack_speed` is refused as an increase with no base under it -- and that is
+#: wrong, because every weapon in the game carries one. The Masochist's Sanguine
+#: Momentum node is the first to need it.
+ITEM_BASE_COLUMN_STATS = {"AttackSpeed": "attack_speed"}
+
+
+def item_base_column_stats(item_bases: list[dict] | None) -> set[str]:
+    """The stats an item base supplies as a column rather than as an implicit.
+
+    A COLUMN THAT IS ZERO EVERYWHERE SUPPLIES NOTHING, which is why this looks
+    at the values rather than only at the header. Every armour base in the file
+    carries an `AttackSpeed` of 0.0, and only the fourteen weapon bases carry a
+    real one; a header alone would say a stat was supplied by a file that only
+    ever writes nothing into it.
+    """
+    if not item_bases:
+        return set()
+
+    supplied: set[str] = set()
+    for row in item_bases:
+        for column, stat in ITEM_BASE_COLUMN_STATS.items():
+            raw = str(row.get(column, "") or "").strip()
+            try:
+                if raw and float(raw) > 0.0:
+                    supplied.add(stat)
+            except ValueError:
+                continue
+    return supplied
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -2724,6 +2786,14 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     reading "+2% increased damage per point" has a real base under it the moment
     a weapon is held.
 
+    AND SO DOES AN ITEM BASE COLUMN, which is a second route from a weapon and
+    not the same one. Issue #1002. A swing rate is a COLUMN on the base rather
+    than an implicit, because two weapons average theirs and an implicit cannot
+    be averaged, and `UCataclysmPlayerClassStats::StatBasesFromWeapons` turns it
+    into the base. `attack_speed` is the case: no class line names it and none
+    should, and an `increased` row on it has a real base under it the moment a
+    weapon is held. See `item_base_column_stats` above.
+
     A ROLLED AFFIX IS DELIBERATELY NOT COUNTED, and the difference is not
     pedantic. An implicit is on EVERY item of that base type, so a Sword always
     carries attack damage; an affix may never roll at all. A stat whose only
@@ -2749,7 +2819,8 @@ def validate_passive_effects(tables: dict[str, list[dict]],
             ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
             {row["Stat"] for row in effects
              if str(row["ValueKind"]).lower() == "flat"} | \
-            item_base_flat_stats(tables.get("ItemBases"))
+            item_base_flat_stats(tables.get("ItemBases")) | \
+            item_base_column_stats(tables.get("ItemBases"))
 
     problems = []
     for row in effects:
