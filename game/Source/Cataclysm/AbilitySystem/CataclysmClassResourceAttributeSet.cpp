@@ -39,6 +39,8 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// removes Fervour as usual, and one without Low Life gains none on a timer.
 	InitFervourLossSuppressed(0.0f);
 	InitFervourPerSecond(0.0f);
+	InitDamageToBleedingOnLowHealth(0.0f);
+	InitDamageToBleedingWindow(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -59,6 +61,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLossSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -96,7 +100,9 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetHealthDebtDelayExtensionAttribute()
 		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute()
 		|| Attribute == GetFervourLossSuppressedAttribute()
-		|| Attribute == GetFervourPerSecondAttribute())
+		|| Attribute == GetFervourPerSecondAttribute()
+		|| Attribute == GetDamageToBleedingOnLowHealthAttribute()
+		|| Attribute == GetDamageToBleedingWindowAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -155,6 +161,8 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
 	All.Add(GetFervourLossSuppressedAttribute());
 	All.Add(GetFervourPerSecondAttribute());
+	All.Add(GetDamageToBleedingOnLowHealthAttribute());
+	All.Add(GetDamageToBleedingWindowAttribute());
 	return All;
 }
 
@@ -177,3 +185,5 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)

@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — Damage can arrive as Bleeding instead of all at once, and a Masochist can debuff itself
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.h` and
+`.cpp` (new), `CataclysmVitalAttributeSet.cpp`,
+`CataclysmClassResourceAttributeSet.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.h` and `.cpp`,
+`Character/CataclysmPlayerClassStats.cpp`, `docs/All_Things_Cataclysm.xlsx` (the
+`Passive Effects` sheet), `tools/generate_datatables.py`. Applied. Issue #985.
+
+### What was built
+
+`Masochist_basic_ll_b1` **The Breaking Point** works:
+
+> Dropping below 50% health converts all damage you take into Bleeding over 5
+> seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot
+> happen more than once every 10 seconds.
+
+**It is worth far more than one node.** Eleven further nodes in that tree ask
+about status effects the character is CARRYING — "While you are Bleeding", "for
+each unique debuff on you", "Every debuff on you grants Fervour" — and **nothing
+in this game put a status effect on the player at all**. The only damage over
+time applied at run time is Burn, and all four of its callers apply it to a
+target. The design's other answer was enemy modifiers, and no enemy modifier does
+anything (issues #742 and #674). The project owner chose this route on 2026-08-26
+because a Masochist that bleeds ITSELF needs no enemy system, and because it is
+the only route that also unblocks Thirst for Pain, which names Bleeding.
+
+### It is a delay, not a reduction
+
+**The same total arrives.** It is spread over five seconds, which is worth
+something only because a character can heal or leech during those five seconds.
+That is deliberately the shape Path of Exile's Petrified Blood has: part of a hit
+is not taken immediately and arrives over time, and builds pair it with recovery.
+A player who cannot recover gains nothing from this node at all.
+
+### Three decisions inside it, and none is settled by the node's own sentence
+
+**The character is its own instigator for the Bleeding, and it does not scale
+with anyone.** The node transforms what YOU take rather than adding an attack of
+the enemy's, so a kill by this Bleeding is not credited to a creature that dealt
+the blow seconds earlier and may already be dead. Scaling is off for the same
+reason: the Bleeding must be worth exactly what was converted, not what the
+converter's damage-over-time stats would make of it.
+
+**Damage that is already damage over time is never converted.** The Bleeding this
+creates arrives as damage like anything else, so converting it again would
+convert it for ever and nothing would reach health. That would make the node an
+immunity rather than a delay.
+
+**"Once every 10 seconds" is measured from when a turn starts, not from when it
+ends.** One occurrence per ten second period is what that phrase says in ordinary
+English. At eight points the window is 4.2 seconds, so it leaves a gap of 5.8.
+
+### A consequence worth stating plainly
+
+**A converted blow fills Fervour later, not at the moment of the hit.** Health
+lost to damage is what fills the bar, and converted damage does not reach health
+until the Bleeding ticks. That is arguably correct — Fervour should follow health
+actually lost — but it is a real change to how the Masochist's own resource
+behaves during the window, and it was nearly a defect: the line that grants
+Fervour was still being handed what the whole hit was worth, which would have
+filled the bar TWICE for anything converted.
+
+### Where the numbers live, and why two checks refused the first two attempts
+
+The node has four numbers and they are not all the same kind of thing.
+
+| Number | Where it lives | Why |
+| :-- | :-- | :-- |
+| 5% per point | the `Passive Effects` sheet, as an `increased` row | it is a per-point value, which is what that sheet carries |
+| the rule itself | the same sheet, as a `flat` flag of 1 | a modifier cannot take a stat to zero, so a rule that is off has to say so separately |
+| 3 seconds | a constant in C++ | see below |
+| 50%, 5 seconds, 10 seconds | constants in C++ | properties of the mechanic rather than of any character |
+
+**The 3 second base was first put on the Masochist's class stat line, and a check
+refused it.** That sheet mirrors `sim/cataclysm_sim/classes.py`, which is a
+statement about what makes each class feel different — five stats, each with a
+comment about class identity. A timing window for one node is not that. So the
+base is a constant the engine passes when it asks for the stat, and
+`ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py` is a **fourth kind of
+supplier** naming it: the other three are readable from generated data, and this
+one cannot be. It is a dictionary rather than a set so that an entry has to say
+which code supplies the base, which is what stops it becoming a place to silence
+the check.
+
+**The 50% was then put in the data as a `health_at_or_below` condition, and a
+different check refused that.** The node says "**Dropping** below 50% health",
+which is an EVENT; that condition means "**at or below**", which is a STATE. They
+are genuinely different: a state condition would end the conversion early if the
+character healed back above half, which the node does not say. The threshold is a
+constant.
+
+---
+
 ## 2026-08-26 — A respawn empties the class resource, though it refills the three vitals
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`,

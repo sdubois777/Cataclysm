@@ -2757,6 +2757,37 @@ def item_base_column_stats(item_bases: list[dict] | None) -> set[str]:
     return supplied
 
 
+#: Stats whose base the ENGINE supplies at the moment it asks for them, mapped to
+#: where that base comes from.
+#:
+#: THE FOURTH KIND OF SUPPLIER, and it is named one stat at a time on purpose.
+#: The other three -- a class stat line, a flat row in this sheet, a flat implicit
+#: or column on an item base -- are all readable from the generated data, so the
+#: check can see them. This one cannot be seen from data at all: the base is an
+#: argument C++ passes to `StatForSkill`, and nothing in any CSV mentions it.
+#:
+#: WHY IT IS STILL A REAL SUPPLIER. The complaint this whole check exists to make
+#: is that "an increase with no base under it is worth zero". A base passed by the
+#: caller is a base. `attack_speed` is the precedent already accepted beside it:
+#: no class line names it, and `StatBasesFromWeapons` writes it from the worn
+#: weapon's column.
+#:
+#: WHY IT IS A DICTIONARY AND NOT A SET. Naming the source is what stops this
+#: becoming a place to silence the check. An entry has to say which code supplies
+#: the base, so a reader can go and look, and a stat added here without one is
+#: obvious.
+ENGINE_SUPPLIED_BASES = {
+    # Issue #985, The Breaking Point: "The conversion lasts 3 seconds, increased
+    # by 5% per point". The 3 seconds is a constant of the mechanic rather than
+    # anything about a character, so it is not a class stat line -- the class
+    # sheet mirrors `sim/cataclysm_sim/classes.py`, which is a statement about
+    # what makes each class feel different, and a timing window for one node is
+    # not that.
+    "damage_to_bleeding_window":
+        "UCataclysmDamageConversion::BaseWindowSeconds, passed to StatForSkill",
+}
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -2820,7 +2851,8 @@ def validate_passive_effects(tables: dict[str, list[dict]],
             {row["Stat"] for row in effects
              if str(row["ValueKind"]).lower() == "flat"} | \
             item_base_flat_stats(tables.get("ItemBases")) | \
-            item_base_column_stats(tables.get("ItemBases"))
+            item_base_column_stats(tables.get("ItemBases")) | \
+            set(ENGINE_SUPPLIED_BASES)
 
     problems = []
     for row in effects:

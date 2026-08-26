@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDamageConversion.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -582,9 +583,36 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					GetEnergyShield() - Outcome.AbsorbedByShield,
 					0.0f, GetMaxEnergyShield()));
 			}
-			if (Outcome.DealtToHealth > 0.0f)
+			// AND SOME OF IT MAY NOT REACH HEALTH AT ALL, ARRIVING AS BLEEDING
+			// INSTEAD. Issue #985, the Masochist's The Breaking Point. What is
+			// converted is NOT lessened -- the same total arrives, spread over
+			// five seconds -- so this subtracts rather than reduces, and a
+			// character with no window open converts nothing and loses nothing.
+			//
+			// BEFORE THE SHIELD? NO, AFTER IT. `Outcome.DealtToHealth` is what
+			// is left once the energy shield has absorbed its share, and the
+			// node says it converts the damage you TAKE. A Masochist has no
+			// energy shield by design -- `sim/cataclysm_sim/classes.py` says
+			// zero deliberately, because "a shield absorbs the damage the class
+			// needs to convert" -- so the order is stated rather than felt.
+			const UAbilitySystemComponent* Defending =
+				GetOwningAbilitySystemComponent();
+			const float TurnedIntoBleeding =
+				UCataclysmDamageConversion::ConvertIfActive(
+					Defending ? Defending->GetAvatarActor() : nullptr,
+					Outcome.DealtToHealth, Hit.bIsDamageOverTime);
+
+			// A LOCAL RATHER THAN CHANGING `Outcome`, WHICH IS CONST ON PURPOSE.
+			// What the damage calculation resolved is a record of the hit and
+			// everything below reads it; the conversion is a later step that
+			// decides how much of that record reaches health, not a correction
+			// to it. The Fervour line further down deliberately still counts
+			// what reached health, which is what this leaves behind.
+			const float ToHealth = Outcome.DealtToHealth - TurnedIntoBleeding;
+
+			if (ToHealth > 0.0f)
 			{
-				SetHealth(FMath::Clamp(GetHealth() - Outcome.DealtToHealth,
+				SetHealth(FMath::Clamp(GetHealth() - ToHealth,
 									   0.0f, GetMaxHealth()));
 				NotifyIfHealthReachedZero();
 				NotifyHealthChanged();
@@ -605,9 +633,28 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// THE HIT'S TAGS GO WITH IT, because the tree has a node about
 				// Fervour gained from damage OVER TIME specifically, and the tag
 				// on the effect is what tells the two apart.
+				//
+				// WHAT REACHED HEALTH AFTER THE CONVERSION, AND TODAY THAT IS
+				// THE SAME NUMBER. Issue #985.
+				//
+				// SAYING SO PLAINLY, BECAUSE A GUARD PROOF CAUGHT THE CLAIM THAT
+				// IT WAS NOT. The Breaking Point converts a blow whole or not at
+				// all, so `TurnedIntoBleeding` is either zero or the entire
+				// amount -- and when it is the entire amount, `ToHealth` is zero
+				// and this whole block is skipped, Fervour included. There is no
+				// case today where the two expressions differ HERE, and breaking
+				// this line to the other one failed no test at all.
+				//
+				// IT IS STILL THE RIGHT EXPRESSION. It says what it means -- the
+				// bar is filled by health actually lost -- and it is what a
+				// PARTIAL conversion would need if one is ever added. What it is
+				// not is a fix for a live defect, and calling it one would put a
+				// false story in this file.
+				//
+				// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at
+				// a time, as the Bleeding takes health through this same path.
 				UCataclysmFervour::GainFromDamage(
-					GetOwningAbilitySystemComponent(), Outcome.DealtToHealth,
-					AssetTags);
+					GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
 			}
 
 			// AND A HIT OF A CATACLYSM TYPE THIS CHARACTER DOES NOT SHARE
@@ -866,6 +913,20 @@ void UCataclysmVitalAttributeSet::NotifyHealthChanged()
 	// avatar, so asking the owner returns something that is not a character.
 	const UAbilitySystemComponent* AbilitySystem =
 		GetOwningAbilitySystemComponent();
+
+	// AND HERE IS WHERE A HEALTH THRESHOLD IS CROSSED. Issue #985, The Breaking
+	// Point: "Dropping below 50% health converts all damage you take into
+	// Bleeding". This function already fires on EVERY write to health, which is
+	// exactly what a crossing needs, and every route that lowers health -- a
+	// blow, a health cost, a debt falling due -- comes through it.
+	//
+	// BEFORE THE CAST BELOW AND NOT AFTER IT. That cast asks for a
+	// `ACataclysmCharacterBase`, because what it guards needs the enemy phase
+	// machinery. This needs an ability system and nothing more, and refusing it
+	// for anything that is not a character would be a rule nobody chose.
+	UCataclysmDamageConversion::NoteHealthChanged(
+		AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr);
+
 	ACataclysmCharacterBase* Character = AbilitySystem
 		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
 		: nullptr;
