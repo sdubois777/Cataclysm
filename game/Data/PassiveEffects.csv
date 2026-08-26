@@ -59,3 +59,4 @@ Masochist_keystone_bt_kB#3,Masochist_keystone_bt_kB,spell_damage,more,40.0,,,0.0
 Masochist_keystone_ll_kB#1,Masochist_keystone_ll_kB,healing_ceiling_reduction,flat,50.0,,,0.0,,0.0
 Masochist_keystone_ll_kB#2,Masochist_keystone_ll_kB,attack_damage,more,25.0,,,0.0,,0.0
 Masochist_keystone_ll_kB#3,Masochist_keystone_ll_kB,spell_damage,more,25.0,,,0.0,,0.0
+Masochist_basic_bt_a0#1,Masochist_basic_bt_a0,deferred_health_cost_share,flat,10.0,,,0.0,,0.0

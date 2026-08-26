@@ -300,6 +300,12 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("healing_ceiling_reduction"),
 		 TEXT("the Masochist's Point of No Return node, as a flat modifier")},
 
+		// Issue #991. What share of a health cost is taken later rather than
+		// now. Zero for every class, and the Masochist's Deferred Payment node
+		// is its only source.
+		{TEXT("deferred_health_cost_share"),
+		 TEXT("the Masochist's Deferred Payment node, as a flat modifier")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

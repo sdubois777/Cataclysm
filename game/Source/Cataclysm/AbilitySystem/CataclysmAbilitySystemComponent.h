@@ -344,6 +344,22 @@ public:
 	float SecondsSinceHealthCostPaid() const;
 
 	/**
+	 * Record that health owed falls due this many seconds from now.
+	 * Issue #991.
+	 *
+	 * NO WORLD MEANS NO CLOCK, so nothing is recorded and the debt never
+	 * falls due. That is the safe direction: a debt whose due time cannot be
+	 * timed must not be taken at an arbitrary moment.
+	 */
+	void NoteHealthDebtDueIn(float Seconds);
+
+	/** Whether health owed has fallen due. False when nothing is owed. */
+	bool IsHealthDebtDue() const;
+
+	/** Forget when the debt falls due, for a debt that has been settled. */
+	void ClearHealthDebtDue();
+
+	/**
 	 * Record that this character has just taken damage of a Cataclysm type
 	 * other than its own. Issue #975.
 	 *
@@ -463,4 +479,20 @@ protected:
 	 * worth a few seconds and the next hit rebuilds it.
 	 */
 	float LastForeignDamageAtSeconds = -1.0f;
+
+	/**
+	 * When the health this character owes falls due, in world seconds.
+	 * Issue #991.
+	 *
+	 * NEGATIVE MEANS NOTHING IS OWED, told apart from world time zero for the
+	 * reason the three timestamps above it are.
+	 *
+	 * A TIMESTAMP AND NOT A QUANTITY, which is why it is here and the amount
+	 * owed is a gameplay attribute. Nobody reads this; a player reads how much
+	 * they owe.
+	 *
+	 * ONE DUE TIME FOR THE WHOLE DEBT, not one per cast. The design says so:
+	 * the Rolling Debt node "extends the delay on what is owed", singular.
+	 */
+	float HealthDebtDueAtSeconds = -1.0f;
 };

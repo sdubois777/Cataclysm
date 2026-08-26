@@ -248,6 +248,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("added_health_cost_of_current"),
 			 Resource::GetAddedHealthCostOfCurrentAttribute()},
 
+			// AND WHAT SHARE OF A COST IS TAKEN LATER RATHER THAN NOW.
+			// Issue #991. Zero for every class, and the Masochist's Deferred
+			// Payment node is its only source. Here for the same reason every
+			// other node-supplied stat is: a passive node granting a stat this
+			// map does not name grants nothing and reports nothing.
+			{TEXT("deferred_health_cost_share"),
+			 Resource::GetDeferredHealthCostShareAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

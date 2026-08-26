@@ -25,6 +25,8 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// Pyre is nothing at all.
 	InitAddedHealthCost(0.0f);
 	InitAddedHealthCostOfCurrent(0.0f);
+	InitDeferredHealthCostShare(0.0f);
+	InitHealthOwed(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -39,6 +41,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLostToHealing);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCost);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthOwed);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -50,6 +54,17 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxClassResource());
 	}
+	else if (Attribute == GetDeferredHealthCostShareAttribute())
+	{
+		// HELD BETWEEN 0 AND 100, BECAUSE IT IS A SHARE OF A COST. Issue #991.
+		// Below zero it would take more than the cost now and leave a negative
+		// debt; above a hundred it would defer more than was charged and hand
+		// the character health back at the moment of the cast.
+		//
+		// A HUNDRED IS LEGITIMATE and is what the Masochist's Deferred Payment
+		// node reaches at its full ten points: the whole cost is taken later.
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
+	}
 	else if (Attribute == GetMaxClassResourceAttribute())
 	{
 		// Zero is legitimate: a character with no class tree invested has no
@@ -60,7 +75,8 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetFervourFromCostAttribute()
 		|| Attribute == GetFervourLostToHealingAttribute()
 		|| Attribute == GetAddedHealthCostAttribute()
-		|| Attribute == GetAddedHealthCostOfCurrentAttribute())
+		|| Attribute == GetAddedHealthCostOfCurrentAttribute()
+		|| Attribute == GetHealthOwedAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -103,6 +119,8 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	// Fervour should not be given a bar it can only read zero from. Issue #970.
 	All.Add(GetAddedHealthCostAttribute());
 	All.Add(GetAddedHealthCostOfCurrentAttribute());
+	All.Add(GetDeferredHealthCostShareAttribute());
+	All.Add(GetHealthOwedAttribute());
 	return All;
 }
 
@@ -119,3 +137,5 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromCost)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLostToHealing)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCost)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthOwed)

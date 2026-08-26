@@ -430,6 +430,41 @@ float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHealthCostAtSeconds);
 }
 
+void UCataclysmAbilitySystemComponent::NoteHealthDebtDueIn(float Seconds)
+{
+	// NO WORLD MEANS NO CLOCK, so nothing is recorded and the debt never falls
+	// due. The same reasoning as the two timestamps above, and the safe
+	// direction here too: a debt whose due time cannot be timed must not be
+	// taken at an arbitrary moment. Issue #991.
+	if (const UWorld* World = GetWorld())
+	{
+		// THE EARLIER OF THE TWO WHEN SOMETHING IS ALREADY OWED, so a second
+		// cast cannot push an existing debt further away by accident. Making
+		// it later is what the Rolling Debt node is for, and that node is not
+		// built yet; until it is, the debt falls due when the first deferral
+		// said it would.
+		const float Due = World->GetTimeSeconds() + FMath::Max(0.0f, Seconds);
+		HealthDebtDueAtSeconds = HealthDebtDueAtSeconds < 0.0f
+			? Due
+			: FMath::Min(HealthDebtDueAtSeconds, Due);
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::IsHealthDebtDue() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || HealthDebtDueAtSeconds < 0.0f)
+	{
+		return false;
+	}
+	return World->GetTimeSeconds() >= HealthDebtDueAtSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::ClearHealthDebtDue()
+{
+	HealthDebtDueAtSeconds = -1.0f;
+}
+
 void UCataclysmAbilitySystemComponent::NoteForeignDamageTaken()
 {
 	// NO WORLD MEANS NO CLOCK, so there is nothing to record and nothing
