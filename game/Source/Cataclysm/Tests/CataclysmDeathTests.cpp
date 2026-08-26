@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -75,6 +76,16 @@ namespace CataclysmDeathTest
 			UCataclysmTargeting::AbilitySystemOf(Actor);
 		return System ? System->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+
+	/** Fervour, for a Masochist. Every class shares this one attribute. */
+	static float ClassResourceOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+			: -1.0f;
 	}
 
 	/**
@@ -581,6 +592,75 @@ CATACLYSM_TEST(FCataclysmPlayerRevivesTest,
 		// AND IT CAN BE FOUGHT AGAIN, which is the whole point of coming back.
 		TestTrue(TEXT("a creature can find it once more"),
 			UCataclysmTargeting::IsHostileTo(Player, Killer));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A respawn empties the class resource, though it refills the three vitals.
+ *
+ * ISSUE #956, decided by the project owner on 2026-08-26. A player that died at
+ * a full Fervour bar used to stand back up at a full Fervour bar, because
+ * `Revive` refills health with `SetNumericAttributeBase`, which is a direct write
+ * and does not run through `UCataclysmRegeneration::TopUp`. Fervour is emptied by
+ * HEALING, so the largest amount of health a character ever gets back at once
+ * removed none of it, and a player could bank a full bar through a death.
+ *
+ * THE RESOURCE IS SET DIRECTLY RATHER THAN EARNED, so this does not depend on
+ * which class the test player is or on what its class line supplies. What the
+ * issue describes is "had Fervour when it died", and a direct write is that.
+ *
+ * IT IS CHECKED AFTER THE DEATH AND BEFORE THE REVIVE, which is what makes this
+ * test able to fail for the right reason. If dying cleared the resource on its
+ * own, the last assertion would pass while `Revive` did nothing at all.
+ */
+CATACLYSM_TEST(FCataclysmRespawnEmptiesTheClassResourceTest,
+	"Cataclysm.Death.ARespawnEmptiesTheClassResource")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer))
+	{
+		UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Player);
+		if (TestNotNull(TEXT("an ability system"), System))
+		{
+			const float FullHealth = CataclysmDeathTest::HealthOf(Player);
+
+			System->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+				60.0f);
+			TestEqual(TEXT("it is holding some of its class resource"),
+				CataclysmDeathTest::ClassResourceOf(Player), 60.0f, 0.01f);
+
+			UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+			TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+			// THE ASSERTION THAT MAKES THE ONE BELOW MEAN SOMETHING. Dying does
+			// not empty the resource; standing back up is what does.
+			TestEqual(TEXT("dying on its own did not empty it"),
+				CataclysmDeathTest::ClassResourceOf(Player), 60.0f, 0.01f);
+
+			Player->Revive();
+
+			TestEqual(TEXT("standing back up emptied it"),
+				CataclysmDeathTest::ClassResourceOf(Player), 0.0f, 0.01f);
+
+			// AND THE THREE VITALS STILL COME BACK FULL, because emptying the
+			// resource is an exception to that rule rather than a change to it.
+			TestEqual(TEXT("and health is still refilled"),
+				CataclysmDeathTest::HealthOf(Player), FullHealth, 0.01f);
+		}
 	}
 
 	World->DestroyWorld(false);
