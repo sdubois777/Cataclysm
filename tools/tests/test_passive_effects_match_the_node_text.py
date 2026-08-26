@@ -90,22 +90,20 @@ BUCKETS = {"flat", "increased", "more"}
 #: `tools/tests/test_class_passive_trees.py` uses for the same reason, kept
 #: separate rather than imported because that file pins counts against the tree
 #: JSON while this one reads the generated CSV.
-#: AND "halved", WHICH IS A THIRD WORDING AND THE FIRST WITH NO NUMBER IN IT.
-#: Issue #1007. Sanguine Ledger reads "your Health Regeneration is halved", which
-#: is a multiplication by a half and belongs in the `more` bucket -- an increase
-#: of -50 would join the additive sum, so a character with +100% health
-#: regeneration from elsewhere would end at 1.5x rather than at 1.0x.
 #:
-#: THE BARE WORD IS SAFE HERE WHERE "more" WAS NOT. "3 or more enemies" and "more
-#: than 10 meters" are ordinary English and that is why the second pattern needs
-#: a number and a percent sign; "halved" is not used in any other sense in any of
-#: the four trees, and it means exactly one thing.
+#: A THIRD ALTERNATIVE, THE BARE WORD "halved", WAS HERE AND CAME BACK OUT.
+#: Issue #1009. Sanguine Ledger was the only node in the game that needed it, its
+#: sentence contained no digits at all, and carrying it meant two other checks in
+#: this file had to widen for the same one node. The project owner chose to
+#: reword the node on 2026-08-26 instead: it now reads "your Health Regeneration
+#: is reduced by 50% (multiplicative)", which the first alternative already
+#: matches. **A wording that needs three checks widened at once is the wording
+#: rather than the checks being wrong**, and that is the lesson to reuse.
 #:
-#: ISSUE #1009 ASKS WHETHER TO REWORD THE NODE INSTEAD. Sanguine Ledger is the
-#: only node in the game that needs this pattern, and it needs two other checks
-#: widened as well, which is the signal that its wording rather than these checks
-#: is the odd thing. If the reword lands, this alternative comes back out.
-MULTIPLIES = re.compile(r"multiplicative|halved|\d+\s*%\s+(?:more|less)\b",
+#: SO THIS PATTERN NOW ASKS FOR A NUMBER EVERYWHERE, which is what makes it worth
+#: having. A sentence stating no magnitude cannot be tied to a magnitude in a
+#: spreadsheet, however honest the word in it is.
+MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
                         re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
@@ -298,12 +296,17 @@ AUTHORED_ROWS = 75
 #: altogether and 50 of the Masochist tree's own 74. Issues #1002, #1003 and
 #: #1004.
 #:
-#: TWO OF THOSE THREE ARE SCOPED TO A TAG ALMOST NO SKILL CARRIES, and this
-#: number does not know that. Issue #999: `Type.Melee` is on 6 weapon skill rows
-#: of 398, so Blood Offering's and Carnage's bonuses reach six skills until that
-#: is answered. Their triggers and their stacks work. This count measures whether
-#: a node has an authored effect, which is not the same question as whether the
-#: effect reaches much, and that gap is worth knowing about when reading it.
+#: TWO OF THOSE THREE ARE SCOPED TO `Type.Melee`, AND THAT TAG NOW REACHES 27
+#: SKILLS RATHER THAN 6. Issue #999. The project owner decided on 2026-08-26 that
+#: a strike is what "melee" means for a weapon skill, so `Type.Melee` was added to
+#: every one of the 27 rows of `game/Data/WeaponSkills.csv` carrying
+#: `Type.Strike`. Blood Offering's and Carnage's bonuses reached six skills of 398
+#: before that and reach twenty-seven now.
+#:
+#: THE GAP IT LEAVES IS STILL WORTH KNOWING ABOUT WHEN READING THIS NUMBER. This
+#: count measures whether a node has an authored effect, which is not the same
+#: question as whether that effect reaches much. Nothing here would notice a row
+#: scoped to a tag no skill carries.
 #:
 #: AND TO 57 FOR THREE MORE, the three nodes that change how the Fervour pool
 #: moves: Wounds That Feed and Sanguine Ledger stop healing removing it, for
@@ -702,12 +705,19 @@ VALUE_IN_WORDS = {
     ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
         ("no longer removes fervour", 1.0),
 
-    # AND SANGUINE LEDGER'S COST, WHICH ITS SENTENCE STATES AS A WORD. Issue
-    # #1007. "Your Health Regeneration is halved" is a `more` of -50, and
-    # "halved" is the only place in any of the four trees where a magnitude is
-    # written without a number. Issue #1009 asks whether to reword the node,
-    # which would remove this entry and two other widenings with it.
-    ("Masochist_keystone_spine_002", "health_regen"): ("halved", -50.0),
+    # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
+    # #1009. Its sentence said "your Health Regeneration is halved", so the -50
+    # on that row was a magnitude no digit in the sentence could be matched
+    # against, and it was the only such magnitude in any of the four trees. The
+    # project owner reworded the node on 2026-08-26 to "reduced by 50%
+    # (multiplicative)", which states the number, so the ordinary check below
+    # covers it and no exemption is needed.
+    #
+    # THE DIFFERENCE FROM THE THREE ABOVE IS WHAT DECIDES WHICH WAY TO GO. "Never
+    # taken", "cleared only by killing an enemy" and "does not remove Fervour"
+    # are RULES, and a rule has no number to state. A halving is a MAGNITUDE, and
+    # a magnitude can always be written as one. Exempt a rule; reword a
+    # magnitude.
 }
 
 
@@ -762,12 +772,13 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
 
 #: Words a node uses when its own effect takes something away.
 #:
-#: "halved" JOINED THEM FOR ISSUE #1007. Sanguine Ledger reads "your Health
-#: Regeneration is halved" and the row that carries it is a `more` of -50. The
-#: word plainly takes something away; it was missing only because no node had
-#: said it that way before. Issue #1009 asks whether to reword the node instead,
-#: which would make this entry unnecessary.
-TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by", "halved")
+#: "halved" WAS ADDED FOR ISSUE #1007 AND REMOVED AGAIN FOR ISSUE #1009. It was
+#: added because Sanguine Ledger read "your Health Regeneration is halved" and
+#: the row carrying it is a `more` of -50, and the word plainly does take
+#: something away. It came out because the project owner reworded that node on
+#: 2026-08-26 to "reduced by 50% (multiplicative)", and "reduce" was already in
+#: this list. No node in any of the four trees says "halved" now.
+TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by")
 
 
 def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(

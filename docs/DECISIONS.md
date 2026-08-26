@@ -20,6 +20,211 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — Three Masochist balance questions are answered as they were built
+
+**Affects:** nothing. Three decisions confirmed, no code or data changed. Issues
+#996, #992 and #981.
+
+The project owner confirmed all three on 2026-08-26. Each was implemented as a
+recommendation when it was built, so confirming costs nothing; each would have
+been one line to change.
+
+### Rolling Debt's cap bounds the whole debt, not one payment — #996
+
+`Masochist_basic_bt_a2` Rolling Debt reads "extends the delay on what is owed by
+0.5 seconds per point, to a maximum of 3 seconds". The node holds 6 points and
+6 × 0.5 is exactly 3, so the cap and the full-point value are the same number and
+the sentence can be read two ways.
+
+**A debt never falls due more than 3 seconds later than it would have without
+this node.** The other reading bounds a single payment, which makes the clause
+say nothing at 6 points and lets a character who keeps paying health costs push a
+debt out indefinitely. That matters here rather than being theoretical, because
+Compound Interest grants more damage the larger the debt is, so an unbounded
+delay would be an unbounded damage bonus that never has to be paid for.
+
+Both genre examples point the same way: Diablo 4's Berserking is extended by
+several actions and capped at 5 seconds regardless, and Path of Exile's Soul
+Eater ran uncapped for years before Grinding Gear Games added a hard limit of 45
+souls in 3.24.
+
+### Deferred Payment stays as written — #992
+
+At ten points `Masochist_basic_bt_a0` Deferred Payment defers the whole health
+cost for three seconds, while the Fervour the cost generates arrives immediately.
+A character with enough health regeneration or life leech could therefore
+generate Fervour from a cost it never really pays.
+
+**Left as written, to be revisited when there is a recovery figure.** Nobody has
+measured what a Masochist actually recovers in three seconds, so the size of the
+interaction is unknown. `CLAUDE.md` says constants are tuned against real play
+rather than argued to death first.
+
+**If it does prove too strong, move the Fervour to when the debt settles.** That
+is one line in `UCataclysmSkillTemplate::PayHealthCost` and it removes the free
+reward without touching a number the design states outright. Capping the deferred
+share below 100% is the alternative and is worse, because it changes what the
+node says.
+
+### Reciprocity keeps its ceiling — #981
+
+`Masochist_keystone_spine_003` Reciprocity grants +1% retaliation damage per
+point of Fervour held. Every class line gives the resource pool a maximum of 100,
+so a full bar doubles retaliation. Path of Exile's Rage is the same mechanic in
+the same words and caps at +50%; Path of Exile 2's caps at +30%.
+
+**Left as written.** Retaliation's worth in a real fight is unmeasured — the
+Masochist's class line gives it 10.0 at level 1 and 1.5 per level, and how often
+a player is actually struck is unknown — so doubling it means nothing until the
+base is known to matter. Changing a keystone's headline number away from a figure
+the design states outright, on the strength of a comparison with a different
+game's different resource, should follow a measurement rather than precede one.
+
+---
+
+## 2026-08-26 — The Masochist tree stops naming two things this game does not have
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`, `game/Data/PassiveNodes.csv`,
+`game/Content/Data/DT_PassiveNodes.uasset`. Applied. Issues #1000 and #1001.
+
+Two Masochist nodes and one capstone option promised stats and damage types that
+do not exist anywhere in this game. Both were found while building the nodes, and
+both are wording that predates the systems around them.
+
+### Sanguine Momentum no longer grants cast speed — #1000
+
+`Masochist_basic_bt_b1` Sanguine Momentum said each stack gives "+1% increased
+attack **and cast** speed per point".
+
+**There is no cast speed in this game** — not a stat, not a gameplay attribute,
+not a column anywhere. `attack_speed` exists, is named by class lines and is
+supplied by weapons as a base override; its counterpart does not exist at all.
+
+Every skill in this game is used the same way. A skill's rate is its cooldown,
+which `cooldown_reduction` already moves, and its attack speed, which
+`UCataclysmBasicAttack::SecondsBetweenSwingsFor` reads. Nothing casts at a rate
+distinct from attacking.
+
+**So the node now says "attack speed" and nothing else.** Adding a stat nothing
+reads would be a stat that grants nothing, which is the failure this whole line
+of work exists to remove. The node's authored row was already `attack_speed`
+alone, so no data changed — only the sentence a player reads, which had been
+promising half of something the game has no notion of.
+
+### "Physical damage" is not one of the eight, and both places that said it are reworded — #1001
+
+This game has eight damage types — War, Demonic, Death, Pestilence, Famine,
+Celestial, Chaos and Void — and `docs/Cataclysm_GDD_v2.md` is explicit that they
+are all of them. "Physical damage" appeared twice, both in the Masochist tree.
+
+**`Masochist_basic_fc_a1` Blood Offering now reads "Taking damage grants a stack
+of Bloodlust", and its bonus is "+1% increased melee damage per point".** The
+node rewards being hit, which is what the tree is about. The consequence is worth
+stating plainly: it fires far more often than a narrow reading would give it.
+
+Mapping "physical" onto War, the most martial of the eight, was the alternative
+and was rejected: it would make the node fire against one enemy type in eight for
+no reason the design gives, and make it much weaker than its neighbours.
+
+### The capstone option needed a different answer, and the project owner supplied it
+
+The First Vow's first option read "You can no longer be killed by physical
+damage, but 50% of all physical damage you take is converted to chaos damage."
+
+**Applying the same reading to it would have made it contradict itself.** Chaos
+is one of the eight types, so "cannot be killed by damage of any type" plus
+"converted to Chaos damage" removes the trade the sentence is built on and leaves
+something close to immortality.
+
+**It now reads: "You can no longer be killed by melee damage, but 50% of the
+melee damage you take is converted to Bleeding."**
+
+Three reasons this is better than the reading that was proposed first, which was
+"any type except Chaos":
+
+- **It keeps a real weakness.** Ranged and thrown attacks still kill outright, so
+  the capstone is a build decision rather than a blanket.
+- **Melee is a thing this game already knows about an incoming hit.**
+  `ACataclysmEnemyCharacter::BasicAttackTags` is `Type.Strike, Type.Melee`, and
+  `UCataclysmVitalAttributeSet` already reads the attacker's tags to set two
+  flags on the hit — whether it was area damage and whether it was damage over
+  time. A third flag for melee is one line in the same place.
+- **It reuses machinery the tree needs anyway.** Converting incoming damage into
+  a self-applied Bleeding is exactly what `basic_ll_b1` The Breaking Point does,
+  and building that is the route chosen for issue #985.
+
+**Two things are not settled by this and are recorded elsewhere.** The Bleeding
+has to be able to kill, or the option is melee immunity rather than a trade. And
+only one enemy ability in seven currently carries `Type.Melee`, so a melee-scoped
+defensive effect would protect against almost nothing; that is the enemy-side
+twin of issue #999 and is issue #1012.
+
+**No capstone can be built yet** — the passive effects sheet is keyed by node and
+has no column saying which of the three options was chosen — so this is a change
+to the design's words, not to anything running.
+
+---
+
+## 2026-08-26 — Sanguine Ledger states its cost as a number, and the three widened checks are narrow again
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`, `game/Data/PassiveNodes.csv`,
+`game/Content/Data/DT_PassiveNodes.uasset`,
+`tools/tests/test_passive_effects_match_the_node_text.py`. Applied. Issue #1009.
+
+### What was decided
+
+The project owner chose the reword. Sanguine Ledger's sentence changes from
+
+> Health regeneration no longer removes Fervour, but your Health Regeneration is
+> **halved**.
+
+to
+
+> Health regeneration no longer removes Fervour, but your Health Regeneration is
+> **reduced by 50% (multiplicative)**.
+
+**Nothing about the node's behaviour changes.** The row that carries it is a
+`more` of -50 on `health_regen` before and after, and no code was touched. This
+is a change to what a player reads and to what the checks can verify.
+
+### Why the wording gave way rather than the checks
+
+Three separate checks read digits out of a node's own words to make sure the
+workbook says what the design says. The old sentence contained **no digits at
+all**, so all three had to widen for this one node, and it was the only node in
+any of the four trees that needed any of them. The entry below this one records
+those three widenings, made the same day. **All three are now removed.**
+
+| Check | What came back out |
+| :-- | :-- |
+| the value appears in the node's own words | the entry pairing "halved" with -50 |
+| a `more` row is on a node that says it multiplies | the bare word "halved" as an alternative |
+| a negative value is on a node that takes something away | "halved" in the list of words |
+
+**The rule to reuse: exempt a rule, reword a magnitude.** Three exemptions remain
+in that file and all three are rules — "never taken", "cleared only by killing an
+enemy", "does not remove Fervour". A rule has no number to state, so naming the
+words it uses is the only tie available. A halving is a magnitude, and a
+magnitude can always be written as a number, so exempting one buys nothing and
+costs the arithmetic tie between the sheet and the sentence.
+
+### Why "(multiplicative)" and not "reduced by 50%" on its own
+
+The plain form was checked and does not work. The bucket check needs the sentence
+to say the number multiplies, and the only pattern that would accept "reduced by
+50%" also matches `Masochist_basic_bt_c0`, which reads "The Fervour removed by
+your own health regeneration is reduced by 5% per point" and is an **additive**
+row. Accepting the plain form would have swapped one widening for a worse one: a
+pattern that cannot tell a multiplying node from an adding one.
+
+**"(multiplicative)" is also the house style already in use.** All ten of the
+Bulwark tree's multiplying nodes are written that way, for example "+1.5% damage
+reduction per point (multiplicative)". "Your Health Regeneration is 50% less"
+would also have passed every check and was offered; the owner chose the Bulwark
+form.
+
+---
+
 ## 2026-08-26 — A node can stop healing removing Fervour, and Fervour can arrive from the passage of time
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`,
@@ -101,10 +306,14 @@ Fervour, but your Health Regeneration is halved."
 
 **Each is honest on its own** — halving is a multiplication and it does take
 something away — and needing all three for one node is the signal that its
-wording rather than the checks is the odd thing. **Issue #1009 recommends
+wording rather than the checks is the odd thing. **Issue #1009 recommended
 rewording the node to "reduced by 50% (multiplicative)"**, which is how the
-Bulwark tree writes all ten of its multiplying nodes and would need none of the
-three. If that lands, the three widenings come back out with it.
+Bulwark tree writes all ten of its multiplying nodes and needs none of the three.
+
+**That reword landed the same day and all three widenings are gone.** The entry
+at the top of this log, "Sanguine Ledger states its cost as a number", records
+it. Nothing in this section describes the file as it stands now; it is kept
+because it is the reasoning that produced the reword.
 
 ### And the last unit issue #990 named now has an entry
 

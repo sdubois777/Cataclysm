@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Sanguine Ledger",
-        "description": "Health regeneration no longer removes Fervour, but your Health Regeneration is halved.",
+        "description": "Health regeneration no longer removes Fervour, but your Health Regeneration is reduced by 50% (multiplicative).",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -419,7 +419,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Offering",
-        "description": "Taking physical damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks. Each stack gives +1% increased melee physical damage per point.",
+        "description": "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks. Each stack gives +1% increased melee damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1263,7 +1263,7 @@
         "options": [
           {
             "name": "Iron Will, but For the Soul",
-            "description": "You can no longer be killed by physical damage, but 50% of all physical damage you take is converted to chaos damage."
+            "description": "You can no longer be killed by melee damage, but 50% of the melee damage you take is converted to Bleeding."
           },
           {
             "name": "The Unbreakable, but For the Mind",
@@ -1587,7 +1587,7 @@
       "data": {
         "kind": "basic",
         "name": "Sanguine Momentum",
-        "description": "Each health cost paid within 3 seconds of the last grants a stack, up to 5 stacks. Each stack gives +1% increased attack and cast speed per point.",
+        "description": "Each health cost paid within 3 seconds of the last grants a stack, up to 5 stacks. Each stack gives +1% increased attack speed per point.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 6
