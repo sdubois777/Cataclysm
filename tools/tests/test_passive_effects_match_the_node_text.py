@@ -296,12 +296,17 @@ AUTHORED_ROWS = 75
 #: altogether and 50 of the Masochist tree's own 74. Issues #1002, #1003 and
 #: #1004.
 #:
-#: TWO OF THOSE THREE ARE SCOPED TO A TAG ALMOST NO SKILL CARRIES, and this
-#: number does not know that. Issue #999: `Type.Melee` is on 6 weapon skill rows
-#: of 398, so Blood Offering's and Carnage's bonuses reach six skills until that
-#: is answered. Their triggers and their stacks work. This count measures whether
-#: a node has an authored effect, which is not the same question as whether the
-#: effect reaches much, and that gap is worth knowing about when reading it.
+#: TWO OF THOSE THREE ARE SCOPED TO `Type.Melee`, AND THAT TAG NOW REACHES 27
+#: SKILLS RATHER THAN 6. Issue #999. The project owner decided on 2026-08-26 that
+#: a strike is what "melee" means for a weapon skill, so `Type.Melee` was added to
+#: every one of the 27 rows of `game/Data/WeaponSkills.csv` carrying
+#: `Type.Strike`. Blood Offering's and Carnage's bonuses reached six skills of 398
+#: before that and reach twenty-seven now.
+#:
+#: THE GAP IT LEAVES IS STILL WORTH KNOWING ABOUT WHEN READING THIS NUMBER. This
+#: count measures whether a node has an authored effect, which is not the same
+#: question as whether that effect reaches much. Nothing here would notice a row
+#: scoped to a tag no skill carries.
 #:
 #: AND TO 57 FOR THREE MORE, the three nodes that change how the Fervour pool
 #: moves: Wounds That Feed and Sanguine Ledger stop healing removing it, for
