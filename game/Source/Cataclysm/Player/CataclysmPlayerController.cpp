@@ -247,6 +247,33 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 	// act. Rearranging a bag is not an action the character takes.
 	if (KeyForAbilitySlot(SlotTag).IsMouseButton() && CursorIsOverInterface())
 	{
+		// ONCE PER PRESS, NOT ONCE PER FRAME, AND THAT IS THE WHOLE OF ISSUE
+		// #1016. `BindAbilityActions` binds this function to
+		// `ETriggerEvent::Triggered`, which fires EVERY FRAME the button is
+		// held. That is right for an ability -- holding the button keeps casting
+		// -- and wrong for a click on a screen.
+		//
+		// WHY IT ONLY SHOWED WHEN THE TARGET SLOT WAS ALREADY FULL, which is
+		// what the project owner noticed and what made this findable.
+		// `UCataclysmWearing::WearFromCarried` empties the carried cell and then
+		// puts whatever came off the body into the first free slot -- which is
+		// usually the cell just emptied. So the second frame of the same press
+		// found the OLD item sitting in the cell and swapped it back on, the
+		// third swapped it off again, and so on. Whether the player ended up
+		// wearing what they clicked depended on whether they held the button for
+		// an odd or an even number of frames.
+		//
+		// AN EMPTY TARGET SLOT NEVER SHOWED IT, because nothing comes off, so
+		// the cell stays empty and every later frame of the press is refused
+		// with "There is nothing there to wear". The play test log on
+		// 2026-08-26 is full of those in runs of consecutive frames, which is
+		// what a working press looks like under this defect.
+		if (SlotsAlreadyPressedOnTheInventory.Contains(SlotTag))
+		{
+			return;
+		}
+		SlotsAlreadyPressedOnTheInventory.Add(SlotTag);
+
 		RightPressOnTheInventoryScreen();
 		return;
 	}
@@ -266,6 +293,19 @@ void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)
 
 void ACataclysmPlayerController::Input_AbilitySlotReleased(FGameplayTag SlotTag)
 {
+	// THE PRESS IS OVER, SO THE NEXT ONE MAY ACT ON THE SCREEN AGAIN. Issue
+	// #1016. Cleared unconditionally rather than only when the cursor is still
+	// over the screen: a player who presses on a cell and drags off it has still
+	// finished that press, and leaving the tag here would make the NEXT press do
+	// nothing. That is the same reasoning `Input_MoveToCursorReleased` gives for
+	// clearing `bPressBeganOnInterface` the way it does.
+	//
+	// `BindAbilityActions` BINDS THIS TO Canceled AS WELL AS Completed, so a
+	// press interrupted by a mapping context change cannot leave a tag stuck
+	// here and make the button appear dead. The left button's own binding
+	// already did that for the same reason.
+	SlotsAlreadyPressedOnTheInventory.Remove(SlotTag);
+
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
 		ASC->AbilityInputTagReleased(SlotTag);
@@ -584,6 +624,7 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 	ACataclysmPlayerCharacter* Wearer = nullptr;
 	if (!InventoryPressTarget(Point, Wearer))
 	{
+		ReportPressThatFoundNothing(TEXT("left"), Point, /*bHadTarget=*/false);
 		return;
 	}
 
@@ -613,7 +654,13 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 		// given behaviour nobody chose.
 		ReportInventoryPress(UCataclysmWearing::PickUpWorn(
 			Bag, Wearer->GetEquipment(), Worn));
+		return;
 	}
+
+	// SAME REPORT AS THE RIGHT BUTTON. Issue #1016 is about equipping, which is
+	// the right button, but the two share every step up to this point and a
+	// left press that lands on nothing is the same silence.
+	ReportPressThatFoundNothing(TEXT("left"), Point, /*bHadTarget=*/true);
 }
 
 void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
@@ -622,6 +669,7 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 	ACataclysmPlayerCharacter* Wearer = nullptr;
 	if (!InventoryPressTarget(Point, Wearer))
 	{
+		ReportPressThatFoundNothing(TEXT("right"), Point, /*bHadTarget=*/false);
 		return;
 	}
 
@@ -639,7 +687,52 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 	{
 		ReportInventoryPress(UCataclysmWearing::TakeOffInto(
 			Wearer->GetInventory(), Wearer->GetEquipment(), Worn));
+		return;
 	}
+
+	// THE PRESS REACHED THE SCREEN AND LANDED ON NO CELL. Issue #1016: the
+	// project owner reports that equipping often does nothing on the first
+	// right click while the item's tooltip shows correctly, which means Slate's
+	// own hit test finds the cell and this one does not.
+	ReportPressThatFoundNothing(TEXT("right"), Point, /*bHadTarget=*/true);
+}
+
+void ACataclysmPlayerController::ReportPressThatFoundNothing(
+	const TCHAR* Button, const FVector2D& Point, bool bHadTarget) const
+{
+	// WHY THIS EXISTS AT ALL. Issue #1016. There were two ways to press a cell
+	// and have nothing happen, and BOTH WERE SILENT: a press that could not read
+	// a cursor position, and a press whose position landed in no cell. From a
+	// player's side the two are identical and identical to a press that was
+	// never delivered, so a report of "it takes several tries" could not be
+	// turned into a cause without guessing.
+	//
+	// LOG RATHER THAN VERBOSE, DELIBERATELY. This only fires when a press did
+	// nothing, which is not supposed to happen, so it cannot spam a working
+	// game -- and a verbose line is one the project owner would have to know to
+	// turn on before reproducing the fault.
+	//
+	// IT PRINTS THE POINT AND WHAT EACH TEST SAID, because those are the two
+	// things that distinguish the remaining causes: a cursor position that could
+	// not be read at all, one that the panel test accepted and the cell test
+	// did not, and one that both refused.
+	if (!bHadTarget)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("An inventory %s press did nothing: there was no cursor "
+					"position, no open screen, or no pawn to act on."),
+			   Button);
+		return;
+	}
+
+	const bool bOverPanel = InventoryScreen
+		&& InventoryScreen->CursorIsOverPanel(Point);
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("An inventory %s press at (%.1f, %.1f) did nothing: it is over "
+				"the panel (%s) but over no carried cell and no gear slot. "
+				"Issue #1016."),
+		   Button, Point.X, Point.Y, bOverPanel ? TEXT("yes") : TEXT("no"));
 }
 
 void ACataclysmPlayerController::Input_MoveToCursorStarted()

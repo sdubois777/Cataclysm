@@ -159,6 +159,30 @@ public:
 	void ReportInventoryPress(ECataclysmWearResult Result) const;
 
 	/**
+	 * Says that a press on the inventory screen did nothing at all, and why.
+	 *
+	 * THE GAP THIS FILLS. `ReportInventoryPress` above only speaks once a press
+	 * has REACHED `UCataclysmWearing` and been refused. Two earlier ways to do
+	 * nothing were both silent: a press that could not read a cursor position,
+	 * and a press whose position landed in no cell. From a player's side those
+	 * two are identical to each other and to a press that was never delivered,
+	 * which is why issue #1016 -- "equipping often does nothing on the first
+	 * right click" -- could not be turned into a cause by reading the code.
+	 *
+	 * WHAT IT PRINTS IS CHOSEN TO SEPARATE THE REMAINING CAUSES. The point
+	 * itself, and whether the panel test accepted a point the cell test refused.
+	 * A press the panel accepts and no cell does means the two hit tests
+	 * disagree; a press neither accepts means the cursor is not where the press
+	 * thinks it is.
+	 *
+	 * @param Button       "left" or "right", for the log line
+	 * @param Point        the cursor in viewport pixels, zero if none was read
+	 * @param bHadTarget   whether a cursor position and a pawn were found at all
+	 */
+	void ReportPressThatFoundNothing(const TCHAR* Button, const FVector2D& Point,
+									 bool bHadTarget) const;
+
+	/**
 	 * Which key fires the ability in a slot right now.
 	 *
 	 * PUBLIC BECAUSE THE SKILL BAR HAS TO LABEL ITS BOXES, and because the answer
@@ -405,6 +429,29 @@ private:
 	 * produces, for the same reason FollowTime is.
 	 */
 	bool bPressBeganOnInterface = false;
+
+	/**
+	 * Ability slots whose current press has already acted on the inventory.
+	 *
+	 * THE SAME IDEA AS `bPressBeganOnInterface` ABOVE, FOR THE OTHER BUTTON, and
+	 * it exists because the two buttons are bound to different trigger events.
+	 * The move button reports Started once; `BindAbilityActions` binds an
+	 * ability slot to `ETriggerEvent::Triggered`, which fires EVERY FRAME the
+	 * button is held. That is right for an ability and wrong for a click.
+	 *
+	 * WHAT IT COST BEFORE IT EXISTED. Issue #1016: a right press on a carried
+	 * item wore it, and the second frame of the same press wore it back off
+	 * again. `UCataclysmWearing::WearFromCarried` empties the cell and returns
+	 * whatever came off the body to the first free slot, which is usually that
+	 * same cell, so each frame swapped the two items over. Whether the player
+	 * ended up wearing what they clicked depended on whether they held the
+	 * button for an odd or an even number of frames, and the project owner
+	 * reported it as "it will often not work on the first try".
+	 *
+	 * A SET RATHER THAN A BOOL, because two ability slots can be held at once
+	 * and only one of them may be over the screen.
+	 */
+	TSet<FGameplayTag> SlotsAlreadyPressedOnTheInventory;
 
 	/**
 	 * True while the stand-still modifier is held. Suppresses movement only.
