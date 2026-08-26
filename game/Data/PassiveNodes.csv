@@ -230,7 +230,7 @@ Masochist_basic_spine_008,Masochist,basic_spine_008,basic,Scar Tissue,+2% increa
 Masochist_basic_spine_009,Masochist,basic_spine_009,basic,Hardened Nerves,+2% increased Crowd Control Resistance per point.,6,0,900.0,252.0,,,,,,
 Masochist_basic_spine_010,Masochist,basic_spine_010,basic,Retributive Instinct,+3% increased Retaliation per point.,6,0,-150.0,-12.0,,,,,,
 Masochist_keystone_spine_001,Masochist,keystone_spine_001,keystone,Communion of Pain,While your Fervour is at maximum you deal 20% more damage and take 20% more damage.,1,0,150.0,516.0,,,,,,
-Masochist_keystone_spine_002,Masochist,keystone_spine_002,keystone,Sanguine Ledger,"Health regeneration no longer removes Fervour, but your Health Regeneration is halved.",1,0,0.0,252.0,,,,,,
+Masochist_keystone_spine_002,Masochist,keystone_spine_002,keystone,Sanguine Ledger,"Health regeneration no longer removes Fervour, but your Health Regeneration is reduced by 50% (multiplicative).",1,0,0.0,252.0,,,,,,
 Masochist_keystone_spine_003,Masochist,keystone_spine_003,keystone,Reciprocity,Your Retaliation damage is increased by 1% for each point of Fervour you currently hold.,1,0,-150.0,-144.0,,,,,,
 Masochist_basic_fc_stem0,Masochist,basic_fc_stem0,basic,Iron Hide,+3% increased Armor per point.,8,0,-450.0,-12.0,,,,,,
 Masochist_basic_fc_stem1,Masochist,basic_fc_stem1,basic,Bulk,+1% increased Maximum Health per point.,6,0,-450.0,-144.0,,,,,,

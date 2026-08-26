@@ -20,6 +20,66 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — Sanguine Ledger states its cost as a number, and the three widened checks are narrow again
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`, `game/Data/PassiveNodes.csv`,
+`game/Content/Data/DT_PassiveNodes.uasset`,
+`tools/tests/test_passive_effects_match_the_node_text.py`. Applied. Issue #1009.
+
+### What was decided
+
+The project owner chose the reword. Sanguine Ledger's sentence changes from
+
+> Health regeneration no longer removes Fervour, but your Health Regeneration is
+> **halved**.
+
+to
+
+> Health regeneration no longer removes Fervour, but your Health Regeneration is
+> **reduced by 50% (multiplicative)**.
+
+**Nothing about the node's behaviour changes.** The row that carries it is a
+`more` of -50 on `health_regen` before and after, and no code was touched. This
+is a change to what a player reads and to what the checks can verify.
+
+### Why the wording gave way rather than the checks
+
+Three separate checks read digits out of a node's own words to make sure the
+workbook says what the design says. The old sentence contained **no digits at
+all**, so all three had to widen for this one node, and it was the only node in
+any of the four trees that needed any of them. The entry below this one records
+those three widenings, made the same day. **All three are now removed.**
+
+| Check | What came back out |
+| :-- | :-- |
+| the value appears in the node's own words | the entry pairing "halved" with -50 |
+| a `more` row is on a node that says it multiplies | the bare word "halved" as an alternative |
+| a negative value is on a node that takes something away | "halved" in the list of words |
+
+**The rule to reuse: exempt a rule, reword a magnitude.** Three exemptions remain
+in that file and all three are rules — "never taken", "cleared only by killing an
+enemy", "does not remove Fervour". A rule has no number to state, so naming the
+words it uses is the only tie available. A halving is a magnitude, and a
+magnitude can always be written as a number, so exempting one buys nothing and
+costs the arithmetic tie between the sheet and the sentence.
+
+### Why "(multiplicative)" and not "reduced by 50%" on its own
+
+The plain form was checked and does not work. The bucket check needs the sentence
+to say the number multiplies, and the only pattern that would accept "reduced by
+50%" also matches `Masochist_basic_bt_c0`, which reads "The Fervour removed by
+your own health regeneration is reduced by 5% per point" and is an **additive**
+row. Accepting the plain form would have swapped one widening for a worse one: a
+pattern that cannot tell a multiplying node from an adding one.
+
+**"(multiplicative)" is also the house style already in use.** All ten of the
+Bulwark tree's multiplying nodes are written that way, for example "+1.5% damage
+reduction per point (multiplicative)". "Your Health Regeneration is 50% less"
+would also have passed every check and was offered; the owner chose the Bulwark
+form.
+
+---
+
 ## 2026-08-26 — A node can stop healing removing Fervour, and Fervour can arrive from the passage of time
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`,
@@ -101,10 +161,14 @@ Fervour, but your Health Regeneration is halved."
 
 **Each is honest on its own** — halving is a multiplication and it does take
 something away — and needing all three for one node is the signal that its
-wording rather than the checks is the odd thing. **Issue #1009 recommends
+wording rather than the checks is the odd thing. **Issue #1009 recommended
 rewording the node to "reduced by 50% (multiplicative)"**, which is how the
-Bulwark tree writes all ten of its multiplying nodes and would need none of the
-three. If that lands, the three widenings come back out with it.
+Bulwark tree writes all ten of its multiplying nodes and needs none of the three.
+
+**That reword landed the same day and all three widenings are gone.** The entry
+at the top of this log, "Sanguine Ledger states its cost as a number", records
+it. Nothing in this section describes the file as it stands now; it is kept
+because it is the reasoning that produced the reword.
 
 ### And the last unit issue #990 named now has an entry
 
