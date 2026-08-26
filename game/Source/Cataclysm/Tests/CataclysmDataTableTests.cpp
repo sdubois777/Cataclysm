@@ -266,7 +266,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 5 on how long one turn of it lasts. The 3 second base that increase
 	// multiplies is NOT a row here and could not be: this sheet carries values
 	// PER POINT, and a base is not one.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         77)
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         85)
 
 	#undef CHECK_TABLE
 

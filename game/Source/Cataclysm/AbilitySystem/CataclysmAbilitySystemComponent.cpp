@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the debuffs a conditional or scaling bonus asks about. Issue #962.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -430,6 +432,23 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		UCataclysmStacks::Held(this, ECataclysmStackKind::Bloodlust);
 	State.CarnageStacks =
 		UCataclysmStacks::Held(this, ECataclysmStackKind::Carnage);
+
+	// AND WHAT HARMFUL EFFECTS THE CHARACTER IS UNDER. Issue #962. Five
+	// Masochist nodes ask one of these two questions: four count the debuffs and
+	// one asks whether the character is Bleeding.
+	//
+	// READ FROM THE ABILITY SYSTEM'S OWN TAG LIST, so there is no state here to
+	// keep and nothing to cancel when a character dies. A lasting effect grants
+	// its target a tag for exactly as long as it runs, so an effect that expired
+	// a moment ago has already taken its tag off and both readings are right
+	// with nothing having run in the meantime. That is the same argument the
+	// stack counts above make for themselves.
+	//
+	// BOTH ASKED, THOUGH ONE LOOKS DERIVABLE FROM THE OTHER. A character with
+	// one debuff may or may not be Bleeding, and a bleeding character may carry
+	// three debuffs; neither reading can be worked out from the other.
+	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
+	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
 	// A PROPERTY OF THE CHARACTER. Issue #983. The Masochist's Grand Tithe node

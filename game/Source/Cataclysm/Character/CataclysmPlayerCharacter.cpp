@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the Cataclysm.ShowDebuffs console command. Issue #962.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -1461,6 +1463,69 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowStacks(
 						UCataclysmStacks::Held(ASC, Kind),
 						UCataclysmStacks::CapFor(Kind),
 						UCataclysmStacks::WindowSecondsFor(Kind));
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowDebuffs(
+	TEXT("Cataclysm.ShowDebuffs"),
+	TEXT("Which harmful effects the character is under right now, how many of "
+		 "them count as unique debuffs, and whether one of them is Bleeding. "
+		 "Five Masochist nodes read one of those two numbers."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			// WHY THERE IS A COMMAND FOR THIS AT ALL. Issue #962, and the same
+			// argument `Cataclysm.ShowStacks` above makes. A debuff count is not
+			// a gameplay attribute, so nothing on the character sheet shows it
+			// and `Cataclysm.ShowAttributes` cannot. It falls back to nothing on
+			// its own with nothing running, so a player who cannot see it has no
+			// way to tell a node that is not working from one whose debuff ran
+			// out a second ago.
+			//
+			// THE TAGS AS WELL AS THE COUNT, because the count alone cannot say
+			// WHICH effects it counted. A character carrying a stun and a bleed
+			// reads two and so does one carrying two ailments; only the list says
+			// which, and that is the difference between Thirst for Pain applying
+			// and not.
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			UAbilitySystemComponent* ASC =
+				Character ? Character->GetAbilitySystemComponent() : nullptr;
+			if (!ASC)
+			{
+				Ar.Log(TEXT("No character."));
+				return;
+			}
+
+			Ar.Logf(TEXT("Unique debuffs %d.  Bleeding: %s"),
+					UCataclysmDebuffs::CountOn(ASC),
+					UCataclysmDebuffs::IsBleeding(ASC) ? TEXT("yes")
+													   : TEXT("no"));
+
+			const FGameplayTagContainer Roots = UCataclysmDebuffs::DebuffRoots();
+			FGameplayTagContainer Owned;
+			ASC->GetOwnedGameplayTags(Owned);
+
+			int32 Listed = 0;
+			for (const FGameplayTag& Tag : Owned)
+			{
+				if (Tag.MatchesAny(Roots))
+				{
+					Ar.Logf(TEXT("  %s"), *Tag.ToString());
+					++Listed;
+				}
+			}
+
+			if (Listed == 0)
+			{
+				// SAID PLAINLY RATHER THAN LEFT AS AN EMPTY LIST, the way the
+				// Fervour command says why its three rates are zero. This is the
+				// ordinary state of an unhurt character and reads as a broken
+				// feature otherwise.
+				Ar.Log(TEXT("  Nothing. Buy Masochist_basic_ll_b1 with "
+							"Cataclysm.SpendPassivePoint, then take a hit below "
+							"half health to bleed yourself."));
 			}
 		}));
 

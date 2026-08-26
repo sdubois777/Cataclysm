@@ -961,6 +961,17 @@ namespace CataclysmPassiveEffectTest
 			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1\r\n"
 			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1\r\n"
 			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1\r\n"
+			// AND A COUNT OF THE DEBUFFS THE CHARACTER IS UNDER. Issue #962. A
+			// fourth count beside the three stacks, and its own row for the same
+			// argument: a build that mapped this name onto a stack enumerator
+			// would count something the character EARNED instead of something
+			// being DONE to it, and every check above would still pass.
+			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1\r\n"
+			// AND A CONDITION THAT NAMES AN EFFECT RATHER THAN A THRESHOLD.
+			// Issue #962. It is the only condition that reads no value, so it is
+			// the only one where the value column could be carried across and
+			// compared against with nothing reporting it.
+			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
 
@@ -1214,6 +1225,27 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 				  (*Movement)[0].ConditionValue, 5.0f);
 	}
 
+	// AND A CONDITION THAT NAMES AN EFFECT MAKES THE TRIP TOO. Issue #962. The
+	// same node carries `while_bleeding`, which is the shape Thirst for Pain
+	// uses, and it is the only condition in the vocabulary that compares
+	// nothing. Two things could go wrong quietly: the name could be left
+	// unrecognised, which applies the bonus at ALL times rather than while
+	// bleeding, and the value column could be carried across, which would make
+	// the predicate compare against a number it is not supposed to have.
+	const TArray<FCataclysmStatModifier>* Evasion =
+		Modifiers.Find(FName(TEXT("evasion")));
+	if (TestNotNull(TEXT("the node also granted evasion"), Evasion)
+		&& TestEqual(TEXT("exactly one of it"), Evasion->Num(), 1))
+	{
+		TestEqual(TEXT("and it carries the bleeding condition"),
+				  static_cast<int32>((*Evasion)[0].Condition),
+				  static_cast<int32>(ECataclysmStatCondition::WhileBleeding));
+		TestEqual(TEXT("carrying no value, because it compares nothing"),
+				  (*Evasion)[0].ConditionValue, 0.0f);
+		TestTrue(TEXT("and it is not left unconditional"),
+				 (*Evasion)[0].Condition != ECataclysmStatCondition::Always);
+	}
+
 	// AND A ROW WITH NO CONDITION IS UNCONDITIONAL, which is every other row in
 	// the fixture and every row in the game before this issue. Without this the
 	// test above would pass just as well if every modifier came out conditional.
@@ -1349,6 +1381,30 @@ bool FCataclysmPassiveScaleReachesTheModifierTest::RunTest(const FString&)
 		TestEqual(FString::Printf(TEXT("'%s' scales in single stacks"),
 								  Each.Key),
 				  (*Found)[0].ScaleStep, 1.0f);
+	}
+
+	// AND THE DEBUFF COUNT IS A FOURTH ENUMERATOR, NOT ONE OF THOSE THREE.
+	// Issue #962. It is counted by the same arithmetic a stack is, which is
+	// exactly why it needs its own check: a build that mapped `debuffs_carried`
+	// onto a stack enumerator would produce a number, the node would grow with
+	// something, and nothing would say it was growing with the wrong thing.
+	const TArray<FCataclysmStatModifier>* SpellDamage =
+		Modifiers.Find(FName(TEXT("spell_damage")));
+	if (TestNotNull(TEXT("the debuff row granted spell damage"), SpellDamage)
+		&& TestEqual(TEXT("exactly one of it"), SpellDamage->Num(), 1))
+	{
+		TestEqual(TEXT("and it carries the debuff scale"),
+				  static_cast<int32>((*SpellDamage)[0].Scale),
+				  static_cast<int32>(ECataclysmStatScale::PerDebuffCarried));
+		TestEqual(TEXT("counting single debuffs"),
+				  (*SpellDamage)[0].ScaleStep, 1.0f);
+		TestTrue(TEXT("and it is none of the three stack scales"),
+				 (*SpellDamage)[0].Scale
+					 != ECataclysmStatScale::PerStackOfSanguineMomentum
+				 && (*SpellDamage)[0].Scale
+					 != ECataclysmStatScale::PerStackOfBloodlust
+				 && (*SpellDamage)[0].Scale
+					 != ECataclysmStatScale::PerStackOfCarnage);
 	}
 
 	return true;

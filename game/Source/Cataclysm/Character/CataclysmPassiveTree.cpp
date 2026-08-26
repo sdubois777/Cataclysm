@@ -776,6 +776,21 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatCondition::SkillHealthCostAbovePercent;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(TEXT("while_bleeding"),
+											  ESearchCase::IgnoreCase))
+			{
+				// A CONDITION ABOUT WHAT THE CHARACTER IS CARRYING rather than
+				// about where one of its own numbers stands. Issue #962. Thirst
+				// for Pain is the node: "While you are Bleeding, +2% increased
+				// Attack Speed per point."
+				//
+				// THE VALUE COLUMN IS DELIBERATELY NOT COPIED, because this
+				// predicate compares nothing. The kind of effect is the
+				// enumerator itself. `tools/generate_datatables.py` refuses to
+				// write a value on a row carrying this, so there is none to
+				// carry across.
+				Modifier.Condition = ECataclysmStatCondition::WhileBleeding;
+			}
 			else if (!Effect->Condition.IsEmpty())
 			{
 				UE_LOG(LogCataclysm, Warning,
@@ -850,6 +865,15 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 										  ESearchCase::IgnoreCase))
 			{
 				Modifier.Scale = ECataclysmStatScale::PerStackOfCarnage;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
+			else if (Effect->Scale.Equals(TEXT("debuffs_carried"),
+										  ESearchCase::IgnoreCase))
+			{
+				// A COUNT OF WHAT IS BEING DONE TO THE CHARACTER rather than of
+				// anything the character earned. Issue #962. Four nodes grow
+				// with it, and `UCataclysmDebuffs` says what counts as one.
+				Modifier.Scale = ECataclysmStatScale::PerDebuffCarried;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
 			else if (!Effect->Scale.IsEmpty())

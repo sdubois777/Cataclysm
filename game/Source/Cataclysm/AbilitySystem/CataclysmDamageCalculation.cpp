@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For asking the defender for a stat instead of reading its attribute. #1022.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
@@ -10,6 +12,48 @@
 
 namespace
 {
+	/**
+	 * One of the defender's own stats, asked for rather than read.
+	 *
+	 * WHY ASKING IS NOT THE SAME AS READING. Issue #1022. A modifier that
+	 * carries a condition or a scale is never folded into a gameplay attribute:
+	 * `UCataclysmPlayerClassStats::ApplyTo` evaluates the pipeline with a default
+	 * `FCataclysmStatConditions`, in which every reading is unknown, so a
+	 * conditional row answers false and a scaling row answers nothing. That is
+	 * deliberate -- a bonus whose size depends on where health is must not be
+	 * written onto an attribute where it would be stale the moment the next blow
+	 * landed -- but it means a plain attribute read throws such a row away, and
+	 * nothing reports it. The arithmetic runs and the number is simply the
+	 * unmodified one.
+	 *
+	 * TWO MASOCHIST NODES ARE WHY THIS EXISTS. Battle-Scarred grants "+2%
+	 * increased Armor per point for each unique debuff on you" and Endurance in
+	 * Suffering grants damage reduction the same way. Every conditioned or
+	 * scaled row authored before them sat on a stat that was already asked for.
+	 *
+	 * THE ATTRIBUTE IS THE FALLBACK AND NOT THE ANSWER. `StatForSkill` returns
+	 * the fallback when no stat line was recorded for this character at all,
+	 * which is ordinary rather than a fault: every enemy is in that case, because
+	 * `ACataclysmEnemyCharacter` writes its armour straight onto the attribute.
+	 * A player with a stat line re-evaluates the same base and the same modifier
+	 * list the attribute was built from, so the two agree except on the rows this
+	 * exists to rescue.
+	 *
+	 * NO SKILL TAGS, BECAUSE THIS IS THE DEFENDER'S STAT. `RequiredTags` scopes a
+	 * modifier to the skill in the CHARACTER'S OWN hand, and the character here
+	 * is being hit rather than swinging. An empty container is the honest reading
+	 * and it is what the character sheet passes for the same stat.
+	 */
+	float DefenderStat(const UAbilitySystemComponent* Defender,
+					   const TCHAR* Stat, float FromAttribute)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		return Asking ? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
+											 FromAttribute)
+					  : FromAttribute;
+	}
+
 	/**
 	 * How much of a hit of this type the defender resists.
 	 *
@@ -352,7 +396,9 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		const float FromWeapon = Hit.bIsPiercing ? PiercingArmorIgnored : 0.0f;
 		const float Ignored =
 			FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
-		const float Armor = Combat->GetArmor() * (1.0f - Ignored / 100.0f);
+		const float Armor =
+			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor())
+			* (1.0f - Ignored / 100.0f);
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
 	}
 
@@ -367,7 +413,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	if (Combat)
 	{
 		Damage *= 1.0f
-			- EffectiveDamageReduction(Combat->GetDamageReduction()) / 100.0f;
+			- EffectiveDamageReduction(
+				  DefenderStat(Defender, TEXT("damage_reduction"),
+							   Combat->GetDamageReduction()))
+				  / 100.0f;
 
 		// AND THE MULTIPLICATIVE BUCKET, WHICH THAT CAP DOES NOT REACH. Twelve
 		// passive tree nodes grant damage reduction and call it

@@ -171,6 +171,38 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	SkillHealthCostAbovePercent
 		UMETA(DisplayName = "Skill Health Cost Above Percent"),
+
+	/**
+	 * The character is Bleeding. Issue #962.
+	 *
+	 * THE FIRST PREDICATE THAT ASKS WHAT THE CHARACTER IS CARRYING rather than
+	 * where a number of its own stands. Thirst for Pain is the node: "While you
+	 * are Bleeding, +2% increased Attack Speed per point."
+	 *
+	 * `ConditionValue` IS UNUSED, AND IT IS THE ONLY PREDICATE HERE THAT NEEDS
+	 * NO NUMBER. The other four compare a reading against a threshold; this one
+	 * names a kind of effect, and the kind is in the enumerator rather than in a
+	 * float. `tools/generate_datatables.py` refuses to write a value on a row
+	 * carrying it, so a number typed into that column is caught when the file is
+	 * written rather than being quietly ignored here.
+	 *
+	 * ONE ENUMERATOR PER NAMED EFFECT, rather than one enumerator and a column
+	 * saying which. That is what the three stack scales below already do, and
+	 * the argument is the same: a further column on the effects sheet is a row
+	 * struct change, which means a build before the DataTable asset can be
+	 * regenerated. This one could not use a column anyway -- `ConditionValue` is
+	 * a float and a tag name is not a number. The design's other sentences of
+	 * this shape name Poison, Chill and being Stunned, and each would be its own
+	 * enumerator here.
+	 *
+	 * BLEEDING RATHER THAN "ANY DEBUFF", BECAUSE THE NODE SAYS BLEEDING. A
+	 * character that is stunned and not bleeding must not get this bonus.
+	 * `ECataclysmStatScale::PerDebuffCarried` below is the separate question of
+	 * how many harmful effects of any kind the character is under, and four
+	 * other nodes ask that one.
+	 */
+	WhileBleeding
+		UMETA(DisplayName = "While Bleeding"),
 };
 
 /**
@@ -294,6 +326,27 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerStackOfCarnage
 		UMETA(DisplayName = "Per Stack Of Carnage"),
+
+	/**
+	 * Multiplied by how many distinct debuffs the character is carrying.
+	 * Issue #962.
+	 *
+	 * Four Masochist nodes grow with it and all four write it the same way:
+	 * "for each unique debuff on you", and once "Every debuff on you". A step of
+	 * 1, so the count is the debuffs themselves.
+	 *
+	 * NOT A FOURTH STACK COUNT, THOUGH IT IS COUNTED THE SAME WAY. A stack is
+	 * granted by an event this project chose to remember and expires on a timer
+	 * this project chose; a debuff is a gameplay effect somebody applied, and the
+	 * ability system is already holding the list for its own reasons.
+	 * `UCataclysmDebuffs::CountOn` reads that list and says what counts as one.
+	 *
+	 * UNIQUE MEANS DISTINCT KINDS. Bleeding and burning at once is two; bleeding
+	 * from two sources is one, because every lasting effect this project applies
+	 * is aggregated by target and limited to a single stack.
+	 */
+	PerDebuffCarried
+		UMETA(DisplayName = "Per Debuff Carried"),
 };
 
 /**
@@ -404,6 +457,33 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 CarnageStacks = 0;
+
+	/**
+	 * Whether the character is Bleeding, and how many distinct debuffs of any
+	 * kind it is carrying. Issue #962.
+	 *
+	 * FALSE AND ZERO ARE THE ONLY "NOTHING" THESE NEED, exactly as the three
+	 * stack counts above. A caller with no character in hand carries no debuffs,
+	 * a character nothing has hurt carries no debuffs, and every bonus that
+	 * counts them is worth nothing for both. Nothing can act differently on the
+	 * two, so there is nothing to distinguish, and the negative "unknown" the
+	 * readings further up carry would buy nothing here.
+	 *
+	 * TWO READINGS RATHER THAN ONE, because they answer different questions and
+	 * neither implies the other. A character that is stunned and not bleeding
+	 * has one debuff and is not Bleeding; one that is bleeding has one debuff and
+	 * is Bleeding. Deriving either from the other would give a node somebody
+	 * else's answer.
+	 *
+	 * AN INTEGER, BECAUSE A DEBUFF IS A WHOLE THING, the same as a stack. The
+	 * continuous readings above count whole steps of something and round down to
+	 * get there; this is already whole.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsBleeding = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 DebuffsCarried = 0;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

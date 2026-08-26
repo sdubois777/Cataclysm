@@ -8,10 +8,14 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the debuffs a scaling defence grows with. Issues #962 and #1022.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Tests/CataclysmTestWorld.h"
 
 /**
  * Tests for the damage calculation.
@@ -562,6 +566,145 @@ CATACLYSM_TEST(FCataclysmDamageAppliesThroughTheMetaAttributeTest,
 		TestEqual(TEXT("The damage meta attribute is consumed"),
 			D.Vitals->GetDamage(), 0.0f);
 	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A defence that depends on the state the defender is in
+// ---------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmDefenceReadsScaledBonusesTest,
+	"Cataclysm.Damage.ArmourAndDamageReductionSeeABonusThatGrowsWithTheDefendersState")
+{
+	using namespace CataclysmDamageTest;
+
+	// WHAT THIS PINS AND WHY IT IS NOT TIDINESS. Issue #1022. `Resolve` used to
+	// read both of these straight off their gameplay attributes, and a modifier
+	// carrying a condition or a scale is NEVER folded into an attribute -- the
+	// character sheet evaluates the pipeline with every reading unknown, so a
+	// scaling row answers nothing there on purpose. The consequence was that
+	// such a row on armour or on damage reduction was worth nothing and nothing
+	// reported it: the arithmetic ran and the number was simply the unmodified
+	// one.
+	//
+	// TWO MASOCHIST NODES ARE EXACTLY THIS SHAPE. Battle-Scarred grants "+2%
+	// increased Armor per point for each unique debuff on you" and Endurance in
+	// Suffering grants damage reduction the same way.
+	//
+	// THE TEST BREAKS IN BOTH DIRECTIONS. A defender carrying no debuff must take
+	// the same damage it always did, and one carrying debuffs must take less. The
+	// first half is what would fail against a build that granted the bonus
+	// unconditionally; the second is what would fail against a plain attribute
+	// read.
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	// ONE STAT PER DEFENDER, AND THAT IS THE POINT OF THE SHAPE. A single
+	// defender carrying a scaling row on BOTH stats would still take less damage
+	// when only one of the two reads were fixed, so the test would pass against
+	// half a fix and say nothing. Each stat gets its own defender and its own
+	// assertion, so breaking either read fails on its own line.
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+	if (!TestTrue(TEXT("the vocabulary has both tags"),
+				  Bleed.IsValid() && Stunned.IsValid()))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A scaling row, shared by the two cases below. Its VALUE differs; nothing
+	// else about it does.
+	FCataclysmStatModifier PerDebuff;
+	PerDebuff.Bucket = ECataclysmStatBucket::Increased;
+	PerDebuff.Source = ECataclysmModifierSource::PassiveKeystone;
+	PerDebuff.Scale = ECataclysmStatScale::PerDebuffCarried;
+	PerDebuff.ScaleStep = 1.0f;
+
+	// ---- Armour on its own -------------------------------------------------
+	{
+		const FScopedDefender D(World);
+
+		// A BASE ON THE ATTRIBUTE, WHICH IS WHERE AN UNCONDITIONAL ANSWER LIVES.
+		// Damage reduction is left at nothing so this case can only move if the
+		// ARMOUR step reads the stat line.
+		D.Combat->SetArmor(800.0f);
+
+		const float Unmodified = D.Hit(400.0f).DealtToHealth;
+		TestTrue(TEXT("an unmodified hit lands for something"), Unmodified > 0.0f);
+
+		// AND A STAT LINE SAYING WHERE THAT CAME FROM, which is what
+		// `UCataclysmPlayerClassStats::ApplyTo` records for a real player and
+		// what `StatForSkill` re-evaluates.
+		FCataclysmStatModifier ArmourPerDebuff = PerDebuff;
+		ArmourPerDebuff.Value = 100.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Armour = Inputs.FindOrAdd(FName(TEXT("armor")));
+		Armour.Base = 800.0f;
+		Armour.Modifiers = { ArmourPerDebuff };
+		D.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		// CARRYING NOTHING CHANGES NOTHING. This is the half that catches a bonus
+		// granted unconditionally, and it also says the attribute and the
+		// re-evaluated stat line agree when there is nothing to add.
+		TestEqual(TEXT("armour: with no debuff the hit is what it was"),
+			D.Hit(400.0f).DealtToHealth, Unmodified, 0.01f);
+
+		UCataclysmSkillEffects::ApplyTagForDuration(D.Actor, D.Actor, Bleed, 30.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(D.Actor, D.Actor, Stunned, 30.0f);
+		TestEqual(TEXT("armour: the defender carries two debuffs"),
+			UCataclysmDebuffs::CountOn(D.AbilitySystem), 2);
+
+		TestTrue(TEXT("armour: two debuffs is +200% armour and the hit shrinks"),
+			D.Hit(400.0f).DealtToHealth < Unmodified);
+	}
+
+	// ---- Flat damage reduction on its own ----------------------------------
+	{
+		const FScopedDefender D(World);
+
+		// ARMOUR AT NOTHING, so this case can only move if the DAMAGE REDUCTION
+		// step reads the stat line.
+		D.Combat->SetDamageReduction(10.0f);
+
+		const float Unmodified = D.Hit(400.0f).DealtToHealth;
+		TestTrue(TEXT("an unmodified hit lands for something"), Unmodified > 0.0f);
+
+		FCataclysmStatModifier ReductionPerDebuff = PerDebuff;
+		ReductionPerDebuff.Value = 100.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Reduction =
+			Inputs.FindOrAdd(FName(TEXT("damage_reduction")));
+		Reduction.Base = 10.0f;
+		Reduction.Modifiers = { ReductionPerDebuff };
+		D.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		TestEqual(TEXT("reduction: with no debuff the hit is what it was"),
+			D.Hit(400.0f).DealtToHealth, Unmodified, 0.01f);
+
+		UCataclysmSkillEffects::ApplyTagForDuration(D.Actor, D.Actor, Bleed, 30.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(D.Actor, D.Actor, Stunned, 30.0f);
+		TestEqual(TEXT("reduction: the defender carries two debuffs"),
+			UCataclysmDebuffs::CountOn(D.AbilitySystem), 2);
+
+		const float WhileDebuffed = D.Hit(400.0f).DealtToHealth;
+		TestTrue(TEXT("reduction: two debuffs is +200 points and the hit shrinks"),
+			WhileDebuffed < Unmodified);
+
+		// AND THE CAP STILL BINDS. Ten plus two hundred percentage points would be
+		// outright immunity without `EffectiveDamageReduction`, so a hit still has
+		// to land for something. Issue #644 is the incident behind that rule.
+		TestTrue(TEXT("reduction: and still lands, because the cap binds"),
+			WhileDebuffed > 0.0f);
+	}
+
 	World->DestroyWorld(false);
 	return true;
 }

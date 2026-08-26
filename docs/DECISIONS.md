@@ -20,6 +20,144 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — What counts as a debuff on a character, and the five Masochist nodes that ask
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`
+(new), `CataclysmStatPipeline.h` and `.cpp`, `CataclysmAbilitySystemComponent.cpp`,
+`CataclysmDamageConversion.cpp`, `CataclysmDamageCalculation.cpp`,
+`Character/CataclysmPassiveTree.cpp`, `Character/CataclysmPlayerCharacter.cpp`,
+`docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
+`tools/generate_datatables.py`. Applied. Issues #962 and #1022.
+
+### The question
+
+Five Masochist nodes ask what harmful effects the character itself is under:
+
+| Node | What it says |
+| :-- | :-- |
+| `basic_fc_a2` Thirst for Pain | "While you are Bleeding, +2% increased Attack Speed per point" |
+| `basic_fc_b0` Battle-Scarred | "+2% increased Armor per point for each unique debuff on you" |
+| `basic_fl_a0` Endurance in Suffering | "For each unique debuff on you, +1% increased damage and +0.5% increased Damage Reduction per point" |
+| `keystone_fl_kB` Doctrine of Pain | "You deal 4% more damage for each unique debuff on you" |
+| `keystone_fl_kC` Flagellant | "Every debuff on you grants 5 Fervour per second for as long as it lasts" |
+
+Nothing counted them. `game/Data/StatusEffects.csv` describes what 52 effects
+ARE, and the ability system holds the effects that are running, but nothing asked
+how many distinct harmful ones a character was under.
+
+**The question the design does not answer is which effects count.** The tag
+vocabulary carries no mark saying "this one is bad for you". `Status.` is one
+flat branch holding the buffs, the debuffs and the damage over times together, so
+`Status.DivineAegis` and `Status.Cripple` are indistinguishable by their names.
+
+### What the genre does
+
+All three games settle it the same way, and **none of them infers it**:
+
+- **Path of Exile** treats a debuff as a marked category. Its wiki describes a
+  debuff as an effect with a red border on its icon, shown in a separate row from
+  buffs, and names what belongs: ailments, curses, most forms of damage over
+  time, and effects such as Hinder or Maim. It also draws a line this project
+  deliberately does not — an effect you chose to apply to yourself, such as Blood
+  Rage, is not a debuff there.
+- **Last Epoch** declares an enumerated set of ailments, split into damage
+  ailments and debuff ailments. Membership is a property of the effect, stated in
+  the game's own data.
+- **Diablo 4** names exactly eleven crowd control effects. The list is the
+  definition.
+
+Sources:
+
+- Buffs, Path of Exile Wiki — https://www.poewiki.net/wiki/Buffs
+- Category:Debuffs, Path of Exile Wiki — https://pathofexile.fandom.com/wiki/Category:Debuffs
+- Negative Ailments, Last Epoch Support — https://support.lastepoch.com/hc/en-us/articles/46361887879963-Negative-Ailments
+- Ailments Explained, Maxroll — https://maxroll.gg/last-epoch/resources/ailments-explained
+- Crowd Control Status Effects in Diablo 4, Icy Veins — https://www.icy-veins.com/d4/guides/crowd-control-status-effects/
+
+### The decision
+
+**A debuff is membership of a named list of tag branches, held in C++ in
+`UCataclysmDebuffs::DebuffRootNames`.** Two entries today:
+
+| Root | Why |
+| :-- | :-- |
+| `Keyword.DoT` | every damage over time, as one branch, so Bleed, Burn, Poison and the rest are in without being listed |
+| `State.Stunned` | not damage, and still a debuff. Diablo 4 lists Stun among its eleven; Path of Exile lists stunning among its debuffs |
+
+**The count is of DISTINCT EXPLICIT TAGS.** Bleeding and burning at once is two.
+Bleeding from two sources is one, because every lasting effect this project
+applies is aggregated by target and limited to a single stack, so a second
+application refreshes the first. That is what "unique" means in all four
+sentences.
+
+**The explicit tags, not the implied parents.** The engine counts a tag against
+its parents, so a character carrying `Keyword.DoT.Bleed` answers yes to
+`Keyword.DoT` as well. Counting what it answers yes to would report one bleed as
+two, and as three the moment the branch grew a level.
+
+**`State.StunImmune` is deliberately excluded, and it is why the list is a list.**
+`UCataclysmSkillEffects::ApplyStun` attaches it to the target in the same call
+that stuns it, and it protects the character — it is what stops a second stun
+landing at once. Any rule inferring harm from what a hit left behind would report
+one stun as two debuffs and hand all four scaling nodes double what they promise.
+
+### Where this departs from Path of Exile, deliberately
+
+**A self-inflicted debuff counts here, and would not there.** Path of Exile
+excludes an effect you chose to apply to yourself. The Masochist's whole premise
+is being paid for self-harm: The Breaking Point makes the character bleed itself,
+and it is the only thing in this game that puts a lasting harmful effect on the
+player at all. A rule excluding self-applied effects would make every one of
+these five nodes unreachable on the tree they belong to.
+
+**That is a judgement rather than something read off another game**, and it is
+recorded as one.
+
+### Two things that had to move first
+
+**The Breaking Point's Bleeding was not tagged as Bleeding.** It carried the bare
+`Keyword.DoT` parent, so the character was under damage over time that was not
+Bleeding, and Thirst for Pain — the one node that mechanic was built to unblock —
+would have been false for ever with nothing reporting it. It now carries
+`Keyword.DoT.Bleed`, a child of the same parent, so every question asked before
+this still answers the same.
+
+**Armour and flat damage reduction were read off their gameplay attributes.**
+Issue #1022. A modifier carrying a condition or a scale is never folded into an
+attribute — the character sheet evaluates with every reading unknown, on purpose
+— so a scaling row on either was worth nothing and nothing reported it.
+`UCataclysmDamageCalculation::Resolve` now asks the stat pipeline for both, with
+the attribute as the fallback, which is the edit already made twice for
+`crit_chance` and `retaliation`.
+
+### The shape in the effects sheet
+
+One condition and one scale, named for what they read:
+
+- `while_bleeding`, which is the first condition in the vocabulary that compares
+  nothing. It names a kind of effect, and the kind is in the name because the
+  value column holds a number and a tag name is not one. The generator refuses a
+  value written beside it.
+- `debuffs_carried`, with a step of 1.
+
+**One name per kind rather than one name and a column saying which.** That is
+what the three stack scales already do and the argument is the same: a further
+column on that sheet is a row struct change, which means a build before the
+DataTable asset can be regenerated. The design's other sentences of this shape
+name Poison, Chill and being Stunned, and each would be its own name here.
+
+### What this does not do
+
+**There is still no cap on how many debuffs a character may carry**, so
+`keystone_fl_kA` Vessel of Plagues — "You can carry twice as many unique debuffs"
+— remains unbuildable: doubling no cap is doubling nothing.
+
+**Nothing applies a `Status.` effect at run time**, so none of those 52 rows can
+be counted yet. Issue #899 is the eleven affixes that would apply one. When
+something does, its branch belongs in `DebuffRootNames`.
+
+---
+
 ## 2026-08-26 — Damage can arrive as Bleeding instead of all at once, and a Masochist can debuff itself
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.h` and

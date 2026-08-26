@@ -221,7 +221,19 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: on the Masochist's own line in the `Class Stats` sheet instead. An `increased`
 #: row with no base under it is worth nothing, which is what
 #: `test_every_stat_is_one_the_game_supplies` exists to refuse.
-AUTHORED_ROWS = 77
+#:
+#: AND BY EIGHT, FOR THE FIVE NODES THAT ASK ABOUT THE DEBUFFS THE CHARACTER IS
+#: CARRYING. Issue #962. Thirst for Pain is one `increased` row on attack speed
+#: conditioned on the character Bleeding. The other four scale with a count of
+#: debuffs: Battle-Scarred is one row on armour, Endurance in Suffering is three
+#: -- attack damage, spell damage and damage reduction -- Doctrine of Pain is two
+#: `more` rows on the two damage stats, and Flagellant is one `flat` row granting
+#: Fervour every second for each debuff.
+#:
+#: THAT IS SEVEN NODES' WORTH OF SENTENCE IN FIVE NODES, WHICH IS WHY IT IS EIGHT
+#: ROWS AND NOT FIVE. "Increased damage" is two stats in this project, because a
+#: character deals attack damage and spell damage and no single stat covers both.
+AUTHORED_ROWS = 85
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -334,7 +346,22 @@ AUTHORED_ROWS = 77
 #: This node is the tree's own answer to that: a Masochist that bleeds itself
 #: needs no enemy system. 58 of 293 altogether and 54 of the Masochist tree's own
 #: 74.
-AUTHORED_NODES = 58
+#:
+#: AND BY FIVE ON 2026-08-26, FOR THE NODES THAT ASK BACK. Issue #962. Once
+#: something counts the harmful effects a character is under, Thirst for Pain,
+#: Battle-Scarred, Endurance in Suffering, Doctrine of Pain and Flagellant are a
+#: condition, a scale and eight rows of data. 63 of 293 altogether and 59 of the
+#: Masochist tree's own 74.
+#:
+#: THREE OF THE ELEVEN NODES THE LINE ABOVE COUNTED ARE NOT AMONG THEM, and the
+#: comment above overstated what The Breaking Point unblocks. Contagious Torment,
+#: Empathic Link and Beacon of Despair are about debuffs on ENEMIES and are
+#: blocked on issues #742 and #674, which nothing here touches. Three more --
+#: Wound Channeling, Symphony of Pain and Vessel of Plagues -- need machinery
+#: beyond a count: a stat for damage taken from damage over time, stats for a
+#: debuff's duration and magnitude on the defender, and a cap on how many
+#: debuffs a character may carry. None of those exists.
+AUTHORED_NODES = 63
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -479,6 +506,13 @@ def test_no_node_grants_the_same_stat_twice(effects):
 #: perfectly correct row.
 #:
 #: "second" WITHOUT THE PLURAL, so that "1 second" and "2 seconds" both match.
+#:
+#: A VALUE FORM OF `None` MEANS THE CONDITION COMPARES NOTHING, so there is no
+#: number to find and the value is asserted to be zero instead. Issue #962.
+#: `while_bleeding` names a kind of effect rather than a threshold, and looking
+#: for any number in "While you are Bleeding, +2% increased Attack Speed per
+#: point" would find the 2 belonging to the bonus itself and pass for the wrong
+#: reason. `SCALE_WORDS` below already carries the same convention.
 CONDITION_WORDS = {
     "health_at_or_below": ("at or below", "{value:g}%"),
     "seconds_after_health_cost": ("after you pay a health cost",
@@ -492,6 +526,13 @@ CONDITION_WORDS = {
     # `skill_health_cost_above` would be worth the opposite of what a player
     # reads. Requiring the word here is what notices.
     "skill_health_cost_above": ("health cost is above", "{value:g}%"),
+
+    # THE WORDS NAME THE EFFECT, BECAUSE THE NAME IS ALL THAT SAYS WHICH ONE.
+    # Issue #962. A row reading `while_bleeding` on a node that says "While you
+    # are Poisoned" would grant its bonus in a situation the sentence never
+    # promises, and nothing at run time would report it: the character simply
+    # gets the bonus at the wrong times.
+    "while_bleeding": ("while you are bleeding", None),
 }
 
 
@@ -528,6 +569,20 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
         )
 
         value = float(row["ConditionValue"])
+
+        if value_form is None:
+            # THE CONDITION COMPARES NOTHING, SO THE VALUE MUST BE NOTHING.
+            # Issue #962. `tools/generate_datatables.py` refuses to write one on
+            # a row carrying `while_bleeding`, and the engine ignores the column
+            # for that predicate, so a number here would be a number that does
+            # nothing while looking as though it did.
+            assert value == 0.0, (
+                f"{row['Node']} carries the condition {condition!r} with a "
+                f"value of {value:g}. That condition compares nothing, so the "
+                "value is ignored. It has to be empty in the workbook."
+            )
+            continue
+
         printed = value_form.format(value=value)
         assert printed.lower() in words, (
             f"{row['Node']} carries {condition!r} with a value written "
@@ -594,6 +649,19 @@ SCALE_WORDS = {
     "momentum_stacks": (("within 3 seconds of the last", "each stack"), None),
     "bloodlust_stacks": (("stack of bloodlust", "each stack"), None),
     "carnage_stacks": (("stack of carnage", "each stack"), None),
+
+    # A COUNT OF WHAT IS BEING DONE TO THE CHARACTER. Issue #962. Four nodes
+    # read it and the phrase they share is "debuff on you". Three of them write
+    # "for each unique debuff on you" and Flagellant writes "Every debuff on you
+    # grants 5 Fervour per second", so a longer phrase would refuse one of the
+    # four while being no more specific: no other scale in this map is about
+    # debuffs at all, so those three words already pick this one out.
+    #
+    # A STEP FORM OF `None`, because none of the four sentences names a step.
+    # "For each" and "every" both count single debuffs, so the step can only be
+    # 1, and that is asserted instead. Looking for a "1" in "+1% increased
+    # damage" would find the bonus's own number and pass for the wrong reason.
+    "debuffs_carried": (("debuff on you",), None),
 }
 
 
