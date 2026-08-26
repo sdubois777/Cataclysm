@@ -1894,10 +1894,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowPassives(
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendPassivePoint(
 	TEXT("Cataclysm.SpendPassivePoint"),
-	TEXT("Put one passive point into a node: Cataclysm.SpendPassivePoint "
-		 "<node>. The node is a row name in game/Data/PassiveNodes.csv, such as "
-		 "Masochist_basic_spine_005. Run with no arguments to list what is "
-		 "open."),
+	TEXT("Put passive points into a node: Cataclysm.SpendPassivePoint <node> "
+		 "[count]. The node is a row name in game/Data/PassiveNodes.csv, such as "
+		 "Masochist_basic_spine_005. One point without a count. It fills as many "
+		 "as it can and says where it stopped. Run with no arguments to list "
+		 "what is open."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -1947,9 +1948,38 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendPassivePoi
 				return;
 			}
 
-			FString Reason;
+			// ONE POINT WHEN NO COUNT IS GIVEN, the same shape
+			// `Cataclysm.SpendAttributePoint` above uses. FCString::Atoi answers
+			// zero for anything that is not a number, and zero is refused below.
+			//
+			// WHY A COUNT AT ALL. A node deep in a tree opens only once its
+			// whole chain is filled, and the chains are long: Thirst for Pain
+			// sits behind ten nodes and needs 31 points altogether. One point
+			// per command made that 31 commands typed by hand, which is enough
+			// friction that the node went unchecked by play.
+			const int32 Count = Args.Num() >= 2 ? FCString::Atoi(*Args[1]) : 1;
+			if (Count < 1)
+			{
+				Ar.Logf(TEXT("Refused: %d is not a number of points to spend."),
+						Count);
+				return;
+			}
+
 			const FName Node(*Args[0]);
-			if (!PlayerState->SpendPassivePoint(Node, Reason))
+
+			// STOPS AT THE FIRST REFUSAL AND KEEPS WHAT IT ALREADY SPENT. A
+			// count larger than the node's remaining room, or than the points
+			// the character holds, fills what it can and says where it stopped.
+			// Undoing the earlier ones would be worse: the character would be
+			// back where it started with no sign of how far it got.
+			int32 Spent = 0;
+			FString Reason;
+			while (Spent < Count && PlayerState->SpendPassivePoint(Node, Reason))
+			{
+				++Spent;
+			}
+
+			if (Spent == 0)
 			{
 				Ar.Logf(TEXT("Refused: %s"), *Reason);
 				return;
@@ -1961,6 +1991,16 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendPassivePoi
 						PlayerState->GetPassiveAllocation(), Node,
 						PlayerState->PassivePointsAvailable()),
 					PlayerState->PassivePointsUnspent());
+
+			if (Spent < Count)
+			{
+				// SAID PLAINLY RATHER THAN LEFT TO BE INFERRED FROM THE COUNT.
+				// Asking for eight and getting six is the ordinary case at the
+				// edge of a node's maximum, and it reads as a broken command
+				// otherwise.
+				Ar.Logf(TEXT("Put in %d of the %d asked for. Stopped because: %s"),
+						Spent, Count, *Reason);
+			}
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmChoosePassiveOption(

@@ -10,9 +10,15 @@
 // For the map from a stat name to the attribute it drives. Issue #954.
 #include "Character/CataclysmPlayerClassStats.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the swing time Thirst for Pain shortens. Issue #962.
+#include "AbilitySystem/CataclysmBasicAttack.h"
+// For the debuffs the five new nodes read. Issue #962.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For the three Fervour rate stat names and the function that reads one back
 // through the stat pipeline. Issue #978.
 #include "AbilitySystem/CataclysmFervour.h"
+// For putting a real bleed on a real character. Issue #962.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -31,6 +37,8 @@
 // For the console variable that says which class a character is. Issue #980.
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
+// For capturing what a console command printed. Issue #962.
+#include "Misc/StringOutputDevice.h"
 
 #include <limits>
 
@@ -2393,6 +2401,455 @@ bool FCataclysmPassiveRealTreesFitTest::RunTest(const FString&)
 						 && At.Y >= 0.0 && At.Y <= Panel.Y);
 		}
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveThirstForPainOnARealCharacterTest,
+	"Cataclysm.Passives.ThirstForPainSpeedsUpARealCharactersSwingWhileItBleeds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Thirst for Pain on a real character, bleeding for real. Issue #962.
+ *
+ * "While you are Bleeding, +2% increased Attack Speed per point."
+ *
+ * WHAT THIS PROVES THAT THE OTHER TESTS DO NOT, AND WHY IT WAS MISSING. The
+ * tests written with this node measured the pieces: that the counter counts, that
+ * the pipeline's arithmetic is right, that the two new names reach the right
+ * enumerators in a fixture table. None of them ran the whole chain on a real
+ * character with the real authored numbers, so every one of them could have
+ * passed against a build where spending the point changed nothing a player would
+ * feel. This is the shape
+ * `ReciprocityGrowsWithTheFervourARealCharacterHolds` already uses and it should
+ * have been written at the same time.
+ *
+ * THE BLEED IS APPLIED AS A GAMEPLAY EFFECT, not by setting a flag. The chain
+ * being checked is: a real effect grants a real tag, `UCataclysmDebuffs` reads
+ * that tag off the ability system, `CurrentConditions` puts it in the state,
+ * `ConditionHolds` judges it, and `UCataclysmBasicAttack` asks for attack speed
+ * through `StatForSkill`. Anything short of a real effect skips part of it.
+ *
+ * THE SWING TIME AND NOT THE STAT, because the swing time is what a player
+ * experiences. A faster attack speed is a SHORTER gap between swings, so the
+ * assertion runs the opposite way from the percentage and is worth stating in
+ * those terms.
+ */
+bool FCataclysmPassiveThirstForPainOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_fc_a2"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A condition
+	// column silently emptied would leave an unconditional +16% attack speed,
+	// and the "faster while bleeding" assertion below would still find a bigger
+	// number -- it would simply also be bigger when not bleeding, which the
+	// second half catches. Checking the row as well says which of the two went
+	// wrong.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Thirst for Pain grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is attack speed"), Effects[0]->Stat,
+			  FString(TEXT("attack_speed")));
+	TestEqual(TEXT("only while the character is bleeding"),
+			  Effects[0]->Condition, FString(TEXT("while_bleeding")));
+	TestEqual(TEXT("two percent a point"), Effects[0]->ValuePerPoint, 2.0f);
+
+	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure below is what
+	// a player who committed to it actually gets.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float Unhurt = UCataclysmBasicAttack::SecondsBetweenSwingsFor(
+		AbilitySystem);
+	if (!TestTrue(*FString::Printf(TEXT("the character swings at all (%.4fs)"),
+								   Unhurt), Unhurt > 0.0f))
+	{
+		return false;
+	}
+
+	// NOT BLEEDING YET, SO NOTHING HAS CHANGED. This is the half that catches a
+	// condition dropped on the way, which would make the node an unconditional
+	// bonus -- silently, and in the player's favour.
+	TestEqual(TEXT("an unhurt character carries no debuff"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 0);
+	TestFalse(TEXT("and is not Bleeding"),
+			  UCataclysmDebuffs::IsBleeding(AbilitySystem));
+
+	// NOW MAKE IT BLEED, THROUGH A REAL GAMEPLAY EFFECT.
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has Keyword.DoT.Bleed"), Bleed.IsValid()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("a bleed can be put on the character"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Bleed, 30.0f)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the character is Bleeding"),
+			 UCataclysmDebuffs::IsBleeding(AbilitySystem));
+
+	const float Bleeding = UCataclysmBasicAttack::SecondsBetweenSwingsFor(
+		AbilitySystem);
+
+	// SIXTEEN PERCENT INCREASED ATTACK SPEED IS A SHORTER GAP, NOT A LONGER ONE.
+	// The pipeline sums increases, so the rate is multiplied by 1.16 and the gap
+	// is divided by it.
+	TestEqual(TEXT("eight points make a bleeding character swing 16% faster"),
+			  Bleeding, Unhurt / 1.16f, Unhurt * 0.001f);
+	TestTrue(TEXT("which is a strictly shorter gap between swings"),
+			 Bleeding < Unhurt);
+
+	// AND IT GOES AWAY AGAIN WHEN THE BLEED DOES. Without this the test would
+	// pass against a build that turned the bonus on permanently the first time
+	// the character was ever hurt.
+	const int32 Removed =
+		UCataclysmSkillEffects::RemoveEffectsGranting(Character, Bleed);
+	TestEqual(TEXT("the bleed was removed"), Removed, 1);
+	TestFalse(TEXT("the character is no longer Bleeding"),
+			  UCataclysmDebuffs::IsBleeding(AbilitySystem));
+	TestEqual(TEXT("and the swing is back where it started"),
+			  UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem),
+			  Unhurt, Unhurt * 0.001f);
+
+	// AND THE GAMEPLAY ATTRIBUTE NEVER MOVED, which is why the swing has to ask
+	// rather than read. A conditional bonus is never folded into an attribute --
+	// it would be stale the moment the bleed ended -- so a build that folded it
+	// in one day should be a deliberate change rather than an accident.
+	TestEqual(TEXT("the attack speed attribute is untouched throughout"),
+			  UCataclysmBasicAttack::SecondsBetweenSwings(
+				  AbilitySystem->GetNumericAttribute(
+					  UCataclysmCombatAttributeSet::GetAttackSpeedAttribute())),
+			  Unhurt, Unhurt * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFlagellantOnARealCharacterTest,
+	"Cataclysm.Passives.FlagellantGrantsFervourForEachDebuffARealCharacterCarries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Flagellant on a real character, under real debuffs. Issue #962.
+ *
+ * "Every debuff on you grants 5 Fervour per second for as long as it lasts."
+ *
+ * THE COUNTING HALF OF WHAT THE TEST ABOVE PROVES, and a separate test because
+ * they are separate machinery: that one is a condition that switches a bonus on
+ * and off, this is a scale that decides how large it is. A build could get
+ * either right and the other wrong.
+ *
+ * FERVOUR PER SECOND RATHER THAN A DAMAGE STAT, chosen deliberately from the
+ * four nodes that scale with the count. It is the only one of the four whose
+ * effect a player can watch happen: the bar fills, at a rate that changes with
+ * how many debuffs are on them.
+ *
+ * MEASURED THROUGH `GainPerSecondStep`, which is the function the game's own
+ * clock calls. Reading the stat instead would prove the pipeline and skip the
+ * part that turns it into Fervour actually arriving in the pool.
+ */
+bool FCataclysmPassiveFlagellantOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_fl_kC"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Flagellant grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is Fervour a second"), Effects[0]->Stat,
+			  FString(TEXT("fervour_per_second")));
+	TestEqual(TEXT("counting the debuffs carried"), Effects[0]->Scale,
+			  FString(TEXT("debuffs_carried")));
+	TestEqual(TEXT("one debuff at a time"), Effects[0]->ScaleStep, 1.0f);
+	TestEqual(TEXT("five a second each"), Effects[0]->ValuePerPoint, 5.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// A BAR WITH ROOM IN IT, emptied before each measurement. A full bar gains
+	// nothing however fast the rate is, which would read as a node doing
+	// nothing.
+	AbilitySystem->SetNumericAttributeBase(
+		Resource::GetMaxClassResourceAttribute(), 100.0f);
+
+	const auto GainedInOneSecond = [&]() -> float
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			Resource::GetClassResourceAttribute(), 0.0f);
+		return UCataclysmFervour::GainPerSecondStep(AbilitySystem, 1.0f);
+	};
+
+	// CARRYING NOTHING GRANTS NOTHING, which is the half that catches a bonus
+	// granted unconditionally. A Masochist standing untouched must not be
+	// filling its bar off this node.
+	TestEqual(TEXT("an untouched character carries no debuff"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 0);
+	TestEqual(TEXT("and gains no Fervour from this node"), GainedInOneSecond(),
+			  0.0f, 0.001f);
+
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("the vocabulary has the three tags"),
+				  Bleed.IsValid() && Stunned.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyTagForDuration(Character, Character, Bleed, 30.0f);
+	TestEqual(TEXT("one debuff"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 1);
+	TestEqual(TEXT("grants five Fervour a second"), GainedInOneSecond(), 5.0f,
+			  0.001f);
+
+	// A SECOND KIND, AND THE RATE GOES UP WITH IT. This is what says the bonus
+	// really counts rather than switching on once.
+	UCataclysmSkillEffects::ApplyTagForDuration(Character, Character, Stunned, 30.0f);
+	TestEqual(TEXT("two debuffs"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 2);
+	TestEqual(TEXT("grant ten a second"), GainedInOneSecond(), 10.0f, 0.001f);
+
+	UCataclysmSkillEffects::ApplyTagForDuration(Character, Character, Burn, 30.0f);
+	TestEqual(TEXT("three debuffs"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 3);
+	TestEqual(TEXT("grant fifteen a second"), GainedInOneSecond(), 15.0f, 0.001f);
+
+	// AND THE SAME KIND TWICE IS STILL ONE, WHICH IS WHAT "EVERY DEBUFF" MEANS
+	// HERE. A second bleed refreshes the first rather than stacking, so the rate
+	// must not move. Without this the node would pay a character for standing in
+	// two burning patches as though it were under two separate ailments.
+	UCataclysmSkillEffects::ApplyTagForDuration(Character, Character, Bleed, 30.0f);
+	TestEqual(TEXT("a second bleed is still three debuffs"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 3);
+	TestEqual(TEXT("and the rate has not moved"), GainedInOneSecond(), 15.0f,
+			  0.001f);
+
+	// AND IT FALLS AWAY AS THE DEBUFFS DO.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Stunned);
+	TestEqual(TEXT("two debuffs left"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 2);
+	TestEqual(TEXT("granting ten a second again"), GainedInOneSecond(), 10.0f,
+			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpendCommandTakesACountTest,
+	"Cataclysm.Passives.TheSpendCommandPutsInAsManyPointsAsItIsAskedFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Cataclysm.SpendPassivePoint <node> [count]`.
+ *
+ * WHY THE COUNT EXISTS. A node deep in a tree opens only once its whole chain is
+ * filled, and the chains are long: Thirst for Pain sits behind ten nodes and
+ * needs 31 points altogether. One point per command made checking that node by
+ * hand 31 separate commands, which is enough friction that it went unchecked by
+ * play. The project owner said so on 2026-08-26.
+ *
+ * THE FIRST TEST IN THIS PROJECT THAT DRIVES A CONSOLE COMMAND, and it is worth
+ * saying why one is warranted here. The command's own loop is the new part: it
+ * stops at the first refusal and keeps what it already spent. That logic exists
+ * nowhere else, so nothing else can cover it, and the alternative was to ship a
+ * change nothing checked.
+ *
+ * THE COMMAND IS FOUND BY NAME AND RUN, rather than the lambda being called. A
+ * command registered under a name nobody types is a command that does nothing,
+ * and the name is half of what this is for.
+ */
+bool FCataclysmPassiveSpendCommandTakesACountTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	IConsoleObject* Object = IConsoleManager::Get().FindConsoleObject(
+		TEXT("Cataclysm.SpendPassivePoint"));
+	IConsoleCommand* Command = Object ? Object->AsCommand() : nullptr;
+	if (!TestNotNull(TEXT("the spend command is registered under its name"),
+					 Command))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	if (!TestNotNull(TEXT("a player state"), State))
+	{
+		return false;
+	}
+
+	// ENOUGH POINTS THAT THE COUNT IS WHAT LIMITS THIS, not the purse. A test
+	// that ran out would report the loop stopping for the wrong reason.
+	State->SetLevelAndExperience(100, 0);
+	const int32 Purse = State->PassivePointsUnspent();
+	if (!TestTrue(*FString::Printf(TEXT("the character has points (%d)"), Purse),
+				  Purse >= 20))
+	{
+		return false;
+	}
+
+	// THE ROOT OF THE MASOCHIST TREE, WHICH HOLDS EXACTLY ONE POINT. It is the
+	// Fervour generator and the only way into the tree, so it has to be bought
+	// before anything else can be. The node the count is measured on is the one
+	// after it, which holds 12.
+	//
+	// FOUND BY THIS TEST FAILING. Written against the root as though it held 12,
+	// the run said "Expected 12, but it was 1" and the command's own refusal
+	// read "Fervour is full at 1 point". The command was right and the test was
+	// wrong, which is worth recording: a node's maximum is authored data and not
+	// something to assume.
+	const FName Root(TEXT("Masochist_basic_spine_000"));
+	const FName Deep(TEXT("Masochist_basic_spine_001"));
+
+	const auto Run = [&](const TArray<FString>& Args) -> FString
+	{
+		FStringOutputDevice Output;
+		Command->Execute(Args, World, Output);
+		return FString(Output);
+	};
+
+	const auto PointsIn = [&](const FName Node) -> int32
+	{
+		return State->GetPassiveAllocation().PointsIn(Node);
+	};
+
+	// NO COUNT IS ONE POINT, which is every use of this command before today and
+	// must keep working exactly as it did.
+	Run({Root.ToString()});
+	TestEqual(TEXT("no count puts in one point"), PointsIn(Root), 1);
+
+	// AND A COUNT PUTS IN THAT MANY. The node after the root holds 12 and one
+	// point spent in the tree is what opens it.
+	Run({Deep.ToString(), TEXT("5")});
+	TestEqual(TEXT("a count of five puts in five"), PointsIn(Deep), 5);
+
+	// ASKING FOR MORE THAN THE NODE HOLDS FILLS IT AND SAYS SO. Seven are left,
+	// so asking for fifty must put in seven rather than refusing outright, and
+	// must say how many really went in rather than letting the number be
+	// inferred.
+	const FString TooMany = Run({Deep.ToString(), TEXT("50")});
+	TestEqual(TEXT("asking for fifty fills the node to its maximum"),
+			  PointsIn(Deep), 12);
+	TestTrue(*FString::Printf(TEXT("and says how many went in: %s"), *TooMany),
+			 TooMany.Contains(TEXT("Put in 7 of the 50")));
+
+	// A FULL NODE REFUSES, and a count does not change that.
+	const FString Full = Run({Deep.ToString(), TEXT("3")});
+	TestEqual(TEXT("a full node takes no more"), PointsIn(Deep), 12);
+	TestTrue(*FString::Printf(TEXT("and is refused: %s"), *Full),
+			 Full.Contains(TEXT("Refused")));
+
+	// A COUNT THAT IS NOT A NUMBER IS REFUSED RATHER THAN READ AS ZERO OR ONE.
+	// `FCString::Atoi` answers zero for a word, and zero points is not what
+	// anybody typing a word meant. Spending one instead would be worse: it would
+	// look as though the command had understood.
+	const FName Third(TEXT("Masochist_basic_spine_002"));
+	const int32 BeforeWord = PointsIn(Third);
+	const FString Word = Run({Third.ToString(), TEXT("banana")});
+	TestEqual(TEXT("a word for a count spends nothing"), PointsIn(Third),
+			  BeforeWord);
+	TestTrue(*FString::Printf(TEXT("and is refused: %s"), *Word),
+			 Word.Contains(TEXT("Refused")));
 
 	return true;
 }
