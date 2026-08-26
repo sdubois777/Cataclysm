@@ -56,3 +56,6 @@ Masochist_basic_bt_b2#2,Masochist_basic_bt_b2,spell_damage,increased,4.0,,skill_
 Masochist_keystone_bt_kB#1,Masochist_keystone_bt_kB,added_health_cost_of_current,flat,15.0,,,0.0,,0.0
 Masochist_keystone_bt_kB#2,Masochist_keystone_bt_kB,attack_damage,more,40.0,,,0.0,,0.0
 Masochist_keystone_bt_kB#3,Masochist_keystone_bt_kB,spell_damage,more,40.0,,,0.0,,0.0
+Masochist_keystone_ll_kB#1,Masochist_keystone_ll_kB,healing_ceiling_reduction,flat,50.0,,,0.0,,0.0
+Masochist_keystone_ll_kB#2,Masochist_keystone_ll_kB,attack_damage,more,25.0,,,0.0,,0.0
+Masochist_keystone_ll_kB#3,Masochist_keystone_ll_kB,spell_damage,more,25.0,,,0.0,,0.0

@@ -164,7 +164,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: class and this node is its only source, and the two damage stats in the
 #: `more` bucket. It is the first node to hold rows in two different
 #: buckets. Issue #986.
-AUTHORED_ROWS = 57
+#:
+#: AND BY THREE MORE, all on one node again. Point of No Return reads "You
+#: cannot be healed above 50% of your maximum health, but you deal 25% more
+#: damage": a `flat` row reducing the ceiling healing may reach, and the two
+#: damage stats in the `more` bucket. Issue #988.
+AUTHORED_ROWS = 60
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -229,7 +234,11 @@ AUTHORED_ROWS = 57
 #: AND TO 46 FOR ONE MORE, Exsanguinate, which charges every skill a share
 #: of current health and pays for it in damage. 46 of 293 altogether and 42
 #: of the Masochist tree's own 74. Issue #986.
-AUTHORED_NODES = 46
+#:
+#: AND TO 47 FOR ONE MORE, Point of No Return, which trades how far healing
+#: may take the character for damage. 47 of 293 altogether and 43 of the
+#: Masochist tree's own 74. Issue #988.
+AUTHORED_NODES = 47
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
