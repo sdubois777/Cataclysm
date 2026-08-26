@@ -522,10 +522,40 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 									  ->GetSet<UCataclysmCombatAttributeSet>()
 								: nullptr)
 					{
+						// THE RETALIATING CHARACTER'S OWN FIGURE IS ASKED FOR
+						// RATHER THAN READ. Issue #980, and it is the same move
+						// `crit_chance` made in this file for issue #959. A
+						// bonus whose SIZE grows with a state -- Reciprocity
+						// gives "+1% for each point of Fervour you currently
+						// hold" -- is never written onto the gameplay attribute,
+						// because it would be stale the moment the bar moved. So
+						// reading the attribute would drop it in silence and the
+						// node would grant nothing.
+						//
+						// THE DEFENDER'S OWN ABILITY SYSTEM, not the attacker's.
+						// This is the defender's retaliation, so the state that
+						// sizes it is the defender's.
+						//
+						// NO SKILL TAGS. `AssetTags` belongs to the blow that
+						// came IN, and scoping the defender's retaliation by the
+						// attacker's skill tags would be the wrong question.
+						// Retaliation is not a skill and carries none of its own.
+						//
+						// A FALLBACK OF THE ATTRIBUTE, so a character with no
+						// such bonus gets exactly what it got before.
+						const UCataclysmAbilitySystemComponent* Asking =
+							Cast<const UCataclysmAbilitySystemComponent>(
+								GetOwningAbilitySystemComponent());
+						const float Amount = Asking
+							? Asking->StatForSkill(FName(TEXT("retaliation")),
+												   FGameplayTagContainer(),
+												   Defence->GetRetaliation())
+							: Defence->GetRetaliation();
+
 						UCataclysmSkillEffects::ReduceHealthDirectly(
 							GetOwningActor(),
 							Data.EffectSpec.GetContext().GetEffectCauser(),
-							Defence->GetRetaliation());
+							Amount);
 					}
 				}
 			}

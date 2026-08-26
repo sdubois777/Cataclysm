@@ -113,6 +113,29 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 		const float Steps = FMath::FloorToFloat(Missing / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
+
+	case ECataclysmStatScale::PerPointOfClassResourceHeld:
+	{
+		// THE SAME TWO REFUSALS AS THE READING ABOVE, and for the same reasons.
+		// Issue #980. An ability system with no class resource attribute set --
+		// every enemy in the game -- leaves the reading negative, and a step of
+		// nothing would divide by zero.
+		//
+		// A HELD AMOUNT OF ZERO IS NOT A REFUSAL. It falls through and answers
+		// zero by the arithmetic, which is the honest answer for an empty bar
+		// rather than a special case.
+		if (State.ClassResourceHeld < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN, the same rule as the reading above. The
+		// design's own node uses a step of 1, where rounding cannot show, so the
+		// rule is read off the other scale rather than off this node's words.
+		const float Steps =
+			FMath::FloorToFloat(State.ClassResourceHeld / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

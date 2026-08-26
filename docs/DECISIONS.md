@@ -20,6 +20,93 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — A passive bonus can grow with the class resource, and retaliation has to be asked for rather than read
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.cpp`, `CataclysmVitalAttributeSet.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx`. Applied.
+Issue #980.
+
+### What was decided
+
+A passive bonus's size may now grow with how much of the class resource the
+character is holding, alongside the existing "how much health is missing". The
+Masochist's Reciprocity keystone is the node: "Your Retaliation damage is
+increased by 1% for each point of Fervour you currently hold."
+
+The state is named `class_resource_held` rather than `fervour_held`. There is one
+pool and every class has it; Fervour is only the Masochist's name for it, decided
+by the project owner on 2026-08-25 and recorded earlier in this file. A name
+taken from one tree would have to change the first time another tree used the
+same shape.
+
+**A point of the pool is counted as an absolute amount, not as a percentage of
+the maximum.** Every class line gives the pool a maximum of 100 today, so the two
+readings happen to agree and would stop agreeing the moment a class had a
+different maximum. The design writes "for each point", so the count is of points.
+
+### Retaliation had to change where it is read from
+
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` read the blow sent back
+straight off the `Retaliation` gameplay attribute. **A modifier that scales with
+a state is deliberately never folded into an attribute**, because it would be
+stale the moment the state moved, so a scaling bonus on `retaliation` would have
+been built correctly and then dropped in silence: the node would have been
+authored, the arithmetic would have run, and the blow would have been exactly
+what it was before.
+
+It now asks `UCataclysmAbilitySystemComponent::StatForSkill` with the attribute
+as the fallback, so a character without the node gets exactly what it got before.
+The same move was made for `crit_chance` in the same file under issue #959, and
+this is one of the stats issue #947 lists as still reading an attribute directly.
+
+It is asked of the **defender's** ability system, because it is the defender's
+retaliation and the state that sizes it is the defender's. It is asked with **no
+skill tags**: the tags in hand at that point belong to the blow that came in, and
+scoping a defender's retaliation by the attacker's skill tags would be a
+different question. Retaliation is not a skill and carries no tags of its own.
+
+### The genre has this exact shape, at half the ceiling
+
+Path of Exile's Rage is the same mechanic in the same words. A character there
+gains **1% increased attack damage for each point of Rage held**, which is
+Reciprocity's sentence with one noun changed. That settles the shape: a bonus
+paid per point of a resource currently held, counted rather than measured as a
+share of the maximum, is ordinary in the genre rather than novel here.
+
+**What it does not settle is the ceiling, and this game's is twice as high.**
+
+| Game | Resource maximum | Bonus at a full bar |
+| :-- | --: | --: |
+| Path of Exile | 50 Rage | +50% |
+| Path of Exile 2 | 30 Rage | +30% |
+| Cataclysm, Reciprocity | 100 Fervour | +100% |
+
+Every class line in `game/Data/ClassStats.csv` gives the pool a maximum of 100,
+and the node pays 1% per point, so a full bar doubles retaliation. That is
+double the closest genre precedent's ceiling.
+
+**It is recorded rather than changed.** Two things make it defensible as
+written: it is a keystone, which is the node kind meant to be worth building a
+character around, and it applies to retaliation rather than to attack damage, so
+it scales a stat only one class invests in rather than everyone's damage.
+Neither is proof. `CLAUDE.md` says constants are tuned against real play rather
+than argued to death first, so the figure stands and the concern is filed.
+
+Sources:
+
+- [Rage — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Rage)
+- [Rage Explained — Path of Exile 2, Mobalytics](https://mobalytics.gg/poe-2/guides/rage)
+
+### What this does not settle
+
+**Nobody has measured what retaliation is worth in a real fight.** At a full bar
+this keystone doubles it, but the base figure it doubles has never been checked
+against how often a player is actually struck. Filed as a separate issue.
+
+---
+
 ## 2026-08-25 — "30% more" and "(multiplicative)" are one bucket written two ways, and the check that guards it now knows both
 
 **Affects:** `tools/tests/test_passive_effects_match_the_node_text.py`,

@@ -2465,6 +2465,17 @@ SCALES = {
     # with a step of 5. Steps are counted whole and rounded down, so a character
     # 12% below full health has two of them.
     "health_missing": (0.0, 100.0, "a percentage of maximum health"),
+
+    # "for each point of Fervour you currently hold" is `class_resource_held`
+    # with a step of 1. Issue #980. Steps are counted whole and rounded down the
+    # same way, which cannot show at a step of one.
+    #
+    # NAMED FOR THE SHARED POOL RATHER THAN FOR FERVOUR. There is one class
+    # resource and every class has it; Fervour is only the Masochist's name for
+    # it, and a name from one tree would have to change the first time another
+    # tree used the same shape. The upper bound is the largest maximum any class
+    # line gives the pool.
+    "class_resource_held": (0.0, 100.0, "a number of points of the pool"),
 }
 
 

@@ -28,6 +28,8 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
+// For the console variable that says which class a character is. Issue #980.
+#include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
 
 #include <limits>
@@ -181,6 +183,49 @@ namespace CataclysmPassiveTest
 		Controller->Possess(Character);
 		return Character;
 	}
+
+	/**
+	 * Sets `Cataclysm.PlayerClass` and puts it back when it goes out of scope.
+	 *
+	 * WHY A TEST NEEDS THIS. `UCataclysmEquipmentComponent::RefreshAttributes`
+	 * reads the class from that console variable, and which class a character is
+	 * decides which base every stat stands on. A node granting an increase on a
+	 * stat that only one class line names -- `retaliation` is the Masochist's
+	 * alone -- multiplies zero on any other class. Issue #980.
+	 *
+	 * PUT BACK IN THE DESTRUCTOR, because the variable is global to the process
+	 * and the automation tests share one. A test that left it set would change
+	 * whichever test ran next, which is the shape of defect issue #888 records.
+	 *
+	 * The same helper `CataclysmCharacterLevelTests.cpp` has for the level, one
+	 * variable across.
+	 */
+	struct FScopedPlayerClass
+	{
+		explicit FScopedPlayerClass(const TCHAR* ClassName)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.PlayerClass"));
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+				Variable->Set(ClassName, ECVF_SetByCode);
+			}
+		}
+
+		~FScopedPlayerClass()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByCode);
+			}
+		}
+
+		bool IsUsable() const { return Variable != nullptr; }
+
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -1630,6 +1675,144 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 			  UCataclysmFervour::GainFromDamage(AbilitySystem, 100.0f,
 												FGameplayTagContainer()),
 			  10.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReciprocityScalesWithFervourTest,
+	"Cataclysm.Passives.ReciprocityGrowsWithTheFervourARealCharacterHolds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Reciprocity, the keystone whose bonus grows with the resource. Issue #980.
+ *
+ * "Your Retaliation damage is increased by 1% for each point of Fervour you
+ * currently hold."
+ *
+ * THE REAL TABLE AND A REAL CHARACTER, for the reason
+ * `ASpentPointChangesWhatARealCharactersArmourIsWorth` gives. A fixture proves
+ * the columns are read; this has to prove the authored row reaches a character.
+ *
+ * READ THROUGH `StatForSkill` AND NOT OFF THE ATTRIBUTE, and that is not a
+ * choice here. A modifier that scales with a state is never folded into a
+ * gameplay attribute, so the attribute is the figure WITHOUT this node and stays
+ * that way however much Fervour is held. Reading it would show nothing moving
+ * and prove the opposite of what is wanted.
+ */
+bool FCataclysmPassiveReciprocityScalesWithFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	// THE CHARACTER HAS TO BE A MASOCHIST, AND THAT IS NOT A TEST DETAIL. The
+	// Masochist is the only line of `game/Data/ClassStats.csv` naming
+	// `retaliation` at all, so every other class stands on a base of zero and an
+	// increase multiplies nothing however well the rest of the chain works.
+	//
+	// FOUND BY THIS TEST FAILING. Written without it the character sat on the
+	// starting class, its retaliation was 0.0, and the assertion that there was
+	// something to grow is what said so.
+	//
+	// BEFORE THE CHARACTER IS SPAWNED, so nothing is ever built on the wrong
+	// class line. `RefreshAttributes` would overwrite it later, but a test that
+	// depends on an overwrite is a test that breaks when the order changes.
+	//
+	// THE CONSOLE VARIABLE RATHER THAN CALLING `ApplyTo` WITH THE NAME, so the
+	// path stays the one a running game takes.
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_spine_003"));
+	const FName Stat(TEXT("retaliation"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A scale
+	// column silently emptied would leave a flat +1% that never grew, and every
+	// figure below would still be a number.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Reciprocity grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is retaliation"), Effects[0]->Stat,
+			  FString(TEXT("retaliation")));
+	TestEqual(TEXT("scaled by how much of the pool is held"), Effects[0]->Scale,
+			  FString(TEXT("class_resource_held")));
+	TestEqual(TEXT("one point at a time"), Effects[0]->ScaleStep, 1.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const auto RetaliationHolding = [&](float Held) -> float
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			Held);
+		return AbilitySystem->StatForSkill(
+			Stat, FGameplayTagContainer(),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetRetaliationAttribute()));
+	};
+
+	// THE FIGURE WITH AN EMPTY BAR IS WHAT THE OTHER TWO ARE MEASURED AGAINST.
+	// It is not pinned to a number: the base comes from the Masochist class stat
+	// line at whatever level the character was created on, and pinning it would
+	// make this fail whenever either is tuned.
+	const float Empty = RetaliationHolding(0.0f);
+	if (!TestTrue(*FString::Printf(
+					  TEXT("the character has retaliation to grow (%.1f)"), Empty),
+				  Empty > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("fifty Fervour held is half as much again"),
+			  RetaliationHolding(50.0f), Empty * 1.50f, Empty * 0.001f);
+	TestEqual(TEXT("and a full hundred doubles it"),
+			  RetaliationHolding(100.0f), Empty * 2.0f, Empty * 0.001f);
+
+	// AND THE GAMEPLAY ATTRIBUTE DOES NOT MOVE WITH IT, which is the whole
+	// reason the blow sent back has to ask rather than read. This is not a
+	// defect being tolerated; it is the rule that keeps a scaled bonus from
+	// going stale, asserted so that folding it into the attribute one day would
+	// be a deliberate change rather than an accident.
+	const float AttributeAtFull = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetRetaliationAttribute());
+	TestEqual(TEXT("the attribute is unchanged by a full bar"), AttributeAtFull,
+			  Empty, Empty * 0.001f);
 
 	return true;
 }

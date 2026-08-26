@@ -137,6 +137,29 @@ namespace CataclysmStatTest
 		return Modifier;
 	}
 
+	/** An increase worth `Value` per whole `Step` points of the class resource. */
+	FCataclysmStatModifier IncreasedPerResourceHeld(float Value, float Step)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Scale = ECataclysmStatScale::PerPointOfClassResourceHeld;
+		Modifier.ScaleStep = Step;
+		return Modifier;
+	}
+
+	/**
+	 * A character holding this much of the class resource.
+	 *
+	 * A NEGATIVE ARGUMENT IS "NO SUCH POOL", which is every enemy in the game
+	 * and is spelt the same way an unknown reading is. Zero is a real answer and
+	 * means the bar is empty.
+	 */
+	FCataclysmStatConditions HoldingResource(float Amount)
+	{
+		FCataclysmStatConditions State;
+		State.ClassResourceHeld = Amount;
+		return State;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -639,6 +662,97 @@ bool FCataclysmPipelineHealthMissingScaleTest::RunTest(const FString& Parameters
 		150.0f, 0.01f);
 	TestEqual(TEXT("and the same with no state at all"),
 		FPipeline::Evaluate(100.0f, Plain, NoTags).Final, 150.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineResourceHeldScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithHowMuchClassResourceIsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineResourceHeldScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S RECIPROCITY KEYSTONE: "Your Retaliation damage is
+	// increased by 1% for each point of Fervour you currently hold." One
+	// percentage point per point held, so the step is one. Issue #980.
+	//
+	// THE SECOND STATE A BONUS'S SIZE CAN GROW WITH, and it counts an absolute
+	// amount rather than a percentage. The pool runs 0 to 100 for every class
+	// today so the two readings happen to agree, and they would stop agreeing
+	// the moment a class had a different maximum.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedPerResourceHeld(1.0f, 1.0f) };
+
+	// AN EMPTY BAR IS WORTH NOTHING, which is the state every character starts
+	// a fight in and is what makes the node a reward for generating.
+	TestEqual(TEXT("holding nothing is worth nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, HoldingResource(0.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND A POINT IS A STEP.
+	TestEqual(TEXT("forty points held is +40%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, HoldingResource(40.0f)).Final,
+		140.0f, 0.01f);
+
+	// A FULL BAR DOUBLES IT, which is the figure a balance argument would be
+	// made from and is worth pinning. Every class line gives the pool a maximum
+	// of 100.
+	TestEqual(TEXT("a full bar of a hundred is +100%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, HoldingResource(100.0f)).Final,
+		200.0f, 0.01f);
+
+	// WHOLE STEPS, ROUNDED DOWN, which a step of one cannot show. The design's
+	// own node uses a step of one, so this is checked at a step the node does
+	// not use rather than left unchecked: without it the rule would be stated in
+	// the enumerator and asserted nowhere.
+	TArray<FCataclysmStatModifier> InFives = {
+		IncreasedPerResourceHeld(10.0f, 5.0f) };
+	TestEqual(TEXT("nine points held is one whole step of five, so +10%"),
+		FPipeline::Evaluate(100.0f, InFives, NoTags, HoldingResource(9.0f)).Final,
+		110.0f, 0.01f);
+	TestEqual(TEXT("and ten points is the second step"),
+		FPipeline::Evaluate(100.0f, InFives, NoTags, HoldingResource(10.0f)).Final,
+		120.0f, 0.01f);
+
+	// NO SUCH POOL SCALES TO NOTHING, and it is a different statement from an
+	// empty bar. Every enemy in the game has no class resource attribute set, and
+	// so does the character sheet, which has no character in hand at all.
+	TestEqual(TEXT("a caller that knows nothing about the character gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and so does one that says outright there is no pool"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, HoldingResource(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, and is
+	// refused outright when the data is checked. The same rule as the other
+	// scale, asserted here so that adding a scale cannot skip it.
+	TArray<FCataclysmStatModifier> NoStep = {
+		IncreasedPerResourceHeld(10.0f, 0.0f) };
+	TestEqual(TEXT("a step of nothing is worth nothing at every state"),
+		FPipeline::Evaluate(100.0f, NoStep, NoTags, HoldingResource(50.0f)).Final,
+		100.0f, 0.01f);
+	TestTrue(TEXT("and is reported as illegal when the data is checked"),
+		!FPipeline::ValidateModifier(NoStep[0]).IsEmpty());
+	TestTrue(TEXT("while a real step is not"),
+		FPipeline::ValidateModifier(Modifiers[0]).IsEmpty());
+
+	// THE TWO STATES ARE INDEPENDENT, which is what makes them two scales rather
+	// than one. A bonus counting the pool is unmoved by where health is, and a
+	// state that knows only the pool cannot answer the other.
+	FCataclysmStatConditions PoolOnly = HoldingResource(50.0f);
+	TestTrue(TEXT("a state that knows the pool need not know the health"),
+		PoolOnly.HealthPercent < 0.0f);
+	TestEqual(TEXT("and the pool bonus is worth its fifty steps regardless"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, PoolOnly).Final,
+		150.0f, 0.01f);
+
+	TArray<FCataclysmStatModifier> ByHealth = {
+		IncreasedPerHealthMissing(1.0f, 1.0f) };
+	TestEqual(TEXT("while a health bonus gets nothing from a full pool alone"),
+		FPipeline::Evaluate(100.0f, ByHealth, NoTags, HoldingResource(100.0f)).Final,
+		100.0f, 0.01f);
 
 	return true;
 }
