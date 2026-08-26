@@ -20,6 +20,60 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A respawn empties the class resource, though it refills the three vitals
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDeathTests.cpp`. Applied. Issue #956.
+
+### What was decided
+
+**A player that dies and respawns comes back with no Fervour.** Health, mana and
+the energy shield still come back full; the class resource is emptied.
+
+The question was asked on 2026-08-25 and the project owner answered it on
+2026-08-26.
+
+### Why it was a question at all
+
+`ACataclysmPlayerCharacter::Revive` refills the three vitals with
+`SetNumericAttributeBase`, which is a **direct write** rather than healing.
+Fervour is emptied by healing, and healing runs through
+`UCataclysmRegeneration::TopUp`. A direct write does not go through it, so the
+refill removed no Fervour at all and a Masochist that died at a full bar stood
+back up with a full bar.
+
+Nothing in the design said what should happen, and both readings were defensible.
+**Keep it:** Fervour is not a vital, and the comment on that code says a
+respawned character is whole while what it lost "is measured in the world rather
+than on the character". **Empty it:** the Masochist's whole rule is that health
+coming back takes Fervour with it, and a respawn is the largest amount of health
+a character ever gets back at once.
+
+### Why emptying it is the answer
+
+**The rule the class is built on has no exception for respawning, so neither does
+this.** Keeping the bar through a death gives a player a reason to die, which is
+the opposite of what a death should be worth.
+
+**It is one answer for all four classes rather than four.** The other three
+classes have no generator yet, but `ClassResource` is a single attribute every
+class shares, so whatever fills it, a respawn empties it. The question would
+otherwise have to be answered again three more times.
+
+### What it is not
+
+**Not a change to how healing empties Fervour**, which is untouched, and not a
+change to the three vitals, which still come back full. It is one line beside the
+three refills, and it is written directly for the same reason they are: there is
+no heal effect in the project, and inventing one to serve a placeholder would be
+the larger change.
+
+**The health debt is a separate question and is not answered here.** Nothing
+clears an outstanding `HealthOwed` on death or respawn either, so a Masochist who
+dies owing health stands up still owing it. That is issue #1013.
+
+---
+
 ## 2026-08-26 — Three Masochist balance questions are answered as they were built
 
 **Affects:** nothing. Three decisions confirmed, no code or data changed. Issues

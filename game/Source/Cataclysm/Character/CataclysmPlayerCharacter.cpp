@@ -483,12 +483,14 @@ void ACataclysmPlayerCharacter::Revive()
 								/*bSweep=*/false, nullptr,
 								ETeleportType::TeleportPhysics);
 
-	// FULL, NOT PARTIAL. No document says what a player comes back with, so the
-	// least surprising reading is the one every game in the genre uses: a
-	// respawned character is whole and what it lost is measured in the world
-	// rather than on the character. Written as the base value rather than through
-	// a gameplay effect because there is no heal effect in the project and
-	// inventing one to serve a placeholder would be the larger change.
+	// THE THREE VITALS COME BACK FULL, NOT PARTIAL. No document says what a player
+	// comes back with, so the least surprising reading is the one every game in
+	// the genre uses: a respawned character is whole and what it lost is measured
+	// in the world rather than on the character. Written as the base value rather
+	// than through a gameplay effect because there is no heal effect in the
+	// project and inventing one to serve a placeholder would be the larger change.
+	//
+	// THE CLASS RESOURCE IS THE EXCEPTION AND IS EMPTIED. See below.
 	if (UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent())
 	{
 		AbilitySystem->SetNumericAttributeBase(
@@ -503,6 +505,28 @@ void ACataclysmPlayerCharacter::Revive()
 			UCataclysmVitalAttributeSet::GetManaAttribute(),
 			AbilitySystem->GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+
+		// AND THE CLASS RESOURCE IS EMPTIED, WHICH IS THE OPPOSITE DIRECTION.
+		// Issue #956, decided by the project owner on 2026-08-26.
+		//
+		// A RESPAWN IS THE LARGEST AMOUNT OF HEALTH A CHARACTER EVER GETS BACK AT
+		// ONCE, and the Masochist's whole rule is that health coming back takes
+		// Fervour with it. Leaving it alone let a player bank a full bar through a
+		// death, which is a reason to die. The rule the class is built on has no
+		// exception for respawning, so neither does this.
+		//
+		// ONE ANSWER FOR ALL FOUR CLASSES, not four. The other three generators do
+		// not exist yet; this is the resource attribute every class shares, so
+		// whatever they fill it with, a respawn empties it.
+		//
+		// WRITTEN DIRECTLY RATHER THAN THROUGH THE HEALING PATH, for the same
+		// reason the three refills above are. The refills do not run through
+		// `UCataclysmRegeneration::TopUp`, so they never removed any Fervour of
+		// their own accord -- that is exactly why this line has to exist rather
+		// than falling out of the refill.
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			0.0f);
 	}
 
 	// MOVE_Walking rather than whatever it was, because what it was is MOVE_None:
