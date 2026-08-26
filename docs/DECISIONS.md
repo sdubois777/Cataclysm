@@ -20,6 +20,93 @@ applied or still pending.
 
 ---
 
+## 2026-08-25 — "30% more" and "(multiplicative)" are one bucket written two ways, and the check that guards it now knows both
+
+**Affects:** `tools/tests/test_passive_effects_match_the_node_text.py`,
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`. Applied.
+Issues #977 and #978.
+
+### What was decided
+
+A passive node's description marks its number as multiplying rather than joining
+the additive sum in **either** of two wordings, and both are correct:
+
+| Wording | Where it is used | Nodes |
+| :-- | :-- | --: |
+| the literal word "(multiplicative)" | Bulwark tree | 10 |
+| a number, a percent sign, then "more" or "less" | Masochist tree, mostly | 20 strings |
+
+Neither tree uses the other's wording anywhere. This was already settled twice
+and only the automated check did not know it. On 2026-08-14, in "Every passive
+tree node may use a 'more' multiplier, not only keystones", the words "more" and
+"less" are defined as "the multipliers that apply separately instead of joining
+the additive bucket", and that entry names Masochist keystones among the twelve
+keystones already using them. On 2026-08-17 the project owner ruled outright
+that multiplicative means "more".
+
+`test_the_bucket_matches_the_nodes_own_wording` asked for the literal word
+"multiplicative" and nothing else, so no Masochist node whose effect multiplies
+could be authored at all. It now accepts either wording.
+
+### Why not simply reword the Masochist nodes
+
+The tree files are the design. Rewriting eleven node descriptions from "30% more
+Fervour" to "+30% Fervour (multiplicative)" to satisfy a test would be changing
+the design to fit the tool, and it would move the tree further from the genre's
+own vocabulary rather than closer.
+
+**"More" and "less" are the genre's words for this bucket, not this project's.**
+In Path of Exile "increased" and "reduced" join one additive sum while "more" and
+"less" each multiply separately, and that distinction is the single most
+important thing a player learns about damage scaling there. The 2026-08-14 entry
+already cites it. Last Epoch and Diablo 4 use the same skeleton under different
+labels. A tree that says "30% more" is speaking the language its players already
+have.
+
+The word "multiplicative" is the clearer of the two for somebody who has never
+played the genre, and the Bulwark tree keeps it. Both stay.
+
+### Why the check needs a number and a percent sign in front of the word
+
+"3 or more enemies", "more than 10 meters" and "5 or more affixes" are ordinary
+English and appear in node descriptions. The expression is
+
+    \d+\s*%\s+(?:more|less)\b
+
+which is the same one `tools/tests/test_class_passive_trees.py` already applies
+for exactly this reason.
+
+### The first two keystones that grant anything
+
+Flesh Craver and Blood Tithe were authored under the widened rule. They are
+mirror images of each other and they are the trade the Masochist's resource is
+built on:
+
+| Node | Fervour from damage | Fervour from a health cost |
+| :-- | :-- | :-- |
+| Flesh Craver | 30% more | 50% less |
+| Blood Tithe | 50% less | 30% more |
+
+Four rows on the `Passive Effects` sheet and no engine change. Nothing about
+`UCataclysmPassiveTree::AccumulateInto` ever looked at whether a node was a
+keystone or a basic node, and `UCataclysmStatPipeline::CanGrantMore` already
+allowed a passive node into the `more` bucket. Every authored effect before
+these two happened to be on a basic node, so it had never been exercised.
+
+**Writing them as `increased` instead would have passed every other check and
+been the wrong arithmetic.** Two 50% "more" multipliers give 2.25x where two 50%
+increases give 2.0x, and the difference only appears on a character that already
+carries other modifiers on the same stat — which is exactly the character nobody
+tests on.
+
+Sources:
+
+- [Damage Scaling — Path of Exile 2, Maxroll](https://maxroll.gg/poe2/getting-started/damage-scaling)
+- [Passive Skills — Path of Exile 2 Wiki](https://pathofexile2.wiki.fextralife.com/Passive+Skills)
+
+---
+
 ## 2026-08-25 — "A Cataclysm type other than Demonic" is read as "other than the character's own"
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

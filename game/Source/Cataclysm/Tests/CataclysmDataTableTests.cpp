@@ -244,7 +244,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 47 FOR CATACLYSMIC RESONANCE, the same two damage stats under a
 	// window opened by taking damage of a foreign Cataclysm type. Issue #975.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         47)
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         51)
 
 	#undef CHECK_TABLE
 
