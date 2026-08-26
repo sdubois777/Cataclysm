@@ -125,6 +125,38 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, EnergyShieldLeech)
 
 	/**
+	 * How many percentage points to take off the ceiling healing may reach,
+	 * as a share of maximum health. Issue #988.
+	 *
+	 * The Masochist's Point of No Return keystone is its only source: "You
+	 * cannot be healed above 50% of your maximum health, but you deal 25% more
+	 * damage." A reduction of 50 puts the ceiling at half of maximum health.
+	 *
+	 *     ceiling = maximum * (100 - clamp(this, 0, 100)) / 100
+	 *
+	 * A REDUCTION RATHER THAN THE CEILING ITSELF, and the difference is not
+	 * cosmetic. A stat holding the ceiling would need 0 to mean "no cap",
+	 * which reads as "cannot be healed at all", and two sources of it would
+	 * SUM in the flat bucket to 100 and remove the cap entirely. Written as a
+	 * reduction the default of 0 means no cap with no sentinel, and two
+	 * sources stack in the restrictive direction, which is the direction a
+	 * player would expect two such nodes to stack in.
+	 *
+	 * IT REACHES ONLY `UCataclysmRegeneration::TopUp`, which is the one place
+	 * health regeneration and life leech both restore health.
+	 * `ACataclysmPlayerCharacter::Respawn` writes health back directly rather
+	 * than healing, so a respawn is not capped -- a respawn is a new life
+	 * rather than healing, and issue #956 is the open question about what else
+	 * that direct write should and should not do.
+	 *
+	 * HEALTH ONLY. The node says health, and mana and the energy shield go
+	 * through the same function.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealingCeilingReduction)
+	FGameplayAttributeData HealingCeilingReduction;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, HealingCeilingReduction)
+
+	/**
 	 * Meta attribute. Not replicated, and zeroed after every execution.
 	 *
 	 * Exists so that mitigation is resolved in exactly one place instead of
@@ -149,4 +181,5 @@ protected:
 	UFUNCTION() void OnRep_LifeLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_EnergyShieldLeech(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealingCeilingReduction(const FGameplayAttributeData& OldValue);
 };

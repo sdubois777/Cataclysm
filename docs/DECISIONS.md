@@ -20,6 +20,86 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A cap on how far healing may take a character is stored as a reduction of the ceiling, not as the ceiling
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h`
+and `.cpp`, `CataclysmRegeneration.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`docs/All_Things_Cataclysm.xlsx`. Applied. Issue #988.
+
+### What was decided
+
+A character may now be forbidden to be healed past a share of its maximum
+health. The Masochist's Point of No Return keystone is the node: "You cannot be
+healed above 50% of your maximum health, but you deal 25% more damage."
+
+The stat is `healing_ceiling_reduction`, and it holds **how many percentage
+points to take off the ceiling** rather than the ceiling itself:
+
+    ceiling = maximum * (100 - clamp(reduction, 0, 100)) / 100
+
+### Why a reduction rather than the ceiling
+
+Two reasons, and the second is the one that matters.
+
+**A stat holding the ceiling needs a sentinel.** Every character without the node
+would carry a zero, and zero as a ceiling reads as "cannot be healed at all". The
+code would have to say "zero means no cap", which is a rule a reader has to be
+told rather than one they can see.
+
+**And two sources of it would stack the wrong way.** An authored value joins the
+flat bucket, which sums. Two nodes each capping healing at 50% would sum to 100
+and remove the cap entirely. Written as a reduction they sum to 100 and forbid
+healing altogether, which is the direction a player would expect two restrictions
+to combine in.
+
+Only one node grants it today, so the second reason is about a future that may
+not arrive. It costs nothing to be right about it now, and the node states 50
+under either encoding, so the authored number still matches the node's own words.
+
+### A respawn is not healing and is not capped
+
+`UCataclysmRegeneration::TopUp` is the one place health regeneration and life
+leech both restore health, and the cap lives there.
+`ACataclysmPlayerCharacter::Respawn` writes health back with
+`SetNumericAttributeBase` rather than through it, so a respawn is untouched.
+
+**That is the right answer rather than an oversight.** A respawn is a new life
+and not healing. It is also the behaviour issue #956 is about, which is open and
+unanswered, and this change deliberately does not move it either way.
+
+### Health only
+
+Mana and the energy shield come through the same function. The node says health.
+
+### The genre has this exact rule, at this exact threshold
+
+Path of Exile's Petrified Blood: **the character cannot recover life above low
+life by any means except flasks.** Low life there is 50% of maximum. That is Point
+of No Return's sentence with the same number.
+
+**It is also a trade, as this node is.** Petrified Blood halves the damage a hit
+deals immediately and spreads the rest over time; Point of No Return pays in
+damage dealt instead. Different payment, same restriction.
+
+**The one thing the genre carves out does not exist here.** Petrified Blood lets
+flasks heal past the cap, so a player retains one deliberate way through it. This
+project has no flasks, so there is nothing to exempt and the cap is absolute.
+Worth recording: if a flask-like consumable is ever added, whether it bypasses
+this cap is a decision somebody has to make rather than inherit.
+
+**A second keystone in the same family**, for context on how large a restriction
+this may be: Vaal Pact doubles life leech speed and its maximum rate while making
+life regeneration have no effect at all. The genre is comfortable with a keystone
+that removes a whole recovery channel.
+
+Sources:
+
+- [Petrified Blood — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Petrified_Blood)
+- [Vaal Pact — Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Vaal_Pact)
+
+---
+
 ## 2026-08-26 — A health cost measured against current health is a second stat, not a larger first one
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`

@@ -189,6 +189,15 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("energy_shield_regen"), Vital::GetEnergyShieldRegenAttribute()},
 			{TEXT("life_leech"), Vital::GetLifeLeechAttribute()},
 
+			// HOW FAR HEALING MAY TAKE THIS CHARACTER, as a reduction of the
+			// ceiling. Issue #988. Zero for every class, and the Masochist's
+			// Point of No Return keystone is its only source. Here for the
+			// same reason every other node-supplied stat is: a passive node
+			// granting a stat this map does not name grants nothing and
+			// reports nothing.
+			{TEXT("healing_ceiling_reduction"),
+			 Vital::GetHealingCeilingReductionAttribute()},
+
 			// THE OTHER TWO LEECHES JOINED IT IN ISSUE #895. Life leech had an
 			// entry here and the other two did not, so two of the three affixes
 			// were dropped before they reached an attribute. All three then

@@ -293,6 +293,13 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("added_health_cost_of_current"),
 		 TEXT("the Masochist's Exsanguinate node, as a flat modifier")},
 
+		// Issue #988. How far healing may take the character, written as a
+		// reduction of the ceiling so that zero means no cap. Zero for every
+		// class, and the Masochist's Point of No Return keystone is its only
+		// source.
+		{TEXT("healing_ceiling_reduction"),
+		 TEXT("the Masochist's Point of No Return node, as a flat modifier")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

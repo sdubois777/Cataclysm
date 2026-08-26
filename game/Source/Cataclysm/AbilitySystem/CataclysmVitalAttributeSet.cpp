@@ -77,6 +77,7 @@ UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 	InitLifeLeech(0.0f);
 	InitManaLeech(0.0f);
 	InitEnergyShieldLeech(0.0f);
+	InitHealingCeilingReduction(0.0f);
 	InitDamage(0.0f);
 }
 
@@ -97,6 +98,7 @@ void UCataclysmVitalAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, LifeLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldLeech);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealingCeilingReduction);
 	// Damage is a meta attribute. It is never replicated.
 }
 
@@ -134,6 +136,18 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		// Zero is a legitimate value for all of these. A class with no energy
 		// shield is a design position, not an error state.
 		NewValue = FMath::Max(NewValue, 0.0f);
+	}
+	else if (Attribute == GetHealingCeilingReductionAttribute())
+	{
+		// HELD BETWEEN 0 AND 100, BECAUSE IT IS A SHARE OF MAXIMUM HEALTH TAKEN
+		// OFF THE CEILING. Issue #988. Below zero it would RAISE the ceiling
+		// above maximum health, and past one hundred it would put the ceiling
+		// below zero, which is not "cannot be healed" but a negative amount of
+		// health to be healed to.
+		//
+		// A HUNDRED IS LEGITIMATE and means healing restores nothing at all. No
+		// node states it, and it is not a data error if one ever does.
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
 }
 
@@ -846,6 +860,7 @@ TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()
 		GetHealthRegenAttribute(), GetManaRegenAttribute(),
 		GetEnergyShieldRegenAttribute(), GetLifeLeechAttribute(),
 		GetManaLeechAttribute(), GetEnergyShieldLeechAttribute(),
+		GetHealingCeilingReductionAttribute(),
 		GetDamageAttribute(),
 	};
 }
@@ -862,3 +877,4 @@ CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldRegen)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, LifeLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldLeech)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealingCeilingReduction)

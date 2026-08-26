@@ -21,12 +21,46 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	}
 
 	const float Current = AbilitySystem.GetNumericAttribute(Pool);
-	const float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
+	float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
+
+	// AND A CHARACTER MAY BE FORBIDDEN TO BE HEALED ALL THE WAY UP. Issue
+	// #988. The Masochist's Point of No Return keystone reads "You cannot be
+	// healed above 50% of your maximum health, but you deal 25% more damage."
+	//
+	// HERE RATHER THAN AT EACH CALLER, because this is the one place health
+	// regeneration and life leech both restore health, and the node says
+	// "cannot be healed" rather than naming one of them.
+	//
+	// HEALTH ONLY. The node says health, and mana and the energy shield come
+	// through this same function.
+	//
+	// A RESPAWN IS NOT HEALING AND IS NOT CAPPED.
+	// `ACataclysmPlayerCharacter::Respawn` writes health back with
+	// `SetNumericAttributeBase` rather than through here, so it is untouched.
+	// That is the right answer -- a respawn is a new life -- and issue #956 is
+	// the open question about what else that direct write should do.
+	//
+	// THE STAT IS A REDUCTION OF THE CEILING, so zero leaves the ceiling where
+	// it was and no character without the node is changed by a single number.
+	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
+	{
+		const float Reduction = FMath::Clamp(
+			AbilitySystem.GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealingCeilingReductionAttribute()),
+			0.0f, 100.0f);
+		Ceiling *= (100.0f - Reduction) / 100.0f;
+	}
 
 	// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is a
 	// design position rather than an error state, and its shield maximum is
 	// zero; adding to it would be adding to something that does not exist, and
 	// the clamp would throw the value away anyway.
+	//
+	// IT NOW CATCHES A SECOND CASE, and both want the same answer. Issue #988. A
+	// health ceiling reduced by the full hundred per cent leaves a ceiling of
+	// zero, and a character already at or above a reduced ceiling is simply not
+	// healed. Neither is a fault, and neither loses anything: what would have
+	// been restored had nowhere to go.
 	if (Ceiling <= 0.0f || Current >= Ceiling)
 	{
 		return;

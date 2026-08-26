@@ -532,4 +532,87 @@ bool FCataclysmRegenerationEnemiesDoNotRegenerate::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingCeilingTest,
+	"Cataclysm.Regeneration.HealingStopsAtAReducedCeilingAndAnUncappedOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHealingCeilingTest::RunTest(const FString&)
+{
+	using namespace CataclysmRegenerationTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST'S POINT OF NO RETURN KEYSTONE: "You cannot be healed above
+	// 50% of your maximum health, but you deal 25% more damage." Issue #988.
+	//
+	// THE STAT IS A REDUCTION OF THE CEILING RATHER THAN THE CEILING ITSELF, so
+	// zero means no cap with no sentinel, and two sources would stack in the
+	// restrictive direction. The attribute's own declaration says why.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UAbilitySystemComponent* System = Player ? SystemOf(Player) : nullptr;
+	if (!TestNotNull(TEXT("a player with an ability system"), System))
+	{
+		return false;
+	}
+
+	Write(Player, Vital::GetMaxHealthAttribute(), 1'000.0f);
+
+	// A CHARACTER WITHOUT THE NODE IS HEALED ALL THE WAY UP, asserted first so
+	// every figure below is evidence of the cap rather than of anything else.
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("with no cap, healing reaches full health"),
+			  Read(Player, Vital::GetHealthAttribute()), 1'000.0f, 0.01f);
+
+	// AND WITH THE NODE IT STOPS HALF WAY. A reduction of 50 puts the ceiling at
+	// 500 of 1000, and the healing offered is ten times what fits.
+	Write(Player, Vital::GetHealingCeilingReductionAttribute(), 50.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a reduction of fifty stops healing at half of maximum"),
+			  Read(Player, Vital::GetHealthAttribute()), 500.0f, 0.01f);
+
+	// A CHARACTER ALREADY ABOVE THE CEILING IS NOT PULLED DOWN TO IT. The node
+	// says "cannot be healed above", not "is reduced to". Somebody who takes the
+	// node at full health keeps the health they have and stops gaining.
+	Write(Player, Vital::GetHealthAttribute(), 900.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a character above the ceiling keeps its health"),
+			  Read(Player, Vital::GetHealthAttribute()), 900.0f, 0.01f);
+
+	// AND BELOW THE CEILING HEALING STILL LANDS IN FULL, so the cap is a ceiling
+	// rather than a refusal. Fifty offered to a character on 100 all lands,
+	// because 150 is well under the ceiling of 500.
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/50.0f, FGameplayTagContainer());
+	TestEqual(TEXT("healing that fits under the ceiling lands in full"),
+			  Read(Player, Vital::GetHealthAttribute()), 150.0f, 0.01f);
+
+	// MANA IS NOT CAPPED BY IT. The node says health, and mana comes through
+	// this same function, so this is the assertion that keeps the two apart.
+	Write(Player, Vital::GetMaxManaAttribute(), 1'000.0f);
+	Write(Player, Vital::GetManaAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetManaAttribute(), Vital::GetMaxManaAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("mana fills to its own maximum despite the health cap"),
+			  Read(Player, Vital::GetManaAttribute()), 1'000.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

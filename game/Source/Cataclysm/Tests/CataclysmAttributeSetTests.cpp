@@ -179,6 +179,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	constexpr int32 OffSheetCombatStats = 4;
 
 	/**
+	 * How far healing may take the character. Issue #988.
+	 *
+	 * THE FIRST VITAL ATTRIBUTE THAT IS NOT A SHEET STAT, which is why this
+	 * constant did not exist before. No player reads a healing ceiling as a
+	 * stat and no class line names it; the Masochist's Point of No Return
+	 * keystone is its only source, as a flat modifier.
+	 */
+	constexpr int32 OffSheetVitalStats = 1;
+
+	/**
 	 * The three Fervour rates, and the two added health costs. See the note
 	 * above.
 	 *
@@ -209,7 +219,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	TestEqual(TEXT("Twenty-eight combat and utility stats, plus four off the sheet"),
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
-	TestEqual(TEXT("Thirteen vital attributes including the damage meta"), Vitals, 13);
+	// Fourteen since the healing ceiling reduction joined them for #988, which
+	// is off the sheet and counted apart for that reason.
+	TestEqual(TEXT("Fourteen vital attributes including the damage meta"),
+		Vitals, 13 + OffSheetVitalStats);
 	// Five since the three Fervour rates were added for #954: the pool, its
 	// maximum, and the three rates that move it. Six since the added health cost
 	// joined them for #970, which is not a rate and is counted apart from the
@@ -229,7 +242,8 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// `tools/tests/test_leech.py` compares the two, which is the check that
 	// really runs: continuous integration compiles no C++.
 	TestEqual(TEXT("Forty-six stats on the character sheet"),
-		(Vitals - 3 - 1) + (Combat - OffSheetCombatStats) + Resist
+		(Vitals - 3 - 1 - OffSheetVitalStats)
+			+ (Combat - OffSheetCombatStats) + Resist
 			+ (Resource - 1 - OffSheetResourceStats), 46);
 	return true;
 }
