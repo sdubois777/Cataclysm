@@ -138,7 +138,7 @@ static TAutoConsoleVariable<float> CVarWardenStampedeSpeed(
 // same shape; this one leaves no burning ground, so it carries no
 // Type.AOE.Persistent, and it does not stun, so it carries no Keyword.CC.
 const TCHAR* ACataclysmAbyssalWardenCharacter::MoltenRoarTags =
-	TEXT("Type.AOE.PointBlank, Type.Strike");
+	TEXT("Type.AOE.PointBlank, Type.Strike, Type.Melee");
 
 ACataclysmAbyssalWardenCharacter::ACataclysmAbyssalWardenCharacter()
 {

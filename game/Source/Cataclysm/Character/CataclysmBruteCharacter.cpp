@@ -202,7 +202,7 @@ static TAutoConsoleVariable<float> CVarBruteRockArc(
 // A POINT-BLANK AREA THAT HOLDS WHAT IT CATCHES, which is exactly what the
 // designed player skill Shockwave Leap carries. Issue #519.
 const TCHAR* ACataclysmBruteCharacter::StompTags =
-	TEXT("Type.AOE.PointBlank, Type.Strike, Keyword.CC");
+	TEXT("Type.AOE.PointBlank, Type.Strike, Type.Melee, Keyword.CC");
 
 // A THROWN ROCK. Emberfang and Hurl Cinders carry Type.Projectile; the
 // Type.Ranged is this one's own, because the ability exists so that standing

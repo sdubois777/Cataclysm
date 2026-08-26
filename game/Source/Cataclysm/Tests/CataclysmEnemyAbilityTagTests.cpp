@@ -14,6 +14,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
@@ -53,6 +54,58 @@ namespace CataclysmEnemyTagTest
 		  ACataclysmBruteCharacter::RockThrowTags },
 		{ TEXT("the Abyssal Warden's molten roar"),
 		  ACataclysmAbyssalWardenCharacter::MoltenRoarTags },
+		// THE GATEKEEPER'S TWO WERE MISSING FROM THIS LIST, which is why the
+		// audit for issue #1012 had to read the source rather than trust it. A
+		// list calling itself "every ability tag list in the game" that is not
+		// every one is worse than no list, because it reads as complete.
+		{ TEXT("the Gatekeeper's Dread Cleave"),
+		  ACataclysmGatekeeperCharacter::CleaveTags },
+		{ TEXT("the Gatekeeper's Soul Harvest"),
+		  ACataclysmGatekeeperCharacter::SoulHarvestTags },
+	};
+
+	/**
+	 * Which enemy abilities count as melee. Issue #1012.
+	 *
+	 * THE RULE IS THE ONE ISSUE #999 SETTLED FOR THE PLAYER'S SKILLS, applied to
+	 * the enemy's: an ability carrying `Type.Strike` carries `Type.Melee`. The
+	 * project owner answered the two arguable cases on 2026-08-26.
+	 *
+	 *   is a charge melee?             yes -- it is a body making contact
+	 *   is a point-blank boss attack?  yes -- otherwise a melee-scoped defence
+	 *                                  stops ordinary swings and NOTHING a boss
+	 *                                  does, because every boss attack is one
+	 *
+	 * THE THROWN ROCK IS THE ONE THAT IS NOT, and it is what makes a melee scope
+	 * worth having. If everything were melee, a defence scoped to melee would be
+	 * a defence scoped to nothing.
+	 *
+	 * WHY THIS IS PINNED PER ABILITY RATHER THAN DERIVED FROM THE STRIKE TAG.
+	 * Deriving it would assert that the code agrees with itself. What is worth
+	 * guarding is the DECISION -- that these six are melee and that one is not --
+	 * so a creature added later has to be listed here on purpose.
+	 */
+	struct FMeleeExpectation
+	{
+		const TCHAR* What;
+		const TCHAR* Cell;
+		bool bIsMelee;
+	};
+
+	static const FMeleeExpectation MeleeByAbility[] = {
+		{ TEXT("an enemy's basic attack"),
+		  ACataclysmEnemyCharacter::BasicAttackTags, true },
+		{ TEXT("a charge"), ACataclysmEnemyCharacter::ChargeTags, true },
+		{ TEXT("the Brute's stomp"),
+		  ACataclysmBruteCharacter::StompTags, true },
+		{ TEXT("the Abyssal Warden's molten roar"),
+		  ACataclysmAbyssalWardenCharacter::MoltenRoarTags, true },
+		{ TEXT("the Gatekeeper's Dread Cleave"),
+		  ACataclysmGatekeeperCharacter::CleaveTags, true },
+		{ TEXT("the Gatekeeper's Soul Harvest"),
+		  ACataclysmGatekeeperCharacter::SoulHarvestTags, true },
+		{ TEXT("the Brute's thrown rock"),
+		  ACataclysmBruteCharacter::RockThrowTags, false },
 	};
 
 	/** How many names a cell lists, counted without asking the tag manager. */
@@ -340,6 +393,60 @@ CATACLYSM_TEST(FCataclysmScopedModifierReachesAnEnemyAbilityTest,
 	Offence->AddStatModifier(Scoped(TEXT("Type.Melee")));
 	TestEqual(TEXT("and one scoped to a tag it carries doubles the swing"),
 		SwingFor(), Plain * 2.0f, 1.0f);
+
+	return true;
+}
+
+/**
+ * Which enemy abilities count as melee, and which one does not.
+ *
+ * WHY THIS EXISTS. Issue #1012. The project owner decided on 2026-08-26 that a
+ * melee-scoped bonus should reach every enemy ability carrying `Type.Strike`,
+ * which is the rule issue #999 settled for the player's own skills. Before that
+ * decision only ONE of the seven carried `Type.Melee` -- the basic attack -- so
+ * a defence scoped to melee would have stopped an ordinary swing and nothing
+ * any boss in the game does.
+ *
+ * THE FAILURE THIS CATCHES IS SILENT AND IS NOT A CRASH. A modifier scoped to a
+ * tag no ability carries is built, applied and simply never matched. Nothing at
+ * run time reports it, and the character is quietly worse.
+ */
+CATACLYSM_TEST(FCataclysmEnemyMeleeAbilitiesSaySoTest,
+	"Cataclysm.EnemyTags.EveryEnemyStrikeSaysItIsMeleeAndTheThrownRockDoesNot")
+{
+	using namespace CataclysmEnemyTagTest;
+
+	for (const FMeleeExpectation& Ability : MeleeByAbility)
+	{
+		const FGameplayTagContainer Tags = FShapes::TagsFromCell(Ability.Cell);
+		const bool bSaysMelee = Tags.HasTag(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")),
+											 /*ErrorIfNotFound=*/false));
+
+		TestEqual(*FString::Printf(
+				TEXT("%s %s melee"), Ability.What,
+				Ability.bIsMelee ? TEXT("is") : TEXT("is not")),
+			bSaysMelee, Ability.bIsMelee);
+	}
+
+	// AND THE STRIKE TAG IS WHAT DECIDES IT, which is the rule rather than the
+	// list. Stated separately so a creature added later fails HERE, with a
+	// message naming the rule, rather than only in the list above.
+	for (const FAbilityTags& Ability : EveryAbility)
+	{
+		const FGameplayTagContainer Tags = FShapes::TagsFromCell(Ability.Cell);
+		const bool bStrikes = Tags.HasTag(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Strike")),
+											 /*ErrorIfNotFound=*/false));
+		const bool bMelee = Tags.HasTag(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")),
+											 /*ErrorIfNotFound=*/false));
+
+		TestEqual(*FString::Printf(
+				TEXT("%s carries Type.Melee exactly when it carries Type.Strike"),
+				Ability.What),
+			bMelee, bStrikes);
+	}
 
 	return true;
 }

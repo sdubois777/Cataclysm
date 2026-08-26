@@ -53,7 +53,7 @@ const TCHAR* ACataclysmEnemyCharacter::BasicAttackTags =
 // carry Type.Strike with Keyword.Charge; the stagger is this one's own, because
 // it displaces.
 const TCHAR* ACataclysmEnemyCharacter::ChargeTags =
-	TEXT("Type.Strike, Keyword.Charge, Keyword.Stagger");
+	TEXT("Type.Strike, Type.Melee, Keyword.Charge, Keyword.Stagger");
 
 ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 {
