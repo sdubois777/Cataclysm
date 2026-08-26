@@ -147,7 +147,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: are mirror images: each grants "30% more" of one of the two ways Fervour is
 #: gained and "50% less" of the other. Four `more` rows, which is what those
 #: words mean. Issue #978.
-AUTHORED_ROWS = 51
+#:
+#: AND BY ONE, for Reciprocity: "Your Retaliation damage is increased by 1% for
+#: each point of Fervour you currently hold." One row, and the second bonus in
+#: the project whose SIZE grows with a state rather than switching on and off
+#: with it. Issue #980.
+AUTHORED_ROWS = 52
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -200,7 +205,11 @@ AUTHORED_ROWS = 51
 #: two ways Fervour is gained against the other. 43 of 293 altogether and 39 of
 #: the Masochist tree's own 74. They are the first keystones with an authored
 #: effect: every node here before them was a basic node. Issue #978.
-AUTHORED_NODES = 43
+#:
+#: AND TO 44 FOR ONE MORE, Reciprocity, whose retaliation damage grows with how
+#: much Fervour the character is holding. 44 of 293 altogether and 40 of the
+#: Masochist tree's own 74. Issue #980.
+AUTHORED_NODES = 44
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -408,8 +417,15 @@ def test_a_condition_is_actually_used(effects):
 #: A SEPARATE MAP FROM `CONDITION_WORDS`, because the two answer different
 #: questions and a row may carry both. `tools/generate_datatables.py` holds the
 #: same set of names in `SCALES` and refuses one it does not know.
+#: A STEP FORM OF `None` MEANS THE SENTENCE NAMES NO STEP, so the step can only
+#: be 1 and that is what is asserted instead. Issue #980. Reciprocity says "for
+#: each point of Fervour you currently hold": one point is the step, and there is
+#: no number in the sentence to match it against. Looking for "1" in that
+#: description would find the "1%" of its own value and pass for the wrong
+#: reason, which is worse than not checking.
 SCALE_WORDS = {
     "health_missing": ("for every", "{value:g}%"),
+    "class_resource_held": ("for each point of fervour", None),
 }
 
 
@@ -453,6 +469,21 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             f"{row['Node']} carries the scale {scale!r} with a step of {step:g}. "
             "A step of nothing makes the bonus worth nothing at every state."
         )
+
+        if value_form is None:
+            # THE SENTENCE NAMES NO STEP, SO THE STEP CAN ONLY BE ONE. Issue
+            # #980. "For each point of Fervour you currently hold" counts single
+            # points; a step of 5 on that node would give a fifth of what the
+            # sentence promises, and no number in the description could catch it.
+            assert step == 1.0, (
+                f"{row['Node']} carries the scale {scale!r} with a step of "
+                f"{step:g}, and its description names no step:\n"
+                f"    {nodes[row['Node']]['Description']}\n"
+                "A sentence saying \"for each\" counts single units, so the step "
+                "has to be 1. If the design now states a step, give this scale a "
+                "step form in SCALE_WORDS instead."
+            )
+            continue
 
         printed = value_form.format(value=step)
         assert printed.lower() in words, (

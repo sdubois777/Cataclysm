@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -321,6 +322,103 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationEvadedTest,
 		Defender.Vitals->GetHealth(), DefenderBefore, 0.001f);
 	TestEqual(TEXT("and provoked no retaliation"),
 		Attacker.Vitals->GetHealth(), Before, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationGrowsWithTheResourceTest,
+	"Cataclysm.Retaliation.ABonusThatGrowsWithTheClassResourceReachesTheBlowSentBack")
+{
+	using namespace CataclysmRetaliationTest;
+
+	// THE MASOCHIST'S RECIPROCITY KEYSTONE, END TO END: "Your Retaliation damage
+	// is increased by 1% for each point of Fervour you currently hold."
+	// Issue #980.
+	//
+	// WHAT THIS CATCHES THAT NOTHING ELSE COULD. The blow sent back used to be
+	// read straight off the `Retaliation` gameplay attribute, and a bonus whose
+	// SIZE grows with a state is deliberately never written onto an attribute --
+	// it would be stale the moment the state moved. So the node would have been
+	// authored, the modifier would have been built correctly, and the blow would
+	// have been exactly what it was before, in silence.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRetaliator Attacker(World);
+	FRetaliator Defender(World);
+
+	Attacker.Combat->SetAttackDamage(500.0f);
+	Defender.Combat->SetRetaliation(100.0f);
+
+	// THE POOL IS ADDED HERE RATHER THAN IN THE SHARED HARNESS, so the other
+	// four tests in this file keep asking with no class resource at all, which
+	// is the state every enemy in the game is in.
+	UCataclysmClassResourceAttributeSet* Pool =
+		NewObject<UCataclysmClassResourceAttributeSet>(Defender.Actor);
+	Defender.AbilitySystem->AddAttributeSetSubobject(Pool);
+	Pool->SetMaxClassResource(100.0f);
+
+	// WHAT THE PASSIVE TREE WOULD HAVE BUILT, written here by hand. A keystone
+	// worth one percentage point per point of the pool held, over a base equal
+	// to the attribute, so a character holding nothing gets exactly what it got
+	// before this existed.
+	FCataclysmStatModifier Reciprocity;
+	Reciprocity.Bucket = ECataclysmStatBucket::Increased;
+	Reciprocity.Source = ECataclysmModifierSource::PassiveKeystone;
+	Reciprocity.Value = 1.0f;
+	Reciprocity.Scale = ECataclysmStatScale::PerPointOfClassResourceHeld;
+	Reciprocity.ScaleStep = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 100.0f;
+	Inputs.Modifiers = {Reciprocity};
+
+	TMap<FName, FCataclysmStatInputs> Recorded;
+	Recorded.Add(FName(TEXT("retaliation")), Inputs);
+	Defender.AbilitySystem->SetStatInputs(MoveTemp(Recorded));
+
+	const auto SentBackHolding = [&](float Held) -> float
+	{
+		Pool->SetClassResource(Held);
+		const float Before = Attacker.Vitals->GetHealth();
+		const float Dealt = UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery());
+		if (Dealt <= 0.0f)
+		{
+			AddError(TEXT("The hit did not land, so nothing could come back."));
+		}
+		return Before - Attacker.Vitals->GetHealth();
+	};
+
+	// AN EMPTY BAR SENDS BACK THE PLAIN FIGURE, asserted first so the two below
+	// are evidence of the bonus rather than of anything else about the hit.
+	TestEqual(TEXT("holding nothing sends back the attribute's own figure"),
+		SentBackHolding(0.0f), 100.0f, 0.01f);
+
+	TestEqual(TEXT("holding fifty sends back half as much again"),
+		SentBackHolding(50.0f), 150.0f, 0.01f);
+
+	TestEqual(TEXT("and a full bar of a hundred doubles it"),
+		SentBackHolding(100.0f), 200.0f, 0.01f);
+
+	// AND A DEFENDER WITH NO SUCH BONUS IS UNCHANGED, which is every character
+	// in the game that has not spent this point. Its ability system records no
+	// inputs for the stat at all, so the attribute is the whole answer.
+	FRetaliator Plain(World);
+	Plain.Combat->SetRetaliation(100.0f);
+	const float Before = Attacker.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(
+		Attacker.Actor, Plain.Actor, /*DamagePercent=*/100.0f,
+		FGameplayTagContainer(), FCataclysmHitDelivery());
+	TestEqual(TEXT("a defender with nothing recorded sends back the attribute"),
+		Before - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
 
 	return true;
 }

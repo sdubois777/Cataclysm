@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the class resource a scaling bonus counts points of. Issue #980.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -364,6 +366,24 @@ UCataclysmAbilitySystemComponent::CurrentConditions() const
 
 	State.SecondsSinceHealthCost = SecondsSinceHealthCostPaid();
 	State.SecondsSinceForeignDamage = SecondsSinceForeignDamageTaken();
+
+	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
+	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
+	// by 1% for each point of Fervour you currently hold."
+	//
+	// NO CLASS RESOURCE ATTRIBUTE SET MEANS UNKNOWN, which is every enemy in the
+	// game, and a bonus that counts points of a pool the character does not have
+	// is correctly worth nothing to it. The reading is left at its negative
+	// default rather than set to zero, so that "there is no bar" stays
+	// distinguishable from "the bar is empty".
+	if (const UCataclysmClassResourceAttributeSet* Resource =
+			GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// FLOORED AT ZERO. The attribute set already clamps the pool, so this
+		// guards only a value written before that ran, the same way
+		// `AddedHealthCostPercent` guards its own.
+		State.ClassResourceHeld = FMath::Max(0.0f, Resource->GetClassResource());
+	}
 
 	return State;
 }

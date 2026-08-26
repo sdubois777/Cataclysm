@@ -794,6 +794,16 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
+			else if (Effect->Scale.Equals(TEXT("class_resource_held"),
+										  ESearchCase::IgnoreCase))
+			{
+				// A COUNT OF POINTS HELD RATHER THAN A PERCENTAGE MISSING, which
+				// is the whole difference between the two. Issue #980. The
+				// Masochist's Reciprocity keystone is the node.
+				Modifier.Scale =
+					ECataclysmStatScale::PerPointOfClassResourceHeld;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
 			else if (!Effect->Scale.IsEmpty())
 			{
 				// A step of nothing makes `ScaledValue` answer zero.

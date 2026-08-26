@@ -177,6 +177,30 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfMaximumHealthMissing
 		UMETA(DisplayName = "Per Percent Of Maximum Health Missing"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` points of the class resource the
+	 * character is currently holding. Issue #980.
+	 *
+	 * Reciprocity is the node: "Your Retaliation damage is increased by 1% for
+	 * each point of Fervour you currently hold." A step of 1, so the count is
+	 * the Fervour itself.
+	 *
+	 * THE CLASS RESOURCE RATHER THAN FERVOUR BY NAME. There is one pool and
+	 * every class shares it -- `UCataclysmFervour` records the project owner's
+	 * decision of 2026-08-25 and why -- so the attribute is called
+	 * `ClassResource` and only the Masochist's name for it is Fervour. An
+	 * enumerator naming one class's word for the shared pool would have to be
+	 * renamed the first time another tree used it.
+	 *
+	 * A POINT OF THE RESOURCE IS ALREADY AN ABSOLUTE NUMBER, not a percentage
+	 * of the maximum. The pool runs 0 to 100 for every class today, so the two
+	 * readings happen to agree, and they would stop agreeing the moment a class
+	 * had a different maximum. The design writes "for each point", so the count
+	 * is of points.
+	 */
+	PerPointOfClassResourceHeld
+		UMETA(DisplayName = "Per Point Of Class Resource Held"),
 };
 
 /**
@@ -225,6 +249,22 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceForeignDamage = -1.0f;
+
+	/**
+	 * How much of the class resource the character is holding. Issue #980.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the three readings above.
+	 * An ability system with no class resource attribute set -- every enemy in
+	 * the game -- leaves it there, and a bonus that grows with the pool is worth
+	 * nothing to it. That is the right answer rather than a fault.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN. An empty bar is a character
+	 * that has generated nothing yet, and a bonus counting points of it is
+	 * correctly worth nothing. That is a different statement from "there is no
+	 * bar to read", and only the second one has to refuse.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceHeld = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
