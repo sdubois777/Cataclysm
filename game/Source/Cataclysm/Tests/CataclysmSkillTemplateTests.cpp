@@ -1179,6 +1179,143 @@ bool FCataclysmSkillRecordsWhatItChargedTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurrentHealthCostTest,
+	"Cataclysm.Skills.ACharacterCanAddAHealthCostMeasuredAgainstCurrentHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurrentHealthCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE MASOCHIST'S EXSANGUINATE KEYSTONE: "Every skill costs an additional
+	// 15% of your current health". Issue #986.
+	//
+	// A SECOND STAT AND NOT A LARGER FIRST ONE, and the whole test is about why.
+	// The character's other added cost is a share of MAXIMUM health and can
+	// kill; this one is a share of CURRENT health and cannot. `docs/DECISIONS.md`
+	// records the project owner drawing that line, quoting this very number.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// HALF HEALTH, so a share of current health and a share of maximum health
+	// are different numbers and cannot be confused.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute(),
+		15.0f);
+
+	// A SKILL THAT STATES NO HEALTH COST OF ITS OWN, which is every skill in
+	// the game except Blood Pyre. Without the keystone it would charge no
+	// health at all, so every figure below is the keystone's doing.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	// 15% OF 500 CURRENT IS 75.
+	//
+	// NOT 150. That is 15% of MAXIMUM health, which is the other stat, and it is
+	// the one number this test exists to rule out.
+	const float Paid = 500.0f - Caster.Health();
+	TestEqual(FString::Printf(
+		TEXT("it charged 15%% of current health, which is 75, and charged %.1f"),
+		Paid),
+		Paid, 75.0f, 0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurrentHealthCostCannotKillTest,
+	"Cataclysm.Skills.ACostTakenFromCurrentHealthLeavesAtLeastOneHealthBehind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurrentHealthCostCannotKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// EXSANGUINATE STATES THE FLOOR OUTRIGHT: "A cost taken from current health
+	// cannot reduce it below 1." Issue #986.
+	//
+	// THE ARITHMETIC NEARLY GUARANTEES IT ALREADY, and that is why the floor is
+	// worth a test rather than being assumed. A share of current health
+	// approaches zero without reaching it, so no number of casts empties the bar
+	// in exact arithmetic -- but a float does reach zero, and a rule that holds
+	// in algebra and fails in single precision is not a rule.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	// A CHARACTER ALREADY ON ALMOST NOTHING, and a cost far larger than the
+	// design's own. 90% of half a point of health would leave 0.05 behind, which
+	// is above zero and below the floor, so only the floor can produce the
+	// expected answer.
+	//
+	// MAXIMUM HEALTH IS 1 SO THAT THIS TEST CANNOT SEE THE MEASURE. A share of
+	// current health and a share of maximum health both come to less than the
+	// floor swallows here, so what this character pays depends on the floor and
+	// on nothing else. The test above is the one that watches the measure, and
+	// keeping the two separable is what lets a broken build say which is wrong.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.5f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute(),
+		90.0f);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	// ALREADY BELOW THE FLOOR, SO NOTHING IS TAKEN. The floor is "cannot reduce
+	// it below 1", not "sets it to 1": a character under the floor is not healed
+	// up to it.
+	TestEqual(TEXT("a character already below the floor pays nothing"),
+			  Caster.Health(), 0.5f, 0.01f);
+
+	// AND A COST WELL CLEAR OF THE FLOOR IS NOT FLOORED, so the floor cannot be
+	// a clamp that fires on every cast. 90% of 100 is 90, leaving 10, and the
+	// floor would only have bitten below 1.
+	FScopedFighter Second(World, FVector(4 * M, 0, 0));
+	//
+	// AT FULL HEALTH, so a share of current and a share of maximum are the same
+	// number and this half cannot see the measure either.
+	Second.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	Second.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+	Second.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute(),
+		90.0f);
+
+	UCataclysmStrikeSkill* Another = GrantSkill<UCataclysmStrikeSkill>(
+		Second, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Another)
+	{
+		AddError(TEXT("Could not grant the second strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Second, Another));
+	TestEqual(TEXT("a cost well clear of the floor is not floored"),
+			  Second.Health(), 10.0f, 0.5f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLethalHealthCostTest,
 	"Cataclysm.Skills.AHealthCostLargerThanHealthLeavesTheCasterAtZeroNotBelow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

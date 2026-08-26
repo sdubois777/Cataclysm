@@ -126,6 +126,31 @@ public:
 	FGameplayAttributeData AddedHealthCost;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, AddedHealthCost)
 
+	/**
+	 * What this character adds to every skill's health cost, as a percentage
+	 * of CURRENT health. Issue #986.
+	 *
+	 * A SECOND STAT RATHER THAN A LARGER FIRST ONE, and the difference is the
+	 * design's own. `docs/DECISIONS.md` records the project owner drawing it,
+	 * quoting this very number: a cost stated as a share of CURRENT health
+	 * "cannot kill on its own: 15% of current health approaches zero without
+	 * reaching it... it would kill if it were a share of maximum health". The
+	 * attribute above is a share of maximum health and can kill; this one
+	 * cannot, and the two would be indistinguishable if they shared a stat.
+	 *
+	 * THE MASOCHIST'S EXSANGUINATE KEYSTONE IS ITS ONLY SOURCE: "Every skill
+	 * costs an additional 15% of your current health, and every skill deals
+	 * 40% more damage." A keystone holds one point, so 15% at most.
+	 *
+	 * THE UNSUFFIXED NAME ABOVE MEANS "OF MAXIMUM", which is not obvious and
+	 * is left alone deliberately: renaming it would touch the workbook, the
+	 * generated file, the class stat map and every test naming it, to say
+	 * something this comment already says.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_AddedHealthCostOfCurrent)
+	FGameplayAttributeData AddedHealthCostOfCurrent;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -139,4 +164,5 @@ protected:
 	UFUNCTION() void OnRep_FervourFromCost(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourLostToHealing(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AddedHealthCost(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_AddedHealthCostOfCurrent(const FGameplayAttributeData& OldValue);
 };

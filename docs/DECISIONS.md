@@ -20,6 +20,125 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A health cost measured against current health is a second stat, not a larger first one
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`
+and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`docs/All_Things_Cataclysm.xlsx`,
+`tools/tests/test_passive_effects_match_the_node_text.py`. Applied. Issue #986.
+
+### What was decided
+
+A character may now add a health cost to every skill measured as a share of its
+**current** health, alongside the existing one measured as a share of its
+**maximum** health. They are two stats and not one.
+
+The Masochist's Exsanguinate keystone is the node: "Every skill costs an
+additional 15% of your current health, and every skill deals 40% more damage. A
+cost taken from current health cannot reduce it below 1."
+
+### Why two stats rather than one larger one
+
+**Because the design already drew that line, and quoted this exact number doing
+it.** The entry recorded when the first added cost was built has the project
+owner's own words: a cost stated as a share of CURRENT health
+
+> "cannot kill on its own: 15% of current health approaches zero without
+> reaching it... it would kill if it were a share of maximum health"
+
+So the two differ in the one property that matters most about a health cost:
+whether it can kill the character paying it. Folding them into one stat would
+make that property depend on which node happened to grant the larger share,
+which is not a rule anybody could state.
+
+### The two shares are summed before either is taken
+
+`UCataclysmSkillTemplate::PayHealthCost` adds the skill's own percentage of
+current health to the character's added percentage of current health, then takes
+that share once. Charging them one after the other would compound — the second
+would be a share of what the first left — and the design says "an additional
+15%", which is a sum.
+
+### The floor is stated by the design and is not redundant
+
+"A cost taken from current health cannot reduce it below 1."
+
+The arithmetic nearly guarantees it already: a share of current health approaches
+zero without reaching it, so no number of casts empties the bar in exact
+arithmetic. **A float does reach zero**, and a rule that holds in algebra and
+fails in single precision is not a rule.
+
+**It applies only to the share taken from current health.** The share taken from
+maximum health is allowed to kill, by the decision quoted above. This is adjacent
+to #971, which asks whether a health cost emptying a character kills it, and does
+not answer that question.
+
+**It is a floor, not a clamp to a value.** A character already below 1 health
+pays nothing rather than being healed up to 1.
+
+### It makes an existing node fire far more often
+
+Grand Tithe, built the same day under #983, reads "a skill whose health cost is
+above 10% of your maximum health deals 4% increased damage per point". Before
+this, it fired only for a character with the Deeper Cuts node heavily invested
+AND Blood Pyre in hand, because Blood Pyre is the only skill with a health cost
+of its own.
+
+Exsanguinate charges 15% of current health on every skill, which is above 10% of
+maximum for any character above about 67% health. **So a character holding both
+gets Grand Tithe's damage from every skill.** Both nodes are in the Blood Tithe
+branch of the tree, so the interaction is where the design put it.
+
+### One check had to loosen, and it had said so in advance
+
+`test_the_bucket_matches_the_nodes_own_wording` in
+`tools/tests/test_passive_effects_match_the_node_text.py` asserted both
+directions: a row in the multiplying bucket must be on a node whose description
+says it multiplies, and a row in the additive bucket must be on a node whose
+description does not.
+
+Exsanguinate is the first node to hold rows in two different buckets from one
+sentence: a `flat` health cost and two `more` damage rows, on a description that
+says "40% more damage". The note written under #977 predicted exactly this and
+said the stronger form was being kept "until one does rather than weakened in
+advance".
+
+**The second direction now asks only of a node with no multiplying row at all.**
+A node that has one has a description that legitimately says "more" about a
+different clause, and nothing in the sentence says which clause a given row
+belongs to.
+
+### The genre settles the floor and does not settle the measure
+
+Path of Exile's Blood Magic keystone makes every skill cost life instead of mana.
+Its wiki states outright:
+
+> It is not possible to commit suicide through Blood Magic.
+
+**That is the same rule as "A cost taken from current health cannot reduce it
+below 1", arrived at independently.** A game where paying a skill's cost can kill
+the caster is a game where a misclick is death, and Path of Exile ruled that out
+rather than leaving it to the arithmetic. So the floor here is not this project
+being cautious; it is the genre's settled answer.
+
+**What the genre does not settle is how the cost is measured.** Blood Magic
+charges a flat amount — whatever the mana cost would have been — rather than a
+share of anything. It has no equivalent of "15% of your current health", so it
+says nothing about current health against maximum health.
+
+That distinction is this project's own, made by the project owner on 2026-08-25
+and quoted at the top of this entry. It is a judgement rather than a finding, and
+a good one: it gives the design a lever that can kill and a lever that cannot,
+and lets a node choose.
+
+Sources:
+
+- [Blood Magic — Path of Exile Wiki](https://www.poewiki.net/wiki/Blood_Magic)
+- [Blood Magic — Path of Exile Wiki, Fandom](https://pathofexile.fandom.com/wiki/Blood_Magic)
+
+---
+
 ## 2026-08-26 — A passive bonus can depend on what the skill in hand cost, and that number travels with the blow
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
