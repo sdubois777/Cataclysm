@@ -50,8 +50,36 @@ class CATACLYSM_API ACataclysmPlayerController : public APlayerController
 public:
 	ACataclysmPlayerController();
 
+	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void OnUnPossess() override;
+
+	/**
+	 * Put the game into the one input mode it plays in.
+	 *
+	 * WHY THIS EXISTS RATHER THAN A CALL PER SCREEN. Issue #1015. Nothing in this
+	 * project set an input mode at all: the game booted into whatever the engine
+	 * defaults to, and the first screen to open replaced it. Each screen then
+	 * built its own mode by hand -- GameAndUI to open, GameOnly to close -- so
+	 * closing a screen left the game in `FInputModeGameOnly`, a mode it had never
+	 * otherwise run in, and the player could no longer move. Reopening the screen
+	 * restored GameAndUI and movement came back, which is what the project owner
+	 * observed in a play test on 2026-08-26 and what makes this diagnosable at
+	 * all.
+	 *
+	 * GameAndUI IS THE MODE, AND IT IS NOT A COMPROMISE. This game shows its
+	 * cursor permanently -- the constructor sets `bShowMouseCursor` and nothing
+	 * turns it off -- and every order a player gives is read off that cursor.
+	 * `UpdateCachedDestination` traces under it, `CursorIsOverInterface` and
+	 * `InventoryPressTarget` read its position. `FInputModeGameOnly` captures the
+	 * mouse permanently and offers no way to say "do not hide or lock the cursor",
+	 * which the two options below exist to say.
+	 *
+	 * CALL THIS, NEVER `SetInputMode` DIRECTLY. One mode in one place is what
+	 * stops the next screen reintroducing the same fault, and
+	 * `test_one_input_mode.py` fails if a second one appears in the source.
+	 */
+	void ApplyPlayingInputMode();
 
 	/**
 	 * Runs after the frame's input has been gathered. This is where a slot press

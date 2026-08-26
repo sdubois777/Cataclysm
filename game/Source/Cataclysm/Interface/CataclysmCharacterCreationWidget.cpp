@@ -9,6 +9,7 @@
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Items/CataclysmItem.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 
 const UDataTable* UCataclysmCharacterCreationWidget::WeaponSkills() const
@@ -168,11 +169,23 @@ bool UCataclysmCharacterCreationWidget::Confirm()
 
 	RemoveFromParent();
 
-	// AND THE INPUT MODE GOES BACK, because the controller changed it to open
-	// this screen. Closing with the key restores it there; closing by
-	// confirming has to restore it here, or the game is left in GameAndUI with
-	// nothing on screen to click. Both routes have to leave the same state.
-	Controller->SetInputMode(FInputModeGameOnly());
+	// AND THE INPUT MODE GOES BACK. Closing with the key restores it on the
+	// controller; closing by confirming has to restore it here, because both
+	// routes have to leave the same state.
+	//
+	// IT ASKS THE CONTROLLER RATHER THAN BUILDING A MODE. Issue #1015. This line
+	// used to set `FInputModeGameOnly`, which is a mode the game never otherwise
+	// runs in and which stops the player moving, and it was one of three places
+	// that each built their own mode by hand.
+	//
+	// CAST, BECAUSE `GetOwningPlayer` RETURNS THE ENGINE'S BASE CLASS. Every
+	// other use of `Controller` above is a base-class call, so it was typed as
+	// one; the playing mode belongs to this project's controller.
+	if (ACataclysmPlayerController* Cataclysm =
+			Cast<ACataclysmPlayerController>(Controller))
+	{
+		Cataclysm->ApplyPlayingInputMode();
+	}
 	return true;
 }
 

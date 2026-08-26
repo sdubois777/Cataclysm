@@ -36,6 +36,34 @@ ACataclysmPlayerController::ACataclysmPlayerController()
 	DefaultMouseCursor = EMouseCursor::Default;
 }
 
+void ACataclysmPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// SET THE MODE RATHER THAN INHERIT ONE. Issue #1015. Before this, no code in
+	// the project stated what input mode the game plays in: it ran in whatever
+	// the engine defaults to, and the first screen to close replaced that with
+	// something nothing had chosen. Setting it here means the mode a screen
+	// restores IS the mode the game started in, because they are one function.
+	ApplyPlayingInputMode();
+}
+
+void ACataclysmPlayerController::ApplyPlayingInputMode()
+{
+	// BOTH OPTIONS ARE LOAD-BEARING AND NEITHER IS TIDINESS.
+	//
+	// DoNotLock, because a cursor locked to the viewport cannot leave it, and
+	// this is a windowed game a player alt-tabs out of.
+	//
+	// HideCursorDuringCapture(false), because holding the move button captures
+	// the mouse, and a cursor hidden during that capture is a cursor
+	// `UpdateCachedDestination` cannot trace under -- which is click-to-move
+	// steering nowhere for as long as the button is held.
+	SetInputMode(FInputModeGameAndUI()
+					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
+					 .SetHideCursorDuringCapture(false));
+}
+
 UCataclysmAbilitySystemComponent* ACataclysmPlayerController::GetCataclysmAbilitySystem() const
 {
 	const ACataclysmPlayerState* PS = GetPlayerState<ACataclysmPlayerState>();
@@ -343,23 +371,23 @@ void ACataclysmPlayerController::ToggleCharacterCreation()
 		// anything, which is why it is the only other thing that closes the
 		// screen.
 		CharacterCreationScreen->RemoveFromParent();
-		SetInputMode(FInputModeGameOnly());
+
+		// BACK TO THE MODE THE GAME PLAYS IN, which since issue #1015 is the
+		// same mode it was already in. This used to set `FInputModeGameOnly`,
+		// and that is what stopped the player moving after closing a screen.
+		ApplyPlayingInputMode();
 		return;
 	}
 
 	// THE FIRST SCREEN IN THIS PROJECT DRIVEN BY CLICKING ITS OWN BUTTONS, and
-	// that needs an input mode the game has never set. The cursor is already
-	// shown -- this controller's constructor sets `bShowMouseCursor` and nothing
-	// turns it off -- but under the default Game Only mode a click goes to the
-	// game rather than to a widget, so every button on this screen would be
-	// inert. The inventory screen does not need this because it shows and does
-	// not take input; its clicks are hit-tested by this controller instead.
+	// that is why the mode matters here at all: the buttons are clicked rather
+	// than hit-tested by this controller, as the inventory screen's are.
 	//
-	// GameAndUI RATHER THAN UIOnly, so that closing the screen with the same key
-	// still works and the game does not stop underneath it.
-	SetInputMode(FInputModeGameAndUI()
-					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
-					 .SetHideCursorDuringCapture(false));
+	// IT IS THE SAME CALL AS CLOSING SINCE ISSUE #1015, and that is the point.
+	// The game plays in GameAndUI, so a screen that needs GameAndUI needs no
+	// change at all -- it is written here so that opening and closing name one
+	// mode rather than two, and a reader is not left wondering which is which.
+	ApplyPlayingInputMode();
 
 	CharacterCreationScreen->AddToViewport();
 }
@@ -414,16 +442,19 @@ void ACataclysmPlayerController::TogglePassiveTree()
 	if (PassiveTreeScreen->IsInViewport())
 	{
 		PassiveTreeScreen->RemoveFromParent();
-		SetInputMode(FInputModeGameOnly());
+
+		// THIS LINE IS THE ONE THE PROJECT OWNER FELT. Issue #1015. It used to
+		// set `FInputModeGameOnly`, so closing the tree after spending a point
+		// left the player unable to move, and reopening the tree brought
+		// movement back because opening set GameAndUI again.
+		ApplyPlayingInputMode();
 		return;
 	}
 
-	// THE SAME INPUT MODE THE CHARACTER CREATOR NEEDS, and for the same reason:
-	// under the default Game Only mode a click goes to the game rather than to a
-	// widget, so every node on this screen would be inert.
-	SetInputMode(FInputModeGameAndUI()
-					 .SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock)
-					 .SetHideCursorDuringCapture(false));
+	// THE SAME CALL AS CLOSING, which is what issue #1015 was about. A click has
+	// to reach a node rather than the floor behind it, and the game already
+	// plays in the mode that allows that.
+	ApplyPlayingInputMode();
 
 	// REFRESHED ON EVERY OPENING, not only when it is made. The character's
 	// level, its damage type and what it has spent can all have moved since the
