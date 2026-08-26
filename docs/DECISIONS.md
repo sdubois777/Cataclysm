@@ -20,6 +20,101 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A node can stop healing removing Fervour, and Fervour can arrive from the passage of time
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`,
+`CataclysmClassResourceAttributeSet.h` and `.cpp`, `CataclysmLeech.cpp`,
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`,
+`CataclysmPlayerClassStats.cpp`, `docs/All_Things_Cataclysm.xlsx` (the `Tags` and
+`Passive Effects` sheets). Applied. Issues #1006, #1007, #1008 and #1009.
+
+### What was decided
+
+Three Masochist keystones change how the Fervour pool moves, and none could be
+built before.
+
+| Node | What it does |
+| :-- | :-- |
+| Wounds That Feed | healing from life leech no longer removes Fervour |
+| Sanguine Ledger | health regeneration no longer removes it, and health regeneration is halved |
+| Low Life | 10 Fervour a second while at or below 35% health |
+
+### "Does not remove" is a flag, not a reduction of the rate
+
+A modifier cannot take a stat to zero, and that is deliberate:
+`UCataclysmStatPipeline::LessMultiplierFloor` is -99, and its own comment says
+why — "one source could otherwise zero a stat or turn it negative". **That floor
+is right and was not moved.**
+
+So a node saying "does not remove Fervour" says it as a separate flag stat,
+`fervour_loss_suppressed`, rather than as a 99% reduction of
+`fervour_lost_to_healing`. It is the same shape The Reckoning's rules took in
+issue #997: a rule the design states outright gets a flag, and the flag is read
+by the code that enforces the rule.
+
+**The flag is asked for with the healing's own tags in hand**, which is what lets
+one stat serve two nodes that suppress two different kinds of healing. It is
+never read off the attribute, because a modifier with a required tag is never
+folded into one.
+
+### Leech healing now says that is what it is
+
+`Keyword.Leech` is new, and leech's health top-up carries it.
+
+**Carrying nothing used to be enough and is not any more.** The only node that
+asked about the source of healing was Staunch, which requires the regeneration
+tag; leech carried nothing, so the tag did not match and the node did not apply.
+Wounds That Feed asks the other way round, and "carries nothing" cannot answer
+it — a future healing source would carry nothing too and would be caught by the
+same row.
+
+**Only the health top-up carries it.** Mana and the energy shield have nothing to
+do with Fervour, and the two branches beside it still carry nothing.
+
+### Fervour that arrives from the passage of time
+
+`fervour_per_second` is the first thing that fills the pool without health having
+moved. Everything else is driven by a health change: lost to damage, spent as a
+cost, restored by healing.
+
+**It runs on `ACataclysmCharacterBase::RegenerationStep`**, which already carries
+regeneration, leech and the health debt. A fifth job there rather than a timer of
+its own, for the reason the debt gave: the step already runs several times a
+second, and a timer per character is one more thing to cancel when one dies.
+
+**It is asked for rather than read off the attribute**, because Low Life's row
+carries a health condition. That is the third time this trap has come up —
+retaliation (#982), attack speed (#1002), and now this — and each time the
+symptom is the same: the row is well formed, the modifier is built, and the value
+is simply never read.
+
+### Sanguine Ledger's wording made three checks widen at once
+
+Its sentence contains **no digits at all**: "Health regeneration no longer removes
+Fervour, but your Health Regeneration is halved."
+
+| Check | What widened |
+| :-- | :-- |
+| the value appears in the node's own words | entries pairing "no longer removes fervour" with 1 and "halved" with -50 |
+| a `more` row is on a node that says it multiplies | the bare word "halved" is accepted |
+| a negative value is on a node that takes something away | "halved" added to the list |
+
+**Each is honest on its own** — halving is a multiplication and it does take
+something away — and needing all three for one node is the signal that its
+wording rather than the checks is the odd thing. **Issue #1009 recommends
+rewording the node to "reduced by 50% (multiplicative)"**, which is how the
+Bulwark tree writes all ten of its multiplying nodes and would need none of the
+three. If that lands, the three widenings come back out with it.
+
+### And the last unit issue #990 named now has an entry
+
+"10 Fervour per second" is a plain count: not a percentage, not a duration.
+`VALUE_FORMS` now carries `{value:g} Fervour` for that stat. A value that is a
+plain count of something else would still need its own entry, so #990 is narrowed
+rather than closed.
+
+---
+
 ## 2026-08-26 — A count of stacks builds on an event and stops counting when the event stops
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStacks.h` and `.cpp`

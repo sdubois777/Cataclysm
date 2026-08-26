@@ -321,6 +321,25 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("health_debt_cleared_only_by_a_kill"),
 		 TEXT("the Masochist's The Reckoning node, as a flat modifier")},
 
+		// Issue #1006. Whether healing stops removing Fervour. Zero for every
+		// class, and two Masochist keystones set it: Sanguine Ledger for
+		// regeneration healing and Wounds That Feed for leech. The row's
+		// required tags are what tell the two apart, so the attribute itself
+		// stays at zero even for a character holding one of them --
+		// `UCataclysmFervour::LossIsSuppressed` asks for the stat with the
+		// healing's tags rather than reading it.
+		{TEXT("fervour_loss_suppressed"),
+		 TEXT("the Masochist's Sanguine Ledger and Wounds That Feed nodes, as "
+			  "flat modifiers")},
+
+		// Issue #1008. How much Fervour arrives every second from nothing
+		// having happened. Zero for every class, and the Masochist's Low Life
+		// keystone is its only source. The attribute stays at zero even for a
+		// character holding it, because its bonus carries a health condition;
+		// `GainPerSecondStep` asks for the stat rather than reading it.
+		{TEXT("fervour_per_second"),
+		 TEXT("the Masochist's Low Life node, as a flat modifier")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the tag that says a health top-up came from leech. Issue #1006.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -133,11 +135,29 @@ void UCataclysmLeech::PayOutStep(AActor* Character, float SecondsInStep)
 			switch (Payment.Pool)
 			{
 			case ECataclysmLeechPool::Health:
+			{
+				// AND THE HEALTH TOP-UP SAYS IT IS LEECH. Issue #1006. It used
+				// to carry no tag at all, which was enough while the only node
+				// asking about the source of healing was Staunch: that one
+				// requires the regeneration tag, so leech carrying nothing meant
+				// the node did not apply. Wounds That Feed asks the other way
+				// round -- "healing from Life Leech does not remove Fervour" --
+				// and carrying nothing cannot answer that, because a future
+				// healing source would carry nothing too and be caught by it.
+				//
+				// HEALTH ONLY, LIKE THE FERVOUR RULE IT FEEDS. Mana and the
+				// energy shield have nothing to do with Fervour, and the two
+				// cases below deliberately still carry nothing.
+				FGameplayTagContainer Leech;
+				Leech.AddTag(UCataclysmFervour::LeechTag());
+
 				UCataclysmRegeneration::TopUp(
 					*AbilitySystem,
 					UCataclysmVitalAttributeSet::GetHealthAttribute(),
-					UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Paid);
+					UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Paid,
+					Leech);
 				break;
+			}
 			case ECataclysmLeechPool::Mana:
 				UCataclysmRegeneration::TopUp(
 					*AbilitySystem,

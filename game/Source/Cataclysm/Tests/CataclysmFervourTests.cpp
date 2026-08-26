@@ -586,6 +586,284 @@ CATACLYSM_TEST(FCataclysmFervourScopedByDamageOverTimeTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Healing that does not remove Fervour
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFervourTest
+{
+	/**
+	 * Give a character the suppression flag, scoped to one kind of healing.
+	 *
+	 * WRITTEN AS A STAT INPUT AND NOT AS AN ATTRIBUTE, because that is how the
+	 * game gets it: `UCataclysmPlayerClassStats::ApplyTo` records a passive
+	 * node's modifiers here, and a modifier with a required tag is never folded
+	 * into the attribute, since the attribute is worked out with no tags in
+	 * hand. Setting the attribute instead would be testing something the game
+	 * never does.
+	 */
+	void SuppressFervourLossFor(const FScopedCharacter& Character,
+								const FGameplayTag& Healing)
+	{
+		FCataclysmStatModifier Flag;
+		Flag.Bucket = ECataclysmStatBucket::Flat;
+		Flag.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flag.Value = 1.0f;
+		Flag.RequiredTags.AddTag(Healing);
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Flag);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::LossSuppressedStat), Inputs);
+		Character.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A container holding one tag, for a call that takes healing's tags. */
+	FGameplayTagContainer Only(const FGameplayTag& Tag)
+	{
+		FGameplayTagContainer Container;
+		Container.AddTag(Tag);
+		return Container;
+	}
+}
+
+CATACLYSM_TEST(FCataclysmFervourLossSuppressedTest,
+	"Cataclysm.Fervour.HealingCanBeStoppedFromRemovingFervour")
+{
+	using namespace CataclysmFervourTest;
+	using Fervour = UCataclysmFervour;
+
+	// THE MASOCHIST'S SANGUINE LEDGER AND WOUNDS THAT FEED KEYSTONES. Issues
+	// #1006 and #1007. One says "Health regeneration no longer removes Fervour"
+	// and the other "Healing from Life Leech does not remove Fervour", and they
+	// set the same flag with a different tag on the row.
+	//
+	// A FLAG RATHER THAN A REDUCTION, and this is where that matters. The stat
+	// pipeline clamps a Less multiplier at -99 so that no modifier can zero a
+	// stat, which is a rule worth keeping; a node that says "does not remove"
+	// therefore cannot be written as a reduction of the rate at all.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCharacter Character(World);
+	Character.GiveTheMasochistGenerator();
+	Character.SetHealth(500.0f, 1'000.0f);
+	Character.SetFervour(50.0f);
+
+	// WITH NO SUCH NODE, HEALING REMOVES FERVOUR. Asserted first, because every
+	// check below would pass just as well if healing never removed any.
+	TestEqual(TEXT("100 health restored removes 10 Fervour"),
+			  Fervour::RemoveForHealing(Character.AbilitySystem, 100.0f,
+										Only(Fervour::RegenerationTag())),
+			  -10.0f, 0.001f);
+	TestEqual(TEXT("leaving 40"), Character.Fervour(), 40.0f, 0.001f);
+
+	// NOW GIVE IT SANGUINE LEDGER: the flag, scoped to regeneration.
+	SuppressFervourLossFor(Character, Fervour::RegenerationTag());
+
+	TestEqual(TEXT("regeneration now removes nothing"),
+			  Fervour::RemoveForHealing(Character.AbilitySystem, 100.0f,
+										Only(Fervour::RegenerationTag())),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("and the bar is untouched"), Character.Fervour(), 40.0f,
+			  0.001f);
+
+	// AND LEECH STILL REMOVES IT, which is the half that makes the tag do work.
+	// A flag that suppressed every kind of healing would pass every assertion
+	// above and would be a different node.
+	TestEqual(TEXT("but leech healing still removes its 10"),
+			  Fervour::RemoveForHealing(Character.AbilitySystem, 100.0f,
+										Only(Fervour::LeechTag())),
+			  -10.0f, 0.001f);
+	TestEqual(TEXT("leaving 30"), Character.Fervour(), 30.0f, 0.001f);
+
+	// AND THE OTHER WAY ROUND FOR WOUNDS THAT FEED.
+	SuppressFervourLossFor(Character, Fervour::LeechTag());
+
+	TestEqual(TEXT("scoped to leech, leech removes nothing"),
+			  Fervour::RemoveForHealing(Character.AbilitySystem, 100.0f,
+										Only(Fervour::LeechTag())),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("while regeneration removes its 10 again"),
+			  Fervour::RemoveForHealing(Character.AbilitySystem, 100.0f,
+										Only(Fervour::RegenerationTag())),
+			  -10.0f, 0.001f);
+	TestEqual(TEXT("leaving 20"), Character.Fervour(), 20.0f, 0.001f);
+
+	// AND NOTHING STOPS FERVOUR ARRIVING. The flag is asked about only on the
+	// way out; a node meant to protect the bar must not quietly stop it filling.
+	TestEqual(TEXT("and a health cost still fills it"),
+			  Fervour::GainFromHealthCost(Character.AbilitySystem, 100.0f),
+			  10.0f, 0.001f);
+	TestEqual(TEXT("back to 30"), Character.Fervour(), 30.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmLeechHealingSaysItIsLeechTest,
+	"Cataclysm.Fervour.LeechHealingSaysThatIsWhatItIs")
+{
+	using namespace CataclysmFervourTest;
+	using Fervour = UCataclysmFervour;
+
+	// LEECH USED TO CARRY NO TAG AT ALL. Issue #1006. That was enough while the
+	// only node asking about the source of healing was Staunch, which requires
+	// the regeneration tag: leech carried nothing, so it did not match. Wounds
+	// That Feed asks the other way round, and carrying nothing cannot answer it.
+	//
+	// WHAT THIS PROVES THAT THE TEST ABOVE DOES NOT. That
+	// `UCataclysmLeech::PayOutStep` really passes the tag, rather than the rule
+	// working only when a test passes it by hand.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCharacter Character(World);
+	Character.GiveTheMasochistGenerator();
+	Character.SetHealth(500.0f, 1'000.0f);
+	Character.SetFervour(50.0f);
+
+	// A HIT WORTH LEECHING, and a life leech rate to leech it with.
+	Character.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), 10.0f);
+	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f);
+
+	// PAID OUT OVER ITS WHOLE WINDOW, so the whole instalment lands.
+	for (float Elapsed = 0.0f;
+		 Elapsed < UCataclysmLeech::PayoutSeconds + 0.001f;
+		 Elapsed += UCataclysmRegeneration::StepSeconds)
+	{
+		UCataclysmLeech::PayOutStep(Character.Actor,
+									UCataclysmRegeneration::StepSeconds);
+	}
+
+	const float AfterPlainLeech = Character.Fervour();
+	TestTrue(FString::Printf(TEXT("leech healing removed Fervour (%.2f of 50)"),
+							 AfterPlainLeech),
+			 AfterPlainLeech < 50.0f);
+
+	// NOW SUPPRESS IT FOR LEECH, and pay a second instalment of the same size.
+	SuppressFervourLossFor(Character, Fervour::LeechTag());
+	Character.SetFervour(50.0f);
+	Character.SetHealth(500.0f, 1'000.0f);
+	UCataclysmLeech::NoteHit(Character.AbilitySystem, 1'000.0f);
+
+	for (float Elapsed = 0.0f;
+		 Elapsed < UCataclysmLeech::PayoutSeconds + 0.001f;
+		 Elapsed += UCataclysmRegeneration::StepSeconds)
+	{
+		UCataclysmLeech::PayOutStep(Character.Actor,
+									UCataclysmRegeneration::StepSeconds);
+	}
+
+	TestEqual(TEXT("and with the node it removes nothing"),
+			  Character.Fervour(), 50.0f, 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fervour that arrives from the passage of time
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFervourTest
+{
+	/** Give a character Low Life: Fervour a second below a health threshold. */
+	void GiveLowLife(const FScopedCharacter& Character, float PerSecond,
+					 float AtOrBelowPercent)
+	{
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerSecond;
+		Rate.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Rate.ConditionValue = AtOrBelowPercent;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Rate);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::PerSecondStat), Inputs);
+		Character.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+CATACLYSM_TEST(FCataclysmFervourPerSecondTest,
+	"Cataclysm.Fervour.FervourCanArriveEverySecondWhileHurt")
+{
+	using namespace CataclysmFervourTest;
+	using Fervour = UCataclysmFervour;
+
+	// THE MASOCHIST'S LOW LIFE KEYSTONE. Issue #1008: "While at or below 35%
+	// health you gain 10 Fervour per second."
+	//
+	// THE FIRST THING THAT FILLS THE POOL WITHOUT HEALTH HAVING MOVED. Every
+	// other way in and out of Fervour is driven by a health change.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCharacter Character(World);
+	Character.SetFervour(0.0f);
+
+	// A CHARACTER WITHOUT THE NODE GAINS NOTHING, however hurt it is. Without
+	// this the checks below would pass just as well if every character gained
+	// Fervour on every step.
+	Character.SetHealth(100.0f, 1'000.0f);
+	TestEqual(TEXT("a character without the node gains nothing"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 1.0f), 0.0f,
+			  0.001f);
+
+	GiveLowLife(Character, 10.0f, 35.0f);
+
+	// AT 10% HEALTH, WELL INSIDE THE THRESHOLD.
+	TestEqual(TEXT("a whole second is ten"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 1.0f), 10.0f,
+			  0.001f);
+	TestEqual(TEXT("and the bar holds ten"), Character.Fervour(), 10.0f,
+			  0.001f);
+
+	// AND A QUARTER OF A SECOND IS A QUARTER OF IT, which is the step the
+	// regeneration timer really runs at.
+	TestEqual(TEXT("a quarter second is two and a half"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 0.25f), 2.5f,
+			  0.001f);
+
+	// EXACTLY ON THE THRESHOLD STILL COUNTS, because the design writes "at or
+	// below".
+	Character.SetHealth(350.0f, 1'000.0f);
+	TestEqual(TEXT("exactly 35% still gains"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 1.0f), 10.0f,
+			  0.001f);
+
+	// AND ABOVE IT NOTHING ARRIVES. Nothing else changed: the health moved.
+	const float BeforeHealing = Character.Fervour();
+	Character.SetHealth(360.0f, 1'000.0f);
+	TestEqual(TEXT("just above 35% gains nothing"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 1.0f), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and the bar is unchanged"), Character.Fervour(),
+			  BeforeHealing, 0.001f);
+
+	// A FULL BAR TAKES NO MORE, which is the ordinary case for a character
+	// standing at low health with this keystone: ten a second fills it in ten.
+	Character.SetHealth(100.0f, 1'000.0f);
+	Character.SetFervour(100.0f);
+	TestEqual(TEXT("a full bar takes no more"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 1.0f), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and stays full"), Character.Fervour(), 100.0f, 0.001f);
+
+	// AND A STEP OF NO TIME GRANTS NOTHING.
+	Character.SetFervour(0.0f);
+	TestEqual(TEXT("a step of no time grants nothing"),
+			  Fervour::GainPerSecondStep(Character.AbilitySystem, 0.0f), 0.0f,
+			  0.001f);
+
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS

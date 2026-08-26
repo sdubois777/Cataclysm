@@ -237,6 +237,54 @@ public:
 	FGameplayAttributeData HealthDebtClearedOnlyByAKill;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
 
+	/**
+	 * Whether healing stops removing Fervour. Issue #1006. Zero for no, above
+	 * zero for yes.
+	 *
+	 * TWO MASOCHIST KEYSTONES SET IT AND THEY SET IT FOR DIFFERENT HEALING.
+	 * Sanguine Ledger reads "Health regeneration no longer removes Fervour" and
+	 * Wounds That Feed reads "Healing from Life Leech does not remove Fervour".
+	 * They are one stat because they are one rule; what tells them apart is the
+	 * `Required Tags` on the row, matched against the tags the healing carries.
+	 *
+	 * WHICH IS WHY IT IS ASKED FOR THROUGH THE STAT PIPELINE and never read off
+	 * this attribute. `UCataclysmFervour::Move` asks for it with the healing's
+	 * own tags in hand, exactly as it already asks for the rate beside it. The
+	 * attribute holds the answer for a character with no healing in hand, which
+	 * is nobody, so a plain read would be wrong in both directions.
+	 *
+	 * A FLAG RATHER THAN A REDUCTION OF THE RATE, and the reason is a rule the
+	 * pipeline states outright. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so no modifier can take a stat to zero: "one source could otherwise
+	 * zero a stat or turn it negative". That floor is right. A node that says
+	 * "does not remove" is not a 99% reduction, so it needs to say so separately.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourLossSuppressed)
+	FGameplayAttributeData FervourLossSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
+
+	/**
+	 * How much Fervour this character gains every second, from nothing having
+	 * happened at all. Issue #1008.
+	 *
+	 * THE FIRST THING THAT FILLS THE POOL ON A TIMER. Everything else that moves
+	 * Fervour moves it because health moved: lost to damage, spent as a cost,
+	 * restored by healing. The Masochist's Low Life keystone is its only source:
+	 * "While at or below 35% health you gain 10 Fervour per second."
+	 *
+	 * A RATE PER SECOND, NOT PER STEP. `ACataclysmCharacterBase::RegenerationStep`
+	 * multiplies it by the length of the step it is on, the same way it already
+	 * does for health, mana and energy shield regeneration.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE, because its one source carries a
+	 * health condition and a conditional bonus is never folded into an
+	 * attribute. A plain read would answer zero for every character for ever and
+	 * nothing at run time would report it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourPerSecond)
+	FGameplayAttributeData FervourPerSecond;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerSecond)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -255,4 +303,6 @@ protected:
 	UFUNCTION() void OnRep_HealthOwed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthDebtDelayExtension(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthDebtClearedOnlyByAKill(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourLossSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
 };
