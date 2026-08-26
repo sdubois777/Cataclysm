@@ -75,12 +75,12 @@ const TCHAR* ACataclysmGatekeeperCharacter::DeathAnimationNames
 // design gives this creature no stun at all, and its threat is the size of the
 // hit rather than the time it takes away.
 const TCHAR* ACataclysmGatekeeperCharacter::CleaveTags =
-	TEXT("Type.AOE.PointBlank, Type.Strike");
+	TEXT("Type.AOE.PointBlank, Type.Strike, Type.Melee");
 
 // THE SAME SHAPE AT FOUR TIMES THE WEIGHT. Identical tags because it is the same
 // kind of blow: a full circle at the creature's feet rather than a cone.
 const TCHAR* ACataclysmGatekeeperCharacter::SoulHarvestTags =
-	TEXT("Type.AOE.PointBlank, Type.Strike");
+	TEXT("Type.AOE.PointBlank, Type.Strike, Type.Melee");
 
 /**
  * Seconds between the boss's swings, for tuning one while playing.

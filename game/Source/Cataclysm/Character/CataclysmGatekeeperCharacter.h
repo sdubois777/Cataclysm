@@ -734,6 +734,24 @@ private:
 	/** Everything Dread Cleave and Soul Harvest have in common: sweep, hit. */
 	void StrikeAround(float RadiusCm, float AngleDegrees, float DamagePercent);
 
+public:
+	/**
+	 * What this boss's two attacks ARE, as gameplay tags.
+	 *
+	 * PUBLIC SINCE ISSUE #1012, AND BEING PRIVATE HAD A COST. Every other
+	 * creature's tag list is public and named in
+	 * `CataclysmEnemyAbilityTagTests.cpp`, in a list whose own comment calls it
+	 * "every ability tag list in the game". These two could not be reached, so
+	 * they were not in it -- and that list then read as complete while missing
+	 * two of the seven. An audit of which enemy attacks count as melee had to
+	 * read the source rather than trust it.
+	 *
+	 * BOTH ARE `Type.AOE.PointBlank, Type.Strike, Type.Melee`, which is a full
+	 * circle at the creature's feet delivered by a body. The project owner
+	 * decided on 2026-08-26 that such an attack is melee: every boss attack in
+	 * the game is one of these, so excluding them would leave a melee-scoped
+	 * defence stopping ordinary swings and nothing any boss does.
+	 */
 	static const TCHAR* CleaveTags;
 	static const TCHAR* SoulHarvestTags;
 };
