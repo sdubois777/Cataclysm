@@ -20,6 +20,124 @@ applied or still pending.
 
 ---
 
+## 2026-08-26 — A debt may be pushed out, but only so far, and one keystone's debt is never taken at all
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmClassResourceAttributeSet.h` and `.cpp`, `CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`,
+`CataclysmEnemyCharacter.cpp`, `CataclysmPassiveTree.cpp`,
+`CataclysmPlayerClassStats.cpp`, `tools/generate_datatables.py`,
+`docs/All_Things_Cataclysm.xlsx`. Applied. Issues #994, #995, #996, #997.
+
+### What was decided
+
+The three remaining Blood Tithe nodes were built, which finishes the branch the
+health debt was added for.
+
+| Node | What it now does |
+| :-- | :-- |
+| Compound Interest | damage grows with what the character owes, in whole 5% steps |
+| Rolling Debt | paying a health cost while something is owed pushes that debt further out |
+| The Reckoning | costs are never taken; the debt only ends with a kill, and kills the character if it passes their health |
+
+### "To a maximum of 3 seconds" caps the whole debt, not one payment
+
+Rolling Debt reads "extends the delay on what is owed by 0.5 seconds per point,
+to a maximum of 3 seconds". The node holds six points and six times half a second
+is exactly three, so **the cap and the full-point value are the same number**,
+and the sentence can be read two ways. They agree on a single payment and
+disagree on repeated ones.
+
+**The total is capped.** A debt never falls due more than three seconds later
+than it would have. At six points one payment reaches the cap; at one point six
+payments do.
+
+**The reason is that the other reading makes the clause say nothing**, and lets a
+character who keeps paying health costs push a debt out for ever. That matters
+rather than being theoretical, because Compound Interest pays more the larger the
+debt is: an unbounded delay would be an unbounded damage bonus that never has to
+be paid for.
+
+**Two shipped games point the same way.** In Diablo 4 several Barbarian skills
+extend Berserking — Furious Double Swing grants two more seconds when cast while
+Berserking, Enhanced War Cry grants four — and the duration is capped at 5
+seconds, or 10 with the Unconstrained passive, so the extensions do not
+accumulate past a ceiling. Path of Exile's Soul Eater had no cap on its stacks
+for years and Grinding Gear Games added a hard limit of 45 in 3.24; its duration
+also cannot be refreshed at all while the buff is up, which is the strictest form
+of the same rule.
+
+Sources: <https://us.forums.blizzard.com/en/d4/t/berserking-questions/82208>,
+<https://www.gfinityesports.com/article/diablo-4-berserking>,
+<https://www.poewiki.net/wiki/Soul_Eater>.
+
+**This is a judgement rather than something the design states**, so issue #996
+carries it for the project owner to confirm. Changing the answer is one line: the
+cap is compared against a running total, and the other reading is the same code
+with the total dropped.
+
+### The Reckoning is one flag for three rules
+
+"Health costs are never taken" is a deferred share of 100, which already existed.
+The other three sentences — the debt is never taken on a timer, a kill clears it,
+and a debt past current health kills — are carried by **one** new stat rather
+than three.
+
+**Because the design states them as one mechanic.** A debt that never falls due
+has to end some other way, and the same sentence supplies both the end and the
+price of not reaching it. Three separate flags would allow a debt that never
+falls due, is never cleared and never kills, which the design describes nowhere
+and which no node would set.
+
+### Deferring the whole cost is not the same as The Reckoning
+
+Deferred Payment at its full ten points also defers 100% of a cost, and its own
+sentence says the cost "is taken 3 seconds later". So the flag is a second stat
+rather than a larger deferred share, and a test pins the difference.
+
+### What is owed is a different reading of health from what is missing
+
+Both are percentages of maximum health and they are independent. A character that
+deferred a cost owes health it is still standing on, so it can be at full health
+and owe a fifth of it; one that paid the same cost outright is a fifth down and
+owes nothing. They are separate `Scale` names and separate enumerators, and the
+check tying a workbook row to a node's own words now requires the word "owe" or
+the word "missing" as well as "for every", so a row cannot sit on the wrong node
+and pass.
+
+### A debt larger than the character's whole health is a real state
+
+Nothing caps what is owed at maximum health, and The Reckoning is built on that.
+So the scale keeps counting past 100%: a bonus that stopped there would quietly
+make the largest debts worth no more than a full one.
+
+### The lethal rule kills explicitly rather than by emptying health
+
+Health is set to zero and `HandleDeath` is called, which is the pair
+`UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` uses. That matters
+because a direct attribute write does **not** run the gameplay effect hook those
+notifications live in — which is issue #971's open question — so a rule that only
+took health to zero would leave a character standing at zero health and not dead.
+This node therefore does not depend on #971 being answered, and does not answer
+it.
+
+### Two values are stated in words and the check now says so
+
+`test_every_value_appears_in_the_nodes_own_description` ties every authored
+number to a digit in the node's own sentence. The Reckoning has no digits for two
+of its rows: "never taken" is 100 and "cleared only by killing an enemy" is 1.
+Those two rows are listed with **the words that state them and the value those
+words mean**, so a workbook changed to defer half a cost, or a node reworded to
+take costs after all, still fails. Rolling Debt needed a smaller change of the
+same kind: its value is in seconds, and the check appended a percent sign to
+every number. Issue #990 is the general form and is not closed by this — a value
+that is a plain count, such as Low Life's "10 Fervour per second", still has
+nowhere to say so.
+
+---
+
 ## 2026-08-26 — A character can owe health, and the debt is one amount with one due time
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and

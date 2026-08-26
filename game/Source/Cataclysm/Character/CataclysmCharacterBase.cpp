@@ -78,6 +78,21 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// or owed and not yet due -- and it is returned for tests rather than for
 	// this caller.
 	UCataclysmHealthDebt::SettleIfDue(this);
+
+	// AND A DEBT THAT NEVER FALLS DUE KILLS INSTEAD, ON THE SAME TIMER. Issue
+	// #997. The Masochist's The Reckoning keystone reads "If your debt ever
+	// exceeds your current health, you die", and "ever" is what a step that runs
+	// several times a second is for.
+	//
+	// AFTER THE SETTLE RATHER THAN BEFORE IT, so an ordinary debt falling due
+	// this step is taken first and this sees the health it left behind. The two
+	// never both act on one character -- a Reckoning debt returns early from the
+	// settle -- so the order changes nothing today, and it is the order that
+	// stays right if that ever stops being true.
+	//
+	// ITS RETURN VALUE IS DROPPED, the same as the settle above and for the same
+	// reason: false is the ordinary answer and it is returned for tests.
+	UCataclysmHealthDebt::KillIfDebtExceedsHealth(this);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

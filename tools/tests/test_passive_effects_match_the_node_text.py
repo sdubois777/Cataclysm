@@ -174,7 +174,15 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: costs is not taken when the skill is used. It is taken 3 seconds later."
 #: A `flat` row, because the stat it supplies is zero for every class and
 #: this node is its only source. Issue #991.
-AUTHORED_ROWS = 61
+#:
+#: AND BY SEVEN, FOR THE THREE NODES THAT FINISH THE BLOOD TITHE BRANCH.
+#: Compound Interest is two damage rows whose size grows with what the character
+#: owes, issue #994. Rolling Debt is one `flat` row, the seconds one further
+#: payment pushes a debt out, issue #995. The Reckoning is four: a `flat` 100
+#: deferring the whole cost, the two damage stats in the `more` bucket growing
+#: with what is owed, and a `flat` flag for the rules that a debt is never taken
+#: on a timer, is cleared by a kill, and kills a character it passes. Issue #997.
+AUTHORED_ROWS = 68
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -247,7 +255,15 @@ AUTHORED_ROWS = 61
 #: AND TO 48 FOR ONE MORE, Deferred Payment, the first node built on a
 #: character being able to owe health. 48 of 293 altogether and 44 of the
 #: Masochist tree's own 74. Issue #991.
-AUTHORED_NODES = 48
+#:
+#: AND TO 51 FOR THREE MORE, which finish the Blood Tithe branch: Compound
+#: Interest, whose damage grows with what the character owes; Rolling Debt,
+#: which pushes an outstanding debt further out every time another cost is
+#: paid; and The Reckoning, whose debt is never taken on a timer, is cleared
+#: only by a kill, and kills the character if it passes their health. 51 of
+#: 293 altogether and 47 of the Masochist tree's own 74. Issues #994, #995
+#: and #997.
+AUTHORED_NODES = 51
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -467,9 +483,17 @@ def test_a_condition_is_actually_used(effects):
 #: no number in the sentence to match it against. Looking for "1" in that
 #: description would find the "1%" of its own value and pass for the wrong
 #: reason, which is worse than not checking.
+#: THE WORDS ARE A TUPLE AND ALL OF THEM MUST APPEAR, since issue #994 added a
+#: second scale about health. "For every 5% of your maximum health that is
+#: MISSING" and "for every 5% of your maximum health you currently OWE" are two
+#: different states of one character -- a character that deferred a cost owes
+#: health it is still standing on -- and they share every word but the last. A
+#: single phrase of "for every" would let either row sit on either node and pass,
+#: which is the drift this whole file exists to catch.
 SCALE_WORDS = {
-    "health_missing": ("for every", "{value:g}%"),
-    "class_resource_held": ("for each point of fervour", None),
+    "health_missing": (("for every", "missing"), "{value:g}%"),
+    "class_resource_held": (("for each point of fervour",), None),
+    "health_owed": (("for every", "owe"), "{value:g}%"),
 }
 
 
@@ -502,11 +526,13 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
         expected_words, value_form = SCALE_WORDS[scale]
 
         words = nodes[row["Node"]]["Description"].lower()
-        assert expected_words in words, (
-            f"{row['Node']} carries the scale {scale!r} and its description "
-            f"does not say {expected_words!r}:\n"
-            f"    {nodes[row['Node']]['Description']}"
-        )
+        for phrase in expected_words:
+            assert phrase in words, (
+                f"{row['Node']} carries the scale {scale!r} and its description "
+                f"does not say {phrase!r}:\n"
+                f"    {nodes[row['Node']]['Description']}\n"
+                f"All of {list(expected_words)} have to be in it."
+            )
 
         step = float(row["ScaleStep"])
         assert step > 0.0, (
@@ -554,6 +580,44 @@ def test_a_scale_is_actually_used(effects):
     )
 
 
+#: Stats whose value a node writes in units other than a percentage.
+#:
+#: EVERY OTHER VALUE IN THE SHEET IS A PERCENTAGE and was until issue #995, so
+#: the check appended a percent sign to every number it looked for. Rolling Debt
+#: is the first row that is not: "extends the delay on what is owed by 0.5
+#: SECONDS per point". Looking for "0.5%" in that sentence fails on a perfectly
+#: correct row, which is the same shape `CONDITION_WORDS` already carries units
+#: for. Issue #990 is the general form of this and is not closed by it: a value
+#: that is a plain count, like Low Life's "10 Fervour per second", still has
+#: nowhere to say so.
+VALUE_FORMS = {
+    "health_debt_delay_extension": "{value:g} second",
+}
+
+#: Rows whose value the node states in WORDS instead of digits.
+#:
+#: THE ONLY WAY TO WRITE "NEVER" AS A NUMBER IS TO WRITE THE NUMBER. The
+#: Reckoning reads "Health costs are never taken", which is a deferred share of
+#: 100, and "the debt is cleared only by killing an enemy", which is a flag of 1.
+#: Neither figure is in the sentence, so no search of the description can find
+#: it, and refusing the row would leave the tree's last Blood Tithe keystone
+#: unauthorable.
+#:
+#: THE EXEMPTION STILL CHECKS SOMETHING, AND THAT IS THE POINT OF ITS SHAPE. It
+#: names the words that state the value AND the value those words mean, so a
+#: workbook changed to defer half a cost, or a node reworded to take costs after
+#: all, still fails. What it gives up is only the arithmetic tie between a digit
+#: in the sheet and a digit in the sentence, because there is no digit.
+#:
+#: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
+VALUE_IN_WORDS = {
+    ("Masochist_keystone_bt_kA", "deferred_health_cost_share"):
+        ("never taken", 100.0),
+    ("Masochist_keystone_bt_kA", "health_debt_cleared_only_by_a_kill"):
+        ("cleared only by killing an enemy", 1.0),
+}
+
+
 def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
     """The number in the workbook is the number the design document states.
 
@@ -564,6 +628,24 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
         node = nodes[row["Node"]]
         value = float(row["ValuePerPoint"])
 
+        # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
+        # See `VALUE_IN_WORDS` for why two rows are written that way and what
+        # this still catches.
+        stated = VALUE_IN_WORDS.get((row["Node"], row["Stat"]))
+        if stated is not None:
+            phrase, means = stated
+            assert phrase in node["Description"].lower(), (
+                f"{row['Node']}: the workbook states {row['Stat']} in words "
+                f"rather than digits, as {phrase!r}, and the node says:\n"
+                f"    {node['Description']}\n"
+                "Either the node was reworded or the exemption is stale."
+            )
+            assert value == pytest.approx(means), (
+                f"{row['Node']}: {phrase!r} means {means:g} of {row['Stat']} "
+                f"and the workbook grants {value:g}."
+            )
+            continue
+
         # "3" and not "3.0", because a description writes 3% and 1.5%. `%g`
         # drops a trailing zero and keeps a real fraction.
         #
@@ -571,7 +653,11 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
         # takes something away says "reduced by 5% per point" while the sheet
         # writes -5: the pipeline sums increases, so a reduction is a negative
         # increase. The sign is checked by the test below instead.
-        printed = f"{abs(value):g}%"
+        #
+        # AND IN THE STAT'S OWN UNITS. Nearly every value is a percentage, and
+        # `VALUE_FORMS` names the ones that are not.
+        printed = VALUE_FORMS.get(row["Stat"], "{value:g}%").format(
+            value=abs(value))
         assert printed in node["Description"], (
             f"{row['Node']}: the workbook grants {printed} of "
             f"{row['Stat']} per point, and the node says:\n"

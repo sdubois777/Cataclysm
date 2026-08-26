@@ -256,6 +256,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("deferred_health_cost_share"),
 			 Resource::GetDeferredHealthCostShareAttribute()},
 
+			// AND HOW FAR ONE FURTHER PAYMENT PUSHES A DEBT OUT, in seconds.
+			// Issue #995. Zero for every class, and the Masochist's Rolling
+			// Debt node is its only source.
+			{TEXT("health_debt_delay_extension"),
+			 Resource::GetHealthDebtDelayExtensionAttribute()},
+
+			// AND WHETHER A DEBT IS NEVER TAKEN ON A TIMER AT ALL. Issue #997.
+			// Zero for every class, and the Masochist's The Reckoning keystone
+			// is its only source.
+			{TEXT("health_debt_cleared_only_by_a_kill"),
+			 Resource::GetHealthDebtClearedOnlyByAKillAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

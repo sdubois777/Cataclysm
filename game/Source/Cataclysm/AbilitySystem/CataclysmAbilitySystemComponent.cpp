@@ -387,6 +387,30 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// guards only a value written before that ran, the same way
 		// `AddedHealthCostPercent` guards its own.
 		State.ClassResourceHeld = FMath::Max(0.0f, Resource->GetClassResource());
+
+		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
+		// Issue #994. Compound Interest grows with it: "+1% increased damage per
+		// point for every 5% of your maximum health you currently owe."
+		//
+		// BOTH SETS ARE NEEDED, WHICH IS WHY IT IS NESTED HERE. The amount owed
+		// is on the class resource set and the maximum it is measured against is
+		// on the vital set, and a component missing either cannot answer at all.
+		// An absent vital set and a maximum health of nothing both leave the
+		// reading at its negative default rather than dividing by nothing.
+		if (const UCataclysmVitalAttributeSet* ForOwed =
+				GetSet<UCataclysmVitalAttributeSet>())
+		{
+			if (ForOwed->GetMaxHealth() > 0.0f)
+			{
+				// FLOORED AT ZERO AND NOT CAPPED. The attribute set already
+				// floors what is owed; there is no ceiling to apply, because a
+				// debt larger than the character's whole pool is exactly what
+				// The Reckoning is about.
+				State.HealthOwedPercent =
+					FMath::Max(0.0f, Resource->GetHealthOwed())
+					/ ForOwed->GetMaxHealth() * 100.0f;
+			}
+		}
 	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
@@ -463,6 +487,44 @@ bool UCataclysmAbilitySystemComponent::IsHealthDebtDue() const
 void UCataclysmAbilitySystemComponent::ClearHealthDebtDue()
 {
 	HealthDebtDueAtSeconds = -1.0f;
+
+	// AND THE NEXT DEBT GETS ITS WHOLE ALLOWANCE. Issue #995. The cap Rolling
+	// Debt states is how far ONE debt may be pushed out; a debt that has been
+	// settled or cleared is finished, and what is incurred afterwards is a new
+	// one. Leaving the total behind would make the second debt of a fight
+	// unextendable for no reason a player could see.
+	HealthDebtExtensionAppliedSeconds = 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::ExtendHealthDebtDueBy(
+	float Seconds, float MostAltogether)
+{
+	// NOTHING OUTSTANDING MEANS NOTHING TO PUSH. Issue #995. The node says
+	// "paying a health cost WHILE ONE IS STILL OWED", so a payment made with no
+	// debt in hand does nothing at all, and setting a due time here would invent
+	// a debt of nothing that then had to be cleared.
+	//
+	// NO WORLD MEANS NO CLOCK, the same refusal `NoteHealthDebtDueIn` makes.
+	if (!GetWorld() || HealthDebtDueAtSeconds < 0.0f || Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// AND NO MORE THAN THE ALLOWANCE THIS DEBT HAS LEFT. The design caps how
+	// far a debt may be pushed out altogether rather than how far one payment
+	// may push it, so the remaining allowance is the cap minus what previous
+	// payments already used. Issue #996 carries the reading and its sources.
+	const float Remaining =
+		FMath::Max(0.0f, MostAltogether) - HealthDebtExtensionAppliedSeconds;
+	const float Moved = FMath::Min(Seconds, Remaining);
+	if (Moved <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	HealthDebtDueAtSeconds += Moved;
+	HealthDebtExtensionAppliedSeconds += Moved;
+	return Moved;
 }
 
 void UCataclysmAbilitySystemComponent::NoteForeignDamageTaken()

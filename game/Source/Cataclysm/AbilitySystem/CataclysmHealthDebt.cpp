@@ -8,9 +8,16 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmCharacterBase.h"
 
 const TCHAR* UCataclysmHealthDebt::DeferredShareStat =
 	TEXT("deferred_health_cost_share");
+
+const TCHAR* UCataclysmHealthDebt::DelayExtensionStat =
+	TEXT("health_debt_delay_extension");
+
+const TCHAR* UCataclysmHealthDebt::ClearedOnlyByAKillStat =
+	TEXT("health_debt_cleared_only_by_a_kill");
 
 float UCataclysmHealthDebt::DeferredSharePercent(
 	const UAbilitySystemComponent* AbilitySystem)
@@ -91,6 +98,22 @@ float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
 		return 0.0f;
 	}
 
+	// A RECKONING DEBT NEVER FALLS DUE, whatever the clock says. Issue #997.
+	// The keystone reads "Health costs are never taken. They accumulate as a
+	// debt... and the debt is cleared only by killing an enemy."
+	//
+	// BEFORE THE AMOUNT IS READ AND WITHOUT CLEARING THE DUE TIME, deliberately.
+	// Clearing it would be the ordinary path saying "settled", and this debt has
+	// not been. `ClearOnKill` is the only thing that ends it, and
+	// `KillIfDebtExceedsHealth` is what happens if nothing does.
+	//
+	// NOT THE SAME TEST AS A DEFERRED SHARE OF 100. Deferred Payment at its full
+	// ten points also defers the whole cost and its debt still falls due here.
+	if (IsClearedOnlyByAKill(AbilitySystem))
+	{
+		return 0.0f;
+	}
+
 	const FGameplayAttribute Owed =
 		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
 	if (!AbilitySystem->HasAttributeSetForAttribute(Owed))
@@ -115,9 +138,9 @@ float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
 	// current health from emptying it (issue #986) applies when the cost is
 	// worked out, not when a deferred part of it settles. By then it is a debt,
 	// and the design is explicit that a debt may kill: The Reckoning reads "If
-	// your debt ever exceeds your current health, you die." That keystone's own
-	// lethal rule is not built here, but nothing should be added that would
-	// contradict it later.
+	// your debt ever exceeds your current health, you die." That keystone's debt
+	// never reaches this line at all -- it returned above -- so the two rules do
+	// not meet, and this one stays a plain charge that may empty a character.
 	AbilitySystem->ApplyModToAttribute(
 		UCataclysmVitalAttributeSet::GetHealthAttribute(),
 		EGameplayModOp::Additive, -Amount);
@@ -134,4 +157,205 @@ float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
 		   *Character->GetName(), Amount);
 
 	return Amount;
+}
+
+float UCataclysmHealthDebt::DelayExtensionSeconds(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Extension =
+		Resource::GetHealthDebtDelayExtensionAttribute();
+
+	// AN ABILITY SYSTEM WITHOUT THE SET EXTENDS NOTHING, the same refusal
+	// `DeferredSharePercent` makes and for the same reason: every player carries
+	// the class resource set and no enemy does.
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Extension))
+	{
+		return 0.0f;
+	}
+
+	// FLOORED AT ZERO. The set's PreAttributeChange already floors it, so this
+	// guards only a value written before that ran.
+	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Extension));
+}
+
+float UCataclysmHealthDebt::ExtendForPaymentWhileOwing(
+	UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const float Extension = DelayExtensionSeconds(AbilitySystem);
+	if (Extension <= 0.0f)
+	{
+		// NO POINT IN ROLLING DEBT, which is every character but one build of
+		// one class. Nothing below this line runs for them.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Owed =
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Owed)
+		|| AbilitySystem->GetNumericAttribute(Owed) <= 0.0f)
+	{
+		// "WHILE ONE IS STILL OWED" IS THE WHOLE CONDITION. A character that
+		// owes nothing has no delay to extend, which is the ordinary case for
+		// the first payment of a fight.
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+
+	const float Moved =
+		Cataclysm->ExtendHealthDebtDueBy(Extension, MaxDelayExtensionSeconds);
+	if (Moved > 0.0f)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			   TEXT("A health cost pushed an outstanding debt out by %.2f "
+					"seconds."), Moved);
+	}
+	return Moved;
+}
+
+bool UCataclysmHealthDebt::IsClearedOnlyByAKill(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Flag =
+		Resource::GetHealthDebtClearedOnlyByAKillAttribute();
+
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return false;
+	}
+
+	// ABOVE ZERO IS YES. The stat is written as a flat 1 by the one node that
+	// grants it, and reading it as "anything above nothing" rather than as
+	// "exactly 1" means a second source, or a floating point value that arrived
+	// as 0.9999, still turns it on rather than silently doing nothing.
+	return AbilitySystem->GetNumericAttribute(Flag) > 0.0f;
+}
+
+float UCataclysmHealthDebt::ClearOnKill(AActor* Killer)
+{
+	if (!Killer)
+	{
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Killer));
+	if (!AbilitySystem || !IsClearedOnlyByAKill(AbilitySystem))
+	{
+		// EVERY OTHER CHARACTER'S DEBT IS UNTOUCHED BY A KILL. Issue #997. The
+		// design gives a kill this job for one keystone; for a character with an
+		// ordinary deferred cost, clearing the debt would be handing back health
+		// the design says they owe.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Owed =
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Owed))
+	{
+		return 0.0f;
+	}
+
+	const float Amount = AbilitySystem->GetNumericAttribute(Owed);
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
+	AbilitySystem->ClearHealthDebtDue();
+
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("%s cleared a health debt of %.1f by killing something."),
+		   *Killer->GetName(), Amount);
+
+	return Amount;
+}
+
+bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
+{
+	// A CORPSE IS NOT KILLED AGAIN, the same guard `SettleIfDue` opens with and
+	// for the same reason: a dead character keeps its ability system for a
+	// window before it is removed.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem || !IsClearedOnlyByAKill(AbilitySystem))
+	{
+		// ONLY THE RECKONING'S DEBT IS LETHAL. An ordinary deferred debt larger
+		// than current health simply takes health to nothing when it settles,
+		// which is issue #971's separate question.
+		return false;
+	}
+
+	const FGameplayAttribute Owed =
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Owed)
+		|| !AbilitySystem->HasAttributeSetForAttribute(Health))
+	{
+		return false;
+	}
+
+	const float Amount = AbilitySystem->GetNumericAttribute(Owed);
+	const float Current = AbilitySystem->GetNumericAttribute(Health);
+
+	// STRICTLY GREATER, BECAUSE THE DESIGN WRITES "EXCEEDS". A debt exactly
+	// equal to current health is survivable, and the boundary is reachable
+	// rather than theoretical: a cost is a percentage of a round number often
+	// enough that the two land on the same value.
+	//
+	// AND NOTHING OWED NEVER KILLS, however little health is left. Zero is not
+	// greater than a positive number, so the comparison already says so; the
+	// guard is here because a character at zero health that owes zero would
+	// otherwise be a coin toss on floating point.
+	if (Amount <= 0.0f || Amount <= Current)
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("%s owed %.1f health with %.1f left and died of it."),
+		   *Character->GetName(), Amount, Current);
+
+	// HEALTH TO ZERO AND THEN `HandleDeath`, which is the pair
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` uses. Writing the
+	// health first means anything that reads it during the death -- a save
+	// record, a screen -- sees a character that died rather than one standing
+	// with health left and marked dead.
+	AbilitySystem->SetNumericAttributeBase(Health, 0.0f);
+
+	// THE DEBT GOES WITH THE CHARACTER. Leaving it standing would have the
+	// regeneration step ask this question again on the corpse for as long as the
+	// body is in the level, and the guard at the top of this function is what
+	// would have to catch it. Clearing it says the debt was collected.
+	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
+	AbilitySystem->ClearHealthDebtDue();
+
+	if (ACataclysmCharacterBase* AsCharacter =
+			Cast<ACataclysmCharacterBase>(Character))
+	{
+		AsCharacter->HandleDeath();
+	}
+
+	return true;
 }

@@ -27,6 +27,12 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	InitAddedHealthCostOfCurrent(0.0f);
 	InitDeferredHealthCostShare(0.0f);
 	InitHealthOwed(0.0f);
+
+	// AND ZERO FOR BOTH DEBT RULES. Issues #995 and #997. A character with no
+	// point in Rolling Debt pushes nothing out, and one without The Reckoning
+	// has an ordinary debt that falls due on a timer.
+	InitHealthDebtDelayExtension(0.0f);
+	InitHealthDebtClearedOnlyByAKill(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -43,6 +49,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthOwed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -76,7 +84,9 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetFervourLostToHealingAttribute()
 		|| Attribute == GetAddedHealthCostAttribute()
 		|| Attribute == GetAddedHealthCostOfCurrentAttribute()
-		|| Attribute == GetHealthOwedAttribute())
+		|| Attribute == GetHealthOwedAttribute()
+		|| Attribute == GetHealthDebtDelayExtensionAttribute()
+		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -89,6 +99,16 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		// Issue #970. A negative one would not be a smaller cost, it would be
 		// health handed back on every cast, which is the same class of inversion
 		// and is not what any node states.
+		//
+		// AND FOR THE DELAY EXTENSION IT MEANS "THIS PUSHES NOTHING OUT". Issue
+		// #995. A negative extension would pull a debt FORWARD, which is the
+		// opposite of what Rolling Debt says and would make a character worse
+		// off for spending points on it.
+		//
+		// AND FOR THE RECKONING FLAG IT MEANS "OFF". Issue #997. It is read as
+		// a yes or no rather than as a quantity, so anything above zero is yes;
+		// what has to be refused is a negative, which would read as off while
+		// looking like a real value in the debugger.
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
 }
@@ -121,6 +141,8 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetAddedHealthCostOfCurrentAttribute());
 	All.Add(GetDeferredHealthCostShareAttribute());
 	All.Add(GetHealthOwedAttribute());
+	All.Add(GetHealthDebtDelayExtensionAttribute());
+	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
 	return All;
 }
 
@@ -139,3 +161,5 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCost)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthOwed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)

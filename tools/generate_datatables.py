@@ -2490,6 +2490,20 @@ SCALES = {
     # tree used the same shape. The upper bound is the largest maximum any class
     # line gives the pool.
     "class_resource_held": (0.0, 100.0, "a number of points of the pool"),
+
+    # "for every 5% of your maximum health you currently owe" is `health_owed`
+    # with a step of 5. Issue #994. The Reckoning reads the same state with a
+    # step of 2. Steps are counted whole and rounded down, the same rule.
+    #
+    # OWED IS NOT MISSING, and the two are independent readings of health. A
+    # character that deferred a cost owes health it is still standing on, so it
+    # can be at full health and owe a fifth of it; one that paid the same cost
+    # outright is a fifth down and owes nothing. Each has its own node.
+    #
+    # THE UPPER BOUND IS A STEP OF THE WHOLE POOL. What is OWED may pass a
+    # character's maximum health -- that is what The Reckoning kills them for --
+    # but a step larger than the pool would be a bonus nothing could ever reach.
+    "health_owed": (0.0, 100.0, "a percentage of maximum health"),
 }
 
 

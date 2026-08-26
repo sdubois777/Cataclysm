@@ -945,6 +945,12 @@ namespace CataclysmPassiveEffectTest
 			// two windows are separate names and separate enumerators, so
 			// covering one says nothing at all about the other.
 			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0\r\n"
+			// AND ONE THAT GROWS WITH WHAT THE CHARACTER OWES. Issue #994. A
+			// SECOND scale, and telling it apart from the one above is the
+			// point: health missing and health owed are different states of one
+			// character, so a build that mapped either name onto either
+			// enumerator would pass every check written before this row.
+			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
 
@@ -1280,6 +1286,28 @@ bool FCataclysmPassiveScaleReachesTheModifierTest::RunTest(const FString&)
 				  static_cast<int32>((*Chance)[0].Scale),
 				  static_cast<int32>(ECataclysmStatScale::Fixed));
 		TestEqual(TEXT("and no step"), (*Chance)[0].ScaleStep, 0.0f);
+	}
+
+	// AND THE SECOND SCALE IS A DIFFERENT ENUMERATOR. Issue #994. `Ravager_low`
+	// carries a fifth row with `health_owed`, and this is what would notice a
+	// build that mapped both names onto one enumerator: every assertion above
+	// would still pass, and Compound Interest would silently pay for being hurt
+	// rather than for being in debt.
+	const TArray<FCataclysmStatModifier>* Leech =
+		Modifiers.Find(FName(TEXT("life_leech")));
+	if (TestNotNull(TEXT("the owed-health row granted its stat"), Leech))
+	{
+		TestEqual(TEXT("one per point times eight points"), (*Leech)[0].Value,
+				  8.0f);
+		TestEqual(TEXT("and it carries the owed-health scale"),
+				  static_cast<int32>((*Leech)[0].Scale),
+				  static_cast<int32>(
+					  ECataclysmStatScale::PerPercentOfMaximumHealthOwed));
+		TestEqual(TEXT("in steps of the size the table states"),
+				  (*Leech)[0].ScaleStep, 5.0f);
+		TestTrue(TEXT("and it is not the missing-health scale"),
+				 (*Leech)[0].Scale
+					 != ECataclysmStatScale::PerPercentOfMaximumHealthMissing);
 	}
 
 	return true;

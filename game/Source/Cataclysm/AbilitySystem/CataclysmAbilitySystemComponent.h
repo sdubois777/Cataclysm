@@ -360,6 +360,32 @@ public:
 	void ClearHealthDebtDue();
 
 	/**
+	 * Push the debt's due time later by `Seconds`, but never further than
+	 * `MostAltogether` seconds past where it started. Issue #995.
+	 *
+	 * THE RUNNING TOTAL IS WHY THIS IS A METHOD RATHER THAN A SECOND CALL TO
+	 * `NoteHealthDebtDueIn`. The Masochist's Rolling Debt node extends a debt
+	 * once per payment, and the design caps how far one debt may be pushed
+	 * ALTOGETHER rather than how far one payment may push it; without a total
+	 * kept here, a character paying health costs continuously could hold a debt
+	 * off for ever. `ClearHealthDebtDue` resets the total, so the next debt
+	 * starts with its whole allowance.
+	 *
+	 * NOTHING HAPPENS WITH NO DEBT OUTSTANDING, with no world, or once the
+	 * allowance is used up. Each is a case where there is nothing to move.
+	 *
+	 * @return how many seconds the due time really moved, which is zero in
+	 *         every case above
+	 */
+	float ExtendHealthDebtDueBy(float Seconds, float MostAltogether);
+
+	/** How far the current debt has already been pushed out. For tests. */
+	float HealthDebtExtensionApplied() const
+	{
+		return HealthDebtExtensionAppliedSeconds;
+	}
+
+	/**
 	 * Record that this character has just taken damage of a Cataclysm type
 	 * other than its own. Issue #975.
 	 *
@@ -495,4 +521,18 @@ protected:
 	 * the Rolling Debt node "extends the delay on what is owed", singular.
 	 */
 	float HealthDebtDueAtSeconds = -1.0f;
+
+	/**
+	 * How far the CURRENT debt has already been pushed out, in seconds.
+	 * Issue #995.
+	 *
+	 * A RUNNING TOTAL RATHER THAN A COUNT OF PAYMENTS, because the cap the
+	 * Masochist's Rolling Debt node states is measured in seconds and a
+	 * character at one point of the node extends by half a second at a time.
+	 *
+	 * RESET WHEN THE DEBT IS CLEARED, so the allowance belongs to one debt
+	 * rather than to a character's whole life. A debt that settles and a fresh
+	 * one incurred afterwards are different debts.
+	 */
+	float HealthDebtExtensionAppliedSeconds = 0.0f;
 };
