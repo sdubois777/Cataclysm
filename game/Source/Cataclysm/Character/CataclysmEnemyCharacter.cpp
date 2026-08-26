@@ -3,6 +3,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For turning an ability's tag list into a container, the same way a player's
 // skill row is read. Issue #519.
@@ -251,6 +252,20 @@ void ACataclysmEnemyCharacter::HandleDeath()
 				State->GrantExperience(UCataclysmEnemyScore::ScoreFor(
 					UCataclysmEnemyScore::FloorIn(World), RarityStep));
 			}
+
+			// AND A KILL CLEARS WHAT THE KILLER OWES. Issue #997. The
+			// Masochist's The Reckoning keystone reads "the debt is cleared only
+			// by killing an enemy", and this is the one place a kill is known
+			// about at all.
+			//
+			// ON THE PAWN AND NOT ON THE PLAYER STATE, which is the difference
+			// from the experience above. Attributes live on the pawn's ability
+			// system; the player state is where a level and its experience live.
+			//
+			// NOTHING HAPPENS FOR ANY OTHER CHARACTER. `ClearOnKill` refuses
+			// every ability system without that keystone's flag, so an ordinary
+			// deferred cost is still owed after a kill.
+			UCataclysmHealthDebt::ClearOnKill(Watching->GetPawn());
 		}
 	}
 

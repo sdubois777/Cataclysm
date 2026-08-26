@@ -306,6 +306,21 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("deferred_health_cost_share"),
 		 TEXT("the Masochist's Deferred Payment node, as a flat modifier")},
 
+		// Issue #995. How many seconds a health cost paid while something is
+		// already owed pushes that debt further out. Zero for every class, and
+		// the Masochist's Rolling Debt node is its only source. It is the one
+		// stat here measured in seconds rather than as a share of something.
+		{TEXT("health_debt_delay_extension"),
+		 TEXT("the Masochist's Rolling Debt node, as a flat modifier")},
+
+		// Issue #997. Whether a debt is never taken on a timer, is cleared by
+		// killing an enemy, and kills the character if it passes their current
+		// health. Zero for every class, and the Masochist's The Reckoning
+		// keystone is its only source. Read as a yes or no rather than as a
+		// quantity, so any value above zero turns it on.
+		{TEXT("health_debt_cleared_only_by_a_kill"),
+		 TEXT("the Masochist's The Reckoning node, as a flat modifier")},
+
 		// Issue #973. The chance a skill does not go on cooldown. Zero for every
 		// class, and the Masochist's The Catalyst node is its only source. The
 		// attribute stays at zero even for a character holding that node, because

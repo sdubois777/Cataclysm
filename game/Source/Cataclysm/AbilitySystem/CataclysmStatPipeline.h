@@ -232,6 +232,29 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPointOfClassResourceHeld
 		UMETA(DisplayName = "Per Point Of Class Resource Held"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of maximum health the
+	 * character currently OWES and has not yet paid. Issue #994.
+	 *
+	 * Compound Interest is the node: "+1% increased damage per point for every
+	 * 5% of your maximum health you currently owe." The Reckoning reads the same
+	 * state with a step of 2 and a `more` multiplier instead of an increase.
+	 *
+	 * OWED IS NOT MISSING, and the two are independent readings. A character
+	 * that deferred a cost owes health it is still standing on, so at that
+	 * instant it is at full health and owes a fifth of it; a character that paid
+	 * the same cost outright is a fifth down and owes nothing. Answering either
+	 * through the other would hand the bonus to the wrong node.
+	 *
+	 * THE ATTRIBUTE HOLDS POINTS AND THIS READS PERCENT. `HealthOwed` is stored
+	 * in points of health, because that is what is addable when a second cast
+	 * defers more; the design asks about it as a share of maximum health, so the
+	 * division happens where it is read, exactly as
+	 * `PerPercentOfMaximumHealthMissing` divides health by its maximum.
+	 */
+	PerPercentOfMaximumHealthOwed
+		UMETA(DisplayName = "Per Percent Of Maximum Health Owed"),
 };
 
 /**
@@ -296,6 +319,25 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceHeld = -1.0f;
+
+	/**
+	 * How much health the character owes, as a percentage of its maximum.
+	 * Issue #994.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the readings above. Three
+	 * things leave it there and all three are ordinary rather than faults: an
+	 * ability system with no class resource attribute set, which is every enemy;
+	 * one with no vital attribute set, so there is no maximum to compare
+	 * against; and a maximum health of zero, which would otherwise be a division
+	 * by nothing.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN, the same distinction the
+	 * class resource above draws. A character that owes nothing is correctly
+	 * worth nothing to a bonus counting what it owes; that is not the same
+	 * statement as "there is nothing to read".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HealthOwedPercent = -1.0f;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

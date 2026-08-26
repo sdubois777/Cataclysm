@@ -197,8 +197,15 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * Masochist's Exsanguinate keystone is its only source. It is off the sheet
 	 * for the same reason the first one is: no player reads it as a stat and no
 	 * class line names it.
+	 *
+	 * NINE SINCE THE LAST TWO BLOOD TITHE NODES. Issues #995 and #997 added the
+	 * seconds a further payment pushes an outstanding debt out, and the flag for
+	 * a debt that is never taken on a timer. Both are off the sheet for the same
+	 * reason as everything else in this count: one passive node supplies each,
+	 * no class line names either, and no player reads either as a stat. The
+	 * sheet total therefore does not move.
 	 */
-	constexpr int32 OffSheetResourceStats = 7;
+	constexpr int32 OffSheetResourceStats = 9;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -229,8 +236,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// three in GetRateAttributes for that reason. Seven since #986 added the
 	// second added health cost, the one measured against current health. Nine
 	// since #991 added the share of a cost that is taken later and the health
-	// a character owes; neither is a sheet stat.
-	TestEqual(TEXT("Nine class resource attributes"),
+	// a character owes; neither is a sheet stat. Eleven since #995 and #997
+	// added the seconds a further payment pushes a debt out and the flag for a
+	// debt that is never taken on a timer; neither is a sheet stat either.
+	TestEqual(TEXT("Eleven class resource attributes"),
 		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,

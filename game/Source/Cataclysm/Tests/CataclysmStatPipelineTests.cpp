@@ -184,6 +184,32 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase worth `Value` per whole `Step` percent of health OWED. */
+	FCataclysmStatModifier IncreasedPerHealthOwed(float Value, float Step)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Scale = ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
+		Modifier.ScaleStep = Step;
+		return Modifier;
+	}
+
+	/**
+	 * A character owing this share of its maximum health. Issue #994.
+	 *
+	 * A NEGATIVE ARGUMENT IS "THERE IS NOTHING TO READ", which is every enemy in
+	 * the game, the character sheet, and a character whose maximum health is
+	 * zero. Zero is a real answer and means the character owes nothing.
+	 *
+	 * ABOVE A HUNDRED IS LEGITIMATE. A debt larger than the character's whole
+	 * pool is exactly what The Reckoning kills them for.
+	 */
+	FCataclysmStatConditions Owing(float Percent)
+	{
+		FCataclysmStatConditions State;
+		State.HealthOwedPercent = Percent;
+		return State;
+	}
+
 	FGameplayTagContainer Tags(std::initializer_list<const TCHAR*> Names)
 	{
 		FGameplayTagContainer Container;
@@ -776,6 +802,105 @@ bool FCataclysmPipelineResourceHeldScaleTest::RunTest(const FString& Parameters)
 		IncreasedPerHealthMissing(1.0f, 1.0f) };
 	TestEqual(TEXT("while a health bonus gets nothing from a full pool alone"),
 		FPipeline::Evaluate(100.0f, ByHealth, NoTags, HoldingResource(100.0f)).Final,
+		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthOwedScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithHowMuchHealthIsOwed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineHealthOwedScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THE MASOCHIST'S COMPOUND INTEREST NODE at its full eight points: "+1%
+	// increased damage per point for every 5% of your maximum health you
+	// currently owe", so eight percentage points per whole 5% owed. Issue #994.
+	TArray<FCataclysmStatModifier> Modifiers = {
+		IncreasedPerHealthOwed(8.0f, 5.0f) };
+
+	// OWING NOTHING IS WORTH NOTHING, which is the state every character is in
+	// before its first deferred cost and is what makes the node a reward for
+	// being in debt rather than a flat bonus.
+	TestEqual(TEXT("owing nothing is worth nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, Owing(0.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND FOUR WHOLE STEPS OF FIVE IS FOUR TIMES EIGHT.
+	TestEqual(TEXT("owing 20% is four steps, so +32%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, Owing(20.0f)).Final,
+		132.0f, 0.01f);
+
+	// WHOLE STEPS, ROUNDED DOWN. Owing 24% is still four completed blocks of
+	// five, not four and four fifths, and 25% is the fifth.
+	TestEqual(TEXT("owing 24% is still four steps"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, Owing(24.0f)).Final,
+		132.0f, 0.01f);
+	TestEqual(TEXT("and 25% is the fifth step"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, Owing(25.0f)).Final,
+		140.0f, 0.01f);
+
+	// A DEBT LARGER THAN THE WHOLE POOL KEEPS COUNTING. Nothing caps what is
+	// owed at a character's maximum health, and The Reckoning is built on that:
+	// "If your debt ever exceeds your current health, you die." A bonus that
+	// stopped at 100% would quietly make the largest debts worth no more than a
+	// full one.
+	TArray<FCataclysmStatModifier> Reckoning = {
+		IncreasedPerHealthOwed(1.0f, 2.0f) };
+	TestEqual(TEXT("owing one and a half times the pool is 75 steps of two"),
+		FPipeline::Evaluate(100.0f, Reckoning, NoTags, Owing(150.0f)).Final,
+		175.0f, 0.01f);
+
+	// NOTHING TO READ SCALES TO NOTHING, and it is a different statement from
+	// owing nothing. The character sheet has no character in hand, and every
+	// enemy has no class resource attribute set to hold a debt at all.
+	TestEqual(TEXT("a caller that knows nothing about the character gets nothing"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and so does one that says outright there is nothing to read"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, Owing(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero, and is
+	// refused outright when the data is checked. The same rule as the two scales
+	// above, asserted here so that adding a scale cannot skip it.
+	TArray<FCataclysmStatModifier> NoStep = {
+		IncreasedPerHealthOwed(10.0f, 0.0f) };
+	TestEqual(TEXT("a step of nothing is worth nothing at every state"),
+		FPipeline::Evaluate(100.0f, NoStep, NoTags, Owing(50.0f)).Final,
+		100.0f, 0.01f);
+	TestTrue(TEXT("and is reported as illegal when the data is checked"),
+		!FPipeline::ValidateModifier(NoStep[0]).IsEmpty());
+	TestTrue(TEXT("while a real step is not"),
+		FPipeline::ValidateModifier(Modifiers[0]).IsEmpty());
+
+	// OWED IS NOT MISSING, WHICH IS THE WHOLE REASON THIS IS A THIRD SCALE.
+	// A character that deferred a cost owes health it is still standing on, so
+	// it is at FULL health and owes a fifth of it. Reading either state through
+	// the other would hand Compound Interest's bonus to Vicious Onslaught's node
+	// and the other way round, and no arithmetic would report it.
+	FCataclysmStatConditions OwedOnly = Owing(20.0f);
+	TestTrue(TEXT("a state that knows what is owed need not know the health"),
+		OwedOnly.HealthPercent < 0.0f);
+
+	TArray<FCataclysmStatModifier> ByMissing = {
+		IncreasedPerHealthMissing(8.0f, 5.0f) };
+	TestEqual(TEXT("a missing-health bonus gets nothing from a debt alone"),
+		FPipeline::Evaluate(100.0f, ByMissing, NoTags, OwedOnly).Final,
+		100.0f, 0.01f);
+
+	// AND THE OTHER WAY: a character at full health that owes a fifth gets the
+	// whole of Compound Interest's bonus, because being at full health says
+	// nothing about what is owed.
+	FCataclysmStatConditions FullAndInDebt =
+		FCataclysmStatConditions::FromHealth(1'000.0f, 1'000.0f);
+	FullAndInDebt.HealthOwedPercent = 20.0f;
+	TestEqual(TEXT("a character at full health that owes a fifth still gets +32%"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, FullAndInDebt).Final,
+		132.0f, 0.01f);
+	TestEqual(TEXT("while the missing-health bonus gets nothing from it"),
+		FPipeline::Evaluate(100.0f, ByMissing, NoTags, FullAndInDebt).Final,
 		100.0f, 0.01f);
 
 	return true;

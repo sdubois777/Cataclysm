@@ -244,7 +244,15 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 47 FOR CATACLYSMIC RESONANCE, the same two damage stats under a
 	// window opened by taking damage of a foreign Cataclysm type. Issue #975.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         61)
+	//
+	// AND TO 68 FOR THE THREE NODES THAT FINISH THE BLOOD TITHE BRANCH: two
+	// rows for Compound Interest, whose damage grows with what the character
+	// owes (#994); one for Rolling Debt, the seconds a further payment pushes an
+	// outstanding debt out (#995); and four for The Reckoning, which defers the
+	// whole of every cost, multiplies damage by what is owed, and carries the
+	// flag for a debt that is never taken on a timer (#997). The count also
+	// passed 61 for nodes landed between #975 and those three.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         68)
 
 	#undef CHECK_TABLE
 

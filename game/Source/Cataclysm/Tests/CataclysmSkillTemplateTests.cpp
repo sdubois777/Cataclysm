@@ -1478,6 +1478,187 @@ bool FCataclysmNoDeferralTakesTheWholeCostTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompoundInterestTest,
+	"Cataclysm.Skills.DamageCanGrowWithTheHealthACharacterOwes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompoundInterestTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST'S COMPOUND INTEREST NODE, END TO END. Issue #994: "+1%
+	// increased damage per point for every 5% of your maximum health you
+	// currently owe", at its full eight points.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. That the amount owed
+	// really reaches the reading the pipeline is handed, through
+	// `UCataclysmAbilitySystemComponent::CurrentConditions`, and that casting a
+	// skill is what puts it there.
+	//
+	// THE WHOLE COST IS DEFERRED, WHICH IS WHAT LETS THIS TEST SEE THE
+	// DIFFERENCE. The character's health does not move at all, so a bonus
+	// reading MISSING health would be worth nothing here and only a bonus
+	// reading what is OWED can produce the figure below. The two states are one
+	// substitution apart in the code and would otherwise be indistinguishable.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
+
+	FCataclysmStatModifier CompoundInterest;
+	CompoundInterest.Bucket = ECataclysmStatBucket::Increased;
+	CompoundInterest.Source = ECataclysmModifierSource::PassiveKeystone;
+	CompoundInterest.Value = 8.0f;
+	CompoundInterest.Scale =
+		ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
+	CompoundInterest.ScaleStep = 5.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(CompoundInterest);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayTagContainer NoTags;
+
+	// OWING NOTHING IS WORTH NOTHING, which is where every character starts.
+	TestEqual(TEXT("a character that owes nothing gets nothing"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(NoTags),
+			  0.0f, 0.0001f);
+
+	// A COST OF TWO HUNDRED -- twenty per cent of maximum health -- all of it
+	// deferred.
+	Caster.Set(Resource::GetAddedHealthCostAttribute(), 20.0f);
+	Caster.Set(Resource::GetDeferredHealthCostShareAttribute(), 100.0f);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestEqual(TEXT("the whole cost was deferred"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 200.0f, 0.5f);
+	TestEqual(TEXT("so the health did not move"), Caster.Health(), 1'000.0f,
+			  0.5f);
+
+	// TWENTY PER CENT OWED IS FOUR WHOLE STEPS OF FIVE, and eight per point is
+	// thirty-two percentage points. The function answers a fraction.
+	TestEqual(TEXT("owing a fifth of maximum health is +32% damage"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(NoTags),
+			  0.32f, 0.0001f);
+
+	// AND IT GOES AWAY WHEN THE DEBT IS PAID. Nothing else changes: the clock
+	// moves, the debt settles, and the bonus goes with it. Without this the
+	// bonus could be a one-way ratchet and every assertion above would still
+	// pass.
+	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
+	TestEqual(TEXT("the debt falls due and is taken"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 200.0f, 0.5f);
+	TestEqual(TEXT("and owing nothing again is worth nothing again"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(NoTags),
+			  0.0f, 0.0001f);
+
+	// AND THE CHARACTER IS NOW A FIFTH DOWN ON HEALTH AND STILL GETS NOTHING,
+	// which is the other half of telling the two readings apart: the state that
+	// WOULD pay a missing-health bonus pays this one nothing at all.
+	TestEqual(TEXT("the health went instead"), Caster.Health(), 800.0f, 0.5f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRollingDebtReachesTheCostTest,
+	"Cataclysm.Skills.PayingAHealthCostPushesAnOutstandingDebtOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRollingDebtReachesTheCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST'S ROLLING DEBT NODE, WIRED INTO THE PLACE A COST IS PAID.
+	// Issue #995. `Cataclysm.HealthDebt.*` proves the rule itself; this proves
+	// that `UCataclysmSkillTemplate::PayHealthCost` calls it, and that it calls
+	// it BEFORE this cast's own deferral is added.
+	//
+	// THE ORDER IS THE WHOLE POINT OF THE SECOND HALF. Called after the
+	// deferral, the FIRST cast of a fight would find its own debt outstanding
+	// and extend itself, which is a different node.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
+
+	// A COST OF FIFTY, ALL DEFERRED, AND THE NODE AT ITS FULL SIX POINTS.
+	Caster.Set(Resource::GetAddedHealthCostAttribute(), 5.0f);
+	Caster.Set(Resource::GetDeferredHealthCostShareAttribute(), 100.0f);
+	Caster.Set(Resource::GetHealthDebtDelayExtensionAttribute(), 3.0f);
+
+	// TWO SKILLS IN TWO SLOTS, BECAUSE A SKILL CANNOT BE CAST TWICE IN ONE
+	// TEST: activating commits a cooldown and the second attempt is refused.
+	UCataclysmStrikeSkill* First = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), TEXT("Strike"));
+	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=3"),
+		TEXT("Second strike"));
+	if (!First || !Second)
+	{
+		AddError(TEXT("Could not grant both skills."));
+		return false;
+	}
+
+	TestTrue(TEXT("the first activates"), Activate(Caster, First));
+	TestEqual(TEXT("fifty is owed"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 50.0f, 0.5f);
+
+	// THE FIRST CAST EXTENDED NOTHING, because nothing was owed when it paid.
+	// This is what the ordering guards.
+	TestEqual(TEXT("the first cast pushed nothing out"),
+			  Caster.AbilitySystem->HealthDebtExtensionApplied(), 0.0f, 0.001f);
+
+	// A SECOND CAST, TWO SECONDS IN, WHILE THE FIRST DEBT IS STILL OUTSTANDING.
+	World->TimeSeconds += 2.0f;
+	TestTrue(TEXT("the second activates"), Activate(Caster, Second));
+
+	TestEqual(TEXT("the debt accumulated"),
+			  Caster.Get(Resource::GetHealthOwedAttribute()), 100.0f, 0.5f);
+	TestEqual(TEXT("and the second cast pushed the debt out by three seconds"),
+			  Caster.AbilitySystem->HealthDebtExtensionApplied(), 3.0f, 0.001f);
+
+	// SO PAST THE ORDINARY DELAY NOTHING IS TAKEN.
+	World->TimeSeconds += 1.5f;
+	TestEqual(TEXT("past the ordinary delay the debt is still not due"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("and the health is untouched"), Caster.Health(), 1'000.0f,
+			  0.5f);
+
+	// AND IT FALLS DUE AT SIX SECONDS.
+	World->TimeSeconds += 2.6f;
+	TestEqual(TEXT("once the extended delay passes the whole debt is taken"),
+			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 100.0f, 0.5f);
+	TestEqual(TEXT("and the health goes with it"), Caster.Health(), 900.0f,
+			  0.5f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLethalHealthCostTest,
 	"Cataclysm.Skills.AHealthCostLargerThanHealthLeavesTheCasterAtZeroNotBelow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

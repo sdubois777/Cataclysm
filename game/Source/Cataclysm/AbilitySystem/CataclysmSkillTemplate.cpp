@@ -602,6 +602,21 @@ void UCataclysmSkillTemplate::PayHealthCost()
 				EGameplayModOp::Additive, -Immediate);
 		}
 
+		// AND PAYING WHILE SOMETHING IS ALREADY OWED PUSHES THAT DEBT OUT.
+		// Issue #995. Rolling Debt: "Paying a health cost while one is still
+		// owed extends the delay on what is owed by 0.5 seconds per point."
+		//
+		// BEFORE THE LINE BELOW, WHICH IS THE WHOLE ORDERING QUESTION. `Defer`
+		// adds this cast's own deferral to what is owed, so asking afterwards
+		// whether anything was owed would answer yes for the first debt of a
+		// fight and let it extend itself. Asked here, "still owed" means owed
+		// before this payment, which is what the node says.
+		//
+		// NOTHING HAPPENS FOR A CHARACTER WITHOUT THE NODE, and nothing happens
+		// with no debt outstanding, which is every character in the game today
+		// except a Masochist a few seconds into a fight.
+		UCataclysmHealthDebt::ExtendForPaymentWhileOwing(AbilitySystem);
+
 		// AND WHAT WAS NOT TAKEN IS OWED. Nothing happens for a character
 		// without the node, whose deferred share is zero.
 		UCataclysmHealthDebt::Defer(AbilitySystem, Deferred);

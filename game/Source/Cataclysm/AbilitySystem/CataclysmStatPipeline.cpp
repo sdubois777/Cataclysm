@@ -154,6 +154,32 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 			FMath::FloorToFloat(State.ClassResourceHeld / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
+
+	case ECataclysmStatScale::PerPercentOfMaximumHealthOwed:
+	{
+		// THE SAME TWO REFUSALS AGAIN. Issue #994. The reading is negative for a
+		// caller with no character in hand, for an ability system with no class
+		// resource attribute set, and for one whose maximum health is nothing;
+		// all three are cases where the share cannot be worked out at all rather
+		// than cases where it is zero.
+		//
+		// OWING NOTHING IS NOT A REFUSAL. A character at full health that has
+		// deferred no cost reads zero and gets nothing by the arithmetic, which
+		// is the honest answer and is what makes the node a reward for being in
+		// debt rather than a flat bonus.
+		if (State.HealthOwedPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN, the rule the other two follow. Compound
+		// Interest reads "for every 5% of your maximum health you currently
+		// owe", so owing 12% is two completed blocks rather than two and two
+		// fifths.
+		const float Steps =
+			FMath::FloorToFloat(State.HealthOwedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

@@ -816,6 +816,17 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatScale::PerPointOfClassResourceHeld;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
+			else if (Effect->Scale.Equals(TEXT("health_owed"),
+										  ESearchCase::IgnoreCase))
+			{
+				// WHAT IS OWED RATHER THAN WHAT IS MISSING, which are different
+				// readings of health and not two names for one. Issue #994. A
+				// character that deferred a cost owes health it still has.
+				// Compound Interest and The Reckoning are the two nodes.
+				Modifier.Scale =
+					ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
 			else if (!Effect->Scale.IsEmpty())
 			{
 				// A step of nothing makes `ScaledValue` answer zero.

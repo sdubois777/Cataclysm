@@ -60,3 +60,10 @@ Masochist_keystone_ll_kB#1,Masochist_keystone_ll_kB,healing_ceiling_reduction,fl
 Masochist_keystone_ll_kB#2,Masochist_keystone_ll_kB,attack_damage,more,25.0,,,0.0,,0.0
 Masochist_keystone_ll_kB#3,Masochist_keystone_ll_kB,spell_damage,more,25.0,,,0.0,,0.0
 Masochist_basic_bt_a0#1,Masochist_basic_bt_a0,deferred_health_cost_share,flat,10.0,,,0.0,,0.0
+Masochist_basic_bt_a1#1,Masochist_basic_bt_a1,attack_damage,increased,1.0,,,0.0,health_owed,5.0
+Masochist_basic_bt_a1#2,Masochist_basic_bt_a1,spell_damage,increased,1.0,,,0.0,health_owed,5.0
+Masochist_basic_bt_a2#1,Masochist_basic_bt_a2,health_debt_delay_extension,flat,0.5,,,0.0,,0.0
+Masochist_keystone_bt_kA#1,Masochist_keystone_bt_kA,deferred_health_cost_share,flat,100.0,,,0.0,,0.0
+Masochist_keystone_bt_kA#2,Masochist_keystone_bt_kA,attack_damage,more,1.0,,,0.0,health_owed,2.0
+Masochist_keystone_bt_kA#3,Masochist_keystone_bt_kA,spell_damage,more,1.0,,,0.0,health_owed,2.0
+Masochist_keystone_bt_kA#4,Masochist_keystone_bt_kA,health_debt_cleared_only_by_a_kill,flat,1.0,,,0.0,,0.0

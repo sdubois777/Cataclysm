@@ -191,6 +191,52 @@ public:
 	FGameplayAttributeData HealthOwed;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthOwed)
 
+	/**
+	 * How many seconds a health cost paid while something is already owed pushes
+	 * that debt further out. Issue #995.
+	 *
+	 * The Masochist's Rolling Debt node is its only source: "Paying a health
+	 * cost while one is still owed extends the delay on what is owed by 0.5
+	 * seconds per point, to a maximum of 3 seconds." The node holds six points,
+	 * so 3 seconds at most from the node itself.
+	 *
+	 * IN SECONDS, WHICH MAKES IT THE ONE STAT ON THIS SET THAT IS NOT A SHARE OF
+	 * SOMETHING. It is added to a due time rather than to a pool.
+	 *
+	 * THIS IS WHAT ONE PAYMENT ADDS. How far a single debt may be pushed
+	 * ALTOGETHER is a separate rule, capped by
+	 * `UCataclysmHealthDebt::MaxDelayExtensionSeconds`, so a character paying
+	 * costs continuously cannot hold one debt off for ever. The two numbers meet
+	 * at the node's full six points and are not the same rule.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthDebtDelayExtension)
+	FGameplayAttributeData HealthDebtDelayExtension;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
+
+	/**
+	 * Whether this character's debt is never taken on a timer, is cleared by
+	 * killing an enemy, and kills the character if it passes its current health.
+	 * Issue #997. Zero for no, above zero for yes.
+	 *
+	 * The Masochist's The Reckoning keystone is its only source: "Health costs
+	 * are never taken. They accumulate as a debt... the debt is cleared only by
+	 * killing an enemy. If your debt ever exceeds your current health, you die."
+	 *
+	 * ONE FLAG FOR THREE RULES, BECAUSE THE DESIGN STATES THEM AS ONE MECHANIC.
+	 * A debt that never falls due has to end some other way, and the same
+	 * sentence supplies both the end and the price of not reaching it. Three
+	 * separate flags would allow a debt that never falls due, is never cleared
+	 * and never kills, which the design describes nowhere and no node sets.
+	 *
+	 * NOT THE SAME THING AS DEFERRING THE WHOLE COST, which is why this is a
+	 * second stat rather than a larger `DeferredHealthCostShare`. Deferred
+	 * Payment at its full ten points also defers 100% of a cost, and its debt
+	 * still falls due three seconds later because its own sentence says so.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthDebtClearedOnlyByAKill)
+	FGameplayAttributeData HealthDebtClearedOnlyByAKill;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -207,4 +253,6 @@ protected:
 	UFUNCTION() void OnRep_AddedHealthCostOfCurrent(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DeferredHealthCostShare(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthOwed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthDebtDelayExtension(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthDebtClearedOnlyByAKill(const FGameplayAttributeData& OldValue);
 };
