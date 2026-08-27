@@ -4932,4 +4932,211 @@ bool FCataclysmPassiveVesselUnbrokenOnARealCharacterTest::RunTest(const FString&
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveGluttonOnARealCharacterTest,
+	"Cataclysm.Passives.GluttonGrowsRetaliationWithLifeLeechOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Third Vow's second option on a real character. Issue #1045.
+ *
+ * "Your retaliation damage is increased by 1% for every 1% of life leech you
+ * have."
+ *
+ * ONE STAT'S VALUE DECIDING ANOTHER STAT'S SIZE, which no node did before this.
+ * Every scale written until now reads a STATE -- where health is, what is owed,
+ * how full the pool is, how many things are on the character -- and all of those
+ * change from moment to moment. Life leech changes only when the character's
+ * gear or passive points change, so this is a bonus that grows with an
+ * investment rather than with a situation.
+ *
+ * THE SUM IS READ RATHER THAN A RATIO ASSUMED. The row lands in the increases
+ * bucket, which is a sum: 20 points of leech add 20 percentage points to
+ * whatever the rest of the tree already put there, so the final figure moves by
+ * (100 + S + 20) / (100 + S) and not by 1.20. Filling this tree to 100 points
+ * spends points in nodes that increase retaliation, so S is not zero.
+ *
+ * THE CROSS-CHECK AGAINST THE OTHER TWO OPTIONS USES DAMAGE OVER TIME AND NOT
+ * DAMAGE, deliberately. Deficit, this capstone's first option, increases damage
+ * with health missing -- and so does `Masochist_basic_fc_a0`, which is spent
+ * while filling the tree, so a reading of damage at low health cannot tell the
+ * two apart. Doctrine Made Flesh, the third option, softens damage over time by
+ * a flat ten, and the only other node touching that stat contributes a constant.
+ * So that reading isolates cleanly and this one does not.
+ */
+bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_100"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row,
+	// which is what separates this option from the other two on the same
+	// capstone: those each write two, because "damage" is attack damage and
+	// spell damage, and retaliation is a single stat.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Option == 2)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Glutton grants one row"), Mine.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is retaliation"), Mine[0]->Stat,
+			  FString(TEXT("retaliation")));
+	TestEqual(TEXT("joining the additive sum"), Mine[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("one percent a step"), Mine[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("scaled by life leech"), Mine[0]->Scale,
+			  FString(TEXT("life_leech")));
+	TestEqual(TEXT("a step for every one percent of it"), Mine[0]->ScaleStep,
+			  1.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// READ BEFORE THE CHOICE IS MADE, for the cross-check further down. This is
+	// whatever the filled tree left on the stat, which is NOT 100: Echoes of
+	// Agony is spent on the way to 100 points.
+	const float SofteningBefore = AbilitySystem->GetNumericAttribute(
+		Combat::GetDamageOverTimeTakenAttribute());
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the second option can be chosen"),
+				  State->ChoosePassiveOption(Node, 2, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const FGameplayAttribute Leech = Vital::GetLifeLeechAttribute();
+	const auto Retaliation = [&]
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("retaliation")), FGameplayTagContainer(),
+			AbilitySystem->GetNumericAttribute(
+				Combat::GetRetaliationAttribute()));
+	};
+
+	// NO LEECH AT ALL FIRST, so the option is worth nothing and this is a clean
+	// baseline. Written rather than assumed: filling the tree spends points in
+	// Undying Hunger, which increases life leech, so the character does not
+	// start at zero.
+	AbilitySystem->SetNumericAttributeBase(Leech, 0.0f);
+	const float IncreasesWithNoLeech =
+		IncreasesOn(AbilitySystem, TEXT("retaliation"));
+	const float WithNoLeech = Retaliation();
+	if (!TestTrue(*FString::Printf(
+			TEXT("the character retaliates for something to begin with (%.2f)"),
+			WithNoLeech), WithNoLeech > 0.0f))
+	{
+		// A BASELINE OF ZERO WOULD MAKE EVERY RATIO BELOW MEANINGLESS.
+		return false;
+	}
+
+	// TWENTY PER CENT OF LIFE LEECH IS TWENTY STEPS OF ONE, so the sum of
+	// increases on retaliation grows by exactly 20 percentage points.
+	AbilitySystem->SetNumericAttributeBase(Leech, 20.0f);
+	const float IncreasesAtTwenty =
+		IncreasesOn(AbilitySystem, TEXT("retaliation"));
+	TestEqual(TEXT("twenty percent of life leech adds twenty points of "
+				   "increased retaliation"),
+			  IncreasesAtTwenty - IncreasesWithNoLeech, 20.0f, 0.01f);
+
+	// AND IT REACHES THE FIGURE THE GAME ITSELF ASKS FOR when a character
+	// strikes back, which is the half that says the row is not merely present in
+	// the pipeline's own bookkeeping.
+	TestEqual(TEXT("and the retaliation a real strike back would use rises by "
+				   "exactly that"),
+			  Retaliation(),
+			  WithNoLeech * (100.0f + IncreasesAtTwenty)
+				  / (100.0f + IncreasesWithNoLeech),
+			  WithNoLeech * 0.001f);
+
+	// TWICE THE LEECH IS TWICE THE BONUS, which is what says the row counts the
+	// leech rather than noticing that some exists.
+	AbilitySystem->SetNumericAttributeBase(Leech, 40.0f);
+	TestEqual(TEXT("forty percent of it adds forty points"),
+			  IncreasesOn(AbilitySystem, TEXT("retaliation"))
+				  - IncreasesWithNoLeech,
+			  40.0f, 0.01f);
+
+	// AND HALF A STEP COUNTS FOR NOTHING, because steps are whole and rounded
+	// down. Every scale follows that rule and this is a place it can be seen:
+	// 20.5% of leech is twenty whole steps, not twenty and a half.
+	AbilitySystem->SetNumericAttributeBase(Leech, 20.5f);
+	TestEqual(TEXT("and twenty and a half percent is twenty whole steps"),
+			  IncreasesOn(AbilitySystem, TEXT("retaliation"))
+				  - IncreasesWithNoLeech,
+			  20.0f, 0.01f);
+
+	// AND THE OPTION THE PLAYER DID NOT PICK GRANTED NOTHING. Doctrine Made
+	// Flesh is the third option of this same capstone and softens damage over
+	// time by a flat ten; a build ignoring the `Option` column would have
+	// applied it here too, taking this reading ten points lower.
+	TestEqual(TEXT("the third option was not chosen, so damage over time taken "
+				   "is where the tree left it"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetDamageOverTimeTakenAttribute()),
+			  SofteningBefore, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

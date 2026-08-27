@@ -315,6 +315,30 @@ enum class ECataclysmStatScale : uint8
 	PerPercentOfMaximumHealthOwed
 		UMETA(DisplayName = "Per Percent Of Maximum Health Owed"),
 
+	/**
+	 * Multiplied by how much life leech the character has, in percent.
+	 * Issue #1045.
+	 *
+	 * The Masochist's Glutton capstone option is its only source: "Your
+	 * retaliation damage is increased by 1% for every 1% of life leech you
+	 * have."
+	 *
+	 * A READING OF A STAT RATHER THAN OF A STATE, which is what makes it unlike
+	 * every scale above it. Those read where the character's health is, what it
+	 * owes, how full its pool is, or how many things are on it -- all of which
+	 * change from moment to moment. Life leech changes when the character's gear
+	 * or passive points change and not otherwise, so this is a bonus that grows
+	 * with an investment rather than with a situation.
+	 *
+	 * IT IS STILL NOT FOLDED INTO AN ATTRIBUTE, and that is the point of it
+	 * being a scale at all. `UCataclysmPlayerClassStats::ApplyTo` resolves every
+	 * stat with a default `FCataclysmStatConditions`, in which this reading is
+	 * unknown, so the bonus is worth nothing there and is worked out wherever
+	 * retaliation is asked for.
+	 */
+	PerPercentOfLifeLeech
+		UMETA(DisplayName = "Per Percent Of Life Leech"),
+
 	//~ THREE STACK COUNTS, ONE PER KIND, RATHER THAN ONE ENUMERATOR AND A
 	//~ COLUMN NAMING THE KIND. Issues #1002, #1003 and #1004. A fourth column on
 	//~ the effects sheet would be a row struct change, which is a build and an
@@ -480,6 +504,24 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float HealthOwedPercent = -1.0f;
+
+	/**
+	 * How much life leech the character has, in percent. Issue #1045.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the readings above. One
+	 * thing leaves it there and it is ordinary rather than a fault: an ability
+	 * system with no vital attribute set, which is where life leech lives.
+	 *
+	 * READ OFF THE ATTRIBUTE RATHER THAN ASKED FOR, which is what every reading
+	 * in this struct does and is the reason to say so here. It means a future
+	 * node granting life leech under a CONDITION would not be seen by a bonus
+	 * scaling with it, because a conditional bonus is never folded into an
+	 * attribute. Nothing grants conditional life leech today. Asking for the
+	 * stat here instead would run the pipeline inside the function that builds
+	 * the input to the pipeline, which is why no reading in this struct does it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float LifeLeechPercent = -1.0f;
 
 	/**
 	 * How many stacks of each kind the character is holding. Issues #1002,

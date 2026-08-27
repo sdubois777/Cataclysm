@@ -434,6 +434,28 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		}
 	}
 
+	// AND HOW MUCH LIFE LEECH THE CHARACTER HAS. Issue #1045. The Masochist's
+	// Glutton capstone option grows with it: "Your retaliation damage is
+	// increased by 1% for every 1% of life leech you have."
+	//
+	// A STAT AND NOT A STATE, which is what makes it unlike every reading above.
+	// Those change from moment to moment as a character is hurt or spends its
+	// pool; this changes only when its gear or its passive points change. It is
+	// still read here rather than folded into the retaliation attribute, because
+	// a scaled bonus never is -- and reading it here is what lets one stat's
+	// value decide another stat's size at all.
+	//
+	// LEFT UNKNOWN WITHOUT A VITAL ATTRIBUTE SET, which is where life leech
+	// lives. Ordinary rather than a fault, and the same shape as the readings
+	// above.
+	if (const UCataclysmVitalAttributeSet* ForLeech =
+			GetSet<UCataclysmVitalAttributeSet>())
+	{
+		// FLOORED AT ZERO. Nothing states negative life leech, and a negative
+		// reading would make a bonus counting it worth a negative amount.
+		State.LifeLeechPercent = FMath::Max(0.0f, ForLeech->GetLifeLeech());
+	}
+
 	// AND HOW MANY STACKS OF EACH KIND ARE STANDING. Issues #1002, #1003 and
 	// #1004. Three Masochist nodes grow with one of these counts.
 	//

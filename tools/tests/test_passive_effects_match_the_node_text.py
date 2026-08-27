@@ -305,7 +305,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 106 ON 2026-08-27, FOR VESSEL UNBROKEN. Issue #1039. Four rows: a flag
 #: saying damage over time deals the character nothing, two for the damage each
 #: debuff multiplies, and the Fervour each grants a second.
-AUTHORED_ROWS = 106
+#:
+#: AND TO 107 ON 2026-08-27, FOR GLUTTON. Issue #1045. ONE row, because
+#: retaliation is a single stat where "damage" is two. AUTHORED_NODES does not
+#: move with it: Glutton is the second option of a capstone whose other two are
+#: already authored, and a capstone counts once.
+AUTHORED_ROWS = 107
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -776,6 +781,15 @@ SCALE_WORDS = {
     "class_resource_held": (("fervour you",), "{value:g} fervour",
                             "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
+
+    # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
+    # "for every 1% of life leech you have", and naming the stat is what stops
+    # this row sitting on a node about health: "for every" alone is shared with
+    # both health scales above.
+    #
+    # A STEP FORM IN PERCENT, because the sentence writes one -- "1% of life
+    # leech" -- unlike the stack counts below, which name no step at all.
+    "life_leech": (("for every", "life leech"), "{value:g}%", None),
 
     # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
     # #1004. The words include the stack's name wherever the node gives it one,
