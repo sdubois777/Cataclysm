@@ -234,17 +234,25 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// effect happens to be modifying it. A rule that holds only sometimes is not
 	// a rule, so the clamp is applied to the number before it is written.
 	//
-	// THE THIRD OF THE THREE PLACES THAT CLAMP THE POOL, and it honours the
-	// uncapped flag exactly as the two in `UCataclysmClassResourceAttributeSet`
-	// do. Issue #1029. The Final Vow's second option says "Your Fervour has no
-	// maximum", and this is the route every ordinary gain takes -- damage taken
-	// and health spent -- so a build that missed this one would leave the option
-	// doing nothing a player could reach by playing.
-	const float Ceiling =
-		UCataclysmClassResourceAttributeSet::PoolIsUncapped(AbilitySystem)
-			? TNumericLimits<float>::Max()
-			: Resource->GetMaxClassResource();
-	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f, Ceiling);
+	// THAT ARGUMENT IS UNTESTED, AND THE PARAGRAPH ABOVE IS KEPT ONLY BECAUSE IT
+	// MAY STILL BE RIGHT. Issue #1036. A guard proof on 2026-08-27 removed this
+	// clamp, compiled, and ran every test under `Cataclysm.Fervour`: none
+	// failed, including `ItStopsAtTheMaximumAndAtZero`, which goes through this
+	// function. The reason is the `return` at the end -- it answers the change
+	// this function can MEASURE rather than the change it asked for, so the
+	// attribute set's own clamp makes the answer right with this one gone. No
+	// test creates the situation the paragraph above describes, so nothing here
+	// establishes that this clamp is needed.
+	//
+	// ONE OF THREE PLACES THAT CLAMP THE POOL, the other two being
+	// `PreAttributeChange` and `PostGameplayEffectExecute` in
+	// `UCataclysmClassResourceAttributeSet`. All three used to consult a flag
+	// saying the pool had no maximum, granted by The Final Vow's second option
+	// under issue #1029; issue #1031 rewrote all twelve Masochist capstone
+	// options and that one no longer exists, so the maximum is simply the
+	// maximum again.
+	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f,
+									  Resource->GetMaxClassResource());
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
 	{

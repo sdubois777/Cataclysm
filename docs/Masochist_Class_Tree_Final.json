@@ -1262,16 +1262,16 @@
         "isDecision": true,
         "options": [
           {
-            "name": "Iron Will, but For the Soul",
-            "description": "You can no longer be killed by melee damage, but 50% of the melee damage you take is converted to Bleeding."
-          },
-          {
-            "name": "The Unbreakable, but For the Mind",
-            "description": "You can no longer be stunned or frozen, but your Mana and Energy Shield no longer regenerate naturally."
-          },
-          {
             "name": "Water to Blood",
             "description": "You no longer have a mana pool. All maximum mana is converted into added maximum health, and every ability costs health instead of mana."
+          },
+          {
+            "name": "Reprisal Wave",
+            "description": "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you."
+          },
+          {
+            "name": "Stigmatic",
+            "description": "Each debuff on you grants 4% increased damage and 4% increased health regeneration."
           }
         ],
         "selectedOption": null,
@@ -1301,16 +1301,16 @@
         "isDecision": true,
         "options": [
           {
-            "name": "The Scourge of Flesh, but For the Self",
-            "description": "Your attacks and spells have a 10% chance to inflict a stack of Withered on enemies, but every third skill you cast inflicts a stack of Withered on you."
+            "name": "Rock Bottom",
+            "description": "A health cost can never reduce you below 1 health; anything you cannot pay becomes health debt instead. Dropping below 20% health clears all outstanding debt and grants 50 Fervour, no more than once every 30 seconds."
           },
           {
-            "name": "The Immortal Champion, but For the Weak",
-            "description": "Dropping below 50% health grants immunity to all damage for 5 seconds, but you deal 50% less damage while it lasts. This cannot happen more than once every 60 seconds."
+            "name": "Feeding Wound",
+            "description": "Your life leech applies to your retaliation damage as well as to your attacks."
           },
           {
-            "name": "The Void Embrace, but For the Sanity",
-            "description": "For each Void item you have equipped you gain 50% increased chaos damage and lose 10% of your maximum health."
+            "name": "Ceaseless Penance",
+            "description": "Debuffs on you no longer expire while you are above 50% health."
           }
         ],
         "selectedOption": null,
@@ -1340,16 +1340,16 @@
         "isDecision": true,
         "options": [
           {
-            "name": "Reaper's Gambit, but For the End",
-            "description": "When you would drop to 0 health you are restored to full health instead, but you die if you take any damage in the next 10 seconds. This cannot happen more than once every 180 seconds."
+            "name": "Deficit",
+            "description": "Your damage is increased by 1% for every 2% of your maximum health you are missing or owe."
           },
           {
-            "name": "The Unyielding, but For the World",
-            "description": "You are immune to all debuffs and crowd control, but you cannot receive buffs from other players or from city upgrades."
+            "name": "Glutton",
+            "description": "Your retaliation damage is increased by 1% for every 1% of life leech you have."
           },
           {
-            "name": "The Cataclysmic Echo, but For the Soul",
-            "description": "Each dungeon modifier in the dungeon you are in has a 10% chance to apply to you as a buff and a 25% chance to apply to you as a curse for the rest of that run."
+            "name": "Doctrine Made Flesh",
+            "description": "Each debuff on you grants 1% more damage and reduces the damage that debuff deals to you by 10%."
           }
         ],
         "selectedOption": null,
@@ -1379,16 +1379,16 @@
         "isDecision": true,
         "options": [
           {
-            "name": "The Martyr, but For the Flesh",
-            "description": "All damage you take is also dealt to every enemy within 12 metres, but your Health Regeneration is set to zero."
+            "name": "The Last Drop",
+            "description": "While below 20% health your skills cost no health, and every skill you cast grants 10 Fervour."
           },
           {
-            "name": "Apotheosis, but For the Mind",
-            "description": "Your Fervour has no maximum, but you take 1% more damage for every 100 Fervour you hold."
+            "name": "Carnivore",
+            "description": "Every hit you take grants a stack of Carnage. Carnage has no maximum, and each stack grants 2% more damage."
           },
           {
-            "name": "The Undying, but For the End",
-            "description": "You cannot die while you hold Fervour. Lethal damage instead consumes all of it and leaves you at 1 health. You cannot gain Fervour for 20 seconds afterwards."
+            "name": "Vessel Unbroken",
+            "description": "Debuffs on you deal no damage at all, and each one grants 5% more damage and 5 Fervour per second."
           }
         ],
         "selectedOption": null,

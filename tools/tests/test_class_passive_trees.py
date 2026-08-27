@@ -134,8 +134,17 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: basic nodes in the new section that reached for it were reworded instead, one
 #: of them because a conditional damage bonus joins the increases bracket rather
 #: than becoming a separate multiplier.
-STRINGS_CONTAINING_THE_WORD = 29
-STRINGS_USING_IT_AS_A_MAGNITUDE = 20
+#:
+#: BOTH WENT UP BY ONE AGAIN ON 2026-08-27, when all twelve Masochist capstone
+#: options were rewritten. Issue #1031. Two of the old twelve used the word and
+#: both were magnitudes: "50% less damage" in The Immortal Champion and "1% more
+#: damage" in Apotheosis. FOUR of the new twelve contain it and THREE are
+#: magnitudes -- Doctrine Made Flesh, Carnivore and Vessel Unbroken. The fourth
+#: is Rock Bottom's "no more than once every 30 seconds", which is ordinary
+#: English, and it is the reason these two counts are measured separately rather
+#: than one being derived from the other.
+STRINGS_CONTAINING_THE_WORD = 30
+STRINGS_USING_IT_AS_A_MAGNITUDE = 21
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -161,10 +170,19 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: SEVEN SINCE ISSUE #582 the same day. The eighth was Bulwark's Thornwall
 #: capstone option, which said "increased by 5% more" and now says "increased by
 #: 5%". It is the only one that left the Bulwark tree, so the widened rule is now
-#: relied on by the Masochist, Saboteur and empire trees only. The remaining
-#: seven are Economic Zones, Salvage Protocol, The Imperial Vanguard and Thrifty
-#: in the empire tree, The Second Vow and The Final Vow in the Masochist tree,
-#: and Reinforced Housing in the Saboteur tree.
+#: relied on by the Masochist, Saboteur and empire trees only.
+#:
+#: STILL SEVEN ON 2026-08-27, BUT NOT THE SAME SEVEN. Issue #1031 rewrote all
+#: twelve Masochist capstone options, and the count happens to be unchanged
+#: because one Masochist capstone left the list and another joined it. The
+#: Second Vow left: its "50% less damage" clause was The Immortal Champion,
+#: which is gone. The Third Vow joined: Doctrine Made Flesh grants "1% more
+#: damage" per debuff. A count that does not move is exactly the case a reader
+#: would assume nothing happened in, so the list is spelled out again below.
+#:
+#: The seven are Economic Zones, Salvage Protocol, The Imperial Vanguard and
+#: Thrifty in the empire tree, The Third Vow and The Final Vow in the Masochist
+#: tree, and Reinforced Housing in the Saboteur tree.
 #:
 #: Pinned exactly rather than as a floor, for the reason
 #: `test_the_widened_rule_is_actually_relied_on` gives.

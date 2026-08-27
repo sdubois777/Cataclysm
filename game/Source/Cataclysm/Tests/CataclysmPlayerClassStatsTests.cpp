@@ -393,16 +393,6 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("UCataclysmDamageCalculation::NormalDamageTaken, with the "
 			  "Masochist's Echoes of Agony node reducing it")},
 
-		// Issue #1029. Whether the class resource pool has a maximum at all.
-		// Zero for every class, and the Masochist's The Final Vow keystone,
-		// second option, is its only source. Unlike the two above it carries no
-		// condition, so it IS folded into the attribute -- which is what lets
-		// the three places that clamp the pool read the attribute directly
-		// rather than asking for the stat.
-		{TEXT("class_resource_uncapped"),
-		 TEXT("the Masochist's The Final Vow node, second option, as a flat "
-			  "modifier")},
-
 		// Issue #1032. The chance a melee critical strike applies Bleeding to
 		// what it hit. Zero for every class, and the Masochist's Mutilation
 		// Mastery is its only source. Its row carries no condition and no
