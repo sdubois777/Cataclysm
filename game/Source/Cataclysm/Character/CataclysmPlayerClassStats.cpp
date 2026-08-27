@@ -10,6 +10,9 @@
 // For the base of The Breaking Point's conversion window. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
+// For the names of the three regeneration rates, shared with the code that asks
+// for them rather than spelled a second time here. Issue #1038.
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -188,9 +191,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("max_health"), Vital::GetMaxHealthAttribute()},
 			{TEXT("max_mana"), Vital::GetMaxManaAttribute()},
 			{TEXT("max_energy_shield"), Vital::GetMaxEnergyShieldAttribute()},
-			{TEXT("health_regen"), Vital::GetHealthRegenAttribute()},
-			{TEXT("mana_regen"), Vital::GetManaRegenAttribute()},
-			{TEXT("energy_shield_regen"), Vital::GetEnergyShieldRegenAttribute()},
+			// THE THREE RATES, UNDER THE NAMES THEIR READER USES. Issue #1038.
+			// `UCataclysmRegeneration::ApplyStep` asks for each of these by name
+			// rather than reading the attribute, so that a bonus carrying a
+			// condition or a scale reaches it; a name written twice and spelled
+			// differently would fall back to the attribute in silence, which is
+			// the argument `UCataclysmItemModifiers::AttackDamageStat` makes.
+			{FString(UCataclysmRegeneration::HealthRegenStat),
+			 Vital::GetHealthRegenAttribute()},
+			{FString(UCataclysmRegeneration::ManaRegenStat),
+			 Vital::GetManaRegenAttribute()},
+			{FString(UCataclysmRegeneration::EnergyShieldRegenStat),
+			 Vital::GetEnergyShieldRegenAttribute()},
 			{TEXT("life_leech"), Vital::GetLifeLeechAttribute()},
 
 			// HOW FAR HEALING MAY TAKE THIS CHARACTER, as a reduction of the

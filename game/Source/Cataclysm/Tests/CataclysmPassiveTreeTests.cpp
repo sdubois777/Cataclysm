@@ -18,6 +18,9 @@
 // For the bucket and the condition a modifier carries, which many of the tests
 // below read off an authored row.
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For putting health back the way the game itself does, rather than reading the
+// rate off a gameplay attribute a scaled bonus never reaches. Issue #1038.
+#include "AbilitySystem/CataclysmRegeneration.h"
 // For the conversion window The Breaking Point lengthens. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the debuffs the five new nodes read. Issue #962.
@@ -3840,6 +3843,39 @@ namespace CataclysmPassiveTest
 		}
 		return Threshold;
 	}
+
+	/**
+	 * The additive sum on one stat, in percentage points, right now.
+	 *
+	 * WHY EVERY CAPSTONE TEST BELOW NEEDS THIS. The increases bucket is a SUM:
+	 * a row worth 4 does not multiply the result by 1.04, it adds 4 to whatever
+	 * sum is already there, so the result is multiplied by
+	 * (100 + S + 4) / (100 + S). Filling a tree to a capstone's threshold spends
+	 * points in other nodes, several of which touch the same stats, so S is
+	 * rarely zero and an assertion written as "times 1.04" is wrong by however
+	 * much the rest of the tree contributed. That mistake was made three times
+	 * while these tests were being written.
+	 *
+	 * ASKED WITH THE CHARACTER'S CURRENT STATE, so a scaled or conditional row
+	 * counts exactly as it would when the game itself asks.
+	 */
+	static float IncreasesOn(const UCataclysmAbilitySystemComponent* AbilitySystem,
+							 const TCHAR* Stat)
+	{
+		if (!AbilitySystem)
+		{
+			return 0.0f;
+		}
+		const FCataclysmStatInputs* Inputs =
+			AbilitySystem->GetStatInputs(FName(Stat));
+		if (!Inputs)
+		{
+			return 0.0f;
+		}
+		return UCataclysmStatPipeline::Evaluate(
+			Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+			AbilitySystem->CurrentConditions()).SumOfIncreases;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeficitOnARealCharacterTest,
@@ -3999,15 +4035,7 @@ bool FCataclysmPassiveDeficitOnARealCharacterTest::RunTest(const FString&)
 	// by an extra 0.25 of whatever the increases multiply.
 	const auto IncreasesOnAttackDamage = [&]() -> float
 	{
-		const FCataclysmStatInputs* Inputs =
-			AbilitySystem->GetStatInputs(FName(TEXT("attack_damage")));
-		if (!Inputs)
-		{
-			return 0.0f;
-		}
-		return UCataclysmStatPipeline::Evaluate(
-			Inputs->Base, Inputs->Modifiers, NoSkill,
-			AbilitySystem->CurrentConditions()).SumOfIncreases;
+		return IncreasesOn(AbilitySystem, TEXT("attack_damage"));
 	};
 
 	if (!TestNotNull(TEXT("the pipeline recorded what attack damage is built "
@@ -4340,6 +4368,291 @@ bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FStri
 			  SofteningBefore
 				  - AbilitySystem->GetNumericAttribute(OverTimeTaken),
 			  UCataclysmDamageCalculation::NormalDamageTaken * 0.10f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveStigmaticOnARealCharacterTest,
+	"Cataclysm.Passives.StigmaticPaysPerDebuffInDamageAndInRealRegenerationOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The First Vow's third option on a real character. Issues #1042 and #1038.
+ *
+ * "Each debuff on you grants 4% increased damage and 4% increased health
+ * regeneration."
+ *
+ * THE HEALTH REGENERATION HALF IS MEASURED AS REGENERATION, NOT AS THE
+ * ATTRIBUTE, and that is the whole point of this test rather than a refinement
+ * of it. `UCataclysmPlayerClassStats::ApplyTo` resolves every stat with the
+ * default `FCataclysmStatConditions`, which reads every count as zero, so a
+ * bonus that scales with the debuff count is NEVER folded into the gameplay
+ * attribute. Reading `HealthRegen` here would therefore pass against a build in
+ * which this row does nothing at all -- which is exactly what the build before
+ * issue #1038 was. What the character actually gets back is what
+ * `UCataclysmRegeneration::ApplyStep` puts on the health bar, and that is what
+ * is asserted.
+ *
+ * MEASURED AS THE DIFFERENCE THE DEBUFFS MAKE, because filling the tree to 25
+ * points spends points elsewhere and some of those touch the same stats. Every
+ * figure is taken with no debuff carried and again with debuffs, and only the
+ * change is asserted.
+ *
+ * NO CROSS-CHECK AGAINST THE OTHER TWO OPTIONS, and that is worth saying rather
+ * than leaving a reader to notice its absence. The First Vow's other two are
+ * Water to Blood and Reprisal Wave; neither is authored, so there are no rows
+ * belonging to another option that could wrongly apply here. The Third Vow's two
+ * tests do have that cross-check, because both of its options exist.
+ */
+bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_25"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Three,
+	// and all three carry the same scale: two stats for "damage" and one for the
+	// regeneration.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Stigmatic grants three rows"), Effects.Num(), 3))
+	{
+		return false;
+	}
+	bool bHasRegen = false;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s belongs to option 3"), *Row->Stat),
+				  Row->Option, 3);
+		TestEqual(*FString::Printf(TEXT("%s joins the additive sum"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("increased")));
+		TestEqual(*FString::Printf(TEXT("%s is four percent a debuff"), *Row->Stat),
+				  Row->ValuePerPoint, 4.0f);
+		TestEqual(*FString::Printf(TEXT("%s counts debuffs"), *Row->Stat),
+				  Row->Scale, FString(TEXT("debuffs_carried")));
+		if (Row->Stat == FString(UCataclysmRegeneration::HealthRegenStat))
+		{
+			bHasRegen = true;
+		}
+	}
+	TestTrue(TEXT("and one of them is the health regeneration"), bHasRegen);
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the third option can be chosen"),
+				  State->ChoosePassiveOption(Node, 3, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const FGameplayTagContainer NoSkill;
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")), NoSkill,
+			AbilitySystem->GetNumericAttribute(
+				Combat::GetAttackDamageAttribute()));
+	};
+
+	// WHAT ONE STEP OF REGENERATION REALLY PUTS BACK, which is the reading that
+	// separates a working build from one where this row is dropped. The
+	// character is hurt first, because a full health bar cannot go up and every
+	// reading would be zero.
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the character has some maximum health"), Maximum > 0.0f))
+	{
+		return false;
+	}
+	const auto OneStepOfRegeneration = [&]() -> float
+	{
+		AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+											   Maximum * 0.5f);
+		const float Before =
+			AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		UCataclysmRegeneration::ApplyStep(
+			Character, UCataclysmRegeneration::StepSeconds,
+			/*SecondsSinceLastDamage=*/100.0f);
+		return AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute())
+			- Before;
+	};
+
+	const float DamageWithNone = AttackDamage();
+	const float RegenWithNone = OneStepOfRegeneration();
+
+	// AND THE ADDITIVE SUM ON EACH STAT, because a row worth 4 does not multiply
+	// the result by 1.04. It adds 4 to whatever the rest of the tree already
+	// put in the sum, so the result moves by (100 + S + 4) / (100 + S). Filling
+	// this tree to 25 points leaves 12 percentage points on the health
+	// regeneration, and the first version of this test asserted a flat 1.04 and
+	// failed by exactly that much.
+	const float DamageIncreasesWithNone =
+		IncreasesOn(AbilitySystem, TEXT("attack_damage"));
+	const float RegenIncreasesWithNone =
+		IncreasesOn(AbilitySystem, UCataclysmRegeneration::HealthRegenStat);
+
+	// AND WHAT THE GAMEPLAY ATTRIBUTE HOLDS, kept so the reading taken after the
+	// debuffs arrive can be compared against it. It must NOT move, and that is
+	// the assertion saying why the regeneration above had to be measured rather
+	// than read off this number.
+	const float RegenAttributeWithNone = AbilitySystem->GetNumericAttribute(
+		Vital::GetHealthRegenAttribute());
+	if (!TestTrue(*FString::Printf(
+			TEXT("the character regenerates something to begin with (%.4f a "
+				 "step)"), RegenWithNone), RegenWithNone > 0.0f))
+	{
+		// A BASE RATE OF ZERO WOULD MAKE EVERY FIGURE BELOW ZERO, and the test
+		// would pass while proving nothing.
+		return false;
+	}
+
+	// ONE DEBUFF IS FOUR PERCENT, APPLIED THROUGH A REAL GAMEPLAY EFFECT. The
+	// count is a read of the tags the ability system is already holding, so this
+	// is the route a real hit takes.
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("the vocabulary has Bleed and Burn"),
+				  Bleed.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("a bleed can be put on the character"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Bleed, 30.0f)))
+	{
+		return false;
+	}
+	{
+		const float Damage = IncreasesOn(AbilitySystem, TEXT("attack_damage"));
+		const float Regen = IncreasesOn(
+			AbilitySystem, UCataclysmRegeneration::HealthRegenStat);
+
+		TestEqual(TEXT("one debuff adds four points of increased damage"),
+				  Damage - DamageIncreasesWithNone, 4.0f, 0.01f);
+		TestEqual(TEXT("and four points of increased health regeneration"),
+				  Regen - RegenIncreasesWithNone, 4.0f, 0.01f);
+
+		TestEqual(TEXT("the damage a skill would use rises by exactly that"),
+				  AttackDamage(),
+				  DamageWithNone * (100.0f + Damage)
+					  / (100.0f + DamageIncreasesWithNone),
+				  DamageWithNone * 0.001f);
+
+		// AND THE HEALTH REALLY COMES BACK, which is the assertion the whole
+		// test exists for. Issue #1038: before it, this row reached the
+		// character's stat sheet and never reached its regeneration.
+		TestEqual(TEXT("and that much more health really comes back"),
+				  OneStepOfRegeneration(),
+				  RegenWithNone * (100.0f + Regen)
+					  / (100.0f + RegenIncreasesWithNone),
+				  RegenWithNone * 0.001f);
+	}
+
+	// AND TWO DEBUFFS ARE EIGHT PERCENT, which is what says the bonus counts
+	// them rather than merely noticing that one exists.
+	if (!TestTrue(TEXT("a burn can be put on it as well"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Burn, 30.0f)))
+	{
+		return false;
+	}
+	{
+		const float Damage = IncreasesOn(AbilitySystem, TEXT("attack_damage"));
+		const float Regen = IncreasesOn(
+			AbilitySystem, UCataclysmRegeneration::HealthRegenStat);
+
+		TestEqual(TEXT("two debuffs add eight points of increased damage, so "
+					   "the bonus counts them rather than noticing one exists"),
+				  Damage - DamageIncreasesWithNone, 8.0f, 0.01f);
+		TestEqual(TEXT("and eight points of increased health regeneration"),
+				  Regen - RegenIncreasesWithNone, 8.0f, 0.01f);
+
+		TestEqual(TEXT("the damage rises by exactly that"),
+				  AttackDamage(),
+				  DamageWithNone * (100.0f + Damage)
+					  / (100.0f + DamageIncreasesWithNone),
+				  DamageWithNone * 0.001f);
+		TestEqual(TEXT("and so does the health that comes back"),
+				  OneStepOfRegeneration(),
+				  RegenWithNone * (100.0f + Regen)
+					  / (100.0f + RegenIncreasesWithNone),
+				  RegenWithNone * 0.001f);
+	}
+
+	// AND THE GAMEPLAY ATTRIBUTE NEVER MOVED THROUGHOUT, which is the assertion
+	// that says why the regeneration had to be measured rather than read. A
+	// scaled bonus is never folded into an attribute, so a build reading the
+	// attribute where `ApplyStep` now asks would give the character its base rate
+	// for ever and nothing would report it. Issue #1038.
+	TestEqual(TEXT("while the health regeneration attribute is exactly where it "
+				   "was with no debuff carried, which is why reading it would "
+				   "have proved nothing"),
+			  AbilitySystem->GetNumericAttribute(
+				  Vital::GetHealthRegenAttribute()),
+			  RegenAttributeWithNone, 0.001f);
+
+	// AND IT ALL GOES AWAY WHEN THE DEBUFFS DO.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Bleed);
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Burn);
+	TestEqual(TEXT("carrying none again, the damage is back where it started"),
+			  AttackDamage(), DamageWithNone, DamageWithNone * 0.001f);
+	TestEqual(TEXT("and so is the health that comes back"),
+			  OneStepOfRegeneration(), RegenWithNone, RegenWithNone * 0.001f);
 
 	return true;
 }

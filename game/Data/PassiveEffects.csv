@@ -98,3 +98,6 @@ Masochist_capstone_100#4,Masochist_capstone_100,spell_damage,increased,1.0,,,0.0
 Masochist_capstone_100#5,Masochist_capstone_100,attack_damage,more,1.0,,,0.0,debuffs_carried,1.0,3
 Masochist_capstone_100#6,Masochist_capstone_100,spell_damage,more,1.0,,,0.0,debuffs_carried,1.0,3
 Masochist_capstone_100#7,Masochist_capstone_100,damage_over_time_taken,increased,-10.0,,,0.0,,0.0,3
+Masochist_capstone_25#1,Masochist_capstone_25,attack_damage,increased,4.0,,,0.0,debuffs_carried,1.0,3
+Masochist_capstone_25#2,Masochist_capstone_25,spell_damage,increased,4.0,,,0.0,debuffs_carried,1.0,3
+Masochist_capstone_25#3,Masochist_capstone_25,health_regen,increased,4.0,,,0.0,debuffs_carried,1.0,3

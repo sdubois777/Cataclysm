@@ -295,7 +295,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: "missing or owe" is two scales -- and Doctrine Made Flesh is three: two for
 #: the damage it multiplies per debuff, and one flat reduction of the damage a
 #: debuff deals back.
-AUTHORED_ROWS = 99
+#:
+#: AND TO 102 ON 2026-08-27, FOR STIGMATIC. Issue #1042. Three rows: two
+#: for the damage it increases per debuff carried, and one for the health
+#: regeneration, which only reaches a character at all because issue #1038
+#: made the regeneration step ASK for its rate rather than read the gameplay
+#: attribute a scaled bonus is never folded into.
+AUTHORED_ROWS = 102
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -448,7 +454,12 @@ AUTHORED_ROWS = 99
 #: because both are options of `Masochist_capstone_100` and a capstone counts
 #: once however many of its three are authored. 68 of 293 altogether and 64 of
 #: the Masochist tree's own 74.
-AUTHORED_NODES = 68
+#:
+#: AND BY ONE MORE ON 2026-08-27, for The First Vow. Issue #1042. Stigmatic
+#: is the first of that capstone's three options to be authored, so the node
+#: joins this count. 69 of 293 altogether and 65 of the Masochist tree's own
+#: 74.
+AUTHORED_NODES = 69
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
