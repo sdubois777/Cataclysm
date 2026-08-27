@@ -1794,4 +1794,27 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	float ScaleStep = 0.0f;
+
+	/**
+	 * Which of a capstone's three options this row belongs to, or 0 for a row
+	 * that is not a capstone option at all. Issue #1029.
+	 *
+	 * NEARLY EVERY ROW LEAVES IT AT ZERO. A capstone offers three choices and the
+	 * player keeps one for ever, so the rows belonging to the two not taken must
+	 * grant nothing. `UCataclysmPassiveTree::AccumulateInto` is what skips them,
+	 * reading the choice out of `FCataclysmPassiveAllocation::ChosenOptionIn`.
+	 *
+	 * A COLUMN AND NOT THE `Condition` COLUMN, and the reason is concrete rather
+	 * than stylistic. A row may need an option AND a real condition at once: the
+	 * Second Vow's second option reads "Dropping below 50% health grants immunity
+	 * to all damage for 5 seconds", which is option 2 and a health trigger
+	 * together. One column cannot hold both.
+	 *
+	 * A CAPSTONE WITH NO CHOICE MADE YET GRANTS NOTHING, and that falls out
+	 * rather than being written. Zero means "this row is not an option", and it
+	 * is also what `ChosenOptionIn` answers for a node nobody has chosen on, so a
+	 * row carrying an option can never match it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	int32 Option = 0;
 };
