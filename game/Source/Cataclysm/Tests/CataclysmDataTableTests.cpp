@@ -279,7 +279,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 94 FOR MUTILATION MASTERY. Issue #1032. One row, a flat chance
 	// that a melee critical strike applies Bleeding to what it hit.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         94)
+	//
+	// AND BACK DOWN TO 92 WHEN APOTHEOSIS WAS REMOVED. Issue #1031. The project
+	// owner rejected the drawback-bearing shape of the Masochist's twelve
+	// capstone options and had all twelve rewritten as pure upgrades. Apotheosis
+	// was The Final Vow's second option and the only one of the twelve with rows
+	// behind it; Carnivore takes that slot now. THE FIRST FALL IN THIS COUNT.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         92)
 
 	#undef CHECK_TABLE
 

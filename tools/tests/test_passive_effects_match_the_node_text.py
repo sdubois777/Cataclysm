@@ -282,7 +282,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 94 ON 2026-08-27, FOR MUTILATION MASTERY. Issue #1032. One row:
 #: a flat 5 per point on the chance a melee critical strike applies
 #: Bleeding, which is 40% at the node's full eight points.
-AUTHORED_ROWS = 94
+#:
+#: AND DOWN TO 92 ON 2026-08-27, WHEN APOTHEOSIS WAS REMOVED. Issue #1031. The
+#: project owner judged the twelve Masochist capstone options poor and had all
+#: twelve rewritten as pure upgrades with no drawbacks. Apotheosis was The Final
+#: Vow's second option and the only one with rows behind it; Carnivore takes
+#: that slot, so both of its rows describe a node that no longer exists. THIS IS
+#: THE FIRST TIME THIS COUNT HAS GONE DOWN.
+AUTHORED_ROWS = 92
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -423,7 +430,13 @@ AUTHORED_ROWS = 94
 #:
 #: AND BY ONE MORE ON 2026-08-27, for Mutilation Mastery. Issue #1032.
 #: 68 of 293 altogether and 64 of the Masochist tree's own 74.
-AUTHORED_NODES = 68
+#:
+#: AND DOWN BY ONE ON 2026-08-27, when Apotheosis was removed. Issue #1031. The
+#: Final Vow's only authored option went with the rewrite of all twelve capstone
+#: options, and a capstone with no authored option counts for nothing, so The
+#: Final Vow leaves this count entirely. 67 of 293 altogether and 63 of the
+#: Masochist tree's own 74.
+AUTHORED_NODES = 67
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

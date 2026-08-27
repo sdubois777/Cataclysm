@@ -243,8 +243,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * itself, and `MaxClassResource` beside it is untouched by that option --
 	 * this flag stops the pool being CLAMPED to the maximum and does not change
 	 * the maximum.
+	 *
+	 * AND THIRTEEN AGAIN, BECAUSE THAT OPTION NO LONGER EXISTS. Issue #1031. The
+	 * project owner judged the twelve Masochist capstone options poor on
+	 * 2026-08-27 and had all twelve rewritten as pure upgrades with no
+	 * drawbacks, so Apotheosis and its flag went with them. THIS IS THE FIRST
+	 * TIME THIS COUNT HAS FALLEN, and the direction matters: every earlier entry
+	 * above argues why the sheet total of 46 does not move when a stat is added,
+	 * and the same argument is what says it does not move when one is removed.
 	 */
-	constexpr int32 OffSheetResourceStats = 14;
+	constexpr int32 OffSheetResourceStats = 13;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

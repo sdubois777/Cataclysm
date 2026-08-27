@@ -296,15 +296,6 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("damage_to_bleeding_window"),
 			 Resource::GetDamageToBleedingWindowAttribute()},
 
-			// AND WHETHER THE CLASS RESOURCE POOL HAS A MAXIMUM AT ALL.
-			// Issue #1029. Zero for every class, and the Masochist's The Final
-			// Vow keystone, second option, is its only source. Here for the
-			// reason every other node-supplied stat is: `ApplyTo` loops over
-			// this map, so a stat missing from it is dropped before it reaches
-			// a character.
-			{TEXT("class_resource_uncapped"),
-			 Resource::GetClassResourceUncappedAttribute()},
-
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 

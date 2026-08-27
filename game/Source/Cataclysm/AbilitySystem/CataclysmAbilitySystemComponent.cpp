@@ -399,19 +399,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// is; `ConditionHolds` then refuses a maximum of zero outright, because a
 		// bar that cannot hold anything is not full.
 		//
-		// AND A POOL WITH NO MAXIMUM LEAVES IT UNKNOWN, which is what makes
-		// "at maximum" refuse for such a character. Issue #1029. The Final Vow's
-		// second option removes the maximum, and `MaxClassResource` still holds
-		// its old number because the bar is still drawn against it -- so
-		// comparing the pool against that number would make Communion of Pain
-		// hold PERMANENTLY for an Apotheosis character rather than never, since
-		// the pool can now sit above it for ever. There is no top of the bar to
-		// be at, so the honest reading is the unknown one, and the two options
-		// are an anti-synergy rather than a free bonus.
+		// NOTHING LEAVES IT UNKNOWN ANY MORE, though `ConditionHolds` still
+		// accepts a negative as "unknown" and refuses on it. Issue #1029 gave
+		// The Final Vow a second option, Apotheosis, that removed the pool's
+		// maximum, and this read reported the maximum as unknown for such a
+		// character so that "at maximum" refused rather than holding for ever.
+		// Issue #1031 rewrote all twelve Masochist capstone options and that one
+		// is gone, so every character's pool has a real top again.
 		State.ClassResourceMaximum =
-			UCataclysmClassResourceAttributeSet::PoolIsUncapped(this)
-				? -1.0f
-				: FMath::Max(0.0f, Resource->GetMaxClassResource());
+			FMath::Max(0.0f, Resource->GetMaxClassResource());
 
 		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
 		// Issue #994. Compound Interest grows with it: "+1% increased damage per

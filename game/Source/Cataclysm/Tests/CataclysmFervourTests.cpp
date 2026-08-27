@@ -14,6 +14,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For building an instant effect by hand, which is the second of the two routes
+// that write the pool. Issue #1031.
+#include "GameplayEffect.h"
 #include "Character/CataclysmPassiveTree.h"
 // For FCataclysmPassiveEffectRow and FCataclysmPassiveNodeRow.
 #include "Data/CataclysmDataRows.h"
@@ -305,6 +308,99 @@ CATACLYSM_TEST(FCataclysmFervourClampsTest,
 				  -5.0f, 0.001f);
 		TestEqual(TEXT("and the bar is empty rather than negative"),
 				  Character.Fervour(), 0.0f, 0.001f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The ceiling, by the two routes the attribute set itself clamps
+// ---------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmFervourCeilingHoldsByEveryRouteTest,
+	"Cataclysm.Fervour.TheCeilingHoldsWhicheverRouteWritesThePool")
+{
+	using namespace CataclysmFervourTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	// TWO ROUTES WRITE THE POOL AND THIS ASSERTS THE CEILING HOLDS FOR BOTH: a
+	// direct write to the attribute, and an instant gameplay effect adding to
+	// it. Neither had a test at all before this. Until issue #1031 the only
+	// thing asserting a direct write was held was one half of
+	// `Cataclysm.Passives.ApotheosisUncapsARealCharactersFervourAndChargesForIt`,
+	// which established the ordinary capped case before spending points on the
+	// capstone option that removed the cap. That option is gone with the rewrite
+	// of all twelve Masochist capstone options, and the assertion would have
+	// gone with it.
+	//
+	// WHICH CODE ACTUALLY HOLDS THE CEILING, MEASURED RATHER THAN ASSUMED. Three
+	// places clamp the pool and a guard proof of each, run on 2026-08-27, found
+	// that only ONE of the three is load-bearing for any test:
+	//
+	//   `PreAttributeChange` in `UCataclysmClassResourceAttributeSet`
+	//        breaking it fails this test.
+	//   `PostGameplayEffectExecute` in the same file
+	//        breaking it fails nothing. `PreAttributeChange` is reached first on
+	//        both routes below.
+	//   `UCataclysmFervour::Move`
+	//        breaking it fails nothing either, including the test above, which
+	//        goes through it. `Move` returns the change it can MEASURE rather
+	//        than the change it asked for, so the attribute set's clamp makes
+	//        its answer right even with its own clamp gone.
+	//
+	// SO THIS TEST COVERS ONE CLAMP SITE, NOT THREE, and saying otherwise here
+	// would be the kind of claim that makes a reader stop looking. Issue #1036
+	// carries what to do about the other two: their comments each argue they are
+	// necessary, and neither argument is currently tested.
+
+	UWorld* World = MakeWorld();
+	{
+		const FScopedCharacter Character(World);
+		Character.SetHealth(500.0f, 500.0f);
+
+		const FGameplayAttribute Pool = Resource::GetClassResourceAttribute();
+		const float Maximum = Character.AbilitySystem->GetNumericAttribute(
+			Resource::GetMaxClassResourceAttribute());
+		if (!TestTrue(TEXT("the pool has a maximum above nothing"),
+					  Maximum > 0.0f))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// A DIRECT WRITE, WELL PAST THE TOP.
+		Character.AbilitySystem->SetNumericAttributeBase(Pool, Maximum * 3.0f);
+		TestEqual(TEXT("a direct write past the maximum is held at it"),
+				  Character.Fervour(), Maximum, 0.01f);
+
+		// AND WELL BELOW THE BOTTOM. Nothing anywhere says a pool may go
+		// negative, and a negative reading would make every "how much Fervour do
+		// you hold" question answer a number no bar can draw.
+		Character.AbilitySystem->SetNumericAttributeBase(Pool, -50.0f);
+		TestEqual(TEXT("and a direct write below zero is held at zero"),
+				  Character.Fervour(), 0.0f, 0.01f);
+
+		// NOW THE OTHER ROUTE: an instant gameplay effect adding to the pool,
+		// which is what reaches `PostGameplayEffectExecute`.
+		{
+			UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+				GetTransientPackage(), FName(TEXT("TestFervourGain")));
+			Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+			const int32 Index = Effect->Modifiers.Num();
+			Effect->Modifiers.SetNum(Index + 1);
+			FGameplayModifierInfo& Info = Effect->Modifiers[Index];
+			Info.Attribute = Pool;
+			Info.ModifierOp = EGameplayModOp::Additive;
+			Info.ModifierMagnitude = FScalableFloat(Maximum * 5.0f);
+
+			Character.AbilitySystem->ApplyGameplayEffectToSelf(
+				Effect, 1.0f, Character.AbilitySystem->MakeEffectContext());
+		}
+
+		TestEqual(TEXT("and a gameplay effect adding five times the maximum "
+					   "leaves the bar full rather than over"),
+				  Character.Fervour(), Maximum, 0.01f);
 	}
 	World->DestroyWorld(false);
 	return true;

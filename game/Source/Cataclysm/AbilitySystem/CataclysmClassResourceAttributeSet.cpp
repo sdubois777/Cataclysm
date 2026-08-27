@@ -41,10 +41,6 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	InitFervourPerSecond(0.0f);
 	InitDamageToBleedingOnLowHealth(0.0f);
 	InitDamageToBleedingWindow(0.0f);
-
-	// AND THE POOL HAS A MAXIMUM UNLESS THE FINAL VOW'S SECOND OPTION SAYS NOT.
-	// Issue #1029. Zero is the ordinary case for every character.
-	InitClassResourceUncapped(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -67,7 +63,6 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
-	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ClassResourceUncapped);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -77,13 +72,11 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 
 	if (Attribute == GetClassResourceAttribute())
 	{
-		// THE FLOOR ALWAYS APPLIES AND THE CEILING MAY NOT. Issue #1029. The
-		// Final Vow's second option says "Your Fervour has no maximum", and
-		// nothing anywhere says a pool may go negative, so the two ends are not
-		// treated alike.
-		NewValue = GetClassResourceUncapped() > 0.0f
-			? FMath::Max(0.0f, NewValue)
-			: FMath::Clamp(NewValue, 0.0f, GetMaxClassResource());
+		// HELD BETWEEN NOTHING AND THE MAXIMUM. Issue #1031 removed the one
+		// thing that ever lifted the ceiling: The Final Vow's second option,
+		// Apotheosis, said "Your Fervour has no maximum", and all twelve
+		// Masochist capstone options were rewritten without it.
+		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxClassResource());
 	}
 	else if (Attribute == GetDeferredHealthCostShareAttribute())
 	{
@@ -147,34 +140,20 @@ void UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute(
 
 	if (Data.EvaluatedData.Attribute == GetClassResourceAttribute())
 	{
-		// THE SECOND OF THE THREE PLACES THAT CLAMP THE POOL, and it honours the
-		// uncapped flag for the same reason the first does. Issue #1029. A build
-		// that honoured one and not the other would let the pool pass its maximum
-		// by a direct write and not by a gameplay effect, which is worse than not
-		// building the option at all.
-		SetClassResource(GetClassResourceUncapped() > 0.0f
-			? FMath::Max(0.0f, GetClassResource())
-			: FMath::Clamp(GetClassResource(), 0.0f, GetMaxClassResource()));
+		// ONE OF THREE PLACES THAT CLAMP THE POOL, and the only one of the three
+		// that NO TEST NOTICES THE LOSS OF. Issue #1036. A guard proof on
+		// 2026-08-27 removed this clamp, compiled, and ran every test under
+		// `Cataclysm.Fervour`: none failed, because `PreAttributeChange` above
+		// is reached first on every route a test takes, including an instant
+		// gameplay effect adding to the pool. It is kept as defence in depth,
+		// not deleted, because no one has yet established whether a route exists
+		// that skips `PreAttributeChange` -- which is what #1036 is for. What is
+		// NOT true is the claim this comment used to make, that a build
+		// honouring one site and not the other would let the pool pass its
+		// maximum by one route and not another.
+		SetClassResource(
+			FMath::Clamp(GetClassResource(), 0.0f, GetMaxClassResource()));
 	}
-}
-
-bool UCataclysmClassResourceAttributeSet::PoolIsUncapped(
-	const UAbilitySystemComponent* AbilitySystem)
-{
-	// ASKED OF THE COMPONENT RATHER THAN OF A SET THE CALLER FOUND, so the third
-	// clamp site -- `UCataclysmFervour::Move`, which is not in this class -- asks
-	// the same question in the same words. Issue #1029.
-	//
-	// NO CLASS RESOURCE SET MEANS CAPPED, which is every enemy in the game and
-	// every test that builds a component without one. That is the safe direction:
-	// a character with no pool cannot have an uncapped one.
-	if (!AbilitySystem)
-	{
-		return false;
-	}
-	const UCataclysmClassResourceAttributeSet* Set =
-		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
-	return Set && Set->GetClassResourceUncapped() > 0.0f;
 }
 
 TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes()
@@ -199,7 +178,6 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetFervourPerSecondAttribute());
 	All.Add(GetDamageToBleedingOnLowHealthAttribute());
 	All.Add(GetDamageToBleedingWindowAttribute());
-	All.Add(GetClassResourceUncappedAttribute());
 	return All;
 }
 
@@ -224,4 +202,3 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
-CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ClassResourceUncapped)

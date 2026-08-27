@@ -20,6 +20,171 @@ applied or still pending.
 
 ---
 
+## 2026-08-27 — All twelve Masochist capstone options are rewritten as pure upgrades
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`, `game/Data/PassiveNodes.csv`,
+`game/Data/PassiveEffects.csv`, `game/Content/Data/DT_PassiveNodes.uasset` and
+`DT_PassiveEffects.uasset`. Applied. Issue #1031.
+
+The project owner judged the existing twelve poor and chose the shape: **drop the
+drawbacks and follow the Berserker and Bulwark pattern — three pure upgrades per
+tier, each pushing a different build.**
+
+### What was wrong with the old twelve, measured rather than asserted
+
+| Problem | Evidence |
+| :-- | :-- |
+| They barely touched the class's own mechanics | The Masochist is health-as-a-resource, Fervour built from damage taken, and retaliation. Three of the twelve named Fervour and two named health costs. Eleven of the Berserker's twelve name Fervour, Frenzy, Wrath or leech. |
+| They branched on nothing | Every Berserker tier is two-handed / dual wield / either. Every Bulwark tier is block / regeneration / retaliation, which are its three tree branches. The Masochist's three were unrelated to each other and to any build axis. |
+| A quarter were the same idea | Iron Will, Reaper's Gambit and The Undying were all "you do not die". Two more were damage-immunity windows. |
+| Several drawbacks were near-free for this class | "Your Mana and Energy Shield no longer regenerate naturally" — the Masochist's line in `game/Data/ClassStats.csv` names no mana, no energy shield and no energy shield regeneration. |
+| One was a coin flip rather than a choice | The Cataclysmic Echo: per dungeon modifier, a 10% chance it helped and a 25% chance it hurt. More likely to hurt, and impossible to build around. |
+| Two could be worth nothing | The Void Embrace scaled with equipped Void items; a character with none got nothing from a permanent commitment. |
+| The names read as placeholders | Nine of twelve were "X, but For the Y", and several of the X's were other classes' capstone names. |
+
+### What the genre settles, and what it does not
+
+**Drawback-bearing nodes are an established shape**, so the original "Vow" idea
+was not wrong in principle. Path of Exile's general-tree keystones carry real
+costs: Chaos Inoculation sets maximum life to 1, and Blood Magic makes skills
+consume life instead of mana.
+
+**Class-identity nodes are gated and choose-one.** Path of Exile's Ascendancy
+notables are each gated behind lesser nodes, and at least one Ascendancy uses an
+explicit one-per-category rule, which is the same shape as a capstone offering
+three.
+
+**What the research does NOT settle is whether a class-identity capstone should
+carry a drawback.** No source was found comparing the two. Choosing pure upgrades
+is the project owner's judgement and is recorded as one, not as something
+derived.
+
+Sources:
+
+- https://pathofexile.fandom.com/wiki/Chaos_Inoculation
+- https://www.aoeah.com/news/4414--poe-328-new-reliquarian-ascendancy-passive-skills-unique-nodes--leveling-tips
+
+### Three lanes, and why they are three when the tree has four branches
+
+The Masochist tree has a central spine and **four** branches of fourteen nodes,
+each named by its own keystone: health paid as a cost and health debt (`bt`);
+leech, retaliation and feeding on damage (`fc`); debuffs carried and inflicted
+(`fl`); and operating at low health (`ll`). A capstone offers three options.
+
+The Bulwark has exactly three branches, which is why its capstones map one to
+one. The Berserker has four and solves it by gating two options on the weapon
+held — **which the Masochist cannot copy, because `docs/Cataclysm_GDD_v2.md`
+gives it the Fist and nothing else, so there is no weapon axis to gate on.**
+
+**Blood Tithe and Low Life are folded into one lane.** Both are about the
+character's own health bar: one spends it deliberately, the other is the state
+that spending produces, and the tree's own nodes already overlap on it. That
+gives **Blood, Flesh and Affliction**, the same three at every tier.
+
+**The Affliction lane is written about debuffs the CHARACTER carries, not
+debuffs on an enemy.** Nothing in this game gives an enemy a modifier — issues
+#742 and #674 — and that already blocks three of the Flagellant branch's basic
+nodes. A lane written the obvious way would have been blocked at every tier. The
+machinery for the character's own debuffs exists: `UCataclysmDebuffs::CountOn`,
+the `while_bleeding` condition, the `debuffs_carried` scale, and
+`damage_over_time_taken` from issue #1026.
+
+### The twelve
+
+| Tier | Blood | Flesh | Affliction |
+| --: | :-- | :-- | :-- |
+| 25 | Water to Blood | Reprisal Wave | Stigmatic |
+| 50 | Rock Bottom | Feeding Wound | Ceaseless Penance |
+| 100 | Deficit | Glutton | Doctrine Made Flesh |
+| 200 | The Last Drop | Carnivore | Vessel Unbroken |
+
+**The First Vow, 25 points**
+
+1. **Water to Blood** — "You no longer have a mana pool. All maximum mana is
+   converted into added maximum health, and every ability costs health instead
+   of mana."
+2. **Reprisal Wave** — "Your retaliation damage strikes every enemy within 4
+   metres, not only the one that hit you."
+3. **Stigmatic** — "Each debuff on you grants 4% increased damage and 4%
+   increased health regeneration."
+
+**The Second Vow, 50 points**
+
+1. **Rock Bottom** — "A health cost can never reduce you below 1 health;
+   anything you cannot pay becomes health debt instead. Dropping below 20% health
+   clears all outstanding debt and grants 50 Fervour, no more than once every 30
+   seconds."
+2. **Feeding Wound** — "Your life leech applies to your retaliation damage as
+   well as to your attacks."
+3. **Ceaseless Penance** — "Debuffs on you no longer expire while you are above
+   50% health."
+
+**The Third Vow, 100 points**
+
+1. **Deficit** — "Your damage is increased by 1% for every 2% of your maximum
+   health you are missing or owe."
+2. **Glutton** — "Your retaliation damage is increased by 1% for every 1% of
+   life leech you have."
+3. **Doctrine Made Flesh** — "Each debuff on you grants 1% more damage and
+   reduces the damage that debuff deals to you by 10%."
+
+**The Final Vow, 200 points**
+
+1. **The Last Drop** — "While below 20% health your skills cost no health, and
+   every skill you cast grants 10 Fervour."
+2. **Carnivore** — "Every hit you take grants a stack of Carnage. Carnage has no
+   maximum, and each stack grants 2% more damage."
+3. **Vessel Unbroken** — "Debuffs on you deal no damage at all, and each one
+   grants 5% more damage and 5 Fervour per second."
+
+### Two decisions inside the twelve worth recording
+
+**Water to Blood is kept, by name, and stays a capstone option.**
+`docs/Cataclysm_GDD_v2.md` says the Masochist "Uses HP instead of mana for
+abilities", and then that the Masochist keeps a normal mana pool and the
+conversion "is delivered by a keystone or capstone in its passive tree… so the
+conversion is a build choice rather than a starting condition". Water to Blood is
+that delivery and cannot simply be deleted. Moving it to a keystone was proposed
+— Path of Exile puts the same effect in its general tree as Blood Magic — and the
+owner asked for it back as a capstone option instead.
+
+**Bloodletter was merged into Rock Bottom rather than kept as a fourth option.**
+The draft had Bloodletter at 25 ("a health cost can never reduce you below 1
+health; what you cannot pay becomes health debt") and Rock Bottom at 50 (the
+clear-the-debt trigger). With Water to Blood taken at 25, every ability costs
+health, so the safety belongs at the next tier rather than the same one; and the
+200-point option, The Last Drop, is a stronger version of the same protection.
+Rock Bottom now carries both clauses.
+
+### Apotheosis is removed, and it was the only capstone option with code behind it
+
+**"Your Fervour has no maximum, but you take 1% more damage for every 100 Fervour
+you hold."** Built under issue #1029 as The Final Vow's second option — the slot
+Carnivore now takes — and it is drawback-bearing, which is the shape being
+dropped. This was known when #1030 merged and the owner chose to merge anyway,
+because the `Option` column that change added is what any rewrite needs.
+
+Removing it removes two authored rows and, with them, everything that existed to
+serve them: the `class_resource_uncapped` stat and its gameplay attribute, the
+three places that clamped the class resource pool and had to consult it, and the
+special case that reported the pool's maximum as unknown so that the condition
+"while your Fervour is at maximum" would refuse for such a character rather than
+holding for ever.
+
+**The anti-synergy that special case existed for is worth keeping on record even
+though the option is gone.** Communion of Pain is paid for by being at the top of
+the bar. A character that gave up having a top has nothing to be at, so the two
+were an anti-synergy — and the naive reading, comparing the pool against a
+maximum attribute that still held its old number, would have made Communion of
+Pain permanently ON for such a character rather than permanently off. If a
+future node ever removes a pool's ceiling again, that is the trap.
+
+**None of the twelve has an authored effect row yet.** All four capstones are
+back in the list of Masochist nodes that do nothing, which takes that tree from
+64 nodes with an effect to 63 of 74.
+
+---
+
 ## 2026-08-27 — How much damage a character takes is a stat, and it is a ninth step
 
 **Affects:** the Damage Calculation part of section IV in `Cataclysm_GDD_v2.md`.

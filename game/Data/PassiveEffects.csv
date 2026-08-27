@@ -90,6 +90,4 @@ Masochist_keystone_spine_001#2,Masochist_keystone_spine_001,spell_damage,more,20
 Masochist_keystone_spine_001#3,Masochist_keystone_spine_001,damage_taken,more,20.0,,class_resource_at_maximum,0.0,,0.0,0
 Masochist_keystone_ll_kA#1,Masochist_keystone_ll_kA,damage_taken,more,-25.0,,health_at_or_below,20.0,,0.0,0
 Masochist_keystone_ll_kA#2,Masochist_keystone_ll_kA,fervour_loss_suppressed,flat,1.0,,health_at_or_below,20.0,,0.0,0
-Masochist_capstone_200#1,Masochist_capstone_200,class_resource_uncapped,flat,1.0,,,0.0,,0.0,2
-Masochist_capstone_200#2,Masochist_capstone_200,damage_taken,more,1.0,,,0.0,class_resource_held,100.0,2
 Masochist_basic_fc_b2#1,Masochist_basic_fc_b2,bleed_on_crit_chance,flat,5.0,,,0.0,,0.0,0
