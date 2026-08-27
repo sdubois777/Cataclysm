@@ -74,6 +74,30 @@ public:
 	static constexpr float StepSeconds = 0.25f;
 
 	/**
+	 * The three rates, by the names the design sheet gives them. Issue #1038.
+	 *
+	 * WHY NAMES AND NOT JUST ATTRIBUTES. `ApplyStep` used to read each rate
+	 * straight off its gameplay attribute, and a bonus carrying a CONDITION or a
+	 * SCALE is never folded into an attribute: `UCataclysmPlayerClassStats::ApplyTo`
+	 * resolves every stat with the default `FCataclysmStatConditions`, which
+	 * refuses every condition and reads every count as zero, because a bonus that
+	 * grows with the character's state would be stale the moment the state moved.
+	 * So such a bonus was dropped in silence -- the character regenerated its base
+	 * rate, the arithmetic ran, and nothing reported it. `ApplyStep` now ASKS for
+	 * each rate instead, which is what `UCataclysmFervour::GainPerSecondStep`
+	 * already did for its own per-second stat under issue #1008.
+	 *
+	 * SHARED WITH `UCataclysmPlayerClassStats::StatToAttribute`, which records
+	 * each stat under exactly this key. A second spelling would fall back to the
+	 * attribute silently and read as a character with no bonus rather than as a
+	 * fault, which is the argument `UCataclysmItemModifiers::AttackDamageStat`
+	 * makes for the same shape.
+	 */
+	static const TCHAR* HealthRegenStat;
+	static const TCHAR* ManaRegenStat;
+	static const TCHAR* EnergyShieldRegenStat;
+
+	/**
 	 * How much a pool gains in one step, given its per-second rate.
 	 *
 	 * Zero for a rate of zero or below. A negative regeneration rate is not a

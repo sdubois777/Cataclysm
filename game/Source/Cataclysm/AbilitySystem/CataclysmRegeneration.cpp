@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For asking the pipeline what a rate is worth, rather than reading the
+// gameplay attribute it was folded into. Issue #1038.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -8,6 +11,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Actor.h"
+
+const TCHAR* UCataclysmRegeneration::HealthRegenStat = TEXT("health_regen");
+const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
+const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
+	TEXT("energy_shield_regen");
 
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
@@ -137,18 +145,50 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	FGameplayTagContainer Regeneration;
 	Regeneration.AddTag(UCataclysmFervour::RegenerationTag());
 
+	// EACH RATE IS ASKED FOR RATHER THAN READ OFF ITS ATTRIBUTE. Issue #1038.
+	// A bonus carrying a condition or a scale is never folded into a gameplay
+	// attribute -- it would be stale the moment the character's state moved --
+	// so reading the attribute answered the base rate for ever and nothing
+	// reported it. The Masochist's Stigmatic capstone option, "each debuff on
+	// you grants 4% increased health regeneration", is the first node to need
+	// this and would have done nothing without it.
+	//
+	// THE ATTRIBUTE IS THE FALLBACK, NOT ZERO, and that difference matters.
+	// `UCataclysmFervour::GainPerSecondStep` passes zero because nothing else
+	// supplies its stat; all three rates here have a real base from the class
+	// stat line, and `StatForSkill` returns the fallback whenever the pipeline
+	// recorded nothing for the stat -- which is every enemy and every player
+	// before its first refresh. Passing zero would delete their regeneration.
+	//
+	// NO TAGS, because nothing is happening. This is a pool coming back on its
+	// own rather than a skill being used, so there is no event whose tags could
+	// scope a modifier.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const auto RateOf = [&](const TCHAR* Stat,
+							const FGameplayAttribute& Attribute) -> float
+	{
+		const float Stored = AbilitySystem->GetNumericAttribute(Attribute);
+		return Cataclysm ? Cataclysm->StatForSkill(FName(Stat),
+												   FGameplayTagContainer(),
+												   Stored)
+						 : Stored;
+	};
+
 	TopUp(*AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
-		  GainPerStep(AbilitySystem->GetNumericAttribute(
-						  UCataclysmVitalAttributeSet::GetHealthRegenAttribute()),
-					  SecondsInStep),
+		  GainPerStep(
+			  RateOf(HealthRegenStat,
+					 UCataclysmVitalAttributeSet::GetHealthRegenAttribute()),
+			  SecondsInStep),
 		  Regeneration);
 
 	TopUp(*AbilitySystem, UCataclysmVitalAttributeSet::GetManaAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxManaAttribute(),
-		  GainPerStep(AbilitySystem->GetNumericAttribute(
-						  UCataclysmVitalAttributeSet::GetManaRegenAttribute()),
-					  SecondsInStep));
+		  GainPerStep(
+			  RateOf(ManaRegenStat,
+					 UCataclysmVitalAttributeSet::GetManaRegenAttribute()),
+			  SecondsInStep));
 
 	// THE SHIELD WAITS AND THE OTHER TWO DO NOT. Three seconds since the
 	// character last took damage, restarted by taking damage again inside the
@@ -160,8 +200,8 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 			  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
 			  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
 			  GainPerStep(
-				  AbilitySystem->GetNumericAttribute(
-					  UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute()),
+				  RateOf(EnergyShieldRegenStat,
+						 UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute()),
 				  SecondsInStep));
 	}
 }

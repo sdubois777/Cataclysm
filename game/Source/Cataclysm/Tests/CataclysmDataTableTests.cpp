@@ -289,7 +289,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 99 FOR THE FIRST TWO OF THOSE REWRITTEN OPTIONS. Issue #1040.
 	// Deficit is four rows, because "damage" is two stats on this sheet and
 	// "missing or owe" is two scales; Doctrine Made Flesh is three.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         99)
+	//
+	// AND TO 102 FOR STIGMATIC. Issue #1042. Three rows on The First Vow's
+	// third option, all scaled by how many debuffs the character carries.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        102)
 
 	#undef CHECK_TABLE
 
