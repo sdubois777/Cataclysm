@@ -82,6 +82,11 @@ public:
 	 * `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py` names this
 	 * constant as where the base comes from, so the check that refuses an
 	 * increase with no base under it can see it.
+	 *
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases` IS WHAT PUTS IT ON A
+	 * CHARACTER, and until issue #1025 nothing did. Two comments claimed a base
+	 * existed, they claimed different things, and neither was true: the stat
+	 * resolved to zero, and a window of zero converts nothing.
 	 */
 	static constexpr float BaseWindowSeconds = 3.0f;
 

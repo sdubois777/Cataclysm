@@ -353,9 +353,16 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// Issue #985. How many seconds one turn of that conversion lasts. THE
 		// ONLY STAT IN THIS MAP WHOSE BASE IS NEITHER A CLASS LINE NOR A
 		// MODIFIER. The node grants an `increased` of 5 per point, and 3 seconds
-		// is the base that multiplies: a constant the engine passes when it asks.
+		// is the base that multiplies: a constant the engine states.
 		// `ENGINE_SUPPLIED_BASES` in tools/generate_datatables.py names it, so
 		// the check refusing an increase with no base under it can see it too.
+		//
+		// AND UNTIL ISSUE #1025 THAT CONSTANT REACHED NOTHING. This exemption
+		// existed, the tool's exemption existed, and no code put the base on a
+		// character, so the stat resolved to zero and the node converted nothing.
+		// `UCataclysmPlayerClassStats::EngineSuppliedBases` is what supplies it
+		// now, and `EveryEngineSuppliedBaseReachesACharacter` below is what
+		// checks that it still does.
 		{TEXT("damage_to_bleeding_window"),
 		 TEXT("UCataclysmDamageConversion::BaseWindowSeconds, with the "
 			  "Masochist's The Breaking Point node increasing it")},
@@ -463,6 +470,82 @@ CATACLYSM_TEST(FCataclysmClassLineReachesTheCharacter,
 	TestEqual(TEXT("and so is mana"),
 		Character.Read(UCataclysmVitalAttributeSet::GetManaAttribute()),
 		Character.Read(UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmEveryEngineSuppliedBaseReachesACharacter,
+	"Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TMap<FName, float>& Stated =
+		UCataclysmPlayerClassStats::EngineSuppliedBases();
+
+	// THE MAP IS NOT EMPTY, so this cannot pass by having nothing to check. A
+	// guard over an empty list is a guard that cannot fail.
+	if (!TestTrue(TEXT("the engine states at least one base"),
+				  Stated.Num() > 0))
+	{
+		return false;
+	}
+
+	const FScopedCharacter Character(World);
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, 20);
+
+	for (const TPair<FName, float>& Pair : Stated)
+	{
+		const FString Stat = Pair.Key.ToString();
+
+		// IT HAS TO HAVE AN ATTRIBUTE, or `ApplyTo` never resolves it: the loop
+		// there is over `StatToAttribute` rather than over these bases, so a stat
+		// missing from that map is dropped before this base is ever consulted.
+		const FGameplayAttribute* Attribute =
+			UCataclysmPlayerClassStats::StatToAttribute().Find(Stat);
+		if (!TestNotNull(*FString::Printf(
+				TEXT("'%s' has an attribute to be written to"), *Stat),
+				Attribute))
+		{
+			continue;
+		}
+
+		// AND NO CLASS LINE MAY NAME IT. This base replaces the class line
+		// unconditionally, so a class line naming one of these would be read by
+		// `BaseFor`, thrown away, and nothing would say so.
+		TestEqual(*FString::Printf(
+			TEXT("and no class line states '%s', because this base replaces one"),
+			*Stat),
+			UCataclysmClassStats::BaseFor(
+				Table, UCataclysmClassStats::DefaultClassName, Stat, 20),
+			0.0f);
+
+		// AND THE VALUE REALLY ARRIVES. This is the assertion issue #1025 was
+		// about. `damage_to_bleeding_window` was named by `ENGINE_SUPPLIED_BASES`
+		// in `tools/generate_datatables.py`, which exempted it from the check
+		// refusing an increase with no base under it, and nothing anywhere put
+		// the base on a character -- so it resolved to zero, The Breaking Point
+		// opened a conversion window of zero seconds, and it converted nothing.
+		TestEqual(*FString::Printf(
+			TEXT("and a character built from the class table holds '%s' at %.2f"),
+			*Stat, Pair.Value),
+			Character.Read(*Attribute), Pair.Value, 0.001f);
+	}
 
 	return true;
 }

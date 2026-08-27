@@ -2829,6 +2829,14 @@ def item_base_column_stats(item_bases: list[dict] | None) -> set[str]:
 #: becoming a place to silence the check. An entry has to say which code supplies
 #: the base, so a reader can go and look, and a stat added here without one is
 #: obvious.
+#:
+#: AND NAMING ONE IS A PROMISE SOME CODE HAS TO KEEP. Issue #1025. The first entry
+#: below named a constant nothing ever passed, so the exemption silenced this
+#: check and the base really was zero: The Breaking Point opened a conversion
+#: window of zero seconds and converted nothing, for as long as the node existed.
+#: `UCataclysmPlayerClassStats::EngineSuppliedBases` is the map that now keeps the
+#: promise, and `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`
+#: is the test that checks it is kept.
 ENGINE_SUPPLIED_BASES = {
     # Issue #985, The Breaking Point: "The conversion lasts 3 seconds, increased
     # by 5% per point". The 3 seconds is a constant of the mechanic rather than
@@ -2837,7 +2845,8 @@ ENGINE_SUPPLIED_BASES = {
     # what makes each class feel different, and a timing window for one node is
     # not that.
     "damage_to_bleeding_window":
-        "UCataclysmDamageConversion::BaseWindowSeconds, passed to StatForSkill",
+        "UCataclysmDamageConversion::BaseWindowSeconds, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
 }
 
 
