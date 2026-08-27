@@ -434,6 +434,34 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 			NamedByTheDesign.Contains(Pair.Key));
 	}
 
+	// AND EVERY EXEMPTION STILL DESCRIBES A STAT THAT EXISTS. Issue #1032.
+	//
+	// THE THIRD DIRECTION, AND IT WAS MISSING. The two loops above read the
+	// class table and the map; nothing read this list, so an entry whose stat
+	// had been removed from `StatToAttribute` -- or renamed -- became
+	// unreachable and stayed here stating where a stat that no longer exists
+	// gets its value. There are 52 entries and most are several lines of
+	// explanation, so a stale one costs a reader real time and no test run
+	// mentions it.
+	//
+	// FOUND BY A GUARD PROOF RATHER THAN BY READING. Deleting
+	// `bleed_on_crit_chance` from `StatToAttribute` was predicted to fail this
+	// test and did not. It failed
+	// `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`
+	// instead, which reads the passive effect table -- so that one covers a
+	// stat a NODE grants, and would not have covered a stat supplied by a
+	// weapon, by the skill in hand or by an engine constant. Most of the
+	// entries below are one of those.
+	for (const TPair<FString, FString>& Exemption : SuppliedFromElsewhere)
+	{
+		TestTrue(FString::Printf(
+			TEXT("'%s' is exempted here as being supplied by %s, and it is "
+				 "still a stat StatToAttribute maps. An exemption for a stat "
+				 "nothing maps any more describes nothing; delete it."),
+			*Exemption.Key, *Exemption.Value),
+			Map.Contains(Exemption.Key));
+	}
+
 	return true;
 }
 
