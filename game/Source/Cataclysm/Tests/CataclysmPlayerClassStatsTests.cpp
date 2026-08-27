@@ -401,6 +401,17 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// blow lands rather than asking for the stat.
 		{TEXT("bleed_on_crit_chance"),
 		 TEXT("the Masochist's Mutilation Mastery node, as a flat modifier")},
+
+		// Issue #1039. Whether damage over time deals this character nothing at
+		// all. Zero for every class, and the Masochist's Vessel Unbroken
+		// capstone option is its only source. A FLAG rather than a reduction,
+		// because a Less multiplier is floored at -99 and "no damage at all" is
+		// not 99% less; `fervour_loss_suppressed` above is the same shape for
+		// the same reason. Its row carries no condition and no scale, so it IS
+		// folded into the attribute.
+		{TEXT("debuff_damage_suppressed"),
+		 TEXT("the Masochist's The Final Vow node, third option, as a flat "
+			  "modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

@@ -301,7 +301,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: regeneration, which only reaches a character at all because issue #1038
 #: made the regeneration step ASK for its rate rather than read the gameplay
 #: attribute a scaled bonus is never folded into.
-AUTHORED_ROWS = 102
+#:
+#: AND TO 106 ON 2026-08-27, FOR VESSEL UNBROKEN. Issue #1039. Four rows: a flag
+#: saying damage over time deals the character nothing, two for the damage each
+#: debuff multiplies, and the Fervour each grants a second.
+AUTHORED_ROWS = 106
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -459,7 +463,12 @@ AUTHORED_ROWS = 102
 #: is the first of that capstone's three options to be authored, so the node
 #: joins this count. 69 of 293 altogether and 65 of the Masochist tree's own
 #: 74.
-AUTHORED_NODES = 69
+#:
+#: AND BY ONE MORE ON 2026-08-27, for The Final Vow. Issue #1039. Vessel Unbroken
+#: is the first of that capstone's three options to be authored since Apotheosis
+#: was removed, so the node rejoins this count. 70 of 293 altogether and 66 of
+#: the Masochist tree's own 74.
+AUTHORED_NODES = 70
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -784,18 +793,27 @@ SCALE_WORDS = {
     "bloodlust_stacks": (("stack of bloodlust", "each stack"), None, None),
     "carnage_stacks": (("stack of carnage", "each stack"), None, None),
 
-    # A COUNT OF WHAT IS BEING DONE TO THE CHARACTER. Issue #962. Four nodes
-    # read it and the phrase they share is "debuff on you". Three of them write
-    # "for each unique debuff on you" and Flagellant writes "Every debuff on you
-    # grants 5 Fervour per second", so a longer phrase would refuse one of the
-    # four while being no more specific: no other scale in this map is about
-    # debuffs at all, so those three words already pick this one out.
+    # A COUNT OF WHAT IS BEING DONE TO THE CHARACTER. Issue #962. Every node
+    # reading it says "debuff" and says "on you", and requiring both is what
+    # stops a row sitting on the wrong node: no other scale in this map is about
+    # debuffs at all, so those two fragments already pick this one out.
     #
-    # A STEP FORM OF `None`, because none of the four sentences names a step.
-    # "For each" and "every" both count single debuffs, so the step can only be
-    # 1, and that is asserted instead. Looking for a "1" in "+1% increased
-    # damage" would find the bonus's own number and pass for the wrong reason.
-    "debuffs_carried": (("debuff on you",), None, None),
+    # TWO FRAGMENTS RATHER THAN THE ONE PHRASE "debuff on you", since issue
+    # #1039. It was that single phrase until The Final Vow's third option was
+    # authored, and that option says "DebuffS on you deal no damage at all" --
+    # plural, because its subject is every debuff at once rather than each one
+    # in turn. The singular phrase is not a substring of the plural, so the
+    # check refused a perfectly correct row. Splitting it accepts both forms and
+    # gives up nothing: a sentence containing "debuff" and "on you" separately
+    # but not about debuffs on the character is not a sentence anyone would
+    # write.
+    #
+    # A STEP FORM OF `None`, because none of the sentences names a step. "For
+    # each", "every" and "each one" all count single debuffs, so the step can
+    # only be 1, and that is asserted instead. Looking for a "1" in "+1%
+    # increased damage" would find the bonus's own number and pass for the wrong
+    # reason.
+    "debuffs_carried": (("debuff", "on you"), None, None),
 }
 
 
@@ -971,6 +989,21 @@ VALUE_IN_WORDS = {
     # is the damage the first row removes.
     ("Masochist_keystone_ll_kA", "fervour_loss_suppressed"):
         ("your fervour does not decrease", 1.0),
+
+    # THE FINAL VOW'S THIRD OPTION, VESSEL UNBROKEN. Issue #1039. "Debuffs on
+    # you deal no damage at all, and each one grants 5% more damage and 5
+    # Fervour per second." A flag of 1, and a rule rather than a magnitude: the
+    # only way to write "no damage at all" as a multiplier would be -100, and
+    # `UCataclysmStatPipeline::LessMultiplierFloor` clamps a Less multiplier to
+    # -99 on purpose, so the sentence cannot be delivered that way at all.
+    #
+    # BOTH DIGITS IN THAT SENTENCE BELONG TO THE OTHER TWO CLAUSES, which is why
+    # none of them can stand in for this row: the two 5s are the damage each
+    # debuff multiplies by and the Fervour each grants a second, and the
+    # ordinary check below matches those three rows against them with no
+    # exemption at all.
+    ("Masochist_capstone_200", "debuff_damage_suppressed"):
+        ("deal no damage at all", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50

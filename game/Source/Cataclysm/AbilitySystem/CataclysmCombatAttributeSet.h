@@ -416,6 +416,38 @@ public:
 	FGameplayAttributeData DamageOverTimeTaken;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 
+	/**
+	 * Whether damage over time deals this character nothing at all. Issue #1039.
+	 * Zero for no, above zero for yes.
+	 *
+	 * A FLAG AND NOT A REDUCTION, AND THAT IS FORCED RATHER THAN CHOSEN. The
+	 * Masochist's Vessel Unbroken says "Debuffs on you deal no damage at all",
+	 * which as a multiplier would be -100%, and
+	 * `UCataclysmStatPipeline::LessMultiplierFloor` clamps a Less multiplier to
+	 * -99 on purpose. Ninety-nine per cent less is not none. So a rule that says
+	 * "no damage" has to say so as a flag, exactly as
+	 * `fervour_loss_suppressed` does for "your Fervour does not decrease".
+	 *
+	 * IT ZEROES THE DAMAGE AND DOES NOT REMOVE THE DEBUFF, which matters because
+	 * the option's own other two clauses count debuffs: "each one grants 5% more
+	 * damage and 5 Fervour per second". Removing the debuff would make the
+	 * option cancel itself. `UCataclysmDamageCalculation::Resolve` applies this
+	 * at the damage over time step and touches nothing else, so the effect
+	 * carries on running, keeps its tag, and stays in
+	 * `UCataclysmDebuffs::CountOn`.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason the two damage taken
+	 * stats above are not: no affix grants it, nothing scales it, no class line
+	 * names it, and one passive option supplies it. Every class starts at zero.
+	 *
+	 * ASKED FOR RATHER THAN READ, through `DefenderStat`, so that a future row
+	 * carrying a condition works. Its one row today carries none, so it IS
+	 * folded into this attribute and both routes give the same answer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DebuffDamageSuppressed)
+	FGameplayAttributeData DebuffDamageSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -479,6 +511,7 @@ protected:
 	UFUNCTION() void OnRep_BleedOnCritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

@@ -17,6 +17,8 @@ const TCHAR* UCataclysmDamageCalculation::DamageTakenStat =
 	TEXT("damage_taken");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenStat =
 	TEXT("damage_over_time_taken");
+const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
+	TEXT("debuff_damage_suppressed");
 
 namespace
 {
@@ -486,9 +488,31 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 		if (Hit.bIsDamageOverTime)
 		{
-			Damage *= FMath::Max(0.0f,
-				DefenderStat(Defender, DamageOverTimeTakenStat,
-							 Combat->GetDamageOverTimeTaken())) / 100.0f;
+			// AND ONE CHARACTER IN THE GAME TAKES NONE OF IT AT ALL. Issue
+			// #1039. The Masochist's Vessel Unbroken capstone option reads
+			// "Debuffs on you deal no damage at all", which cannot be written as
+			// a multiplier: `UCataclysmStatPipeline::LessMultiplierFloor` clamps
+			// a Less multiplier to -99 on purpose, and 99% less is not none.
+			//
+			// IT ZEROES THE DAMAGE AND LEAVES THE EFFECT RUNNING, which the rest
+			// of that option depends on. Its other two clauses count the debuffs
+			// the character carries, so an effect removed rather than silenced
+			// would make the option cancel itself. Nothing here touches the
+			// effect; only the number it would have dealt.
+			//
+			// INSTEAD OF THE MULTIPLICATION RATHER THAN BEFORE IT, so no stat
+			// that multiplies can bring the figure back above zero afterwards.
+			if (DefenderStat(Defender, DebuffDamageSuppressedStat,
+							 Combat->GetDebuffDamageSuppressed()) > 0.0f)
+			{
+				Damage = 0.0f;
+			}
+			else
+			{
+				Damage *= FMath::Max(0.0f,
+					DefenderStat(Defender, DamageOverTimeTakenStat,
+								 Combat->GetDamageOverTimeTaken())) / 100.0f;
+			}
 		}
 	}
 

@@ -292,7 +292,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 102 FOR STIGMATIC. Issue #1042. Three rows on The First Vow's
 	// third option, all scaled by how many debuffs the character carries.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        102)
+	//
+	// AND TO 106 FOR VESSEL UNBROKEN. Issue #1039. Four rows on The Final
+	// Vow's third option: a flag saying damage over time deals the character
+	// nothing, two for the damage each debuff multiplies, and the Fervour
+	// each grants a second.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        106)
 
 	#undef CHECK_TABLE
 
