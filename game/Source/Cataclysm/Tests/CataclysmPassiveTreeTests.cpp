@@ -12,6 +12,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the swing time Thirst for Pain shortens. Issue #962.
 #include "AbilitySystem/CataclysmBasicAttack.h"
+// For the conversion window The Breaking Point lengthens. Issue #1025.
+#include "AbilitySystem/CataclysmDamageConversion.h"
 // For the debuffs the five new nodes read. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the three Fervour rate stat names and the function that reads one back
@@ -2850,6 +2852,181 @@ bool FCataclysmPassiveSpendCommandTakesACountTest::RunTest(const FString&)
 			  BeforeWord);
 	TestTrue(*FString::Printf(TEXT("and is refused: %s"), *Word),
 			 Word.Contains(TEXT("Refused")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBreakingPointOnARealCharacterTest,
+	"Cataclysm.Passives.TheBreakingPointConvertsForARealCharactersFullWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Breaking Point on a real character, hurt for real. Issue #1025.
+ *
+ * "Dropping below 50% health converts all damage you take into Bleeding over 5
+ * seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot
+ * happen more than once every 10 seconds."
+ *
+ * WHAT IT CAUGHT, WHICH IS WHY IT IS WORTH THE SPAWN. The window resolved to
+ * ZERO on every real character, so the node converted nothing at all, and
+ * `NoteDamageConversionStarted` refuses a window of zero, so not one turn of the
+ * conversion ever began. The base of 3 seconds was named by
+ * `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`, which exempted the
+ * stat from the check refusing an increase with no base under it, and nothing
+ * anywhere put that base on a character.
+ *
+ * WHY NOTHING ELSE NOTICED. `CataclysmDamageConversionTests.cpp` writes the
+ * window onto the attribute by hand in its `TakeTheNode` helper, so every test
+ * there proves the conversion works GIVEN a window and none of them asks where a
+ * window comes from. The same shape of gap #1024 was written for: every part
+ * works and they are not joined up.
+ *
+ * THE BASE IS CHECKED BEFORE ANY POINT IS SPENT, and that half is the one that
+ * fails against the old build. `ApplyTo` writes the attribute for every mapped
+ * stat whether or not a modifier touches it, so an unspent character reading 3
+ * seconds is what says the base reached a character at all.
+ *
+ * AND THE WHOLE CHAIN AFTER IT: eight points make it 4.2 seconds, dropping below
+ * half health opens a window of exactly that length, and the character really is
+ * converting. Reading the stat alone would prove the arithmetic and skip the part
+ * that turns it into a window a player experiences.
+ */
+bool FCataclysmPassiveBreakingPointOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Conversion = UCataclysmDamageConversion;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_ll_b1"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. The node
+	// grants two stats and they answer different questions: a flag saying the
+	// rule applies at all, and a duration saying how long one turn of it lasts.
+	// A build that lost the second row would still switch the rule on, and the
+	// window assertions below would then be measuring a base nobody increased.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("The Breaking Point grants two stats"),
+				   Effects.Num(), 2))
+	{
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* WindowRow = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Stat == FString(Conversion::WindowStat))
+		{
+			WindowRow = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("one of them is the conversion window"), WindowRow))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is an increase"), WindowRow->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of five percent a point"), WindowRow->ValuePerPoint, 5.0f);
+
+	const FGameplayAttribute WindowAttribute =
+		Resource::GetDamageToBleedingWindowAttribute();
+
+	// THE BASE, ON A CHARACTER THAT HAS SPENT NOTHING. This is the assertion the
+	// old build failed: the stat had no base anywhere, so it resolved to zero and
+	// the increase below multiplied nothing.
+	Equipment->RefreshAttributes(AbilitySystem);
+	TestEqual(TEXT("an unspent Masochist already has a three second window"),
+			  AbilitySystem->GetNumericAttribute(WindowAttribute), 3.0f, 0.001f);
+
+	// AND THE RULE IS STILL OFF, which is what makes that base harmless. The
+	// window says how long a turn lasts; the flag beside it says whether a turn
+	// may begin at all.
+	TestEqual(TEXT("and the rule itself is off until a point is spent"),
+			  AbilitySystem->GetNumericAttribute(
+				  Resource::GetDamageToBleedingOnLowHealthAttribute()),
+			  0.0f, 0.001f);
+
+	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure below is what
+	// a player who committed to it actually gets. `docs/Cataclysm_GDD_v2.md` and
+	// the header both quote 4.2 seconds for exactly this case.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestEqual(TEXT("eight points make the window 4.2 seconds"),
+			  AbilitySystem->GetNumericAttribute(WindowAttribute), 4.2f, 0.001f);
+	TestTrue(TEXT("and the rule is now on"),
+			 AbilitySystem->GetNumericAttribute(
+				 Resource::GetDamageToBleedingOnLowHealthAttribute()) > 0.0f);
+
+	// NOW HURT IT, THROUGH THE FUNCTION THE GAME'S OWN HEALTH CHANGE CALLS.
+	// Nothing is converting yet, because the character is at full health and has
+	// not dropped anywhere.
+	TestFalse(TEXT("a character at full health is not converting"),
+			  AbilitySystem->IsConvertingDamageToBleeding());
+
+	const float Maximum = AbilitySystem->GetNumericAttribute(
+		Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the character has some maximum health"), Maximum > 0.0f))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.4f);
+	Conversion::NoteHealthChanged(Character);
+
+	TestTrue(TEXT("dropping below half health starts the conversion"),
+			 AbilitySystem->IsConvertingDamageToBleeding());
+
+	// AND FOR THE LENGTH THE NODE PAID FOR, not for the base and not for nothing.
+	// Without this the test would pass against a build that opened a window of
+	// any length at all, including the three seconds an unspent character has.
+	//
+	// NARROWED TO A FLOAT ON PURPOSE. `GetTimeSeconds` answers a double and the
+	// window is a float, so the subtraction is a double and `TestEqual` cannot
+	// choose between its float and double overloads.
+	const float Remaining = static_cast<float>(
+		AbilitySystem->DamageConversionEndsAt() - World->GetTimeSeconds());
+	TestEqual(TEXT("and it runs for the full 4.2 seconds"),
+			  Remaining, 4.2f, 0.01f);
 
 	return true;
 }

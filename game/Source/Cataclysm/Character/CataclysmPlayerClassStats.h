@@ -127,6 +127,37 @@ public:
 	 */
 	static const TMap<FString, FGameplayAttribute>& StatToAttribute();
 
+	/**
+	 * Bases the engine states in C++, for stats no class line should name.
+	 *
+	 * WHAT IT IS FOR. An `increased` row multiplies a base, and a base of zero
+	 * leaves it worth nothing however many points are spent. Most stats get
+	 * their base from `game/Data/ClassStats.csv`, but that sheet mirrors
+	 * `sim/cataclysm_sim/classes.py`, which is a statement about what makes each
+	 * class feel different. A timing window belonging to one passive node is not
+	 * that, and the passive effects sheet cannot supply it either, because that
+	 * sheet carries values PER POINT and a base is not one. This is the third
+	 * place, and it is C++ because the value is a constant of a mechanic.
+	 *
+	 * IT EXISTS BECAUSE THE FIRST STAT IN IT SILENTLY RESOLVED TO ZERO.
+	 * Issue #1025. `damage_to_bleeding_window` was named by
+	 * `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`, which exempted
+	 * it from the check that refuses an increase with no base under it -- and
+	 * nothing anywhere actually supplied the base, so The Breaking Point opened
+	 * a conversion window of zero seconds and converted nothing. The exemption
+	 * silenced the check and no code kept its side of the bargain.
+	 *
+	 * IT REPLACES THE CLASS LINE RATHER THAN ADDING TO IT, and nothing here may
+	 * also be named by a class line.
+	 * `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute` fails if one ever
+	 * is, so that rule is enforced rather than assumed.
+	 *
+	 * A `BaseOverrides` ENTRY STILL WINS OVER THIS, because that is a base built
+	 * from a particular character -- the weapons it holds, the attribute points
+	 * it spent -- and this is a constant true of every character.
+	 */
+	static const TMap<FName, float>& EngineSuppliedBases();
+
 	/** Which class the console variable asks for. `Default` is the shared line. */
 	static FString ChosenClass();
 

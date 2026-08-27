@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the base of The Breaking Point's conversion window. Issue #1025.
+#include "AbilitySystem/CataclysmDamageConversion.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -454,6 +456,29 @@ UCataclysmPlayerClassStats::StatToAttribute()
 	return Map;
 }
 
+const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
+{
+	// A PLAIN FILE-SCOPE STATIC WOULD DO, unlike StatToAttribute above, because
+	// these are floats rather than reflected properties. It is written the same
+	// way so the two read alike and neither has to be reasoned about twice.
+	static const TMap<FName, float> Map = {
+		// HOW LONG ONE TURN OF THE BREAKING POINT'S CONVERSION LASTS, before any
+		// points are spent. Issue #1025. The node reads "The conversion lasts 3
+		// seconds, increased by 5% per point", so the 3 is a base and the 5 is
+		// the per-point value on the passive effects sheet. Eight points make it
+		// 4.2 seconds.
+		//
+		// UNTIL THIS EXISTED THE BASE WAS ZERO AND THE NODE DID NOTHING. The
+		// increase multiplied nothing, the attribute was written as zero, and
+		// `UCataclysmAbilitySystemComponent::NoteDamageConversionStarted` refuses
+		// a window of zero, so no turn of the conversion ever began.
+		{FName(UCataclysmDamageConversion::WindowStat),
+		 UCataclysmDamageConversion::BaseWindowSeconds},
+	};
+
+	return Map;
+}
+
 FString UCataclysmPlayerClassStats::ChosenClass()
 {
 	const FString Asked = CVarPlayerClass.GetValueOnGameThread();
@@ -516,6 +541,21 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		// Ritualist really does have no armour.
 		float Base = UCataclysmClassStats::BaseFor(
 			ClassTable, ClassName, Stat, Level);
+
+		// AND A BASE THE ENGINE STATES IN C++, for a stat no class line should
+		// name. Issue #1025. See `EngineSuppliedBases` in the header for why
+		// there is a third place a base can come from at all.
+		//
+		// UNCONDITIONAL RATHER THAN ONLY WHEN THE CLASS TABLE IS SILENT, because
+		// BaseFor cannot tell "no row names it" from "a row names it as zero",
+		// and because no class line may name any of these anyway:
+		// `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute` fails if one
+		// does. Making it conditional would need a reading BaseFor cannot give,
+		// to guard against a case that test already forbids.
+		if (const float* Stated = EngineSuppliedBases().Find(FName(*Stat)))
+		{
+			Base = *Stated;
+		}
 
 		// A SUPPLIED BASE REPLACES THE CLASS LINE RATHER THAN ADDING TO IT, for
 		// a stat no class line can state. Attack speed was the first: a

@@ -297,10 +297,9 @@ public:
 	 * A FLAG AND A DURATION, WHICH ARE TWO STATS BECAUSE THEY ANSWER TWO
 	 * QUESTIONS. This one says whether the rule applies at all;
 	 * `DamageToBleedingWindow` beside it says how long one turn of it lasts. The
-	 * duration has a base on the Masochist's class stat line, so it reads 3
-	 * seconds for every Masochist whether or not they have spent a point -- and
-	 * that is harmless precisely because this flag is what decides that the rule
-	 * runs at all.
+	 * duration has a base every character gets, so it reads 3 seconds whether or
+	 * not a point has been spent -- and that is harmless precisely because this
+	 * flag is what decides that the rule runs at all.
 	 *
 	 * A FLAG RATHER THAN A DURATION OF ZERO, for the reason `FervourLossSuppressed`
 	 * above gives at length: `UCataclysmStatPipeline::LessMultiplierFloor` is -99,
@@ -314,14 +313,21 @@ public:
 	/**
 	 * How many seconds one turn of that conversion lasts. Issue #985.
 	 *
-	 * THREE SECONDS ON THE MASOCHIST'S CLASS STAT LINE, increased by 5% per point
-	 * spent in The Breaking Point, so eight points make it 4.2 seconds.
+	 * THREE SECONDS BEFORE ANY POINT IS SPENT, increased by 5% per point spent in
+	 * The Breaking Point, so eight points make it 4.2 seconds.
 	 *
-	 * THE BASE IS A CLASS STAT AND NOT A CONSTANT IN C++, and that is what makes
-	 * the node's row authorable at all. The passive effects sheet carries values
-	 * PER POINT; "lasts 3 seconds, increased by 5% per point" is a base plus an
-	 * increase, and an `increased` row with no base under it is worth nothing.
-	 * `test_every_stat_is_one_the_game_supplies` exists to catch exactly that.
+	 * THE BASE IS A CONSTANT IN C++ AND NOT A CLASS STAT, and it has to come from
+	 * somewhere, which is what makes the node's row authorable at all. The passive
+	 * effects sheet carries values PER POINT; "lasts 3 seconds, increased by 5%
+	 * per point" is a base plus an increase, and an `increased` row with no base
+	 * under it is worth nothing. `test_every_stat_is_one_the_game_supplies` exists
+	 * to catch exactly that.
+	 *
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases` IS WHERE IT COMES FROM,
+	 * naming `UCataclysmDamageConversion::BaseWindowSeconds`. This comment used to
+	 * claim a class stat line supplied it and none ever did, so the base really
+	 * was zero and this node converted nothing at all for as long as it existed.
+	 * Issue #1025.
 	 *
 	 * READ OFF THE ATTRIBUTE, unlike its neighbours, and that is safe here
 	 * BECAUSE ITS ONLY ROW CARRIES NO CONDITION AND NO SCALE. The window is

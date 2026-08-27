@@ -402,12 +402,21 @@ def stats() -> set[str]:
             # tools/generate_datatables.py for why that is a real base under an
             # increase all the same.
             | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
-            # AND A BASE THE ENGINE PASSES WHEN IT ASKS, since issue #985. That
-            # one cannot be seen from any CSV -- it is an argument C++ hands to
-            # `StatForSkill` -- so it is named one stat at a time, with the code
-            # that supplies it. Imported rather than restated for the reason the
-            # header of this file gives about the generator's own rule: two
-            # spellings of one rule is the drift this whole file exists to catch.
+            # AND A BASE THE ENGINE STATES IN C++, since issue #985. That one
+            # cannot be seen from any CSV, so it is named one stat at a time with
+            # the code that supplies it. Imported rather than restated for the
+            # reason the header of this file gives about the generator's own
+            # rule: two spellings of one rule is the drift this whole file exists
+            # to catch.
+            #
+            # NAMING ONE HERE IS AN EXEMPTION, AND AN EXEMPTION IS A PROMISE.
+            # Issue #1025: the first entry named a constant nothing ever put on a
+            # character, so this fixture said the stat was supplied, the check
+            # below passed, and the base really was zero.
+            # `test_every_engine_supplied_base_names_code_that_exists` is the
+            # nearest a Python test can get to holding the other side of it. The
+            # rest is held in the engine, by
+            # `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`.
             | set(gen.ENGINE_SUPPLIED_BASES))
 
 
@@ -1037,6 +1046,59 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
             f"it either. The nearest are: "
             f"{sorted(s for s in stats if s[:4] == row['Stat'][:4]) or sorted(stats)[:6]}"
         )
+
+
+def test_every_engine_supplied_base_names_code_that_exists():
+    """An exemption from the check above is a promise, and it can go unkept.
+
+    WHAT WENT WRONG. Issue #1025. `ENGINE_SUPPLIED_BASES` exempted
+    `damage_to_bleeding_window` from `test_every_stat_is_one_the_game_supplies`
+    and said the base was "UCataclysmDamageConversion::BaseWindowSeconds, passed
+    to StatForSkill". No code passed it. `BaseWindowSeconds` was referenced only
+    by two test files, so the stat's base really was zero, The Breaking Point
+    opened a conversion window of zero seconds, and the node converted nothing
+    for as long as it existed. The exemption silenced the check and nothing kept
+    the other side of the bargain.
+
+    WHAT THIS CHECKS AND WHAT IT CANNOT. Every `Namespace::Symbol` an entry names
+    has to appear somewhere in `game/Source/`, so an entry cannot point at code
+    that is not there. It CANNOT check that the code is ever called, which is
+    exactly what went wrong -- `BaseWindowSeconds` existed the whole time. That
+    half is held in the engine by
+    `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`, which spawns
+    a character and reads the value back off its attribute.
+
+    IT ALSO REFUSES AN ENTRY THAT NAMES NO SYMBOL AT ALL. The old value's second
+    half, "passed to StatForSkill", named a function rather than the code doing
+    the passing, which is how it read as an explanation while explaining nothing.
+    """
+    source = REPO_ROOT / "game" / "Source"
+    assert source.is_dir(), f"{source} is missing"
+
+    text = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in source.rglob("*")
+        if path.suffix in {".h", ".cpp"}
+    )
+
+    assert gen.ENGINE_SUPPLIED_BASES, (
+        "ENGINE_SUPPLIED_BASES is empty, so this check has nothing to check. "
+        "A guard over an empty list cannot fail."
+    )
+
+    for stat, supplier in gen.ENGINE_SUPPLIED_BASES.items():
+        symbols = re.findall(r"\b(U?[A-Za-z]\w*::\w+)", supplier)
+        assert symbols, (
+            f"the ENGINE_SUPPLIED_BASES entry for {stat!r} says {supplier!r}, "
+            "which names no Namespace::Symbol. An entry has to say which code "
+            "supplies the base so a reader can go and look at it."
+        )
+        for symbol in symbols:
+            assert symbol in text, (
+                f"the ENGINE_SUPPLIED_BASES entry for {stat!r} names "
+                f"{symbol!r}, which does not appear anywhere in game/Source/. "
+                "Either the code was renamed or the entry was never true."
+            )
 
 
 def test_every_required_tag_is_declared(effects, declared_tags):
