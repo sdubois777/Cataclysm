@@ -3776,4 +3776,572 @@ bool FCataclysmPassiveMutilationMasteryOnARealCharacterTest::RunTest(const FStri
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The Third Vow's two authored options. Issue #1040.
+//
+// TWO OPTIONS OF ONE CAPSTONE, so each test also has to say the OTHER one
+// granted nothing. That is what the `Option` column exists for, and a build
+// ignoring it would apply all seven rows to whoever reached 100 points.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPassiveTest
+{
+	/**
+	 * Spend enough points elsewhere in the Masochist tree to open a capstone.
+	 *
+	 * READ OFF THE NODE TABLE RATHER THAN A LIST WRITTEN HERE, so this keeps
+	 * working when the tree is re-authored, and every node is filled to its own
+	 * maximum because a node's maximum is authored data.
+	 *
+	 * @param Capstone   the node being opened, which is skipped while filling
+	 * @param OutFilled  how many points were actually placed
+	 * @return the capstone's own threshold, or 0 if it could not be read
+	 */
+	static int32 FillTreeToOpen(const UDataTable* NodeTable, const FName& Capstone,
+								FCataclysmPassiveAllocation& Allocation,
+								int32& OutFilled)
+	{
+		OutFilled = 0;
+		if (!NodeTable)
+		{
+			return 0;
+		}
+
+		int32 Threshold = 0;
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (Pair.Key == Capstone)
+			{
+				Threshold = reinterpret_cast<const FCataclysmPassiveNodeRow*>(
+					Pair.Value)->Threshold;
+			}
+		}
+		if (Threshold <= 0)
+		{
+			return 0;
+		}
+
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (OutFilled >= Threshold)
+			{
+				break;
+			}
+			const auto* Row =
+				reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			if (Row->Tree != TEXT("Masochist") || Pair.Key == Capstone
+				|| Row->MaxPoints <= 0)
+			{
+				continue;
+			}
+			const int32 Take = FMath::Min(Row->MaxPoints, Threshold - OutFilled);
+			Allocation.Add(Pair.Key, Take);
+			OutFilled += Take;
+		}
+		return Threshold;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeficitOnARealCharacterTest,
+	"Cataclysm.Passives.DeficitPaysForHealthMissingAndHealthOwedOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Third Vow's first option on a real character. Issue #1040.
+ *
+ * "Your damage is increased by 1% for every 2% of your maximum health you are
+ * missing or owe."
+ *
+ * BOTH HALVES OF "MISSING OR OWE", because they are two different states of one
+ * character and two separate rows. A character that deferred a cost owes health
+ * it is still standing on, so a build carrying only one of the two would pay a
+ * player for being hurt and not for being in debt, or the reverse, and nothing
+ * at run time would report it.
+ *
+ * MEASURED AS THE DIFFERENCE THE CHOICE MAKES, not as an absolute figure, and
+ * that is forced by what opening a capstone costs. Reaching 100 points spends
+ * points across the whole Masochist tree, and one of the nodes filled on the way
+ * -- `Masochist_basic_fc_a0` -- ALSO scales with health missing. An absolute
+ * reading at half health would include its bonus as well as this option's. So
+ * every figure below is taken twice, once before the option is chosen and once
+ * after, and only the difference is asserted.
+ *
+ * AND THE DIFFERENCE IS AN EXACT NUMBER RATHER THAN A DIRECTION, because the
+ * increases bucket is a sum: adding 25 percentage points to it moves the final
+ * damage by exactly the base times 0.25, whatever else is already in the sum.
+ * The base is read from what the pipeline recorded for the stat.
+ */
+bool FCataclysmPassiveDeficitOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_100"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Four
+	// belong to this option: two stats, because "damage" is attack damage and
+	// spell damage in this project, each under two scales.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Option == 1)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Deficit grants four rows"), Mine.Num(), 4))
+	{
+		return false;
+	}
+
+	int32 Missing = 0;
+	int32 Owed = 0;
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		TestEqual(*FString::Printf(TEXT("%s joins the additive sum"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("increased")));
+		TestEqual(*FString::Printf(TEXT("%s is one percent a step"), *Row->Stat),
+				  Row->ValuePerPoint, 1.0f);
+		TestEqual(*FString::Printf(TEXT("%s steps every two percent"), *Row->Stat),
+				  Row->ScaleStep, 2.0f);
+		if (Row->Scale == FString(TEXT("health_missing")))
+		{
+			++Missing;
+		}
+		else if (Row->Scale == FString(TEXT("health_owed")))
+		{
+			++Owed;
+		}
+	}
+	TestEqual(TEXT("two of them scale with health missing"), Missing, 2);
+	TestEqual(TEXT("and two with health owed"), Owed, 2);
+
+	// A HUNDRED POINTS IN THE TREE FIRST, BECAUSE THAT IS WHEN THIS CAPSTONE
+	// OPENS. `ChoosePassiveOption` checks the threshold as well as the points in
+	// the node, so a player cannot decide all four capstones at 25 points.
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const FGameplayTagContainer NoSkill;
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")), NoSkill,
+			AbilitySystem->GetNumericAttribute(
+				Combat::GetAttackDamageAttribute()));
+	};
+
+	// THE SUM OF INCREASES, WHICH IS WHERE THIS OPTION'S ROWS LAND, and reading
+	// it is what makes the assertions below exact figures rather than
+	// directions.
+	//
+	// NOT THE BASE, AND THE FIRST VERSION OF THIS TEST TRIED THE BASE AND
+	// FAILED. `attack_damage` has a base of ZERO on every character: a
+	// character's attack damage comes from the weapon it holds, which
+	// `UCataclysmEquipmentComponent::GatherModifiers` hands over as a FLAT
+	// modifier, so the quantity the increases multiply is the base plus the
+	// flats and not the base. Asserting "a quarter of the base" was therefore
+	// asserting a quarter of nothing.
+	//
+	// THE SUM IS IN PERCENTAGE POINTS. 25 means the final figure is multiplied
+	// by an extra 0.25 of whatever the increases multiply.
+	const auto IncreasesOnAttackDamage = [&]() -> float
+	{
+		const FCataclysmStatInputs* Inputs =
+			AbilitySystem->GetStatInputs(FName(TEXT("attack_damage")));
+		if (!Inputs)
+		{
+			return 0.0f;
+		}
+		return UCataclysmStatPipeline::Evaluate(
+			Inputs->Base, Inputs->Modifiers, NoSkill,
+			AbilitySystem->CurrentConditions()).SumOfIncreases;
+	};
+
+	if (!TestNotNull(TEXT("the pipeline recorded what attack damage is built "
+						  "from"),
+					 AbilitySystem->GetStatInputs(FName(TEXT("attack_damage")))))
+	{
+		return false;
+	}
+
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the character has some maximum health"), Maximum > 0.0f))
+	{
+		return false;
+	}
+
+	// EVERY READING TAKEN TWICE, once with the capstone holding its point and no
+	// choice made, and once after the choice. A capstone with no option chosen
+	// grants nothing, which is what makes the first reading a clean baseline.
+	//
+	// AND A BASELINE IS NECESSARY RATHER THAN TIDY. Reaching the 100 points this
+	// capstone opens at spends points across the whole tree, and one of the
+	// nodes filled on the way -- `Masochist_basic_fc_a0` -- ALSO scales with
+	// health missing. So the sum of increases at half health is already above
+	// zero before this option grants anything, and an absolute figure here would
+	// be measuring that node as well as this one.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum);
+	const float FullBefore = IncreasesOnAttackDamage();
+	const float FullDamageBefore = AttackDamage();
+
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.5f);
+	const float HalfBefore = IncreasesOnAttackDamage();
+	const float HalfDamageBefore = AttackDamage();
+
+	// AND THE DAMAGE OVER TIME THE OTHER OPTION WOULD SOFTEN, read before any
+	// choice is made for the same reason: Echoes of Agony is filled on the way
+	// to 100 points and already reduces it, so 100 is NOT the baseline.
+	const float SofteningBefore = AbilitySystem->GetNumericAttribute(
+		Combat::GetDamageOverTimeTakenAttribute());
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the first option can be chosen"),
+				  State->ChoosePassiveOption(Node, 1, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// HALF THE HEALTH BAR MISSING IS TWENTY-FIVE STEPS OF TWO PERCENT, so the
+	// sum of increases grows by exactly 25 percentage points.
+	const float HalfAfter = IncreasesOnAttackDamage();
+	TestEqual(TEXT("at half health the option adds 25 percentage points of "
+				   "increased damage"),
+			  HalfAfter - HalfBefore, 25.0f, 0.01f);
+
+	// AND IT REACHES THE NUMBER A SKILL ACTUALLY USES, which is the half that
+	// says the row is not merely present in the pipeline's own bookkeeping. The
+	// increases bucket multiplies whatever the base and the flat modifiers come
+	// to, so a sum rising from S to S+25 multiplies the final figure by
+	// (100 + S + 25) / (100 + S). Both sums are measured rather than assumed.
+	TestEqual(TEXT("and the damage a skill would use rises by exactly that"),
+			  AttackDamage(),
+			  HalfDamageBefore * (100.0f + HalfAfter) / (100.0f + HalfBefore),
+			  HalfDamageBefore * 0.001f);
+
+	// AND AT FULL HEALTH IT IS WORTH NOTHING, which is the half that catches a
+	// scale dropped on the way. Without it the option would be a flat bonus and
+	// nothing at run time would say so.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum);
+	TestEqual(TEXT("and at full health, with nothing owed, it adds nothing"),
+			  IncreasesOnAttackDamage(), FullBefore, 0.01f);
+	TestEqual(TEXT("so the damage there is where it started"),
+			  AttackDamage(), FullDamageBefore, FullDamageBefore * 0.001f);
+
+	// NOW THE SECOND HALF OF THE SENTENCE, on a character at FULL health that
+	// owes some. Owing is not the same state as being hurt: a deferred cost is
+	// health the character is still standing on.
+	AbilitySystem->SetNumericAttributeBase(Resource::GetHealthOwedAttribute(),
+										   Maximum * 0.2f);
+	TestEqual(TEXT("owing a fifth of the bar adds 10 points, at full health"),
+			  IncreasesOnAttackDamage() - FullBefore, 10.0f, 0.01f);
+
+	// AND THE TWO ADD UP RATHER THAN ONE REPLACING THE OTHER.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.5f);
+	TestEqual(TEXT("half missing and a fifth owed together add 35"),
+			  IncreasesOnAttackDamage() - HalfBefore, 35.0f, 0.01f);
+
+	// AND THE OPTION THE PLAYER DID NOT PICK GRANTED NOTHING. Doctrine Made
+	// Flesh is the third option of this same capstone and its own third row
+	// softens damage over time; a build ignoring the `Option` column would have
+	// applied it here too, taking this reading ten points lower.
+	TestEqual(TEXT("the option that was not chosen granted nothing: damage over "
+				   "time taken is where it was before the choice"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetDamageOverTimeTakenAttribute()),
+			  SofteningBefore, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest,
+	"Cataclysm.Passives.DoctrineMadeFleshPaysPerDebuffAndSoftensThemOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Third Vow's third option on a real character. Issue #1040.
+ *
+ * "Each debuff on you grants 1% more damage and reduces the damage that debuff
+ * deals to you by 10%."
+ *
+ * BOTH CLAUSES, AND THEY ARE SHAPED DIFFERENTLY ON PURPOSE. The first grows with
+ * how many debuffs are carried; the second does NOT. "That debuff" is each
+ * debuff's own damage, and every debuff is reduced by the same tenth, so a
+ * character carrying four is not taking 40% less from each. A build that scaled
+ * the second clause as well would be several times stronger than the sentence.
+ *
+ * THE FIRST CLAUSE MULTIPLIES AND THE SECOND ADDS, which is the reading the
+ * words give. "1% more damage" is its own multiplier; "reduced by 10%" joins the
+ * additive sum, which is what Echoes of Agony's identical wording does.
+ */
+bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_100"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Three
+	// belong to this option, and the third is deliberately unlike the other two:
+	// it carries NO scale, which is what makes the second clause a flat
+	// reduction rather than one that grows with the debuff count.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Option == 3)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Doctrine Made Flesh grants three rows"), Mine.Num(), 3))
+	{
+		return false;
+	}
+
+	int32 PerDebuff = 0;
+	const FCataclysmPassiveEffectRow* Softening = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		if (Row->Stat == FString(TEXT("damage_over_time_taken")))
+		{
+			Softening = Row;
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("%s is its own multiplier"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("more")));
+		TestEqual(*FString::Printf(TEXT("%s is one percent a debuff"), *Row->Stat),
+				  Row->ValuePerPoint, 1.0f);
+		TestEqual(*FString::Printf(TEXT("%s counts debuffs"), *Row->Stat),
+				  Row->Scale, FString(TEXT("debuffs_carried")));
+		++PerDebuff;
+	}
+	TestEqual(TEXT("two rows grow with the debuff count"), PerDebuff, 2);
+	if (!TestNotNull(TEXT("and one softens what a debuff deals"), Softening))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the softening joins the additive sum"), Softening->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("it takes ten percent away"), Softening->ValuePerPoint,
+			  -10.0f);
+	TestEqual(TEXT("and it does NOT grow with the debuff count"),
+			  Softening->Scale, FString());
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const FGameplayTagContainer NoSkill;
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")), NoSkill,
+			AbilitySystem->GetNumericAttribute(
+				Combat::GetAttackDamageAttribute()));
+	};
+	const FGameplayAttribute OverTimeTaken =
+		Combat::GetDamageOverTimeTakenAttribute();
+
+	// THE BASELINE IS NOT A HUNDRED, AND THE FIRST VERSION OF THIS TEST ASSUMED
+	// IT WAS AND FAILED. Reaching the 100 points this capstone opens at spends
+	// all ten points of Echoes of Agony, which is "Damage taken from damage over
+	// time effects is reduced by 1% per point" -- so this reading is already 90
+	// before the option grants anything. What this option adds is measured
+	// against whatever the tree left here, not against a clean 100.
+	//
+	// IT IS STILL BELOW A HUNDRED, which is worth asserting: a reading at or
+	// above normal would mean the tree was not filled and the comparison below
+	// would be measuring nothing.
+	const float SofteningBefore =
+		AbilitySystem->GetNumericAttribute(OverTimeTaken);
+	TestTrue(TEXT("filling the tree has already softened damage over time, so "
+				  "this option is measured against that rather than against 100"),
+			 SofteningBefore < UCataclysmDamageCalculation::NormalDamageTaken);
+
+	const float NoDebuffs = AttackDamage();
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the third option can be chosen"),
+				  State->ChoosePassiveOption(Node, 3, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// THE SECOND CLAUSE IS READ OFF THE ATTRIBUTE, and that is correct here
+	// where it would be wrong for the other two rows: this row carries no
+	// condition and no scale, so it IS folded in. `UCataclysmDamageCalculation`
+	// asks for the stat anyway, which is what lets a future conditional row work.
+	//
+	// TEN POINTS OFF WHATEVER THE TREE LEFT, not a tenth of it. The row is an
+	// `increased` of -10, and the increases bucket is a SUM: the stat is 100 for
+	// normal, so this takes the sum ten percentage points lower and the reading
+	// falls by exactly ten. A tenth of the previous reading would be nine, which
+	// is what a row written as a `more` would have given.
+	TestEqual(TEXT("choosing it takes ten points off the damage over time that "
+				   "reaches the character"),
+			  SofteningBefore
+				  - AbilitySystem->GetNumericAttribute(OverTimeTaken),
+			  UCataclysmDamageCalculation::NormalDamageTaken * 0.10f, 0.01f);
+
+	// AND WITH NO DEBUFF CARRIED, THE FIRST CLAUSE IS WORTH NOTHING. Without
+	// this the option would be a flat multiplier on every Masochist that took
+	// it, which is several times what the sentence says.
+	TestEqual(TEXT("and with no debuff carried the damage is unchanged"),
+			  AttackDamage(), NoDebuffs, NoDebuffs * 0.001f);
+
+	// NOW MAKE IT CARRY DEBUFFS, THROUGH REAL GAMEPLAY EFFECTS. The count is a
+	// read of the tags the ability system is already holding, so this is the
+	// same route a real hit takes.
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("the vocabulary has Bleed and Burn"),
+				  Bleed.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("a bleed can be put on the character"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Bleed, 30.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("carrying one debuff is one percent more damage"),
+			  AttackDamage(), NoDebuffs * 1.01f, NoDebuffs * 0.001f);
+
+	if (!TestTrue(TEXT("a burn can be put on it as well"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Burn, 30.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and carrying two debuffs is two percent, not one percent "
+				   "twice over"),
+			  AttackDamage(), NoDebuffs * 1.02f, NoDebuffs * 0.001f);
+
+	// AND IT GOES AWAY AGAIN WHEN THE DEBUFFS DO. Without this the option would
+	// pass against a build that turned the bonus on the first time the character
+	// was ever hurt and left it there.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Bleed);
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Burn);
+	TestEqual(TEXT("carrying none again is back where it started"),
+			  AttackDamage(), NoDebuffs, NoDebuffs * 0.001f);
+
+	// AND THE SOFTENING IS STILL THERE, because it never depended on the count.
+	TestEqual(TEXT("while the softening, which never counted debuffs, remains"),
+			  SofteningBefore
+				  - AbilitySystem->GetNumericAttribute(OverTimeTaken),
+			  UCataclysmDamageCalculation::NormalDamageTaken * 0.10f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

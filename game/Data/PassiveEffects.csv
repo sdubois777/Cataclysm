@@ -91,3 +91,10 @@ Masochist_keystone_spine_001#3,Masochist_keystone_spine_001,damage_taken,more,20
 Masochist_keystone_ll_kA#1,Masochist_keystone_ll_kA,damage_taken,more,-25.0,,health_at_or_below,20.0,,0.0,0
 Masochist_keystone_ll_kA#2,Masochist_keystone_ll_kA,fervour_loss_suppressed,flat,1.0,,health_at_or_below,20.0,,0.0,0
 Masochist_basic_fc_b2#1,Masochist_basic_fc_b2,bleed_on_crit_chance,flat,5.0,,,0.0,,0.0,0
+Masochist_capstone_100#1,Masochist_capstone_100,attack_damage,increased,1.0,,,0.0,health_missing,2.0,1
+Masochist_capstone_100#2,Masochist_capstone_100,spell_damage,increased,1.0,,,0.0,health_missing,2.0,1
+Masochist_capstone_100#3,Masochist_capstone_100,attack_damage,increased,1.0,,,0.0,health_owed,2.0,1
+Masochist_capstone_100#4,Masochist_capstone_100,spell_damage,increased,1.0,,,0.0,health_owed,2.0,1
+Masochist_capstone_100#5,Masochist_capstone_100,attack_damage,more,1.0,,,0.0,debuffs_carried,1.0,3
+Masochist_capstone_100#6,Masochist_capstone_100,spell_damage,more,1.0,,,0.0,debuffs_carried,1.0,3
+Masochist_capstone_100#7,Masochist_capstone_100,damage_over_time_taken,increased,-10.0,,,0.0,,0.0,3

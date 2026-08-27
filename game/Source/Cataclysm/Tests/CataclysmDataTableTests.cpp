@@ -285,7 +285,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// capstone options and had all twelve rewritten as pure upgrades. Apotheosis
 	// was The Final Vow's second option and the only one of the twelve with rows
 	// behind it; Carnivore takes that slot now. THE FIRST FALL IN THIS COUNT.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         92)
+	//
+	// AND TO 99 FOR THE FIRST TWO OF THOSE REWRITTEN OPTIONS. Issue #1040.
+	// Deficit is four rows, because "damage" is two stats on this sheet and
+	// "missing or owe" is two scales; Doctrine Made Flesh is three.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         99)
 
 	#undef CHECK_TABLE
 
