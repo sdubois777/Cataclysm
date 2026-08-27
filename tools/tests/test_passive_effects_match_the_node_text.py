@@ -289,7 +289,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Vow's second option and the only one with rows behind it; Carnivore takes
 #: that slot, so both of its rows describe a node that no longer exists. THIS IS
 #: THE FIRST TIME THIS COUNT HAS GONE DOWN.
-AUTHORED_ROWS = 92
+#:
+#: AND TO 99 ON 2026-08-27, FOR THE FIRST TWO OF THE REWRITTEN CAPSTONE OPTIONS.
+#: Issue #1040. Deficit is four rows -- "damage" is two stats in this sheet and
+#: "missing or owe" is two scales -- and Doctrine Made Flesh is three: two for
+#: the damage it multiplies per debuff, and one flat reduction of the damage a
+#: debuff deals back.
+AUTHORED_ROWS = 99
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -436,7 +442,13 @@ AUTHORED_ROWS = 92
 #: options, and a capstone with no authored option counts for nothing, so The
 #: Final Vow leaves this count entirely. 67 of 293 altogether and 63 of the
 #: Masochist tree's own 74.
-AUTHORED_NODES = 67
+#:
+#: AND BACK UP BY ONE ON 2026-08-27, for The Third Vow. Issue #1040. TWO of the
+#: rewritten capstone options were authored and they gain ONE node between them,
+#: because both are options of `Masochist_capstone_100` and a capstone counts
+#: once however many of its three are authored. 68 of 293 altogether and 64 of
+#: the Masochist tree's own 74.
+AUTHORED_NODES = 68
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
