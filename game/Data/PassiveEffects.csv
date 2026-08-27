@@ -84,3 +84,9 @@ Masochist_basic_fl_a0#3,Masochist_basic_fl_a0,damage_reduction,increased,0.5,,,0
 Masochist_keystone_fl_kB#1,Masochist_keystone_fl_kB,attack_damage,more,4.0,,,0.0,debuffs_carried,1.0
 Masochist_keystone_fl_kB#2,Masochist_keystone_fl_kB,spell_damage,more,4.0,,,0.0,debuffs_carried,1.0
 Masochist_keystone_fl_kC#1,Masochist_keystone_fl_kC,fervour_per_second,flat,5.0,,,0.0,debuffs_carried,1.0
+Masochist_basic_spine_005#1,Masochist_basic_spine_005,damage_over_time_taken,increased,-1.0,,,0.0,,0.0
+Masochist_keystone_spine_001#1,Masochist_keystone_spine_001,attack_damage,more,20.0,,class_resource_at_maximum,0.0,,0.0
+Masochist_keystone_spine_001#2,Masochist_keystone_spine_001,spell_damage,more,20.0,,class_resource_at_maximum,0.0,,0.0
+Masochist_keystone_spine_001#3,Masochist_keystone_spine_001,damage_taken,more,20.0,,class_resource_at_maximum,0.0,,0.0
+Masochist_keystone_ll_kA#1,Masochist_keystone_ll_kA,damage_taken,more,-25.0,,health_at_or_below,20.0,,0.0
+Masochist_keystone_ll_kA#2,Masochist_keystone_ll_kA,fervour_loss_suppressed,flat,1.0,,health_at_or_below,20.0,,0.0

@@ -266,7 +266,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 5 on how long one turn of it lasts. The 3 second base that increase
 	// multiplies is NOT a row here and could not be: this sheet carries values
 	// PER POINT, and a base is not one.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         85)
+	//
+	// AND TO 91 FOR THE THREE NODES THAT CHANGE HOW MUCH DAMAGE THE CHARACTER
+	// TAKES. Issue #1026. Echoes of Agony is one row on `damage_over_time_taken`;
+	// Communion of Pain is three, because "deal 20% more damage" is the same two
+	// damage stats as ever plus the damage taken; The Edge is two, one per clause
+	// of its sentence.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         91)
 
 	#undef CHECK_TABLE
 

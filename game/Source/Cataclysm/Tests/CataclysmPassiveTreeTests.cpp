@@ -12,6 +12,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the swing time Thirst for Pain shortens. Issue #962.
 #include "AbilitySystem/CataclysmBasicAttack.h"
+// For resolving a real hit against a real character, and the two damage-taken
+// stat names. Issue #1026.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the conversion window The Breaking Point lengthens. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the debuffs the five new nodes read. Issue #962.
@@ -3027,6 +3030,474 @@ bool FCataclysmPassiveBreakingPointOnARealCharacterTest::RunTest(const FString&)
 		AbilitySystem->DamageConversionEndsAt() - World->GetTimeSeconds());
 	TestEqual(TEXT("and it runs for the full 4.2 seconds"),
 			  Remaining, 4.2f, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The three nodes that change how much damage the character takes. Issue #1026.
+//
+// ONE TEST EACH, AND EACH MEASURES A HIT RATHER THAN A STAT. The stat is what
+// the pipeline produces; the damage a real hit deals is what a player feels, and
+// only the second says the two are joined up. `UCataclysmDamageCalculation::Resolve`
+// is the function the game itself calls when a blow lands.
+//
+// EACH SPENDS REAL POINTS THROUGH THE REAL ALLOCATION. Writing the attribute by
+// hand would prove the arithmetic and skip everything between the workbook row
+// and the character, which is the gap issues #1024 and #1025 were both about.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPassiveTest
+{
+	/** What a hit of this size actually takes off a real character's health. */
+	static float DamageAHitDeals(
+		const UCataclysmAbilitySystemComponent* AbilitySystem,
+		float Raw, bool bIsDamageOverTime)
+	{
+		FCataclysmIncomingHit Hit;
+		Hit.Damage = Raw;
+		Hit.bIsDamageOverTime = bIsDamageOverTime;
+
+		// BOTH ROLLS PINNED TO "DID NOT HAPPEN", so evasion and block cannot make
+		// one call differ from the next. A player carries neither by default, but
+		// pinning them says so rather than relying on it.
+		return UCataclysmDamageCalculation::Resolve(
+				   Hit, AbilitySystem, /*Tier=*/1,
+				   /*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f).DealtToHealth;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEchoesOfAgonyOnARealCharacterTest,
+	"Cataclysm.Passives.EchoesOfAgonySoftensADamageOverTimeTickForARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Echoes of Agony on a real character, bleeding for real. Issue #1026.
+ *
+ * "Damage taken from damage over time effects is reduced by 1% per point."
+ *
+ * THE SECOND HALF IS THE ONE THAT CAN FAIL QUIETLY. A build reading the stat for
+ * every hit rather than only for a damage over time one would soften the
+ * character's whole life and nothing would report it -- the node would simply be
+ * worth several times what a player reads. So a direct hit is measured as well,
+ * and it has to be untouched.
+ */
+bool FCataclysmPassiveEchoesOfAgonyOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_spine_005"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A value that
+	// lost its minus sign would make the node worth the opposite of what a player
+	// reads, and the assertion below would find a difference either way.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Echoes of Agony grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the damage over time one"), Effects[0]->Stat,
+			  FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat));
+	TestEqual(TEXT("as an increase"), Effects[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of minus one a point"), Effects[0]->ValuePerPoint, -1.0f);
+
+	// WHAT A HIT COSTS BEFORE ANY POINT IS SPENT. Measured rather than assumed,
+	// because a Masochist carries class armour and the figure below is what is
+	// left after every other layer.
+	Equipment->RefreshAttributes(AbilitySystem);
+	const float TickBefore = DamageAHitDeals(AbilitySystem, 400.0f, true);
+	const float HitBefore = DamageAHitDeals(AbilitySystem, 400.0f, false);
+	if (!TestTrue(TEXT("an unspent character takes damage at all"),
+				  TickBefore > 0.0f && HitBefore > 0.0f))
+	{
+		return false;
+	}
+
+	// AND THE BLOW IS SMALLER THAN THE HEALTH IT LANDS ON, so what is measured is
+	// the damage rather than the health left. `Resolve` finishes with
+	// `DealtToHealth = Min(Damage, Health)`, and a blow larger than the character
+	// reports the character. Asserted rather than assumed: the class line's
+	// health is data and could move.
+	const float Health = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	if (!TestTrue(*FString::Printf(
+			TEXT("the hit (%.1f) is smaller than the health it lands on (%.1f)"),
+			HitBefore, Health),
+			HitBefore < Health))
+	{
+		return false;
+	}
+
+	// TEN POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure is what a player
+	// who committed to it gets: a tenth less from anything spread over time.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 10);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestEqual(TEXT("ten points take a tenth off a damage over time tick"),
+			  DamageAHitDeals(AbilitySystem, 400.0f, true),
+			  TickBefore * 0.90f, TickBefore * 0.001f);
+
+	// AND A DIRECT HIT IS UNTOUCHED. Without this the test would pass against a
+	// build that softened every blow the character ever took.
+	TestEqual(TEXT("and a direct hit is exactly what it was"),
+			  DamageAHitDeals(AbilitySystem, 400.0f, false),
+			  HitBefore, HitBefore * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCommunionOfPainOnARealCharacterTest,
+	"Cataclysm.Passives.CommunionOfPainCutsBothWaysForARealCharacterAtFullFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Communion of Pain on a real character, at a real full bar. Issue #1026.
+ *
+ * "While your Fervour is at maximum you deal 20% more damage and take 20% more
+ * damage."
+ *
+ * BOTH CLAUSES, BECAUSE THE NODE IS A TRADE. A build that granted the damage and
+ * dropped the cost would be strictly better than the sentence, and one that did
+ * the reverse strictly worse. Each is measured.
+ *
+ * AND WITH THE BAR SHORT OF FULL, which is the half that catches a condition
+ * dropped on the way. Without it the node would be an unconditional bonus and an
+ * unconditional penalty, and nothing at run time would say so.
+ */
+bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_spine_001"));
+
+	// THREE ROWS, AND ALL THREE CARRY THE CONDITION. "Increased damage" is two
+	// stats in this project because a character deals attack damage and spell
+	// damage, and the third is what the second clause costs.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Communion of Pain grants three stats"),
+				   Effects.Num(), 3))
+	{
+		return false;
+	}
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s multiplies"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("more")));
+		TestEqual(*FString::Printf(TEXT("%s is worth twenty"), *Row->Stat),
+				  Row->ValuePerPoint, 20.0f);
+		TestEqual(*FString::Printf(TEXT("%s applies only at full Fervour"),
+								   *Row->Stat),
+				  Row->Condition, FString(TEXT("class_resource_at_maximum")));
+	}
+
+	// A KEYSTONE HOLDS ONE POINT. Reading it off the node table rather than
+	// writing 1 here, because a node's maximum is authored data.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const FGameplayTagContainer NoSkill;
+	const auto AttackDamage = [&]
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")),
+			NoSkill,
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetAttackDamageAttribute()));
+	};
+
+	// THE BAR IS EMPTY TO BEGIN WITH. A Masochist generates Fervour from damage
+	// taken and from health spent, and this character has done neither.
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Resource::GetMaxClassResourceAttribute());
+	if (!TestTrue(TEXT("the class resource has a maximum above nothing"),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   0.0f);
+
+	const float DamageEmpty = AttackDamage();
+	const float TakenEmpty = DamageAHitDeals(AbilitySystem, 400.0f, false);
+	if (!TestTrue(TEXT("the character swings for something and takes something"),
+				  DamageEmpty > 0.0f && TakenEmpty > 0.0f))
+	{
+		return false;
+	}
+
+	// AND THE AMPLIFIED BLOW IS STILL SMALLER THAN THE HEALTH IT LANDS ON.
+	// `Resolve` finishes with `DealtToHealth = Min(Damage, Health)`, so a blow
+	// larger than the character reports the character and the fifth this node
+	// adds would be invisible. The figure checked is the one AFTER the increase,
+	// because that is the larger of the two.
+	const float Health = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	if (!TestTrue(*FString::Printf(
+			TEXT("a fifth more than the hit (%.1f) is still under the health it "
+				 "lands on (%.1f)"), TakenEmpty * 1.20f, Health),
+			TakenEmpty * 1.20f < Health))
+	{
+		return false;
+	}
+
+	// NOW FILL THE BAR.
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   Maximum);
+
+	TestEqual(TEXT("at full Fervour the character deals a fifth more"),
+			  AttackDamage(), DamageEmpty * 1.20f, DamageEmpty * 0.001f);
+	TestEqual(TEXT("and takes a fifth more"),
+			  DamageAHitDeals(AbilitySystem, 400.0f, false),
+			  TakenEmpty * 1.20f, TakenEmpty * 0.001f);
+
+	// AND ONE POINT SHORT OF FULL IS NOTHING AT ALL. This is the half that
+	// catches a condition dropped on the way, and it also says the comparison is
+	// "at maximum" rather than "near it".
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   Maximum - 1.0f);
+	TestEqual(TEXT("one point short of full, the damage is back where it was"),
+			  AttackDamage(), DamageEmpty, DamageEmpty * 0.001f);
+	TestEqual(TEXT("and so is the damage taken"),
+			  DamageAHitDeals(AbilitySystem, 400.0f, false),
+			  TakenEmpty, TakenEmpty * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveTheEdgeOnARealCharacterTest,
+	"Cataclysm.Passives.TheEdgeSoftensHitsAndHoldsFervourForARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Edge on a real character, at real low health. Issue #1026.
+ *
+ * "While at or below 20% health you take 25% less damage and your Fervour does
+ * not decrease."
+ *
+ * TWO CLAUSES AND TWO ROWS, and they are separate machinery: one is a multiplier
+ * in the damage calculation, the other a flag `UCataclysmFervour::LossIsSuppressed`
+ * reads. A build could get either right and the other wrong.
+ *
+ * THE FERVOUR CLAUSE IS ASKED WITH NO TAGS, and that is what makes it different
+ * from the two keystones already using that flag. Sanguine Ledger requires
+ * `Keyword.Regeneration` and Wounds That Feed requires `Keyword.Leech`, so each
+ * covers one kind of healing; this row requires none, so it covers every kind.
+ * The design says "does not decrease" without qualification, and out-of-combat
+ * decay -- the other way Fervour could fall -- does not exist in this game yet.
+ */
+bool FCataclysmPassiveTheEdgeOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_ll_kA"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("The Edge grants two stats"), Effects.Num(), 2))
+	{
+		return false;
+	}
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s applies below a fifth of health"),
+								   *Row->Stat),
+				  Row->Condition, FString(TEXT("health_at_or_below")));
+		TestEqual(*FString::Printf(TEXT("%s at twenty percent"), *Row->Stat),
+				  Row->ConditionValue, 20.0f);
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the character has some maximum health"), Maximum > 0.0f))
+	{
+		return false;
+	}
+
+	// A SMALL HIT, AND THE SIZE IS THE WHOLE POINT. `Resolve` finishes with
+	// `DealtToHealth = Min(Damage, Health)`, so a blow larger than what the
+	// character has left reports the health rather than the damage. This test
+	// measures a character at a tenth of its health, where a Masochist has about
+	// 61 points, and a 400 hit resolved to 303 -- so the first version of it
+	// compared 60.6 against 227 and failed for a reason that had nothing to do
+	// with the node. The guards below are what stop that returning silently.
+	constexpr float RawHit = 40.0f;
+
+	// HEALTHY FIRST, so the figure below is compared against this same character
+	// rather than against a number written here. Half health is well clear of
+	// the threshold.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.5f);
+	const float Healthy = DamageAHitDeals(AbilitySystem, RawHit, false);
+	if (!TestTrue(TEXT("a healthy character takes damage"), Healthy > 0.0f))
+	{
+		return false;
+	}
+
+	// AND THE HIT IS SMALL ENOUGH THAT THE CAP CANNOT BITE AT A TENTH OF HEALTH,
+	// which is the lowest this test goes. Asserted rather than assumed, because
+	// the class line's health is data and could move.
+	if (!TestTrue(*FString::Printf(
+			TEXT("the hit (%.1f) stays under a tenth of maximum health (%.1f), "
+				 "so DealtToHealth is the damage and not the health left"),
+			Healthy, Maximum * 0.1f),
+			Healthy < Maximum * 0.1f))
+	{
+		return false;
+	}
+
+	// AND ITS FERVOUR STILL FALLS TO HEALING. Without this the test would pass
+	// against a build that suppressed the loss for ever from the moment the node
+	// was taken.
+	const FGameplayTagContainer AnyHealing;
+	TestFalse(TEXT("a healthy character's Fervour still falls to healing"),
+			  UCataclysmFervour::LossIsSuppressed(AbilitySystem, AnyHealing));
+
+	// NOW DOWN TO A TENTH, WHICH IS BELOW THE THRESHOLD.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.1f);
+
+	TestEqual(TEXT("below a fifth of health the hit is a quarter smaller"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Healthy * 0.75f, Healthy * 0.001f);
+
+	TestTrue(TEXT("and Fervour no longer falls to healing"),
+			 UCataclysmFervour::LossIsSuppressed(AbilitySystem, AnyHealing));
+
+	// EXACTLY ON THE THRESHOLD IS INSIDE IT. Every node in this tree is written
+	// "at or below", and a character sitting precisely on a fifth gets the bonus.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.2f);
+	TestEqual(TEXT("and exactly a fifth is inside the threshold"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Healthy * 0.75f, Healthy * 0.001f);
+
+	// AND ONE POINT ABOVE THE THRESHOLD IS OUTSIDE IT. The pair says the
+	// comparison is at-or-below rather than strictly-below, which is the
+	// distinction every health threshold in this tree turns on.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Maximum * 0.2f + 1.0f);
+	TestEqual(TEXT("and a point above it the hit is back to full size"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Healthy, Healthy * 0.001f);
 
 	return true;
 }

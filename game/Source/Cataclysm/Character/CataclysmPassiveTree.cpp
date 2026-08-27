@@ -791,6 +791,23 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				// carry across.
 				Modifier.Condition = ECataclysmStatCondition::WhileBleeding;
 			}
+			else if (Effect->Condition.Equals(
+						 TEXT("class_resource_at_maximum"),
+						 ESearchCase::IgnoreCase))
+			{
+				// A CONDITION ABOUT THE TOP OF THE CLASS RESOURCE BAR.
+				// Issue #1026. Communion of Pain is the node: "While your
+				// Fervour is at maximum you deal 20% more damage and take 20%
+				// more damage."
+				//
+				// THE VALUE COLUMN IS DELIBERATELY NOT COPIED, the same as the
+				// predicate above and for the same reason. "At maximum" names
+				// the top of whatever bar the class has rather than a number,
+				// and a threshold would have to choose between points and a
+				// percentage of the maximum, which disagree for a Ritualist.
+				Modifier.Condition =
+					ECataclysmStatCondition::ClassResourceAtMaximum;
+			}
 			else if (!Effect->Condition.IsEmpty())
 			{
 				UE_LOG(LogCataclysm, Warning,

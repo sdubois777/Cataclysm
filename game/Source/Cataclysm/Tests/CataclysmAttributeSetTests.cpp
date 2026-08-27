@@ -172,11 +172,25 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * Its attribute holds zero even for a character holding that node, because
 	 * the node's bonus carries a health condition.
 	 *
-	 * So the sheet stays at 46. The combat set grew by three and the class
+	 * DAMAGE TAKEN AND DAMAGE OVER TIME TAKEN are the seventh and eighth, added
+	 * under issue #1026, and they meet the same rule a fourth time: no affix in
+	 * `game/Data/Affixes.csv` grants either, nothing scales either, no class
+	 * differs on either, and three Masochist passive nodes are their only source.
+	 *
+	 * THEY HAVE A BASELINE AND IT IS STILL NOT A CLASS ONE, which is the only way
+	 * these two differ from the six above. Both start at 100, because 100 is the
+	 * identity for a multiplier and an `increased` row with a base of zero is
+	 * worth nothing. That base comes from
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases` rather than from
+	 * `game/Data/ClassStats.csv`, so no class line names them and the rule above
+	 * still holds. `docs/DECISIONS.md` records that they belong on the sheet the
+	 * day an affix grants one or a class differs on one.
+	 *
+	 * So the sheet stays at 46. The combat set grew by five and the class
 	 * resource set by five, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 4;
+	constexpr int32 OffSheetCombatStats = 6;
 
 	/**
 	 * How far healing may take the character. Issue #988.

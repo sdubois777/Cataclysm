@@ -10,6 +10,14 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
 
+// The two stats saying what share of a hit a character takes. Issue #1026.
+// `UCataclysmPlayerClassStats` names both, in two maps, so a literal here and a
+// literal there could drift apart with nothing to notice.
+const TCHAR* UCataclysmDamageCalculation::DamageTakenStat =
+	TEXT("damage_taken");
+const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenStat =
+	TEXT("damage_over_time_taken");
+
 namespace
 {
 	/**
@@ -435,14 +443,55 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// it. Issue #665.
 		Damage *= 1.0f - FMath::Clamp(Combat->GetDamageReductionMore(),
 									  0.0f, MoreDamageReductionCap) / 100.0f;
+
+		// 6. HOW MUCH DAMAGE THIS CHARACTER TAKES, as a percentage where 100 is
+		// normal. Issue #1026. Three Masochist nodes move it and issue #964
+		// counts five more across the other trees.
+		//
+		// A NINTH STEP RATHER THAN A SIXTH BUCKET ON ONE OF THE LAYERS ABOVE.
+		// Those are each a named defence with a cap of its own; this is a plain
+		// multiplier on the finished blow, and the design decision of 2026-08-14
+		// under issue #600 says it multiplies against what the attacker's own
+		// increases produced rather than joining anybody's pool.
+		//
+		// HERE AND NOT AMONG THE LAYERS ABOVE, THOUGH THE NUMBER IS THE SAME
+		// EITHER WAY. Steps 2 to 5 are all multiplications, so a further one
+		// placed anywhere among them gives an identical answer. The boundary that
+		// is real is the energy shield below, which is a minimum: before it means
+		// a bigger blow spends more shield, which is what "you take 20% more
+		// damage" says, and after it would make a shield a partial immunity to a
+		// damage-taken debuff. Path of Exile resolves a hit in this order.
+		// `docs/DECISIONS.md` carries the sources.
+		//
+		// TWO STATS, AND A DAMAGE OVER TIME TICK MEETS BOTH. A modifier cannot be
+		// scoped to the kind of blow arriving -- `RequiredTags` means the skill in
+		// the DEFENDER'S own hand, as `DefenderStat` above explains -- so the
+		// hit's own nature picks which stats are read, exactly as `ResistanceFor`
+		// picks a resistance slot from the hit's damage type.
+		//
+		// FLOORED AT NOTHING RATHER THAN CLAMPED AT BOTH ENDS. There is no
+		// ceiling: taking more damage is a real thing for a node to grant and
+		// Communion of Pain grants it. A NEGATIVE would turn a hit into healing,
+		// which no sentence in the design asks for, so the floor is here rather
+		// than left to the sum of a future set of reductions.
+		Damage *= FMath::Max(0.0f,
+			DefenderStat(Defender, DamageTakenStat,
+						 Combat->GetDamageTaken())) / 100.0f;
+
+		if (Hit.bIsDamageOverTime)
+		{
+			Damage *= FMath::Max(0.0f,
+				DefenderStat(Defender, DamageOverTimeTakenStat,
+							 Combat->GetDamageOverTimeTaken())) / 100.0f;
+		}
 	}
 
-	// 6. Mana, but only for damage over time and only for a character built for
+	// 7. Mana, but only for damage over time and only for a character built for
 	// it. Routing damage to mana comes from an enchantment, so there is nothing
 	// to read here yet; the step is left in place and does nothing.
 	// See the issue on the affix pool.
 
-	// 7. Energy shield. It does not absorb damage over time, which is what makes
+	// 8. Energy shield. It does not absorb damage over time, which is what makes
 	// it a distinct defence rather than a second health bar.
 	const bool bShieldApplies = !Hit.bIsDamageOverTime;
 	if (bShieldApplies && Vitals->GetEnergyShield() > 0.0f)
@@ -455,7 +504,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		Damage = FMath::Max(0.0f, Damage - Result.AbsorbedByShield / Magic);
 	}
 
-	// 8. Health takes the remainder.
+	// 9. Health takes the remainder.
 	if (Hit.bIsSlashing)
 	{
 		Damage *= 1.0f + SubtypeBonus / 100.0f;

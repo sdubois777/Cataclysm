@@ -20,6 +20,168 @@ applied or still pending.
 
 ---
 
+## 2026-08-27 — How much damage a character takes is a stat, and it is a ninth step
+
+**Affects:** the Damage Calculation part of section IV in `Cataclysm_GDD_v2.md`.
+Applied. Issue #1026, and issue #964 which needs the same stat for five nodes in
+the other three trees.
+
+### The decision
+
+**How much damage a character takes is a stat on the defender, applied as a step
+of its own after flat damage reduction and before the mana and energy shield
+steps.** The design's eight steps become nine.
+
+The stat is `damage_taken`, a percentage where 100 is normal, so it runs through
+the same three buckets everything else does:
+
+| Node | What it says | How it is authored |
+| :-- | :-- | :-- |
+| `Masochist_basic_spine_005` Echoes of Agony | "Damage taken from damage over time effects is reduced by 1% per point" | the additive bucket at -1 per point |
+| `Masochist_keystone_spine_001` Communion of Pain | "take 20% more damage" | the `more` bucket at +20 |
+| `Masochist_keystone_ll_kA` The Edge | "you take 25% less damage" | the `more` bucket at -25 |
+
+A character holding both keystones, at full Fervour and below a fifth of its
+health, takes 100 x 1.20 x 0.75 = 90% of a hit rather than 95%. That is the
+three-bucket pipeline the offensive side already uses, and the design already says
+the defensive side follows the same shape.
+
+### What was already settled, and what was not
+
+The entry of 2026-08-14 under issue #600 settled **whose** bucket it is:
+"increased damage taken is additive on the defender", multiplying against whatever
+the attacker's own increases produced, and explicitly not a `more` multiplier for
+the enemy-debuff case that decision was about.
+
+It did not say **where in the mitigation order** the multiplication happens, and
+that is what this decides.
+
+### Why the position mostly does not matter, and the one place it does
+
+Steps 2 to 5 -- block, armour, resistance, flat damage reduction -- are each a
+multiplication against what the previous step left, so a further multiplier placed
+anywhere among them gives the same number to the last decimal. Among those, the
+order is a reading question rather than an arithmetic one.
+`UCataclysmDamageCalculation::Resolve` already says as much about the critical
+strike multiplier, for the same reason.
+
+**Two boundaries are real.** Step 1, evasion, returns early, so a hit that never
+landed must not be scaled; the new step sits after it, so it is not. Step 7, the
+energy shield, is a minimum rather than a multiplication, so before or after it is
+a genuinely different number: before means the shield absorbs the amplified blow,
+after means the multiplier only touches what leaked through to health.
+
+**It goes before the shield.** "You take 20% more damage" says the blow is bigger,
+and a bigger blow spends more shield. Putting it after would make an energy shield
+a partial immunity to a damage-taken debuff, which nothing in the design suggests,
+and would make The Edge worth less to a character who invested in a shield.
+
+### Where the shape comes from
+
+Path of Exile and Path of Exile 2 resolve a hit as: avoidance, the damage
+calculation, mitigation by armour and resistances, then damage-taken modifiers --
+flat first, then increases and reductions summed, then more and less multiplied --
+and only then is the result taken off ward, energy shield and life. Two
+independent secondary sources give the same ordered list and agree on where the
+damage-taken step sits.
+
+Last Epoch states the same relationship in its formula: damage taken is
+`(damage received - damage mitigated)` multiplied by each source of reduced damage
+taken separately. Its sources do not settle the placement relative to ward.
+
+So the position chosen here -- after every mitigation layer, before the pool that
+absorbs -- is Path of Exile's, and Last Epoch agrees on the part it speaks to.
+
+Sources:
+
+- https://www.poecurrency.com/news/poe-damage-received-full-order-of-operations-general-guide
+- https://vulkk.com/2025/06/12/path-of-exile-2-defences-explained/
+
+`pathofexile.fandom.com`, `lastepoch.fandom.com` and `maxroll.gg` all refused an
+automated request, which the #302 entry already records as a limit for these
+wikis. Both sources above are secondary and were read rather than taken from a
+search summary.
+
+### Why the base of 100 is not on a class stat line
+
+An `increased` row multiplies a base, so the stat needs one, and the identity for
+a multiplier is 100. `game/Data/ClassStats.csv` carries exactly that shape five
+times already -- `area_of_effect`, `dot_damage`, `dot_frequency`, `dot_duration`
+and `loot_quantity` are all 100 meaning normal -- so a class line was the first
+place to look.
+
+**It is the wrong place, and the rule that decides it is already written down.**
+`Cataclysm.Attributes.CharacterSheetIsComplete` says a stat is off the character
+sheet when no affix grants it, nothing scales it, it has no baseline of its own,
+and one passive node is its only source. Six stats are off the sheet on exactly
+those grounds. The five named above are all on the sheet and each earns it:
+affixes grant them, and classes genuinely differ, the Ritualist starting at 110
+area of effect.
+
+`damage_taken` has none of that. No affix in `game/Data/Affixes.csv` grants it, no
+class differs on it, and passive nodes are its only source. So its base comes from
+`UCataclysmPlayerClassStats::EngineSuppliedBases`, which issue #1025 built for a
+base no class line should state, and the stat is counted off the sheet.
+
+**Promote it to a class stat line the day an affix grants it or a class differs on
+it.** That is the condition, and it is written here so it does not have to be
+derived again. At that moment the off-sheet rule stops holding, and the stat
+belongs on the sheet, in `ALL_STATS` in `sim/cataclysm_sim/character.py`, and on
+the `Default` class line beside the other five.
+
+### Damage over time is a second stat rather than a tag on the first
+
+Echoes of Agony says "damage taken from damage over time effects", and that cannot
+be a `RequiredTags` scope on `damage_taken`. `RequiredTags` scopes a modifier to
+the skill in the CHARACTER'S OWN hand, and a character being hit is not swinging.
+`DefenderStat` in `CataclysmDamageCalculation.cpp` passes an empty tag container
+deliberately and says why in its own comment.
+
+So there are two stats, both at 100: `damage_taken`, read for every hit, and
+`damage_over_time_taken`, read as well when the hit is damage over time. That
+mirrors `ResistanceFor` in the same file, which already picks which of the
+defender's resistances applies from the hit's own damage type.
+
+**The two multiply rather than one replacing the other.** A character with Echoes
+of Agony at ten points and The Edge live takes 0.90 x 0.75 of a bleed tick. Each
+stat has its own `more` bucket, so they cannot flatten into one sum.
+
+### A condition for being at full Fervour
+
+Communion of Pain applies "While your Fervour is at maximum", which no existing
+condition can express. `ECataclysmStatCondition` gains `ClassResourceAtMaximum`,
+and `FCataclysmStatConditions` gains the maximum to compare the pool against.
+
+**It compares nothing and takes no value**, the same shape as `WhileBleeding`. The
+sentence names a state rather than a threshold, and "at maximum" is the top of
+whatever pool the class has rather than a number a designer types.
+
+**A future node reading "while above 75 Fervour" wants its own condition rather
+than this one with a value.** Those are not the same question: the Ritualist's
+`class_resource` is 150 where every other class's is 100, so 75 points and 75% of
+the pool are different readings, and only one of them is what such a node says.
+
+**The words the check requires are "fervour is at maximum" and not "at maximum
+fervour".** Seventeen nodes across the four trees say the second, and nearly all
+of them mean an EVENT -- "when you attack at maximum Fervour" -- which is a
+different rule from a state that holds for as long as it is true. That is the same
+distinction the `health_at_or_below` entry draws between dropping below a
+threshold and being below it, and requiring the state wording is what refuses the
+seventeen.
+
+### What this does not do
+
+**The five nodes in issue #964 are still blocked.** They put the stat on an ENEMY,
+and nothing gives an enemy a modifier: issues #742 and #674. This builds the stat
+those nodes will use and does not unblock them.
+
+**The existing `DamageReductionMore` bucket is not folded into this**, though it
+is arithmetically the same idea seen from the other side. It is clamped to the
+range 0 to 99, so it cannot express taking MORE damage, and twelve Bulwark and
+Saboteur nodes are written against it. Merging the two is its own change.
+
+---
+
 ## 2026-08-26 — What counts as a debuff on a character, and the five Masochist nodes that ask
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`

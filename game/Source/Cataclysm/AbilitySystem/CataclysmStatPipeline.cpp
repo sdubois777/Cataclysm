@@ -107,6 +107,26 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// health percentage of zero is a corpse and an unknown one is the
 		// character sheet; there is no such pair here.
 		return State.bIsBleeding;
+
+	case ECataclysmStatCondition::ClassResourceAtMaximum:
+		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
+		// Issue #1026. "While your Fervour is at maximum" names the top of the
+		// bar rather than a number, and the tool refuses a value on a row
+		// carrying this.
+		//
+		// BOTH READINGS HAVE TO BE KNOWN, AND THAT IS WHAT REFUSES AN ENEMY. An
+		// ability system with no class resource attribute set leaves both
+		// negative, and this is the one place where "there is no bar" and "the
+		// bar is empty" have to be told apart: an unknown pair would otherwise
+		// compare -1 against -1 and answer yes, handing every enemy in the game
+		// a bonus written for a full Masochist.
+		//
+		// A MAXIMUM OF NOTHING REFUSES TOO. A pool that cannot hold anything is
+		// not at its maximum in any sense a node means, and answering yes would
+		// give the bonus to a character that has never generated a point.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceMaximum > 0.0f
+			&& State.ClassResourceHeld >= State.ClassResourceMaximum;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved

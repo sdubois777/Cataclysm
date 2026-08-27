@@ -230,6 +230,40 @@ public:
 	 */
 	static constexpr float MoreDamageReductionCap = 99.0f;
 
+	/**
+	 * The two stats saying what share of a hit this character actually takes.
+	 *
+	 * ONE FOR EVERY HIT AND ONE FOR A DAMAGE OVER TIME TICK, and a tick meets
+	 * BOTH. Issue #1026. Two stats rather than one scoped modifier, because
+	 * `RequiredTags` scopes a modifier to the skill in the character's own hand
+	 * and a character being hit is not swinging -- `DefenderStat` in the
+	 * implementation file says so at length. The hit's own nature picks which
+	 * stats are read, the way `ResistanceFor` beside it picks a resistance slot
+	 * from the hit's damage type.
+	 *
+	 * NAMED CONSTANTS RATHER THAN LITERALS, because
+	 * `UCataclysmPlayerClassStats` names the same two strings in two maps and a
+	 * spelling that stopped matching would silently leave the stat with no base
+	 * and no attribute. That is the failure issue #1025 was about.
+	 */
+	static const TCHAR* DamageTakenStat;
+	static const TCHAR* DamageOverTimeTakenStat;
+
+	/**
+	 * What either of those two reads when nothing has changed it.
+	 *
+	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node
+	 * spent takes exactly the damage the layers above it left. Every node that
+	 * moves these is written as a percentage of what would otherwise arrive, and
+	 * a base of zero would leave an increase and a `more` both worth nothing.
+	 *
+	 * IT IS BOTH THE ATTRIBUTE'S STARTING VALUE AND THE STAT'S BASE.
+	 * `UCataclysmCombatAttributeSet` starts both attributes here, which is what
+	 * an enemy holds, and `UCataclysmPlayerClassStats::EngineSuppliedBases`
+	 * states the same figure as the base a player's stat line is built from.
+	 */
+	static constexpr float NormalDamageTaken = 100.0f;
+
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;
 

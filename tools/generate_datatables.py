@@ -2480,6 +2480,19 @@ CONDITIONS = {
     # DataTable asset can be regenerated. This one could not use a column
     # anyway, because the value column holds a number.
     "while_bleeding": None,
+
+    # "While your Fervour is at maximum" is `class_resource_at_maximum`, and it
+    # takes no value either. Issue #1026. Communion of Pain is the node.
+    #
+    # NOT A THRESHOLD WITH THE VALUE SET TO A HUNDRED. A threshold has to be
+    # either points or a percentage of the maximum, and the two disagree: the
+    # Ritualist's `class_resource` is 150 where every other class's is 100. "At
+    # maximum" is the top of whatever bar the class has and is neither.
+    #
+    # A FUTURE "while above 75 Fervour" WANTS ITS OWN NAME, for the same reason.
+    # That one is a points threshold and this one is not, so reusing this with a
+    # value would give a Ritualist the wrong answer.
+    "class_resource_at_maximum": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -2846,6 +2859,26 @@ ENGINE_SUPPLIED_BASES = {
     # not that.
     "damage_to_bleeding_window":
         "UCataclysmDamageConversion::BaseWindowSeconds, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
+
+    # Issue #1026. What share of a hit a character takes, at 100 for normal, and
+    # the same again for a hit that is damage over time. Three Masochist nodes
+    # move them and all three are written as a percentage of what would otherwise
+    # arrive, so a base of zero would leave every one of them worth nothing.
+    #
+    # NOT A CLASS STAT LINE, THOUGH FIVE STATS OF THE SAME SHAPE ARE ONE.
+    # `Cataclysm.Attributes.CharacterSheetIsComplete` gives the rule: a stat is
+    # off the character sheet when no affix grants it, nothing scales it, it has
+    # no baseline of its own, and one passive node is its only source. The five
+    # 100-means-normal stats on the `Default` line all fail that rule -- affixes
+    # grant them and the Ritualist starts at 110 area of effect -- and these two
+    # meet it. `docs/DECISIONS.md` records that they should be promoted to a
+    # class line the day an affix grants one or a class differs on one.
+    "damage_taken":
+        "UCataclysmDamageCalculation::NormalDamageTaken, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
+    "damage_over_time_taken":
+        "UCataclysmDamageCalculation::NormalDamageTaken, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",
 }
 

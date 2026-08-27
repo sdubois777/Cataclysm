@@ -337,6 +337,58 @@ public:
 	FGameplayAttributeData CooldownSkipChance;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CooldownSkipChance)
 
+	/**
+	 * What share of an incoming hit this character actually takes, in percent.
+	 *
+	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
+	 * the same "100 means unchanged" shape `AreaOfEffect` and the three damage
+	 * over time stats already use, and it is what lets a node say "20% more" and
+	 * another say "25% less" and have the two multiply rather than cancel into a
+	 * sum. Issue #1026.
+	 *
+	 * READ AT STEP 6 OF THE DAMAGE CALCULATION, after every mitigation layer and
+	 * before the mana and energy shield steps. `docs/DECISIONS.md` carries why
+	 * that position and not another: the layers before it are all multiplications
+	 * so their order does not matter, and the energy shield is a minimum, so
+	 * being before it is what makes a bigger blow spend more shield.
+	 *
+	 * ITS BASE COMES FROM `UCataclysmPlayerClassStats::EngineSuppliedBases` AND
+	 * NOT FROM A CLASS LINE. No affix grants it, no class differs on it, and
+	 * passive tree nodes are its only source, which is exactly the rule
+	 * `Cataclysm.Attributes.CharacterSheetIsComplete` uses to decide that a stat
+	 * is off the character sheet. Promote it to a class line the day an affix
+	 * grants it or a class differs on it.
+	 *
+	 * THIS ATTRIBUTE HOLDS 100 AT ALL TIMES FOR EVERY CHARACTER TODAY, because
+	 * all three nodes that move it carry a condition and a conditional bonus is
+	 * never folded into a gameplay attribute. `UCataclysmDamageCalculation`
+	 * asks through `StatForSkill` rather than reading this, which is what runs
+	 * the pipeline again with the character's state in hand.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DamageTaken)
+	FGameplayAttributeData DamageTaken;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageTaken)
+
+	/**
+	 * The same, for a hit that is damage over time, and it applies AS WELL.
+	 *
+	 * TWO STATS AND NOT ONE, because a modifier cannot be scoped to the kind of
+	 * blow arriving. `RequiredTags` on a modifier means the skill in the
+	 * CHARACTER'S OWN hand, and a character being hit is not swinging;
+	 * `DefenderStat` in `CataclysmDamageCalculation.cpp` passes an empty tag
+	 * container deliberately and says why. So the hit's own nature picks which
+	 * stats are read, the way `ResistanceFor` in that file already picks a
+	 * resistance slot from the hit's damage type. Issue #1026.
+	 *
+	 * BOTH APPLY TO A BLEED TICK, multiplying. `DamageTaken` above is every hit;
+	 * this is the extra one a damage over time tick also meets. The Masochist's
+	 * Echoes of Agony is its only source: "Damage taken from damage over time
+	 * effects is reduced by 1% per point."
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DamageOverTimeTaken)
+	FGameplayAttributeData DamageOverTimeTaken;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -397,6 +449,8 @@ protected:
 	UFUNCTION() void OnRep_MovementSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownSkipChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

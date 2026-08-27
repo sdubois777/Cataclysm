@@ -709,6 +709,146 @@ CATACLYSM_TEST(FCataclysmDefenceReadsScaledBonusesTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmDamageTakenStepTest,
+	"Cataclysm.Damage.HowMuchDamageACharacterTakesIsItsOwnStep")
+{
+	using namespace CataclysmDamageTest;
+	using FCalc = UCataclysmDamageCalculation;
+
+	// THE NINTH STEP. Issue #1026. `damage_taken` is a percentage where 100 is
+	// normal, so 120 is a fifth more of whatever the layers above it left and 75
+	// is a quarter less. Three Masochist nodes move it.
+	//
+	// A SECOND STAT FOR A DAMAGE OVER TIME TICK, AND A TICK MEETS BOTH. A
+	// modifier cannot be scoped to the kind of blow arriving, so the hit's own
+	// nature picks which stats are read. Echoes of Agony is the only source of
+	// the second one.
+	//
+	// NEARLY EVERY CASE HERE MOVES ONE STAT ONLY, and that is deliberate. A
+	// defender carrying both at once would still take less damage if only one of
+	// the two reads were built, so such a test would pass against half a fix and
+	// say nothing. The fifth case is the one that checks the two multiply.
+
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	FCataclysmIncomingHit Tick;
+	Tick.Damage = 400.0f;
+	Tick.bIsDamageOverTime = true;
+
+	// ---- A hundred changes nothing, which is what makes it the identity ----
+	{
+		const FScopedDefender D(World);
+		TestEqual(TEXT("both attributes start at a hundred"),
+			D.Combat->GetDamageTaken(), FCalc::NormalDamageTaken);
+		TestEqual(TEXT("including the damage over time one"),
+			D.Combat->GetDamageOverTimeTaken(), FCalc::NormalDamageTaken);
+
+		// A DEFENDER WITH NOTHING ELSE ON IT TAKES THE WHOLE HIT. No armour, no
+		// resistance, no reduction, so the arithmetic is this step alone, and a
+		// build dividing by 100 in the wrong direction would be obvious.
+		TestEqual(TEXT("so a bare defender takes the hit in full"),
+			D.Hit(400.0f).DealtToHealth, 400.0f, 0.01f);
+		TestEqual(TEXT("and so does a damage over time tick"),
+			D.Resolve(Tick).DealtToHealth, 400.0f, 0.01f);
+	}
+
+	// ---- Taking more, which no existing stat could express -----------------
+	{
+		const FScopedDefender D(World);
+		D.Combat->SetDamageTaken(120.0f);
+
+		// A FIFTH MORE. `DamageReductionMore` is clamped to zero and above, so
+		// nothing before this could make a character take MORE damage at all.
+		// Communion of Pain is the node: "take 20% more damage".
+		TestEqual(TEXT("120 means a fifth more of the hit"),
+			D.Hit(400.0f).DealtToHealth, 480.0f, 0.01f);
+	}
+
+	// ---- Taking less -------------------------------------------------------
+	{
+		const FScopedDefender D(World);
+		D.Combat->SetDamageTaken(75.0f);
+		TestEqual(TEXT("75 means a quarter less"),
+			D.Hit(400.0f).DealtToHealth, 300.0f, 0.01f);
+
+		// AND IT APPLIES TO A DAMAGE OVER TIME TICK TOO, because it is every
+		// hit. A build that read it only for a direct hit would pass every case
+		// above and fail here.
+		TestEqual(TEXT("and it applies to a damage over time tick as well"),
+			D.Resolve(Tick).DealtToHealth, 300.0f, 0.01f);
+	}
+
+	// ---- The damage over time stat, which a direct hit must NOT meet --------
+	{
+		const FScopedDefender D(World);
+		D.Combat->SetDamageOverTimeTaken(90.0f);
+
+		// THIS HALF CATCHES A BUILD THAT READ IT UNCONDITIONALLY, and it is the
+		// direction a test of the reduction alone cannot see. Echoes of Agony
+		// says "damage taken from damage over time effects", so a direct hit has
+		// to be untouched.
+		TestEqual(TEXT("a direct hit does not meet the damage over time stat"),
+			D.Hit(400.0f).DealtToHealth, 400.0f, 0.01f);
+		TestEqual(TEXT("and a tick takes a tenth less"),
+			D.Resolve(Tick).DealtToHealth, 360.0f, 0.01f);
+	}
+
+	// ---- Both at once, on a tick, multiplying ------------------------------
+	{
+		const FScopedDefender D(World);
+		D.Combat->SetDamageTaken(75.0f);
+		D.Combat->SetDamageOverTimeTaken(90.0f);
+
+		// 0.75 x 0.90 AND NOT 0.65. Two separate stats each with a bucket of
+		// their own cannot flatten into one sum, and a build that added the two
+		// reductions together would answer 260 here.
+		TestEqual(TEXT("a tick meets both, and they multiply"),
+			D.Resolve(Tick).DealtToHealth, 270.0f, 0.01f);
+		TestEqual(TEXT("while a direct hit meets only the first"),
+			D.Hit(400.0f).DealtToHealth, 300.0f, 0.01f);
+	}
+
+	// ---- A negative never turns a hit into healing -------------------------
+	{
+		const FScopedDefender D(World);
+		D.Combat->SetDamageTaken(-50.0f);
+
+		// FLOORED AT NOTHING. No node writes a negative today; the floor is here
+		// so that a future set of reductions summing past a hundred takes a hit
+		// to zero rather than healing the character it landed on.
+		TestEqual(TEXT("a negative damage taken removes the hit rather than "
+					   "reversing it"),
+			D.Hit(400.0f).DealtToHealth, 0.0f, 0.01f);
+	}
+
+	// ---- It sits before the energy shield, which is the one placement that
+	//      changes a number -------------------------------------------------
+	{
+		const FScopedDefender D(World);
+		D.Vitals->SetMaxEnergyShield(1'000.0f);
+		D.Vitals->SetEnergyShield(1'000.0f);
+		D.Combat->SetDamageTaken(200.0f);
+
+		// A DOUBLED BLOW SPENDS DOUBLE THE SHIELD. That is the whole reason the
+		// step sits where it does: every layer above it is a multiplication, so
+		// its position among those cannot be measured, and the shield is a
+		// minimum, so this can. A build applying the stat AFTER the shield would
+		// absorb 400 here and deal nothing to health.
+		const FCataclysmDamageResult Absorbed = D.Hit(400.0f);
+		TestEqual(TEXT("the shield absorbs the amplified blow, not the raw one"),
+			Absorbed.AbsorbedByShield, 800.0f, 0.01f);
+		TestEqual(TEXT("and nothing reaches health"),
+			Absorbed.DealtToHealth, 0.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_AUTOMATION_TESTS

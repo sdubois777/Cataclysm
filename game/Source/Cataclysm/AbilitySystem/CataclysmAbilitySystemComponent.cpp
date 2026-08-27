@@ -390,6 +390,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// `AddedHealthCostPercent` guards its own.
 		State.ClassResourceHeld = FMath::Max(0.0f, Resource->GetClassResource());
 
+		// AND THE TOP OF THAT BAR, for a condition that asks whether the pool is
+		// full. Issue #1026. Communion of Pain is the node: "While your Fervour is
+		// at maximum you deal 20% more damage and take 20% more damage."
+		//
+		// READ BESIDE THE POOL AND NOT DERIVED FROM IT, so the two cannot be a
+		// frame apart. It is floored at zero for the same reason the pool above
+		// is; `ConditionHolds` then refuses a maximum of zero outright, because a
+		// bar that cannot hold anything is not full.
+		State.ClassResourceMaximum =
+			FMath::Max(0.0f, Resource->GetMaxClassResource());
+
 		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
 		// Issue #994. Compound Interest grows with it: "+1% increased damage per
 		// point for every 5% of your maximum health you currently owe."

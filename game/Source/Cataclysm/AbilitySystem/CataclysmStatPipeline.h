@@ -203,6 +203,33 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WhileBleeding
 		UMETA(DisplayName = "While Bleeding"),
+
+	/**
+	 * The character's class resource is full. Issue #1026.
+	 *
+	 * Communion of Pain is the node: "While your Fervour is at maximum you deal
+	 * 20% more damage and take 20% more damage."
+	 *
+	 * `ConditionValue` IS UNUSED, the second predicate here needing no number and
+	 * for the reason `WhileBleeding` above needs none: the sentence names a state
+	 * rather than a threshold. "At maximum" is the top of whatever pool the class
+	 * has, not a figure a designer types. `tools/generate_datatables.py` refuses a
+	 * value on a row carrying it, so a number typed into that column is caught
+	 * when the file is written rather than being quietly ignored here.
+	 *
+	 * NOT A THRESHOLD WITH THE VALUE SET TO A HUNDRED, and the difference is
+	 * reachable rather than pedantic. A threshold has to be either points or a
+	 * percentage of the maximum, and the two disagree: the Ritualist's
+	 * `class_resource` is 150 where every other class's is 100. A future node
+	 * reading "while above 75 Fervour" is a POINTS threshold and wants its own
+	 * enumerator; this one is neither, because it asks about the top of the bar.
+	 *
+	 * NO CLASS RESOURCE MEANS NO, which is every enemy in the game. A bonus that
+	 * asks about a bar the character does not have is correctly worth nothing to
+	 * it, and that is the right answer rather than a fault.
+	 */
+	ClassResourceAtMaximum
+		UMETA(DisplayName = "Class Resource At Maximum"),
 };
 
 /**
@@ -411,6 +438,29 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceHeld = -1.0f;
+
+	/**
+	 * The largest that pool can be for this character. Issue #1026.
+	 *
+	 * A SECOND READING RATHER THAN A PERCENTAGE ON THE FIRST, so the two
+	 * questions the design asks stay separable. `PerPointOfClassResourceHeld`
+	 * counts POINTS -- "for each point of Fervour you currently hold" -- and
+	 * `ClassResourceAtMaximum` asks about the TOP OF THE BAR. Storing a
+	 * percentage instead would make the scale divide it back out, and storing
+	 * only points would leave the condition with nothing to compare against.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the reading above and set by
+	 * the same thing: an ability system with no class resource attribute set,
+	 * which is every enemy in the game. `ClassResourceAtMaximum` refuses an
+	 * unknown maximum, so an enemy never satisfies it.
+	 *
+	 * A MAXIMUM OF ZERO REFUSES THE CONDITION TOO, and deliberately. A character
+	 * whose pool cannot hold anything is not "at maximum" in any sense a node
+	 * means, and answering yes would hand Communion of Pain's bonus to every
+	 * class that never generates a point.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceMaximum = -1.0f;
 
 	/**
 	 * How much health the character owes, as a percentage of its maximum.

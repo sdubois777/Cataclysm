@@ -233,7 +233,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: THAT IS SEVEN NODES' WORTH OF SENTENCE IN FIVE NODES, WHICH IS WHY IT IS EIGHT
 #: ROWS AND NOT FIVE. "Increased damage" is two stats in this project, because a
 #: character deals attack damage and spell damage and no single stat covers both.
-AUTHORED_ROWS = 85
+#:
+#: AND TO 91 ON 2026-08-27, FOR THE THREE NODES THAT CHANGE HOW MUCH DAMAGE THE
+#: CHARACTER TAKES. Issue #1026. Six rows across three nodes: Echoes of Agony is
+#: one row on `damage_over_time_taken`; Communion of Pain is three, because
+#: "deal 20% more damage" is the same two damage stats as ever plus the damage
+#: taken; The Edge is two, one per clause of its sentence.
+AUTHORED_ROWS = 91
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -361,7 +367,13 @@ AUTHORED_ROWS = 85
 #: beyond a count: a stat for damage taken from damage over time, stats for a
 #: debuff's duration and magnitude on the defender, and a cap on how many
 #: debuffs a character may carry. None of those exists.
-AUTHORED_NODES = 63
+#:
+#: AND BY THREE ON 2026-08-27. Issue #1026. A `damage_taken` stat and a second
+#: one for a hit that is damage over time make Echoes of Agony, Communion of
+#: Pain and The Edge authorable, and a condition for being at full Fervour is
+#: what Communion of Pain needed besides. 66 of 293 altogether and 62 of the
+#: Masochist tree's own 74.
+AUTHORED_NODES = 66
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -542,6 +554,17 @@ CONDITION_WORDS = {
     # promises, and nothing at run time would report it: the character simply
     # gets the bonus at the wrong times.
     "while_bleeding": ("while you are bleeding", None),
+
+    # THE WORDS ARE THE STATE WORDING AND NOT THE EVENT ONE, and that is the
+    # whole of what this entry guards. Issue #1026. Seventeen nodes across the
+    # four trees say "at maximum Fervour" and nearly all of them mean an EVENT --
+    # "when you attack at maximum Fervour", "Killing an enemy with an attack made
+    # at maximum Fervour" -- which is a different rule from one that holds for as
+    # long as it is true. Only Communion of Pain says "your Fervour is at
+    # maximum". Requiring that wording is what refuses the other seventeen, in
+    # the same way `health_at_or_below` refuses a node that says "dropping
+    # below".
+    "class_resource_at_maximum": ("fervour is at maximum", None),
 }
 
 
@@ -822,6 +845,14 @@ VALUE_IN_WORDS = {
     # ordinary check below matches against that 5 with no exemption at all.
     ("Masochist_basic_ll_b1", "damage_to_bleeding_on_low_health"):
         ("converts all damage you take into bleeding", 1.0),
+
+    # THE EDGE'S SECOND CLAUSE, which is a rule and not a magnitude. Issue #1026.
+    # "While at or below 20% health you take 25% less damage and your Fervour
+    # does not decrease." The flag row is a 1 meaning "on", and both digits in
+    # that sentence belong to the other clause: 20 is the health threshold and 25
+    # is the damage the first row removes.
+    ("Masochist_keystone_ll_kA", "fervour_loss_suppressed"):
+        ("your fervour does not decrease", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50
