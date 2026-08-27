@@ -2550,6 +2550,22 @@ SCALES = {
     # but a step larger than the pool would be a bonus nothing could ever reach.
     "health_owed": (0.0, 100.0, "a percentage of maximum health"),
 
+    # "for every 1% of life leech you have" is `life_leech` with a step of 1.
+    # Issue #1045. Glutton is the node and the only one.
+    #
+    # A READING OF A STAT AND NOT OF A STATE, which is what makes it unlike
+    # every scale above. Those read where a character's health is or how full
+    # its pool is, and change from moment to moment; life leech changes when the
+    # character's gear or passive points change and not otherwise. So this is a
+    # bonus that grows with an investment rather than with a situation.
+    #
+    # THE UPPER BOUND IS A STEP OF A HUNDRED PERCENT, which is a judgement and
+    # not a figure read off anything: nothing in the design states a ceiling on
+    # life leech. A hundred is the largest step that could still pay out for a
+    # character that leeched every point of damage it dealt, and a step above
+    # that would be a bonus nobody could ever reach.
+    "life_leech": (0.0, 100.0, "a percentage of life leech"),
+
     # THREE COUNTS OF STACKS, one per kind. Issues #1002, #1003 and #1004.
     # "Each stack gives +1% increased attack speed per point" is
     # `momentum_stacks` with a step of 1.

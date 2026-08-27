@@ -246,6 +246,30 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 
+	case ECataclysmStatScale::PerPercentOfLifeLeech:
+	{
+		// THE SAME TWO REFUSALS AS THE READINGS ABOVE. Issue #1045. The reading
+		// is negative for a caller with no character in hand and for an ability
+		// system with no vital attribute set, which is where life leech lives;
+		// and a step of nothing would divide by zero.
+		//
+		// HAVING NONE IS NOT A REFUSAL. A character with no life leech reads
+		// zero and gets nothing by the arithmetic, which is the honest answer
+		// and is what makes Glutton a reward for investing in leech rather than
+		// a flat bonus.
+		if (State.LifeLeechPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN, the rule every scale here follows. Glutton
+		// uses a step of 1, where rounding cannot show, so the rule is read off
+		// the other scales rather than off this node's words.
+		const float Steps =
+			FMath::FloorToFloat(State.LifeLeechPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
 	// THE THREE STACK COUNTS SHARE ONE PIECE OF ARITHMETIC, because a stack is
 	// already a whole thing: there is no reading to divide and nothing to round.
 	// Issues #1002, #1003 and #1004.

@@ -883,6 +883,16 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
+			else if (Effect->Scale.Equals(TEXT("life_leech"),
+										  ESearchCase::IgnoreCase))
+			{
+				// A READING OF A STAT RATHER THAN OF A STATE, unlike the three
+				// above. Issue #1045. Glutton is the node: "Your retaliation
+				// damage is increased by 1% for every 1% of life leech you
+				// have."
+				Modifier.Scale = ECataclysmStatScale::PerPercentOfLifeLeech;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
 			else if (Effect->Scale.Equals(TEXT("momentum_stacks"),
 										  ESearchCase::IgnoreCase))
 			{

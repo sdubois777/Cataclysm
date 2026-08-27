@@ -297,7 +297,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Vow's third option: a flag saying damage over time deals the character
 	// nothing, two for the damage each debuff multiplies, and the Fervour
 	// each grants a second.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        106)
+	//
+	// AND TO 107 FOR GLUTTON. Issue #1045. One row, on a new scale that
+	// reads how much life leech the character has.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        107)
 
 	#undef CHECK_TABLE
 

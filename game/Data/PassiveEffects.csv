@@ -105,3 +105,4 @@ Masochist_capstone_200#1,Masochist_capstone_200,debuff_damage_suppressed,flat,1.
 Masochist_capstone_200#2,Masochist_capstone_200,attack_damage,more,5.0,,,0.0,debuffs_carried,1.0,3
 Masochist_capstone_200#3,Masochist_capstone_200,spell_damage,more,5.0,,,0.0,debuffs_carried,1.0,3
 Masochist_capstone_200#4,Masochist_capstone_200,fervour_per_second,flat,5.0,,,0.0,debuffs_carried,1.0,3
+Masochist_capstone_100#8,Masochist_capstone_100,retaliation,increased,1.0,,,0.0,life_leech,1.0,2
