@@ -70,6 +70,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// Issue #1032. The Masochist's Mutilation Mastery is its only source.
 	InitBleedOnCritChance(0.0f);
 
+	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
+	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
+	// source, and zero is the ordinary case.
+	InitDebuffDamageSuppressed(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -126,6 +131,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedOnCritChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -244,6 +250,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
 		GetCooldownSkipChanceAttribute(), GetBleedOnCritChanceAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
+		GetDebuffDamageSuppressedAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -281,5 +288,6 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedOnCritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

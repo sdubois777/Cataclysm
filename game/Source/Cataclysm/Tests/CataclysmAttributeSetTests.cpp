@@ -191,11 +191,18 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * grants it, nothing scales it, it has no baseline of its own, and the
 	 * Masochist's Mutilation Mastery node is its only source.
 	 *
-	 * So the sheet stays at 46. The combat set grew by six and the class
+	 * AND WHETHER DAMAGE OVER TIME DEALS THE CHARACTER NOTHING AT ALL is the
+	 * tenth, added under issue #1039, and it meets the rule for the sixth time:
+	 * no affix grants it, nothing scales it, it has no baseline of its own, and
+	 * the Masochist's Vessel Unbroken capstone option is its only source. It is
+	 * a FLAG and not a reduction, because a Less multiplier is floored at -99
+	 * and "no damage at all" is not 99% less.
+	 *
+	 * So the sheet stays at 46. The combat set grew by seven and the class
 	 * resource set by five, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 7;
+	constexpr int32 OffSheetCombatStats = 8;
 
 	/**
 	 * How far healing may take the character. Issue #988.

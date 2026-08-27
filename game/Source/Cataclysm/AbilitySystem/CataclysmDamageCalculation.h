@@ -272,6 +272,16 @@ public:
 	static const TCHAR* DamageOverTimeTakenStat;
 
 	/**
+	 * Whether damage over time deals this character nothing at all.
+	 * Issue #1039. Zero for no, above zero for yes.
+	 *
+	 * A FLAG RATHER THAN A THIRD REDUCTION, because a Less multiplier is
+	 * floored at -99 and "no damage at all" is not 99% less. See the
+	 * attribute's own declaration in `UCataclysmCombatAttributeSet`.
+	 */
+	static const TCHAR* DebuffDamageSuppressedStat;
+
+	/**
 	 * What either of those two reads when nothing has changed it.
 	 *
 	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node

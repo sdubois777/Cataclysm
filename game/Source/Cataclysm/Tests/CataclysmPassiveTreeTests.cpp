@@ -3876,6 +3876,35 @@ namespace CataclysmPassiveTest
 			Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
 			AbilitySystem->CurrentConditions()).SumOfIncreases;
 	}
+
+	/**
+	 * Every More multiplier on one stat, multiplied together, right now.
+	 *
+	 * A RATIO WHERE `IncreasesOn` ABOVE GIVES A SUM, and the difference decides
+	 * how an assertion is written. More multipliers multiply, so a row worth 5
+	 * per debuff carried by two debuffs contributes ONE factor of 1.10 -- not
+	 * two of 1.05, because `StackedValue` multiplies the row's value by the
+	 * count and hands over a single modifier. Whatever the rest of the tree
+	 * contributes is a separate constant factor, so the ratio between a reading
+	 * before a choice and after it isolates the option cleanly.
+	 */
+	static float MoreMultiplierOn(
+		const UCataclysmAbilitySystemComponent* AbilitySystem, const TCHAR* Stat)
+	{
+		if (!AbilitySystem)
+		{
+			return 1.0f;
+		}
+		const FCataclysmStatInputs* Inputs =
+			AbilitySystem->GetStatInputs(FName(Stat));
+		if (!Inputs)
+		{
+			return 1.0f;
+		}
+		return UCataclysmStatPipeline::Evaluate(
+			Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+			AbilitySystem->CurrentConditions()).MoreMultiplier;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeficitOnARealCharacterTest,
@@ -4653,6 +4682,252 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 			  AttackDamage(), DamageWithNone, DamageWithNone * 0.001f);
 	TestEqual(TEXT("and so is the health that comes back"),
 			  OneStepOfRegeneration(), RegenWithNone, RegenWithNone * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVesselUnbrokenOnARealCharacterTest,
+	"Cataclysm.Passives.VesselUnbrokenSilencesDebuffsAndPaysForThemOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Final Vow's third option on a real character. Issue #1039.
+ *
+ * "Debuffs on you deal no damage at all, and each one grants 5% more damage and
+ * 5 Fervour per second."
+ *
+ * ALL THREE CLAUSES, AND THE FIRST IS WHY THE OPTION NEEDED NEW MACHINERY. "No
+ * damage at all" cannot be a multiplier: `LessMultiplierFloor` clamps a Less
+ * multiplier to -99 on purpose, and 99% less is not none. It is a flag, and
+ * `UCataclysmDamageCalculation::Resolve` reads it at the damage over time step.
+ *
+ * THE DEBUFF MUST STILL BE CARRIED AFTERWARDS, and that is asserted rather than
+ * assumed. The option's other two clauses count debuffs, so a build that removed
+ * the effect instead of silencing its damage would make the option cancel its
+ * own other two thirds -- and would still pass a test that only checked the
+ * damage was gone.
+ *
+ * EVERY FIGURE IS MEASURED BEFORE AND AFTER THE CHOICE, at a fixed number of
+ * debuffs. Filling the tree to 200 points spends points in Doctrine of Pain and
+ * Flagellant, which multiply damage and grant Fervour for the same debuffs, so
+ * an absolute reading would include theirs as well as this option's.
+ */
+bool FCataclysmPassiveVesselUnbrokenOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_200"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Four, and
+	// the flag is deliberately unlike the other three: it carries no scale,
+	// because "no damage at all" does not grow with how many debuffs there are.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Option == 3)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Vessel Unbroken grants four rows"), Mine.Num(), 4))
+	{
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Silence = nullptr;
+	int32 PerDebuff = 0;
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		if (Row->Stat
+			== FString(UCataclysmDamageCalculation::DebuffDamageSuppressedStat))
+		{
+			Silence = Row;
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("%s counts debuffs"), *Row->Stat),
+				  Row->Scale, FString(TEXT("debuffs_carried")));
+		++PerDebuff;
+	}
+	TestEqual(TEXT("three rows grow with the debuff count"), PerDebuff, 3);
+	if (!TestNotNull(TEXT("and one silences what a debuff deals"), Silence))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the silence is a flat flag"), Silence->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one, meaning on"), Silence->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and it does NOT grow with the debuff count, because "
+				   "\"no damage at all\" is not a quantity"),
+			  Silence->Scale, FString());
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// TWO DEBUFFS, PUT ON THROUGH REAL GAMEPLAY EFFECTS, and put on BEFORE the
+	// choice so the two readings either side of it are taken in the same state.
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("the vocabulary has Bleed and Burn"),
+				  Bleed.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("a bleed can be put on the character"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, Bleed, 30.0f))
+		|| !TestTrue(TEXT("and a burn as well"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(
+						 Character, Character, Burn, 30.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the character carries two debuffs"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 2);
+
+	// A SMALL BLOW, so the floor at remaining health can never be what is being
+	// measured. `Resolve` ends with Min(Damage, Health), and a Masochist at
+	// level 20 holds a few hundred health.
+	constexpr float RawTick = 40.0f;
+
+	const float OverTimeBefore =
+		DamageAHitDeals(AbilitySystem, RawTick, /*bIsDamageOverTime=*/true);
+	const float OrdinaryBefore =
+		DamageAHitDeals(AbilitySystem, RawTick, /*bIsDamageOverTime=*/false);
+	const float MoreBefore = MoreMultiplierOn(AbilitySystem,
+											  TEXT("attack_damage"));
+	const float FervourBefore = AbilitySystem->StatForSkill(
+		FName(UCataclysmFervour::PerSecondStat), FGameplayTagContainer(), 0.0f);
+
+	if (!TestTrue(*FString::Printf(
+			TEXT("a damage over time tick hurts this character to begin with "
+				 "(%.2f of %.0f)"), OverTimeBefore, RawTick),
+			OverTimeBefore > 0.0f))
+	{
+		// WITHOUT THIS THE ZERO BELOW WOULD PROVE NOTHING, because a tick that
+		// already dealt nothing would still deal nothing afterwards.
+		return false;
+	}
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the third option can be chosen"),
+				  State->ChoosePassiveOption(Node, 3, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// THE FIRST CLAUSE: NO DAMAGE AT ALL, not merely less of it.
+	TestEqual(TEXT("a damage over time tick now deals nothing at all"),
+			  DamageAHitDeals(AbilitySystem, RawTick,
+							  /*bIsDamageOverTime=*/true),
+			  0.0f, 0.001f);
+
+	// AND AN ORDINARY BLOW IS UNTOUCHED, which is the half that catches a flag
+	// read at the wrong step. A character immune to every hit is not what the
+	// sentence says.
+	TestEqual(TEXT("while an ordinary hit lands exactly as it did"),
+			  DamageAHitDeals(AbilitySystem, RawTick,
+							  /*bIsDamageOverTime=*/false),
+			  OrdinaryBefore, FMath::Max(OrdinaryBefore * 0.001f, 0.001f));
+
+	// AND THE DEBUFFS ARE STILL THERE. This is the assertion that says the
+	// damage was silenced rather than the effect removed. Without it a build
+	// that stripped the effects would pass everything above and quietly cancel
+	// the option's other two clauses.
+	TestEqual(TEXT("and the character still carries both debuffs, so the rest "
+				   "of the option still has something to count"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 2);
+
+	// THE SECOND CLAUSE: 5% MORE DAMAGE FOR EACH OF THE TWO, which is one More
+	// multiplier of 1.10 rather than two of 1.05. `StackedValue` multiplies the
+	// row's value by the count and hands over a single modifier.
+	TestEqual(TEXT("two debuffs multiply damage by a further 1.10"),
+			  MoreMultiplierOn(AbilitySystem, TEXT("attack_damage")),
+			  MoreBefore * 1.10f, MoreBefore * 0.001f);
+
+	// THE THIRD CLAUSE: 5 FERVOUR A SECOND FOR EACH OF THE TWO, on top of
+	// whatever Flagellant already grants for the same two.
+	TestEqual(TEXT("and grant ten Fervour a second between them"),
+			  AbilitySystem->StatForSkill(
+				  FName(UCataclysmFervour::PerSecondStat),
+				  FGameplayTagContainer(), 0.0f),
+			  FervourBefore + 10.0f, 0.01f);
+
+	// AND ALL THREE FOLLOW THE DEBUFFS. Taking them away leaves the damage
+	// multiplier and the Fervour where they started, and lets damage over time
+	// hurt again -- which is what says the silence is the option's doing rather
+	// than something that happened once and stuck.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Bleed);
+	UCataclysmSkillEffects::RemoveEffectsGranting(Character, Burn);
+	TestEqual(TEXT("with no debuff carried the damage multiplier is back"),
+			  MoreMultiplierOn(AbilitySystem, TEXT("attack_damage")),
+			  MoreBefore, MoreBefore * 0.001f);
+	TestEqual(TEXT("and so is the Fervour a second"),
+			  AbilitySystem->StatForSkill(
+				  FName(UCataclysmFervour::PerSecondStat),
+				  FGameplayTagContainer(), 0.0f),
+			  FervourBefore, 0.01f);
+
+	// THE SILENCE, HOWEVER, STAYS. It never counted debuffs, so a character
+	// holding this option takes nothing from damage over time whether or not it
+	// is carrying any right now.
+	TestEqual(TEXT("while damage over time still deals nothing, because the "
+				   "silence never counted debuffs"),
+			  DamageAHitDeals(AbilitySystem, RawTick,
+							  /*bIsDamageOverTime=*/true),
+			  0.0f, 0.001f);
 
 	return true;
 }
