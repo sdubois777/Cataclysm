@@ -402,6 +402,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("class_resource_uncapped"),
 		 TEXT("the Masochist's The Final Vow node, second option, as a flat "
 			  "modifier")},
+
+		// Issue #1032. The chance a melee critical strike applies Bleeding to
+		// what it hit. Zero for every class, and the Masochist's Mutilation
+		// Mastery is its only source. Its row carries no condition and no
+		// scale, so it IS folded into the attribute, which is what lets
+		// `UCataclysmVitalAttributeSet` read the attribute directly where the
+		// blow lands rather than asking for the stat.
+		{TEXT("bleed_on_crit_chance"),
+		 TEXT("the Masochist's Mutilation Mastery node, as a flat modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
+// For the Bleeding a melee critical strike may apply. Issue #1032.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -215,6 +217,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmDamageCalculation::AreaDamageTag());
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
 				UCataclysmDamageCalculation::DamageOverTimeTag());
+
+			// AND WHETHER IT WAS STRUCK IN MELEE. Issue #1032. Read here beside
+			// the other two because it comes from the same place: a tag the
+			// ability that threw the blow put on the effect. Nothing in
+			// `Resolve` reads it -- melee is not a mitigation layer -- and what
+			// asks about it is the rule further down this function that gives
+			// Mutilation Mastery its chance to apply Bleeding.
+			Hit.bIsMelee =
+				AssetTags.HasTag(UCataclysmDamageCalculation::MeleeTag());
 
 			// WHETHER THIS BLOW MAY IGNORE ANY OF THE DEFENDER'S ARMOUR OR
 			// RESISTANCE. Read up here rather than beside the first thing that
@@ -763,6 +774,69 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						GetOwningActor(), Seconds, Outcome.DealtToHealth,
 						/*bStunIsDesigned=*/false);
+				}
+			}
+
+			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.
+			// Issue #1032. The Masochist's Mutilation Mastery: "Your melee
+			// critical strikes have a 5% chance per point to apply Bleeding."
+			// Eight points, so 40% at most.
+			//
+			// THE CHANCE BELONGS TO WHOEVER SWUNG, which is what makes this
+			// different from the blunt stun above. That one reads the DEFENDER'S
+			// crowd control resistance; this reads the INSTIGATOR'S stat, the
+			// same way the two penetrations and the critical strike multiplier
+			// are read further up this function.
+			//
+			// THREE CONDITIONS AND ALL THREE ARE THE NODE'S OWN WORDS. Melee,
+			// critical, and a blow that actually reached health. Dropping any
+			// one of them would make the node several times stronger than it
+			// reads and nothing at run time would report it.
+			//
+			// READ OFF THE ATTRIBUTE RATHER THAN ASKED FOR, which is safe only
+			// because the node's one row carries no condition and no scale, so
+			// it IS folded into the attribute. A later node conditioning this
+			// stat would need a `StatForSkill` call here or its row would be
+			// dropped in silence. Issue #1022.
+			if (Hit.bIsMelee && Outcome.bWasCritical
+				&& Outcome.DealtToHealth > 0.0f)
+			{
+				const UAbilitySystemComponent* Attacker =
+					Data.EffectSpec.GetContext()
+						.GetInstigatorAbilitySystemComponent();
+				const UCataclysmCombatAttributeSet* Offence =
+					Attacker ? Attacker->GetSet<UCataclysmCombatAttributeSet>()
+							 : nullptr;
+				const float Chance =
+					Offence ? Offence->GetBleedOnCritChance() : 0.0f;
+
+				if (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance)
+				{
+					// THE DESIGNED NUMBERS AND NOT INVENTED ONES. The node says
+					// only "apply Bleeding" and states neither a magnitude nor a
+					// duration, so both come from the `DoT_Bleed` row of
+					// `game/Data/StatusEffects.csv`: 20 damage a second for 5
+					// seconds. `BleedNumbers` reports the row unusable rather
+					// than silently applying nothing if either is missing.
+					const FCataclysmStatusEffectNumbers Bleed =
+						UCataclysmSkillEffects::BleedNumbers();
+					if (Bleed.bUsable)
+					{
+						// THE SAME CALL THE DAMAGE CONVERSION MAKES, so what
+						// this creates is the same thing `UCataclysmDebuffs`
+						// counts and the five nodes that read debuffs see.
+						//
+						// IT SCALES WITH THE ATTACKER, unlike the conversion's,
+						// because this is damage one character is doing to
+						// another rather than a character's own damage arriving
+						// in a different shape.
+						UCataclysmSkillEffects::ApplyDamageOverTime(
+							Data.EffectSpec.GetContext().GetEffectCauser(),
+							GetOwningActor(), Bleed.FlatDamagePerTick,
+							Bleed.DurationSeconds,
+							UCataclysmDebuffs::BleedTag(),
+							/*bScalesWithInstigator=*/true);
+					}
 				}
 			}
 

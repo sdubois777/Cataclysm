@@ -58,6 +58,7 @@ namespace
 }
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
+const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 
 const TCHAR* UCataclysmSkillEffects::StatusEffectTableAssetPath =
 	TEXT("/Game/Data/DT_StatusEffects.DT_StatusEffects");
@@ -325,6 +326,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	FCataclysmHitDelivery Arrived = Delivery;
 	Arrived.bIsArea = Arrived.bIsArea || IsAreaDamage(SkillTags);
 
+	// AND WHETHER IT WAS STRUCK IN MELEE, read the same way and combined the
+	// same way. Issue #1032. `Type.Melee` is on both sides' skills already: six
+	// of the seven enemy abilities and 27 rows of the weapon skill sheet.
+	//
+	// HERE RATHER THAN AT EACH CALLER, because this is the one place every
+	// damaging blow passes through holding its own tags -- which is the reason
+	// the damage type is set here too, three lines down.
+	{
+		const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+		Arrived.bIsMelee =
+			Arrived.bIsMelee || (Melee.IsValid() && SkillTags.HasTag(Melee));
+	}
+
 	// AND THE SKILL'S OWN DAMAGE TYPE GOES WITH IT, so the bolt and the burst
 	// can be drawn in it. Only for colour: see the field's declaration. Set here
 	// and not by each caller because this is the one place every damaging skill
@@ -524,6 +538,17 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 			Spec.AddDynamicAssetTag(OverTime);
 		}
 	}
+	if (Delivery.bIsMelee)
+	{
+		// Issue #1032. Without this the defender cannot tell a melee blow from
+		// any other, because a skill's tags stop where the blow is built and
+		// only what is added here reaches whoever it lands on.
+		const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+		if (Melee.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Melee);
+		}
+	}
 	if (Delivery.bCannotCriticallyStrike)
 	{
 		const FGameplayTag NoCrit =
@@ -593,6 +618,17 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 
 FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
 {
+	return StatusEffectNumbers(BurnRowName, TEXT("Burn"));
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BleedNumbers()
+{
+	return StatusEffectNumbers(BleedRowName, TEXT("Bleed"));
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
+	const TCHAR* RowName, const TCHAR* HumanName)
+{
 	FCataclysmStatusEffectNumbers Numbers;
 
 	const UDataTable* Table = LoadStatusEffectTable();
@@ -602,13 +638,13 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
 	}
 
 	const FCataclysmStatusEffectRow* Row = Table->FindRow<FCataclysmStatusEffectRow>(
-		FName(BurnRowName), TEXT("UCataclysmSkillEffects::BurnNumbers"),
+		FName(RowName), TEXT("UCataclysmSkillEffects::StatusEffectNumbers"),
 		/*bWarnIfRowMissing=*/false);
 	if (!Row)
 	{
 		UE_LOG(LogCataclysm, Warning,
-			TEXT("The status effect table has no %s row, so no skill can set "
-				 "anything alight."), BurnRowName);
+			TEXT("The status effect table has no %s row, so nothing can apply "
+				 "%s at all."), RowName, HumanName);
 		return Numbers;
 	}
 
@@ -618,26 +654,27 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
 	Numbers.PercentOfCurrentHealth = Row->PercentOfCurrentHealth;
 
 	// BOTH HALVES ARE NEEDED AND EITHER ONE MISSING IS THE SAME FAULT. Burn had
-	// neither until issue #895, and a burn lasting zero seconds or worth zero
-	// damage is indistinguishable from a burn nobody wrote -- which is exactly
+	// neither until issue #895, and an effect lasting zero seconds or worth zero
+	// damage is indistinguishable from an effect nobody wrote -- which is exactly
 	// how the missing cooldown in issue #155 stayed hidden.
 	//
 	// EITHER BASE SATISFIES THE SECOND HALF. Burn states a flat amount since
-	// 2026-08-24 and stated a percent of the hit before that, and both are a
-	// per-tick amount this path can apply. A percent of the target's current
-	// health is deliberately NOT accepted: it is a different amount every tick,
-	// so it cannot be resolved to the one fixed figure this path needs.
+	// 2026-08-24 and stated a percent of the hit before that, and Bleed states a
+	// flat 20 a second; all are a per-tick amount this path can apply. A percent
+	// of the target's current health is deliberately NOT accepted: it is a
+	// different amount every tick, so it cannot be resolved to the one fixed
+	// figure this path needs.
 	const bool bStatesAnAmount = Numbers.FlatDamagePerTick > 0.0f
 		|| Numbers.PercentOfHit > 0.0f;
 	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && bStatesAnAmount;
 	if (!Numbers.bUsable)
 	{
 		UE_LOG(LogCataclysm, Warning,
-			TEXT("Burn states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
+			TEXT("%s states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
 				 "of the hit. The duration and one of the two amounts must be "
 				 "above zero or nothing is applied. They come from columns B, H "
 				 "and C of the DoTs sheet."),
-			Numbers.DurationSeconds, Numbers.FlatDamagePerTick,
+			HumanName, Numbers.DurationSeconds, Numbers.FlatDamagePerTick,
 			Numbers.PercentOfHit);
 	}
 

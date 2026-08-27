@@ -131,6 +131,7 @@ namespace
 const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
 const TCHAR* UCataclysmDamageCalculation::AreaDamageTagName = TEXT("Type.AOE");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTagName = TEXT("Keyword.DoT");
+const TCHAR* UCataclysmDamageCalculation::MeleeTagName = TEXT("Type.Melee");
 const TCHAR* UCataclysmDamageCalculation::NoCriticalStrikeTagName =
 	TEXT("Keyword.NoCrit");
 const TCHAR* UCataclysmDamageCalculation::NoPenetrationTagName =
@@ -171,6 +172,11 @@ FGameplayTag UCataclysmDamageCalculation::AreaDamageTag()
 FGameplayTag UCataclysmDamageCalculation::DamageOverTimeTag()
 {
 	return TagNamed(DamageOverTimeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::MeleeTag()
+{
+	return TagNamed(MeleeTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::NoCriticalStrikeTag()

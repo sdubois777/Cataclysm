@@ -278,7 +278,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Issue #1029. The Final Vow's second option, "Apotheosis, but For the Mind",
 #: is two rows: a flag saying the class resource pool has no maximum, and the
 #: damage taken that pays for it, scaled by how much of the pool is held.
-AUTHORED_ROWS = 93
+#:
+#: AND TO 94 ON 2026-08-27, FOR MUTILATION MASTERY. Issue #1032. One row:
+#: a flat 5 per point on the chance a melee critical strike applies
+#: Bleeding, which is 40% at the node's full eight points.
+AUTHORED_ROWS = 94
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -416,7 +420,10 @@ AUTHORED_ROWS = 93
 #: AND BY ONE ON 2026-08-27, for The Final Vow. Issue #1029. A capstone counts
 #: once however many of its three options are authored, and one of that node's
 #: three is. 67 of 293 altogether and 63 of the Masochist tree's own 74.
-AUTHORED_NODES = 67
+#:
+#: AND BY ONE MORE ON 2026-08-27, for Mutilation Mastery. Issue #1032.
+#: 68 of 293 altogether and 64 of the Masochist tree's own 74.
+AUTHORED_NODES = 68
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

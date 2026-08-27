@@ -66,6 +66,10 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// bonus is never written onto a gameplay attribute. See the header.
 	InitCooldownSkipChance(0.0f);
 
+	// ZERO, AND IT STAYS ZERO FOR ANY CHARACTER WITHOUT THE NODE.
+	// Issue #1032. The Masochist's Mutilation Mastery is its only source.
+	InitBleedOnCritChance(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -119,6 +123,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownSkipChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedOnCritChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
@@ -145,7 +150,8 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 	// is not a larger chance and a negative one is not a smaller chance; both
 	// are data that means nothing, and clamping says so once here rather than at
 	// the roll. No node reaches 100: The Catalyst stops at 40.
-	if (Attribute == GetCooldownSkipChanceAttribute())
+	if (Attribute == GetCooldownSkipChanceAttribute()
+		|| Attribute == GetBleedOnCritChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
@@ -236,7 +242,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageVsFamineAttribute(), GetDamageVsCelestialAttribute(),
 		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
-		GetCooldownSkipChanceAttribute(),
+		GetCooldownSkipChanceAttribute(), GetBleedOnCritChanceAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
@@ -272,6 +278,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsVoid)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedOnCritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)

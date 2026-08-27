@@ -480,6 +480,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("damage_taken"), Combat::GetDamageTakenAttribute()},
 			{TEXT("damage_over_time_taken"),
 			 Combat::GetDamageOverTimeTakenAttribute()},
+
+			// THE CHANCE A MELEE CRITICAL STRIKE APPLIES BLEEDING. Issue #1032.
+			// Zero for every class, and the Masochist's Mutilation Mastery is
+			// its only source. Here for the reason every other node-supplied
+			// stat is: `ApplyTo` loops over this map, so a stat missing from it
+			// is dropped before it reaches a character.
+			{TEXT("bleed_on_crit_chance"),
+			 Combat::GetBleedOnCritChanceAttribute()},
 		};
 	}();
 

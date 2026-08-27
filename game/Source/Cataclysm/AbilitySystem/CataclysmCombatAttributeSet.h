@@ -338,6 +338,33 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CooldownSkipChance)
 
 	/**
+	 * The chance, in percent, that a melee critical strike applies Bleeding to
+	 * what it hit. Issue #1032.
+	 *
+	 * THE MASOCHIST'S MUTILATION MASTERY IS ITS ONLY SOURCE: "Your melee
+	 * critical strikes have a 5% chance per point to apply Bleeding." It holds
+	 * eight points, so 40% at most.
+	 *
+	 * IT BELONGS TO WHOEVER SWUNG, unlike every other stat read while a blow is
+	 * resolved. Armour, resistance and damage taken are the defender's;
+	 * `UCataclysmVitalAttributeSet` reads this off the INSTIGATOR, the same way
+	 * it already reads the two penetration stats and the critical strike
+	 * multiplier.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason the cooldown skip chance
+	 * above is not: no affix grants it, nothing scales it, it has no baseline of
+	 * its own, and one passive node supplies it. Every class starts at zero.
+	 *
+	 * READ STRAIGHT OFF THE ATTRIBUTE, which is safe only because its one row
+	 * carries no condition and no scale, so it IS folded in. A later node
+	 * conditioning it would need that read to become a `StatForSkill` call or
+	 * the row would be dropped in silence. Issue #1022 is what that looks like.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_BleedOnCritChance)
+	FGameplayAttributeData BleedOnCritChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BleedOnCritChance)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -449,6 +476,7 @@ protected:
 	UFUNCTION() void OnRep_MovementSpeed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownSkipChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_BleedOnCritChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
