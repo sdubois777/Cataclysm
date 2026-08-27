@@ -15,6 +15,8 @@
 // For resolving a real hit against a real character, and the two damage-taken
 // stat names. Issue #1026.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For judging a condition directly, to pin the Apotheosis interaction. #1029.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 // For the conversion window The Breaking Point lengthens. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the debuffs the five new nodes read. Issue #962.
@@ -929,41 +931,41 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0\r\n"
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
-			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0\r\n"
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0\r\n"
 			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
 			// a second row on the SAME node deliberately: a new node would change
 			// the rectangle the tree occupies and move an unrelated layout test's
 			// answer.
-			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0\r\n"
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0\r\n"
 			// AND ONE WHOSE SIZE GROWS WITH A STATE rather than switching on and
 			// off with it. Issue #968. A third row on the same node, for the same
 			// reason the second one is.
-			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5\r\n"
+			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0\r\n"
 			// AND ONE UNDER THE SECOND KIND OF TIMED WINDOW. Issue #975. The
 			// two windows are separate names and separate enumerators, so
 			// covering one says nothing at all about the other.
-			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0\r\n"
+			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0\r\n"
 			// AND ONE THAT GROWS WITH WHAT THE CHARACTER OWES. Issue #994. A
 			// SECOND scale, and telling it apart from the one above is the
 			// point: health missing and health owed are different states of one
 			// character, so a build that mapped either name onto either
 			// enumerator would pass every check written before this row.
-			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5\r\n"
+			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0\r\n"
 			// AND THREE COUNTS OF STACKS, ONE PER KIND. Issues #1002, #1003 and
 			// #1004. All three are here rather than one of them, because the
 			// three names must not be interchangeable: each kind is granted by a
@@ -971,22 +973,34 @@ namespace CataclysmPassiveEffectTest
 			// that mapped two of the names onto one enumerator would hand a node
 			// somebody else's stacks with nothing reporting it. One row cannot
 			// catch that; three can.
-			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1\r\n"
-			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1\r\n"
-			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1\r\n"
+			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0\r\n"
+			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0\r\n"
+			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0\r\n"
 			// AND A COUNT OF THE DEBUFFS THE CHARACTER IS UNDER. Issue #962. A
 			// fourth count beside the three stacks, and its own row for the same
 			// argument: a build that mapped this name onto a stack enumerator
 			// would count something the character EARNED instead of something
 			// being DONE to it, and every check above would still pass.
-			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1\r\n"
+			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0\r\n"
 			// AND A CONDITION THAT NAMES AN EFFECT RATHER THAN A THRESHOLD.
 			// Issue #962. It is the only condition that reads no value, so it is
 			// the only one where the value column could be carried across and
 			// compared against with nothing reporting it.
-			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0\r\n"
+			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0\r\n"));
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0\r\n"
+			// A CAPSTONE'S THREE OPTIONS, ONE ROW EACH. Issue #1029. Only the
+			// option the player chose may apply, and a capstone with no choice
+			// made yet grants none of the three.
+			//
+			// THREE RATHER THAN TWO, AND THE THIRD EARNS ITS PLACE. Two would
+			// prove a chosen option applies and an unchosen one does not; only a
+			// third says the skip is by option NUMBER rather than by "not the
+			// first one". Each grants a different stat so the test can tell which
+			// of the three arrived.
+			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1\r\n"
+			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2\r\n"
+			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -994,6 +1008,117 @@ namespace CataclysmPassiveEffectTest
 		}
 		return Problems.Num() == 0 ? Table : nullptr;
 	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCapstoneOptionTest,
+	"Cataclysm.Passives.OnlyTheCapstoneOptionTheCharacterChoseGrantsAnything",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A capstone offers three options and only the chosen one applies. Issue #1029.
+ *
+ * WHAT WAS MISSING AND WHY IT WAS INVISIBLE. The choice has been stored, offered
+ * and printed since the tree screen was built -- `ChoosePassiveOption`,
+ * `ChosenOptionIn`, the console command and the widget all existed. The effects
+ * sheet had no way to say which option a row belonged to, so no capstone row
+ * could be authored at all, and the four Masochist capstones granted nothing.
+ *
+ * THREE OPTIONS RATHER THAN TWO, AND THE THIRD EARNS ITS PLACE. Two would prove
+ * that a chosen option applies and an unchosen one does not; only a third says
+ * the skip is by option NUMBER rather than by "not the first one". Each of the
+ * three fixture rows grants a different stat, so the answer says which arrived.
+ *
+ * AND THE NO-CHOICE CASE IS ASSERTED FIRST, because it is the one a build gets
+ * wrong in the player's favour: a capstone with points in it and no choice made
+ * must grant none of the three, not all of them and not the first.
+ */
+bool FCataclysmPassiveCapstoneOptionTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveEffectTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeEffectTable(*this);
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	const FName Capstone(TEXT("Ravager_cap"));
+
+	// The three stats the three options grant, in order.
+	const TArray<FName> PerOption = {
+		FName(TEXT("armor")), FName(TEXT("evasion")), FName(TEXT("magic_find"))};
+
+	const auto GrantedStats = [&](const FCataclysmPassiveAllocation& Allocation)
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+			UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+												Demonic);
+		TArray<FName> Found;
+		for (const FName& Stat : PerOption)
+		{
+			if (Modifiers.Contains(Stat))
+			{
+				Found.Add(Stat);
+			}
+		}
+		return Found;
+	};
+
+	// A POINT IN THE CAPSTONE AND NO CHOICE MADE. The point is spent and the node
+	// is held; nothing has been picked, so nothing is granted.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Capstone, 1);
+	TestEqual(TEXT("the point really is in the node"),
+			  Allocation.PointsIn(Capstone), 1);
+	TestEqual(TEXT("and no option has been chosen"),
+			  Allocation.ChosenOptionIn(Capstone), 0);
+	TestEqual(TEXT("so none of the three options grants anything"),
+			  GrantedStats(Allocation).Num(), 0);
+
+	// NOW EACH OPTION IN TURN, and each must grant its own stat and no other.
+	for (int32 Option = 1; Option <= UCataclysmPassiveTree::CapstoneOptions;
+		 ++Option)
+	{
+		Allocation.SetChosenOption(Capstone, Option);
+		TestEqual(*FString::Printf(TEXT("option %d is recorded"), Option),
+				  Allocation.ChosenOptionIn(Capstone), Option);
+
+		const TArray<FName> Granted = GrantedStats(Allocation);
+		if (!TestEqual(*FString::Printf(
+				TEXT("option %d grants exactly one of the three stats"), Option),
+				Granted.Num(), 1))
+		{
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("and it is the one option %d names"),
+								   Option),
+				  Granted[0], PerOption[Option - 1]);
+	}
+
+	// AND A ROW WITH NO OPTION IS UNTOUCHED BY ANY OF THIS, which is every row in
+	// the four trees except the capstones'. Without this the check could have been
+	// written as "skip a row unless its option matches" and would have silenced
+	// the whole sheet.
+	Allocation.Add(FName(TEXT("Ravager_mid")), 4);
+	const TMap<FName, TArray<FCataclysmStatModifier>> WithOrdinary =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+	const TArray<FCataclysmStatModifier>* Armour =
+		WithOrdinary.Find(FName(TEXT("armor")));
+	if (TestNotNull(TEXT("an ordinary node still grants its stat"), Armour))
+	{
+		// TWELVE FROM THE ORDINARY NODE AND THIRTY FROM THE CAPSTONE'S THIRD
+		// OPTION, which is not armour, so armour holds one modifier and not two.
+		TestEqual(TEXT("and only its own modifier, not the capstone's"),
+				  Armour->Num(), 1);
+		TestEqual(TEXT("worth three per point times four points"),
+				  (*Armour)[0].Value, 12.0f);
+	}
+
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEffectsBecomeModifiersTest,
@@ -3498,6 +3623,259 @@ bool FCataclysmPassiveTheEdgeOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("and a point above it the hit is back to full size"),
 			  DamageAHitDeals(AbilitySystem, RawHit, false),
 			  Healthy, Healthy * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveApotheosisOnARealCharacterTest,
+	"Cataclysm.Passives.ApotheosisUncapsARealCharactersFervourAndChargesForIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Final Vow's second option on a real character. Issue #1029.
+ *
+ * "Your Fervour has no maximum, but you take 1% more damage for every 100
+ * Fervour you hold."
+ *
+ * THE FIRST CAPSTONE OPTION EVER AUTHORED, so this is also what proves the
+ * `Option` column reaches a real character rather than only a fixture table.
+ *
+ * BOTH CLAUSES, BECAUSE THE NODE IS A TRADE. A build that lifted the cap and
+ * dropped the cost would be strictly better than the sentence. Each is measured,
+ * and the cost is measured at two different amounts of Fervour so that a build
+ * granting a fixed penalty rather than a scaling one fails.
+ *
+ * AND THE CHOICE IS MADE THROUGH `ChoosePassiveOption`, the same call the console
+ * command and the tree screen use, rather than by writing the option onto the
+ * allocation. Anything short of that skips the part that refuses a second choice.
+ */
+bool FCataclysmPassiveApotheosisOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_200"));
+
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Both must
+	// name option 2: a row that lost its option would apply whichever of the three
+	// the player picked, which is the failure the column exists to prevent.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("The Final Vow's authored option grants two stats"),
+				   Effects.Num(), 2))
+	{
+		return false;
+	}
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s belongs to option 2"), *Row->Stat),
+				  Row->Option, 2);
+	}
+
+	// THE POOL HAS A MAXIMUM TO BEGIN WITH, and the character cannot pass it.
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Resource::GetMaxClassResourceAttribute());
+	if (!TestTrue(TEXT("the class resource has a maximum above nothing"),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Pool = Resource::GetClassResourceAttribute();
+	AbilitySystem->SetNumericAttributeBase(Pool, Maximum * 3.0f);
+	TestEqual(TEXT("without the node the pool is held at its maximum"),
+			  AbilitySystem->GetNumericAttribute(Pool), Maximum, 0.01f);
+
+	// TWO HUNDRED POINTS IN THE TREE FIRST, BECAUSE THAT IS WHEN THIS CAPSTONE
+	// OPENS. `ChoosePassiveOption` checks the threshold as well as the points in
+	// the node, so that a player cannot decide all four capstones at 25 points
+	// and spend into them later with no decision left to make. The first version
+	// of this test spent one point and was refused with "The Final Vow opens at
+	// 200 points spent in the Masochist tree. 1 so far."
+	//
+	// FILLED FROM THE NODE TABLE RATHER THAN FROM A LIST WRITTEN HERE, so this
+	// keeps working when the tree is re-authored. Every Masochist node except
+	// this one is filled to its own maximum until the threshold is met, which
+	// also honours the rule that a node's maximum is authored data.
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	const FCataclysmPassiveNodeRow* Capstone = nullptr;
+	int32 Threshold = 0;
+	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+	{
+		if (Pair.Key == Node)
+		{
+			Capstone =
+				reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			Threshold = Capstone->Threshold;
+		}
+	}
+	if (!TestNotNull(TEXT("the capstone is in the node table"), Capstone)
+		|| !TestTrue(TEXT("and it opens above nothing"), Threshold > 0))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+	{
+		if (Filled >= Threshold)
+		{
+			break;
+		}
+		const auto* Row =
+			reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+		if (Row->Tree != TEXT("Masochist") || Pair.Key == Node
+			|| Row->MaxPoints <= 0)
+		{
+			continue;
+		}
+		const int32 Take = FMath::Min(Row->MaxPoints, Threshold - Filled);
+		Allocation.Add(Pair.Key, Take);
+		Filled += Take;
+	}
+	if (!TestEqual(*FString::Printf(
+			TEXT("the tree can hold the %d points the capstone opens at"),
+			Threshold), Filled, Threshold))
+	{
+		return false;
+	}
+
+	// AND THE POINT IN THE CAPSTONE ITSELF, on top of the threshold.
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the second option can be chosen"),
+				  State->ChoosePassiveOption(Node, 2, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// THE MAXIMUM IS RE-READ HERE RATHER THAN REUSED FROM ABOVE, and the first
+	// version of this test did reuse it and failed: 116 against an expected 100.
+	// Four Masochist nodes grant "+2% increased maximum Fervour per point", and
+	// filling the tree to its threshold spends points in them, so the maximum
+	// really did move -- by the ordinary working of other nodes, not by anything
+	// this one does. Comparing against a figure read before those points were
+	// spent measures the wrong thing.
+	const float Capped = AbilitySystem->GetNumericAttribute(
+		Resource::GetMaxClassResourceAttribute());
+	TestTrue(TEXT("the maximum is still a real number after the tree is filled"),
+			 Capped > 0.0f);
+
+	// THE CAP IS GONE. Written well past the maximum and it stays there.
+	AbilitySystem->SetNumericAttributeBase(Pool, Capped * 3.0f);
+	TestEqual(TEXT("with the node the pool passes its maximum"),
+			  AbilitySystem->GetNumericAttribute(Pool), Capped * 3.0f, 0.01f);
+
+	// AND THE MAXIMUM ATTRIBUTE ITSELF IS NOT WHAT MOVED, which is what makes
+	// this a lifted cap rather than a raised one. Everything that draws the bar
+	// still reads the same number after the pool has passed it.
+	TestEqual(TEXT("and the maximum attribute is untouched by the pool passing it"),
+			  AbilitySystem->GetNumericAttribute(
+				  Resource::GetMaxClassResourceAttribute()),
+			  Capped, 0.01f);
+
+	// AND THE FLOOR STILL HOLDS, because no sentence says a pool may go negative.
+	AbilitySystem->SetNumericAttributeBase(Pool, -50.0f);
+	TestEqual(TEXT("but it still cannot go below nothing"),
+			  AbilitySystem->GetNumericAttribute(Pool), 0.0f, 0.01f);
+
+	// NOW THE COST. A small blow, so what is measured is the damage rather than
+	// the health left -- `Resolve` ends with `Min(Damage, Health)`.
+	constexpr float RawHit = 40.0f;
+
+	AbilitySystem->SetNumericAttributeBase(Pool, 0.0f);
+	const float Empty = DamageAHitDeals(AbilitySystem, RawHit, false);
+	if (!TestTrue(TEXT("an empty-barred character takes damage"), Empty > 0.0f))
+	{
+		return false;
+	}
+
+	// A HUNDRED FERVOUR IS ONE STEP, so a hundredth more damage.
+	AbilitySystem->SetNumericAttributeBase(Pool, 100.0f);
+	TestEqual(TEXT("at 100 Fervour the character takes one percent more"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Empty * 1.01f, Empty * 0.001f);
+
+	// AND FIVE HUNDRED IS FIVE STEPS, which is the half that catches a fixed
+	// penalty granted whatever the pool holds.
+	AbilitySystem->SetNumericAttributeBase(Pool, 500.0f);
+	TestEqual(TEXT("and at 500 Fervour it takes five percent more"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Empty * 1.05f, Empty * 0.001f);
+
+	// AND A PART STEP COUNTS FOR NOTHING, because steps are whole and rounded
+	// down. 199 Fervour is one step, not one and ninety-nine hundredths.
+	AbilitySystem->SetNumericAttributeBase(Pool, 199.0f);
+	TestEqual(TEXT("and 199 Fervour is one whole step, not two"),
+			  DamageAHitDeals(AbilitySystem, RawHit, false),
+			  Empty * 1.01f, Empty * 0.001f);
+
+	// AND "AT MAXIMUM FERVOUR" IS NEVER TRUE FOR THIS CHARACTER, which is the
+	// interaction that would otherwise be found by a player. Issue #1029.
+	// Communion of Pain applies "While your Fervour is at maximum";
+	// `MaxClassResource` still holds its old number because the bar is drawn
+	// against it, so a build comparing the pool against that number would have
+	// this condition hold PERMANENTLY once the pool passed it -- the opposite of
+	// what the sentence says.
+	//
+	// ASSERTED THROUGH THE PIPELINE'S OWN JUDGEMENT rather than by measuring a
+	// node, because the two are separate capstones and a character cannot hold
+	// this one and Communion of Pain's clause in a way this test could isolate.
+	//
+	// AND THE POOL IS CHECKED TO BE ABOVE THE MAXIMUM FIRST, so the assertion
+	// below cannot pass merely because the bar happens to be low.
+	TestTrue(TEXT("the pool really is above its stated maximum"),
+			 AbilitySystem->GetNumericAttribute(Pool) > Capped);
+	TestFalse(TEXT("and 'at maximum Fervour' is still false, because there is "
+				   "no maximum to be at"),
+			  UCataclysmStatPipeline::ConditionHolds(
+				  ECataclysmStatCondition::ClassResourceAtMaximum, 0.0f,
+				  AbilitySystem->CurrentConditions()));
 
 	return true;
 }

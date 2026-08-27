@@ -230,8 +230,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * one passive node supplies both, no class line names either, and no player
 	 * reads either as a stat on the character sheet. The sheet total still does
 	 * not move, which is the point of counting them separately.
+	 *
+	 * FOURTEEN SINCE THE FINAL VOW'S SECOND OPTION. Issue #1029 added the flag
+	 * for the class resource pool having no maximum at all. Off the sheet for the
+	 * same reasons a fourth time: one capstone option supplies it, no class line
+	 * names it, and no player reads it as a stat. What a player reads is the bar
+	 * itself, and `MaxClassResource` beside it is untouched by that option --
+	 * this flag stops the pool being CLAMPED to the maximum and does not change
+	 * the maximum.
 	 */
-	constexpr int32 OffSheetResourceStats = 13;
+	constexpr int32 OffSheetResourceStats = 14;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

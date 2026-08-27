@@ -69,6 +69,40 @@ import generate_datatables as gen  # noqa: E402
 #: The three buckets of the damage pipeline. Anything else is a typo.
 BUCKETS = {"flat", "increased", "more"}
 
+
+def words_of(row: dict, nodes: dict) -> str:
+    """The sentence a row has to agree with.
+
+    A CAPSTONE'S OWN DESCRIPTION SAYS NOTHING ABOUT WHAT ITS OPTIONS DO.
+    Issue #1029. All four Masochist capstones read "Unlocks at N points spent.
+    Choose one. The choice is permanent." and the effect is in one of the three
+    `OptionNDescription` columns beside it.
+
+    **Every check in this file that compares a row against a sentence would have
+    been reading the wrong sentence**, and the direction of the failure is what
+    makes this worth a helper rather than a special case in each. A capstone row
+    checked against "Choose one. The choice is permanent." finds no number, no
+    condition wording and no "more", so the checks fail loudly the first time --
+    which is how this was found. But a row whose value happens to appear in the
+    boilerplate would pass for the wrong reason, and "25 points spent" contains
+    a 25.
+
+    A ROW WITH NO OPTION IS UNCHANGED, which is every row in the four trees
+    except the capstones'.
+    """
+    node = nodes[row["Node"]]
+    option = int(row.get("Option", 0) or 0)
+    if not option:
+        return node["Description"]
+
+    described = node.get(f"Option{option}Description", "")
+    assert described, (
+        f"{row['Name']} names option {option} and {row['Node']} has no "
+        f"Option{option}Description, so there is no sentence to check it "
+        "against. Either the tree was re-authored or the option is wrong."
+    )
+    return described
+
 #: A description saying its number multiplies rather than joining the sum.
 #:
 #: TWO WORDINGS FOR ONE THING, AND BOTH TREES ARE RIGHT. Issue #977. The Bulwark
@@ -239,7 +273,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: one row on `damage_over_time_taken`; Communion of Pain is three, because
 #: "deal 20% more damage" is the same two damage stats as ever plus the damage
 #: taken; The Edge is two, one per clause of its sentence.
-AUTHORED_ROWS = 91
+#:
+#: AND TO 93 ON 2026-08-27, FOR THE FIRST CAPSTONE OPTION EVER AUTHORED.
+#: Issue #1029. The Final Vow's second option, "Apotheosis, but For the Mind",
+#: is two rows: a flag saying the class resource pool has no maximum, and the
+#: damage taken that pays for it, scaled by how much of the pool is held.
+AUTHORED_ROWS = 93
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -373,7 +412,11 @@ AUTHORED_ROWS = 91
 #: Pain and The Edge authorable, and a condition for being at full Fervour is
 #: what Communion of Pain needed besides. 66 of 293 altogether and 62 of the
 #: Masochist tree's own 74.
-AUTHORED_NODES = 66
+#:
+#: AND BY ONE ON 2026-08-27, for The Final Vow. Issue #1029. A capstone counts
+#: once however many of its three options are authored, and one of that node's
+#: three is. 67 of 293 altogether and 63 of the Masochist tree's own 74.
+AUTHORED_NODES = 67
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -593,11 +636,12 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         expected_words, value_form = CONDITION_WORDS[condition]
 
-        words = nodes[row["Node"]]["Description"].lower()
+        described = words_of(row, nodes)
+        words = described.lower()
         assert expected_words in words, (
             f"{row['Node']} carries the condition {condition!r} and its "
             f"description does not say {expected_words!r}:\n"
-            f"    {nodes[row['Node']]['Description']}"
+            f"    {described}"
         )
 
         value = float(row["ConditionValue"])
@@ -661,10 +705,25 @@ def test_a_condition_is_actually_used(effects):
 #: health it is still standing on -- and they share every word but the last. A
 #: single phrase of "for every" would let either row sit on either node and pass,
 #: which is the drift this whole file exists to catch.
+#:
+#: A THIRD ELEMENT NAMES THE WORDING USED WHEN THE STEP IS ONE, and it exists
+#: because one scale now has two nodes that write their step differently.
+#: Issue #1029. Reciprocity says "for each point of Fervour you currently hold",
+#: which is a step of 1 stated in words, and The Final Vow's second option says
+#: "for every 100 Fervour you hold", which states it in digits. Before this, that
+#: scale's step form was `None` -- "the sentence names no step, so the step must
+#: be 1" -- and the second node could not be authored at all without dropping the
+#: check to nothing.
+#:
+#: `None` FOR THE THIRD ELEMENT MEANS THERE IS NO SUCH WORDING, so a step form of
+#: `None` still means the step can only be 1. That is every stack scale and the
+#: debuff count, whose sentences say "each stack" and "each unique debuff" and
+#: name no number anywhere.
 SCALE_WORDS = {
-    "health_missing": (("for every", "missing"), "{value:g}%"),
-    "class_resource_held": (("for each point of fervour",), None),
-    "health_owed": (("for every", "owe"), "{value:g}%"),
+    "health_missing": (("for every", "missing"), "{value:g}%", None),
+    "class_resource_held": (("fervour you",), "{value:g} fervour",
+                            "each point of fervour"),
+    "health_owed": (("for every", "owe"), "{value:g}%", None),
 
     # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
     # #1004. The words include the stack's name wherever the node gives it one,
@@ -676,11 +735,11 @@ SCALE_WORDS = {
     # that describes when one is granted instead.
     #
     # A STEP FORM OF `None` FOR ALL THREE, because all three say "each stack" and
-    # name no step. The step can only be 1 and that is what is asserted, the same
-    # way `class_resource_held` handles "for each point of Fervour".
-    "momentum_stacks": (("within 3 seconds of the last", "each stack"), None),
-    "bloodlust_stacks": (("stack of bloodlust", "each stack"), None),
-    "carnage_stacks": (("stack of carnage", "each stack"), None),
+    # name no step. The step can only be 1 and that is what is asserted.
+    "momentum_stacks": (("within 3 seconds of the last", "each stack"),
+                        None, None),
+    "bloodlust_stacks": (("stack of bloodlust", "each stack"), None, None),
+    "carnage_stacks": (("stack of carnage", "each stack"), None, None),
 
     # A COUNT OF WHAT IS BEING DONE TO THE CHARACTER. Issue #962. Four nodes
     # read it and the phrase they share is "debuff on you". Three of them write
@@ -693,7 +752,7 @@ SCALE_WORDS = {
     # "For each" and "every" both count single debuffs, so the step can only be
     # 1, and that is asserted instead. Looking for a "1" in "+1% increased
     # damage" would find the bonus's own number and pass for the wrong reason.
-    "debuffs_carried": (("debuff on you",), None),
+    "debuffs_carried": (("debuff on you",), None, None),
 }
 
 
@@ -723,14 +782,15 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             "tools/generate_datatables.py together."
         )
 
-        expected_words, value_form = SCALE_WORDS[scale]
+        expected_words, value_form, step_of_one_words = SCALE_WORDS[scale]
 
-        words = nodes[row["Node"]]["Description"].lower()
+        described = words_of(row, nodes)
+        words = described.lower()
         for phrase in expected_words:
             assert phrase in words, (
                 f"{row['Node']} carries the scale {scale!r} and its description "
                 f"does not say {phrase!r}:\n"
-                f"    {nodes[row['Node']]['Description']}\n"
+                f"    {described}\n"
                 f"All of {list(expected_words)} have to be in it."
             )
 
@@ -742,23 +802,38 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         if value_form is None:
             # THE SENTENCE NAMES NO STEP, SO THE STEP CAN ONLY BE ONE. Issue
-            # #980. "For each point of Fervour you currently hold" counts single
-            # points; a step of 5 on that node would give a fifth of what the
+            # #980. "Each stack gives +1% increased attack speed" counts single
+            # stacks; a step of 5 on such a node would give a fifth of what the
             # sentence promises, and no number in the description could catch it.
             assert step == 1.0, (
                 f"{row['Node']} carries the scale {scale!r} with a step of "
                 f"{step:g}, and its description names no step:\n"
-                f"    {nodes[row['Node']]['Description']}\n"
-                "A sentence saying \"for each\" counts single units, so the step "
+                f"    {described}\n"
+                "A sentence saying \"each\" counts single units, so the step "
                 "has to be 1. If the design now states a step, give this scale a "
                 "step form in SCALE_WORDS instead."
+            )
+            continue
+
+        if step == 1.0 and step_of_one_words is not None:
+            # A STEP OF ONE STATED IN WORDS RATHER THAN DIGITS. Issue #1029.
+            # Reciprocity says "for each point of Fervour you currently hold",
+            # which is a step of 1 and contains no "1" that means the step -- the
+            # only 1 in the sentence is the bonus's own value. Looking for the
+            # digit would pass for the wrong reason.
+            assert step_of_one_words in words, (
+                f"{row['Node']} carries the scale {scale!r} with a step of 1 "
+                f"and its description does not say {step_of_one_words!r}:\n"
+                f"    {described}\n"
+                "A step of 1 on this scale is written in words. If the node "
+                "now states the number, it is no longer this case."
             )
             continue
 
         printed = value_form.format(value=step)
         assert printed.lower() in words, (
             f"{row['Node']} scales in steps of {printed!r} and the node says:\n"
-            f"    {nodes[row['Node']]['Description']}\n"
+            f"    {described}\n"
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
         )
@@ -877,7 +952,10 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
     about the sheet being well formed; this is about it being true.
     """
     for row in effects:
-        node = nodes[row["Node"]]
+        # THE OPTION'S OWN SENTENCE FOR A CAPSTONE ROW, and the node's for every
+        # other. Issue #1029. See `words_of` for why: a capstone's description
+        # says only "Choose one. The choice is permanent."
+        described = words_of(row, nodes)
         value = float(row["ValuePerPoint"])
 
         # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
@@ -886,10 +964,10 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
         stated = VALUE_IN_WORDS.get((row["Node"], row["Stat"]))
         if stated is not None:
             phrase, means = stated
-            assert phrase in node["Description"].lower(), (
+            assert phrase in described.lower(), (
                 f"{row['Node']}: the workbook states {row['Stat']} in words "
                 f"rather than digits, as {phrase!r}, and the node says:\n"
-                f"    {node['Description']}\n"
+                f"    {described}\n"
                 "Either the node was reworded or the exemption is stale."
             )
             assert value == pytest.approx(means), (
@@ -910,10 +988,10 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
         # `VALUE_FORMS` names the ones that are not.
         printed = VALUE_FORMS.get(row["Stat"], "{value:g}%").format(
             value=abs(value))
-        assert printed in node["Description"], (
+        assert printed in described, (
             f"{row['Node']}: the workbook grants {printed} of "
             f"{row['Stat']} per point, and the node says:\n"
-            f"    {node['Description']}\n"
+            f"    {described}\n"
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
         )
@@ -952,7 +1030,8 @@ def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(
         if value >= 0:
             continue
 
-        words = nodes[row["Node"]]["Description"].lower()
+        described = words_of(row, nodes)
+        words = described.lower()
         assert any(term in words for term in TAKES_AWAY), (
             f"{row['Node']} grants {value:g} of {row['Stat']} per point, which "
             f"takes something away, and its description does not say so:\n"
@@ -1007,7 +1086,14 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     it lands in the additive sum.
     """
     #: Which nodes have at least one row in the more bucket.
-    multiplying_nodes = {row["Node"] for row in effects
+    #:
+    #: KEYED BY THE OPTION AS WELL AS THE NODE, since issue #1029. A capstone's
+    #: three options are three separate sentences and each is judged against its
+    #: own: one option may multiply where another adds, and keying by the node
+    #: alone would let one option's "more" excuse a second option's sentence from
+    #: the check below.
+    multiplying_nodes = {(row["Node"], int(row.get("Option", 0) or 0))
+                         for row in effects
                          if row["ValueKind"].strip().lower() == "more"}
 
     for row in effects:
@@ -1016,15 +1102,16 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
             f"{row['Name']}: {kind!r} is not one of {sorted(BUCKETS)}"
         )
 
-        multiplies = MULTIPLIES.search(nodes[row["Node"]]["Description"])
+        described = words_of(row, nodes)
+        multiplies = MULTIPLIES.search(described)
         if kind == "more":
             assert multiplies, (
                 f"{row['Node']} is in the more bucket and its description does "
                 f"not say so. It has to say \"multiplicative\", or write the "
                 f"number as \"30% more\" or \"50% less\":\n    "
-                f"{nodes[row['Node']]['Description']}"
+                f"{described}"
             )
-        elif row["Node"] not in multiplying_nodes:
+        elif (row["Node"], int(row.get("Option", 0) or 0)) not in multiplying_nodes:
             assert not multiplies, (
                 f"{row['Node']} says {multiplies.group(0)!r}, which multiplies, "
                 f"and its only rows are in the {kind} bucket. A multiplicative "

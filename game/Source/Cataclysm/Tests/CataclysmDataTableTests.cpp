@@ -272,7 +272,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Communion of Pain is three, because "deal 20% more damage" is the same two
 	// damage stats as ever plus the damage taken; The Edge is two, one per clause
 	// of its sentence.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         91)
+	//
+	// AND TO 93 FOR THE FIRST CAPSTONE OPTION EVER AUTHORED. Issue #1029. The
+	// Final Vow's second option is two rows, and the sheet gained an `Option`
+	// column so a row can say which of a capstone's three it belongs to.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         93)
 
 	#undef CHECK_TABLE
 

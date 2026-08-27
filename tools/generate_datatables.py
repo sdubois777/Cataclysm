@@ -2437,6 +2437,15 @@ def passive_edges(_book=None) -> list[dict]:
 #: it, and a value typed beside it is refused rather than quietly ignored. A
 #: range of (0, 0) would have accepted a stray zero and read as a threshold of
 #: nothing, which is why this is `None` and not a degenerate range.
+#: How many options a capstone node offers. Issue #1029.
+#:
+#: HELD HERE AS WELL AS IN C++ AND THE TWO HAVE TO AGREE.
+#: `UCataclysmPassiveTree::CapstoneOptions` is the other copy, and the passive
+#: node sheet's own shape is a third statement of it: it carries `Option1Name`
+#: through `Option3Name` and no fourth.
+#: `test_the_capstone_option_count_matches_the_engine` holds them together.
+CAPSTONE_OPTIONS = 3
+
 CONDITIONS = {
     # "While at or below 20% health" is `health_at_or_below` with 20.
     "health_at_or_below": (0.0, 100.0, "a percentage of maximum health"),
@@ -2705,6 +2714,29 @@ def passive_effects(book) -> list[dict]:
                     f"to {high:g}. A step of nothing is worth nothing at every "
                     f"state.")
 
+        # WHICH OF A CAPSTONE'S THREE OPTIONS THIS ROW BELONGS TO. Issue #1029.
+        # Empty is "not an option", which is every row in the four trees except
+        # the capstones'.
+        #
+        # A COLUMN AND NOT THE `Condition` COLUMN ABOVE, and the reason is
+        # concrete rather than stylistic. A row may need an option AND a real
+        # condition at once: the Second Vow's second option reads "Dropping
+        # below 50% health grants immunity to all damage for 5 seconds", which
+        # is option 2 and a health trigger together, and one column cannot hold
+        # both.
+        #
+        # WHICH NODES MAY CARRY ONE IS CHECKED IN `validate_passive_effects`,
+        # because that is where the node table is in hand and its `Kind` column
+        # says which nodes are capstones.
+        option = 0
+        if clean(_cell(raw, headers, "Option")):
+            option = int(number(_cell(raw, headers, "Option"), "Option", index))
+            if not 1 <= option <= CAPSTONE_OPTIONS:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} names option "
+                    f"{option}, and a capstone offers {CAPSTONE_OPTIONS}. Leave "
+                    f"the column empty for a row that is not a capstone option.")
+
         counts[node] = counts.get(node, 0) + 1
 
         out.append({
@@ -2719,6 +2751,7 @@ def passive_effects(book) -> list[dict]:
             "ConditionValue": condition_value,
             "Scale": scale,
             "ScaleStep": scale_step,
+            "Option": option,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -2732,20 +2765,27 @@ def passive_effects(book) -> list[dict]:
     #
     # AND SO IS THE SCALE, since issue #968, for the same reason: a node could
     # give a fixed amount and a further amount that grows with a state.
-    pairs: dict[tuple[str, str, str, float, str, float], int] = {}
+    #
+    # AND SO IS THE CAPSTONE OPTION, since issue #1029, and that one is not a
+    # refinement but a necessity. A capstone's three options are three separate
+    # things a player may pick, and two of them may reasonably move the same
+    # stat by different amounts. Without the option in this key the second would
+    # read as a duplicated row and the sheet would refuse to be written at all.
+    pairs: dict[tuple[str, str, str, float, str, float, int], int] = {}
     for row in out:
         key = (row["Node"], row["Stat"], row["Condition"],
-               row["ConditionValue"], row["Scale"], row["ScaleStep"])
+               row["ConditionValue"], row["Scale"], row["ScaleStep"],
+               row["Option"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:
         listed = ", ".join(f"{key[0]} granting {key[1]}" for key in twice)
         raise DataError(
             f"the Passive Effects sheet grants the same stat twice on one "
-            f"node, under the same condition and the same scale: {listed}. Two "
-            f"rows for one node are for two different stats, or for the same "
-            f"stat under different conditions or scales; anything else is a "
-            f"duplicated row.")
+            f"node, under the same condition, scale and capstone option: "
+            f"{listed}. Two rows for one node are for two different stats, or "
+            f"for the same stat under different conditions, scales or options; "
+            f"anything else is a duplicated row.")
 
     if not out:
         raise DataError("the Passive Effects sheet is empty")
@@ -2941,6 +2981,13 @@ def validate_passive_effects(tables: dict[str, list[dict]],
         return []
 
     node_names = {row["Name"] for row in nodes}
+
+    # WHICH NODES ARE CAPSTONES, for the option check below. Issue #1029. The
+    # `Kind` column is the same one `UCataclysmPassiveTree::CapstoneKind` matches
+    # against in the engine.
+    capstones = {row["Name"] for row in nodes
+                 if str(row.get("Kind", "")).strip().lower() == "capstone"}
+
     stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
             ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
             {row["Stat"] for row in effects
@@ -2970,6 +3017,33 @@ def validate_passive_effects(tables: dict[str, list[dict]],
             if tag and tag not in known:
                 problems.append(
                     f"PassiveEffects/{row['Name']}: undefined tag {tag}")
+
+        # THE CAPSTONE OPTION COLUMN, WHICH FAILS SILENTLY IN BOTH DIRECTIONS.
+        # Issue #1029.
+        #
+        # AN OPTION ON A NODE THAT IS NOT A CAPSTONE grants nothing at all:
+        # `AccumulateInto` compares it against `ChosenOptionIn`, which answers 0
+        # for such a node, so the row is skipped every time and the node reads as
+        # unauthored.
+        #
+        # A CAPSTONE ROW WITH NO OPTION applies whichever of the three the player
+        # picked, which is the opposite failure and the worse one: the player is
+        # given part of an option they refused. Refusing it here is the only
+        # place that can be caught. If a capstone ever legitimately wants a row
+        # that applies whatever is chosen, this is the check to relax, and the
+        # relaxation should say which node needed it.
+        option = int(row.get("Option", 0) or 0)
+        is_capstone = row["Node"] in capstones
+        if option and not is_capstone:
+            problems.append(
+                f"PassiveEffects/{row['Name']}: names capstone option {option} "
+                f"and {row['Node']} is not a capstone, so the row would be "
+                f"skipped every time and grant nothing")
+        elif is_capstone and not option:
+            problems.append(
+                f"PassiveEffects/{row['Name']}: {row['Node']} is a capstone and "
+                f"the row names no option, so it would apply whichever of the "
+                f"three the player picked")
 
     return problems
 

@@ -701,9 +701,33 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			continue;
 		}
 
+		// WHICH OF A CAPSTONE'S THREE OPTIONS THIS CHARACTER TOOK. Issue #1029.
+		// Read once per node rather than per row, because the answer is the same
+		// for every row of a node. Zero for every node that is not a capstone,
+		// and for a capstone whose choice has not been made yet.
+		const int32 ChosenOption = Allocation.ChosenOptionIn(Spent.Node);
+
 		// ALL OF THEM, NOT THE FIRST. A node granting two stats grants both.
 		for (const FCataclysmPassiveEffectRow* Effect : *Effects)
 		{
+			// A ROW BELONGING TO AN OPTION APPLIES ONLY IF THAT OPTION WAS
+			// TAKEN. Issue #1029. A capstone offers three choices and the player
+			// keeps one for ever, so the rows for the two not taken must grant
+			// nothing.
+			//
+			// AND A CAPSTONE WITH NO CHOICE MADE YET GRANTS NOTHING, which falls
+			// out of the same comparison rather than needing a case of its own:
+			// `ChosenOptionIn` answers 0 for such a node, and 0 is also what a
+			// row that is not an option carries, so no option row can match it.
+			//
+			// A ROW WITH NO OPTION ALWAYS APPLIES, which is every row in the
+			// four trees but the capstones'. That is the branch this check has
+			// to leave alone, and the one the test for it asserts first.
+			if (Effect->Option != 0 && Effect->Option != ChosenOption)
+			{
+				continue;
+			}
+
 			FCataclysmStatModifier Modifier;
 			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
 			Modifier.Value = Effect->ValuePerPoint * Spent.Points;

@@ -233,8 +233,18 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// aggregator exists for the attribute, which depends on whether any gameplay
 	// effect happens to be modifying it. A rule that holds only sometimes is not
 	// a rule, so the clamp is applied to the number before it is written.
-	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f,
-									  Resource->GetMaxClassResource());
+	//
+	// THE THIRD OF THE THREE PLACES THAT CLAMP THE POOL, and it honours the
+	// uncapped flag exactly as the two in `UCataclysmClassResourceAttributeSet`
+	// do. Issue #1029. The Final Vow's second option says "Your Fervour has no
+	// maximum", and this is the route every ordinary gain takes -- damage taken
+	// and health spent -- so a build that missed this one would leave the option
+	// doing nothing a player could reach by playing.
+	const float Ceiling =
+		UCataclysmClassResourceAttributeSet::PoolIsUncapped(AbilitySystem)
+			? TNumericLimits<float>::Max()
+			: Resource->GetMaxClassResource();
+	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f, Ceiling);
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
 	{

@@ -340,6 +340,49 @@ public:
 	FGameplayAttributeData DamageToBleedingWindow;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
 
+	/**
+	 * Whether this character's pool has no maximum at all. Issue #1029.
+	 * Zero for no, above zero for yes.
+	 *
+	 * THE FINAL VOW'S SECOND OPTION IS ITS ONLY SOURCE: "Your Fervour has no
+	 * maximum, but you take 1% more damage for every 100 Fervour you hold." The
+	 * second clause is what stops it being free, and it is a `damage_taken`
+	 * modifier scaled by the pool.
+	 *
+	 * THE MAXIMUM ATTRIBUTE STILL HOLDS ITS NUMBER, and this is why that is not a
+	 * contradiction. `MaxClassResource` is what the bar is drawn against and what
+	 * every other reader uses; this flag stops the POOL being clamped to it, and
+	 * nothing else. Setting the maximum to something enormous instead would have
+	 * changed what a bar looks like and what every reading of "at maximum" means.
+	 *
+	 * THREE PLACES CLAMP THE POOL AND ALL THREE HONOUR IT.
+	 * `PreAttributeChange` and `PostGameplayEffectExecute` in this file, and
+	 * `UCataclysmFervour::Move`, which clamps locally and says why. A build that
+	 * honoured two of the three would let the pool pass its maximum by one route
+	 * and not another, which is worse than not building it at all.
+	 *
+	 * SO `ECataclysmStatCondition::ClassResourceAtMaximum` REFUSES FOR A
+	 * CHARACTER WITH THIS, and it is made to refuse rather than being left to
+	 * fall out. `UCataclysmAbilitySystemComponent::CurrentConditions` reports the
+	 * maximum as unknown when this is set. Left alone it would have done the
+	 * OPPOSITE of what the sentence says: `MaxClassResource` still holds its old
+	 * number, the pool can now sit above that number for ever, and "the pool is
+	 * at or above its maximum" would then hold permanently -- so Communion of
+	 * Pain would be always on for an Apotheosis character rather than never.
+	 *
+	 * NEVER, AND THAT IS THE READING OF THE SENTENCE. Communion of Pain is a
+	 * trade paid for by being at the top of the bar. A character who gave up
+	 * having a top has nothing to be at, so the two options are an anti-synergy.
+	 * It is written down here because it is the kind of interaction that is
+	 * otherwise discovered by a player.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_ClassResourceUncapped)
+	FGameplayAttributeData ClassResourceUncapped;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, ClassResourceUncapped)
+
+	/** Whether this character's pool is uncapped, asked of any ability system. */
+	static bool PoolIsUncapped(const UAbilitySystemComponent* AbilitySystem);
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -362,4 +405,5 @@ protected:
 	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingOnLowHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingWindow(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ClassResourceUncapped(const FGameplayAttributeData& OldValue);
 };
