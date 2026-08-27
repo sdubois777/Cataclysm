@@ -3880,4 +3880,152 @@ bool FCataclysmPassiveApotheosisOnARealCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveMutilationMasteryOnARealCharacterTest,
+	"Cataclysm.Passives.MutilationMasteryGivesARealMasochistFortyPercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Mutilation Mastery on a real character. Issue #1032.
+ *
+ * "Your melee critical strikes have a 5% chance per point to apply Bleeding."
+ * Eight points, so 40% at most.
+ *
+ * WHAT THIS TEST COVERS AND WHAT IT DOES NOT, stated plainly because the two
+ * halves of this node cannot be joined in one test:
+ *
+ *   COVERED HERE. That the workbook row reaches a real spawned Masochist and
+ *   lands on `BleedOnCritChance` as a flat 5 a point, so eight points read 40.
+ *   That is the whole chain from `docs/All_Things_Cataclysm.xlsx` through
+ *   `game/Data/PassiveEffects.csv`, the generated asset,
+ *   `UCataclysmPlayerClassStats::StatToAttribute` and
+ *   `UCataclysmPassiveTree::AccumulateInto` onto a character's attribute.
+ *
+ *   COVERED IN `CataclysmMeleeBleedTests.cpp`. That a melee critical strike
+ *   reads THAT SAME attribute off the attacker and applies Bleeding, and that
+ *   dropping any one of melee, critical or damage-that-reached-health applies
+ *   nothing. Those tests drive the attribute to 100 and to 0.
+ *
+ *   COVERED NOWHERE, AND IT CANNOT BE. That a chance of 40 makes a bleed happen
+ *   about 40% of the time. The roll is `FMath::FRandRange` inside
+ *   `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` with no injection
+ *   point, unlike the evasion, block and critical strike rolls, which
+ *   `UCataclysmDamageCalculation::Resolve` takes as parameters. A test of it
+ *   would have to be statistical. Issue #1034 is the same gap on the blunt
+ *   weapon stun rule, which this copies.
+ *
+ * THE READING BEFORE ANY POINT IS SPENT IS HALF THE POINT. `ApplyTo` writes the
+ * attribute for every mapped stat whether or not a modifier touches it, so a
+ * Masochist that has spent nothing reading zero is what says the node -- rather
+ * than a base somewhere -- is the source. Every class starts at zero and no
+ * affix grants this.
+ */
+bool FCataclysmPassiveMutilationMasteryOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_fc_b2"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A row that
+	// had become an increase rather than a flat amount would multiply a base of
+	// zero and grant nothing, and the assertion further down would then be
+	// reading the same zero it started from without saying why.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Mutilation Mastery grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the chance to bleed on a critical strike"),
+			  Effects[0]->Stat, FString(TEXT("bleed_on_crit_chance")));
+	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of five a point"), Effects[0]->ValuePerPoint, 5.0f);
+
+	// AND IT CARRIES NO CONDITION, which is what makes reading the attribute
+	// straight -- rather than asking `UCataclysmStatPipeline` for it -- correct
+	// in `UCataclysmVitalAttributeSet`. A conditional row is never folded into
+	// an attribute, so the day this row grows a condition the read there has to
+	// change or the node silently stops working. Issue #1022 is that shape.
+	TestEqual(TEXT("and no condition, which is what lets the rule read the "
+				   "attribute directly"),
+			  Effects[0]->Condition, FString());
+
+	const FGameplayAttribute Chance = Combat::GetBleedOnCritChanceAttribute();
+
+	// NOTHING SPENT, NOTHING GRANTED. This is the reading for every character in
+	// the game except a Masochist who bought this node.
+	Equipment->RefreshAttributes(AbilitySystem);
+	TestEqual(TEXT("an unspent Masochist has no chance to bleed on a critical "
+				   "strike"),
+			  AbilitySystem->GetNumericAttribute(Chance), 0.0f, 0.001f);
+
+	// ONE POINT FIRST, so the figure below is the row being applied per point
+	// rather than a fixed amount granted for owning the node at all.
+	{
+		FCataclysmPassiveAllocation OnePoint;
+		OnePoint.Add(Node, 1);
+		State->SetPassiveAllocation(OnePoint, TArray<FName>());
+		Equipment->RefreshAttributes(AbilitySystem);
+		TestEqual(TEXT("one point is worth five percent"),
+				  AbilitySystem->GetNumericAttribute(Chance), 5.0f, 0.001f);
+	}
+
+	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so 40 is what a player who
+	// committed to it actually gets. The node text and the attribute's own
+	// header both quote 40 for exactly this case.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestEqual(TEXT("eight points make it forty percent"),
+			  AbilitySystem->GetNumericAttribute(Chance), 40.0f, 0.001f);
+
+	// AND TAKING THE POINTS BACK TAKES THE CHANCE WITH THEM. Without this the
+	// test would pass against a build that granted the chance once and never
+	// recomputed it, which is what a refund or a respec would find.
+	State->SetPassiveAllocation(FCataclysmPassiveAllocation(), TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+	TestEqual(TEXT("and giving the points back takes it away again"),
+			  AbilitySystem->GetNumericAttribute(Chance), 0.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

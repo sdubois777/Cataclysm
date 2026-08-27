@@ -46,6 +46,30 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsDamageOverTime = false;
 
 	/**
+	 * The blow was struck in melee. Issue #1032.
+	 *
+	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
+	 * place `bIsArea` is, and combined with whatever the caller said rather than
+	 * overriding it. Both sides already state it: `Type.Melee` is on six of the
+	 * seven enemy abilities since issue #1020 and on 27 rows of
+	 * `game/Data/WeaponSkills.csv`, including every Fist skill the Masochist
+	 * uses.
+	 *
+	 * IT TRAVELS AS A TAG ON THE EFFECT because nothing else crosses to the
+	 * defender. A skill's tags are used where the blow is BUILT -- to look up
+	 * what its damage should be -- and are not carried to whoever it lands on;
+	 * only the handful `ApplyTypedSpec` puts on the spec make that journey. This
+	 * is the fifth.
+	 *
+	 * MUTILATION MASTERY IS WHAT NEEDED IT: "Your melee critical strikes have a
+	 * 5% chance per point to apply Bleeding." The rule fires in
+	 * `UCataclysmVitalAttributeSet`, on the defender, where the skill is long
+	 * out of scope.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bIsMelee = false;
+
+	/**
 	 * This blow may not critically strike, whatever the attacker's chance is.
 	 *
 	 * FOR A SUMMONED MINION. A minion's damage is dealt in its summoner's name,
@@ -339,6 +363,16 @@ public:
 	static const TCHAR* BurnRowName;
 
 	/**
+	 * The name of the bleed effect's row in that same table. Issue #1032.
+	 *
+	 * THE DESIGNED NUMBERS RATHER THAN INVENTED ONES. `game/Data/StatusEffects.csv`
+	 * gives `DoT_Bleed` 20 damage a second for 5 seconds. The Masochist's
+	 * Mutilation Mastery says only "apply Bleeding" and states neither a
+	 * magnitude nor a duration, so the sheet is where both have to come from.
+	 */
+	static const TCHAR* BleedRowName;
+
+	/**
 	 * What one basic attack from this character deals.
 	 *
 	 * The design's anchor: the Skill Slots sheet gives the basic attack 100%
@@ -496,6 +530,25 @@ public:
 
 	/** Burn's duration and damage share, or bUsable false if it has none. */
 	static FCataclysmStatusEffectNumbers BurnNumbers();
+
+	/** Bleed's duration and damage, or bUsable false if it has none. #1032. */
+	static FCataclysmStatusEffectNumbers BleedNumbers();
+
+	/**
+	 * One status effect's designed numbers, read from the generated table.
+	 *
+	 * SHARED BY THE TWO ABOVE RATHER THAN COPIED, since issue #1032 needed a
+	 * second one. The rule it enforces is the same for both and is worth stating
+	 * once: an effect with no duration, or with no amount, is indistinguishable
+	 * from an effect nobody wrote, which is exactly how the missing cooldown in
+	 * issue #155 stayed hidden.
+	 *
+	 * @param RowName    the row in `game/Data/StatusEffects.csv`
+	 * @param HumanName  what to call it in the warning, so a reader knows which
+	 *                   effect is unusable without looking the row up
+	 */
+	static FCataclysmStatusEffectNumbers StatusEffectNumbers(
+		const TCHAR* RowName, const TCHAR* HumanName);
 
 	/**
 	 * Whether a skill carrying these tags deals AREA damage, which cannot be

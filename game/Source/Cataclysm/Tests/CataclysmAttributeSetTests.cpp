@@ -186,11 +186,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * still holds. `docs/DECISIONS.md` records that they belong on the sheet the
 	 * day an affix grants one or a class differs on one.
 	 *
-	 * So the sheet stays at 46. The combat set grew by five and the class
+	 * THE CHANCE A MELEE CRITICAL STRIKE APPLIES BLEEDING is the ninth, added
+	 * under issue #1032, and it meets the rule for the fifth time: no affix
+	 * grants it, nothing scales it, it has no baseline of its own, and the
+	 * Masochist's Mutilation Mastery node is its only source.
+	 *
+	 * So the sheet stays at 46. The combat set grew by six and the class
 	 * resource set by five, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 6;
+	constexpr int32 OffSheetCombatStats = 7;
 
 	/**
 	 * How far healing may take the character. Issue #988.

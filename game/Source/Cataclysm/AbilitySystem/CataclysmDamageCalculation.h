@@ -121,6 +121,28 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsBlunt = false;
+
+	/**
+	 * Whether the blow was struck in melee. Issue #1032.
+	 *
+	 * NOT A WEAPON SUB-TYPE LIKE THE FOUR ABOVE, and that is why it sits apart
+	 * from them. Slashing, piercing, magic and blunt are properties of the
+	 * WEAPON in the attacker's hand; this is a property of how the blow was
+	 * thrown, and a ranged weapon and a melee one can both be slashing.
+	 *
+	 * READ FROM `Type.Melee` ON THE EFFECT, the same way `bIsArea` and
+	 * `bIsDamageOverTime` are read from their own tags. Both sides already carry
+	 * it: six of the seven enemy abilities since issue #1020, and 27 rows of
+	 * `game/Data/WeaponSkills.csv` including every Fist skill the Masochist uses.
+	 *
+	 * `Resolve` DOES NOT READ IT, and no arithmetic depends on it. Melee is not
+	 * a mitigation layer; what asks about it is a rule that fires when a blow
+	 * lands, which is `UCataclysmVitalAttributeSet`'s job rather than this one's.
+	 * Mutilation Mastery is the first: "Your melee critical strikes have a 5%
+	 * chance per point to apply Bleeding."
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsMelee = false;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
@@ -355,6 +377,18 @@ public:
 	static const TCHAR* DamageOverTimeTagName;
 
 	/**
+	 * The tag that says a blow was struck in melee. Issue #1032.
+	 *
+	 * `Type.Melee`. Both sides already carry it: six of the seven enemy
+	 * abilities since issue #1020, and 27 rows of `game/Data/WeaponSkills.csv`
+	 * including every Fist skill the Masochist uses.
+	 *
+	 * NOT A PARENT OF ANYTHING, unlike the two above. It is a leaf, so a hit
+	 * either carries it or does not.
+	 */
+	static const TCHAR* MeleeTagName;
+
+	/**
 	 * The tag that says a hit may not critically strike, whoever threw it.
 	 *
 	 * `Keyword.NoCrit`. IT EXISTS FOR SUMMONED MINIONS. A minion's blow is dealt
@@ -485,6 +519,9 @@ public:
 
 	/** `Keyword.DoT`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag DamageOverTimeTag();
+
+	/** `Type.Melee`, or an invalid tag if the vocabulary has lost it. #1032. */
+	static FGameplayTag MeleeTag();
 
 	/** `Keyword.NoCrit`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag NoCriticalStrikeTag();

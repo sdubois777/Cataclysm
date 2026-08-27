@@ -276,7 +276,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 93 FOR THE FIRST CAPSTONE OPTION EVER AUTHORED. Issue #1029. The
 	// Final Vow's second option is two rows, and the sheet gained an `Option`
 	// column so a row can say which of a capstone's three it belongs to.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         93)
+	//
+	// AND TO 94 FOR MUTILATION MASTERY. Issue #1032. One row, a flat chance
+	// that a melee critical strike applies Bleeding to what it hit.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",         94)
 
 	#undef CHECK_TABLE
 
