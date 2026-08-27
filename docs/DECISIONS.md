@@ -20,6 +20,94 @@ applied or still pending.
 
 ---
 
+## 2026-08-27 — Retaliation gains a radius and a way to leech, and the readings behind both are recorded
+
+**Affects:** the Retaliation section of `Cataclysm_GDD_v2.md`, the Passive
+Effects sheet of `All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` and
+`game/Content/Data/DT_PassiveEffects.uasset`. Applied. Issues #1047 and #1048.
+
+Two of the twelve rewritten Masochist capstone options were authored: **Reprisal
+Wave**, the second option of The First Vow, and **Feeding Wound**, the second
+option of The Second Vow. Both act at the single place retaliation is paid, which
+is why they were built together.
+
+Neither option's text was changed. What follows is the readings needed to turn
+each sentence into code, and every one of them is a judgement about the owner's
+own words rather than a new mechanic. They are recorded because a reading that
+is not written down is re-argued.
+
+### Reprisal Wave: "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you."
+
+**The sphere is centred on the retaliating character.** The sentence names no
+other anchor, and its contrast with "the one that hit you" makes the character
+the subject. The alternative — centred on the attacker — would mean a Masochist
+struck by something at range hit that thing's neighbours and not its own.
+
+**Whatever landed the hit is struck whether or not it is inside the sphere.**
+"not ONLY the one that hit you" adds to that target rather than replacing it. The
+other reading would make the option a downgrade against anything at range, and
+all twelve options were rewritten on this same day as pure upgrades with no
+drawbacks.
+
+**Each enemy struck takes the whole amount rather than a share.** Retaliation is
+a flat amount by design and nothing in the sentence divides it. Splitting it
+would leave the total damage unchanged, which would make the option worth nothing
+at all.
+
+**Nothing the wave strikes is struck by a hit.** This is not a new reading; it is
+the existing rule applied to more targets. Without it, two retaliating characters
+standing near one another would reflect without end.
+
+**The 4 lives in the design workbook rather than in the engine**, in metres,
+which is the only stat in the game measured in a distance. A flag beside a
+constant in C++ would work and would let the sentence and the code disagree in
+silence; a radius the sheet states cannot, because
+`test_every_value_appears_in_the_nodes_own_description` matches the 4 in the cell
+against the 4 in the node's text. The single conversion to centimetres is in
+`UCataclysmRetaliation`.
+
+### Feeding Wound: "Your life leech applies to your retaliation damage as well as to your attacks."
+
+**Life leech only.** The sentence names it. Mana leech and energy shield leech
+stay on attacks alone.
+
+**The amount counted is what the targets actually lost, not what was sent.** The
+Leech section already states the overkill rule — "An enemy with 25 health left,
+hit for 400, contributes 25 to the leech calculation and not 400" — and it holds
+here for the same reason it holds there.
+
+**It pays out over three seconds like any other leech**, through the same list of
+payments, rather than arriving at once.
+
+### Why this option exists at all, and what the genre says
+
+Retaliation deliberately does not hit: it writes health directly so that it
+cannot critically strike, cannot apply an ailment and cannot be retaliated
+against in turn. Leech is worked out where a hit lands. So retaliation leeches
+nothing for every character in the game, and this option buys the exception.
+
+That is the genre's position and not an oversight in this project.
+`Cataclysm_GDD_v2.md` already records, from the research done for issue #895,
+that Path of Exile's reflected damage "does not trigger on-hit effects" and that
+Last Epoch's "reduces Health and Ward without going through damage
+calculations". Leech is an on-hit effect, so the first of those covers it by
+inference rather than by a quotation about leech specifically — that inference is
+stated here rather than dressed up as a source. No fresh research was run for
+these two options, because neither invents a mechanic: each says where an
+existing one now applies.
+
+### What a character holding both gets
+
+The two belong to different capstones, so both can be held. Every enemy the wave
+strikes then contributes to the leech, because leech is a percentage of the
+damage actually dealt and each of them took some. **That is the strongest single
+reading in this entry and the one most worth revisiting against real play**: a
+Masochist standing in a crowd with both options leeches from every enemy around
+it, and the tuning of that has not been measured. It is recorded here rather than
+argued now, in keeping with tuning constants against play rather than in advance.
+
+---
+
 ## 2026-08-27 — All twelve Masochist capstone options are rewritten as pure upgrades
 
 **Affects:** `docs/Masochist_Class_Tree_Final.json`, `game/Data/PassiveNodes.csv`,

@@ -30,6 +30,9 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For putting a real bleed on a real character. Issue #962.
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For asking the game's own reader how far a character's retaliation reaches
+// and whether it leeches. Issues #1047 and #1048.
+#include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -4481,8 +4484,26 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. Three,
 	// and all three carry the same scale: two stats for "damage" and one for the
 	// regeneration.
-	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+	//
+	// THE OPTION IS FILTERED FOR BEFORE THEY ARE COUNTED, AND IT WAS NOT UNTIL
+	// ISSUE #1047. This counted every row on the capstone and asserted three,
+	// which was true only while Stigmatic was the ONLY authored option of The
+	// First Vow. Authoring Reprisal Wave beside it made the count four and this
+	// test failed, on a node it does not test and for a reason its own message
+	// could not state. The neighbouring capstone tests all filter first; this
+	// one did not, and the loop below asserting `Option == 3` on every row was
+	// what hid it, because that assertion passes vacuously while nothing else is
+	// authored and fails with an unhelpful message once something is.
+	const TArray<const FCataclysmPassiveEffectRow*> Everything =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Effects;
+	for (const FCataclysmPassiveEffectRow* Row : Everything)
+	{
+		if (Row->Option == 3)
+		{
+			Effects.Add(Row);
+		}
+	}
 	if (!TestEqual(TEXT("Stigmatic grants three rows"), Effects.Num(), 3))
 	{
 		return false;
@@ -4490,8 +4511,6 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 	bool bHasRegen = false;
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
-		TestEqual(*FString::Printf(TEXT("%s belongs to option 3"), *Row->Stat),
-				  Row->Option, 3);
 		TestEqual(*FString::Printf(TEXT("%s joins the additive sum"), *Row->Stat),
 				  Row->ValueKind, FString(TEXT("increased")));
 		TestEqual(*FString::Printf(TEXT("%s is four percent a debuff"), *Row->Stat),
@@ -5135,6 +5154,317 @@ bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 			  AbilitySystem->GetNumericAttribute(
 				  Combat::GetDamageOverTimeTakenAttribute()),
 			  SofteningBefore, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReprisalWaveOnARealCharacterTest,
+	"Cataclysm.Passives.ReprisalWaveWidensRetaliationOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The First Vow's second option on a real character. Issue #1047.
+ *
+ * "Your retaliation damage strikes every enemy within 4 metres, not only the one
+ * that hit you."
+ *
+ * WHAT THIS CHECKS AND WHAT IT DOES NOT. It checks that the authored row reaches
+ * a character built the way the game builds one, that it carries the four the
+ * node's own sentence states, and that the game's own reader answers with it.
+ * Whether the wave then strikes the right enemies is checked where there are
+ * enemies to strike, in `Cataclysm.Retaliation.AWaveStrikesEveryEnemyWithinItsRadius`.
+ *
+ * THE READING BEFORE THE CHOICE IS THE CROSS-CHECK, and it is a real one here.
+ * A build that ignored the `Option` column would apply every row of the node the
+ * moment the point was spent, so the radius would already be 4 before any option
+ * was picked. It is zero, which is what says the column is honoured.
+ *
+ * NO SUM TO READ, unlike the four capstone tests above it. This row is a FLAT
+ * modifier on a stat nothing else in the tree touches, so the attribute holds
+ * exactly what the row grants and there is no bucket to subtract a baseline
+ * from.
+ */
+bool FCataclysmPassiveReprisalWaveOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_25"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row:
+	// everything the option changes is about retaliation, which the passive
+	// effects sheet spells as one stat.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Option == 2)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Reprisal Wave grants one row"), Mine.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the retaliation radius"), Mine[0]->Stat,
+			  FString(UCataclysmRetaliation::RadiusMetresStat));
+	TestEqual(TEXT("as a flat amount"), Mine[0]->ValueKind,
+			  FString(TEXT("flat")));
+
+	// FOUR, WHICH IS THE NUMBER IN THE NODE'S OWN SENTENCE. The sheet carries
+	// metres rather than the centimetres Unreal measures in, so that
+	// `test_every_value_appears_in_the_nodes_own_description` can tie the two
+	// together. The one conversion is in `UCataclysmRetaliation`.
+	TestEqual(TEXT("of four metres"), Mine[0]->ValuePerPoint, 4.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// THE POINT IS SPENT AND NO OPTION IS CHOSEN, so nothing of the three has
+	// been granted. See the note above: this is what says the `Option` column is
+	// read at all.
+	TestEqual(TEXT("with the point spent and no option chosen, retaliation "
+				   "still reaches only whatever hit the character"),
+			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 0.0f,
+			  0.001f);
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the second option can be chosen"),
+				  State->ChoosePassiveOption(Node, 2, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// AND THE GAME'S OWN READER ANSWERS WITH THE FOUR, which is the half that
+	// says the row is not merely sitting in the pipeline's bookkeeping. It asks
+	// for the stat rather than reading the attribute, so this covers the route
+	// the retaliation code really takes.
+	TestEqual(TEXT("and now it reaches four metres"),
+			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 4.0f,
+			  0.001f);
+
+	// AND THE ATTRIBUTE HOLDS IT TOO, because this row carries no condition and
+	// no scale. A conditional row would be judged at the moment of the call and
+	// would never be folded in, so the two answers agreeing is a statement about
+	// this row rather than about every row.
+	TestEqual(TEXT("and the attribute holds it, the row carrying no condition"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetRetaliationRadiusMetresAttribute()),
+			  4.0f, 0.001f);
+
+	// AND THE OPTION THE PLAYER DID NOT PICK GRANTED NOTHING. Feeding Wound
+	// belongs to a different capstone, so the flag it sets is the cleanest thing
+	// to read here: it stays off.
+	TestFalse(TEXT("and retaliation still does not leech"),
+			  UCataclysmRetaliation::LeechesFor(AbilitySystem));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFeedingWoundOnARealCharacterTest,
+	"Cataclysm.Passives.FeedingWoundLetsRetaliationLeechOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Second Vow's second option on a real character. Issue #1048.
+ *
+ * "Your life leech applies to your retaliation damage as well as to your
+ * attacks."
+ *
+ * THE FIRST OPTION OF THAT CAPSTONE TO BE AUTHORED AT ALL, so this is what takes
+ * `Masochist_capstone_50` out of the list of Masochist nodes that do nothing.
+ *
+ * A FLAG WITH NO NUMBER IN ITS SENTENCE, which is why `VALUE_IN_WORDS` in
+ * `tools/tests/test_passive_effects_match_the_node_text.py` carries the words
+ * that stand in for the 1. How much is leeched is not stated here because it is
+ * stated elsewhere: it is whatever life leech the character already has.
+ *
+ * WHAT THIS CHECKS AND WHAT IT DOES NOT. It checks that the authored row reaches
+ * a real character and that the game's own reader answers with it. What the flag
+ * then does to a real payment is checked where there is something to retaliate
+ * against, in
+ * `Cataclysm.Retaliation.LifeLeechReachesItOnlyForACharacterThatBoughtThat`.
+ */
+bool FCataclysmPassiveFeedingWoundOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_50"));
+
+	// THE OPTION IS FILTERED FOR BEFORE THE ROWS ARE COUNTED, though only one of
+	// this capstone's three options is authored today and the filter therefore
+	// removes nothing. It is here because the Stigmatic test above did not have
+	// it and broke the moment a second option of ITS capstone was authored, on a
+	// node it does not test.
+	const TArray<const FCataclysmPassiveEffectRow*> Everything =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Effects;
+	for (const FCataclysmPassiveEffectRow* Row : Everything)
+	{
+		if (Row->Option == 2)
+		{
+			Effects.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("Feeding Wound grants one row"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the retaliation leech flag"), Effects[0]->Stat,
+			  FString(UCataclysmRetaliation::LeechesStat));
+	TestEqual(TEXT("as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+
+	// ONE, MEANING ON. There is no magnitude to write: the sentence says where
+	// the character's life leech now applies, not how much of it there is.
+	TestEqual(TEXT("of one, which means on"), Effects[0]->ValuePerPoint, 1.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestFalse(TEXT("with the point spent and no option chosen, retaliation does "
+				   "not leech"),
+			  UCataclysmRetaliation::LeechesFor(AbilitySystem));
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the second option can be chosen"),
+				  State->ChoosePassiveOption(Node, 2, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestTrue(TEXT("and now it does"),
+			 UCataclysmRetaliation::LeechesFor(AbilitySystem));
+	TestEqual(TEXT("and the attribute holds the flag, the row carrying no "
+				   "condition"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetRetaliationLeechesAttribute()),
+			  1.0f, 0.001f);
+
+	// HOW MUCH LIFE LEECH THE CHARACTER HAS IS DELIBERATELY NOT ASSERTED HERE,
+	// and an earlier draft of this test did assert it had some. That was wrong:
+	// the Masochist's class line grants none, and filling the tree to fifty
+	// points does not happen to spend a point on either of the two nodes that
+	// increase it, so the figure is zero and the assertion failed. It was a
+	// guess about what `FillTreeToOpen` spends rather than a statement about the
+	// option, which is the same trap as reading a stat's baseline after filling
+	// a tree and assuming it is the normal value.
+	//
+	// WHAT THE FLAG IS WORTH WITH REAL LEECH IS CHECKED WHERE THERE IS SOMETHING
+	// TO RETALIATE AGAINST, in
+	// `Cataclysm.Retaliation.LifeLeechReachesItOnlyForACharacterThatBoughtThat`,
+	// which sets the leech itself and reads the payment.
+
+	// AND THE OTHER CAPSTONE'S OPTION WAS NOT GRANTED WITH IT. Reaching fifty
+	// points opens The First Vow as well, and Reprisal Wave is its second
+	// option; choosing option two here must not choose option two there.
+	TestEqual(TEXT("and retaliation still reaches only whatever hit the "
+				   "character"),
+			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 0.0f,
+			  0.001f);
 
 	return true;
 }

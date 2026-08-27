@@ -14,6 +14,9 @@
 // for them rather than spelled a second time here. Issue #1038.
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For the three retaliation stat names, shared with the code that reads them
+// rather than spelled a second time here. Issues #1047 and #1048.
+#include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
@@ -328,7 +331,25 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("damage_reduction"), Combat::GetDamageReductionAttribute()},
 			{TEXT("crowd_control_resistance"),
 			 Combat::GetCrowdControlResistanceAttribute()},
-			{TEXT("retaliation"), Combat::GetRetaliationAttribute()},
+			{FString(UCataclysmRetaliation::AmountStat),
+			 Combat::GetRetaliationAttribute()},
+
+			// AND HOW FAR THAT REACHES, AND WHETHER IT LEECHES. Issues #1047 and
+			// #1048. Zero for every class, and one capstone option is the only
+			// source of each: The First Vow's Reprisal Wave and The Second Vow's
+			// Feeding Wound. Here for the reason every other node-supplied stat
+			// is: `ApplyTo` loops over this map, so a stat missing from it is
+			// dropped before it reaches a character.
+			//
+			// A RADIUS IN METRES AND A FLAG. Both rows carry no condition and no
+			// scale, so both ARE folded into their attributes, and
+			// `UCataclysmRetaliation` asking for the stat and reading the
+			// attribute give the same answer today. It asks anyway, so that a
+			// future row carrying a condition works.
+			{FString(UCataclysmRetaliation::RadiusMetresStat),
+			 Combat::GetRetaliationRadiusMetresAttribute()},
+			{FString(UCataclysmRetaliation::LeechesStat),
+			 Combat::GetRetaliationLeechesAttribute()},
 
 			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
 			// THEM. The three resistance families in game/Data/Affixes.csv are

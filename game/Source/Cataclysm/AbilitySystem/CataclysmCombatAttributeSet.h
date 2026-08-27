@@ -448,6 +448,63 @@ public:
 	FGameplayAttributeData DebuffDamageSuppressed;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
 
+	/**
+	 * How far from this character its retaliation reaches, in METRES. Issue
+	 * #1047. Zero means it reaches only whatever hit it, which is every
+	 * character in the game except one holding a single capstone option.
+	 *
+	 * METRES AND NOT CENTIMETRES, WHICH IS THE OPPOSITE OF EVERY OTHER DISTANCE
+	 * IN THE ENGINE. The design document and the passive tree both speak in
+	 * metres -- Reprisal Wave reads "strikes every enemy within 4 metres" -- and
+	 * the number is authored on the Passive Effects sheet of the design
+	 * workbook, where a designer writes what the node says. The one conversion
+	 * to the centimetres Unreal works in happens where the search is run.
+	 * Putting the conversion in the sheet instead would mean writing 400 in a
+	 * cell beside a node that says 4, and
+	 * `test_every_value_appears_in_the_nodes_own_description` would then have
+	 * nothing to tie the two together with.
+	 *
+	 * A DISTANCE AND NOT A FLAG, THOUGH ONE ROW SUPPLIES IT. A flag beside a
+	 * constant in C++ would work today and would let the sentence and the code
+	 * drift apart in silence; a radius the sheet states cannot, because that
+	 * check matches the 4 in the cell against the 4 in the node's own text.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason the flag above is not:
+	 * no affix grants it, nothing scales it, no class line names it, and one
+	 * passive option supplies it. Every class starts at zero.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_RetaliationRadiusMetres)
+	FGameplayAttributeData RetaliationRadiusMetres;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
+
+	/**
+	 * Whether this character's life leech applies to its retaliation. Issue
+	 * #1048. Zero for no, above zero for yes.
+	 *
+	 * A FLAG, AND HERE THERE IS NOTHING ELSE IT COULD BE. The Masochist's
+	 * Feeding Wound reads "Your life leech applies to your retaliation damage as
+	 * well as to your attacks", which states no quantity at all: how much is
+	 * leeched is whatever life leech the character already has. There is no
+	 * magnitude to write, so the row is a 1 meaning "on", and `VALUE_IN_WORDS`
+	 * in `tools/tests/test_passive_effects_match_the_node_text.py` carries the
+	 * words that stand in for the digit the sentence does not have.
+	 *
+	 * WHAT IT SWITCHES ON IS AN EXCEPTION TO A RULE THE WHOLE GENRE SHARES.
+	 * Retaliation deliberately does not hit -- it writes health directly, so
+	 * that it cannot critically strike, cannot apply an ailment and cannot be
+	 * retaliated against in turn -- and leech is worked out where a hit lands.
+	 * So retaliation leeches nothing for everybody, and this option buys the
+	 * exception. `docs/Cataclysm_GDD_v2.md` says so in the Retaliation section.
+	 *
+	 * LIFE LEECH ONLY. Mana leech and energy shield leech are not named by the
+	 * node and stay on attacks alone.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the same reason as the two above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_RetaliationLeeches)
+	FGameplayAttributeData RetaliationLeeches;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, RetaliationLeeches)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -512,6 +569,8 @@ protected:
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_RetaliationRadiusMetres(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

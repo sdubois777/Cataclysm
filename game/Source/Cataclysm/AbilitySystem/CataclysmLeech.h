@@ -127,6 +127,35 @@ public:
 	static void NoteHit(UAbilitySystemComponent* Attacker, float DamageTaken);
 
 	/**
+	 * Start a payout on a character whose retaliation took this much. Issue
+	 * #1048.
+	 *
+	 * A SECOND WAY IN, BECAUSE RETALIATION IS NOT A HIT AND MUST NOT BECOME ONE.
+	 * `NoteHit` above is reached where the `Damage` meta attribute is
+	 * intercepted; retaliation writes the `Health` attribute directly, on
+	 * purpose, so that it cannot critically strike, cannot apply an ailment and
+	 * cannot be retaliated against in turn. It therefore never reaches `NoteHit`
+	 * and leeches nothing for every character in the game.
+	 *
+	 * THE MASOCHIST'S FEEDING WOUND BUYS THE EXCEPTION: "Your life leech applies
+	 * to your retaliation damage as well as to your attacks." This is only
+	 * called when that option's flag is set, so nobody else is changed.
+	 *
+	 * LIFE LEECH ONLY, WHERE `NoteHit` READS ALL THREE. The node names life
+	 * leech and nothing else; mana leech and energy shield leech stay on attacks
+	 * alone. That is the whole difference between the two functions, and it is
+	 * why this is not an argument to `NoteHit`.
+	 *
+	 * NOTHING FOR RETALIATION THAT TOOK NOTHING, so a character with none of the
+	 * stat, and one whose target was already at zero health, both leech nothing.
+	 * The caller passes what was ACTUALLY taken off the targets rather than what
+	 * was sent, which is what keeps the design's rule that "overkill does not
+	 * count" true here as well.
+	 */
+	static void NoteRetaliation(UAbilitySystemComponent* Retaliator,
+								float DamageDealt);
+
+	/**
 	 * Pay one step of every outstanding payment into its pool.
 	 *
 	 * NOTHING FOR THE DEAD, and nothing when a pool is already full, both for

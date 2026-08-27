@@ -1052,6 +1052,14 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 
+**It reaches one target, and one Masochist capstone option widens that.** Reprisal Wave, the second option of The First Vow, reads "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you." The sphere is centred on the retaliating character. Whatever landed the hit is struck whether or not it is inside that sphere, which is what the word "only" settles: a ranged attacker twenty metres away still takes retaliation exactly as it did before the option existed. Each enemy struck takes the whole amount rather than a share of it, because retaliation is a flat amount and splitting it would leave the total unchanged and make the option worth nothing. Nothing struck by the wave is struck by a hit, so a bystander that also retaliates sends nothing back.
+
+
+
+**It leeches nothing, and one Masochist capstone option changes that too.** Feeding Wound, the second option of The Second Vow, reads "Your life leech applies to your retaliation damage as well as to your attacks." Leech is worked out where a hit lands, and retaliation deliberately does not hit, so retaliation leeches nothing for every other character in the game. The option is an exception bought with a capstone choice rather than a correction of an oversight: Path of Exile's reflected damage does not trigger on-hit effects and Last Epoch's bypasses the damage calculation entirely, so no game in the genre leeches from it by default. Life leech only; mana leech and energy shield leech stay on attacks alone. The amount counted is what the targets actually lost, so the overkill rule in the Leech section above holds here as well, and a character holding both options leeches from every enemy the wave struck.
+
+
+
 **It is uncapped, and that is safe because it deals damage rather than preventing any.** No quantity of it makes anything immune to anything.
 
 
