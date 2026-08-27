@@ -94,6 +94,50 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 	}
 }
 
+void UCataclysmLeech::NoteRetaliation(UAbilitySystemComponent* Retaliator,
+									  float DamageDealt)
+{
+	if (DamageDealt <= 0.0f)
+	{
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(Retaliator);
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	const UCataclysmVitalAttributeSet* Vitals =
+		Cataclysm->GetSet<UCataclysmVitalAttributeSet>();
+	if (!Vitals)
+	{
+		return;
+	}
+
+	// THE SAME FIGURE `NoteHit` READS, AND THE SAME ARITHMETIC. The node says
+	// leech "applies to your retaliation damage AS WELL AS to your attacks", so
+	// the two paths have to agree on what the character's life leech is worth.
+	// Reading it any other way here would make the sentence false.
+	//
+	// FLOORED AT ZERO for the reason `NoteHit` floors it: nothing states
+	// negative life leech, and a negative figure would take health away.
+	const float Amount =
+		AmountFrom(DamageDealt, FMath::Max(0.0f, Vitals->GetLifeLeech()));
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+
+	// HEALTH ONLY. See the header: the node names life leech and nothing else.
+	FCataclysmLeechPayment Payment;
+	Payment.Pool = ECataclysmLeechPool::Health;
+	Payment.Remaining = Amount;
+	Payment.SecondsLeft = PayoutSeconds;
+	Cataclysm->AddLeechPayment(Payment);
+}
+
 void UCataclysmLeech::PayOutStep(AActor* Character, float SecondsInStep)
 {
 	if (SecondsInStep <= 0.0f)

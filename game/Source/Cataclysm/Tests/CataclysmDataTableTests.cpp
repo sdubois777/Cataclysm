@@ -300,7 +300,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND TO 107 FOR GLUTTON. Issue #1045. One row, on a new scale that
 	// reads how much life leech the character has.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        107)
+	//
+	// AND TO 109 FOR REPRISAL WAVE AND FEEDING WOUND. Issues #1047 and #1048.
+	// One row each, both on the second option of a capstone: The First Vow's
+	// carries the radius in metres over which retaliation now strikes, and The
+	// Second Vow's is a flag saying retaliation leeches.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        109)
 
 	#undef CHECK_TABLE
 

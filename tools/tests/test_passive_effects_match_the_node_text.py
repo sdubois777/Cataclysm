@@ -310,7 +310,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: retaliation is a single stat where "damage" is two. AUTHORED_NODES does not
 #: move with it: Glutton is the second option of a capstone whose other two are
 #: already authored, and a capstone counts once.
-AUTHORED_ROWS = 107
+#:
+#: AND TO 109 ON 2026-08-27, FOR REPRISAL WAVE AND FEEDING WOUND. Issues #1047
+#: and #1048. ONE row each, and both are single stats for the reason Glutton's is:
+#: everything they change is about retaliation, which this sheet spells as one
+#: stat. Reprisal Wave's row carries the radius in metres its own sentence
+#: states; Feeding Wound's is a flag, because its sentence states a rule and
+#: holds no digit at all.
+AUTHORED_ROWS = 109
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -473,7 +480,14 @@ AUTHORED_ROWS = 107
 #: is the first of that capstone's three options to be authored since Apotheosis
 #: was removed, so the node rejoins this count. 70 of 293 altogether and 66 of
 #: the Masochist tree's own 74.
-AUTHORED_NODES = 70
+#:
+#: AND BY ONE MORE ON 2026-08-27, FOR THE SECOND VOW. Issues #1047 and #1048. TWO
+#: capstone options were authored and they gain ONE node between them: Feeding
+#: Wound is the first of The Second Vow's three options to be authored, so that
+#: node joins the count, and Reprisal Wave is a second option of The First Vow,
+#: which Stigmatic already put here. A capstone counts once. 71 of 293 altogether
+#: and 67 of the Masochist tree's own 74.
+AUTHORED_NODES = 71
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -948,6 +962,17 @@ VALUE_FORMS = {
     # number is followed by the resource's name rather than by a percent sign or
     # a unit of time. Issue #1008.
     "fervour_per_second": "{value:g} Fervour",
+
+    # A DISTANCE, WHICH IS THE FOURTH FORM AND THE FIRST ONE MEASURED IN SPACE.
+    # Issue #1047. Reprisal Wave reads "strikes every enemy within 4 METRES", so
+    # the number is followed by a unit of distance. The three entries above are a
+    # percentage, a unit of time and a count of a resource.
+    #
+    # THE NUMBER IS HERE RATHER THAN IN THE ENGINE ON PURPOSE, and this entry is
+    # what makes that worth doing: a workbook changed to 6 metres while the node
+    # still says 4 fails this check, where a constant in C++ could disagree with
+    # the sentence for ever and nothing would notice.
+    "retaliation_radius_metres": "{value:g} metre",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -1018,6 +1043,19 @@ VALUE_IN_WORDS = {
     # exemption at all.
     ("Masochist_capstone_200", "debuff_damage_suppressed"):
         ("deal no damage at all", 1.0),
+
+    # THE SECOND VOW'S SECOND OPTION, FEEDING WOUND. Issue #1048. "Your life
+    # leech applies to your retaliation damage as well as to your attacks." A
+    # flag of 1, and the sentence carries NO DIGIT ANYWHERE, which is what
+    # separates it from every entry above: those each hold digits belonging to
+    # their node's other clauses, and this one has none to be confused with.
+    #
+    # A RULE AND NOT A MAGNITUDE, so it is exempted rather than reworded. How
+    # much is leeched is already stated elsewhere -- it is whatever life leech
+    # the character has -- and this sentence says only WHERE that figure now
+    # applies. There is no number it could be given without inventing one.
+    ("Masochist_capstone_50", "retaliation_leeches"):
+        ("life leech applies to your retaliation damage", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50

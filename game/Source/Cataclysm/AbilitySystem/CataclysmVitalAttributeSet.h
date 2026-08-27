@@ -108,7 +108,22 @@ public:
 	 * The damage counted is what the target really took, after its mitigation
 	 * and capped at the health it had left, and the amount is paid out over
 	 * three seconds rather than at once. See the Leech section of
-	 * docs/Cataclysm_GDD_v2.md. Nothing reads these three yet.
+	 * docs/Cataclysm_GDD_v2.md.
+	 *
+	 * THIS COMMENT USED TO SAY "NOTHING READS THESE THREE YET" AND THAT HAD BEEN
+	 * FALSE SINCE ISSUE #895, which built leech. `UCataclysmLeech::NoteHit`
+	 * reads all three where a hit lands and `UCataclysmLeech::PayOutStep` pays
+	 * them out. It is the same fault issue #900 recorded elsewhere for the blunt
+	 * weapon stun roll, and it does the same harm: a comment saying a capability
+	 * is missing is read as a reason not to look for it, and the handoff written
+	 * on 2026-08-27 told the next session to check whether leech existed at all
+	 * before building on it. Issue #1048.
+	 *
+	 * LIFE LEECH IS READ IN A SECOND PLACE SINCE ISSUE #1048.
+	 * `UCataclysmLeech::NoteRetaliation` reads it where retaliation is paid, for
+	 * a character holding the Masochist's Feeding Wound. Retaliation is not a
+	 * hit, so it never reaches `NoteHit`, and that capstone option is what buys
+	 * the exception. Mana leech and energy shield leech stay on attacks alone.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_LifeLeech)
 	FGameplayAttributeData LifeLeech;

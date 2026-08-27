@@ -412,6 +412,27 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("debuff_damage_suppressed"),
 		 TEXT("the Masochist's The Final Vow node, third option, as a flat "
 			  "modifier")},
+
+		// Issue #1047. How far this character's retaliation reaches, in METRES.
+		// Zero for every class, and the Masochist's Reprisal Wave capstone
+		// option is its only source. Zero means it reaches only whatever hit the
+		// character, which is what retaliation did for everybody before that
+		// option existed.
+		//
+		// THE ONLY STAT IN THIS MAP MEASURED IN A DISTANCE. Its row carries no
+		// condition and no scale, so it IS folded into the attribute.
+		{TEXT("retaliation_radius_metres"),
+		 TEXT("the Masochist's The First Vow node, second option, as a flat "
+			  "modifier")},
+
+		// Issue #1048. Whether this character's life leech applies to its
+		// retaliation. Zero for every class, and the Masochist's Feeding Wound
+		// capstone option is its only source. A FLAG, and there is nothing else
+		// it could be: the node states no quantity at all, because how much is
+		// leeched is whatever life leech the character already has.
+		{TEXT("retaliation_leeches"),
+		 TEXT("the Masochist's The Second Vow node, second option, as a flat "
+			  "modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

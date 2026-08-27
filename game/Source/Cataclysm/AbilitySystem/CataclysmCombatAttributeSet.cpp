@@ -75,6 +75,15 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// source, and zero is the ordinary case.
 	InitDebuffDamageSuppressed(0.0f);
 
+	// AND RETALIATION ANSWERS ONLY WHAT HIT THE CHARACTER, AND LEECHES NOTHING,
+	// UNLESS A CAPSTONE OPTION SAYS OTHERWISE. Issues #1047 and #1048. Reprisal
+	// Wave is the only source of the first and Feeding Wound of the second, so
+	// zero is the ordinary case for both. A radius of zero means "only the one
+	// that hit you": the area search is skipped entirely rather than run with a
+	// radius too short to reach anything.
+	InitRetaliationRadiusMetres(0.0f);
+	InitRetaliationLeeches(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -132,6 +141,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationRadiusMetres);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -251,6 +262,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetCooldownSkipChanceAttribute(), GetBleedOnCritChanceAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
+		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -289,5 +301,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedOnCritChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

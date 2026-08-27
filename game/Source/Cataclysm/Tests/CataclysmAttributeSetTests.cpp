@@ -198,11 +198,19 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * a FLAG and not a reduction, because a Less multiplier is floored at -99
 	 * and "no damage at all" is not 99% less.
 	 *
-	 * So the sheet stays at 46. The combat set grew by seven and the class
+	 * HOW FAR RETALIATION REACHES, AND WHETHER IT LEECHES, are the eleventh and
+	 * twelfth, added under issues #1047 and #1048, and they meet the rule for the
+	 * seventh and eighth times: no affix grants either, nothing scales either,
+	 * neither has a baseline of its own, and one capstone option is the only
+	 * source of each -- The First Vow's Reprisal Wave and The Second Vow's
+	 * Feeding Wound. The first is the ONLY STAT HERE MEASURED IN A DISTANCE and
+	 * is in metres, which the header on it explains; the second is a flag.
+	 *
+	 * So the sheet stays at 46. The combat set grew by nine and the class
 	 * resource set by five, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 8;
+	constexpr int32 OffSheetCombatStats = 10;
 
 	/**
 	 * How far healing may take the character. Issue #988.
