@@ -97,11 +97,19 @@ was applied, so "damage needed to kill" understated by 48% against the Abyssal
 Warden and by 56% against the Gatekeeper.
 
 `defender_for` is that route. `EnemyStats.damage_taken_fraction` resolves a probe
-hit through `damage.resolve` against it, so it runs the same eight steps in the
-same order as the player's side and as `UCataclysmDamageCalculation::Resolve`
-in the engine. A defensive layer added to enemies later is wired in
-`defender_for` alone and every figure downstream picks it up. Adding it to
-`EnemyStats` and not to `defender_for` puts it back on the dead path.
+hit through `damage.resolve` against it, so it runs the same steps in the same
+order as the player's side and as `UCataclysmDamageCalculation::Resolve` in the
+engine. A defensive layer added to enemies later is wired in `defender_for` alone
+and every figure downstream picks it up. Adding it to `EnemyStats` and not to
+`defender_for` puts it back on the dead path.
+
+THE ENGINE HAS ONE STEP THIS MODEL DOES NOT, AND LEAVING IT OUT IS DELIBERATE.
+Issue #1026 gave the game a `damage_taken` stat, a ninth step sitting between flat
+damage reduction and the mana step. Nothing in `sim/` can supply it: it comes from
+passive tree nodes, and no passive tree exists here. A parameter that is always
+100 would move no figure in any sweep and would have to be threaded through every
+caller. If a class base or an affix ever grants it, it belongs in
+`damage.resolve` beside the other layers and this note should go.
 
 AN ENEMY HAS FOUR LAYERS AND THAT IS THE ANSWER, NOT A GAP. Evasion, armour,
 resistance and an energy shield. Issue #488 asked for the two the player has and

@@ -66,6 +66,15 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// bonus is never written onto a gameplay attribute. See the header.
 	InitCooldownSkipChance(0.0f);
 
+	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
+	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
+	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
+	// what an ability system that never runs that holds -- every enemy, and any
+	// test that builds one by hand -- and it means such a character takes exactly
+	// the damage it always did rather than none at all.
+	InitDamageTaken(100.0f);
+	InitDamageOverTimeTaken(100.0f);
+
 	// Magic find is an added percentage and has a flat source, the "Flat magic
 	// find" affix, so zero is right. Loot quantity is a percentage of what the
 	// dungeon would otherwise drop and every source of it is an increase, so
@@ -110,6 +119,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownSkipChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -226,6 +237,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
 		GetCooldownSkipChanceAttribute(),
+		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -260,5 +272,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsVoid)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

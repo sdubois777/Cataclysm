@@ -5,6 +5,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the two damage-taken stat names and their base of 100. Issue #1026.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the base of The Breaking Point's conversion window. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -450,6 +452,25 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// so gear is its only source, and without an entry here the two
 			// affixes granting it were dropped before they reached anything.
 			{TEXT("magic_find"), Combat::GetMagicFindAttribute()},
+
+			// HOW MUCH DAMAGE THE CHARACTER TAKES, at 100 for normal, and the
+			// same again for a hit that is damage over time. Issue #1026. No
+			// class line names either and none should: no affix grants them, no
+			// class differs on them, and passive nodes are their only source,
+			// which is the rule `Cataclysm.Attributes.CharacterSheetIsComplete`
+			// uses to decide a stat is off the character sheet. Their base of
+			// 100 comes from `EngineSuppliedBases` below.
+			//
+			// BOTH ATTRIBUTES STAY AT 100 FOR EVERY CHARACTER TODAY, because all
+			// three nodes that move them carry a condition and a conditional
+			// bonus is never folded into an attribute.
+			// `UCataclysmDamageCalculation::Resolve` asks for the stat rather
+			// than reading the attribute. The entries are still needed, because
+			// `ApplyTo` loops over THIS map and a stat missing from it is dropped
+			// before `StatForSkill` could ever be asked for it.
+			{TEXT("damage_taken"), Combat::GetDamageTakenAttribute()},
+			{TEXT("damage_over_time_taken"),
+			 Combat::GetDamageOverTimeTakenAttribute()},
 		};
 	}();
 
@@ -474,6 +495,29 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 		// a window of zero, so no turn of the conversion ever began.
 		{FName(UCataclysmDamageConversion::WindowStat),
 		 UCataclysmDamageConversion::BaseWindowSeconds},
+
+		// AND WHAT SHARE OF A HIT A CHARACTER TAKES, at 100 for normal, plus the
+		// same again for a hit that is damage over time. Issue #1026.
+		//
+		// A HUNDRED BECAUSE IT IS THE IDENTITY FOR A MULTIPLIER. Three Masochist
+		// nodes move these, and every one of them is written as a percentage of
+		// what would otherwise arrive: "reduced by 1% per point", "take 20% more
+		// damage", "take 25% less damage". A base of zero would make an increase
+		// worth nothing and a `more` worth nothing, which is what
+		// `test_every_stat_is_one_the_game_supplies` exists to refuse.
+		//
+		// HERE RATHER THAN ON THE `Default` CLASS LINE, though five stats of
+		// exactly this shape sit there. `Cataclysm.Attributes.CharacterSheetIsComplete`
+		// gives the rule: a stat is off the character sheet when no affix grants
+		// it, nothing scales it, it has no baseline of its own and one passive
+		// node is its only source. The five on that line all fail that rule --
+		// affixes grant them and the Ritualist starts at 110 area of effect --
+		// and these two meet it. `docs/DECISIONS.md` records that promoting them
+		// to a class line is right the day an affix grants one.
+		{FName(UCataclysmDamageCalculation::DamageTakenStat),
+		 UCataclysmDamageCalculation::NormalDamageTaken},
+		{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
+		 UCataclysmDamageCalculation::NormalDamageTaken},
 	};
 
 	return Map;

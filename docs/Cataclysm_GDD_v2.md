@@ -1347,19 +1347,37 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 | 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
 | 4. Resistance | The attacker's Penetration and any Overwhelm are subtracted first, then the result is capped at 70%. |
 | 5. Damage reduction | The flat percentage stat, capped at 75%. |
-| 6. Mana | Only for damage over time, and only if an enchantment grants it. |
-| 7. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
-| 8. Health | Takes whatever is left. |
+| 6. Damage taken | The defender's own `damage_taken` stat, as a percentage where 100 is normal. A second stat, `damage_over_time_taken`, applies as well when the hit is damage over time. |
+| 7. Mana | Only for damage over time, and only if an enchantment grants it. |
+| 8. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
+| 9. Health | Takes whatever is left. |
 
   
 
-**A critical strike is not one of these eight steps.** The eight are what the
+**Damage taken sits after every mitigation layer and before the pools that
+absorb.** Steps 2 to 5 are each a multiplication of what the previous step left,
+so a further multiplier placed anywhere among them gives the same number. The
+boundary that is real is the energy shield, which is a minimum rather than a
+multiplication: putting damage taken before it means a bigger blow spends more
+shield, which is what "you take 20% more damage" says. Path of Exile and Path of
+Exile 2 both resolve a hit in that order, and `docs/DECISIONS.md` carries the
+sources and the reasoning.
+
+**A source that says "more" or "less" damage taken is a separate multiplier, and
+one that says "increased" or "reduced" joins one additive sum.** Damage taken is
+one stat and it goes through the same three buckets as everything else, so a
+character with a 20% more and a 25% less takes 1.20 × 0.75 of a hit rather than
+0.95 of one.
+
+  
+
+**A critical strike is not one of these nine steps.** The nine are what the
 defender does to a hit and they take the hit's size as given. A critical strike
 belongs to whoever is swinging: it is rolled against the attacker's critical
 strike chance and multiplies the whole finished hit, before block, armor,
-resistance, damage reduction and the energy shield all take their share of the
-larger number. A critical strike is mitigated exactly like any other hit and is
-not a way past any layer.
+resistance, damage reduction, damage taken and the energy shield all take their
+share of the larger number. A critical strike is mitigated exactly like any other
+hit and is not a way past any layer.
 
 **It is rolled once per hit, and only a hit can roll it.** Damage over time
 cannot critically strike. That is what both games in the genre with this layer do:

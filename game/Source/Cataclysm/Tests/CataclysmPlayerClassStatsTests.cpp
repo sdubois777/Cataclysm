@@ -374,6 +374,24 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// rather than reading it.
 		{TEXT("cooldown_skip_chance"),
 		 TEXT("the Masochist's The Catalyst node, as a flat modifier")},
+
+		// Issue #1026. What share of a hit the character takes, at 100 for
+		// normal, and the same again for a hit that is damage over time. The
+		// SECOND AND THIRD STATS WHOSE BASE IS NEITHER A CLASS LINE NOR A
+		// MODIFIER, after the conversion window above, and they arrive by the
+		// same route: `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+		//
+		// NO CLASS LINE NAMES EITHER AND NONE SHOULD. No affix grants them,
+		// nothing scales them and no class differs on them, which is the rule
+		// `Cataclysm.Attributes.CharacterSheetIsComplete` uses to decide a stat
+		// is off the character sheet. Both attributes also hold 100 for every
+		// character, because all three nodes that move them carry a condition.
+		{TEXT("damage_taken"),
+		 TEXT("UCataclysmDamageCalculation::NormalDamageTaken, with three "
+			  "Masochist nodes moving it")},
+		{TEXT("damage_over_time_taken"),
+		 TEXT("UCataclysmDamageCalculation::NormalDamageTaken, with the "
+			  "Masochist's Echoes of Agony node reducing it")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)
