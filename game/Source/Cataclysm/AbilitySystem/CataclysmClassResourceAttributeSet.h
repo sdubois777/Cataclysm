@@ -338,6 +338,33 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
 
 	/**
+	 * Whether this character has traded its mana pool for health. Issue #1067.
+	 *
+	 * THE MASOCHIST'S Water to Blood IS ITS ONLY SOURCE, the first option of its
+	 * first capstone: "You no longer have a mana pool. All maximum mana is
+	 * converted into added maximum health, and every ability costs health
+	 * instead of mana."
+	 *
+	 * A FLAG AND NOT A REDUCTION, for the reason its neighbour above gives: a
+	 * modifier cannot take a stat to zero, because the pipeline floors a Less
+	 * multiplier at -99 on purpose, and ninety-nine per cent less mana is not
+	 * none.
+	 *
+	 * IT DOES TWO THINGS AND THEY ARE READ IN TWO PLACES.
+	 * `UCataclysmPlayerClassStats::ApplyTo` moves the resolved maximum mana onto
+	 * maximum health and writes the mana maximum down to zero;
+	 * `UCataclysmGameplayAbility::CheckCost` and `ApplyCost` take the same
+	 * number out of health rather than out of mana.
+	 *
+	 * NOT ON THE CHARACTER SHEET, for the reason its neighbours are not: no
+	 * affix grants it, nothing scales it, it has no baseline of its own, and one
+	 * capstone option of one tree is its only source.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_ManaPoolBecomesHealth)
+	FGameplayAttributeData ManaPoolBecomesHealth;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)
+
+	/**
 	 * Whether dropping below half health turns damage into Bleeding. Issue #985.
 	 * Zero for no, above zero for yes.
 	 *
@@ -414,6 +441,7 @@ protected:
 	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingOnLowHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingWindow(const FGameplayAttributeData& OldValue);
 };

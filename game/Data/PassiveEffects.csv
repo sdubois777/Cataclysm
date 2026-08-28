@@ -120,3 +120,4 @@ Masochist_basic_fl_b0#1,Masochist_basic_fl_b0,debuff_spread_chance,flat,1.0,,,0.
 Masochist_basic_fl_b1#1,Masochist_basic_fl_b1,debuff_spread_on_death_chance,flat,2.0,,,0.0,,0.0,0
 Masochist_basic_fl_a1#1,Masochist_basic_fl_a1,damage_over_time_taken,increased,1.0,,,0.0,,0.0,0
 Masochist_basic_fl_a1#2,Masochist_basic_fl_a1,damage_to_enemies_sharing_a_debuff,flat,1.0,,,0.0,,0.0,0
+Masochist_capstone_25#5,Masochist_capstone_25,mana_pool_becomes_health,flat,1.0,,,0.0,,0.0,1

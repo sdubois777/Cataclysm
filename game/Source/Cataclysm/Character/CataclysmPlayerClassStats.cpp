@@ -323,6 +323,12 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{FString(UCataclysmSkillTemplate::HealthCostSuppressedStat),
 			 Resource::GetHealthCostSuppressedAttribute()},
 
+			// AND THE FLAG SAYING A CHARACTER HAS TRADED ITS MANA POOL FOR
+			// HEALTH. Issue #1067. Zero for every class, and the first option
+			// of the Masochist's first capstone is its only source.
+			{FString(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat),
+			 Resource::GetManaPoolBecomesHealthAttribute()},
+
 			// AND WHETHER DROPPING BELOW HALF HEALTH TURNS DAMAGE INTO BLEEDING,
 			// with how long one turn of that lasts beside it. Issue #985. The
 			// Masochist's The Breaking Point is the flag's only source; the
@@ -900,6 +906,52 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
 	{
 		Cataclysm->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	// AND A CHARACTER THAT TRADED ITS MANA POOL FOR HEALTH HAS THE TWO SWAPPED
+	// OVER. Issue #1067. The Masochist's Water to Blood: "You no longer have a
+	// mana pool. All maximum mana is converted into added maximum health."
+	//
+	// AFTER BOTH STATS ARE RESOLVED AND BEFORE THE POOLS ARE FILLED, and both
+	// halves of that are load-bearing. Doing it earlier would move a figure that
+	// the increases and More multipliers had not finished with; doing it later
+	// would fill health to the unconverted maximum and then clamp it back down,
+	// which is the same ordering trap the pools already carry a comment about.
+	//
+	// AFTER `SetStatInputs`, so the flag is asked of a component that already
+	// holds this character's finished stat line. Asking before it would read
+	// whatever the previous refresh left behind.
+	//
+	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a
+	// modifier cannot reach zero -- the pipeline floors a Less multiplier at -99
+	// -- and "no longer have a mana pool" is not ninety-nine per cent less.
+	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute MaxMana =
+			UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+
+		if (AbilitySystem->HasAttributeSetForAttribute(MaxHealth)
+			&& AbilitySystem->HasAttributeSetForAttribute(MaxMana))
+		{
+			const float Converted = AbilitySystem->GetNumericAttribute(MaxMana);
+			if (Converted > 0.0f)
+			{
+				AbilitySystem->SetNumericAttributeBase(
+					MaxHealth,
+					AbilitySystem->GetNumericAttribute(MaxHealth) + Converted);
+				AbilitySystem->SetNumericAttributeBase(MaxMana, 0.0f);
+
+				// AND THE MANA THE CHARACTER WAS STANDING ON GOES WITH IT,
+				// whether or not the pools are about to be filled. A character
+				// that took this option mid-fight would otherwise keep whatever
+				// mana it had in a pool whose maximum is now zero, and nothing
+				// clamps current mana down until something else writes it.
+				AbilitySystem->SetNumericAttributeBase(
+					UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
+			}
+		}
 	}
 
 	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling

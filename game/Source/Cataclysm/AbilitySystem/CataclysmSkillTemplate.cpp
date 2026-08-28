@@ -482,6 +482,9 @@ float UCataclysmSkillTemplate::AddedHealthCostPercent(
 const TCHAR* UCataclysmSkillTemplate::HealthCostSuppressedStat =
 	TEXT("health_cost_suppressed");
 
+const TCHAR* UCataclysmSkillTemplate::ManaPoolBecomesHealthStat =
+	TEXT("mana_pool_becomes_health");
+
 bool UCataclysmSkillTemplate::HealthCostIsSuppressed(
 	const UAbilitySystemComponent* AbilitySystem)
 {
@@ -514,6 +517,26 @@ bool UCataclysmSkillTemplate::HealthCostIsSuppressed(
 	// ANY VALUE ABOVE ZERO IS YES, which is how every other flag stat in the
 	// project is read.
 	return Asking->StatForSkill(FName(HealthCostSuppressedStat),
+								FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+bool UCataclysmSkillTemplate::ManaPoolBecomesHealth(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, the same way its
+	// neighbour above is. The row carries no condition today, so both routes
+	// give the same answer; asking means a later row that does carry one is
+	// not dropped in silence.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Asking)
+	{
+		return false;
+	}
+
+	// ANY VALUE ABOVE ZERO IS YES, which is how every other flag stat in the
+	// project is read.
+	return Asking->StatForSkill(FName(ManaPoolBecomesHealthStat),
 								FGameplayTagContainer(), 0.0f) > 0.0f;
 }
 

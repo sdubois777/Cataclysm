@@ -47,6 +47,7 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// is never folded into an attribute.
 	InitFervourPerCast(0.0f);
 	InitHealthCostSuppressed(0.0f);
+	InitManaPoolBecomesHealth(0.0f);
 
 	InitDamageToBleedingOnLowHealth(0.0f);
 	InitDamageToBleedingWindow(0.0f);
@@ -72,6 +73,7 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerCast);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthCostSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
 }
@@ -118,6 +120,7 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetFervourPerSecondAttribute()
 		|| Attribute == GetFervourPerCastAttribute()
 		|| Attribute == GetHealthCostSuppressedAttribute()
+		|| Attribute == GetManaPoolBecomesHealthAttribute()
 		|| Attribute == GetDamageToBleedingOnLowHealthAttribute()
 		|| Attribute == GetDamageToBleedingWindowAttribute())
 	{
@@ -191,6 +194,7 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetFervourPerSecondAttribute());
 	All.Add(GetFervourPerCastAttribute());
 	All.Add(GetHealthCostSuppressedAttribute());
+	All.Add(GetManaPoolBecomesHealthAttribute());
 	All.Add(GetDamageToBleedingOnLowHealthAttribute());
 	All.Add(GetDamageToBleedingWindowAttribute());
 	return All;
@@ -217,5 +221,6 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerCast)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)

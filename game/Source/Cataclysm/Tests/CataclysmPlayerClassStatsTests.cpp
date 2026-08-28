@@ -486,6 +486,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Masochist's The Final Vow node, first option, as a flat "
 			  "modifier")},
 
+		// Issue #1067. Whether this character has traded its mana pool for
+		// health. Zero for every class, and Water to Blood -- the first
+		// option of the Masochist's first capstone -- is its only source. A
+		// class line stating it would give every character of that class no
+		// mana pool, which is a capstone decision and not a class trait.
+		{TEXT("mana_pool_becomes_health"),
+		 TEXT("the Masochist's The First Vow node, first option, as a flat "
+			  "modifier")},
+
 		// Issue #1033. How long a lasting harmful effect on this character runs,
 		// at 100 for normal. The THIRD stat whose base is neither a class line
 		// nor a modifier, after the two damage-taken stats above, and it arrives

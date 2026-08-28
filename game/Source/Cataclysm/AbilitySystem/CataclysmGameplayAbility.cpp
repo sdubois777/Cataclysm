@@ -6,6 +6,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+// For the flag saying this character pays with health where others pay with
+// mana. Issue #1067.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -238,6 +241,25 @@ bool UCataclysmGameplayAbility::CheckCost(
 		return false;
 	}
 
+	// OUT OF HEALTH FOR A CHARACTER THAT TRADED ITS MANA POOL FOR ONE. Issue
+	// #1067. The Masochist's Water to Blood: "every ability costs health instead
+	// of mana."
+	//
+	// THE SAME NUMBER OUT OF A DIFFERENT POOL. The option converts the pool, not
+	// the price, so a skill that cost 40 mana costs 40 health.
+	//
+	// STRICTLY MORE THAN, WHERE MANA ASKS FOR AT LEAST. A cost that took a
+	// character to exactly zero health would kill it, and no skill should be
+	// able to do that by being cast. The design gives health costs their own
+	// floor rules, and Rock Bottom -- the first option of the next capstone --
+	// is the node that says what happens at the bottom. Until that is built the
+	// cast is refused rather than fatal.
+	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()) > Cost;
+	}
+
 	return AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetManaAttribute()) >= Cost;
 }
@@ -267,9 +289,15 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// table, and an effect built at runtime for every activation would allocate
 	// on every button press. When enchantments that change a skill's mana cost
 	// are built -- four of them exist in the data -- this is where they hook in.
-	AbilitySystem->ApplyModToAttribute(
-		UCataclysmVitalAttributeSet::GetManaAttribute(),
-		EGameplayModOp::Additive, -Cost);
+	//
+	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, and `CheckCost` above has
+	// already refused the cast if that pool could not cover it. Issue #1067.
+	const FGameplayAttribute Paying =
+		UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem)
+			? UCataclysmVitalAttributeSet::GetHealthAttribute()
+			: UCataclysmVitalAttributeSet::GetManaAttribute();
+
+	AbilitySystem->ApplyModToAttribute(Paying, EGameplayModOp::Additive, -Cost);
 }
 
 bool UCataclysmGameplayAbility::CheckCooldown(

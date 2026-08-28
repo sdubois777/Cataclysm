@@ -6778,4 +6778,164 @@ bool FCataclysmPassiveOptionValueTest::RunTest(const FString&)
 
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWaterToBloodTest,
+	"Cataclysm.Passives.WaterToBloodTradesTheManaPoolForHealthOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The first option of the Masochist's first capstone. Issue #1067.
+ *
+ * "You no longer have a mana pool. All maximum mana is converted into added
+ * maximum health, and every ability costs health instead of mana."
+ *
+ * WHAT WAS WRONG. It had no row in `game/Data/PassiveEffects.csv` at all, so
+ * taking it granted nothing: the project owner took it in play and still had a
+ * mana pool and no added health. Issue #1066 measures how widespread that is --
+ * 8 of 36 named capstone options granted something.
+ *
+ * THREE CLAUSES AND THREE ASSERTIONS. The mana maximum is gone, the health
+ * maximum grew by exactly what the mana maximum was, and the character stands on
+ * the converted figure rather than being clamped back to the old one.
+ *
+ * THE FOURTH CLAUSE -- that abilities cost health -- IS NOT HERE. It is a
+ * property of an activation rather than of a stat line, and it needs a granted
+ * ability to test;
+ * `Cataclysm.Skills.WaterToBloodPaysASkillsCostOutOfHealth` covers it.
+ *
+ * MEASURED AGAINST THE SAME CHARACTER WITHOUT THE OPTION, because the figures
+ * come from the class stat line at the character's level and pinning either here
+ * would make this fail whenever the Masochist line is tuned.
+ */
+bool FCataclysmPassiveWaterToBloodTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE MASOCHIST, BEFORE THE CHARACTER IS SPAWNED. Its class line is the only
+	// one this option is reachable from, and a character built on another line
+	// would have a different mana pool to convert.
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+
+	// THE ALLOCATION BOTH CHARACTERS SHARE: the tree filled to the capstone's
+	// threshold, and one point in the capstone itself.
+	FCataclysmPassiveAllocation Taken;
+	int32 Filled = 0;
+	if (!TestTrue(TEXT("the tree can be filled to the capstone's threshold"),
+				  FillTreeToOpen(NodeTable, Capstone, Taken, Filled) > 0))
+	{
+		return false;
+	}
+	Taken.Add(Capstone, 1);
+
+	FCataclysmPassiveAllocation Undecided = Taken;
+
+	// AND THE ONE DIFFERENCE. The option is taken on one and not the other, so
+	// nothing but the option can explain what changes.
+	Taken.SetChosenOption(Capstone, 1);
+
+	const auto Stand = [&](const FCataclysmPassiveAllocation& Allocation,
+						   float& OutMaxHealth, float& OutMaxMana,
+						   float& OutHealth, float& OutMana) -> bool
+	{
+		ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+		ACataclysmPlayerState* State =
+			Character ? Character->GetPlayerState<ACataclysmPlayerState>()
+					  : nullptr;
+		UCataclysmEquipmentComponent* Equipment =
+			Character ? Character->GetEquipment() : nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem =
+			State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (!State || !Equipment || !AbilitySystem)
+		{
+			AddError(TEXT("The spawned character is missing a component."));
+			return false;
+		}
+
+		// THE ALLOCATION ARRIVES AND THE STAT LINE IS WRITTEN AGAIN, which is
+		// what a character standing in the world does when a point is spent.
+		// `SetPassiveAllocation` re-runs the pipeline itself since issue #1054.
+		State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+		// AND THE POOLS ARE FILLED, because the conversion has to happen before
+		// they are and this is the only path that fills them. A character
+		// arriving in the world takes it; `LeaveAsTheyAre` is every other
+		// caller.
+		Equipment->RefreshAttributes(AbilitySystem,
+									 ECataclysmPoolFill::FillToMaximum);
+
+		OutMaxHealth =
+			AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		OutMaxMana =
+			AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute());
+		OutHealth =
+			AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		OutMana = AbilitySystem->GetNumericAttribute(Vital::GetManaAttribute());
+		return true;
+	};
+
+	float BareMaxHealth = 0.0f, BareMaxMana = 0.0f;
+	float BareHealth = 0.0f, BareMana = 0.0f;
+	if (!Stand(Undecided, BareMaxHealth, BareMaxMana, BareHealth, BareMana))
+	{
+		return false;
+	}
+
+	// THE CHARACTER HAS A MANA POOL TO TRADE. Without this the test would pass
+	// on a class line with no mana at all and prove nothing.
+	if (!TestTrue(*FString::Printf(
+					  TEXT("a Masochist with the option undecided has mana: %.1f"),
+					  BareMaxMana),
+				  BareMaxMana > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and stands on a full mana pool"), BareMana, BareMaxMana,
+			  FMath::Max(BareMaxMana * 0.001f, 0.01f));
+
+	float MaxHealth = 0.0f, MaxMana = 0.0f, Health = 0.0f, Mana = 0.0f;
+	if (!Stand(Taken, MaxHealth, MaxMana, Health, Mana))
+	{
+		return false;
+	}
+
+	// "YOU NO LONGER HAVE A MANA POOL."
+	TestEqual(TEXT("the mana maximum is gone"), MaxMana, 0.0f, 0.01f);
+	TestEqual(TEXT("and so is the mana that was in it"), Mana, 0.0f, 0.01f);
+
+	// "ALL MAXIMUM MANA IS CONVERTED INTO ADDED MAXIMUM HEALTH."
+	TestEqual(*FString::Printf(
+				  TEXT("maximum health grew from %.1f to %.1f, which is the "
+					   "%.1f mana that went away"),
+				  BareMaxHealth, MaxHealth, BareMaxMana),
+			  MaxHealth, BareMaxHealth + BareMaxMana,
+			  FMath::Max(MaxHealth * 0.001f, 0.01f));
+
+	// AND THE CHARACTER STANDS ON THE CONVERTED FIGURE. This is the assertion
+	// that catches the ordering: `UCataclysmVitalAttributeSet` clamps current
+	// health to maximum health, so a conversion done after the pools were filled
+	// would leave the character on the old maximum with a larger one above it.
+	TestEqual(TEXT("and it stands up full on the raised maximum"), Health,
+			  MaxHealth, FMath::Max(MaxHealth * 0.001f, 0.01f));
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

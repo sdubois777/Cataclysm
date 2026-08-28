@@ -306,7 +306,7 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * and no player reads either as a stat. What a player reads is the cost
 	 * on the skill and the bar itself.
 	 */
-	constexpr int32 OffSheetResourceStats = 15;
+	constexpr int32 OffSheetResourceStats = 16;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -349,6 +349,17 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// Thirteen since #1006 and #1008 added the flag for healing that does not
 	// remove Fervour and the Fervour that arrives every second; neither is a
 	// sheet stat either.
+	// SIXTEEN SINCE #1067 ADDED THE FLAG SAYING A CHARACTER HAS TRADED ITS
+	// MANA POOL FOR HEALTH, which is the Masochist's Water to Blood -- the
+	// first option of its first capstone. It is not a sheet stat for the
+	// reason its neighbours are not: no affix grants it, nothing scales it,
+	// it has no baseline of its own, and one capstone option supplies it.
+	//
+	// THE SHEET STAYS AT 46, AND THAT IS WHAT THE SECOND ASSERTION BELOW
+	// EXISTS FOR. Both numbers failed on the first run of this change, and
+	// the second one is a knock-on rather than a separate fault: it derives
+	// the sheet count by subtracting the off-sheet ones, so a new attribute
+	// that nobody declared off the sheet is counted as ON it.
 	// COUNTED RATHER THAN SPELLED, for the reason given above the combat set.
 	TestEqual(*FString::Printf(
 			  TEXT("The pool, its maximum, and %d stats off the sheet"),
