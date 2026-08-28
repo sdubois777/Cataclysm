@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the aura that puts a debuff on whatever stands near. Issue #1057.
 #include "AbilitySystem/CataclysmContagion.h"
+// For holding the debuffs on a character still. Issue #1070.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmLeech.h"
 // For the nova a character at very low health releases. Issue #1050.
 #include "AbilitySystem/CataclysmNova.h"
@@ -163,6 +165,26 @@ void ACataclysmCharacterBase::RegenerationStep()
 	//
 	// IT REFUSES A CORPSE ITSELF, the same as the nova and for the same reason.
 	UCataclysmContagion::AuraStep(this);
+
+	// AND THE DEBUFFS ON A CHARACTER MAY BE HELD STILL RATHER THAN COUNTING
+	// DOWN. Issue #1070. The Masochist's Ceaseless Penance reads "Debuffs on you
+	// no longer expire while you are above 50% health", and something has to
+	// keep pushing their end times out for as long as that stays true.
+	//
+	// AN EIGHTH JOB ON THIS STEP RATHER THAN A TIMER OF ITS OWN, for the reason
+	// every one above gives, and with one more of its own: the condition can
+	// stop being true between one step and the next, so what this needs is
+	// exactly a thing that runs often and asks again each time.
+	//
+	// IT IS PASSED THE LENGTH OF THE STEP, WHICH NOTHING ELSE HERE NEEDS IN THE
+	// SAME WAY. The others use it as a rate; this pushes each effect's end out
+	// by precisely the time that passed, so the time left on it does not move.
+	//
+	// IT REFUSES A CORPSE ITSELF, the same as the two above.
+	//
+	// ITS RETURN VALUE IS DROPPED. Zero is the answer for every character in the
+	// game without that capstone option, and it is returned for tests.
+	UCataclysmDebuffs::HoldStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

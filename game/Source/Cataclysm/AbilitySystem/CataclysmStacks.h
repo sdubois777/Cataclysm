@@ -96,6 +96,61 @@ public:
 	 */
 	static int32 CapFor(ECataclysmStackKind Kind);
 
+	//~ The stat names Carnivore grants, as `game/Data/PassiveEffects.csv`
+	//~ spells them. They are the keys
+	//~ `UCataclysmPlayerClassStats::StatToAttribute` is looked up by and the
+	//~ keys `StatForSkill` is asked with, so they exist once here rather than as
+	//~ literals at each use.
+
+	/** Whether taking a hit grants a stack of Carnage. Zero for no. #1071. */
+	static const TCHAR* CarnageFromDamageTakenStat;
+
+	/** Whether Carnage has no upper limit on this character. Zero for no. */
+	static const TCHAR* CarnageHasNoMaximumStat;
+
+	/**
+	 * The cap used for a character whose stacks have no maximum. Issue #1071.
+	 *
+	 * THE LARGEST INT32 RATHER THAN A SPECIAL CASE INSIDE `GrantStack`, and it
+	 * is worth saying why calling that "no maximum" is not a lie. A stack of
+	 * Carnage lasts 8 seconds and the whole count lapses when no new one arrives
+	 * inside that window, so reaching this number would need two billion hits to
+	 * land on one character in eight seconds. It is not a large limit; it is a
+	 * limit nothing in this game can approach.
+	 *
+	 * IT ALSO CANNOT OVERFLOW. `GrantStack` writes `Min(Standing + 1, Cap)` and
+	 * `Standing` can only arrive at this value by counting to it one at a time,
+	 * so the addition is never performed on the maximum.
+	 */
+	static constexpr int32 NoMaximum = MAX_int32;
+
+	/**
+	 * Whether taking a hit grants this character a stack of Carnage.
+	 * Issue #1071, the Masochist's Carnivore.
+	 *
+	 * False for every character without that capstone option, and false for any
+	 * ability system with no class resource attribute set, which is every enemy.
+	 */
+	static bool CarnageFromDamageTaken(
+		const UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The most stacks of a kind THIS character may hold. Issue #1071.
+	 *
+	 * `CapFor` ABOVE IS THE DESIGN'S NUMBER AND THIS IS THIS CHARACTER'S. The
+	 * two agree for everybody in the game except a Masochist holding Carnivore,
+	 * whose Carnage has no maximum.
+	 *
+	 * ASKED AT THE MOMENT A STACK IS GRANTED AND NOWHERE ELSE, because that is
+	 * where a cap is applied:
+	 * `UCataclysmAbilitySystemComponent::GrantStack` stores the capped count and
+	 * `Held` only reports what was stored. A character that loses the option
+	 * keeps whatever it was holding until the window lapses, which takes at most
+	 * the 8 seconds Carnage runs for.
+	 */
+	static int32 CapForOn(const UCataclysmAbilitySystemComponent* AbilitySystem,
+						  ECataclysmStackKind Kind);
+
 	/**
 	 * How much of the class resource Carnage needs the killer to be holding.
 	 *
@@ -126,7 +181,14 @@ public:
 	 * and no physical one; issue #1001 carries the question and the
 	 * recommendation this follows.
 	 *
-	 * @return whether a stack was granted
+	 * AND A STACK OF CARNAGE AS WELL, FOR A CHARACTER HOLDING CARNIVORE. Issue
+	 * #1071: "Every hit you take grants a stack of Carnage." Two kinds from one
+	 * event, which is the first time that has happened, and they stay two kinds:
+	 * they last different lengths of time and different nodes read each.
+	 *
+	 * @return whether a Bloodlust stack was granted, which is always. The
+	 *         Carnage stack is reported by `Held` rather than here, because a
+	 *         single yes or no could not say which of the two was meant.
 	 */
 	static bool NoteDamageTaken(UCataclysmAbilitySystemComponent* AbilitySystem);
 

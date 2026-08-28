@@ -664,8 +664,34 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	//
 	// ZERO FOR A CHARACTER WITHOUT THE NODE, so `Immediate` is the whole cost
 	// and nothing below this line behaves differently for anybody else.
-	const float Deferred = UCataclysmHealthDebt::AmountDeferred(
+	const float DeferredByShare = UCataclysmHealthDebt::AmountDeferred(
 		Cost, UCataclysmHealthDebt::DeferredSharePercent(AbilitySystem));
+
+	// AND WHAT IS LEFT MAY BE MORE THAN THE CHARACTER CAN PAY, IN WHICH CASE
+	// THE REST IS OWED RATHER THAN FATAL. Issue #1069. The Masochist's Rock
+	// Bottom reads "A health cost can never reduce you below 1 health; anything
+	// you cannot pay becomes health debt instead."
+	//
+	// A DIFFERENT THING FROM THE DEFERRED SHARE ABOVE, though both end up as
+	// debt. That share is decided BEFORE the charge, as a percentage the node
+	// states; this is whatever is left over AFTER it, which depends on how much
+	// health the character has at this instant. A character can have both.
+	//
+	// AGAINST THE SAME FLOOR THE SKILL'S OWN SHARE ALREADY OBEYS, which is what
+	// makes the option's first clause true of the WHOLE cost rather than of
+	// half of it. `FromCurrent` above is already floored; `Added` is not, and
+	// the design allows it to kill a character who does not hold this option.
+	//
+	// ZERO FOR EVERY CHARACTER WITHOUT THE OPTION, and zero for one holding it
+	// that can afford the charge, which is the ordinary case.
+	const float Unpayable =
+		UCataclysmHealthDebt::UnpayableBecomesDebt(AbilitySystem)
+			? UCataclysmHealthDebt::AmountUnpayable(
+				  Cost - DeferredByShare, Current,
+				  LeastHealthAfterCurrentHealthCost)
+			: 0.0f;
+
+	const float Deferred = DeferredByShare + Unpayable;
 	const float Immediate = Cost - Deferred;
 
 	if (Cost > 0.0f)

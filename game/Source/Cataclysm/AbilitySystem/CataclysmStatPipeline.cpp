@@ -76,6 +76,19 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// bonus to the character sheet and to every caller with no character.
 		return State.HealthPercent >= 0.0f && State.HealthPercent < Value;
 
+	case ECataclysmStatCondition::HealthAbovePercent:
+		// STRICTLY ABOVE, AND THE ONLY HEALTH PREDICATE THAT POINTS UPWARDS.
+		// Issue #1070. Ceaseless Penance reads "while you are above 50% health",
+		// so a character sitting exactly on half health is not above it and its
+		// debuffs expire normally.
+		//
+		// AN UNKNOWN STATE REFUSES, and the guard is written out rather than
+		// left to the comparison. An unknown health reads -1, which is not above
+		// any threshold, so the second half alone would already answer no -- by
+		// accident. The character sheet has to be refused on purpose, the same
+		// way the two predicates above refuse it.
+		return State.HealthPercent >= 0.0f && State.HealthPercent > Value;
+
 	case ECataclysmStatCondition::WithinSecondsOfHealthCost:
 		// A NEGATIVE READING IS "NEVER PAID ONE, OR NOT KNOWN", and both answer
 		// no, so they do not have to be told apart. Issue #962.
@@ -381,8 +394,16 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// endpoints mean the opposite of the other predicate's, which changes
 	// nothing about the bound: 0 means "never", because nothing is strictly
 	// below no health, and 100 means "always except at full health".
+	//
+	// ALL THREE, SINCE ISSUE #1070, and the third one is the reason to say this
+	// out loud rather than to leave the list to be read. `HealthAbovePercent`
+	// points the other way, and a threshold of 150 on it would be a modifier
+	// that never applies -- the same silent failure, arrived at from the
+	// opposite side. A bound written as a list is a bound somebody has to
+	// remember to extend.
 	if ((Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
-		 || Modifier.Condition == ECataclysmStatCondition::HealthBelowPercent)
+		 || Modifier.Condition == ECataclysmStatCondition::HealthBelowPercent
+		 || Modifier.Condition == ECataclysmStatCondition::HealthAbovePercent)
 		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
 	{
 		return FString::Printf(

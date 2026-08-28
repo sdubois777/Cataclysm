@@ -88,6 +88,9 @@ public:
 	/** How much Fervour each skill cast grants. Issue #1051. */
 	static const TCHAR* PerCastStat;
 
+	/** How much Fervour dropping to low health grants. Issue #1069. */
+	static const TCHAR* OnDroppingLowStat;
+
 	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
@@ -174,6 +177,29 @@ public:
 	 *         resource set
 	 */
 	static float GainForCast(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Add the Fervour this character gains from its health dropping low.
+	 * Issue #1069.
+	 *
+	 * THE MASOCHIST'S Rock Bottom, the first option of The Second Vow:
+	 * "Dropping below 20% health clears all outstanding debt and grants 50
+	 * Fervour, no more than once every 30 seconds."
+	 *
+	 * A THIRD FUNCTION THAT ADDS A PLAIN COUNT, beside `GainPerSecondStep` and
+	 * `GainForCast`, and the three differ in what counts them. The first is a
+	 * RATE multiplied by the length of a step. The second is granted once per
+	 * cast. This is granted once per crossing, and a crossing is neither.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE CROSSING HAPPENED.
+	 * `UCataclysmLowHealthRelief` owns the threshold and the cooldown and is
+	 * the only caller. This is the write to the pool, which happens in this
+	 * file for every route, so there is one place that clamps it.
+	 *
+	 * @return how much Fervour was really added, which is zero for a character
+	 *         with no such option, for a full bar, and for no class resource set
+	 */
+	static float GainOnDroppingLow(UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

@@ -252,4 +252,68 @@ public:
 	 */
 	static float DurationOn(const UAbilitySystemComponent* Defender,
 							float DurationSeconds);
+
+	/**
+	 * The stat saying the debuffs on this character stop counting down at all,
+	 * as `game/Data/PassiveEffects.csv` spells it. Zero for no. Issue #1070.
+	 */
+	static const TCHAR* DoNotExpireStat;
+
+	/**
+	 * Whether the debuffs on this character are being held right now.
+	 * Issue #1070.
+	 *
+	 * ASKED THROUGH THE STAT PIPELINE AND NEVER READ OFF THE ATTRIBUTE, and
+	 * here that is load-bearing rather than a precaution. Ceaseless Penance's
+	 * row carries `health_above 50`, and a conditional bonus is never folded
+	 * into a gameplay attribute, so a plain read would answer zero for ever and
+	 * the option would do nothing with nothing at run time reporting it.
+	 *
+	 * NOTHING HERE READS HEALTH. The health threshold is the CONDITION on the
+	 * row, which the pipeline judges against the character's state when it is
+	 * asked. That is why "above 50%" appears in this file nowhere: it is data.
+	 *
+	 * False for every character without that capstone option, false for one
+	 * holding it that is at or below half health, and false for any ability
+	 * system this project did not make.
+	 */
+	static bool DoNotExpireOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Hold the debuffs on this character still for one step of the clock.
+	 * Issue #1070, the Masochist's Ceaseless Penance: "Debuffs on you no longer
+	 * expire while you are above 50% health."
+	 *
+	 * WHAT IT DOES TO AN EFFECT. Each debuff's start time is pushed forward by
+	 * exactly the time that just passed, so the time left on it does not move. A
+	 * 20 second bleed applied at 60% health still has 20 seconds left a minute
+	 * later, and dropping below half resumes it from 20.
+	 *
+	 * PUSHED RATHER THAN RE-APPLIED, which the project owner chose on
+	 * 2026-08-28 and which `docs/DECISIONS.md` records. Re-applying resets a
+	 * damage over time effect's TICK clock as well as its duration, so with a
+	 * quarter second step and a one second tick every burn and bleed on the
+	 * character would deal no damage at all while it was being held. It would
+	 * also hand the character a full fresh duration of everything it carries at
+	 * the instant it fell below half, rather than what was left.
+	 *
+	 * THE ENGINE CALL IS `ModifyActiveEffectStartTime`, and this is the only
+	 * place in the project that changes an active effect's remaining time. It
+	 * moves the start, re-arms the expiry, and leaves the tick period alone,
+	 * which is why a held burn keeps hurting at its normal rate.
+	 *
+	 * ONLY WHAT `DebuffRoots` NAMES. A buff on the character counts down as
+	 * usual, because the option says debuffs. The query matches a root against
+	 * its children, so `Keyword.DoT.Bleed` is held by naming `Keyword.DoT`, the
+	 * same parent rule `TagsOn` deliberately avoids and this one wants.
+	 *
+	 * A CORPSE IS SKIPPED, the same guard every job on the per-character step
+	 * opens with: a creature is destroyed on the step after it dies, so there is
+	 * a real window in which a dead one still has an ability system.
+	 *
+	 * @param StepSeconds how long the step that just passed was
+	 * @return how many effects were held, which is zero for every character in
+	 *         the game without the option and for one carrying no debuffs
+	 */
+	static int32 HoldStep(AActor* Character, float StepSeconds);
 };

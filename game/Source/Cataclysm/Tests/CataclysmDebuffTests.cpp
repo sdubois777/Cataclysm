@@ -140,6 +140,69 @@ namespace CataclysmDebuffTest
 
 		bool IsBleeding() const { return Debuffs::IsBleeding(AbilitySystem); }
 
+		/**
+		 * How long the effect granting this tag has left to run. Issue #1070.
+		 *
+		 * REMAINING RATHER THAN THE WHOLE DURATION, which `LongestEffect` above
+		 * answers. Holding a debuff still does not change how long it was ever
+		 * meant to last; it changes how much of that is left.
+		 *
+		 * THE CLOCK DOES NOT MOVE IN THIS WORLD, so the remaining time reads as
+		 * the whole duration until something pushes the effect's start out. That
+		 * is what makes the checks below able to fail: with the hold deleted the
+		 * number does not move at all.
+		 */
+		float RemainingOn(const FGameplayTag& Tag) const
+		{
+			FGameplayTagContainer Wanted;
+			Wanted.AddTag(Tag);
+
+			float Longest = 0.0f;
+			for (float Seconds : AbilitySystem->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Wanted)))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+			return Longest;
+		}
+
+		/**
+		 * Take Ceaseless Penance: record the stat line its row produces.
+		 * Issue #1070.
+		 *
+		 * A RECORDED STAT LINE AND NOT A WRITE TO THE ATTRIBUTE, and that is
+		 * forced rather than a preference. The row carries `health_above 50`,
+		 * and a conditional modifier is never folded into a gameplay attribute,
+		 * so writing the attribute would exercise a route the game does not
+		 * have. This is the shape `UCataclysmPassiveTree::AccumulateInto`
+		 * really builds from that row.
+		 */
+		void TakeCeaselessPenance() const
+		{
+			FCataclysmStatModifier Flag;
+			Flag.Bucket = ECataclysmStatBucket::Flat;
+			Flag.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flag.Value = 1.0f;
+			Flag.Condition = ECataclysmStatCondition::HealthAbovePercent;
+			Flag.ConditionValue = 50.0f;
+
+			FCataclysmStatInputs Inputs;
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers.Add(Flag);
+
+			TMap<FName, FCataclysmStatInputs> Stats;
+			Stats.Add(FName(Debuffs::DoNotExpireStat), Inputs);
+			AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		}
+
+		/** Put health at this share of the thousand the carrier starts with. */
+		void MoveHealthTo(float Share) const
+		{
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				1'000.0f * Share);
+		}
+
 		AActor* Actor = nullptr;
 		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
 	};
@@ -537,6 +600,186 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffBothApplyPathsTest,
 									 10.0f));
 	TestEqual(TEXT("runs for the ten seconds it was sent for"),
 		Untouched.LongestEffect(), 10.0f, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Ceaseless Penance: debuffs that stop counting down
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldTest,
+	"Cataclysm.Debuffs.CeaselessPenanceHoldsADebuffStillAboveHalfHealth")
+{
+	using namespace CataclysmDebuffTest;
+
+	// ISSUE #1070: "Debuffs on you no longer expire while you are above 50%
+	// health." The reading the project owner chose on 2026-08-28 is that the
+	// countdown stops rather than that the effect is re-applied, so what is
+	// checked here is the time REMAINING standing still.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Character(World);
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	constexpr float Step = 0.25f;
+
+	TestTrue(TEXT("a thirty second bleed can be attached"),
+		Character.Attach(Bleed, 30.0f));
+	TestEqual(TEXT("and it has thirty seconds left"),
+		Character.RemainingOn(Bleed), 30.0f, 0.01f);
+
+	// WITHOUT THE OPTION NOTHING IS HELD, AND THAT HALF COMES FIRST. A hold
+	// applied to every character in the game would pass every check below, so
+	// this is what says the rest is the option's doing.
+	TestEqual(TEXT("a character without the option holds nothing"),
+		Debuffs::HoldStep(Character.Actor, Step), 0);
+	TestEqual(TEXT("and its bleed still has thirty seconds left"),
+		Character.RemainingOn(Bleed), 30.0f, 0.01f);
+
+	// AND WITH IT, ABOVE HALF HEALTH, THE TIME LEFT STOPS MOVING. The carrier
+	// is at full health, so the row's `health_above 50` condition holds.
+	Character.TakeCeaselessPenance();
+
+	TestEqual(TEXT("one debuff is held"),
+		Debuffs::HoldStep(Character.Actor, Step), 1);
+	TestEqual(TEXT("and its end moved out by exactly the step"),
+		Character.RemainingOn(Bleed), 30.0f + Step, 0.01f);
+
+	// FOUR MORE STEPS ARE FOUR MORE QUARTER SECONDS, which is what says this
+	// accumulates rather than being a single one-off push.
+	for (int32 Held = 0; Held < 4; ++Held)
+	{
+		Debuffs::HoldStep(Character.Actor, Step);
+	}
+	TestEqual(TEXT("five steps moved it out by five quarter seconds"),
+		Character.RemainingOn(Bleed), 30.0f + 5.0f * Step, 0.01f);
+
+	// AND THE WHOLE DURATION IS UNTOUCHED, which is what separates this reading
+	// from the one that re-applies the effect. A re-application would show a
+	// duration of thirty and a remaining time of thirty; this shows a duration
+	// of thirty and a remaining time above it.
+	TestEqual(TEXT("the effect still says it lasts thirty seconds"),
+		Character.LongestEffect(), 30.0f, 0.01f);
+
+	// AND AT OR BELOW HALF HEALTH THE HOLD STOPS. Nothing was respecced and no
+	// stat was written: health moved and that is all, which is what a condition
+	// on the row means.
+	const float BeforeFalling = Character.RemainingOn(Bleed);
+	Character.MoveHealthTo(0.5f);
+
+	TestEqual(TEXT("at exactly half health nothing is held"),
+		Debuffs::HoldStep(Character.Actor, Step), 0);
+	TestEqual(TEXT("and the time left did not move"),
+		Character.RemainingOn(Bleed), BeforeFalling, 0.01f);
+
+	// AND HEALING BACK ABOVE IT STARTS AGAIN, which says the rule is a state
+	// rather than a crossing that happens once.
+	Character.MoveHealthTo(0.51f);
+	TestEqual(TEXT("just above half health it is held again"),
+		Debuffs::HoldStep(Character.Actor, Step), 1);
+	TestEqual(TEXT("and the time left moved again"),
+		Character.RemainingOn(Bleed), BeforeFalling + Step, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldLeavesOtherEffectsTest,
+	"Cataclysm.Debuffs.HoldingDebuffsStillLeavesAnythingElseCountingDown")
+{
+	using namespace CataclysmDebuffTest;
+
+	// THE HALF THAT SAYS WHAT IS NOT HELD. Issue #1070. The option says
+	// "debuffs on you", so an effect that is not one has to go on counting down.
+	// Without this a build that pushed every active effect on the character
+	// would pass the test above, and a Masochist's own buffs would never end.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Character(World);
+	Character.TakeCeaselessPenance();
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	// `Keyword.Leech` IS ATTACHED TO HEALING BY THE FERVOUR RULES and is in no
+	// debuff branch, which is what the counting test above already relies on.
+	const FGameplayTag Helpful = TagNamed(TEXT("Keyword.Leech"));
+	if (!TestTrue(TEXT("the vocabulary has both tags"),
+				  Bleed.IsValid() && Helpful.IsValid()))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("a bleed can be attached"), Character.Attach(Bleed, 30.0f));
+	TestTrue(TEXT("and something helpful beside it"),
+		Character.Attach(Helpful, 30.0f));
+
+	TestEqual(TEXT("one of the two is a debuff and is held"),
+		Debuffs::HoldStep(Character.Actor, 0.25f), 1);
+
+	TestEqual(TEXT("the bleed's end moved out"),
+		Character.RemainingOn(Bleed), 30.25f, 0.01f);
+	TestEqual(TEXT("and the helpful effect's did not"),
+		Character.RemainingOn(Helpful), 30.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldRefusalsTest,
+	"Cataclysm.Debuffs.NothingIsHeldForACorpseOrForNoTimePassing")
+{
+	using namespace CataclysmDebuffTest;
+
+	// THE TWO REFUSALS `HoldStep` OPENS WITH. Issue #1070. Neither is reachable
+	// from the per-character step in ordinary play, and both are the kind of
+	// guard that reads as working while doing nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Character(World);
+	Character.TakeCeaselessPenance();
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a bleed can be attached"), Character.Attach(Bleed, 30.0f));
+
+	// A STEP OF NO TIME HOLDS NOTHING. A negative one would push every effect's
+	// start BACKWARDS, which would make the option shorten debuffs instead of
+	// stopping them.
+	TestEqual(TEXT("a step of nothing holds nothing"),
+		Debuffs::HoldStep(Character.Actor, 0.0f), 0);
+	TestEqual(TEXT("a negative step holds nothing"),
+		Debuffs::HoldStep(Character.Actor, -1.0f), 0);
+	TestEqual(TEXT("and the time left is untouched by either"),
+		Character.RemainingOn(Bleed), 30.0f, 0.01f);
+
+	// AND NOTHING AT ALL IS NOT A CHARACTER.
+	TestEqual(TEXT("no actor holds nothing"),
+		Debuffs::HoldStep(nullptr, 0.25f), 0);
+
+	// AND A CORPSE IS SKIPPED. A creature is destroyed on the step AFTER it
+	// dies, so the per-character step really does run once on a dead one.
+	UCataclysmSkillEffects::MarkDead(Character.Actor);
+	TestEqual(TEXT("a dead character holds nothing"),
+		Debuffs::HoldStep(Character.Actor, 0.25f), 0);
+	TestEqual(TEXT("and its debuff's time left did not move"),
+		Character.RemainingOn(Bleed), 30.0f, 0.01f);
 
 	return true;
 }

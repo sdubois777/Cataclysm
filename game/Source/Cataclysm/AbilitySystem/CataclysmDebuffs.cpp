@@ -7,11 +7,21 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the attribute the duration stat is folded into. Issue #1033.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For refusing a corpse, which `HoldStep` does. Issue #1070.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+// For FGameplayEffectQuery, which is how the debuffs running on a character are
+// found. Issue #1070.
+#include "GameplayEffect.h"
 #include "GameplayTagsManager.h"
 
 const TCHAR* UCataclysmDebuffs::DurationStat = TEXT("debuff_duration_taken");
+
+// WHAT CEASELESS PENANCE GRANTS. Issue #1070: "Debuffs on you no longer expire
+// while you are above 50% health."
+const TCHAR* UCataclysmDebuffs::DoNotExpireStat = TEXT("debuffs_do_not_expire");
 
 // WHAT WOUND CHANNELING'S SECOND CLAUSE GRANTS. Issue #1061: "you deal 1%
 // increased damage per point to enemies carrying a debuff you also carry."
@@ -233,4 +243,96 @@ float UCataclysmDebuffs::DurationOn(const UAbilitySystemComponent* Defender,
 	// `ApplyTagForDuration` refuse the effect outright and read as immunity.
 	// Nothing today reduces this stat: both rows raise it.
 	return DurationSeconds * FMath::Max(0.0f, Percent) / NormalDuration;
+}
+
+bool UCataclysmDebuffs::DoNotExpireOn(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Asking)
+	{
+		return false;
+	}
+
+	// A FALLBACK OF ZERO AND NOT THE ATTRIBUTE, WHICH IS THE OPPOSITE OF WHAT
+	// `DurationOn` ABOVE PASSES, and the difference is the condition. That stat
+	// has a real base of 100 that every character carries, so its attribute
+	// holds the right answer when no stat line has been recorded. This one is
+	// granted only by a row carrying `health_above`, which is never folded into
+	// an attribute, so the attribute is zero for everybody at all times and
+	// passing it would say nothing. Zero is the honest fallback: an ability
+	// system with no stat line does not hold the option.
+	//
+	// NO SKILL TAGS. This is about the character rather than about anything it
+	// is casting, the same argument `DurationOn` makes.
+	return Asking->StatForSkill(FName(DoNotExpireStat), FGameplayTagContainer(),
+								0.0f) > 0.0f;
+}
+
+int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
+{
+	// A STEP OF NO TIME HOLDS NOTHING, rather than pushing every effect's start
+	// backwards on a negative one, which would make them expire sooner.
+	if (StepSeconds <= 0.0f)
+	{
+		return 0;
+	}
+
+	// A CORPSE IS SKIPPED, for the reason `UCataclysmHealthDebt::SettleIfDue`
+	// gives: a creature is destroyed on the step AFTER it dies, so there is a
+	// real window in which a dead one still stands there with an ability system
+	// and a burn on it.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem || !DoNotExpireOn(AbilitySystem))
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THAT CAPSTONE OPTION, and every
+		// character holding it that is not above half health. Asked before the
+		// effects are gathered, because gathering them is the expensive half.
+		return 0;
+	}
+
+	const FGameplayTagContainer Roots = DebuffRoots();
+	if (Roots.IsEmpty())
+	{
+		// THE VOCABULARY HAS LOST EVERY ROOT, which `DebuffRoots` allows rather
+		// than failing to start the game. An empty container would match every
+		// effect on the character, buffs included, so it is refused here.
+		return 0;
+	}
+
+	// MATCHED AGAINST THE TAGS THE EFFECT GRANTS. Every lasting effect this
+	// project applies attaches its tag through a
+	// `UTargetTagsGameplayEffectComponent`, and an owning-tags query compares
+	// against exactly those. The match honours parents, so naming `Keyword.DoT`
+	// finds a bleed and a burn without listing either.
+	const FGameplayEffectQuery Query =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots);
+
+	int32 Held = 0;
+	for (const FActiveGameplayEffectHandle& Handle :
+		 AbilitySystem->GetActiveEffects(Query))
+	{
+		// PUSHED FORWARD BY EXACTLY THE STEP, which is what makes the time
+		// remaining stand still rather than grow. The engine adds this to the
+		// effect's start time and re-arms its expiry.
+		AbilitySystem->ModifyActiveEffectStartTime(Handle, StepSeconds);
+		++Held;
+	}
+
+	if (Held > 0)
+	{
+		UE_LOG(LogCataclysm, VeryVerbose,
+			   TEXT("%s held %d debuff(s) still for %.2f seconds."),
+			   *GetNameSafe(Character), Held, StepSeconds);
+	}
+
+	return Held;
 }

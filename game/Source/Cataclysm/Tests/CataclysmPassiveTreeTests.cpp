@@ -1000,6 +1000,13 @@ namespace CataclysmPassiveEffectTest
 			// the only one where the value column could be carried across and
 			// compared against with nothing reporting it.
 			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0\r\n"
+			// AND A THRESHOLD THAT POINTS UPWARDS. Issue #1070. Ceaseless
+			// Penance is the only node in the game asking whether health is
+			// still HIGH, and the failure if the name goes unrecognised is the
+			// worst of the three: the row is left UNCONDITIONAL, so the option
+			// would hold a character's debuffs still at every health rather
+			// than only above half.
+			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
 			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0\r\n"
 			// A CAPSTONE'S THREE OPTIONS, ONE ROW EACH. Issue #1029. Only the
@@ -1395,6 +1402,27 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 				  (*Evasion)[0].ConditionValue, 0.0f);
 		TestTrue(TEXT("and it is not left unconditional"),
 				 (*Evasion)[0].Condition != ECataclysmStatCondition::Always);
+	}
+
+	// AND A THRESHOLD THAT POINTS UPWARDS MAKES THE TRIP. Issue #1070. The same
+	// node carries `health_above` with 50, which is the shape Ceaseless Penance
+	// uses and the only node in the game that asks whether health is still
+	// high. An unrecognised name is left unconditional, which for that option
+	// would hold a character's debuffs still at every health rather than above
+	// half -- silently, and in the player's favour.
+	const TArray<FCataclysmStatModifier>* Block =
+		Modifiers.Find(FName(TEXT("block_chance")));
+	if (TestNotNull(TEXT("the node also granted block chance"), Block)
+		&& TestEqual(TEXT("exactly one of it"), Block->Num(), 1))
+	{
+		TestEqual(TEXT("and it carries the upward health condition"),
+				  static_cast<int32>((*Block)[0].Condition),
+				  static_cast<int32>(
+					  ECataclysmStatCondition::HealthAbovePercent));
+		TestEqual(TEXT("at the threshold the table states"),
+				  (*Block)[0].ConditionValue, 50.0f);
+		TestTrue(TEXT("and it is not left unconditional"),
+				 (*Block)[0].Condition != ECataclysmStatCondition::Always);
 	}
 
 	// AND A ROW WITH NO CONDITION IS UNCONDITIONAL, which is every other row in

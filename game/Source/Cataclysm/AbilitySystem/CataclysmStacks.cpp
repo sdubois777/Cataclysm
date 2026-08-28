@@ -45,6 +45,66 @@ int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
 	return 0;
 }
 
+const TCHAR* UCataclysmStacks::CarnageFromDamageTakenStat =
+	TEXT("carnage_from_damage_taken");
+
+const TCHAR* UCataclysmStacks::CarnageHasNoMaximumStat =
+	TEXT("carnage_has_no_maximum");
+
+bool UCataclysmStacks::CarnageFromDamageTaken(
+	const UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Flag = UCataclysmClassResourceAttributeSet
+		::GetCarnageFromDamageTakenAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		// NO CLASS RESOURCE SET MEANS NO CAPSTONE OPTION, which is every enemy
+		// in the game, and every enemy goes through the same damage path.
+		return false;
+	}
+
+	// ASKED FOR RATHER THAN READ, the standing rule for anything a later node
+	// might put a condition on. Carnivore's row carries none today, so the
+	// attribute is the right fallback and both routes agree.
+	return AbilitySystem->StatForSkill(FName(CarnageFromDamageTakenStat),
+									   FGameplayTagContainer(),
+									   AbilitySystem->GetNumericAttribute(Flag))
+		> 0.0f;
+}
+
+int32 UCataclysmStacks::CapForOn(
+	const UCataclysmAbilitySystemComponent* AbilitySystem,
+	ECataclysmStackKind Kind)
+{
+	// EVERY KIND BUT CARNAGE, AND EVERY CHARACTER BUT ONE, TAKES THE DESIGN'S
+	// NUMBER. Issue #1071. Carnivore is the only thing in the game that lifts a
+	// cap at all, and it lifts only Carnage's.
+	if (Kind != ECataclysmStackKind::Carnage || !AbilitySystem)
+	{
+		return CapFor(Kind);
+	}
+
+	const FGameplayAttribute Flag = UCataclysmClassResourceAttributeSet
+		::GetCarnageHasNoMaximumAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return CapFor(Kind);
+	}
+
+	// ASKED FOR RATHER THAN READ, for the reason the flag above gives.
+	const bool bNoMaximum =
+		AbilitySystem->StatForSkill(FName(CarnageHasNoMaximumStat),
+									FGameplayTagContainer(),
+									AbilitySystem->GetNumericAttribute(Flag))
+		> 0.0f;
+	return bNoMaximum ? NoMaximum : CapFor(Kind);
+}
+
 const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 {
 	switch (Kind)
@@ -109,6 +169,30 @@ bool UCataclysmStacks::NoteDamageTaken(
 		ECataclysmStackKind::Bloodlust,
 		WindowSecondsFor(ECataclysmStackKind::Bloodlust),
 		CapFor(ECataclysmStackKind::Bloodlust));
+
+	// AND A STACK OF CARNAGE TOO, FOR A CHARACTER HOLDING CARNIVORE. Issue
+	// #1071: "Every hit you take grants a stack of Carnage." Nothing happens
+	// here for anybody else, which is every character in the game.
+	//
+	// A SECOND KIND FROM ONE EVENT AND NOT A REPLACEMENT FOR THE FIRST. The two
+	// stay separate because they are separate: Bloodlust lasts 5 seconds and
+	// Carnage 8, and different nodes read each. A character holding Carnivore
+	// and Blood Offering earns both from the same blow.
+	//
+	// THROUGH `CapForOn` AND NOT `CapFor`, which is the option's second clause
+	// doing its work: Carnage has no maximum for this character.
+	if (CarnageFromDamageTaken(AbilitySystem))
+	{
+		AbilitySystem->GrantStack(
+			ECataclysmStackKind::Carnage,
+			WindowSecondsFor(ECataclysmStackKind::Carnage),
+			CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
+
+		UE_LOG(LogCataclysm, Verbose,
+			   TEXT("A hit taken granted a Carnage stack, now %d."),
+			   Held(AbilitySystem, ECataclysmStackKind::Carnage));
+	}
+
 	return true;
 }
 
@@ -145,10 +229,14 @@ bool UCataclysmStacks::NoteEnemyKilled(AActor* Killer)
 		return false;
 	}
 
+	// THROUGH `CapForOn` AND NOT `CapFor`, since issue #1071. Carnivore says
+	// Carnage has no maximum, and it says so about the stack rather than about
+	// one way of earning it, so a kill-granted stack has to obey the same
+	// answer a hit-granted one does.
 	AbilitySystem->GrantStack(
 		ECataclysmStackKind::Carnage,
 		WindowSecondsFor(ECataclysmStackKind::Carnage),
-		CapFor(ECataclysmStackKind::Carnage));
+		CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
 
 	UE_LOG(LogCataclysm, Verbose,
 		   TEXT("%s gained a Carnage stack for a kill, now %d."),

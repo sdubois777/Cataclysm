@@ -28,6 +28,10 @@
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For the two flags Rock Bottom grants, and the two Carnivore grants.
+// Issues #1069 and #1071.
+#include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
@@ -340,6 +344,28 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("damage_to_bleeding_window"),
 			 Resource::GetDamageToBleedingWindowAttribute()},
 
+			// AND ALL THREE OF ROCK BOTTOM'S. Issue #1069. Zero for every
+			// class, and the first option of the Masochist's third capstone is
+			// the only source of any of them. Neither of the two flags is asked
+			// for through the pipeline by a route that would work without an
+			// entry here: `ApplyTo` loops over THIS map, and a stat missing
+			// from it is dropped before `StatForSkill` could ever be asked.
+			{FString(UCataclysmHealthDebt::UnpayableBecomesDebtStat),
+			 Resource::GetUnpayableHealthCostBecomesDebtAttribute()},
+			{FString(UCataclysmHealthDebt::ClearedOnDroppingLowStat),
+			 Resource::GetDebtClearedOnDroppingLowAttribute()},
+			{FString(UCataclysmFervour::OnDroppingLowStat),
+			 Resource::GetFervourOnDroppingLowAttribute()},
+
+			// AND BOTH OF CARNIVORE'S. Issue #1071. Zero for every class, and
+			// the second option of the Masochist's fourth capstone is the only
+			// source of either. One says a hit taken grants a stack of Carnage
+			// and the other says Carnage has no maximum.
+			{FString(UCataclysmStacks::CarnageFromDamageTakenStat),
+			 Resource::GetCarnageFromDamageTakenAttribute()},
+			{FString(UCataclysmStacks::CarnageHasNoMaximumStat),
+			 Resource::GetCarnageHasNoMaximumAttribute()},
+
 			// What keeps a hit from landing in full.
 			{TEXT("armor"), Combat::GetArmorAttribute()},
 
@@ -420,6 +446,16 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// missing from it is dropped before it reaches a character.
 			{FString(UCataclysmDebuffs::DurationStat),
 			 Combat::GetDebuffDurationTakenAttribute()},
+
+			// AND WHETHER THEY STOP COUNTING DOWN AT ALL. Issue #1070. Zero for
+			// every class, and the third option of the Masochist's third
+			// capstone is its only source. The attribute stays zero even for a
+			// character holding that option, because its row carries a health
+			// condition; the entry is still needed, because `ApplyTo` loops
+			// over this map and a stat missing from it never reaches the
+			// character's recorded stat line for `StatForSkill` to find.
+			{FString(UCataclysmDebuffs::DoNotExpireStat),
+			 Combat::GetDebuffsDoNotExpireAttribute()},
 
 			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
 			// THEM. The three resistance families in game/Data/Affixes.csv are

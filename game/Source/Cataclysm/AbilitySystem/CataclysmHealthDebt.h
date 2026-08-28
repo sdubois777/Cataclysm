@@ -72,6 +72,15 @@ public:
 	static const TCHAR* ClearedOnlyByAKillStat;
 
 	/**
+	 * Whether the part of a cost this character cannot pay becomes debt instead
+	 * of emptying its health. Zero for no. Issue #1069.
+	 */
+	static const TCHAR* UnpayableBecomesDebtStat;
+
+	/** Whether dropping to low health clears what is owed. Zero for no. #1069. */
+	static const TCHAR* ClearedOnDroppingLowStat;
+
+	/**
 	 * How long a deferred cost waits before it falls due.
 	 *
 	 * THREE SECONDS, WHICH THE DESIGN STATES OUTRIGHT. Deferred Payment: "It is
@@ -210,4 +219,64 @@ public:
 	 * @return whether it killed the character
 	 */
 	static bool KillIfDebtExceedsHealth(AActor* Character);
+
+	/**
+	 * Whether a cost this character cannot afford becomes debt rather than
+	 * emptying its health. Issue #1069, the Masochist's Rock Bottom: "A health
+	 * cost can never reduce you below 1 health; anything you cannot pay becomes
+	 * health debt instead."
+	 *
+	 * False for every character without that capstone option, and false for any
+	 * ability system with no class resource attribute set, which is every enemy.
+	 * The same two answers `DeferredSharePercent` gives and for the same
+	 * reasons.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Health Debt")
+	static bool UnpayableBecomesDebt(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * How much of a charge this character cannot pay without going past the
+	 * floor. Issue #1069.
+	 *
+	 * PURE ARITHMETIC AND NO ABILITY SYSTEM, like `AmountDeferred` above, so
+	 * every case can be checked by passing numbers in.
+	 *
+	 *     unpayable = charge - what is above the floor
+	 *
+	 * ANSWERS ZERO FOR A CHARGE THE CHARACTER CAN AFFORD, which is the ordinary
+	 * case even for a character holding the option: most costs are a small
+	 * share of health.
+	 *
+	 * AND ANSWERS THE WHOLE CHARGE FOR A CHARACTER ALREADY AT OR BELOW THE
+	 * FLOOR. There is nothing above the floor to take, so all of it is owed.
+	 * That is reachable: a character sitting on exactly 1 health has paid down
+	 * to the floor already.
+	 *
+	 * @param Charge          what is about to be taken off health
+	 * @param CurrentHealth   what the character has now
+	 * @param LeastHealthLeft the floor the charge may not take health past
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Health Debt")
+	static float AmountUnpayable(float Charge, float CurrentHealth,
+								 float LeastHealthLeft);
+
+	/**
+	 * Clear what this character owes, because its health has just dropped low.
+	 * Issue #1069.
+	 *
+	 * THE SECOND SENTENCE OF Rock Bottom: "Dropping below 20% health clears all
+	 * outstanding debt and grants 50 Fervour, no more than once every 30
+	 * seconds." `UCataclysmLowHealthRelief` owns the threshold and the
+	 * cooldown and is the only caller; this is only the clearing.
+	 *
+	 * A THIRD WAY A DEBT ENDS, beside settling and a kill, and the three are
+	 * separate on purpose. This one is not `ClearOnKill` with a different
+	 * trigger: that one fires only for a character carrying The Reckoning,
+	 * whose debt never falls due at all, and this one clears an ORDINARY debt
+	 * that would otherwise be taken.
+	 *
+	 * @return how much was cleared, which is zero for a character without the
+	 *         option and zero for one that owed nothing
+	 */
+	static float ClearOnDroppingLow(AActor* Character);
 };

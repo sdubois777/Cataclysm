@@ -350,7 +350,21 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
 #: OPTION of the first Masochist capstone, saying the character has traded
 #: its mana pool for health.
-AUTHORED_ROWS = 122
+#:
+#: AND TO 130 ON 2026-08-28, FOR THE LAST THREE CAPSTONE OPTIONS THAT GRANTED
+#: NOTHING. Issues #1069, #1070 and #1071. Eight rows, one per clause:
+#:
+#:   Rock Bottom         3   a flag saying an unpayable health cost becomes
+#:                           debt instead of killing, a flag saying a drop to
+#:                           low health clears that debt, and the 50 Fervour
+#:                           the same drop grants
+#:   Ceaseless Penance   1   a flag saying debuffs on the character do not
+#:                           expire, carrying the new `health_above` condition
+#:   Carnivore           4   a flag saying a hit taken grants a Carnage stack,
+#:                           a flag saying Carnage has no maximum, and the 2%
+#:                           more damage a stack is worth, which is two rows
+#:                           because "damage" is two stats in this sheet
+AUTHORED_ROWS = 130
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -567,7 +581,17 @@ AUTHORED_NODES = 78
 #: before it are spread across the Masochist's four capstones; the Bulwark's
 #: twelve and the Berserker's twelve are all unauthored, which is part of those
 #: trees being unbuilt rather than a capstone problem.
-AUTHORED_OPTIONS = 9
+#:
+#: AND FROM 9 TO 12 LATER THE SAME DAY, which finishes the Masochist tree at
+#: the level this number measures. Issues #1069, #1070 and #1071 built Rock
+#: Bottom, Ceaseless Penance and Carnivore, the last three of its twelve
+#: options that granted nothing. All twelve now do.
+#:
+#: 12 IS THE MASOCHIST'S WHOLE SHARE OF THIS COUNT. The remaining 24 named
+#: options belong to the Bulwark and the Berserker and are unauthored, which is
+#: part of those trees being unbuilt. If this number rises past 12 without one
+#: of those trees being started, something has been authored by accident.
+AUTHORED_OPTIONS = 12
 
 #: How many capstone options are named at all, across every tree.
 NAMED_OPTIONS = 36
@@ -747,6 +771,21 @@ CONDITION_WORDS = {
     # character sitting exactly on the threshold, which is the drift this whole
     # check exists to catch.
     "health_below": ("below", "{value:g}%"),
+
+    # AND THE ONE THAT POINTS UPWARDS. Issue #1070. The Second Vow's third
+    # option, Ceaseless Penance, reads "Debuffs on you no longer expire while
+    # you are above 50% health", and it is the only node in the game that asks
+    # whether health is still HIGH.
+    #
+    # "you are above" AND NOT "above" ALONE, and the reason is a node that
+    # already exists rather than a hypothetical one. Grand Tithe says "a skill
+    # whose health COST is above 10% of your maximum health", which contains
+    # "above" and is a question about the skill rather than about the character.
+    # Requiring the subject as well as the word is what keeps this row off that
+    # node. It needs no `CONDITION_WORDS_MUST_NOT_SAY` entry for the same
+    # reason: the fragment is already unique.
+    "health_above": ("you are above", "{value:g}%"),
+
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
     "seconds_after_foreign_damage": ("after you take damage of a cataclysm "
@@ -1097,6 +1136,13 @@ VALUE_FORMS = {
     # reword of either must not be able to satisfy the other's check.
     "fervour_per_cast": "{value:g} Fervour",
 
+    # AND THE SAME COUNT GRANTED ONCE, WHEN HEALTH FALLS LOW. Issue #1069.
+    # Rock Bottom reads "Dropping below 20% health clears all outstanding debt
+    # and grants 50 Fervour". A third entry rather than a shared one, for the
+    # reason the second gives: these are three stats and a reword of one must
+    # not be able to satisfy another's check.
+    "fervour_on_dropping_low": "{value:g} Fervour",
+
     # A DISTANCE, WHICH IS THE FOURTH FORM AND THE FIRST ONE MEASURED IN SPACE.
     # Issue #1047. Reprisal Wave reads "strikes every enemy within 4 METRES", so
     # the number is followed by a unit of distance. The three entries above are a
@@ -1211,6 +1257,51 @@ VALUE_IN_WORDS = {
     # at all.
     ("Masochist_capstone_200", "health_cost_suppressed"):
         ("your skills cost no health", 1.0),
+
+    # THE SECOND VOW'S FIRST OPTION, ROCK BOTTOM. Issue #1069. "A health cost
+    # can never reduce you below 1 health; anything you cannot pay becomes
+    # health debt instead. Dropping below 20% health clears all outstanding
+    # debt and grants 50 Fervour, no more than once every 30 seconds." Two
+    # flags of 1, one per rule, and the sentence has four digits of which none
+    # belongs to either: 1 is the health a cost may not take you past, 20 is
+    # the threshold the drop is measured at, 50 is the Fervour the third row
+    # grants and matches with no exemption, and 30 is how often it may happen.
+    #
+    # THE FIRST ENTRY COVERS BOTH HALVES OF ONE RULE, deliberately. A floor at
+    # 1 health with no debt behind it is a discount rather than a Masochist
+    # mechanic, and a debt with no floor in front of it has nothing to collect,
+    # so the two are not separable into rows that mean anything apart.
+    ("Masochist_capstone_50", "unpayable_health_cost_becomes_debt"):
+        ("anything you cannot pay becomes health debt", 1.0),
+    ("Masochist_capstone_50", "debt_cleared_on_dropping_low"):
+        ("clears all outstanding debt", 1.0),
+
+    # THE SECOND VOW'S THIRD OPTION, CEASELESS PENANCE. Issue #1070. "Debuffs
+    # on you no longer expire while you are above 50% health." A flag of 1, and
+    # the only digit in the sentence is the 50 belonging to the CONDITION on
+    # this same row, which the condition check matches with no exemption.
+    #
+    # A RULE AND NOT A MAGNITUDE. "No longer expire" is a duration multiplied
+    # by nothing, and `debuff_duration_taken` beside it cannot express that: it
+    # is a percentage where 100 is normal, so "never" would be an infinity
+    # rather than a number.
+    ("Masochist_capstone_50", "debuffs_do_not_expire"):
+        ("no longer expire", 1.0),
+
+    # THE FINAL VOW'S SECOND OPTION, CARNIVORE. Issue #1071. "Every hit you
+    # take grants a stack of Carnage. Carnage has no maximum, and each stack
+    # grants 2% more damage." Two flags of 1, one per rule, and the only digit
+    # in the sentence is the 2 belonging to the option's other two rows, which
+    # the ordinary check matches against with no exemption at all.
+    #
+    # BOTH ARE CHANGES TO AN EXISTING MECHANIC RATHER THAN NEW ONES, which is
+    # what makes them flags. `UCataclysmStacks` already grants Carnage and
+    # already caps it at 10; these say that this character earns it from being
+    # hit and holds it without limit.
+    ("Masochist_capstone_200", "carnage_from_damage_taken"):
+        ("every hit you take grants a stack of carnage", 1.0),
+    ("Masochist_capstone_200", "carnage_has_no_maximum"):
+        ("carnage has no maximum", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50

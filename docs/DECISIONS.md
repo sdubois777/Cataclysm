@@ -20,6 +20,59 @@ applied or still pending.
 
 ---
 
+## 2026-08-28 — A debuff that does not expire has its countdown stopped, not its duration reset
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp`, the
+Passive Effects sheet of `All_Things_Cataclysm.xlsx`, and
+`game/Data/PassiveEffects.csv`. Applied. Issue #1070.
+
+The Masochist's Ceaseless Penance, the third option of The Second Vow, reads
+"Debuffs on you no longer expire while you are above 50% health." Unreal counts
+a gameplay effect's duration down regardless of the target's state and nothing
+in this project had ever changed an active effect's remaining time, so the
+sentence had two possible implementations and they produce different behaviour a
+player would notice.
+
+| Reading | What a player sees |
+| :-- | :-- |
+| **Stop the countdown** | Each debuff's end is pushed out by exactly the time that just passed, four times a second, so the time left never moves. A 20 second bleed applied at 60% health still has 20 seconds left a minute later. Dropping below half resumes it from 20 and it then runs out normally. |
+| **Re-apply each debuff** | Each debuff is applied again four times a second, which resets its duration to full. Dropping below half leaves a FULL fresh duration of everything the character carries rather than what was left. |
+
+**Decision: stop the countdown.** The project owner chose this on 2026-08-28.
+
+**The deciding argument is a consequence of re-applying that has nothing to do
+with duration.** Re-applying a damage over time effect resets its TICK clock as
+well as its duration — that is `EGameplayEffectStackingPeriodPolicy`, and
+`MakeSingleStackTagged` in `CataclysmSkillEffects.cpp` sets the stack policy
+these effects use. The per-character step runs every 0.25 seconds and a burn
+ticks every second, so under that reading every burn and bleed on the character
+would deal it no damage at all while the option was holding them. That is an
+immunity the sentence does not grant, and it would be worth far more than the
+option says — to a class that is paid for each debuff it carries, an option that
+also made those debuffs harmless is not a trade.
+
+**Genre precedent, and it points the same way.** Path of Exile models this on
+the DEFENDER as an expiration rate rather than as a re-application. Its map
+modifier "Debuffs on Players expire 50% slower" halves the speed the countdown
+runs at, and a rate of zero is exactly "no longer expire".
+<https://www.poewiki.net/wiki/Expiration_rate>
+
+**What it is built on.** `UAbilitySystemComponent::ModifyActiveEffectStartTime`,
+which is public in Unreal Engine 5.8, adds a difference to the effect's start
+time, re-arms its expiry and leaves its tick period alone.
+`UCataclysmDebuffs::HoldStep` is the one place in the project that calls it, and
+it is the eighth job on `ACataclysmCharacterBase::RegenerationStep`.
+
+**"Above 50% health" is a condition on the row rather than a constant in the
+code**, which is the opposite of the choice The Breaking Point made for its own
+threshold. The difference is that The Breaking Point states an EVENT — "dropping
+below 50% health" — and this states a STATE. A state is what the Condition
+column of the Passive Effects sheet is for, so a new predicate `health_above`
+was added beside `health_at_or_below` and `health_below`. It is the first health
+predicate in the game that points upwards.
+
+---
+
 ## 2026-08-28 — Two readings settled, a node reworded, and two more Masochist nodes built
 
 **Affects:** `docs/Masochist_Class_Tree_Final.json`, the Passive Effects sheet of

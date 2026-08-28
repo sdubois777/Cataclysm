@@ -1787,6 +1787,68 @@ bool FCataclysmLethalHealthCostTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRockBottomCostTest,
+	"Cataclysm.Skills.RockBottomLeavesOneHealthAndOwesTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRockBottomCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE FIRST SENTENCE OF ROCK BOTTOM. Issue #1069: "A health cost can never
+	// reduce you below 1 health; anything you cannot pay becomes health debt
+	// instead."
+	//
+	// THE SAME KIND OF COST THE TEST ABOVE USES, deliberately. That one shows
+	// what happens without the option -- the character is emptied -- and this
+	// shows the option changing exactly that outcome. Two tests on one shape of
+	// cost is what says the option is doing the work.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// ONE AND A HALF TIMES THE WHOLE POOL, measured against MAXIMUM health,
+	// which is the half of a cost the design allows to kill.
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(),
+		150.0f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet
+			::GetUnpayableHealthCostBecomesDebtAttribute(),
+		1.0f);
+
+	UCataclysmProjectileSkill* Plain = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0"), TEXT("A skill with no health cost"));
+	if (!Plain)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Plain));
+
+	// NINETY-NINE OF THE HUNDRED AND FIFTY IS PAID, which is everything above
+	// the floor.
+	TestEqual(TEXT("the caster is left on exactly one health"),
+		Caster.Health(), 1.0f, 0.01f);
+
+	// AND THE FIFTY-ONE IT COULD NOT PAY IS OWED. Nothing about the cost is
+	// forgiven: the character still owes every point of it, which is what
+	// separates this option from a discount.
+	const float Owed = Caster.AbilitySystem->GetNumericAttribute(
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute());
+	TestEqual(TEXT("and owes the fifty-one it could not pay"), Owed, 51.0f,
+		0.01f);
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // A chance for a skill not to go on cooldown at all. Issue #973.
 //

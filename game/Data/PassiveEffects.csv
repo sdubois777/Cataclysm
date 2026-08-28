@@ -121,3 +121,11 @@ Masochist_basic_fl_b1#1,Masochist_basic_fl_b1,debuff_spread_on_death_chance,flat
 Masochist_basic_fl_a1#1,Masochist_basic_fl_a1,damage_over_time_taken,increased,1.0,,,0.0,,0.0,0
 Masochist_basic_fl_a1#2,Masochist_basic_fl_a1,damage_to_enemies_sharing_a_debuff,flat,1.0,,,0.0,,0.0,0
 Masochist_capstone_25#5,Masochist_capstone_25,mana_pool_becomes_health,flat,1.0,,,0.0,,0.0,1
+Masochist_capstone_50#2,Masochist_capstone_50,unpayable_health_cost_becomes_debt,flat,1.0,,,0.0,,0.0,1
+Masochist_capstone_50#3,Masochist_capstone_50,debt_cleared_on_dropping_low,flat,1.0,,,0.0,,0.0,1
+Masochist_capstone_50#4,Masochist_capstone_50,fervour_on_dropping_low,flat,50.0,,,0.0,,0.0,1
+Masochist_capstone_50#5,Masochist_capstone_50,debuffs_do_not_expire,flat,1.0,,health_above,50.0,,0.0,3
+Masochist_capstone_200#7,Masochist_capstone_200,carnage_from_damage_taken,flat,1.0,,,0.0,,0.0,2
+Masochist_capstone_200#8,Masochist_capstone_200,carnage_has_no_maximum,flat,1.0,,,0.0,,0.0,2
+Masochist_capstone_200#9,Masochist_capstone_200,attack_damage,more,2.0,,,0.0,carnage_stacks,1.0,2
+Masochist_capstone_200#10,Masochist_capstone_200,spell_damage,more,2.0,,,0.0,carnage_stacks,1.0,2

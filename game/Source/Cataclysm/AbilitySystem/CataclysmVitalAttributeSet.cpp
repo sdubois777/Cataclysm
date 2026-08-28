@@ -17,6 +17,9 @@
 // apart from its own. Issue #975.
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmLeech.h"
+// For the debt cleared and the Fervour granted by dropping to low health.
+// Issue #1069.
+#include "AbilitySystem/CataclysmLowHealthRelief.h"
 // For how much a defender strikes back for, at whom, and what it leeches from
 // it. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
@@ -1021,6 +1024,21 @@ void UCataclysmVitalAttributeSet::NotifyHealthChanged()
 	// machinery. This needs an ability system and nothing more, and refusing it
 	// for anything that is not a character would be a rule nobody chose.
 	UCataclysmDamageConversion::NoteHealthChanged(
+		AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr);
+
+	// AND HERE IS WHERE A SECOND THRESHOLD IS CROSSED. Issue #1069, Rock
+	// Bottom: "Dropping below 20% health clears all outstanding debt and grants
+	// 50 Fervour, no more than once every 30 seconds." A different line from the
+	// one above, with its own memory of where health was and its own cooldown,
+	// so a character holding both nodes gets each at its own moment.
+	//
+	// BESIDE THE CALL ABOVE AND NOT INSIDE IT. The two watch different lines for
+	// different nodes and neither reads what the other wrote; putting one inside
+	// the other would tie two options together for no reason a player could see.
+	//
+	// ITS RETURN VALUE IS DROPPED. Zero is the answer for every character in the
+	// game without that capstone option, and it is returned for tests.
+	UCataclysmLowHealthRelief::NoteHealthChanged(
 		AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr);
 
 	ACataclysmCharacterBase* Character = AbilitySystem

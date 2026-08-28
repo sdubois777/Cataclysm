@@ -14,6 +14,8 @@ const TCHAR* UCataclysmFervour::LossSuppressedStat =
 	TEXT("fervour_loss_suppressed");
 const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
 const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
+const TCHAR* UCataclysmFervour::OnDroppingLowStat =
+	TEXT("fervour_on_dropping_low");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -375,6 +377,63 @@ float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
 	// `PreAttributeChange` depends on whether an aggregator happens to exist.
 	const float Change =
 		FMath::Clamp(Before + PerCast, 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, the standing rule for
+	// anything a later node might put a condition on. Issue #1069.
+	//
+	// AND THE FALLBACK IS THE ATTRIBUTE, WHICH IS NOT WHAT `GainForCast` ABOVE
+	// PASSES. That one passes zero because The Last Drop's row carries a health
+	// condition, and a conditional bonus is never folded into an attribute, so
+	// the attribute is zero even for a character holding the option. Rock
+	// Bottom's row carries no condition, so it IS folded in, and passing zero
+	// would throw the answer away whenever no stat line has been recorded --
+	// which is the ordinary case for an ability system before its first
+	// refresh.
+	//
+	// NO TAGS. This arrives because health moved rather than because a skill of
+	// a particular kind was used, so there is nothing for tags to scope.
+	const float OnDropping = Cataclysm->StatForSkill(
+		FName(OnDroppingLowStat), FGameplayTagContainer(),
+		Resource->GetFervourOnDroppingLow());
+	if (OnDropping <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
+	// this file follows and for the reason they give.
+	const float Change =
+		FMath::Clamp(Before + OnDropping, 0.0f, Resource->GetMaxClassResource())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
