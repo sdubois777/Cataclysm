@@ -333,7 +333,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: and that the number of DIFFERENT debuffs a character may carry is
 #: deliberately unlimited, which made Vessel of Plagues' first clause doubling
 #: nothing and got it reworded.
-AUTHORED_ROWS = 116
+#:
+#: Issues #1057 and #1058 added one row each on 2026-08-28. Beacon of
+#: Despair states how much longer the debuffs its aura applies last and
+#: Contagious Torment states the chance one enemy has of catching a debuff,
+#: and both are `flat` rows because each supplies its own base and because a
+#: stat reading zero is how the code knows the character has no points in
+#: the node.
+AUTHORED_ROWS = 118
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -522,12 +529,17 @@ AUTHORED_ROWS = 116
 #: they gain one each rather than sharing a capstone. 74 of 293 altogether and
 #: 70 of the Masochist tree's own 74.
 #:
-#: FOUR MASOCHIST NODES REMAIN AND ALL FOUR NEED THE SAME MISSING THING: a way
-#: to apply, list and copy the 52 named status effects on an ENEMY. Only
-#: burning, bleeding and stun exist at run time today. Contagious Torment,
-#: Empathic Link and Beacon of Despair each apply one to an enemy; Wound
-#: Channeling compares the character's own against an enemy's.
-AUTHORED_NODES = 74
+#: TWO MASOCHIST NODES REMAIN. Beacon of Despair and Contagious Torment were
+#: built on 2026-08-28, issues #1057 and #1058, which is what took this from
+#: 74 to 76. They brought the two things all four needed: `UCataclysmDebuffs::
+#: TagsOn` lists the debuffs a character carries, and
+#: `UCataclysmContagion::SpreadOne` puts a named effect from
+#: `game/Data/StatusEffects.csv` on somebody else.
+#:
+#: THE OTHER TWO NEED SOMETHING DIFFERENT AGAIN. Empathic Link reads a DYING
+#: enemy's debuffs rather than the character's own, and Wound Channeling
+#: compares the character's against the target's at the moment of a hit.
+AUTHORED_NODES = 76
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

@@ -565,6 +565,41 @@ public:
 	FGameplayAttributeData NovaDamageOfMissingHealth;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 
+	/**
+	 * How much longer a debuff this character's aura applies lasts, as a
+	 * percentage added on top of the effect's own stated duration.
+	 *
+	 * THE MASOCHIST'S Beacon of Despair IS ITS ONLY SOURCE, at 4% a point.
+	 * Issue #1057.
+	 *
+	 * ZERO ALSO MEANS THE CHARACTER HAS NO AURA, and `UCataclysmContagion::
+	 * AuraStep` reads it that way rather than asking a second question. The node
+	 * cannot be held at zero points, so the two readings cannot be confused.
+	 * That is the shape `NovaDamageOfMissingHealth` above already uses.
+	 *
+	 * NOT ON THE CHARACTER SHEET, for the reason its neighbours are not: no
+	 * affix grants it, nothing scales it, no class line names it, and one
+	 * passive node of one tree supplies it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_AuraDebuffDuration)
+	FGameplayAttributeData AuraDebuffDuration;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, AuraDebuffDuration)
+
+	/**
+	 * The chance one nearby enemy has of catching a debuff when a debuff on this
+	 * character deals damage, as a percentage.
+	 *
+	 * THE MASOCHIST'S Contagious Torment IS ITS ONLY SOURCE, at 1% a point, so
+	 * 8% at full investment. Issue #1058. It is rolled once per enemy rather
+	 * than once for the group, because the node's sentence makes the chance a
+	 * property of each enemy.
+	 *
+	 * NOT ON THE CHARACTER SHEET, for the same reason as the one above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DebuffSpreadChance)
+	FGameplayAttributeData DebuffSpreadChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffSpreadChance)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -633,6 +668,8 @@ protected:
 	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDurationTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_AuraDebuffDuration(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DebuffSpreadChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

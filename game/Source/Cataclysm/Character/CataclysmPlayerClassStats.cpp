@@ -22,6 +22,8 @@
 // For the stat naming how long a lasting effect on the character runs.
 // Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For the two stat names behind a debuff spreading. Issues #1057 and #1058.
+#include "AbilitySystem/CataclysmContagion.h"
 // For the nova stat name. Issue #1050.
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
@@ -379,6 +381,21 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// for the stat rather than reading it.
 			{FString(UCataclysmNova::DamageStat),
 			 Combat::GetNovaDamageOfMissingHealthAttribute()},
+
+			// AND THE TWO STATS BEHIND A DEBUFF SPREADING FROM THE CHARACTER TO
+			// AN ENEMY. Issues #1057 and #1058. Zero for every class; Beacon of
+			// Despair and Contagious Torment are the only sources of either.
+			//
+			// HERE FOR THE REASON EVERY OTHER NODE-SUPPLIED STAT IS: `ApplyTo`
+			// loops over THIS map, so a stat missing from it is never resolved,
+			// is never recorded in the character's stat inputs, and answers its
+			// fallback for ever. Both are read through `StatForSkill`, which
+			// falls back to the attribute, so a missing entry here would leave
+			// both nodes granting nothing and reporting nothing.
+			{FString(UCataclysmContagion::AuraDurationStat),
+			 Combat::GetAuraDebuffDurationAttribute()},
+			{FString(UCataclysmContagion::TormentChanceStat),
+			 Combat::GetDebuffSpreadChanceAttribute()},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS. Issue
 			// #1033. A hundred for every class, from `EngineSuppliedBases` below,

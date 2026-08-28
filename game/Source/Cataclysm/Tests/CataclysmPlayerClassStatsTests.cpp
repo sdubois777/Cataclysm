@@ -442,6 +442,25 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("nova_damage_of_missing_health"),
 		 TEXT("the Masochist's Unstable Aura node, as a flat modifier")},
 
+		// Issues #1057 and #1058. How much longer a debuff this character's aura
+		// applies lasts, and the chance one nearby enemy catches a debuff when a
+		// debuff on this character deals damage. Zero for every class, and one
+		// node of one tree is the only source of each.
+		//
+		// NEITHER ROW CARRIES A CONDITION, so both attributes really do hold the
+		// figure for a character holding the node. Both are still asked for
+		// through `StatForSkill` rather than read, so that a later row carrying
+		// one is not dropped in silence.
+		//
+		// ZERO IS ALSO HOW THE CODE KNOWS THE CHARACTER HAS NO POINTS IN THE
+		// NODE, which is why neither may ever gain a class line stating one:
+		// `UCataclysmContagion::AuraStep` would then pulse for every character
+		// in the game.
+		{TEXT("aura_debuff_duration"),
+		 TEXT("the Masochist's Beacon of Despair node, as a flat modifier")},
+		{TEXT("debuff_spread_chance"),
+		 TEXT("the Masochist's Contagious Torment node, as a flat modifier")},
+
 		// Issue #1051. How much Fervour each cast grants, and whether skills
 		// cost health at all. Zero for every class, and the first option of
 		// the Masochist's The Final Vow is the only source of either. Both

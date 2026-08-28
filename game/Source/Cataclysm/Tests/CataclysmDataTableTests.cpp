@@ -315,7 +315,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 116 FOR SYMPHONY OF PAIN AND VESSEL OF PLAGUES. Issue #1033. Two
 	// rows each, one per clause, and both nodes share a new stat: how long a
 	// lasting harmful effect on the character itself runs.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        116)
+	//
+	// AND TO 118 FOR BEACON OF DESPAIR AND CONTAGIOUS TORMENT. Issues #1057 and
+	// #1058. One row each: how much longer the debuffs the aura applies last,
+	// and the chance one nearby enemy has of catching a debuff when a debuff on
+	// the character deals damage. They are the first two nodes in the game that
+	// put a NAMED status effect from `game/Data/StatusEffects.csv` on anybody.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        118)
 
 	#undef CHECK_TABLE
 

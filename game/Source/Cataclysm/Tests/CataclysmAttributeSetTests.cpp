@@ -221,11 +221,20 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * taken stats, and it arrives the same way they do, from
 	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
 	 *
+	 * HOW MUCH LONGER A DEBUFF THE CHARACTER'S AURA APPLIES LASTS, AND THE
+	 * CHANCE A NEARBY ENEMY CATCHES ONE, are the fifteenth and sixteenth,
+	 * added under issues #1057 and #1058, and they meet the rule for the
+	 * eleventh and twelfth times: no affix grants either, nothing scales
+	 * either, neither has a baseline of its own, and one node of one tree is
+	 * the only source of each -- Beacon of Despair and Contagious Torment.
+	 * Both are ALSO how the code knows the character holds the node at all,
+	 * because neither can be held at zero points.
+	 *
 	 * So the sheet stays at 46. The combat set grew by eleven and the class
 	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 12;
+	constexpr int32 OffSheetCombatStats = 14;
 
 	/**
 	 * How far healing may take the character. Issue #988.

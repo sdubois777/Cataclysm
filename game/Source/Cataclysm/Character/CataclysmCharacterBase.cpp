@@ -2,6 +2,8 @@
 
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the aura that puts a debuff on whatever stands near. Issue #1057.
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmLeech.h"
 // For the nova a character at very low health releases. Issue #1050.
 #include "AbilitySystem/CataclysmNova.h"
@@ -143,6 +145,24 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// ITS RETURN VALUE IS DROPPED, the same as the three calls above. Zero is
 	// the ordinary answer for every character in the game.
 	UCataclysmNova::Step(this);
+
+	// AND A CHARACTER MAY RADIATE AN AURA THAT PUTS A DEBUFF ON WHATEVER IS
+	// STANDING NEAR IT. Issue #1057. The Masochist's Beacon of Despair reads
+	// "You radiate an aura that applies a random debuff to enemies within 6
+	// metres every 3 seconds", and it is the second thing in the game that
+	// reaches another character without this one acting.
+	//
+	// A SEVENTH JOB ON THIS STEP RATHER THAN A TIMER OF ITS OWN, for the reason
+	// every one above gives. Its three second interval is kept by a timestamp on
+	// the ability system component, separate from the nova's five, so a
+	// character holding both nodes runs each at its own rate.
+	//
+	// AFTER THE NOVA AND NOT BEFORE IT, though nothing today depends on the
+	// order: they touch different things, one dealing damage and one applying a
+	// lasting effect, and neither reads what the other wrote.
+	//
+	// IT REFUSES A CORPSE ITSELF, the same as the nova and for the same reason.
+	UCataclysmContagion::AuraStep(this);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

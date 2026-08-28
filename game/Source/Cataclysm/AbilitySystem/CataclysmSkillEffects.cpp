@@ -684,6 +684,74 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	return Numbers;
 }
 
+FName UCataclysmSkillEffects::StatusEffectRowForTag(const FGameplayTag& EffectTag)
+{
+	if (!EffectTag.IsValid())
+	{
+		return NAME_None;
+	}
+
+	const UDataTable* Table = LoadStatusEffectTable();
+	if (!Table)
+	{
+		return NAME_None;
+	}
+
+	// THE LAST SEGMENT ONLY. `Status.VoidSplinter` and `Keyword.DoT.VoidSplinter`
+	// are the same effect under two branches, and the branch says which VOCABULARY
+	// the tag came from rather than which effect it is. See the header.
+	FString Whole = EffectTag.ToString();
+	FString Segment = Whole;
+	int32 LastDot = INDEX_NONE;
+	if (Whole.FindLastChar(TEXT('.'), LastDot))
+	{
+		Segment = Whole.RightChop(LastDot + 1);
+	}
+	if (Segment.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	FName Found = NAME_None;
+	Table->ForeachRow<FCataclysmStatusEffectRow>(
+		TEXT("UCataclysmSkillEffects::StatusEffectRowForTag"),
+		[&Found, &Segment](const FName& RowName,
+						   const FCataclysmStatusEffectRow& Row)
+		{
+			if (!Found.IsNone())
+			{
+				// ForeachRow HAS NO WAY TO STOP, so the first match is kept and
+				// the rest of the walk does nothing. The table is 52 rows.
+				return;
+			}
+
+			// THE SAME REDUCTION `tag_segment` IN
+			// `tools/generate_gameplay_tags.py` DOES: letters and digits kept,
+			// everything else dropped. "Void Splinter" becomes "VoidSplinter"
+			// and "Touch of Nothing" becomes "TouchofNothing", which is what
+			// that script produced and what the tag list holds.
+			FString Reduced;
+			Reduced.Reserve(Row.EffectName.Len());
+			for (const TCHAR Letter : Row.EffectName)
+			{
+				if (FChar::IsAlnum(Letter))
+				{
+					Reduced.AppendChar(Letter);
+				}
+			}
+
+			// CASE-SENSITIVE, BECAUSE THE TAG AND THE NAME ARE GENERATED FROM
+			// THE SAME CELL. A difference in case would mean the tag list and
+			// the effect table had drifted, and answering anyway would hide it.
+			if (Reduced.Equals(Segment, ESearchCase::CaseSensitive))
+			{
+				Found = RowName;
+			}
+		});
+
+	return Found;
+}
+
 float UCataclysmSkillEffects::AsMultiplier(const UAbilitySystemComponent* Source,
 										  const FGameplayAttribute& Stat)
 {
