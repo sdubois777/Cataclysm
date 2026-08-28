@@ -122,6 +122,30 @@ public:
 	static int32 CountOnActor(const AActor* Actor);
 
 	/**
+	 * WHICH debuffs this character is carrying, rather than how many.
+	 *
+	 * `CountOn` IS THIS COUNTED, and was written first because counting was all
+	 * the eleven nodes that pay per debuff needed. Issues #1057 and #1058 need
+	 * the list: "a random debuff you carry" cannot be chosen from a number. The
+	 * two answers must never disagree, so there is one walk of the tags and
+	 * `CountOn` reads its length.
+	 *
+	 * EVERY RULE `CountOn` DOCUMENTS APPLIES UNCHANGED, because it is the same
+	 * walk: the explicit tags and not the implied parents, one entry per effect,
+	 * and an empty container for no ability system.
+	 *
+	 * THE ORDER IS THE ABILITY SYSTEM'S AND IS NOT PROMISED. A caller wanting one
+	 * at random must choose one; a caller taking the first would get whichever
+	 * the engine's tag container happens to hold first, which is stable enough to
+	 * look deliberate and is not.
+	 */
+	static FGameplayTagContainer TagsOn(
+		const UAbilitySystemComponent* AbilitySystem);
+
+	/** Which debuffs this actor is carrying. */
+	static FGameplayTagContainer TagsOnActor(const AActor* Actor);
+
+	/**
 	 * `Keyword.DoT.Bleed`, or an invalid tag if the vocabulary has lost it.
 	 *
 	 * Requested by name rather than declared as a native tag, for the reason

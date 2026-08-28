@@ -50,17 +50,20 @@ FGameplayTagContainer UCataclysmDebuffs::DebuffRoots()
 	return Roots;
 }
 
-int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
+FGameplayTagContainer UCataclysmDebuffs::TagsOn(
+	const UAbilitySystemComponent* AbilitySystem)
 {
+	FGameplayTagContainer Carried;
+
 	if (!AbilitySystem)
 	{
-		return 0;
+		return Carried;
 	}
 
 	const FGameplayTagContainer Roots = DebuffRoots();
 	if (Roots.IsEmpty())
 	{
-		return 0;
+		return Carried;
 	}
 
 	// WHAT WAS REALLY APPLIED, NOT WHAT THE CHARACTER ANSWERS YES TO. See the
@@ -70,7 +73,6 @@ int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
 	FGameplayTagContainer Owned;
 	AbilitySystem->GetOwnedGameplayTags(Owned);
 
-	int32 Count = 0;
 	for (const FGameplayTag& Tag : Owned)
 	{
 		// MATCHES THE ROOT ITSELF AND ANYTHING UNDER IT. `MatchesAny` asks
@@ -79,11 +81,26 @@ int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
 		// `Keyword.DoT`, and `Keyword.Leech` matches nothing.
 		if (Tag.MatchesAny(Roots))
 		{
-			++Count;
+			Carried.AddTag(Tag);
 		}
 	}
 
-	return Count;
+	return Carried;
+}
+
+FGameplayTagContainer UCataclysmDebuffs::TagsOnActor(const AActor* Actor)
+{
+	return TagsOn(UCataclysmTargeting::AbilitySystemOf(Actor));
+}
+
+int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	// THE LENGTH OF THE LIST, SO THE TWO ANSWERS CANNOT DISAGREE. Issue #1057.
+	// This used to be its own walk of the owned tags; the list above is the same
+	// walk, and keeping two of them would let the eleven nodes that pay per
+	// debuff count one set while the two nodes that spread one chose from
+	// another.
+	return TagsOn(AbilitySystem).Num();
 }
 
 int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)

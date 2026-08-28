@@ -551,6 +551,36 @@ public:
 		const TCHAR* RowName, const TCHAR* HumanName);
 
 	/**
+	 * Which row of `game/Data/StatusEffects.csv` a lasting effect's tag names.
+	 *
+	 * THE OTHER DIRECTION FROM EVERYTHING ELSE HERE, and issues #1057 and #1058
+	 * are why it is needed. Every existing caller knows which effect it wants and
+	 * asks for its numbers by row name. Those two nodes start from a tag the
+	 * character is already carrying -- "a random debuff you carry" -- and have to
+	 * find out what it is before they can put it on anybody else.
+	 *
+	 * THE RULE IS THE ONE `tools/generate_gameplay_tags.py` ALREADY USES, read
+	 * backwards: an effect's tag is its `EffectName` with every non-alphanumeric
+	 * character removed, so "Void Splinter" becomes `VoidSplinter`. This compares
+	 * the tag's LAST SEGMENT against that, which makes it right for both branches
+	 * without knowing there are two: `Status.VoidSplinter` and
+	 * `Keyword.DoT.VoidSplinter` are the same effect and both end in the same
+	 * word.
+	 *
+	 * `State.Stunned` DELIBERATELY MATCHES NOTHING, and that is a fact about the
+	 * data rather than a special case here. The stun row is `Debuff_Stun`, whose
+	 * name reduces to `Stun`, and a stunned character carries `State.Stunned`.
+	 * The consequence is that a character cannot pass its own stun on, which is
+	 * the right outcome -- a stun applied with no hit behind it would go round
+	 * the design's two anti-stun-lock rules -- but it is not the reason the rule
+	 * is written this way.
+	 *
+	 * @return `NAME_None` when the tag is invalid, the table is missing, or no
+	 *         row's name reduces to the tag's last segment
+	 */
+	static FName StatusEffectRowForTag(const FGameplayTag& EffectTag);
+
+	/**
 	 * Whether a skill carrying these tags deals AREA damage, which cannot be
 	 * evaded.
 	 *

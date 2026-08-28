@@ -97,6 +97,13 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 
 	InitNovaDamageOfMissingHealth(0.0f);
 
+	// BOTH ZERO, AND ZERO MEANS THE CHARACTER DOES NOT HOLD THE NODE.
+	// Issues #1057 and #1058. Beacon of Despair and Contagious Torment are
+	// the only sources of either, so every character in the game sits here
+	// until a point is spent.
+	InitAuraDebuffDuration(0.0f);
+	InitDebuffSpreadChance(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -158,6 +165,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDurationTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AuraDebuffDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffSpreadChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -183,7 +192,8 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 	// are data that means nothing, and clamping says so once here rather than at
 	// the roll. No node reaches 100: The Catalyst stops at 40.
 	if (Attribute == GetCooldownSkipChanceAttribute()
-		|| Attribute == GetBleedOnCritChanceAttribute())
+		|| Attribute == GetBleedOnCritChanceAttribute()
+		|| Attribute == GetDebuffSpreadChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
@@ -280,6 +290,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
 		GetDebuffDurationTakenAttribute(),
 		GetNovaDamageOfMissingHealthAttribute(),
+		GetAuraDebuffDurationAttribute(), GetDebuffSpreadChanceAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -322,5 +333,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AuraDebuffDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffSpreadChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

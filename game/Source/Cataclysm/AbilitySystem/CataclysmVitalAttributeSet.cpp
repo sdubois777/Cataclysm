@@ -5,6 +5,8 @@
 // attacker's own state in hand, rather than reading the attribute. Issue #959.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For a debuff on this character spreading to what stands near it. Issue #1058.
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
@@ -828,6 +830,36 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							/*bScalesWithInstigator=*/true);
 					}
 				}
+			}
+
+			// AND A DEBUFF DEALING DAMAGE TO THIS CHARACTER MAY SPREAD TO WHAT
+			// IS STANDING NEAR IT. Issue #1058. The Masochist's Contagious
+			// Torment: "When a debuff on you deals damage, enemies within 6
+			// metres have a 1% chance per point to receive a random debuff you
+			// carry."
+			//
+			// HERE BECAUSE THIS IS THE ONLY PLACE THAT KNOWS A TICK LANDED.
+			// `Hit.bIsDamageOverTime` is read off the effect's asset tags at the
+			// top of this function and exists nowhere else; the retaliation
+			// refusal and the Breaking Point conversion above both hang off the
+			// same fact.
+			//
+			// THE DAMAGE HAS TO HAVE REACHED HEALTH, because the sentence says
+			// the debuff DEALS damage. A tick a character's damage-over-time
+			// taken stat reduced to nothing dealt nothing.
+			//
+			// `DealtToHealth` ALONE AND NOT THE SHIELD AS WELL, unlike the two
+			// branches above. Damage over time is not absorbed by an energy
+			// shield at all -- that is the design's answer to shield stacking,
+			// issue #513 -- so the shield figure is zero here and naming it
+			// would suggest a case that cannot arise.
+			//
+			// ITS RETURN VALUE IS DROPPED. Zero is the ordinary answer for every
+			// character in the game, because the chance is zero without the
+			// node and the function refuses on that before it looks for anybody.
+			if (Hit.bIsDamageOverTime && Outcome.DealtToHealth > 0.0f)
+			{
+				UCataclysmContagion::SpreadOnDebuffDamage(GetOwningActor());
 			}
 
 			PlayImpactEffect(Data, Hit, Outcome);

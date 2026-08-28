@@ -478,6 +478,30 @@ public:
 	}
 
 	/**
+	 * Whether this character's aura may apply again now. Issue #1057.
+	 *
+	 * THE MASOCHIST'S Beacon of Despair APPLIES A DEBUFF "every 3 seconds", and
+	 * this is the whole of what enforces the interval. Whether the character
+	 * holds the node at all is decided by its stat being above zero, which
+	 * `UCataclysmContagion::AuraStep` asks first.
+	 *
+	 * SEPARATE FROM THE NOVA'S CLOCK, because the two intervals differ and one
+	 * character may hold both nodes. Everything else about it is the same,
+	 * including that never having pulsed is allowed and that no world means no
+	 * clock and so no pulse.
+	 */
+	bool MayApplyAura() const;
+
+	/** Record that it applied, so the next waits `IntervalSeconds`. */
+	void NoteAuraApplied(float IntervalSeconds);
+
+	/** When the next aura pulse may come, in world seconds. For tests. */
+	float AuraAllowedAt() const
+	{
+		return AuraNextAllowedSeconds;
+	}
+
+	/**
 	 * How many stacks of a kind this character is holding. Issue #1002.
 	 *
 	 * THE WINDOW IS APPLIED WHEN THE COUNT IS ASKED FOR rather than when it
@@ -670,6 +694,21 @@ protected:
 	 * is still happening; the only question is when the next may come.
 	 */
 	float NovaNextAllowedSeconds = -1.0f;
+
+	/**
+	 * The earliest world time this character's aura may apply again. Issue
+	 * #1057, Beacon of Despair.
+	 *
+	 * A SECOND NUMBER AND NOT THE NOVA'S. The two intervals differ -- three
+	 * seconds against five -- and a character can hold both nodes, so sharing
+	 * one timestamp would make each reset the other and neither run at its own
+	 * rate.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as the nova above, so the aura
+	 * pulses the instant the first point is spent rather than three seconds
+	 * later.
+	 */
+	float AuraNextAllowedSeconds = -1.0f;
 
 	/** Where health was the last time it moved. See `WasAboveHalfHealth`. */
 	bool bWasAboveHalfHealth = true;

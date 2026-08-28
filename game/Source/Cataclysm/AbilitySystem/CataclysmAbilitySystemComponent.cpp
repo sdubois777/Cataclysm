@@ -666,6 +666,35 @@ void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 	NovaNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
+bool UCataclysmAbilitySystemComponent::MayApplyAura() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO PULSE, the same refusal `MayReleaseNova` makes just
+		// above and the same safe direction: an interval that cannot be timed
+		// would apply the aura on every step of the regeneration timer instead
+		// of every third second.
+		return false;
+	}
+
+	// NEVER PULSED IS ALLOWED, so the aura starts the moment the first point is
+	// spent rather than three seconds afterwards.
+	return AuraNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= AuraNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteAuraApplied(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	AuraNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
+}
+
 int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
 												   float WindowSeconds) const
 {
