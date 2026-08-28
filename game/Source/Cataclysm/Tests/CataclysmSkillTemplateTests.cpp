@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For the flag saying a character pays with health where others pay with
+// mana. Issue #1067.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -4476,4 +4479,173 @@ bool FCataclysmTheLastDropGrantsFervourTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillWaterToBloodCostTest,
+	"Cataclysm.Skills.WaterToBloodPaysASkillsCostOutOfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The last clause of the Masochist's Water to Blood. Issue #1067.
+ *
+ * "...and every ability costs health instead of mana."
+ *
+ * THE OTHER THREE CLAUSES ARE A STAT LINE and are covered by
+ * `Cataclysm.Passives.WaterToBloodTradesTheManaPoolForHealthOnARealCharacter`.
+ * This one is a property of an ACTIVATION, so it needs a granted skill and a
+ * caster that really casts it.
+ *
+ * THE SAME NUMBER OUT OF A DIFFERENT POOL. The option converts the pool, not the
+ * price, so the health taken is the skill's own mana cost.
+ *
+ * THE FLAG IS SET AS A STAT INPUT AND NOT ON THE ATTRIBUTE, because
+ * `UCataclysmSkillTemplate::ManaPoolBecomesHealth` asks through `StatForSkill`
+ * with a fallback of zero rather than reading the attribute. Writing the
+ * attribute would leave the answer at zero and this test would pass while
+ * measuring nothing. That is how `UCataclysmPlayerClassStats::ApplyTo` really
+ * leaves it: the row is in `StatToAttribute`, so its inputs are recorded.
+ */
+bool FCataclysmSkillWaterToBloodCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float Cost = Strike->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("The Heavy slot costs something (%.1f)"),
+								  Cost),
+				  Cost > 0.0f))
+	{
+		return false;
+	}
+
+	// THE OPTION, AS THE PASSIVE TREE DELIVERS IT: a flat 1 on the flag, with no
+	// condition. See the header for why it is a stat input rather than an
+	// attribute.
+	FCataclysmStatModifier Traded;
+	Traded.Bucket = ECataclysmStatBucket::Flat;
+	Traded.Source = ECataclysmModifierSource::PassiveKeystone;
+	Traded.Value = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(Traded);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE MANA IS STILL THERE IN THIS TEST, deliberately. The stat line is what
+	// empties it, and this test does not build one; leaving it full is what says
+	// the cost came out of health because of the flag rather than because there
+	// was no mana to take.
+	const float ManaBefore = Caster.Mana();
+	if (!TestTrue(TEXT("the caster still has mana to spend"), ManaBefore > Cost))
+	{
+		return false;
+	}
+
+	const float HealthBefore =
+		Caster.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+
+	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
+
+	// THE HEADLINE. The cost came out of health.
+	TestEqual(TEXT("the health was spent"),
+			  Caster.AbilitySystem->GetNumericAttribute(
+				  UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			  HealthBefore - Cost, 0.01f);
+
+	// AND THE MANA WAS NOT TOUCHED, which is the half that says the cost moved
+	// rather than being taken twice.
+	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), ManaBefore,
+			  0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillWaterToBloodRefusalTest,
+	"Cataclysm.Skills.WaterToBloodRefusesASkillThatWouldEmptyTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A skill paid for in health must not be able to kill the caster. Issue #1067.
+ *
+ * WHY IT IS ASKED AS STRICTLY MORE THAN, WHERE MANA ASKS FOR AT LEAST. A cost
+ * that took a character to exactly zero health would kill it, and no skill
+ * should be able to do that by being cast. The design gives its own health costs
+ * their own floor rules, and Rock Bottom -- the first option of the next
+ * capstone, which is not built -- is the node that says what happens at the
+ * bottom. Until then the cast is refused rather than fatal.
+ */
+bool FCataclysmSkillWaterToBloodRefusalTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float Cost = Strike->GetManaCost();
+
+	FCataclysmStatModifier Traded;
+	Traded.Bucket = ECataclysmStatBucket::Flat;
+	Traded.Source = ECataclysmModifierSource::PassiveKeystone;
+	Traded.Value = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(Traded);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// EXACTLY THE COST, WHICH WOULD LEAVE NOTHING. The mana pool is left full so
+	// that a refusal cannot be blamed on it.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Cost);
+
+	const float HealthBefore =
+		Caster.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float EnemyBefore = Enemy.Health();
+
+	TestFalse(TEXT("a skill that would take the last of the health is refused"),
+			  Activate(Caster, Strike));
+	TestEqual(TEXT("and it takes nothing"),
+			  Caster.AbilitySystem->GetNumericAttribute(
+				  UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			  HealthBefore, 0.01f);
+	TestEqual(TEXT("and hits nothing"), Enemy.Health(), EnemyBefore, 0.01f);
+
+	// AND ONE POINT MORE IS ENOUGH, which is what says the boundary is where the
+	// comment says it is rather than somewhere nearby.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Cost + 1.0f);
+	TestTrue(TEXT("with one point of health more it casts"),
+			 Activate(Caster, Strike));
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

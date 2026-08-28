@@ -203,6 +203,37 @@ public:
 	static bool HealthCostIsSuppressed(
 		const UAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * The stat saying this character has traded its mana pool for health.
+	 * As `game/Data/PassiveEffects.csv` spells it. Issue #1067.
+	 */
+	static const TCHAR* ManaPoolBecomesHealthStat;
+
+	/**
+	 * Whether this character pays with health where others pay with mana.
+	 *
+	 * THE MASOCHIST'S Water to Blood, the first option of its first capstone:
+	 * "You no longer have a mana pool. All maximum mana is converted into added
+	 * maximum health, and every ability costs health instead of mana."
+	 *
+	 * IT LIVES BESIDE `HealthCostIsSuppressed` BECAUSE BOTH ANSWER "WHAT DOES A
+	 * SKILL COST THIS CHARACTER", and a reader looking for one will look here
+	 * for the other. They are not opposites: that one says a health cost is not
+	 * taken, and this one says a MANA cost is taken out of health instead.
+	 *
+	 * READ IN TWO PLACES AND FOR TWO DIFFERENT REASONS.
+	 * `UCataclysmPlayerClassStats::ApplyTo` reads it once, when the stat line is
+	 * written, to move the resolved maximum mana onto maximum health and write
+	 * the mana maximum down to zero. `UCataclysmGameplayAbility::CheckCost` and
+	 * `ApplyCost` read it on every activation, to take the cost out of the right
+	 * pool.
+	 *
+	 * False for every character without that option, and false for any ability
+	 * system with no class resource attribute set, which is every enemy.
+	 */
+	static bool ManaPoolBecomesHealth(
+		const UAbilitySystemComponent* AbilitySystem);
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.

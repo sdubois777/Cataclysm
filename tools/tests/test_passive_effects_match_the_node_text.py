@@ -346,7 +346,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: of its sentence. Its first clause is an `increased` row, because
 #: `damage_over_time_taken` has a real base of 100; its second is `flat`,
 #: holding the percentage its reader turns into a fraction.
-AUTHORED_ROWS = 121
+#:
+#: AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
+#: OPTION of the first Masochist capstone, saying the character has traded
+#: its mana pool for health.
+AUTHORED_ROWS = 122
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -545,6 +549,28 @@ AUTHORED_ROWS = 121
 #: Issue #939 measures why most nodes are not stat modifiers under any
 #: authoring scheme, and that reasoning is unchanged.
 AUTHORED_NODES = 78
+
+#: How many of the capstone options that are NAMED actually grant something.
+#:
+#: WHY A SECOND COUNT, WHEN `AUTHORED_NODES` ALREADY EXISTS. That one counts
+#: NODES, and a capstone counts once if ANY of its three options has a row. So a
+#: capstone with one authored option and two empty ones reads as done. The
+#: Masochist tree was reported as 74 of 74 nodes granting something while four of
+#: its twelve options granted nothing, and the project owner found out by taking
+#: Water to Blood in play and getting nothing. Issue #1066.
+#:
+#: NAMED OPTIONS ONLY, because the Saboteur's four capstones name none at all --
+#: issue #935 -- and counting twelve options nobody wrote as unauthored would mix
+#: two different problems into one number.
+#:
+#: IT WENT FROM 8 TO 9 ON 2026-08-28, when Water to Blood was built. The eight
+#: before it are spread across the Masochist's four capstones; the Bulwark's
+#: twelve and the Berserker's twelve are all unauthored, which is part of those
+#: trees being unbuilt rather than a capstone problem.
+AUTHORED_OPTIONS = 9
+
+#: How many capstone options are named at all, across every tree.
+NAMED_OPTIONS = 36
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -1129,6 +1155,13 @@ VALUE_IN_WORDS = {
     ("Masochist_basic_ll_b1", "damage_to_bleeding_on_low_health"):
         ("converts all damage you take into bleeding", 1.0),
 
+    # AND WATER TO BLOOD, which trades the mana pool away. Issue #1067.
+    # "You no longer have a mana pool" is a rule, not a magnitude, and the
+    # only digit in that whole option description is the 1 nobody wrote --
+    # a flag, like the four above.
+    ("Masochist_capstone_25", "mana_pool_becomes_health"):
+        ("no longer have a mana pool", 1.0),
+
     # THE EDGE'S SECOND CLAUSE, which is a rule and not a magnitude. Issue #1026.
     # "While at or below 20% health you take 25% less damage and your Fervour
     # does not decrease." The flag row is a 1 meaning "on", and both digits in
@@ -1510,6 +1543,60 @@ def test_the_coverage_is_what_it_was_measured_to_be(effects, nodes):
         f"there are now {len(nodes)} passive nodes, not {TOTAL_NODES}. Raise "
         "TOTAL_NODES here; the share that does anything is what this file is "
         "about and it cannot be read without both numbers."
+    )
+
+
+def test_the_option_coverage_is_what_it_was_measured_to_be(effects, nodes):
+    """How many capstone options actually grant something.
+
+    THE NUMBER `AUTHORED_NODES` CANNOT SEE. That one counts nodes, and a capstone
+    counts once if any of its three options has a row, so a capstone with one
+    authored option reads as done. Issue #1066: the Masochist tree was reported
+    as 74 of 74 nodes granting something while four of its twelve options granted
+    nothing, and the project owner found out by taking Water to Blood in play and
+    getting no health, no conversion and a mana pool that was still there.
+
+    A CAPSTONE OPTION IS A SEPARATE PROMISE. Each is a permanent choice with its
+    own sentence, so an unauthored one is a whole decision that does nothing --
+    not a rough edge on a node that mostly works.
+
+    Raise both numbers deliberately when more are authored.
+    """
+    named = set()
+    for row in nodes.values():
+        if row["Kind"] != "capstone":
+            continue
+        for index in (1, 2, 3):
+            if row[f"Option{index}Name"].strip():
+                named.add((row["Name"], index))
+
+    granting = set()
+    for row in effects:
+        option = row["Option"].strip()
+        if option and option != "0":
+            granting.add((row["Node"], int(float(option))))
+
+    # AN EFFECT ROW ON AN OPTION NOBODY NAMED IS ITS OWN FAULT, and it is checked
+    # here rather than left to the count: the row would apply to a choice a
+    # player can never be offered, and `AwaitsAnOptionChoice` refuses a capstone
+    # that names nothing, so it would be dead data nothing reports.
+    orphans = sorted(granting - named)
+    assert not orphans, (
+        f"these effect rows are on capstone options that have no name: {orphans}. "
+        "Either name the option in the Passive Nodes sheet or remove the row."
+    )
+
+    assert len(named) == NAMED_OPTIONS, (
+        f"{len(named)} capstone options are named and this test expects "
+        f"{NAMED_OPTIONS}. Raise NAMED_OPTIONS here; the share that does "
+        "something cannot be read without both numbers."
+    )
+
+    assert len(granting) == AUTHORED_OPTIONS, (
+        f"{len(granting)} of the {len(named)} named capstone options grant "
+        f"something and this test expects {AUTHORED_OPTIONS}. This is a number "
+        "the whole feature is judged on, so raise AUTHORED_OPTIONS deliberately "
+        "and say what changed in the pull request."
     )
 
 

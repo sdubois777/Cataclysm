@@ -325,7 +325,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 121, WHICH FINISHES THE MASOCHIST TREE. Issues #1060 and #1061.
 	// One row for Empathic Link and two for Wound Channeling, one per clause.
 	// All 74 nodes of that tree now grant something.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        121)
+	//
+	// AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
+	// OPTION of the first Masochist capstone: the character has traded its
+	// mana pool for health.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        122)
 
 	#undef CHECK_TABLE
 
