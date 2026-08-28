@@ -13,6 +13,11 @@
 
 const TCHAR* UCataclysmDebuffs::DurationStat = TEXT("debuff_duration_taken");
 
+// WHAT WOUND CHANNELING'S SECOND CLAUSE GRANTS. Issue #1061: "you deal 1%
+// increased damage per point to enemies carrying a debuff you also carry."
+const TCHAR* UCataclysmDebuffs::SharedDebuffDamageStat =
+	TEXT("damage_to_enemies_sharing_a_debuff");
+
 const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
 	// EVERY DAMAGE OVER TIME, AS ONE BRANCH. Bleed, Burn, Disease, Generic,
 	// Necrosis, Poison and Void Splinter all hang off this, so naming the parent
@@ -106,6 +111,77 @@ int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
 int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)
 {
 	return CountOn(UCataclysmTargeting::AbilitySystemOf(Actor));
+}
+
+bool UCataclysmDebuffs::ShareADebuff(const UAbilitySystemComponent* AbilitySystem,
+									 const AActor* Other)
+{
+	const FGameplayTagContainer Mine = TagsOn(AbilitySystem);
+	if (Mine.IsEmpty())
+	{
+		// A CHARACTER SUFFERING FROM NOTHING SHARES NOTHING, which is the
+		// ordinary answer for everybody but a hurt Masochist, and it is asked
+		// first because it is the cheap half.
+		return false;
+	}
+
+	const FGameplayTagContainer Theirs = TagsOnActor(Other);
+	for (const FGameplayTag& Tag : Theirs)
+	{
+		// EXACTLY, NOT BY THE PARENT BRANCH. See the header: burning and
+		// bleeding are both `Keyword.DoT` and are not the same debuff.
+		if (Mine.HasTagExact(Tag))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+float UCataclysmDebuffs::DamageAgainstSharedDebuff(
+	const UAbilitySystemComponent* Source, const AActor* Target)
+{
+	if (!Source)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Attribute =
+		UCataclysmCombatAttributeSet::GetDamageVsSharedDebuffAttribute();
+	if (!Source->HasAttributeSetForAttribute(Attribute))
+	{
+		// AN ABILITY SYSTEM WITHOUT A COMBAT SET. Every enemy's plain attack
+		// comes through the hit path too, and several test harnesses build a
+		// component with fewer sets than a character has.
+		return 0.0f;
+	}
+
+	// THE STAT BEFORE THE COMPARISON, because it is the cheaper question and it
+	// is zero for every character in the game without the node. Asking the other
+	// way round would walk two tag containers on every blow anybody strikes.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(Source);
+	const float Percent = Cataclysm
+		? Cataclysm->StatForSkill(FName(SharedDebuffDamageStat),
+								  FGameplayTagContainer(),
+								  Source->GetNumericAttribute(Attribute))
+		: Source->GetNumericAttribute(Attribute);
+
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	if (!ShareADebuff(Source, Target))
+	{
+		return 0.0f;
+	}
+
+	// A FRACTION, because the caller adds it into the increases bucket, which is
+	// a sum of fractions. The stat holds a percentage because that is what the
+	// node's sentence states.
+	return Percent / 100.0f;
 }
 
 FGameplayTag UCataclysmDebuffs::BleedTag()

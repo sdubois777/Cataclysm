@@ -340,7 +340,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: and both are `flat` rows because each supplies its own base and because a
 #: stat reading zero is how the code knows the character has no points in
 #: the node.
-AUTHORED_ROWS = 118
+#:
+#: AND TO 121 ON THE SAME DAY, finishing the tree. Issues #1060 and #1061:
+#: one row for Empathic Link, and TWO for Wound Channeling, one per clause
+#: of its sentence. Its first clause is an `increased` row, because
+#: `damage_over_time_taken` has a real base of 100; its second is `flat`,
+#: holding the percentage its reader turns into a fraction.
+AUTHORED_ROWS = 121
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -529,17 +535,16 @@ AUTHORED_ROWS = 118
 #: they gain one each rather than sharing a capstone. 74 of 293 altogether and
 #: 70 of the Masochist tree's own 74.
 #:
-#: TWO MASOCHIST NODES REMAIN. Beacon of Despair and Contagious Torment were
-#: built on 2026-08-28, issues #1057 and #1058, which is what took this from
-#: 74 to 76. They brought the two things all four needed: `UCataclysmDebuffs::
-#: TagsOn` lists the debuffs a character carries, and
-#: `UCataclysmContagion::SpreadOne` puts a named effect from
-#: `game/Data/StatusEffects.csv` on somebody else.
+#: THE MASOCHIST TREE IS FINISHED. All 74 of its nodes grant something as of
+#: 2026-08-28. The last four went in two changes: Beacon of Despair and
+#: Contagious Torment (#1057, #1058), then Empathic Link and Wound
+#: Channeling (#1060, #1061), which is what took this from 74 to 78.
 #:
-#: THE OTHER TWO NEED SOMETHING DIFFERENT AGAIN. Empathic Link reads a DYING
-#: enemy's debuffs rather than the character's own, and Wound Channeling
-#: compares the character's against the target's at the moment of a hit.
-AUTHORED_NODES = 76
+#: THE OTHER THREE TREES ARE WHERE THE REMAINING GAP IS. Bulwark has 3 of
+#: its 74 nodes authored, Saboteur 1 of 74, and Berserker none of its 71.
+#: Issue #939 measures why most nodes are not stat modifiers under any
+#: authoring scheme, and that reasoning is unchanged.
+AUTHORED_NODES = 78
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

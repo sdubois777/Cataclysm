@@ -21,10 +21,10 @@
 #include "Misc/ScopeExit.h"
 
 /**
- * A debuff passing from the character carrying it to an enemy. Issues #1057
- * and #1058.
+ * What a debuff does to the enemies around whoever is carrying it.
  *
- * WHAT THESE GUARD. Two Masochist nodes:
+ * WHAT THESE GUARD. The four Masochist nodes of the Flagellant branch, which
+ * between them finished that tree:
  *
  *   Beacon of Despair     "You radiate an aura that applies a random debuff to
  *                          enemies within 6 metres every 3 seconds. The duration
@@ -32,6 +32,14 @@
  *   Contagious Torment    "When a debuff on you deals damage, enemies within 6
  *                          metres have a 1% chance per point to receive a random
  *                          debuff you carry."
+ *   Empathic Link         "When an enemy dies, its debuffs have a 2% chance per
+ *                          point to pass to a random enemy within 6 metres."
+ *   Wound Channeling      "...you deal 1% increased damage per point to enemies
+ *                          carrying a debuff you also carry."
+ *
+ * THREE OF THEM SPREAD ONE AND THE FOURTH COMPARES TWO, which is why Wound
+ * Channeling's tests are here rather than beside `UCataclysmDebuffs`: they are
+ * about the same branch of the tree and use the same harness.
  *
  * THE ROLLS ARE PINNED, so a test never depends on a random number. Both
  * functions take the same negative-means-roll parameters
@@ -690,6 +698,388 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionRealTickTest,
 												  100.0f, AsAnOrdinaryHit));
 	TestFalse(TEXT("and it spreads nothing, not being damage over time"),
 			  Nearby.Carries(Bleed));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Empathic Link
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionOnDeathTest,
+	"Cataclysm.Contagion.ADyingCreaturesDebuffsPassToOneOfTheOnesStandingByIt")
+{
+	using namespace CataclysmContagionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	constexpr float M = ContagionMetre;
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+
+	// THE KILLER STANDS WELL AWAY FROM THE BODY, deliberately. The node says
+	// "within 6 metres" of the dying enemy, not of the character holding it, and
+	// a search centred on the player instead would find nobody from here.
+	FContagionCombatant Masochist(World, FVector(0.0f, 0.0f, 40 * M));
+	FContagionCombatant Dying(World, FVector::ZeroVector);
+	FContagionCombatant Beside(World, FVector(2 * M, 0.0f, 0.0f));
+	FContagionCombatant Away(World, FVector(9 * M, 0.0f, 0.0f));
+
+	// THE BODY IS CARRYING SOMETHING, and it is the BODY'S debuff that passes.
+	// The Masochist carries nothing at all here, which is what says this node
+	// reads the dying creature rather than the character holding it.
+	Dying.Catch(Bleed);
+	TestEqual(TEXT("the Masochist itself is carrying nothing"),
+		UCataclysmDebuffs::CountOn(Masochist.AbilitySystem), 0);
+
+	// MARKED DEAD, WHICH IS WHAT `HandleDeath` DOES BEFORE IT REACHES THIS.
+	// Without it the corpse is found by its own search and can catch its own
+	// debuff back.
+	UCataclysmSkillEffects::MarkDead(Dying.Actor);
+
+	// WITHOUT THE NODE, A CERTAIN ROLL STILL PASSES NOTHING.
+	TestEqual(TEXT("no points in the node passes nothing on a certain roll"),
+		UCataclysmContagion::SpreadOnDeath(Dying.Actor, Masochist.Actor,
+										   /*PinnedRoll=*/0.0f), 0);
+	TestFalse(TEXT("so the creature beside the body caught nothing"),
+			  Beside.Carries(Bleed));
+
+	// EIGHT POINTS OF EMPATHIC LINK, which is 2% a point, so 16%.
+	GiveNode(Masochist, UCataclysmContagion::DeathChanceStat, 2.0f);
+
+	// A ROLL ABOVE THE CHANCE MISSES. 50 against 16.
+	TestEqual(TEXT("a roll above the chance passes nothing"),
+		UCataclysmContagion::SpreadOnDeath(Dying.Actor, Masochist.Actor,
+										   /*PinnedRoll=*/50.0f), 0);
+	TestFalse(TEXT("and the creature beside the body still caught nothing"),
+			  Beside.Carries(Bleed));
+
+	// AND ONE BELOW IT PASSES. 1 against 16. The body carries one debuff, so one
+	// passes.
+	TestEqual(TEXT("a roll under the chance passes the one debuff it carried"),
+		UCataclysmContagion::SpreadOnDeath(Dying.Actor, Masochist.Actor,
+										   /*PinnedRoll=*/1.0f), 1);
+	TestTrue(TEXT("the creature two metres from the body is now bleeding"),
+			 Beside.Carries(Bleed));
+	TestFalse(TEXT("and the one nine metres away is not"), Away.Carries(Bleed));
+
+	// AND THE BODY DID NOT CATCH ITS OWN DEBUFF BACK. It is already carrying
+	// one, so this asks the count instead: a second application would refresh
+	// rather than add, and the count would stay at one either way. What says it
+	// was never a candidate is that exactly one creature caught something, which
+	// the return value above already asserted.
+	TestEqual(TEXT("the body still carries the one debuff it died with"),
+		UCataclysmDebuffs::CountOn(Dying.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionOnDeathPerDebuffTest,
+	"Cataclysm.Contagion.EachDebuffOnTheBodyIsRolledForSeparately")
+{
+	using namespace CataclysmContagionTest;
+
+	// THE SHAPE THAT MAKES THIS NODE DIFFERENT FROM ITS TWO NEIGHBOURS. Beacon
+	// of Despair picks one debuff and gives it to everybody; Contagious Torment
+	// rolls once per enemy; this rolls once per DEBUFF, because the sentence
+	// says "its debuffs have a 2% chance per point to pass".
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	constexpr float M = ContagionMetre;
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+
+	FContagionCombatant Masochist(World, FVector(0.0f, 0.0f, 40 * M));
+	FContagionCombatant Dying(World, FVector::ZeroVector);
+	FContagionCombatant Beside(World, FVector(2 * M, 0.0f, 0.0f));
+
+	// TWO DEBUFFS ON THE BODY, AND A STUN THAT CANNOT TRAVEL. The stun is here
+	// so the count below is not simply "everything it carried": a body carrying
+	// three things passes two, because `State.Stunned` names no status effect
+	// row.
+	Dying.Catch(Bleed);
+	Dying.Catch(Burn);
+	Dying.Catch(Tag(TEXT("State.Stunned")));
+	TestEqual(TEXT("the body carries three debuffs"),
+		UCataclysmDebuffs::CountOn(Dying.AbilitySystem), 3);
+
+	UCataclysmSkillEffects::MarkDead(Dying.Actor);
+	GiveNode(Masochist, UCataclysmContagion::DeathChanceStat, 2.0f);
+
+	TestEqual(TEXT("two of the three pass, the stun being unable to"),
+		UCataclysmContagion::SpreadOnDeath(Dying.Actor, Masochist.Actor,
+										   /*PinnedRoll=*/1.0f), 2);
+	TestTrue(TEXT("the neighbour caught the bleed"), Beside.Carries(Bleed));
+	TestTrue(TEXT("and the burn"), Beside.Carries(Burn));
+	TestFalse(TEXT("and is not stunned"),
+			  Beside.Carries(Tag(TEXT("State.Stunned"))));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Wound Channeling
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionSharedDebuffTest,
+	"Cataclysm.Contagion.SharingADebuffIsExactAndNotByTheParentBranch")
+{
+	using namespace CataclysmContagionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+
+	FContagionCombatant Masochist(World);
+	FContagionCombatant Bleeding(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+	FContagionCombatant Burning(World, FVector(4 * ContagionMetre, 0.0f, 0.0f));
+	FContagionCombatant Unhurt(World, FVector(6 * ContagionMetre, 0.0f, 0.0f));
+
+	Bleeding.Catch(Bleed);
+	Burning.Catch(Burn);
+
+	// NEITHER SIDE CARRYING ANYTHING SHARES NOTHING, rather than sharing
+	// vacuously.
+	TestFalse(TEXT("a character carrying nothing shares nothing"),
+		UCataclysmDebuffs::ShareADebuff(Masochist.AbilitySystem, Unhurt.Actor));
+	TestFalse(TEXT("nor with a bleeding enemy, while it carries nothing itself"),
+		UCataclysmDebuffs::ShareADebuff(Masochist.AbilitySystem,
+										Bleeding.Actor));
+
+	Masochist.Catch(Bleed);
+
+	TestTrue(TEXT("a bleeding character shares with a bleeding enemy"),
+		UCataclysmDebuffs::ShareADebuff(Masochist.AbilitySystem,
+										Bleeding.Actor));
+
+	// THE ASSERTION THE WHOLE FUNCTION EXISTS FOR. Bleeding and burning are both
+	// `Keyword.DoT`, and the engine counts a tag against its parents, so any
+	// looser comparison would call these two a match and pay the node for any
+	// two harmful effects at all.
+	TestFalse(TEXT("but a bleeding character does not share with a burning one"),
+		UCataclysmDebuffs::ShareADebuff(Masochist.AbilitySystem,
+										Burning.Actor));
+
+	TestFalse(TEXT("nor with an enemy carrying nothing"),
+		UCataclysmDebuffs::ShareADebuff(Masochist.AbilitySystem, Unhurt.Actor));
+
+	return true;
+}
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionSharedDebuffDamageTest,
+	"Cataclysm.Contagion.SharingADebuffIsWorthTheNodesOwnPercentage")
+{
+	using namespace CataclysmContagionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+
+	FContagionCombatant Masochist(World);
+	FContagionCombatant Bleeding(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+	FContagionCombatant Burning(World, FVector(4 * ContagionMetre, 0.0f, 0.0f));
+
+	Masochist.Catch(Bleed);
+	Bleeding.Catch(Bleed);
+	Burning.Catch(Burn);
+
+	// WITHOUT THE NODE IT IS WORTH NOTHING EVEN WHERE A DEBUFF IS SHARED, which
+	// is every character in the game.
+	TestEqual(TEXT("no points in the node is no bonus"),
+		UCataclysmDebuffs::DamageAgainstSharedDebuff(Masochist.AbilitySystem,
+													 Bleeding.Actor),
+		0.0f, 0.0001f);
+
+	// EIGHT POINTS OF WOUND CHANNELING, which is 1% a point, so 8%.
+	GiveNode(Masochist, UCataclysmDebuffs::SharedDebuffDamageStat, 1.0f);
+
+	// A FRACTION AND NOT A PERCENTAGE, because the caller adds it into the
+	// increases bracket, which is a sum of fractions. Eight per cent is 0.08.
+	TestEqual(TEXT("eight points against a shared debuff is 0.08"),
+		UCataclysmDebuffs::DamageAgainstSharedDebuff(Masochist.AbilitySystem,
+													 Bleeding.Actor),
+		0.08f, 0.0001f);
+
+	TestEqual(TEXT("and nothing against an enemy suffering something else"),
+		UCataclysmDebuffs::DamageAgainstSharedDebuff(Masochist.AbilitySystem,
+													 Burning.Actor),
+		0.0f, 0.0001f);
+
+	return true;
+}
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionSharedDebuffReachesARealHitTest,
+	"Cataclysm.Contagion.ARealHitIsBiggerAgainstAnEnemySharingADebuff")
+{
+	using namespace CataclysmContagionTest;
+
+	// THE SECOND TEST HERE THAT PROVES A WIRING RATHER THAN A FUNCTION. The
+	// three above call `UCataclysmDebuffs` directly, which says what the
+	// comparison answers and nothing about whether a blow ever asks it. This
+	// one strikes a real blow and reads what it was worth.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+
+	FContagionCombatant Masochist(World);
+	FContagionCombatant Bleeding(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+	FContagionCombatant Burning(World, FVector(4 * ContagionMetre, 0.0f, 0.0f));
+
+	// SOMETHING TO SWING WITH. A character with no weapon damage deals nothing
+	// however many increases it carries, and `ApplyHit` says so in the log.
+	Masochist.Combat->SetAttackDamage(1'000.0f);
+
+	Masochist.Catch(Bleed);
+	Bleeding.Catch(Bleed);
+	Burning.Catch(Burn);
+
+	// AREA, SO EVASION CANNOT MAKE THIS FAIL ONE RUN IN TWENTY.
+	FCataclysmHitDelivery Unevadable;
+	Unevadable.bIsArea = true;
+
+	const float BeforeShared = UCataclysmSkillEffects::ApplyHit(
+		Masochist.Actor, Bleeding.Actor, 100.0f, FGameplayTagContainer(),
+		Unevadable);
+	const float BeforeOther = UCataclysmSkillEffects::ApplyHit(
+		Masochist.Actor, Burning.Actor, 100.0f, FGameplayTagContainer(),
+		Unevadable);
+
+	// THE TWO BLOWS ARE THE SAME SIZE WITHOUT THE NODE, which is the baseline
+	// everything below is measured against. Asserted rather than assumed,
+	// because the two targets differ in what they are suffering from and this
+	// test would read as evidence of the node if they differed for any reason.
+	if (!TestEqual(TEXT("without the node both blows are the same size"),
+				   BeforeShared, BeforeOther, 0.01f))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and both are a real number rather than zero"),
+				  BeforeShared > 0.0f))
+	{
+		return false;
+	}
+
+	GiveNode(Masochist, UCataclysmDebuffs::SharedDebuffDamageStat, 1.0f);
+
+	const float AfterShared = UCataclysmSkillEffects::ApplyHit(
+		Masochist.Actor, Bleeding.Actor, 100.0f, FGameplayTagContainer(),
+		Unevadable);
+	const float AfterOther = UCataclysmSkillEffects::ApplyHit(
+		Masochist.Actor, Burning.Actor, 100.0f, FGameplayTagContainer(),
+		Unevadable);
+
+	// EIGHT PER CENT MORE AGAINST THE ONE SHARING A DEBUFF.
+	TestEqual(*FString::Printf(
+				  TEXT("the blow against the bleeding enemy grew from %.1f to "
+					   "%.1f, which is eight per cent"),
+				  BeforeShared, AfterShared),
+			  AfterShared, BeforeShared * 1.08f, BeforeShared * 0.001f);
+
+	// AND NOTHING AGAINST THE OTHER, which is what says the bonus is decided by
+	// the target rather than being an increase the character carries everywhere.
+	TestEqual(TEXT("and the blow against the burning enemy did not change"),
+			  AfterOther, BeforeOther, BeforeOther * 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Two different damage over time effects at once
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionTwoDamageOverTimesTest,
+	"Cataclysm.Contagion.ACharacterCanBleedAndBurnAtTheSameTime")
+{
+	using namespace CataclysmContagionTest;
+
+	/**
+	 * Issue #1062, found by the Empathic Link test below failing on its second
+	 * debuff.
+	 *
+	 * WHAT WAS WRONG. `UCataclysmSkillEffects::ApplyDamageOverTime` built every
+	 * effect under one name, `CataclysmDamageOverTime`, while
+	 * `MakeSingleStackTagged` set a stack limit of one aggregated by target. The
+	 * single-stack rule -- which is right, and is the design's own -- therefore
+	 * applied ACROSS different effects instead of within one: setting a
+	 * character alight while it was bleeding replaced the bleed, and both
+	 * applications reported success.
+	 *
+	 * IT IS HERE RATHER THAN IN `CataclysmDebuffTests.cpp` because that file's
+	 * "bleeding and burning counts as two" test uses `ApplyTagForDuration`,
+	 * which never had the fault, and moving it would make that file's harness
+	 * carry an attacker it does not otherwise need.
+	 *
+	 * THE SAME EFFECT TWICE IS STILL ONE STACK, which is the half that must not
+	 * break while the other is fixed.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+
+	FContagionCombatant Attacker(World);
+	FContagionCombatant Suffering(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+
+	TestTrue(TEXT("a bleed is applied"),
+		UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Suffering.Actor, /*DamagePerTick=*/10.0f,
+			/*DurationSeconds=*/10.0f, Bleed));
+	TestTrue(TEXT("and then a burn"),
+		UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Suffering.Actor, /*DamagePerTick=*/10.0f,
+			/*DurationSeconds=*/10.0f, Burn));
+
+	// BOTH, WHICH IS THE POINT. Before issue #1062 the second replaced the
+	// first, so one of these two was false and the count below was 1.
+	TestTrue(TEXT("the character is bleeding"), Suffering.Carries(Bleed));
+	TestTrue(TEXT("and burning"), Suffering.Carries(Burn));
+	TestEqual(TEXT("and carries two debuffs, which eleven nodes are paid for"),
+		UCataclysmDebuffs::CountOn(Suffering.AbilitySystem), 2);
+
+	// AND THE SINGLE-STACK RULE STILL HOLDS WITHIN ONE EFFECT. A second bleed
+	// refreshes the first rather than adding a second, which the design requires
+	// of everything a player applies. Without this half the repair would have
+	// traded one fault for a worse one.
+	TestTrue(TEXT("a second bleed is applied"),
+		UCataclysmSkillEffects::ApplyDamageOverTime(
+			Attacker.Actor, Suffering.Actor, /*DamagePerTick=*/10.0f,
+			/*DurationSeconds=*/10.0f, Bleed));
+	TestEqual(TEXT("and the character still carries exactly two"),
+		UCataclysmDebuffs::CountOn(Suffering.AbilitySystem), 2);
 
 	return true;
 }

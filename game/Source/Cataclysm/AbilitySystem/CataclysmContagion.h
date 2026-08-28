@@ -188,4 +188,46 @@ public:
 	static int32 SpreadOnDebuffDamage(AActor* Character,
 									  float PinnedRoll = -1.0f,
 									  int32 PinnedIndex = -1);
+
+	// --- Empathic Link --------------------------------------------------------
+
+	/**
+	 * The stat naming the chance each debuff on a dying enemy has of passing to
+	 * another enemy near it, as a percentage. As
+	 * `game/Data/PassiveEffects.csv` spells it.
+	 */
+	static const TCHAR* DeathChanceStat;
+
+	/**
+	 * Roll for each debuff a creature that has just died was carrying, and pass
+	 * the ones that succeed to one other creature standing near its body.
+	 *
+	 * THE DEBUFFS ARE THE DYING CREATURE'S AND THE STAT IS THE PLAYER'S, which
+	 * is what makes this different from everything else in this file. Every other
+	 * function here spreads what the character holding the node is carrying. The
+	 * player need not be anywhere near the body.
+	 *
+	 * ONE ROLL PER DEBUFF, AND ONE RANDOM RECIPIENT FOR EACH THAT PASSES. "its
+	 * debuffs have a 2% chance per point to pass to a random enemy within 6
+	 * metres" makes the chance a property of each debuff and names a single
+	 * recipient. That is a third shape: Beacon of Despair picks one debuff for
+	 * everybody, Contagious Torment rolls per enemy, and this rolls per debuff.
+	 *
+	 * WHO COUNTS AS AN ENEMY IS ASKED OF THE PLAYER AND NOT OF THE CORPSE.
+	 * `UCataclysmTargeting::FindEnemiesInSphere` decides sides from the actor
+	 * passed to it, so passing the dying creature would find the player. The
+	 * search runs from the player with the body's location as its centre.
+	 *
+	 * THE BODY IS NEVER A RECIPIENT. `ACataclysmEnemyCharacter::HandleDeath`
+	 * marks it dead and switches its collision off before this runs, and that
+	 * search refuses the dead.
+	 *
+	 * @param Dying    the creature whose debuffs are passing on
+	 * @param Killer   the character holding the node, whose stat decides the
+	 *                 chance and who the applied effects are credited to
+	 * @param PinnedRoll  0 to 100, or negative to roll
+	 * @return how many debuffs passed
+	 */
+	static int32 SpreadOnDeath(AActor* Dying, AActor* Killer,
+							   float PinnedRoll = -1.0f);
 };

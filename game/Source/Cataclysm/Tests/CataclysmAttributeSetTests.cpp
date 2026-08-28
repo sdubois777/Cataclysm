@@ -230,11 +230,19 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * Both are ALSO how the code knows the character holds the node at all,
 	 * because neither can be held at zero points.
 	 *
+	 * THE CHANCE A DYING ENEMY'S DEBUFFS PASS ON, AND THE INCREASED DAMAGE
+	 * DEALT TO AN ENEMY SHARING A DEBUFF, are the seventeenth and eighteenth,
+	 * added under issues #1060 and #1061, and they finish the Masochist tree.
+	 * They meet the rule for the thirteenth and fourteenth times. The second
+	 * is the SECOND STAT IN THE GAME DECIDED BY THE TARGET, after the eight
+	 * increased-damage-against-a-damage-type stats, and it could not be a
+	 * sheet stat even if an affix granted it: a sheet has no target in hand.
+	 *
 	 * So the sheet stays at 46. The combat set grew by eleven and the class
 	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 14;
+	constexpr int32 OffSheetCombatStats = 16;
 
 	/**
 	 * How far healing may take the character. Issue #988.

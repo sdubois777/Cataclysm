@@ -600,6 +600,47 @@ public:
 	FGameplayAttributeData DebuffSpreadChance;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffSpreadChance)
 
+	/**
+	 * The chance each debuff on a dying enemy has of passing to another enemy
+	 * near it, as a percentage.
+	 *
+	 * THE MASOCHIST'S Empathic Link IS ITS ONLY SOURCE, at 2% a point, so 16% at
+	 * full investment. Issue #1060.
+	 *
+	 * IT IS THE PLAYER'S STAT ABOUT SOMEBODY ELSE'S DEBUFFS, which is what makes
+	 * it different from `DebuffSpreadChance` beside it. That one spreads what the
+	 * character itself is carrying; this one spreads what a creature that just
+	 * died was carrying, and the character holding the node need not be near it.
+	 *
+	 * NOT ON THE CHARACTER SHEET, for the reason its neighbours are not: no
+	 * affix grants it, nothing scales it, it has no baseline of its own, and one
+	 * passive node of one tree supplies it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DeathSpreadChance)
+	FGameplayAttributeData DeathSpreadChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DeathSpreadChance)
+
+	/**
+	 * Increased damage against a target carrying a debuff the attacker also
+	 * carries, as a percentage.
+	 *
+	 * THE MASOCHIST'S Wound Channeling IS ITS ONLY SOURCE, at 1% a point, so 8%
+	 * at full investment. Issue #1061.
+	 *
+	 * THE SECOND STAT IN THE GAME DECIDED BY THE TARGET rather than by the
+	 * attacker alone, after the eight increased-damage-against-a-damage-type
+	 * stats above. It is read at the moment of a hit by
+	 * `UCataclysmDebuffs::DamageAgainstSharedDebuff` and joins the same increases
+	 * bracket those eight do.
+	 *
+	 * NOT ON THE CHARACTER SHEET, and here the reason is sharper than usual: a
+	 * sheet has no target in hand, so a bonus that exists only against a
+	 * particular enemy cannot be shown on one as though it applied to everything.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_DamageVsSharedDebuff)
+	FGameplayAttributeData DamageVsSharedDebuff;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DamageVsSharedDebuff)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -670,6 +711,8 @@ protected:
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AuraDebuffDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffSpreadChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DeathSpreadChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DamageVsSharedDebuff(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

@@ -146,6 +146,55 @@ public:
 	static FGameplayTagContainer TagsOnActor(const AActor* Actor);
 
 	/**
+	 * Whether these two are suffering from any of the same thing.
+	 *
+	 * WHAT IT IS FOR. The Masochist's Wound Channeling, issue #1061: "you deal
+	 * 1% increased damage per point to enemies carrying a debuff you also
+	 * carry."
+	 *
+	 * THE EXPLICIT TAGS ON BOTH SIDES, WHICH IS THE WHOLE CARE THIS NEEDS. A
+	 * Masochist that is burning and an enemy that is bleeding both answer yes to
+	 * `Keyword.DoT`, because the engine counts a tag against its parents. Asking
+	 * that question would pay the node for any two harmful effects at all, which
+	 * is not what "a debuff you also carry" says. `TagsOn` returns what was
+	 * really applied, one entry per effect, and this compares those exactly.
+	 *
+	 * NEITHER CARRYING ANYTHING IS FALSE rather than vacuously true. Two
+	 * characters sharing nothing share nothing.
+	 */
+	static bool ShareADebuff(const UAbilitySystemComponent* AbilitySystem,
+							 const AActor* Other);
+
+	/**
+	 * The stat naming the attacker's increased damage against a target carrying
+	 * a debuff it also carries, as a percentage. As
+	 * `game/Data/PassiveEffects.csv` spells it.
+	 */
+	static const TCHAR* SharedDebuffDamageStat;
+
+	/**
+	 * That increase as a FRACTION, or zero when the two share nothing.
+	 *
+	 * A FRACTION AND NOT A PERCENTAGE, because the one caller adds it into the
+	 * increases bracket, which is a sum of fractions.
+	 * `UCataclysmSkillEffects::DamageAgainstTypeOf` is the existing bonus of
+	 * exactly this shape -- read at the moment of a hit, decided by the target --
+	 * and it answers in the same units for the same reason.
+	 *
+	 * IT MUST JOIN THAT BRACKET RATHER THAN BECOMING A SECOND MULTIPLIER.
+	 * `UCataclysmSkillEffects::ApplyHit` says why: a finished attack damage
+	 * attribute has its increases already applied and no longer visible, and a
+	 * hit cannot reopen a bracket it cannot see.
+	 *
+	 * ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE where the component is one
+	 * this project made, so a later row carrying a condition or a scale is not
+	 * dropped in silence. Issue #1022. The attribute is the fallback, so an
+	 * ability system that recorded nothing answers what it holds.
+	 */
+	static float DamageAgainstSharedDebuff(
+		const UAbilitySystemComponent* Source, const AActor* Target);
+
+	/**
 	 * `Keyword.DoT.Bleed`, or an invalid tag if the vocabulary has lost it.
 	 *
 	 * Requested by name rather than declared as a native tag, for the reason

@@ -117,3 +117,6 @@ Masochist_keystone_fl_kA#1,Masochist_keystone_fl_kA,debuff_duration_taken,increa
 Masochist_keystone_fl_kA#2,Masochist_keystone_fl_kA,damage_over_time_taken,more,50.0,,,0.0,,0.0,0
 Masochist_basic_fl_b2#1,Masochist_basic_fl_b2,aura_debuff_duration,flat,4.0,,,0.0,,0.0,0
 Masochist_basic_fl_b0#1,Masochist_basic_fl_b0,debuff_spread_chance,flat,1.0,,,0.0,,0.0,0
+Masochist_basic_fl_b1#1,Masochist_basic_fl_b1,debuff_spread_on_death_chance,flat,2.0,,,0.0,,0.0,0
+Masochist_basic_fl_a1#1,Masochist_basic_fl_a1,damage_over_time_taken,increased,1.0,,,0.0,,0.0,0
+Masochist_basic_fl_a1#2,Masochist_basic_fl_a1,damage_to_enemies_sharing_a_debuff,flat,1.0,,,0.0,,0.0,0
