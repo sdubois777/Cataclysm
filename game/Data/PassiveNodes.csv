@@ -257,7 +257,7 @@ Masochist_basic_fl_b1,Masochist,basic_fl_b1,basic,Empathic Link,"When an enemy d
 Masochist_basic_fl_b2,Masochist,basic_fl_b2,basic,Beacon of Despair,You radiate an aura that applies a random debuff to enemies within 6 metres every 3 seconds. The duration of those debuffs is increased by 4% per point.,8,0,-900.0,-12.0,,,,,,
 Masochist_basic_fl_c0,Masochist,basic_fl_c0,basic,Shared Agony,+2% increased Fervour gained from health lost to damage over time per point.,8,0,-750.0,120.0,,,,,,
 Masochist_basic_fl_c1,Masochist,basic_fl_c1,basic,Ceaseless,+2% increased maximum Fervour per point.,6,0,-750.0,-12.0,,,,,,
-Masochist_keystone_fl_kA,Masochist,keystone_fl_kA,keystone,Vessel of Plagues,"You can carry twice as many unique debuffs, and debuffs on you deal 50% more damage to you.",1,0,-1050.0,-144.0,,,,,,
+Masochist_keystone_fl_kA,Masochist,keystone_fl_kA,keystone,Vessel of Plagues,"Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to you.",1,0,-1050.0,-144.0,,,,,,
 Masochist_keystone_fl_kB,Masochist,keystone_fl_kB,keystone,Doctrine of Pain,You deal 4% more damage for each unique debuff on you.,1,0,-900.0,-144.0,,,,,,
 Masochist_keystone_fl_kC,Masochist,keystone_fl_kC,keystone,Flagellant,Every debuff on you grants 5 Fervour per second for as long as it lasts.,1,0,-750.0,-144.0,,,,,,
 Masochist_basic_ll_stem0,Masochist,basic_ll_stem0,basic,Quickened,+1% increased Movement Speed per point.,6,0,450.0,516.0,,,,,,

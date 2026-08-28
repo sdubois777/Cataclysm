@@ -325,7 +325,15 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: two, one per clause: a flag saying its skills cost no health, and the Fervour
 #: every cast grants. Both of its rows carry `health_below`, which is a new
 #: condition and the reason that option needed one.
-AUTHORED_ROWS = 112
+#:
+#: AND TO 116 ON 2026-08-28, FOR SYMPHONY OF PAIN AND VESSEL OF PLAGUES.
+#: Issue #1033. Two rows each, one per clause. Both nodes were on the blocked
+#: list until the project owner settled two readings on 2026-08-28: that
+#: Symphony of Pain's "their effect on you" means the DAMAGE a debuff deals,
+#: and that the number of DIFFERENT debuffs a character may carry is
+#: deliberately unlimited, which made Vessel of Plagues' first clause doubling
+#: nothing and got it reworded.
+AUTHORED_ROWS = 116
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -508,7 +516,18 @@ AUTHORED_ROWS = 112
 #: character may carry that no document decides, and one needs a comparison
 #: between the character's debuffs and an enemy's. Unstable Aura was the last
 #: unblocked one.
-AUTHORED_NODES = 72
+#:
+#: AND BY TWO MORE ON 2026-08-28. Issue #1033. Symphony of Pain and Vessel of
+#: Plagues are both basic-or-keystone nodes with nothing authored before, so
+#: they gain one each rather than sharing a capstone. 74 of 293 altogether and
+#: 70 of the Masochist tree's own 74.
+#:
+#: FOUR MASOCHIST NODES REMAIN AND ALL FOUR NEED THE SAME MISSING THING: a way
+#: to apply, list and copy the 52 named status effects on an ENEMY. Only
+#: burning, bleeding and stun exist at run time today. Contagious Torment,
+#: Empathic Link and Beacon of Despair each apply one to an enemy; Wound
+#: Channeling compares the character's own against an enemy's.
+AUTHORED_NODES = 74
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.

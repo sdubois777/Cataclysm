@@ -213,11 +213,19 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * last one in its tree that did nothing and was neither blocked on other
 	 * work nor waiting on a design answer.
 	 *
-	 * So the sheet stays at 46. The combat set grew by ten and the class
+	 * HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS is the
+	 * fourteenth, added under issue #1033, and it meets the rule for the tenth
+	 * time: no affix grants it, nothing scales it, no class differs on it, and
+	 * two nodes of one tree are its only sources. It is the THIRD stat here
+	 * whose base is neither a class line nor a modifier, after the two damage
+	 * taken stats, and it arrives the same way they do, from
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 *
+	 * So the sheet stays at 46. The combat set grew by eleven and the class
 	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 11;
+	constexpr int32 OffSheetCombatStats = 12;
 
 	/**
 	 * How far healing may take the character. Issue #988.

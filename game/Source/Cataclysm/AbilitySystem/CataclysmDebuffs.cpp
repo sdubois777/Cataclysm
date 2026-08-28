@@ -2,9 +2,16 @@
 
 #include "AbilitySystem/CataclysmDebuffs.h"
 
+// For asking a character what a stat is worth with its own state in hand,
+// rather than reading the attribute. Issue #1033.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the attribute the duration stat is folded into. Issue #1033.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
+
+const TCHAR* UCataclysmDebuffs::DurationStat = TEXT("debuff_duration_taken");
 
 const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
 	// EVERY DAMAGE OVER TIME, AS ONE BRANCH. Bleed, Burn, Disease, Generic,
@@ -95,4 +102,42 @@ bool UCataclysmDebuffs::IsBleeding(const UAbilitySystemComponent* AbilitySystem)
 	const FGameplayTag Bleed = BleedTag();
 	return AbilitySystem && Bleed.IsValid()
 		&& AbilitySystem->HasMatchingGameplayTag(Bleed);
+}
+
+float UCataclysmDebuffs::DurationOn(const UAbilitySystemComponent* Defender,
+								   float DurationSeconds)
+{
+	const FGameplayAttribute Attribute =
+		UCataclysmCombatAttributeSet::GetDebuffDurationTakenAttribute();
+
+	if (DurationSeconds <= 0.0f || !Defender
+		|| !Defender->HasAttributeSetForAttribute(Attribute))
+	{
+		// NO COMBAT SET MEANS THE DURATION IS UNCHANGED, which is the ordinary
+		// answer rather than a fault: a target that cannot hold the stat is not
+		// a target that halves everything put on it.
+		return DurationSeconds;
+	}
+
+	// ASKED FOR RATHER THAN READ, so a future row carrying a condition works.
+	// Neither of the two rows today carries one, so the attribute holds the
+	// same answer and both routes agree.
+	//
+	// NO SKILL TAGS. This is the DEFENDER'S stat, and the skill in the
+	// attacker's hand is the wrong question to scope it by -- the same reason
+	// the retaliation and damage-taken readings pass none either.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	const float Held = Defender->GetNumericAttribute(Attribute);
+	const float Percent = Asking
+		? Asking->StatForSkill(FName(DurationStat), FGameplayTagContainer(),
+							   Held)
+		: Held;
+
+	// FLOORED AT NOTHING RATHER THAN AT THE NORMAL DURATION. A stat of zero is
+	// a legitimate future rule -- an effect that ends at once -- and a negative
+	// one is not, because a duration below nothing would make
+	// `ApplyTagForDuration` refuse the effect outright and read as immunity.
+	// Nothing today reduces this stat: both rows raise it.
+	return DurationSeconds * FMath::Max(0.0f, Percent) / NormalDuration;
 }

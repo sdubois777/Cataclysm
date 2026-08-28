@@ -37,6 +37,8 @@
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For how long a lasting harmful effect on the character runs. Issue #1033.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -5791,6 +5793,276 @@ bool FCataclysmPassiveTheLastDropOnARealCharacterTest::RunTest(const FString&)
 			  AbilitySystem->GetNumericAttribute(
 				  UCataclysmCombatAttributeSet::GetDebuffDamageSuppressedAttribute()),
 			  0.0f, 0.001f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSymphonyOfPainOnARealCharacterTest,
+	"Cataclysm.Passives.SymphonyOfPainLengthensDebuffsAndSoftensThemOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Symphony of Pain on a real character. Issue #1033.
+ *
+ * "Debuffs on you last 2% longer per point, and their effect on you is reduced
+ * by 1% per point."
+ *
+ * WHAT "THEIR EFFECT" MEANS WAS A READING AND THE PROJECT OWNER SETTLED IT on
+ * 2026-08-28: it means the DAMAGE a lasting harmful effect deals. Reading it as
+ * everything such an effect does would shorten its duration and contradict the
+ * first half of the same sentence. The owner accepted the consequence, which is
+ * that a stun is a pure downside for this node: a character with all eight
+ * points is stunned 16% longer and gets nothing back for it.
+ *
+ * IT WAS ON THE BLOCKED LIST UNTIL THAT ANSWER, and it needed a stat that did
+ * not exist: how long a lasting harmful effect applied TO this character runs.
+ * Vessel of Plagues below needs the same one.
+ *
+ * A BASIC NODE, so unlike the capstone tests above there is no threshold to fill
+ * to and no option to choose. Eight points are spent on it directly.
+ */
+bool FCataclysmPassiveSymphonyOfPainOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_fl_a2"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Symphony of Pain grants two rows"), Effects.Num(), 2))
+	{
+		return false;
+	}
+
+	bool bHasDuration = false;
+	bool bHasSoftening = false;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s joins the additive sum"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("increased")));
+		TestTrue(*FString::Printf(TEXT("%s carries no condition"), *Row->Stat),
+				 Row->Condition.IsEmpty());
+
+		if (Row->Stat == FString(UCataclysmDebuffs::DurationStat))
+		{
+			bHasDuration = true;
+			TestEqual(TEXT("two per cent longer a point"), Row->ValuePerPoint,
+					  2.0f);
+		}
+		else if (Row->Stat
+				 == FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat))
+		{
+			bHasSoftening = true;
+			TestEqual(TEXT("and one per cent less damage a point"),
+					  Row->ValuePerPoint, -1.0f);
+		}
+	}
+	TestTrue(TEXT("one row lengthens the effect"), bHasDuration);
+	TestTrue(TEXT("and one softens its damage"), bHasSoftening);
+
+	// READ BEFORE ANYTHING IS SPENT. Nothing else in the tree touches either
+	// stat, so both start where the engine put them, but the readings are taken
+	// rather than assumed: a bucket is a SUM and assuming a clean baseline has
+	// cost three build cycles on this project before.
+	const float LengthBefore = IncreasesOn(AbilitySystem,
+										   UCataclysmDebuffs::DurationStat);
+	const float SofteningBefore = IncreasesOn(
+		AbilitySystem, UCataclysmDamageCalculation::DamageOverTimeTakenStat);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// EIGHT POINTS AT TWO PER CENT IS SIXTEEN POINTS OF INCREASE, and one per
+	// cent a point the other way is eight off the damage.
+	TestEqual(TEXT("eight points add sixteen points of increased duration"),
+			  IncreasesOn(AbilitySystem, UCataclysmDebuffs::DurationStat)
+				  - LengthBefore, 16.0f, 0.01f);
+	TestEqual(TEXT("and take eight points off the damage over time taken"),
+			  IncreasesOn(AbilitySystem,
+						  UCataclysmDamageCalculation::DamageOverTimeTakenStat)
+				  - SofteningBefore, -8.0f, 0.01f);
+
+	// AND THE GAME'S OWN READER ANSWERS WITH IT, which is the half that says the
+	// rows are not merely sitting in the pipeline's bookkeeping. Neither row
+	// carries a condition, so both are folded into their attributes and a ten
+	// second effect really runs for 11.6.
+	TestEqual(TEXT("and a ten second effect on this character runs for 11.6"),
+			  UCataclysmDebuffs::DurationOn(AbilitySystem, 10.0f), 11.6f, 0.01f);
+	TestEqual(TEXT("and the attribute holds it, the row carrying no condition"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetDebuffDurationTakenAttribute()),
+			  116.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest,
+	"Cataclysm.Passives.VesselOfPlaguesLengthensDebuffsAndWorsensThemOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Vessel of Plagues on a real character. Issue #1033.
+ *
+ * "Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to
+ * you."
+ *
+ * THE NODE WAS REWORDED ON 2026-08-28 AND THIS IS WHY. Its first half read "You
+ * can carry twice as many unique debuffs", and nothing in the game limits how
+ * many DIFFERENT harmful effects a character may carry, so that half doubled
+ * nothing. The project owner decided the number is deliberately unlimited --
+ * which is what Path of Exile, Diablo IV and Last Epoch all do -- and chose this
+ * replacement. `docs/DECISIONS.md` carries it.
+ *
+ * ITS TWO HALVES SIT IN DIFFERENT BUCKETS, and the node's own words decide
+ * which. "50% more damage" uses the word this tree reserves for the
+ * multiplicative bucket; "50% longer" says neither "more" nor "multiplicative",
+ * so it joins the sum. That is why one is read with `IncreasesOn` and the other
+ * with `MoreMultiplierOn`.
+ */
+bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_fl_kA"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Vessel of Plagues grants two rows"), Effects.Num(), 2))
+	{
+		return false;
+	}
+
+	bool bHasDuration = false;
+	bool bHasWorsening = false;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s is fifty"), *Row->Stat),
+				  Row->ValuePerPoint, 50.0f);
+
+		if (Row->Stat == FString(UCataclysmDebuffs::DurationStat))
+		{
+			bHasDuration = true;
+			TestEqual(TEXT("the length joins the additive sum"), Row->ValueKind,
+					  FString(TEXT("increased")));
+		}
+		else if (Row->Stat
+				 == FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat))
+		{
+			bHasWorsening = true;
+			TestEqual(TEXT("and the damage multiplies"), Row->ValueKind,
+					  FString(TEXT("more")));
+		}
+	}
+	TestTrue(TEXT("one row lengthens the effect"), bHasDuration);
+	TestTrue(TEXT("and one worsens its damage"), bHasWorsening);
+
+	const float LengthBefore = IncreasesOn(AbilitySystem,
+										   UCataclysmDebuffs::DurationStat);
+	const float WorseningBefore = MoreMultiplierOn(
+		AbilitySystem, UCataclysmDamageCalculation::DamageOverTimeTakenStat);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	TestEqual(TEXT("one point adds fifty points of increased duration"),
+			  IncreasesOn(AbilitySystem, UCataclysmDebuffs::DurationStat)
+				  - LengthBefore, 50.0f, 0.01f);
+
+	// A RATIO WHERE THE READING ABOVE IS A SUM, which is why the two assertions
+	// are written differently. A More multiplier multiplies whatever the rest of
+	// the tree contributed, so the ratio between the reading before and after
+	// isolates the row.
+	TestEqual(TEXT("and multiplies the damage they deal by one and a half"),
+			  MoreMultiplierOn(
+				  AbilitySystem,
+				  UCataclysmDamageCalculation::DamageOverTimeTakenStat),
+			  WorseningBefore * 1.5f, 0.001f);
+
+	// AND THE GAME'S OWN READER ANSWERS WITH THE LENGTH, which is the half that
+	// says the row is not merely present in the pipeline's bookkeeping.
+	TestEqual(TEXT("and a ten second effect on this character runs for fifteen"),
+			  UCataclysmDebuffs::DurationOn(AbilitySystem, 10.0f), 15.0f, 0.01f);
+	TestEqual(TEXT("and the attribute holds it, the row carrying no condition"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetDebuffDurationTakenAttribute()),
+			  150.0f, 0.01f);
 
 	return true;
 }

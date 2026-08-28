@@ -533,6 +533,34 @@ public:
 	 * not: no affix grants it, nothing scales it, no class line names it, and
 	 * one passive node supplies it.
 	 */
+	/**
+	 * How long a lasting harmful effect on this character runs, as a
+	 * percentage where 100 is normal. Issue #1033.
+	 *
+	 * THE DEFENDER'S SIDE OF A QUESTION THE ATTACKER ALREADY HAD ONE OF.
+	 * `DotDuration` is how long the character makes its OWN damage over time
+	 * last on what it hits. This is how long anything lasts on the character
+	 * itself, and it applies to stuns as well as to damaging effects, which
+	 * `DotDuration` does not.
+	 *
+	 * BOTH OF ITS SOURCES LENGTHEN RATHER THAN SHORTEN, which reads backwards
+	 * until you know the class. The Masochist's Symphony of Pain adds 2% a
+	 * point and its Vessel of Plagues adds 50%, because eleven nodes in that
+	 * branch pay the character for each harmful effect it is carrying.
+	 *
+	 * A HUNDRED FOR EVERY CHARACTER, from
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`, the same route the
+	 * two damage-taken stats above take. A base of zero would make every
+	 * lasting effect in the game end instantly.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason its neighbours are not:
+	 * no affix grants it, nothing scales it, no class line names it, and two
+	 * passive nodes of one tree supply it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DebuffDurationTaken)
+	FGameplayAttributeData DebuffDurationTaken;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffDurationTaken)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_NovaDamageOfMissingHealth)
 	FGameplayAttributeData NovaDamageOfMissingHealth;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
@@ -603,6 +631,7 @@ protected:
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_RetaliationRadiusMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DebuffDurationTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);

@@ -20,6 +20,99 @@ applied or still pending.
 
 ---
 
+## 2026-08-28 — Two readings settled, a node reworded, and two more Masochist nodes built
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`, the Passive Effects sheet of
+`All_Things_Cataclysm.xlsx`, `game/Data/PassiveNodes.csv`,
+`game/Data/PassiveEffects.csv`, `game/Content/Data/DT_PassiveNodes.uasset` and
+`DT_PassiveEffects.uasset`. Applied. Issue #1033.
+
+The project owner answered three open questions on 2026-08-28. Two of them
+unblocked nodes that had been on the blocked list, and both of those nodes turned
+out to need the same piece of machinery, so they were built together.
+
+### "Their effect on you" means the damage, and a stun is a pure downside
+
+**Symphony of Pain** (`Masochist_basic_fl_a2`, eight points) reads "Debuffs on
+you last 2% longer per point, and their effect on you is reduced by 1% per
+point." Two readings of "their effect" were possible and they conflict:
+
+| Reading | Problem |
+| :-- | :-- |
+| The damage the effect deals | Says nothing about a stun, which deals none |
+| Everything the effect does, including how long a stun lasts | Contradicts the first half of the same sentence, which makes effects last LONGER |
+
+**The owner chose the first and accepted the consequence.** A character with all
+eight points is stunned 16% longer and gets nothing back for it. That is
+defensible: the branch the node sits in is about carrying damaging effects, and
+four other nodes there count them rather than resisting them. The node's text was
+left alone.
+
+### The number of different harmful effects a character may carry is unlimited
+
+**Vessel of Plagues** (`Masochist_keystone_fl_kA`, one point) read "You can carry
+twice as many unique debuffs, and debuffs on you deal 50% more damage to you."
+Nothing in the game limits how many DIFFERENT harmful effects a character may
+carry, so that first half doubled nothing.
+
+**The owner decided the number is deliberately unlimited.** That is what all
+three games this design takes its shape from do: Path of Exile, Diablo IV and
+Last Epoch each cap the stacks of one ailment and none of them caps the variety.
+It is also consistent with the design's existing one-stack rule, which limits
+repetition of a single effect rather than the number of kinds.
+
+**So the node was reworded**, which is the second time an owner-authored node has
+been reworded rather than delivered as something it does not say — Sanguine
+Ledger under #1009 was the first. The new text:
+
+> Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to you.
+
+The second half is unchanged, so the node keeps its cost. The owner chose this
+replacement over two alternatives: one that would have made enemies inflict
+Bleeding on the character, and one that would have granted increased damage per
+effect carried.
+
+**This decision has a consequence worth watching.** Eleven Masochist nodes grant
+a bonus for each harmful effect the character is carrying, and with no limit on
+the variety those bonuses have no ceiling. Nothing measures that today. It is
+recorded here rather than argued now, in keeping with tuning constants against
+play.
+
+### Both nodes needed one new stat, and it had to reach two paths
+
+How long a lasting harmful effect applied TO a character runs, as a percentage
+where 100 is normal. `dot_duration` is the other side of the same question — how
+long the character makes its own damage over time last on what it hits — and is a
+different stat.
+
+**Two functions put a lasting harmful effect on a character and both had to
+honour it**, which is what issue #1033 asked for by name. A build honouring one
+and not the other would lengthen a stun and not a burn, or the reverse, and
+nothing at run time would report it.
+
+- `UCataclysmSkillEffects::ApplyTagForDuration` — stuns, stun immunity and the
+  skill templates
+- `UCataclysmSkillEffects::ApplyDamageOverTime` — burning, and the Bleeding that
+  dropping below half health creates
+
+**The tick length is not scaled with it**, so a longer burn is more ticks of the
+same size rather than the same number of slower ones. That matches how the
+attacker's own duration stat already behaves, and it is what makes a node
+lengthening an effect worth something to a class paid per effect carried.
+
+**A base of 100 is load-bearing in a way a bonus is not.** Both rows that move
+the stat are increases, so with no base under them the stat would resolve to zero
+and every stun and every burn in the game would end the instant it landed. Issue
+#1025 records exactly that failure happening to another node's window.
+
+### What is not settled
+
+**The build machine question is still open.** No pull request in this project
+compiles any C++. The owner chose on 2026-08-28 to be reminded again next session
+rather than set one up now. Issue #20 stays open.
+
+---
+
 ## 2026-08-28 — A health threshold gains a second reading, and two low-health nodes are built
 
 **Affects:** the Fervour section of `Cataclysm_GDD_v2.md`, the Passive Effects

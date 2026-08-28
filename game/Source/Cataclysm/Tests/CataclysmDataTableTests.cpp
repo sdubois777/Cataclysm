@@ -311,7 +311,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// point, and two for The Last Drop, one per clause of its sentence. Unstable
 	// Aura was the last Masochist node that did nothing and was neither blocked
 	// on other work nor waiting on a design answer.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        112)
+	//
+	// AND TO 116 FOR SYMPHONY OF PAIN AND VESSEL OF PLAGUES. Issue #1033. Two
+	// rows each, one per clause, and both nodes share a new stat: how long a
+	// lasting harmful effect on the character itself runs.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        116)
 
 	#undef CHECK_TABLE
 
