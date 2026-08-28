@@ -237,6 +237,24 @@ public:
 		const FCataclysmPassiveNodeRow& Row);
 
 	/**
+	 * What a player should be told about this node in ONE LINE. Issue #1078.
+	 *
+	 * THE NODE'S OWN WORDS FOR EVERY ORDINARY NODE, and for a capstone those
+	 * words followed by the NAMES of its three options. Not what they do:
+	 * `FullDescriptionOf` below is that, and it is seven lines.
+	 *
+	 * WHY LENGTH IS A CORRECTNESS QUESTION HERE AND NOT A MATTER OF TASTE. The
+	 * screen draws the tree on the one child of its vertical box with a Fill
+	 * size rule, so the panel gives up whatever height the labels below it take.
+	 * A description that grows makes the panel shorter, and until issue #1078
+	 * the graph kept the zoom it was fitted at and the part that no longer fit
+	 * was clipped away, buttons and all. The refit that issue added means a long
+	 * description no longer hides anything -- but it does shrink the whole tree
+	 * while it is on screen, so what is shown by default is kept to one line.
+	 */
+	static FString ShortDescriptionOf(const UDataTable* NodeTable, FName Node);
+
+	/**
 	 * Everything a player reading this node should be told. Issue #1076.
 	 *
 	 * THE NODE'S OWN WORDS FOR EVERY ORDINARY NODE, which is what the screen

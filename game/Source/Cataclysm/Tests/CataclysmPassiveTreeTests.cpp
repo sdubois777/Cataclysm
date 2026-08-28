@@ -7317,4 +7317,197 @@ bool FCataclysmPassiveCapstoneOptionTextTest::RunTest(const FString&)
 
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveShortCapstoneTextTest,
+	"Cataclysm.Passives.ACapstoneReadsAsOneLineUntilItsOptionsAreOnOffer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The short form of a capstone's description. Issue #1078.
+ *
+ * WHY LENGTH IS A CORRECTNESS QUESTION ON THIS SCREEN. The tree is drawn on the
+ * one child of the screen's vertical box with a Fill size rule, so the panel
+ * gives up whatever height the labels below it take. Issue #1076 put seven lines
+ * of option text in one of those labels and the tree lost half the screen; the
+ * project owner could not click a capstone.
+ *
+ * SO THERE ARE TWO FORMS AND THE SCREEN PICKS BETWEEN THEM. The short one is
+ * what a player reads while moving around the tree. The long one is shown only
+ * while a capstone's three options are actually on offer, which is the moment
+ * they are being read and the moment nobody is clicking nodes.
+ */
+bool FCataclysmPassiveShortCapstoneTextTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	// AN ORDINARY NODE READS THE SAME IN BOTH FORMS, which comes first: a short
+	// form that shortened everything would pass the checks below it.
+	const FName Ordinary(TEXT("Masochist_basic_spine_001"));
+	const FCataclysmPassiveNodeRow* OrdinaryRow =
+		UCataclysmPassiveTree::FindNode(NodeTable, Ordinary);
+	if (!TestNotNull(TEXT("an ordinary Masochist node exists"), OrdinaryRow))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an ordinary node's short form is its own description"),
+			  UCataclysmPassiveTree::ShortDescriptionOf(NodeTable, Ordinary),
+			  OrdinaryRow->Description);
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+	const FCataclysmPassiveNodeRow* CapstoneRow =
+		UCataclysmPassiveTree::FindNode(NodeTable, Capstone);
+	if (!TestNotNull(TEXT("the first Masochist capstone exists"), CapstoneRow))
+	{
+		return false;
+	}
+
+	const FString Short =
+		UCataclysmPassiveTree::ShortDescriptionOf(NodeTable, Capstone);
+	const FString Full =
+		UCataclysmPassiveTree::FullDescriptionOf(NodeTable, Capstone);
+
+	// IT IS ONE LINE. That is the whole property: no line break anywhere in it,
+	// so it cannot take height off the tree however many options a capstone has.
+	TestFalse(TEXT("the short form holds no line break"),
+			  Short.Contains(TEXT("\n")));
+	TestTrue(TEXT("and the long form does"), Full.Contains(TEXT("\n")));
+
+	// AND IT STILL NAMES ALL THREE OPTIONS, which is what a player needs to know
+	// exists before deciding to look.
+	const TArray<FString> Names =
+		UCataclysmPassiveTree::OptionNamesOf(*CapstoneRow);
+	const TArray<FString> Descriptions =
+		UCataclysmPassiveTree::OptionDescriptionsOf(*CapstoneRow);
+
+	for (int32 Index = 0; Index < Names.Num(); ++Index)
+	{
+		if (!TestTrue(*FString::Printf(TEXT("option %d is named"), Index + 1),
+					  !Names[Index].IsEmpty())
+			|| !TestTrue(*FString::Printf(TEXT("and option %d is described"),
+										  Index + 1),
+						 !Descriptions[Index].IsEmpty()))
+		{
+			continue;
+		}
+
+		TestTrue(*FString::Printf(TEXT("the short form names %s"),
+								  *Names[Index]),
+				 Short.Contains(Names[Index]));
+
+		// AND NOT WHAT IT DOES, which is the half that keeps it to one line.
+		TestFalse(*FString::Printf(TEXT("and does not say what %s does"),
+								   *Names[Index]),
+				  Short.Contains(Descriptions[Index]));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRefitOnResizeTest,
+	"Cataclysm.Passives.TheTreeIsFittedAgainWhenItsPanelChangesSize",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The tree is fitted again when the panel it is drawn on changes size.
+ * Issue #1078.
+ *
+ * WHAT WENT WRONG IN PLAY. `FitToTree` ran when a different tree was shown and
+ * at no other time. The panel is the one child of the screen's vertical box with
+ * a Fill size rule, so it gives up whatever height the labels below it take, and
+ * it clips to its own bounds. A longer description made it shorter, the graph
+ * kept the zoom it had been fitted at, and the part that no longer fitted was
+ * not drawn -- so the project owner could see a capstone and could not click it.
+ *
+ * THE PANEL SIZE IS SUPPLIED RATHER THAN MEASURED. A headless test has no
+ * geometry, so `CanvasSize` would answer the same guess every time and the panel
+ * could never appear to change. `SetPanelSizeForTests` is what makes the one
+ * thing worth checking checkable.
+ */
+bool FCataclysmPassiveRefitOnResizeTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	APlayerController* Controller =
+		Character ? Cast<APlayerController>(Character->GetController()) : nullptr;
+	ACataclysmPlayerState* State =
+		Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	if (!Controller || !State)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	UCataclysmPassiveTreeWidget* Screen =
+		NewObject<UCataclysmPassiveTreeWidget>(Controller);
+	if (!TestNotNull(TEXT("the screen was created"), Screen))
+	{
+		return false;
+	}
+	Screen->SetPlayerStateForTests(State);
+
+	// A TALL PANEL, AND A TREE FITTED TO IT.
+	const FVector2D Tall(1600.0, 800.0);
+	Screen->SetPanelSizeForTests(Tall);
+	Screen->ShowTree(TEXT("Masochist"));
+
+	const FGeometry Nothing;
+	Screen->NativeTick(Nothing, 0.0f);
+
+	const float FittedTall = Screen->CurrentZoom();
+	if (!TestTrue(TEXT("the tree was fitted to something"), FittedTall > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it recorded the panel it was fitted against"),
+			  Screen->FittedAgainstSize(), Tall);
+
+	// A TICK WITH NOTHING CHANGED CHANGES NOTHING, which is the half that says
+	// this is a comparison rather than a fit on every frame.
+	Screen->NativeTick(Nothing, 0.0f);
+	TestEqual(TEXT("a tick with the same panel leaves the zoom alone"),
+			  Screen->CurrentZoom(), FittedTall, 0.0001f);
+
+	// AND A PLAYER'S OWN ZOOM SURVIVES A TICK, which is what would be thrown
+	// away by a build that simply refitted every frame. This is the sharpest
+	// half of the test: everything else here would pass against that build.
+	Screen->ZoomBy(2.0f);
+	const float PlayersZoom = Screen->CurrentZoom();
+	if (!TestTrue(TEXT("zooming in really changed the zoom"),
+				  !FMath::IsNearlyEqual(PlayersZoom, FittedTall, 0.0001f)))
+	{
+		return false;
+	}
+	Screen->NativeTick(Nothing, 0.0f);
+	TestEqual(TEXT("and a tick leaves the player's zoom alone"),
+			  Screen->CurrentZoom(), PlayersZoom, 0.0001f);
+
+	// AND A SHORTER PANEL IS FITTED AGAIN. Half the height, which is roughly
+	// what seven lines of capstone option text took.
+	const FVector2D Short(1600.0, 400.0);
+	Screen->SetPanelSizeForTests(Short);
+	Screen->NativeTick(Nothing, 0.0f);
+
+	TestEqual(TEXT("the shorter panel was recorded"),
+			  Screen->FittedAgainstSize(), Short);
+	TestTrue(*FString::Printf(
+				 TEXT("and the tree was scaled down to fit it: %.4f then %.4f"),
+				 FittedTall, Screen->CurrentZoom()),
+			 Screen->CurrentZoom() < FittedTall);
+
+	// AND GROWING BACK RESTORES THE FIT, so this is not a one-way shrink.
+	Screen->SetPanelSizeForTests(Tall);
+	Screen->NativeTick(Nothing, 0.0f);
+	TestEqual(TEXT("and the taller panel fits as it did at first"),
+			  Screen->CurrentZoom(), FittedTall, 0.0001f);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

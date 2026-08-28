@@ -363,6 +363,46 @@ TArray<FString> UCataclysmPassiveTree::OptionDescriptionsOf(
 			Row.Option3Description};
 }
 
+FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
+												  FName Node)
+{
+	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
+	if (!Row)
+	{
+		return FString();
+	}
+
+	FString Text = Row->Description;
+	if (Row->Kind != CapstoneKind)
+	{
+		return Text;
+	}
+
+	// THE THREE NAMES ON THE SAME LINE, AND NOT WHAT THEY DO. Issue #1078. A
+	// capstone's own description names none of its options, so a player reading
+	// it learns only that a permanent decision exists somewhere. The names are
+	// short enough to sit beside it; the sentences are not, and this text is
+	// what decides how much of the screen is left for the tree.
+	const TArray<FString> Names = OptionNamesOf(*Row);
+	TArray<FString> Offered;
+	for (int32 Option = 1; Option <= CapstoneOptions; ++Option)
+	{
+		const int32 Index = Option - 1;
+		if (Names.IsValidIndex(Index) && !Names[Index].IsEmpty())
+		{
+			Offered.Add(FString::Printf(TEXT("%d %s"), Option, *Names[Index]));
+		}
+	}
+
+	if (Offered.Num() > 0)
+	{
+		Text += FString::Printf(TEXT("    %s"),
+								*FString::Join(Offered, TEXT("    ")));
+	}
+
+	return Text;
+}
+
 FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 												 FName Node)
 {

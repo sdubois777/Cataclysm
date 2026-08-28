@@ -206,6 +206,22 @@ public:
 
 	//~ UUserWidget
 	virtual void NativeConstruct() override;
+
+	/**
+	 * Fit the tree again when the panel it is drawn on has changed size.
+	 * Issue #1078.
+	 *
+	 * THE ONLY THING ON THIS SCREEN THAT NEEDS A FRAME. Everything else happens
+	 * because a player clicked, and a panel's size changes without anybody
+	 * clicking: the description label below it grows with the text put in it,
+	 * and a window can be resized. `FitToTree` used to run when a different tree
+	 * was shown and at no other time, so the graph kept a zoom that no longer
+	 * fitted and the panel, which clips to its own bounds, hid whatever fell
+	 * outside -- buttons included, which cannot then be pressed.
+	 */
+	virtual void NativeTick(const FGeometry& MyGeometry,
+							float InDeltaTime) override;
+
 	virtual FReply NativeOnMouseWheel(const FGeometry& Geometry,
 									  const FPointerEvent& Event) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& Geometry,
@@ -232,6 +248,26 @@ public:
 	 * consulted when there is no owning player.
 	 */
 	void SetPlayerStateForTests(ACataclysmPlayerState* InState);
+
+	/**
+	 * Say how big the panel the tree is drawn on is, instead of asking Slate.
+	 * Issue #1078. A size of zero puts it back to asking.
+	 *
+	 * WHY IT IS NEEDED. A headless test has no geometry, so `CanvasSize` answers
+	 * the same stated guess every time and the panel can never appear to change
+	 * size -- which is exactly the thing that has to change for the refit to be
+	 * worth anything. See the field for the longer version.
+	 */
+	void SetPanelSizeForTests(FVector2D Size);
+
+	/** How big the tree's panel is right now, in pixels. For tests. */
+	FVector2D PanelSize() const { return CanvasSize(); }
+
+	/** The panel size the current zoom was fitted against. For tests. */
+	FVector2D FittedAgainstSize() const { return FittedAgainst; }
+
+	/** How far the view is scaled right now. For tests. */
+	float CurrentZoom() const { return Zoom; }
 
 protected:
 	/** Where the tree-selector buttons go. Filled by this class. */
@@ -375,6 +411,30 @@ private:
 	/** How far the view is scaled, and what is in the middle of it. */
 	float Zoom = 1.0f;
 	FVector2D Focus = FVector2D::ZeroVector;
+
+	/**
+	 * The panel size the current zoom was worked out against. Issue #1078.
+	 *
+	 * ZERO MEANS NEVER FITTED, which is a size no panel has, so the first tick
+	 * after the screen opens fits against the real geometry rather than against
+	 * the guess `CanvasSize` answers before Slate has laid anything out.
+	 */
+	FVector2D FittedAgainst = FVector2D::ZeroVector;
+
+	/**
+	 * A panel size to use instead of asking Slate. Zero means ask. Issue #1078.
+	 *
+	 * NO HEADLESS TEST HAS GEOMETRY. The automation command passes `-nullrhi`,
+	 * no widget is ever laid out, and `CanvasSize` therefore answers its stated
+	 * guess for ever -- the same number every time, so nothing a test did could
+	 * make the panel change size and nothing could check what happens when it
+	 * does. That is the whole behaviour this exists to make checkable.
+	 *
+	 * THE SAME SHAPE AS `SetPlayerStateForTests` above and for the same reason:
+	 * one thing the screen cannot get for itself in a test, supplied from
+	 * outside, with the code under test unchanged.
+	 */
+	FVector2D PanelSizeForTests = FVector2D::ZeroVector;
 
 	/** Which tree the canvas currently holds widgets for. Empty for none. */
 	FString BuiltTree;

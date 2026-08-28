@@ -53,6 +53,11 @@ void UCataclysmPassiveTreeWidget::SetPlayerStateForTests(
 	StateForTests = InState;
 }
 
+void UCataclysmPassiveTreeWidget::SetPanelSizeForTests(FVector2D Size)
+{
+	PanelSizeForTests = Size;
+}
+
 ACataclysmPlayerState* UCataclysmPassiveTreeWidget::State() const
 {
 	// THE OWNING PLAYER FIRST, ALWAYS. The test seam is only reached when there
@@ -324,13 +329,27 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 		// not -- so a player reading this cannot tell which sentences the
 		// character actually receives. Issues #936 and #939.
 		//
-		// AND FOR A CAPSTONE, WHAT ITS THREE OPTIONS DO. Issue #1076. This read
-		// `Row->Description` until 2026-08-28, and a capstone's own description
-		// is "Unlocks at N points spent. Choose one. The choice is permanent",
-		// so the screen asked for a permanent decision between three things it
-		// never named. `FullDescriptionOf` appends them.
+		// AND FOR A CAPSTONE, THE NAMES OF ITS THREE OPTIONS. Issue #1076. This
+		// read `Row->Description` until 2026-08-28, and a capstone's own
+		// description is "Unlocks at N points spent. Choose one. The choice is
+		// permanent", so the screen asked for a permanent decision between three
+		// things it never named.
+		//
+		// THE NAMES AND NOT THE SENTENCES, EXCEPT WHILE ONE IS BEING DECIDED.
+		// Issue #1078. This label is a sibling of the panel the tree is drawn
+		// on, in a vertical box where that panel is the only child set to Fill,
+		// so every line put here is a line of height taken off the tree. Seven
+		// lines of option text shrank the tree to half the screen. While the
+		// three options are actually on offer that is the right trade -- the
+		// player is reading them, not clicking nodes -- and at every other
+		// moment it is not.
+		const bool bDeciding = !ChoosingOptionFor.IsNone();
 		DescriptionLabel->SetText(FText::FromString(
-			UCataclysmPassiveTree::FullDescriptionOf(NodeTable(), LastTouched)));
+			bDeciding
+				? UCataclysmPassiveTree::FullDescriptionOf(NodeTable(),
+														   ChoosingOptionFor)
+				: UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(),
+															LastTouched)));
 	}
 }
 
@@ -568,12 +587,22 @@ void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
 	// over one.
 	LastTouched = Node;
 
+	// AND NOT WHILE A CAPSTONE'S THREE OPTIONS ARE ON OFFER. Issue #1078. The
+	// player is part way through a permanent decision and the label is showing
+	// what they are deciding between; replacing it because the cursor passed
+	// over a node would take that away at the moment it is being read.
+	if (!ChoosingOptionFor.IsNone())
+	{
+		return;
+	}
+
 	if (DescriptionLabel)
 	{
-		// THE SAME TEXT `RefreshDisplay` SHOWS, through the same function, so a
-		// capstone hovered and a capstone clicked read alike. Issue #1076.
+		// THE SAME TEXT `RefreshDisplay` SHOWS WHEN NOTHING IS BEING DECIDED,
+		// through the same function, so a node hovered and a node clicked read
+		// alike. Issue #1076.
 		DescriptionLabel->SetText(FText::FromString(
-			UCataclysmPassiveTree::FullDescriptionOf(NodeTable(), Node)));
+			UCataclysmPassiveTree::ShortDescriptionOf(NodeTable(), Node)));
 	}
 }
 
@@ -584,6 +613,15 @@ FVector2D UCataclysmPassiveTreeWidget::CanvasSize() const
 	// once, and the first refresh happens in NativeConstruct, which is before
 	// that. Placing a whole tree against a size of zero would put every node on
 	// one point.
+	// WHAT A TEST SAID IT IS, BEFORE ANYTHING ELSE. Issue #1078. A headless test
+	// has no geometry at all, so without this the two answers below are the same
+	// number for ever and a test cannot make the panel change size -- which is
+	// the only thing worth checking about a refit. Zero means nothing was said.
+	if (!PanelSizeForTests.IsNearlyZero())
+	{
+		return PanelSizeForTests;
+	}
+
 	if (GraphCanvas)
 	{
 		const FVector2D Measured = GraphCanvas->GetCachedGeometry().GetLocalSize();
@@ -607,9 +645,56 @@ void UCataclysmPassiveTreeWidget::FitToTree()
 		return;
 	}
 
+	const FVector2D Size = CanvasSize();
 	Focus = Extent.Centre();
-	Zoom = UCataclysmPassiveTreeLayout::ZoomToFit(Extent, CanvasSize());
+	Zoom = UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Size);
+
+	// WHAT THIS FIT WAS FOR. Issue #1078. `NativeTick` compares against it and
+	// fits again when the panel is no longer that size, which is the whole of
+	// what stops a shrinking panel hiding nodes behind its own edge.
+	FittedAgainst = Size;
+
 	PlaceGraph();
+}
+
+void UCataclysmPassiveTreeWidget::NativeTick(const FGeometry& MyGeometry,
+											 float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// THE PANEL THE TREE IS DRAWN ON CHANGES SIZE WHILE THE SCREEN IS OPEN.
+	// Issue #1078. It is the one child of the screen's vertical box with a Fill
+	// size rule, so it gives up whatever height the two labels below it take,
+	// and the description label grows with the text put in it. It also clips to
+	// its own bounds, so anything the old zoom pushes outside is not drawn and
+	// cannot be pressed.
+	//
+	// FITTED ONCE AND NEVER AGAIN, UNTIL THIS. `RefreshDisplay` fits only when a
+	// different tree is shown. A panel that changed size afterwards kept the old
+	// zoom, and the project owner could not click a capstone because it was
+	// outside the panel's edge.
+	//
+	// AND IT WAS ALREADY WRONG ON THE FIRST FRAME. `CanvasSize` answers a stated
+	// guess of 1600 by 800 until Slate has laid the panel out, and the first fit
+	// happens in `NativeConstruct`, which is before that. Every window that is
+	// not roughly that size has always been fitted against a number that was
+	// never true.
+	//
+	// A COMPARISON RATHER THAN A FIT EVERY FRAME, so a player's own zoom and pan
+	// survive. Zooming does not change the panel's size, so nothing here undoes
+	// it; only the panel really changing size does.
+	//
+	// A WHOLE PIXEL OF TOLERANCE, because a layout that settles on 799.9997 one
+	// frame and 800.0001 the next must not refit for ever.
+	const FVector2D Size = CanvasSize();
+	if (!Size.Equals(FittedAgainst, 1.0))
+	{
+		// RECORDED HERE AS WELL AS INSIDE THE FIT, because the fit returns early
+		// when no tree is being shown. Without this line that case would scan
+		// the node table again on every frame for as long as the screen is open.
+		FittedAgainst = Size;
+		FitToTree();
+	}
 }
 
 void UCataclysmPassiveTreeWidget::ZoomBy(float Notches)
