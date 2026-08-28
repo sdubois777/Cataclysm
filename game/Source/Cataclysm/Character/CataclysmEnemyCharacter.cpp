@@ -3,6 +3,8 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For this creature's debuffs passing to whatever stands by its body. #1060.
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the stack a kill may build. Issue #1004.
@@ -281,6 +283,25 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// health debt beside it. All three find the player through the same
 			// controller, and the two that touch attributes read the pawn.
 			UCataclysmStacks::NoteEnemyKilled(Watching->GetPawn());
+
+			// AND WHAT THIS CREATURE WAS SUFFERING FROM MAY PASS TO WHATEVER
+			// STANDS BY ITS BODY. Issue #1060. The Masochist's Empathic Link:
+			// "When an enemy dies, its debuffs have a 2% chance per point to
+			// pass to a random enemy within 6 metres."
+			//
+			// THE FOURTH THING A KILL DOES, and the first that reads the dying
+			// creature rather than only the player. The debuffs are this
+			// creature's; the chance is the player's stat and the effects are
+			// credited to the player, which is why both actors are passed.
+			//
+			// AFTER THE COLLISION IS SWITCHED OFF ABOVE, which is what keeps the
+			// body out of its own search: `FindEnemiesInSphere` runs a sphere
+			// overlap and refuses the dead, and this creature is both by now.
+			//
+			// ITS RETURN VALUE IS DROPPED, the same as the three calls above.
+			// Zero is the ordinary answer for every kill in the game, because
+			// the chance is zero without the node.
+			UCataclysmContagion::SpreadOnDeath(this, Watching->GetPawn());
 		}
 	}
 

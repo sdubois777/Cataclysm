@@ -461,6 +461,17 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("debuff_spread_chance"),
 		 TEXT("the Masochist's Contagious Torment node, as a flat modifier")},
 
+		// Issues #1060 and #1061, the last two nodes of that tree. The chance
+		// a dying creature's debuffs pass on, and the increased damage dealt
+		// to an enemy carrying a debuff the attacker also carries. Zero for
+		// every class, and neither may ever gain a class line: the first is
+		// how the code knows the character holds the node, and the second is
+		// meaningless without a target in hand, which a class line has not.
+		{TEXT("debuff_spread_on_death_chance"),
+		 TEXT("the Masochist's Empathic Link node, as a flat modifier")},
+		{TEXT("damage_to_enemies_sharing_a_debuff"),
+		 TEXT("the Masochist's Wound Channeling node, as a flat modifier")},
+
 		// Issue #1051. How much Fervour each cast grants, and whether skills
 		// cost health at all. Zero for every class, and the first option of
 		// the Masochist's The Final Vow is the only source of either. Both

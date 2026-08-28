@@ -104,6 +104,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitAuraDebuffDuration(0.0f);
 	InitDebuffSpreadChance(0.0f);
 
+	// AND THE TWO THAT FINISH THE MASOCHIST TREE, both zero for the same
+	// reason. Issues #1060 and #1061.
+	InitDeathSpreadChance(0.0f);
+	InitDamageVsSharedDebuff(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -167,6 +172,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AuraDebuffDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffSpreadChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DeathSpreadChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsSharedDebuff);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -193,7 +200,8 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 	// the roll. No node reaches 100: The Catalyst stops at 40.
 	if (Attribute == GetCooldownSkipChanceAttribute()
 		|| Attribute == GetBleedOnCritChanceAttribute()
-		|| Attribute == GetDebuffSpreadChanceAttribute())
+		|| Attribute == GetDebuffSpreadChanceAttribute()
+		|| Attribute == GetDeathSpreadChanceAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
@@ -291,6 +299,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDebuffDurationTakenAttribute(),
 		GetNovaDamageOfMissingHealthAttribute(),
 		GetAuraDebuffDurationAttribute(), GetDebuffSpreadChanceAttribute(),
+		GetDeathSpreadChanceAttribute(), GetDamageVsSharedDebuffAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -335,5 +344,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AuraDebuffDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffSpreadChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DeathSpreadChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsSharedDebuff)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

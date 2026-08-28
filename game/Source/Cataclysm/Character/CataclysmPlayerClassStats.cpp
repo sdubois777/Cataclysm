@@ -397,6 +397,16 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{FString(UCataclysmContagion::TormentChanceStat),
 			 Combat::GetDebuffSpreadChanceAttribute()},
 
+			// AND THE TWO THAT FINISH THE MASOCHIST TREE. Issues #1060 and
+			// #1061. The chance a dying creature's debuffs pass to whatever
+			// stands by its body, and the increased damage a character deals
+			// to an enemy carrying a debuff it also carries. Zero for every
+			// class, and one node of one tree supplies each.
+			{FString(UCataclysmContagion::DeathChanceStat),
+			 Combat::GetDeathSpreadChanceAttribute()},
+			{FString(UCataclysmDebuffs::SharedDebuffDamageStat),
+			 Combat::GetDamageVsSharedDebuffAttribute()},
+
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS. Issue
 			// #1033. A hundred for every class, from `EngineSuppliedBases` below,
 			// and two Masochist nodes raise it. Here for the reason every other

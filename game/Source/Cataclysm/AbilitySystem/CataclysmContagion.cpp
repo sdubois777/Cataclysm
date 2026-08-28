@@ -22,6 +22,9 @@ const TCHAR* UCataclysmContagion::AuraDurationStat =
 const TCHAR* UCataclysmContagion::TormentChanceStat =
 	TEXT("debuff_spread_chance");
 
+const TCHAR* UCataclysmContagion::DeathChanceStat =
+	TEXT("debuff_spread_on_death_chance");
+
 bool UCataclysmContagion::SpreadOne(AActor* Instigator, AActor* Target,
 									const FGameplayTag& EffectTag,
 									float ExtraDurationPercent)
@@ -244,4 +247,87 @@ int32 UCataclysmContagion::SpreadOnDebuffDamage(AActor* Character,
 	}
 
 	return Applied;
+}
+
+int32 UCataclysmContagion::SpreadOnDeath(AActor* Dying, AActor* Killer,
+										float PinnedRoll)
+{
+	if (!Dying || !Killer)
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Killer));
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED FIRST AND CHEAPLY. Every creature death in the game reaches this, so
+	// a player without the node has to cost one stat read and nothing else -- no
+	// tag walk on the corpse and no search for anybody near it.
+	const float ChancePercent = AbilitySystem->StatForSkill(
+		FName(DeathChanceStat), FGameplayTagContainer(), 0.0f);
+	if (ChancePercent <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHAT THE BODY WAS CARRYING. Read once, because the same list is rolled
+	// against several times and the corpse is not changing.
+	const FGameplayTagContainer Carried = UCataclysmDebuffs::TagsOnActor(Dying);
+	if (Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE OTHER CREATURES STANDING ROUND THE BODY, gathered once for the same
+	// reason. Asked of the KILLER so that sides are judged from the player, with
+	// the body as the centre. See the header.
+	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		Dying->GetWorld(), Killer, Dying->GetActorLocation(),
+		RadiusMetres * CentimetresPerMetre);
+	if (Nearby.IsEmpty())
+	{
+		return 0;
+	}
+
+	int32 Passed = 0;
+	for (const FGameplayTag& Tag : Carried)
+	{
+		// ONE ROLL PER DEBUFF, because the sentence makes the chance a property
+		// of each: "its debuffs have a 2% chance per point to pass".
+		const float Roll = PinnedRoll >= 0.0f
+			? PinnedRoll
+			: FMath::FRandRange(0.0f, 100.0f);
+		if (Roll >= ChancePercent)
+		{
+			continue;
+		}
+
+		// AND ONE RANDOM RECIPIENT FOR EACH THAT PASSES, rather than all of
+		// them: "to a random enemy within 6 metres" names one.
+		//
+		// CHOSEN AFRESH PER DEBUFF, so a body carrying a bleed and a burn can
+		// hand them to two different creatures. Nothing in the sentence says
+		// they travel together.
+		AActor* Receiving = Nearby[FMath::RandRange(0, Nearby.Num() - 1)];
+
+		// CREDITED TO THE KILLER AND NOT TO THE CORPSE, so the Masochist's own
+		// damage over time stats scale what lands. That is the reading issues
+		// #1057 and #1058 took for the other two nodes of this branch: what is
+		// applied is the designed effect with this character behind it, not a
+		// copy of what the dead creature happened to be suffering.
+		//
+		// NO EXTRA DURATION. This node's sentence says nothing about how long
+		// what it passes lasts; only Beacon of Despair lengthens what it applies.
+		if (SpreadOne(Killer, Receiving, Tag, 0.0f))
+		{
+			++Passed;
+		}
+	}
+
+	return Passed;
 }

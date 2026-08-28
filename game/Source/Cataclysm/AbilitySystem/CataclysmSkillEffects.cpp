@@ -299,7 +299,21 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Folded = IncreasesBehindAttackDamage(Source);
 	const float Applying =
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent);
-	const float Conditional = DamageAgainstTypeOf(Source, Target);
+	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
+	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
+	// point to enemies carrying a debuff you also carry."
+	//
+	// THE SAME BRACKET AS THE ONE ABOVE, WHICH IS THE WHOLE POINT OF ADDING IT
+	// HERE. Both are increases, and increases are a sum; giving either its own
+	// multiplication would make it worth more than its sentence says on an
+	// invested character and exactly the same on a fresh one -- so it would look
+	// right in the situation somebody is most likely to check it in.
+	//
+	// TWO TERMS AND NOT ONE FUNCTION, because they answer different questions of
+	// the target. One reads the creature's damage type and the other compares
+	// two lists of debuffs, and neither is a special case of the other.
+	const float Conditional = DamageAgainstTypeOf(Source, Target)
+		+ UCataclysmDebuffs::DamageAgainstSharedDebuff(Source, Target);
 
 	const float BeforeIncreases =
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
@@ -871,8 +885,26 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		return false;
 	}
 
+	// ONE NAME PER EFFECT AND NOT ONE FOR ALL OF THEM. Issue #1062. This was a
+	// constant, `CataclysmDamageOverTime`, so every damage over time effect in
+	// the game was built under one name -- and with `MakeSingleStackTagged`
+	// below setting AggregateByTarget and a stack limit of one, the single-stack
+	// rule then applied ACROSS different effects instead of within one. Setting
+	// a character alight while it was bleeding replaced the bleed, and both
+	// applications reported success.
+	//
+	// THE RULE THE STACK LIMIT IS FOR IS UNCHANGED. Two applications of the same
+	// effect still share one name, so a second burn refreshes the first rather
+	// than adding a second, which is what the design requires of everything a
+	// player applies.
+	//
+	// `ApplyTagForDuration` ALREADY DID THIS, and it is why a character can carry
+	// three separate tagged effects and could not carry two burns. That function
+	// is where the shape below is copied from.
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(), FName(TEXT("CataclysmDamageOverTime")));
+		GetTransientPackage(),
+		FName(*FString::Printf(TEXT("CataclysmDamageOverTime_%s"),
+							   *EffectTag.ToString())));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
 	// attacker's three stats above have decided what it deals and how often.

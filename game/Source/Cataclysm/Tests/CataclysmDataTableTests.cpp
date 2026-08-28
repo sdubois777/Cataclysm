@@ -321,7 +321,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// and the chance one nearby enemy has of catching a debuff when a debuff on
 	// the character deals damage. They are the first two nodes in the game that
 	// put a NAMED status effect from `game/Data/StatusEffects.csv` on anybody.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        118)
+	//
+	// AND TO 121, WHICH FINISHES THE MASOCHIST TREE. Issues #1060 and #1061.
+	// One row for Empathic Link and two for Wound Channeling, one per clause.
+	// All 74 nodes of that tree now grant something.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        121)
 
 	#undef CHECK_TABLE
 
