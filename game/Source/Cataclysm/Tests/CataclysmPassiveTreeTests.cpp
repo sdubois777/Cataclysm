@@ -6737,7 +6737,12 @@ bool FCataclysmPassiveClickOffersTheOptionsTest::RunTest(const FString&)
 	TestTrue(TEXT("and says a choice comes first"),
 			 Screen->RefusalText().ToString().Contains(TEXT("options first")));
 
-	// TAKE ONE, AND THE CLICK MEANS SPEND AGAIN.
+	// TAKE ONE, AND TAKING IT IS THE WHOLE ACT. Issue #1075 changed this, and
+	// what it changed is worth stating: until 2026-08-28 choosing recorded the
+	// decision and nothing else, and the player had to click the capstone a
+	// SECOND time to put the point in. Nothing on the screen said so, the
+	// capstone granted nothing in the meantime, and the project owner took Water
+	// to Blood in play and still had a mana pool.
 	if (!TestTrue(TEXT("the first option can be taken"),
 				  Screen->ChooseOption(Capstone, 1)))
 	{
@@ -6748,9 +6753,17 @@ bool FCataclysmPassiveClickOffersTheOptionsTest::RunTest(const FString&)
 			  UCataclysmPassiveTree::AwaitsAnOptionChoice(
 				  NodeTable, State->GetPassiveAllocation(), Capstone));
 
-	TestTrue(TEXT("and now a click puts the point in"),
-			 Screen->TouchNode(Capstone));
-	TestEqual(TEXT("so the capstone holds its point"),
+	TestEqual(TEXT("and the capstone already holds its point"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 1);
+
+	// AND A SECOND CLICK IS REFUSED BECAUSE THERE IS NOTHING LEFT TO DO, which
+	// is what a full node has always answered. The refusal names the node as
+	// full rather than saying nothing, so a player who clicks again is told why.
+	TestFalse(TEXT("clicking it again spends nothing further"),
+			  Screen->TouchNode(Capstone));
+	TestTrue(TEXT("and says the node is full"),
+			 Screen->RefusalText().ToString().Contains(TEXT("full at")));
+	TestEqual(TEXT("and it still holds exactly one point"),
 			  State->GetPassiveAllocation().PointsIn(Capstone), 1);
 
 	// AND A CLICK ON AN ORDINARY NODE LEAVES NOTHING WAITING, which is the way
@@ -6963,6 +6976,344 @@ bool FCataclysmPassiveWaterToBloodTest::RunTest(const FString&)
 	// would leave the character on the old maximum with a larger one above it.
 	TestEqual(TEXT("and it stands up full on the raised maximum"), Health,
 			  MaxHealth, FMath::Max(MaxHealth * 0.001f, 0.01f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveChoosingTakesTheCapstoneTest,
+	"Cataclysm.Passives.ChoosingACapstoneOptionSpendsThePointThatTurnsItOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Choosing a capstone option takes the capstone. Issue #1075.
+ *
+ * WHAT WENT WRONG IN PLAY. Taking a capstone was two separate acts: choose one
+ * of its three options, then spend a point on the node. The screen led the
+ * player through the first, went silent at the exact moment it would have said a
+ * second was left, and the capstone granted nothing. The project owner took
+ * Water to Blood on 2026-08-28, was told the option was picked, and still had a
+ * mana pool and abilities that still cost mana. Their save record read
+ * `{"Node": "Masochist_capstone_25", "Points": 0, "ChosenOption": 1}`.
+ *
+ * WHY THE OPTION ITSELF WAS FINE.
+ * `UCataclysmPassiveTree::AccumulateInto` skips a node holding no points before
+ * it ever reads the chosen option, so every row of that option was passed over.
+ * `Cataclysm.Passives.WaterToBloodTradesTheManaPoolForHealthOnARealCharacter`
+ * passes and always did -- it spends a point on the capstone as well as choosing
+ * the option, which is the state a player could not reach from the screen.
+ *
+ * THE SAME CHARACTER AND THE SAME OPTION AS THAT TEST, ONE ACT SHORT. It reaches
+ * the state the owner was really in and asks whether one click gets out of it.
+ */
+bool FCataclysmPassiveChoosingTakesTheCapstoneTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	ACataclysmPlayerState* State =
+		Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	// THE TREE FILLED TO THE CAPSTONE'S THRESHOLD AND NOT ONE POINT MORE, which
+	// is exactly where the owner's character stood: the capstone had opened and
+	// held nothing.
+	FCataclysmPassiveAllocation Opened;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Capstone, Opened, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(TEXT("and the tree can be filled to it"), Filled,
+					  Threshold))
+	{
+		return false;
+	}
+	State->SetPassiveAllocation(Opened, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem, ECataclysmPoolFill::FillToMaximum);
+
+	TestEqual(TEXT("the capstone holds no point yet"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 0);
+	TestEqual(TEXT("and no option has been chosen"),
+			  State->GetPassiveAllocation().ChosenOptionIn(Capstone), 0);
+
+	// AND A MANA POOL TO TRADE. Without this the assertion below would hold on a
+	// character that never had one and would prove nothing.
+	const float BeforeMaxMana =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("the character has mana: %.1f"),
+								   BeforeMaxMana),
+				  BeforeMaxMana > 0.0f))
+	{
+		return false;
+	}
+
+	// ONE ACT, AND IT IS THE ONLY ONE THE PLAYER PERFORMS.
+	FString Refusal;
+	if (!TestTrue(TEXT("the first option can be chosen"),
+				  State->ChoosePassiveOption(Capstone, 1, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+
+	// THE CHOICE IS RECORDED AND THE POINT IS IN. Both halves, because a build
+	// that recorded the choice and skipped the point is exactly what was wrong.
+	TestEqual(TEXT("the option is recorded"),
+			  State->GetPassiveAllocation().ChosenOptionIn(Capstone), 1);
+	TestEqual(TEXT("and the capstone now holds its point"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 1);
+	TestEqual(TEXT("and exactly one point was charged for it"),
+			  State->GetPassiveAllocation().Total(), Threshold + 1);
+
+	// AND THE OPTION REALLY REACHES THE CHARACTER, which is the assertion the
+	// player would have made: Water to Blood takes the mana pool away.
+	TestEqual(TEXT("the mana maximum is gone"),
+			  AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
+			  0.0f, 0.01f);
+
+	// AND CHOOSING THE SAME OPTION AGAIN IS NOT CHARGED A SECOND POINT, which is
+	// what a player clicking the marked option does.
+	if (!TestTrue(TEXT("the same option can be chosen again"),
+				  State->ChoosePassiveOption(Capstone, 1, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	TestEqual(TEXT("and the capstone still holds exactly one point"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveChoosingWithNoPointsTest,
+	"Cataclysm.Passives.ChoosingACapstoneOptionWithNoPointsLeftCommitsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The other half of issue #1075, and the reason both acts are applied to a copy.
+ *
+ * THE CHOICE IS PERMANENT. Every capstone's own description ends "The choice is
+ * permanent", so a character that recorded a choice and then found it had no
+ * point left would be committed for ever to an option it could not turn on, and
+ * only a respec of the whole tree would get it back. The act has to be refused
+ * whole.
+ */
+bool FCataclysmPassiveChoosingWithNoPointsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	ACataclysmPlayerState* State =
+		Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	if (!State)
+	{
+		AddError(TEXT("The spawned character has no player state."));
+		return false;
+	}
+
+	// THE TREE FILLED TO THE THRESHOLD, AND THEN TO THE LAST POINT THE CHARACTER
+	// HAS. The capstone has opened and there is nothing left to put in it.
+	FCataclysmPassiveAllocation Spent;
+	int32 Filled = 0;
+	if (!TestTrue(TEXT("the capstone states a threshold"),
+				  FillTreeToOpen(NodeTable, Capstone, Spent, Filled) > 0))
+	{
+		return false;
+	}
+
+	const int32 Available = State->PassivePointsAvailable();
+	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+	{
+		if (Spent.Total() >= Available)
+		{
+			break;
+		}
+		const auto* Row =
+			reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+		if (Row->Tree != TEXT("Masochist") || Pair.Key == Capstone)
+		{
+			continue;
+		}
+		const int32 Room = Row->MaxPoints - Spent.PointsIn(Pair.Key);
+		const int32 Take = FMath::Min(Room, Available - Spent.Total());
+		if (Take > 0)
+		{
+			Spent.Add(Pair.Key, Take);
+		}
+	}
+
+	if (!TestEqual(TEXT("every point the character has is spent elsewhere"),
+				   Spent.Total(), Available))
+	{
+		return false;
+	}
+	State->SetPassiveAllocation(Spent, TArray<FName>());
+
+	// AND THE WHOLE ACT IS REFUSED.
+	FString Refusal;
+	TestFalse(TEXT("choosing an option with no points left is refused"),
+			  State->ChoosePassiveOption(Capstone, 1, Refusal));
+	TestTrue(TEXT("and the refusal says the points are gone"),
+			 Refusal.Contains(TEXT("No passive points left")));
+
+	// AND NOTHING WAS COMMITTED, WHICH IS THE POINT. A build that recorded the
+	// choice before finding out it could not spend would leave this character
+	// permanently committed to an option that grants nothing.
+	TestEqual(TEXT("no option was recorded"),
+			  State->GetPassiveAllocation().ChosenOptionIn(Capstone), 0);
+	TestEqual(TEXT("and the capstone holds no point"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 0);
+	TestEqual(TEXT("and nothing else moved either"),
+			  State->GetPassiveAllocation().Total(), Available);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCapstoneOptionTextTest,
+	"Cataclysm.Passives.ReadingACapstoneSaysWhatItsThreeOptionsDo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A capstone's three options describe themselves. Issue #1076.
+ *
+ * WHAT WAS WRONG. The passive tree screen showed a node's own `Description` and
+ * nothing else. Every capstone's own description is "Unlocks at N points spent.
+ * Choose one. The choice is permanent" -- it names no option and describes none
+ * -- so the screen asked a player to make a permanent decision between three
+ * things it never named. The project owner reported on 2026-08-28 that you have
+ * to guess what they do.
+ *
+ * THE TEXT WAS ALREADY IN THE TABLE AND UNREAD. `Option1Description` and its two
+ * siblings are on every capstone row and nothing in
+ * `game/Source/Cataclysm/Interface/` read any of them.
+ *
+ * THE TABLE IS READ RATHER THAN A FIXTURE BUILT, because what is being checked
+ * is that the real rows reach a reader. A fixture would pass against a table
+ * whose option descriptions were all empty.
+ */
+bool FCataclysmPassiveCapstoneOptionTextTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// AN ORDINARY NODE IS UNCHANGED, and this comes first: a version that
+	// appended options to everything would pass every check below it.
+	const FName Ordinary(TEXT("Masochist_basic_spine_001"));
+	const FCataclysmPassiveNodeRow* OrdinaryRow =
+		UCataclysmPassiveTree::FindNode(NodeTable, Ordinary);
+	if (!TestNotNull(TEXT("an ordinary Masochist node exists"), OrdinaryRow))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an ordinary node reads exactly its own description"),
+			  UCataclysmPassiveTree::FullDescriptionOf(NodeTable, Ordinary),
+			  OrdinaryRow->Description);
+
+	// AND A CAPSTONE CARRIES ALL THREE OPTIONS, name and text alike.
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+	const FCataclysmPassiveNodeRow* CapstoneRow =
+		UCataclysmPassiveTree::FindNode(NodeTable, Capstone);
+	if (!TestNotNull(TEXT("the first Masochist capstone exists"), CapstoneRow))
+	{
+		return false;
+	}
+
+	const FString Full =
+		UCataclysmPassiveTree::FullDescriptionOf(NodeTable, Capstone);
+
+	TestTrue(TEXT("it still starts with the capstone's own description"),
+			 Full.StartsWith(CapstoneRow->Description));
+
+	const TArray<FString> Names =
+		UCataclysmPassiveTree::OptionNamesOf(*CapstoneRow);
+	const TArray<FString> Descriptions =
+		UCataclysmPassiveTree::OptionDescriptionsOf(*CapstoneRow);
+
+	for (int32 Index = 0; Index < Names.Num(); ++Index)
+	{
+		// THE ROWS THEMSELVES HAVE TO CARRY THE TEXT, which is the half that
+		// catches a table regenerated without those columns. Without it every
+		// assertion below would hold vacuously on empty strings.
+		if (!TestTrue(*FString::Printf(
+						  TEXT("option %d of the first Masochist capstone is "
+							   "named"), Index + 1),
+					  !Names[Index].IsEmpty())
+			|| !TestTrue(*FString::Printf(
+							 TEXT("and option %d says what it does"), Index + 1),
+						 !Descriptions[Index].IsEmpty()))
+		{
+			continue;
+		}
+
+		TestTrue(*FString::Printf(TEXT("the text names %s"), *Names[Index]),
+				 Full.Contains(Names[Index]));
+		TestTrue(*FString::Printf(TEXT("and says what %s does"), *Names[Index]),
+				 Full.Contains(Descriptions[Index]));
+	}
+
+	// AND A CAPSTONE WITH NO OPTIONS WRITTEN READS AS ITS OWN DESCRIPTION AND
+	// NOTHING MORE. The Saboteur's four name none at all, issue #935, and three
+	// empty headings would suggest there is something there to read.
+	const FName Nameless(TEXT("Saboteur_capstone_25"));
+	const FCataclysmPassiveNodeRow* NamelessRow =
+		UCataclysmPassiveTree::FindNode(NodeTable, Nameless);
+	if (TestNotNull(TEXT("the first Saboteur capstone exists"), NamelessRow))
+	{
+		TestEqual(TEXT("a capstone naming no option reads as its own "
+					   "description alone"),
+				  UCataclysmPassiveTree::FullDescriptionOf(NodeTable, Nameless),
+				  NamelessRow->Description);
+	}
 
 	return true;
 }

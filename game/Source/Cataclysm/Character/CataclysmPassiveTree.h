@@ -232,6 +232,34 @@ public:
 	/** The three options a capstone offers, empty entries and all. */
 	static TArray<FString> OptionNamesOf(const FCataclysmPassiveNodeRow& Row);
 
+	/** What each of those three options does, empty entries and all. #1076. */
+	static TArray<FString> OptionDescriptionsOf(
+		const FCataclysmPassiveNodeRow& Row);
+
+	/**
+	 * Everything a player reading this node should be told. Issue #1076.
+	 *
+	 * THE NODE'S OWN WORDS FOR EVERY ORDINARY NODE, which is what the screen
+	 * showed before this existed.
+	 *
+	 * AND A CAPSTONE'S THREE OPTIONS WITH WHAT EACH ONE DOES, which it did not.
+	 * Every capstone's own description is "Unlocks at N points spent. Choose
+	 * one. The choice is permanent." -- it names no option and describes none,
+	 * so the screen asked a player to make a permanent decision between three
+	 * things it never described. The project owner reported on 2026-08-28 that
+	 * you have to guess what they do.
+	 *
+	 * THE TEXT WAS ALREADY THERE AND UNREAD. `Option1Description` and its two
+	 * siblings are on every capstone row of `game/Data/PassiveNodes.csv` and
+	 * nothing in the interface read any of them.
+	 *
+	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. The Saboteur's
+	 * four capstones name none at all, issue #935, so this answers with the
+	 * node's own description for those, which is honest: there is nothing else
+	 * written.
+	 */
+	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node);
+
 	/**
 	 * Why one of a capstone's options cannot be taken, or empty when it can.
 	 *
