@@ -1956,6 +1956,66 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmSpendPassivePoi
 				{
 					Ar.Log(TEXT("Nothing can take a point right now."));
 				}
+
+				// AND A CAPSTONE THAT HAS OPENED AND IS WAITING TO BE DECIDED.
+				// Issue #1064. It is listed separately and not above, because
+				// it cannot take a point until its option is chosen, so the
+				// refusal above is never empty for it. The project owner spent
+				// thirty points, crossed the first capstone's threshold of
+				// twenty-five, and this command -- the one that says what is
+				// open -- said nothing about it at all.
+				//
+				// THE COMMAND TO TYPE IS PRINTED WITH IT, because the node name
+				// and the option number are both needed and neither is
+				// guessable from a list of node names.
+				int32 Waiting = 0;
+				for (const FString& Tree : PlayerState->ReachableTrees())
+				{
+					for (const FName& Node :
+						 UCataclysmPassiveTree::NodesIn(NodeTable, Tree))
+					{
+						if (!UCataclysmPassiveTree::AwaitsAnOptionChoice(
+								NodeTable, PlayerState->GetPassiveAllocation(),
+								Node))
+						{
+							continue;
+						}
+
+						if (Waiting == 0)
+						{
+							Ar.Log(TEXT("Waiting on a choice. A capstone takes "
+										"no point until one of its three "
+										"options is taken, and the choice is "
+										"permanent:"));
+						}
+						++Waiting;
+
+						const FCataclysmPassiveNodeRow* Row =
+							UCataclysmPassiveTree::FindNode(NodeTable, Node);
+						Ar.Logf(TEXT("  %s (%s)"),
+								Row ? *Row->NodeName : *Node.ToString(),
+								*Node.ToString());
+
+						// THE THREE NAMES, because the choice is permanent and
+						// a player cannot make it from a node name alone.
+						if (Row)
+						{
+							const TArray<FString> Options =
+								UCataclysmPassiveTree::OptionNamesOf(*Row);
+							for (int32 Index = 0; Index < Options.Num(); ++Index)
+							{
+								if (!Options[Index].IsEmpty())
+								{
+									Ar.Logf(TEXT("      %d  %s"), Index + 1,
+											*Options[Index]);
+								}
+							}
+						}
+
+						Ar.Logf(TEXT("      Cataclysm.ChoosePassiveOption %s "
+									 "<1, 2 or 3>"), *Node.ToString());
+					}
+				}
 				return;
 			}
 

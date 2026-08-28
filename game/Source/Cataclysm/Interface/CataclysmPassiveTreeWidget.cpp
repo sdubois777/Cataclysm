@@ -146,6 +146,41 @@ bool UCataclysmPassiveTreeWidget::ChooseOption(FName Node, int32 Option)
 	return bChosen;
 }
 
+bool UCataclysmPassiveTreeWidget::TouchNode(FName Node)
+{
+	const ACataclysmPlayerState* Player = State();
+	static const FCataclysmPassiveAllocation Nothing;
+	const FCataclysmPassiveAllocation& Allocation =
+		Player ? Player->GetPassiveAllocation() : Nothing;
+
+	if (UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable(), Allocation,
+													Node))
+	{
+		// THE OPTIONS, NOT A SPEND. See the header: a capstone in this state
+		// cannot take a point until one is taken, so spending here would refuse
+		// every time, which is what it did before issue #1064.
+		LastTouched = Node;
+		ChoosingOptionFor = Node;
+
+		const FCataclysmPassiveNodeRow* Row =
+			UCataclysmPassiveTree::FindNode(NodeTable(), Node);
+		LastRefusal = FString::Printf(
+			TEXT("%s has opened. Take one of its three options, on the left. "
+				 "The choice is permanent."),
+			Row ? *Row->NodeName : *Node.ToString());
+
+		RefreshDisplay();
+		return true;
+	}
+
+	// ANY OTHER NODE PUTS THE TREE NAMES BACK, which is also the way out of the
+	// option list without deciding. It is safe to rebuild that list from here
+	// because this click came from a button on the graph rather than from one of
+	// the list's own children; see `ChoosingOptionFor` in the header.
+	ChoosingOptionFor = NAME_None;
+	return SpendInto(Node);
+}
+
 FText UCataclysmPassiveTreeWidget::PointsText() const
 {
 	const ACataclysmPlayerState* Player = State();
@@ -231,10 +266,27 @@ void UCataclysmPassiveTreeWidget::NativeConstruct()
 
 void UCataclysmPassiveTreeWidget::RefreshDisplay()
 {
+	// THE TREE LIST HOLDS A CAPSTONE'S THREE OPTIONS INSTEAD, WHILE ONE IS BEING
+	// DECIDED. Issue #1064. It is the only other list of buttons on this screen,
+	// and building a third for a decision made four times a tree would be more
+	// machinery than the decision needs. A click on any node puts the tree names
+	// back; see `ChoosingOptionFor` in the header for why the rebuild is safe in
+	// that direction and not the other.
 	TArray<FName> TreeValues;
-	for (const FString& Tree : AllTrees())
+	if (ChoosingOptionFor.IsNone())
 	{
-		TreeValues.Add(FName(*Tree));
+		for (const FString& Tree : AllTrees())
+		{
+			TreeValues.Add(FName(*Tree));
+		}
+	}
+	else
+	{
+		for (int32 Option = 1; Option <= UCataclysmPassiveTree::CapstoneOptions;
+			 ++Option)
+		{
+			TreeValues.Add(OptionValue(Option));
+		}
 	}
 	FillPanel(TreeBox, TreeValues, /*bTrees=*/true);
 
@@ -388,6 +440,41 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 
 		if (bTrees)
 		{
+			// A CAPSTONE'S THREE OPTIONS ARE IN THIS LIST WHILE ONE IS BEING
+			// DECIDED, so its own names go on the buttons rather than the value
+			// that carries them. Issue #1064.
+			const int32 Option = OptionFromValue(Value);
+			if (Option > 0)
+			{
+				const FCataclysmPassiveNodeRow* Capstone =
+					UCataclysmPassiveTree::FindNode(NodeTable(),
+													ChoosingOptionFor);
+				const TArray<FString> Names = Capstone
+					? UCataclysmPassiveTree::OptionNamesOf(*Capstone)
+					: TArray<FString>();
+				const FString Name = Names.IsValidIndex(Option - 1)
+					? Names[Option - 1] : FString();
+
+				// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON.
+				// The Saboteur's four capstones have three each, issue #935, and
+				// this list never opens on one of those -- `AwaitsAnOptionChoice`
+				// refuses a capstone offering nothing -- so this is for a
+				// capstone that names one option and not another.
+				const FString Label = Name.IsEmpty()
+					? FString::Printf(TEXT("%d  (nothing is written here)"),
+									  Option)
+					: FString::Printf(TEXT("%d  %s"), Option, *Name);
+
+				// TAKEN IS MARKED, AND EVERY OPTION STAYS CLICKABLE. A player
+				// who clicks one of the other two gets the refusal saying the
+				// choice was permanent, which is the answer they are asking for.
+				const int32 Chosen =
+					Allocation.ChosenOptionIn(ChoosingOptionFor);
+				Button->SetChoice(Value, FText::FromString(Label),
+								  Chosen == Option, !Name.IsEmpty());
+				continue;
+			}
+
 			// A TREE THE CHARACTER CANNOT REACH IS STILL CLICKABLE, and shown
 			// dimmed. Reading what another tree offers is how a player decides
 			// which weapon to carry, so hiding them would make that choice
@@ -413,14 +500,59 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 	}
 }
 
+FName UCataclysmPassiveTreeWidget::OptionValue(int32 Option)
+{
+	// A NAME NO TREE CAN HAVE, because the same list and the same click handler
+	// carry both. `TreeNames` comes from the node table's `Tree` column, which
+	// holds class names -- Masochist, Bulwark -- so a leading space is enough to
+	// keep the two apart and cannot be produced by a tree.
+	return FName(*FString::Printf(TEXT(" Option%d"), Option));
+}
+
+int32 UCataclysmPassiveTreeWidget::OptionFromValue(FName Value)
+{
+	const FString Text = Value.ToString();
+	if (!Text.StartsWith(TEXT(" Option")))
+	{
+		return 0;
+	}
+
+	// Atoi answers zero for anything that is not a number, and zero is refused
+	// by the caller, so a malformed value behaves as no option at all.
+	return FCString::Atoi(*Text.RightChop(FString(TEXT(" Option")).Len()));
+}
+
 void UCataclysmPassiveTreeWidget::HandleTreeClicked(FName Tree)
 {
+	// THE SAME LIST CARRIES A CAPSTONE'S OPTIONS WHILE ONE IS BEING DECIDED, so
+	// this handler has two jobs. Issue #1064.
+	const int32 Option = OptionFromValue(Tree);
+	if (Option > 0)
+	{
+		if (!ChoosingOptionFor.IsNone())
+		{
+			// THE LIST IS LEFT STANDING WHETHER THE CHOICE TOOK OR NOT. Its
+			// three values do not change, so `FillPanel` relabels the buttons in
+			// place rather than emptying the panel this click came out of. What
+			// changes is that the taken option is now marked, and the other two
+			// refuse with "the choice is permanent".
+			ChooseOption(ChoosingOptionFor, Option);
+		}
+		return;
+	}
+
+	ChoosingOptionFor = NAME_None;
 	ShowTree(Tree.ToString());
 }
 
 void UCataclysmPassiveTreeWidget::HandleNodeClicked(FName Node)
 {
-	SpendInto(Node);
+	// ONE LINE, AND WHAT IT CALLS IS PUBLIC ON PURPOSE. Issue #1064. This
+	// function is bound to a button by reflection and no headless test can press
+	// it, so the decision it stands for lives in `TouchNode` where a test can
+	// reach it. Until that issue this line read `SpendInto(Node)`, and that is
+	// the whole of why no capstone could be taken from this screen.
+	TouchNode(Node);
 }
 
 void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
@@ -515,8 +647,16 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 										  Allocation.PointsIn(Node),
 										  Row->MaxPoints);
 
-	const bool bCanTake = UCataclysmPassiveTree::RefusalForSpending(
-		NodeTable(), EdgeTable(), Allocation, Node, Points).IsEmpty();
+	// AND A CAPSTONE THAT HAS OPENED IS CLICKABLE THOUGH IT CANNOT TAKE A POINT.
+	// Issue #1064. Until then this asked only whether a point could go in, and
+	// a capstone whose option is unchosen is refused, so the node the player had
+	// just earned was drawn exactly like one they had not reached. Clicking it
+	// now offers the three options, so it has to look like it can be clicked.
+	const bool bCanTake =
+		UCataclysmPassiveTree::RefusalForSpending(
+			NodeTable(), EdgeTable(), Allocation, Node, Points).IsEmpty()
+		|| UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable(), Allocation,
+													   Node);
 
 	Button.SetChoice(Node, FText::FromString(Label),
 					 Allocation.PointsIn(Node) > 0, bCanTake);

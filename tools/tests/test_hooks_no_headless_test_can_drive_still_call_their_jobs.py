@@ -98,6 +98,30 @@ HOOKS = {
             "UCataclysmEnemyScore::FloorIn",
         },
     },
+    # A BUTTON'S CLICK HANDLER IS THE SAME KIND OF HOOK. Issue #1064. It is bound
+    # to the button by reflection and the automation command passes `-nullrhi`,
+    # so no widget draws and no test can press one. `TouchNode` is public and is
+    # covered by an automation test; this is what says the button reaches it.
+    #
+    # WHAT WAS WRONG BEFORE. This handler read `SpendInto(Node)`, so clicking a
+    # capstone always tried to spend a point, which is refused until one of its
+    # three options is taken. No capstone in any tree could be taken from the
+    # screen at all.
+    #
+    # ITS BODY CALLS NO FREE FUNCTION, so `test_the_jobs_are_pinned` below finds
+    # nothing to complain about and passes on an empty set. That is correct
+    # rather than a hole: the check exists to catch a job nobody listed, and a
+    # one-line handler has no room for one.
+    "UCataclysmPassiveTreeWidget::HandleNodeClicked": {
+        "file": (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Interface"
+                 / "CataclysmPassiveTreeWidget.cpp"),
+        "jobs": {
+            "TouchNode(Node)":
+                "the decision between spending a point and offering a "
+                "capstone's three options, issue #1064",
+        },
+        "questions": set(),
+    },
 }
 
 
@@ -115,7 +139,10 @@ def body_of(path: pathlib.Path, signature: str) -> str:
 
     text = path.read_text(encoding="utf-8")
 
-    opening = text.find(f"void {signature}()")
+    # THE OPENING BRACKET AND NOT AN EMPTY PAIR, because a hook may take an
+    # argument. `HandleNodeClicked` takes the node that was clicked, and
+    # searching for "()" found nothing and reported the function as missing.
+    opening = text.find(f"void {signature}(")
     assert opening != -1, (
         f"{path.name} no longer defines {signature}. If it was renamed, rename "
         "it here; if the hook is gone, every job listed for it needs a new home "

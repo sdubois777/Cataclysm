@@ -6492,4 +6492,290 @@ bool FCataclysmPassivePossessionAppliesTheTreeTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A capstone that has opened and is waiting to be decided
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAwaitsAChoiceTest,
+	"Cataclysm.Passives.ACapstoneThatHasOpenedAndIsUndecidedSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `UCataclysmPassiveTree::AwaitsAnOptionChoice`. Issue #1064.
+ *
+ * WHY THE QUESTION EXISTS AT ALL. A capstone at its threshold with no option
+ * taken cannot take a point -- `RefusalForSpending` says so -- and until this
+ * issue every place that decided what a player may do asked only that. The
+ * passive tree screen therefore drew a capstone that had just opened exactly
+ * like one whose tier had not been reached, and the console command that lists
+ * what is open left it out. The project owner spent thirty points, crossed the
+ * first capstone's threshold of twenty-five, and nothing told them a decision
+ * was waiting.
+ *
+ * THE REAL TABLE, because the answer depends on authored thresholds and on
+ * whether a capstone names any options, and both are data.
+ */
+bool FCataclysmPassiveAwaitsAChoiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+	const FName Ordinary(TEXT("Masochist_basic_spine_001"));
+
+	FCataclysmPassiveAllocation Allocation;
+
+	// NOTHING SPENT, SO THE TIER IS NOT REACHED.
+	TestFalse(TEXT("a capstone below its threshold is not waiting on anything"),
+		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Allocation,
+													Capstone));
+
+	int32 Filled = 0;
+	const int32 Threshold =
+		FillTreeToOpen(NodeTable, Capstone, Allocation, Filled);
+	if (!TestTrue(TEXT("the first Masochist capstone states a threshold"),
+				  Threshold > 0)
+		|| !TestEqual(TEXT("and the tree was filled to it"), Filled, Threshold))
+	{
+		return false;
+	}
+
+	// THE STATE THE OWNER WAS IN. Twenty-five points spent in the tree, the
+	// capstone open, and no decision made.
+	TestTrue(TEXT("at its threshold it is waiting on a choice"),
+		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Allocation,
+													Capstone));
+
+	// AND IT STILL CANNOT TAKE A POINT, which is the fact every earlier caller
+	// asked about and is why the state was invisible. Both are true at once.
+	TestFalse(TEXT("while still refusing a point"),
+		UCataclysmPassiveTree::RefusalForSpending(
+			NodeTable, UCataclysmPassiveTree::LoadEdgeTable(), Allocation,
+			Capstone, /*PointsAvailable=*/230).IsEmpty());
+
+	// ONCE DECIDED THERE IS NOTHING LEFT TO ASK. The choice is permanent.
+	FString Reason;
+	if (!TestTrue(TEXT("the first option can be taken"),
+				  UCataclysmPassiveTree::ChooseOption(NodeTable, Allocation,
+													  Capstone, 1, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+	TestFalse(TEXT("a decided capstone is no longer waiting"),
+		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Allocation,
+													Capstone));
+
+	// AN ORDINARY NODE IS NEVER WAITING ON A CHOICE, whatever is spent.
+	TestFalse(TEXT("an ordinary node has no options to choose between"),
+		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Allocation,
+													Ordinary));
+
+	// AND NEITHER IS A CAPSTONE THAT NAMES NO OPTIONS. The Saboteur's four
+	// offer none -- issue #935 -- and announcing a decision nobody wrote would
+	// send a player looking for three names that do not exist.
+	FCataclysmPassiveAllocation Saboteur;
+	const FName SaboteurCapstone(TEXT("Saboteur_capstone_25"));
+	for (const FName& Node :
+		 UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Saboteur")))
+	{
+		if (Node != SaboteurCapstone)
+		{
+			Saboteur.Add(Node, 25);
+			break;
+		}
+	}
+	TestFalse(TEXT("a capstone offering no options announces nothing"),
+		UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable, Saboteur,
+													SaboteurCapstone));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveClickOffersTheOptionsTest,
+	"Cataclysm.Passives.ClickingAnOpenedCapstoneOffersItsOptionsRatherThanRefusing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * What a click on the passive tree screen means. Issue #1064.
+ *
+ * WHAT WAS WRONG. `UCataclysmPassiveTreeWidget::HandleNodeClicked` called
+ * `SpendInto` and nothing else, so clicking a capstone always tried to spend a
+ * point -- which is refused until one of its three options is taken. Nothing on
+ * the screen ever called `ChooseOption`, so **no capstone in any tree could be
+ * taken from the screen at all**: sixteen nodes, four per tree.
+ *
+ * WHY NO TEST CAUGHT IT. `HandleNodeClicked` is private and bound to a button by
+ * reflection, and no headless test can press a button -- the automation command
+ * passes `-nullrhi` and no widget draws. The two existing screen tests call
+ * `SpendInto` and `ChooseOption` directly, so neither goes near the decision
+ * between them. The decision now lives in `TouchNode`, which is public for
+ * exactly that reason, and `HandleNodeClicked` is one line that calls it.
+ *
+ * THIS TEST MUST NOT CALL `SpendInto` OR `ChooseOption` TO DO THE WORK. Those
+ * are the two things the screen was already able to do; what was missing was
+ * anything deciding between them. It reads them only to assert what the old
+ * behaviour still is.
+ */
+bool FCataclysmPassiveClickOffersTheOptionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	APlayerController* Controller =
+		Cast<APlayerController>(Character->GetController());
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	if (!Controller || !State)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	const FName Capstone(TEXT("Masochist_capstone_25"));
+
+	UCataclysmPassiveTreeWidget* Screen =
+		NewObject<UCataclysmPassiveTreeWidget>(Controller);
+	if (!TestNotNull(TEXT("the screen was created"), Screen))
+	{
+		return false;
+	}
+	Screen->SetPlayerStateForTests(State);
+	Screen->ShowTree(TEXT("Masochist"));
+
+	// BELOW THE THRESHOLD A CLICK STILL MEANS SPEND, and is refused because the
+	// tier has not been reached. Asserted first, so everything below is evidence
+	// of the capstone having opened rather than of capstones being special.
+	TestFalse(TEXT("clicking a shut capstone spends nothing"),
+			  Screen->TouchNode(Capstone));
+	TestTrue(TEXT("and the refusal is about its threshold"),
+			 Screen->RefusalText().ToString().Contains(TEXT("opens at")));
+	TestTrue(TEXT("and no options are being offered"),
+			 Screen->GetCapstoneAwaitingAChoice().IsNone());
+
+	// NOW OPEN IT. Twenty-five points elsewhere in the tree, which is the state
+	// the project owner reported from.
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold =
+		FillTreeToOpen(NodeTable, Capstone, Allocation, Filled);
+	if (!TestTrue(TEXT("the tree was filled to the capstone's threshold"),
+				  Threshold > 0 && Filled == Threshold))
+	{
+		return false;
+	}
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+	// THE ASSERTION THE WHOLE ISSUE IS ABOUT. A click now offers the choice
+	// instead of refusing a spend.
+	TestTrue(TEXT("clicking an opened capstone does something"),
+			 Screen->TouchNode(Capstone));
+	TestEqual(TEXT("and what it did was offer that capstone's options"),
+			  Screen->GetCapstoneAwaitingAChoice(), Capstone);
+	TestEqual(TEXT("and it spent no point on the way"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 0);
+
+	// A CLICK NEVER COMMITS A CHOICE, because the choice is permanent. Offering
+	// them is all it may do.
+	TestEqual(TEXT("and committed nothing"),
+			  State->GetPassiveAllocation().ChosenOptionIn(Capstone), 0);
+
+	// SPENDING DIRECTLY IS STILL REFUSED, which is the behaviour that was right
+	// all along and must not have changed.
+	TestFalse(TEXT("spending into it directly is still refused"),
+			  Screen->SpendInto(Capstone));
+	TestTrue(TEXT("and says a choice comes first"),
+			 Screen->RefusalText().ToString().Contains(TEXT("options first")));
+
+	// TAKE ONE, AND THE CLICK MEANS SPEND AGAIN.
+	if (!TestTrue(TEXT("the first option can be taken"),
+				  Screen->ChooseOption(Capstone, 1)))
+	{
+		AddError(Screen->RefusalText().ToString());
+		return false;
+	}
+	TestFalse(TEXT("nothing is waiting on a choice any more"),
+			  UCataclysmPassiveTree::AwaitsAnOptionChoice(
+				  NodeTable, State->GetPassiveAllocation(), Capstone));
+
+	TestTrue(TEXT("and now a click puts the point in"),
+			 Screen->TouchNode(Capstone));
+	TestEqual(TEXT("so the capstone holds its point"),
+			  State->GetPassiveAllocation().PointsIn(Capstone), 1);
+
+	// AND A CLICK ON AN ORDINARY NODE LEAVES NOTHING WAITING, which is the way
+	// out of the option list without deciding.
+	Screen->TouchNode(FName(TEXT("Masochist_basic_spine_001")));
+	TestTrue(TEXT("an ordinary node leaves nothing waiting on a choice"),
+			 Screen->GetCapstoneAwaitingAChoice().IsNone());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveOptionValueTest,
+	"Cataclysm.Passives.AnOptionButtonsValueCannotBeMistakenForATree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The tree list carries two kinds of value while a capstone is being decided.
+ * Issue #1064.
+ *
+ * ONE LIST AND ONE CLICK HANDLER CARRY BOTH, so the two have to be told apart
+ * with certainty. A tree's value is its name out of the node table's `Tree`
+ * column; an option's begins with a space, which no tree name can. Getting this
+ * wrong in either direction is silent: a tree read as an option would commit a
+ * permanent choice from a click meant to change which tree is shown.
+ */
+bool FCataclysmPassiveOptionValueTest::RunTest(const FString&)
+{
+	for (int32 Option = 1; Option <= UCataclysmPassiveTree::CapstoneOptions;
+		 ++Option)
+	{
+		const FName Value = UCataclysmPassiveTreeWidget::OptionValue(Option);
+		TestEqual(*FString::Printf(TEXT("option %d survives the round trip"),
+								   Option),
+				  UCataclysmPassiveTreeWidget::OptionFromValue(Value), Option);
+	}
+
+	// EVERY REAL TREE NAME READS AS NO OPTION AT ALL.
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		const TArray<FString> Trees = UCataclysmPassiveTree::TreeNames(NodeTable);
+		TestTrue(TEXT("there are trees to check"), Trees.Num() > 0);
+		for (const FString& Tree : Trees)
+		{
+			TestEqual(*FString::Printf(TEXT("%s is not an option"), *Tree),
+					  UCataclysmPassiveTreeWidget::OptionFromValue(
+						  FName(*Tree)), 0);
+		}
+	}
+
+	TestEqual(TEXT("and neither is nothing at all"),
+			  UCataclysmPassiveTreeWidget::OptionFromValue(NAME_None), 0);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
