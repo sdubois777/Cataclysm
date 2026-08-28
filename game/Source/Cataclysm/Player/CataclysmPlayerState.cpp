@@ -11,7 +11,11 @@
 #include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
+// For reaching the possessed character and the component that gathers every
+// source of a stat, so a spent passive point is felt at once. Issue #1054.
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Net/UnrealNetwork.h"
 
 ACataclysmPlayerState::ACataclysmPlayerState()
@@ -293,17 +297,33 @@ bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
 		}
 	}
 
-	return UCataclysmPassiveTree::Spend(NodeTable, EdgeTable, PassiveAllocation,
-										Node, PassivePointsAvailable(),
-										OutReason);
+	if (!UCataclysmPassiveTree::Spend(NodeTable, EdgeTable, PassiveAllocation,
+									  Node, PassivePointsAvailable(), OutReason))
+	{
+		return false;
+	}
+
+	// AND THE CHARACTER FEELS IT NOW. Issue #1054. Without this the point is
+	// recorded and changes nothing until the player happens to equip something,
+	// spend an attribute point or gain a level.
+	RefreshCharacterStats();
+	return true;
 }
 
 bool ACataclysmPlayerState::ChoosePassiveOption(FName Node, int32 Option,
 												FString& OutReason)
 {
-	return UCataclysmPassiveTree::ChooseOption(
-		UCataclysmPassiveTree::LoadNodeTable(), PassiveAllocation, Node, Option,
-		OutReason);
+	if (!UCataclysmPassiveTree::ChooseOption(
+			UCataclysmPassiveTree::LoadNodeTable(), PassiveAllocation, Node,
+			Option, OutReason))
+	{
+		return false;
+	}
+
+	// A CHOICE TURNS ON THAT OPTION'S EFFECT ROWS, so it moves the stat line for
+	// the same reason spending a point does. Issue #1054.
+	RefreshCharacterStats();
+	return true;
 }
 
 void ACataclysmPlayerState::ResetPassivePoints()
@@ -312,6 +332,12 @@ void ACataclysmPlayerState::ResetPassivePoints()
 	// ends "The choice is permanent", and a respec that returned the points
 	// while leaving the four decisions made would not be a respec at all.
 	PassiveAllocation.Clear();
+
+	// AND EVERYTHING THE TREE WAS GRANTING GOES WITH THEM. Issue #1054. A respec
+	// that left the bonuses standing would be free power. Maximum health falling
+	// clamps current health down to it, which `UCataclysmVitalAttributeSet`
+	// already does for any other way of losing it.
+	RefreshCharacterStats();
 }
 
 void ACataclysmPlayerState::SetPassiveAllocation(
@@ -319,4 +345,30 @@ void ACataclysmPlayerState::SetPassiveAllocation(
 {
 	PassiveAllocation = Allocation;
 	DefeatedCataclysmBosses = Bosses;
+
+	// A LOADED ALLOCATION IS A CHANGED ONE. Issue #1054. This runs before
+	// possession when a save is being restored, in which case it does nothing
+	// and possession applies the whole line a moment later; it runs after
+	// possession when anything else puts an allocation on a standing character,
+	// and then it is the only thing that would.
+	RefreshCharacterStats();
+}
+
+void ACataclysmPlayerState::RefreshCharacterStats() const
+{
+	// THROUGH THE EQUIPMENT COMPONENT, WHICH IS WHERE EVERY SOURCE OF A STAT IS
+	// GATHERED. `UCataclysmEquipmentComponent::RefreshAttributes` reads the
+	// class line, the worn items, the spent attribute points and the passive
+	// tree together. Working the passive part out again here would be a second
+	// place holding the same knowledge, and that duplication is what issue #1054
+	// was.
+	const ACataclysmPlayerCharacter* Character =
+		Cast<ACataclysmPlayerCharacter>(GetPawn());
+	if (!Character || !Character->GetEquipment())
+	{
+		return;
+	}
+
+	Character->GetEquipment()->RefreshAttributes(
+		GetCataclysmAbilitySystemComponent());
 }
