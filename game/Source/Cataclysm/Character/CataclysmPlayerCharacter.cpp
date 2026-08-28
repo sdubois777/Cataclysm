@@ -610,28 +610,36 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		return;
 	}
 
-	// THE CLASS LINE PLUS WHAT IS WORN, and until issue #828 it was the class
-	// line alone. GatherModifiers answers an empty map for a character wearing
-	// nothing, which gives exactly the old behaviour, so this is not a
-	// different result for an unequipped character.
-	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
-		Equipment ? Equipment->GatherModifiers()
-				  : TMap<FName, TArray<FCataclysmStatModifier>>();
+	// THROUGH THE EQUIPMENT COMPONENT, WHICH IS THE ONE PLACE THAT KNOWS EVERY
+	// SOURCE A CHARACTER'S STATS COME FROM. Issue #1054.
+	//
+	// WHAT THIS USED TO DO AND WHY IT WAS WRONG. It gathered the class line, the
+	// worn items, the weapons' swing rate and the spent attribute points itself,
+	// and left the passive tree out -- because `RefreshAttributes` was where the
+	// tree had been joined in and this was a second, older copy of the same
+	// gathering. A character arriving in the world with points already spent got
+	// nothing for them until it happened to change a worn item. The four sources
+	// are now named in exactly one place.
+	//
+	// THE POOLS ARE FILLED, AND ONLY HERE. This runs from PossessedBy, which
+	// happens once, and "this character is starting" is the one case where
+	// health, mana and shield should go to their maximums.
+	if (Equipment)
+	{
+		Equipment->RefreshAttributes(ASC, ECataclysmPoolFill::FillToMaximum);
+		return;
+	}
 
-	// THE SWING RATE COMES FROM THE WEAPONS AND NOT FROM THE CLASS LINE, which
-	// is why it is supplied separately. Issue #845. A rate is neither an
-	// implicit nor an affix and two weapons average theirs, so nothing in the
-	// modifier pipeline can produce it. Attack damage is deliberately not here:
-	// a weapon's damage IS an implicit, so it arrives with the modifiers above
-	// and supplying it again would double it.
-	TMap<FName, float> Bases =
-		Equipment ? Equipment->StatBasesFromWeapons() : TMap<FName, float>();
+	// NO EQUIPMENT COMPONENT AT ALL: the class line and the spent attribute
+	// points, and nothing that has to be read off an item. `Equipment` is a
+	// default subobject and so is never null on a character the engine built,
+	// but this function has always guarded it and a possessed character with no
+	// stat line at all would be worse than one with a partial one.
+	TMap<FName, float> Bases;
 
-	// AND THE EIGHT ATTRIBUTES THE CHARACTER HAS SPENT POINTS ON. Issue #50.
-	// They are a base for the same reason the swing rate is: no class line can
-	// state how many points a particular character has spent. The eight gear
-	// affixes that increase an attribute arrive with the modifiers above and
-	// multiply this, which is what the design says they do.
+	// THE EIGHT ATTRIBUTES THE CHARACTER HAS SPENT POINTS ON. Issue #50.
+	// They are a base rather than a modifier because no class line can state how
+	// many points a particular character has spent.
 	// THE LEVEL COMES FROM THE PLAYER STATE AND NOT FROM Cataclysm.PlayerLevel
 	// ANY MORE. Reading the console variable here could not see a level the
 	// character had gained, and a character that levels up has to resolve its
@@ -650,7 +658,10 @@ void ACataclysmPlayerCharacter::ApplyChosenClassStats()
 		ASC, UCataclysmPlayerClassStats::LoadTable(),
 		UCataclysmPlayerClassStats::ChosenClass(),
 		Level,
-		&Modifiers,
+		// NO MODIFIERS AT ALL, because every one of them would have come off a
+		// worn item or the passive tree, and both are read through the equipment
+		// component this branch does not have.
+		nullptr,
 		// A CHARACTER STARTING. This runs from PossessedBy, which happens once,
 		// so filling the pools is right here and is exactly what it did before.
 		// OnEquipmentChanged is the path that must not fill them.

@@ -501,7 +501,7 @@ TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
 }
 
 int32 UCataclysmEquipmentComponent::RefreshAttributes(
-	UAbilitySystemComponent* AbilitySystem) const
+	UAbilitySystemComponent* AbilitySystem, ECataclysmPoolFill PoolFill) const
 {
 	if (!AbilitySystem)
 	{
@@ -565,9 +565,10 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 		UCataclysmPlayerClassStats::ChosenClass(),
 		Level,
 		&Modifiers,
-		// THE POOLS ARE LEFT WHERE THEY ARE. Filling them is right for a
-		// character arriving in the world and wrong here: a player who swapped a
-		// helmet during a fight would be healed to full by doing it.
-		ECataclysmPoolFill::LeaveAsTheyAre,
+		// WHAT THE CALLER ASKED FOR, AND THE DEFAULT IS TO LEAVE THEM ALONE.
+		// Filling the pools is right for a character arriving in the world and
+		// wrong for every other caller: a player who swapped a helmet during a
+		// fight would be healed to full by doing it.
+		PoolFill,
 		&Bases);
 }

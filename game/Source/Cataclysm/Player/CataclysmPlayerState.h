@@ -304,6 +304,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
 	TArray<FString> ReachableTrees() const;
 
+	/**
+	 * Work this character's whole stat line out again and write it.
+	 *
+	 * WHY THE PASSIVE FUNCTIONS ABOVE ALL CALL THIS. Issue #1054. Changing the
+	 * allocation changes nothing a player can feel by itself: the modifiers a
+	 * spent point grants only reach a gameplay attribute when the pipeline is
+	 * run, and until this nothing ran it. The project owner put ten points into
+	 * nodes reading "+1% increased Maximum Health per point" and watched their
+	 * health stay at 510.
+	 *
+	 * HERE, AND NOT IN THE TWO CALLERS. `Cataclysm.SpendPassivePoint` and
+	 * `UCataclysmPassiveTreeWidget::SpendInto` both spend through this class, so
+	 * one call in each of them would work today and leave the next caller
+	 * written to fail silently. That is exactly how the defect arose.
+	 *
+	 * THE POOLS ARE LEFT WHERE THEY ARE, which matches what spending an
+	 * attribute point already does: a point into Vitality raises maximum health
+	 * without healing anybody. A character that spends into maximum health goes
+	 * from 510 out of 510 to 510 out of 561 and heals the rest back normally.
+	 *
+	 * NOTHING HAPPENS WITHOUT A POSSESSED CHARACTER, and that is an ordinary
+	 * state rather than a fault: a player state exists before it is possessed
+	 * and between possessions. Possession writes the whole stat line itself, so
+	 * a point spent while unpossessed is picked up then.
+	 */
+	void RefreshCharacterStats() const;
+
 protected:
 	/**
 	 * What `CharacterLevel` holds before anything has decided one.

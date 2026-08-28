@@ -6067,4 +6067,429 @@ bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A spent point reaching the character with nothing else touched
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpendingRefreshesTheStatLineTest,
+	"Cataclysm.Passives.SpendingAPointRaisesMaximumHealthWithNothingElseTouched",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Spending a passive point has to reach the character by itself. Issue #1054.
+ *
+ * WHAT WENT WRONG. The project owner put points into nodes reading "+1%
+ * increased Maximum Health per point" and their health did not move at all. The
+ * nodes were authored correctly and the pipeline resolved them correctly.
+ * Nothing ever ran the pipeline again. `UCataclysmEquipmentComponent::
+ * RefreshAttributes` is the only place a spent passive point becomes a gameplay
+ * attribute, and neither the screen nor the console command called it, so a
+ * point took effect only by accident -- the next time the player changed a worn
+ * item, spent an attribute point, or gained a level.
+ *
+ * WHY EVERY EARLIER TEST MISSED IT, AND WHY THIS ONE MUST NOT CALL
+ * `RefreshAttributes`. Every other test of the tree writes the allocation with
+ * `SetPassiveAllocation` and then calls `RefreshAttributes` itself. That is
+ * exactly the step the game was missing, so those tests proved the pipeline and
+ * never the wiring into it. A single call to `RefreshAttributes` anywhere below
+ * would put the defect straight back out of this test's reach.
+ *
+ * BOTH WAYS A POINT CAN BE SPENT, because they are two call sites sharing one
+ * function. `ACataclysmPlayerState::SpendPassivePoint` is what the console
+ * command `Cataclysm.SpendPassivePoint` calls and also what
+ * `UCataclysmPassiveTreeWidget::SpendInto` calls. The first half below spends
+ * through the player state and the second half through the screen, so a fix
+ * placed in only one of the two callers fails one half or the other.
+ *
+ * TWO STATS FROM ONE NODE, AND THAT IS NOT DECORATION. Pain Tolerance grants
+ * maximum health AND armour, so a repair that somehow reached only the stat the
+ * owner happened to name is caught here.
+ *
+ * READ AS A SUM AND NOT AS A MULTIPLIER. The increases bucket adds: ten points
+ * worth 1% each do not multiply maximum health by 1.10, they add 10 to whatever
+ * sum is already on the stat, and the result is multiplied by
+ * (100 + S + 10) / (100 + S). `IncreasesOn` is what reads S.
+ */
+bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	APlayerController* Controller =
+		Cast<APlayerController>(Character->GetController());
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!Controller || !State || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	// THE REAL TABLES, because the whole point is the end-to-end path.
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE ROOT AND THE NODE BEHIND IT. The root holds one point and opens Pain
+	// Tolerance, which holds twelve.
+	const FName Root(TEXT("Masochist_basic_spine_000"));
+	const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
+
+	// WHAT THE SHEET SAYS THAT NODE IS WORTH, READ OUT OF THE REAL TABLE RATHER
+	// THAN ASSUMED. Re-authoring Pain Tolerance is how this test would quietly
+	// stop measuring anything: change its value per point and the arithmetic
+	// below would be wrong while still passing.
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, PainTolerance);
+	if (!TestEqual(TEXT("Pain Tolerance has two authored effects"), Rows.Num(), 2))
+	{
+		return false;
+	}
+	float HealthPerPoint = 0.0f;
+	float ArmourPerPoint = 0.0f;
+	for (const FCataclysmPassiveEffectRow* Row : Rows)
+	{
+		if (Row->Stat == TEXT("max_health"))
+		{
+			HealthPerPoint = Row->ValuePerPoint;
+			TestEqual(TEXT("and the health one is an increase"), Row->ValueKind,
+					  FString(TEXT("increased")));
+		}
+		else if (Row->Stat == TEXT("armor"))
+		{
+			ArmourPerPoint = Row->ValuePerPoint;
+			TestEqual(TEXT("and so is the armour one"), Row->ValueKind,
+					  FString(TEXT("increased")));
+		}
+	}
+	if (!TestTrue(TEXT("one of the two is maximum health"), HealthPerPoint > 0.0f)
+		|| !TestTrue(TEXT("and the other is armour"), ArmourPerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	const float HealthBefore =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float ArmourBefore =
+		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
+	const float HealthSumBefore = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float ArmourSumBefore = IncreasesOn(AbilitySystem, TEXT("armor"));
+
+	// THE CHARACTER IS STANDING ON A REAL STAT LINE BEFORE ANYTHING IS SPENT.
+	// `UCataclysmVitalAttributeSet`'s constructor writes a placeholder 100, and
+	// a test that began from the placeholder would be measuring an unpossessed
+	// character rather than the game.
+	if (!TestTrue(*FString::Printf(
+					  TEXT("maximum health is off the class line, not the "
+						   "placeholder 100: %.1f"), HealthBefore),
+				  HealthBefore > 100.0f))
+	{
+		return false;
+	}
+
+	// AND IT HAS ARMOUR TO MULTIPLY. A class line stating no armour would make
+	// the armour half of this test compare zero against zero and pass on
+	// nothing, which is the shape of a check that cannot fail.
+	if (!TestTrue(*FString::Printf(
+					  TEXT("and it starts with some armour to increase: %.1f"),
+					  ArmourBefore),
+				  ArmourBefore > 0.0f))
+	{
+		return false;
+	}
+
+	// ---------------------------------------------------------------------
+	// Spending through the player state, which is what the console command does
+	// ---------------------------------------------------------------------
+
+	FString Reason;
+	if (!TestTrue(TEXT("the Masochist root takes a point"),
+				  State->SpendPassivePoint(Root, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	const int32 Points = 10;
+	for (int32 Each = 0; Each < Points; ++Each)
+	{
+		if (!State->SpendPassivePoint(PainTolerance, Reason))
+		{
+			AddError(FString::Printf(
+				TEXT("point %d of %d into Pain Tolerance was refused: %s"),
+				Each + 1, Points, *Reason));
+			return false;
+		}
+	}
+	TestEqual(TEXT("ten points are on the node"),
+			  State->GetPassiveAllocation().PointsIn(PainTolerance), Points);
+
+	// NOTHING ELSE IS TOUCHED FROM HERE ON. No equipment change, no attribute
+	// point, no level, and above all no call to `RefreshAttributes`.
+
+	const float HealthAfter =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float ArmourAfter =
+		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
+	const float HealthSumAfter = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float ArmourSumAfter = IncreasesOn(AbilitySystem, TEXT("armor"));
+
+	// THE HEADLINE, IN THE OWNER'S OWN TERMS: the number on the screen went up.
+	TestTrue(*FString::Printf(
+				 TEXT("maximum health rose from %.1f to %.1f after ten points "
+					  "into a node that says it raises it"),
+				 HealthBefore, HealthAfter),
+			 HealthAfter > HealthBefore);
+
+	// AND BY THE AMOUNT THE SHEET STATES. Ten points at 1% each add 10 to the
+	// sum of increases, whatever that sum already was.
+	const float HealthExpectedSum = HealthSumBefore + HealthPerPoint * Points;
+	TestEqual(TEXT("the sum of increases on maximum health grew by ten"),
+			  HealthSumAfter, HealthExpectedSum, 0.01f);
+	TestEqual(TEXT("and the attribute followed that sum"), HealthAfter,
+			  HealthBefore * (100.0f + HealthExpectedSum)
+				  / (100.0f + HealthSumBefore),
+			  FMath::Max(HealthBefore * 0.001f, 0.01f));
+
+	// THE SECOND STAT ON THE SAME NODE, so a repair that reached only the one
+	// the owner named would fail here.
+	const float ArmourExpectedSum = ArmourSumBefore + ArmourPerPoint * Points;
+	TestTrue(*FString::Printf(TEXT("armour rose from %.1f to %.1f"), ArmourBefore,
+							  ArmourAfter),
+			 ArmourAfter > ArmourBefore);
+	TestEqual(TEXT("the sum of increases on armour grew by five"), ArmourSumAfter,
+			  ArmourExpectedSum, 0.01f);
+	TestEqual(TEXT("and the armour attribute followed that sum"), ArmourAfter,
+			  ArmourBefore * (100.0f + ArmourExpectedSum)
+				  / (100.0f + ArmourSumBefore),
+			  FMath::Max(ArmourBefore * 0.001f, 0.01f));
+
+	// THE CHARACTER IS NOT HEALED BY SPENDING, WHICH IS THE RULE ALREADY IN
+	// FORCE FOR ATTRIBUTE POINTS. `Cataclysm.SpendAttributePoint`'s own comment
+	// says putting a point into Vitality "raises maximum health without healing
+	// anybody", and a passive point has to behave the same way. The pools are
+	// filled when a character arrives in the world and never again.
+	TestEqual(TEXT("current health stayed where it was rather than refilling"),
+			  AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
+			  HealthBefore, FMath::Max(HealthBefore * 0.001f, 0.01f));
+
+	// ---------------------------------------------------------------------
+	// And again through the screen, which is the other caller
+	// ---------------------------------------------------------------------
+
+	// `NewObject` RATHER THAN `CreateWidget`, for the reason
+	// `TheScreenSpendsThroughTheCharacterAndNotIntoItself` gives: a world built
+	// by `UWorld::CreateWorld` has no local player, and `CreateWidget` refuses a
+	// controller that is not one.
+	UCataclysmPassiveTreeWidget* Screen =
+		NewObject<UCataclysmPassiveTreeWidget>(Controller);
+	if (!TestNotNull(TEXT("the screen was created"), Screen))
+	{
+		return false;
+	}
+	Screen->SetPlayerStateForTests(State);
+	Screen->ShowTree(TEXT("Masochist"));
+
+	if (!TestTrue(TEXT("the screen puts an eleventh point into Pain Tolerance"),
+				  Screen->SpendInto(PainTolerance)))
+	{
+		AddError(Screen->RefusalText().ToString());
+		return false;
+	}
+
+	const float HealthAfterScreen =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float HealthSumAfterScreen =
+		IncreasesOn(AbilitySystem, TEXT("max_health"));
+
+	TestTrue(*FString::Printf(
+				 TEXT("maximum health rose again, from %.1f to %.1f, when the "
+					  "point was spent on the screen"),
+				 HealthAfter, HealthAfterScreen),
+			 HealthAfterScreen > HealthAfter);
+	TestEqual(TEXT("by one more point's worth"), HealthSumAfterScreen,
+			  HealthExpectedSum + HealthPerPoint, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassivePossessionAppliesTheTreeTest,
+	"Cataclysm.Passives.ACharacterArrivingInTheWorldGetsThePointsItHasAlreadySpent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The other half of issue #1054: points spent before the character exists.
+ *
+ * WHAT WENT WRONG. `ACataclysmPlayerCharacter::ApplyChosenClassStats` runs from
+ * `PossessedBy` and gathered its own modifier map -- the class line and the worn
+ * items -- without ever asking the passive tree. It was a second, older copy of
+ * the gathering `UCataclysmEquipmentComponent::RefreshAttributes` does, and the
+ * tree had only ever been joined into the newer one. A character loading a save
+ * with 230 points already spent therefore stood up with none of them applied,
+ * and stayed that way until it happened to change a worn item.
+ *
+ * TWO CHARACTERS IN ONE WORLD, WHICH IS WHAT MAKES THIS MEASURABLE. The figure
+ * a character should have depends on its class line and its level, and pinning
+ * either here would make this test fail whenever they are tuned. An identical
+ * character with an empty tree is the baseline instead, so the only difference
+ * between the two readings is the ten points.
+ *
+ * THE ALLOCATION ARRIVES BEFORE THE PAWN DOES, deliberately. That is the order a
+ * save restore takes, and it is the order in which
+ * `ACataclysmPlayerState::RefreshCharacterStats` can do nothing at all -- there
+ * is no character to write to yet. Possession has to be what applies it.
+ *
+ * AND NOTHING CALLS `RefreshAttributes`, for the reason
+ * `SpendingAPointRaisesMaximumHealthWithNothingElseTouched` gives: it is the
+ * step the game was missing, so a test that supplies it proves nothing.
+ */
+bool FCataclysmPassivePossessionAppliesTheTreeTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FName Root(TEXT("Masochist_basic_spine_000"));
+	const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
+	const int32 Points = 10;
+
+	// WHAT THE SHEET SAYS THE NODE IS WORTH, read rather than assumed, so
+	// re-authoring Pain Tolerance cannot leave this test asserting an old figure.
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+	float HealthPerPoint = 0.0f;
+	for (const FCataclysmPassiveEffectRow* Row :
+		 UCataclysmPassiveTree::EffectsFor(EffectTable, PainTolerance))
+	{
+		if (Row->Stat == TEXT("max_health"))
+		{
+			HealthPerPoint = Row->ValuePerPoint;
+		}
+	}
+	if (!TestTrue(TEXT("Pain Tolerance grants maximum health"),
+				  HealthPerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	// ONE CHARACTER WITH AN EMPTY TREE AND ONE WITH TEN POINTS IN IT, built the
+	// same way in the same world so nothing but the allocation differs.
+	//
+	// THE CURRENT HEALTH COMES BACK ALONGSIDE THE MAXIMUM, because the last
+	// assertion needs the pair from the same character and finding it again
+	// afterwards would mean identifying one character by its own reading.
+	const auto Possess = [&](const FCataclysmPassiveAllocation* Allocation,
+							 float& OutHealth) -> float
+	{
+		ACataclysmPlayerState* PlayerState =
+			World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!PlayerState || !Controller || !Character)
+		{
+			AddError(TEXT("A character could not be built."));
+			return 0.0f;
+		}
+
+		Controller->SetPlayerState(PlayerState);
+
+		// BEFORE POSSESSION. There is no pawn to write to at this moment, so
+		// nothing about the allocation can reach an attribute until the line
+		// below runs.
+		if (Allocation)
+		{
+			PlayerState->SetPassiveAllocation(*Allocation, TArray<FName>());
+		}
+
+		Controller->Possess(Character);
+
+		const UCataclysmAbilitySystemComponent* AbilitySystem =
+			PlayerState->GetCataclysmAbilitySystemComponent();
+		if (!AbilitySystem)
+		{
+			return 0.0f;
+		}
+		OutHealth =
+			AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		return AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	};
+
+	float BareHealth = 0.0f;
+	const float Bare = Possess(nullptr, BareHealth);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Root, 1);
+	Allocation.Add(PainTolerance, Points);
+	float InvestedHealth = 0.0f;
+	const float Invested = Possess(&Allocation, InvestedHealth);
+
+	// THE BASELINE IS A REAL STAT LINE. A character still on the placeholder 100
+	// its attribute set's constructor writes would make the comparison below
+	// meaningless.
+	if (!TestTrue(*FString::Printf(
+					  TEXT("the bare character stands on its class line, not "
+						   "the placeholder 100: %.1f"), Bare),
+				  Bare > 100.0f))
+	{
+		return false;
+	}
+
+	TestTrue(*FString::Printf(
+				 TEXT("the character that had already spent ten points stood up "
+					  "with more health: %.1f against %.1f"),
+				 Invested, Bare),
+			 Invested > Bare);
+
+	// AND BY EXACTLY WHAT THE SHEET STATES. Neither character has gear, spent
+	// attribute points or anything else touching maximum health, so the sum of
+	// increases on the bare one is zero and ten points at 1% each make the
+	// difference a clean 10%.
+	TestEqual(TEXT("and by the ten per cent the node promises"), Invested,
+			  Bare * (100.0f + HealthPerPoint * Points) / 100.0f,
+			  FMath::Max(Bare * 0.001f, 0.01f));
+
+	// A CHARACTER ARRIVING IN THE WORLD STANDS UP FULL, which is the one case
+	// where the pools are filled. This is the half of the change that could go
+	// wrong in the other direction: filling the pools on every refresh instead
+	// of only at possession would make swapping a helmet a free heal, and
+	// `Cataclysm.Equipment` covers that side.
+	//
+	// AT THE RAISED MAXIMUM AND NOT THE UNRAISED ONE, which is what says the
+	// tree was applied before the pools were filled rather than after. Health is
+	// clamped to maximum health, so the order is load-bearing.
+	TestEqual(TEXT("and it stands up at full health, on its raised maximum"),
+			  InvestedHealth, Invested, FMath::Max(Invested * 0.001f, 0.01f));
+	TestEqual(TEXT("as does the one with an empty tree, on its own"), BareHealth,
+			  Bare, FMath::Max(Bare * 0.001f, 0.01f));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

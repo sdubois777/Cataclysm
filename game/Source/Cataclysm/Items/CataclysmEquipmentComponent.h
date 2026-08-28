@@ -5,6 +5,10 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Items/CataclysmItem.h"
+// FOR ECataclysmPoolFill, WHICH RefreshAttributes BELOW TAKES A DEFAULT VALUE
+// OF. A forward declaration will not do: naming an enumerator of a scoped enum
+// in a default argument needs the complete type. Issue #1054.
+#include "Character/CataclysmPlayerClassStats.h"
 
 #include "CataclysmEquipmentComponent.generated.h"
 
@@ -311,17 +315,28 @@ public:
 	TMap<FName, float> StatBasesFromWeapons() const;
 
 	/**
-	 * Recompute every stat from the class line plus what is worn, and write it.
+	 * Recompute every stat this character has and write it.
 	 *
-	 * THE POOLS ARE NOT REFILLED, and that is the difference between this and a
-	 * character arriving in the world. `UCataclysmPlayerClassStats::ApplyTo`
-	 * fills health, mana and shield to their maximums, which is right at
-	 * possession and wrong here: a player who swapped a helmet mid-fight would
-	 * be healed to full by doing it.
+	 * THE ONE PLACE THAT KNOWS EVERY SOURCE, and it has to stay the only one.
+	 * A character's stats come from four places at once -- the class line at its
+	 * level, the items it is wearing, the attribute points it has spent, and the
+	 * passive tree -- and this is the single function that gathers all four.
+	 * Issue #1054 is what a second place holding the same knowledge cost:
+	 * `ACataclysmPlayerCharacter::ApplyChosenClassStats` gathered its own
+	 * modifiers and left the passive tree out, so a character arriving in the
+	 * world got nothing for the points it had already spent.
+	 *
+	 * THE POOLS ARE LEFT WHERE THEY ARE UNLESS A CALLER SAYS OTHERWISE, and the
+	 * difference is not cosmetic. `ECataclysmPoolFill::FillToMaximum` is right
+	 * for a character arriving in the world and is a free heal for one that only
+	 * changed a helmet -- a player could swap a hat back and forth mid-fight and
+	 * never die. Only possession passes it.
 	 *
 	 * @return how many attributes were written.
 	 */
-	int32 RefreshAttributes(UAbilitySystemComponent* AbilitySystem) const;
+	int32 RefreshAttributes(
+		UAbilitySystemComponent* AbilitySystem,
+		ECataclysmPoolFill PoolFill = ECataclysmPoolFill::LeaveAsTheyAre) const;
 
 	/** Fires after anything changes what is worn, before attributes are written. */
 	DECLARE_MULTICAST_DELEGATE(FOnEquipmentChanged);
