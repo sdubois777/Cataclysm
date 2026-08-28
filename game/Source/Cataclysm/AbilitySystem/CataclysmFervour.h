@@ -85,6 +85,9 @@ public:
 	/** How much Fervour arrives every second, from nothing happening. #1008. */
 	static const TCHAR* PerSecondStat;
 
+	/** How much Fervour each skill cast grants. Issue #1051. */
+	static const TCHAR* PerCastStat;
+
 	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
@@ -142,6 +145,35 @@ public:
 	 */
 	static float GainPerSecondStep(UAbilitySystemComponent* AbilitySystem,
 								   float SecondsInStep);
+
+	/**
+	 * Add the Fervour one cast is worth, and answer what arrived.
+	 * Issue #1051.
+	 *
+	 * THE MASOCHIST'S The Last Drop IS ITS ONLY SOURCE, the first option of
+	 * The Final Vow: "While below 20% health your skills cost no health, and
+	 * every skill you cast grants 10 Fervour."
+	 *
+	 * A SEPARATE FUNCTION FROM `GainPerSecondStep` ABOVE, though both add a
+	 * plain count of Fervour, because they are counted by different things.
+	 * That one is a RATE and is multiplied by the length of the step it is
+	 * on; this is granted once per cast and a cast has no duration.
+	 *
+	 * ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, for the reason that one
+	 * gives: the node's row carries a health condition, so the attribute is
+	 * zero even for a character holding it.
+	 *
+	 * EVERY SKILL, INCLUDING ONE THAT COST NOTHING. The caller in
+	 * `UCataclysmSkillTemplate::PayHealthCost` therefore sits outside the
+	 * branch guarded on the cost being above zero, and it has to: the
+	 * option's other clause makes the cost zero, so a grant inside that
+	 * branch would never fire at all.
+	 *
+	 * @return how much Fervour was really added, which is zero for a
+	 *         character with no such node, for a full bar, and for no class
+	 *         resource set
+	 */
+	static float GainForCast(UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

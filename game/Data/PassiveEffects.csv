@@ -108,3 +108,6 @@ Masochist_capstone_200#4,Masochist_capstone_200,fervour_per_second,flat,5.0,,,0.
 Masochist_capstone_100#8,Masochist_capstone_100,retaliation,increased,1.0,,,0.0,life_leech,1.0,2
 Masochist_capstone_25#4,Masochist_capstone_25,retaliation_radius_metres,flat,4.0,,,0.0,,0.0,2
 Masochist_capstone_50#1,Masochist_capstone_50,retaliation_leeches,flat,1.0,,,0.0,,0.0,2
+Masochist_basic_ll_b2#1,Masochist_basic_ll_b2,nova_damage_of_missing_health,flat,1.0,,health_at_or_below,10.0,,0.0,0
+Masochist_capstone_200#5,Masochist_capstone_200,health_cost_suppressed,flat,1.0,,health_below,20.0,,0.0,1
+Masochist_capstone_200#6,Masochist_capstone_200,fervour_per_cast,flat,10.0,,health_below,20.0,,0.0,1

@@ -630,6 +630,42 @@ void UCataclysmAbilitySystemComponent::NoteDamageConversionStarted(
 	DamageToBleedingNextAllowedSeconds = Now + CooldownSeconds;
 }
 
+bool UCataclysmAbilitySystemComponent::MayReleaseNova() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO NOVA, the same refusal MayStartDamageConversion
+		// makes and the safe direction: an interval that cannot be timed would
+		// let a nova fire on every step of the timer instead of every fifth
+		// second.
+		return false;
+	}
+
+	// NEVER RELEASED ONE IS ALLOWED. A negative time means no nova has ever
+	// come, so there is nothing to wait for and the first arrives as soon as
+	// the character is hurt enough for the node's condition.
+	return NovaNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= NovaNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		// AN INTERVAL OF NOTHING RECORDS NOTHING, rather than allowing the next
+		// nova immediately. The one caller passes a constant above zero, so this
+		// guards a future one rather than anything that happens today.
+		return;
+	}
+
+	// FROM THIS NOVA AND NOT FROM THE LAST ONE. "Every 5 seconds" measured
+	// from the moment one is released is what keeps the rate steady when a
+	// character leaves the health condition and comes back into it.
+	NovaNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
+}
+
 int32 UCataclysmAbilitySystemComponent::StacksHeld(ECataclysmStackKind Kind,
 												   float WindowSeconds) const
 {

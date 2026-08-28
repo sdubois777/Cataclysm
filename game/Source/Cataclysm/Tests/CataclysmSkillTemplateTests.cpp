@@ -10,6 +10,8 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For health owed and the share of a cost taken later. Issue #991.
 #include "AbilitySystem/CataclysmHealthDebt.h"
+// For the Fervour a cast itself grants. Issue #1051.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -4272,6 +4274,204 @@ bool FCataclysmAreaOfEffectWidensGroundTest::RunTest(const FString&)
 	// the two rules different rather than one rule applied twice.
 	TestEqual(TEXT("while the blow itself keeps its stated reach"),
 		Slash->ScaledRadiusCm(), StatedRadius, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The Last Drop: the first option of The Final Vow. Issue #1051.
+//
+// "While below 20% health your skills cost no health, and every skill you cast
+// grants 10 Fervour."
+// --------------------------------------------------------------------------
+
+namespace CataclysmSkillTest
+{
+	/**
+	 * The Last Drop as the passive tree delivers it: two flat rows under one
+	 * condition, which is the first STRICTLY-below health threshold in the game.
+	 *
+	 * BUILT AS `UCataclysmPlayerClassStats::ApplyTo` LEAVES IT rather than
+	 * written onto the two gameplay attributes. Both rows carry a condition, so
+	 * `ApplyTo` refuses them and both attributes stay at zero for a character
+	 * holding the option. A test that wrote the attributes would be testing a
+	 * state the game never produces.
+	 */
+	void GiveTheLastDrop(FScopedFighter& Who, float FervourPerCast = 10.0f)
+	{
+		const auto BelowTwenty = [](float Value)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = ECataclysmStatBucket::Flat;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Value;
+			Modifier.Condition = ECataclysmStatCondition::HealthBelowPercent;
+			Modifier.ConditionValue = 20.0f;
+			return Modifier;
+		};
+
+		FCataclysmStatInputs Suppressed;
+		Suppressed.Modifiers.Add(BelowTwenty(1.0f));
+
+		FCataclysmStatInputs PerCast;
+		PerCast.Modifiers.Add(BelowTwenty(FervourPerCast));
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmSkillTemplate::HealthCostSuppressedStat),
+				  Suppressed);
+		Stats.Add(FName(UCataclysmFervour::PerCastStat), PerCast);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/**
+	 * A caster with a real health cost, standing at a stated share of health.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH AND NOT OF CURRENT, so the cost is the same
+	 * absolute number wherever the character is standing. Two of the casters
+	 * below sit at 19% and 20%, and a share of current health would make them
+	 * pay different amounts for a reason unrelated to what is being checked.
+	 */
+	void StandAtShareOfHealthWithACost(FScopedFighter& Who, float SharePercent)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				1'000.0f * SharePercent / 100.0f);
+		Who.Set(UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(),
+				10.0f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTheLastDropSuppressesTheCostTest,
+	"Cataclysm.Skills.TheLastDropMakesASkillCostNoHealthBelowTheThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheLastDropSuppressesTheCostTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THREE CASTERS AND NOT ONE, because a skill cannot be cast twice in a test:
+	// casting commits its cooldown, so a second activation is refused and the
+	// failure names the activation rather than what was being measured.
+	FScopedFighter Below(World, FVector::ZeroVector);
+	FScopedFighter Exactly(World, FVector(4 * M, 0, 0));
+	FScopedFighter Without(World, FVector(8 * M, 0, 0));
+
+	// TEN PER CENT OF A THOUSAND MAXIMUM HEALTH IS A COST OF A HUNDRED, which is
+	// the Masochist's Deeper Cuts node at its full ten points.
+	StandAtShareOfHealthWithACost(Below, 19.0f);
+	StandAtShareOfHealthWithACost(Exactly, 20.0f);
+	StandAtShareOfHealthWithACost(Without, 19.0f);
+
+	GiveTheLastDrop(Below);
+	GiveTheLastDrop(Exactly);
+	// `Without` deliberately gets nothing.
+
+	const auto CastOnce = [&](FScopedFighter& Who, const TCHAR* Name) -> bool
+	{
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Who, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), Name);
+		return Strike && Activate(Who, Strike);
+	};
+
+	if (!TestTrue(TEXT("all three casters activate"),
+				  CastOnce(Below, TEXT("Below")) && CastOnce(Exactly, TEXT("Exactly"))
+					  && CastOnce(Without, TEXT("Without"))))
+	{
+		return false;
+	}
+
+	// BELOW A FIFTH OF ITS HEALTH, THE SKILL COSTS NOTHING.
+	TestEqual(TEXT("a caster below 20% health with the option pays nothing"),
+			  Below.Health(), 190.0f, 0.01f);
+
+	// AT EXACTLY A FIFTH, IT PAYS IN FULL. This is the whole reason
+	// `health_below` exists beside `health_at_or_below`: the node says "below",
+	// and a character sitting on the number is not below it. Delivering the
+	// option with the other predicate would make this caster pay nothing too,
+	// and nothing at run time would report it.
+	TestEqual(TEXT("and one at exactly 20% health pays the whole cost"),
+			  Exactly.Health(), 100.0f, 0.01f);
+
+	// AND A CASTER WITHOUT THE OPTION PAYS WHEREVER IT IS STANDING, which is
+	// what makes the first reading evidence of the option rather than of the
+	// cost being broken.
+	TestEqual(TEXT("and one below 20% health without the option pays in full"),
+			  Without.Health(), 90.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTheLastDropGrantsFervourTest,
+	"Cataclysm.Skills.TheLastDropGrantsFervourForASkillThatCostNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheLastDropGrantsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Below(World, FVector::ZeroVector);
+	FScopedFighter Without(World, FVector(4 * M, 0, 0));
+	FScopedFighter Neither(World, FVector(8 * M, 0, 0));
+
+	StandAtShareOfHealthWithACost(Below, 19.0f);
+	StandAtShareOfHealthWithACost(Without, 19.0f);
+	StandAtShareOfHealthWithACost(Neither, 19.0f);
+	GiveTheLastDrop(Below);
+
+	// A RATE THAT FILLS FERVOUR FROM A COST, ON TWO OF THE THREE. This is the
+	// discriminating half. `Below` pays nothing, so this rate gives it nothing
+	// and every point of Fervour it ends with came from the cast itself;
+	// `Without` pays in full, so this is where its Fervour comes from. `Neither`
+	// has no rate and no option, so it must end with none at all.
+	Below.Set(UCataclysmClassResourceAttributeSet::GetFervourFromCostAttribute(),
+			  1.0f);
+	Without.Set(
+		UCataclysmClassResourceAttributeSet::GetFervourFromCostAttribute(), 1.0f);
+
+	const auto CastOnce = [&](FScopedFighter& Who, const TCHAR* Name) -> bool
+	{
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Who, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3"), Name);
+		return Strike && Activate(Who, Strike);
+	};
+
+	if (!TestTrue(TEXT("all three casters activate"),
+				  CastOnce(Below, TEXT("Below"))
+					  && CastOnce(Without, TEXT("Without"))
+					  && CastOnce(Neither, TEXT("Neither"))))
+	{
+		return false;
+	}
+
+	// TEN FERVOUR FOR THE CAST, AND NONE FOR THE COST, because there was no
+	// cost. The grant sits OUTSIDE the branch guarded on the cost being above
+	// zero in `PayHealthCost`, and it has to: this option's other clause makes
+	// the cost zero, so a grant inside that branch would never fire for the one
+	// character that has the option.
+	TestEqual(TEXT("a caster with the option gains ten Fervour for the cast"),
+			  Below.Fervour(), 10.0f, 0.01f);
+
+	// AND ITS HEALTH DID NOT MOVE, which is what says those ten came from the
+	// cast rather than from a cost that was quietly paid.
+	TestEqual(TEXT("and paid no health for it"), Below.Health(), 190.0f, 0.01f);
+
+	// A CASTER WITHOUT THE OPTION PAYS HEALTH, so its Fervour came the ordinary
+	// way. A hundred health is 10% of its maximum and the rate is one per
+	// percent, so it also ends on ten -- which is why the health readings rather
+	// than the Fervour readings are what tell the two rules apart here.
+	TestEqual(TEXT("and one without it pays health for its Fervour"),
+			  Without.Health(), 90.0f, 0.01f);
+
+	// AND ONE WITH NEITHER GAINS NOTHING, which is what proves the first caster
+	// did not simply gain Fervour for casting regardless of the option.
+	TestEqual(TEXT("a caster with neither the option nor a rate gains nothing"),
+			  Neither.Fervour(), 0.0f, 0.001f);
 
 	return true;
 }

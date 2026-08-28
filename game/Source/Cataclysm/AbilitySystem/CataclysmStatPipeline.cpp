@@ -52,10 +52,29 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character sheet, or a test passing plain numbers -- must not be handed
 		// a bonus that depends on where the character's health is. Issue #959.
 		//
-		// AT OR BELOW, NOT BELOW. Every node that states a health threshold is
-		// written "While at or below 20% health", so a character sitting exactly
-		// on the number gets the bonus.
+		// AT OR BELOW, NOT BELOW. The seven nodes that take this predicate are
+		// all written "While at or below 20% health", so a character sitting
+		// exactly on the number gets the bonus.
+		//
+		// THIS COMMENT USED TO SAY EVERY NODE STATING A HEALTH THRESHOLD WAS
+		// WRITTEN THAT WAY, and issue #1051 is where that stopped being true.
+		// The Final Vow's first option says "While below 20% health" and takes
+		// the predicate below instead. A comment claiming a shape is universal
+		// is read as a reason not to look for the exception.
 		return State.HealthPercent >= 0.0f && State.HealthPercent <= Value;
+
+	case ECataclysmStatCondition::HealthBelowPercent:
+		// STRICTLY BELOW, WHICH IS THE WHOLE DIFFERENCE FROM THE PREDICATE
+		// ABOVE. Issue #1051. A character on exactly 20% health gets nothing
+		// from The Last Drop and does get the bonus from every "at or below 20%"
+		// node, which is what the two sentences say.
+		//
+		// AN UNKNOWN STATE REFUSES, the same as above and for the same reason.
+		// Note that this cannot be folded into the comparison the way "at or
+		// below" nearly could: an unknown health reads -1, which IS strictly
+		// below every threshold, so dropping the first half here would hand the
+		// bonus to the character sheet and to every caller with no character.
+		return State.HealthPercent >= 0.0f && State.HealthPercent < Value;
 
 	case ECataclysmStatCondition::WithinSecondsOfHealthCost:
 		// A NEGATIVE READING IS "NEVER PAID ONE, OR NOT KNOWN", and both answer
@@ -356,7 +375,14 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// legitimate and means "only at exactly no health", which is unreachable in
 	// play but is not a data error; 100 is legitimate and means "always", though
 	// `Always` says that more plainly.
-	if (Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
+	//
+	// BOTH HEALTH THRESHOLDS ARE BOUNDED HERE, since issue #1051. The strict one
+	// reads the same percentage and the bound says the same thing about it. Its
+	// endpoints mean the opposite of the other predicate's, which changes
+	// nothing about the bound: 0 means "never", because nothing is strictly
+	// below no health, and 100 means "always except at full health".
+	if ((Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
+		 || Modifier.Condition == ECataclysmStatCondition::HealthBelowPercent)
 		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
 	{
 		return FString::Printf(

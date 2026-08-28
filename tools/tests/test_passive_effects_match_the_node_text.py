@@ -317,7 +317,15 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: stat. Reprisal Wave's row carries the radius in metres its own sentence
 #: states; Feeding Wound's is a flag, because its sentence states a rule and
 #: holds no digit at all.
-AUTHORED_ROWS = 109
+#:
+#: AND TO 112 ON 2026-08-27, FOR UNSTABLE AURA AND THE LAST DROP. Issues #1050
+#: and #1051. Unstable Aura is one row, the 1% of missing health its nova deals
+#: per point; the 5 seconds between novas and the 6 metres they reach are
+#: constants of the mechanic, the way The Breaking Point's are. The Last Drop is
+#: two, one per clause: a flag saying its skills cost no health, and the Fervour
+#: every cast grants. Both of its rows carry `health_below`, which is a new
+#: condition and the reason that option needed one.
+AUTHORED_ROWS = 112
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -487,7 +495,20 @@ AUTHORED_ROWS = 109
 #: node joins the count, and Reprisal Wave is a second option of The First Vow,
 #: which Stigmatic already put here. A capstone counts once. 71 of 293 altogether
 #: and 67 of the Masochist tree's own 74.
-AUTHORED_NODES = 71
+#:
+#: AND BY ONE MORE ON 2026-08-27, FOR UNSTABLE AURA. Issues #1050 and #1051. TWO
+#: things were authored and they gain ONE node between them: Unstable Aura is a
+#: basic node with nothing authored before, and The Last Drop is a second option
+#: of The Final Vow, which Vessel Unbroken already put here. 72 of 293
+#: altogether and 68 of the Masochist tree's own 74.
+#:
+#: THE SIX MASOCHIST NODES STILL DOING NOTHING ARE ALL BLOCKED OR UNDECIDED.
+#: Three need a way to put a debuff on an ENEMY (issues #742 and #674), one has
+#: a reading question open (#1033), one needs a cap on how many unique debuffs a
+#: character may carry that no document decides, and one needs a comparison
+#: between the character's debuffs and an enemy's. Unstable Aura was the last
+#: unblocked one.
+AUTHORED_NODES = 72
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -650,6 +671,20 @@ def test_no_node_grants_the_same_stat_twice(effects):
 #: reason. `SCALE_WORDS` below already carries the same convention.
 CONDITION_WORDS = {
     "health_at_or_below": ("at or below", "{value:g}%"),
+
+    # AND THE OTHER SIDE OF THAT BOUNDARY. Issue #1051. The Final Vow's first
+    # option, The Last Drop, reads "While below 20% health your skills cost no
+    # health", and it is the only node in the game that states a health
+    # threshold as a STATE and words it "below". The seven that say "at or
+    # below" take the predicate above.
+    #
+    # "below" ALONE IS A WEAK POSITIVE AND `CONDITION_WORDS_MUST_NOT_SAY` BELOW
+    # IS WHAT MAKES THE PAIR SHARP, because "below 20% health" is a substring of
+    # "at or below 20% health". Requiring only the first would let a node
+    # stating the second carry the strict predicate and be worth nothing to a
+    # character sitting exactly on the threshold, which is the drift this whole
+    # check exists to catch.
+    "health_below": ("below", "{value:g}%"),
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
     "seconds_after_foreign_damage": ("after you take damage of a cataclysm "
@@ -679,6 +714,22 @@ CONDITION_WORDS = {
     # the same way `health_at_or_below` refuses a node that says "dropping
     # below".
     "class_resource_at_maximum": ("fervour is at maximum", None),
+}
+
+#: Words a node must NOT say, for a condition whose required words are a
+#: substring of a different condition's. Issue #1051.
+#:
+#: ONE ENTRY, AND IT IS THE ONLY PAIR IN THE MAP ABOVE THAT NEEDS ONE. Every
+#: other required fragment is unique to its predicate: no node saying "at or
+#: below" also says "health cost is above", and none saying "while you are
+#: bleeding" also says "fervour is at maximum". "below" is the exception,
+#: because "at or below 20% health" contains it.
+#:
+#: THE DIRECTION MATTERS AND ONLY ONE DIRECTION NEEDS GUARDING.
+#: `health_at_or_below` already refuses a node that says only "below", because
+#: "at or below" is not in it. This is the other way round.
+CONDITION_WORDS_MUST_NOT_SAY = {
+    "health_below": "at or below",
 }
 
 
@@ -714,6 +765,20 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             f"description does not say {expected_words!r}:\n"
             f"    {described}"
         )
+
+        # AND THE WORDS OF THE PREDICATE NEXT DOOR, WHERE ONE CONTAINS THE
+        # OTHER. Issue #1051. See CONDITION_WORDS_MUST_NOT_SAY above.
+        refused = CONDITION_WORDS_MUST_NOT_SAY.get(condition)
+        if refused is not None:
+            assert refused not in words, (
+                f"{row['Node']} carries the condition {condition!r}, which "
+                f"means STRICTLY {expected_words}, and its description says "
+                f"{refused!r}:\n"
+                f"    {described}\n"
+                f"Those are different rules and they differ at exactly the "
+                f"threshold. Either the row should carry the other predicate or "
+                f"the node was reworded."
+            )
 
         value = float(row["ConditionValue"])
 
@@ -963,6 +1028,13 @@ VALUE_FORMS = {
     # a unit of time. Issue #1008.
     "fervour_per_second": "{value:g} Fervour",
 
+    # AND THE SAME COUNT GRANTED PER CAST RATHER THAN PER SECOND. Issue #1051.
+    # The Last Drop reads "every skill you cast grants 10 Fervour", so the
+    # number is followed by the resource's name exactly as above. Two entries
+    # rather than one shared form, because they are two stats and a future
+    # reword of either must not be able to satisfy the other's check.
+    "fervour_per_cast": "{value:g} Fervour",
+
     # A DISTANCE, WHICH IS THE FOURTH FORM AND THE FIRST ONE MEASURED IN SPACE.
     # Issue #1047. Reprisal Wave reads "strikes every enemy within 4 METRES", so
     # the number is followed by a unit of distance. The three entries above are a
@@ -1056,6 +1128,20 @@ VALUE_IN_WORDS = {
     # applies. There is no number it could be given without inventing one.
     ("Masochist_capstone_50", "retaliation_leeches"):
         ("life leech applies to your retaliation damage", 1.0),
+
+    # THE FINAL VOW'S FIRST OPTION, THE LAST DROP. Issue #1051. "While below 20%
+    # health your skills cost no health, and every skill you cast grants 10
+    # Fervour." A flag of 1, and a rule rather than a magnitude: "cost no
+    # health" as a multiplier would be -100, which
+    # `UCataclysmStatPipeline::LessMultiplierFloor` clamps to -99 on purpose.
+    #
+    # BOTH DIGITS IN THAT SENTENCE BELONG ELSEWHERE, which is why neither can
+    # stand in for this row: 20 is the health threshold, which the CONDITION
+    # value check above matches against, and 10 is the Fervour the option's
+    # other row grants, which the ordinary value check matches with no exemption
+    # at all.
+    ("Masochist_capstone_200", "health_cost_suppressed"):
+        ("your skills cost no health", 1.0),
 
     # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
     # #1009. Its sentence said "your Health Regeneration is halved", so the -50

@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the base of The Breaking Point's conversion window. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
+// For the per-cast Fervour stat name. Issue #1051.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 // For the names of the three regeneration rates, shared with the code that asks
 // for them rather than spelled a second time here. Issue #1038.
@@ -17,6 +19,10 @@
 // For the three retaliation stat names, shared with the code that reads them
 // rather than spelled a second time here. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
+// For the nova stat name. Issue #1050.
+#include "AbilitySystem/CataclysmNova.h"
+// For the flag saying a character's skills cost no health. Issue #1051.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
@@ -300,6 +306,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("fervour_per_second"),
 			 Resource::GetFervourPerSecondAttribute()},
 
+			// AND BOTH HALVES OF THE LAST DROP. Issue #1051. Zero for every class,
+			// and the first option of the Masochist's The Final Vow is the only
+			// source of either. Both rows carry a health condition, so both
+			// attributes stay at zero even for a character holding the option and
+			// both are asked for through the stat pipeline rather than read. The
+			// entries are still needed, because `ApplyTo` loops over THIS map and a
+			// stat missing from it is dropped before `StatForSkill` could be asked.
+			{FString(UCataclysmFervour::PerCastStat),
+			 Resource::GetFervourPerCastAttribute()},
+			{FString(UCataclysmSkillTemplate::HealthCostSuppressedStat),
+			 Resource::GetHealthCostSuppressedAttribute()},
+
 			// AND WHETHER DROPPING BELOW HALF HEALTH TURNS DAMAGE INTO BLEEDING,
 			// with how long one turn of that lasts beside it. Issue #985. The
 			// Masochist's The Breaking Point is the flag's only source; the
@@ -350,6 +368,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Combat::GetRetaliationRadiusMetresAttribute()},
 			{FString(UCataclysmRetaliation::LeechesStat),
 			 Combat::GetRetaliationLeechesAttribute()},
+
+			// AND WHAT SHARE OF ITS MISSING HEALTH ONE NOVA DEALS. Issue #1050.
+			// Zero for every class, and the Masochist's Unstable Aura is its only
+			// source. Its row carries a health condition, so the attribute stays at
+			// zero even for a character holding the node and `UCataclysmNova` asks
+			// for the stat rather than reading it.
+			{FString(UCataclysmNova::DamageStat),
+			 Combat::GetNovaDamageOfMissingHealthAttribute()},
 
 			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
 			// THEM. The three resistance families in game/Data/Affixes.csv are

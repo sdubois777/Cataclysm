@@ -3,6 +3,8 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmLeech.h"
+// For the nova a character at very low health releases. Issue #1050.
+#include "AbilitySystem/CataclysmNova.h"
 // For health owed falling due. Issue #991.
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
@@ -120,6 +122,27 @@ void ACataclysmCharacterBase::RegenerationStep()
 			UCataclysmTargeting::AbilitySystemOf(this),
 			UCataclysmRegeneration::StepSeconds);
 	}
+
+	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.
+	// The Masochist's Unstable Aura reads "While at or below 10% health, you
+	// release a nova every 5 seconds dealing damage equal to 1% of your
+	// missing health per point to enemies within 6 metres", and it is the
+	// only thing in the game that DEALS damage without the character acting.
+	//
+	// A SIXTH JOB ON THIS STEP RATHER THAN A TIMER OF ITS OWN, for the reason
+	// the debt and the Fervour above both give: this already runs several
+	// times a second, and a timer per character is one more thing to cancel
+	// when one dies. The five second interval is kept by a timestamp on the
+	// ability system component rather than by how often this is called.
+	//
+	// IT REFUSES A CORPSE ITSELF rather than sitting inside the branch above.
+	// The two questions differ: that branch guards a grant to the character
+	// itself, and this deals damage to other actors, so its own refusal is
+	// where a reader looking for it will be.
+	//
+	// ITS RETURN VALUE IS DROPPED, the same as the three calls above. Zero is
+	// the ordinary answer for every character in the game.
+	UCataclysmNova::Step(this);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

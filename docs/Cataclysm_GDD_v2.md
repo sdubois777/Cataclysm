@@ -627,6 +627,8 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **A rate is per percent of maximum health rather than per point of it.** A character with 500 health and one with 5000 both gain 10 Fervour from losing a tenth of themselves. Per point, more health would mean a slower bar, which is the opposite of what the class is for. Only the Masochist's generator is built; `docs/DECISIONS.md`, 2026-08-25, records the shape and what the other three would need.
 
+**The generator's rates are not the only way Fervour arrives.** A rate is tied to health moving, and individual nodes may grant Fervour for something else entirely. Two do. The Masochist's Low Life keystone grants a flat amount per second while the character is at or below 35% health, from nothing having happened at all; and the first option of its 200 point capstone, The Last Drop, grants a flat amount for every skill cast while the character is below 20% health. Both are separate stats from the three rates and neither is part of any generator, which is why a node can add one without changing what a class's starting node grants.
+
 The four generators designed so far, one per class, each granted by that class's starting node:
 
   

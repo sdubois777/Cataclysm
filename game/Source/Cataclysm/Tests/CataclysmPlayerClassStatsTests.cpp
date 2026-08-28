@@ -433,6 +433,28 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("retaliation_leeches"),
 		 TEXT("the Masochist's The Second Vow node, second option, as a flat "
 			  "modifier")},
+
+		// Issue #1050. What share of its MISSING health one nova deals, as a
+		// percentage. Zero for every class, and the Masochist's Unstable Aura
+		// is its only source. Its row carries a health condition, so the
+		// attribute stays at zero even for a character holding the node and
+		// `UCataclysmNova` asks for the stat rather than reading it.
+		{TEXT("nova_damage_of_missing_health"),
+		 TEXT("the Masochist's Unstable Aura node, as a flat modifier")},
+
+		// Issue #1051. How much Fervour each cast grants, and whether skills
+		// cost health at all. Zero for every class, and the first option of
+		// the Masochist's The Final Vow is the only source of either. Both
+		// rows carry a health condition -- the FIRST condition in the game
+		// that is a STRICTLY-below health threshold rather than an at-or-below
+		// one -- so both attributes stay at zero even for a character holding
+		// the option, and both are asked for rather than read.
+		{TEXT("fervour_per_cast"),
+		 TEXT("the Masochist's The Final Vow node, first option, as a flat "
+			  "modifier")},
+		{TEXT("health_cost_suppressed"),
+		 TEXT("the Masochist's The Final Vow node, first option, as a flat "
+			  "modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

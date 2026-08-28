@@ -39,6 +39,15 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// removes Fervour as usual, and one without Low Life gains none on a timer.
 	InitFervourLossSuppressed(0.0f);
 	InitFervourPerSecond(0.0f);
+
+	// AND ZERO FOR BOTH HALVES OF THE LAST DROP. Issue #1051. A character
+	// without that capstone option pays for its skills as usual and gains no
+	// Fervour for casting one. Both stay zero even for a character holding it,
+	// because both of its rows carry a health condition and a conditional bonus
+	// is never folded into an attribute.
+	InitFervourPerCast(0.0f);
+	InitHealthCostSuppressed(0.0f);
+
 	InitDamageToBleedingOnLowHealth(0.0f);
 	InitDamageToBleedingWindow(0.0f);
 }
@@ -61,6 +70,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLossSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerCast);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthCostSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
 }
@@ -105,6 +116,8 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute()
 		|| Attribute == GetFervourLossSuppressedAttribute()
 		|| Attribute == GetFervourPerSecondAttribute()
+		|| Attribute == GetFervourPerCastAttribute()
+		|| Attribute == GetHealthCostSuppressedAttribute()
 		|| Attribute == GetDamageToBleedingOnLowHealthAttribute()
 		|| Attribute == GetDamageToBleedingWindowAttribute())
 	{
@@ -176,6 +189,8 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
 	All.Add(GetFervourLossSuppressedAttribute());
 	All.Add(GetFervourPerSecondAttribute());
+	All.Add(GetFervourPerCastAttribute());
+	All.Add(GetHealthCostSuppressedAttribute());
 	All.Add(GetDamageToBleedingOnLowHealthAttribute());
 	All.Add(GetDamageToBleedingWindowAttribute());
 	return All;
@@ -200,5 +215,7 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerCast)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)

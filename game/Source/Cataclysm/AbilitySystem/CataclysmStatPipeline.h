@@ -89,10 +89,39 @@ enum class ECataclysmStatCondition : uint8
 	 * The character's health is at or below `ConditionValue` percent of its
 	 * maximum.
 	 *
-	 * AT OR BELOW, NOT BELOW, because every node that states one is written "at
-	 * or below": a character sitting exactly on 20% health gets the bonus.
+	 * AT OR BELOW, NOT BELOW, because the seven nodes that take this predicate
+	 * are all written "at or below": a character sitting exactly on 20% health
+	 * gets the bonus. `HealthBelowPercent` below is the other side of that
+	 * boundary, and until issue #1051 this comment said EVERY node stating a
+	 * health threshold was worded this way. That stopped being true when The
+	 * Last Drop was written.
 	 */
 	HealthAtOrBelowPercent	UMETA(DisplayName = "Health At Or Below Percent"),
+
+	/**
+	 * The character's health is STRICTLY below `ConditionValue` percent of its
+	 * maximum. Issue #1051.
+	 *
+	 * A SECOND HEALTH THRESHOLD BECAUSE THE TWO DIFFER AT EXACTLY THE
+	 * THRESHOLD, and one node needs this side of it: The Final Vow's first
+	 * option, The Last Drop, reads "While below 20% health your skills cost no
+	 * health, and every skill you cast grants 10 Fervour." It is the only node
+	 * in the game that states a health threshold as a STATE and words it
+	 * "below".
+	 *
+	 * NOT DELIVERABLE AS THE PREDICATE ABOVE. A character sitting on exactly 20%
+	 * health gets nothing from this node and does get the bonus from every "at
+	 * or below 20%" node, which is what the two sentences say.
+	 * `SkillHealthCostAbovePercent` exists for the same reason on the other
+	 * boundary.
+	 *
+	 * NOT THE SAME THING AS "DROPPING BELOW". That is an EVENT, which The
+	 * Breaking Point and Rock Bottom both state, and an event is not a condition
+	 * on a modifier at all: it happens once at a crossing rather than holding
+	 * for as long as it is true. `UCataclysmDamageConversion` keeps its own
+	 * threshold as a constant and says why.
+	 */
+	HealthBelowPercent		UMETA(DisplayName = "Health Below Percent"),
 
 	/**
 	 * The character paid a health cost within the last `ConditionValue` seconds.

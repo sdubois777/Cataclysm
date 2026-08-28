@@ -2450,6 +2450,29 @@ CONDITIONS = {
     # "While at or below 20% health" is `health_at_or_below` with 20.
     "health_at_or_below": (0.0, 100.0, "a percentage of maximum health"),
 
+    # "While below 20% health" is `health_below` with 20. Issue #1051.
+    #
+    # A SECOND HEALTH THRESHOLD BECAUSE THE TWO REALLY DIFFER, at exactly the
+    # threshold. Seven nodes across the four trees say "at or below" and take
+    # the predicate above; The Final Vow's first option, The Last Drop, is the
+    # only one in the game that states a health threshold as a STATE and words
+    # it "below". `skill_health_cost_above` is the precedent: it exists because
+    # "above" genuinely differs from "at or below", and its comment records a
+    # character sitting exactly on that threshold correctly getting nothing.
+    #
+    # NOT SOLVED BY REWORDING THE NODE. The project owner rewrote all twelve
+    # Masochist capstone options on 2026-08-27 under issue #1031 and this is
+    # their text. `CONDITION_WORDS` in the test beside this file is what refuses
+    # a row whose predicate and whose sentence disagree, and widening that entry
+    # to accept both wordings would have let a node saying "below" be delivered
+    # as "at or below", which is the drift the check exists to catch.
+    #
+    # "DROPPING BELOW" IS NEITHER OF THESE. That is an EVENT, which The Breaking
+    # Point and Rock Bottom both state, and an event is not a condition on a
+    # modifier at all: `UCataclysmDamageConversion` holds its threshold as a
+    # constant and says why.
+    "health_below": (0.0, 100.0, "a percentage of maximum health"),
+
     # "for 2 seconds after you pay a health cost" is
     # `seconds_after_health_cost` with 2. The upper bound is a sanity limit
     # rather than a design rule: the design's longest window is 5 seconds, and
