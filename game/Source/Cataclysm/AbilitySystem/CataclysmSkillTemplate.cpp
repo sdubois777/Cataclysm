@@ -479,6 +479,44 @@ float UCataclysmSkillTemplate::AddedHealthCostPercent(
 	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
 }
 
+const TCHAR* UCataclysmSkillTemplate::HealthCostSuppressedStat =
+	TEXT("health_cost_suppressed");
+
+bool UCataclysmSkillTemplate::HealthCostIsSuppressed(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Flag = Resource::GetHealthCostSuppressedAttribute();
+
+	// THE SAME FIRST GUARD AS THE TWO READERS ABOVE: an enemy's ability system
+	// carries no class resource set, and an enemy using a skill goes through
+	// the same cost function.
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return false;
+	}
+
+	// AND THEN ASKED FOR RATHER THAN READ, WHICH THE TWO ABOVE DO NOT DO. The
+	// Last Drop's row carries a health condition, so this attribute holds zero
+	// even for a character holding the option; reading it would suppress
+	// nothing, for ever, with nothing at run time reporting it. Issue #1051.
+	//
+	// NO SKILL TAGS AND NO COST IN HAND. The option applies to every skill,
+	// and passing the cost would be circular: this is what decides whether
+	// there is a cost at all.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Asking)
+	{
+		return false;
+	}
+
+	// ANY VALUE ABOVE ZERO IS YES, which is how every other flag stat in the
+	// project is read.
+	return Asking->StatForSkill(FName(HealthCostSuppressedStat),
+								FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
 float UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent(
 	const UAbilitySystemComponent* AbilitySystem)
 {
@@ -553,7 +591,23 @@ void UCataclysmSkillTemplate::PayHealthCost()
 
 	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
 	// the two are summed rather than one being applied to what the other left.
-	const float Cost = FromCurrent + Added;
+	//
+	// AND THE WHOLE OF IT MAY BE SUPPRESSED. Issue #1051. The Masochist's The
+	// Last Drop reads "While below 20% health your skills cost no health", and
+	// that covers what the skill charges AND what the character adds, which is
+	// why it is applied to the sum rather than to either half.
+	//
+	// ZERO AND NOT A REDUCTION, which is forced rather than chosen: a Less
+	// multiplier is floored at -99, so "no health" cannot be written as one.
+	//
+	// THREE THINGS FOLLOW AND ALL THREE ARE CONSEQUENCES OF THE COST BEING
+	// ZERO RATHER THAN SEPARATE RULES. The branch below is guarded on the cost,
+	// so a suppressed cost generates no Fervour from spending, defers no health
+	// debt, and opens no "after you pay a health cost" window for Blood Rush.
+	// Nothing was paid, so none of those happened.
+	const float Cost = HealthCostIsSuppressed(AbilitySystem)
+		? 0.0f
+		: FromCurrent + Added;
 
 	// WHAT THIS SKILL JUST COST, AS A SHARE OF MAXIMUM HEALTH. Issue #983. Grand
 	// Tithe asks "a skill whose health cost is above 10% of your maximum health",
@@ -669,4 +723,23 @@ void UCataclysmSkillTemplate::PayHealthCost()
 			Cataclysm->NoteHealthCostPaid();
 		}
 	}
+
+	// AND CASTING AT ALL MAY GRANT FERVOUR, WHATEVER IT COST. Issue #1051.
+	// The Masochist's The Last Drop reads "While below 20% health your skills
+	// cost no health, and every skill you cast grants 10 Fervour."
+	//
+	// OUTSIDE THE BRANCH ABOVE, AND IT HAS TO BE. That branch is guarded on
+	// the cost being above zero, and this option's OTHER clause makes the cost
+	// zero, so a grant inside it would never fire for the one character that
+	// has the option. The node also says "every skill", which includes the
+	// ones that state no cost at all -- every skill in the game but Blood Pyre.
+	//
+	// A DIFFERENT RULE FROM THE FERVOUR A COST GENERATES, which is charged
+	// inside that branch by `GainFromHealthCost` and is a share of the health
+	// spent. This is a flat count for the act of casting. A character holding
+	// The Last Drop gets this one and not that one, because it spends nothing.
+	//
+	// ITS RETURN VALUE IS DROPPED. Zero is the answer for every character in
+	// the game without that capstone option, and it is returned for tests.
+	UCataclysmFervour::GainForCast(AbilitySystem);
 }

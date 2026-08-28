@@ -1757,9 +1757,18 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 * +3% increased Critical Strike Chance per point". A row may carry both and
 	 * both then have to hold. Issue #959.
 	 *
-	 * ONE VALUE TODAY: `health_at_or_below`, whose `ConditionValue` is a
-	 * percentage of maximum health. `tools/generate_datatables.py` refuses any
-	 * other, so a condition this build cannot judge cannot reach the game.
+	 * WHICH NAMES ARE ALLOWED IS DELIBERATELY NOT LISTED HERE. This comment used
+	 * to say "one value today: `health_at_or_below`" and there were seven by the
+	 * time anybody noticed. `CONDITIONS` in `tools/generate_datatables.py` is
+	 * the list; it carries the units and the allowed range for each and refuses
+	 * any other name, so a condition this build cannot judge cannot reach the
+	 * game. `ECataclysmStatCondition` in `CataclysmStatPipeline.h` is the
+	 * engine's side of the same list.
+	 *
+	 * TWO OF THEM ARE THE SAME THRESHOLD READ DIFFERENTLY, which is worth
+	 * knowing before adding a third: `health_at_or_below` and `health_below`
+	 * differ only in whether a character sitting exactly on the number is
+	 * included. Issue #1051.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	FString Condition;

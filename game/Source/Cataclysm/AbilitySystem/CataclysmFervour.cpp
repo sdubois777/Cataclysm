@@ -13,6 +13,7 @@ const TCHAR* UCataclysmFervour::LostToHealingStat =
 const TCHAR* UCataclysmFervour::LossSuppressedStat =
 	TEXT("fervour_loss_suppressed");
 const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
+const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -322,6 +323,61 @@ float UCataclysmFervour::GainPerSecondStep(
 	{
 		// A FULL BAR IS THE ORDINARY CASE for a character standing at low health
 		// with this keystone, because ten a second fills it in ten seconds.
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE. Issue #1051. The Last
+	// Drop's row carries a health condition, so the attribute is zero even for
+	// a character holding the option and a plain read would answer zero for
+	// ever with nothing reporting it. The same move `GainPerSecondStep` above
+	// makes for Low Life.
+	//
+	// NO TAGS. The grant is for casting a skill at all rather than for casting
+	// a skill of a particular kind, so there is nothing for tags to scope.
+	// The node says "every skill you cast".
+	const float PerCast = Cataclysm->StatForSkill(
+		FName(PerCastStat), FGameplayTagContainer(), 0.0f);
+	if (PerCast <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THAT CAPSTONE OPTION, and every
+		// character holding it that is not hurt enough for the condition.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the same rule every other write to the
+	// pool in this file follows and for the reason they give:
+	// `ApplyModToAttribute` writes a base value and whether that reaches
+	// `PreAttributeChange` depends on whether an aggregator happens to exist.
+	const float Change =
+		FMath::Clamp(Before + PerCast, 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
 		return 0.0f;
 	}
 

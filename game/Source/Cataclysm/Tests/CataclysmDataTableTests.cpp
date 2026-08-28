@@ -305,7 +305,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// One row each, both on the second option of a capstone: The First Vow's
 	// carries the radius in metres over which retaliation now strikes, and The
 	// Second Vow's is a flag saying retaliation leeches.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        109)
+	//
+	// AND TO 112 FOR UNSTABLE AURA AND THE LAST DROP. Issues #1050 and #1051.
+	// One row for Unstable Aura, the share of missing health its nova deals per
+	// point, and two for The Last Drop, one per clause of its sentence. Unstable
+	// Aura was the last Masochist node that did nothing and was neither blocked
+	// on other work nor waiting on a design answer.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        112)
 
 	#undef CHECK_TABLE
 

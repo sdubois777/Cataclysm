@@ -765,6 +765,23 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 					ECataclysmStatCondition::HealthAtOrBelowPercent;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(TEXT("health_below"),
+											  ESearchCase::IgnoreCase))
+			{
+				// THE SAME PERCENTAGE READ WITH A STRICT COMPARISON. Issue
+				// #1051. The Final Vow's first option, The Last Drop, says
+				// "While below 20% health", and it is the only node in the game
+				// that states a health threshold as a state and words it
+				// "below". The two predicates differ at exactly the threshold,
+				// which is why there are two rather than one.
+				//
+				// THE NAMES ARE ONE PREFIX OF THE OTHER, so the order of these
+				// two branches would matter if either used a prefix comparison.
+				// Both use `Equals`, so it does not; this is said here because
+				// the next person to add a health predicate will read it.
+				Modifier.Condition = ECataclysmStatCondition::HealthBelowPercent;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
 			else if (Effect->Condition.Equals(
 						 TEXT("seconds_after_foreign_damage"),
 						 ESearchCase::IgnoreCase))

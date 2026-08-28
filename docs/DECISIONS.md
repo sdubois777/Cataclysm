@@ -20,6 +20,114 @@ applied or still pending.
 
 ---
 
+## 2026-08-28 — A health threshold gains a second reading, and two low-health nodes are built
+
+**Affects:** the Fervour section of `Cataclysm_GDD_v2.md`, the Passive Effects
+sheet of `All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` and
+`game/Content/Data/DT_PassiveEffects.uasset`. Applied. Issues #1050 and #1051.
+
+Two Masochist nodes were authored. Both apply only while the character is low on
+health, which is why they were built together.
+
+| Node | What it says |
+| :-- | :-- |
+| **Unstable Aura**, an eight point basic node | "While at or below 10% health, you release a nova every 5 seconds dealing damage equal to 1% of your missing health per point to enemies within 6 metres." |
+| **The Last Drop**, the first option of The Final Vow | "While below 20% health your skills cost no health, and every skill you cast grants 10 Fervour." |
+
+**Unstable Aura was the last node in the Masochist tree that did nothing and was
+neither blocked on other work nor waiting on a design answer.** The tree goes
+from 67 of its 74 nodes doing something to 68. The six that remain each need
+something that does not exist or something nobody has decided: three need a way
+to put a debuff on an enemy (#742 and #674), one has a reading question open
+(#1033), one needs a cap on how many unique debuffs a character may carry, and
+one needs a comparison between the character's debuffs and an enemy's.
+
+Neither node's text was changed. What follows is the readings needed to turn each
+sentence into code.
+
+### The health threshold had to gain a second reading, and that is the largest thing here
+
+`health_at_or_below` was the only health threshold in the project, and the check
+tying a row to its node's words requires the phrase **"at or below"** before a
+row may carry it. The Last Drop says **"below"**. Seven nodes across all four
+trees say "at or below" — Living on the Edge, Last Stand, The Catalyst,
+Desperate Measures, Unstable Aura, The Edge and Low Life — and The Last Drop is
+the only node in the game that states a health threshold as a STATE and words it
+"below".
+
+**The decision was to add a second predicate rather than to reword the node.**
+The project owner rewrote all twelve Masochist capstone options on 2026-08-27
+under #1031 and this is their text. The two rules genuinely differ: a character
+sitting on exactly 20% health gets every "at or below 20%" bonus and gets nothing
+from this one. `skill_health_cost_above` is the precedent — it exists because
+"above" differs from "at or below" on the other boundary, and its own comment
+records a character on that threshold correctly getting nothing.
+
+**The wording check had to gain a negative half.** "below 20% health" is a
+substring of "at or below 20% health", so requiring the first would let a node
+stating the second carry the strict predicate and be worth nothing to a character
+on the threshold, silently. The new predicate therefore requires the "below"
+wording AND asserts the "at or below" wording is absent. It is the only pair in
+that map that needs one; every other required fragment is unique to its
+predicate.
+
+**"Dropping below" is neither of these.** That is an EVENT, which The Breaking
+Point and Rock Bottom both state. An event is not a condition on a modifier at
+all: it happens once at a crossing rather than holding for as long as it is true,
+and `UCataclysmDamageConversion` keeps its own threshold as a constant for that
+reason.
+
+### Unstable Aura: readings that are judgements
+
+- **Only the per-point 1% is authored in the design workbook.** The 5 seconds
+  between novas, the 6 metre reach, and the shape of the burst are constants of
+  the mechanic. That is the division The Breaking Point already uses: its 5% per
+  point is a sheet row and its 50%, its 5 seconds of Bleeding and its 10 second
+  cooldown are all constants in C++. The 10% threshold is the condition value on
+  the row, so the check ties it to the node's own words.
+- **The nova deals the amount the node states and is not further multiplied by
+  the character's damage stats.** The sentence gives the amount exactly.
+- **It IS a hit**, so the targets' armour, resistance, evasion and block all
+  apply and what lands is smaller than what was sent. That is the opposite of
+  retaliation, which the design says explicitly is not a hit.
+- **The first nova comes as soon as the character is hurt enough**, rather than
+  five seconds after arriving there.
+- **A nova is released whether or not anything is standing in it**, and the
+  interval restarts either way. "You release a nova every 5 seconds" does not
+  make the release depend on there being a target, and the other reading would
+  let a character save novas up while alone and fire one the instant an enemy
+  walked into range.
+- **It runs on the per-character step rather than on a timer of its own.** That
+  step already carries five jobs for the same reason: a timer per character is
+  one more thing to cancel when one dies.
+
+### The Last Drop: readings that are judgements
+
+- **"While below 20% health" governs BOTH clauses**, so the Fervour arrives only
+  at low health as well. The Edge in the same tree has exactly this shape —
+  "While at or below 20% health you take 25% less damage and your Fervour does
+  not decrease" — and both of its clauses are under its condition.
+- **"Your skills cost no health" suppresses the WHOLE cost**, including the
+  added costs from Deeper Cuts and Exsanguinate, not only the skill's own. Three
+  things follow and all three are consequences of the cost being zero rather than
+  separate rules: no Fervour is generated from the cost, no health debt is
+  deferred, and Blood Rush's "after you pay a health cost" window does not open.
+- **The Fervour for casting is granted for every skill, including one that costs
+  nothing.** This is the trap the option is most easily built wrong by: the
+  natural place to put the grant is beside everything else a cast does, which is
+  inside the branch guarded on the cost being above zero — where it would fire
+  for nobody, because this option's other clause makes the cost zero. A guard
+  proof was run on exactly that mistake.
+
+### What is left to real play
+
+A Masochist holding The Last Drop pays nothing for its skills below a fifth of
+its health and gains 10 Fervour a cast there. Whether that is the right size has
+not been measured; the option is a 200 point capstone choice competing with two
+others, and the constants are tuned against play rather than argued in advance.
+
+---
+
 ## 2026-08-27 — Retaliation gains a radius and a way to leech, and the readings behind both are recorded
 
 **Affects:** the Retaliation section of `Cataclysm_GDD_v2.md`, the Passive

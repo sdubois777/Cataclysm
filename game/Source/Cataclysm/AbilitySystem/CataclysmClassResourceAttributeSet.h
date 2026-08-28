@@ -286,6 +286,58 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerSecond)
 
 	/**
+	 * How much Fervour this character gains for each skill it casts. Issue
+	 * #1051.
+	 *
+	 * A SEPARATE STAT FROM `FervourPerSecond` ABOVE, though both are a plain
+	 * count of Fervour, because they are counted by different things. That one
+	 * is multiplied by the length of a step on a timer; this one is granted once
+	 * per cast, and a cast is an event with no duration. Sharing one stat would
+	 * mean the same number meant two different amounts depending on which code
+	 * read it.
+	 *
+	 * THE MASOCHIST'S The Last Drop IS ITS ONLY SOURCE, the first option of The
+	 * Final Vow: "While below 20% health your skills cost no health, and every
+	 * skill you cast grants 10 Fervour."
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE, because that row carries a health
+	 * condition and a conditional bonus is never folded into an attribute. A
+	 * plain read would answer zero for every character for ever.
+	 *
+	 * GRANTED FOR EVERY SKILL, INCLUDING ONE THAT COSTS NOTHING. That is what
+	 * decides where in `UCataclysmSkillTemplate::PayHealthCost` the grant sits:
+	 * outside the branch guarded on the cost being above zero, because the
+	 * option's other clause makes the cost zero and a grant inside that branch
+	 * would then never fire at all.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourPerCast)
+	FGameplayAttributeData FervourPerCast;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerCast)
+
+	/**
+	 * Whether this character's skills cost no health at all. Issue #1051.
+	 * Zero for no, above zero for yes.
+	 *
+	 * A FLAG AND NOT A REDUCTION, AND THAT IS FORCED RATHER THAN CHOSEN. The
+	 * Last Drop says "your skills cost no health", which as a multiplier would
+	 * be -100%, and `UCataclysmStatPipeline::LessMultiplierFloor` clamps a Less
+	 * multiplier to -99 on purpose. Ninety-nine per cent less is not none.
+	 *
+	 * IT SUPPRESSES THE WHOLE COST AND NOT THE SKILL'S OWN SHARE OF IT. "Your
+	 * skills cost no health" covers what the skill charges and what the
+	 * character adds, so Deeper Cuts and Exsanguinate are suppressed with it.
+	 * Three things follow and all three are consequences of the cost being zero
+	 * rather than separate rules: no Fervour is generated from the cost, no
+	 * health debt is deferred, and Blood Rush's "after you pay a health cost"
+	 * window does not open, because nothing was paid.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE, for the reason the stat above gives.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthCostSuppressed)
+	FGameplayAttributeData HealthCostSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
+
+	/**
 	 * Whether dropping below half health turns damage into Bleeding. Issue #985.
 	 * Zero for no, above zero for yes.
 	 *
@@ -360,6 +412,8 @@ protected:
 	UFUNCTION() void OnRep_HealthDebtClearedOnlyByAKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourLossSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingOnLowHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingWindow(const FGameplayAttributeData& OldValue);
 };

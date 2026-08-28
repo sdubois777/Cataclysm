@@ -454,6 +454,30 @@ public:
 	}
 
 	/**
+	 * Whether this character may release a nova now. Issue #1050.
+	 *
+	 * THE MASOCHIST'S Unstable Aura RELEASES ONE "every 5 seconds", and this
+	 * is the whole of what enforces the interval. Whether the character is
+	 * hurt enough is a condition on the node's own row and is judged by the
+	 * stat pipeline instead.
+	 *
+	 * NEVER RELEASED ONE IS ALLOWED, so the first nova comes as soon as the
+	 * character is hurt enough. NO WORLD MEANS NO CLOCK AND SO NO NOVA, which
+	 * is the safe direction and the same refusal `MayStartDamageConversion`
+	 * makes.
+	 */
+	bool MayReleaseNova() const;
+
+	/** Record that one was released, so the next waits `IntervalSeconds`. */
+	void NoteNovaReleased(float IntervalSeconds);
+
+	/** When the next nova may come, in world seconds. For tests. */
+	float NovaAllowedAt() const
+	{
+		return NovaNextAllowedSeconds;
+	}
+
+	/**
 	 * How many stacks of a kind this character is holding. Issue #1002.
 	 *
 	 * THE WINDOW IS APPLIED WHEN THE COUNT IS ASKED FOR rather than when it
@@ -631,6 +655,21 @@ protected:
 	 */
 	float DamageToBleedingUntilSeconds = -1.0f;
 	float DamageToBleedingNextAllowedSeconds = -1.0f;
+
+	/**
+	 * The earliest world time this character may release another nova.
+	 * Issue #1050.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as every timestamp above.
+	 * A character that has never released one has nothing to wait for, so
+	 * its first nova comes as soon as it is hurt enough rather than five
+	 * seconds later.
+	 *
+	 * ONE NUMBER AND NOT TWO, unlike the conversion above. A nova is an
+	 * instant rather than a window, so there is no stretch during which it
+	 * is still happening; the only question is when the next may come.
+	 */
+	float NovaNextAllowedSeconds = -1.0f;
 
 	/** Where health was the last time it moved. See `WasAboveHalfHealth`. */
 	bool bWasAboveHalfHealth = true;

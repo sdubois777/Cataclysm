@@ -505,6 +505,38 @@ public:
 	FGameplayAttributeData RetaliationLeeches;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, RetaliationLeeches)
 
+	/**
+	 * What share of this character's MISSING health one nova deals, as a
+	 * percentage. Issue #1050. Zero for a character that releases none.
+	 *
+	 * THE MASOCHIST'S Unstable Aura IS ITS ONLY SOURCE: "While at or below 10%
+	 * health, you release a nova every 5 seconds dealing damage equal to 1% of
+	 * your missing health per point to enemies within 6 metres." Eight points
+	 * make it 8, so a character with 1,000 maximum health standing at 80 deals
+	 * 8% of the 920 it is missing, which is 73.6.
+	 *
+	 * MISSING HEALTH AND NOT MAXIMUM OR CURRENT, which is what makes the node
+	 * strongest exactly where its own condition puts the character. At or below
+	 * a tenth of its health, a Masochist is missing at least nine tenths of it.
+	 *
+	 * ONLY THE PER-POINT SHARE IS HERE. How often a nova comes and how far it
+	 * reaches are constants of the mechanic on `UCataclysmNova`, which is the
+	 * same division The Breaking Point already uses: its 5% per point is a sheet
+	 * row and its 50%, its 5 seconds of Bleeding and its 10 second cooldown are
+	 * all C++ constants.
+	 *
+	 * ASKED FOR RATHER THAN READ, because its one row carries a health
+	 * condition, so this attribute is zero even for a character holding the
+	 * node. A plain read would answer zero for ever and release no nova.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason its neighbours above are
+	 * not: no affix grants it, nothing scales it, no class line names it, and
+	 * one passive node supplies it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_NovaDamageOfMissingHealth)
+	FGameplayAttributeData NovaDamageOfMissingHealth;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Utility", ReplicatedUsing = OnRep_MagicFind)
 	FGameplayAttributeData MagicFind;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MagicFind)
@@ -571,6 +603,7 @@ protected:
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_RetaliationRadiusMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MagicFind(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_LootQuantity(const FGameplayAttributeData& OldValue);
 };

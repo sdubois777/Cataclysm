@@ -1746,4 +1746,94 @@ bool FCataclysmModifierListRefusesTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineStrictHealthThresholdTest,
+	"Cataclysm.StatPipeline.BelowAndAtOrBelowDifferAtExactlyTheThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two health threshold predicates. Issue #1051.
+ *
+ * WHY THERE ARE TWO. Seven nodes across the four trees say "at or below" and
+ * take `HealthAtOrBelowPercent`. The Final Vow's first option, The Last Drop,
+ * says "While below 20% health", and it is the only node in the game that
+ * states a health threshold as a STATE and words it "below". The two rules
+ * differ at exactly the threshold and nowhere else, so that one reading is the
+ * whole of what this test is for.
+ *
+ * THE PRECEDENT IS `SkillHealthCostAbovePercent`, which exists for the same
+ * reason on the other boundary: "above" genuinely differs from "at or below",
+ * and a character sitting precisely on that threshold correctly gets nothing.
+ */
+bool FCataclysmPipelineStrictHealthThresholdTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// EXACTLY A FIFTH OF ITS HEALTH. Two hundred out of a thousand.
+	const FCataclysmStatConditions Exactly =
+		FCataclysmStatConditions::FromHealth(200.0f, 1'000.0f);
+	TestEqual(TEXT("the character is on exactly twenty per cent"),
+		Exactly.HealthPercent, 20.0f, 0.01f);
+
+	// THE WHOLE DIFFERENCE BETWEEN THE TWO PREDICATES, in two lines.
+	TestTrue(TEXT("at or below twenty includes a character on twenty"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrBelowPercent, 20.0f, Exactly));
+	TestFalse(TEXT("and below twenty does not"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthBelowPercent, 20.0f, Exactly));
+
+	// AND A HAIR UNDER IT, BOTH HOLD. That is what says the strict one is a
+	// boundary rather than being broken outright.
+	const FCataclysmStatConditions JustUnder =
+		FCataclysmStatConditions::FromHealth(199.0f, 1'000.0f);
+	TestTrue(TEXT("at or below twenty holds just under it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrBelowPercent, 20.0f, JustUnder));
+	TestTrue(TEXT("and below twenty holds there too"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthBelowPercent, 20.0f, JustUnder));
+
+	// AND ABOVE IT, NEITHER DOES.
+	const FCataclysmStatConditions Healthy =
+		FCataclysmStatConditions::FromHealth(500.0f, 1'000.0f);
+	TestFalse(TEXT("neither holds at half health"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrBelowPercent, 20.0f, Healthy)
+		|| FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthBelowPercent, 20.0f, Healthy));
+
+	// AN UNKNOWN STATE REFUSES THE STRICT ONE TOO, and this is the case most
+	// easily got wrong. An unknown health reads -1, which IS strictly below
+	// every threshold, so a comparison written as `HealthPercent < Value` alone
+	// would hand the bonus to the character sheet and to every caller with no
+	// character in hand.
+	const FCataclysmStatConditions Unknown =
+		FCataclysmStatConditions::FromHealth(50.0f, 0.0f);
+	TestTrue(TEXT("no maximum health means nothing is known"),
+		Unknown.HealthPercent < 0.0f);
+	TestFalse(TEXT("and an unknown state refuses the strict threshold"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthBelowPercent, 20.0f, Unknown));
+
+	// AND THE STRICT ONE IS BOUNDED THE SAME WAY BY THE VALIDATOR, which is what
+	// data import reads. A threshold outside 0 to 100 is not a percentage of
+	// maximum health whichever comparison reads it.
+	FCataclysmStatModifier TooHigh;
+	TooHigh.Bucket = ECataclysmStatBucket::Flat;
+	TooHigh.Source = ECataclysmModifierSource::PassiveKeystone;
+	TooHigh.Value = 1.0f;
+	TooHigh.Condition = ECataclysmStatCondition::HealthBelowPercent;
+	TooHigh.ConditionValue = 150.0f;
+	TestTrue(TEXT("a strict threshold above 100 is reported"),
+		FPipeline::ValidateModifier(TooHigh).Contains(TEXT("health threshold")));
+
+	FCataclysmStatModifier Fine = TooHigh;
+	Fine.ConditionValue = 20.0f;
+	TestTrue(TEXT("and a legal one is not"),
+		FPipeline::ValidateModifier(Fine).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

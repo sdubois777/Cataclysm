@@ -33,6 +33,10 @@
 // For asking the game's own reader how far a character's retaliation reaches
 // and whether it leeches. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
+// For the nova a character at very low health releases. Issue #1050.
+#include "AbilitySystem/CataclysmNova.h"
+// For the flag saying a character's skills cost no health. Issue #1051.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -5465,6 +5469,328 @@ bool FCataclysmPassiveFeedingWoundOnARealCharacterTest::RunTest(const FString&)
 				   "character"),
 			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 0.0f,
 			  0.001f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnstableAuraOnARealCharacterTest,
+	"Cataclysm.Passives.UnstableAuraReleasesANovaOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Unstable Aura on a real character. Issue #1050.
+ *
+ * "While at or below 10% health, you release a nova every 5 seconds dealing
+ * damage equal to 1% of your missing health per point to enemies within 6
+ * metres."
+ *
+ * THE LAST MASOCHIST NODE THAT DID NOTHING AND WAS NEITHER BLOCKED NOR
+ * UNDECIDED. The six that remain need a way to put a debuff on an ENEMY (issues
+ * #742 and #674), a reading answered (#1033), a cap on unique debuffs that no
+ * document decides, or a comparison between the character's debuffs and an
+ * enemy's.
+ *
+ * IT IS A BASIC NODE AND NOT A CAPSTONE, so unlike the five capstone option
+ * tests above it there is no threshold to fill to and no option to choose. Eight
+ * points are spent on it directly.
+ *
+ * WHAT IS READ IS WHAT ONE NOVA IS WORTH, not an entry in the pipeline's
+ * bookkeeping. `UCataclysmNova::Step` is the function the per-character timer
+ * really calls, and it asks for the stat rather than reading the attribute,
+ * so this covers the route the game itself takes.
+ */
+bool FCataclysmPassiveUnstableAuraOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_ll_b2"));
+
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row:
+	// the per-point share is the only magnitude the sheet carries, because the
+	// 5 seconds and the 6 metres are constants of the mechanic on
+	// `UCataclysmNova`, the way The Breaking Point's are.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Unstable Aura grants one row"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the nova stat"), Effects[0]->Stat,
+			  FString(UCataclysmNova::DamageStat));
+	TestEqual(TEXT("as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one per cent a point"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("only at or below a tenth of health"), Effects[0]->Condition,
+			  FString(TEXT("health_at_or_below")));
+	TestEqual(TEXT("which is ten"), Effects[0]->ConditionValue, 10.0f);
+
+	// EIGHT POINTS, WHICH IS THE WHOLE NODE.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// THE ATTRIBUTE IS STILL ZERO, and that is the point of asking for the stat
+	// rather than reading it. The row carries a condition, so
+	// `UCataclysmPlayerClassStats::ApplyTo` refuses it and never folds it in.
+	TestEqual(TEXT("the gameplay attribute stays at zero, the row being "
+				   "conditional"),
+			  AbilitySystem->GetNumericAttribute(
+				  Combat::GetNovaDamageOfMissingHealthAttribute()),
+			  0.0f, 0.001f);
+
+	const float MaxHealth =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("the character has health (%.1f)"),
+								   MaxHealth), MaxHealth > 0.0f))
+	{
+		return false;
+	}
+
+	// AT FULL HEALTH IT RELEASES NOTHING, asserted first so the reading below is
+	// evidence of the node rather than of anything else on the step.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   MaxHealth);
+	TestEqual(TEXT("a character at full health releases no nova"),
+			  UCataclysmNova::Step(Character), 0.0f, 0.001f);
+
+	// AND AT A TWENTIETH OF ITS HEALTH IT DOES. Five per cent is at or below the
+	// node's ten, and 95% of the bar is missing, so eight points deal 8% of that.
+	const float Fifth = MaxHealth * 0.05f;
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Fifth);
+
+	TestEqual(TEXT("and one at five per cent releases eight per cent of what "
+				   "it is missing"),
+			  UCataclysmNova::Step(Character),
+			  (MaxHealth - Fifth) * 8.0f / 100.0f, MaxHealth * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveTheLastDropOnARealCharacterTest,
+	"Cataclysm.Passives.TheLastDropSuppressesCostsAndPaysPerCastOnARealCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Final Vow's first option on a real character. Issue #1051.
+ *
+ * "While below 20% health your skills cost no health, and every skill you cast
+ * grants 10 Fervour."
+ *
+ * BOTH CLAUSES ARE UNDER THE ONE CONDITION, which is a reading rather than
+ * something the sentence settles outright. The Edge in the same tree has exactly
+ * this shape -- "While at or below 20% health you take 25% less damage and your
+ * Fervour does not decrease" -- and both of its clauses are under its condition.
+ * `docs/DECISIONS.md` carries the reasoning.
+ *
+ * THE CONDITION IS THE FIRST STRICTLY-BELOW HEALTH THRESHOLD IN THE GAME. Every
+ * other health threshold in all four trees is worded "at or below" and takes
+ * `health_at_or_below`. The boundary itself is checked in
+ * `Cataclysm.StatPipeline.BelowAndAtOrBelowDifferAtExactlyTheThreshold`; what
+ * this test adds is that the row reaches a real character and that the game's
+ * own readers answer with it.
+ */
+bool FCataclysmPassiveTheLastDropOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_capstone_200"));
+
+	// WHAT THE ROWS ARE AUTHORED AS. Two, one per clause, and both carry the
+	// same condition.
+	const TArray<const FCataclysmPassiveEffectRow*> Everything =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	TArray<const FCataclysmPassiveEffectRow*> Mine;
+	for (const FCataclysmPassiveEffectRow* Row : Everything)
+	{
+		if (Row->Option == 1)
+		{
+			Mine.Add(Row);
+		}
+	}
+	if (!TestEqual(TEXT("The Last Drop grants two rows"), Mine.Num(), 2))
+	{
+		return false;
+	}
+
+	bool bHasSuppression = false;
+	bool bHasFervour = false;
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		TestEqual(*FString::Printf(TEXT("%s is a flat amount"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("flat")));
+		TestEqual(*FString::Printf(TEXT("%s is strictly below a threshold"),
+								   *Row->Stat),
+				  Row->Condition, FString(TEXT("health_below")));
+		TestEqual(*FString::Printf(TEXT("%s uses a fifth of health"), *Row->Stat),
+				  Row->ConditionValue, 20.0f);
+
+		if (Row->Stat == FString(UCataclysmSkillTemplate::HealthCostSuppressedStat))
+		{
+			bHasSuppression = true;
+			TestEqual(TEXT("the flag is a one, meaning on"), Row->ValuePerPoint,
+					  1.0f);
+		}
+		else if (Row->Stat == FString(UCataclysmFervour::PerCastStat))
+		{
+			bHasFervour = true;
+			TestEqual(TEXT("and the cast grants ten"), Row->ValuePerPoint, 10.0f);
+		}
+	}
+	TestTrue(TEXT("one row suppresses the health cost"), bHasSuppression);
+	TestTrue(TEXT("and one grants Fervour per cast"), bHasFervour);
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillTreeToOpen(NodeTable, Node, Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float MaxHealth =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(*FString::Printf(TEXT("the character has health (%.1f)"),
+								   MaxHealth), MaxHealth > 0.0f))
+	{
+		return false;
+	}
+
+	// HURT WELL BELOW THE THRESHOLD BEFORE THE CHOICE IS MADE, so that the
+	// readings below differ because of the OPTION and not because of where
+	// health is standing.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   MaxHealth * 0.1f);
+
+	TestFalse(TEXT("with the point spent and no option chosen, skills still "
+				   "cost health"),
+			  UCataclysmSkillTemplate::HealthCostIsSuppressed(AbilitySystem));
+	TestEqual(TEXT("and a cast grants no Fervour"),
+			  UCataclysmFervour::GainForCast(AbilitySystem), 0.0f, 0.001f);
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the first option can be chosen"),
+				  State->ChoosePassiveOption(Node, 1, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	// AND NOW BOTH CLAUSES HOLD.
+	TestTrue(TEXT("and now its skills cost no health"),
+			 UCataclysmSkillTemplate::HealthCostIsSuppressed(AbilitySystem));
+
+	// EMPTIED FIRST, because filling the tree to two hundred points spends
+	// points in nodes that generate Fervour and the bar may already hold some.
+	AbilitySystem->SetNumericAttributeBase(
+		Resource::GetClassResourceAttribute(), 0.0f);
+	TestEqual(TEXT("and a cast grants ten Fervour"),
+			  UCataclysmFervour::GainForCast(AbilitySystem), 10.0f, 0.01f);
+
+	// AND BOTH STOP AT THE THRESHOLD. Health back above a fifth and neither
+	// clause applies, which is what says the condition is read at the moment of
+	// the call rather than folded in once when the tree was applied.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   MaxHealth * 0.5f);
+	TestFalse(TEXT("at half health its skills cost health again"),
+			  UCataclysmSkillTemplate::HealthCostIsSuppressed(AbilitySystem));
+	TestEqual(TEXT("and a cast grants nothing there"),
+			  UCataclysmFervour::GainForCast(AbilitySystem), 0.0f, 0.001f);
+
+	// AND THE OPTIONS THE PLAYER DID NOT PICK GRANTED NOTHING. Vessel Unbroken
+	// is the third option of this same capstone and suppresses damage over time;
+	// a build ignoring the `Option` column would have set that flag here too.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   MaxHealth * 0.1f);
+	TestEqual(TEXT("and the third option was not chosen, so damage over time "
+				   "still hurts"),
+			  AbilitySystem->GetNumericAttribute(
+				  UCataclysmCombatAttributeSet::GetDebuffDamageSuppressedAttribute()),
+			  0.0f, 0.001f);
 
 	return true;
 }

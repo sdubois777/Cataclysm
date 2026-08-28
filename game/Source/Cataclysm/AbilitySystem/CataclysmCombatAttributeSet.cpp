@@ -84,6 +84,12 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitRetaliationRadiusMetres(0.0f);
 	InitRetaliationLeeches(0.0f);
 
+	// AND NO CHARACTER RELEASES A NOVA UNLESS ONE PASSIVE NODE SAYS SO. Issue
+	// #1050. The Masochist's Unstable Aura is its only source, and this stays
+	// zero even for a character holding it, because that row carries a health
+	// condition and a conditional bonus is never folded into an attribute.
+	InitNovaDamageOfMissingHealth(0.0f);
+
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
 	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
 	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
@@ -143,6 +149,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationRadiusMetres);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
 }
@@ -263,6 +270,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
+		GetNovaDamageOfMissingHealthAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
 }
@@ -303,5 +311,6 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

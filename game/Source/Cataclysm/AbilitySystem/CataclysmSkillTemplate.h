@@ -176,6 +176,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	FGameplayTag ElementTag() const;
 
+	/**
+	 * The stat saying this character's skills cost no health at all.
+	 * Issue #1051. Zero for no.
+	 *
+	 * A FLAG AND NOT A REDUCTION, because
+	 * `UCataclysmStatPipeline::LessMultiplierFloor` clamps a Less multiplier
+	 * to -99 on purpose and ninety-nine per cent less is not none.
+	 */
+	static const TCHAR* HealthCostSuppressedStat;
+
+	/**
+	 * Whether this character's skills cost no health right now.
+	 * Issue #1051.
+	 *
+	 * ASKED FOR RATHER THAN READ, because The Last Drop's row carries a
+	 * health condition and a conditional bonus is never folded into a
+	 * gameplay attribute. The answer therefore differs between two calls a
+	 * moment apart, which is the whole point: the option applies while the
+	 * character is below a fifth of its health and not otherwise.
+	 *
+	 * False for every character without that capstone option, and false for
+	 * any ability system with no class resource attribute set, which is every
+	 * enemy.
+	 */
+	static bool HealthCostIsSuppressed(
+		const UAbilitySystemComponent* AbilitySystem);
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.
@@ -303,6 +330,16 @@ protected:
 	 *
 	 * IT RUNS FOR EVERY SKILL, not only for one that states a cost of its own,
 	 * because the character's added cost applies to all of them.
+	 *
+	 * AND IT MAY CHARGE NOTHING AT ALL. Issue #1051. The Masochist's The Last
+	 * Drop reads "While below 20% health your skills cost no health", and
+	 * `HealthCostSuppressedStat` below is the flag that says so. It suppresses
+	 * the WHOLE cost, both halves above, so nothing is taken, nothing is
+	 * deferred, and no Fervour is generated from a cost that was not paid.
+	 *
+	 * IT ALSO GRANTS FERVOUR FOR THE CAST ITSELF, which is that option's other
+	 * clause and is why this function does something for a skill that costs
+	 * nothing.
 	 */
 	void PayHealthCost();
 

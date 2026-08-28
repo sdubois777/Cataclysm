@@ -206,11 +206,18 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * Feeding Wound. The first is the ONLY STAT HERE MEASURED IN A DISTANCE and
 	 * is in metres, which the header on it explains; the second is a flag.
 	 *
-	 * So the sheet stays at 46. The combat set grew by nine and the class
-	 * resource set by five, which is what this count exists to keep honest.
+	 * WHAT SHARE OF ITS MISSING HEALTH ONE NOVA DEALS is the thirteenth,
+	 * added under issue #1050, and it meets the rule for the ninth time: no
+	 * affix grants it, nothing scales it, it has no baseline of its own, and
+	 * the Masochist's Unstable Aura is its only source. That node was the
+	 * last one in its tree that did nothing and was neither blocked on other
+	 * work nor waiting on a design answer.
+	 *
+	 * So the sheet stays at 46. The combat set grew by ten and the class
+	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 10;
+	constexpr int32 OffSheetCombatStats = 11;
 
 	/**
 	 * How far healing may take the character. Issue #988.
@@ -266,8 +273,15 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * TIME THIS COUNT HAS FALLEN, and the direction matters: every earlier entry
 	 * above argues why the sheet total of 46 does not move when a stat is added,
 	 * and the same argument is what says it does not move when one is removed.
+	 *
+	 * FIFTEEN SINCE THE LAST DROP. Issue #1051. The Final Vow's first option
+	 * added a flag saying the character's skills cost no health, and the
+	 * Fervour every cast grants. Off the sheet for the same reasons a fifth
+	 * time: one capstone option supplies both, no class line names either,
+	 * and no player reads either as a stat. What a player reads is the cost
+	 * on the skill and the bar itself.
 	 */
-	constexpr int32 OffSheetResourceStats = 13;
+	constexpr int32 OffSheetResourceStats = 15;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 
@@ -285,7 +299,13 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// for #205. Twenty-eight since armour penetration was added for #520 -- a
 	// SECOND penetration stat, cutting into armour where the first cuts into
 	// resistance.
-	TestEqual(TEXT("Twenty-eight combat and utility stats, plus four off the sheet"),
+	// THE MESSAGE COUNTS THE STATS RATHER THAN SPELLING A NUMBER, since issue
+	// #1050. It read "plus four off the sheet" while eleven were off it. A
+	// stale message does not fail anything, which is exactly why it stayed
+	// wrong: the assertion beside it was right the whole time.
+	TestEqual(*FString::Printf(
+			  TEXT("Twenty-eight combat and utility stats, plus %d off the "
+				   "sheet"), OffSheetCombatStats),
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	// Fourteen since the healing ceiling reduction joined them for #988, which
@@ -304,7 +324,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// Thirteen since #1006 and #1008 added the flag for healing that does not
 	// remove Fervour and the Fervour that arrives every second; neither is a
 	// sheet stat either.
-	TestEqual(TEXT("Thirteen class resource attributes"),
+	// COUNTED RATHER THAN SPELLED, for the reason given above the combat set.
+	TestEqual(*FString::Printf(
+			  TEXT("The pool, its maximum, and %d stats off the sheet"),
+			  OffSheetResourceStats),
 		Resource, 2 + OffSheetResourceStats);
 
 	// The 46 sheet stats: 3 maxima + 6 recovery from vitals, 28 combat,
