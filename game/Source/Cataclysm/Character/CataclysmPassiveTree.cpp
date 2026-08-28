@@ -519,6 +519,36 @@ bool UCataclysmPassiveTree::ChooseOption(const UDataTable* NodeTable,
 	return true;
 }
 
+bool UCataclysmPassiveTree::AwaitsAnOptionChoice(
+	const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+	FName Node)
+{
+	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
+	if (!Row || Row->Kind != CapstoneKind)
+	{
+		return false;
+	}
+
+	if (Allocation.ChosenOptionIn(Node) > 0)
+	{
+		// ALREADY DECIDED, AND PERMANENTLY. Every capstone's own description
+		// ends "The choice is permanent", so there is nothing left to ask.
+		return false;
+	}
+
+	if (SpentInTree(NodeTable, Allocation, Row->Tree) < Row->Threshold)
+	{
+		return false;
+	}
+
+	// AND IT HAS TO HAVE SOMETHING TO OFFER. The Saboteur's four capstones name
+	// no options at all, issue #935, and announcing a decision nobody wrote
+	// would send a player looking for three names that do not exist.
+	const TArray<FString> Options = OptionNamesOf(*Row);
+	return Options.ContainsByPredicate(
+		[](const FString& Name) { return !Name.IsEmpty(); });
+}
+
 FString UCataclysmPassiveTree::DescribeNode(
 	const UDataTable* NodeTable, const UDataTable* EdgeTable,
 	const FCataclysmPassiveAllocation& Allocation, FName Node,

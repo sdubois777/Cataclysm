@@ -95,6 +95,59 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	bool ChooseOption(FName Node, int32 Option);
 
+	/**
+	 * What clicking a node on the graph means.
+	 *
+	 * TWO THINGS A CLICK CAN MEAN, AND UNTIL ISSUE #1064 IT ONLY EVER MEANT ONE.
+	 * `HandleNodeClicked` called `SpendInto` and nothing else, so clicking a
+	 * capstone always tried to spend a point -- which is refused until one of
+	 * its three options is taken. Nothing on the screen ever called
+	 * `ChooseOption`, so no capstone in any tree could be taken from the screen
+	 * at all. The project owner crossed the first capstone's threshold and found
+	 * it still drawn as locked.
+	 *
+	 * A CLICK ON A CAPSTONE THAT HAS OPENED NOW OFFERS ITS THREE OPTIONS instead
+	 * of spending, and a click on anything else spends as it always did.
+	 *
+	 * IT NEVER COMMITS A CHOICE. The choice is permanent -- every capstone's own
+	 * description says so -- so a player has to see the three names and pick
+	 * one, which is a second click.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT. `HandleNodeClicked` is private and bound by
+	 * reflection to a button that no headless test can press, which is why a
+	 * click path that could never take a capstone went unnoticed: the two
+	 * existing screen tests call `SpendInto` and `ChooseOption` directly and
+	 * neither goes near the decision between them.
+	 *
+	 * @return true when the click did something -- a point was spent, or the
+	 *         options were opened
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
+	bool TouchNode(FName Node);
+
+	/**
+	 * The capstone whose three options are being shown, or none.
+	 *
+	 * WHERE THEY ARE SHOWN. In the tree list, in place of the four tree names,
+	 * because that is the only other list of buttons on this screen and building
+	 * a third would be more machinery than the decision needs. Clicking any node
+	 * on the graph puts the tree names back.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Passives")
+	FName GetCapstoneAwaitingAChoice() const { return ChoosingOptionFor; }
+
+	/**
+	 * A capstone option as a value the tree list's buttons can carry, and back.
+	 *
+	 * ONE LIST AND ONE HANDLER CARRY BOTH, so the two kinds of value have to be
+	 * told apart. A tree's value is its name out of the node table's `Tree`
+	 * column -- Masochist, Bulwark -- and an option's begins with a space, which
+	 * no tree name can. `OptionFromValue` answers 0 for anything that is not an
+	 * option, which is every tree.
+	 */
+	static FName OptionValue(int32 Option);
+	static int32 OptionFromValue(FName Value);
+
 	//~ What the screen says.
 
 	/** How many points are earned, spent and left. */
@@ -257,6 +310,7 @@ private:
 	UFUNCTION()
 	void HandleNodeClicked(FName Node);
 
+
 	/**
 	 * Bound to every node button's hover.
 	 *
@@ -332,6 +386,24 @@ private:
 	 * of nodes and does not change while one tree is being looked at.
 	 */
 	float BuiltNodeScale = 1.0f;
+
+	/**
+	 * The capstone whose three options are in the tree list, or NAME_None.
+	 * Issue #1064. See `GetCapstoneAwaitingAChoice`.
+	 *
+	 * CLEARED BY A CLICK ON ANY NODE, which is what puts the tree names back and
+	 * is also what keeps the rebuild safe: the tree list is emptied and refilled
+	 * from a click on a button that lives on the GRAPH, never from one of its
+	 * own children. Emptying a panel from inside its own child's click handler
+	 * tears down the Slate widget whose event is still being dispatched, which
+	 * is the hazard `FillPanel` already warns about.
+	 *
+	 * SO CHOOSING AN OPTION LEAVES THE LIST ALONE. The three values do not
+	 * change when one of them is taken, and `FillPanel` rebuilds only when the
+	 * values differ, so the buttons are relabelled in place.
+	 */
+	UPROPERTY(Transient)
+	FName ChoosingOptionFor;
 
 	/** The node each button on the canvas is for, in the order they were made. */
 	UPROPERTY(Transient)

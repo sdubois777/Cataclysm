@@ -248,6 +248,37 @@ public:
 							 FCataclysmPassiveAllocation& Allocation,
 							 FName Node, int32 Option, FString& OutReason);
 
+	/**
+	 * Whether this node is a capstone that has opened and is waiting to be told
+	 * which of its three options to take.
+	 *
+	 * WHY IT IS A QUESTION OF ITS OWN. Issue #1064. A capstone in this state
+	 * cannot take a point -- `RefusalForSpending` says "Choose one of The First
+	 * Vow's three options first" -- and everything that decides what a player
+	 * may do asked only that. So the passive tree screen drew a capstone that
+	 * had just opened as locked, and the one console command that lists what is
+	 * open left it out. The project owner spent thirty points, crossed the first
+	 * capstone's threshold of twenty-five, and nothing anywhere said a decision
+	 * was waiting.
+	 *
+	 * IT IS THE SAME QUESTION IN BOTH PLACES, which is why it lives here rather
+	 * than being written twice. The screen uses it to make the node clickable
+	 * and to show the three names; the console listing uses it to name the
+	 * capstone and say what it needs.
+	 *
+	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, which is the Saboteur's four.
+	 * Issue #935. Announcing a decision that was never written would be worse
+	 * than saying nothing.
+	 *
+	 * IT SAYS NOTHING ABOUT WHETHER A POINT IS SPARE. A capstone costs one point
+	 * of its own on top of its threshold, and a player who has spent everything
+	 * still has the decision to make and should still be told so. The refusal
+	 * for spending is where "no points left" belongs.
+	 */
+	static bool AwaitsAnOptionChoice(
+		const UDataTable* NodeTable,
+		const FCataclysmPassiveAllocation& Allocation, FName Node);
+
 	/** What a screen prints on one node: its points, its cap and its state. */
 	static FString DescribeNode(const UDataTable* NodeTable,
 								const UDataTable* EdgeTable,
