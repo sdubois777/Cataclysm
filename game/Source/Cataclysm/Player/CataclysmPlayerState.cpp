@@ -11,6 +11,9 @@
 #include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
+// For a passive node's own MaxPoints, which decides whether choosing a capstone
+// option still has a point to put in. Issue #1075.
+#include "Data/CataclysmDataRows.h"
 // For reaching the possessed character and the component that gathers every
 // source of a stat, so a spent passive point is felt at once. Issue #1054.
 #include "Character/CataclysmPlayerCharacter.h"
@@ -273,28 +276,43 @@ TArray<FString> ACataclysmPlayerState::ReachableTrees() const
 		UCataclysmPassiveTree::LoadNodeTable(), Carried);
 }
 
-bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
+bool ACataclysmPlayerState::ReachesTreeOf(const UDataTable* NodeTable,
+										 FName Node, FString& OutReason) const
 {
-	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
-	const UDataTable* EdgeTable = UCataclysmPassiveTree::LoadEdgeTable();
-
-	// THE CHARACTER'S OWN QUESTION FIRST, BEFORE THE TREE'S RULES. Which trees
+	// THE CHARACTER'S OWN QUESTION, ASKED BEFORE THE TREE'S RULES. Which trees
 	// are reachable follows from the damage type this character carries, which
 	// `UCataclysmPassiveTree` deliberately knows nothing about. Asking it first
 	// also means the reason a player sees is the useful one: "your weapon does
 	// not reach that tree" rather than "that node is shut".
 	const FString Tree = UCataclysmPassiveTree::TreeOf(NodeTable, Node);
-	if (!Tree.IsEmpty())
+	if (Tree.IsEmpty())
 	{
-		const TArray<FName> Carried = {GetChosenDamageType()};
-		if (!UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
-		{
-			OutReason = FString::Printf(
-				TEXT("No equipped weapon carries a damage type that unlocks the "
-					 "%s tree. This character is %s."),
-				*Tree, *GetChosenDamageType().ToString());
-			return false;
-		}
+		// A NODE IN NO TREE, which is a node the table does not have. The tree's
+		// own rules say so more plainly a moment later.
+		return true;
+	}
+
+	const TArray<FName> Carried = {GetChosenDamageType()};
+	if (UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
+	{
+		return true;
+	}
+
+	OutReason = FString::Printf(
+		TEXT("No equipped weapon carries a damage type that unlocks the "
+			 "%s tree. This character is %s."),
+		*Tree, *GetChosenDamageType().ToString());
+	return false;
+}
+
+bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EdgeTable = UCataclysmPassiveTree::LoadEdgeTable();
+
+	if (!ReachesTreeOf(NodeTable, Node, OutReason))
+	{
+		return false;
 	}
 
 	if (!UCataclysmPassiveTree::Spend(NodeTable, EdgeTable, PassiveAllocation,
@@ -313,12 +331,51 @@ bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
 bool ACataclysmPlayerState::ChoosePassiveOption(FName Node, int32 Option,
 												FString& OutReason)
 {
-	if (!UCataclysmPassiveTree::ChooseOption(
-			UCataclysmPassiveTree::LoadNodeTable(), PassiveAllocation, Node,
-			Option, OutReason))
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+
+	// REFUSED FOR AN UNREACHABLE TREE, WHICH IT WAS NOT UNTIL ISSUE #1075. This
+	// act now spends a point, so it has to obey the rule spending obeys.
+	if (!ReachesTreeOf(NodeTable, Node, OutReason))
 	{
 		return false;
 	}
+
+	// BOTH ACTS ON A COPY, AND THE COPY IS KEPT ONLY IF BOTH SUCCEED. Issue
+	// #1075. The choice is permanent, so a character that made it and then found
+	// it had no point left would be committed for ever to an option it could not
+	// turn on. Nothing is written to this character until both have passed.
+	FCataclysmPassiveAllocation Attempt = PassiveAllocation;
+
+	if (!UCataclysmPassiveTree::ChooseOption(NodeTable, Attempt, Node, Option,
+											 OutReason))
+	{
+		return false;
+	}
+
+	// AND THE POINT GOES IN WITH THE CHOICE. Issue #1075. Choosing used to
+	// record the decision and nothing else, and a capstone holding a choice but
+	// no point grants NOTHING: `UCataclysmPassiveTree::AccumulateInto` skips a
+	// node with no points before it ever reads the chosen option. The project
+	// owner took Water to Blood in play, was told the option was picked, and
+	// still had a mana pool and abilities that still cost mana.
+	//
+	// UNLESS THE NODE ALREADY HOLDS ITS POINT, which is the ordinary case for a
+	// player clicking the option that is already marked as taken, and for every
+	// caller written before this changed. Charging a second point there would
+	// refuse an act that used to succeed and that does no harm.
+	const FCataclysmPassiveNodeRow* Row =
+		UCataclysmPassiveTree::FindNode(NodeTable, Node);
+	const bool bNeedsThePoint = Row && Attempt.PointsIn(Node) < Row->MaxPoints;
+
+	if (bNeedsThePoint
+		&& !UCataclysmPassiveTree::Spend(
+			   NodeTable, UCataclysmPassiveTree::LoadEdgeTable(), Attempt, Node,
+			   PassivePointsAvailable(), OutReason))
+	{
+		return false;
+	}
+
+	PassiveAllocation = Attempt;
 
 	// A CHOICE TURNS ON THAT OPTION'S EFFECT ROWS, so it moves the stat line for
 	// the same reason spending a point does. Issue #1054.

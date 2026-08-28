@@ -275,7 +275,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	bool SpendPassivePoint(FName Node, FString& OutReason);
 
-	/** Take one of a capstone's three options. Permanent until a respec. */
+	/**
+	 * Take one of a capstone's three options, and the capstone with it.
+	 * Permanent until a respec.
+	 *
+	 * IT SPENDS THE POINT AS WELL AS RECORDING THE CHOICE. Issue #1075. Until
+	 * 2026-08-28 it only recorded the choice, and a capstone holding a choice
+	 * but no point grants nothing: `UCataclysmPassiveTree::AccumulateInto` skips
+	 * a node with no points before it ever reads the chosen option. The project
+	 * owner took Water to Blood in play, was told the option was picked, and
+	 * still had a mana pool, because the second act was never performed and
+	 * nothing on the screen said one was left to perform.
+	 *
+	 * NOBODY BENEFITED FROM THE STATE IN BETWEEN, which is what decided this
+	 * rather than a message on the screen. The choice is already permanent, a
+	 * capstone holds exactly one point, and a capstone that is chosen and
+	 * unspent grants nothing and cannot be undone.
+	 *
+	 * BOTH ACTS OR NEITHER. They are applied to a copy of the allocation and the
+	 * copy is kept only if both succeed, so a character with no points left is
+	 * refused outright rather than left permanently committed to an option it
+	 * cannot turn on.
+	 *
+	 * AND A CAPSTONE THAT ALREADY HOLDS ITS POINT IS NOT CHARGED A SECOND ONE.
+	 * Taking the option that is already taken is allowed and changes nothing,
+	 * which is what the screen does when a player clicks the marked option
+	 * again.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Passives")
 	bool ChoosePassiveOption(FName Node, int32 Option, FString& OutReason);
 
@@ -330,6 +356,24 @@ public:
 	 * a point spent while unpossessed is picked up then.
 	 */
 	void RefreshCharacterStats() const;
+
+	/**
+	 * Whether an equipped weapon carries a damage type that reaches the tree
+	 * this node is in. Issue #1075.
+	 *
+	 * SHARED BY THE TWO ACTS THAT PUT A POINT IN, which is why it exists at all:
+	 * `SpendPassivePoint` and `ChoosePassiveOption` both spend, so both have to
+	 * refuse an unreachable tree, and the sentence a player reads has to be the
+	 * same one either way.
+	 *
+	 * A NODE IN NO TREE IS REACHABLE. `TreeOf` answers an empty string for a
+	 * node the table does not have, and refusing here would hide the plainer
+	 * refusal the tree's own rules give a moment later.
+	 *
+	 * @param OutReason left untouched when the answer is yes
+	 */
+	bool ReachesTreeOf(const UDataTable* NodeTable, FName Node,
+					   FString& OutReason) const;
 
 protected:
 	/**

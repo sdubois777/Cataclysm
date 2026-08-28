@@ -356,6 +356,62 @@ TArray<FString> UCataclysmPassiveTree::OptionNamesOf(
 	return {Row.Option1Name, Row.Option2Name, Row.Option3Name};
 }
 
+TArray<FString> UCataclysmPassiveTree::OptionDescriptionsOf(
+	const FCataclysmPassiveNodeRow& Row)
+{
+	return {Row.Option1Description, Row.Option2Description,
+			Row.Option3Description};
+}
+
+FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
+												 FName Node)
+{
+	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
+	if (!Row)
+	{
+		return FString();
+	}
+
+	FString Text = Row->Description;
+	if (Row->Kind != CapstoneKind)
+	{
+		// EVERY ORDINARY NODE SAYS WHAT IT DOES IN ITS OWN DESCRIPTION, which is
+		// what this screen has always shown.
+		return Text;
+	}
+
+	// A CAPSTONE'S DOES NOT. Issue #1076. "Unlocks at 25 points spent. Choose
+	// one. The choice is permanent." names no option and describes none, so the
+	// three are appended here from the columns that were carrying them unread.
+	const TArray<FString> Names = OptionNamesOf(*Row);
+	const TArray<FString> Descriptions = OptionDescriptionsOf(*Row);
+
+	for (int32 Option = 1; Option <= CapstoneOptions; ++Option)
+	{
+		const int32 Index = Option - 1;
+		if (!Names.IsValidIndex(Index) || Names[Index].IsEmpty())
+		{
+			// NOTHING IS WRITTEN FOR THIS ONE. The Saboteur's four capstones
+			// name no option at all, issue #935, and printing an empty heading
+			// would suggest there is something to read.
+			continue;
+		}
+
+		Text += FString::Printf(TEXT("\n\n%d  %s"), Option, *Names[Index]);
+
+		// A NAMED OPTION WITH NO DESCRIPTION SAYS SO. It cannot happen in the
+		// four trees today and the alternative is a name followed by nothing,
+		// which reads as a description that failed to load.
+		const bool bDescribed = Descriptions.IsValidIndex(Index)
+			&& !Descriptions[Index].IsEmpty();
+		Text += bDescribed
+			? FString::Printf(TEXT("\n%s"), *Descriptions[Index])
+			: FString(TEXT("\n(nothing is written about what this does)"));
+	}
+
+	return Text;
+}
+
 FString UCataclysmPassiveTree::RefusalForSpending(
 	const UDataTable* NodeTable, const UDataTable* EdgeTable,
 	const FCataclysmPassiveAllocation& Allocation, FName Node,

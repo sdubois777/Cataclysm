@@ -323,10 +323,14 @@ void UCataclysmPassiveTreeWidget::RefreshDisplay()
 		// the node has an authored effect behind it, and 267 of the 293 do
 		// not -- so a player reading this cannot tell which sentences the
 		// character actually receives. Issues #936 and #939.
-		const FCataclysmPassiveNodeRow* Row =
-			UCataclysmPassiveTree::FindNode(NodeTable(), LastTouched);
-		DescriptionLabel->SetText(
-			Row ? FText::FromString(Row->Description) : FText::GetEmpty());
+		//
+		// AND FOR A CAPSTONE, WHAT ITS THREE OPTIONS DO. Issue #1076. This read
+		// `Row->Description` until 2026-08-28, and a capstone's own description
+		// is "Unlocks at N points spent. Choose one. The choice is permanent",
+		// so the screen asked for a permanent decision between three things it
+		// never named. `FullDescriptionOf` appends them.
+		DescriptionLabel->SetText(FText::FromString(
+			UCataclysmPassiveTree::FullDescriptionOf(NodeTable(), LastTouched)));
 	}
 }
 
@@ -566,10 +570,10 @@ void UCataclysmPassiveTreeWidget::HandleNodeHovered(FName Node)
 
 	if (DescriptionLabel)
 	{
-		const FCataclysmPassiveNodeRow* Row =
-			UCataclysmPassiveTree::FindNode(NodeTable(), Node);
-		DescriptionLabel->SetText(
-			Row ? FText::FromString(Row->Description) : FText::GetEmpty());
+		// THE SAME TEXT `RefreshDisplay` SHOWS, through the same function, so a
+		// capstone hovered and a capstone clicked read alike. Issue #1076.
+		DescriptionLabel->SetText(FText::FromString(
+			UCataclysmPassiveTree::FullDescriptionOf(NodeTable(), Node)));
 	}
 }
 
