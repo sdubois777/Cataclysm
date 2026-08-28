@@ -329,7 +329,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
 	// OPTION of the first Masochist capstone: the character has traded its
 	// mana pool for health.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        122)
+	//
+	// AND TO 130 FOR THE LAST THREE CAPSTONE OPTIONS THAT GRANTED NOTHING.
+	// Issues #1069, #1070 and #1071. Three rows for Rock Bottom, one for
+	// Ceaseless Penance and four for Carnivore, one per clause of each. All
+	// twelve of the Masochist's capstone options now grant something, which the
+	// node count above could never see: a capstone counts as authored the
+	// moment ANY of its three options has a row.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        130)
 
 	#undef CHECK_TABLE
 

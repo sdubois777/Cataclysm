@@ -616,4 +616,139 @@ bool FCataclysmOrdinaryDebtDoesNotKillTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Rock Bottom: what cannot be paid, and what a fall to low health clears
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnpayableArithmeticTest,
+	"Cataclysm.HealthDebt.WhatCannotBePaidIsTheChargeAboveTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnpayableArithmeticTest::RunTest(const FString&)
+{
+	using Debt = UCataclysmHealthDebt;
+
+	// PURE ARITHMETIC, SO EVERY CASE IS A FEW NUMBERS. Issue #1069. Rock
+	// Bottom: "A health cost can never reduce you below 1 health; anything you
+	// cannot pay becomes health debt instead."
+	constexpr float Floor = 1.0f;
+
+	// A CHARGE THE CHARACTER CAN AFFORD OWES NOTHING, which is the ordinary
+	// case even for a character holding the option.
+	TestEqual(TEXT("a small charge on full health owes nothing"),
+			  Debt::AmountUnpayable(50.0f, 1'000.0f, Floor), 0.0f, 0.001f);
+
+	// AND ONE THAT LANDS EXACTLY ON THE FLOOR OWES NOTHING EITHER. A character
+	// on 100 health charged 99 is left on 1, which the sentence allows.
+	TestEqual(TEXT("a charge that lands exactly on the floor owes nothing"),
+			  Debt::AmountUnpayable(99.0f, 100.0f, Floor), 0.0f, 0.001f);
+
+	// AND ONE PAST IT OWES THE DIFFERENCE. Charged 150 with 100 health, 99 can
+	// be paid and 51 is owed.
+	TestEqual(TEXT("a charge past the floor owes the difference"),
+			  Debt::AmountUnpayable(150.0f, 100.0f, Floor), 51.0f, 0.001f);
+
+	// AND A CHARACTER ALREADY ON THE FLOOR OWES ALL OF IT. Reachable: one that
+	// paid down to 1 health and cast again.
+	TestEqual(TEXT("a character already on the floor owes the whole charge"),
+			  Debt::AmountUnpayable(40.0f, 1.0f, Floor), 40.0f, 0.001f);
+
+	// AND ONE BELOW THE FLOOR IS NOT CREDITED FOR BEING THERE. Without the
+	// inner floor this would answer 40 minus a negative number, which is MORE
+	// than the charge: a character would owe more than it was ever charged.
+	TestEqual(TEXT("a character below the floor still owes only the charge"),
+			  Debt::AmountUnpayable(40.0f, 0.0f, Floor), 40.0f, 0.001f);
+
+	// AND A CHARGE OF NOTHING OWES NOTHING, however little health there is.
+	TestEqual(TEXT("no charge owes nothing"),
+			  Debt::AmountUnpayable(0.0f, 0.0f, Floor), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRockBottomDebtClearingTest,
+	"Cataclysm.HealthDebt.DroppingLowClearsTheDebtOnlyWithRockBottom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRockBottomDebtClearingTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealthDebtTest;
+	using Debt = UCataclysmHealthDebt;
+
+	// THE SECOND SENTENCE OF ROCK BOTTOM, on its own. Issue #1069. Whether a
+	// real health crossing calls this is `Cataclysm.LowHealthRelief`'s job.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedDebtor Debtor(World);
+	Debt::Defer(Debtor.AbilitySystem, 300.0f);
+	TestEqual(TEXT("the character owes three hundred"), Debtor.Owed(), 300.0f,
+			  0.001f);
+
+	// WITHOUT THE OPTION NOTHING IS CLEARED, and this half comes first: a
+	// version that cleared every character's debt would pass the half below.
+	TestEqual(TEXT("a character without the option clears nothing"),
+			  Debt::ClearOnDroppingLow(Debtor.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("and still owes three hundred"), Debtor.Owed(), 300.0f,
+			  0.001f);
+
+	// AND WITH IT THE WHOLE DEBT GOES, because the option says "all outstanding
+	// debt" rather than a share of it.
+	Debtor.Set(Resource::GetDebtClearedOnDroppingLowAttribute(), 1.0f);
+
+	TestEqual(TEXT("with the option the whole debt is cleared"),
+			  Debt::ClearOnDroppingLow(Debtor.Actor), 300.0f, 0.001f);
+	TestEqual(TEXT("and nothing is owed"), Debtor.Owed(), 0.0f, 0.001f);
+
+	// AND THE DUE TIME GOES WITH IT. A cleared debt still marked due would have
+	// the regeneration step ask about it on every step for the rest of the
+	// character's life.
+	TestFalse(TEXT("and no debt is marked due"),
+			  Debtor.AbilitySystem->IsHealthDebtDue());
+
+	// AND CLEARING AGAIN WITH NOTHING OWED CLEARS NOTHING, which is what the
+	// crossing hits every time a character falls low without a debt.
+	TestEqual(TEXT("clearing nothing clears nothing"),
+			  Debt::ClearOnDroppingLow(Debtor.Actor), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnpayableFlagTest,
+	"Cataclysm.HealthDebt.OnlyRockBottomTurnsAnUnpayableCostIntoDebt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnpayableFlagTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealthDebtTest;
+	using Debt = UCataclysmHealthDebt;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedDebtor Debtor(World);
+
+	TestFalse(TEXT("a character without the option pays what it can and dies "
+				   "of the rest"),
+			  Debt::UnpayableBecomesDebt(Debtor.AbilitySystem));
+
+	Debtor.Set(Resource::GetUnpayableHealthCostBecomesDebtAttribute(), 1.0f);
+	TestTrue(TEXT("and with it the rest becomes debt"),
+			 Debt::UnpayableBecomesDebt(Debtor.AbilitySystem));
+
+	// AND NOTHING AT ALL IS NOT A CHARACTER WITH THE OPTION.
+	TestFalse(TEXT("no ability system does not turn a cost into debt"),
+			  Debt::UnpayableBecomesDebt(nullptr));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

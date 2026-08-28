@@ -666,6 +666,39 @@ void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 	NovaNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
+bool UCataclysmAbilitySystemComponent::MayTakeLowHealthRelief() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO RELIEF, the same refusal `MayReleaseNova` makes and
+		// the safe direction: a cooldown that cannot be timed would let the
+		// relief fire on every crossing instead of once every thirty seconds.
+		return false;
+	}
+
+	// NEVER TAKEN IS ALLOWED. A negative time means no crossing has ever been
+	// honoured, so there is nothing to wait for and the first is taken at once.
+	return LowHealthReliefNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= LowHealthReliefNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteLowHealthReliefTaken(
+	float CooldownSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || CooldownSeconds <= 0.0f)
+	{
+		// A COOLDOWN OF NOTHING RECORDS NOTHING, rather than allowing the next
+		// crossing immediately. The one caller passes a constant above zero, so
+		// this guards a future one rather than anything that happens today.
+		return;
+	}
+
+	LowHealthReliefNextAllowedSeconds =
+		World->GetTimeSeconds() + CooldownSeconds;
+}
+
 bool UCataclysmAbilitySystemComponent::MayApplyAura() const
 {
 	const UWorld* World = GetWorld();

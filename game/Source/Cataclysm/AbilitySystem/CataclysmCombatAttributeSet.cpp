@@ -95,6 +95,12 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// this overwritten from `EngineSuppliedBases`, which states the same 100.
 	InitDebuffDurationTaken(100.0f);
 
+	// AND THE DEBUFFS ON A CHARACTER COUNT DOWN AS USUAL. Issue #1070. Zero
+	// means the rule is off, and it stays zero even for a character holding
+	// Ceaseless Penance, because that row carries a health condition and a
+	// conditional bonus is never folded into an attribute.
+	InitDebuffsDoNotExpire(0.0f);
+
 	InitNovaDamageOfMissingHealth(0.0f);
 
 	// BOTH ZERO, AND ZERO MEANS THE CHARACTER DOES NOT HOLD THE NODE.
@@ -169,6 +175,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationRadiusMetres);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDurationTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffsDoNotExpire);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AuraDebuffDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffSpreadChance);
@@ -296,7 +303,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
-		GetDebuffDurationTakenAttribute(),
+		GetDebuffDurationTakenAttribute(), GetDebuffsDoNotExpireAttribute(),
 		GetNovaDamageOfMissingHealthAttribute(),
 		GetAuraDebuffDurationAttribute(), GetDebuffSpreadChanceAttribute(),
 		GetDeathSpreadChanceAttribute(), GetDamageVsSharedDebuffAttribute(),
@@ -341,6 +348,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffsDoNotExpire)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AuraDebuffDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffSpreadChance)

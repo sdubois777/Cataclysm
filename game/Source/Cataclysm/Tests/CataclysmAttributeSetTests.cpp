@@ -238,11 +238,23 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * increased-damage-against-a-damage-type stats, and it could not be a
 	 * sheet stat even if an affix granted it: a sheet has no target in hand.
 	 *
-	 * So the sheet stays at 46. The combat set grew by eleven and the class
+	 * WHETHER THE DEBUFFS ON A CHARACTER STOP COUNTING DOWN AT ALL is the
+	 * nineteenth, added under issue #1070 for Ceaseless Penance, the third
+	 * option of the Masochist's third capstone. It meets the rule for the
+	 * fifteenth time: no affix grants it, nothing scales it, no class differs
+	 * on it, and one capstone option is its only source.
+	 *
+	 * IT IS NOT `DebuffDurationTaken` UNDER ANOTHER NAME, which is the mistake
+	 * available here. That one is a percentage applied ONCE, when an effect
+	 * lands, and 100 means unchanged; no value of it says "this never ends".
+	 * This one is a rule that holds or does not hold from moment to moment, and
+	 * `UCataclysmDebuffs::HoldStep` acts on it four times a second.
+	 *
+	 * So the sheet stays at 46. The combat set grew by twelve and the class
 	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
 	 */
-	constexpr int32 OffSheetCombatStats = 16;
+	constexpr int32 OffSheetCombatStats = 17;
 
 	/**
 	 * How far healing may take the character. Issue #988.
@@ -305,8 +317,21 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * time: one capstone option supplies both, no class line names either,
 	 * and no player reads either as a stat. What a player reads is the cost
 	 * on the skill and the bar itself.
+	 *
+	 * TWENTY-ONE SINCE ROCK BOTTOM AND CARNIVORE. Issues #1069 and #1071 added
+	 * five: a flag saying a health cost that cannot be paid becomes debt, a
+	 * flag saying dropping to low health clears that debt, the Fervour the same
+	 * drop grants, a flag saying a hit taken grants a stack of Carnage, and a
+	 * flag saying Carnage has no maximum. Off the sheet for the same reasons a
+	 * sixth time: two capstone options supply all five, no class line names any
+	 * of them, and no player reads any of them as a stat.
+	 *
+	 * THE SHEET STILL DOES NOT MOVE, WHICH IS WHAT THE SECOND ASSERTION BELOW
+	 * IS FOR. It derives the sheet count by subtracting the off-sheet ones, so
+	 * an attribute nobody declared off the sheet is counted as ON it and BOTH
+	 * numbers fail at once. One fix, not two.
 	 */
-	constexpr int32 OffSheetResourceStats = 16;
+	constexpr int32 OffSheetResourceStats = 21;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

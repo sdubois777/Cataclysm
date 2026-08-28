@@ -51,6 +51,19 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 
 	InitDamageToBleedingOnLowHealth(0.0f);
 	InitDamageToBleedingWindow(0.0f);
+
+	// AND ZERO FOR ALL THREE OF ROCK BOTTOM'S. Issue #1069. A character without
+	// that capstone option pays what it can and dies of what it cannot, its
+	// debt is untouched by falling low, and no Fervour arrives from doing so.
+	InitUnpayableHealthCostBecomesDebt(0.0f);
+	InitDebtClearedOnDroppingLow(0.0f);
+	InitFervourOnDroppingLow(0.0f);
+
+	// AND ZERO FOR BOTH OF CARNIVORE'S. Issue #1071. A character without that
+	// option earns Carnage by killing rather than by being hit, and holds no
+	// more than the ten stacks `UCataclysmStacks::CapFor` allows.
+	InitCarnageFromDamageTaken(0.0f);
+	InitCarnageHasNoMaximum(0.0f);
 }
 
 void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
@@ -76,6 +89,11 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum);
 }
 
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
@@ -122,7 +140,12 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetHealthCostSuppressedAttribute()
 		|| Attribute == GetManaPoolBecomesHealthAttribute()
 		|| Attribute == GetDamageToBleedingOnLowHealthAttribute()
-		|| Attribute == GetDamageToBleedingWindowAttribute())
+		|| Attribute == GetDamageToBleedingWindowAttribute()
+		|| Attribute == GetUnpayableHealthCostBecomesDebtAttribute()
+		|| Attribute == GetDebtClearedOnDroppingLowAttribute()
+		|| Attribute == GetFervourOnDroppingLowAttribute()
+		|| Attribute == GetCarnageFromDamageTakenAttribute()
+		|| Attribute == GetCarnageHasNoMaximumAttribute())
 	{
 		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
 		// A negative rate would invert the rule the node states: taking damage
@@ -197,6 +220,11 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetManaPoolBecomesHealthAttribute());
 	All.Add(GetDamageToBleedingOnLowHealthAttribute());
 	All.Add(GetDamageToBleedingWindowAttribute());
+	All.Add(GetUnpayableHealthCostBecomesDebtAttribute());
+	All.Add(GetDebtClearedOnDroppingLowAttribute());
+	All.Add(GetFervourOnDroppingLowAttribute());
+	All.Add(GetCarnageFromDamageTakenAttribute());
+	All.Add(GetCarnageHasNoMaximumAttribute());
 	return All;
 }
 
@@ -224,3 +252,8 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum)

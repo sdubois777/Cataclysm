@@ -19,6 +19,12 @@ const TCHAR* UCataclysmHealthDebt::DelayExtensionStat =
 const TCHAR* UCataclysmHealthDebt::ClearedOnlyByAKillStat =
 	TEXT("health_debt_cleared_only_by_a_kill");
 
+const TCHAR* UCataclysmHealthDebt::UnpayableBecomesDebtStat =
+	TEXT("unpayable_health_cost_becomes_debt");
+
+const TCHAR* UCataclysmHealthDebt::ClearedOnDroppingLowStat =
+	TEXT("debt_cleared_on_dropping_low");
+
 float UCataclysmHealthDebt::DeferredSharePercent(
 	const UAbilitySystemComponent* AbilitySystem)
 {
@@ -358,4 +364,129 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 	}
 
 	return true;
+}
+
+bool UCataclysmHealthDebt::UnpayableBecomesDebt(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	using Resource = UCataclysmClassResourceAttributeSet;
+	const FGameplayAttribute Flag =
+		Resource::GetUnpayableHealthCostBecomesDebtAttribute();
+
+	// AN ABILITY SYSTEM WITHOUT THE SET OWES NOTHING, the same refusal
+	// `IsClearedOnlyByAKill` makes and for the same reason: every player carries
+	// the class resource set, no enemy does, and an enemy using a skill goes
+	// through the same cost function.
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return false;
+	}
+
+	// ASKED FOR RATHER THAN READ WHERE THE COMPONENT IS ONE THIS PROJECT MADE,
+	// so a later row carrying a condition is not dropped in silence. The one
+	// row today carries none, so both routes agree and the attribute is the
+	// fallback.
+	if (const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		return Asking->StatForSkill(FName(UnpayableBecomesDebtStat),
+									FGameplayTagContainer(),
+									AbilitySystem->GetNumericAttribute(Flag))
+			> 0.0f;
+	}
+
+	// ABOVE ZERO IS YES, the way every other flag stat in the project is read.
+	return AbilitySystem->GetNumericAttribute(Flag) > 0.0f;
+}
+
+float UCataclysmHealthDebt::AmountUnpayable(float Charge, float CurrentHealth,
+											float LeastHealthLeft)
+{
+	if (Charge <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// WHAT IS ABOVE THE FLOOR IS ALL THAT CAN BE TAKEN. A character already at
+	// or below it has nothing available, so the whole charge is owed, and the
+	// max is what stops a character below the floor being credited a negative
+	// amount that would then be subtracted from what it owes.
+	const float Available = FMath::Max(0.0f, CurrentHealth - LeastHealthLeft);
+	return FMath::Max(0.0f, Charge - Available);
+}
+
+float UCataclysmHealthDebt::ClearOnDroppingLow(AActor* Character)
+{
+	if (!Character)
+	{
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Flag = UCataclysmClassResourceAttributeSet
+		::GetDebtClearedOnDroppingLowAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return 0.0f;
+	}
+
+	// EVERY OTHER CHARACTER'S DEBT IS UNTOUCHED BY FALLING LOW. Issue #1069.
+	// The design gives a health crossing this job for one capstone option; for
+	// anybody else a debt is meant to be paid, which is the same argument
+	// `ClearOnKill` makes about a kill.
+	//
+	// ASKED FOR RATHER THAN READ, the standing rule for anything a later node
+	// might condition. The one row today carries none.
+	//
+	// AND THE FALLBACK IS THE ATTRIBUTE'S OWN VALUE RATHER THAN ZERO, which is
+	// the distinction `UCataclysmDamageConversion::RuleApplies` draws and the
+	// one that is easy to get backwards. `StatForSkill` answers with the
+	// fallback when no stat line has been recorded for this character at all,
+	// which is ordinary rather than a fault. This row carries no condition and
+	// no tags, so it IS folded into the attribute, and passing zero would throw
+	// the answer away in exactly the case the fallback exists for. The stats
+	// that pass zero are the ones whose rows carry a condition, which is never
+	// folded in.
+	if (AbilitySystem->StatForSkill(FName(ClearedOnDroppingLowStat),
+									FGameplayTagContainer(),
+									AbilitySystem->GetNumericAttribute(Flag))
+		<= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Owed =
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Owed))
+	{
+		return 0.0f;
+	}
+
+	const float Amount = AbilitySystem->GetNumericAttribute(Owed);
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// ALL OF IT, BECAUSE THE OPTION SAYS "ALL OUTSTANDING DEBT". A share would
+	// need a number the sentence does not give.
+	//
+	// AND THE DUE TIME GOES WITH IT, the same pair `ClearOnKill` writes. Leaving
+	// the due time behind would have the regeneration step ask on every step for
+	// the rest of the character's life whether a debt of nothing had fallen due.
+	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
+	AbilitySystem->ClearHealthDebtDue();
+
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("%s cleared a health debt of %.1f by dropping to low health."),
+		   *Character->GetName(), Amount);
+
+	return Amount;
 }

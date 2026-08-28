@@ -124,6 +124,28 @@ enum class ECataclysmStatCondition : uint8
 	HealthBelowPercent		UMETA(DisplayName = "Health Below Percent"),
 
 	/**
+	 * The character's health is STRICTLY above `ConditionValue` percent of its
+	 * maximum. Issue #1070.
+	 *
+	 * THE FIRST HEALTH PREDICATE THAT POINTS UPWARDS. The two above both ask
+	 * whether health has fallen far enough. The Second Vow's third option,
+	 * Ceaseless Penance, asks the other question: "Debuffs on you no longer
+	 * expire while you are above 50% health."
+	 *
+	 * NOT `HealthAtOrBelowPercent` NEGATED. The two really are complements --
+	 * strictly above 50 and at or below 50 cover every character between them --
+	 * but a modifier carries one predicate and there is no "not", so a node
+	 * wanting the upper side needs an enumerator that says so.
+	 *
+	 * AN UNKNOWN READING REFUSES, exactly as it does for the two above, and the
+	 * guard cannot be folded into the comparison here either: an unknown health
+	 * reads -1, which is not above any threshold, so this one would refuse by
+	 * accident rather than on purpose. Saying it outright is what keeps the
+	 * three predicates reading alike.
+	 */
+	HealthAbovePercent		UMETA(DisplayName = "Health Above Percent"),
+
+	/**
 	 * The character paid a health cost within the last `ConditionValue` seconds.
 	 *
 	 * A WINDOW THAT OPENS ON AN EVENT AND SHUTS BY ITSELF, which is the second

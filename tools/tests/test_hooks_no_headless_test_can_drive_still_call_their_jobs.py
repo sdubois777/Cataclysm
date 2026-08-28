@@ -1,10 +1,11 @@
 """Work hung on a hook no automation test can reach is actually called.
 
-WHY THIS EXISTS. Two functions in this project are where work gets hung that
+WHY THIS EXISTS. Three functions in this project are where work gets hung that
 happens because something occurred rather than because a character acted:
 
-  ACataclysmCharacterBase::RegenerationStep   time passed
-  ACataclysmEnemyCharacter::HandleDeath       a creature died
+  ACataclysmCharacterBase::RegenerationStep     time passed
+  ACataclysmEnemyCharacter::HandleDeath         a creature died
+  UCataclysmVitalAttributeSet::NotifyHealthChanged   health moved
 
 Each job on them is a free function taking the character, so
 `game/Source/Cataclysm/Tests/` can call one directly and check what it does.
@@ -43,6 +44,7 @@ import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CHARACTER = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+ABILITY_SYSTEM = REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
 
 #: Each hook, the file it lives in, and every job it is expected to run.
 #:
@@ -70,6 +72,9 @@ HOOKS = {
                 "the nova a character at very low health releases, issue #1050",
             "UCataclysmContagion::AuraStep":
                 "the aura that puts a debuff on whatever stands near, #1057",
+            "UCataclysmDebuffs::HoldStep":
+                "the debuffs on a character being held still rather than "
+                "counting down, issue #1070",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",
@@ -119,6 +124,34 @@ HOOKS = {
             "TouchNode(Node)":
                 "the decision between spending a point and offering a "
                 "capstone's three options, issue #1064",
+        },
+        "questions": set(),
+    },
+    # A FOURTH HOOK, AND IT IS AN ATTRIBUTE SET'S NOTIFICATION. Issue #1070. It
+    # fires on every write to health, which is what a health THRESHOLD BEING
+    # CROSSED needs, and two capstone options now hang off it: one watches half
+    # health and one watches a fifth of it.
+    #
+    # WHY NO HEADLESS TEST DRIVES IT. It is called from
+    # `PostGameplayEffectExecute`, so reaching it means building and applying a
+    # real gameplay effect spec. Every test of either crossing writes health
+    # with `SetNumericAttributeBase` and then calls the crossing function by
+    # hand, which is exactly the shape issue #1054 was: the tests would all pass
+    # with the call deleted and neither option would fire in play.
+    #
+    # `CataclysmDamageConversionTests.cpp` SAYS SO IN ITS OWN HEADER, that the
+    # call site is proved "by breaking the call site and watching a test fail".
+    # That is a one-off proof somebody has to remember to repeat. This is the
+    # standing check.
+    "UCataclysmVitalAttributeSet::NotifyHealthChanged": {
+        "file": ABILITY_SYSTEM / "CataclysmVitalAttributeSet.cpp",
+        "jobs": {
+            "UCataclysmDamageConversion::NoteHealthChanged":
+                "the drop below half health that turns damage into Bleeding, "
+                "issue #985",
+            "UCataclysmLowHealthRelief::NoteHealthChanged":
+                "the drop to low health that clears a debt and grants "
+                "Fervour, issue #1069",
         },
         "questions": set(),
     },

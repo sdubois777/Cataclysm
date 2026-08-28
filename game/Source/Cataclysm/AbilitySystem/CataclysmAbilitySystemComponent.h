@@ -454,6 +454,54 @@ public:
 	}
 
 	/**
+	 * Whether this character's health was above the low threshold the last time
+	 * it moved. Issue #1069.
+	 *
+	 * A SECOND MEMORY AND NOT A REUSE OF THE ONE ABOVE, because the two nodes
+	 * watch different lines. The Breaking Point watches half health and Rock
+	 * Bottom watches a fifth of it, so a character holding both crosses them at
+	 * different moments; one shared record would report the second crossing at
+	 * the wrong time or not at all. `UCataclysmLowHealthRelief::HealthShare`
+	 * says where this line is.
+	 *
+	 * TRUE TO BEGIN WITH, for the reason the memory above is: a character is
+	 * created at full health and has not dropped anywhere yet.
+	 */
+	bool WasAboveLowHealth() const
+	{
+		return bWasAboveLowHealth;
+	}
+
+	/** Record where health is now, for the next comparison. */
+	void NoteAboveLowHealth(bool bAbove)
+	{
+		bWasAboveLowHealth = bAbove;
+	}
+
+	/**
+	 * Whether this character may be given the low health relief now.
+	 * Issue #1069.
+	 *
+	 * ROCK BOTTOM'S "no more than once every 30 seconds", and this is the whole
+	 * of what enforces it. The shape is `MayReleaseNova`'s beside it: a
+	 * timestamp read when it is asked about rather than a timer that fires.
+	 *
+	 * NEVER TAKEN IS ALLOWED, so the first crossing of a fight is honoured.
+	 * NO WORLD MEANS NO CLOCK AND SO NO RELIEF, which is the safe direction and
+	 * the same refusal every other window in this file makes.
+	 */
+	bool MayTakeLowHealthRelief() const;
+
+	/** Record that it was taken, so the next waits `CooldownSeconds`. */
+	void NoteLowHealthReliefTaken(float CooldownSeconds);
+
+	/** When the next one may come, in world seconds. For tests. */
+	float LowHealthReliefAllowedAt() const
+	{
+		return LowHealthReliefNextAllowedSeconds;
+	}
+
+	/**
 	 * Whether this character may release a nova now. Issue #1050.
 	 *
 	 * THE MASOCHIST'S Unstable Aura RELEASES ONE "every 5 seconds", and this
@@ -712,6 +760,27 @@ protected:
 
 	/** Where health was the last time it moved. See `WasAboveHalfHealth`. */
 	bool bWasAboveHalfHealth = true;
+
+	/**
+	 * Where health was against the LOW line the last time it moved. Issue
+	 * #1069. See `WasAboveLowHealth` for why this is a second field and not the
+	 * one above read against a different number.
+	 */
+	bool bWasAboveLowHealth = true;
+
+	/**
+	 * The earliest world time this character may be given the low health relief
+	 * again. Issue #1069, Rock Bottom.
+	 *
+	 * A THIRD TIMESTAMP AND NOT ONE OF THE TWO ABOVE, for the reason the aura's
+	 * is not the nova's: the intervals differ, a character can hold every one of
+	 * these nodes at once, and sharing a timestamp would have each reset the
+	 * others.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as its neighbours, so the first
+	 * crossing after the option is taken is honoured at once.
+	 */
+	float LowHealthReliefNextAllowedSeconds = -1.0f;
 
 	/**
 	 * How far the CURRENT debt has already been pushed out, in seconds.

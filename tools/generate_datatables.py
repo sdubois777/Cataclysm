@@ -2473,6 +2473,24 @@ CONDITIONS = {
     # constant and says why.
     "health_below": (0.0, 100.0, "a percentage of maximum health"),
 
+    # "while you are above 50% health" is `health_above` with 50. Issue #1070.
+    #
+    # THE THIRD HEALTH PREDICATE AND THE FIRST THAT POINTS UPWARDS. The two
+    # above both ask whether health has fallen far enough; Ceaseless Penance is
+    # the only node in the game that asks whether it is still high, and it is a
+    # STATE rather than an event: a character that heals back above the
+    # threshold is holding its debuffs again, and one that falls below it is not.
+    #
+    # NOT `health_at_or_below` READ BACKWARDS. Strictly above 50 and at or below
+    # 50 are complements, so the two cover every character between them, but a
+    # row carries one predicate and the stat pipeline has no "not". A node
+    # wanting "above" needs a predicate that says so.
+    #
+    # STRICTLY ABOVE, BECAUSE THE OPTION WRITES "above". The same boundary
+    # `skill_health_cost_above` draws and for the same reason: a character
+    # sitting exactly on half health is not above it, so its debuffs expire.
+    "health_above": (0.0, 100.0, "a percentage of maximum health"),
+
     # "for 2 seconds after you pay a health cost" is
     # `seconds_after_health_cost` with 2. The upper bound is a sanity limit
     # rather than a design rule: the design's longest window is 5 seconds, and

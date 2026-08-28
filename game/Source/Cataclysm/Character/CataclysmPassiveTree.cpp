@@ -812,6 +812,21 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				Modifier.Condition = ECataclysmStatCondition::HealthBelowPercent;
 				Modifier.ConditionValue = Effect->ConditionValue;
 			}
+			else if (Effect->Condition.Equals(TEXT("health_above"),
+											  ESearchCase::IgnoreCase))
+			{
+				// AND THE OTHER SIDE OF THE SAME READING. Issue #1070. The
+				// Second Vow's third option, Ceaseless Penance, says "while you
+				// are above 50% health", and it is the only node in the game
+				// that asks whether health is still HIGH rather than whether it
+				// has fallen far enough.
+				//
+				// THE THIRD NAME BEGINNING "health_", so the note above about
+				// prefixes applies to it too: all three use `Equals`, so the
+				// order of these branches does not matter.
+				Modifier.Condition = ECataclysmStatCondition::HealthAbovePercent;
+				Modifier.ConditionValue = Effect->ConditionValue;
+			}
 			else if (Effect->Condition.Equals(
 						 TEXT("seconds_after_foreign_damage"),
 						 ESearchCase::IgnoreCase))

@@ -561,6 +561,33 @@ public:
 	FGameplayAttributeData DebuffDurationTaken;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffDurationTaken)
 
+	/**
+	 * Whether the debuffs on this character stop counting down. Issue #1070.
+	 * Zero for no, above zero for yes.
+	 *
+	 * THE MASOCHIST'S Ceaseless Penance IS ITS ONLY SOURCE, the third option of
+	 * The Second Vow: "Debuffs on you no longer expire while you are above 50%
+	 * health."
+	 *
+	 * A SEPARATE STAT FROM `DebuffDurationTaken` ABOVE, THOUGH BOTH ARE ABOUT
+	 * HOW LONG A DEBUFF LASTS. That one is a percentage applied ONCE, when the
+	 * effect is applied, and 100 means unchanged; there is no number in it that
+	 * means "for ever". This one is a rule that holds or does not hold from
+	 * moment to moment, and `UCataclysmDebuffs::HoldStep` acts on it several
+	 * times a second.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE AND NEVER READ OFF THE ATTRIBUTE. Its
+	 * row carries a health condition, so the attribute holds zero even for a
+	 * character that took the option, exactly as The Last Drop's two do.
+	 *
+	 * IT IS NOT ON THE CHARACTER SHEET, for the reason its neighbours are not:
+	 * no affix grants it, nothing scales it, no class line names it, and one
+	 * capstone option of one tree supplies it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_DebuffsDoNotExpire)
+	FGameplayAttributeData DebuffsDoNotExpire;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffsDoNotExpire)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_NovaDamageOfMissingHealth)
 	FGameplayAttributeData NovaDamageOfMissingHealth;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
@@ -708,6 +735,7 @@ protected:
 	UFUNCTION() void OnRep_RetaliationRadiusMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDurationTaken(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DebuffsDoNotExpire(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AuraDebuffDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffSpreadChance(const FGameplayAttributeData& OldValue);

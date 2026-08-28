@@ -419,6 +419,105 @@ public:
 	FGameplayAttributeData DamageToBleedingWindow;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
 
+	/**
+	 * Whether the part of a health cost this character cannot pay becomes a
+	 * debt instead of emptying its health. Issue #1069. Zero for no.
+	 *
+	 * THE MASOCHIST'S Rock Bottom IS ITS ONLY SOURCE, the first option of The
+	 * Second Vow: "A health cost can never reduce you below 1 health; anything
+	 * you cannot pay becomes health debt instead."
+	 *
+	 * IT PUTS A FLOOR THAT ALREADY EXISTS IN FRONT OF THE WHOLE CHARGE.
+	 * `UCataclysmSkillTemplate::LeastHealthAfterCurrentHealthCost` is already 1
+	 * and already stops the share measured against CURRENT health emptying the
+	 * bar. The share measured against MAXIMUM health has no floor and the design
+	 * allows it to kill. This flag applies the same floor to what is really
+	 * taken and hands the difference to `UCataclysmHealthDebt::Defer`.
+	 *
+	 * A FLAG AND NOT A REDUCTION, for the reason every flag beside it gives:
+	 * `UCataclysmStatPipeline::LessMultiplierFloor` is -99, so no modifier can
+	 * take a number to nothing, and this is a rule rather than a magnitude.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_UnpayableHealthCostBecomesDebt)
+	FGameplayAttributeData UnpayableHealthCostBecomesDebt;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt)
+
+	/**
+	 * Whether dropping to low health clears what this character owes.
+	 * Issue #1069. Zero for no.
+	 *
+	 * THE SECOND SENTENCE OF Rock Bottom: "Dropping below 20% health clears all
+	 * outstanding debt and grants 50 Fervour, no more than once every 30
+	 * seconds." `UCataclysmLowHealthRelief` is what reads it, and it holds the
+	 * 20% and the 30 seconds as constants, because a threshold crossed is an
+	 * EVENT and an event is not a condition on a modifier.
+	 *
+	 * TWO STATS FOR ONE SENTENCE, BECAUSE IT HAS TWO EFFECTS. This one says the
+	 * debt goes; `FervourOnDroppingLow` beside it says how much Fervour arrives.
+	 * They are separable in principle -- a later node could grant one without
+	 * the other -- and separating them is what lets each be tested alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_DebtClearedOnDroppingLow)
+	FGameplayAttributeData DebtClearedOnDroppingLow;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow)
+
+	/**
+	 * How much Fervour dropping to low health grants. Issue #1069.
+	 *
+	 * FIFTY FOR A CHARACTER HOLDING Rock Bottom AND ZERO FOR EVERYBODY ELSE, and
+	 * the zero is also how `UCataclysmLowHealthRelief` knows a character does not
+	 * hold the option. The same shape `aura_debuff_duration` uses.
+	 *
+	 * A FOURTH WAY INTO THE POOL, AND IT IS NEITHER A RATE NOR A SHARE. The
+	 * three in `GetRateAttributes` are rates: Fervour per point of health lost,
+	 * per point spent, and per second. `FervourPerCast` is a flat count granted
+	 * by an event and so is this, but the events differ -- a cast against a
+	 * health crossing -- so one stat could not mean both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourOnDroppingLow)
+	FGameplayAttributeData FervourOnDroppingLow;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow)
+
+	/**
+	 * Whether taking a hit grants this character a stack of Carnage.
+	 * Issue #1071. Zero for no.
+	 *
+	 * THE MASOCHIST'S Carnivore IS ITS ONLY SOURCE, the second option of The
+	 * Final Vow: "Every hit you take grants a stack of Carnage. Carnage has no
+	 * maximum, and each stack grants 2% more damage."
+	 *
+	 * IT CHANGES WHAT GRANTS A STACK RATHER THAN ADDING A KIND OF STACK. Carnage
+	 * already exists and is already granted, by killing an enemy while holding
+	 * more than 75 Fervour. This says that for this character the same stack is
+	 * earned by being hit instead, which is why it is a flag on the existing
+	 * kind and not a fourth entry in `ECataclysmStackKind`.
+	 *
+	 * BOTH TRIGGERS AT ONCE FOR A CHARACTER HOLDING BOTH, which is the plain
+	 * reading rather than a decision: the keystone says a kill grants a stack
+	 * and this says a hit does, and neither sentence takes the other away.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_CarnageFromDamageTaken)
+	FGameplayAttributeData CarnageFromDamageTaken;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken)
+
+	/**
+	 * Whether this character's Carnage has no upper limit. Issue #1071.
+	 * Zero for no.
+	 *
+	 * THE SECOND CLAUSE OF Carnivore, and a separate stat from the first for the
+	 * reason the debt pair above is separate: two rules, two rows, each testable
+	 * alone. A character given one without the other would still be a sentence
+	 * somebody could read.
+	 *
+	 * WHAT "NO MAXIMUM" REALLY IS. `UCataclysmStacks::CapForOn` answers
+	 * `UCataclysmStacks::NoMaximum` for a character holding this, which is the
+	 * largest number an int32 holds. See that constant for why calling it no
+	 * maximum is not a lie.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_CarnageHasNoMaximum)
+	FGameplayAttributeData CarnageHasNoMaximum;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum)
+
 	static TArray<FGameplayAttribute> GetAllAttributes();
 
 	/** The three rates above, without the pool. For a caller that wants to ask
@@ -444,4 +543,9 @@ protected:
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingOnLowHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageToBleedingWindow(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_UnpayableHealthCostBecomesDebt(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DebtClearedOnDroppingLow(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourOnDroppingLow(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CarnageFromDamageTaken(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CarnageHasNoMaximum(const FGameplayAttributeData& OldValue);
 };

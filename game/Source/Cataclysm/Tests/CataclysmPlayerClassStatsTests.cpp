@@ -508,6 +508,58 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("debuff_duration_taken"),
 		 TEXT("UCataclysmDebuffs::NormalDuration, with the Masochist's Symphony "
 			  "of Pain and Vessel of Plagues nodes lengthening it")},
+
+		// Issue #1069, Rock Bottom, the first option of the Masochist's third
+		// capstone. Three stats: whether a health cost this character cannot
+		// pay becomes debt, whether dropping to low health clears that debt,
+		// and how much Fervour the same drop grants. Zero for every class.
+		//
+		// NONE OF THE THREE ROWS CARRIES A CONDITION, so all three attributes
+		// really do hold the figure for a character holding the option, and all
+		// three are asked for through `StatForSkill` with the ATTRIBUTE as the
+		// fallback rather than zero. The Final Vow's two rows above pass zero
+		// instead, and the difference is exactly that: theirs carry a health
+		// condition and a conditional bonus is never folded into an attribute.
+		//
+		// NO CLASS LINE MAY EVER NAME ONE. A class that floored its costs at 1
+		// health would hand every character of that class a capstone decision,
+		// and the Fervour stat reading zero is also how
+		// `UCataclysmLowHealthRelief` knows a character does not hold the
+		// option at all.
+		{TEXT("unpayable_health_cost_becomes_debt"),
+		 TEXT("the Masochist's The Second Vow node, first option, as a flat "
+			  "modifier")},
+		{TEXT("debt_cleared_on_dropping_low"),
+		 TEXT("the Masochist's The Second Vow node, first option, as a flat "
+			  "modifier")},
+		{TEXT("fervour_on_dropping_low"),
+		 TEXT("the Masochist's The Second Vow node, first option, as a flat "
+			  "modifier")},
+
+		// Issue #1070, Ceaseless Penance, the third option of that same
+		// capstone. Whether the debuffs on this character stop counting down.
+		// Zero for every class AND zero for a character holding the option,
+		// because its row carries `health_above 50` -- so this one is asked for
+		// with a fallback of zero, unlike its three neighbours above.
+		{TEXT("debuffs_do_not_expire"),
+		 TEXT("the Masochist's The Second Vow node, third option, as a flat "
+			  "modifier")},
+
+		// Issue #1071, Carnivore, the second option of the Masochist's fourth
+		// capstone. Whether taking a hit grants a stack of Carnage, and whether
+		// Carnage has no maximum. Zero for every class, and neither row carries
+		// a condition.
+		//
+		// NO CLASS LINE MAY EVER NAME EITHER. A class whose every member earned
+		// Carnage from being hit would make the option's first clause grant
+		// nothing, and one whose every member held Carnage without limit would
+		// hand a capstone's second clause to a character that never took it.
+		{TEXT("carnage_from_damage_taken"),
+		 TEXT("the Masochist's The Final Vow node, second option, as a flat "
+			  "modifier")},
+		{TEXT("carnage_has_no_maximum"),
+		 TEXT("the Masochist's The Final Vow node, second option, as a flat "
+			  "modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

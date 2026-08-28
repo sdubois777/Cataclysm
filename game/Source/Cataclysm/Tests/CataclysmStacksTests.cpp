@@ -397,4 +397,129 @@ bool FCataclysmCarnageRealKillTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Carnivore: a hit taken, and a count with no ceiling
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarnivoreFromHitsTest,
+	"Cataclysm.Stacks.TakingAHitBuildsCarnageOnlyForCarnivore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarnivoreFromHitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// THE FIRST CLAUSE OF CARNIVORE. Issue #1071: "Every hit you take grants a
+	// stack of Carnage."
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+
+	// WITHOUT THE OPTION A HIT BUILDS BLOODLUST AND NOTHING ELSE. This half is
+	// what says the new grant is scoped to the option rather than handed to
+	// every character in the game.
+	Stacks::NoteDamageTaken(Holder.AbilitySystem);
+	TestEqual(TEXT("a hit builds a Bloodlust stack for anybody"),
+			  Holder.Held(ECataclysmStackKind::Bloodlust), 1);
+	TestEqual(TEXT("and no Carnage for a character without Carnivore"),
+			  Holder.Held(ECataclysmStackKind::Carnage), 0);
+
+	// AND WITH IT THE SAME EVENT BUILDS BOTH.
+	Holder.AbilitySystem->SetNumericAttributeBase(
+		Resource::GetCarnageFromDamageTakenAttribute(), 1.0f);
+
+	Stacks::NoteDamageTaken(Holder.AbilitySystem);
+	TestEqual(TEXT("with Carnivore the same hit builds Carnage"),
+			  Holder.Held(ECataclysmStackKind::Carnage), 1);
+	TestEqual(TEXT("and still builds Bloodlust beside it"),
+			  Holder.Held(ECataclysmStackKind::Bloodlust), 2);
+
+	// AND THE TWO KEEP THEIR OWN WINDOWS. Bloodlust runs 5 seconds and Carnage
+	// 8, so six seconds after the last hit one is gone and the other is not.
+	// This is what says they are still two kinds rather than one counted twice.
+	World->TimeSeconds += 6.0f;
+	TestEqual(TEXT("Bloodlust has run out after six seconds"),
+			  Holder.Held(ECataclysmStackKind::Bloodlust), 0);
+	TestEqual(TEXT("and Carnage has not"),
+			  Holder.Held(ECataclysmStackKind::Carnage), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarnivoreNoMaximumTest,
+	"Cataclysm.Stacks.CarnivoreLiftsTheCarnageCapAndNoOtherCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCarnivoreNoMaximumTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// THE SECOND CLAUSE OF CARNIVORE. Issue #1071: "Carnage has no maximum."
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+
+	// THE DESIGN'S NUMBER IS WHAT EVERY CHARACTER GETS.
+	TestEqual(TEXT("Carnage caps at ten without the option"),
+			  Stacks::CapForOn(Holder.AbilitySystem,
+							   ECataclysmStackKind::Carnage), 10);
+
+	Holder.AbilitySystem->SetNumericAttributeBase(
+		Resource::GetCarnageHasNoMaximumAttribute(), 1.0f);
+
+	TestEqual(TEXT("and has no maximum with it"),
+			  Stacks::CapForOn(Holder.AbilitySystem,
+							   ECataclysmStackKind::Carnage),
+			  Stacks::NoMaximum);
+
+	// AND IT LIFTS ONLY CARNAGE'S. A flag that raised every cap would pass a
+	// test of Carnage alone, and Blood Offering would silently stop capping.
+	TestEqual(TEXT("Bloodlust still caps at five"),
+			  Stacks::CapForOn(Holder.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 5);
+	TestEqual(TEXT("and Sanguine Momentum at five"),
+			  Stacks::CapForOn(Holder.AbilitySystem,
+							   ECataclysmStackKind::SanguineMomentum), 5);
+
+	// AND THE COUNT REALLY PASSES TEN IN PLAY. `CapForOn` answering a large
+	// number proves nothing on its own: what matters is that a character being
+	// hit over and over holds more than the ten `CapFor` allows. Thirty hits,
+	// which is well past it and is a number a crowded room reaches.
+	Holder.AbilitySystem->SetNumericAttributeBase(
+		Resource::GetCarnageFromDamageTakenAttribute(), 1.0f);
+	for (int32 Hit = 0; Hit < 30; ++Hit)
+	{
+		Stacks::NoteDamageTaken(Holder.AbilitySystem);
+	}
+	TestEqual(TEXT("thirty hits are thirty stacks of Carnage"),
+			  Holder.Held(ECataclysmStackKind::Carnage), 30);
+
+	// AND BLOODLUST, EARNED BY THE SAME THIRTY HITS, IS STILL HELD AT FIVE.
+	// The two counts are moved by one event, so a cap lifted for both would
+	// look exactly like a cap lifted for one here.
+	TestEqual(TEXT("and Bloodlust is still capped at five"),
+			  Holder.Held(ECataclysmStackKind::Bloodlust), 5);
+
+	// AND THE WINDOW STILL ENDS IT. "No maximum" is not "for ever": thirty
+	// stacks lapse eight seconds after the last hit like any others.
+	World->TimeSeconds +=
+		Stacks::WindowSecondsFor(ECataclysmStackKind::Carnage) + 0.1f;
+	TestEqual(TEXT("and they still lapse when the window passes"),
+			  Holder.Held(ECataclysmStackKind::Carnage), 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

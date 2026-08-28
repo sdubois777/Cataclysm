@@ -1836,4 +1836,101 @@ bool FCataclysmPipelineStrictHealthThresholdTest::RunTest(const FString& Paramet
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthAboveTest,
+	"Cataclysm.StatPipeline.AboveAThresholdIsItsOwnPredicateAndPointsUpwards",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The third health predicate, and the only one that asks whether health is
+ * HIGH. Issue #1070.
+ *
+ * WHY IT EXISTS. The Second Vow's third option, Ceaseless Penance, reads
+ * "Debuffs on you no longer expire while you are above 50% health". Strictly
+ * above 50 and at or below 50 are complements, so the two cover every character
+ * between them -- but a modifier carries one predicate and the pipeline has no
+ * "not", so a node wanting the upper side needs an enumerator that says so.
+ */
+bool FCataclysmPipelineHealthAboveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	/** A flat 1 that applies only above a share of maximum health. #1070. */
+	auto AboveHealth = [](float Value, float Percent)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Value;
+		Modifier.Condition = ECataclysmStatCondition::HealthAbovePercent;
+		Modifier.ConditionValue = Percent;
+		return Modifier;
+	};
+
+	// EXACTLY HALF ITS HEALTH. Five hundred out of a thousand.
+	const FCataclysmStatConditions Exactly =
+		FCataclysmStatConditions::FromHealth(500.0f, 1'000.0f);
+	TestEqual(TEXT("the character is on exactly fifty per cent"),
+		Exactly.HealthPercent, 50.0f, 0.01f);
+
+	// STRICTLY ABOVE, SO SITTING ON THE LINE IS NOT ABOVE IT. That is the
+	// boundary the option's own word decides, and it is the one place this
+	// predicate and its complement have to agree about who gets what.
+	TestFalse(TEXT("above fifty excludes a character on fifty"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, Exactly));
+	TestTrue(TEXT("and at or below fifty includes it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrBelowPercent, 50.0f, Exactly));
+
+	// AND A HAIR ABOVE IT, IT HOLDS. That is what says the predicate is a
+	// boundary rather than broken outright.
+	const FCataclysmStatConditions JustOver =
+		FCataclysmStatConditions::FromHealth(501.0f, 1'000.0f);
+	TestTrue(TEXT("above fifty holds just over it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, JustOver));
+	TestTrue(TEXT("and at full health"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::HealthAbovePercent,
+								  50.0f, AtHealth(100.0f)));
+
+	// AND BELOW IT, IT DOES NOT.
+	TestFalse(TEXT("and not at a tenth of maximum health"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::HealthAbovePercent,
+								  50.0f, AtHealth(10.0f)));
+
+	// AN UNKNOWN STATE REFUSES, which is what the character sheet asks with. A
+	// conditional bonus folded into a gameplay attribute would be stale the
+	// moment health moved, so the sheet must not see it at all.
+	const FCataclysmStatConditions Unknown =
+		FCataclysmStatConditions::FromHealth(50.0f, 0.0f);
+	TestTrue(TEXT("no maximum health means nothing is known"),
+		Unknown.HealthPercent < 0.0f);
+	TestFalse(TEXT("and an unknown state refuses it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, Unknown));
+
+	// AND THE WHOLE PIPELINE AGREES WITH THE PREDICATE, which is the step that
+	// says the enumerator is really wired in rather than merely declared.
+	const TArray<FCataclysmStatModifier> Flag = { AboveHealth(1.0f, 50.0f) };
+	TestEqual(TEXT("the flag is worth one above half health"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags, AtHealth(60.0f)).Final,
+		1.0f, 0.01f);
+	TestEqual(TEXT("and nothing at half health"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags, AtHealth(50.0f)).Final,
+		0.0f, 0.01f);
+	TestEqual(TEXT("and nothing to a caller with no character at all"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags).Final, 0.0f, 0.01f);
+
+	// AND IT IS BOUNDED THE SAME WAY THE OTHER TWO ARE. A threshold of 150 is a
+	// modifier that never applies, which is the same silent failure reached
+	// from the opposite side.
+	TestTrue(TEXT("a threshold above 100 is reported"),
+		FPipeline::ValidateModifier(AboveHealth(1.0f, 150.0f))
+			.Contains(TEXT("health threshold")));
+	TestTrue(TEXT("and a legal one is not"),
+		FPipeline::ValidateModifier(AboveHealth(1.0f, 50.0f)).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
