@@ -881,7 +881,7 @@
       "data": {
         "kind": "keystone",
         "name": "Vessel of Plagues",
-        "description": "You can carry twice as many unique debuffs, and debuffs on you deal 50% more damage to you.",
+        "description": "Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

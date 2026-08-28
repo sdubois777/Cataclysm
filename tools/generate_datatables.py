@@ -2959,6 +2959,16 @@ ENGINE_SUPPLIED_BASES = {
     "damage_over_time_taken":
         "UCataclysmDamageCalculation::NormalDamageTaken, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",
+
+    # AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100 for
+    # normal. Issue #1033. The Masochist's Symphony of Pain adds 2% a point and
+    # its Vessel of Plagues adds 50%, and BOTH ARE `increased` ROWS, so without
+    # a base under them the stat would resolve to zero and every stun and every
+    # burn in the game would end the instant it landed. Issue #1025 records that
+    # exact failure happening to the conversion window.
+    "debuff_duration_taken":
+        "UCataclysmDebuffs::NormalDuration, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
 }
 
 

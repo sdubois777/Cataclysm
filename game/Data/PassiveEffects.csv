@@ -111,3 +111,7 @@ Masochist_capstone_50#1,Masochist_capstone_50,retaliation_leeches,flat,1.0,,,0.0
 Masochist_basic_ll_b2#1,Masochist_basic_ll_b2,nova_damage_of_missing_health,flat,1.0,,health_at_or_below,10.0,,0.0,0
 Masochist_capstone_200#5,Masochist_capstone_200,health_cost_suppressed,flat,1.0,,health_below,20.0,,0.0,1
 Masochist_capstone_200#6,Masochist_capstone_200,fervour_per_cast,flat,10.0,,health_below,20.0,,0.0,1
+Masochist_basic_fl_a2#1,Masochist_basic_fl_a2,debuff_duration_taken,increased,2.0,,,0.0,,0.0,0
+Masochist_basic_fl_a2#2,Masochist_basic_fl_a2,damage_over_time_taken,increased,-1.0,,,0.0,,0.0,0
+Masochist_keystone_fl_kA#1,Masochist_keystone_fl_kA,debuff_duration_taken,increased,50.0,,,0.0,,0.0,0
+Masochist_keystone_fl_kA#2,Masochist_keystone_fl_kA,damage_over_time_taken,more,50.0,,,0.0,,0.0,0

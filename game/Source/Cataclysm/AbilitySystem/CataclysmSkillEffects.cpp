@@ -4,6 +4,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For how long a lasting harmful effect really runs on its target, which is
+// the target's own stat rather than the attacker's. Issue #1033.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -803,8 +806,19 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
 		GetTransientPackage(), FName(TEXT("CataclysmDamageOverTime")));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	Effect->DurationMagnitude =
-		FGameplayEffectModifierMagnitude(FScalableFloat(Numbers.DurationSeconds));
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
+	// attacker's three stats above have decided what it deals and how often.
+	// Issue #1033. The other path is `ApplyTagForDuration`; both call this so
+	// that a stun and a burn cannot disagree.
+	//
+	// THE TICK LENGTH IS NOT SCALED WITH IT, so a longer burn is more ticks of
+	// the same size rather than the same number of slower ones. That is what
+	// makes a node lengthening an effect on the character worth something to a
+	// class paid per effect carried, and it matches how the attacker's own
+	// duration stat already behaves in `DamageOverTimeNumbers`.
+	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(
+		FScalableFloat(UCataclysmDebuffs::DurationOn(
+			Defender, Numbers.DurationSeconds)));
 	Effect->Period = FScalableFloat(Numbers.SecondsPerTick);
 
 	// False, so the first tick lands a second in rather than at once. Applying
@@ -1104,11 +1118,30 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 		return false;
 	}
 
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS. Issue
+	// #1033. Two Masochist nodes lengthen the harmful effects on the
+	// character itself, because eleven nodes in that branch pay it for each
+	// one it carries. Unchanged for every other character in the game.
+	//
+	// ONE OF THE TWO PATHS THAT APPLY A LASTING EFFECT, and the other is
+	// `ApplyDamageOverTime`. Honouring one and not the other would lengthen a
+	// stun and not a burn, or the reverse, with nothing reporting it.
+	const float OnTarget =
+		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+	if (OnTarget <= 0.0f)
+	{
+		// A DURATION THE TARGET'S STAT TOOK TO NOTHING APPLIES NOTHING, rather
+		// than applying an effect with no duration, which the engine would
+		// treat as lasting for ever. Unreachable today: nothing lowers the stat.
+		return false;
+	}
+
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
 		GetTransientPackage(),
 		FName(*FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString())));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
-	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(DurationSeconds));
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
 
 	MakeSingleStackTagged(Effect, EffectTag);
 

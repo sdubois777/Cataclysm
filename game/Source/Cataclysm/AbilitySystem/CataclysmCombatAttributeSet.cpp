@@ -88,6 +88,13 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// #1050. The Masochist's Unstable Aura is its only source, and this stays
 	// zero even for a character holding it, because that row carries a health
 	// condition and a conditional bonus is never folded into an attribute.
+	// AND A LASTING EFFECT RUNS FOR ITS NORMAL TIME. Issue #1033. A hundred
+	// means unchanged, the same as the two damage-taken stats below; a base of
+	// zero would end every stun and every burn in the game the instant it
+	// landed. A character built by `UCataclysmPlayerClassStats::ApplyTo` has
+	// this overwritten from `EngineSuppliedBases`, which states the same 100.
+	InitDebuffDurationTaken(100.0f);
+
 	InitNovaDamageOfMissingHealth(0.0f);
 
 	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
@@ -149,6 +156,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationRadiusMetres);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDurationTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
@@ -270,6 +278,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
+		GetDebuffDurationTakenAttribute(),
 		GetNovaDamageOfMissingHealthAttribute(),
 		GetMagicFindAttribute(), GetLootQuantityAttribute(),
 	};
@@ -311,6 +320,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

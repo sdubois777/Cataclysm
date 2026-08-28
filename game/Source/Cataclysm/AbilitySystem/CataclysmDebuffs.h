@@ -140,4 +140,43 @@ public:
 	 * damage over time.
 	 */
 	static bool IsBleeding(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The stat for how long a lasting harmful effect on this character runs,
+	 * as a percentage where 100 is normal. As
+	 * `game/Data/PassiveEffects.csv` spells it. Issue #1033.
+	 */
+	static const TCHAR* DurationStat;
+
+	/** What `DurationStat` holds for a character that has none of it. */
+	static constexpr float NormalDuration = 100.0f;
+
+	/**
+	 * How long an effect of this length really lasts on this character.
+	 *
+	 * THE DEFENDER'S STAT AND NOT THE ATTACKER'S, which is the whole point of
+	 * this function existing. Every other number about a lasting effect is the
+	 * attacker's -- how much it deals, how often it ticks, how long the
+	 * ATTACKER makes it last -- and this is the one thing the thing being hurt
+	 * decides. `dot_duration` is the attacker's side of the same question and
+	 * is a different stat.
+	 *
+	 * TWO NODES ASK FOR IT, both in the Masochist tree and both lengthening
+	 * rather than shortening: Symphony of Pain by 2% a point and Vessel of
+	 * Plagues by 50%. A Masochist WANTS harmful effects on itself, because
+	 * eleven nodes in that branch pay it for each one it carries.
+	 *
+	 * ASKED FOR RATHER THAN READ, so a future row carrying a condition works.
+	 * Neither row today carries one.
+	 *
+	 * BOTH PATHS THAT APPLY A LASTING EFFECT CALL IT, which is what issue
+	 * #1033 asked for: a build honouring one and not the other would lengthen
+	 * a burn and not a stun, or the reverse, and nothing would report it.
+	 *
+	 * @return the duration unchanged for every character in the game without
+	 *         one of those two nodes, and for any ability system with no
+	 *         combat attribute set
+	 */
+	static float DurationOn(const UAbilitySystemComponent* Defender,
+							float DurationSeconds);
 };

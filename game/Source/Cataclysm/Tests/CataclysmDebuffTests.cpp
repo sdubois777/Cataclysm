@@ -6,6 +6,9 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the stat saying how long a lasting effect on this character runs.
+// Issue #1033.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -63,6 +66,14 @@ namespace CataclysmDebuffTest
 				NewObject<UCataclysmVitalAttributeSet>(Actor);
 			AbilitySystem->AddAttributeSetSubobject(NewVitals);
 
+			// AND A COMBAT SET, WHICH IS WHERE THE DURATION STAT LIVES. Issue
+			// #1033. It changes nothing for the counting tests above: the stat
+			// starts at 100, which means unchanged, and a carrier without the
+			// set would have its durations left alone anyway.
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
 			AbilitySystem->SetNumericAttributeBase(
@@ -94,6 +105,38 @@ namespace CataclysmDebuffTest
 		}
 
 		int32 Count() const { return Debuffs::CountOn(AbilitySystem); }
+
+		/** Give this character the stat two Masochist nodes grant. #1033. */
+		void SetDurationStat(float Percent) const
+		{
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetDebuffDurationTakenAttribute(),
+				Percent);
+		}
+
+		/**
+		 * How long the longest effect running on this character lasts.
+		 *
+		 * READ OFF THE ACTIVE EFFECT RATHER THAN WAITED OUT. A world built by
+		 * `UWorld::CreateWorld` is never ticked, so no duration can expire here
+		 * however far the clock is pushed -- the same reason the expiry test
+		 * above removes its effect instead of waiting.
+		 *
+		 * THE LONGEST RATHER THAN THE ONLY ONE, because applying a stun also
+		 * applies a longer stun immunity beside it, and the caller wants the
+		 * one it asked for. Each test here uses a fresh carrier so nothing else
+		 * is running on it.
+		 */
+		float LongestEffect() const
+		{
+			float Longest = 0.0f;
+			for (float Seconds :
+				 AbilitySystem->GetActiveEffectsDuration(FGameplayEffectQuery()))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+			return Longest;
+		}
 
 		bool IsBleeding() const { return Debuffs::IsBleeding(AbilitySystem); }
 
@@ -367,6 +410,133 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffNoAbilitySystemTest,
 		Roots.HasTagExact(UCataclysmSkillEffects::StunnedTag()));
 	TestFalse(TEXT("stun immunity is not a root"),
 		Roots.HasTagExact(UCataclysmSkillEffects::StunImmuneTag()));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// How long a lasting harmful effect runs on the character it is put on
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmDebuffDurationArithmeticTest,
+	"Cataclysm.Debuffs.TheTargetsOwnStatDecidesHowLongAnEffectLasts")
+{
+	using namespace CataclysmDebuffTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Character(World);
+
+	// A HUNDRED MEANS UNCHANGED, which is what every character in the game holds.
+	TestEqual(TEXT("a character with the ordinary figure changes nothing"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 10.0f, 0.001f);
+
+	// AND THE TWO NODES THAT MOVE IT BOTH LENGTHEN. Symphony of Pain at its full
+	// eight points is 116, and Vessel of Plagues is 150.
+	Character.SetDurationStat(116.0f);
+	TestEqual(TEXT("Symphony of Pain at eight points makes ten seconds 11.6"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 11.6f, 0.001f);
+
+	Character.SetDurationStat(150.0f);
+	TestEqual(TEXT("and Vessel of Plagues makes it fifteen"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 15.0f, 0.001f);
+
+	// AND BOTH TOGETHER SUM RATHER THAN MULTIPLYING, because both rows join the
+	// increases bucket. 100 + 16 + 50 is 166, not 100 x 1.16 x 1.50.
+	Character.SetDurationStat(166.0f);
+	TestEqual(TEXT("and holding both is a sum of the two, not a product"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 16.6f, 0.001f);
+
+	// A STAT OF NOTHING ENDS AN EFFECT AT ONCE. Nothing today lowers this stat,
+	// and the arithmetic is checked anyway because the value is what decides
+	// whether the caller applies the effect at all.
+	Character.SetDurationStat(0.0f);
+	TestEqual(TEXT("a figure of nothing leaves no duration"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 0.0f, 0.001f);
+
+	// AND A NEGATIVE FIGURE IS FLOORED AT NOTHING RATHER THAN INVERTING. A
+	// negative duration would make the caller refuse the effect outright, which
+	// would read as immunity rather than as a very short effect.
+	Character.SetDurationStat(-50.0f);
+	TestEqual(TEXT("and a negative one is floored rather than inverted"),
+		Debuffs::DurationOn(Character.AbilitySystem, 10.0f), 0.0f, 0.001f);
+
+	// NO CHARACTER AT ALL CHANGES NOTHING, which is the answer for anything with
+	// no combat attribute set. A target that cannot hold the stat must not be a
+	// target that shortens everything put on it.
+	TestEqual(TEXT("nothing to ask leaves the duration alone"),
+		Debuffs::DurationOn(nullptr, 10.0f), 10.0f, 0.001f);
+
+	// AND AN EFFECT OF NO LENGTH STAYS THAT WAY.
+	TestEqual(TEXT("and no duration stays no duration"),
+		Debuffs::DurationOn(Character.AbilitySystem, 0.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmDebuffBothApplyPathsTest,
+	"Cataclysm.Debuffs.BothWaysOfApplyingALastingEffectHonourTheTargetsStat")
+{
+	using namespace CataclysmDebuffTest;
+
+	// THIS IS THE HALF ISSUE #1033 ASKED FOR BY NAME. Two functions put a lasting
+	// harmful effect on a character, and a build honouring one and not the other
+	// would lengthen a stun and not a burn, or the reverse, with nothing
+	// reporting it. Both are checked here against the same figure.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+
+	// ONE CARRIER PER PATH, so each holds exactly one active effect and the
+	// duration read back cannot be the other path's.
+	const FScopedCarrier Stunned(World);
+	const FScopedCarrier Burning(World);
+	const FScopedCarrier Untouched(World);
+
+	Stunned.SetDurationStat(150.0f);
+	Burning.SetDurationStat(150.0f);
+
+	const FGameplayTag Stun = Effects::StunnedTag();
+	if (!TestTrue(TEXT("the vocabulary has Stunned"), Stun.IsValid()))
+	{
+		return false;
+	}
+
+	// THE PATH THAT APPLIES A TAG: stuns, stun immunity and the skill templates.
+	TestTrue(TEXT("a ten second stun can be applied"),
+		Effects::ApplyTagForDuration(Attacker.Actor, Stunned.Actor, Stun, 10.0f));
+	TestEqual(TEXT("and it really runs for fifteen"),
+		Stunned.LongestEffect(), 15.0f, 0.01f);
+
+	// THE PATH THAT APPLIES DAMAGE OVER TIME: burning, and the Bleeding that
+	// dropping below half health creates.
+	//
+	// THE ATTACKER LEAVES THE LENGTH ALONE, which is what keeps this reading
+	// about the DEFENDER. Its own duration stat holds the ordinary 100, so the
+	// fifteen below is the defender's doing and not a product of the two.
+	TestTrue(TEXT("a ten second burn can be applied"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Burning.Actor,
+			/*DamagePerTick=*/10.0f, /*DurationSeconds=*/10.0f,
+			Effects::BurnTag()));
+	TestEqual(TEXT("and it really runs for fifteen too"),
+		Burning.LongestEffect(), 15.0f, 0.01f);
+
+	// AND A CHARACTER WITHOUT THE STAT GETS THE LENGTH THE ATTACKER SENT, which
+	// is what says the two readings above are the option and not a change to
+	// every effect in the game.
+	TestTrue(TEXT("a ten second stun on an ordinary character"),
+		Effects::ApplyTagForDuration(Attacker.Actor, Untouched.Actor, Stun,
+									 10.0f));
+	TestEqual(TEXT("runs for the ten seconds it was sent for"),
+		Untouched.LongestEffect(), 10.0f, 0.01f);
 
 	return true;
 }

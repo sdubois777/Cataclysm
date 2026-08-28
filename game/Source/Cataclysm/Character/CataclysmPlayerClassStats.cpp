@@ -19,6 +19,9 @@
 // For the three retaliation stat names, shared with the code that reads them
 // rather than spelled a second time here. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
+// For the stat naming how long a lasting effect on the character runs.
+// Issue #1033.
+#include "AbilitySystem/CataclysmDebuffs.h"
 // For the nova stat name. Issue #1050.
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
@@ -377,6 +380,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{FString(UCataclysmNova::DamageStat),
 			 Combat::GetNovaDamageOfMissingHealthAttribute()},
 
+			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS. Issue
+			// #1033. A hundred for every class, from `EngineSuppliedBases` below,
+			// and two Masochist nodes raise it. Here for the reason every other
+			// node-supplied stat is: `ApplyTo` loops over this map, so a stat
+			// missing from it is dropped before it reaches a character.
+			{FString(UCataclysmDebuffs::DurationStat),
+			 Combat::GetDebuffDurationTakenAttribute()},
+
 			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
 			// THEM. The three resistance families in game/Data/Affixes.csv are
 			// the only thing in the game that grants resistance and no class
@@ -594,6 +605,20 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 		 UCataclysmDamageCalculation::NormalDamageTaken},
 		{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
 		 UCataclysmDamageCalculation::NormalDamageTaken},
+
+		// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
+		// for normal. Issue #1033. The THIRD stat of this shape and it meets the
+		// same rule the two above do: no affix grants it, nothing scales it, no
+		// class differs on it, and two passive nodes of one tree are its only
+		// sources.
+		//
+		// A BASE IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR A BONUS. Both rows
+		// that move it are `increased`, so with no base under them the stat
+		// would resolve to zero and every stun and every burn in the game would
+		// end the instant it landed. Issue #1025 records exactly that failure
+		// happening to the conversion window.
+		{FName(UCataclysmDebuffs::DurationStat),
+		 UCataclysmDebuffs::NormalDuration},
 	};
 
 	return Map;
