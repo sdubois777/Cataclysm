@@ -93,6 +93,12 @@ public:
 	 * last drawn. A drop does not move, and the camera cannot travel far in
 	 * a frame, so the error is smaller than the name itself.
 	 *
+	 * A DROP FURTHER THAN TEN METRES AWAY IS NOT FOUND HERE AT ALL, since
+	 * issue #1116. DrawDropNames stopped naming those, and no name means no
+	 * rectangle. The project owner chose that on 2026-08-31: it also ends the
+	 * walk-and-collect that a click from beyond arm's reach used to start,
+	 * which is what Path of Exile and Last Epoch do.
+	 *
 	 * EMPTY WHEN NOTHING HAS BEEN DRAWN, which is every automation test:
 	 * AHUD::PostRender checks FApp::CanEverRender() and the test command
 	 * passes -nullrhi, so DrawHUD never runs. The judgement this makes is
@@ -198,7 +204,8 @@ private:
 	/** Every floating number that has not yet faded. */
 	void DrawDamageNumbers();
 
-	/** The name of every item lying on the floor, over where it lies. */
+	/** The name of every item lying on the floor within ten metres of the
+	 *  character, over where it lies. Issue #1116. */
 	void DrawDropNames();
 
 	/** One bar: a dark backing, then the filled share of it. */

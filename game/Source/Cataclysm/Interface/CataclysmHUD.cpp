@@ -795,29 +795,43 @@ void ACataclysmHUD::DrawDropNames()
 		return;
 	}
 
-	// EVERY DROP IN THE WORLD, ASKED FOR EACH FRAME rather than kept in a list
-	// here. A drop appears when something dies and goes away when it is picked
-	// up, and neither of those happens through this class; keeping a copy would
-	// be a second record of what is on the floor and a way for the two to
-	// disagree.
 	// REBUILT EVERY FRAME, because a name that was not drawn this frame is not
 	// clickable this frame. A drop behind the camera, or one just picked up, has
 	// to leave this list or a click at its old position would still find it.
 	DropNameRects.Reset();
 	DropsNamed.Reset();
 
+	// WHERE THE CHARACTER IS STANDING, because since issue #1116 a name is only
+	// drawn for a drop within ten metres of them.
+	//
+	// NOBODY TO MEASURE FROM DRAWS NOTHING, and it draws nothing AFTER the two
+	// lists have been emptied. Returning before that would leave last frame's
+	// rectangles in place and a click would still find drops through them.
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!LocalPawn)
+	{
+		return;
+	}
+
+	// WHICH DROPS ARE NEAR ENOUGH TO NAME IS DECIDED OUTSIDE THIS DRAW CALL, by
+	// UCataclysmDropPickup::DropsToName, which is where it can be tested with
+	// real drops at real distances. Nothing inside DrawHUD can be: AHUD checks
+	// FApp::CanEverRender() first and the automation command passes -nullrhi.
+	//
+	// ASKED FOR EACH FRAME rather than kept as a list here. A drop appears when
+	// something dies and goes away when it is picked up, and neither of those
+	// happens through this class; keeping a copy would be a second record of
+	// what is on the floor and a way for the two to disagree.
+	TArray<ACataclysmDroppedItem*> Nearby;
+	UCataclysmDropPickup::DropsToName(World, LocalPawn->GetActorLocation(),
+									  Nearby);
+
 	// MEASURED FIRST AND DRAWN AFTERWARDS, in two passes over the same list,
 	// because where a name goes depends on where the other names went. Drawing
 	// as they were found would print the first one before it was known that the
 	// third would land on top of it.
-	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	for (ACataclysmDroppedItem* Drop : Nearby)
 	{
-		ACataclysmDroppedItem* Drop = *It;
-		if (!Drop || Drop->DisplayName.IsEmpty())
-		{
-			continue;
-		}
-
 		const FVector Anchor = Drop->GetActorLocation()
 			+ FVector(0.0f, 0.0f, ACataclysmDroppedItem::NameHeightCm);
 

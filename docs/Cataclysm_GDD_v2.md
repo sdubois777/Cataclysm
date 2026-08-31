@@ -6245,6 +6245,10 @@ different and much darker background. Decided on 2026-08-19, issue #734, and
 
   
 
+**A name is drawn only for a drop within ten metres of the character, and a name that is not drawn cannot be clicked.** Ten metres sits between the three metres a click can reach from and the fifteen metres a crafting material comes from on its own, so a player reads a name, decides, and walks to it. Past ten metres there is no name and therefore no click target at all, which ends the walk-and-collect that a click from across a room used to start; that is what Path of Exile and Last Epoch do, where a ground label is only drawn within a radius of the character and a label you cannot see is a label you cannot click. Decided by the project owner on 2026-08-31 after a play session where the names covered the screen. Issue #1116.
+
+  
+
 `Niagara_Conventions.md` in this folder carries those as separate per-damage-type
 values alongside the two colours, exactly so the colour is one axis of five rather
 than the whole identity:
