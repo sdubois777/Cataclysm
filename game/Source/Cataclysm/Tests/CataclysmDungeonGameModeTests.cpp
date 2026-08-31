@@ -4,11 +4,18 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For killing a player and standing it back up, to see where it lands.
+// Issue #1103.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
@@ -910,6 +917,117 @@ bool FCataclysmDungeonModeEnemyScaleTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(
 		TEXT("and a larger scale puts more on it: %d against %d"),
 		WithMore, WithSome), WithMore > WithSome);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Where a player stands back up. Issue #1103
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonRevivalStandsAtTheEntranceTest,
+	"Cataclysm.DungeonMode.RevivingOnAGeneratedFloorStandsThePlayerAtItsEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonRevivalStandsAtTheEntranceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// WHAT WENT WRONG. Issue #1103, reported from play: "Whenever I die in the
+	// dungeon level, it spawns me outside of the map."
+	// `ACataclysmPlayerCharacter::HandleDeath` records the first `APlayerStart`
+	// in the level to stand back up at, and a dungeon floor is generated at run
+	// time, so the map's player start is nowhere near it.
+	//
+	// A TEST WORLD HAS NO PLAYER START AT ALL, so the recorded place is where
+	// the character fell, which this test moves away from the entrance on
+	// purpose. Without the fix the character comes back where it died; with it,
+	// at the entrance. The two assertions at the end are that pair.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	// A PLAYER STATE AS WELL AS A PAWN, because a player's ability system lives
+	// on the state and nothing can die without one.
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player state spawned"), PlayerState)
+		|| !TestNotNull(TEXT("a player character spawned"), Player))
+	{
+		return false;
+	}
+	Player->SetPlayerState(PlayerState);
+	Player->OnRep_PlayerState();
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Player);
+	if (!TestNotNull(TEXT("the player has an ability system"), AbilitySystem))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player starts at the entrance"),
+				  Mode->PlaceAtEntrance(Player)))
+	{
+		return false;
+	}
+	const FVector Entrance = Player->GetActorLocation();
+
+	// AND THEN IT WALKS OFF, which is what makes the check below mean something.
+	// A character that died standing on the entrance would land there whichever
+	// rule was used.
+	const FVector Away = Entrance + FVector(5'000.0f, 5'000.0f, 0.0f);
+	Player->SetActorLocation(Away);
+	TestTrue(TEXT("it is somewhere else now"),
+			 FVector::Dist2D(Player->GetActorLocation(), Entrance) > 1.0f);
+
+	// AND DIES THERE. Written rather than dealt, so the death is exact and this
+	// test measures where it stands back up rather than the damage pipeline.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("writing its health to zero killed it"),
+				  UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
+	// STOOD BACK UP BY HAND. `HandleDeath` schedules this on a timer and a world
+	// built by `UWorld::CreateWorld` is never ticked, so no timer in it fires.
+	Player->Revive();
+
+	TestFalse(TEXT("it is alive again"), UCataclysmSkillEffects::IsDead(Player));
+
+	const FVector StandingAgain = Player->GetActorLocation();
+
+	TestTrue(FString::Printf(
+		TEXT("it stands back up at the floor's entrance: at %s, the entrance is "
+			 "%s"),
+		*StandingAgain.ToCompactString(), *Entrance.ToCompactString()),
+		FVector::Dist2D(StandingAgain, Entrance) < 1.0f);
+
+	// SAID SEPARATELY, because this is the fault rather than a restatement of
+	// the line above. Before issue #1103 the character came back where it fell,
+	// which in the real dungeon level is the map's player start and is off the
+	// generated floor entirely.
+	TestTrue(TEXT("and not where it died"),
+			 FVector::Dist2D(StandingAgain, Away) > 1.0f);
 
 	return true;
 }

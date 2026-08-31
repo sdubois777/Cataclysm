@@ -518,11 +518,51 @@ void ACataclysmPlayerCharacter::Revive()
 
 	// MOVED BEFORE REFILLING, so a character that comes back in the middle of the
 	// pack that killed it is somewhere else by the time it has health to lose.
+
+	// IN A DUNGEON THE PLAYER START IS THE WRONG PLACE, AND IT IS WRONG BY A
+	// WHOLE FLOOR. Issue #1103. `HandleDeath` records the first `APlayerStart`
+	// in the level, which is right for a hand-built level and wrong for a
+	// generated one: a dungeon floor is generated at run time and the player
+	// start is wherever the map happens to have put it.
+	// `ACataclysmDungeonGameMode::StartPlay` says exactly that in its own
+	// comment -- "the player start is wherever the map put it, and where the
+	// player arrives is decided by the generator and is different every floor"
+	// -- and moves the player to the entrance when it first arrives. Reviving
+	// did not, so dying in `L_Dungeon` put the player off the floor.
+	//
+	// `PlaceAtEntrance` RATHER THAN A LOCATION OF OUR OWN, because standing a
+	// pawn on a floor is not a `SetActorLocation`. A character is a capsule
+	// whose origin is its middle, so it has to be raised by its own half height,
+	// read off the pawn because the designed classes are not all the same size.
+	// That arithmetic exists in one place already.
+	//
+	// FOUND BY WALKING THE LEVEL RATHER THAN BY `GetAuthGameMode`. Both find the
+	// same object in the running game, and only this one can be tested: the
+	// world `CataclysmTestWorld::MakeWorldThatHasBegunPlay` builds has no
+	// authority game mode on purpose, and `UWorld::AuthorityGameMode` is
+	// private, so no test can supply one. It is the same lookup `HandleDeath`
+	// makes to find a player start, and a revival happens once per death.
+	bool bPlacedByTheDungeon = false;
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<ACataclysmDungeonGameMode> It(World); It; ++It)
+		{
+			bPlacedByTheDungeon = It->PlaceAtEntrance(this);
+			break;
+		}
+	}
+
+	// AND EVERY OTHER LEVEL KEEPS WHAT IT HAD. `PlaceAtEntrance` also answers
+	// false inside a dungeon whose floor has not been built, which is worth
+	// falling back from rather than leaving the player wherever it fell.
 	// Swept off, because the destination is a spawn point and a sweep from where
 	// the body fell would stop against the first thing in the way.
-	SetActorLocationAndRotation(RespawnLocation, RespawnRotation,
-								/*bSweep=*/false, nullptr,
-								ETeleportType::TeleportPhysics);
+	if (!bPlacedByTheDungeon)
+	{
+		SetActorLocationAndRotation(RespawnLocation, RespawnRotation,
+									/*bSweep=*/false, nullptr,
+									ETeleportType::TeleportPhysics);
+	}
 
 	// THE THREE VITALS COME BACK FULL, NOT PARTIAL. No document says what a player
 	// comes back with, so the least surprising reading is the one every game in
