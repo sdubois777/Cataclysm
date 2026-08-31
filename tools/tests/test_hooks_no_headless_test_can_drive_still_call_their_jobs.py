@@ -184,7 +184,7 @@ HOOKS = {
 }
 
 
-def body_of(path: pathlib.Path, signature: str) -> str:
+def body_of(path: pathlib.Path, signature: str, returns: str = "void") -> str:
     """The body of one function, with every line comment removed.
 
     COMMENTS ARE STRIPPED BECAUSE THESE FUNCTIONS ARE MOSTLY COMMENT. Each job
@@ -192,6 +192,11 @@ def body_of(path: pathlib.Path, signature: str) -> str:
     of its own, and those paragraphs name the neighbouring jobs. A plain search
     would find `UCataclysmNova::Step` in the paragraph that explains the aura and
     pass with the call itself deleted.
+
+    `returns` DEFAULTS TO `void` BECAUSE EVERY HOOK ABOVE IS ONE. The death-log
+    check below reads `KillIfDebtExceedsHealth`, which answers `bool`, and
+    without this it reported the function as missing rather than as the wrong
+    shape -- which reads like the function was renamed.
     """
     if not path.is_file():
         pytest.skip(f"{path.name} is not present")
@@ -201,7 +206,7 @@ def body_of(path: pathlib.Path, signature: str) -> str:
     # THE OPENING BRACKET AND NOT AN EMPTY PAIR, because a hook may take an
     # argument. `HandleNodeClicked` takes the node that was clicked, and
     # searching for "()" found nothing and reported the function as missing.
-    opening = text.find(f"void {signature}(")
+    opening = text.find(f"{returns} {signature}(")
     assert opening != -1, (
         f"{path.name} no longer defines {signature}. If it was renamed, rename "
         "it here; if the hook is gone, every job listed for it needs a new home "
@@ -267,3 +272,63 @@ def test_the_jobs_are_pinned(hook: str) -> None:
         f"{sorted(unexpected)}. Add it to `jobs` with a plain description of "
         "what it does, so that deleting the call fails a test, or to "
         "`questions` if it only decides whether a job should run.")
+
+
+# ---------------------------------------------------------------------------
+# A log line is the same kind of thing as a hook's job
+# ---------------------------------------------------------------------------
+
+#: (file, return type, function, the wording, the state it must name, why)
+DEATHS_THAT_MUST_BE_LOGGED = [
+    (CHARACTER / "CataclysmPlayerCharacter.cpp", "void",
+     "ACataclysmPlayerCharacter::HandleDeath",
+     "died at",
+     "owing",
+     "a player dying, with the health it had and the health it owed"),
+    (ABILITY_SYSTEM / "CataclysmHealthDebt.cpp", "bool",
+     "UCataclysmHealthDebt::KillIfDebtExceedsHealth",
+     "died of it",
+     "owed",
+     "a character killed by owing more health than it had"),
+]
+
+
+@pytest.mark.parametrize("path,returns,signature,phrase,detail,what_it_says",
+                         DEATHS_THAT_MUST_BE_LOGGED,
+                         ids=[entry[2] for entry in DEATHS_THAT_MUST_BE_LOGGED])
+def test_a_death_is_written_to_the_log_at_a_level_play_shows(
+        path: pathlib.Path, returns: str, signature: str, phrase: str,
+        detail: str, what_it_says: str) -> None:
+    """A death says so in the log, and at a level a play session records.
+
+    WHY THIS IS IN THIS FILE. It is the same failure the rest of the file
+    guards, one step further out: work that only the running game does, that no
+    automation test can watch, and whose absence is silent. A test cannot read
+    the log, so nothing else would notice this being deleted or quietly dropped
+    back to `Verbose`.
+
+    WHAT WENT WRONG. Issue #1101. On 2026-08-31 the project owner asked what had
+    killed their character and the play session log could not say: nothing
+    recorded a player death at all, and the message saying a debt had killed
+    somebody was at `Verbose`, which is dropped. `LogCataclysm` is declared
+    `Log, All` in `game/Source/Cataclysm/Cataclysm.h` and no configuration file
+    raises it, so `Verbose` reaches nobody who is playing.
+    """
+    body = body_of(path, signature, returns)
+
+    assert "UE_LOG(LogCataclysm, Log," in body, (
+        f"{signature} does not log at `Log` level. It has to say {what_it_says},"
+        " and `Verbose` is dropped in a play session, so anything below `Log`"
+        " means the next person asking why they died reads the save file, the"
+        " passive tree data and the class stat line instead. Issue #1101.")
+
+    assert phrase in body, (
+        f"{signature} no longer says \"{phrase}\". That wording is what somebody"
+        f" greps a play session log for.")
+
+    assert detail in body, (
+        f"{signature} logs a death without saying \"{detail}\", so the line"
+        " names the event and not the state that caused it. Health owed is the"
+        " number that kills a character holding The Reckoning, and with that"
+        " keystone the health bar reads full the whole way down. Issues #1098"
+        " and #1100.")

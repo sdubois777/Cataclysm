@@ -339,7 +339,13 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 		return false;
 	}
 
-	UE_LOG(LogCataclysm, Verbose,
+	// AT `Log` AND NOT `Verbose`, UNLIKE EVERY OTHER MESSAGE IN THIS FILE.
+	// Issue #1101. The rest are per-cast bookkeeping and would fill a play
+	// session with one line per skill use; this one says a character died, which
+	// happens rarely and is what somebody reading a log is looking for. It was
+	// at `Verbose` when the project owner asked on 2026-08-31 what had killed
+	// them, and that is why the log could not say.
+	UE_LOG(LogCataclysm, Log,
 		   TEXT("%s owed %.1f health with %.1f left and died of it."),
 		   *Character->GetName(), Amount, Current);
 

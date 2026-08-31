@@ -404,6 +404,42 @@ void ACataclysmPlayerCharacter::HandleDeath()
 		return;
 	}
 
+	// AND THE LOG SAYS THE PLAYER DIED, WHICH IT DID NOT UNTIL ISSUE #1101.
+	//
+	// WHY THIS LINE EXISTS. On 2026-08-31 the project owner reported dying after
+	// two or three abilities and asked what had happened. The play session log
+	// could not answer it: nothing recorded a player death at all, and every
+	// message about a health cost, a debt and a death by debt is logged at
+	// `Verbose`, which is dropped. Working out the cause took reading the save
+	// file, the passive tree data and the class stat line.
+	//
+	// AT `Log` AND NOT `Verbose`, BECAUSE A PLAYER DYING IS NOT A DETAIL. It
+	// happens rarely enough to cost nothing, and it is the single line somebody
+	// reading a play session most needs.
+	//
+	// HEALTH OWED IS HERE AND IS THE POINT OF THE LINE. A Masochist holding The
+	// Reckoning dies when its debt passes its current health, and with that
+	// keystone no cost is ever taken from health -- so the health bar reads full
+	// the whole way down and only this number moves. Issues #1098 and #1100.
+	//
+	// INSIDE THE ONCE-ONLY GUARD, unlike the save write above it, so a burn
+	// ticking on a corpse does not print a second death.
+	if (const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent())
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("%s died at %.0f of %.0f health, owing %.0f health, with "
+					"%.0f class resource."),
+			   *GetName(),
+			   AbilitySystem->GetNumericAttribute(
+				   UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			   AbilitySystem->GetNumericAttribute(
+				   UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			   AbilitySystem->GetNumericAttribute(
+				   UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute()),
+			   AbilitySystem->GetNumericAttribute(
+				   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
+	}
+
 	// WHATEVER IT WAS DOING STOPS, which is the second of the three things
 	// `docs/DECISIONS.md` states an enemy's death is, and it transfers unchanged.
 	// DisableMovement clears the velocity too: UCharacterMovementComponent::
