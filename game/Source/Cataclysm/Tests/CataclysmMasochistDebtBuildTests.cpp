@@ -36,7 +36,7 @@
  * The five that decide what happens below, with the attribute each writes read
  * off `game/Data/PassiveEffects.csv`:
  *
- *   Deeper Cuts, 4 points       added_health_cost                    4  % of max
+ *   Deeper Cuts, 4 points       added_health_cost                    1  % of max
  *   Exsanguinate, keystone      added_health_cost_of_current        15  % of current
  *   Deferred Payment, 5 points  deferred_health_cost_share          50  %
  *   The Reckoning, keystone     deferred_health_cost_share         100  %
@@ -137,7 +137,7 @@ namespace CataclysmMasochistBuildTest
 		/** Deeper Cuts at 4 points and Exsanguinate, the two cost nodes. */
 		void TakeTheCostNodes() const
 		{
-			Set(Resource::GetAddedHealthCostAttribute(), 4.0f);
+			Set(Resource::GetAddedHealthCostAttribute(), 1.0f);
 			Set(Resource::GetAddedHealthCostOfCurrentAttribute(), 15.0f);
 		}
 
@@ -233,7 +233,7 @@ namespace CataclysmMasochistBuildTest
 // ---------------------------------------------------------------------------
 
 CATACLYSM_MASOCHIST_TEST(FCataclysmReckoningBuildKillsItsOwnerTest,
-	"Cataclysm.MasochistBuild.TheReckoningWithExsanguinateKillsItsOwnerInSixCasts")
+	"Cataclysm.MasochistBuild.TheReckoningWithExsanguinateKillsItsOwnerInSevenCasts")
 {
 	using namespace CataclysmMasochistBuildTest;
 
@@ -278,12 +278,19 @@ CATACLYSM_MASOCHIST_TEST(FCataclysmReckoningBuildKillsItsOwnerTest,
 		CastsSurvived = Cast;
 	}
 
-	// NOT AN ESTIMATE. 15% of current health plus 4% of maximum, with nothing
-	// ever taken from health, is 19% of the pool owed per cast, so the debt
-	// passes the pool on the sixth.
+	// NOT AN ESTIMATE. 15% of current health plus 1% of maximum, with nothing
+	// ever taken from health, is 16% of the pool owed per cast, so the debt
+	// passes the pool on the seventh.
+	//
+	// IT WAS THE SIXTH UNTIL ISSUE #1107, when Deeper Cuts went from 1% of
+	// maximum health a point to 0.25%, taking this character's four points from
+	// 4% of the pool a cast to 1%. One extra cast is all that bought a character
+	// who pays nothing out of health at all, which is the narrowest case the
+	// change helps: with The Reckoning the cost never leaves the health bar, so
+	// only the debt slows down.
 	TestTrue(TEXT("the character died of its own health costs"),
 			 Player.IsDead());
-	TestEqual(TEXT("after surviving five casts"), CastsSurvived, 5);
+	TestEqual(TEXT("after surviving six casts"), CastsSurvived, 6);
 
 	// AND NOT A POINT OF HEALTH WAS SPENT, which is the part that reads as a
 	// bug from inside the game: the health bar is full the whole way down.
@@ -294,7 +301,7 @@ CATACLYSM_MASOCHIST_TEST(FCataclysmReckoningBuildKillsItsOwnerTest,
 }
 
 CATACLYSM_MASOCHIST_TEST(FCataclysmReckoningBuildDiesSoonerWhenHurtTest,
-	"Cataclysm.MasochistBuild.TakingDamageFirstBringsTheDeathForwardToTheFourthCast")
+	"Cataclysm.MasochistBuild.TakingDamageFirstBringsTheDeathForwardToTheSixthCast")
 {
 	using namespace CataclysmMasochistBuildTest;
 
@@ -344,8 +351,8 @@ CATACLYSM_MASOCHIST_TEST(FCataclysmReckoningBuildDiesSoonerWhenHurtTest,
 
 	TestTrue(TEXT("the character died of its own health costs"),
 			 Player.IsDead());
-	TestEqual(TEXT("after surviving three casts rather than five"),
-			  CastsSurvived, 3);
+	TestEqual(TEXT("after surviving five casts rather than six"),
+			  CastsSurvived, 5);
 
 	return true;
 }

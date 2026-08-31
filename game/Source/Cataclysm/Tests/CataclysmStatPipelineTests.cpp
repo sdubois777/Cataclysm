@@ -1247,9 +1247,17 @@ bool FCataclysmPipelineSkillCostConditionTest::RunTest(const FString& Parameters
 	// in this file is "at or below" and includes its own number. This one
 	// excludes it, because the design writes "above 10%".
 	//
-	// IT IS REACHABLE RATHER THAN PEDANTIC. The Deeper Cuts node at its full ten
-	// points adds exactly 10% of maximum health to every skill, so a character
-	// with that node and no skill of its own cost lands precisely here.
+	// IT IS REACHABLE RATHER THAN PEDANTIC, AND WHAT REACHES IT HAS CHANGED.
+	// The Deeper Cuts node at its full ten points added exactly 10% of maximum
+	// health to every skill, so a character with that node and no cost of its
+	// own landed precisely here. Issue #1107 lowered that node to 0.25% a point,
+	// which is 2.5% over ten.
+	//
+	// EXSANGUINATE IS WHAT LANDS ON THE BOUNDARY NOW, and it does so by being
+	// hurt rather than by spending a point. It charges 15% of CURRENT health, so
+	// a character at exactly two thirds of its pool is paying 10% of its
+	// MAXIMUM, which is this line. A character walks across this threshold as it
+	// takes damage.
 	TestEqual(TEXT("a skill costing exactly the threshold gets nothing"),
 		FPipeline::Evaluate(100.0f, Modifiers, NoTags, SkillCosting(10.0f)).Final,
 		100.0f, 0.01f);

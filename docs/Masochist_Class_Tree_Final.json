@@ -1433,7 +1433,7 @@
       "data": {
         "kind": "basic",
         "name": "Deeper Cuts",
-        "description": "Your skills also cost 1% of your maximum health per point, in addition to any other cost. This cost generates Fervour like any other.",
+        "description": "Your skills also cost 0.25% of your maximum health per point, in addition to any other cost. This cost generates Fervour like any other.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 10

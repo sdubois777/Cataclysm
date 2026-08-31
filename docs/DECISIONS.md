@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — Deeper Cuts charges a quarter of what it did, because spending passive points made a Masochist weaker
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
+`docs/Masochist_Class_Tree_Final.json` and the generated
+`game/Data/PassiveEffects.csv`. Applied. Issue #1107.
+
+The project owner played a Masochist on 2026-08-31 and reported: *"before I
+allotted passive points I could go through and play just fine. And then after I
+did I was just losing so much health from my abilities + enemy damage that I
+didn't stand a chance."* They said separately that the number of enemies on the
+floor is fine.
+
+### What was measured
+
+The character had 2,989 maximum health. Water to Blood makes a skill's mana cost
+come out of health — it converts the pool, not the price — and two nodes add to
+it. A Heavy skill's first cast cost:
+
+```
+   15   the skill itself, 15 mana paid from health
+  448   Exsanguinate, 15% of CURRENT health
+  149   Deeper Cuts at 5 points, 5% of MAXIMUM health
+  ---
+  612   which is 20.5% of the whole pool
+```
+
+The clearest statement is the comparison with the mana the character was paying
+before it spent anything:
+
+| | Mana, before the points | Health, after them |
+| :-- | --: | --: |
+| A Heavy skill costs | 15 | 612 |
+| The pool it comes from | 644 | 2,989 |
+| **Share of the pool per cast** | **2.3%** | **20.5%** |
+| The pool refills at | 1.69% a second | 1.33% a second |
+| **Seconds of standing still to pay for one cast** | **1.4** | **15.3** |
+
+**The same skill cost eleven times as much time to pay for after the points were
+spent**, and the two pools refill at almost the same rate as a share of
+themselves, so the whole of the difference was the cost.
+
+### What was decided
+
+**Deeper Cuts (`Masochist_basic_bt_stem1`) goes from 1% of maximum health a point
+to 0.25%.** At its full ten points that is 2.5% of the pool a cast instead of
+10%.
+
+**Why that node and not the other one.** Exsanguinate charges a share of CURRENT
+health, so it shrinks as health falls and cannot empty a character on its own —
+`UCataclysmSkillTemplate::PayHealthCost` says so in its own comment, and the
+design draws the same distinction about Blood Pyre. Deeper Cuts charges a share
+of MAXIMUM health and does not shrink: at ten points it is 299 a cast for ever,
+whatever is left. It is the half that kills. Exsanguinate is also a keystone that
+pays 40% more damage for its cost and is meant to be a hard commitment.
+
+**What it buys, measured rather than estimated**, on the owner's own character:
+
+| | Before | After |
+| :-- | --: | --: |
+| First cast, at their 5 points | 613 | 501 |
+| Casts before an untouched pool is empty | 9 | 14 |
+| First cast, at the node's full 10 points | 762 | 538 |
+| Casts before an untouched pool is empty | 6 | 12 |
+
+**It roughly doubles how long a character can keep casting, and it does not make
+the first cast cheap.** Exsanguinate is 448 of the 501 that remains. If the first
+cast still reads as too expensive in play, that keystone is the next number to
+move, and this entry is the record that it was considered and left alone.
+
+**The number is a judgement.** A quarter was chosen so that the node's full ten
+points cost about the same as one Heavy skill's mana did as a share of its pool.
+`docs/Cataclysm_GDD_v2.md` already says these constants are tuned against real
+play.
+
+### What it changes elsewhere
+
+**Grand Tithe (`Masochist_basic_bt_b2`) can no longer be reached by Deeper Cuts
+alone**, and could only just be before. It asks for a health cost "above 10% of
+your maximum health"; Deeper Cuts at ten points added exactly 10%, which is not
+above it. Exsanguinate's 15% of current health is what passes the line, for any
+character above two thirds of its pool. Four test comments named Deeper Cuts as
+what reached that threshold and now name Exsanguinate.
+
+---
+
 ## 2026-08-31 — Brutal Determination grants the Masochist its base Life Leech, because the class has none and two nodes were increasing nothing
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),

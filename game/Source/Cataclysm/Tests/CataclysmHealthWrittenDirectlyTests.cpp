@@ -337,9 +337,9 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmLethalHealthCostKillsTest,
 		return false;
 	}
 
-	// TWICE THE WHOLE POOL. No node reaches this -- Deeper Cuts stops at ten
-	// percent over ten points -- but a cost that merely wounds would leave this
-	// test unable to tell a death from a survival.
+	// TWICE THE WHOLE POOL. No node reaches this -- Deeper Cuts stops at 2.5%
+	// over its ten points since issue #1107 -- but a cost that merely wounds
+	// would leave this test unable to tell a death from a survival.
 	Player.SetAddedHealthCostPercent(200.0f);
 
 	UCataclysmProjectileSkill* Skill = GrantAProjectile(Player);
