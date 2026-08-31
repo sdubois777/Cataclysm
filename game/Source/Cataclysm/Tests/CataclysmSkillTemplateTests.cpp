@@ -1795,6 +1795,77 @@ bool FCataclysmLethalHealthCostTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackCostsNoHealthTest,
+	"Cataclysm.Skills.TheBasicAttackPaysNoHealthCostBecauseItIsAutomatic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackCostsNoHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WHAT WENT WRONG. Issue #1110. `PayHealthCost` charged every skill
+	// activation and had no slot check, and the basic attack is a skill in a
+	// slot like any other. It is also AUTOMATIC: `ACataclysmPlayerCharacter`
+	// swings it at the weapon's attack speed whenever an enemy is in reach, and
+	// the design says "The basic attack is on no key... Nothing the player
+	// presses triggers it."
+	//
+	// So a Masochist holding Exsanguinate, which charges 15% of CURRENT health a
+	// skill, paid that on every automatic swing. The project owner reported on
+	// 2026-08-31: "I used my teleport a few times, then pressed e once, and
+	// instantly died. Nothing had hit me." At a Fist's 1.45 swings a second the
+	// automatic attack alone emptied a full health bar in about six seconds.
+	//
+	// TWO CASTERS AND NOT ONE, because a skill commits a cooldown when it is
+	// used, so a second activation on the same caster is refused and the failure
+	// names the activation rather than the health.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Automatic(World, FVector::ZeroVector);
+	FScopedFighter Pressed(World, FVector(4 * M, 0, 0));
+
+	// EXSANGUINATE, ON BOTH. 15% of current health per skill, which is the
+	// keystone's own figure.
+	for (const FScopedFighter* Who : {&Automatic, &Pressed})
+	{
+		Who->AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+		Who->AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+		Who->AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute(),
+			15.0f);
+	}
+
+	UCataclysmProjectileSkill* Swing = GrantSkill<UCataclysmProjectileSkill>(
+		Automatic, ECataclysmAbilitySlot::BasicAttack,
+		TEXT("Radius=3; Speed=0"), TEXT("The automatic basic attack"));
+	UCataclysmProjectileSkill* Button = GrantSkill<UCataclysmProjectileSkill>(
+		Pressed, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Speed=0"), TEXT("A skill on a key"));
+	if (!TestNotNull(TEXT("a basic attack was granted"), Swing)
+		|| !TestNotNull(TEXT("and a skill on a key"), Button))
+	{
+		return false;
+	}
+
+	// THE CONTROL COMES FIRST, because without it this test would pass just as
+	// well if the health cost machinery had stopped working altogether. The same
+	// keystone on the same pool, in a slot the player presses, still charges its
+	// 15% of current health.
+	TestTrue(TEXT("the skill on a key activates"), Activate(Pressed, Button));
+	TestEqual(TEXT("and it charged fifteen per cent of current health"),
+			  Pressed.Health(), 850.0f, 0.01f);
+
+	// AND THE BASIC ATTACK CHARGES NOTHING AT ALL.
+	TestTrue(TEXT("the basic attack activates"), Activate(Automatic, Swing));
+	TestEqual(TEXT("and the caster's health did not move"),
+			  Automatic.Health(), 1'000.0f, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRockBottomCostTest,
 	"Cataclysm.Skills.RockBottomLeavesOneHealthAndOwesTheRest",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
