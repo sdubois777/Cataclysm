@@ -346,6 +346,61 @@ bool FCataclysmDayClockResolveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDayClockSetResolveDaysTest,
+	"Cataclysm.DayClock.ACallerMaySupplyATimerAndItRefillsToWhatWasSupplied",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDayClockSetResolveDaysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDayClockTest;
+
+	UCataclysmDayClock* Clock = MakeClock();
+	if (!TestNotNull(TEXT("a day clock was made"), Clock))
+	{
+		return false;
+	}
+
+	// WHY A CALLER WOULD SUPPLY ONE. `ResolveDaysFor` gives the figure a depth
+	// deserves and nothing else. The model varies a real dungeon's timer by plus
+	// or minus 15%, rolled once when the dungeon is made, and that roll needs a
+	// source of chance -- which a clock has no business owning.
+	Clock->AddDungeon(1, /*Floors=*/10);
+	TestEqual(TEXT("a 10-floor dungeon starts with the timer its depth gives"),
+			  Clock->DaysUntilResolveFor(1), 26.0f, 0.001f);
+
+	TestTrue(TEXT("a caller supplies a shorter one"),
+			 Clock->SetResolveDays(1, 20.0f));
+	TestEqual(TEXT("and the timer is now that"),
+			  Clock->DaysUntilResolveFor(1), 20.0f, 0.001f);
+
+	// AND IT REFILLS TO WHAT WAS SUPPLIED, NOT TO WHAT THE DEPTH GIVES. This is
+	// the half that would be easy to leave out: a dungeon that resolved and then
+	// refilled to a different figure than it started with would behave as two
+	// different dungeons under one number.
+	const TArray<int32> Resolved = Clock->AdvanceDays(20);
+	TestEqual(TEXT("it resolves after the twenty days it was given"),
+			  Resolved.Num(), 1);
+	TestEqual(TEXT("and refills to twenty, not to the twenty-six its depth "
+				   "would give"),
+			  Clock->DaysUntilResolveFor(1), 20.0f, 0.001f);
+
+	// A TIMER THAT RESOLVES BEFORE THE DUNGEON EXISTS IS A MISTAKE RATHER THAN A
+	// SHORTER TIMER, so it is refused rather than clamped.
+	TestFalse(TEXT("a negative timer is refused"), Clock->SetResolveDays(1, -1.0f));
+	TestEqual(TEXT("and the timer is untouched"),
+			  Clock->DaysUntilResolveFor(1), 20.0f, 0.001f);
+
+	// ZERO IS ALLOWED, and means it resolves on the very next day.
+	TestTrue(TEXT("a timer of no days is allowed"), Clock->SetResolveDays(1, 0.0f));
+	TestEqual(TEXT("and it resolves on the next day"),
+			  Clock->AdvanceDay().Num(), 1);
+
+	TestFalse(TEXT("a dungeon the clock does not know cannot be given a timer"),
+			  Clock->SetResolveDays(999, 5.0f));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDayClockManyDungeonsTest,
 	"Cataclysm.DayClock.SeveralDungeonsCanRunOutOnTheSameDay",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

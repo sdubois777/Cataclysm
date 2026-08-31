@@ -146,20 +146,25 @@ def test_no_save_system_claim_is_still_true() -> None:
 
 
 def test_the_empire_layer_claim_is_still_true() -> None:
-    """`CataclysmEmpire` holds a day clock and an empire map, and nothing else.
+    """`CataclysmEmpire` holds a clock, a map, a surge scheduler and a day loop.
 
-    THE CLAIM NARROWS RATHER THAN GOING AWAY, AND HAS NOW DONE SO TWICE. It said
-    the module was empty until `UCataclysmDayClock` landed for issue #41, then
-    that it held only a clock until `UCataclysmEmpireMap` landed for issue #1081.
-    What is still true is what is still missing -- surges, the consequence of a
-    dungeon resolving, city upgrades and the empire upgrade tree -- and this is
-    what notices when that stops being true.
+    THE CLAIM NARROWS RATHER THAN GOING AWAY, AND HAS NOW DONE SO FOUR TIMES. It
+    said the module was empty until `UCataclysmDayClock` landed for issue #41,
+    then that it held only a clock until `UCataclysmEmpireMap` landed for issue
+    #1081, then only those two until `UCataclysmSurgeScheduler` landed for issue
+    #1083, then that nothing joined the three until `UCataclysmEmpireRun` landed
+    for issue #1084.
+
+    WHAT IS STILL TRUE IS THAT NO PART OF THE GAME STARTS A RUN. Nothing
+    constructs a `UCataclysmEmpireRun`, no console command shows one and no
+    screen draws one, so an empire only ever exists inside an automation test.
+    This is what notices when that stops being true.
 
     A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
     looks for is part of the sentence about what is missing rather than the old
     headline. Rewriting the bullet without saying what is missing turns this off.
     """
-    if "Surges, the" not in readme_text():
+    if "No part of the game starts a run" not in readme_text():
         pytest.skip("The readme no longer says what the empire layer is missing.")
 
     empire = GAME_SOURCE / "CataclysmEmpire"
@@ -173,6 +178,13 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmEmpireMap.h",
         "CataclysmEmpireMap.cpp",
         "CataclysmEmpireMapTests.cpp",
+        "CataclysmSurge.h",
+        "CataclysmSurge.cpp",
+        "CataclysmSurgeTests.cpp",
+        "CataclysmDungeonKind.h",
+        "CataclysmEmpireRun.h",
+        "CataclysmEmpireRun.cpp",
+        "CataclysmEmpireRunTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()
@@ -180,10 +192,42 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         if path.is_file() and path.name not in expected
     )
     assert not unexpected, (
-        "game/README.md still says the empire layer holds only a day clock and "
-        "an empire map, but game/Source/CataclysmEmpire/ now also holds: "
-        f"{', '.join(unexpected)}. Update that bullet in the 'What is not here "
-        "yet' section."
+        "game/README.md still says the empire layer holds a day clock, an empire "
+        "map, a surge scheduler and a day loop, but game/Source/CataclysmEmpire/ "
+        f"now also holds: {', '.join(unexpected)}. Update that bullet in the "
+        "'What is not here yet' section."
+    )
+
+
+def test_no_part_of_the_game_starts_an_empire_run() -> None:
+    """The other half of the empire bullet, and the half a file list cannot see.
+
+    THE MODULE COULD GAIN NOTHING AND THE CLAIM STILL GO STALE. The test above
+    fails when a file appears in `CataclysmEmpire`; this one fails when some
+    OTHER part of the game starts using what is already there. A game mode
+    building a run, or a console command printing one, would make "an empire only
+    ever exists inside an automation test" false without adding a single file to
+    that module.
+
+    WHAT COUNTS AS STARTING ONE is naming `UCataclysmEmpireRun` outside the
+    empire layer's own tests. That is broader than constructing one on purpose,
+    and deliberately so: anything that holds a run has to be described in the
+    readme, whether it built the run or was handed it.
+    """
+    if "No part of the game starts a run" not in readme_text():
+        pytest.skip("The readme no longer claims that nothing starts a run.")
+
+    users = [
+        name
+        for name in source_contains(r"\bUCataclysmEmpireRun\b")
+        if not name.startswith("game/Source/CataclysmEmpire/Empire/")
+        and not name.startswith("game/Source/CataclysmEmpire/Tests/")
+    ]
+
+    assert not users, (
+        "game/README.md says no part of the game starts an empire run, but these "
+        f"files name UCataclysmEmpireRun: {', '.join(users)}. Update that bullet "
+        "in the 'What is not here yet' section."
     )
 
 
