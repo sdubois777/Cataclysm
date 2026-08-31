@@ -359,6 +359,95 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmLethalHealthCostKillsTest,
 	return true;
 }
 
+CATACLYSM_HEALTH_WRITE_TEST(FCataclysmOverspendLeavesAHoleTest,
+	"Cataclysm.HealthWrite.AnOverspentCostLeavesTheBaseValueBelowZeroUntilTheRevival")
+{
+	using namespace CataclysmHealthWriteTest;
+
+	// THIS TEST RECORDS A FAULT RATHER THAN A RULE. Issue #1096. Every gameplay
+	// attribute has a BASE value and a CURRENT value. This set clamps health in
+	// `PreAttributeChange`, which the engine applies to the CURRENT value, and
+	// it does not override `PreAttributeBaseChange`, which is where the BASE
+	// value would be clamped. A charge larger than the health left therefore
+	// puts the base below zero while the current value reads a correct nought.
+	//
+	// AND `ApplyModToAttribute` WORKS FROM THE BASE, so healing afterwards
+	// fills that hole before it gives the character anything.
+	//
+	// WHY IT IS RECORDED HERE INSTEAD OF FIXED HERE. Fixing it means clamping
+	// the base value of every vital attribute, which is a different fault from
+	// the one this file is about and touches what every direct write to health,
+	// mana and energy shield may leave behind. Issue #1096 has the measurement
+	// and what a fix looks like.
+	//
+	// AND WHY IT DOES NOT SHOW IN PLAY. The last two assertions are the point:
+	// every route that overspends ends in a death, and `Revive` writes health
+	// with `SetNumericAttributeBase`, which SETS the base rather than adding to
+	// it. That is what wipes the hole. Before issue #971 the character did not
+	// die, so the hole stayed and healing was swallowed for as long as it lived.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player with an ability system"),
+				  Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// TWO HUNDRED LEFT, AND A CHARGE OF FIVE HUNDRED. The charge is half of the
+	// MAXIMUM, which is what makes it bigger than what is left.
+	Player.Set(Vital::GetHealthAttribute(), 200.0f);
+	Player.SetAddedHealthCostPercent(50.0f);
+
+	UCataclysmProjectileSkill* Skill = GrantAProjectile(Player);
+	if (!TestNotNull(TEXT("a granted skill"), Skill))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the skill activates"), Activate(Player, Skill));
+
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	const float Base = Player.AbilitySystem->GetNumericAttributeBase(Health);
+
+	// REPORTED AS WELL AS ASSERTED, so a run shows the number rather than only
+	// whether it was the expected one.
+	AddInfo(FString::Printf(
+		TEXT("after overspending 500 against 200, the health attribute's base "
+			 "value is %.2f and its current value is %.2f."),
+		Base, Player.Health()));
+
+	TestEqual(TEXT("the current value is a correct nought"), Player.Health(),
+			  0.0f, 0.01f);
+	TestEqual(TEXT("and the base value is three hundred below it, issue #1096"),
+			  Base, -300.0f, 0.01f);
+
+	// AND HEALING A HUNDRED GIVES NOTHING, which is what the hole costs.
+	Player.AbilitySystem->ApplyModToAttribute(Health, EGameplayModOp::Additive,
+											  100.0f);
+	TestEqual(TEXT("so healing a hundred gives nothing, issue #1096"),
+			  Player.Health(), 0.0f, 0.01f);
+
+	// THE DEATH AND THE REVIVAL ARE WHAT MAKE IT HARMLESS, and that is worth
+	// pinning: it is the reason issue #1096 is recorded rather than urgent.
+	TestTrue(TEXT("but overspending killed the character"), Player.IsDead());
+
+	Player.Character->Revive();
+
+	TestEqual(TEXT("and standing back up refills health"), Player.Health(),
+			  FullHealth, 0.01f);
+	TestEqual(TEXT("and sets the base value with it, so the hole is gone"),
+			  Player.AbilitySystem->GetNumericAttributeBase(Health), FullHealth,
+			  0.01f);
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // A debt falling due. Issue #971
 // ---------------------------------------------------------------------------
