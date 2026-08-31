@@ -146,19 +146,20 @@ def test_no_save_system_claim_is_still_true() -> None:
 
 
 def test_the_empire_layer_claim_is_still_true() -> None:
-    """`CataclysmEmpire` holds a day clock and nothing else.
+    """`CataclysmEmpire` holds a day clock and an empire map, and nothing else.
 
-    THE CLAIM NARROWED RATHER THAN GOING AWAY. It used to say the module was
-    empty and it was, until `UCataclysmDayClock` landed for issue #41. What is
-    still true is what is still missing -- cities, surges, the consequence of a
-    dungeon resolving, and the upgrade tree -- and this is what notices when that
-    stops being true.
+    THE CLAIM NARROWS RATHER THAN GOING AWAY, AND HAS NOW DONE SO TWICE. It said
+    the module was empty until `UCataclysmDayClock` landed for issue #41, then
+    that it held only a clock until `UCataclysmEmpireMap` landed for issue #1081.
+    What is still true is what is still missing -- surges, the consequence of a
+    dungeon resolving, city upgrades and the empire upgrade tree -- and this is
+    what notices when that stops being true.
 
     A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
     looks for is part of the sentence about what is missing rather than the old
     headline. Rewriting the bullet without saying what is missing turns this off.
     """
-    if "Cities, surges" not in readme_text():
+    if "Surges, the" not in readme_text():
         pytest.skip("The readme no longer says what the empire layer is missing.")
 
     empire = GAME_SOURCE / "CataclysmEmpire"
@@ -169,6 +170,9 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmDayClock.h",
         "CataclysmDayClock.cpp",
         "CataclysmDayClockTests.cpp",
+        "CataclysmEmpireMap.h",
+        "CataclysmEmpireMap.cpp",
+        "CataclysmEmpireMapTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()
@@ -176,9 +180,10 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         if path.is_file() and path.name not in expected
     )
     assert not unexpected, (
-        "game/README.md still says the empire layer holds only a day clock, but "
-        f"game/Source/CataclysmEmpire/ now also holds: {', '.join(unexpected)}. "
-        "Update that bullet in the 'What is not here yet' section."
+        "game/README.md still says the empire layer holds only a day clock and "
+        "an empire map, but game/Source/CataclysmEmpire/ now also holds: "
+        f"{', '.join(unexpected)}. Update that bullet in the 'What is not here "
+        "yet' section."
     )
 
 
