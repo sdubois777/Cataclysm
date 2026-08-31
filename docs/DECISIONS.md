@@ -20,6 +20,78 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — The empire run lives on the game instance, and a city on the overview reads as sealed, exposed or fallen
+
+**Affects:** `game/Config/DefaultEngine.ini`,
+`game/Source/Cataclysm/Player/CataclysmGameInstance.h`,
+`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h`, and the Key Screens
+list in section XIII of `Cataclysm_GDD_v2.md`. Applied. Issue #1087.
+
+Two decisions, taken together because the second needs the first.
+
+### Where a run lives
+
+Nothing owned an empire run. The three pieces of the strategy layer — the day
+clock, the empire map and the surge scheduler — were joined by
+`UCataclysmEmpireRun`, and nothing in the game constructed one, so an empire
+only ever existed inside an automation test.
+
+**It cannot be the game mode.** A game mode is created per level and destroyed
+with it, and the player walks out of the capital into a dungeon level and back
+forty days later. An empire that started over every time the level changed would
+not be an empire. `ACataclysmGameMode`'s own header already said as much: "This
+game has a run that ends when the capital falls or the boss dies, and the empire
+layer owns that."
+
+**It is a `UGameInstance` subclass**, which is created once when the game starts
+and destroyed when it quits. That is the lifetime a run wants. `UCataclysmGameInstance`
+is the first thing in this project whose lifetime is longer than a level's; until
+now `game/Config/DefaultEngine.ini` set `GlobalDefaultGameMode` and no game
+instance class at all, so the engine's own was used.
+
+**What was rejected.** The player state was considered and does not work either:
+it is per player and per level, and in co-operative play four players share one
+empire rather than holding four. A save record was considered and is a different
+question — a run has to exist in memory before anything can write it down, and
+`UCataclysmRunSave` still carries an `int32 Day` that nothing computes.
+
+### What a city says on the overview
+
+The design document asks for a "Main Empire Overview — shows all cities, active
+dungeons, next surge timer, empire status" and stops there. Three things had to
+be decided.
+
+**A city reads as one of three states, not two.** Sealed, exposed, or fallen.
+The obvious pair is "standing" and "fallen", and it throws away the rule the
+whole strategy layer is built on: a city behind a standing city cannot be
+attacked at all. Which cities are exposed IS the decision the empire layer asks
+of a player, and a screen that does not show it leaves them guessing at the only
+question it poses. The screen asks the map's own `IsExposed` rather than deciding
+for itself, so it cannot show a rule the game does not obey.
+
+**A city's box shows the SHARE of its defence, not the number.** A Sanctuary has
+8,000 defence and an Outpost 1,000. The raw figures cannot be compared by eye,
+and what a player has to decide is which city is closest to falling — which is a
+question about shares. A city with anything at all left rounds up rather than
+down, because a player told a city is at 0% would stop defending a city that is
+still savable.
+
+**The empire's state is stated as distance to defeat, not as cities lost.** The
+count of cities lost is the number a player will reach for and it is the wrong
+one: twenty Outposts scattered around the rim cost less than three in a line. The
+overview says how many more cities must fall before the Cataclysm reaches the
+Pillar, which is the number that actually decides the run.
+
+### What was not decided
+
+Whether the Demonic Cataclysm's rifts ignore the frontier in the vertical slice.
+The design document says Infernal Rifts spawn dungeons "without needing a direct
+path", and the Demonic is the only Cataclysm in the slice, so the lane rule this
+screen is built to show would never bind in the only content that exists. Issue
+#1085 records the question and it needs the project owner's answer.
+
+---
+
 ## 2026-08-28 — A debuff that does not expire has its countdown stopped, not its duration reset
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp`, the

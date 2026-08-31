@@ -181,7 +181,7 @@ by `git add` with no error and no warning. Guarded by
   **Nothing reads a save back at start-up**, because nothing chooses between
   starting a run and continuing one, so `ACataclysmGameMode` begins a fresh
   run each session and its files are never read.
-- **An empire layer that runs, that no part of the game starts.**
+- **An empire that only moves when a console command says so.**
   `CataclysmEmpire` holds four things. `UCataclysmDayClock` advances the day,
   counts every dungeon's resolve timer down and pauses the one the player is
   standing in (issue
@@ -201,17 +201,28 @@ by `git add` with no error and no warning. Guarded by
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind.
 
-  **No part of the game starts a run.** Nothing constructs a
-  `UCataclysmEmpireRun`, no console command shows one, and no screen draws one,
-  so an empire only ever exists inside an automation test. Nothing clears a
-  dungeon either: `ClearDungeon` is there for a finished dungeon run to call and
-  no dungeon run reaches it. A fallen city does not become a retakeable Dungeon
-  City (issue [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last
-  Stand does not fire when the path to the Pillar opens (issue
+  A run lives on `UCataclysmGameInstance`, which survives travelling between
+  levels, and `UCataclysmEmpireMapWidget` draws it: the 25 cities in their
+  diamond, each reading as sealed, exposed or fallen, with the day, the surge
+  countdown and how far the Cataclysm is from the Pillar (issue
+  [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
+  `Cataclysm.EmpireMap` opens it.
+
+  **Only a console command moves the day.** `Cataclysm.EmpireAdvance` is the one
+  thing in the game that passes time. Walking a dungeon costs one day a floor and
+  spending days at the forge costs its own, and neither reaches the empire layer,
+  so a player who never types that command sees an empire frozen on day 0.
+  Nothing clears a dungeon either: `ClearDungeon` is there for a finished dungeon
+  run to call and no dungeon run reaches it. Clicking a city does nothing,
+  because there is no city screen to open. A fallen city does not become a
+  retakeable Dungeon City (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
+  not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and city upgrades
   and the empire upgrade tree are still only the Python model in `sim/` (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). None of it is in a
-  save record: `UCataclysmRunSave` carries an `int32 Day` that nothing computes.
+  save record: `UCataclysmRunSave` carries an `int32 Day` that nothing computes,
+  so quitting the game loses the empire.
 
 ## Running the tests
 
