@@ -264,6 +264,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool AddDungeon(int32 DungeonId, int32 Floors);
 
+	/**
+	 * Replaces a dungeon's timer with a figure the caller worked out.
+	 *
+	 * WHY A CALLER WOULD. `ResolveDaysFor` gives the figure a depth deserves and
+	 * nothing else. The model varies a real dungeon's timer by plus or minus 15%,
+	 * rolled once when the dungeon is made, and that roll needs a source of
+	 * chance -- which a clock has no business owning. So whoever makes the
+	 * dungeon rolls it and says so here.
+	 *
+	 * IT SETS BOTH THE TIMER AND WHAT IT REFILLS TO, because a dungeon that
+	 * resolved and then refilled to a different figure than it started with would
+	 * be two dungeons wearing one number.
+	 *
+	 * @param Days how long from now. Below zero is refused; a dungeon that
+	 *             resolves before it exists is not a shorter timer, it is a
+	 *             mistake.
+	 * @return whether the clock knew that dungeon
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool SetResolveDays(int32 DungeonId, float Days);
+
 	/** The timer for a dungeon, or null if the clock does not know it. */
 	const FCataclysmDungeonTimer* FindTimer(int32 DungeonId) const;
 

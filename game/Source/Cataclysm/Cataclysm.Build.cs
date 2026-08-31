@@ -26,6 +26,25 @@ public class Cataclysm : ModuleRules
 			"InputCore",
 			"EnhancedInput",
 
+			// The empire and strategy layer.
+			//
+			// THE DEPENDENCY RUNS THIS WAY AND ONLY THIS WAY. CataclysmEmpire's
+			// own build file says so: the game module may use the empire layer,
+			// never the reverse. Adding it here is what that sentence always
+			// anticipated, and UCataclysmDayClock's header named the moment --
+			// "That dependency is allowed and is not needed yet."
+			//
+			// IT IS NEEDED NOW because ECataclysmDungeonType and
+			// ECataclysmDungeonSubType moved into that module. They were
+			// declared in Dungeon/CataclysmEnemyScore.h here, and what kind a
+			// dungeon is, is decided by the surge scheduler in the empire layer,
+			// which could not see them. Issue #1083.
+			//
+			// PUBLIC, NOT PRIVATE, because Dungeon/CataclysmEnemyScore.h and
+			// Player/CataclysmGameMode.h both name those enums in public
+			// headers, so anything depending on this module needs them too.
+			"CataclysmEmpire",
+
 			// Click-to-move. SimpleMoveToLocation and the path following
 			// component both live in AIModule, which is what actually walks a
 			// character along a navigation path. Without a NavMeshBoundsVolume in

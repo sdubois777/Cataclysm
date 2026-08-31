@@ -48,6 +48,36 @@ bool UCataclysmDayClock::AddDungeon(int32 DungeonId, int32 Floors)
 	return true;
 }
 
+bool UCataclysmDayClock::SetResolveDays(int32 DungeonId, float Days)
+{
+	if (Days < 0.0f)
+	{
+		// A DUNGEON THAT RESOLVES BEFORE IT EXISTS IS NOT A SHORTER TIMER. It is
+		// a mistake somewhere above, and refusing says so where accepting would
+		// bite a city on the day the dungeon arrived.
+		return false;
+	}
+
+	FCataclysmDungeonTimer* Timer = Timers.FindByPredicate(
+		[DungeonId](const FCataclysmDungeonTimer& Candidate)
+		{
+			return Candidate.DungeonId == DungeonId;
+		});
+
+	if (Timer == nullptr)
+	{
+		return false;
+	}
+
+	// BOTH, AND NOT ONLY THE ONE COUNTING DOWN. See the header: a dungeon that
+	// resolved and then refilled to a different figure than it started with
+	// would behave as two different dungeons under one number.
+	Timer->ResolveDays = Days;
+	Timer->DaysUntilResolve = Days;
+
+	return true;
+}
+
 const FCataclysmDungeonTimer* UCataclysmDayClock::FindTimer(int32 DungeonId) const
 {
 	return Timers.FindByPredicate(

@@ -3,49 +3,19 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Empire/CataclysmDungeonKind.h"
 #include "CataclysmEnemyScore.generated.h"
 
-/**
- * The four kinds of dungeon, from `docs/Cataclysm_GDD_v2.md` section VIII.
- *
- * THE ORDER IS THE ORDER THEY GET HARDER IN, and the numbers are deliberate: a
- * saved dungeon or a data table row that stores one of these stores the number,
- * so inserting a kind in the middle later would change what an existing value
- * means. Add to the end.
- */
-UENUM(BlueprintType)
-enum class ECataclysmDungeonType : uint8
-{
-	Basic       = 0,
-	Quest       = 1,
-	FallenCity  = 2	UMETA(DisplayName = "Fallen City"),
-	Cataclysm   = 3,
-};
-
-/**
- * What a dungeon does differently, from `docs/Cataclysm_GDD_v2.md` section VIII.
- *
- * `None` IS A REAL VALUE AND THE COMMON ONE. Most dungeons have no sub-type at
- * all, and the score model gives it a weight of zero rather than treating it as
- * missing data.
- *
- * TIMED CARRIES NO WEIGHT EITHER, and that is a design statement rather than an
- * oversight: the design document says "A time limit is a constraint on the
- * player rather than on the enemies, so it changes nothing about what an
- * encounter is worth."
- */
-UENUM(BlueprintType)
-enum class ECataclysmDungeonSubType : uint8
-{
-	None         = 0,
-	Timed        = 1,
-	Horde        = 2,
-	Siege        = 3,
-	CowLevel     = 4	UMETA(DisplayName = "Cow Level"),
-	Elite        = 5,
-	Volatile     = 6,
-	Sacrificial  = 7,
-};
+// `ECataclysmDungeonType` AND `ECataclysmDungeonSubType` USED TO BE DECLARED
+// HERE, and are now in `Empire/CataclysmDungeonKind.h` in the `CataclysmEmpire`
+// module, which is included above. Every file that includes this one still gets
+// both, unchanged and with the same numbering.
+//
+// They moved because what kind a dungeon is, is decided by the surge scheduler
+// in the empire layer, and `CataclysmEmpire` must not depend on `Cataclysm` --
+// so the empire layer could not see them here. Declaring a second copy would
+// have made one design fact into two numbers that could drift apart. That header
+// says the rest. Issue #1083.
 
 /**
  * Everything the Enemy Score model reads about where a fight is happening.

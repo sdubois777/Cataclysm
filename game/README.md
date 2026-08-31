@@ -181,19 +181,37 @@ by `git add` with no error and no warning. Guarded by
   **Nothing reads a save back at start-up**, because nothing chooses between
   starting a run and continuing one, so `ACataclysmGameMode` begins a fresh
   run each session and its files are never read.
-- **Almost no empire layer.** `CataclysmEmpire` holds two things.
-  `UCataclysmDayClock` advances the day, counts every dungeon's resolve timer
-  down and pauses the one the player is standing in (issue
+- **An empire layer that runs, that no part of the game starts.**
+  `CataclysmEmpire` holds four things. `UCataclysmDayClock` advances the day,
+  counts every dungeon's resolve timer down and pauses the one the player is
+  standing in (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
   `UCataclysmEmpireMap` lays out the 25 cities, opens a lane into the empire
   when one falls, seals it again when one is retaken, and answers how many more
   cities must fall before the Cataclysm reaches the Pillar (issue
-  [#1081](https://github.com/sdubois777/Cataclysm/issues/1081)). Surges, the
-  consequence of a dungeon resolving, city upgrades and the empire upgrade tree
-  are all still only the Python model in `sim/` (issue
-  [#42](https://github.com/sdubois777/Cataclysm/issues/42)). Nothing in the game
-  drives either of those two: `UCataclysmRunSave` carries an `int32 Day` that
-  nothing computes, and the empire graph is in no save record at all.
+  [#1081](https://github.com/sdubois777/Cataclysm/issues/1081)).
+  `UCataclysmSurgeScheduler` decides when the next wave comes, how many dungeons
+  it brings, which cities they land on and how deep each one is (issue
+  [#1083](https://github.com/sdubois777/Cataclysm/issues/1083)).
+  `UCataclysmEmpireRun` owns those three and advances a day: a wave lands, timers
+  move, a dungeon that runs out takes a share of its host city, a city whose
+  defence reaches zero falls, and its fall opens the lane behind it (issue
+  [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
+  holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
+  dungeon is and what it does differently, which moved down from the `Cataclysm`
+  module so that both modules can name the same kind.
+
+  **No part of the game starts a run.** Nothing constructs a
+  `UCataclysmEmpireRun`, no console command shows one, and no screen draws one,
+  so an empire only ever exists inside an automation test. Nothing clears a
+  dungeon either: `ClearDungeon` is there for a finished dungeon run to call and
+  no dungeon run reaches it. A fallen city does not become a retakeable Dungeon
+  City (issue [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last
+  Stand does not fire when the path to the Pillar opens (issue
+  [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and city upgrades
+  and the empire upgrade tree are still only the Python model in `sim/` (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)). None of it is in a
+  save record: `UCataclysmRunSave` carries an `int32 Day` that nothing computes.
 
 ## Running the tests
 
