@@ -4,10 +4,15 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Components/TextBlock.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Tests/CataclysmTestSkip.h"
 
 /**
  * Tests for the empire overview, issue #1087.
@@ -64,11 +69,11 @@ bool FCataclysmEmpireLayoutShapeTest::RunTest(const FString& Parameters)
 			  2 * UCataclysmEmpireMap::Radius + 1);
 
 	// HAND-WORKED. Six cells between the outermost centres, plus half a city
-	// hanging off each end: 6 x 140 + 128 across, and 6 x 92 + 56 down.
+	// hanging off each end: 6 x 188 + 172 across, and 6 x 68 + 48 down.
 	const FVector2D Diamond = UCataclysmEmpireMapLayout::DiamondSize();
 
-	TestEqual(TEXT("the diamond is 968 pixels across"), Diamond.X, 968.0, 0.01);
-	TestEqual(TEXT("and 608 down"), Diamond.Y, 608.0, 0.01);
+	TestEqual(TEXT("the diamond is 1300 pixels across"), Diamond.X, 1300.0, 0.01);
+	TestEqual(TEXT("and 456 down"), Diamond.Y, 456.0, 0.01);
 
 	// WIDER THAN IT IS TALL, because a city is. A city's box holds its tier and
 	// how much defence is left, which is a wide shape.
@@ -101,11 +106,11 @@ bool FCataclysmEmpireLayoutFitTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a panel exactly big enough draws at full size"),
 			  UCataclysmEmpireMapLayout::ScaleToFit(SnugPanel()), 1.0f, 0.001f);
 
-	// HALF THE ROOM IS HALF THE SIZE. Hand-worked: the diamond is 968 by 608 and
-	// the margins take 48 off each axis, so a panel of 532 by 352 leaves 484 by
-	// 304, which is exactly half of each.
+	// HALF THE ROOM IS HALF THE SIZE. Hand-worked: the diamond is 1300 by 456
+	// and the margins take 48 off each axis, so a panel of 698 by 276 leaves 650
+	// by 228, which is exactly half of each.
 	TestEqual(TEXT("half the room draws at half the size"),
-			  UCataclysmEmpireMapLayout::ScaleToFit(FVector2D(532.0, 352.0)),
+			  UCataclysmEmpireMapLayout::ScaleToFit(FVector2D(698.0, 276.0)),
 			  0.5f, 0.001f);
 
 	// A HUGE PANEL DOES NOT DRAW A HUGE DIAMOND. The sizes are what a city is
@@ -117,11 +122,11 @@ bool FCataclysmEmpireLayoutFitTest::RunTest(const FString& Parameters)
 
 	// AND THE SMALLER OF THE TWO AXES WINS, so the diamond fits both ways.
 	// Wide and short: the height is what binds.
-	const FVector2D WideAndShort(4000.0, 352.0);
+	const FVector2D WideAndShort(4000.0, 276.0);
 	TestEqual(TEXT("a wide, short panel is bound by its height"),
 			  UCataclysmEmpireMapLayout::ScaleToFit(WideAndShort), 0.5f, 0.001f);
 
-	const FVector2D TallAndNarrow(532.0, 3000.0);
+	const FVector2D TallAndNarrow(698.0, 3000.0);
 	TestEqual(TEXT("a tall, narrow panel is bound by its width"),
 			  UCataclysmEmpireMapLayout::ScaleToFit(TallAndNarrow), 0.5f, 0.001f);
 
@@ -414,6 +419,280 @@ bool FCataclysmEmpireLayoutLabelTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("no map gives no label"),
 			  UCataclysmEmpireMapLayout::CityLabel(nullptr, 0), FString());
+
+	// AND EVERY LABEL IS ONE OF FOUR SHAPES, whatever the city. That is worth
+	// pinning because it is what the measurement test enumerates: a fifth shape
+	// would need measuring too and this is what would notice it appearing.
+	//
+	// WHETHER THEY FIT IS MEASURED SOMEWHERE ELSE, in
+	// `EveryCityLabelMeasuresNarrowerThanItsBox`, and it has to be measured
+	// rather than reasoned about. Issue #1089 was caused by reasoning about it:
+	// "Sanctuary 100%" has the most CHARACTERS of any label here and "Outpost
+	// 100%" is the widest in PIXELS, by 17 of them. Counting characters is not
+	// measuring text.
+	TSet<FString> Shapes;
+
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		UCataclysmEmpireMap* Fresh = MakeMap();
+
+		for (const FCataclysmCity& City : Fresh->Cities)
+		{
+			if (Pass == 1)
+			{
+				Fresh->Fall(City.CityId);
+			}
+
+			Shapes.Add(UCataclysmEmpireMapLayout::CityLabel(Fresh, City.CityId));
+		}
+	}
+
+	// FOUR TIERS, EACH STANDING AT FULL DEFENCE OR LOST. Nothing was bitten
+	// above except cities 0, 1 and 6, whose three labels make it seven.
+	TestTrue(FString::Printf(
+		TEXT("the screen produced %d distinct labels"), Shapes.Num()),
+		Shapes.Num() <= 12);
+
+	for (const FString& Shape : Shapes)
+	{
+		TestTrue(FString::Printf(TEXT("\"%s\" names a tier"), *Shape),
+				 Shape.StartsWith(TEXT("Outpost"))
+				 || Shape.StartsWith(TEXT("Bulwark"))
+				 || Shape.StartsWith(TEXT("Sanctuary"))
+				 || Shape.StartsWith(TEXT("Pillar")));
+
+		TestTrue(FString::Printf(
+			TEXT("\"%s\" then says what is left of it"), *Shape),
+			Shape.EndsWith(TEXT("%")) || Shape.EndsWith(TEXT("lost")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireLabelScaleTest,
+	"Cataclysm.EmpireScreen.TheWordsInACityBoxAreAskedToShrinkWithTheBox",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireLabelScaleTest::RunTest(const FString& Parameters)
+{
+	// WHAT THIS CANNOT CHECK IS THE ARITHMETIC ITSELF. A choice button in a
+	// headless test has no Widget Blueprint, so `ChoiceLabel` is null: there is
+	// no font to read a designed size from and none to write a scaled size into.
+	// `LabelPoints` answers 0 and would answer 0 whatever `SetLabelScale` did.
+	//
+	// SO WHAT IS CHECKED IS THAT ASKING IS SAFE, THAT THE FLOOR IS SANE, AND
+	// THAT THE SCREEN ASKS FOR THE SAME SCALE IT DRAWS THE BOX AT. Whether the
+	// words then fit is issue #1089's acceptance criterion and somebody has to
+	// look.
+	UCataclysmChoiceButton* Button = NewObject<UCataclysmChoiceButton>();
+	if (!TestNotNull(TEXT("a choice button was created"), Button))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("with no label to measure"), Button->LabelPoints(), 0);
+
+	// SAFE TO CALL BEFORE THE WIDGET IS CONSTRUCTED, which is when the empire
+	// overview calls it: the screen makes these and describes them in one
+	// breath, before Slate has built anything.
+	Button->SetLabelScale(0.5f);
+	Button->SetLabelScale(1.0f);
+	Button->SetLabelScale(0.0f);
+	Button->SetLabelScale(-3.0f);
+
+	TestEqual(TEXT("and none of that produced a label"), Button->LabelPoints(), 0);
+
+	// THE FLOOR IS BELOW THE SIZE THE BLUEPRINT GIVES AND ABOVE NOTHING. A floor
+	// at or above the designed 16 would mean the words never shrank at all, and
+	// one at nothing would let a small panel ask for a font of no size.
+	TestTrue(TEXT("the smallest label size is above nothing"),
+			 UCataclysmChoiceButton::SmallestLabelPoints > 0);
+	TestTrue(TEXT("and below the 16 points the Widget Blueprint gives"),
+			 UCataclysmChoiceButton::SmallestLabelPoints < 16);
+
+	// AND THE SCALE THE SCREEN HANDS THE BUTTON IS THE SCALE IT DRAWS THE BOX
+	// AT, which is the whole point: at half the size the box holds exactly the
+	// words it held at full size.
+	const FVector2D Panel(698.0, 276.0);
+	const float Scale = UCataclysmEmpireMapLayout::ScaleToFit(Panel);
+
+	TestEqual(TEXT("a half-size panel draws at half scale"), Scale, 0.5f, 0.001f);
+	TestEqual(TEXT("so the box is half as wide"),
+			  UCataclysmEmpireMapLayout::CitySize(Scale).X,
+			  UCataclysmEmpireMapLayout::CityWidthPx * 0.5, 0.01);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireLabelFitsTest,
+	"Cataclysm.EmpireScreen.EveryCityLabelMeasuresNarrowerThanItsBox",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireLabelFitsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireScreenTest;
+
+	// MEASURED RATHER THAN ESTIMATED, AND THAT IS THE POINT OF THIS TEST.
+	// Issue #1089 happened because the box width was chosen against an ESTIMATE
+	// of how wide "Sanctuary 100%" is. Slate can measure it, so nothing here has
+	// to guess -- and the estimate was wrong twice over: "Outpost 100%" is the
+	// widest label despite having fewer characters, and a font at half the points
+	// is more than half as wide.
+	if (!FSlateApplication::IsInitialized()
+		|| !FSlateApplication::Get().GetRenderer())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("no Slate renderer, so no font can be measured; that every "
+				 "label names a tier and says what is left of it is still "
+				 "checked by ACitysBoxSaysItsTierAndWhatIsLeftOfIt, but whether "
+				 "any of them FITS is not checked at all"));
+		return true;
+	}
+
+	const TSharedRef<FSlateFontMeasure> Measure =
+		FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+
+	// THE FONT THE WIDGET BLUEPRINT ACTUALLY STARTS FROM. A text block's default
+	// font is what `WBP_ChoiceButton` has, because
+	// `tools/generate_interface_assets.py` changes only its size, to 16.
+	const UTextBlock* Probe = NewObject<UTextBlock>();
+	if (!TestNotNull(TEXT("a text block was created to read its default font"),
+					 Probe))
+	{
+		return false;
+	}
+
+	const FSlateFontInfo DesignedFont = Probe->GetFont();
+	const int32 DesignedPoints = 16;
+
+	// WHAT THE BUTTON ITSELF TAKES, left and right, before the words start. A
+	// stated allowance rather than a measurement: it comes from the button
+	// style in the Widget Blueprint, which this test has no route to. Generous
+	// on purpose, because being generous is the safe direction for a fit.
+	//
+	// IT DOES NOT SCALE, AND THAT IS WHY SMALL SCALES CANNOT FIT. The box gets
+	// smaller and this does not, so it eats a growing share of what is left.
+	const float PaddingAllowancePx = 16.0f;
+
+	// Every label the screen can produce, gathered rather than written out, so a
+	// fifth tier or a changed format is measured too.
+	TSet<FString> Labels;
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		UCataclysmEmpireMap* Map = MakeMap();
+		for (const FCataclysmCity& City : Map->Cities)
+		{
+			if (Pass == 1)
+			{
+				Map->Fall(City.CityId);
+			}
+			Labels.Add(UCataclysmEmpireMapLayout::CityLabel(Map, City.CityId));
+		}
+	}
+
+	TestTrue(TEXT("there are labels to measure"), Labels.Num() > 0);
+
+	// THE SAME ARITHMETIC THE BUTTON DOES. See
+	// `UCataclysmChoiceButton::RefreshDisplay`: the font size is the designed
+	// size times the scale, rounded DOWN, and never below the floor.
+	auto NeededAt = [&](const FString& Text, float Scale)
+	{
+		FSlateFontInfo Font = DesignedFont;
+		Font.Size = FMath::Max(
+			UCataclysmChoiceButton::SmallestLabelPoints,
+			FMath::FloorToInt(DesignedPoints * Scale));
+
+		return static_cast<float>(Measure->Measure(Text, Font).X)
+			+ PaddingAllowancePx;
+	};
+
+	// ---- every label fits at full size -------------------------------------
+	//
+	// THIS IS THE ONE THAT MATTERS, because the section below pins that a real
+	// window draws at full size.
+	float Worst = 0.0f;
+	FString WorstLabel;
+
+	for (const FString& Text : Labels)
+	{
+		const float Needed = NeededAt(Text, 1.0f);
+		const float Room = UCataclysmEmpireMapLayout::CityWidthPx;
+
+		TestTrue(FString::Printf(
+			TEXT("at full size, \"%s\" needs %.0f pixels and its box is %.0f "
+				 "wide"), *Text, Needed, Room),
+			Needed <= Room);
+
+		if (Needed / Room > Worst)
+		{
+			Worst = Needed / Room;
+			WorstLabel = Text;
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("the widest label is \"%s\", filling %.0f%% of its box at full "
+			 "size"), *WorstLabel, Worst * 100.0f));
+
+	// NO ASSERTION ON HOW MUCH ROOM IS LEFT, only on whether it fits. Measured on
+	// 2026-08-31 the widest label fills 98% of its box, which is tight -- but
+	// every label's own fit is asserted above and would fail the moment one
+	// stopped fitting, so a threshold on the margin would be a preference
+	// dressed as a requirement.
+
+	// ---- and a real window draws at full size ------------------------------
+	//
+	// THE PANEL THE PROJECT OWNER'S MACHINE PRODUCED, worked back from their
+	// screenshot on 2026-08-31: the diamond drew at about 0.79 when it was 608
+	// pixels tall, so the canvas under the screen's four labels was about 528.
+	// That is the number that matters, because the canvas gets whatever height
+	// the labels above and below it leave.
+	const FVector2D RealPanel(1852.0, 528.0);
+	const float RealScale = UCataclysmEmpireMapLayout::ScaleToFit(RealPanel);
+
+	AddInfo(FString::Printf(
+		TEXT("a %.0f by %.0f panel draws the map at a scale of %.2f"),
+		RealPanel.X, RealPanel.Y, RealScale));
+
+	TestEqual(TEXT("the panel a real window gives draws the map at full size, "
+				   "which is where the words fit"),
+			  RealScale, UCataclysmEmpireMapLayout::LargestScale, 0.001f);
+
+	// ---- and below full size the words are cut -----------------------------
+	//
+	// SAID OUT LOUD RATHER THAN LEFT TO BE DISCOVERED. Scaling the words helps
+	// and cannot be enough: the button's padding does not scale, and a font at
+	// half the points is more than half as wide. A panel shorter than the one
+	// above draws a map whose labels are cut, and the line under the map is what
+	// carries them. Issue #1089.
+	float SmallestFitting = 1.0f;
+
+	for (float Scale = 1.0f; Scale >= 0.3f; Scale -= 0.05f)
+	{
+		bool bAllFit = true;
+		for (const FString& Text : Labels)
+		{
+			bAllFit = bAllFit
+				&& NeededAt(Text, Scale)
+					<= UCataclysmEmpireMapLayout::CitySize(Scale).X;
+		}
+
+		if (!bAllFit)
+		{
+			break;
+		}
+
+		SmallestFitting = Scale;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("every label still fits down to a scale of %.2f, and is cut below "
+			 "it"), SmallestFitting));
+
+	TestTrue(FString::Printf(
+		TEXT("a real window's scale of %.2f is at or above the %.2f the words "
+			 "need"), RealScale, SmallestFitting),
+		RealScale >= SmallestFitting - 0.001f);
 
 	return true;
 }

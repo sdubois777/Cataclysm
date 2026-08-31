@@ -62,17 +62,47 @@ public:
 	 * lattice would look like a squashed diamond if the spacing did not follow
 	 * it.
 	 */
-	static constexpr float CellWidthPx = 140.0f;
-	static constexpr float CellHeightPx = 92.0f;
+	static constexpr float CellWidthPx = 188.0f;
+
+	/**
+	 * How far apart two rows are.
+	 *
+	 * IT DECIDES WHETHER THE WORDS FIT, WHICH IS NOT OBVIOUS. The diamond is
+	 * seven rows tall and the panel it is given is much wider than it is tall
+	 * once the screen's four labels have taken their lines, so the HEIGHT is
+	 * what binds the scale -- and the words only fit their boxes at a scale of
+	 * one. It was 92 until issue #1089, which put the scale at about 0.79 on the
+	 * project owner's screen and cut every label short.
+	 *
+	 * WHY SCALING THE WORDS DOES NOT MAKE THIS UNNECESSARY. It helps and it is
+	 * not enough: the button's own padding is a fixed number of pixels that does
+	 * not scale, so it eats a growing share of a shrinking box, and a font at
+	 * half the points is more than half as wide because of hinting. Measured on
+	 * 2026-08-31, "Sanctuary 100%" needed 96 pixels in an 86 pixel box at a scale
+	 * of a half. Below about a scale of one the words are cut and the line under
+	 * the map is what carries them.
+	 */
+	static constexpr float CellHeightPx = 68.0f;
 
 	/**
 	 * How big one city is drawn, at a scale of one, in pixels.
 	 *
 	 * SMALLER THAN THE CELL, so two neighbouring cities have clear space between
 	 * them. A diamond of touching boxes reads as a grid rather than as a map.
+	 *
+	 * WIDE ENOUGH FOR THE WIDEST LABEL AS MEASURED, and it was 128 until issue
+	 * #1089.
+	 *
+	 * MEASURED, NOT ESTIMATED, AND THE DIFFERENCE IS WHY THE BUG EXISTED. The
+	 * 128 was chosen against a guess that "Sanctuary 100%" -- the label with the
+	 * most CHARACTERS -- would be the widest, at about 115 pixels. Slate says
+	 * "Outpost 100%" is the widest at 132 pixels, because it has more wide
+	 * letters and fewer narrow ones. Counting characters is not measuring text.
+	 * `Cataclysm.EmpireScreen.EveryCityLabelMeasuresNarrowerThanItsBox` measures
+	 * every label the screen can produce and fails if any of them stops fitting.
 	 */
-	static constexpr float CityWidthPx = 128.0f;
-	static constexpr float CityHeightPx = 56.0f;
+	static constexpr float CityWidthPx = 172.0f;
+	static constexpr float CityHeightPx = 48.0f;
 
 	/**
 	 * Clear space left around the diamond when it is fitted to a panel.

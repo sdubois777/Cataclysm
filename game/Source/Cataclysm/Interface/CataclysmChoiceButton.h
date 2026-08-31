@@ -78,6 +78,46 @@ public:
 	void SetChoice(FName InValue, const FText& InLabel, bool bInChosen,
 				   bool bInAvailable);
 
+	/**
+	 * How big the words are, as a share of the size the Widget Blueprint gave
+	 * them.
+	 *
+	 * WHY A SCREEN WOULD ASK. A screen that works out its own size for these --
+	 * the empire overview fits 25 cities into whatever panel it is given, and
+	 * the passive tree fits up to 74 nodes -- shrinks the BOX and cannot shrink
+	 * the words, because the font size lives in the Blueprint. The result is a
+	 * box a fifth smaller holding text the same size as before, which is cut off
+	 * rather than smaller. Issue #1089.
+	 *
+	 * ONE MEANS THE BLUEPRINT'S OWN SIZE, which is what every caller that never
+	 * asks gets. The character creator lays these out in a list with room to
+	 * spare and wants nothing to do with this.
+	 *
+	 * IT REMEMBERS THE DESIGNED SIZE RATHER THAN COMPOUNDING. Asking for half
+	 * and then for half again gives half of the designed size and not a quarter,
+	 * so a screen may call this on every redraw.
+	 *
+	 * SAFE TO CALL BEFORE THE WIDGET IS CONSTRUCTED, like `SetChoice`. What it
+	 * is told is kept and written in when the widgets arrive.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
+	void SetLabelScale(float Scale);
+
+	/**
+	 * The smallest the words are ever drawn, in points.
+	 *
+	 * BELOW THIS THEY ARE NOT WORDS. A screen scaled far enough down would ask
+	 * for a font of one point, which draws a smudge. What a player does at that
+	 * size is read the line under the map instead, which every screen using
+	 * these has.
+	 */
+	static constexpr int32 SmallestLabelPoints = 7;
+
+	/** What the words are being drawn at now, in points. 0 before the widget
+	 *  exists. For tests, and for a screen that wants to know. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	int32 LabelPoints() const;
+
 	/** The value this button stands for. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	FName GetChoiceValue() const { return Value; }
@@ -160,4 +200,21 @@ private:
 	FText Label;
 	bool bChosen = false;
 	bool bAvailable = true;
+
+	/** What `SetLabelScale` was last told. */
+	float LabelScale = 1.0f;
+
+	/**
+	 * The font size the Widget Blueprint gave the label, read once.
+	 *
+	 * READ RATHER THAN WRITTEN DOWN, because what size the words are is a look
+	 * and `docs/DECISIONS.md` puts looks in the Blueprint. Zero means it has not
+	 * been read yet, which is true until Slate has built the label.
+	 *
+	 * WITHOUT REMEMBERING IT, SCALING WOULD COMPOUND. `RefreshDisplay` runs
+	 * again every time the widget is added to the viewport and every time a
+	 * screen redraws, so reading the CURRENT size and multiplying would shrink
+	 * the words a little more each time until they vanished.
+	 */
+	int32 DesignedLabelPoints = 0;
 };
