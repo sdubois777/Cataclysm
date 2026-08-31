@@ -158,9 +158,25 @@ float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
 	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
 	AbilitySystem->ClearHealthDebtDue();
 
-	UE_LOG(LogCataclysm, Verbose,
-		   TEXT("%s settled a health debt of %.1f."),
-		   *Character->GetName(), Amount);
+	// AT `Log` AND NOT `Verbose`, like the death two functions down and unlike
+	// the rest of this file. Issue #1112.
+	//
+	// WHY THIS ONE IS WORTH A LINE. A debt falls due 3 seconds after the cast
+	// that deferred it, and it is taken WHOLE and with no floor -- the comment
+	// above this block says so. So the health it takes arrives detached in time
+	// from anything the player did, and lands on whatever they happen to be
+	// doing at that instant. The project owner reported losing about 2,500
+	// health "as soon as I hit e" on 2026-08-31; several deferred halves falling
+	// due together is the shape that would produce exactly that, and nothing
+	// recorded it.
+	//
+	// THE HEALTH IS NAMED AS WELL AS THE AMOUNT, because what matters is whether
+	// the charge was survivable, and the amount alone does not say.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s settled a health debt of %.1f, leaving %.1f health."),
+		   *Character->GetName(), Amount,
+		   AbilitySystem->GetNumericAttribute(
+			   UCataclysmVitalAttributeSet::GetHealthAttribute()));
 
 	return Amount;
 }

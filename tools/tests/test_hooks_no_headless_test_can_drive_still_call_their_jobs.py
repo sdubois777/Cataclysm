@@ -279,6 +279,12 @@ def test_the_jobs_are_pinned(hook: str) -> None:
 # ---------------------------------------------------------------------------
 
 #: (file, return type, function, the wording, the state it must name, why)
+#:
+#: THE THIRD ENTRY IS NOT A DEATH AND BELONGS HERE ANYWAY. Issue #1112. It is
+#: the same failure one step earlier: a number the running game works out, that
+#: no test can watch, and whose absence is silent. The project owner reported
+#: losing about 2,500 health to one key press and nothing could say which skill
+#: ran or what it charged. A health cost is what kills before the death is.
 DEATHS_THAT_MUST_BE_LOGGED = [
     (CHARACTER / "CataclysmPlayerCharacter.cpp", "void",
      "ACataclysmPlayerCharacter::HandleDeath",
@@ -290,6 +296,11 @@ DEATHS_THAT_MUST_BE_LOGGED = [
      "died of it",
      "owed",
      "a character killed by owing more health than it had"),
+    (ABILITY_SYSTEM / "CataclysmSkillTemplate.cpp", "void",
+     "UCataclysmSkillTemplate::PayHealthCost",
+     "cost %.1f health",
+     "deferred",
+     "what a skill charged in health, and how much of it was put off"),
 ]
 
 
