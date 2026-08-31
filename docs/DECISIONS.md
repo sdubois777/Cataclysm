@@ -20,6 +20,93 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — Brutal Determination grants the Masochist its base Life Leech, because the class has none and two nodes were increasing nothing
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
+`docs/Masochist_Class_Tree_Final.json` and the generated
+`game/Data/PassiveEffects.csv`. Applied. Issues #1105 and #1106.
+
+The project owner played a Masochist on 2026-08-31 having spent **14 points** on
+life leech — Brutal Determination and Undying Hunger — plus the keystone Wounds
+That Feed, and reported: *"I should be getting life leech or something I thought,
+but it seems like I have no healing."*
+
+**They had none, and all three nodes were worth exactly nothing.**
+
+### Why
+
+`game/Data/ClassStats.csv` gives a base life leech to one class:
+
+```
+Ravager_life_leech,Ravager,life_leech,1.0,0.02
+```
+
+The Masochist has no such line and neither does the shared `Default` line, so its
+base is zero. Both Masochist nodes were `increased` rows, and the pipeline is
+`(base + flat) x (1 + increases) x more`. **36% increased of nothing is nothing.**
+
+The design document already stated this rule, so the code was doing what the
+design said:
+
+> **What a zero does mean is that the class gets no help scaling it.** Nothing
+> compounds from a base of nothing ... every "increased" source multiplies only
+> what gear supplied.
+
+### Why it changed anyway
+
+That rule is right for a stat a tree mentions in passing. It is wrong when a tree
+spends **two nodes and a keystone** on the stat. The same document had already
+made this complaint about the Masochist and energy shields — "its passive tree
+now offers nothing at all in exchange" — and the leech case is worse, because the
+tree actively invites the investment.
+
+**What the genre does.** In Path of Exile "increased life leech" modifies the
+recovery rate and does nothing without a base leech source, exactly as here;
+base leech comes from gear, skills and specific passive nodes. Last Epoch also
+grants base leech from passive nodes. A tree that scales leech supplies the first
+of it somewhere, and that is the shape taken:
+[Life Leech (passive skill), PoE Wiki](https://www.poewiki.net/wiki/Life_Leech_(passive_skill)),
+[Leech, PoE Wiki](https://pathofexile.fandom.com/wiki/Leech),
+[Health Leech, Last Epoch Game Guide](https://www.lastepochtools.com/guide/section/health_leech).
+
+### What was decided
+
+**Brutal Determination (`Masochist_basic_spine_004`) becomes the source and
+grants a flat 0.4% Life Leech per point.** Undying Hunger
+(`Masochist_basic_fc_b1`) keeps increasing what it supplies. One node turns leech
+on and the other scales it.
+
+| | Points | At full investment |
+| :-- | --: | --: |
+| Brutal Determination, flat 0.4% a point | 10 | 4.0% |
+| Undying Hunger, +3% increased a point | 8 | +24% |
+| **Together** | **18** | **4.96%** |
+
+For comparison the Ravager, which the design calls the class with "enough leech
+to hold a line", starts with 2.98% at level 100 for free.
+
+**The number is a judgement and is not derived.** The owner chose 0.4% on
+2026-08-31 against a stated intent of landing near the Ravager's baseline; the
+arithmetic offered at the time was wrong, because Brutal Determination holds ten
+points and not the six the owner had spent, so 0.4% reaches about 1.7 times the
+Ravager rather than matching it. **0.4% was kept knowingly**, because the
+reported problem was too little sustain and the larger figure serves it. The
+figure matching the original intent is 0.25% a point. `docs/Cataclysm_GDD_v2.md`
+already says the leech constants are "a starting point and expected to move".
+
+**The class stat table is unchanged.** The Masochist's Life Leech stays 0 there.
+A class base and a node grant are different things, and giving the class a base
+would hand it to every Masochist who never visits that branch.
+
+**What now stops it happening again.**
+`test_no_node_is_worth_nothing_to_its_own_class` in
+`tools/tests/test_passive_effects_match_the_node_text.py` fails when every row on
+a node increases a stat that node's own class has no base for. The check that
+existed asked whether **any** class supplied the stat, and the Ravager's leech
+was enough to satisfy it. Issue #1106.
+
+---
+
 ## 2026-08-31 — Rock Bottom's fall to low health clears only the debt that was owed before the cast
 
 **Affects:** the Masochist's `Masochist_capstone_50`, first option, in

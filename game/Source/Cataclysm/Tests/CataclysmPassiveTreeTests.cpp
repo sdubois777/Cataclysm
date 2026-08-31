@@ -1794,6 +1794,125 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveGivesTheMasochistLifeLeechTest,
+	"Cataclysm.Passives.ASpentPointGivesAMasochistLifeLeechItHasNoBaseFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPassiveGivesTheMasochistLifeLeechTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// WHAT WENT WRONG. Issue #1105. `game/Data/ClassStats.csv` gives a base life
+	// leech to one class, the Ravager. The Masochist has none, and neither does
+	// the shared `Default` line it falls back to, so its base is zero. Both of
+	// the tree's life leech nodes were `increased` rows, and the three-bucket
+	// pipeline is `(base + flat) x (1 + increases) x more`, so 36% increased of
+	// nothing is nothing. The project owner spent 14 points on them and reported
+	// from play: "I should be getting life leech or something I thought, but it
+	// seems like I have no healing."
+	//
+	// BRUTAL DETERMINATION IS NOW THE SOURCE, a flat 0.4% a point, and Undying
+	// Hunger increases what it supplies. This test is the end-to-end statement:
+	// a point spent on a real character, through the real pipeline, reaching an
+	// attribute that was zero and could not have been anything else.
+	//
+	// THE OTHER DIRECTION IS CHECKED IN PYTHON, by
+	// `test_no_node_is_worth_nothing_to_its_own_class` in
+	// `tools/tests/test_passive_effects_match_the_node_text.py`, which fails if
+	// any node's every row increases a stat its own class has no base for.
+	//
+	// AND IT IS THE SAME FAULT AS ISSUE #980, THE OTHER WAY ROUND. That one was
+	// a node increasing `retaliation`, which only the Masochist's class line
+	// names, so it was worth nothing on any other class. `FScopedPlayerClass`
+	// below exists because of it. This is a node increasing `life_leech`, which
+	// only the RAVAGER's line names, on a node only a Masochist can reach.
+
+	// AS A MASOCHIST AND NOT AS WHATEVER RAN LAST. The default class is the
+	// Ravager, which HAS a base life leech of 2.98% at level 100, so this test
+	// would measure the Ravager's base rather than the node and the assertion
+	// that the character starts at zero would fail. The class also decides which
+	// base every other stat stands on; `RefreshAttributes` reads it.
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class can be set"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_basic_spine_004"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Brutal Determination grants one row"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is life leech"), Effects[0]->Stat,
+			  FString(TEXT("life_leech")));
+
+	// THE BUCKET IS THE WHOLE POINT OF THE FIX AND IS ASSERTED, rather than left
+	// for the arithmetic below to imply. An `increased` row here would be worth
+	// nothing, and this test would then be measuring the wrong thing quietly.
+	TestEqual(TEXT("supplying a base rather than increasing one"),
+			  Effects[0]->ValueKind, FString(TEXT("flat")));
+
+	const FGameplayAttribute Leech = Vital::GetLifeLeechAttribute();
+
+	// NOTHING TO BEGIN WITH, WHICH IS THE CLASS LINE SPEAKING. Said out loud
+	// because it is the fact the whole issue turns on: were this ever non-zero,
+	// the assertion at the end would pass without the node doing anything.
+	const float Before = AbilitySystem->GetNumericAttribute(Leech);
+	TestEqual(TEXT("a Masochist starts with no life leech at all"), Before, 0.0f,
+			  0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 10);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+
+	// THE ONE REAL ENTRY POINT, the same one the armour test above uses:
+	// refreshing a character's attributes is what a worn item change does, and
+	// it is where the passive tree was joined in.
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float After = AbilitySystem->GetNumericAttribute(Leech);
+
+	// FOUR PER CENT, FROM TEN POINTS WORTH FOUR TENTHS EACH. Pinned as a figure
+	// rather than as a relationship, unlike the armour test above, and the
+	// difference is the point: armour has a class base that tuning moves, and
+	// this stat has none, so the whole of what is here came from the node.
+	TestEqual(*FString::Printf(TEXT("ten points give four per cent: %.2f"), After),
+			  After, 4.0f, 0.001f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFervourTradeKeystoneTest,
 	"Cataclysm.Passives.AKeystoneMultipliesOneFervourSourceAndDividesTheOther",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
