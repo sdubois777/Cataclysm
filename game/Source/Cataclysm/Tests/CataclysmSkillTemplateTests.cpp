@@ -2445,6 +2445,15 @@ bool FCataclysmAuraTogglesTest::RunTest(const FString&)
 		return false;
 	}
 
+	// THE KEY COMES UP BEFORE IT GOES DOWN AGAIN, WHICH THIS TEST USED TO SKIP.
+	// Issue #1114. A second press in the running game is always preceded by a
+	// release, and the aura now requires one: without it, a "press" is another
+	// frame of the press that started the aura, because
+	// `ACataclysmPlayerController::Input_AbilitySlotPressed` fires every frame
+	// the key is held. Leaving the release out made this test describe an input
+	// sequence a player cannot produce.
+	Caster.AbilitySystem->AbilitySpecInputReleased(*Spec);
+
 	// The aura slot has NO COOLDOWN, so nothing else would stop the key being
 	// pressed to no effect while it runs. Issue #36 requires it to toggle.
 	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
@@ -2455,6 +2464,92 @@ bool FCataclysmAuraTogglesTest::RunTest(const FString&)
 	// And a third press switches it back on, which is what a toggle means.
 	TestTrue(TEXT("A third press switches it on again"), Activate(Caster, Aura));
 	TestTrue(TEXT("And it is held again"), Aura->IsHeld());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraHeldKeyDoesNotRestartItTest,
+	"Cataclysm.Skills.HoldingTheAuraKeyDoesNotRestartItOrChargeAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraHeldKeyDoesNotRestartItTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// WHAT WENT WRONG. Issue #1114.
+	// `ACataclysmPlayerController::Input_AbilitySlotPressed` is bound to
+	// `ETriggerEvent::Triggered`, which fires EVERY FRAME the key is held. On a
+	// slot with a cooldown that repeats the cast, which issue #1016's comment
+	// says is wanted. The aura slot has NO cooldown, so holding the key switched
+	// the aura off on one frame and
+	// `UCataclysmAbilitySystemComponent::ProcessAbilityInput` started it again
+	// on the next -- and every start pays a full health cost.
+	//
+	// The project owner pressed the key once on 2026-08-31. The log recorded
+	// five costs of about 253 health inside 117 milliseconds, and it killed
+	// them.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// EXSANGUINATE, SO EVERY ACTIVATION COSTS SOMETHING VISIBLE. 15% of current
+	// health a skill, on a round pool. Without a cost this test could only see
+	// that the aura stayed on, and the health is the part that killed somebody.
+	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
+	Caster.Set(
+		UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute(),
+		15.0f);
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
+		TEXT("Conflagration"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	TestTrue(TEXT("the key goes down and the aura comes on"),
+			 Activate(Caster, Aura));
+	TestTrue(TEXT("and it is held"), Aura->IsHeld());
+
+	// ONE ACTIVATION, ONE COST. This is the baseline the repeats below are
+	// measured against.
+	const float AfterOnePress = Caster.Health();
+	TestEqual(TEXT("one activation charged fifteen per cent"), AfterOnePress,
+			  850.0f, 0.01f);
+
+	FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(
+		Aura->GetCurrentAbilitySpecHandle());
+	if (!Spec)
+	{
+		AddError(TEXT("The aura's spec disappeared."));
+		return false;
+	}
+
+	// TEN MORE FRAMES OF THE SAME PRESS, WITH NO RELEASE BETWEEN THEM. This is
+	// what holding the key looks like from the ability's side. Ten rather than
+	// two, because the fault compounded: five frames was enough to kill a
+	// character with 1,449 health left.
+	for (int32 Frame = 0; Frame < 10; ++Frame)
+	{
+		Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
+	}
+
+	TestTrue(TEXT("the aura is still on after ten held frames"), Aura->IsHeld());
+	TestEqual(TEXT("and not one of them charged anything"), Caster.Health(),
+			  AfterOnePress, 0.01f);
+
+	// AND THE TOGGLE STILL WORKS, which is the half that stops this being a fix
+	// that simply disables the feature. Issue #36 requires the aura to switch
+	// off on a second press.
+	Caster.AbilitySystem->AbilitySpecInputReleased(*Spec);
+	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
+
+	TestFalse(TEXT("a press after a release switches it off"), Aura->IsHeld());
+	TestFalse(TEXT("and not for lack of mana"), Aura->bEndedForLackOfMana);
 
 	return true;
 }

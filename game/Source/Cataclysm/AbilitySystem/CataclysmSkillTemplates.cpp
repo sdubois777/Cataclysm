@@ -859,11 +859,39 @@ void UCataclysmAuraSkill::InputPressed(
 	// Issue #36 requires the aura to toggle. The aura slot has no cooldown --
 	// there is nothing to wait for on a toggle -- so this is the only thing
 	// stopping the key from being pressed to no effect while it runs.
-	if (bHeld)
+	//
+	// AND IT NEEDS A RELEASE FIRST, WHICH IS THE WHOLE OF ISSUE #1114. The press
+	// this reacts to arrives EVERY FRAME the key is held, because
+	// `ACataclysmPlayerController::Input_AbilitySlotPressed` is bound to
+	// `ETriggerEvent::Triggered`. Without waiting for a release, holding the key
+	// switched the aura off on one frame and
+	// `UCataclysmAbilitySystemComponent::ProcessAbilityInput` started it again
+	// on the next, and every start paid a full health cost. One press by the
+	// project owner on 2026-08-31 charged five costs of about 253 health inside
+	// 117 milliseconds and killed them.
+	//
+	// EVERY OTHER SLOT WAS SAFE FROM THIS BECAUSE IT HAS A COOLDOWN. Holding a
+	// key on those repeats the cast, which issue #1016's comment says is wanted,
+	// and the cooldown decides how often. The aura is the only slot with none.
+	if (bHeld && bKeyReleasedSinceActivation)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo,
 				   /*bReplicateEndAbility=*/true, /*bWasCancelled=*/false);
 	}
+}
+
+void UCataclysmAuraSkill::InputReleased(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+
+	// THE RELEASE ENDS NOTHING, AND ARMS THE SWITCH-OFF. A toggle stays on when
+	// the key comes up; that is what makes it a toggle rather than a hold. What
+	// the release changes is that the NEXT press is a new press rather than
+	// another frame of the one that started the aura.
+	bKeyReleasedSinceActivation = true;
 }
 
 void UCataclysmAuraSkill::ActivateAbility(
@@ -888,6 +916,13 @@ void UCataclysmAuraSkill::ActivateAbility(
 	bHeld = true;
 	bEndedForLackOfMana = false;
 	Pulses = 0;
+
+	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
+	// Cleared here rather than in `EndAbility`, because the aura also ends for
+	// reasons that are not a key press -- running out of mana, or a duration
+	// expiring -- and a fresh activation is the only moment at which "the key
+	// has not been let go yet" is true again.
+	bKeyReleasedSinceActivation = false;
 
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 	World->GetTimerManager().SetTimer(
