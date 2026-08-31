@@ -731,6 +731,38 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	const float Deferred = DeferredByShare + Unpayable;
 	const float Immediate = Cost - Deferred;
 
+	// AND THE LOG SAYS WHAT A SKILL CHARGED, WHICH IT DID NOT UNTIL ISSUE #1112.
+	//
+	// WHY THIS LINE EXISTS. On 2026-08-31 the project owner reported losing
+	// about 2,500 health the instant they pressed one key, and nothing anywhere
+	// could say which skill ran or what it charged. Working out the two health
+	// cost faults before this one -- issues #1107 and #1110 -- each took reading
+	// a save file, two data tables and the design document, and neither reading
+	// could answer this one.
+	//
+	// AT `Log` AND NOT `Verbose`, unlike the rest of this file's messages. A
+	// health cost is rare enough to be worth a line: only a Masochist pays one
+	// at all, and only when a skill is used. `UCataclysmHealthDebt`'s per-cast
+	// bookkeeping stays at `Verbose` for the opposite reason.
+	//
+	// IT NAMES THE SKILL AND THE SLOT, because which of the two is wrong is the
+	// question. A cost that is right for the skill and wrong for the slot is a
+	// different fault from a cost that is simply too large.
+	//
+	// PAST THE `Cost > 0` BRANCH BELOW ON PURPOSE, so a skill that charged
+	// nothing says so rather than being silent. "It cost nothing" and "nothing
+	// ran" look identical in a log otherwise, and telling them apart is most of
+	// the work of answering a report like the one above.
+	// THE SLOT AS ITS TAG RATHER THAN AS A NUMBER, because a log a person reads
+	// should not need the enum in front of them. `CataclysmAbilitySlots::Tag`
+	// answers `Slot.Aura` and the like, and is the same lookup the skill bar and
+	// the enchantment scoping use.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s in %s cost %.1f health: %.1f taken now, %.1f deferred. "
+				"Health %.1f of %.1f."),
+		   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(),
+		   Cost, Immediate, Deferred, Current, Maximum);
+
 	if (Cost > 0.0f)
 	{
 		// THE BRANCH IS ON THE WHOLE COST AND THE WRITE IS ON WHAT IS TAKEN
