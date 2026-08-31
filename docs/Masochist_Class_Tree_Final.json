@@ -111,7 +111,7 @@
       "data": {
         "kind": "basic",
         "name": "Brutal Determination",
-        "description": "+2% increased Life Leech per point.",
+        "description": "+0.4% Life Leech per point. The Masochist has no Life Leech of its own, so this is what the tree's other Life Leech nodes increase.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10

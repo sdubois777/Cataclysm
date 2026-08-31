@@ -222,7 +222,7 @@ Masochist_basic_spine_000,Masochist,basic_spine_000,basic,Fervour,"Health you lo
 Masochist_basic_spine_001,Masochist,basic_spine_001,basic,Pain Tolerance,+1% increased Maximum Health and +0.5% increased Armor per point.,12,0,-450.0,648.0,,,,,,
 Masochist_basic_spine_002,Masochist,basic_spine_002,basic,Willing Flesh,+2% increased Health Regeneration per point.,6,0,675.0,648.0,,,,,,
 Masochist_basic_spine_003,Masochist,basic_spine_003,basic,Cataclysmic Resonance,+1% increased damage per point for 5 seconds after you take damage of a Cataclysm type other than Demonic.,12,0,-300.0,516.0,,,,,,
-Masochist_basic_spine_004,Masochist,basic_spine_004,basic,Brutal Determination,+2% increased Life Leech per point.,10,0,-300.0,384.0,,,,,,
+Masochist_basic_spine_004,Masochist,basic_spine_004,basic,Brutal Determination,"+0.4% Life Leech per point. The Masochist has no Life Leech of its own, so this is what the tree's other Life Leech nodes increase.",10,0,-300.0,384.0,,,,,,
 Masochist_basic_spine_005,Masochist,basic_spine_005,basic,Echoes of Agony,Damage taken from damage over time effects is reduced by 1% per point.,10,0,900.0,516.0,,,,,,
 Masochist_basic_spine_006,Masochist,basic_spine_006,basic,Open Wounds,+2% increased Fervour gained from health lost to damage per point.,8,0,-375.0,252.0,,,,,,
 Masochist_basic_spine_007,Masochist,basic_spine_007,basic,Blood Price,+2% increased Fervour gained from health spent as an ability cost per point.,8,0,900.0,384.0,,,,,,

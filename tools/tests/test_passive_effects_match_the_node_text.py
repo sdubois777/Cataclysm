@@ -1540,6 +1540,104 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
         )
 
 
+def test_no_node_is_worth_nothing_to_its_own_class(effects):
+    """A node whose every row increases a stat its own class has no base for.
+
+    WHY THE CHECK ABOVE MISSES THIS, WHICH IS THE WHOLE POINT OF THIS ONE. Issue
+    #1106. `test_every_stat_is_one_the_game_supplies` builds one set out of EVERY
+    class stat line at once and asks whether the stat is in it. `life_leech` is,
+    because the RAVAGER has a base life leech. The two nodes that needed catching
+    are in the MASOCHIST tree, and the Masochist has none, so they passed a check
+    written to catch exactly them.
+
+    WHAT IT COST. Issue #1105. The project owner spent 14 points on Brutal
+    Determination and Undying Hunger, plus the keystone Wounds That Feed, and
+    reported from play on 2026-08-31: "I should be getting life leech or
+    something I thought, but it seems like I have no healing." All three were
+    worth nothing, and had been for the life of the tree.
+
+    ONLY A NODE WHOSE **EVERY** ROW IS DEAD, which is the difference between a
+    check worth having and one nobody can keep green. Asking the per-class
+    question of every row finds 21 of them, and most are legitimate: a node
+    granting "increased damage" is authored as two rows, one on `attack_damage`
+    and one on `spell_damage`, and a Masochist has attack damage from the weapon
+    in its hands even though its spell damage is zero. Half of that node works,
+    which is `docs/Cataclysm_GDD_v2.md`'s rule that "a zero in this table is a
+    starting value, not a gate". A node with no working half is a different
+    thing: it is a node that cannot do anything for the only class that can take
+    it.
+
+    A CLASS WITH NO STAT LINE AT ALL IS SKIPPED AND THAT IS NOT A HOLE. The
+    Bulwark, Saboteur and Berserker are outside the vertical slice and name no
+    stats, so every one of their nodes would be reported and the check would say
+    nothing about the trees that are built. Issue #950 covers the classes.
+
+    A FLAT ROW IN THE SAME TREE COUNTS AS THE BASE, which is what makes the fix
+    for #1105 land here: Brutal Determination became a `flat` row, so it supplies
+    life leech to its own tree and Undying Hunger now has something to increase.
+    """
+    class_stats = rows_of(CLASS_STATS_CSV)
+
+    #: What each class names on its own line, and the shared line all fall back
+    #: to. `UCataclysmClassStats::BaseFor` reads the class row and then the
+    #: `Default` row, and answers zero when neither names the stat.
+    per_class: dict[str, set[str]] = {}
+    for row in class_stats:
+        per_class.setdefault(row["ClassName"], set()).add(row["Stat"])
+    shared = per_class.get("Default", set())
+
+    #: Everything that supplies a stat whatever class is holding it: the eight
+    #: attributes, an item base's flat implicits and its columns, and the bases
+    #: the engine states in C++. Same sources as the fixture above, minus the
+    #: class lines, which are the ones that differ per class.
+    for_everyone = (
+        {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
+        | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
+        | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
+        | set(gen.ENGINE_SUPPLIED_BASES)
+    )
+
+    #: A flat row supplies its stat to the tree it is in, and only to that tree.
+    flat_in_tree: dict[str, set[str]] = {}
+    for row in effects:
+        if row["ValueKind"].strip().lower() == "flat":
+            tree = row["Node"].split("_", 1)[0]
+            flat_in_tree.setdefault(tree, set()).add(row["Stat"])
+
+    #: Rows grouped by the node and the capstone option they belong to, because
+    #: a capstone's three options are three separate things to take and one
+    #: option being worth nothing is not excused by another option working.
+    by_node: dict[tuple[str, int], list[dict]] = {}
+    for row in effects:
+        by_node.setdefault(
+            (row["Node"], int(row.get("Option", 0) or 0)), []).append(row)
+
+    worthless: list[str] = []
+    for (node, option), node_rows in sorted(by_node.items()):
+        tree = node.split("_", 1)[0]
+        if tree not in per_class:
+            continue
+        supplied = (per_class[tree] | shared | for_everyone
+                    | flat_in_tree.get(tree, set()))
+        dead = [row for row in node_rows
+                if row["ValueKind"].strip().lower() in ("increased", "more")
+                and row["Stat"] not in supplied]
+        if dead and len(dead) == len(node_rows):
+            named = ", ".join(sorted({row["Stat"] for row in dead}))
+            where = f"{node} option {option}" if option else node
+            worthless.append(f"{where} increases only {named}")
+
+    assert not worthless, (
+        "These nodes are worth nothing to the class whose tree they are in. "
+        "Every row on them increases a stat that class has no base for, so the "
+        "modifier is applied, the arithmetic runs, and the result is the same "
+        "as not having the node. A player spends points and no number moves.\n    "
+        + "\n    ".join(worthless)
+        + "\n\nEither give the class a base -- a flat row on a node in the same "
+          "tree is how issue #1105 was fixed -- or take the node's rows off a "
+          "stat it cannot have.")
+
+
 def test_every_engine_supplied_base_names_code_that_exists():
     """An exemption from the check above is a promise, and it can go unkept.
 

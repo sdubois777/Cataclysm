@@ -4,7 +4,7 @@ Bulwark_basic_trunk_004#1,Bulwark_basic_trunk_004,health_regen,increased,4.0,,,0
 Bulwark_basic_trunk_008#1,Bulwark_basic_trunk_008,damage_reduction,more,1.5,,,0.0,,0.0,0
 Saboteur_basic_trap_deep_001#1,Saboteur_basic_trap_deep_001,area_of_effect,increased,15.0,Type.Trap,,0.0,,0.0,0
 Masochist_basic_spine_002#1,Masochist_basic_spine_002,health_regen,increased,2.0,,,0.0,,0.0,0
-Masochist_basic_spine_004#1,Masochist_basic_spine_004,life_leech,increased,2.0,,,0.0,,0.0,0
+Masochist_basic_spine_004#1,Masochist_basic_spine_004,life_leech,flat,0.4,,,0.0,,0.0,0
 Masochist_basic_spine_008#1,Masochist_basic_spine_008,class_resource,increased,2.0,,,0.0,,0.0,0
 Masochist_basic_spine_009#1,Masochist_basic_spine_009,crowd_control_resistance,increased,2.0,,,0.0,,0.0,0
 Masochist_basic_spine_010#1,Masochist_basic_spine_010,retaliation,increased,3.0,,,0.0,,0.0,0
