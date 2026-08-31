@@ -6,6 +6,7 @@
 #include "Player/CataclysmGameMode.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Components/SceneComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -89,6 +90,51 @@ bool UCataclysmDropPickup::IsWithinPickupRange(const FVector& Character,
 	// FLAT. See the header for why height is ignored.
 	const FVector2D Flat(Character.X - Drop.X, Character.Y - Drop.Y);
 	return Flat.SizeSquared() <= PickupRangeCm * PickupRangeCm;
+}
+
+bool UCataclysmDropPickup::IsWithinNameRange(const FVector& Character,
+											 const FVector& Drop)
+{
+	// FLAT. See the header for why height is ignored.
+	const FVector2D Flat(Character.X - Drop.X, Character.Y - Drop.Y);
+	return Flat.SizeSquared() <= NameShownRangeCm * NameShownRangeCm;
+}
+
+void UCataclysmDropPickup::DropsToName(const UWorld* World,
+									   const FVector& Standing,
+									   TArray<ACataclysmDroppedItem*>& OutDrops)
+{
+	// EMPTIED FIRST, so a caller that reuses one array across frames cannot
+	// carry last frame's drops into this one. ACataclysmHUD::DrawDropNames is
+	// exactly such a caller.
+	OutDrops.Reset();
+
+	if (!World)
+	{
+		return;
+	}
+
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		ACataclysmDroppedItem* Drop = *It;
+		if (!IsValid(Drop))
+		{
+			continue;
+		}
+
+		// A DROP WITH NO NAME IS MALFORMED and there is nothing to draw for it.
+		if (Drop->DisplayName.IsEmpty())
+		{
+			continue;
+		}
+
+		if (!IsWithinNameRange(Standing, Drop->GetActorLocation()))
+		{
+			continue;
+		}
+
+		OutDrops.Add(Drop);
+	}
 }
 
 bool UCataclysmDropPickup::ComesAutomatically(bool bIsMaterial,

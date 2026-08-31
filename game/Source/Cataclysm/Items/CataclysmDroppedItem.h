@@ -10,6 +10,7 @@
 
 class UCataclysmInventoryComponent;
 class UDataTable;
+class UWorld;
 
 /**
  * One item lying on the dungeon floor, waiting to be picked up.
@@ -284,9 +285,14 @@ public:
  * UCataclysmDropSpawner gives and one more. AHUD::PostRender checks
  * FApp::CanEverRender() before calling DrawHUD, and the automation test command
  * passes -nullrhi, so nothing that runs inside a draw call can be tested at all.
- * Keeping the three judgements here -- which name the cursor is over, whether
- * the character is near enough, and what moving the item does -- leaves all
- * three covered while the drawing itself stays untested.
+ * Keeping the four judgements here -- which drops are near enough to name, which
+ * name the cursor is over, whether the character is near enough to take one, and
+ * what moving the item does -- leaves all four covered while the drawing itself
+ * stays untested.
+ *
+ * THE FIRST OF THE FOUR ARRIVED WITH ISSUE #1116, and it is the reason that
+ * sentence used to say three. It was written inside ACataclysmHUD::DrawDropNames
+ * to begin with, where nothing could reach it.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmDropPickup : public UObject
@@ -318,11 +324,55 @@ public:
 	 * and takes it on arrival, which is what every game in the genre does.
 	 * ACataclysmPlayerController holds that part.
 	 *
+	 * BUT SINCE ISSUE #1116 IT CANNOT COME FROM FURTHER THAN
+	 * NameShownRangeCm, and that sentence used to have no upper bound at all. A
+	 * click finds a drop by the name drawn over it, and no name is drawn past
+	 * ten metres, so ten metres is now the furthest a walk-and-collect can be
+	 * started from. The project owner chose that on 2026-08-31 rather than
+	 * having it arrive as a side effect.
+	 *
 	 * EXPECTED TO MOVE ONCE IT HAS BEEN PLAYED. Three metres is about a third of
 	 * the way across the screen at the default camera distance, and whether that
 	 * reads as generous or fiddly is not something the number can settle.
 	 */
 	static constexpr float PickupRangeCm = 300.0f;
+
+	/**
+	 * How near a character has to be for a drop's name to be drawn over it, in
+	 * centimetres. Issue #1116.
+	 *
+	 * TEN METRES, ASKED FOR BY THE PROJECT OWNER ON 2026-08-31 after a play
+	 * session where the names covered the screen. Nothing limited them before:
+	 * ACataclysmHUD::DrawDropNames drew a tag for every drop in the level at any
+	 * distance, and SeparateOverlappingNames below then pushed the ones that
+	 * collided apart, so a distant kill's worth of names spread across the view
+	 * rather than stacking in one place where they could be ignored.
+	 *
+	 * MORE THAN THREE TIMES PickupRangeCm, AND THAT ORDERING IS THE POINT. A
+	 * name has to appear before the item it names is reachable, or there is
+	 * nothing to walk towards; a player reads the name, decides, and then
+	 * approaches.
+	 *
+	 * WRITTEN AS A DISTANCE RATHER THAN AS A MULTIPLE OF PickupRangeCm, unlike
+	 * AutomaticMaterialRangeCm below. This is a statement about how much of the
+	 * screen should carry text, which the camera decides; the click range is a
+	 * statement about arm's reach. Tying them together would drag this every
+	 * time the reach was tuned, and they are not the same question.
+	 *
+	 * NEITHER GAME IN THE GENRE PUBLISHES ITS OWN FIGURE. Path of Exile and Last
+	 * Epoch both limit ground labels to a radius around the character and
+	 * neither states it, so ten metres is the project owner's judgement from
+	 * play rather than a number copied from a shipped game. Expected to be tuned
+	 * by eye, the same footing as PickupRangeCm above.
+	 *
+	 * IT IS SHORTER THAN AutomaticMaterialRangeCm BELOW, WHICH MEANS A CRAFTING
+	 * MATERIAL IS NEVER NAMED. The sweep runs every frame and takes any material
+	 * within fifteen metres, so a material is only still lying there when it is
+	 * too far away to have a tag. That is recorded as issue #1117 rather than
+	 * fixed here: it may be exactly what is wanted, since a material collects
+	 * itself and its name is never something a player has to click.
+	 */
+	static constexpr float NameShownRangeCm = 1000.0f;
 
 	/**
 	 * How near a character has to be for a crafting material to come to it
@@ -358,6 +408,56 @@ public:
 	 * on a step, quietly harder to pick up than the same drop on flat ground.
 	 */
 	static bool IsWithinPickupRange(const FVector& Character, const FVector& Drop);
+
+	/**
+	 * Whether a character standing here is near enough for a drop lying there
+	 * to have its name drawn over it. Issue #1116.
+	 *
+	 * A FUNCTION OVER TWO POSITIONS RATHER THAN A METHOD ON THE DROP, the same
+	 * shape as IsWithinPickupRange above and for the same reason: building an
+	 * ACataclysmDroppedItem needs a world, and the automation command runs with
+	 * -nullrhi, so a rule that took the actor could not be tested at all. The
+	 * drawing itself stays untested and this does not.
+	 *
+	 * MEASURED FLAT, IGNORING HEIGHT, for the reason IsWithinPickupRange gives:
+	 * a drop from a tall creature, or one that died on a step, must not behave
+	 * differently from the same drop on flat ground. Here the consequence would
+	 * be a tag that flickered out as a player walked under a ledge the item was
+	 * lying on.
+	 *
+	 * IT DECIDES WHAT IS CLICKABLE AS WELL AS WHAT IS VISIBLE, because
+	 * ACataclysmHUD::DropUnderPoint tests a click against the rectangles
+	 * ACataclysmHUD::DrawDropNames filled and this decides which drops get one.
+	 */
+	static bool IsWithinNameRange(const FVector& Character, const FVector& Drop);
+
+	/**
+	 * Every drop lying in this world that should have its name drawn, given
+	 * where the character is standing. Issue #1116.
+	 *
+	 * WHY THE WALK IS HERE AND NOT IN THE DRAW CALL. It is the fourth judgement
+	 * of the kind this class exists to hold, and it is the one the issue's
+	 * acceptance is written about: which drops get a tag and therefore which
+	 * ones can be clicked. Left inside ACataclysmHUD::DrawDropNames it could not
+	 * be checked at all -- AHUD::PostRender tests FApp::CanEverRender() and the
+	 * automation command passes -nullrhi -- so "a drop past ten metres draws no
+	 * tag" would have been a claim resting on reading the code. Here it is
+	 * driven with real drops spawned at real distances in a test world.
+	 *
+	 * IT TAKES A POSITION RATHER THAN FINDING THE PLAYER ITSELF, so the answer
+	 * does not depend on there being a possessed pawn. The heads-up display
+	 * already has one to hand.
+	 *
+	 * WHAT IT DOES NOT DECIDE IS WHETHER A DROP IS ON SCREEN. Rejecting what is
+	 * behind the camera needs the projection, which needs the canvas, so
+	 * DrawDropNames keeps that half. The split is between what the world knows
+	 * and what only a frame knows.
+	 *
+	 * @param OutDrops  emptied before anything is added, so a caller may reuse
+	 *                  one array frame after frame
+	 */
+	static void DropsToName(const UWorld* World, const FVector& Standing,
+							TArray<ACataclysmDroppedItem*>& OutDrops);
 
 	/**
 	 * Whether a drop comes to the character on its own. Issue #851.

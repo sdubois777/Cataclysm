@@ -15,14 +15,19 @@
 /**
  * Tests for picking a drop up. Issue #707.
  *
- * THE THREE JUDGEMENTS, AND WHY THEY ARE NOT IN THE HEADS-UP DISPLAY OR THE
- * CONTROLLER. Which name the cursor is over, whether the character is near
- * enough, and what moving the item actually does are all on
- * UCataclysmDropPickup as statics. The automation command runs with -nullrhi
- * and AHUD::PostRender checks FApp::CanEverRender() before calling DrawHUD, so
- * nothing inside a draw call can be tested at all; and nothing here possesses a
- * pawn or presses a mouse button, so the input handler cannot be either. Keeping
- * the judgements out of both leaves all three covered.
+ * THE FOUR JUDGEMENTS, AND WHY THEY ARE NOT IN THE HEADS-UP DISPLAY OR THE
+ * CONTROLLER. Which drops are near enough to name, which name the cursor is
+ * over, whether the character is near enough to take one, and what moving the
+ * item actually does are all on UCataclysmDropPickup as statics. The automation
+ * command runs with -nullrhi and AHUD::PostRender checks FApp::CanEverRender()
+ * before calling DrawHUD, so nothing inside a draw call can be tested at all;
+ * and nothing here possesses a pawn or presses a mouse button, so the input
+ * handler cannot be either. Keeping the judgements out of both leaves all four
+ * covered.
+ *
+ * THE FIRST OF THE FOUR WAS ADDED BY ISSUE #1116 and was written straight into
+ * the draw call before that, which is why "a drop past ten metres draws no tag"
+ * could not have been checked here.
  *
  * WHAT IS THEREFORE NOT COVERED, said plainly: that the heads-up display records
  * the rectangle it drew, that ACataclysmPlayerController asks it, and that a
@@ -126,6 +131,243 @@ bool FCataclysmPickupRangeTest::RunTest(const FString&)
 	TestTrue(TEXT("the measure is symmetric"),
 		FPickup::IsWithinPickupRange(FVector(500.0f, 500.0f, 0.0f),
 									 FVector(600.0f, 500.0f, 0.0f)));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// How near a drop has to be for its name to be drawn. Issue #1116.
+// ---------------------------------------------------------------------------
+
+/**
+ * A name is drawn out to ten metres and no further, measured flat.
+ *
+ * WHAT THIS DOES NOT COVER, said plainly. It covers the rule, not the drawing:
+ * that ACataclysmHUD::DrawDropNames actually asks this before naming a drop is
+ * inside a draw call, and AHUD::PostRender checks FApp::CanEverRender() while
+ * the automation command passes -nullrhi, so no test here can watch a frame.
+ * The same gap the whole of this file has, and the reason the judgement is a
+ * free function in the first place.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNameRangeTest,
+	"Cataclysm.DropPickup.ANameIsDrawnOnlyWithinTenMetresMeasuredFlat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNameRangeTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	TestEqual(TEXT("ten metres, asked for by the project owner on 2026-08-31"),
+		FPickup::NameShownRangeCm, 1000.0f);
+
+	// THE ORDER OF THE THREE RANGES IS THE DESIGN, so it is pinned rather than
+	// left to be read off three separate numbers.
+	TestTrue(TEXT("a name appears further out than a click can reach, so there "
+				  "is something to walk towards"),
+		FPickup::NameShownRangeCm > FPickup::PickupRangeCm);
+	TestTrue(TEXT("and nearer than a material's automatic sweep, which is why "
+				  "a material is never named -- issue #1117"),
+		FPickup::NameShownRangeCm < FPickup::AutomaticMaterialRangeCm);
+
+	const FVector Standing(0.0f, 0.0f, 0.0f);
+
+	TestTrue(TEXT("a drop underfoot is named"),
+		FPickup::IsWithinNameRange(Standing, FVector(0.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("five metres away is named"),
+		FPickup::IsWithinNameRange(Standing, FVector(500.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("just inside ten metres is named"),
+		FPickup::IsWithinNameRange(Standing, FVector(999.0f, 0.0f, 0.0f)));
+	TestTrue(TEXT("exactly ten metres is named"),
+		FPickup::IsWithinNameRange(Standing, FVector(1000.0f, 0.0f, 0.0f)));
+	TestFalse(TEXT("just outside ten metres is not"),
+		FPickup::IsWithinNameRange(Standing, FVector(1001.0f, 0.0f, 0.0f)));
+	TestFalse(TEXT("thirty metres away is not"),
+		FPickup::IsWithinNameRange(Standing, FVector(3000.0f, 0.0f, 0.0f)));
+
+	// DIAGONAL, so the test cannot pass by comparing one axis. 707 on each of
+	// two axes is 999.7 apart; 709 on each is 1002.6.
+	TestTrue(TEXT("999.7 cm diagonally is named"),
+		FPickup::IsWithinNameRange(Standing, FVector(707.0f, 707.0f, 0.0f)));
+	TestFalse(TEXT("1002.6 cm diagonally is not"),
+		FPickup::IsWithinNameRange(Standing, FVector(709.0f, 709.0f, 0.0f)));
+
+	// HEIGHT IS IGNORED, for the reason the click range ignores it. Nine metres
+	// away and eight metres up is 12.0 m apart in three dimensions, so a 3D test
+	// would refuse it. Here that would show as a tag blinking out as the player
+	// walked under a ledge the item was lying on.
+	TestTrue(TEXT("a drop eight metres overhead is still named"),
+		FPickup::IsWithinNameRange(Standing, FVector(900.0f, 0.0f, 800.0f)));
+	TestTrue(TEXT("and one eight metres below is too"),
+		FPickup::IsWithinNameRange(Standing, FVector(900.0f, 0.0f, -800.0f)));
+
+	// AND HEIGHT DOES NOT RESCUE SOMETHING TOO FAR AWAY FLAT.
+	TestFalse(TEXT("thirty metres away at the same height is still not named"),
+		FPickup::IsWithinNameRange(Standing, FVector(3000.0f, 0.0f, 10.0f)));
+
+	// IT DOES NOT MATTER WHICH WAY ROUND THE TWO ARE GIVEN.
+	TestTrue(TEXT("the measure is symmetric"),
+		FPickup::IsWithinNameRange(FVector(500.0f, 500.0f, 0.0f),
+								   FVector(1200.0f, 500.0f, 0.0f)));
+
+	// NOTHING REACHABLE IS EVER INVISIBLE, which is the invariant that keeps the
+	// change from taking away a pick-up the player could already make. A drop
+	// exactly at the edge of arm's reach still has a name, so it still has a
+	// rectangle, so a click still finds it.
+	const FVector AtArmsReach(FPickup::PickupRangeCm, 0.0f, 0.0f);
+	TestTrue(TEXT("a drop exactly at the click range is in reach"),
+		FPickup::IsWithinPickupRange(Standing, AtArmsReach));
+	TestTrue(TEXT("and it is named, so it is clickable"),
+		FPickup::IsWithinNameRange(Standing, AtArmsReach));
+
+	// THE BAND BETWEEN THE TWO IS WHAT WALKING TO A DROP IS FOR. Named, so it
+	// can be clicked; out of reach, so the click starts a walk rather than a
+	// pick-up. ACataclysmPlayerController::Input_MoveToCursorReleased is where
+	// those two answers are used together.
+	const FVector Across(700.0f, 0.0f, 0.0f);
+	TestFalse(TEXT("seven metres away is out of clicking reach"),
+		FPickup::IsWithinPickupRange(Standing, Across));
+	TestTrue(TEXT("but it is named, so it can still be walked to"),
+		FPickup::IsWithinNameRange(Standing, Across));
+
+	// AND PAST THE NAME RANGE THERE IS NOTHING TO CLICK AT ALL. This is the part
+	// the project owner decided on 2026-08-31 rather than accepting silently.
+	const FVector FarOff(1100.0f, 0.0f, 0.0f);
+	TestFalse(TEXT("eleven metres away is not named"),
+		FPickup::IsWithinNameRange(Standing, FarOff));
+	TestFalse(TEXT("and it was never in clicking reach either"),
+		FPickup::IsWithinPickupRange(Standing, FarOff));
+
+	return true;
+}
+
+/**
+ * Walking the level picks out the near drops and leaves the far ones behind.
+ *
+ * THIS IS THE ISSUE'S ACCEPTANCE, AS CLOSE AS A TEST CAN GET TO IT. The four
+ * things asked for were that a drop past ten metres draws no tag, that walking
+ * closer brings it back, that walking away hides it again, and that a drop
+ * beyond ten metres is not clickable. The first three are checked here with real
+ * drops spawned at real distances in a real world.
+ *
+ * THE FOURTH FOLLOWS FROM THE LIST RATHER THAN BEING CHECKED SEPARATELY.
+ * ACataclysmHUD::DrawDropNames fills DropNameRects from exactly this list, and
+ * ACataclysmHUD::DropUnderPoint tests a click against DropNameRects, so a drop
+ * missing from here has no rectangle and no click can find it.
+ *
+ * WHAT IS STILL NOT COVERED, said plainly: that the heads-up display calls this
+ * at all, and that a real left click reaches DropUnderPoint. Both are inside a
+ * draw call or an input handler, and neither runs under -nullrhi.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropsToNameTest,
+	"Cataclysm.DropPickup.OnlyTheDropsWithinTenMetresAreNamed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropsToNameTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FVector Origin(0.0f, 0.0f, 0.0f);
+
+	ACataclysmDroppedItem* Underfoot =
+		DropAt(World, Origin, TEXT("Greataxe"), TEXT("Underfoot"));
+	ACataclysmDroppedItem* FiveMetres = DropAt(World,
+		FVector(500.0f, 0.0f, 0.0f), TEXT("Greataxe"), TEXT("Five metres"));
+	ACataclysmDroppedItem* AtTheEdge = DropAt(World,
+		FVector(FPickup::NameShownRangeCm, 0.0f, 0.0f), TEXT("Greataxe"),
+		TEXT("Exactly ten metres"));
+	ACataclysmDroppedItem* JustPast = DropAt(World,
+		FVector(FPickup::NameShownRangeCm + 1.0f, 0.0f, 0.0f), TEXT("Greataxe"),
+		TEXT("One centimetre too far"));
+	ACataclysmDroppedItem* FarOff = DropAt(World,
+		FVector(3000.0f, 0.0f, 0.0f), TEXT("Greataxe"), TEXT("Thirty metres"));
+
+	// UP A LEDGE, EIGHT METRES ABOVE A POINT NINE METRES AWAY. That is 12.0 m
+	// apart in three dimensions and 9 m apart flat, so it is named. Measuring in
+	// three dimensions would show as a tag blinking out as the player walked
+	// under the ledge.
+	ACataclysmDroppedItem* OnALedge = DropAt(World,
+		FVector(900.0f, 0.0f, 800.0f), TEXT("Greataxe"), TEXT("On a ledge"));
+
+	// NO NAME MEANS MALFORMED, and it is rejected wherever it lies. Underfoot,
+	// so distance cannot be what rejected it.
+	ACataclysmDroppedItem* Nameless =
+		DropAt(World, Origin, TEXT("Greataxe"), TEXT(""));
+
+	if (!TestNotNull(TEXT("underfoot"), Underfoot)
+		|| !TestNotNull(TEXT("five metres"), FiveMetres)
+		|| !TestNotNull(TEXT("at the edge"), AtTheEdge)
+		|| !TestNotNull(TEXT("just past"), JustPast)
+		|| !TestNotNull(TEXT("far off"), FarOff)
+		|| !TestNotNull(TEXT("on a ledge"), OnALedge)
+		|| !TestNotNull(TEXT("nameless"), Nameless))
+	{
+		return false;
+	}
+
+	// THE ARRAY ARRIVES WITH SOMETHING IN IT, so "emptied before anything is
+	// added" is checked rather than assumed. A caller reusing one array frame
+	// after frame is exactly what the heads-up display does.
+	TArray<ACataclysmDroppedItem*> Named;
+	Named.Add(FarOff);
+
+	FPickup::DropsToName(World, Origin, Named);
+
+	TestEqual(TEXT("four of the seven drops are named"), Named.Num(), 4);
+	TestTrue(TEXT("the one underfoot is named"), Named.Contains(Underfoot));
+	TestTrue(TEXT("five metres away is named"), Named.Contains(FiveMetres));
+	TestTrue(TEXT("exactly ten metres away is named"),
+		Named.Contains(AtTheEdge));
+	TestTrue(TEXT("and the one up a ledge is, because height is ignored"),
+		Named.Contains(OnALedge));
+
+	TestFalse(TEXT("one centimetre past ten metres is not named"),
+		Named.Contains(JustPast));
+	TestFalse(TEXT("thirty metres away is not named, and the stale entry the "
+				   "array arrived with is gone"), Named.Contains(FarOff));
+	TestFalse(TEXT("and a drop with no name is not named, underfoot or not"),
+		Named.Contains(Nameless));
+
+	// WALKING OVER TO THE FAR ONE BRINGS IT BACK. Standing beside the thirty
+	// metre drop, it is named and the ones near the origin are not. This is the
+	// "comes back when they are within ten metres again" half of the request,
+	// and it is the same call with a different position rather than any state
+	// that has to be reset.
+	FPickup::DropsToName(World, FVector(3000.0f, 0.0f, 0.0f), Named);
+
+	TestTrue(TEXT("standing beside it, the far drop is named"),
+		Named.Contains(FarOff));
+	TestFalse(TEXT("and the one underfoot back at the origin is not"),
+		Named.Contains(Underfoot));
+	TestFalse(TEXT("nor the one five metres from the origin"),
+		Named.Contains(FiveMetres));
+
+	// AND WALKING BACK HIDES IT AGAIN, which is the other half and is not the
+	// same statement: a rule that only ever added drops would pass everything
+	// above.
+	FPickup::DropsToName(World, Origin, Named);
+	TestFalse(TEXT("back at the origin the far drop is hidden again"),
+		Named.Contains(FarOff));
+	TestTrue(TEXT("and the one underfoot is named again"),
+		Named.Contains(Underfoot));
+
+	// A DESTROYED DROP LEAVES THE LIST. A drop just picked up must not be named
+	// for another frame, or a click at its old position would find it.
+	Underfoot->Destroy();
+	FPickup::DropsToName(World, Origin, Named);
+	TestEqual(TEXT("three are named once one has been taken"), Named.Num(), 3);
+	TestFalse(TEXT("and the destroyed one is not among them"),
+		Named.Contains(Underfoot));
+
+	// NO WORLD NAMES NOTHING, rather than reading through a null pointer.
+	FPickup::DropsToName(nullptr, Origin, Named);
+	TestEqual(TEXT("no world names nothing"), Named.Num(), 0);
 
 	return true;
 }

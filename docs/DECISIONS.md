@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — A loot name tag is drawn only within ten metres, and a tag that is not drawn cannot be clicked
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and
+`game/Source/Cataclysm/Interface/CataclysmHUD.cpp`. Applied. Issue #1116.
+
+The project owner played on 2026-08-31 and reported that loot name tags
+overlapped everything and stayed on screen when the item was far away. The
+floors that produce this are the crowded ones; the same session recorded 211
+creatures spawned on one floor.
+
+### What was wrong
+
+`ACataclysmHUD::DrawDropNames` walked every dropped item in the level and drew a
+tag for each. It rejected only a drop with no display name and a drop behind the
+camera. There was **no distance test in it at all**, so a drop thirty metres away
+on the far side of a room was labelled the same as one at the character's feet.
+
+`UCataclysmDropPickup::SeparateOverlappingNames` then made it worse rather than
+better. It moves tags that would print over each other apart, so a distant kill's
+worth of names was spread across the view instead of stacking in one place where
+it could be ignored.
+
+### The decision
+
+**Ten metres.** `UCataclysmDropPickup::NameShownRangeCm` is 1000 cm, and it sits
+between the two distances the drop system already had:
+
+| Constant | Value | What it is |
+| :-- | --: | :-- |
+| `PickupRangeCm` | 300 cm | how near to click a drop and take it immediately |
+| `NameShownRangeCm` | 1000 cm | how near for its name to be drawn |
+| `AutomaticMaterialRangeCm` | 1500 cm | how near for a crafting material to come on its own |
+
+The ordering against the click range is the part that matters, and it is checked
+by a test rather than left to be read off two numbers. A name has to appear
+before the item it names is reachable, or there is nothing for the player to walk
+towards.
+
+**Measured flat, ignoring height**, for the reason `IsWithinPickupRange` already
+gives: a drop from a tall creature, or one that died on a step, must not behave
+differently from the same drop on flat ground. Here the visible consequence would
+be a tag blinking out as a player walked under a ledge an item was lying on.
+
+### The second decision, which is the one that needed asking
+
+**A tag that is not drawn cannot be clicked, and the project owner accepted
+that.** `ACataclysmHUD::DropUnderPoint` finds a drop by testing the click against
+`DropNameRects`, the same array the drawing loop fills, so a drop with no tag has
+no rectangle and no click can find it.
+
+That matters because a click from beyond the click range was **not** refused. It
+set `PendingPickup` and walked the character over to collect the item on arrival.
+So limiting the tags also limits walk-and-collect to ten metres.
+
+**What the genre does.** Path of Exile and Last Epoch both draw ground labels
+only within a radius of the character and neither publishes the figure. In both,
+a label you cannot see is a label you cannot click; there is no separate
+mechanism for ordering a walk to an unlabelled item. Diablo IV went the other way
+in patch 1.4.2, making the item model the only click target and the label inert,
+and its players objected. This project already follows the label — that is the
+project owner's decision of 2026-08-18, "a player sees a drop as a nametag and
+clicking on it loots the item" — so following it here too keeps one rule rather
+than two.
+
+**What the research does not settle.** Neither game states its own radius, so ten
+metres is the project owner's judgement from play and not a number copied from a
+shipped game. It is expected to be tuned by eye, the same footing as the three
+metre click range.
+
+### A consequence recorded rather than fixed
+
+Because the name range is **shorter** than `AutomaticMaterialRangeCm`, and
+`ACataclysmPlayerController::CollectMaterialsNearby` runs every frame taking
+every crafting material within fifteen metres, a material is only ever still
+lying on the floor when it is too far away to be named. **A crafting material's
+name tag is therefore never drawn in normal play**, the exceptions being a full
+inventory and the single frame between a kill and the next sweep.
+
+That may be exactly right, since a material collects itself and its name is never
+something a player has to click. It is issue #1117 rather than a change made
+here, because it is a question about what a player should be told and not about
+this range.
+
+---
+
 ## 2026-08-31 — The basic attack pays no health cost at all, because the player cannot choose not to swing it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` and
