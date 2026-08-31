@@ -22,6 +22,8 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Character/CataclysmExperience.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Camera/CameraComponent.h"
@@ -2217,4 +2219,165 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeZoom
 			const float Notches = Args.Num() >= 1
 				? FCString::Atof(*Args[0]) : 0.0f;
 			Controller->ZoomPassiveTree(Notches);
+		}));
+
+// ---------------------------------------------------------------------------
+// The empire, issue #1087
+//
+// WHY THESE EXIST AT ALL. Nothing in the game advances the day. Walking a
+// dungeon and spending days at the forge are what eventually will, and neither
+// reaches the empire layer yet, so without a command to move time the empire
+// overview shows an empire on day 0 for ever.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen(
+	TEXT("Cataclysm.EmpireMap"),
+	TEXT("Open or close the empire overview. It has no key of its own yet."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(
+					World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there "
+							"is nothing to open a screen on."));
+				return;
+			}
+
+			// STARTED HERE RATHER THAN BY THE SCREEN, so that opening a screen
+			// to look at it never silently begins a campaign. Asking for the
+			// empire map IS asking for an empire.
+			UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ true);
+
+			Controller->ToggleEmpireMap();
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireBegin(
+	TEXT("Cataclysm.EmpireBegin"),
+	TEXT("Start a fresh empire run: Cataclysm.EmpireBegin [seed] [static|"
+		 "accelerating|swelling|both] [0 Standard, 1 Hardcore, 2 Heretic]. "
+		 "THROWS AWAY THE RUN IN PROGRESS. The same seed gives the same empire."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmGameInstance* Instance = World
+				? Cast<UCataclysmGameInstance>(World->GetGameInstance())
+				: nullptr;
+			if (!Instance)
+			{
+				Ar.Log(TEXT("This world has no Cataclysm game instance, so "
+							"there is nowhere for a run to live. Check "
+							"GameInstanceClass in Config/DefaultEngine.ini."));
+				return;
+			}
+
+			const int32 Seed = Args.Num() >= 1 ? FCString::Atoi(*Args[0]) : 1;
+
+			ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static;
+			if (Args.Num() >= 2)
+			{
+				const FString Named = Args[1].ToLower();
+				if (Named == TEXT("accelerating"))
+				{
+					Mode = ECataclysmSurgeMode::Accelerating;
+				}
+				else if (Named == TEXT("swelling"))
+				{
+					Mode = ECataclysmSurgeMode::Swelling;
+				}
+				else if (Named == TEXT("both"))
+				{
+					Mode = ECataclysmSurgeMode::Both;
+				}
+				else if (Named != TEXT("static"))
+				{
+					Ar.Logf(TEXT("'%s' is not an escalation. Use static, "
+								 "accelerating, swelling or both."), *Args[1]);
+					return;
+				}
+			}
+
+			const int32 Rung = Args.Num() >= 3 ? FCString::Atoi(*Args[2]) : 0;
+
+			UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(Seed, Mode, Rung);
+
+			Ar.Logf(TEXT("A fresh empire, seed %d. %s"), Seed, *Run->Describe());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
+	TEXT("Cataclysm.EmpireAdvance"),
+	TEXT("Pass days in the empire: Cataclysm.EmpireAdvance <days>. One day with "
+		 "no argument. Surges land, timers run out, cities fall."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run =
+				UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ true);
+			if (!Run)
+			{
+				Ar.Log(TEXT("This world has no Cataclysm game instance, so "
+							"there is no empire to advance."));
+				return;
+			}
+
+			const int32 Days = Args.Num() >= 1
+				? FMath::Max(1, FCString::Atoi(*Args[0])) : 1;
+
+			// EVERY DAY REPORTED, NOT A SUMMARY. What a person running this
+			// wants to know is which day a city was lost on, and a total loses
+			// exactly that.
+			for (const FCataclysmDayReport& Report : Run->AdvanceDays(Days))
+			{
+				if (Report.Spawned.IsEmpty() && Report.Resolved.IsEmpty()
+					&& Report.Fallen.IsEmpty())
+				{
+					continue;
+				}
+
+				TArray<FString> Parts;
+				if (Report.bSurged)
+				{
+					Parts.Add(FString::Printf(TEXT("a surge brought %d dungeons"),
+											  Report.Spawned.Num()));
+				}
+				if (!Report.Resolved.IsEmpty())
+				{
+					Parts.Add(FString::Printf(TEXT("%d dungeons resolved"),
+											  Report.Resolved.Num()));
+				}
+				for (const int32 CityId : Report.Fallen)
+				{
+					const FCataclysmCity* City = Run->Map
+						? Run->Map->Find(CityId) : nullptr;
+					Parts.Add(FString::Printf(TEXT("%s FELL"),
+											  City ? *City->Name : TEXT("a city")));
+				}
+
+				Ar.Logf(TEXT("Day %d: %s"), Report.Day,
+						*FString::Join(Parts, TEXT(", ")));
+			}
+
+			Ar.Log(*Run->Describe());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEmpire(
+	TEXT("Cataclysm.ShowEmpire"),
+	TEXT("Print the empire as it stands: the day, the map, how far the "
+		 "Cataclysm is from the Pillar, and what is standing where."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run =
+				UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin "
+							"starts one, and Cataclysm.EmpireMap opens the "
+							"screen and starts one if there is none."));
+				return;
+			}
+
+			Ar.Log(*Run->Describe());
 		}));

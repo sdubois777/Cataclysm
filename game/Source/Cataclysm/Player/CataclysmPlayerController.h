@@ -11,6 +11,7 @@ class ACataclysmDroppedItem;
 class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmCharacterCreationWidget;
+class UCataclysmEmpireMapWidget;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
 class UCataclysmPassiveTreeWidget;
@@ -235,6 +236,16 @@ public:
 	void TogglePassiveTree();
 
 	/**
+	 * Opens and closes the empire overview.
+	 *
+	 * THE SAME SHAPE AS THE TWO ABOVE, and public for the same reason:
+	 * `Cataclysm.EmpireMap` calls it. It has no key of its own, and that is not
+	 * an oversight: the input assets are generated in the editor and adding a
+	 * binding to them is a separate change from building a screen. Issue #1087.
+	 */
+	void ToggleEmpireMap();
+
+	/**
 	 * Scale the passive tree view, or fit the whole tree when given nothing.
 	 *
 	 * THE MOUSE WHEEL AND A DRAG ARE HOW THIS IS MEANT TO BE DRIVEN, and this
@@ -401,6 +412,17 @@ private:
 	/** The passive tree screen, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmPassiveTreeWidget> PassiveTreeScreen = nullptr;
+
+	/** Which Widget Blueprint the empire overview is. Soft, for the reason
+	 *  the character creator's is. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmEmpireMapWidget> EmpireMapScreenClass =
+		TSoftClassPtr<UCataclysmEmpireMapWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_EmpireMap.WBP_EmpireMap_C")));
+
+	/** The empire overview, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmEmpireMapWidget> EmpireMapScreen = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

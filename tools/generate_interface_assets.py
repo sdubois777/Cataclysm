@@ -8,6 +8,7 @@ WHAT IT MAKES, under `/Game/Interface`:
                             a passive node
     WBP_CharacterCreation   the character creator, issue #50
     WBP_PassiveTree         the passive class tree, issue #50
+    WBP_EmpireMap           the empire overview, issue #1087
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -42,7 +43,7 @@ import unreal
 
 INTERFACE_DIR = "/Game/Interface"
 
-# The C++ classes the two Blueprints derive from. Named as the editor sees them,
+# The C++ classes the Blueprints derive from. Named as the editor sees them,
 # without the leading U.
 CHOICE_BUTTON_PARENT = "CataclysmChoiceButton"
 CREATION_PARENT = "CataclysmCharacterCreationWidget"
@@ -51,6 +52,8 @@ CHOICE_BUTTON_ASSET = "WBP_ChoiceButton"
 CREATION_ASSET = "WBP_CharacterCreation"
 PASSIVE_PARENT = "CataclysmPassiveTreeWidget"
 PASSIVE_ASSET = "WBP_PassiveTree"
+EMPIRE_PARENT = "CataclysmEmpireMapWidget"
+EMPIRE_ASSET = "WBP_EmpireMap"
 
 # --- the little colour there is ----------------------------------------------
 # THE SAME NEARLY-BLACK PANEL THE INVENTORY SCREEN USES, from
@@ -299,12 +302,66 @@ def make_passive_tree():
     log("created {}/{}".format(INTERFACE_DIR, PASSIVE_ASSET))
 
 
+def make_empire_map():
+    parent = parent_class(EMPIRE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, EMPIRE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, EMPIRE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, EMPIRE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(EMPIRE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "The empire", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    surge = add(blueprint, unreal.TextBlock, "SurgeLabel", "Body")
+    set_text(surge, "", size=18)
+
+    # WHERE THE 25 CITIES ARE DRAWN. A canvas panel, because only 25 of a 7 by 7
+    # grid's 49 cells exist: a grid would need 24 empty widgets to hold the
+    # diamond's shape, and the diamond would be locked to whatever spacing the
+    # grid was given rather than fitted to the panel.
+    #
+    # THE PANEL IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmEmpireMapWidget places one box per city on it, and
+    # UCataclysmEmpireMapLayout is the arithmetic that decides where.
+    canvas = add(blueprint, unreal.CanvasPanel, "MapCanvas", "Body")
+    fill_remaining_height(canvas)
+    canvas.set_editor_property("clipping", unreal.WidgetClipping.CLIP_TO_BOUNDS)
+
+    detail = add(blueprint, unreal.TextBlock, "DetailLabel", "Body")
+    set_text(detail, "", size=16)
+    detail.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            EMPIRE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, EMPIRE_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
     make_choice_button()
     make_character_creation()
     make_passive_tree()
+    make_empire_map()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

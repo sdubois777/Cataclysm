@@ -4,6 +4,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
+#include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -501,6 +502,51 @@ void ACataclysmPlayerController::TogglePassiveTree()
 	// screen was last closed, and the widget is kept rather than rebuilt.
 	PassiveTreeScreen->RefreshDisplay();
 	PassiveTreeScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::ToggleEmpireMap()
+{
+	if (!EmpireMapScreen)
+	{
+		UClass* ScreenClass = EmpireMapScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no empire overview to open: %s could not be "
+						"loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *EmpireMapScreenClass.ToString());
+			return;
+		}
+
+		EmpireMapScreen =
+			CreateWidget<UCataclysmEmpireMapWidget>(this, ScreenClass);
+		if (!EmpireMapScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The empire overview could not be created, so the "
+						"command that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (EmpireMapScreen->IsInViewport())
+	{
+		EmpireMapScreen->RemoveFromParent();
+
+		// THE SAME INPUT MODE AS CLOSING THE PASSIVE TREE, and for the reason
+		// issue #1015 recorded: setting `FInputModeGameOnly` here would leave
+		// the player unable to move after closing the screen.
+		ApplyPlayingInputMode();
+		return;
+	}
+
+	ApplyPlayingInputMode();
+
+	// REFRESHED ON EVERY OPENING. Days can have passed since it was last
+	// closed, and the widget is kept rather than rebuilt.
+	EmpireMapScreen->Refresh();
+	EmpireMapScreen->AddToViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
