@@ -797,17 +797,22 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageFollowsTheSkillsHealthCostTest,
 					 FromSkillCosting(0.0f)),
 		NoSkill, 0.01f);
 
-	// AND SO IS ONE SITTING EXACTLY ON THE THRESHOLD, which is where the Deeper
-	// Cuts node at its full ten points puts every skill: it adds exactly 10% of
-	// maximum health. The design says "above 10%", so that character gets
-	// nothing until something else adds to the cost.
+	// AND SO IS ONE SITTING EXACTLY ON THE THRESHOLD. The design says "above
+	// 10%", so a character paying exactly ten gets nothing.
+	//
+	// WHAT PUTS A CHARACTER EXACTLY THERE HAS CHANGED. It was the Deeper Cuts
+	// node at its full ten points, which added exactly 10% of maximum health,
+	// until issue #1107 lowered that node to 0.25% a point. Exsanguinate's 15%
+	// of CURRENT health lands on the same line by a different route: a character
+	// at exactly two thirds of its pool is paying 10% of its maximum.
 	TestEqual(TEXT("a skill costing exactly ten per cent hits for the same"),
 		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
 					 FromSkillCosting(10.0f)),
 		NoSkill, 0.01f);
 
-	// A SKILL COSTING MORE THAN THE THRESHOLD HITS HARDER. Deeper Cuts at ten
-	// points plus Blood Pyre's own 8% of current health, at full health, is 18%.
+	// A SKILL COSTING MORE THAN THE THRESHOLD HITS HARDER. Exsanguinate's 15% of
+	// current health plus Blood Pyre's own 8% of current, at full health, is 23%
+	// and passes it comfortably; 18% is a figure between the two.
 	const float Expensive =
 		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
 					 FromSkillCosting(18.0f));

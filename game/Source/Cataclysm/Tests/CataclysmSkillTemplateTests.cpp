@@ -1024,7 +1024,15 @@ bool FCataclysmAddedHealthCostTest::RunTest(const FString&)
 	Caster.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000.0f);
 	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000.0f);
 
-	// TEN PERCENT OF MAXIMUM HEALTH, which is Deeper Cuts at ten points.
+	// TEN PERCENT OF MAXIMUM HEALTH, a round share of the pool chosen so the
+	// arithmetic below is exact.
+	//
+	// IT WAS DEEPER CUTS AT TEN POINTS AND IS NO LONGER. That node charged 1% of
+	// maximum health a point until issue #1107 lowered it to 0.25%, so ten
+	// points now add 2.5% and no node on its own reaches ten. Exsanguinate's 15%
+	// of CURRENT health passes it for a character above two thirds of its pool.
+	// The figure is kept because what this test measures is the arithmetic of a
+	// cost, not which node supplied it.
 	Caster.Set(
 		UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute(), 10.0f);
 
@@ -4424,8 +4432,11 @@ bool FCataclysmTheLastDropSuppressesTheCostTest::RunTest(const FString&)
 	FScopedFighter Exactly(World, FVector(4 * M, 0, 0));
 	FScopedFighter Without(World, FVector(8 * M, 0, 0));
 
-	// TEN PER CENT OF A THOUSAND MAXIMUM HEALTH IS A COST OF A HUNDRED, which is
-	// the Masochist's Deeper Cuts node at its full ten points.
+	// TEN PER CENT OF A THOUSAND MAXIMUM HEALTH IS A COST OF A HUNDRED. It was
+	// the Masochist's Deeper Cuts node at its full ten points until issue #1107
+	// lowered that node to 0.25% a point; Exsanguinate's 15% of current health
+	// is what reaches this share now, for a character above two thirds of its
+	// pool.
 	StandAtShareOfHealthWithACost(Below, 19.0f);
 	StandAtShareOfHealthWithACost(Exactly, 20.0f);
 	StandAtShareOfHealthWithACost(Without, 19.0f);
