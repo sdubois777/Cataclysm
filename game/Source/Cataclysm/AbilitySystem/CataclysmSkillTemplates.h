@@ -405,6 +405,29 @@ public:
 							  const FGameplayAbilityActorInfo* ActorInfo,
 							  const FGameplayAbilityActivationInfo ActivationInfo) override;
 
+	/**
+	 * The key came up. Nothing happens here except arming the switch-off above.
+	 *
+	 * WHY A TOGGLE HAS TO WATCH FOR THE RELEASE. Issue #1114.
+	 * `ACataclysmPlayerController::Input_AbilitySlotPressed` is bound to
+	 * `ETriggerEvent::Triggered`, which fires EVERY FRAME the key is held -- its
+	 * own comment says so, from issue #1016 -- and that is right for a skill
+	 * with a cooldown, where holding the button keeps casting.
+	 *
+	 * THE AURA SLOT HAS NO COOLDOWN, so nothing rate-limited it. Holding the key
+	 * activated the aura on one frame, switched it off on the next, activated it
+	 * again on the third, and every activation paid a full health cost. The
+	 * project owner pressed the key once on 2026-08-31 and the log recorded five
+	 * costs of about 253 health inside 117 milliseconds, which killed them.
+	 *
+	 * SO THE SWITCH-OFF NOW NEEDS A RELEASE FIRST. A press arriving while the
+	 * key was never let go is a repeat frame of the press that started the aura,
+	 * and does nothing.
+	 */
+	virtual void InputReleased(const FGameplayAbilitySpecHandle Handle,
+							   const FGameplayAbilityActorInfo* ActorInfo,
+							   const FGameplayAbilityActivationInfo ActivationInfo) override;
+
 	/** One pulse: drain the mana, then burn everything inside. Driven by tests too. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 Pulse();
@@ -427,6 +450,19 @@ private:
 	void Finish();
 
 	bool bHeld = false;
+
+	/**
+	 * Whether the key has come up since this activation started.
+	 *
+	 * FALSE UNTIL `InputReleased` ARRIVES, which is what makes the switch-off
+	 * need a second, separate press rather than the next frame of the first
+	 * one. Issue #1114. Reset in `ActivateAbility` rather than in `EndAbility`,
+	 * because the aura also ends for reasons that are not a key press -- running
+	 * out of mana, or a duration expiring -- and a fresh activation is the only
+	 * moment at which "the key has not been let go yet" is true again.
+	 */
+	bool bKeyReleasedSinceActivation = false;
+
 	FTimerHandle PulseTimer;
 	FTimerHandle FinishTimer;
 };
