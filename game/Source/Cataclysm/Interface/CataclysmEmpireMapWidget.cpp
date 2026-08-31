@@ -173,6 +173,12 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 			Placement->SetSize(BoxSize);
 		}
 
+		// THE WORDS SHRINK WITH THE BOX. Without this the box scales to fit the
+		// panel and the label stays the size the Widget Blueprint gave it, so
+		// every city read "Outpost 10" where it should read "Outpost 100%".
+		// Issue #1089.
+		Button->SetLabelScale(Scale);
+
 		const ECataclysmCityMark Mark =
 			UCataclysmEmpireMapLayout::MarkFor(Run->Map, Index);
 
