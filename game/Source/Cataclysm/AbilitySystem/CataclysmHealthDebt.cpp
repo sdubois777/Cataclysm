@@ -343,6 +343,21 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 		   TEXT("%s owed %.1f health with %.1f left and died of it."),
 		   *Character->GetName(), Amount, Current);
 
+	// THE DEBT GOES WITH THE CHARACTER. Leaving it standing would have the
+	// regeneration step ask this question again on the corpse for as long as the
+	// body is in the level, and the guard at the top of this function is what
+	// would have to catch it. Clearing it says the debt was collected.
+	//
+	// BEFORE THE HEALTH AND NOT AFTER IT, WHICH IS THE OPPOSITE OF THE ORDER
+	// THIS USED TO BE IN. Issue #1072 made the health write below fire the death
+	// itself, from `UCataclysmVitalAttributeSet::PostAttributeBaseChange`, and a
+	// player's death writes the save record synchronously. Left in the old
+	// order, that record would hold a character that died still owing the debt
+	// that killed it, which is a different thing from what it holds today and
+	// would quietly answer issue #1013 rather than leaving it open.
+	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
+	AbilitySystem->ClearHealthDebtDue();
+
 	// HEALTH TO ZERO AND THEN `HandleDeath`, which is the pair
 	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` uses. Writing the
 	// health first means anything that reads it during the death -- a save
@@ -350,13 +365,13 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 	// with health left and marked dead.
 	AbilitySystem->SetNumericAttributeBase(Health, 0.0f);
 
-	// THE DEBT GOES WITH THE CHARACTER. Leaving it standing would have the
-	// regeneration step ask this question again on the corpse for as long as the
-	// body is in the level, and the guard at the top of this function is what
-	// would have to catch it. Clearing it says the debt was collected.
-	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
-	AbilitySystem->ClearHealthDebtDue();
-
+	// AND THE DEATH IS ASKED FOR EXPLICITLY AS WELL, WHICH IS NOW USUALLY THE
+	// SECOND ASK. The line above reaches `HandleDeath` through the attribute
+	// hook for any character whose ability system has it as its avatar, and
+	// `HandleDeath` refuses a second time because `MarkDead` reports the tag is
+	// already there. This stays because the hook asks the AVATAR and this asks
+	// the actor that was passed in, and those are the same object for every
+	// character in the game today but are not required to be.
 	if (ACataclysmCharacterBase* AsCharacter =
 			Cast<ACataclysmCharacterBase>(Character))
 	{

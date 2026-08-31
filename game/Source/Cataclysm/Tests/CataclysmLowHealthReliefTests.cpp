@@ -22,14 +22,23 @@
  *
  * Issue #1069.
  *
- * WHAT IS MEASURED HERE AND WHAT IS NOT. These drive
- * `UCataclysmLowHealthRelief::NoteHealthChanged` directly, because what the
- * sentence is made of is a crossing and a cooldown, and both are arithmetic on
- * a clock. That the health path really calls it is checked by
- * `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`,
- * which reads `UCataclysmVitalAttributeSet::NotifyHealthChanged` and fails if
- * the call is gone. That check exists because no headless test can drive that
- * function: reaching it means building and applying a real gameplay effect.
+ * WHAT IS MEASURED HERE AND WHAT IS NOT. What the sentence is made of is a
+ * crossing and a cooldown, and both are arithmetic on a clock, so that is what
+ * these check: WHEN the rule fires and when it does not.
+ *
+ * THESE USED TO DRIVE `UCataclysmLowHealthRelief::NoteHealthChanged` BY HAND
+ * AND NO LONGER DO. Issue #1072. Writing health is now enough on its own,
+ * because `UCataclysmVitalAttributeSet::PostAttributeBaseChange` runs the
+ * notification for every direct write, so `MoveHealthTo` below writes and then
+ * READS what the crossing left behind. That makes each test below say something
+ * it could not say before: that a fall in health, by itself, reaches the rule.
+ * Before the fix it did not, and this whole file passed anyway.
+ *
+ * THE STANDING CHECK IS STILL THERE AS WELL.
+ * `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+ * fails if either notification loses a job, or if the hook that runs them loses
+ * a call. It runs on every pull request; these do not, because continuous
+ * integration compiles no C++.
  *
  * WHAT EACH HALF DOES is checked next door.
  * `Cataclysm.HealthDebt.DroppingLowClearsTheDebtOnlyWithRockBottom` covers the
@@ -106,11 +115,28 @@ namespace CataclysmLowHealthReliefTest
 			Set(Resource::GetFervourOnDroppingLowAttribute(), 50.0f);
 		}
 
-		/** Put health at a share of maximum and tell the rule it moved. */
+		/**
+		 * Put health at a share of maximum, and answer what the fall gave back.
+		 *
+		 * THE WRITE IS THE WHOLE OF IT. Issue #1072 made
+		 * `UCataclysmVitalAttributeSet::PostAttributeBaseChange` run the
+		 * notification on every direct write, so a call to
+		 * `Relief::NoteHealthChanged` here would be the SECOND call and would
+		 * answer zero: the crossing has already happened and the character's
+		 * remembered position has already been updated.
+		 *
+		 * MEASURED RATHER THAN RETURNED, AND IT IS THE SAME NUMBER.
+		 * `NoteHealthChanged` returns the debt it cleared plus the Fervour it
+		 * granted, which is exactly the pair of differences below.
+		 */
 		float MoveHealthTo(float Share) const
 		{
+			const float OwedBefore = Owed();
+			const float FervourBefore = Fervour();
+
 			Set(Vital::GetHealthAttribute(), 1'000.0f * Share);
-			return Relief::NoteHealthChanged(Actor);
+
+			return (OwedBefore - Owed()) + (Fervour() - FervourBefore);
 		}
 
 		AActor* Actor = nullptr;

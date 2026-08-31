@@ -164,6 +164,35 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 	}
 }
 
+void UCataclysmVitalAttributeSet::PostAttributeBaseChange(
+	const FGameplayAttribute& Attribute, float OldValue, float NewValue) const
+{
+	Super::PostAttributeBaseChange(Attribute, OldValue, NewValue);
+
+	// EVERY WRITE TO HEALTH THAT NO GAMEPLAY EFFECT CAUSED ARRIVES HERE, which
+	// is the whole reason this override exists. See the header. A health cost
+	// and a debt falling due both write the attribute directly, and until issue
+	// #1072 neither of them told anything at all.
+	if (Attribute != GetHealthAttribute())
+	{
+		return;
+	}
+
+	// `NewValue` IS DELIBERATELY NOT READ, AND THAT IS NOT AN OVERSIGHT. The
+	// engine passes the BASE value, while the clamp this set applies in
+	// `PreAttributeChange` lands on the CURRENT value, so the two differ
+	// whenever a write went past a limit: a health cost of 500 charged against
+	// 200 health leaves the base at -300 and the current value at 0. Both
+	// notifications below read `GetHealth()`, which is the current value, and
+	// that is the number a character actually has.
+	//
+	// THE DEATH NOTICE FIRST, WHICH IS THE ORDER `PostGameplayEffectExecute`
+	// USES. A character that has just been emptied should be dead before
+	// anything watching a threshold looks at it.
+	NotifyIfHealthReachedZero();
+	NotifyHealthChanged();
+}
+
 void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	const FGameplayEffectModCallbackData& Data)
 {
@@ -967,7 +996,7 @@ void UCataclysmVitalAttributeSet::PlayImpactEffect(
 									Hit.EffectDamageType);
 }
 
-void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
+void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 {
 	if (GetHealth() > 0.0f)
 	{
@@ -983,11 +1012,20 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
 	// ACataclysmPlayerCharacter::InitAbilityActorInfo makes that the player
 	// state -- deliberately, because it survives death -- while the pawn is the
 	// avatar. A player state is not a character, so the cast below failed and
-	// this returned early.
+	// this returned early. Issue #565 is what fixed that.
 	//
-	// IT COSTS NOTHING TODAY, because HandleDeath is inert on the base by design
-	// and a player's death is not built. It would silently stop that death ever
-	// firing the moment somebody builds it, with no error to follow. Issue #565.
+	// BOTH DEATHS THIS REACHES ARE BUILT. Issue #1094 replaced a paragraph here
+	// that said a player's was not, which was true when it was written and had
+	// stopped being true. `ACataclysmPlayerCharacter::HandleDeath` writes the
+	// save, marks the character dead, halts it and stands it back up after
+	// `RespawnDelaySeconds`; `ACataclysmEnemyCharacter::HandleDeath` marks the
+	// creature, drops its loot and removes it. Only `ACataclysmCharacterBase`'s
+	// own is inert, and nothing in the game is one.
+	//
+	// THE REMAINING QUESTION WAS NEVER WHAT THIS DOES BUT WHICH WRITES REACH
+	// IT, and that is what `PostAttributeBaseChange` above now answers. The
+	// stale paragraph was the one somebody investigating exactly that would
+	// read and be sent away by.
 	const UAbilitySystemComponent* AbilitySystem =
 		GetOwningAbilitySystemComponent();
 	ACataclysmCharacterBase* Character = AbilitySystem
@@ -1001,7 +1039,7 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero()
 	Character->HandleDeath();
 }
 
-void UCataclysmVitalAttributeSet::NotifyHealthChanged()
+void UCataclysmVitalAttributeSet::NotifyHealthChanged() const
 {
 	// EVERY WRITE TO HEALTH, NOT ONLY THE ONE THAT REACHES ZERO, which is the
 	// difference between this and NotifyIfHealthReachedZero beside it. A
@@ -1015,9 +1053,17 @@ void UCataclysmVitalAttributeSet::NotifyHealthChanged()
 
 	// AND HERE IS WHERE A HEALTH THRESHOLD IS CROSSED. Issue #985, The Breaking
 	// Point: "Dropping below 50% health converts all damage you take into
-	// Bleeding". This function already fires on EVERY write to health, which is
-	// exactly what a crossing needs, and every route that lowers health -- a
-	// blow, a health cost, a debt falling due -- comes through it.
+	// Bleeding".
+	//
+	// THIS FUNCTION DOES NOW FIRE ON EVERY WRITE TO HEALTH, WHICH IS WHAT A
+	// CROSSING NEEDS, AND FOR TWO THIRDS OF THIS PROJECT'S LIFE IT DID NOT.
+	// The paragraph that stood here claimed all three routes -- a blow, a health
+	// cost, a debt falling due -- reached it, and only the blow did, because the
+	// only two calls were inside `PostGameplayEffectExecute`. Issue #1072. What
+	// makes the claim true is `PostAttributeBaseChange` at the top of this file,
+	// which the engine calls for every direct write. Do not delete it;
+	// `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+	// fails if either call in it goes.
 	//
 	// BEFORE THE CAST BELOW AND NOT AFTER IT. That cast asks for a
 	// `ACataclysmCharacterBase`, because what it guards needs the enemy phase

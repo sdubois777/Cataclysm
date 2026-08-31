@@ -192,20 +192,40 @@ def test_the_phase_is_noticed_on_the_hit_rather_than_on_a_frame():
     choice it should have changed."""
     text = without_comments(source(VITALS_SOURCE))
 
-    # TWO CALL SITES, ONE PER PLACE HEALTH IS WRITTEN. One is the damage
-    # path and the other is a direct write to the Health attribute; a phase
-    # that only fired on one of them would begin on some hits and not others.
-    # The definition line does not match this pattern, so the count is 2.
+    # THREE CALL SITES, AND THE THIRD ARRIVED ON PURPOSE. Two are inside
+    # `PostGameplayEffectExecute`, one for each place a resolved gameplay effect
+    # writes health: the damage path, and an effect that modifies the Health
+    # attribute directly. A phase that fired on only one of those would begin on
+    # some hits and not others.
+    #
+    # THE THIRD IS `PostAttributeBaseChange`, ADDED FOR ISSUES #971 AND #1072.
+    # It is what notices a write that no gameplay effect caused -- a health
+    # cost, a debt falling due -- and without it a Masochist could empty its
+    # health without dying. It also means a blow notifies TWICE, because the
+    # damage path's own `SetHealth` reaches the new hook and the explicit call
+    # then runs on the next line. The wording that stood here predicted that
+    # third call and judged it harmless, which it is: `RefreshPhase` only moves
+    # forward, and both crossing rules record where health is before deciding
+    # anything, so the second call answers "not a crossing".
+    #
+    # The definition line does not match this pattern, so the count is 3.
     calls = text.count("NotifyHealthChanged();")
-    assert calls == 2, (
+    assert calls == 3, (
         f"UCataclysmVitalAttributeSet calls NotifyHealthChanged {calls} "
-        f"times and there are two places health is written. Both need it, "
-        f"and a third would mean a phase change being noticed twice for one "
-        f"hit -- harmless, because RefreshPhase only moves forward, but a "
-        f"sign that a third write appeared without being read about.")
+        f"times and there are three places that need it: the two inside "
+        f"PostGameplayEffectExecute, and PostAttributeBaseChange for every "
+        f"write no gameplay effect caused. A fourth would mean a write "
+        f"appeared without being read about. Fewer means one of the three "
+        f"routes that lower health has gone quiet again, which is the bug "
+        f"issues #971 and #1072 were.")
 
+    # `const` IS ALLOWED FOR AND NOT ASSUMED. The function became const under
+    # issue #1072, because `PostAttributeBaseChange` is declared const by the
+    # engine and calls it. Nothing about a phase depends on which it is, so the
+    # pattern accepts either rather than pinning a decision this test does not
+    # own.
     match = re.search(r"void UCataclysmVitalAttributeSet::NotifyHealthChanged"
-                      r"\(\)\s*\{(.*?)\n\}", text, re.DOTALL)
+                      r"\(\)\s*(?:const\s*)?\{(.*?)\n\}", text, re.DOTALL)
     assert match is not None, (
         "CataclysmVitalAttributeSet.cpp no longer defines NotifyHealthChanged.")
 
