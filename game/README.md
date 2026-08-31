@@ -181,15 +181,19 @@ by `git add` with no error and no warning. Guarded by
   **Nothing reads a save back at start-up**, because nothing chooses between
   starting a run and continuing one, so `ACataclysmGameMode` begins a fresh
   run each session and its files are never read.
-- **Almost no empire layer.** `CataclysmEmpire` holds one thing:
-  `UCataclysmDayClock`, which advances the day, counts every dungeon's resolve
-  timer down and pauses the one the player is standing in (issue
-  [#41](https://github.com/sdubois777/Cataclysm/issues/41)). Cities, surges, the
-  consequence of a dungeon resolving and the empire upgrade tree are all still
-  only the Python model in `sim/` (issue
+- **Almost no empire layer.** `CataclysmEmpire` holds two things.
+  `UCataclysmDayClock` advances the day, counts every dungeon's resolve timer
+  down and pauses the one the player is standing in (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
+  `UCataclysmEmpireMap` lays out the 25 cities, opens a lane into the empire
+  when one falls, seals it again when one is retaken, and answers how many more
+  cities must fall before the Cataclysm reaches the Pillar (issue
+  [#1081](https://github.com/sdubois777/Cataclysm/issues/1081)). Surges, the
+  consequence of a dungeon resolving, city upgrades and the empire upgrade tree
+  are all still only the Python model in `sim/` (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). Nothing in the game
-  advances that clock either: `UCataclysmRunSave` carries an `int32 Day` that
-  nothing computes.
+  drives either of those two: `UCataclysmRunSave` carries an `int32 Day` that
+  nothing computes, and the empire graph is in no save record at all.
 
 ## Running the tests
 
