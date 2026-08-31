@@ -155,16 +155,16 @@ def test_the_empire_layer_claim_is_still_true() -> None:
     #1083, then that nothing joined the three until `UCataclysmEmpireRun` landed
     for issue #1084.
 
-    WHAT IS STILL TRUE IS THAT ONLY A CONSOLE COMMAND MOVES THE DAY.
-    `Cataclysm.EmpireAdvance` is the one thing in the game that passes time, so a
-    player who never types it sees an empire frozen on day 0. This is what
-    notices when that stops being true.
+    WHAT IS STILL TRUE IS THAT NOTHING TAKES THE PLAYER FROM THE MAP INTO A
+    DUNGEON, OR BACK. Walking one spends the empire's days since issue #1092, and
+    entering one is still a console command typed while already standing in
+    `L_Dungeon`, because there is nowhere to stand between runs.
 
     A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
     looks for is part of the sentence about what is missing rather than the old
     headline. Rewriting the bullet without saying what is missing turns this off.
     """
-    if "Only a console command moves the day" not in readme_text():
+    if "Nothing takes the player from the map into a dungeon" not in readme_text():
         pytest.skip("The readme no longer says what the empire layer is missing.")
 
     empire = GAME_SOURCE / "CataclysmEmpire"
@@ -201,35 +201,39 @@ def test_the_empire_layer_claim_is_still_true() -> None:
 
 #: Where the day is allowed to be advanced from, and why each one is allowed.
 #:
-#: The empire layer itself, obviously. Its own tests and the screen's tests,
-#: which drive a run to check what happens. And the file the console commands
-#: live in, which is where `Cataclysm.EmpireAdvance` is -- an odd home for them,
-#: but it is where every other console command in this project already is.
+#: The empire layer itself, obviously, and its own tests. The dungeon runtime,
+#: because walking down a floor costs a day and that is the point of issue #1092.
+#: The tests that drive either. And the file the console commands live in, where
+#: `Cataclysm.EmpireAdvance` is -- an odd home for them, but it is where every
+#: other console command in this project already is.
 DAY_ADVANCERS_ALLOWED = (
     "game/Source/CataclysmEmpire/",
     "game/Source/Cataclysm/Tests/",
+    "game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp",
     "game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp",
 )
 
 
-def test_only_a_console_command_moves_the_empires_day() -> None:
+def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     """The other half of the empire bullet, and the half a file list cannot see.
 
     THE MODULE COULD GAIN NOTHING AND THE CLAIM STILL GO STALE. The test above
     fails when a file appears in `CataclysmEmpire`; this one fails when some
-    OTHER part of the game starts moving time. A dungeon run charging a day per
-    floor on the way out, or the forge charging its twelve, would make "only a
-    console command moves the day" false without adding a single file to that
-    module -- and both of those are what the design says should happen, so this
-    is a claim with a short life.
+    OTHER part of the game starts moving time.
+
+    THE CLAIM HAS ALREADY NARROWED ONCE. It said only a console command moved the
+    day, until walking a dungeon started costing one per floor for issue #1092 --
+    which is exactly the change this guard existed to catch, and it caught it.
+    What is left is the two the design still owes: dying costs 5, 10 or 15 days
+    and costs none here, and the forge costs twelve and does not exist.
 
     IT IS THE POINT AT WHICH THE EMPIRE STOPS BEING A DEMONSTRATION. A player who
     has to type a command to make time pass is looking at a diagram; a player
-    whose dungeon run costs them forty days is playing the game. Whoever makes
-    that change has to come here, which is the whole purpose of the guard.
+    whose dungeon run costs them forty days is playing the game. Whoever spends a
+    day from somewhere new has to come here, which is the whole purpose of it.
     """
-    if "Only a console command moves the day" not in readme_text():
-        pytest.skip("The readme no longer claims only a command moves the day.")
+    if "Only walking a dungeon and the" not in readme_text():
+        pytest.skip("The readme no longer says what may move the empire's day.")
 
     movers = [
         name
@@ -239,8 +243,36 @@ def test_only_a_console_command_moves_the_empires_day() -> None:
     ]
 
     assert not movers, (
-        "game/README.md says only a console command moves the empire's day, but "
-        f"these files advance it: {', '.join(movers)}. Update that bullet in the "
+        "game/README.md says only walking a dungeon and the console commands "
+        f"move the empire's day, but these files advance it: {', '.join(movers)}."
+        " Update that bullet in the 'What is not here yet' section."
+    )
+
+
+def test_dying_still_costs_the_empire_no_days() -> None:
+    """The next thing that should move the day, and does not.
+
+    `UCataclysmDayClock::DeathDayCostFor` answers what a death costs in each
+    lethality mode -- 5 days, 10 or 15 -- and nothing outside the empire layer
+    and its tests asks it. A player who dies loses nothing but the walk back.
+
+    IT IS A SEPARATE GUARD FROM THE ONE ABOVE ON PURPOSE. That one watches who
+    SPENDS days; this watches whether the death cost has been wired up at all,
+    which is a different change and would be made by a different person.
+    """
+    if "dying costs 5, 10 or 15 days in the design and" not in readme_text():
+        pytest.skip("The readme no longer claims dying costs the empire nothing.")
+
+    users = [
+        name
+        for name in source_contains(r"DeathDayCostFor")
+        if not name.startswith("game/Source/CataclysmEmpire/")
+        and not name.startswith("game/Source/Cataclysm/Tests/")
+    ]
+
+    assert not users, (
+        "game/README.md says dying costs the empire no days, but these files ask "
+        f"what a death costs: {', '.join(users)}. Update that bullet in the "
         "'What is not here yet' section."
     )
 

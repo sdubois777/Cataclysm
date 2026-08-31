@@ -135,6 +135,112 @@ public:
 	float EnemyScale = 1.0f;
 
 	// ----------------------------------------------------------------------
+	// Walking a dungeon that stands on the empire map, issue #1092
+	// ----------------------------------------------------------------------
+	//
+	// WHAT THIS JOINS. Several settings above are stand-ins for something the
+	// empire layer now holds. This header said so of `TotalFloors` -- "There is
+	// no dungeon object to take a length from -- that is issue #41" -- and there
+	// is one: `FCataclysmDungeon` in the `CataclysmEmpire` module carries a
+	// dungeon's depth, its kind, which city it is assaulting and what it takes
+	// when it resolves.
+	//
+	// AND THE DAY MOVES. One dungeon floor costs exactly one day, which
+	// `CLAUDE.md` lists among the rules that are easy to get wrong: depth and
+	// time are the same axis, so a dungeon cannot be made cheaper without also
+	// being made poorer. Walking down a floor is what spends that day, and until
+	// this nothing in the game spent one.
+	//
+	// THE SETTINGS STILL WORK. A run bound to a dungeon overrides them; no
+	// binding means the settings, exactly as before. Pressing Play in `L_Dungeon`
+	// with no empire run has to keep putting somebody on a floor.
+
+	/**
+	 * Which dungeon of the empire is being walked, or `INDEX_NONE`.
+	 *
+	 * `INDEX_NONE` IS THE ORDINARY CASE TODAY, because nothing takes a player
+	 * from the empire map into a dungeon -- that needs somewhere to stand
+	 * between runs, which is issue #48. `Cataclysm.EnterDungeon` binds one by
+	 * hand.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	int32 EmpireDungeonId = INDEX_NONE;
+
+	/**
+	 * Start walking a dungeon that stands on the empire map.
+	 *
+	 * WHAT IT DOES, AND THE THIRD IS THE ONE THAT COSTS SOMETHING:
+	 *
+	 *   1. Takes the dungeon's depth, seed and kind, so the floor built is one
+	 *      that dungeon actually has rather than the setting's.
+	 *   2. Tells the day clock the player is inside it, which STOPS THAT ONE
+	 *      DUNGEON'S TIMER AND NO OTHER'S. Its residents are busy fighting the
+	 *      player rather than marching on the city, so entering is a guaranteed
+	 *      save rather than a gamble -- and what it costs is every other timer
+	 *      advancing while you are down there.
+	 *   3. Spends a day, because the player is now standing on floor 1 and a
+	 *      floor costs a day. Walking N floors costs N days: one for arriving
+	 *      and one for each descent.
+	 *
+	 * @return whether a dungeon of that number is standing on the map
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	bool EnterEmpireDungeon(int32 DungeonId);
+
+	/**
+	 * Stop walking it without clearing it.
+	 *
+	 * ITS TIMER STARTS AGAIN and the dungeon stays on the map. That is what
+	 * leaving unfinished means, and there is nowhere to leave TO yet -- the
+	 * capital hub is issue #48 -- so nothing calls this in play.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	void LeaveEmpireDungeon();
+
+	/**
+	 * The dungeon is beaten: it comes off the map and off the clock.
+	 *
+	 * ITS HOST CITY STOPS BEING BITTEN BY IT, which is the whole reward for
+	 * walking it. Anything else standing on that city keeps its own timer.
+	 *
+	 * @return whether there was a dungeon to clear
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	bool ClearEmpireDungeon();
+
+	/**
+	 * How deep the dungeon being walked is, or 0 when none is bound.
+	 *
+	 * SEPARATE FROM `ChooseTotalFloors` BECAUSE THAT ONE CANNOT SAY "NONE". It
+	 * answers the deeper of the setting and the floor being walked, so it is
+	 * never zero and cannot be asked whether a bottom exists at all.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	int32 EmpireDungeonFloors() const;
+
+	/**
+	 * Whether the floor being walked is the last one.
+	 *
+	 * ALWAYS FALSE WITH NO DUNGEON BOUND, which is what keeps the stairs
+	 * descending for ever in the sandbox. A dungeon from the empire map has a
+	 * bottom; a floor built from the settings does not.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	bool IsOnTheLastFloor() const;
+
+	/**
+	 * The run to use when there is no game instance to ask.
+	 *
+	 * A HEADLESS TEST HAS NO GAME INSTANCE OF THIS PROJECT'S CLASS. A world built
+	 * by `UWorld::CreateWorld` has none at all, so without this seam every test
+	 * of the join above would be a test of the case where there is no empire --
+	 * which is the one case that already worked.
+	 * `UCataclysmEmpireMapWidget::SetRunForTests` is the same seam for the same
+	 * reason.
+	 */
+	void SetEmpireRunForTests(class UCataclysmEmpireRun* Run);
+
+	// ----------------------------------------------------------------------
 	// Looking at another floor without rebuilding
 	// ----------------------------------------------------------------------
 	//
@@ -418,4 +524,35 @@ protected:
 	 */
 	void ApplyDesignedStats(ACataclysmEnemyCharacter* Enemy,
 							ECataclysmDungeonCreature Creature) const;
+
+private:
+	// ----------------------------------------------------------------------
+	// Reaching the empire from a dungeon, issue #1092
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The run in progress, or null.
+	 *
+	 * IT NEVER STARTS ONE. A player pressing Play in `L_Dungeon` to look at a
+	 * floor is not beginning a campaign, and a run started here would be one
+	 * nothing else in the game knows about.
+	 */
+	class UCataclysmEmpireRun* EmpireRun() const;
+
+	/** The dungeon `EmpireDungeonId` names, or null when none is bound. */
+	const struct FCataclysmDungeon* BoundDungeon() const;
+
+	/**
+	 * A day passes in the empire, if there is one.
+	 *
+	 * ONE PLACE, so that what a floor costs is written down once. Nothing else
+	 * in the game moves the day except the console commands, and
+	 * `tools/tests/test_game_readme_is_true.py` is what holds that claim to
+	 * whatever `game/README.md` says.
+	 */
+	void SpendADayInTheEmpire();
+
+	/** See `SetEmpireRunForTests`. Null in a running game, always. */
+	UPROPERTY(Transient)
+	TObjectPtr<class UCataclysmEmpireRun> EmpireRunForTests;
 };

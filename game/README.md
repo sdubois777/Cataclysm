@@ -208,14 +208,24 @@ by `git add` with no error and no warning. Guarded by
   [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
   `Cataclysm.EmpireMap` opens it.
 
-  **Only a console command moves the day.** `Cataclysm.EmpireAdvance` is the one
-  thing in the game that passes time. Walking a dungeon costs one day a floor and
-  spending days at the forge costs its own, and neither reaches the empire layer,
-  so a player who never types that command sees an empire frozen on day 0.
-  Nothing clears a dungeon either: `ClearDungeon` is there for a finished dungeon
-  run to call and no dungeon run reaches it. Clicking a city does nothing,
-  because there is no city screen to open. A fallen city does not become a
-  retakeable Dungeon City (issue
+  Walking a dungeon spends the empire's days. `Cataclysm.EnterDungeon` starts
+  one of the dungeons standing on the map: its own timer stops while the player
+  is inside it, every other one keeps counting, each floor descended costs one
+  day, and reaching the bottom takes it off the map so its host city stops being
+  bitten by it. Cities can fall while the player is underground (issue
+  [#1092](https://github.com/sdubois777/Cataclysm/issues/1092)).
+
+  **Nothing takes the player from the map into a dungeon, or back.** There is no
+  capital to stand in between runs (issue
+  [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
+  the empire and a dungeon level, so entering one is a console command typed
+  while already standing in `L_Dungeon`, and clearing one leaves the player
+  standing on the floor they beat. Clicking a city on the map does nothing,
+  because there is no city screen to open. **Only walking a dungeon and the
+  console commands move the day**: dying costs 5, 10 or 15 days in the design and
+  costs none here, though `UCataclysmDayClock::DeathDayCostFor` answers how many,
+  and there is no forge to spend the twelve a craft takes. A fallen city does not
+  become a retakeable Dungeon City (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and city upgrades

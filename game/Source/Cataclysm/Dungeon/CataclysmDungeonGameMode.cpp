@@ -14,7 +14,9 @@
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
+#include "Player/CataclysmGameInstance.h"
 #include "HAL/IConsoleManager.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "HAL/PlatformTime.h"
@@ -606,6 +608,16 @@ void ACataclysmDungeonGameMode::HandleStairsTaken()
 
 bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 {
+	// A DUNGEON FROM THE EMPIRE MAP HAS A BOTTOM. Reaching it is beating the
+	// dungeon rather than finding another floor, and the stairs stop there.
+	// Nothing moves the player anywhere, because there is nowhere to go: the
+	// capital hub is issue #48. Issue #1092.
+	if (IsOnTheLastFloor())
+	{
+		ClearEmpireDungeon();
+		return false;
+	}
+
 	// FROM THE FLOOR ACTUALLY BEING WALKED rather than from the setting, because
 	// those are not always the same number: `Cataclysm.DungeonFloor` can pin one.
 	if (!GoToFloor(ChooseFloorNumber() + 1, PawnToMove))
@@ -614,7 +626,158 @@ bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 	}
 
 	++FloorsDescended;
+
+	// AND A FLOOR COSTS A DAY. That is the rule the whole strategy layer rests
+	// on, and until issue #1092 nothing in the game spent one: depth and time
+	// are the same axis, so a dungeon cannot be made cheaper without also being
+	// made poorer.
+	//
+	// HERE AND NOT IN `GoToFloor`, because that is also how the first floor is
+	// built when play begins and how `Cataclysm.DungeonFloor` jumps to a floor to
+	// look at it. Neither is a floor the player walked down to. The day for floor
+	// 1 is spent by `EnterEmpireDungeon`.
+	SpendADayInTheEmpire();
+
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Walking a dungeon that stands on the empire map, issue #1092
+// ---------------------------------------------------------------------------
+
+void ACataclysmDungeonGameMode::SetEmpireRunForTests(UCataclysmEmpireRun* Run)
+{
+	EmpireRunForTests = Run;
+}
+
+UCataclysmEmpireRun* ACataclysmDungeonGameMode::EmpireRun() const
+{
+	// THE GAME'S OWN RUN FIRST, ALWAYS. The test seam is only reached when there
+	// is no game instance of this project's class at all, which is the case a
+	// headless test is in and nothing in a running game ever is.
+	//
+	// NOT STARTING ONE. A player pressing Play in `L_Dungeon` to look at a floor
+	// is not beginning a campaign, and a run started here would be one nothing
+	// else knows about.
+	if (UCataclysmEmpireRun* Run =
+			UCataclysmGameInstance::EmpireRunFor(this, /*bStartIfNone*/ false))
+	{
+		return Run;
+	}
+
+	return EmpireRunForTests;
+}
+
+const FCataclysmDungeon* ACataclysmDungeonGameMode::BoundDungeon() const
+{
+	const UCataclysmEmpireRun* Run = EmpireRun();
+
+	return (Run && EmpireDungeonId != INDEX_NONE)
+		? Run->FindDungeon(EmpireDungeonId) : nullptr;
+}
+
+int32 ACataclysmDungeonGameMode::EmpireDungeonFloors() const
+{
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	return Dungeon ? Dungeon->Floors : 0;
+}
+
+bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
+{
+	const int32 Floors = EmpireDungeonFloors();
+
+	// NO DUNGEON MEANS NO BOTTOM, which is what keeps the stairs descending for
+	// ever in the sandbox.
+	return Floors > 0 && ChooseFloorNumber() >= Floors;
+}
+
+void ACataclysmDungeonGameMode::SpendADayInTheEmpire()
+{
+	if (UCataclysmEmpireRun* Run = EmpireRun())
+	{
+		Run->AdvanceDay();
+	}
+}
+
+bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
+{
+	UCataclysmEmpireRun* Run = EmpireRun();
+	if (!Run)
+	{
+		return false;
+	}
+
+	const FCataclysmDungeon* Dungeon = Run->FindDungeon(DungeonId);
+	if (!Dungeon)
+	{
+		return false;
+	}
+
+	// THE DUNGEON'S OWN NUMBERS, NOT THE SETTINGS'. `TotalFloors` and
+	// `DungeonSeed` were stand-ins for exactly these; this header used to say
+	// there was no dungeon object to take them from.
+	//
+	// THE SEED IS DERIVED FROM THE DUNGEON'S NUMBER rather than stored on it,
+	// because a dungeon is a strategy-layer record and how a floor is carved is
+	// not its business. Any two dungeons get different floors and one dungeon
+	// gets the same floors twice, which is all a seed has to do.
+	EmpireDungeonId = DungeonId;
+	DungeonSeed = FMath::Max(1, DungeonId + 1);
+	TotalFloors = FMath::Max(1, Dungeon->Floors);
+	DungeonType = Dungeon->Type;
+
+	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
+	// is whatever the last dungeon left behind, and entering a shallower one
+	// while standing deep in a deeper one makes `IsOnTheLastFloor` true straight
+	// away -- so the new dungeon is beaten without a single floor being walked.
+	// Found by a test that walked four dungeons in a row and spent 16 days doing
+	// it.
+	GoToFloor(1);
+
+	// AND ITS TIMER STOPS. The one dungeon the player is standing in does not
+	// count down; every other one does. See
+	// `UCataclysmDayClock::bTimerTicksWhileRunning`.
+	if (Run->Clock)
+	{
+		Run->Clock->EnterDungeon(DungeonId);
+	}
+
+	// FLOOR 1 IS A FLOOR, AND A FLOOR COSTS A DAY. Walking N floors costs N
+	// days: one for arriving and one for each descent.
+	SpendADayInTheEmpire();
+
+	return true;
+}
+
+void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
+{
+	if (UCataclysmEmpireRun* Run = EmpireRun())
+	{
+		if (Run->Clock)
+		{
+			Run->Clock->LeaveDungeon();
+		}
+	}
+
+	EmpireDungeonId = INDEX_NONE;
+}
+
+bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
+{
+	UCataclysmEmpireRun* Run = EmpireRun();
+	if (!Run || EmpireDungeonId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// CLEARED FIRST AND LEFT SECOND. `ClearDungeon` takes it off the clock as
+	// well as off the map, and it reads `CurrentDungeonId` to notice it was the
+	// one being stood in; leaving first would make it forget.
+	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
+
+	LeaveEmpireDungeon();
+
+	return bCleared;
 }
 
 bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMove)
