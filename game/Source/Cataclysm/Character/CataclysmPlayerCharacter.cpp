@@ -22,6 +22,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Character/CataclysmExperience.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
@@ -2380,4 +2381,115 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEmpire(
 			}
 
 			Ar.Log(*Run->Describe());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
+	TEXT("Cataclysm.EnterDungeon"),
+	TEXT("Walk a dungeon that stands on the empire map: Cataclysm.EnterDungeon "
+		 "<id>. With no argument, the shallowest one standing. Its timer stops, "
+		 "every other one keeps counting, and each floor you go down costs the "
+		 "empire a day. Only works in a dungeon level."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmDungeonGameMode* Mode = World
+				? World->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+			if (!Mode)
+			{
+				Ar.Log(TEXT("This level is not a dungeon, so there is no floor "
+							"to walk. Open L_Dungeon and press Play."));
+				return;
+			}
+
+			UCataclysmEmpireRun* Run =
+				UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ true);
+			if (!Run)
+			{
+				Ar.Log(TEXT("This world has no Cataclysm game instance, so there "
+							"is no empire to walk a dungeon of."));
+				return;
+			}
+
+			// THE FIRST SURGE HAS TO HAVE LANDED. A run begins on day 0 with an
+			// intact empire and nothing standing on it, so a player who asked to
+			// enter a dungeon before any day had passed would be told there were
+			// none and would reasonably think the command was broken.
+			if (Run->DungeonCount() == 0)
+			{
+				Run->AdvanceDay();
+			}
+
+			int32 DungeonId = INDEX_NONE;
+
+			if (Args.Num() >= 1)
+			{
+				DungeonId = FCString::Atoi(*Args[0]);
+			}
+			else
+			{
+				// THE SHALLOWEST ONE STANDING, because it is the one a player
+				// with nothing else to go on would pick: fewest floors is fewest
+				// days, and the choice is what the strategy layer is about.
+				int32 Fewest = MAX_int32;
+				for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+				{
+					if (Dungeon.Floors < Fewest)
+					{
+						Fewest = Dungeon.Floors;
+						DungeonId = Dungeon.DungeonId;
+					}
+				}
+			}
+
+			const FCataclysmDungeon* Chosen = Run->FindDungeon(DungeonId);
+			if (!Chosen)
+			{
+				Ar.Logf(TEXT("No dungeon %d is standing on the map. %d are: run "
+							 "Cataclysm.ShowEmpire to see them."),
+						DungeonId, Run->DungeonCount());
+				return;
+			}
+
+			const FCataclysmCity* City = Run->Map
+				? Run->Map->Find(Chosen->CityId) : nullptr;
+
+			if (!Mode->EnterEmpireDungeon(DungeonId))
+			{
+				Ar.Logf(TEXT("Dungeon %d could not be entered."), DungeonId);
+				return;
+			}
+
+			Ar.Logf(TEXT("Walking dungeon %d on %s: %d floors, so %d days if you "
+						 "clear it. Day %d."),
+					DungeonId,
+					City ? *City->Name : TEXT("nowhere"),
+					Chosen->Floors, Chosen->Floors, Run->Day());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLeaveDungeon(
+	TEXT("Cataclysm.LeaveDungeon"),
+	TEXT("Stop walking the dungeon without clearing it. Its timer starts again "
+		 "and it stays on the map."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmDungeonGameMode* Mode = World
+				? World->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+			if (!Mode)
+			{
+				Ar.Log(TEXT("This level is not a dungeon."));
+				return;
+			}
+
+			if (Mode->EmpireDungeonId == INDEX_NONE)
+			{
+				Ar.Log(TEXT("No dungeon of the empire is being walked."));
+				return;
+			}
+
+			const int32 Was = Mode->EmpireDungeonId;
+			Mode->LeaveEmpireDungeon();
+
+			Ar.Logf(TEXT("Left dungeon %d. It is still standing and its timer is "
+						 "counting again."), Was);
 		}));
