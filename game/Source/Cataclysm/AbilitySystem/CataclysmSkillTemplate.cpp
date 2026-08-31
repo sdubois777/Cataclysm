@@ -559,6 +559,43 @@ float UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent(
 
 void UCataclysmSkillTemplate::PayHealthCost()
 {
+	// THE BASIC ATTACK PAYS NOTHING, AND IT IS THE ONLY SLOT THAT DOES NOT.
+	// Issue #1110.
+	//
+	// WHY IT IS EXEMPT. The design calls that slot "Automatic and free. It IS
+	// weapon damage, which is what makes it the anchor every other slot is
+	// measured against." It is the only row of `game/Data/SkillSlots.csv` with a
+	// mana cost of zero and the only one with `ManaOnHit`, so it RETURNS
+	// resource rather than spending it.
+	//
+	// AND THE PLAYER CANNOT CHOOSE NOT TO SWING, which is the argument that
+	// settles it. `UCataclysmBasicAttack`'s header quotes the design: "The basic
+	// attack is on no key. It fires automatically... Nothing the player presses
+	// triggers it." `ACataclysmPlayerCharacter` swings it at the weapon's attack
+	// speed whenever an enemy is in reach. Every other health cost in the game
+	// is paid because a button was pressed.
+	//
+	// WHAT IT COST BEFORE THIS. The project owner played a Masochist holding
+	// Exsanguinate on 2026-08-31, which charges 15% of CURRENT health a skill,
+	// and reported: "I used my teleport a few times, then pressed e once, and
+	// instantly died. Nothing had hit me." At a Fist's 1.45 swings a second the
+	// automatic attack alone took a full health bar to nothing in about six
+	// seconds, or killed through accumulated debt in under five with The
+	// Reckoning. Nothing on screen showed either.
+	//
+	// ALL HEALTH COSTS AND NOT ONLY THE ADDED ONES, decided by the project owner
+	// on 2026-08-31. Blood Pyre is the one skill that states a health cost of
+	// its own and it is not a basic attack, so nothing is lost today; the rule
+	// is written for whatever weapon row states one next.
+	//
+	// BEFORE THE ABILITY SYSTEM IS EVEN LOOKED UP, because this decides nothing
+	// about the character. `Slot` is stamped onto the ability by
+	// `UCataclysmAbilitySystemComponent::GiveAbilityInSlot` when it is granted.
+	if (Slot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		return;
+	}
+
 	UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Avatar());
 	if (!AbilitySystem)

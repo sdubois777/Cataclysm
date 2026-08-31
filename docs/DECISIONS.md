@@ -20,6 +20,74 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — The basic attack pays no health cost at all, because the player cannot choose not to swing it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` and
+the Basic row of the Skill Slots sheet in `docs/All_Things_Cataclysm.xlsx`, which
+already said this and was not being honoured. Applied. Issue #1110.
+
+The project owner played a Masochist on 2026-08-31 and reported: *"I used my
+teleport a few times, then pressed e once, and instantly died. Nothing had hit
+me."*
+
+**Nothing had hit them, and nothing they pressed did it. Their own automatic
+basic attack did.**
+
+### What was wrong
+
+`UCataclysmSkillTemplate::PayHealthCost` charged every skill activation and had
+no slot check. The basic attack is a skill in a slot like any other:
+`UCataclysmWeaponSkills` grants a normal shape into
+`ECataclysmAbilitySlot::BasicAttack`, so activating it ran `CommitAndBegin`,
+which called `PayHealthCost`.
+
+**And the basic attack is automatic.** `ACataclysmPlayerCharacter` swings it at
+the weapon's attack speed whenever an enemy is in reach. The design says: "The
+basic attack is on no key. It fires automatically... Nothing the player presses
+triggers it."
+
+So a Masochist holding Exsanguinate, which charges 15% of CURRENT health a skill,
+paid that on every automatic swing. At a Fist's 1.45 swings a second, with
+nothing pressed and nothing hitting back:
+
+| | Without The Reckoning | With The Reckoning |
+| :-- | :-- | :-- |
+| What happens | health falls straight out of the bar | the cost becomes debt and the debt kills |
+| Full pool to nothing | **about 6 seconds** | **4.8 seconds** |
+
+### What was decided
+
+**The basic attack pays no health cost at all.** `PayHealthCost` returns
+immediately for that slot.
+
+**All health costs and not only the character's added ones**, chosen by the
+project owner on 2026-08-31. The narrower reading — exempt it from Exsanguinate
+and Deeper Cuts but let a weapon row's own stated health cost stand — was
+offered and rejected. Blood Pyre is the only skill in the game that states a
+health cost of its own and it is not a basic attack, so nothing is lost today;
+the rule is written for whatever weapon row states one next.
+
+**Why the whole exemption is right.** The design already calls that slot
+"Automatic and free. It IS weapon damage, which is what makes it the anchor every
+other slot is measured against." It is the only row of the Skill Slots sheet with
+a mana cost of zero, and the only one with `ManaOnHit`, so it RETURNS resource
+rather than spending it. Charging it contradicted all of that.
+
+**And the deciding argument is that the player has no say.** Every other health
+cost in the game is paid because a button was pressed. A cost on a swing the
+player cannot prevent is not a cost they can play around, and nothing displays it
+either — issue #1100 records that no readout shows a health debt.
+
+### What this does not change
+
+Exsanguinate and Deeper Cuts still charge every skill the player actually uses.
+The keystone's sentence reads "Every skill costs an additional 15% of your
+current health", and after this the basic attack is the one exception to that
+word. It is worth knowing that the sentence and the code now differ, and that the
+difference is deliberate rather than an oversight.
+
+---
+
 ## 2026-08-31 — Deeper Cuts charges a quarter of what it did, because spending passive points made a Masochist weaker
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the `Passive Effects` sheet),
