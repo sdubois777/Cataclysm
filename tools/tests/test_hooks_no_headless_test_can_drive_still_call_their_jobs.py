@@ -132,17 +132,13 @@ HOOKS = {
     # CROSSED needs, and two capstone options now hang off it: one watches half
     # health and one watches a fifth of it.
     #
-    # WHY NO HEADLESS TEST DRIVES IT. It is called from
-    # `PostGameplayEffectExecute`, so reaching it means building and applying a
-    # real gameplay effect spec. Every test of either crossing writes health
-    # with `SetNumericAttributeBase` and then calls the crossing function by
-    # hand, which is exactly the shape issue #1054 was: the tests would all pass
-    # with the call deleted and neither option would fire in play.
-    #
-    # `CataclysmDamageConversionTests.cpp` SAYS SO IN ITS OWN HEADER, that the
-    # call site is proved "by breaking the call site and watching a test fail".
-    # That is a one-off proof somebody has to remember to repeat. This is the
-    # standing check.
+    # A HEADLESS TEST CAN DRIVE IT SINCE ISSUE #1072, AND THIS ENTRY IS STILL
+    # WORTH KEEPING. The paragraph that stood here said no test could reach it,
+    # because both calls were inside `PostGameplayEffectExecute` and getting
+    # there meant building and applying a real gameplay effect spec. The hook
+    # below now also runs it on any direct write, so the crossing tests do reach
+    # it. What those tests cannot see is one of these two jobs being deleted
+    # while the other still runs, which is what this checks.
     "UCataclysmVitalAttributeSet::NotifyHealthChanged": {
         "file": ABILITY_SYSTEM / "CataclysmVitalAttributeSet.cpp",
         "jobs": {
@@ -152,6 +148,36 @@ HOOKS = {
             "UCataclysmLowHealthRelief::NoteHealthChanged":
                 "the drop to low health that clears a debt and grants "
                 "Fervour, issue #1069",
+        },
+        "questions": set(),
+    },
+    # A FIFTH HOOK, AND IT IS WHAT MAKES THE FOURTH TRUE. Issues #971 and #1072.
+    # The engine calls this for every write to an attribute's base value, which
+    # is where `ApplyModToAttribute` and `SetNumericAttributeBase` both end up.
+    # Until it existed, a health cost and a debt falling due wrote health without
+    # telling anything: the character crossed every threshold in silence, and
+    # reaching zero did not kill it. The project owner played that on 2026-08-31
+    # and reported standing at zero health with every skill refused.
+    #
+    # ITS TWO JOBS ARE MEMBER CALLS AND NOT FREE FUNCTIONS, unlike every other
+    # entry in this file, so they are written with their brackets the way
+    # `HandleNodeClicked`'s job above is. `test_the_jobs_are_pinned` finds
+    # nothing for the same reason -- it looks for `UCataclysm...::` calls -- and
+    # passing on an empty set is correct rather than a hole.
+    #
+    # WHY THIS IS NOT COVERED BY THE AUTOMATION TESTS ALONE. Deleting either
+    # call fails several of them, which is the guard proof recorded in the pull
+    # request. Continuous integration compiles no C++, so nothing under
+    # `game/Source/Cataclysm/Tests/` runs on a pull request and this does.
+    "UCataclysmVitalAttributeSet::PostAttributeBaseChange": {
+        "file": ABILITY_SYSTEM / "CataclysmVitalAttributeSet.cpp",
+        "jobs": {
+            "NotifyIfHealthReachedZero()":
+                "a character brought to zero health by anything other than a "
+                "blow dying, issue #971",
+            "NotifyHealthChanged()":
+                "a health threshold crossed by anything other than a blow "
+                "being noticed at all, issue #1072",
         },
         "questions": set(),
     },

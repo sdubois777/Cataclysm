@@ -20,6 +20,56 @@ applied or still pending.
 
 ---
 
+## 2026-08-31 — Rock Bottom's fall to low health clears only the debt that was owed before the cast
+
+**Affects:** the Masochist's `Masochist_capstone_50`, first option, in
+`docs/Masochist_Class_Tree_Final.json`, and
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`. Applied. No
+code changed, because the code already did this. Issue #1073.
+
+Rock Bottom reads:
+
+> A health cost can never reduce you below 1 health; anything you cannot pay
+> becomes health debt instead. Dropping below 20% health clears all outstanding
+> debt and grants 50 Fervour, no more than once every 30 seconds.
+
+**The two sentences meet in a single cast and the words do not say what
+happens.** A skill costing more health than the character has leaves it on 1
+health — which is below 20% — and owing the rest. Whether the fall clears the
+debt that same cast created was never stated.
+
+| Reading | What the option becomes |
+| :-- | :-- |
+| Clears only what was owed BEFORE the cast | An overspend leaves a debt that falls due 3 seconds later and takes health the character does not have. The option buys 3 seconds to heal or leech out of it. |
+| Clears the debt the same cast created | Once every 30 seconds the character may cast a skill it cannot afford and pay nothing at all. |
+
+**The project owner chose the first on 2026-08-31.** An overspend leaves a debt
+standing, and surviving it is the player's problem.
+
+**Nothing had to change, because `UCataclysmSkillTemplate::PayHealthCost` writes
+health before it calls `UCataclysmHealthDebt::Defer`.** The crossing therefore
+sees the debt as it stood before the cast. That ordering was incidental until
+now and is a decision from here on;
+`Cataclysm.HealthWrite.AHealthCostThatDropsTheCasterLowClearsItsDebt` measures
+it, by owing 300 before the cast and asserting that exactly that is what the
+fall cleared.
+
+**Why it was asked at all rather than left alone.** Under the second reading
+Rock Bottom would be the only one of the twelve Masochist capstone options that
+can hand out a free cast, and under the first it is the only one whose reward
+can still end with the character dead. The owner rewrote all twelve on
+2026-08-27 under issue #1031 as pure upgrades with no drawbacks, so which of
+those two it is was worth confirming rather than assuming. It is still an
+upgrade under the chosen reading: without the option the same cost simply kills,
+and with it there are 3 seconds to survive.
+
+**The node's own wording is unchanged.** Saying "clears the debt outstanding
+when the skill was used" in the tree would be clearer, and it is a player-facing
+text change rather than a correction, so it is the owner's to make. Issue #1073
+is closed by this entry either way: the behaviour is decided and measured.
+
+---
+
 ## 2026-08-31 — The empire run lives on the game instance, and a city on the overview reads as sealed, exposed or fallen
 
 **Affects:** `game/Config/DefaultEngine.ini`,

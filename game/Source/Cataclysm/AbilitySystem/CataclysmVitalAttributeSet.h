@@ -33,6 +33,36 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
+	/**
+	 * Notice a health change that no gameplay effect caused.
+	 *
+	 * WHY THIS EXISTS. Issues #971 and #1072. The two notifications below were
+	 * reached only from `PostGameplayEffectExecute`, which a resolved gameplay
+	 * effect reaches and a direct write to the attribute does not. Three routes
+	 * lower a character's health and only the first is a gameplay effect:
+	 *
+	 *   a blow                a gameplay effect on the Damage meta attribute
+	 *   a health cost         `UCataclysmSkillTemplate::PayHealthCost`
+	 *   a debt falling due    `UCataclysmHealthDebt::SettleIfDue`
+	 *
+	 * The last two call `UAbilitySystemComponent::ApplyModToAttribute`, so a
+	 * Masochist paying health for every skill could empty its health without
+	 * dying and cross every health threshold without any of them firing. The
+	 * project owner played that character on 2026-08-31 and reported standing
+	 * at zero health, alive, with every skill refused.
+	 *
+	 * WHY THIS HOOK. The engine calls it from
+	 * `FActiveGameplayEffectsContainer::SetAttributeBaseValue`, which is where
+	 * `ApplyModToAttribute` and `SetNumericAttributeBase` both end up, so it
+	 * covers every route rather than the ones somebody remembered to wire.
+	 *
+	 * CONST BECAUSE THE ENGINE DECLARES IT SO, and it costs nothing: both
+	 * notifications below read this set and change only things outside it, so
+	 * both are const too and no cast is needed.
+	 */
+	virtual void PostAttributeBaseChange(const FGameplayAttribute& Attribute,
+										 float OldValue, float NewValue) const override;
+
 protected:
 	/**
 	 * Tell the owning character its health has reached zero, once.
@@ -42,11 +72,12 @@ protected:
 	 * health before issue #517, so a creature at zero health kept chasing and
 	 * kept swinging.
 	 */
-	void NotifyIfHealthReachedZero();
+	void NotifyIfHealthReachedZero() const;
 
 	/** Tell the character its health moved, so a health-triggered phase can
-	 *  begin. Called from the same two places its sibling above is. */
-	void NotifyHealthChanged();
+	 *  begin. Called from `PostGameplayEffectExecute` for a blow and from
+	 *  `PostAttributeBaseChange` above for every other route. */
+	void NotifyHealthChanged() const;
 
 	/**
 	 * Play the hit effect where the blow landed.

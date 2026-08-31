@@ -395,8 +395,24 @@ bool FCataclysmRegenerationSkipsTheDead::RunTest(const FString&)
 	CataclysmRegenerationTest::Write(
 		Player, UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 50.0f);
 
-	// Alive at zero health, it would come back, which is what makes the check
-	// below about being dead rather than about being at zero.
+	// WRITING HEALTH TO ZERO NOW KILLS, AND IT DID NOT WHEN THIS TEST WAS
+	// WRITTEN. Issue #971. `UCataclysmVitalAttributeSet::PostAttributeBaseChange`
+	// runs the death check on every direct write, so the line above is a death
+	// rather than a number. Said out loud rather than worked around, because a
+	// reader arriving at the control below needs to know why it takes two steps
+	// to reach a state that used to take one.
+	TestTrue(TEXT("writing health to zero killed it"),
+		UCataclysmSkillEffects::IsDead(Player));
+
+	// AND STANDING IT BACK UP IS WHAT MAKES THE CONTROL BELOW POSSIBLE. Alive at
+	// zero health is a state the game no longer produces by itself, and it is
+	// still exactly the state this test needs: it is what makes the refusal
+	// further down about being DEAD rather than about being at zero.
+	//
+	// `ClearDead` AND NOT `Revive`, which would refill all three vitals and hand
+	// the control the answer it is meant to measure.
+	UCataclysmSkillEffects::ClearDead(Player);
+
 	UCataclysmRegeneration::ApplyStep(Player, 1.0f,
 									  CataclysmRegenerationTest::LongSinceHurt);
 	if (!TestEqual(TEXT("alive at zero health, it does come back"),
@@ -405,8 +421,13 @@ bool FCataclysmRegenerationSkipsTheDead::RunTest(const FString&)
 		return false;
 	}
 
+	// THE WRITE IS THE DEATH, AND `MarkDead` IS NOW THE SECOND ASK. It refuses,
+	// because the tag is already there, and it stays because this test is about
+	// a character being refused for being dead however it got that way.
 	CataclysmRegenerationTest::Write(Player, Health, 0.0f);
 	UCataclysmSkillEffects::MarkDead(Player);
+	TestTrue(TEXT("and it is dead again"),
+		UCataclysmSkillEffects::IsDead(Player));
 
 	UCataclysmRegeneration::ApplyStep(Player, 1.0f,
 									  CataclysmRegenerationTest::LongSinceHurt);

@@ -22,12 +22,21 @@
  *   5 seconds. The conversion lasts 3 seconds, increased by 5% per point, and
  *   cannot happen more than once every 10 seconds.
  *
- * WHAT IS MEASURED HERE AND WHAT IS NOT. These drive
- * `UCataclysmDamageConversion` directly, because what the node is made of is a
- * crossing, a window and a cooldown, and all three are arithmetic on a clock.
- * That the DAMAGE PATH really calls it -- that a blow which would have reached
- * health does not -- is proved separately, by breaking the call site and
- * watching a test fail.
+ * WHAT IS MEASURED HERE AND WHAT IS NOT. What the node is made of is a
+ * crossing, a window and a cooldown, and all three are arithmetic on a clock,
+ * so that is what these check.
+ *
+ * THESE USED TO TELL THE RULE HEALTH HAD MOVED AND NO LONGER DO. Issue #1072.
+ * Writing health is enough on its own now, because
+ * `UCataclysmVitalAttributeSet::PostAttributeBaseChange` runs the notification
+ * for every direct write, so each test below also says that a fall in health
+ * reaches the rule at all. Before the fix it did not, on any route but a blow,
+ * and this whole file passed anyway.
+ *
+ * WHAT IS STILL NOT MEASURED HERE is that a BLOW reaches it, which goes through
+ * `PostGameplayEffectExecute` instead. That is proved by breaking the call site
+ * and watching a test fail, and it is checked on every pull request by
+ * `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
  *
  * A PLAIN ACTOR AND NOT A CHARACTER, the same choice
  * `CataclysmHealthDebtTests.cpp` makes and for the same reason: a character
@@ -93,11 +102,20 @@ namespace CataclysmDamageConversionTest
 			Set(Resource::GetDamageToBleedingWindowAttribute(), WindowSeconds);
 		}
 
-		/** Put health at a share of maximum and tell the rule it moved. */
+		/**
+		 * Put health at a share of maximum.
+		 *
+		 * THE WRITE IS THE WHOLE OF IT, AND IT USED NOT TO BE. Issue #1072 made
+		 * `UCataclysmVitalAttributeSet::PostAttributeBaseChange` run the
+		 * notification on every direct write, so the
+		 * `Conversion::NoteHealthChanged` call that stood on the next line is
+		 * now reached by the write itself. Leaving it would have had every test
+		 * below drive the rule by hand and say nothing about whether anything
+		 * else does.
+		 */
 		void MoveHealthTo(float Share) const
 		{
 			Set(Vital::GetHealthAttribute(), 1'000.0f * Share);
-			Conversion::NoteHealthChanged(Actor);
 		}
 
 		bool IsConverting() const
