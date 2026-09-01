@@ -275,6 +275,29 @@ public:
 	virtual void HandleDeath() {}
 
 	/**
+	 * Show this character using a skill. Issue #1126.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::CommitAndBegin`, which every one of
+	 * the eight skill shapes calls first, so one call there reaches all of them
+	 * and the basic attack too. That is the same place and the same reasoning as
+	 * `UCataclysmCastEffect::PlayFor`, which issue #811 put there to give every
+	 * skill the beat at the caster that none of them had.
+	 *
+	 * A VIRTUAL RATHER THAN A HELPER, UNLIKE THE CAST EFFECT, because the clip
+	 * depends on the skeleton and the skeletons differ. The player wears the
+	 * Mannequin; `ACataclysmHellhoundCharacter` wears a Paragon body and also
+	 * uses a skill template, so a Mannequin clip played on it would be an
+	 * animation for a skeleton it does not have.
+	 *
+	 * DOING NOTHING IS THE CORRECT DEFAULT AND NOT AN OMISSION. Every enemy that
+	 * plays an attack animation already does it from its own class, in
+	 * `AttackTarget` or `UseEnemyAbility`, with clips from its own pack. This
+	 * exists for the player, which had no such path because until issue #1124 it
+	 * had no skeleton to play anything on.
+	 */
+	virtual void PlayAttackAnimation() {}
+
+	/**
 	 * What this character can do beyond its ordinary attack, in the order it
 	 * would rather use them. Empty means it only has AttackTarget.
 	 *

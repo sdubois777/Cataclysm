@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
@@ -123,6 +124,27 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			Self, AimDirection(),
 			UCataclysmCastEffect::DamageTypeFor(Self, ElementTag()),
 			ScaledRadiusCm());
+
+		// AND THE CHARACTER MOVES. Issue #1126. Until this line the player used
+		// every skill it had without moving at all: the effect flashed, damage
+		// landed, and the body stood still through it.
+		//
+		// HERE FOR THE SAME REASON THE CAST EFFECT ABOVE IS. All eight skill
+		// shapes call this function first, so this reaches every one of them and
+		// the basic attack, and it sits past the commit so a skill refused by
+		// its cost or its cooldown animates nothing.
+		//
+		// WHAT PLAYS IS THE CHARACTER'S BUSINESS, NOT THE SKILL'S. The clip has
+		// to suit the skeleton, and the skeletons differ -- see
+		// ACataclysmCharacterBase::PlayAttackAnimation. A character with no
+		// override does nothing, which is what every enemy does: they animate
+		// their own attacks from their own classes with clips from their own
+		// packs.
+		if (ACataclysmCharacterBase* Character =
+				Cast<ACataclysmCharacterBase>(Self))
+		{
+			Character->PlayAttackAnimation();
+		}
 	}
 
 	return true;

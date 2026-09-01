@@ -145,30 +145,73 @@ being possible for enemies either.
 
 ## The attack clips
 
-**Not used yet.** They were copied for issue #1126, which is the work that makes
-the player swing. Two measurements from them constrain that work and are recorded
-here so it does not have to rediscover them.
+**Three of the four are cycled through whenever the character uses any skill**,
+including the basic attack. Issue #1126.
+`ACataclysmPlayerCharacter::PlayAttackAnimation` plays them through the animation
+Blueprint's `DefaultSlot`, so a swing blends over the locomotion graph rather
+than replacing it. Two measurements from them constrain how, and both are dealt
+with in that function rather than left as surprises.
 
-| Clip | Seconds | Root motion |
-|---|--:|:-:|
-| `MM_Attack_01` | 1.0000 | **yes** |
-| `MM_Attack_02` | 1.0000 | **yes** |
-| `MM_Attack_03` | 1.6667 | **yes** |
-| `MM_ChargedAttack` | 1.8333 | **yes** |
+| Clip | Seconds | Root motion | Cycled? |
+|---|--:|:-:|:-:|
+| `MM_Attack_01` | 1.0000 | **yes** | yes |
+| `MM_Attack_02` | 1.0000 | **yes** | yes |
+| `MM_Attack_03` | 1.6667 | **yes** | yes |
+| `MM_ChargedAttack` | 1.8333 | **yes** | **no** |
 
-**Every one of them is longer than the interval it would have to fit inside.**
+**Cycled in order rather than drawn at random**, unlike the death clips. The
+difference is how often they are seen: a death happens once, so a random draw
+stops two deaths in a row looking identical, while a basic attack fires every two
+thirds of a second and a random draw over three clips repeats one about a third
+of the time, which reads as the animation sticking.
+
+**`MM_ChargedAttack` is deliberately not cycled.** At 1.8333 seconds it is nearly
+three times a fast weapon's swing interval, so putting it in an attack that fires
+by itself would mean playing it at close to triple speed. It is kept in the
+repository for a skill that deserves a heavier swing.
+
+### Every clip is longer than the interval it has to fit inside
+
 Attack speed in `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, which
-is an interval of 0.833 down to 0.667 seconds. The shortest clip here is 1.0
-second, so even the fastest attack clip is 1.2 to 1.5 times too long, and
-`MM_ChargedAttack` is more than double. Something has to give: the clip plays
-faster than authored, or it is cut short, or the swing rate is not the clip rate.
-Issue #784 already records that three telegraphed basic attacks land damage 0.46
-to 1.14 seconds away from where the animation strikes, which is the same problem
-one step earlier.
+is an interval of 0.833 down to 0.667 seconds. The shortest clip is 1.0 second,
+so even the fastest attack clip is 1.2 to 1.5 times too long.
 
-**All four carry root motion**, unlike the death clips. A basic attack that moves
-the character is probably not wanted, so whichever way they are played will need
-root motion suppressed or the character will drift forward on every swing.
+**The clip is played faster rather than cut short.** The rate is the clip's
+length divided by the swing interval, floored at 1 so a clip is never stretched,
+and capped at 2.5. That is the rule
+`ACataclysmAbyssalWardenCharacter::PlayOneShot` already follows: never slower
+than authored, only faster, and only when it must be. Stretching a short clip
+across a long window was tried on the Brute and read as slow motion.
+
+**The cap exists because attack speed has no design ceiling.** Affixes and
+passives raise it and nothing caps it, so a character stacked far enough would
+otherwise ask for a swing at many times speed. Past 2.5 the animation stops
+keeping up with the damage rather than turning into a blur.
+
+### Where the damage lands is not where the swing strikes
+
+**Not fixed, and worth knowing.** Damage is applied when the ability activates,
+which is the start of the clip; the animation's own impact is somewhere in the
+middle of it. So a hit registers before the weapon appears to connect.
+
+Issue #784 records the same problem one step earlier for enemies: three
+telegraphed basic attacks land damage 0.46 to 1.14 seconds away from where the
+animation strikes. Fixing it for the player means delaying damage to an animation
+notify, which changes how combat feels and is a larger change than drawing a
+swing.
+
+### Root motion is switched off
+
+**All four carry root motion**, unlike the death clips, and a
+`UCharacterMovementComponent` takes root motion from montages by default. Left
+alone, every basic attack would shove the character a step forward — several
+times a second, at whatever happens to be in reach.
+
+`ACataclysmPlayerCharacter::PlayAttackAnimation` clears
+`bEnableRootMotionTranslation` and `bEnableRootMotionRotation` **on the montage**
+rather than on the movement component, because the movement component's setting
+is global to the character and would disable root motion for anything else that
+ever wants it.
 
 ## The locomotion clips
 

@@ -271,6 +271,37 @@ public:
 	 */
 	void RefreshWeaponMeshes();
 
+	/**
+	 * Swings when the character uses any skill, including the basic attack.
+	 * Issue #1126.
+	 *
+	 * THROUGH THE ANIMATION BLUEPRINT'S SLOT, UNLIKE THE DEATH CLIP. `ABP_Unarmed`
+	 * carries a `DefaultSlot`, so an attack blends over the locomotion graph and
+	 * back out again rather than cutting to it and cutting back. A death is the
+	 * opposite case and is played onto the component directly, because it has to
+	 * hold its last frame; see PlayDeathAnimation.
+	 *
+	 * ROOT MOTION IS SWITCHED OFF ON THE MONTAGE. All four attack clips carry
+	 * root motion, measured on 2026-09-01, and a character movement component
+	 * takes root motion from montages by default. Left on, every swing would
+	 * walk the character forward, which is not what a basic attack should do
+	 * when it fires by itself at whatever is in reach.
+	 *
+	 * THE CLIPS ARE LONGER THAN THE INTERVAL THEY FIT IN, so the rate is raised
+	 * rather than the clip being cut off. Attack speed in
+	 * `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an interval of
+	 * 0.833 down to 0.667 seconds, and the shortest clip is 1.0 second. The rule
+	 * is the Abyssal Warden's: never slower than authored, only faster, and only
+	 * when it must be.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason `Revive` and
+	 * `RefreshWeaponMeshes` above are. The base class declares this public, so
+	 * an override tucked into the protected section narrows it and stops
+	 * anything outside the class from calling it -- which the build refuses
+	 * rather than allowing quietly.
+	 */
+	virtual void PlayAttackAnimation() override;
+
 	// ----------------------------------------------------------------------
 	// Art. Issue #1124.
 	// ----------------------------------------------------------------------
@@ -315,6 +346,60 @@ public:
 	/** The folder holding the six death clips, and their names in it. */
 	static const TCHAR* DeathAnimationFolder;
 	static const TCHAR* DeathAnimationNames[6];
+
+	/**
+	 * The folder holding the attack clips, and the three that are used.
+	 *
+	 * THREE OF THE FOUR THE ENGINE SHIPS. `MM_ChargedAttack` is copied beside
+	 * them and is deliberately not in this list: at 1.8333 seconds it is nearly
+	 * three times a fast weapon's swing interval, so cycling it into an attack
+	 * that fires by itself would mean playing it at close to triple speed. It is
+	 * there for a skill that deserves a heavier swing, which is work this does
+	 * not do.
+	 *
+	 * MEASURED, NOT ESTIMATED. `MM_Attack_01` and `MM_Attack_02` are 1.0 second
+	 * each and `MM_Attack_03` is 1.6667, read through the editor on 2026-09-01.
+	 * `game/docs/player-source-assets.md` records all four.
+	 */
+	static const TCHAR* AttackAnimationFolder;
+	static const TCHAR* AttackAnimationNames[3];
+
+	/**
+	 * The animation Blueprint slot an attack is played into.
+	 *
+	 * `ABP_Unarmed` carries a slot node named `DefaultSlot`, which is what lets
+	 * an attack blend over the locomotion graph instead of replacing it.
+	 * `ACataclysmAbyssalWardenCharacter` wanted exactly this and could not have
+	 * it, because no animation Blueprint has ever been authored for that
+	 * creature.
+	 */
+	static const FName AttackSlotName;
+
+	/**
+	 * How long an attack takes to blend in and out of the locomotion graph.
+	 *
+	 * SHORTER IN THAN OUT, WHICH IS DELIBERATE. A swing should arrive promptly
+	 * or it reads as late against the damage, which already lands at the start
+	 * of the ability. Leaving is not urgent, so a longer blend out settles back
+	 * into walking without a visible step.
+	 *
+	 * A JUDGEMENT. Nothing measured these; they are a starting point and are
+	 * expected to change once somebody watches a fight.
+	 */
+	static constexpr float AttackBlendInSeconds = 0.10f;
+	static constexpr float AttackBlendOutSeconds = 0.25f;
+
+	/**
+	 * The most an attack clip may be sped up to fit the swing interval.
+	 *
+	 * A CEILING RATHER THAN A HOPE, the same shape as the Abyssal Warden's
+	 * MaximumPlayRate and the ceiling on how long a corpse is kept. Attack speed
+	 * is a stat that affixes and passives raise, and nothing in the design caps
+	 * it, so a character stacked far enough would otherwise ask for a clip at
+	 * ten times speed, which is a blur rather than a swing. Past this the
+	 * animation simply stops keeping up with the damage.
+	 */
+	static constexpr float MaximumAttackPlayRate = 2.5f;
 
 protected:
 	virtual void InitAbilityActorInfo() override;
@@ -420,6 +505,22 @@ protected:
 	 */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UAnimSequence>> DeathAnimations;
+
+	/**
+	 * The attack clips, drawn in turn rather than at random.
+	 *
+	 * IN TURN, UNLIKE THE DEATH CLIPS, and the difference is how often they are
+	 * seen. A death happens once and a random draw stops two deaths in a row
+	 * looking identical. A basic attack fires every two thirds of a second, and
+	 * a random draw over three clips repeats one about a third of the time,
+	 * which reads as the animation sticking. Cycling is what
+	 * `ACataclysmAbyssalWardenCharacter` does with its left and right swings.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> AttackAnimations;
+
+	/** Which attack clip comes next. Wraps. */
+	int32 NextAttackAnimation = 0;
 
 	/**
 	 * What is drawn in each hand. Issue #1125.

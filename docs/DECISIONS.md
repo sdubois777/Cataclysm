@@ -20,6 +20,114 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — The character moves when it uses a skill: where that hook lives, which clips play, and what happens to a clip that will not fit
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/docs/player-source-assets.md`. Applied. Issue #1126.
+
+The player used every skill it had without moving at all. The cast effect
+flashed, damage landed, and the body stood still through it.
+
+### The hook is the one function every skill already calls
+
+**`UCataclysmSkillTemplate::CommitAndBegin`.** All eight skill shapes call it as
+the first thing in their `ActivateAbility`, so one call there reaches every shape
+and the basic attack.
+
+That is not a new idea; it is the same place and the same reasoning issue #811
+used for `UCataclysmCastEffect::PlayFor`, whose comment already says it: "Every
+one of the eight skill shapes calls this function first, so one call here gives
+all of them the beat that was missing."
+
+**It sits past the commit**, so a skill refused by its cost or its cooldown
+animates nothing. A swing on a refused skill would read as a bug.
+
+### What plays is the character's business, not the skill's
+
+**A virtual on `ACataclysmCharacterBase` that does nothing by default**, rather
+than a helper like the cast effect's.
+
+The cast effect is a Niagara system and works on anything. An animation is bound
+to a skeleton, and the skeletons differ: the player wears the Mannequin, and
+`ACataclysmHellhoundCharacter` uses a skill template while wearing a Paragon
+body. A Mannequin clip played on it would be an animation for a skeleton it does
+not have.
+
+**Doing nothing is the correct default and not an omission.** Every enemy that
+animates an attack already does it from its own class, in `AttackTarget` or
+`UseEnemyAbility`, with clips from its own pack.
+
+### Three clips, cycled in order, and the fourth left out
+
+The engine ships four Mannequin attack clips. Three are used.
+
+| Clip | Length | Cycled |
+| :-- | --: | :-: |
+| `MM_Attack_01` | 1.0000 s | yes |
+| `MM_Attack_02` | 1.0000 s | yes |
+| `MM_Attack_03` | 1.6667 s | yes |
+| `MM_ChargedAttack` | 1.8333 s | **no** |
+
+**In turn rather than at random, which is the opposite of the death clips.** The
+difference is how often each is seen. A death happens once, so a random draw
+stops two deaths in a row looking identical. A basic attack fires every two
+thirds of a second at a fast weapon, and a random draw over three clips repeats
+one about a third of the time, which reads as the animation sticking rather than
+as variety. Cycling is what `ACataclysmAbyssalWardenCharacter` does with its left
+and right swings.
+
+**`MM_ChargedAttack` is excluded because of its length.** At 1.8333 seconds it is
+nearly three times a fast weapon's swing interval, so cycling it into an attack
+that fires by itself would mean playing it at close to triple speed. It stays in
+the repository for a skill that deserves a heavier swing.
+
+### A clip that will not fit is played faster, never stretched
+
+Attack speed in `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an
+interval of 0.833 down to 0.667 seconds. **Every attack clip is longer than
+that**, the shortest being 1.0 second.
+
+**The rate is the clip's length divided by the interval, floored at 1 and capped
+at 2.5.** That is the Abyssal Warden's rule, recorded in its own comments: never
+slower than authored, only faster, and only when it must be. Stretching a short
+clip across a long window was tried on the Brute and read as slow motion.
+
+**The cap exists because attack speed has no design ceiling.** Affixes and
+passives raise it and nothing caps it, so a character stacked far enough would
+otherwise ask for a swing at many times speed. Past the cap the animation stops
+keeping up with the damage rather than becoming a blur.
+
+### Root motion is switched off on every swing
+
+**All four clips carry it**, measured through the editor on 2026-09-01, and a
+`UCharacterMovementComponent` takes root motion from montages by default. Left
+alone, every basic attack would shove the character a step forward — several
+times a second, at whatever happens to be in reach.
+
+**Cleared on the montage rather than on the movement component**, because the
+movement component's setting is global to the character and would disable root
+motion for anything else that ever wants it.
+
+### What is deliberately not fixed
+
+**Damage lands at the start of the swing, not where the weapon connects.** A
+skill applies its damage when the ability activates, which is the beginning of
+the clip, while the animation's own impact is partway through it.
+
+Fixing it means moving damage to an animation notify, which changes how combat
+feels and is a larger change than drawing a swing. Issue #784 records the same
+problem one step earlier for enemies: three telegraphed basic attacks land damage
+0.46 to 1.14 seconds away from where the animation strikes. Recorded in
+`game/docs/player-source-assets.md` rather than left to be rediscovered.
+
+**Which clip suits which weapon.** All fourteen weapon bases swing the same three
+unarmed clips. A dagger and a greataxe move identically. #1126 stays open for
+per-weapon attacks, whether those come from retargeting or a bought pack.
+
+---
+
 ## 2026-09-01 — Which mesh each weapon base draws, where that mapping lives, and what a two-handed weapon does when the pack has no two-handed mesh
 
 **Affects:** a new "Weapon Meshes" sheet in `docs/All_Things_Cataclysm.xlsx`,
