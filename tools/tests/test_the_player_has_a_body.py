@@ -73,6 +73,19 @@ def game_paths(text: str) -> set[str]:
     return found
 
 
+def strip_comments(text: str) -> str:
+    """The file's code, without its comments.
+
+    Same reason as `function_body` below: this project writes every rule down
+    beside the code that implements it, in a comment naming the very thing being
+    searched for. `CataclysmPlayerCharacter.cpp` still explains what the
+    placeholder cylinder was and why it went, so searching the raw text for the
+    word finds the explanation rather than a regression.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
 def function_body(text: str, signature: str) -> str:
     """A function's code, with its comments stripped out.
 
@@ -124,24 +137,31 @@ def test_the_player_no_longer_builds_a_cylinder_and_a_cone():
     cylinder base is appearing over him". The player does not hide its
     placeholder, it does not have one, and this is what keeps it that way.
     """
+    # THE PLACEHOLDER, NOT STATIC MESHES IN GENERAL, AND THAT NARROWING WAS
+    # FORCED BY ISSUE #1125. The first version of this check forbade
+    # `CreateDefaultSubobject<UStaticMeshComponent>` outright, on the reasoning
+    # that the cylinder and the cone were the only two the player had. That
+    # stopped being true the moment the character got hands to put a weapon in:
+    # `RightHandWeapon` and `LeftHandWeapon` are static mesh components and are
+    # correct. The check was right about what it cared about and wrong about how
+    # it recognised it.
+    #
     # THE CODE, NOT THE WORDS. Both files still say in a comment what they used
-    # to build and why, which is worth keeping; what must not come back is
-    # anything that actually builds one.
-    for path, constructs in (
-        (PLAYER_CPP, ("CreateDefaultSubobject<UStaticMeshComponent>",
-                      "ConstructorHelpers::FObjectFinder<UStaticMesh>",
-                      "SetStaticMesh(")),
-        (PLAYER_H, ("TObjectPtr<UStaticMeshComponent>",)),
+    # to build and why, which is worth keeping, so the comments are stripped
+    # before looking.
+    for path, forbidden in (
+        (PLAYER_CPP, ("Placeholder", "BasicShapes")),
+        (PLAYER_H, ("Placeholder", "BasicShapes")),
     ):
-        text = read(path)
-        for construct in constructs:
-            assert construct not in text, (
-                f"{path.name} builds a static mesh component again "
-                f"(`{construct}`). The player's placeholder cylinder and cone "
-                f"were removed by issue #1124. If a placeholder is wanted "
-                f"again it has to be hidden when the skeletal mesh goes on, "
-                f"the way ACataclysmAbyssalWardenCharacter::ResolveBody hides "
-                f"the Warden's, or it draws on top of the character.")
+        code = strip_comments(read(path))
+        for word in forbidden:
+            assert word not in code, (
+                f"{path.name} mentions {word!r} in its code again. The "
+                f"player's placeholder cylinder and cone were removed by issue "
+                f"#1124. If a placeholder is wanted again it has to be hidden "
+                f"when the skeletal mesh goes on, the way "
+                f"ACataclysmAbyssalWardenCharacter::ResolveBody hides the "
+                f"Warden's, or it draws on top of the character.")
 
 
 # --------------------------------------------------------------------------

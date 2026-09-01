@@ -9,6 +9,7 @@
 
 class UAnimSequence;
 class USkeletalMeshComponent;
+class UStaticMeshComponent;
 class UCameraComponent;
 class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
@@ -248,6 +249,28 @@ public:
 	/** The ItemBases row the character begins wearing. Issue #840. */
 	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
 
+	/**
+	 * Draws whatever is worn in the two weapon slots, and clears a hand that
+	 * holds nothing. Issue #1125.
+	 *
+	 * CLEARS AS WELL AS SETS, WHICH IS THE HALF THAT BREAKS SILENTLY. Taking a
+	 * weapon off has to remove its mesh, and a version that only ever assigned
+	 * would leave the last weapon in the character's hand for ever -- looking
+	 * exactly like a weapon that was still equipped, while every number said
+	 * otherwise. That is issue #840 one step along: the character's hand and
+	 * the character's stats disagreeing, with nothing on screen to say so.
+	 *
+	 * HUNG ON OnEquipmentChanged RATHER THAN A NEW MOMENT, because that already
+	 * runs on every equipment change and already recomputes the stat line and
+	 * the ability slots from the same event.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason
+	 * `ApplyChosenClassStats` and `Revive` are public. A test world built with
+	 * `UWorld::CreateWorld` has no controller to possess with, so a test cannot
+	 * rely on the equipment broadcast reaching a handler bound at BeginPlay.
+	 */
+	void RefreshWeaponMeshes();
+
 	// ----------------------------------------------------------------------
 	// Art. Issue #1124.
 	// ----------------------------------------------------------------------
@@ -397,6 +420,35 @@ protected:
 	 */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UAnimSequence>> DeathAnimations;
+
+	/**
+	 * What is drawn in each hand. Issue #1125.
+	 *
+	 * WHAT THEY REPLACED: nothing at all. No weapon was drawn anywhere in this
+	 * game. A player equipped a Greataxe, its stats and its six skills changed,
+	 * and nothing on screen changed.
+	 *
+	 * ONE PER HAND, BECAUSE THE DESIGN HAS AN OFF-HAND. The Shield is a
+	 * one-handed base, so a character can hold a sword and a shield at once.
+	 * `ECataclysmGearSlot::Weapon1` is drawn in the right hand and `Weapon2` in
+	 * the left, which is also how the equipment component already thinks about
+	 * them.
+	 *
+	 * A TWO-HANDED WEAPON DRAWS IN THE RIGHT HAND ONLY, and that is a
+	 * limitation rather than a decision. `UCataclysmEquipmentComponent` puts a
+	 * two-handed weapon in Weapon1 and blocks Weapon2, so the left hand is
+	 * empty. Making both hands hold it needs an animation authored for it, and
+	 * there is no two-handed grip pose in anything this project owns.
+	 *
+	 * ATTACHED TO THE MESH'S HAND SOCKETS, not to the capsule, so they follow
+	 * the animation. `SK_Mannequin` ships `HandGrip_R` and `HandGrip_L`, so
+	 * neither socket had to be authored.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> RightHandWeapon;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> LeftHandWeapon;
 
 	/**
 	 * Fills the six ability slots from the equipped weapon.

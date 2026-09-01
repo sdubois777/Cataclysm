@@ -585,6 +585,63 @@ struct FCataclysmItemBaseRow : public FTableRowBase
 };
 
 /**
+ * Which mesh is drawn in the hand for one weapon base. Source: Weapon Meshes.
+ *
+ * WHY THIS IS A TABLE OF ITS OWN AND NOT COLUMNS ON FCataclysmItemBaseRow.
+ * Issue #1125. A mesh path is an art binding rather than a design decision: it
+ * changes when the art changes and says nothing about how the weapon plays.
+ * Keeping third-party asset paths out of the design's own sheet means a new
+ * weapons pack moves one table instead of editing the design. This is the same
+ * shape and the same reasoning as FCataclysmElementVisualRow.
+ *
+ * THE ROW NAME IS THE ITEM BASE'S ROW NAME, so `FCataclysmItem::Base` finds the
+ * mesh with one lookup and no translation. Both are built by the same
+ * `row_name("Weapon", name)` in tools/generate_datatables.py, and
+ * tools/tests/test_a_weapon_is_drawn_in_the_hand.py holds the two tables to
+ * each other.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmWeaponMeshRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** The base's readable name, for a log line that a person can act on. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	FString BaseName;
+
+	/**
+	 * The static mesh to draw, or empty to draw nothing.
+	 *
+	 * EMPTY IS A DECISION AND NOT AN OMISSION. The generator refuses a blank
+	 * cell in the workbook: a base that should draw nothing writes the word
+	 * "None" there, and only then does this arrive empty. The Fist is the
+	 * designed case, because unarmed should show no weapon. The Wand and the
+	 * Whip are here because the weapons pack has nothing suitable, which is a
+	 * gap in the art rather than a decision about the design.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	FString Mesh;
+
+	/**
+	 * What to multiply the mesh by when drawing it. 1 draws it as authored.
+	 *
+	 * IT EXISTS BECAUSE THE PACK HAS NO TWO-HANDED MELEE WEAPON. Measured on
+	 * 2026-09-01: the three swords are 84 to 93 cm, the axe 91 and the mace 83,
+	 * against a character 180.5 cm tall, so all of them are one-handed sizes.
+	 * Only the spear at 244 cm and the staff at 106 are two-handed as authored.
+	 * The Greatsword, Greataxe and Warhammer therefore draw a one-handed mesh
+	 * scaled up.
+	 *
+	 * A JUDGEMENT, AND IN THE DATA SO IT COSTS NO REBUILD TO CHANGE. Uniform
+	 * scaling thickens the grip as well as lengthening the blade, so the figures
+	 * are deliberately short of what the real weapons' proportions would ask
+	 * for. They are expected to be tuned by looking at the game.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float Scale = 1.0f;
+};
+
+/**
  * One rollable affix. Source: Affixes.
  *
  * FOUR KINDS SHARE ONE TABLE, distinguished by AffixKind, because they are one

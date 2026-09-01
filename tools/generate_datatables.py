@@ -1088,6 +1088,120 @@ def item_bases(book) -> list[dict]:
     return unique(out, "Item Bases")
 
 
+#: What a Weapon Meshes row puts in the Mesh column to mean "draw nothing".
+#:
+#: A WORD RATHER THAN AN EMPTY CELL, because an empty cell cannot be told apart
+#: from a row somebody started and did not finish. Issue #1125 asked for exactly
+#: this distinction: "Drawing nothing is a reasonable answer; drawing nothing
+#: silently is not."
+DRAWS_NOTHING = "None"
+
+#: Where a weapon mesh path has to start. A mesh outside /Game/ is not in the
+#: project's content at all and could never be loaded.
+CONTENT_PREFIX = "/Game/"
+
+
+def weapon_meshes(book) -> list[dict]:
+    """Which mesh is drawn in the hand for each weapon base. Source: Weapon Meshes.
+
+    WHY THIS IS A SHEET OF ITS OWN RATHER THAN COLUMNS ON ITEM BASES. Issue
+    #1125. A mesh path is an art binding, not a design decision: it changes when
+    the art changes and says nothing about how the weapon plays. Item Bases is a
+    design sheet and keeping third-party asset paths out of it means a new
+    weapons pack moves one sheet rather than editing the design. This follows
+    Element Visuals, which is the same shape for the same reason.
+
+    THE ROW KEY MATCHES ITEM BASES, so `FCataclysmItem::Base` looks a row up
+    directly with no translation. Both are built by `row_name("Weapon", name)`.
+
+    EVERY WEAPON BASE MUST APPEAR AND NOTHING ELSE MAY. A base with no row would
+    silently draw nothing, which is the thing this table exists to make
+    impossible, and a row for a base that does not exist is a typo that would
+    otherwise never be noticed.
+    """
+    rows = list(book["Weapon Meshes"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Weapon Meshes")
+
+    # Which bases are weapons, read off Item Bases rather than listed here, so
+    # adding a weapon base to the design cannot leave this table behind.
+    base_rows = list(book["Item Bases"].iter_rows(values_only=True))
+    base_headers = _header_index(base_rows, "Item Bases")
+    weapon_bases = {
+        _cell(raw, base_headers, "Base Name")
+        for raw in base_rows[1:]
+        if _cell(raw, base_headers, "Slot") == "Weapon"
+        and _cell(raw, base_headers, "Base Name")
+    }
+
+    out = []
+    covered = set()
+    for index, raw in enumerate(rows[1:], start=2):
+        name = _cell(raw, headers, "Base Name")
+        if not name:
+            continue
+
+        where = f"Weapon Meshes row {index} ({name})"
+
+        if name not in weapon_bases:
+            raise DataError(
+                f"{where}: there is no weapon base called {name!r} in the Item\n"
+                f"Bases sheet. This table is keyed by base name and every key\n"
+                f"has to name a real weapon.")
+        if name in covered:
+            raise DataError(f"{where}: {name!r} already has a row.")
+        covered.add(name)
+
+        mesh = _cell(raw, headers, "Mesh")
+        if not mesh:
+            raise DataError(
+                f"{where}: the Mesh cell is empty. A base that should draw\n"
+                f"nothing says {DRAWS_NOTHING!r}, so that a row nobody filled\n"
+                f"in can be told apart from a weapon that is meant to be\n"
+                f"invisible. The Fist is the designed example: unarmed draws\n"
+                f"nothing on purpose.")
+
+        if mesh != DRAWS_NOTHING and not mesh.startswith(CONTENT_PREFIX):
+            raise DataError(
+                f"{where}: the mesh is {mesh!r}, which does not start with\n"
+                f"{CONTENT_PREFIX!r}. A mesh outside the project's content\n"
+                f"cannot be loaded. Write {DRAWS_NOTHING!r} to draw nothing.")
+
+        scale = _cell(raw, headers, "Scale")
+        try:
+            scale_value = float(scale)
+        except (TypeError, ValueError) as exc:
+            raise DataError(
+                f"{where}: the scale is {scale!r}, which is not a number.\n"
+                f"Write 1 for a mesh drawn at the size the pack authored."
+            ) from exc
+
+        if scale_value <= 0.0:
+            raise DataError(
+                f"{where}: the scale is {scale_value}. A scale of zero or less\n"
+                f"is a weapon that cannot be seen, which is what writing\n"
+                f"{DRAWS_NOTHING!r} in the Mesh column is for.")
+
+        out.append({
+            "Name": row_name("Weapon", name),
+            "BaseName": name,
+            # Emptied here rather than carrying the word through, so the game
+            # tests one thing -- "is the path empty" -- instead of comparing
+            # against a magic word it would have to keep in step with this file.
+            "Mesh": "" if mesh == DRAWS_NOTHING else mesh,
+            "Scale": scale_value,
+        })
+
+    missing = sorted(weapon_bases - covered)
+    if missing:
+        raise DataError(
+            "Weapon Meshes has no row for " + ", ".join(missing) + ".\n"
+            "Every weapon base needs one, because a base with no row would\n"
+            f"draw nothing without saying so. Write {DRAWS_NOTHING!r} in the\n"
+            "Mesh column for a weapon that is meant to be invisible.")
+
+    return unique(out, "Weapon Meshes")
+
+
 def affixes(book) -> list[dict]:
     """One rollable affix per row, across four kinds.
 
@@ -3138,6 +3252,7 @@ TABLES = {
     "PassiveEffects": passive_effects,
     "SkillSlots": skill_slots,
     "ElementVisuals": element_visuals,
+    "WeaponMeshes": weapon_meshes,
 }
 
 #: Tables built from sim/cataclysm_sim/enemy_stats.py rather than the workbook.

@@ -115,6 +115,7 @@ TABLES = [
     ("DT_PassiveNodes", "PassiveNodes.csv", "CataclysmPassiveNodeRow"),
     ("DT_SkillSlots", "SkillSlots.csv", "CataclysmSkillSlotRow"),
     ("DT_StatusEffects", "StatusEffects.csv", "CataclysmStatusEffectRow"),
+    ("DT_WeaponMeshes", "WeaponMeshes.csv", "CataclysmWeaponMeshRow"),
     ("DT_WeaponSkills", "WeaponSkills.csv", "CataclysmWeaponSkillRow"),
 ]
 
