@@ -1,4 +1,4 @@
-"""Measure when each enemy's ordinary attack actually strikes, from its pose.
+"""Measure when an ordinary attack actually strikes, from its pose.
 
 Runs inside the Unreal editor's Python interpreter, not the system Python:
 
@@ -6,11 +6,19 @@ Runs inside the Unreal editor's Python interpreter, not the system Python:
 
 WHY IT MEASURES FROM THE POSE RATHER THAN FROM A NOTIFY. Issue #526 asks for the
 authored notify where there is one. **There is not one anywhere.**
-`tools/probe_attack_impact_sources.py` read all thirteen clips through
+`tools/probe_attack_impact_sources.py` read all thirteen enemy clips through
 `unreal.AnimationLibrary.get_animation_notify_events` on 2026-08-21 and every one
 came back empty, each with a single empty notify track named "1". The Paragon
 packs were authored for a different game and carry no damage markers, so every
 figure below comes from inspection.
+
+THE PLAYER'S FOUR CLIPS ARE THE SAME, CHECKED A DIFFERENT WAY ON 2026-09-01 for
+issue #1133. The Mannequin clips are engine template resources rather than a
+Paragon pack, so they were checked by reading the asset files directly: the name
+table of each holds `AnimNotifyTracks`, `AnimNotifyTrack` and `AnimNotifyList`,
+which are the empty container's own property names, and no notify class and no
+notify name. The same search across `game/Content/` does find `AnimNotify_` in
+ten assets, so it detects notifies where they exist.
 
     `clip.get_editor_property("notifies")` DOES NOT WORK AT ALL:
     `UAnimSequenceBase::Notifies` is protected and Python refuses it.
@@ -55,6 +63,21 @@ import unreal
 #:
 #: THIRTEEN CLIPS FOR SEVEN CREATURES. The Imp draws from five, the Corrupted
 #: Sentinel alternates two, and the Abyssal Warden swings left and right.
+#:
+#: AND FOUR MORE FOR THE PLAYER, ADDED 2026-09-01 FOR ISSUE #1133. The player
+#: character got a body and a swing on 2026-09-01 and has the same fault the
+#: creatures have: its damage lands at the instant the ability activates, and
+#: the swing plays for a second or more beside it. Placing the hit needs the
+#: same figure this script already produces for the creatures, so the player's
+#: clips are measured the same way rather than by a second method.
+#:
+#: THE PLAYER'S INTERVAL IS NOT ONE NUMBER, which is the difference from every
+#: row above. A creature has a designed attack interval; the player's comes from
+#: the equipped weapon's attack speed, which `game/Data/ItemBases.csv` gives as
+#: 1.20 to 1.50 swings a second, an interval of 0.8333 down to 0.6667. The
+#: figure below is the Greataxe's, 1.28 a second, because the Greataxe is the
+#: weapon a new character starts with. It is printed as context only: nothing in
+#: the measurement depends on it.
 CLIPS = [
     # (creature, attack interval, clip path)
     ("Brute", 1.2,
@@ -102,6 +125,18 @@ CLIPS = [
     ("Gatekeeper", 3.0,
      "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/"
      "Swing1_Medium"),
+
+    # THE PLAYER. Issue #1133. `ACataclysmPlayerCharacter::PlayAttackAnimation`
+    # cycles the first three in turn; `MM_ChargedAttack` is deliberately not
+    # cycled and is measured anyway, so the figure exists if it is ever wanted.
+    ("Player", 0.7813,
+     "/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_01"),
+    ("Player", 0.7813,
+     "/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_02"),
+    ("Player", 0.7813,
+     "/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_Attack_03"),
+    ("Player", 0.7813,
+     "/Game/Characters/Mannequins/Anims/Unarmed/Attack/MM_ChargedAttack"),
 ]
 
 #: A clip on the same rig that strikes nothing, for each creature. **THE
@@ -138,6 +173,11 @@ CONTROLS = [
      "Idle_Relaxed"),
     ("Gatekeeper",
      "/Game/ParagonSevarog/Characters/Heroes/Sevarog/Animations/Idle"),
+    # The player's control. `MM_Idle` is
+    # the standing pose the Mannequin holds when nothing is happening, so a
+    # rule that reads a strike in it is reading ordinary movement.
+    ("Player",
+     "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle"),
 ]
 
 #: Bones that can be the striking part, matched as substrings of the lowercased
@@ -393,8 +433,9 @@ def control(creature, path, options):
 
 def main():
     say("==== when each ordinary attack strikes ====")
-    say("Issue #526. NO CLIP CARRIES AN ANIMATION NOTIFY -- checked for all "
-        "thirteen on 2026-08-21 -- so every figure here is from the pose.")
+    say("Issues #526 and #1133. NO CLIP CARRIES AN ANIMATION NOTIFY -- the "
+        "thirteen enemy clips checked on 2026-08-21, the player's four on "
+        "2026-09-01 -- so every figure here is from the pose.")
 
     options = unreal.AnimPoseEvaluationOptions()
 
