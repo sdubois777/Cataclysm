@@ -1543,7 +1543,7 @@
       "data": {
         "kind": "keystone",
         "name": "The Reckoning",
-        "description": "Health costs are never taken. They accumulate as a debt. You deal 1% more damage for every 2% of your maximum health that you owe, and the debt is cleared only by killing an enemy. If your debt ever exceeds your current health you begin to bleed out, losing health until you kill something or die of it.",
+        "description": "Health costs are never taken. They accumulate as a debt. You deal 1% more damage for every 2% of your maximum health that you owe, and the debt is cleared by killing an enemy and never by time. If your debt ever exceeds your current health you begin to bleed out, losing health until you kill something or die of it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

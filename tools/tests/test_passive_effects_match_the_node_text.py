@@ -1174,8 +1174,13 @@ VALUE_FORMS = {
 VALUE_IN_WORDS = {
     ("Masochist_keystone_bt_kA", "deferred_health_cost_share"):
         ("never taken", 100.0),
+    # THE PHRASE LOST THE WORD "ONLY" ON 2026-09-01, ISSUE #1122, and the
+    # exemption had to move with it. The Reckoning claimed a kill was the
+    # sole way out while Rock Bottom clears the same debt another way, so a
+    # player holding both could not predict what happened. The stat is still
+    # a flag of 1 and still stated in words; only the words changed.
     ("Masochist_keystone_bt_kA", "health_debt_cleared_only_by_a_kill"):
-        ("cleared only by killing an enemy", 1.0),
+        ("cleared by killing an enemy and never by time", 1.0),
 
     # AND THE TWO NODES THAT STOP HEALING REMOVING FERVOUR. Issues #1006 and
     # #1007. Both are flags of 1 and neither sentence has a digit: one says
