@@ -83,7 +83,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// only dungeon modifier described in prose and missing from the data, and a
 	// modifier with no weight cannot contribute to a dungeon's Modifier Score.
 	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      117)
-	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          398)
+	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          403)
 	// 379, not 380. The two minion count enchantments were merged into one for
 	// issue #339: the rarer of the two granted half as much, and they said the
 	// same thing in different words.
@@ -104,7 +104,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 50, not 46. Four player-applied debuffs were defined: Madness, Cripple,
 	// Shred and Weaken. All four were already applied by gems and by affixes,
 	// and none of them said what they did.
-	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          52)
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          53)
 	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
 	// one status effect in the data that nothing applied, and the Of Embers gem
 	// to apply Burn, which every designed Demonic skill applies and which no gem

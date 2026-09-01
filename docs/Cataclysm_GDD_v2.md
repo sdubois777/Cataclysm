@@ -2086,7 +2086,7 @@ and evasion build new offensive slots to serve six skills.
 
   
 
-**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are six, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
+**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are five, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
 
   
 
@@ -5079,7 +5079,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 
   
 
-- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 42 of the 51 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
+- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 45 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 

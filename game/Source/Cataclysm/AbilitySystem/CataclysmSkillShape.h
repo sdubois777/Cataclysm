@@ -84,6 +84,34 @@ enum class ECataclysmMovementMode : uint8
 
 	/** Instant, hitting at both ends and nothing between. Emberstep. */
 	Blink			UMETA(DisplayName = "Blink"),
+
+	/**
+	 * The caster and one of its own minions exchange places. Vesselstep.
+	 *
+	 * THE ONLY MOVEMENT THAT COSTS SOMETHING THE PLAYER OWNS. A blink needs
+	 * only a destination; this needs a creature standing somewhere useful, so
+	 * the Staff's minions become a mobility resource as well as a damage one.
+	 */
+	Swap			UMETA(DisplayName = "Swap"),
+
+	/**
+	 * A return to a mark left earlier rather than a departure. Echo.
+	 *
+	 * WHAT SEPARATES IT FROM Blink is which end the player chooses. Ashwalk
+	 * picks where to arrive; Echo picked that when it left, and chooses only
+	 * when to go back.
+	 */
+	Recall			UMETA(DisplayName = "Recall"),
+
+	/**
+	 * Repeats, arriving at one enemy after another for as long as it runs.
+	 * Everywhere at Once.
+	 *
+	 * A MOVEMENT THAT IS ALSO AN ULTIMATE, and the only one. It is why Movement
+	 * reads Duration and Interval, which until 2026-09-01 only Strike, Summon
+	 * and Deployable did.
+	 */
+	Flicker			UMETA(DisplayName = "Flicker"),
 };
 
 /**
@@ -233,24 +261,72 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float MinionHealthPercent = 0.0f;
 
-	// --- Self buff --------------------------------------------------------
+	// --- Scaling ----------------------------------------------------------
 
 	/**
-	 * Percentage points of increased damage the buff grants, per burning enemy
-	 * that was inside Radius when it went up.
+	 * Percentage points of MORE damage per unit of ScalingSource -- the
+	 * multiplicative bucket, which applies separately from every additive
+	 * source on the character.
 	 *
-	 * Burning Wrath is "4% increased fire damage for every enemy currently
-	 * burning within 15 meters", so this is 4 and the count is taken once. Zero
-	 * means the buff grants no increase, which is every other self buff.
+	 * REPLACED `IncreasePerBurning` ON 2026-09-01. That key said one thing in
+	 * two ways at once: what the number was per, and which bucket it joined.
+	 * Burning Wrath was the only skill that wrote it, and it was written into
+	 * the additive bucket where it competed with every gear affix the character
+	 * wore. The project owner's reading is that a skill is chosen the way a
+	 * passive node is chosen, so it may use the wording section VI reserves for
+	 * things a drop cannot hand you by accident.
 	 *
-	 * WHY PER BURNING ENEMY AND NOT A PLAIN INCREASE. Because that is the only
-	 * form the design uses for a self buff's magnitude, and a plain increase is
-	 * the case where the count happens to be one. A second key for the flat
-	 * case can be added when a skill needs it; inventing it now would be a
-	 * parameter nothing writes.
+	 * Burning Wrath is now "4% more fire damage for every enemy currently
+	 * burning within 15 meters": this is 4, ScalingSource is Burning, and the
+	 * count is taken once when the buff goes up.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
-	float IncreasePerBurning = 0.0f;
+	float MoreDamagePer = 0.0f;
+
+	/**
+	 * Percentage points of INCREASED damage per unit of ScalingSource -- the
+	 * additive bucket, summed with attributes and gear before multiplying once.
+	 *
+	 * TWO KEYS RATHER THAN ONE WITH A BUCKET BESIDE IT, deliberately. Which
+	 * bucket a number joins is the single most important thing about a damage
+	 * number in this design, and a shared key would have put the two one typo
+	 * apart. Searing Hook writes this one, at 1 per percent of maximum health
+	 * missing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float IncreasedDamagePer = 0.0f;
+
+	/** Seconds added to the skill's own duration per unit of ScalingSource. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float DurationPer = 0.0f;
+
+	/**
+	 * What the three keys above count, as written in the sheet.
+	 *
+	 * One of Kill, Burning, Second, Meter, HitTaken, Consume, Consumed, Bounce,
+	 * Pierced, Pinned or HealthMissing. The generator holds that closed list and
+	 * refuses anything else, so this is stored rather than validated again here.
+	 *
+	 * ONLY `Burning` IS ACTED ON TODAY, by UCataclysmSelfBuffSkill. The rest are
+	 * read so the design can state them, which is the state StunSeconds was in
+	 * for months and is recorded as such rather than hidden.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString ScalingSource;
+
+	/** Ceiling on a skill whose damage scales, as percent of weapon damage. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MaxDamagePercent = 0.0f;
+
+	/** Floor for a charged skill released at once, as percent of weapon damage. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MinDamagePercent = 0.0f;
+
+	// --- Self buff --------------------------------------------------------
+
+	/** Percentage points added to the caster's attack range. Coil of Embers. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float RangeIncrease = 0.0f;
 
 	// --- Riders every shape may carry -------------------------------------
 
@@ -331,6 +407,191 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString Effect;
+
+	/**
+	 * Seconds an applied Effect lasts.
+	 *
+	 * NOT `Duration`, WHICH IS THE SKILL'S OWN LENGTH. Anathema runs for an
+	 * instant and leaves a curse for ten seconds; Butcher's Bill runs for ten
+	 * seconds and leaves nothing. Both wrote "10" against the same key until
+	 * this was split out on 2026-09-01, and no reader could tell which was meant.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float EffectDuration = 0.0f;
+
+	/** Size of the applied Effect, in whatever unit that effect is measured in. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float EffectMagnitude = 0.0f;
+
+	// --- Forced movement ---------------------------------------------------
+
+	/**
+	 * What the skill does to a target beyond pushing it, as written in the
+	 * sheet: one or more of Knockdown, Launch, Pull, Drag or Pin.
+	 *
+	 * `Knockback` ABOVE IS NOT ONE OF THESE. That key is metres away from the
+	 * caster and stays exactly what issue #626 made it; three enemy abilities
+	 * write it. This carries the verbs a distance cannot express.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString ForcedMovement;
+
+	/** Centimetres a pull or drag carries the target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ForcedMovementDistanceCm = 0.0f;
+
+	/** Seconds the target is held where it was put. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ForcedMovementDuration = 0.0f;
+
+	// --- Terrain -----------------------------------------------------------
+
+	/**
+	 * Persistent geometry the skill leaves: Pit, Wall, Fissure or Thicket.
+	 *
+	 * DISTINCT FROM THE BURNING GROUND ABOVE. That is a damage patch and this
+	 * changes where a fight can happen -- one burns you for standing there, the
+	 * other decides where "there" is. The Warhammer's whole verb is this one.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Terrain;
+
+	/** Centimetres: radius for a pit, fissure or thicket, length for a wall. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float TerrainSizeCm = 0.0f;
+
+	/** Seconds the geometry persists. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float TerrainDuration = 0.0f;
+
+	// --- Conditions and commitment -----------------------------------------
+
+	/**
+	 * A condition the skill needs, as written: Burning, Target, Stationary or
+	 * RearHit. More than one may be named, comma separated.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Requires;
+
+	/** Seconds of hold before a full release. Backswing states 2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ChargeTime = 0.0f;
+
+	/**
+	 * What cancels a hold and loses the skill: Stagger, Death, Movement, or
+	 * None when nothing can. Inexorable is the one that writes None, because
+	 * the player cannot stop it either.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString ChargeBreaksOn;
+
+	// --- Consumption -------------------------------------------------------
+
+	/** True when the skill spends the target's burn rather than only applying it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bConsumeBurn = false;
+
+	/** Centimetres of whatever consumption produces. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ConsumeRadiusCm = 0.0f;
+
+	// --- On death ----------------------------------------------------------
+
+	/** What happens when an affected enemy dies: Leap, SpreadDebuff or Release. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString OnDeath;
+
+	/** Centimetres the on-death effect reaches for its next target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float OnDeathRangeCm = 0.0f;
+
+	// --- Projectile extras -------------------------------------------------
+
+	/** How many times a thrown weapon glances onward. Carom states 3. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 Bounces = 0;
+
+	/** How many nearby enemies the target's debuffs are copied onto. Malefice. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 SpreadCurses = 0;
+
+	/**
+	 * Who a repeating projectile picks: All, Nearest or Furthest.
+	 *
+	 * THE SAME WORD AND THE SAME VALUES as the TargetMode column in the Minion
+	 * Types sheet, which is where a turret already says who it shoots.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString TargetMode;
+
+	/**
+	 * True when attack speed raises the rate rather than the count.
+	 *
+	 * THE COUNT STAYS FIXED, which is the point. Butcher's Bill throws thirty
+	 * axes whatever the character's attack speed; a faster one empties the rack
+	 * sooner. Raising the count instead would take the skill out of the
+	 * 300-500% Ultimate band the moment the player found attack speed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bScalesWithAttackSpeed = false;
+
+	/** True when the skill orders every active minion onto its target. Compel. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bCommandStrike = false;
+
+	/** How many enemies a tether binds. Tether states 2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 TetherTargets = 0;
+
+	/** Centimetres a tether lets those enemies get from one another. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float TetherLengthCm = 0.0f;
+
+	/** Seconds a tether holds. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float TetherDuration = 0.0f;
+
+	// --- Summon extras -----------------------------------------------------
+
+	/**
+	 * True when the skill converts an enemy into a permanent minion of the
+	 * caster's rather than spawning one. Subjugate is the only skill that does.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bPossess = false;
+
+	/**
+	 * Class resource held out of use for as long as what it paid for lives.
+	 *
+	 * THE ARMY CAP IS THE POOL, NOT A COUNT. Each thrall reserves 30 of the
+	 * Ritualist's 150 Fervour, so it holds five, and every point of maximum
+	 * Fervour a passive tree grants is progress toward a sixth. A separate
+	 * maximum would have made the tree's Fervour nodes worthless to a summoner.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float FervourReserve = 0.0f;
+
+	/** Percent of maximum health the target must be under, checked after the hit. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HealthThresholdPercent = 0.0f;
+
+	// --- Other riders ------------------------------------------------------
+
+	/** Which cooldown the skill returns: Self or Movement. Empty returns none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString RefundsCooldown;
+
+	/** True when the caster cannot be hit while the skill runs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bUntargetable = false;
+
+	/** True when the player fights unarmed until the weapon is retrieved. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bDisarmsUntilRecalled = false;
+
+	/** True when every blow the skill lands counts as struck from behind. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bRearHits = false;
 
 	/** True when the cell parsed with no unreadable entry. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")

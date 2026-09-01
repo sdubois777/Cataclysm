@@ -397,7 +397,17 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	GrantedIncrease = 0.0f;
 	GrantedScope = FGameplayTag();
 
-	if (Params.IncreasePerBurning <= 0.0f || BurningEnemiesAtCast <= 0)
+	// SCALES OFF BURNING ENEMIES AND NOTHING ELSE TODAY. `ScalingSource` names
+	// eleven things a skill may count and this is the one that is implemented,
+	// so a buff naming any other source grants nothing rather than silently
+	// counting the wrong thing. The others are read and stated in the design;
+	// see the note on ScalingSource in CataclysmSkillShape.h.
+	if (!Params.ScalingSource.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	if (Params.MoreDamagePer <= 0.0f || BurningEnemiesAtCast <= 0)
 	{
 		// No increase to grant. Burning Wrath with nothing alight nearby is the
 		// ordinary case, not a fault: the skill is written to be worth using
@@ -413,10 +423,16 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 		return;
 	}
 
+	// THE MULTIPLICATIVE BUCKET, CHANGED 2026-09-01. Burning Wrath reads "4%
+	// more fire damage for every enemy currently burning", and "more" is this
+	// project's word -- section VI's -- for a multiplier that applies separately
+	// rather than joining the additive sum. In the additive bucket the buff
+	// competed with every gear affix the character wore, which is what made a
+	// kill-fed or count-fed ramp feel like nothing.
 	FCataclysmStatModifier Modifier;
-	Modifier.Bucket = ECataclysmStatBucket::Increased;
+	Modifier.Bucket = ECataclysmStatBucket::More;
 	Modifier.Source = ECataclysmModifierSource::SkillBuff;
-	Modifier.Value = Params.IncreasePerBurning * BurningEnemiesAtCast;
+	Modifier.Value = Params.MoreDamagePer * BurningEnemiesAtCast;
 
 	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
 	// here. Burning Wrath carries Element.Demonic, which is this project's fire,

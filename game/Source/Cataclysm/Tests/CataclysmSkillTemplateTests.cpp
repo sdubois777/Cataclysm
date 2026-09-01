@@ -3100,7 +3100,7 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
 		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff"));
 	if (!Buff)
 	{
@@ -3150,7 +3150,7 @@ bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
 		TEXT("Element.Demonic, Type.Buff"));
 	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
 	TestEqual(TEXT("One burning enemy, so 4%"), Buff->GrantedIncrease, 4.0f);
@@ -3190,7 +3190,7 @@ bool FCataclysmBuffIncreaseEndsTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
 		TEXT("Element.Demonic"));
 	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
 	TestEqual(TEXT("The caster carries one modifier while it is up"),
@@ -3241,7 +3241,7 @@ bool FCataclysmBuffWithNothingBurningTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
 		TEXT("Element.Demonic"));
 	TestTrue(TEXT("The buff still activates"), Activate(Caster, Buff));
 
@@ -3274,7 +3274,7 @@ bool FCataclysmBuffLeavesPricedGroundTest::RunTest(const FString&)
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Duration=10; Radius=15; IncreasePerBurning=4"), TEXT("Burning Wrath"),
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
 		TEXT("Element.Demonic"));
 	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
 	TestEqual(TEXT("It granted 4%"), Buff->GrantedIncrease, 4.0f);

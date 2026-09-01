@@ -51,8 +51,22 @@ def test_every_minion_skill_has_a_shape_and_parameters():
         assert row["ShapeParams"], f"{row['SkillName']} has no ShapeParams"
 
 
+#: Skills that produce a minion without naming a type, and why.
+#:
+#: A THRALL'S TYPE IS THE ENEMY IT WAS. Subjugate does not create a creature, it
+#: takes one that is already standing there, so there is no row in the Minion
+#: Types sheet for what it produces and there cannot be: the stat block is
+#: whatever the possessed enemy already had. `Possess=1` is what says so, and a
+#: skill setting it is exempt from naming a type rather than being allowed to
+#: forget to.
+def possesses(row) -> bool:
+    return params_of(row).get("Possess") == "1"
+
+
 def test_every_minion_skill_names_what_it_produces():
     for row in minion_skills():
+        if possesses(row):
+            continue
         produced = params_of(row).get("Minions")
         assert produced, (
             f"{row['SkillName']} does not say which minion type it produces, "
@@ -62,6 +76,8 @@ def test_every_minion_skill_names_what_it_produces():
 def test_every_type_a_skill_names_has_a_stat_block():
     known = minion_types()
     for row in minion_skills():
+        if possesses(row):
+            continue
         for name in gen.parse_minions(params_of(row)["Minions"], row["Name"]):
             assert name in known, (
                 f"{row['SkillName']} produces {name!r} and no such row exists "
