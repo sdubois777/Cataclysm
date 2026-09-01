@@ -260,6 +260,444 @@ void UCataclysmSkillTemplate::EndAbility(
 					  bWasCancelled);
 }
 
+bool UCataclysmSkillTemplate::CanActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayTagContainer* SourceTags,
+	const FGameplayTagContainer* TargetTags,
+	FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags,
+								   OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	// THE BASE'S ANSWER FIRST, so a skill that cannot be paid for is refused for
+	// that reason rather than for a condition it also happens to fail. The order
+	// decides which of the two the player is told about.
+	//
+	// THE ACTOR INFORMATION THE ENGINE HANDED IN, and not this instance's own.
+	// This runs before the ability is active, and `GetCurrentActorInfo` is not
+	// guaranteed to be set then.
+	return RequirementsAreMet(ActorInfo);
+}
+
+// ==========================================================================
+// Conditions on activation -- the `Requires` column
+// ==========================================================================
+
+bool UCataclysmSkillTemplate::RequiresCondition(const TCHAR* Condition) const
+{
+	if (Params.Requires.IsEmpty())
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED AND MORE THAN ONE MAY BE NAMED, which the parameter's own
+	// header says. No designed row names two today; the Spear's Nail Down is the
+	// nearest, at one.
+	TArray<FString> Named;
+	Params.Requires.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(Condition, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+float UCataclysmSkillTemplate::RequirementReachCm() const
+{
+	// A SKILL THAT REACHES OUT STATES A RANGE AND ONE THAT HITS AROUND ITSELF
+	// STATES A RADIUS, and the condition has to be judged over whichever of the
+	// two the skill actually covers. Flashpoint darts fourteen metres and states
+	// `Range=14`; Touch Off rings eight metres around the caster and states
+	// `Radius=8`. Asking about the wrong one would let Touch Off be used on
+	// something it cannot touch.
+	//
+	// THE SCALED RADIUS, not the written one, so a character with area of effect
+	// may activate on an enemy its widened ring will actually reach.
+	return Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm();
+}
+
+bool UCataclysmSkillTemplate::RequirementsAreMet(
+	const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	if (Params.Requires.IsEmpty())
+	{
+		return true;
+	}
+
+	const AActor* Self = ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar();
+	if (!Self)
+	{
+		// No avatar, so nothing can be judged. Refusing here would make every
+		// conditional skill unusable in a state the ability system reaches
+		// briefly during setup; allowing it leaves the decision to activation.
+		return true;
+	}
+
+	// `RearHit` IS DELIBERATELY ABSENT FROM THIS FUNCTION. See the header: it is
+	// a condition on what a running buff reacts to, not on whether the buff may
+	// be cast, so it gates nothing here.
+	if (RequiresCondition(TEXT("Stationary")))
+	{
+		// THE GREATSWORD'S UNBROKEN, "the whole bonus is lost the instant you
+		// take a step". Only the casting half is judged here; losing the bonus
+		// on moving belongs with the hold-and-release work in issue #1141.
+		if (!Self->GetVelocity().IsNearlyZero())
+		{
+			return false;
+		}
+	}
+
+	const bool bNeedsTarget = RequiresCondition(TEXT("Target"));
+	const bool bNeedsBurning = RequiresCondition(TEXT("Burning"));
+	if (!bNeedsTarget && !bNeedsBurning)
+	{
+		return true;
+	}
+
+	const float ReachCm = RequirementReachCm();
+	if (ReachCm <= 0.0f)
+	{
+		// A skill demanding a target and stating no reach to find one in. The
+		// generator cannot catch this, because the two columns are independent.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' requires '%s' and states neither a range nor a radius to "
+				 "look for one in, so it can never be used."),
+			*SkillName, *Params.Requires);
+		return false;
+	}
+
+	// THE AVATAR'S WORLD AND NOT THE ABILITY'S. This runs before the ability is
+	// active, and an ability that has not been activated has no world of its
+	// own, so asking it would find nobody and refuse every conditional skill.
+	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		Self->GetWorld(), Self, Self->GetActorLocation(), ReachCm);
+	if (Nearby.IsEmpty())
+	{
+		return false;
+	}
+
+	if (!bNeedsBurning)
+	{
+		return true;
+	}
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!Burn.IsValid())
+	{
+		// The tag vocabulary has no burn, which means the generated tag list is
+		// older than the design. Refusing every consuming skill for that would
+		// be a worse failure than allowing them, and the burn itself would
+		// already be broken everywhere else.
+		return true;
+	}
+
+	for (AActor* One : Nearby)
+	{
+		if (UCataclysmSkillEffects::HasTag(One, Burn))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+// ==========================================================================
+// Consuming burn -- the Sword's verb
+// ==========================================================================
+
+TArray<AActor*> UCataclysmSkillTemplate::ConsumeBurnFrom(
+	const TArray<AActor*>& Targets)
+{
+	TArray<AActor*> Consumed;
+	if (!Params.bConsumeBurn || Targets.IsEmpty())
+	{
+		return Consumed;
+	}
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!Burn.IsValid())
+	{
+		return Consumed;
+	}
+
+	for (AActor* Target : Targets)
+	{
+		if (!UCataclysmSkillEffects::HasTag(Target, Burn))
+		{
+			continue;
+		}
+
+		// REMOVED BY TAG, WHICH TAKES THE WHOLE BURN AND NOT A SHARE OF IT.
+		// `RemoveEffectsGranting` says in its own header that two casters
+		// granting one tag share one effect, so consuming it takes it from both.
+		// That is the right answer for this: the design's word is "consumed",
+		// and a fire that is partly put out is not a mechanic anything states.
+		if (UCataclysmSkillEffects::RemoveEffectsGranting(Target, Burn) > 0)
+		{
+			Consumed.Add(Target);
+		}
+	}
+
+	if (!Consumed.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' consumed the burn from %d of %d targets."),
+			*SkillName, Consumed.Num(), Targets.Num());
+	}
+
+	return Consumed;
+}
+
+int32 UCataclysmSkillTemplate::IgniteAroundConsumed(
+	const TArray<AActor*>& Consumed)
+{
+	if (Consumed.IsEmpty())
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	// THE SKILL'S OWN SPREAD PLUS WHATEVER A HELD BUFF ADDS. Touch Off states
+	// three metres of its own; Ashen Edge grants four while it runs and consumes
+	// nothing itself. A skill with neither spreads nothing, which is Quench,
+	// Extinction and Flashpoint with no buff up.
+	const float RadiusCm =
+		(Params.ConsumeRadiusCm + HeldConsumeSpreadRadiusCm(Self))
+		* AreaOfEffectMultiplier();
+	if (RadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHAT THE SPREAD BURN IS WORTH. A burn is a share of the hit that caused
+	// it, so a spread with no hit behind it needs a figure of its own: this uses
+	// the skill's own blow, which is what the fire being spent was worth.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	const float HitDamage = UCataclysmSkillEffects::ModifiedDamage(
+		AbilitySystem,
+		UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem)
+			* GetDamagePercent() / 100.0f,
+		SkillTags);
+	if (HitDamage <= 0.0f)
+	{
+		return 0;
+	}
+
+	int32 Lit = 0;
+	for (AActor* One : Consumed)
+	{
+		if (!IsValid(One))
+		{
+			continue;
+		}
+
+		for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
+				GetWorld(), Self, One->GetActorLocation(), RadiusCm))
+		{
+			// NOT THE ENEMY WHOSE FIRE THIS WAS. Relighting it from its own
+			// spread would make consuming it free, and every consuming skill
+			// would leave the field exactly as it found it.
+			if (Consumed.Contains(Caught))
+			{
+				continue;
+			}
+
+			if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage))
+			{
+				++Lit;
+			}
+		}
+	}
+
+	if (Lit > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' spread fire from %d consumed enemies to %d others, "
+				 "within %.0fcm."),
+			*SkillName, Consumed.Num(), Lit, RadiusCm);
+	}
+
+	return Lit;
+}
+
+float UCataclysmSkillTemplate::HeldConsumeSpreadRadiusCm(const AActor* Self)
+{
+	// ASKED OF THE CASTER'S RUNNING ABILITIES RATHER THAN HELD AS STATE. Ashen
+	// Edge is a self buff that lasts ten seconds, and while it lasts it IS an
+	// active ability on the caster, so the radius it grants can be read from it
+	// directly. Recording it somewhere else would be a second copy that has to
+	// be cleared when the buff ends, cancels, or its owner dies.
+	//
+	// THE LARGEST RATHER THAN THE SUM, because two copies of one buff are one
+	// buff: the design gives every player-applied effect a single stack, and a
+	// second application refreshes rather than adds.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	float Largest = 0.0f;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSkillTemplate* Running =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+
+		// A SELF BUFF AND NOT ANY RUNNING SKILL. A skill that consumes states a
+		// ConsumeRadius of its own for its own spread, and reading it here as
+		// well would double it for the skill that is running.
+		if (Running && Running->Shape() == ECataclysmSkillShape::SelfBuff)
+		{
+			Largest = FMath::Max(Largest, Running->Params.ConsumeRadiusCm);
+		}
+	}
+	return Largest;
+}
+
+// ==========================================================================
+// A skill's own damage scaling
+// ==========================================================================
+
+float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
+										   bool bThisTargetConsumed) const
+{
+	if (Params.ScalingSource.Equals(TEXT("HealthMissing"), ESearchCase::IgnoreCase))
+	{
+		const UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Avatar());
+		if (!AbilitySystem)
+		{
+			return 0.0f;
+		}
+
+		using Vitals = UCataclysmVitalAttributeSet;
+		const float Maximum =
+			AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+		if (Maximum <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Current =
+			AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
+
+		// PERCENTAGE POINTS MISSING, because the row is written per point:
+		// "1% increased damage for every 1% of your maximum health you are
+		// currently missing". A character at half health is 50 units, not 0.5.
+		return FMath::Clamp((Maximum - Current) / Maximum * 100.0f, 0.0f, 100.0f);
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("Consumed"), ESearchCase::IgnoreCase))
+	{
+		// EVERY OTHER ENEMY, so one fire put out is worth nothing. Extinction:
+		// "rising by 15% for every OTHER enemy consumed in the same instant".
+		return static_cast<float>(FMath::Max(0, ConsumedCount - 1));
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("Consume"), ESearchCase::IgnoreCase))
+	{
+		// ONE OR NOTHING, ASKED OF THE ENEMY IN FRONT. Quench: "any enemy
+		// already alight has their fire consumed and takes 50% more damage for
+		// it", so an enemy that was never alight takes the plain blow.
+		return bThisTargetConsumed ? 1.0f : 0.0f;
+	}
+
+	// One of the eight sources nothing counts yet -- Kill, Second, Meter,
+	// HitTaken, Bounce, Pierced, Pinned -- or Burning, which the self buff
+	// counts for itself. Scaling by nothing is the safe answer: a skill naming
+	// one deals its plain damage rather than a figure taken from the wrong
+	// thing.
+	return 0.0f;
+}
+
+float UCataclysmSkillTemplate::ScaledDamagePercent(float Units) const
+{
+	float Percent = GetDamagePercent();
+
+	if (Units > 0.0f)
+	{
+		// THE TWO BUCKETS, APPLIED THE WAY THE DESIGN DEFINES THEM. Increases
+		// are summed and applied once; a More multiplies on its own. A skill
+		// stating both is therefore not the same as one stating their total,
+		// which is why `docs/DECISIONS.md` puts the bucket in the parameter's
+		// name rather than in a column beside it.
+		Percent *= 1.0f + Params.IncreasedDamagePer * Units / 100.0f;
+		Percent *= 1.0f + Params.MoreDamagePer * Units / 100.0f;
+	}
+
+	if (Params.MaxDamagePercent > 0.0f)
+	{
+		Percent = FMath::Min(Percent, Params.MaxDamagePercent);
+	}
+
+	return Percent;
+}
+
+float UCataclysmSkillTemplate::HitScaled(const TArray<AActor*>& Targets,
+										const TArray<AActor*>& Consumed)
+{
+	if (Targets.IsEmpty())
+	{
+		return 0.0f;
+	}
+
+	// NOTHING TO SCALE BY, so this is the ordinary blow. Every skill that states
+	// no ScalingSource takes this path, which is 50 of the 56 Demonic rows.
+	if (Params.ScalingSource.IsEmpty()
+		|| (Params.IncreasedDamagePer <= 0.0f && Params.MoreDamagePer <= 0.0f))
+	{
+		return HitTargets(Targets, ScaledDamagePercent(0.0f));
+	}
+
+	// PER TARGET OR PER USE, and only `Consume` is per target. Splitting the
+	// group for a source that is not would deal two identical blows in two
+	// calls, which changes nothing but costs a second pass over the targets.
+	if (!Params.ScalingSource.Equals(TEXT("Consume"), ESearchCase::IgnoreCase))
+	{
+		return HitTargets(Targets,
+						  ScaledDamagePercent(ScalingUnits(Consumed.Num(), false)));
+	}
+
+	TArray<AActor*> Burned;
+	TArray<AActor*> Untouched;
+	for (AActor* Target : Targets)
+	{
+		(Consumed.Contains(Target) ? Burned : Untouched).Add(Target);
+	}
+
+	float Total = 0.0f;
+	if (!Burned.IsEmpty())
+	{
+		Total += HitTargets(
+			Burned, ScaledDamagePercent(ScalingUnits(Consumed.Num(), true)));
+	}
+	if (!Untouched.IsEmpty())
+	{
+		Total += HitTargets(
+			Untouched, ScaledDamagePercent(ScalingUnits(Consumed.Num(), false)));
+	}
+	return Total;
+}
+
 AActor* UCataclysmSkillTemplate::Avatar() const
 {
 	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();

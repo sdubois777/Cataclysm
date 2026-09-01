@@ -253,6 +253,24 @@ public:
 							bool bReplicateEndAbility,
 							bool bWasCancelled) override;
 
+	/**
+	 * Refuses the skill when a condition its `Requires` names does not hold.
+	 *
+	 * HERE AND NOT IN `ActivateAbility`, so a refused skill costs nothing. The
+	 * engine calls this before the cost and the cooldown are checked, and the
+	 * skill bar calls it to decide whether a button is usable, so a Flashpoint
+	 * with nothing alight nearby reads as unavailable rather than as spending
+	 * mana on nothing.
+	 *
+	 * PUBLIC BECAUSE THE BASE IS, exactly as for `EndAbility` above.
+	 */
+	virtual bool CanActivateAbility(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayTagContainer* SourceTags = nullptr,
+		const FGameplayTagContainer* TargetTags = nullptr,
+		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.
@@ -379,6 +397,191 @@ protected:
 	 * Issue #628 carries it.
 	 */
 	void ApplyKnockbackTo(AActor* Self, AActor* Target) const;
+
+	/**
+	 * Whether every condition this skill's `Requires` names holds right now.
+	 *
+	 * CHECKED BEFORE ANYTHING IS SPENT, from `CanActivateAbility`, so a skill
+	 * whose condition fails costs no mana and starts no cooldown. Six Demonic
+	 * skills name a condition and nothing read the column, so Flashpoint could
+	 * be darted into empty air and Touch Off used with nothing alight.
+	 *
+	 * THE FOUR CONDITIONS, as `REQUIREMENTS` in `tools/generate_datatables.py`
+	 * closes the list:
+	 *
+	 *   `Burning`     an enemy carrying the burn tag is within reach
+	 *   `Target`      any enemy at all is within reach
+	 *   `Stationary`  the caster is not moving
+	 *   `RearHit`     see below -- not an activation condition
+	 *
+	 * `RearHit` IS NOT A GATE AND THIS ANSWERS TRUE FOR IT. The Dagger's
+	 * Slipstream reads "every enemy you strike from behind returns your movement
+	 * skill to you", which is a condition on what the buff reacts to while it
+	 * runs, not on whether it may be cast. Treating it as a gate would make a
+	 * support skill uncastable until the player was already behind something.
+	 *
+	 * REACH IS `RangeCm` WHEN THE SKILL STATES ONE AND `RadiusCm` OTHERWISE,
+	 * because a skill that reaches out states a range and one that hits around
+	 * itself states a radius. Asking about the wrong one would let Touch Off be
+	 * used on an enemy fourteen metres away that its eight metre ring cannot
+	 * touch.
+	 *
+	 * @param ActorInfo  whose conditions to judge, or null for this instance's
+	 *                   own. `CanActivateAbility` is handed one and must use it:
+	 *                   the engine calls that before an ability is active, when
+	 *                   the instance's own cached information may not be set.
+	 */
+	bool RequirementsAreMet(
+		const FGameplayAbilityActorInfo* ActorInfo = nullptr) const;
+
+	/**
+	 * Whether this skill's `Requires` names one particular condition.
+	 *
+	 * Separated so a shape can act on a condition as well as gate on it. The
+	 * Movement template asks about `Burning` to decide WHERE it arrives, which
+	 * is Flashpoint's "only something already alight can be reached".
+	 */
+	bool RequiresCondition(const TCHAR* Condition) const;
+
+	/**
+	 * The reach a `Requires` condition is judged over, in centimetres.
+	 *
+	 * Shared by the gate and by the Movement template, so the enemy a skill was
+	 * allowed to activate for is the same one it then travels to.
+	 */
+	float RequirementReachCm() const;
+
+	/**
+	 * Put out the fire on every one of these targets that carries it.
+	 *
+	 * THE SWORD'S WHOLE VERB. `docs/DECISIONS.md` gives each Demonic weapon one
+	 * mechanical verb no other weapon may use, and the Sword's is consuming
+	 * burn. All five of its skills state `ConsumeBurn` and nothing read it, so
+	 * every one of them applied burn like any other weapon and put none out.
+	 *
+	 * IT RUNS BEFORE THE BLOW, and the order is required rather than tidy:
+	 * Quench gives an enemy whose fire was just put out 50% more damage, and
+	 * Extinction's damage rises with how many fires went out at once, so the
+	 * blow cannot be sized until this has run.
+	 *
+	 * IT DOES NOT DAMAGE ANYTHING ITSELF. What consumption is worth is decided
+	 * by the skill that consumed -- as a damage figure through
+	 * `ScaledDamagePercent`, and as spreading fire through
+	 * `IgniteAroundConsumed`.
+	 *
+	 * @return the targets whose fire was put out, in the order they were given
+	 */
+	TArray<AActor*> ConsumeBurnFrom(const TArray<AActor*>& Targets);
+
+	/**
+	 * Set alight everything standing near an enemy whose fire was just consumed.
+	 *
+	 * TWO SOURCES OF THE RADIUS AND THEY ARE ADDED RATHER THAN CHOSEN BETWEEN.
+	 * The consuming skill's own `ConsumeRadius` is one -- Touch Off states three
+	 * metres. The other is any self buff the caster is holding that states one,
+	 * which is how the Sword's Ashen Edge works: "consuming the burn from an
+	 * enemy also sets alight everything within 4 meters of them, so the fire you
+	 * spend is never wholly lost". A skill with neither spreads nothing.
+	 *
+	 * IT SETS ALIGHT AND DEALS NO DAMAGE OF ITS OWN, which is the narrower of
+	 * the two readings and what both descriptions say. Touch Off's "burst of
+	 * damage" is its own blow, dealt by the strike to everything in its eight
+	 * metre ring; this is the fire spreading outward from each one that went out.
+	 *
+	 * THE CONSUMED ENEMY IS NOT SET ALIGHT AGAIN BY ITS OWN SPREAD. Its fire was
+	 * just spent, and relighting it here would make consuming it free.
+	 *
+	 * @return how many enemies were set alight
+	 */
+	int32 IgniteAroundConsumed(const TArray<AActor*>& Consumed);
+
+	/**
+	 * How far a self buff this character is holding spreads a consumed fire.
+	 *
+	 * THE SWORD'S ASHEN EDGE AND NOTHING ELSE TODAY. It states a `ConsumeRadius`
+	 * and consumes nothing itself, which is the only way a skill row can say
+	 * "while this is up, what OTHER skills consume also spreads".
+	 *
+	 * READ FROM THE RUNNING ABILITY RATHER THAN FROM STATE KEPT BESIDE IT. A
+	 * buff that lasts is an active ability for as long as it lasts, so its own
+	 * numbers are already the answer, and there is nothing extra to clear when
+	 * it ends, is cancelled, or its owner dies.
+	 *
+	 * Zero for a character holding no such buff, which is the ordinary case.
+	 */
+	static float HeldConsumeSpreadRadiusCm(const AActor* Self);
+
+	/**
+	 * How many units of this skill's `ScalingSource` apply to one blow.
+	 *
+	 * THREE SOURCES ARE COUNTED HERE AND ELEVEN EXIST. `SCALING_SOURCES` in
+	 * `tools/generate_datatables.py` closes the list; a source this does not
+	 * know answers zero, so a skill naming one scales by nothing rather than
+	 * counting the wrong thing.
+	 *
+	 *   `HealthMissing`  percentage points of maximum health the caster lacks.
+	 *                    The Fist's Searing Hook: "1% increased damage for every
+	 *                    1% of your maximum health you are currently missing".
+	 *   `Consumed`       how many OTHER enemies had their fire put out by the
+	 *                    same use. The Sword's Extinction: "rising by 15% for
+	 *                    every other enemy consumed in the same instant".
+	 *   `Consume`        one when this target's own fire was put out, zero
+	 *                    otherwise. The Sword's Quench: "any enemy already
+	 *                    alight has their fire consumed and takes 50% more
+	 *                    damage for it".
+	 *
+	 * `Burning` IS NOT HERE AND IS NOT MISSING. `UCataclysmSelfBuffSkill` counts
+	 * it for itself, because a buff counts once when it goes up and this is
+	 * asked once per blow.
+	 *
+	 * @param ConsumedCount        how many enemies this use put out
+	 * @param bThisTargetConsumed  whether the target being priced was one of them
+	 */
+	float ScalingUnits(int32 ConsumedCount, bool bThisTargetConsumed) const;
+
+	/**
+	 * This skill's damage percent after its own scaling and its own ceiling.
+	 *
+	 * WHAT THESE PARAMETERS MOVE IS THE SKILL'S OWN PERCENT, not the character's
+	 * increases sum, and that reading is taken from what the rows themselves
+	 * say. Every Demonic row using them describes the result as a percentage of
+	 * weapon damage -- Extinction "350% weapon damage, rising by 15% ... to a
+	 * maximum of 500%", Backswing "175% weapon damage at once, rising to 350%"
+	 * -- and `MaxDamagePercent` is documented in that same unit. A bonus put
+	 * into the character's sum instead could not be capped in percent of weapon
+	 * damage at all, so the ceiling those rows state would never bind.
+	 *
+	 * THE TWO BUCKETS STILL DIFFER FROM ONE ANOTHER, which is the part of the
+	 * vocabulary that matters. `IncreasedDamagePer` is summed and applied once
+	 * and `MoreDamagePer` multiplies separately, so a skill stating both is not
+	 * the same as one stating their total. `docs/DECISIONS.md` records why the
+	 * bucket is written into the parameter name.
+	 *
+	 * A SELF BUFF DOES NOT COME THROUGH HERE. `UCataclysmSelfBuffSkill` turns
+	 * its `MoreDamagePer` into a stat modifier on the caster instead, because a
+	 * buff grants something that lasts and reaches every skill it is scoped to,
+	 * while this sizes one blow. Both use the same words for the same buckets.
+	 *
+	 * `MinDamagePercent` IS NOT READ HERE. It is the floor of a charged skill
+	 * released early, and nothing in the game holds a skill: only the
+	 * Greatsword's Backswing states one. Issue #1141.
+	 */
+	float ScaledDamagePercent(float Units) const;
+
+	/**
+	 * Deal this skill's blow, giving each target whatever its own consumption is
+	 * worth.
+	 *
+	 * TWO GROUPS AND TWO FIGURES WHEN THE SOURCE IS PER-TARGET, one when it is
+	 * not. Quench's `ScalingSource=Consume` asks about the enemy in front of it,
+	 * so enemies whose fire went out are priced apart from ones that were never
+	 * alight. Extinction's `Consumed` counts the whole use, so every target
+	 * takes the same figure.
+	 *
+	 * @return how much damage was sent, summed, before mitigation
+	 */
+	float HitScaled(const TArray<AActor*>& Targets,
+					const TArray<AActor*>& Consumed);
 
 	/**
 	 * Leave a burning patch of ground, if this skill's numbers say to.

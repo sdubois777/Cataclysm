@@ -241,6 +241,31 @@ public:
 	/** How many enemies the move hit. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 EnemiesHit = 0;
+
+	/**
+	 * Where this move ends: an enemy its `Requires` names, or the aimed point.
+	 *
+	 * TWO SKILLS TRAVEL TO A CREATURE RATHER THAN TO A PLACE. The Sword's
+	 * Flashpoint: "dart to a burning enemy up to 14 meters away ... only
+	 * something already alight can be reached". The Axe's Emberhaul: "bury your
+	 * axe in the first enemy within 12 meters and haul yourself to it". Both say
+	 * so through the `Requires` column, and until this the destination was
+	 * wherever the cursor happened to be, so either could be used to travel to an
+	 * empty patch of floor with an enemy burning behind the player.
+	 *
+	 * THE NEAREST ONE, because `FindEnemiesInSphere` answers nearest first and
+	 * neither description asks to reach past a nearer candidate.
+	 *
+	 * IT FALLS BACK TO THE AIMED POINT RATHER THAN REFUSING.
+	 * `CanActivateAbility` has already turned the cast down if no such enemy
+	 * existed, so arriving here with none means it died between the check and
+	 * the move. Standing still having already paid for a movement skill is worse
+	 * than travelling.
+	 *
+	 * Public so a test can ask where a move would go without moving anything.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	FVector ConditionalDestination(const FVector& Start) const;
 };
 
 /**

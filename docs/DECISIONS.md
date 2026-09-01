@@ -20,6 +20,157 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — The Sword consumes burn, six skills gained a condition on the cast, and a skill's own scaling moves the skill's own damage percent rather than the character's increases
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied.
+Issue #37.
+
+The project owner asked on 2026-09-01 for "some of the other demonic ability
+sets for different weapons", and chose the Sword and the Fist from four options
+once the survey below was in front of them.
+
+### What was wrong
+
+**Thirty-nine of the sixty-three shape parameters parsed cleanly and were read by
+nothing.** A survey posted on #37 measured it: two weapon sets out of twelve did
+everything their descriptions said, the Greataxe and the weapon-agnostic
+Conflagration aura. An earlier count had put six weapons within reach of a small
+change and was wrong, because it left out the consume parameters, the
+charge-and-hold parameters, and the fact that `ScalingSource` names eleven things
+to count and only one was counted.
+
+**The Sword was the worst of the twelve and read as the best.** Its designed verb
+is consuming an enemy's burn — `docs/DECISIONS.md` gave each Demonic weapon one
+verb on 2026-09-01 — and neither `ConsumeBurn` nor `ConsumeRadius` was read
+anywhere. All five Sword skills state one or both, so all five applied burn like
+any other weapon and put none out. Nothing failed; the skills simply were not the
+skills.
+
+### What the research settles, and what it does not
+
+**Settled: "increased" is summed and "more" multiplies.** Path of Exile adds every
+increased and reduced modifier into one factor and multiplies each more modifier
+separately, so two 20% mores give 1.44 where two 20% increases give 1.40. Last
+Epoch and Diablo 4 use the same skeleton under different names. This project
+adopted it already, which is why the bucket is written into the parameter name —
+`MoreDamagePer` against `IncreasedDamagePer`.
+
+**Also settled: a skill's own coefficient is a separate quantity from the
+character's increases pool.** Path of Exile calls it damage effectiveness and
+states it per skill; it decides what the skill does with a base before anything
+the character carries is applied.
+
+**Not settled by any of them: which of those two a row's `IncreasedDamagePer`
+belongs in.** In the genre a skill gem's own conditional bonus written as
+"increased" does join the character's pool, so a strict reading would put it
+there. The rows here do not read that way, and that is where a judgement was
+needed rather than a lookup.
+
+Sources: [Damage effectiveness, Path of Exile
+Wiki](https://pathofexile.fandom.com/wiki/Damage_effectiveness); [Path of Exile
+Damage Guide for Beginners,
+Maxroll](https://maxroll.gg/poe/getting-started/damage-for-beginners).
+
+### The judgement, and it is labelled as one
+
+**A skill's own `IncreasedDamagePer` and `MoreDamagePer` move that skill's own
+damage percent. `MaxDamagePercent` then bounds it. The character's own increases
+apply afterwards and are untouched.**
+
+**Why, and the rows decided it.** Every row using these parameters describes the
+outcome as a percentage of weapon damage, and states a ceiling in that same unit:
+
+- Extinction — "consumed for 350% weapon damage, rising by 15% for every other
+  enemy consumed in the same instant to a maximum of 500%"
+- Backswing — "lands for 175% weapon damage at once, rising to 350% if you hold
+  the full 2 seconds"
+- The Whole Weight — "every hit you take during the wind-up adds 8% more damage
+  to what follows, to a maximum of 500%"
+
+A bonus placed in the character's increases pool cannot be capped in percent of
+weapon damage at all, so `MaxDamagePercent` would never bind on any of the three
+and the sentence would be false. Putting the scaling on the coefficient makes all
+three true.
+
+**What the bucket still decides, which is the part worth keeping.** Two of these
+on one skill do not behave alike: the increases are summed and applied once, the
+mores multiply separately. A skill stating both is not the same as one stating
+their total, and that was the whole reason for two keys rather than one.
+
+**What this costs.** The ceiling is on the skill and not on the character, so a
+heavily invested character still multiplies past 500% of weapon damage. That is
+correct — a cap on the finished number would be a cap on the character, which no
+row asks for — but it is worth stating, because "to a maximum of 500%" reads like
+a cap on the whole thing.
+
+### The self buff is not affected and that is deliberate
+
+`UCataclysmSelfBuffSkill` keeps turning its `MoreDamagePer` into a stat modifier
+on the caster, because a buff grants something that lasts and reaches every skill
+it is scoped to. Burning Wrath's "4% more fire damage for every enemy currently
+burning" is a character modifier for ten seconds; Quench's "50% more damage" is
+one blow. Same words, same buckets, different scope, and both are now real.
+
+### Four of the eleven scaling sources are now counted
+
+`Burning` by the self buff, as before. `HealthMissing`, `Consumed` and `Consume`
+by the shared template, asked once per blow. The other seven — Kill, Second,
+Meter, HitTaken, Bounce, Pierced, Pinned — are read, stored, and scale by
+nothing, so a skill naming one deals its plain damage rather than a figure taken
+from the wrong thing. `Held Fast`, `Butcher's Heat`, `Unbroken`, `Inexorable`,
+`Buried Fire` and `Carom` are the rows still waiting on those.
+
+### Consuming, and the two ways a row asks for it
+
+**`ConsumeBurn` takes the fire out and deals nothing by itself.** What it was
+worth is decided by the skill that spent it. The blow that follows sets the
+target alight again when the row also states `Burn`, which every Sword row does,
+so Quench's "the whole arc is set alight anew behind the blade" is that ordering
+rather than a second mechanic.
+
+**`ConsumeRadius` spreads fire and deals no damage.** Touch Off states three
+metres of its own. Ashen Edge consumes nothing at all — it is a ten second self
+buff stating four metres, which is how a row says "while this is up, what my
+other skills consume also spreads". The two are added. The enemy whose fire it
+was is not relit by its own spread, or consuming it would cost the player
+nothing.
+
+**Read off the running buff rather than kept as state.** A buff that lasts is an
+active ability for as long as it lasts, so its own numbers are already the
+answer, and there is nothing to clear when it ends, is cancelled, or its owner
+dies.
+
+### `Requires` refuses the cast, and also decides where a move arrives
+
+Six skills name a condition. It is checked in `CanActivateAbility`, before the
+cost and the cooldown, so a refused skill spends nothing. `Burning` and `Target`
+additionally decide a Movement skill's destination: Flashpoint's "only something
+already alight can be reached" and Emberhaul's "bury your axe in the first enemy
+within 12 meters and haul yourself to it" both used to travel to wherever the
+cursor happened to be.
+
+**`RearHit` gates nothing and that is deliberate.** Slipstream is a support buff
+that reacts to blows landed from behind while it runs. Refusing to cast it until
+the player was already behind something would be a different skill.
+
+### What was found and not fixed
+
+- **#1142** — ten rows state a percentage of weapon damage their row will not
+  deal, because no row fills the Damage Percent column. Extinction is one: it
+  says 350% and the Ultimate slot supplies 400%. Two of the ten are balance
+  changes rather than corrections, so the whole set is the owner's call.
+- **#1141** — the Greatsword's hold-and-release verb is four parameters and no
+  mechanic. `MinDamagePercent` is one of them and is still unread.
+- **#1139** — three movement modes are named by the data and silently run as a
+  leap.
+- **#1140** — `ArcHeightFraction` is documented as read, is never used, and
+  duplicates the projectile's own lob input.
+
+---
+
 ## 2026-09-01 — A blow lands where the animation connects: the moment is marked on the clip, and the game reads the marker's position rather than waiting for it
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSwingTiming.h` and

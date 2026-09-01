@@ -97,10 +97,40 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		GetWorld(), Self, Self->GetActorLocation(), AimDirection(),
 		ScaledRadiusCm(), Params.AngleDegrees, Params.MaxTargets);
 
+	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
+	// than tidy. Quench gives an enemy whose fire was just put out 50% more
+	// damage and Extinction's damage rises with how many went out at once, so
+	// the blow cannot be sized until this has run. Inert for every skill that
+	// does not state `ConsumeBurn`, which is 51 of the 56 Demonic rows.
+	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
+
 	// The knockback goes with it. It used to be applied here, for Strikes only;
 	// issue #626 moved it into HitTargets so that every shape can shove, which
 	// is what making it a rider means.
-	HitTargets(Targets, DamagePercent);
+	//
+	// AND THE BLOW IS SIZED BY WHAT THIS SKILL SCALES WITH. `HitScaled` is
+	// `HitTargets` for a skill that scales with nothing, which is most of them.
+	// A caller passing its own figure -- Pyroclasm's closing hit -- overrides
+	// both, because that figure is already the skill's own final word.
+	//
+	// THE ARC IS SET ALIGHT AFTER BEING CONSUMED, WHICH IS WHAT THE ROWS SAY.
+	// Quench: "the whole arc is set alight anew behind the blade". Extinction:
+	// "anything still standing is set alight again". `HitTargets` applies the
+	// burn, so consuming first and hitting second delivers both sentences in
+	// the order they are written.
+	if (DamagePercent >= 0.0f)
+	{
+		HitTargets(Targets, DamagePercent);
+	}
+	else
+	{
+		HitScaled(Targets, Consumed);
+	}
+
+	// AND THE FIRE SPREADS FROM WHERE EACH ONE WENT OUT. Touch Off states three
+	// metres of its own; Ashen Edge grants four to whatever the caster consumes
+	// with while it runs. Nothing happens for a skill with neither.
+	IgniteAroundConsumed(Consumed);
 
 	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one
 	// place a Strike swings, so it is the one place the arc has to be spawned
@@ -528,6 +558,44 @@ void UCataclysmSelfBuffSkill::RevokeIncrease()
 // Movement -- Infernal Plunge, Cinder Rush, Emberstep
 // ==========================================================================
 
+FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) const
+{
+	const bool bToBurning = RequiresCondition(TEXT("Burning"));
+	const bool bToAnything = RequiresCondition(TEXT("Target"));
+	if (!bToBurning && !bToAnything)
+	{
+		// Every other movement skill goes where the player pointed. Eight of the
+		// ten Demonic movement rows take this line.
+		return AimedPointWithin(Params.RangeCm);
+	}
+
+	const AActor* Self = Avatar();
+	if (!Self)
+	{
+		return AimedPointWithin(Params.RangeCm);
+	}
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Start, RequirementReachCm()))
+	{
+		if (bToBurning && Burn.IsValid()
+			&& !UCataclysmSkillEffects::HasTag(Candidate, Burn))
+		{
+			continue;
+		}
+
+		// AT THE ENEMY'S FEET AND NOT INSIDE IT. `SetActorLocation` sweeps, so
+		// aiming at the creature itself stops the caster against its collision
+		// short of where the row says it arrives. This is the same point the
+		// creature is standing on, which is what "haul yourself to it" means.
+		return FVector(Candidate->GetActorLocation().X,
+					   Candidate->GetActorLocation().Y, Start.Z);
+	}
+
+	return AimedPointWithin(Params.RangeCm);
+}
+
 void UCataclysmMovementSkill::ActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -547,7 +615,18 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 
 	const FVector Start = Self->GetActorLocation();
-	const FVector End = AimedPointWithin(Params.RangeCm);
+
+	// WHERE IT ARRIVES IS THE ENEMY, NOT THE CURSOR, WHEN THE ROW SAYS SO. The
+	// Sword's Flashpoint reads "dart to a burning enemy up to 14 meters away"
+	// and closes with "only something already alight can be reached", so the
+	// destination is decided by the condition rather than by where the player is
+	// pointing. `CanActivateAbility` has already refused the cast if there is no
+	// such enemy, so failing to find one here means it died in between; falling
+	// back to the aimed point is then better than not moving at all.
+	//
+	// THE AXE'S EMBERHAUL WORKS THE SAME WAY through `Requires=Target`: "bury
+	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
+	const FVector End = ConditionalDestination(Start);
 
 	TArray<AActor*> Targets;
 	switch (Params.MovementMode)
@@ -595,7 +674,15 @@ void UCataclysmMovementSkill::ActivateAbility(
 	ArrivedAt = Self->GetActorLocation();
 
 	EnemiesHit = Targets.Num();
-	HitTargets(Targets);
+
+	// THE FIRE IS PUT OUT ON ARRIVAL, BEFORE THE BLOW. Flashpoint: "consuming
+	// their fire on arrival to burst for damage in a 3 meter radius and set
+	// alight everything the burst catches". The blow that follows re-lights what
+	// it damages, so consuming and then hitting delivers both halves in order.
+	// Inert for a movement skill that does not state `ConsumeBurn`.
+	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
+	HitScaled(Targets, Consumed);
+	IgniteAroundConsumed(Consumed);
 
 	// Cinder Rush's charge "leaves a trail of fire behind you", so the ground
 	// burns along the whole run. Infernal Plunge's leap leaves "a pool of lava"
