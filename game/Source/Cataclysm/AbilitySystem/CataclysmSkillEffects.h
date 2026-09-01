@@ -754,7 +754,7 @@ public:
 	 * Grant a tag for a duration and nothing else.
 	 *
 	 * WHAT A BUFF OR A DEBUFF IS UNTIL ITS MAGNITUDE CAN BE APPLIED. Burning
-	 * Wrath's increased fire damage, Martyr's Ember's stored damage and
+	 * Wrath's more fire damage, Martyr's Ember's stored damage and
 	 * Subjugate's Madness all name effects this project has no attribute or hook
 	 * for. Granting the tag makes the duration real and makes "is it up?" a
 	 * question with a true answer, which is what everything else can be built

@@ -142,7 +142,7 @@ private:
  * asking whether the buff is up gets a true answer and the duration is real.
  * WHERE THE MAGNITUDE GOES. Into the caster's stat modifier list, held by
  * UCataclysmAbilitySystemComponent, and taken out again when the duration
- * expires. Burning Wrath's "4% increased fire damage for every enemy currently
+ * expires. Burning Wrath's "4% more fire damage for every enemy currently
  * burning within 15 meters" becomes one Increased modifier of 4 times the count,
  * scoped to the skill's own Element tag so it reaches Demonic skills and no
  * others. Issue #166.

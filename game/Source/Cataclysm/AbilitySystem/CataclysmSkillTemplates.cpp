@@ -329,7 +329,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		return;
 	}
 
-	// Burning Wrath is "4% increased fire damage for every enemy currently
+	// Burning Wrath is "4% more fire damage for every enemy currently
 	// burning within 15 meters", so the count is taken once, when it goes up,
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
@@ -436,7 +436,7 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 
 	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
 	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
-	// so "increased fire damage" is an increase that reaches skills carrying
+	// so "more fire damage" is a multiplier that reaches skills carrying
 	// that tag. A self buff written for another damage type scopes to its own
 	// element with no code changing. A skill carrying no element tag grants an
 	// increase that applies to everything, which is what an unscoped modifier

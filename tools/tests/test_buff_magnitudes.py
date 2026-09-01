@@ -1,6 +1,6 @@
 """A self buff's magnitude is written twice, and the two must agree.
 
-WHY THIS FILE EXISTS. Burning Wrath's description says "4% increased fire damage
+WHY THIS FILE EXISTS. Burning Wrath's description says "4% more fire damage
 for every enemy currently burning within 15 meters". Three of those numbers are
 now also machine-readable, in the same row's Shape Params cell, because
 `UCataclysmSelfBuffSkill` has to be given them as numbers rather than prose:
