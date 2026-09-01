@@ -1881,7 +1881,7 @@ Not all damage types are available on all weapons. Damage type availability is t
 | Damage Type | Available Weapon Types |
 | :-: | :-: |
 | War | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Shield, Crossbow, 2H Crossbow, Warhammer, Whip |
-| Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Fist, Whip, Warhammer, Wand, Staff |
+| Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Whip, Warhammer, Wand, Staff |
 | Death | Sword, Greatsword, Dagger, Greataxe, Spear, Fist, Whip, Wand, Staff |
 | Pestilence | Sword, Dagger, Spear, Fist, Whip, Crossbow, 2H Crossbow, Wand, Staff |
 | Famine | Sword, Dagger, Axe, Fist, Whip, Warhammer, Wand, Staff |
@@ -1924,7 +1924,7 @@ The following is a sample of War damage type skills across weapon types to illus
 
 ## **Demonic Skill Examples**
 
-Demonic is the vertical slice's damage type, and **all ten of the weapon types it can roll on are now designed**: Greataxe, Fist and Staff for the three Demonic classes, plus Sword, Greatsword, Dagger, Axe, Wand, Whip and Warhammer. That is 51 rows. The slice ships the first three, one for each class: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
+Demonic is the vertical slice's damage type, and **all eleven of the weapon types it can roll on are now designed**: Greataxe, Fist and Staff for the three Demonic classes, plus Sword, Greatsword, Dagger, Axe, Spear, Wand, Whip and Warhammer. That is 56 rows. The slice ships the first three, one for each class: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
 
   
 
@@ -1940,8 +1940,8 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Fist / Support | Martyr's Ember | For 10s, store 40% of all damage taken and spend it as bonus fire damage on your hits. Store capped at 200% weapon damage. |
 | Fist / Ultimate | Living Pyre | Burn for 6s, immune to stun, slow and knockback. Enemies within 4m set alight. Each hit taken raises pyre damage 8% and returns 25% of it as health. |
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Up to 3 active; a fourth destroys the oldest, which explodes in 3m. |
-| Staff / Support | Subjugate | Seize an enemy's mind, applying Madness. Lasts twice as long on an enemy that is already burning. |
-| Staff / Ultimate | Open the Rift | Tear a rift for 10s that burns everything within 6m and spawns an imp every 2s to a maximum of 5. Collapses for 400% weapon damage. |
+| Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
+| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Each thrall reserves 30 Fervour. Bosses cannot be taken. |
 | All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% fire damage. Drains mana. |
 
   
