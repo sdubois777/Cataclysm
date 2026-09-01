@@ -31,6 +31,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
 #include "Character/CataclysmEnemyDeath.h"
@@ -71,6 +72,19 @@ const TCHAR* ACataclysmPlayerCharacter::BodyMeshPath =
 const TCHAR* ACataclysmPlayerCharacter::AnimationBlueprintPath =
 	TEXT("/Game/Characters/Mannequins/Anims/Unarmed/"
 		 "ABP_Unarmed.ABP_Unarmed_C");
+
+const TCHAR* ACataclysmPlayerCharacter::AttackAnimationFolder =
+	TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack");
+
+// THREE OF THE FOUR THE ENGINE SHIPS, AND THE ORDER IS THE CYCLE. See the
+// header for why MM_ChargedAttack is not among them.
+const TCHAR* ACataclysmPlayerCharacter::AttackAnimationNames[3] = {
+	TEXT("MM_Attack_01"),
+	TEXT("MM_Attack_02"),
+	TEXT("MM_Attack_03"),
+};
+
+const FName ACataclysmPlayerCharacter::AttackSlotName = TEXT("DefaultSlot");
 
 const TCHAR* ACataclysmPlayerCharacter::DeathAnimationFolder =
 	TEXT("/Game/Characters/Mannequins/Anims/Death");
@@ -332,10 +346,116 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 			DeathAnimationFolder);
 	}
 
+	// THE ATTACK CLIPS. Issue #1126. Loaded here for the same reason the death
+	// clips above are: once, when the body goes on, rather than on every swing.
+	// A basic attack fires every two thirds of a second at a fast weapon, so
+	// resolving a path each time would be a load attempt several times a second.
+	//
+	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
+	// nulls because a random draw over a fixed count decides which one plays,
+	// and removing one would change every other draw. These are cycled through
+	// in order, so a missing clip should simply not be part of the cycle rather
+	// than showing as a swing where the character does nothing.
+	AttackAnimations.Reset();
+	for (const TCHAR* Name : AttackAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 AttackAnimationFolder, Name, Name);
+		if (UAnimSequence* Clip =
+				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
+		{
+			AttackAnimations.Add(Clip);
+		}
+	}
+	NextAttackAnimation = 0;
+
+	if (AttackAnimations.Num() < UE_ARRAY_COUNT(AttackAnimationNames))
+	{
+		// SAID EVEN THOUGH THE MESH LOADED, for the same reason the death clip
+		// warning above is. A character with no attack clip fights exactly as it
+		// did before this change: damage lands and the body does not move.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The player found %d of %d attack clips in %s. A skill with no "
+				 "clip deals its damage without the character moving."),
+			AttackAnimations.Num(),
+			static_cast<int32>(UE_ARRAY_COUNT(AttackAnimationNames)),
+			AttackAnimationFolder);
+	}
+
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("The player character is wearing %s."), BodyMeshPath);
 
 	return true;
+}
+
+void ACataclysmPlayerCharacter::PlayAttackAnimation()
+{
+	if (AttackAnimations.Num() == 0)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	UAnimInstance* AnimInstance =
+		MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
+	if (!AnimInstance)
+	{
+		// NO ANIMATION BLUEPRINT MEANS NO SLOT TO PLAY INTO, which is the state
+		// a checkout without the Mannequin assets is in. Playing the clip onto
+		// the component instead is deliberately not done: that is what a death
+		// does, and it would leave the character holding the last frame of a
+		// swing until something else took the mesh back.
+		return;
+	}
+
+	// IN TURN RATHER THAN AT RANDOM. See the header: a basic attack fires often
+	// enough that a random draw over three clips repeats one about a third of
+	// the time, which reads as the animation sticking rather than as variety.
+	UAnimSequence* Clip =
+		AttackAnimations[NextAttackAnimation % AttackAnimations.Num()].Get();
+	NextAttackAnimation = (NextAttackAnimation + 1) % AttackAnimations.Num();
+
+	if (!Clip)
+	{
+		return;
+	}
+
+	const float Length = Clip->GetPlayLength();
+	if (Length <= 0.0f)
+	{
+		return;
+	}
+
+	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
+	// Abyssal Warden's rule, and it is here for a sharper version of the same
+	// reason. Every attack clip is longer than the interval a weapon's attack
+	// speed allows: the shortest is 1.0 second against an interval of 0.833 down
+	// to 0.667. Stretching a clip to fill a longer window reads as slow motion,
+	// which is why the floor is 1.
+	//
+	// AN INTERVAL OF ZERO MEANS NOTHING IS DRIVING A RATE. A character with no
+	// weapon, or one whose ability system has not arrived yet, has no attack
+	// speed to fit to, so the clip plays at the speed it was authored at.
+	float Rate = 1.0f;
+	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		const float Interval =
+			UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
+		if (Interval > 0.0f)
+		{
+			Rate = FMath::Clamp(FMath::Max(1.0f, Length / Interval),
+								1.0f, MaximumAttackPlayRate);
+		}
+	}
+
+	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
+	// animation instance is set to ERootMotionMode::IgnoreRootMotion when the
+	// animation Blueprint is bound; see ResolveAnimationBlueprint, which also
+	// records what was tried first and why it did nothing.
+	AnimInstance->PlaySlotAnimationAsDynamicMontage(
+		Clip, AttackSlotName, AttackBlendInSeconds, AttackBlendOutSeconds,
+		Rate, /*LoopCount=*/1);
 }
 
 bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
@@ -371,6 +491,36 @@ bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
 
 	MeshComponent->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	MeshComponent->SetAnimInstanceClass(AnimationClass);
+
+	// NO ANIMATION EVER MOVES THIS CHARACTER. Issue #1126.
+	//
+	// WHAT WENT WRONG WITHOUT IT. The project owner played the first version of
+	// the attack animations on 2026-09-01 and reported that every ability made
+	// the character surge forward: "it's just a slide forward". All three attack
+	// clips carry root motion, and a character's animation instance defaults to
+	// `RootMotionFromMontagesOnly`, so every swing drove the capsule.
+	//
+	// `IgnoreRootMotion` MEANS "EXTRACT IT BUT DO NOT APPLY IT", which is the
+	// one that is wanted. `NoRootMotionExtraction` leaves the motion in the pose
+	// instead, so the mesh would walk away from the capsule it is attached to.
+	//
+	// WHAT WAS TRIED FIRST AND DOES NOTHING, recorded so it is not tried again:
+	// clearing `bEnableRootMotionTranslation` and `bEnableRootMotionRotation` on
+	// the montage after playing it. Those two are read in `UAnimMontage::PostLoad`
+	// and nowhere else at run time -- they push a setting onto the referenced
+	// sequence when the asset loads. What actually decides it is
+	// `UAnimMontage::HasRootMotion()`, which asks each sequence and never looks
+	// at either flag, and `UAnimInstance::Montage_Play` consults it while
+	// starting the montage, so a flag set afterwards is set too late twice over.
+	//
+	// ON THE ANIMATION INSTANCE RATHER THAN PER MONTAGE, because it is a
+	// statement about this character: nothing it plays is meant to move it. A
+	// skill that should move the character has a Movement shape and moves it
+	// through the movement component, which this does not touch.
+	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+	{
+		AnimInstance->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+	}
 
 	return true;
 }
