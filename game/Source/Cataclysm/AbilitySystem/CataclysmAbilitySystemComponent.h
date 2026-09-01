@@ -360,6 +360,26 @@ public:
 	/** Whether health owed has fallen due. False when nothing is owed. */
 	bool IsHealthDebtDue() const;
 
+	/**
+	 * When the debt falls due, in world seconds, or negative when nothing is
+	 * owed. Issue #1120.
+	 *
+	 * READ RATHER THAN ONLY TESTED, because a debt is no longer taken in one
+	 * write the moment it falls due. `UCataclysmHealthDebt::DrainIfDue` takes it
+	 * out over several seconds and needs to know how far through that it is,
+	 * which is the time now less this. Keeping the answer here rather than
+	 * storing a second countdown means there is one record of when the debt came
+	 * due and no way for two to disagree.
+	 *
+	 * THE SAME SHAPE AS `LowHealthReliefAllowedAt` BELOW, which exists for the
+	 * same reason: a rule outside this class needs the timestamp itself and not
+	 * only the yes or no that `IsHealthDebtDue` gives.
+	 */
+	float HealthDebtDueAt() const
+	{
+		return HealthDebtDueAtSeconds;
+	}
+
 	/** Forget when the debt falls due, for a debt that has been settled. */
 	void ClearHealthDebtDue();
 

@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -138,10 +139,19 @@ bool FCataclysmRollingDebtPushesADebtOutTest::RunTest(const FString&)
 	// AT ITS FULL SIX POINTS: half a second per point.
 	Debtor.Set(Resource::GetHealthDebtDelayExtensionAttribute(), 3.0f);
 
+	// THE WHOLE DRAIN SPAN IS PASSED AS ONE STEP THROUGHOUT THIS TEST, AND
+	// THAT IS DELIBERATE. Since issue #1120 a debt comes out of health over
+	// `DrainSeconds` rather than in one write, and `DrainedInStep` takes the
+	// whole balance when the step is at least as long as the time left. What
+	// this test is about is WHEN a debt falls due, not how it lands, so asking
+	// for the lot in one call keeps every assertion on the due date.
+	// `Cataclysm.HealthDebt.ADebtComesOutOfHealthOverFiveSeconds` is where the
+	// drain itself is measured.
+
 	// TWO AND A HALF SECONDS IN, THE DEBT IS NOT DUE. It falls due at three.
 	World->TimeSeconds += 2.5f;
 	TestEqual(TEXT("before three seconds nothing is taken"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 
 	// AND A PAYMENT NOW PUSHES IT OUT BY THREE SECONDS.
 	TestEqual(TEXT("paying while owing pushes the debt out by the node's value"),
@@ -153,7 +163,7 @@ bool FCataclysmRollingDebtPushesADebtOutTest::RunTest(const FString&)
 	// debt would be gone from the character's health by now.
 	World->TimeSeconds += 1.0f;
 	TestEqual(TEXT("three and a half seconds in, the debt is still not due"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 	TestEqual(TEXT("and the health is untouched"), Debtor.Health(), 1'000.0f,
 			  0.001f);
 
@@ -161,7 +171,7 @@ bool FCataclysmRollingDebtPushesADebtOutTest::RunTest(const FString&)
 	// no point spent, no attribute rewritten, only the clock moved.
 	World->TimeSeconds += 2.6f;
 	TestEqual(TEXT("once the extended delay passes the whole debt is taken"),
-			  Debt::SettleIfDue(Debtor.Actor), 100.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 100.0f, 0.001f);
 	TestEqual(TEXT("and the health is gone"), Debtor.Health(), 900.0f, 0.001f);
 	TestEqual(TEXT("and nothing is owed"), Debtor.Owed(), 0.0f, 0.001f);
 
@@ -201,12 +211,12 @@ bool FCataclysmRollingDebtNeedsSomethingOwedTest::RunTest(const FString&)
 
 	// AND THE CLOCK RUNNING ON DOES NOT MAKE ONE APPEAR. A version that set a
 	// due time here would leave a debt of nothing falling due for ever, which
-	// `SettleIfDue` would then have to clear on every step.
+	// `DrainIfDue` would then have to clear on every step.
 	World->TimeSeconds += 10.0f;
 	TestFalse(TEXT("and none appears later either"),
 			  Debtor.AbilitySystem->IsHealthDebtDue());
 	TestEqual(TEXT("and nothing is taken"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 
 	return true;
 }
@@ -266,11 +276,11 @@ bool FCataclysmRollingDebtCapTest::RunTest(const FString&)
 	// character paid. Three seconds of delay plus three of extension.
 	World->TimeSeconds += 5.9f;
 	TestEqual(TEXT("just under six seconds it is still not due"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 
 	World->TimeSeconds += 0.2f;
 	TestEqual(TEXT("and just past six seconds it is taken"),
-			  Debt::SettleIfDue(Debtor.Actor), 100.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 100.0f, 0.001f);
 
 	// AND THE NEXT DEBT GETS THE WHOLE ALLOWANCE AGAIN. The cap belongs to one
 	// debt rather than to a character's life; a settled debt is finished.
@@ -281,6 +291,141 @@ bool FCataclysmRollingDebtCapTest::RunTest(const FString&)
 	TestEqual(TEXT("so a fresh debt can be pushed out again"),
 			  Debt::ExtendForPaymentWhileOwing(Debtor.AbilitySystem), 0.5f,
 			  0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A debt comes out of health as a drain and not as one hit. Issue #1120.
+// ---------------------------------------------------------------------------
+
+/**
+ * The arithmetic of one step, with no ability system and no world.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrainStepArithmeticTest,
+	"Cataclysm.HealthDebt.OneStepTakesItsShareAndTheLastStepTakesTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDrainStepArithmeticTest::RunTest(const FString&)
+{
+	using Debt = UCataclysmHealthDebt;
+
+	// FIVE SECONDS, WHICH THE PROJECT OWNER ASKED FOR ON 2026-08-31.
+	TestEqual(TEXT("a debt drains over five seconds"), Debt::DrainSeconds, 5.0f);
+
+	// A QUARTER SECOND OUT OF FIVE IS A TWENTIETH OF WHAT IS LEFT.
+	TestEqual(TEXT("a quarter second of a five second drain takes a twentieth"),
+			  Debt::DrainedInStep(100.0f, 5.0f, 0.25f), 5.0f, 0.001f);
+
+	// AND THE SHARE IS OF WHAT IS LEFT OVER THE TIME LEFT, so the rate stays
+	// constant as both shrink together. 95 over 4.75 seconds is the same 5 a
+	// step as 100 over 5 was.
+	TestEqual(TEXT("the rate does not drift as the debt shrinks"),
+			  Debt::DrainedInStep(95.0f, 4.75f, 0.25f), 5.0f, 0.001f);
+	TestEqual(TEXT("nor near the end of it"),
+			  Debt::DrainedInStep(10.0f, 0.5f, 0.25f), 5.0f, 0.001f);
+
+	// THE LAST STEP TAKES WHATEVER IS LEFT. Without this a fixed share of the
+	// remainder would leave a shrinking amount that never reaches zero, and the
+	// character would owe a fraction of a point for ever.
+	TestEqual(TEXT("a step as long as the time left takes the balance"),
+			  Debt::DrainedInStep(5.0f, 0.25f, 0.25f), 5.0f, 0.001f);
+	TestEqual(TEXT("and so does a longer one"),
+			  Debt::DrainedInStep(5.0f, 0.1f, 0.25f), 5.0f, 0.001f);
+
+	// AND A STEP THAT ARRIVED LATE TAKES THE LOT, which is reachable rather
+	// than theoretical: the timer is a quarter second and a frame can be
+	// longer than that.
+	TestEqual(TEXT("a step past the end takes the balance"),
+			  Debt::DrainedInStep(40.0f, -2.0f, 0.25f), 40.0f, 0.001f);
+
+	// NOTHING OWED TAKES NOTHING, and neither does a step of no time.
+	TestEqual(TEXT("nothing owed takes nothing"),
+			  Debt::DrainedInStep(0.0f, 5.0f, 0.25f), 0.0f, 0.001f);
+	TestEqual(TEXT("a negative amount takes nothing"),
+			  Debt::DrainedInStep(-10.0f, 5.0f, 0.25f), 0.0f, 0.001f);
+	TestEqual(TEXT("a step of no time takes nothing"),
+			  Debt::DrainedInStep(100.0f, 5.0f, 0.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+/**
+ * A whole debt really does come out over five seconds, and not before.
+ *
+ * WHY THIS IS SEPARATE FROM THE ARITHMETIC ABOVE. That checks one step in
+ * isolation; this drives the real function on a real ability system with a real
+ * clock, which is what says the two are wired to each other. A version that
+ * computed the right share and then wrote the whole debt anyway would pass every
+ * assertion above.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebtDrainsOverFiveSecondsTest,
+	"Cataclysm.HealthDebt.ADebtComesOutOfHealthOverFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebtDrainsOverFiveSecondsTest::RunTest(const FString&)
+{
+	using namespace CataclysmHealthDebtTest;
+	using Debt = UCataclysmHealthDebt;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedDebtor Debtor(World);
+
+	constexpr float Step = UCataclysmRegeneration::StepSeconds;
+
+	// A HUNDRED OWED, FALLING DUE IN THREE SECONDS, against a thousand health.
+	Debt::Defer(Debtor.AbilitySystem, 100.0f);
+
+	// NOTHING COMES OUT BEFORE IT IS DUE. The drain replaced the single hit; it
+	// did not replace the delay, so Deferred Payment still says what it said.
+	World->TimeSeconds += 2.9f;
+	TestEqual(TEXT("before three seconds nothing is taken"),
+			  Debt::DrainIfDue(Debtor.Actor, Step), 0.0f, 0.001f);
+	TestEqual(TEXT("and health has not moved"), Debtor.Health(), 1'000.0f,
+			  0.001f);
+
+	// AND WHEN IT IS DUE, A STEP TAKES A STEP'S WORTH AND NOT THE LOT. This is
+	// the whole change: before issue #1120 this one call took all hundred.
+	World->TimeSeconds += 0.1f;
+	TestEqual(TEXT("the first step takes a twentieth and not the whole debt"),
+			  Debt::DrainIfDue(Debtor.Actor, Step), 5.0f, 0.001f);
+	TestEqual(TEXT("health moved by exactly that"), Debtor.Health(), 995.0f,
+			  0.001f);
+	TestEqual(TEXT("and the rest is still owed"), Debtor.Owed(), 95.0f, 0.001f);
+
+	// THE DEBT SHRINKS AS IT DRAINS, which is what separates this from a
+	// Reckoning debt: that one bleeds health while the amount owed stands.
+	TestTrue(TEXT("the debt is smaller than it was"), Debtor.Owed() < 100.0f);
+
+	// STEPPING ON TO THE END OF THE SPAN. Nineteen more quarter seconds is the
+	// remaining 4.75, and the last of them takes whatever rounding left behind.
+	for (int32 Taken = 0; Taken < 19; ++Taken)
+	{
+		World->TimeSeconds += Step;
+		Debt::DrainIfDue(Debtor.Actor, Step);
+	}
+
+	TestEqual(TEXT("after five seconds the whole hundred has come out"),
+			  Debtor.Health(), 900.0f, 0.01f);
+	TestEqual(TEXT("and nothing is owed"), Debtor.Owed(), 0.0f, 0.001f);
+
+	// AND THE DUE TIME WENT WITH IT, so this is not asked again on every step
+	// for the rest of the character's life.
+	TestFalse(TEXT("and no debt is outstanding"),
+			  Debtor.AbilitySystem->IsHealthDebtDue());
+
+	// A FURTHER STEP TAKES NOTHING AT ALL.
+	World->TimeSeconds += Step;
+	TestEqual(TEXT("a step with nothing owed takes nothing"),
+			  Debt::DrainIfDue(Debtor.Actor, Step), 0.0f, 0.001f);
+	TestEqual(TEXT("and health is where it was"), Debtor.Health(), 900.0f,
+			  0.01f);
 
 	return true;
 }
@@ -325,7 +470,7 @@ bool FCataclysmReckoningDebtNeverFallsDueTest::RunTest(const FString&)
 	// A MINUTE LATER, TWENTY TIMES THE ORDINARY DELAY, AND NOTHING IS TAKEN.
 	World->TimeSeconds += 60.0f;
 	TestEqual(TEXT("the debt is not taken when the delay passes"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 	TestEqual(TEXT("the health is untouched"), Debtor.Health(), 1'000.0f,
 			  0.001f);
 	TestEqual(TEXT("and it is still owed"), Debtor.Owed(), 200.0f, 0.001f);
@@ -335,7 +480,7 @@ bool FCataclysmReckoningDebtNeverFallsDueTest::RunTest(const FString&)
 	Debt::Defer(Debtor.AbilitySystem, 150.0f);
 	World->TimeSeconds += 60.0f;
 	TestEqual(TEXT("a second cost is still not taken"),
-			  Debt::SettleIfDue(Debtor.Actor), 0.0f, 0.001f);
+			  Debt::DrainIfDue(Debtor.Actor, Debt::DrainSeconds), 0.0f, 0.001f);
 	TestEqual(TEXT("and the debt accumulated"), Debtor.Owed(), 350.0f, 0.001f);
 	TestEqual(TEXT("and the health is still untouched"), Debtor.Health(),
 			  1'000.0f, 0.001f);
@@ -353,7 +498,7 @@ bool FCataclysmReckoningDebtNeverFallsDueTest::RunTest(const FString&)
 	Debt::Defer(Ordinary.AbilitySystem, 200.0f);
 	World->TimeSeconds += Debt::DelaySeconds + 0.1f;
 	TestEqual(TEXT("and its debt is taken when the delay passes"),
-			  Debt::SettleIfDue(Ordinary.Actor), 200.0f, 0.001f);
+			  Debt::DrainIfDue(Ordinary.Actor, Debt::DrainSeconds), 200.0f, 0.001f);
 	TestEqual(TEXT("and its health went with it"), Ordinary.Health(), 800.0f,
 			  0.001f);
 
@@ -515,31 +660,70 @@ bool FCataclysmReckoningDebtCanKillTest::RunTest(const FString&)
 	AbilitySystem->SetNumericAttributeBase(
 		Resource::GetHealthDebtClearedOnlyByAKillAttribute(), 1.0f);
 
-	// A DEBT SMALLER THAN THE HEALTH LEFT IS SURVIVED.
+	// THE STEP THE RUNNING GAME USES, so the arithmetic here is the arithmetic
+	// that happens in play. `ACataclysmCharacterBase` calls this from the
+	// regeneration timer and passes exactly this.
+	constexpr float Step = UCataclysmRegeneration::StepSeconds;
+
+	// A DEBT SMALLER THAN THE HEALTH LEFT TAKES NOTHING.
 	Debt::Defer(AbilitySystem, 399.0f);
-	TestFalse(TEXT("a debt below current health does not kill"),
-			  Debt::KillIfDebtExceedsHealth(Player));
+	TestEqual(TEXT("a debt below current health drains nothing"),
+			  Debt::DrainWhileDebtExceedsHealth(Player, Step), 0.0f, 0.001f);
 	TestFalse(TEXT("and the character is alive"),
 			  UCataclysmSkillEffects::IsDead(Player));
 
-	// AND SO IS ONE EXACTLY EQUAL TO IT, because the design writes "exceeds".
+	// AND SO DOES ONE EXACTLY EQUAL TO IT, because the design writes "exceeds".
 	AbilitySystem->SetNumericAttributeBase(
 		Resource::GetHealthOwedAttribute(), 400.0f);
-	TestFalse(TEXT("a debt exactly equal to current health does not kill"),
-			  Debt::KillIfDebtExceedsHealth(Player));
+	TestEqual(TEXT("a debt exactly equal to current health drains nothing"),
+			  Debt::DrainWhileDebtExceedsHealth(Player, Step), 0.0f, 0.001f);
 	TestFalse(TEXT("and the character is still alive"),
 			  UCataclysmSkillEffects::IsDead(Player));
 	TestEqual(TEXT("and still has its health"),
 			  AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
 			  400.0f, 0.001f);
 
-	// ONE POINT MORE AND IT KILLS. Nothing else changed: the debt grew by one.
+	// ONE POINT MORE AND THE BLEEDING STARTS. Nothing else changed: the debt
+	// grew by one. Issue #1120 turned this from an instant death into a drain,
+	// so the first step past the line takes a step's worth and not a life.
+	//
+	// 401 SPREAD ACROSS FIVE SECONDS IS 80.2 A SECOND, and a quarter second of
+	// that is 20.05.
 	AbilitySystem->SetNumericAttributeBase(
 		Resource::GetHealthOwedAttribute(), 401.0f);
-	TestTrue(TEXT("a debt one point past current health kills"),
-			 Debt::KillIfDebtExceedsHealth(Player));
-	TestTrue(TEXT("and the character is marked dead"),
+	TestEqual(TEXT("a debt one point past current health starts a drain"),
+			  Debt::DrainWhileDebtExceedsHealth(Player, Step), 20.05f, 0.01f);
+	TestFalse(TEXT("and the character is NOT dead yet, which is the whole "
+				   "point of the change"),
+			  UCataclysmSkillEffects::IsDead(Player));
+	TestEqual(TEXT("and health has moved by exactly that much"),
+			  AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
+			  379.95f, 0.01f);
+
+	// AND THE DEBT DID NOT SHRINK, which is the whole difference between this
+	// and an ordinary debt draining. The Reckoning says its debt "is cleared
+	// only by killing an enemy", so bleeding does not pay it off, and the
+	// keystone's damage bonus -- which is read off the amount owed -- still
+	// stands while the character bleeds.
+	TestEqual(TEXT("the debt is untouched by the bleeding"),
+			  AbilitySystem->GetNumericAttribute(
+				  Resource::GetHealthOwedAttribute()), 401.0f, 0.001f);
+
+	// STEPPING ON UNTIL IT KILLS, AND COUNTING THE STEPS. "It dies eventually"
+	// would pass for a drain a hundred times too fast or too slow, so the count
+	// is asserted.
+	int32 Steps = 0;
+	while (!UCataclysmSkillEffects::IsDead(Player) && Steps < 200)
+	{
+		Debt::DrainWhileDebtExceedsHealth(Player, Step);
+		++Steps;
+	}
+
+	TestTrue(TEXT("the character died of it in the end"),
 			 UCataclysmSkillEffects::IsDead(Player));
+	TestEqual(TEXT("after 379.95 health at 20.05 a step, which is 19 steps"),
+			  Steps, 19);
+
 	TestEqual(TEXT("and its health is at zero"),
 			  AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()),
 			  0.0f, 0.001f);
@@ -547,10 +731,18 @@ bool FCataclysmReckoningDebtCanKillTest::RunTest(const FString&)
 			  AbilitySystem->GetNumericAttribute(
 				  Resource::GetHealthOwedAttribute()), 0.0f, 0.001f);
 
-	// AND A CORPSE IS NOT KILLED AGAIN, which matters because this runs on the
+	// THE WHOLE DEATH TOOK LESS THAN THE FIVE SECOND SPAN, WHICH IS THE RULE
+	// AND NOT AN ACCIDENT. Health is already smaller than the debt when the
+	// bleeding starts, so it runs out before the span does. Twenty steps
+	// altogether, counting the first one above, is five seconds exactly; the
+	// character was dead on the twentieth.
+	TestTrue(TEXT("and it took no longer than the whole drain span"),
+			 static_cast<float>(Steps + 1) * Step <= Debt::DrainSeconds);
+
+	// AND A CORPSE IS NOT BLED AGAIN, which matters because this runs on the
 	// regeneration step several times a second and a body stays in the level.
-	TestFalse(TEXT("a dead character is not killed a second time"),
-			  Debt::KillIfDebtExceedsHealth(Player));
+	TestEqual(TEXT("a dead character is not bled a second time"),
+			  Debt::DrainWhileDebtExceedsHealth(Player, Step), 0.0f, 0.001f);
 
 	return true;
 }
@@ -605,8 +797,9 @@ bool FCataclysmOrdinaryDebtDoesNotKillTest::RunTest(const FString&)
 	// TEN TIMES THE HEALTH LEFT, AND NO KEYSTONE.
 	Debt::Defer(AbilitySystem, 1'000.0f);
 
-	TestFalse(TEXT("an ordinary debt past current health does not kill"),
-			  Debt::KillIfDebtExceedsHealth(Player));
+	TestEqual(TEXT("an ordinary debt past current health bleeds nothing"),
+			  Debt::DrainWhileDebtExceedsHealth(
+				  Player, UCataclysmRegeneration::StepSeconds), 0.0f, 0.001f);
 	TestFalse(TEXT("and the character is alive"),
 			  UCataclysmSkillEffects::IsDead(Player));
 	TestEqual(TEXT("and keeps its health until the debt falls due"),

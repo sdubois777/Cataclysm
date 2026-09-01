@@ -20,6 +20,115 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — A health debt comes out as a drain over five seconds, and a Reckoning debt bleeds the character out rather than killing it on the spot
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and
+`.cpp`, and The Reckoning's wording in
+`docs/Masochist_Class_Tree_Final.json`. Applied. Issue #1120.
+
+Asked for by the project owner on 2026-08-31, after the reading in issue #1119
+showed that the Rock Bottom capstone option did almost nothing for a character
+holding The Reckoning:
+
+> What if we turned the "debt" into a constant health drain instead? This would
+> serve to both show the player that they're losing health, as well as hit the
+> trigger that's already there.
+
+### What was wrong with taking a debt in one hit
+
+Two things, one for each of the two debts the game has.
+
+**An ordinary deferred debt was taken whole, three seconds after the cast.** It
+arrived detached in time from anything the player had pressed. That is the shape
+behind the project owner's report on 2026-08-31 of losing about 2,500 health "as
+soon as I hit e": by the time the health went, the cast that caused it was three
+seconds in the past.
+
+**A Reckoning debt killed instantly.** The player saw a full health bar and then
+a death, with nothing in between.
+
+**And neither reached Rock Bottom's threshold.** That option fires when health
+crosses from above a fifth to below it. A single write either does not reach the
+line or lands far past it, and a Reckoning debt did not touch health at all.
+
+### The decision
+
+| | Before | After |
+| :-- | :-- | :-- |
+| Ordinary deferred debt | whole amount in one write, 3 seconds after the cast | starts 3 seconds after the cast and drains over 5 seconds, shrinking as it is paid |
+| Reckoning debt | instant death once it passed current health | health drains at debt ÷ 5 per second; the debt is **not** paid off by draining, so only a kill still clears it |
+
+The three second delay, the Deferred Payment node and the Rolling Debt node are
+unchanged. What changed is how the payment lands, not when it starts.
+
+**The Reckoning keeps every sentence but its last.** Costs are still never taken,
+the debt still accumulates, the damage bonus still climbs with what is owed, and
+only a kill still clears it. "If your debt ever exceeds your current health, you
+die" became "If your debt ever exceeds your current health you begin to bleed
+out, losing health until you kill something or die of it."
+
+**A character in that state still dies, and faster the deeper in debt it is**,
+because its health runs out before the five seconds do. What it gains is
+something to see and a few seconds to act in.
+
+### Five seconds, and a quarter of a second a step
+
+**Five seconds is the project owner's figure from play**, not one taken from a
+shipped game, and it is expected to be tuned by eye.
+
+**The step is a quarter of a second, not the tenth of a second first
+suggested**, and that came from evidence already in the project rather than from
+a judgement made on the spot. `UCataclysmRegeneration::StepSeconds` is 0.25,
+every character already runs that timer, and it already carries regeneration,
+leech pay-out and the debt check. Its own comment gives the reason for the rate:
+a burn tick uses a whole second because it "is an event a player should see
+land", while "a pool coming back is not an event, and a bar that jumps once a
+second reads as broken rather than as recovering". A health drain is a pool
+moving.
+
+`UCataclysmLeech` is the same shape already built and shipped: an amount paid
+into a pool linearly across a fixed three seconds on that timer, with the last
+step paying the remainder. This is that with the sign reversed, and
+`UCataclysmHealthDebt::DrainedInStep` copies `UCataclysmLeech::PaidInStep`
+deliberately.
+
+A tenth of a second would have meant a second timer running two and a half times
+as often on every character, and one dungeon floor spawned 211 creatures on
+2026-08-31.
+
+**No research was cited for the drain itself, and that is stated rather than
+papered over.** A search for the Path of Exile change from ticked damage over
+time to continuous application did not find the patch note, so it is not quoted
+here. The step rate rests on this project's own recorded reasoning instead,
+which is better evidence for this question anyway.
+
+### What it did to the Masochist build the project owner plays
+
+Measured, not estimated, by
+`Cataclysm.MasochistBuild.TheReckoningWithExsanguinateKillsItsOwnerInTwelveCasts`:
+
+- The debt still passes the health pool on the **seventh** cast. Unchanged.
+- On that cast the character now bleeds instead of dying. Health falls from
+  3,000 to 480, crossing the 600 that is a fifth of the pool.
+- Rock Bottom fires, clears the whole debt, and the character lives.
+- It casts five more times and dies on the **twelfth**, because that rescue is
+  once every thirty seconds.
+
+**So the build survives twelve casts where it survived seven**, and the five
+extra come from a capstone option that was worth almost nothing before. Issue
+#1119 measured how little.
+
+**This does not make The Reckoning safe**, and the test says so explicitly: a
+second debt inside the thirty seconds still kills.
+
+### What it does not reach
+
+**A character already below a fifth of its health when the debt passes it.**
+There is no crossing to notice, so Rock Bottom does not fire. That case survives
+every version of this and is recorded rather than left to be discovered.
+
+---
+
 ## 2026-08-31 — A loot name tag is drawn only within ten metres, and a tag that is not drawn cannot be clicked
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and

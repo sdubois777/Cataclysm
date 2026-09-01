@@ -84,25 +84,31 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// fraction of a second late is not something a player can perceive, and a
 	// timer per debt would be one more thing to cancel when a character dies.
 	//
+	// AND IT DRAINS OUT OVER FIVE SECONDS RATHER THAN ARRIVING IN ONE WRITE,
+	// since issue #1120. The step length is passed in for that reason: this
+	// timer is the clock the drain runs on, the same way leech above uses it.
+	//
 	// ITS RETURN VALUE IS DROPPED. Zero is the ordinary answer -- nothing owed,
 	// or owed and not yet due -- and it is returned for tests rather than for
 	// this caller.
-	UCataclysmHealthDebt::SettleIfDue(this);
+	UCataclysmHealthDebt::DrainIfDue(this, UCataclysmRegeneration::StepSeconds);
 
-	// AND A DEBT THAT NEVER FALLS DUE KILLS INSTEAD, ON THE SAME TIMER. Issue
-	// #997. The Masochist's The Reckoning keystone reads "If your debt ever
+	// AND A DEBT THAT NEVER FALLS DUE BLEEDS ITS OWNER OUT INSTEAD, ON THE SAME
+	// TIMER. Issue #997, changed from an instant death to a drain by issue
+	// #1120. The Masochist's The Reckoning keystone reads "If your debt ever
 	// exceeds your current health, you die", and "ever" is what a step that runs
 	// several times a second is for.
 	//
-	// AFTER THE SETTLE RATHER THAN BEFORE IT, so an ordinary debt falling due
-	// this step is taken first and this sees the health it left behind. The two
-	// never both act on one character -- a Reckoning debt returns early from the
-	// settle -- so the order changes nothing today, and it is the order that
-	// stays right if that ever stops being true.
+	// AFTER THE DRAIN RATHER THAN BEFORE IT, so an ordinary debt draining this
+	// step is taken first and this sees the health it left behind. The two never
+	// both act on one character -- a Reckoning debt returns early from the drain
+	// -- so the order changes nothing today, and it is the order that stays
+	// right if that ever stops being true.
 	//
-	// ITS RETURN VALUE IS DROPPED, the same as the settle above and for the same
-	// reason: false is the ordinary answer and it is returned for tests.
-	UCataclysmHealthDebt::KillIfDebtExceedsHealth(this);
+	// ITS RETURN VALUE IS DROPPED, the same as the drain above and for the same
+	// reason: zero is the ordinary answer and it is returned for tests.
+	UCataclysmHealthDebt::DrainWhileDebtExceedsHealth(
+		this, UCataclysmRegeneration::StepSeconds);
 
 	// AND FERVOUR MAY ARRIVE FROM THE PASSAGE OF TIME ALONE. Issue #1008. The
 	// Masochist's Low Life keystone reads "While at or below 35% health you gain

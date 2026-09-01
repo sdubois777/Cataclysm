@@ -110,6 +110,33 @@ public:
 	static constexpr float MaxDelayExtensionSeconds = 3.0f;
 
 	/**
+	 * How long a debt takes to come out of health once it is being taken.
+	 * Issue #1120.
+	 *
+	 * FIVE SECONDS, ASKED FOR BY THE PROJECT OWNER ON 2026-08-31, AND IT
+	 * REPLACES A SINGLE HIT. A debt used to be taken whole, in one write, three
+	 * seconds after the cast that deferred it. That arrived detached in time
+	 * from anything the player had pressed, and it is the shape behind their
+	 * report of losing about 2,500 health "as soon as I hit e": nothing on
+	 * screen connected the loss to the cast, because by then the cast was three
+	 * seconds in the past.
+	 *
+	 * A DRAIN IS ALSO WHAT MAKES ROCK BOTTOM REACHABLE, which is the second
+	 * reason it was asked for. That capstone option fires when health crosses
+	 * below a fifth, and a debt taken in one write either does not reach the
+	 * line or lands far past it. Health falling steadily crosses it.
+	 *
+	 * IT IS NOT A STAT AND NO NODE CHANGES IT, the same footing as
+	 * `DelaySeconds` above and as `UCataclysmLeech::PayoutSeconds`, which is
+	 * this same shape with the sign reversed: an amount paid out linearly across
+	 * a fixed span on the regeneration step.
+	 *
+	 * EXPECTED TO BE TUNED BY EYE. Five seconds is the project owner's figure
+	 * from play and not one taken from a shipped game.
+	 */
+	static constexpr float DrainSeconds = 5.0f;
+
+	/**
 	 * What share of a health cost this character takes later, as a percentage.
 	 *
 	 * Zero for a character with no point in Deferred Payment, and zero for any
@@ -138,19 +165,56 @@ public:
 	static void Defer(UAbilitySystemComponent* AbilitySystem, float Amount);
 
 	/**
-	 * Take what is owed, if it has fallen due. Called every regeneration step.
+	 * How much of a remaining amount comes out in a step of this length.
+	 *
+	 * PURE ARITHMETIC AND NO ABILITY SYSTEM, so every case can be checked by
+	 * passing numbers in.
+	 *
+	 * LINEAR, AND THE LAST STEP TAKES WHATEVER IS LEFT. Taking a fixed fraction
+	 * of the remainder each step would leave a shrinking amount that never
+	 * reaches zero, so a step at least as long as the time left takes the whole
+	 * balance. This is `UCataclysmLeech::PaidInStep` with the sign reversed, and
+	 * it is deliberately the same shape: leech pays an amount into a pool across
+	 * a fixed span on this same timer, and a debt takes one out of one.
+	 *
+	 * A NEGATIVE OR ZERO TIME LEFT TAKES EVERYTHING, which is what a step
+	 * arriving late has to do. It is reachable rather than theoretical: the
+	 * timer is a quarter second and a frame can be longer than that.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Health Debt")
+	static float DrainedInStep(float Remaining, float SecondsLeft,
+							   float SecondsInStep);
+
+	/**
+	 * Drain one step's worth of what is owed out of health, if it has fallen
+	 * due. Called every regeneration step. Issue #1120.
+	 *
+	 * A DRAIN AND NOT A SINGLE HIT, ASKED FOR BY THE PROJECT OWNER ON
+	 * 2026-08-31. This used to take the whole debt in one write three seconds
+	 * after the cast, which arrived detached in time from anything the player
+	 * had pressed. It now comes out over `DrainSeconds`. The delay before it
+	 * starts is unchanged, so the Deferred Payment and Rolling Debt nodes still
+	 * say what they said.
+	 *
+	 * THE RATE IS FIXED WHEN THE DEBT FALLS DUE AND NOT RECOMPUTED FROM WHAT IS
+	 * LEFT, which is what `DrainedInStep` above is for. How far through the
+	 * drain this step is comes from the due time the ability system already
+	 * keeps, so nothing new has to be stored.
 	 *
 	 * NOTHING OWED AND NOT YET DUE BOTH DO NOTHING, and the two do not have to be
 	 * told apart: `IsHealthDebtDue` answers false for both.
+	 *
+	 * A RECKONING DEBT IS NOT TOUCHED HERE. It never falls due at all;
+	 * `DrainWhileDebtExceedsHealth` below is what happens to that one.
 	 *
 	 * A CORPSE PAYS NOTHING. A dead character is skipped for the reason
 	 * `UCataclysmRegeneration::ApplyStep` skips one: an enemy is destroyed on the
 	 * step after it dies, so there is a real window in which a dead creature is
 	 * still standing there with an ability system.
 	 *
-	 * @return how much health was really taken, which is zero in every case above
+	 * @return how much health was really taken this step, zero in every case above
 	 */
-	static float SettleIfDue(AActor* Character);
+	static float DrainIfDue(AActor* Character, float SecondsInStep);
 
 	/**
 	 * How far one further payment pushes this character's debt out, in seconds.
@@ -202,23 +266,52 @@ public:
 	static float ClearOnKill(AActor* Killer);
 
 	/**
-	 * Kill this character if what it owes has passed its current health.
-	 * Issue #997. Called every regeneration step, beside the settle.
+	 * Drain health while what this character owes is past its current health.
+	 * Issue #997, changed to a drain by issue #1120. Called every regeneration
+	 * step, beside the drain above.
+	 *
+	 * IT USED TO KILL ON THE SPOT AND NOW BLEEDS THE CHARACTER OUT INSTEAD,
+	 * asked for by the project owner on 2026-08-31. The death is not removed --
+	 * a character in this state still dies, and faster the deeper in debt it is,
+	 * because its health runs out before `DrainSeconds` do. What changes is that
+	 * there is now something to see and a few seconds to act in.
+	 *
+	 * THE DEBT IS NOT REDUCED BY DRAINING, WHICH IS THE WHOLE DIFFERENCE FROM
+	 * `DrainIfDue` ABOVE. The Reckoning says its debt "is cleared only by
+	 * killing an enemy", so health comes out and the amount owed stays where it
+	 * is. That also keeps the keystone's damage bonus, which is read off the
+	 * amount owed, standing while the character bleeds.
+	 *
+	 * SO THE RATE IS CONSTANT UNLESS THE CHARACTER CASTS AGAIN, at what is owed
+	 * spread across `DrainSeconds`. A further cast adds to the debt and the
+	 * bleeding gets faster, which is the right way round.
+	 *
+	 * AND IT IS WHAT PUTS ROCK BOTTOM WITHIN REACH. That option fires when
+	 * health crosses below a fifth, and health falling steadily crosses it,
+	 * where a single write to zero never did. `UCataclysmLowHealthRelief` then
+	 * clears the debt and the bleeding stops. Issue #1119 has the measurements
+	 * of how little that option did before this.
+	 *
+	 * IT STILL DOES NOT HELP A CHARACTER ALREADY BELOW A FIFTH when the debt
+	 * passes its health, because there is no crossing to notice. Said plainly
+	 * here because it is the one case this does not reach.
 	 *
 	 * STRICTLY GREATER, BECAUSE THE DESIGN WRITES "EXCEEDS". A debt exactly
-	 * equal to current health does not kill.
+	 * equal to current health drains nothing.
 	 *
-	 * ONLY FOR A CHARACTER CARRYING THE RECKONING, and only that node's debt is
-	 * lethal. An ordinary deferred debt larger than current health simply takes
-	 * health to nothing when it settles.
+	 * ONLY FOR A CHARACTER CARRYING THE RECKONING, and only that node's debt
+	 * behaves this way. An ordinary deferred debt drains through `DrainIfDue`
+	 * above and takes health to nothing if that is all there is.
 	 *
-	 * HEALTH IS SET TO ZERO AND `HandleDeath` IS CALLED, which is the pair
+	 * WHEN THE STEP WOULD TAKE THE LAST OF THE HEALTH, health is set to zero and
+	 * `HandleDeath` is called, which is the pair
 	 * `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` uses, so a
 	 * character dies down one code path however it got there.
 	 *
-	 * @return whether it killed the character
+	 * @return how much health was really taken this step
 	 */
-	static bool KillIfDebtExceedsHealth(AActor* Character);
+	static float DrainWhileDebtExceedsHealth(AActor* Character,
+											 float SecondsInStep);
 
 	/**
 	 * Whether a cost this character cannot afford becomes debt rather than

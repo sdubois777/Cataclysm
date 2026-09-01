@@ -85,7 +85,26 @@ void UCataclysmHealthDebt::Defer(UAbilitySystemComponent* AbilitySystem,
 	}
 }
 
-float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
+float UCataclysmHealthDebt::DrainedInStep(float Remaining, float SecondsLeft,
+										  float SecondsInStep)
+{
+	if (Remaining <= 0.0f || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE LAST STEP TAKES WHATEVER IS LEFT, and so does a step that arrived
+	// late. See the header for why a fixed fraction of the remainder would never
+	// reach zero.
+	if (SecondsLeft <= SecondsInStep)
+	{
+		return Remaining;
+	}
+
+	return Remaining * SecondsInStep / SecondsLeft;
+}
+
+float UCataclysmHealthDebt::DrainIfDue(AActor* Character, float SecondsInStep)
 {
 	// A CORPSE PAYS NOTHING, for the reason `UCataclysmRegeneration::ApplyStep`
 	// skips one: an enemy is destroyed on the step AFTER it dies, so there is a
@@ -137,48 +156,84 @@ float UCataclysmHealthDebt::SettleIfDue(AActor* Character)
 		return 0.0f;
 	}
 
-	// THE WHOLE DEBT AT ONCE. The design says the cost "is taken 3 seconds
-	// later", which is one payment rather than a trickle.
+	// HOW FAR THROUGH THE DRAIN THIS STEP IS, worked out from the due time the
+	// ability system already keeps rather than from a second countdown. Issue
+	// #1120.
 	//
+	// A MISSING WORLD DRAINS THE LOT, which is the same safe direction
+	// `NoteHealthDebtDueIn` takes with no clock: the debt has fallen due, so it
+	// is owed, and the alternative is a character that owes forever.
+	const UWorld* World = Character->GetWorld();
+	const float SecondsSinceDue = World
+		? World->GetTimeSeconds() - AbilitySystem->HealthDebtDueAt()
+		: DrainSeconds;
+	const float Taken = DrainedInStep(Amount, DrainSeconds - SecondsSinceDue,
+									  SecondsInStep);
+	if (Taken <= 0.0f)
+	{
+		return 0.0f;
+	}
+
 	// NO FLOOR, AND THAT IS DELIBERATE. The floor that keeps a cost taken from
 	// current health from emptying it (issue #986) applies when the cost is
-	// worked out, not when a deferred part of it settles. By then it is a debt,
+	// worked out, not when a deferred part of it drains. By then it is a debt,
 	// and the design is explicit that a debt may kill: The Reckoning reads "If
 	// your debt ever exceeds your current health, you die." That keystone's debt
 	// never reaches this line at all -- it returned above -- so the two rules do
 	// not meet, and this one stays a plain charge that may empty a character.
+	//
+	// A DRAIN AND NOT ONE WRITE SINCE ISSUE #1120, which is what makes the loss
+	// something a player can watch happen and what carries health across Rock
+	// Bottom's threshold on the way down. The amount is the same; only its
+	// arrival is spread out.
 	AbilitySystem->ApplyModToAttribute(
 		UCataclysmVitalAttributeSet::GetHealthAttribute(),
-		EGameplayModOp::Additive, -Amount);
+		EGameplayModOp::Additive, -Taken);
 
-	// THE DEBT IS CLEARED WHETHER OR NOT THE HEALTH WAS THERE. A character that
+	// AND WHAT WAS TAKEN IS NO LONGER OWED. The debt shrinks as it drains, which
+	// is the whole difference between this and
+	// `DrainWhileDebtExceedsHealth` below, where the amount owed stands while
+	// health comes out.
+	//
+	// THE DEBT IS REDUCED WHETHER OR NOT THE HEALTH WAS THERE. A character that
 	// could not afford it has still been charged; whether being unable to afford
 	// it kills them is issue #971's question and The Reckoning's sentence, and
 	// neither is answered here.
-	AbilitySystem->SetNumericAttributeBase(Owed, 0.0f);
-	AbilitySystem->ClearHealthDebtDue();
+	const float Left = FMath::Max(0.0f, Amount - Taken);
+	AbilitySystem->SetNumericAttributeBase(Owed, Left);
+	if (Left <= 0.0f)
+	{
+		// NOTHING LEFT TO TAKE, so the due time goes with it. Leaving it behind
+		// would have this function ask on every step for the rest of the
+		// character's life whether a debt of nothing had fallen due.
+		AbilitySystem->ClearHealthDebtDue();
+	}
 
 	// AT `Log` AND NOT `Verbose`, like the death two functions down and unlike
 	// the rest of this file. Issue #1112.
 	//
-	// WHY THIS ONE IS WORTH A LINE. A debt falls due 3 seconds after the cast
-	// that deferred it, and it is taken WHOLE and with no floor -- the comment
-	// above this block says so. So the health it takes arrives detached in time
+	// WHY THIS ONE IS WORTH A LINE. A debt starts coming out 3 seconds after the
+	// cast that deferred it, so the health it takes arrives detached in time
 	// from anything the player did, and lands on whatever they happen to be
 	// doing at that instant. The project owner reported losing about 2,500
 	// health "as soon as I hit e" on 2026-08-31; several deferred halves falling
 	// due together is the shape that would produce exactly that, and nothing
 	// recorded it.
 	//
-	// THE HEALTH IS NAMED AS WELL AS THE AMOUNT, because what matters is whether
-	// the charge was survivable, and the amount alone does not say.
+	// ONE LINE PER STEP AND NOT ONE PER DEBT, which is four a second for at most
+	// five seconds. That is a bounded burst rather than a flood, and it is what
+	// lets a log say how fast the drain ran rather than only that it happened.
+	//
+	// WHAT IS STILL OWED IS NAMED AS WELL AS THE HEALTH, because the two
+	// together are what say whether the character is going to survive it.
 	UE_LOG(LogCataclysm, Log,
-		   TEXT("%s settled a health debt of %.1f, leaving %.1f health."),
-		   *Character->GetName(), Amount,
+		   TEXT("%s drained %.1f of a health debt, %.1f still owed, "
+				"leaving %.1f health."),
+		   *Character->GetName(), Taken, Left,
 		   AbilitySystem->GetNumericAttribute(
 			   UCataclysmVitalAttributeSet::GetHealthAttribute()));
 
-	return Amount;
+	return Taken;
 }
 
 float UCataclysmHealthDebt::DelayExtensionSeconds(
@@ -307,14 +362,15 @@ float UCataclysmHealthDebt::ClearOnKill(AActor* Killer)
 	return Amount;
 }
 
-bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
+float UCataclysmHealthDebt::DrainWhileDebtExceedsHealth(AActor* Character,
+													    float SecondsInStep)
 {
-	// A CORPSE IS NOT KILLED AGAIN, the same guard `SettleIfDue` opens with and
+	// A CORPSE IS NOT BLED AGAIN, the same guard `DrainIfDue` opens with and
 	// for the same reason: a dead character keeps its ability system for a
 	// window before it is removed.
 	if (!Character || UCataclysmSkillEffects::IsDead(Character))
 	{
-		return false;
+		return 0.0f;
 	}
 
 	UCataclysmAbilitySystemComponent* AbilitySystem =
@@ -322,10 +378,10 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 			UCataclysmTargeting::AbilitySystemOf(Character));
 	if (!AbilitySystem || !IsClearedOnlyByAKill(AbilitySystem))
 	{
-		// ONLY THE RECKONING'S DEBT IS LETHAL. An ordinary deferred debt larger
-		// than current health simply takes health to nothing when it settles,
-		// which is issue #971's separate question.
-		return false;
+		// ONLY THE RECKONING'S DEBT BLEEDS ITS OWNER. An ordinary deferred debt
+		// larger than current health simply takes health to nothing as it
+		// drains, which is issue #971's separate question.
+		return 0.0f;
 	}
 
 	const FGameplayAttribute Owed =
@@ -335,7 +391,7 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 	if (!AbilitySystem->HasAttributeSetForAttribute(Owed)
 		|| !AbilitySystem->HasAttributeSetForAttribute(Health))
 	{
-		return false;
+		return 0.0f;
 	}
 
 	const float Amount = AbilitySystem->GetNumericAttribute(Owed);
@@ -346,14 +402,62 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 	// rather than theoretical: a cost is a percentage of a round number often
 	// enough that the two land on the same value.
 	//
-	// AND NOTHING OWED NEVER KILLS, however little health is left. Zero is not
+	// AND NOTHING OWED NEVER BLEEDS, however little health is left. Zero is not
 	// greater than a positive number, so the comparison already says so; the
 	// guard is here because a character at zero health that owes zero would
 	// otherwise be a coin toss on floating point.
 	if (Amount <= 0.0f || Amount <= Current)
 	{
-		return false;
+		return 0.0f;
 	}
+
+	// WHAT IS OWED, SPREAD ACROSS `DrainSeconds`. Issue #1120.
+	//
+	// FROM THE WHOLE DEBT AND NOT FROM WHAT IS LEFT OF IT, because nothing is
+	// paid off here: the amount owed stands until a kill clears it, so this rate
+	// is constant unless the character casts again and adds to the debt.
+	//
+	// SO THE CHARACTER DIES IN LESS THAN `DrainSeconds`, NOT IN EXACTLY THAT
+	// MANY. Health is already smaller than the debt when this runs, so it runs
+	// out before the span does, and the deeper in debt the character is the
+	// faster that happens. That is the right way round.
+	const float Rate = Amount / DrainSeconds;
+	const float Wanted = Rate * FMath::Max(0.0f, SecondsInStep);
+	if (Wanted <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	if (Wanted < Current)
+	{
+		// STILL BLEEDING. Health comes out and the debt is untouched.
+		//
+		// THIS WRITE IS WHAT PUTS ROCK BOTTOM WITHIN REACH, and it only works
+		// because issue #1097 made a direct write to health reach
+		// `UCataclysmVitalAttributeSet::PostAttributeBaseChange`, which is where
+		// `UCataclysmLowHealthRelief::NoteHealthChanged` is called from. Before
+		// that, health falling this way crossed the threshold and nothing
+		// noticed. Issue #1119 has what that option was worth beforehand.
+		AbilitySystem->ApplyModToAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			EGameplayModOp::Additive, -Wanted);
+
+		// AT `Log` AND NOT `Verbose`, and once per step rather than once per
+		// death. Four lines a second for at most five seconds is a bounded
+		// burst, and it is the only way a log can say how fast a character was
+		// bleeding rather than only that it died. Issue #1112 is why the
+		// death line below is at `Log`; this is the same argument applied to
+		// the seconds leading up to it.
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("%s owes %.1f with %.1f health and is bleeding out at "
+					"%.1f a second; %.1f taken this step."),
+			   *Character->GetName(), Amount, Current, Rate, Wanted);
+
+		return Wanted;
+	}
+
+	// AND THIS STEP IS THE LAST ONE. What is wanted is at least the health that
+	// is left, so the character dies now rather than at the end of the span.
 
 	// AT `Log` AND NOT `Verbose`, UNLIKE EVERY OTHER MESSAGE IN THIS FILE.
 	// Issue #1101. The rest are per-cast bookkeeping and would fill a play
@@ -362,7 +466,7 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 	// at `Verbose` when the project owner asked on 2026-08-31 what had killed
 	// them, and that is why the log could not say.
 	UE_LOG(LogCataclysm, Log,
-		   TEXT("%s owed %.1f health with %.1f left and died of it."),
+		   TEXT("%s owed %.1f health with %.1f left and bled out."),
 		   *Character->GetName(), Amount, Current);
 
 	// THE DEBT GOES WITH THE CHARACTER. Leaving it standing would have the
@@ -400,7 +504,9 @@ bool UCataclysmHealthDebt::KillIfDebtExceedsHealth(AActor* Character)
 		AsCharacter->HandleDeath();
 	}
 
-	return true;
+	// WHAT THE LAST STEP REALLY TOOK, which is the health that was there rather
+	// than the rate's full share of it.
+	return Current;
 }
 
 bool UCataclysmHealthDebt::UnpayableBecomesDebt(

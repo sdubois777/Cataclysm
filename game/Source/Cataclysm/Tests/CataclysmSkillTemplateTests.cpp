@@ -1419,7 +1419,9 @@ bool FCataclysmDeferredHealthCostTest::RunTest(const FString&)
 	// THE DEBT IS NOT DUE YET, so a step now takes nothing. Three seconds have
 	// not passed; the world's clock has not moved at all.
 	TestEqual(TEXT("a debt that is not due yet is not taken"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  0.0f, 0.001f);
 	TestEqual(TEXT("and the health is still there"), Caster.Health(), 950.0f,
 			  0.5f);
 
@@ -1427,7 +1429,9 @@ bool FCataclysmDeferredHealthCostTest::RunTest(const FString&)
 	// spent, no stat rewritten, no skill used. The clock moves and that is all.
 	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
 	TestEqual(TEXT("once due, the whole debt is taken"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 50.0f, 0.5f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  50.0f, 0.5f);
 	TestEqual(TEXT("and the health is gone"), Caster.Health(), 900.0f, 0.5f);
 	TestEqual(TEXT("and nothing is owed any more"),
 			  Caster.Get(Resource::GetHealthOwedAttribute()), 0.0f, 0.001f);
@@ -1435,7 +1439,9 @@ bool FCataclysmDeferredHealthCostTest::RunTest(const FString&)
 	// AND IT IS NOT TAKEN TWICE. A settled debt clears its due time, so every
 	// later step finds nothing.
 	TestEqual(TEXT("a settled debt is not taken again"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  0.0f, 0.001f);
 	TestEqual(TEXT("and the health is unchanged"), Caster.Health(), 900.0f,
 			  0.5f);
 
@@ -1485,7 +1491,9 @@ bool FCataclysmNoDeferralTakesTheWholeCostTest::RunTest(const FString&)
 	// acquires a due time it would then carry for the rest of its life.
 	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
 	TestEqual(TEXT("and nothing falls due later"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  0.0f, 0.001f);
 	TestEqual(TEXT("and the health is unchanged"), Caster.Health(), 900.0f,
 			  0.5f);
 
@@ -1580,7 +1588,9 @@ bool FCataclysmCompoundInterestTest::RunTest(const FString&)
 	// pass.
 	World->TimeSeconds += UCataclysmHealthDebt::DelaySeconds + 0.1f;
 	TestEqual(TEXT("the debt falls due and is taken"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 200.0f, 0.5f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  200.0f, 0.5f);
 	TestEqual(TEXT("and owing nothing again is worth nothing again"),
 			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(NoTags),
 			  0.0f, 0.0001f);
@@ -1659,14 +1669,18 @@ bool FCataclysmRollingDebtReachesTheCostTest::RunTest(const FString&)
 	// SO PAST THE ORDINARY DELAY NOTHING IS TAKEN.
 	World->TimeSeconds += 1.5f;
 	TestEqual(TEXT("past the ordinary delay the debt is still not due"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 0.0f, 0.001f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  0.0f, 0.001f);
 	TestEqual(TEXT("and the health is untouched"), Caster.Health(), 1'000.0f,
 			  0.5f);
 
 	// AND IT FALLS DUE AT SIX SECONDS.
 	World->TimeSeconds += 2.6f;
 	TestEqual(TEXT("once the extended delay passes the whole debt is taken"),
-			  UCataclysmHealthDebt::SettleIfDue(Caster.Actor), 100.0f, 0.5f);
+			  UCataclysmHealthDebt::DrainIfDue(
+				  Caster.Actor, UCataclysmHealthDebt::DrainSeconds),
+			  100.0f, 0.5f);
 	TestEqual(TEXT("and the health goes with it"), Caster.Health(), 900.0f,
 			  0.5f);
 
