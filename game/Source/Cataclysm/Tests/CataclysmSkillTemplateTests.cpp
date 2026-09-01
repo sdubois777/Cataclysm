@@ -3132,6 +3132,111 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// THE BUFF'S NUMBER MULTIPLIES ON ITS OWN, and this is the only test that can
+// tell. Until 2026-09-01 Burning Wrath wrote its number into the additive
+// bucket, where it was summed with every gear affix the character wore and the
+// total multiplied in once. It now writes the multiplicative bucket, because
+// "4% more fire damage" is section VI's wording for a multiplier that applies
+// separately from that sum.
+//
+// A SINGLE MODIFIER ON A STAT CANNOT SHOW WHICH BUCKET IT IS IN. A lone 4%
+// gives 1.04x from either one, so the five tests around this one hold equally
+// under both spellings and not one of them would notice the bucket going back.
+// A second modifier is what separates them -- here an ordinary 50% increase of
+// the kind a gear affix rolls:
+//
+//     additive, what it used to do:   2.50 x (1 + (50 + 4)/100)  = 3.85
+//     multiplicative, what it does:   2.50 x (1 + 50/100) x 1.04 = 3.90
+//
+// So the damage assertion below moves by 5% of weapon damage if the bucket is
+// ever changed back, which neither a count of modifiers nor a reading of
+// GrantedIncrease would do.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffGrantsMoreNotIncreasedTest,
+	"Cataclysm.Skills.ABuffsNumberMultipliesRatherThanJoiningTheSumOfIncreases",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffGrantsMoreNotIncreasedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// One burning enemy inside the fifteen metre radius, so the buff's number
+	// is a single 4 rather than a multiple of it.
+	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+
+	// THE SECOND MODIFIER, which is the whole point of this test. It is scoped
+	// to the same element the buff scopes to, so both reach the same strike.
+	FCataclysmStatModifier Affix;
+	Affix.Bucket = ECataclysmStatBucket::Increased;
+	Affix.Source = ECataclysmModifierSource::GearAffix;
+	Affix.Value = 50.0f;
+	Affix.RequiredTags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false));
+	Caster.AbilitySystem->AddStatModifier(Affix);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"),
+		TEXT("Burning Wrath"), TEXT("Element.Demonic"));
+	if (!Buff)
+	{
+		AddError(TEXT("Could not grant the buff."));
+		return false;
+	}
+
+	TestTrue(TEXT("The buff activates"), Activate(Caster, Buff));
+	TestEqual(TEXT("It granted 4% for the one burning enemy"),
+		Buff->GrantedIncrease, 4.0f);
+
+	// Read the bucket directly as well as through the damage, so that a failure
+	// says which of the two things went wrong rather than only that a number
+	// moved.
+	const TArray<FCataclysmStatModifier>& Modifiers =
+		Caster.AbilitySystem->GetStatModifiers();
+	TestEqual(TEXT("The affix and the buff are both on the caster"),
+		Modifiers.Num(), 2);
+
+	const FCataclysmStatModifier* FromBuff = Modifiers.FindByPredicate(
+		[](const FCataclysmStatModifier& Modifier)
+		{ return Modifier.Source == ECataclysmModifierSource::SkillBuff; });
+	if (!FromBuff)
+	{
+		AddError(TEXT("The buff put no modifier of its own on the caster."));
+		return false;
+	}
+
+	TestEqual(TEXT("The buff's modifier is in the multiplicative bucket"),
+		static_cast<int32>(FromBuff->Bucket),
+		static_cast<int32>(ECataclysmStatBucket::More));
+	TestEqual(TEXT("And it carries the 4% it reported granting"),
+		FromBuff->Value, 4.0f);
+
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+
+	const float Before = Target.Health();
+	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
+
+	// The Heavy slot is 250% of weapon damage, the affix's 50% applies once,
+	// and the buff's 4% multiplies after it. Were the buff additive the second
+	// bracket would be 1.54 and this would read 385 rather than 390.
+	const float Unbuffed = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("The increase applied once and the buff multiplied after it"),
+		Before - Target.Health(), Unbuffed * 1.5f * 1.04f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIncreaseIsScopedTest,
 	"Cataclysm.Skills.ABuffsIncreaseDoesNotReachAnotherDamageType",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
