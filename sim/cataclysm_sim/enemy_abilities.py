@@ -76,12 +76,21 @@ SHAPES = ("Strike", "Projectile", "SelfBuff", "Movement", "Summon", "Deployable"
 #: chord, so an arc of `Arc * range` is in the air for
 #: `sqrt(8 * Arc * range / g)`.
 SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
-    "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval"),
-    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Arc"),
-    "SelfBuff": ("Duration", "Radius", "IncreasePerBurning"),
-    "Movement": ("Mode", "Range", "Radius"),
+    "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
+               "DisarmsUntilRecalled"),
+    # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
+    # axes over ten seconds, which needs the Count, Duration and Interval a
+    # Summon has always had. No enemy ability uses them on a projectile yet.
+    "Projectile": ("Range", "Radius", "Pierce", "Returns", "Speed", "Arc",
+                   "Count", "Duration", "Interval", "TargetMode",
+                   "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
+                   "CommandStrike",
+                   "TetherTargets", "TetherLength", "TetherDuration"),
+    "SelfBuff": ("Duration", "Radius", "RangeIncrease"),
+    "Movement": ("Mode", "Range", "Radius", "Duration", "Interval", "RearHits"),
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
-               "Minions"),
+               "Minions", "MaxTargets", "Possess", "FervourReserve",
+               "HealthThresholdPercent"),
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent"),
     "Aura": ("Radius", "Duration", "Interval"),
@@ -103,9 +112,20 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 #: owner's choice, so that the option is on the record as considered and
 #: rejected rather than never thought of.
 #: `test_nothing_burns_its_own_side` refuses an ability that sets it.
+#: `ForcedMovement` JOINED ON 2026-09-01 and does not replace `Knockback`. A
+#: shove is metres away from the caster and that is all Knockback ever meant;
+#: the new rider carries the verbs a distance cannot say -- knockdown, launch,
+#: pull, drag and pin. No enemy ability writes it yet.
 RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Burn", "Effect", "StunSeconds", "FinalHitPercent",
-          "HealthCostPercent", "Knockback")
+          "HealthCostPercent", "Knockback",
+          "MoreDamagePer", "IncreasedDamagePer", "DurationPer", "ScalingSource",
+          "ForcedMovement", "ForcedMovementDistance", "ForcedMovementDuration",
+          "Terrain", "TerrainSize", "TerrainDuration",
+          "Requires", "EffectDuration", "EffectMagnitude",
+          "OnDeath", "OnDeathRange", "ConsumeBurn", "ConsumeRadius",
+          "MaxDamagePercent", "MinDamagePercent",
+          "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable")
 
 #: How long a target is immune to being stunned again, from the anti-stun-lock
 #: rule in section VI of `docs/Cataclysm_GDD_v2.md`. Any ability that stuns has
@@ -119,8 +139,12 @@ STUN_IMMUNITY_WINDOW = 5.0
 #: against. The four skills that stun run 0.75, 0.75, 1.0 and 1.5 seconds.
 LONGEST_DESIGNED_STUN = 1.5
 
-#: The three values a Movement shape's `Mode` may take.
-MOVEMENT_MODES = ("Leap", "Charge", "Blink")
+#: The six values a Movement shape's `Mode` may take. Three were added on
+#: 2026-09-01 with the Demonic verb rewrite: `Swap` exchanges the caster's
+#: position with a minion's, `Recall` returns to a mark left earlier rather than
+#: departing, and `Flicker` repeats, arriving at one enemy after another. No
+#: enemy ability uses any of the three.
+MOVEMENT_MODES = ("Leap", "Charge", "Blink", "Swap", "Recall", "Flicker")
 
 #: The seven slots in `game/Data/SkillSlots.csv`. An enemy ability declares one
 #: for the same reason a player skill does: the slot says what kind of thing it

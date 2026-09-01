@@ -78,11 +78,17 @@ def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
     """The whole reason this table exists: a skill names a creature and the
     creature's numbers live in one place, so two skills making the same creature
     cannot disagree about it."""
-    produced = {"Summon Imp": "Imp", "Open the Rift": "Imp",
-                "Cinder Swarm": "Mote"}
+    # SUBJUGATE PRODUCES NO NAMED TYPE, because a thrall is the enemy it was
+    # taken from and carries that enemy's own stat block. Open the Rift and
+    # Cinder Swarm were retired on 2026-09-01 by the Demonic verb rewrite.
+    produced = {"Summon Imp": "Imp"}
     demonic_minion_skills = {
         r["SkillName"] for r in skill_rows()
-        if "Type.Minion" in r["Tags"] and r["DamageType"] == "Demonic"}
+        if "Type.Minion" in r["Tags"] and r["DamageType"] == "Demonic"
+        # A possessing skill produces a minion and names no type, because the
+        # thrall keeps the stat block of the enemy it was taken from. There is
+        # nothing in the Minion Types sheet for it to point at.
+        and "Possess=1" not in (r["ShapeParams"] or "")}
 
     assert demonic_minion_skills == set(produced), (
         "the Demonic minion skills in game/Data/WeaponSkills.csv changed, so "
@@ -93,12 +99,12 @@ def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
 
 
 def test_two_skills_making_the_same_creature_share_one_stat_block():
-    """Summon Imp and Open the Rift both make a lesser imp. There is one Imp row,
+    """Summon Imp is the one Staff skill that makes a lesser imp. There is one Imp row,
     so the numbers cannot exist twice and drift apart."""
     staff_minion_skills = [
         r["SkillName"] for r in skill_rows()
         if "Type.Minion" in r["Tags"] and r["WeaponType"] == "Staff"]
-    assert sorted(staff_minion_skills) == ["Open the Rift", "Summon Imp"]
+    assert sorted(staff_minion_skills) == ["Subjugate", "Summon Imp"]
     assert len([n for n in minion_rows() if n == "Imp"]) == 1
 
 

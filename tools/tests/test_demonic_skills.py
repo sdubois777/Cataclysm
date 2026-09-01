@@ -218,11 +218,12 @@ def test_every_designed_row_names_a_shape_and_its_numbers(designed):
     reached it, and it ended immediately. A Demonic row without a shape now
     means somebody wrote a skill and stopped short of making it real.
     """
-    # Not vacuous: there are 51 Demonic rows in the sheet after issue #23 cut
-    # the matrix from 558 to 398, and all of them are designed. A fixture that
-    # silently returned nothing would pass every assertion below it.
-    assert len(designed) == 51, (
-        f"expected 51 designed Demonic rows, found {len(designed)}")
+    # Not vacuous: there are 56 Demonic rows in the sheet and all of them are
+    # designed. A fixture that silently returned nothing would pass every
+    # assertion below it. It was 51 until 2026-09-01, when Demonic gained the
+    # Spear and its five slots.
+    assert len(designed) == 56, (
+        f"expected 56 designed Demonic rows, found {len(designed)}")
 
     missing = [f"{r['weapon']}/{r['slot']} ({r['name']})"
                for r in designed if not r["shape"]]

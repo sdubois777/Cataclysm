@@ -1881,7 +1881,7 @@ Not all damage types are available on all weapons. Damage type availability is t
 | Damage Type | Available Weapon Types |
 | :-: | :-: |
 | War | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Shield, Crossbow, 2H Crossbow, Warhammer, Whip |
-| Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Fist, Whip, Warhammer, Wand, Staff |
+| Demonic | Sword, Greatsword, Dagger, Axe, Greataxe, Spear, Fist, Whip, Warhammer, Wand, Staff |
 | Death | Sword, Greatsword, Dagger, Greataxe, Spear, Fist, Whip, Wand, Staff |
 | Pestilence | Sword, Dagger, Spear, Fist, Whip, Crossbow, 2H Crossbow, Wand, Staff |
 | Famine | Sword, Dagger, Axe, Fist, Whip, Warhammer, Wand, Staff |
@@ -1924,7 +1924,7 @@ The following is a sample of War damage type skills across weapon types to illus
 
 ## **Demonic Skill Examples**
 
-Demonic is the vertical slice's damage type, and **all ten of the weapon types it can roll on are now designed**: Greataxe, Fist and Staff for the three Demonic classes, plus Sword, Greatsword, Dagger, Axe, Wand, Whip and Warhammer. That is 51 rows. The slice ships the first three, one for each class: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
+Demonic is the vertical slice's damage type, and **all eleven of the weapon types it can roll on are now designed**: Greataxe, Fist and Staff for the three Demonic classes, plus Sword, Greatsword, Dagger, Axe, Spear, Wand, Whip and Warhammer. That is 56 rows. The slice ships the first three, one for each class: Greataxe for the Ravager, Fist for the Masochist, and Staff for the Ritualist. Greataxe and Fist reuse the War animation sets for the same weapon and slot, so the Staff is the only new set the slice buys.
 
   
 
@@ -1940,8 +1940,8 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Fist / Support | Martyr's Ember | For 10s, store 40% of all damage taken and spend it as bonus fire damage on your hits. Store capped at 200% weapon damage. |
 | Fist / Ultimate | Living Pyre | Burn for 6s, immune to stun, slow and knockback. Enemies within 4m set alight. Each hit taken raises pyre damage 8% and returns 25% of it as health. |
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Up to 3 active; a fourth destroys the oldest, which explodes in 3m. |
-| Staff / Support | Subjugate | Seize an enemy's mind, applying Madness. Lasts twice as long on an enemy that is already burning. |
-| Staff / Ultimate | Open the Rift | Tear a rift for 10s that burns everything within 6m and spawns an imp every 2s to a maximum of 5. Collapses for 400% weapon damage. |
+| Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
+| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Each thrall reserves 30 Fervour. Bosses cannot be taken. |
 | All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% fire damage. Drains mana. |
 
   
@@ -2086,7 +2086,7 @@ and evasion build new offensive slots to serve six skills.
 
   
 
-**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are six, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
+**This reverses the rule this document used to state**, which was that a minion's attack deals 30% of its summoner's weapon damage, that it attacks once per second, and that it has no stats of its own. That rule was justified "for two skills". There are five, and two of them already state their own health and attack rate: a bolt turret has 200 health and fires every 1.5 seconds, a ballista has 500 health and fires every 2 seconds. A class whose survival depends on its minions — the Ritualist "survives at range and behind what it summons" — had no way to make them tougher, because minion durability was not stated anywhere.
 
   
 
@@ -5079,7 +5079,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 
   
 
-- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 42 of the 51 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
+- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 45 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 

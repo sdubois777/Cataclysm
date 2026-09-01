@@ -64,7 +64,14 @@ TOLERANCE = 0.5
 #: How many skills left ground when the rule was decided. A floor rather than an
 #: exact pin: adding a skill that leaves ground is ordinary, and losing most of
 #: them is not.
-FEWEST_SKILLS_LEAVING_GROUND = 20
+# TWELVE SINCE 2026-09-01, NOT TWENTY-TWO. The Demonic verb rewrite made
+# burning ground the Greataxe's verb rather than the whole element's habit: the
+# Sword consumes fire instead of leaving it, the Warhammer leaves geometry, the
+# Whip drags people, and ten skills that trailed a patch because everything else
+# did stopped doing so. This floor guards against the parser silently matching
+# nothing, so it moves with the design rather than pinning a count the design no
+# longer has.
+FEWEST_SKILLS_LEAVING_GROUND = 10
 
 
 def parse_params(text: str) -> dict[str, str]:

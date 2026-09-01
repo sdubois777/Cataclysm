@@ -183,8 +183,103 @@ SHAPE_RIDERS = {
                  "burning patch of ground a rider",
     "FinalHitPercent": "percent of weapon damage a closing hit deals, if any",
     "HealthCostPercent": "percent of current health one use costs, if any",
-    "Effect": "the named status effect this applies, from the Buffs, Debuffs or "
-              "DoTs sheet",
+    "Effect": "the named status effect this applies, from the Buffs, Debuffs "
+              "or DoTs sheet. More than one may be named, comma separated",
+
+    # --- Added 2026-09-01 with the Demonic verb rewrite ---------------------
+    #
+    # THE BUCKET IS IN THE NAME, NOT IN A VALUE. `MoreDamagePer` multiplies
+    # separately and `IncreasedDamagePer` joins the additive sum, which is the
+    # distinction section VI draws and the single most important thing about a
+    # damage number in this project. A shared key with a bucket beside it would
+    # have made the two one typo apart.
+    "MoreDamagePer": "percentage points of MORE damage -- the multiplicative "
+                     "bucket -- per unit of ScalingSource",
+    "IncreasedDamagePer": "percentage points of INCREASED damage -- the "
+                          "additive bucket -- per unit of ScalingSource",
+    "DurationPer": "seconds added to the skill's own duration per unit of "
+                   "ScalingSource",
+    "ScalingSource": "what the three keys above count, one of SCALING_SOURCES",
+
+    # Displacement that a distance cannot say. `Knockback` above stays exactly
+    # what issue #626 made it -- metres pushed away from the caster -- because
+    # that decision generalised it on purpose and three enemy abilities write
+    # it. This rider carries the five verbs a distance does not express: put on
+    # the floor, thrown upward, hauled inward, dragged along, or nailed in
+    # place. A skill that simply shoves still writes Knockback.
+    "ForcedMovement": "what the skill does to a target beyond pushing it, one "
+                      "or more of FORCED_MOVEMENTS",
+    "ForcedMovementDistance": "metres a pull or drag carries the target",
+    "ForcedMovementDuration": "seconds the target is held where it was put",
+
+    # Geometry that outlives the hit. Distinct from the burning ground rider
+    # above: that is a damage patch, this changes where a fight can happen.
+    "Terrain": "persistent geometry the skill leaves, one of TERRAIN_KINDS",
+    "TerrainSize": "metres -- radius for a pit, fissure or thicket, length for "
+                   "a wall",
+    "TerrainDuration": "seconds the geometry persists",
+
+    # A skill that does not fire, or does not pay out, without its condition.
+    "Requires": "a condition the skill needs, one or more of REQUIREMENTS",
+
+    # NOT `Duration`, DELIBERATELY. Anathema's ten seconds is how long its curse
+    # sits on an enemy and Butcher's Bill's ten seconds is how long the skill
+    # itself runs. They were the same word, and a reader could not tell which
+    # one a row meant.
+    "EffectDuration": "seconds an applied Effect lasts, never a channel length",
+    "EffectMagnitude": "size of the applied Effect, in whatever unit that "
+                       "effect is measured in",
+
+    "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
+    "OnDeathRange": "metres the on-death effect reaches for its next target",
+
+    "ConsumeBurn": "1 if the skill spends the target's burn rather than only "
+                   "applying it. The Sword's verb",
+    "ConsumeRadius": "metres of whatever consumption produces",
+
+    "MaxDamagePercent": "ceiling on a skill whose damage scales, as percent of "
+                        "weapon damage",
+    "MinDamagePercent": "floor for a charged skill released immediately, as "
+                        "percent of weapon damage",
+
+    "ChargeTime": "seconds of hold before a full release",
+    "ChargeBreaksOn": "what cancels a hold and loses the skill, one or more of "
+                      "CHARGE_BREAKS. None means nothing can",
+
+    "RefundsCooldown": "which cooldown the skill returns, one of "
+                       "REFUND_TARGETS. What triggers it is the row's Trigger "
+                       "tag",
+    "Untargetable": "1 if the caster cannot be hit while the skill runs",
+}
+
+#: Closed value sets for the text riders above.
+#:
+#: CLOSED FOR THE SAME REASON THE PARAMETER LIST IS. A misspelled value that
+#: parsed would be a skill that runs and quietly does nothing, which is the
+#: failure `parse_shape_params` exists to prevent one level up.
+SCALING_SOURCES = frozenset({
+    "Kill", "Burning", "Second", "Meter", "HitTaken", "Consume", "Consumed",
+    "Bounce", "Pierced", "Pinned", "HealthMissing",
+})
+FORCED_MOVEMENTS = frozenset({"Knockdown", "Launch", "Pull", "Drag", "Pin"})
+TERRAIN_KINDS = frozenset({"Pit", "Wall", "Fissure", "Thicket"})
+REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
+ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release"})
+CHARGE_BREAKS = frozenset({"Stagger", "Death", "Movement", "None"})
+REFUND_TARGETS = frozenset({"Self", "Movement"})
+TARGET_MODES = frozenset({"All", "Nearest", "Furthest"})
+
+#: Which closed set each text rider draws from. A rider absent from this map is
+#: a number.
+TEXT_PARAM_VALUES = {
+    "ScalingSource": SCALING_SOURCES,
+    "ForcedMovement": FORCED_MOVEMENTS,
+    "Terrain": TERRAIN_KINDS,
+    "Requires": REQUIREMENTS,
+    "OnDeath": ON_DEATHS,
+    "ChargeBreaksOn": CHARGE_BREAKS,
+    "RefundsCooldown": REFUND_TARGETS,
+    "TargetMode": TARGET_MODES,
 }
 
 #: The parameters whose value is a name rather than a number.
@@ -194,7 +289,8 @@ SHAPE_RIDERS = {
 #: Iron Fortress deploys two ballistae AND three spike traps, which no single
 #: key and value can say. Every type it names must exist in the Minion Types
 #: sheet, and `validate_minion_references` refuses one that does not.
-TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions"})
+TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions"}
+                        | set(TEXT_PARAM_VALUES))
 
 #: How a `Minions` entry is written: `Imp:1`, or `Ballista:2, SpikeTrap:3`.
 MINION_ENTRY = re.compile(r"^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*(\d+)\s*$")
@@ -250,12 +346,29 @@ def parse_minions(text: str, where: str) -> dict[str, int]:
 #: `sim/cataclysm_sim/enemy_abilities.py` is the same table and says the same.
 #: Issue #465.
 SHAPE_PARAMS = {
-    "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval"},
-    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Arc"},
-    "SelfBuff": {"Duration", "Radius", "IncreasePerBurning"},
-    "Movement": {"Mode", "Range", "Radius"},
+    "Strike": {"Radius", "Angle", "MaxTargets", "Duration", "Interval",
+               # Buried Fire leaves the greatsword in the ground and the player
+               # fights bare-handed until it is pulled free. Only it states this.
+               "DisarmsUntilRecalled"},
+    # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
+    # seconds, which needs the same Count, Duration and Interval a Summon has
+    # always had; before this it could only be written as prose. `TargetMode`
+    # says who a repeating projectile picks, and is the same word and the same
+    # values as the column of that name in the Minion Types sheet.
+    "Projectile": {"Range", "Radius", "Pierce", "Returns", "Speed", "Arc",
+                   "Count", "Duration", "Interval", "TargetMode",
+                   "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
+                   "CommandStrike",
+                   "TetherTargets", "TetherLength", "TetherDuration"},
+    "SelfBuff": {"Duration", "Radius", "RangeIncrease"},
+    # Inexorable walks for three seconds and Everywhere at Once flickers for
+    # four, so a movement can now last and repeat. `RearHits` says every blow it
+    # lands counts as struck from behind.
+    "Movement": {"Mode", "Range", "Radius", "Duration", "Interval", "RearHits"},
+    # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
-               "Minions"},
+               "Minions", "MaxTargets", "Possess", "FervourReserve",
+               "HealthThresholdPercent"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -271,8 +384,17 @@ SHAPE_PARAMS = {
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration"},
 }
 
-#: The only non-numeric parameter, and the values it may take.
-MOVEMENT_MODES = {"Leap", "Charge", "Blink"}
+#: The movement modes, and what each one is.
+#:
+#: THREE WERE ADDED 2026-09-01 with the Demonic verb rewrite, because three
+#: weapons' verbs are movements nothing existing could describe. `Swap`
+#: exchanges the caster's position with a minion's, which is the Staff's
+#: Vesselstep and the only movement in the game that costs something the player
+#: owns. `Recall` returns to a mark left earlier rather than departing, which is
+#: what separates the Dagger's Echo from its Ashwalk. `Flicker` repeats,
+#: arriving at one enemy after another, and is the only movement that is also an
+#: ultimate.
+MOVEMENT_MODES = {"Leap", "Charge", "Blink", "Swap", "Recall", "Flicker"}
 
 #: The two shapes a basic attack may take. `docs/Cataclysm_GDD_v2.md` says the
 #: basic attack is the weapon's own swing -- a Strike for a melee weapon, a
@@ -314,6 +436,19 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
                 raise DataError(
                     f"{where}: Mode is {value!r}, not one of "
                     f"{sorted(MOVEMENT_MODES)}")
+        elif key in TEXT_PARAM_VALUES:
+            # A CLOSED SET, CHECKED HERE. These read as text like Mode does, so
+            # nothing below would have caught a misspelling: "ForcedMovement=Nockdown"
+            # would have been stored and then matched no branch in the engine's
+            # parser, which is a skill that runs and does not shove.
+            for one in (v.strip() for v in value.split(",")):
+                if not one:
+                    continue
+                if one not in TEXT_PARAM_VALUES[key]:
+                    raise DataError(
+                        f"{where}: {key}={one!r} is not one of "
+                        f"{sorted(TEXT_PARAM_VALUES[key])}")
+            params[key] = value
         elif key in TEXT_PARAMS:
             pass  # checked against the effect list by validate_skill_effects
         else:
@@ -3708,11 +3843,17 @@ def validate_skill_effects(tables: dict[str, list[dict]]) -> list[str]:
             continue
         params = parse_shape_params(row["ShapeParams"], row["Shape"],
                                     f"WeaponSkills/{row['Name']}")
-        named = params.get("Effect")
-        if named and named not in known:
-            problems.append(
-                f"WeaponSkills/{row['Name']}: applies the effect {named!r}, "
-                f"which is not in the Buffs, Debuffs or DoTs sheets")
+        # MORE THAN ONE IS ALLOWED, comma separated, as `Minions` already is.
+        # Anathema lays every hex the Wand knows at once and composes from the
+        # two that exist rather than inventing a third, so it writes
+        # "Shred, Madness". Checked one name at a time: a list validated whole
+        # would fail on the comma and say nothing useful about which half is
+        # wrong.
+        for named in (n.strip() for n in (params.get("Effect") or "").split(",")):
+            if named and named not in known:
+                problems.append(
+                    f"WeaponSkills/{row['Name']}: applies the effect {named!r}, "
+                    f"which is not in the Buffs, Debuffs or DoTs sheets")
     return problems
 
 

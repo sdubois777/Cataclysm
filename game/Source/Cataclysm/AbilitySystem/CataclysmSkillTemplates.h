@@ -142,7 +142,7 @@ private:
  * asking whether the buff is up gets a true answer and the duration is real.
  * WHERE THE MAGNITUDE GOES. Into the caster's stat modifier list, held by
  * UCataclysmAbilitySystemComponent, and taken out again when the duration
- * expires. Burning Wrath's "4% increased fire damage for every enemy currently
+ * expires. Burning Wrath's "4% more fire damage for every enemy currently
  * burning within 15 meters" becomes one Increased modifier of 4 times the count,
  * scoped to the skill's own Element tag so it reaches Demonic skills and no
  * others. Issue #166.
@@ -175,10 +175,10 @@ public:
 	int32 BurningEnemiesAtCast = 0;
 
 	/**
-	 * Percentage points of increased damage this buff is currently granting.
+	 * Percentage points of MORE damage this buff is currently granting.
 	 *
 	 * Zero while the buff is down, and zero for a self buff whose row carries no
-	 * IncreasePerBurning. Read by tests and by anything that shows the player
+	 * MoreDamagePer. Read by tests and by anything that shows the player
 	 * what a buff is worth.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")

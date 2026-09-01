@@ -47,6 +47,9 @@ namespace
 		{ ECataclysmMovementMode::Leap,   TEXT("Leap")   },
 		{ ECataclysmMovementMode::Charge, TEXT("Charge") },
 		{ ECataclysmMovementMode::Blink,  TEXT("Blink")  },
+		{ ECataclysmMovementMode::Swap,   TEXT("Swap")   },
+		{ ECataclysmMovementMode::Recall, TEXT("Recall") },
+		{ ECataclysmMovementMode::Flicker, TEXT("Flicker") },
 	};
 }
 
@@ -185,9 +188,27 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		// FCString::Atof, came back 0, and the guard below rejected the entire
 		// parameter cell -- taking Count and MaxActive down with it. Every summon
 		// skill therefore arrived with no idea what it summoned. Issue #622.
-		const bool bIsNumber = !Key.Equals(TEXT("Mode"), ESearchCase::IgnoreCase)
-							&& !Key.Equals(TEXT("Effect"), ESearchCase::IgnoreCase)
-							&& !Key.Equals(TEXT("Minions"), ESearchCase::IgnoreCase);
+		// EIGHT MORE JOINED THIS LIST ON 2026-09-01. Each names a value from a
+		// closed set the generator holds -- ForcedMovement=Pin, Terrain=Wall,
+		// ScalingSource=Burning and so on. Left off this list they would each
+		// have gone through Atof, come back 0, and failed the guard below,
+		// which marks the WHOLE cell invalid: the same failure Minions caused
+		// on issue #622, where every summon lost its Count and MaxActive too.
+		static const TCHAR* const TextKeys[] = {
+			TEXT("Mode"), TEXT("Effect"), TEXT("Minions"),
+			TEXT("ScalingSource"), TEXT("ForcedMovement"), TEXT("Terrain"),
+			TEXT("Requires"), TEXT("ChargeBreaksOn"), TEXT("RefundsCooldown"),
+			TEXT("TargetMode"), TEXT("OnDeath"),
+		};
+		bool bIsNumber = true;
+		for (const TCHAR* const TextKey : TextKeys)
+		{
+			if (Key.Equals(TextKey, ESearchCase::IgnoreCase))
+			{
+				bIsNumber = false;
+				break;
+			}
+		}
 		const float Number = bIsNumber ? FCString::Atof(*Value) : 0.0f;
 		if (bIsNumber && Number == 0.0f && !Value.Equals(TEXT("0")))
 		{
@@ -297,9 +318,173 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			// comparison is exact, so the order does not matter.
 			Params.MinionHealthPercent = Number;
 		}
-		else if (Key.Equals(TEXT("IncreasePerBurning"), ESearchCase::IgnoreCase))
+		// --- Scaling ---------------------------------------------------
+		//
+		// `IncreasePerBurning` WAS HERE UNTIL 2026-09-01. It said two things at
+		// once -- what the number was per, and which bucket it joined -- and it
+		// joined the additive one, where a self buff competed with every gear
+		// affix the character wore. It is now MoreDamagePer with
+		// ScalingSource=Burning beside it, and UCataclysmSelfBuffSkill puts it
+		// in the multiplicative bucket, which is what "4% more" means.
+		else if (Key.Equals(TEXT("MoreDamagePer"), ESearchCase::IgnoreCase))
 		{
-			Params.IncreasePerBurning = Number;
+			Params.MoreDamagePer = Number;
+		}
+		else if (Key.Equals(TEXT("IncreasedDamagePer"), ESearchCase::IgnoreCase))
+		{
+			Params.IncreasedDamagePer = Number;
+		}
+		else if (Key.Equals(TEXT("DurationPer"), ESearchCase::IgnoreCase))
+		{
+			Params.DurationPer = Number;
+		}
+		else if (Key.Equals(TEXT("ScalingSource"), ESearchCase::IgnoreCase))
+		{
+			// Not checked against the closed list here, for the same reason
+			// Effect is not checked against the effect sheets: the generator
+			// holds the only copy of that list and refuses anything outside it.
+			Params.ScalingSource = Value;
+		}
+		else if (Key.Equals(TEXT("MaxDamagePercent"), ESearchCase::IgnoreCase))
+		{
+			Params.MaxDamagePercent = Number;
+		}
+		else if (Key.Equals(TEXT("MinDamagePercent"), ESearchCase::IgnoreCase))
+		{
+			Params.MinDamagePercent = Number;
+		}
+		else if (Key.Equals(TEXT("RangeIncrease"), ESearchCase::IgnoreCase))
+		{
+			Params.RangeIncrease = Number;
+		}
+		// --- Applied effect detail --------------------------------------
+		else if (Key.Equals(TEXT("EffectDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.EffectDuration = Number;
+		}
+		else if (Key.Equals(TEXT("EffectMagnitude"), ESearchCase::IgnoreCase))
+		{
+			Params.EffectMagnitude = Number;
+		}
+		// --- Forced movement --------------------------------------------
+		else if (Key.Equals(TEXT("ForcedMovement"), ESearchCase::IgnoreCase))
+		{
+			Params.ForcedMovement = Value;
+		}
+		else if (Key.Equals(TEXT("ForcedMovementDistance"), ESearchCase::IgnoreCase))
+		{
+			Params.ForcedMovementDistanceCm = Number * ToCm;
+		}
+		else if (Key.Equals(TEXT("ForcedMovementDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.ForcedMovementDuration = Number;
+		}
+		// --- Terrain ----------------------------------------------------
+		else if (Key.Equals(TEXT("Terrain"), ESearchCase::IgnoreCase))
+		{
+			Params.Terrain = Value;
+		}
+		else if (Key.Equals(TEXT("TerrainSize"), ESearchCase::IgnoreCase))
+		{
+			Params.TerrainSizeCm = Number * ToCm;
+		}
+		else if (Key.Equals(TEXT("TerrainDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.TerrainDuration = Number;
+		}
+		// --- Conditions and commitment ----------------------------------
+		else if (Key.Equals(TEXT("Requires"), ESearchCase::IgnoreCase))
+		{
+			Params.Requires = Value;
+		}
+		else if (Key.Equals(TEXT("ChargeTime"), ESearchCase::IgnoreCase))
+		{
+			Params.ChargeTime = Number;
+		}
+		else if (Key.Equals(TEXT("ChargeBreaksOn"), ESearchCase::IgnoreCase))
+		{
+			Params.ChargeBreaksOn = Value;
+		}
+		// --- Consumption ------------------------------------------------
+		else if (Key.Equals(TEXT("ConsumeBurn"), ESearchCase::IgnoreCase))
+		{
+			Params.bConsumeBurn = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("ConsumeRadius"), ESearchCase::IgnoreCase))
+		{
+			Params.ConsumeRadiusCm = Number * ToCm;
+		}
+		// --- On death ---------------------------------------------------
+		else if (Key.Equals(TEXT("OnDeath"), ESearchCase::IgnoreCase))
+		{
+			Params.OnDeath = Value;
+		}
+		else if (Key.Equals(TEXT("OnDeathRange"), ESearchCase::IgnoreCase))
+		{
+			Params.OnDeathRangeCm = Number * ToCm;
+		}
+		// --- Projectile extras ------------------------------------------
+		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))
+		{
+			Params.Bounces = FMath::RoundToInt(Number);
+		}
+		else if (Key.Equals(TEXT("SpreadCurses"), ESearchCase::IgnoreCase))
+		{
+			Params.SpreadCurses = FMath::RoundToInt(Number);
+		}
+		else if (Key.Equals(TEXT("TargetMode"), ESearchCase::IgnoreCase))
+		{
+			Params.TargetMode = Value;
+		}
+		else if (Key.Equals(TEXT("ScalesWithAttackSpeed"), ESearchCase::IgnoreCase))
+		{
+			Params.bScalesWithAttackSpeed = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("CommandStrike"), ESearchCase::IgnoreCase))
+		{
+			Params.bCommandStrike = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("TetherTargets"), ESearchCase::IgnoreCase))
+		{
+			Params.TetherTargets = FMath::RoundToInt(Number);
+		}
+		else if (Key.Equals(TEXT("TetherLength"), ESearchCase::IgnoreCase))
+		{
+			Params.TetherLengthCm = Number * ToCm;
+		}
+		else if (Key.Equals(TEXT("TetherDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.TetherDuration = Number;
+		}
+		// --- Summon extras ----------------------------------------------
+		else if (Key.Equals(TEXT("Possess"), ESearchCase::IgnoreCase))
+		{
+			Params.bPossess = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("FervourReserve"), ESearchCase::IgnoreCase))
+		{
+			Params.FervourReserve = Number;
+		}
+		else if (Key.Equals(TEXT("HealthThresholdPercent"), ESearchCase::IgnoreCase))
+		{
+			Params.HealthThresholdPercent = Number;
+		}
+		// --- Other riders -----------------------------------------------
+		else if (Key.Equals(TEXT("RefundsCooldown"), ESearchCase::IgnoreCase))
+		{
+			Params.RefundsCooldown = Value;
+		}
+		else if (Key.Equals(TEXT("Untargetable"), ESearchCase::IgnoreCase))
+		{
+			Params.bUntargetable = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("DisarmsUntilRecalled"), ESearchCase::IgnoreCase))
+		{
+			Params.bDisarmsUntilRecalled = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("RearHits"), ESearchCase::IgnoreCase))
+		{
+			Params.bRearHits = Number != 0.0f;
 		}
 		else if (Key.Equals(TEXT("Effect"), ESearchCase::IgnoreCase))
 		{

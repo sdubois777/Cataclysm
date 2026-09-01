@@ -170,12 +170,12 @@ def test_count_is_an_enchantment_and_never_an_affix(section):
 def test_the_document_no_longer_says_there_are_two_minion_skills(
         section, minion_skills):
     """THE CLAIM THAT MADE THE OLD RULE LOOK REASONABLE. It said a minion stat
-    family was not wanted "for two skills". There are six."""
-    assert len(minion_skills) == 6, (
+    family was not wanted "for two skills". There are five."""
+    assert len(minion_skills) == 5, (
         f"{WEAPON_SKILLS.name} now has {len(minion_skills)} skills tagged "
         f"Type.Minion rather than 6. The design document quotes the count; "
         f"update both together.")
-    assert "There are six" in unwrapped(section), (
+    assert "There are five" in unwrapped(section), (
         f"{DESIGN_DOC.name} no longer states how many minion skills there are. "
         f"The count is the evidence that the retired rule was wrong.")
 

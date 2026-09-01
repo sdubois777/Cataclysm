@@ -1,10 +1,10 @@
 """A self buff's magnitude is written twice, and the two must agree.
 
-WHY THIS FILE EXISTS. Burning Wrath's description says "4% increased fire damage
+WHY THIS FILE EXISTS. Burning Wrath's description says "4% more fire damage
 for every enemy currently burning within 15 meters". Three of those numbers are
 now also machine-readable, in the same row's Shape Params cell, because
 `UCataclysmSelfBuffSkill` has to be given them as numbers rather than prose:
-`Duration=10; Radius=15; Burn=1; IncreasePerBurning=4`.
+`Duration=10; Radius=15; Burn=1; MoreDamagePer=4; ScalingSource=Burning`.
 
 Prose and parameters drifting apart is the failure this stops. A player reads the
 description and the skill does what the parameters say, so a description saying
@@ -64,32 +64,53 @@ def shape_params(row: dict[str, str]) -> dict[str, str]:
 
 
 def test_burning_wrath_carries_the_increase_its_description_states() -> None:
-    """The 4% in the prose and the 4 in IncreasePerBurning are one number."""
+    """The 4% in the prose and the 4 in MoreDamagePer are one number.
+
+    THE KEY CHANGED ON 2026-09-01 and so did the word in the prose. It was
+    `IncreasePerBurning=4` against "4% increased fire damage", which put a self
+    buff in the additive bucket where it competed with every gear affix the
+    character wore. It is now `MoreDamagePer=4; ScalingSource=Burning` against
+    "4% more fire damage", and `UCataclysmSelfBuffSkill` builds the modifier in
+    the multiplicative bucket.
+
+    THE SOURCE IS CHECKED AS WELL AS THE NUMBER. `MoreDamagePer` alone says how
+    much per something without saying per what, and the template grants nothing
+    unless the source is Burning -- so a row carrying the magnitude and no
+    source would read correctly here and do nothing in the game.
+    """
     row = row_named(BURNING_WRATH)
     params = shape_params(row)
 
-    if "IncreasePerBurning" not in params:
+    if "MoreDamagePer" not in params:
         pytest.fail(
-            f"{BURNING_WRATH} has no IncreasePerBurning in its Shape Params cell, "
+            f"{BURNING_WRATH} has no MoreDamagePer in its Shape Params cell, "
             f"which reads {row.get('Shape Params')!r}. Without it "
             "UCataclysmSelfBuffSkill grants no increase and the buff is only a "
             "duration again. See issue #166."
         )
 
+    if params.get("ScalingSource") != "Burning":
+        pytest.fail(
+            f"{BURNING_WRATH} states MoreDamagePer without ScalingSource=Burning; "
+            f"its cell reads {row.get('Shape Params')!r}. "
+            "UCataclysmSelfBuffSkill grants nothing unless the source is Burning, "
+            "so the magnitude would sit in the data and never reach the player."
+        )
+
     match = re.search(
-        r"(\d+(?:\.\d+)?)% increased fire damage for every enemy currently burning",
+        r"(\d+(?:\.\d+)?)% more fire damage for every enemy currently burning",
         row.get("Skill Description", ""),
     )
     if match is None:
         pytest.fail(
             f"{BURNING_WRATH}'s description no longer states a percent of "
-            "increased fire damage per burning enemy. It reads:\n"
+            "more fire damage per burning enemy. It reads:\n"
             f"{row.get('Skill Description')}"
         )
 
-    assert float(params["IncreasePerBurning"]) == float(match.group(1)), (
+    assert float(params["MoreDamagePer"]) == float(match.group(1)), (
         f"{BURNING_WRATH} says {match.group(1)}% in its description and "
-        f"{params['IncreasePerBurning']} in IncreasePerBurning. A player reads "
+        f"{params['MoreDamagePer']} in MoreDamagePer. A player reads "
         "the first and the game does the second."
     )
 
@@ -131,23 +152,32 @@ def test_burning_wrath_lasts_as_long_as_its_description_states() -> None:
 
 
 def test_every_skill_with_an_increase_carries_an_element_tag() -> None:
-    """An increase is scoped to the skill's damage type, so there must be one.
+    """A damage modifier is scoped to the skill's damage type, so there must be one.
 
     `UCataclysmSelfBuffSkill::GrantIncrease` scopes the modifier it adds to the
-    skill's own `Element.*` tag. A row carrying IncreasePerBurning and no element
-    would grant an increase that applied to every skill the character owns,
-    which is not what any description says.
+    skill's own `Element.*` tag. A row carrying a scaling magnitude and no
+    element would grant a modifier that applied to every skill the character
+    owns, which is not what any description says.
+
+    THIS GUARDED NOTHING BETWEEN THE REWRITE OF 2026-09-01 AND ITS REPAIR. It
+    filtered on `IncreasePerBurning`, a key that rewrite renamed, so no row
+    matched. The offender list was empty because the filter was dead rather
+    than because the data was right, and the assertion below could not fail.
+    Both spellings of the magnitude are named now: `MoreDamagePer` for the
+    multiplicative bucket and `IncreasedDamagePer` for the additive one.
     """
+    magnitudes = ("MoreDamagePer", "IncreasedDamagePer")
     offenders = [
         row["Skill Name"]
         for row in weapon_skill_rows()
-        if "IncreasePerBurning" in shape_params(row)
+        if any(key in shape_params(row) for key in magnitudes)
         and not any(
             tag.strip().startswith("Element.")
             for tag in row.get("Tags", "").split(",")
         )
     ]
     assert not offenders, (
-        "These skills grant an increase but carry no Element tag to scope it to, "
+        "These skills grant a damage modifier but carry no Element tag to scope "
+        "it to, "
         f"so it would apply to everything: {', '.join(offenders)}"
     )

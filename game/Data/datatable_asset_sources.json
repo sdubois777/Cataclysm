@@ -154,8 +154,8 @@
     {
       "asset": "DT_StatusEffects",
       "csv": "StatusEffects.csv",
-      "rows": 52,
-      "csv_sha256": "2de1b1d476096c7c8d74c817fa486815241a4ccdc4fa8523dec5343124e64456"
+      "rows": 53,
+      "csv_sha256": "0993b793acce51bc054620c40de15b9c3185865a90e7ac893dd796e5cbedfcf5"
     },
     {
       "asset": "DT_WeaponMeshes",
@@ -166,8 +166,8 @@
     {
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
-      "rows": 398,
-      "csv_sha256": "21a0fd7896234212574c34177f55b7f4f6a6f35f49c07ead47fe9d50bfd89a59"
+      "rows": 403,
+      "csv_sha256": "c25b783b41eea13188aea614122e5875fc42d4be9c92030b84549b26012bb347"
     }
   ]
 }

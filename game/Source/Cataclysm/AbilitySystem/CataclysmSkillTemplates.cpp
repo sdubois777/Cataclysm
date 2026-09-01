@@ -329,7 +329,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		return;
 	}
 
-	// Burning Wrath is "4% increased fire damage for every enemy currently
+	// Burning Wrath is "4% more fire damage for every enemy currently
 	// burning within 15 meters", so the count is taken once, when it goes up,
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
@@ -397,7 +397,17 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	GrantedIncrease = 0.0f;
 	GrantedScope = FGameplayTag();
 
-	if (Params.IncreasePerBurning <= 0.0f || BurningEnemiesAtCast <= 0)
+	// SCALES OFF BURNING ENEMIES AND NOTHING ELSE TODAY. `ScalingSource` names
+	// eleven things a skill may count and this is the one that is implemented,
+	// so a buff naming any other source grants nothing rather than silently
+	// counting the wrong thing. The others are read and stated in the design;
+	// see the note on ScalingSource in CataclysmSkillShape.h.
+	if (!Params.ScalingSource.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	if (Params.MoreDamagePer <= 0.0f || BurningEnemiesAtCast <= 0)
 	{
 		// No increase to grant. Burning Wrath with nothing alight nearby is the
 		// ordinary case, not a fault: the skill is written to be worth using
@@ -413,14 +423,20 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 		return;
 	}
 
+	// THE MULTIPLICATIVE BUCKET, CHANGED 2026-09-01. Burning Wrath reads "4%
+	// more fire damage for every enemy currently burning", and "more" is this
+	// project's word -- section VI's -- for a multiplier that applies separately
+	// rather than joining the additive sum. In the additive bucket the buff
+	// competed with every gear affix the character wore, which is what made a
+	// kill-fed or count-fed ramp feel like nothing.
 	FCataclysmStatModifier Modifier;
-	Modifier.Bucket = ECataclysmStatBucket::Increased;
+	Modifier.Bucket = ECataclysmStatBucket::More;
 	Modifier.Source = ECataclysmModifierSource::SkillBuff;
-	Modifier.Value = Params.IncreasePerBurning * BurningEnemiesAtCast;
+	Modifier.Value = Params.MoreDamagePer * BurningEnemiesAtCast;
 
 	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
 	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
-	// so "increased fire damage" is an increase that reaches skills carrying
+	// so "more fire damage" is a multiplier that reaches skills carrying
 	// that tag. A self buff written for another damage type scopes to its own
 	// element with no code changing. A skill carrying no element tag grants an
 	// increase that applies to everything, which is what an unscoped modifier

@@ -16,7 +16,7 @@
  * reaches something, and swapping weapons visibly changes what is granted, which
  * is the part of issue #36 that can be built and tested today.
  *
- * UNDESIGNED SKILLS: 54. NAMED SKILLS: 112. Those are how many rows of
+ * UNDESIGNED SKILLS: 54. NAMED SKILLS: 117. Those are how many rows of
  * `game/Data/WeaponSkills.csv` carry a skill name and no shape, and how many
  * carry a name at all. The other 58 do have a shape and its parameters -- 51
  * Demonic and 7 War -- and are built as real abilities rather than by this

@@ -20,6 +20,202 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — Every Demonic weapon owns one mechanical verb, and forty rows were rewritten to it
+
+**Affects:** the Weapon Skills sheet in `docs/All_Things_Cataclysm.xlsx`, and the
+Demonic Skill Examples table in `docs/Cataclysm_GDD_v2.md` section V. Applied.
+
+### What was wrong
+
+The fifty-one Demonic skills were individually well written and collectively
+interchangeable. Every melee kit ran the same five beats: a self-buff, a charge or
+leap trailing fire, a cone strike, a line of fire, and a spin. **Eight of the ten
+Ultimates were literally the same skill** — `Strike` at `Angle=360`, repeating for
+three or four seconds, ending on a large `FinalHitPercent`. Radius and closing
+percentage were the only things telling them apart.
+
+That is not ten weak skills, it is one skill with ten radii, and it needed a rule
+rather than ten rewrites.
+
+### The rule
+
+**Each weapon owns exactly one mechanical verb and no other weapon may use it.**
+The verb is whatever the weapon does that is not "applies burn" — burn is the
+element and every weapon has it, so burn cannot distinguish anything. A skill that
+could move to another weapon without changing what it does is written against the
+wrong verb.
+
+| Weapon | Verb |
+| :-- | :-- |
+| Greataxe | Ground fire |
+| Fist | The health economy |
+| Staff | Command — summons and possession |
+| Wand | Inflict — hexes, curses, shred |
+| Axe | Throwing, fed by kills |
+| Sword | Consumes burn |
+| Greatsword | Commitment — hold, root, release |
+| Warhammer | Terrain |
+| Whip | Reach and forced movement |
+| Dagger | Self-displacement |
+
+Two corollaries. **Ultimates are the maximal expression of the verb**, not a bigger
+Heavy, and no more than two may share a shape and a purpose. **The verb outranks the
+flavour**, because everything in Demonic can be described as fire and that is what
+made the ten converge.
+
+### What changed
+
+Forty rows. The Greataxe and Fist kits were left alone — both already had a verb,
+and both are vertical-slice kits. Four more rows were kept by name and content:
+Summon Imp, Searing Lash, Ashwalk and Emberpierce.
+
+**Repeating Ultimates went from eight of ten to three**, and the three that remain
+repeat differently: Pyroclasm spins, Butcher's Bill throws thirty axes, and
+Everywhere at Once blinks between targets.
+
+**The Ritualist finally does what the design says it does.** Section IV has always
+said the Ritualist "commands demonic entities and can possess enemies to turn them
+against allies", and no skill delivered it. `Open the Rift`, a timed imp spawner,
+became `Subjugate`: permanent possession of an enemy left below half health, with
+each thrall reserving 30 Fervour. **The army cap is the Fervour pool itself** rather
+than a separate number, so the Ritualist's 150 holds five and every point of maximum
+Fervour a tree grants is progress toward a sixth. The 2026-08-25 entry that made
+Fervour one pool anticipated this in the owner's own words — it does not decay
+because it "will matter for other classes who might rely on reserving it".
+
+The old Staff Support `Subjugate` applied Madness for three seconds, which is
+inflicting rather than commanding, so it moved to the Wand as `Whisper of Madness`
+and the name came free with the move.
+
+### Two rewordings, and the rule behind them
+
+`Burning Wrath` (Greataxe, Demonic) and `Blood Frenzy` (Greataxe, War) both granted
+"increased" damage per nearby burning or bleeding enemy, which puts them in the
+additive bucket alongside every gear affix on the character. Both now say **more**.
+
+Section VI reserves "more" and "less" for gems, passive nodes and enchantments, and
+says a gear affix never uses it — but the stated reason is gear-specific: "a drop can
+carry one by accident and a passive node cannot — a node is chosen." **A skill is
+chosen too.** Five Demonic skills already used this wording, so the sheet had settled
+the question in practice before it was asked, and
+`test_passive_effects_match_the_node_text.py` guards passive nodes only.
+
+### The parameter vocabulary, which is the part most likely to be regretted
+
+The rewrite introduced **fifty-seven new shape parameters against thirty-eight
+rewritten rows** — more parameters than rows. Nine families of near-duplicates were
+collapsed to twenty before any of it landed, taking the total to thirty-seven:
+
+| Family | Collapsed to |
+| :-- | :-- |
+| Damage and duration scaling | `MoreDamagePer`, `IncreasedDamagePer`, `DurationPer`, `ScalingSource` |
+| Forced movement | `ForcedMovement`, `ForcedMovementDistance`, `ForcedMovementDuration` |
+| Terrain | `Terrain`, `TerrainSize`, `TerrainDuration` |
+| Commitment | `ChargeTime`, `ChargeBreaksOn` |
+| Requirement gates | `Requires` |
+| On death | `OnDeath`, `OnDeathRange` |
+| Consumption | `ConsumeBurn`, `ConsumeRadius` |
+| Applied effects | `EffectDuration`, `EffectMagnitude` |
+| Cooldown refunds | `RefundsCooldown` |
+
+**The bucket stays in the parameter name** — `MoreDamagePer` against
+`IncreasedDamagePer` — because which bucket a number joins is the one thing about a
+number in this project that must never be ambiguous. `EffectDuration` was split from
+`Duration` for the same reason: Anathema's ten seconds is a curse and Butcher's
+Bill's ten seconds is a channel, and they were the same word.
+
+**Two pre-existing parameters were retired into families.** `Knockback` became
+`ForcedMovement=Knockback` plus a distance, and `IncreasePerBurning` became
+`MoreDamagePer` plus `ScalingSource=Burning`. That swept four rows into the change
+that the rewrite was not otherwise touching: Burning Wrath, Molten Crush, Fist's
+Searing Hook and War's Shockwave Leap. All four keep their descriptions; only the
+parameter cell moved.
+
+**Searing Hook also gained a parameter it should always have had.** Its description
+says the blow "deals 1% increased damage for every 1% of your maximum health you are
+currently missing" and nothing in its parameters said so — the scaling existed in
+prose alone, which is the exact failure `test_every_designed_row_sets_its_target_alight`
+was written to catch on a different column. It now carries `IncreasedDamagePer=1` and
+`ScalingSource=HealthMissing`, and stays in the additive bucket deliberately: it is a
+fourth member of the family reworded above, but it is a Masochist slice row and what
+it is worth is a balance decision rather than a vocabulary one.
+
+**The consolidation paid for itself on the next batch.** The Spear kit added below
+needed **no new parameter names at all** — `ForcedMovement=Pin`, `Terrain=Thicket`,
+`OnDeath=Release` and `ScalingSource=Pinned` are four values on four families that
+already existed. Under the old vocabulary it would have added four more names.
+
+One to watch: `BlockIncrease` and `RangeIncrease` are the same shape of thing, a flat
+percentage added to one of the player's stats. Two members is thin evidence for a
+family. If a third appears, collapse all three and do not wait for a fourth.
+
+### What this does not do
+
+**No skill carries a damage figure yet.** `CritChancePercent`, `DamagePercent`,
+`Cooldown` and `ManaCost` are still unset on every row of the sheet; issues #836 and
+#837 are that work. **Hold-to-charge has no shape.** `ChargeTime` and
+`ChargeBreaksOn` describe the Greatsword's whole verb but hang off `Strike`, which
+may not be where they belong. **The Fervour reserve waits on issue #950**, which
+covers the Ravager's and Ritualist's generators; expressing the thrall cap as a
+fraction of the pool rather than a flat count is what lets these rows survive
+whatever it decides.
+
+---
+
+## 2026-09-01 — Demonic gains the Spear, and the provisional availability table is revised by one row
+
+**Affects:** the Damage Types and Skill Availability table in
+`docs/Cataclysm_GDD_v2.md` section VI, and the Weapon Skills sheet in
+`docs/All_Things_Cataclysm.xlsx`. Applied. **Does not close issue #841.**
+
+### The decision
+
+**Demonic becomes available on the Spear.** Five rows are added to the Weapon Skills
+sheet and the availability table's Demonic row gains Spear, taking it from ten weapon
+types to eleven.
+
+### Why the Spear and not the other three
+
+Kits for the Shield, Crossbow and Two-Handed Crossbow were written alongside these
+and discarded. The 2026-08-02 table was approved provisionally and expected to be
+revised, but revising it by one row is a different act from dissolving it.
+
+**Six of the eight damage types already roll on the Spear** — War, Death, Pestilence,
+Celestial, Void and Chaos. Only Demonic and Famine do not, which makes the Spear's
+absence from Demonic an outlier rather than a characterisation. It is also melee, and
+eight of Demonic's ten existing weapons are melee. The table's own stated basis is
+thematic fit, and a spear fits fire, lava and rage in a way a heavy crossbow does not.
+
+### What adding all four would have cost, recorded because it was nearly done
+
+`UCataclysmDropRoll::RollDamageTypes` draws a weapon's damage types from the pairings
+in `game/Data/WeaponSkills.csv`, so **a row existing is what lets a weapon roll that
+damage type**. Adding all four would not have been a documentation change; it would
+have made Shields and crossbows drop as Demonic weapons and taken Demonic to all
+fourteen weapon types.
+
+Section VI gives Chaos its unrestricted list **because the Chaos Shaper changes form
+based on weapon type**. Universality is Chaos's characterisation, and a second
+universal damage type spends it for nothing.
+
+### What this does not do
+
+**Issue #841 stays open.** It reads an unarmed character's empty skill bar as four
+missing weapon rows, and the refusal that stops a character removing its last weapon
+stands on that reading. The Shield, Crossbow and Two-Handed Crossbow still have no
+Demonic skills, so the empty bar is still reachable. The cheaper fix is in what the
+unarmed fallback picks rather than in what drops, and it is not made here.
+
+### What it costs
+
+The Weapon Skills sheet grows from 398 rows to 403.
+`test_damage_type_availability_matches_the_design.py` compares the design document
+against the CSV in both directions, so the table edit and the rows had to land
+together. Animation is unaffected: the Spear already has a War set for every slot,
+and animation follows weapon and slot rather than damage type.
+
+---
+
 ## 2026-09-01 — The character moves when it uses a skill: where that hook lives, which clips play, and what happens to a clip that will not fit
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`,

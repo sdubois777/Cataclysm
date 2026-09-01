@@ -53,7 +53,7 @@ enum class ECataclysmModifierSource : uint8
 	/**
 	 * A buff a skill put on its own caster, lasting only as long as the skill.
 	 *
-	 * Burning Wrath's "4% increased fire damage for every enemy currently
+	 * Burning Wrath's "4% more fire damage for every enemy currently
 	 * burning within 15 meters" is one. Unlike every source above it, this one
 	 * is added and removed at runtime rather than being a property of what the
 	 * character is wearing, which is why UCataclysmAbilitySystemComponent holds

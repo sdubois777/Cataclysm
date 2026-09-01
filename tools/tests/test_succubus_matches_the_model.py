@@ -310,7 +310,13 @@ def test_the_bolt_is_the_slowest_projectile_in_the_game():
     speeds = []
     weapon_skills = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
     if weapon_skills.is_file():
-        for found in re.finditer(r"Speed\s*=\s*(\d+(?:\.\d+)?)",
+        # `(?<![A-Za-z])` OR THIS MATCHES INSIDE ANOTHER PARAMETER'S NAME.
+        # `ScalesWithAttackSpeed=1` contains the text "Speed=1", so on
+        # 2026-09-01 the slowest player projectile in the game became one
+        # centimetre per second and this test failed on a skill that fires no
+        # projectile at all. Any future parameter ending in Speed would have
+        # done the same.
+        for found in re.finditer(r"(?<![A-Za-z])Speed\s*=\s*(\d+(?:\.\d+)?)",
                                  source(weapon_skills)):
             speed = float(found.group(1))
             if speed > 0.0:
