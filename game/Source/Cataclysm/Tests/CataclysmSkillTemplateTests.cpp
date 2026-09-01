@@ -5006,4 +5006,692 @@ bool FCataclysmSkillWaterToBloodRefusalTest::RunTest(const FString&)
 
 	return true;
 }
+
+// --------------------------------------------------------------------------
+// Consuming burn, the conditions on a cast, and a skill's own damage scaling.
+// Issue #37, for the Sword and Fist sets.
+//
+// WHAT THESE COVER AND WHAT THEY DO NOT. Each drives a skill in a world that is
+// never ticked, so what a burn does over time is not covered here -- that is in
+// CataclysmDamageOverTimeTests. What is covered is whether the fire is present
+// or absent once the skill has finished with it, where a conditional move
+// arrives, and what the blow was worth.
+// --------------------------------------------------------------------------
+
+namespace CataclysmSkillTest
+{
+	/** Put a target alight, the way any damaging skill would. */
+	void SetAlight(FScopedFighter& By, FScopedFighter& Target)
+	{
+		UCataclysmSkillEffects::ApplyBurn(By.Actor, Target.Actor, WeaponDamage);
+	}
+
+	/** Whether this target carries the burn tag right now. */
+	bool IsAlight(const FScopedFighter& Target)
+	{
+		return UCataclysmSkillEffects::HasTag(Target.Actor,
+											  UCataclysmSkillEffects::BurnTag());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumeBurnTest,
+	"Cataclysm.Skills.AStrikeThatConsumesBurnPutsTheFireOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumeBurnTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(2 * M, 0, 0));
+	FScopedFighter Cold(World, FVector(3 * M, 0, 0));
+
+	SetAlight(Caster, Alight);
+	TestTrue(TEXT("The enemy starts alight"), IsAlight(Alight));
+	TestFalse(TEXT("The other does not"), IsAlight(Cold));
+
+	// NO `Burn` ON THE SKILL, DELIBERATELY. Every Sword row states both, and a
+	// skill that consumes and then relights leaves the tag exactly where it was,
+	// so this test could not tell consuming from doing nothing. The relighting
+	// is the next test's subject.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; ConsumeBurn=1"), TEXT("Touch Off"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float ColdBefore = Cold.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestFalse(TEXT("The fire on the burning enemy was put out"), IsAlight(Alight));
+	TestFalse(TEXT("And the enemy that was never alight is still not"),
+		IsAlight(Cold));
+	TestTrue(TEXT("Both were still hit"), Cold.Health() < ColdBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumeLeftAloneTest,
+	"Cataclysm.Skills.AStrikeThatDoesNotConsumeLeavesTheFireAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumeLeftAloneTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(2 * M, 0, 0));
+
+	SetAlight(Caster, Alight);
+
+	// THE CONTROL FOR THE TEST ABOVE, and the same parameters without
+	// `ConsumeBurn`. Without this, that test would pass just as well against a
+	// burn that had expired or never applied.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Molten Cleave"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+	TestTrue(TEXT("The enemy is still alight"), IsAlight(Alight));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumeThenRelightTest,
+	"Cataclysm.Skills.ConsumingHappensBeforeTheBlowThatSetsAlightAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumeThenRelightTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	SetAlight(Caster, Enemy);
+
+	// QUENCH'S OWN SENTENCE: "any enemy already alight has their fire consumed
+	// ... and the whole arc is set alight anew behind the blade". Both halves
+	// have to be true at once, and the order is what makes them so.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Burn=1; ConsumeBurn=1; MoreDamagePer=50; "
+			 "ScalingSource=Consume"),
+		TEXT("Quench"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float Before = Enemy.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestTrue(TEXT("The enemy is alight again after the blow"), IsAlight(Enemy));
+
+	// AND THE FIRE REALLY WAS SPENT ON THE WAY THROUGH, which the tag alone
+	// cannot show. The blow is worth 50% more only to an enemy whose burn was
+	// consumed, so the damage is the evidence that consuming happened first.
+	const float Plain = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("And it was struck as a consumed enemy, for 50% more"),
+		Before - Enemy.Health(), Plain * 1.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumeScalesPerTargetTest,
+	"Cataclysm.Skills.QuenchHitsAConsumedEnemyHarderThanOneThatWasNotAlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumeScalesPerTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(2 * M, 0, 0));
+	FScopedFighter Cold(World, FVector(3 * M, 0, 0));
+
+	SetAlight(Caster, Alight);
+
+	// `ScalingSource=Consume` IS THE ONE SOURCE ASKED OF EACH TARGET rather than
+	// of the whole use, so one swing deals two different figures.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Burn=1; ConsumeBurn=1; MoreDamagePer=50; "
+			 "ScalingSource=Consume"),
+		TEXT("Quench"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float AlightBefore = Alight.Health();
+	const float ColdBefore = Cold.Health();
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	// THE HEAVY SLOT IS 250% OF WEAPON DAMAGE, so the enemy that was never
+	// alight takes exactly that and the one whose fire was spent takes half as
+	// much again.
+	const float Plain = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("The enemy that was not alight took the plain blow"),
+		ColdBefore - Cold.Health(), Plain, 0.01f);
+	TestEqual(TEXT("The one whose fire was consumed took 50% more"),
+		AlightBefore - Alight.Health(), Plain * 1.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumedCountScalesTest,
+	"Cataclysm.Skills.ExtinctionRisesWithEveryOtherFirePutOutAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumedCountScalesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// TWO CASTERS AND NOT ONE CAST TWICE. A cast commits a cooldown, so a second
+	// activation on one caster is refused and the test would be measuring the
+	// refusal rather than the scaling.
+	FScopedFighter Alone(World, FVector::ZeroVector);
+	FScopedFighter OneFire(World, FVector(2 * M, 0, 0));
+
+	FScopedFighter Crowded(World, FVector(0, 40 * M, 0));
+	FScopedFighter FireA(World, FVector(2 * M, 40 * M, 0));
+	FScopedFighter FireB(World, FVector(3 * M, 40 * M, 0));
+	FScopedFighter FireC(World, FVector(4 * M, 40 * M, 0));
+
+	SetAlight(Alone, OneFire);
+	SetAlight(Crowded, FireA);
+	SetAlight(Crowded, FireB);
+	SetAlight(Crowded, FireC);
+
+	// EXTINCTION'S OWN PARAMETERS WITHOUT ITS CEILING, which is the next test's
+	// subject and would hide the rise being measured here.
+	const TCHAR* Params = TEXT("Radius=15; Angle=360; Burn=1; ConsumeBurn=1; "
+							   "IncreasedDamagePer=15; ScalingSource=Consumed");
+
+	UCataclysmStrikeSkill* One = GrantSkill<UCataclysmStrikeSkill>(
+		Alone, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Extinction"));
+	UCataclysmStrikeSkill* Three = GrantSkill<UCataclysmStrikeSkill>(
+		Crowded, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Extinction"));
+	if (!One || !Three)
+	{
+		AddError(TEXT("Could not grant the strikes."));
+		return false;
+	}
+
+	const float OneBefore = OneFire.Health();
+	const float ThreeBefore = FireA.Health();
+
+	TestTrue(TEXT("The lone cast activates"), Activate(Alone, One));
+	TestTrue(TEXT("The crowded cast activates"), Activate(Crowded, Three));
+
+	// THE ULTIMATE SLOT IS 400% OF WEAPON DAMAGE. One fire put out is worth
+	// nothing, because the row reads "for every OTHER enemy consumed"; three
+	// fires is two others, so thirty percentage points.
+	const float Base = WeaponDamage * 400.0f / 100.0f;
+	TestEqual(TEXT("One fire put out is the plain blow"),
+		OneBefore - OneFire.Health(), Base, 0.01f);
+	TestEqual(TEXT("Three fires put out is 30% more"),
+		ThreeBefore - FireA.Health(), Base * 1.30f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaxDamagePercentTest,
+	"Cataclysm.Skills.AScalingSkillStopsAtItsStatedCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaxDamagePercentTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter FireA(World, FVector(2 * M, 0, 0));
+	FScopedFighter FireB(World, FVector(3 * M, 0, 0));
+	FScopedFighter FireC(World, FVector(4 * M, 0, 0));
+	FScopedFighter FireD(World, FVector(5 * M, 0, 0));
+
+	SetAlight(Caster, FireA);
+	SetAlight(Caster, FireB);
+	SetAlight(Caster, FireC);
+	SetAlight(Caster, FireD);
+
+	// FOUR FIRES IS THREE OTHERS, so forty-five percentage points would take the
+	// Ultimate slot's 400% to 580%. Extinction states a ceiling of 500%.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=15; Angle=360; Burn=1; ConsumeBurn=1; "
+			 "IncreasedDamagePer=15; ScalingSource=Consumed; MaxDamagePercent=500"),
+		TEXT("Extinction"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float Before = FireA.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	const float Uncapped = WeaponDamage * 400.0f / 100.0f * 1.45f;
+	const float Capped = WeaponDamage * 500.0f / 100.0f;
+
+	// THE CEILING HAS TO BIND FOR THIS TEST TO MEAN ANYTHING. Stated rather than
+	// assumed, because a cap above what the skill could reach is a check that
+	// cannot fail.
+	TestTrue(FString::Printf(
+			TEXT("The ceiling binds: uncapped %.0f is above the cap %.0f"),
+			Uncapped, Capped),
+		Uncapped > Capped);
+	TestEqual(TEXT("The blow lands for the stated ceiling"),
+		Before - FireA.Health(), Capped, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealthMissingScalesTest,
+	"Cataclysm.Skills.SearingHookHitsHarderTheMoreHealthTheCasterIsMissing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHealthMissingScalesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Whole(World, FVector::ZeroVector);
+	FScopedFighter WholeTarget(World, FVector(2 * M, 0, 0));
+
+	FScopedFighter Hurt(World, FVector(0, 40 * M, 0));
+	FScopedFighter HurtTarget(World, FVector(2 * M, 40 * M, 0));
+
+	// HALF THE CASTER'S HEALTH GONE, which the row prices at fifty percentage
+	// points: "1% increased damage for every 1% of your maximum health you are
+	// currently missing". The harness gives every fighter 100000 of each.
+	Hurt.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	const TCHAR* Params = TEXT("Radius=2.5; Angle=60; MaxTargets=1; Burn=1; "
+							   "IncreasedDamagePer=1; ScalingSource=HealthMissing");
+
+	UCataclysmStrikeSkill* Full = GrantSkill<UCataclysmStrikeSkill>(
+		Whole, ECataclysmAbilitySlot::Heavy, Params, TEXT("Searing Hook"));
+	UCataclysmStrikeSkill* Half = GrantSkill<UCataclysmStrikeSkill>(
+		Hurt, ECataclysmAbilitySlot::Heavy, Params, TEXT("Searing Hook"));
+	if (!Full || !Half)
+	{
+		AddError(TEXT("Could not grant the strikes."));
+		return false;
+	}
+
+	const float WholeBefore = WholeTarget.Health();
+	const float HurtBefore = HurtTarget.Health();
+
+	TestTrue(TEXT("The unhurt caster's hook activates"), Activate(Whole, Full));
+	TestTrue(TEXT("The hurt caster's hook activates"), Activate(Hurt, Half));
+
+	const float Base = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("At full health it is the plain blow"),
+		WholeBefore - WholeTarget.Health(), Base, 0.01f);
+	TestEqual(TEXT("At half health it is 50% more"),
+		HurtBefore - HurtTarget.Health(), Base * 1.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUncountedScalingSourceTest,
+	"Cataclysm.Skills.ASkillNamingAnUncountedScalingSourceDealsItsPlainDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUncountedScalingSourceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// SEVEN OF THE ELEVEN SOURCES ARE COUNTED BY NOTHING -- Kill, Second, Meter,
+	// HitTaken, Bounce, Pierced and Pinned. A skill naming one has to deal its
+	// plain damage rather than a figure taken from whatever happened to be to
+	// hand. The Greatsword's Buried Fire is a real row that does.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Burn=1; MoreDamagePer=12; ScalingSource=Second"),
+		TEXT("Buried Fire"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float Before = Enemy.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestEqual(TEXT("It dealt the Heavy slot's 250% and nothing more"),
+		Before - Enemy.Health(), WeaponDamage * 250.0f / 100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRequiresBurningTest,
+	"Cataclysm.Skills.ASkillRequiringSomethingAlightIsRefusedWhenNothingIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRequiresBurningTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=8; Angle=360; Burn=1; ConsumeBurn=1; Requires=Burning"),
+		TEXT("Touch Off"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float ManaBefore = Caster.Mana();
+	const float HealthBefore = Enemy.Health();
+
+	TestFalse(TEXT("With nothing alight it does not activate"),
+		Activate(Caster, Strike));
+	TestEqual(TEXT("And it spends no mana"), Caster.Mana(), ManaBefore);
+	TestEqual(TEXT("And it hits nothing"), Enemy.Health(), HealthBefore);
+
+	// AND THE SAME SKILL WORKS THE MOMENT SOMETHING IS ALIGHT, which is what
+	// says the refusal was this condition and not the cost, the cooldown or a
+	// missing target. A refused activation commits no cooldown, so this second
+	// attempt is not blocked by the first.
+	SetAlight(Caster, Enemy);
+	TestTrue(TEXT("With an enemy alight it activates"), Activate(Caster, Strike));
+	TestTrue(TEXT("And it hits"), Enemy.Health() < HealthBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRequiresTargetTest,
+	"Cataclysm.Skills.ASkillRequiringATargetIsRefusedWithNobodyInReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRequiresTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE ONLY ENEMY IS BEYOND THE STATED RANGE. Twelve metres is what the Axe's
+	// Emberhaul reaches; this one stands at twenty.
+	FScopedFighter TooFar(World, FVector(20 * M, 0, 0));
+
+	UCataclysmMovementSkill* Haul = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Radius=1.5; Burn=1; Requires=Target"),
+		TEXT("Emberhaul"));
+	if (!Haul)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	const float ManaBefore = Caster.Mana();
+	TestFalse(TEXT("With nobody in reach it does not activate"),
+		Activate(Caster, Haul));
+	TestEqual(TEXT("And it spends no mana"), Caster.Mana(), ManaBefore);
+	TestEqual(TEXT("And the caster has not moved"),
+		Caster.Actor->GetActorLocation(), FVector::ZeroVector);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelsToTheBurningEnemyTest,
+	"Cataclysm.Skills.FlashpointArrivesAtABurningEnemyRatherThanTheCursor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelsToTheBurningEnemyTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL, ON ITS OWN CASTER AND WITH THE SAME SKILL MINUS THE
+	// CONDITION. There is no player controller in this world, so the aim falls
+	// back to the caster's own position: a movement skill that goes where the
+	// player pointed does not move at all here. Without this, the test below
+	// would pass just as well against a skill that always travelled to the
+	// nearest enemy.
+	{
+		FScopedFighter Unconditional(World, FVector(0, 80 * M, 0));
+		FScopedFighter ItsFire(World, FVector(0, 89 * M, 0));
+		SetAlight(Unconditional, ItsFire);
+
+		UCataclysmMovementSkill* Plain = GrantSkill<UCataclysmMovementSkill>(
+			Unconditional, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Charge; Range=14; Radius=3; Burn=1"), TEXT("Cinder Rush"));
+		if (!Plain)
+		{
+			AddError(TEXT("Could not grant the control movement skill."));
+			return false;
+		}
+
+		TestTrue(TEXT("The control activates"), Activate(Unconditional, Plain));
+		TestEqual(
+			TEXT("With no condition it stays where it was, because it aims at "
+				 "its own feet"),
+			static_cast<float>(Plain->ArrivedAt.Y), 80.0f * M, 1.0f);
+	}
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE BURNING ENEMY IS NINE METRES AWAY ALONG Y. The other stands nearer in
+	// a different direction and well off the path to it, so it is neither
+	// travelled to nor barrelled through.
+	FScopedFighter Nearer(World, FVector(3 * M, -4 * M, 0));
+	FScopedFighter Alight(World, FVector(0, 9 * M, 0));
+
+	SetAlight(Caster, Alight);
+
+	UCataclysmMovementSkill* Dart = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=3; Burn=1; Requires=Burning; "
+			 "ConsumeBurn=1"),
+		TEXT("Flashpoint"));
+	if (!Dart)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	const float AlightBefore = Alight.Health();
+	const float NearerBefore = Nearer.Health();
+
+	TestTrue(TEXT("It activates, because something is alight"),
+		Activate(Caster, Dart));
+
+	// AT THE BURNING ENEMY, not at the nearer one and not at the caster's own
+	// feet. Compared on the ground plane, because the arrival keeps the caster's
+	// own height.
+	//
+	// CAST TO float BECAUSE FVector HOLDS doubles IN UNREAL 5, and TestEqual has
+	// overloads for both which the compiler cannot choose between when the
+	// tolerance is a float.
+	const FVector Reached = Alight.Actor->GetActorLocation();
+	TestEqual(TEXT("It arrived at the burning enemy, along X"),
+		static_cast<float>(Dart->ArrivedAt.X), static_cast<float>(Reached.X), 1.0f);
+	TestEqual(TEXT("It arrived at the burning enemy, along Y"),
+		static_cast<float>(Dart->ArrivedAt.Y), static_cast<float>(Reached.Y), 1.0f);
+
+	TestTrue(TEXT("And the enemy it reached was hit"),
+		Alight.Health() < AlightBefore);
+
+	// AND THE ONE THAT WAS NEVER ALIGHT WAS NEITHER REACHED NOR PASSED. A charge
+	// hits everything in its path, so this only means anything because that
+	// enemy stands five metres from the line and the path is three metres wide.
+	TestEqual(TEXT("The enemy that was never alight was left alone"),
+		Nearer.Health(), NearerBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumeSpreadsFireTest,
+	"Cataclysm.Skills.ConsumingAFireSpreadsItToEnemiesStandingNearby",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConsumeSpreadsFireTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(4 * M, 0, 0));
+
+	// TWO METRES FROM THE BURNING ENEMY AND OUTSIDE THE SWING. The strike
+	// reaches five metres from the caster and this one stands at six, so the
+	// only thing that can set it alight is the fire spreading from the enemy
+	// whose burn was consumed.
+	FScopedFighter Bystander(World, FVector(6 * M, 0, 0));
+	FScopedFighter FarOff(World, FVector(12 * M, 0, 0));
+
+	SetAlight(Caster, Alight);
+
+	// NO `Burn` ON THE SKILL, so nothing but the spread can light anything.
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=5; Angle=360; ConsumeBurn=1; ConsumeRadius=3"),
+		TEXT("Touch Off"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float BystanderBefore = Bystander.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	TestTrue(TEXT("The bystander outside the swing is alight"), IsAlight(Bystander));
+	TestEqual(TEXT("And took no damage, because a spread is fire and not a blow"),
+		Bystander.Health(), BystanderBefore);
+	TestFalse(TEXT("An enemy beyond the spread is not alight"), IsAlight(FarOff));
+
+	// THE ENEMY WHOSE FIRE IT WAS IS NOT RELIT BY ITS OWN SPREAD. This skill
+	// states no `Burn`, so nothing else could put the tag back; were the spread
+	// to include its own centre, consuming would cost the player nothing.
+	TestFalse(TEXT("The consumed enemy is not set alight by its own spread"),
+		IsAlight(Alight));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldBuffWidensSpreadTest,
+	"Cataclysm.Skills.AHeldSelfBuffWidensWhatConsumingSpreads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldBuffWidensSpreadTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL FIRST AND ON ITS OWN CASTER, because a strike cannot be cast
+	// twice: the first use commits its cooldown. Without it this test would pass
+	// against a spread that was four metres wide all along.
+	{
+		FScopedFighter Unbuffed(World, FVector(0, 40 * M, 0));
+		FScopedFighter ItsFire(World, FVector(4 * M, 40 * M, 0));
+		FScopedFighter ItsBystander(World, FVector(7.5f * M, 40 * M, 0));
+		SetAlight(Unbuffed, ItsFire);
+
+		UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+			Unbuffed, ECataclysmAbilitySlot::Heavy,
+			TEXT("Radius=5; Angle=360; ConsumeBurn=1"), TEXT("Quench"));
+		if (!Plain)
+		{
+			AddError(TEXT("Could not grant the control strike."));
+			return false;
+		}
+
+		TestTrue(TEXT("The control strike activates"), Activate(Unbuffed, Plain));
+		TestFalse(
+			TEXT("With no buff held, consuming spreads nothing to the bystander"),
+			IsAlight(ItsBystander));
+	}
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Alight(World, FVector(4 * M, 0, 0));
+
+	// THREE AND A HALF METRES FROM THE BURNING ENEMY. The strike below states no
+	// spread of its own, so nothing reaches this bystander unless Ashen Edge's
+	// four metres is being read off the buff the caster is holding.
+	FScopedFighter Bystander(World, FVector(7.5f * M, 0, 0));
+
+	SetAlight(Caster, Alight);
+
+	// ASHEN EDGE CONSUMES NOTHING ITSELF. All it does is last ten seconds and
+	// state a spread, which is how a row says "while this is up, what my other
+	// skills consume also spreads".
+	UCataclysmSelfBuffSkill* Edge = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; ConsumeRadius=4"), TEXT("Ashen Edge"));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=5; Angle=360; ConsumeBurn=1"), TEXT("Quench"));
+	if (!Edge || !Strike)
+	{
+		AddError(TEXT("Could not grant the two skills."));
+		return false;
+	}
+
+	TestTrue(TEXT("Ashen Edge activates"), Activate(Caster, Edge));
+	TestTrue(TEXT("And it is still running"), Edge->IsActive());
+
+	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
+	TestTrue(TEXT("With the buff held, the fire spreads four metres"),
+		IsAlight(Bystander));
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

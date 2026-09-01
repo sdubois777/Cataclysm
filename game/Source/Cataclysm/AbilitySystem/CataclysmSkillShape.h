@@ -285,13 +285,22 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 
 	/**
 	 * Percentage points of INCREASED damage per unit of ScalingSource -- the
-	 * additive bucket, summed with attributes and gear before multiplying once.
+	 * additive bucket, summed and applied once.
 	 *
 	 * TWO KEYS RATHER THAN ONE WITH A BUCKET BESIDE IT, deliberately. Which
 	 * bucket a number joins is the single most important thing about a damage
 	 * number in this design, and a shared key would have put the two one typo
 	 * apart. Searing Hook writes this one, at 1 per percent of maximum health
 	 * missing.
+	 *
+	 * WHAT IT MOVES IS THE SKILL'S OWN DAMAGE PERCENT, not the character's
+	 * increases sum. `UCataclysmSkillTemplate::ScaledDamagePercent` is where it
+	 * is applied and its comment carries the reasoning: every row using this
+	 * describes the result as a percentage of weapon damage, and
+	 * `MaxDamagePercent` below is written in that same unit, so a bonus put into
+	 * the character's sum could not be capped by it at all. What the bucket
+	 * still decides is how this combines with `MoreDamagePer` on one skill --
+	 * summed against multiplied.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float IncreasedDamagePer = 0.0f;
@@ -307,18 +316,38 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * Pierced, Pinned or HealthMissing. The generator holds that closed list and
 	 * refuses anything else, so this is stored rather than validated again here.
 	 *
-	 * ONLY `Burning` IS ACTED ON TODAY, by UCataclysmSelfBuffSkill. The rest are
-	 * read so the design can state them, which is the state StunSeconds was in
-	 * for months and is recorded as such rather than hidden.
+	 * FOUR OF THE ELEVEN ARE ACTED ON. `Burning` by UCataclysmSelfBuffSkill,
+	 * which counts once when the buff goes up; `HealthMissing`, `Consumed` and
+	 * `Consume` by UCataclysmSkillTemplate::ScalingUnits, which is asked once
+	 * per blow. The remaining seven -- Kill, Second, Meter, HitTaken, Bounce,
+	 * Pierced and Pinned -- are read so the design can state them and scale by
+	 * nothing, which is the state StunSeconds is in and is recorded rather than
+	 * hidden. A skill naming one deals its plain damage.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ScalingSource;
 
-	/** Ceiling on a skill whose damage scales, as percent of weapon damage. */
+	/**
+	 * Ceiling on a skill whose damage scales, as percent of weapon damage.
+	 *
+	 * APPLIED AFTER THE SKILL'S OWN SCALING AND BEFORE THE CHARACTER'S, by
+	 * UCataclysmSkillTemplate::ScaledDamagePercent. Extinction states 500 and
+	 * the Sword's Ultimate slot supplies its base, so what this caps is how far
+	 * consuming many fires at once can carry one blow -- not what a character's
+	 * gear and passive tree then multiply it by. Capping after those would put a
+	 * ceiling on the whole character, which no row asks for.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float MaxDamagePercent = 0.0f;
 
-	/** Floor for a charged skill released at once, as percent of weapon damage. */
+	/**
+	 * Floor for a charged skill released at once, as percent of weapon damage.
+	 *
+	 * NOT READ. The Greatsword's Backswing is the only row that states one, and
+	 * a floor for an early release means nothing until something can be held and
+	 * released early. Issue #1141 carries the whole hold-and-release verb --
+	 * this, ChargeTime, ChargeBreaksOn and bDisarmsUntilRecalled.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float MinDamagePercent = 0.0f;
 
@@ -469,11 +498,25 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/**
 	 * A condition the skill needs, as written: Burning, Target, Stationary or
 	 * RearHit. More than one may be named, comma separated.
+	 *
+	 * IT REFUSES THE CAST, from `UCataclysmSkillTemplate::CanActivateAbility`,
+	 * so a skill whose condition fails costs no mana and starts no cooldown.
+	 * `Burning` and `Target` also decide where a Movement skill arrives, which
+	 * is Flashpoint's "only something already alight can be reached".
+	 *
+	 * `RearHit` GATES NOTHING, and that is deliberate rather than missing.
+	 * Slipstream is a support buff that reacts to blows landed from behind while
+	 * it runs; refusing to cast it until the player was already behind something
+	 * would be a different skill. `RequirementsAreMet` says so at more length.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString Requires;
 
-	/** Seconds of hold before a full release. Backswing states 2. */
+	/**
+	 * Seconds of hold before a full release. Backswing states 2.
+	 *
+	 * NOT READ. Nothing in the game can be held. Issue #1141.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ChargeTime = 0.0f;
 
@@ -481,17 +524,42 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * What cancels a hold and loses the skill: Stagger, Death, Movement, or
 	 * None when nothing can. Inexorable is the one that writes None, because
 	 * the player cannot stop it either.
+	 *
+	 * NOT READ, for the same reason as ChargeTime above. Issue #1141.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ChargeBreaksOn;
 
 	// --- Consumption -------------------------------------------------------
 
-	/** True when the skill spends the target's burn rather than only applying it. */
+	/**
+	 * True when the skill spends the target's burn rather than only applying it.
+	 *
+	 * THE SWORD'S WHOLE VERB, and all five of its skills state it.
+	 * `docs/DECISIONS.md` gives each Demonic weapon one mechanical verb no other
+	 * weapon may use.
+	 *
+	 * IT TAKES THE FIRE OUT AND DEALS NOTHING BY ITSELF.
+	 * `UCataclysmSkillTemplate::ConsumeBurnFrom` removes the burn; what it was
+	 * worth is decided by the skill that spent it, through ScalingSource's
+	 * `Consume` and `Consumed` and through ConsumeRadius below.
+	 *
+	 * AND THE BLOW THAT FOLLOWS LIGHTS THEM AGAIN, when the skill also states
+	 * `Burn`, which every Sword row does. Quench's "the whole arc is set alight
+	 * anew behind the blade" is that ordering rather than a separate mechanic.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bConsumeBurn = false;
 
-	/** Centimetres of whatever consumption produces. */
+	/**
+	 * Centimetres the fire spreads from an enemy whose burn was consumed.
+	 *
+	 * TWO ROWS STATE IT AND THEY USE IT DIFFERENTLY. Touch Off consumes and
+	 * spreads three metres in the same use. Ashen Edge consumes nothing at all
+	 * -- it is a ten second self buff stating four metres, which is how a row
+	 * says "while this is up, what my OTHER skills consume also spreads".
+	 * `UCataclysmSkillTemplate::IgniteAroundConsumed` adds the two.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ConsumeRadiusCm = 0.0f;
 
