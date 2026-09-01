@@ -20,6 +20,142 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — The Axe throws: an axe glances onward, stays in what it kills, empties a rack over time, returns its own cooldown, and feeds a buff that grows with every kill
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmSkillEffects.cpp`, the new `CataclysmBuriedWeapon.h` and
+`.cpp`, `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`,
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+Applied. Issue #37.
+
+The project owner asked for the Axe after the Sword, Fist and Wand landed the
+same day. **All five of its skills now do everything they say.**
+
+### A glance is not a pierce, and that distinction is the whole of Carom
+
+Carom: "hurl your axe at an enemy up to 11 meters away. It glances from them to
+the next nearest and onward through three more, setting each one alight, then
+returns to your hand."
+
+A projectile in this game already had two behaviours and neither is this one. One
+that **pierces** carries straight on through and never detonates. One that does
+**not** pierce stops at the first enemy and lets a blast at that point do the
+hitting, which is why `HitAlongStep` deliberately returns *before* hitting.
+
+A glance is a third: it strikes what it touches, turns toward the next enemy it
+has not hit, and keeps its ability to stop for wherever it finally runs out.
+
+**Turning a projectile mid-flight needed no new machinery.** `BeginReturn`
+already did it for Emberhurl: set a direction, set how far is left, face that
+way. The only difference is that a return aims at a known point and a glance has
+to look for one.
+
+**Two things went wrong and both were caught by tests rather than by reading.**
+
+First, the last enemy took its own hit *and* the blast, 300 where 140 was
+expected. A glancing axe hits by touching, so the blast has to be turned off the
+moment it glances.
+
+Second, turning the blast off then left the fourth enemy untouched: three glances
+touch four enemies, and the fourth was being hit by the blast that had just been
+removed. An axe with no glances left now strikes the enemy it reaches and stops.
+
+### The damage a glance adds is a fifth of the skill's, not twenty points
+
+"Every enemy it touches after the first adds 20% to its damage." That is the same
+reading `ScaledDamagePercent` uses for every other skill and which the Sword's
+entry below records: `IncreasedDamagePer` moves the skill's own damage percent.
+On a Heavy slot dealing 250% that is 50 points a glance, so the throw runs 250,
+300, 350, 400. Adding a flat 20 instead would make the row's sentence false on
+every slot but a 100% one.
+
+### A buried axe is its own component, sitting beside the curse that spreads
+
+Harrower: "the axe stays where it lands. When that enemy dies it tears free and
+buries itself in the nearest living enemy within 10 meters, and it goes on doing
+so until nothing is left in reach."
+
+`UCataclysmCurseSpread`, built for the Wand earlier the same day, is set off by
+the same death and also reaches for the nearest enemy. **They are still separate
+components**, because they carry different things: that one copies whatever tags
+its host happens to have and deals nothing, and this one carries a damage figure,
+the firing skill's tags and its identity, and deals a blow. One component with a
+mode would put two payloads on one object and make every reader check which was
+in use.
+
+**It moves itself on rather than being respawned.** When the axe leaps it marks
+its new host with the same numbers, which is what "goes on doing so" means, and
+it stops when nothing is in range. Nothing else stops it, because the row states
+no limit.
+
+### A rack keeps the ability alive, which a single throw does not
+
+Butcher's Bill: "empty the rack: thirty burning axes thrown over 10 seconds at
+every enemy within 10 meters."
+
+A projectile skill ended when its projectile finished. Thirty axes are in the air
+at once, so a rack ends on its own count or its own time instead, and nothing is
+hooked to any individual axe's finish.
+
+**`TargetMode=All` means spread across them, not hit them all at once.** Each
+throw takes the next enemy in turn, so the rack covers the group over its ten
+seconds. Asked afresh every throw, because enemies move and die during it.
+
+**One attack a second is the baseline the row's own numbers assume.** Thirty axes
+at 0.333 seconds is exactly the ten seconds it describes, so dividing the
+interval by the attack speed attribute leaves the stated figures intact at one
+and shortens the rack above it. The count does not move, which is what
+`ScalesWithAttackSpeed`'s own header asks for: a faster character empties the
+rack sooner rather than throwing more.
+
+### A returned cooldown is a removed tag
+
+Emberhaul: "if the arrival kills them, the axe comes back ready to throw again."
+
+A cooldown is a duration effect granting the slot's tag, built by `ApplyCooldown`,
+so returning one is taking that effect off. It is per slot rather than per skill,
+which is what makes the Dagger's Slipstream — "returns your movement skill to
+you" — expressible by the same parameter.
+
+**A kill is a target at no health, not only one marked dead.** Asking only whether
+the dead tag is present ties the refund to the order in which the damage and the
+death path run, and a creature at no health has been killed by the arrival
+whichever got there first. A test caught this: a fighter in the automation tests
+is a bare actor with an ability system rather than a character class, so nothing
+runs the death path that writes the tag.
+
+### A kill is told to the killer's running skills, and the project already had a way to check that
+
+Butcher's Heat: "every enemy you kill while it lasts grants 1% more damage and
+adds another second to the heat."
+
+`ACataclysmEnemyCharacter::HandleDeath` already did three things with a kill —
+granting experience, clearing a health debt, building a Carnage stack — and its
+own comment calls itself "the one place a kill is known about at all". This is a
+fourth reader of that event rather than a second source of it.
+
+**A buff that counts kills counts forward; one that counts burning counts once.**
+Burning Wrath's sentence says "currently burning" at the moment it goes up, so
+its number is taken once. Butcher's Heat says "while it lasts", so its tally
+runs. `ScalingCount` is where the two are told apart.
+
+**The wiring is covered, and not by an automation test.** The call sits inside an
+"if there is a player controller" branch and the automation tests have no player
+controller, so no test there can watch it. **The project already solved this**:
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+reads the source text and pins every job in that hook, and it failed the moment
+the fourth was added without an entry. Deleting the call fails it, which was
+proved by deleting the call.
+
+### What the Axe does not do
+
+Nothing. All five of its skills are complete. What remains for the weapon is
+whether it looks right, which no test in this project can answer.
+
+---
+
 ## 2026-09-01 — The Wand inflicts: a curse lasts what its own cell says, carries its magnitude, spreads from a bolt, sits in burning ground, and passes on when its holder dies
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and

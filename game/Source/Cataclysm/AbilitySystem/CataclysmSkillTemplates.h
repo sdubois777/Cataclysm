@@ -145,7 +145,94 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 SpreadCursesFrom(const TArray<AActor*>& Struck);
 
+	/**
+	 * Leave the weapon in each of these enemies, if this skill's row says so.
+	 *
+	 * THE AXE'S HARROWER AND NOTHING ELSE TODAY: "the axe stays where it lands.
+	 * When that enemy dies it tears free and buries itself in the nearest living
+	 * enemy within 10 meters." Said by `OnDeath=Leap` and `OnDeathRange=10`.
+	 *
+	 * `OnDeath=SpreadDebuff` IS THE WAND'S AND DOES NOT COME THROUGH HERE. It
+	 * copies tags and deals nothing; this deals a blow and carries the skill's
+	 * identity with it. `Release` is the Spear's third value and is not built.
+	 *
+	 * Public so a test can drive it without a projectile in flight.
+	 *
+	 * @return how many enemies were left carrying it
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 BuryInStruck(const TArray<AActor*>& Struck);
+
+	/**
+	 * Whether this skill empties a rack rather than making one throw.
+	 *
+	 * THE AXE'S BUTCHER'S BILL AND NOTHING ELSE TODAY: "empty the rack: thirty
+	 * burning axes thrown over 10 seconds at every enemy within 10 meters." Said
+	 * by `Count=30` beside an `Interval`, which is the same pair the Strike and
+	 * Summon shapes already use to mean "again and again".
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	bool ThrowsRepeatedly() const;
+
+	/**
+	 * Throw one, at whoever this skill's `TargetMode` picks.
+	 *
+	 * Public so a test can drive the rack without waiting on a timer, the same
+	 * way `SwingOnce` and `SummonOne` are.
+	 *
+	 * @return whether anything was thrown
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	bool ThrowOne();
+
+	/** How many have been thrown this use. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 ThrowsMade = 0;
+
+	/**
+	 * Seconds between throws, after the caster's attack speed if the row says so.
+	 *
+	 * "A higher attack speed throws them faster and empties the rack sooner."
+	 * Said by `ScalesWithAttackSpeed`, which no other row states.
+	 *
+	 * A BASELINE OF ONE ATTACK A SECOND, which is what the row's own numbers
+	 * assume: thirty axes at 0.333 seconds is 10 seconds exactly, and 10 seconds
+	 * is what the description states. So dividing by the attribute directly
+	 * leaves the stated figures intact at one attack a second and shortens the
+	 * rack above it.
+	 *
+	 * THE COUNT DOES NOT MOVE, which is the point `ScalesWithAttackSpeed`'s own
+	 * header makes: thirty axes are thrown whatever the speed, and a faster
+	 * character empties the rack sooner rather than throwing more.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float SecondsBetweenThrows() const;
+
 private:
+	/**
+	 * What the repeat timer calls, because a timer wants a void function and
+	 * `ThrowOne` answers whether it threw.
+	 */
+	void ThrowTick();
+
+	/** Start the rack: throw the first and set the timer for the rest. */
+	void BeginEmptyingTheRack();
+
+	/** Stop throwing and end the ability. */
+	void StopThrowing();
+
+	/** Who the next throw is aimed at, or null when nothing is in range. */
+	AActor* NextThrowTarget();
+
+	/** Fires one throw per interval while a rack is being emptied. */
+	FTimerHandle ThrowTimer;
+
+	/** Ends a rack that has run its stated time. */
+	FTimerHandle RackTimer;
+
+	/** Where the last throw was aimed, so a rack spreads across a group. */
+	int32 NextTargetIndex = 0;
+
 	void LandThenFinish();
 	void Return();
 
@@ -222,6 +309,40 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FGameplayTag GrantedScope;
 
+	/**
+	 * How many enemies have been killed since this buff went up.
+	 *
+	 * THE AXE'S BUTCHER'S HEAT: "every enemy you kill while it lasts grants 1%
+	 * more damage and adds another second to the heat. The bonus has no ceiling
+	 * and ends when the heat does."
+	 *
+	 * COUNTED AS THEY HAPPEN, WHICH IS THE OPPOSITE OF `BurningEnemiesAtCast`
+	 * ABOVE. Burning Wrath counts once, when the buff goes up, because its
+	 * sentence says "currently burning" at that moment. This counts forward,
+	 * because its sentence says "while it lasts".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 KillsCounted = 0;
+
+	/**
+	 * Take one kill into account: raise the bonus and lengthen the buff.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteKill`, which the enemy death
+	 * path calls once per kill. It does nothing for a buff whose
+	 * `ScalingSource` is not `Kill`, which is every other buff in the game.
+	 *
+	 * `DurationPer` LENGTHENS THE BUFF AND IS ONLY READ HERE. Butcher's Heat is
+	 * the one row that states it, at one second a kill.
+	 *
+	 * Public so a test can drive it without killing anything.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void NoteKill();
+
+	/** How long this buff will now run in total, after any extensions. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float TotalDuration = 0.0f;
+
 private:
 	void Finish();
 
@@ -230,6 +351,15 @@ private:
 
 	/** Take it off again. Safe to call when nothing was granted. */
 	void RevokeIncrease();
+
+	/**
+	 * How many units this buff's `ScalingSource` is worth right now.
+	 *
+	 * `Burning` is the count taken at the cast; `Kill` is the running tally.
+	 * Every other source answers zero, so a buff naming one grants nothing
+	 * rather than a figure taken from the wrong thing.
+	 */
+	int32 ScalingCount() const;
 
 	FTimerHandle FinishTimer;
 

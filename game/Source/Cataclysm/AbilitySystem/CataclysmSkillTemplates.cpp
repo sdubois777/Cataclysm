@@ -2,9 +2,14 @@
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the axe a Harrower leaves in what it hits, which tears free when
+// that creature dies and buries itself in the next. Issue #37.
+#include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+// For the attack speed a rack of axes is thrown at. Issue #37.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -249,6 +254,16 @@ void UCataclysmProjectileSkill::ActivateAbility(
 
 		Origin = Caster->GetActorLocation();
 
+		// A RACK OF THIRTY RATHER THAN ONE THROW. The Axe's Butcher's Bill is
+		// the only row that states a Count beside an Interval, and it needs the
+		// ability to stay alive across all of them rather than ending when the
+		// first axe lands.
+		if (ThrowsRepeatedly())
+		{
+			BeginEmptyingTheRack();
+			return;
+		}
+
 		// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each
 		// one, so who it hits is decided by where they stood as it went past
 		// rather than by where they stand when it arrives, and a wall stops it.
@@ -279,6 +294,38 @@ void UCataclysmProjectileSkill::ActivateAbility(
 			return;
 		}
 
+		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
+		// from them to the next nearest and onward through three more ... every
+		// enemy it touches after the first adds 20% to its damage."
+		//
+		// THE SKILL'S OWN RANGE IS HOW FAR A GLANCE LOOKS. The row states no
+		// separate reach for it, and a glance that could find an enemy the throw
+		// itself could never have reached is not what "the next nearest" means
+		// for an eleven metre throw.
+		//
+		// THE INCREASE APPLIES ONLY WHEN THE ROW COUNTS BOUNCES. Carom writes
+		// `ScalingSource=Bounce`; a projectile that bounced and scaled off
+		// something else would be taking its number from the wrong thing.
+		//
+		// TWENTY PER CENT OF WHAT THE SKILL DEALS, NOT TWENTY PERCENTAGE POINTS
+		// ADDED TO IT, which is the same reading `ScaledDamagePercent` uses for
+		// every other skill: `IncreasedDamagePer` moves the skill's own damage
+		// percent, so 20 on a 250% Heavy is 50 points a glance and the throw
+		// runs 250, 300, 350, 400. Adding a flat 20 instead would make the row's
+		// "adds 20% to its damage" false on every slot but a 100% one.
+		if (Params.Bounces > 0)
+		{
+			const bool bScalesOnBounce = Params.ScalingSource.Equals(
+				TEXT("Bounce"), ESearchCase::IgnoreCase);
+			const float PerGlance = bScalesOnBounce
+				? GetDamagePercent() * Params.IncreasedDamagePer / 100.0f
+				: 0.0f;
+			InFlight->GlancesOnward(
+				Params.Bounces,
+				Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm(),
+				PerGlance);
+		}
+
 		InFlight->OnFinished.AddUObject(
 			this, &UCataclysmProjectileSkill::OnProjectileFinished);
 	});
@@ -304,7 +351,17 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
 		// Malefice: "copying every curse it already carries onto the two nearest
 		// enemies". Nothing read `SpreadCurses` before 2026-09-01.
-		CursesSpread += SpreadCursesFrom(Projectile->StruckEnemies());
+		const TArray<AActor*> Struck = Projectile->StruckEnemies();
+		CursesSpread += SpreadCursesFrom(Struck);
+
+		// AND THE AXE STAYS IN WHAT IT HIT, if the row says so. The Axe's
+		// Harrower: "the axe stays where it lands. When that enemy dies it tears
+		// free and buries itself in the nearest living enemy within 10 meters."
+		//
+		// BURIED IN WHAT IT STRUCK, not where it stopped. A throw that hit
+		// nothing leaves no axe, which is what "buries itself in an enemy"
+		// means.
+		BuryInStruck(Struck);
 	}
 	else
 	{
@@ -362,6 +419,233 @@ int32 UCataclysmProjectileSkill::SpreadCursesFrom(const TArray<AActor*>& Struck)
 	}
 
 	return Applied;
+}
+
+bool UCataclysmProjectileSkill::ThrowsRepeatedly() const
+{
+	return Params.Count > 1 && Params.Interval > 0.0f;
+}
+
+float UCataclysmProjectileSkill::SecondsBetweenThrows() const
+{
+	const float Stated = FMath::Max(Params.Interval, 0.0f);
+	if (!Params.bScalesWithAttackSpeed || Stated <= 0.0f)
+	{
+		return Stated;
+	}
+
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem)
+	{
+		return Stated;
+	}
+
+	const float PerSecond = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
+	if (PerSecond <= 0.0f)
+	{
+		// A character with no weapon equipped has no attack speed at all. The
+		// stated interval is the right answer rather than an infinite one.
+		return Stated;
+	}
+
+	return Stated / PerSecond;
+}
+
+AActor* UCataclysmProjectileSkill::NextThrowTarget()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// ASKED AFRESH FOR EVERY THROW. A rack empties over ten seconds and the
+	// enemies move and die during it, so a list gathered once would go on
+	// throwing at corpses and at places nobody is standing any more.
+	const TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), Params.RangeCm);
+	if (InRange.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// `Furthest` is the reverse of the nearest-first order the search answers in.
+	if (Params.TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase))
+	{
+		return InRange.Last();
+	}
+
+	// `Nearest`, and anything the row does not name, takes the first.
+	if (!Params.TargetMode.Equals(TEXT("All"), ESearchCase::IgnoreCase))
+	{
+		return InRange[0];
+	}
+
+	// `All` MEANS SPREAD ACROSS THEM RATHER THAN HIT THEM ALL AT ONCE. Butcher's
+	// Bill throws "at every enemy within 10 meters" over ten seconds, one axe at
+	// a time, so each throw takes the next in turn and the rack covers the group.
+	// The index is kept rather than recomputed because the list changes as
+	// enemies die, and a modulo over a shrinking list still walks all of it.
+	const int32 Pick = NextTargetIndex % InRange.Num();
+	++NextTargetIndex;
+	return InRange[Pick];
+}
+
+bool UCataclysmProjectileSkill::ThrowOne()
+{
+	// THE COUNT IS A LIMIT AND NOT A TARGET. Stopping the timer is not
+	// enough on its own: `ThrowOne` is public so a test can drive a rack
+	// without waiting, and a caller asking for one more after the rack is
+	// empty must get nothing. A test caught it, at five throws from a row
+	// stating four.
+	if (Params.Count > 0 && ThrowsMade >= Params.Count)
+	{
+		return false;
+	}
+
+	AActor* Self = Avatar();
+	AActor* Target = NextThrowTarget();
+	if (!Self || !Target)
+	{
+		// Nothing left in reach. The rack keeps its remaining axes rather than
+		// throwing them at the floor, and the timer below brings it back when
+		// something walks into range.
+		return false;
+	}
+
+	// FROM WHERE THE CHARACTER IS NOW, not from where the rack started. Ten
+	// seconds is long enough to walk across a room.
+	const FVector From = Self->GetActorLocation();
+
+	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
+		Self, From, Target->GetActorLocation(), ScaledRadiusCm(),
+		Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
+		GetDamagePercent(), SkillTags, Params.bBurns,
+		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
+		CritChancePercent, LastHealthCostPercentOfMaximum);
+
+	// NOTHING IS HOOKED TO ITS FINISH, unlike a single throw. Thirty axes are in
+	// the air at once and the ability must not end when the first of them lands;
+	// what ends it is the count or the rack's own time, below.
+	++ThrowsMade;
+	++Landings;
+
+	if (!Axe)
+	{
+		// No speed stated, so it arrives at once. Butcher's Bill states 2000 and
+		// nothing else empties a rack, so this is a guard rather than a case.
+		UCataclysmSkillEffects::ApplyHit(Self, Target, GetDamagePercent(),
+										 SkillTags, FCataclysmHitDelivery());
+	}
+
+	if (ThrowsMade >= Params.Count)
+	{
+		StopThrowing();
+	}
+	return true;
+}
+
+void UCataclysmProjectileSkill::ThrowTick()
+{
+	ThrowOne();
+}
+
+void UCataclysmProjectileSkill::BeginEmptyingTheRack()
+{
+	ThrowsMade = 0;
+	NextTargetIndex = 0;
+
+	// THE FIRST GOES AT ONCE, so a skill with a long interval is not silent for
+	// a third of a second after the button was pressed.
+	ThrowOne();
+	if (ThrowsMade >= Params.Count)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		StopThrowing();
+		return;
+	}
+
+	const float Interval = SecondsBetweenThrows();
+	World->GetTimerManager().SetTimer(
+		ThrowTimer, this, &UCataclysmProjectileSkill::ThrowTick,
+		Interval, /*bLoop=*/true, /*InFirstDelay=*/Interval);
+
+	// AND A CEILING ON HOW LONG THE RACK MAY TAKE. At one attack a second the
+	// count and this land together -- thirty axes at 0.333 seconds is exactly
+	// the ten the row states -- so this only bites when there was nothing to
+	// throw at for part of it. Scaled the same way the interval is, or a faster
+	// character would be cut off early.
+	if (Params.Duration > 0.0f)
+	{
+		const float Ceiling = Params.bScalesWithAttackSpeed && Params.Interval > 0.0f
+			? Params.Duration * Interval / Params.Interval
+			: Params.Duration;
+		World->GetTimerManager().SetTimer(
+			RackTimer, this, &UCataclysmProjectileSkill::StopThrowing,
+			Ceiling, /*bLoop=*/false);
+	}
+}
+
+void UCataclysmProjectileSkill::StopThrowing()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowTimer);
+		World->GetTimerManager().ClearTimer(RackTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose, TEXT("'%s' emptied its rack: %d thrown."),
+		*SkillName, ThrowsMade);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
+{
+	if (Struck.IsEmpty() || Params.OnDeathRangeCm <= 0.0f
+		|| !Params.OnDeath.Equals(TEXT("Leap"), ESearchCase::IgnoreCase))
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	int32 Buried = 0;
+	for (AActor* Target : Struck)
+	{
+		// THE SKILL'S OWN DAMAGE AND ITS OWN TAGS GO WITH IT, because the axe
+		// keeps striking long after the skill that threw it has ended. Reading
+		// either off the character at the moment it leaps would credit the blow
+		// to whatever the player used last.
+		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
+										   GetDamagePercent(), SkillTags,
+										   Params.bBurns))
+		{
+			++Buried;
+		}
+	}
+
+	if (Buried > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' left its weapon in %d enemies, reaching %.0fcm for the "
+				 "next."),
+			*SkillName, Buried, Params.OnDeathRangeCm);
+	}
+
+	return Buried;
 }
 
 void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
@@ -473,6 +757,12 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// burning within 15 meters", so the count is taken once, when it goes up,
 	// not continuously. An enemy that dies or stops burning during the ten
 	// seconds does not lower it, and one that catches fire does not raise it.
+	// RESET ON EVERY CAST. An ability is instanced per actor, so one instance
+	// stands for one character's Butcher's Heat across every use of it: a tally
+	// left from the last use would start the next one already hot.
+	KillsCounted = 0;
+	TotalDuration = Params.Duration;
+
 	BurningEnemiesAtCast = 0;
 	if (ScaledRadiusCm() > 0.0f)
 	{
@@ -537,21 +827,20 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	GrantedIncrease = 0.0f;
 	GrantedScope = FGameplayTag();
 
-	// SCALES OFF BURNING ENEMIES AND NOTHING ELSE TODAY. `ScalingSource` names
-	// eleven things a skill may count and this is the one that is implemented,
-	// so a buff naming any other source grants nothing rather than silently
-	// counting the wrong thing. The others are read and stated in the design;
-	// see the note on ScalingSource in CataclysmSkillShape.h.
-	if (!Params.ScalingSource.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
-	{
-		return;
-	}
-
-	if (Params.MoreDamagePer <= 0.0f || BurningEnemiesAtCast <= 0)
+	// TWO SOURCES ARE COUNTED AND THEY ARE COUNTED DIFFERENTLY. `Burning` is a
+	// number taken once, when the buff goes up, because Burning Wrath's sentence
+	// says "currently burning" at that moment. `Kill` is a running tally,
+	// because Butcher's Heat says "every enemy you kill while it lasts". Every
+	// other source answers zero and grants nothing, rather than silently
+	// counting the wrong thing; see the note on ScalingSource in
+	// CataclysmSkillShape.h.
+	const int32 Units = ScalingCount();
+	if (Params.MoreDamagePer <= 0.0f || Units <= 0)
 	{
 		// No increase to grant. Burning Wrath with nothing alight nearby is the
 		// ordinary case, not a fault: the skill is written to be worth using
-		// only after something has been set on fire.
+		// only after something has been set on fire. Butcher's Heat before its
+		// first kill is the same case.
 		return;
 	}
 
@@ -572,7 +861,7 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 	FCataclysmStatModifier Modifier;
 	Modifier.Bucket = ECataclysmStatBucket::More;
 	Modifier.Source = ECataclysmModifierSource::SkillBuff;
-	Modifier.Value = Params.MoreDamagePer * BurningEnemiesAtCast;
+	Modifier.Value = Params.MoreDamagePer * Units;
 
 	// SCOPED TO THE SKILL'S OWN ELEMENT, so the rule is in the data and not
 	// here. Burning Wrath carries Element.Demonic, which is this project's fire,
@@ -596,11 +885,76 @@ void UCataclysmSelfBuffSkill::GrantIncrease()
 
 	GrantedIncrease = Modifier.Value;
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("'%s' granted %.0f%% increased damage scoped to %s, from %d "
-			 "burning enemies, for %.1fs."),
+		TEXT("'%s' granted %.0f%% more damage scoped to %s, from %d of '%s', "
+			 "for %.1fs."),
 		*SkillName, GrantedIncrease,
 		GrantedScope.IsValid() ? *GrantedScope.ToString() : TEXT("everything"),
-		BurningEnemiesAtCast, Params.Duration);
+		Units, *Params.ScalingSource, TotalDuration);
+}
+
+int32 UCataclysmSelfBuffSkill::ScalingCount() const
+{
+	if (Params.ScalingSource.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
+	{
+		return BurningEnemiesAtCast;
+	}
+	if (Params.ScalingSource.Equals(TEXT("Kill"), ESearchCase::IgnoreCase))
+	{
+		return KillsCounted;
+	}
+
+	// One of the nine sources nothing counts. A buff naming one grants nothing,
+	// which is the safe answer: the alternative is a number taken from whatever
+	// happened to be to hand.
+	return 0;
+}
+
+void UCataclysmSelfBuffSkill::NoteKill()
+{
+	if (!Params.ScalingSource.Equals(TEXT("Kill"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	++KillsCounted;
+
+	// PUT BACK RATHER THAN ADJUSTED. A stat modifier is held by a handle and has
+	// no route to change its value in place, so raising the bonus means taking
+	// the old one off and putting a bigger one on. `GrantIncrease` reads the new
+	// tally through `ScalingCount`.
+	RevokeIncrease();
+	GrantIncrease();
+
+	// AND THE HEAT LASTS LONGER. "Adds another second to the heat", said by
+	// `DurationPer`, which no other row states.
+	//
+	// THE TIMER IS RESET TO WHAT IS LEFT PLUS THE EXTENSION, not simply extended,
+	// because a timer manager has no way to add to a running timer. Reading what
+	// remains and setting that plus the extra is the same thing done in the one
+	// step the interface offers.
+	if (Params.DurationPer <= 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float Remaining = World->GetTimerManager().GetTimerRemaining(FinishTimer);
+	if (Remaining <= 0.0f)
+	{
+		// Already finishing. Lengthening a buff that has run out would bring it
+		// back, which is not what "adds another second" means.
+		return;
+	}
+
+	TotalDuration += Params.DurationPer;
+	World->GetTimerManager().SetTimer(
+		FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
+		Remaining + Params.DurationPer, /*bLoop=*/false);
 }
 
 void UCataclysmSelfBuffSkill::RevokeIncrease()
@@ -751,6 +1105,33 @@ void UCataclysmMovementSkill::ActivateAbility(
 	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
 	HitScaled(Targets, Consumed);
 	IgniteAroundConsumed(Consumed);
+
+	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
+	// "if the arrival kills them, the axe comes back ready to throw again."
+	//
+	// ASKED OF THE TARGETS THIS MOVE HIT, and not of any kill anywhere. The row
+	// says the ARRIVAL has to kill, so a creature that happened to die of a burn
+	// somewhere else does not return the axe.
+	//
+	// AFTER THE BLOW, because a target is not dead until it has been struck. The
+	// death is recorded by whatever the damage killed, which runs inside
+	// `HitScaled` above.
+	if (!Params.RefundsCooldown.IsEmpty())
+	{
+		for (AActor* Target : Targets)
+		{
+			// EITHER THE DEATH HAS BEEN RECORDED OR THE HEALTH HAS RUN OUT.
+			// Asking only whether it is marked dead ties this to the order in
+			// which the damage and the death path run, and a creature at no
+			// health has been killed by the arrival whichever of the two got
+			// there first.
+			if (UCataclysmSkillEffects::IsDead(Target) || AtNoHealth(Target))
+			{
+				RefundCooldown();
+				break;
+			}
+		}
+	}
 
 	// Cinder Rush's charge "leaves a trail of fire behind you", so the ground
 	// burns along the whole run. Infernal Plunge's leap leaves "a pool of lava"

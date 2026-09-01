@@ -6284,4 +6284,578 @@ bool FCataclysmCurseDoesNotSpreadUnaskedTest::RunTest(const FString&)
 
 	return true;
 }
+
+// --------------------------------------------------------------------------
+// The Axe's set: a returned cooldown, a buried axe that moves on, a throw that
+// glances onward, a rack emptied over time, and a buff fed by kills. Issue #37.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRefundOnKillTest,
+	"Cataclysm.Skills.AMovementSkillReturnsItsCooldownWhenItsArrivalKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRefundOnKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Doomed(World, FVector(3 * M, 0, 0));
+
+	// ONE POINT OF HEALTH, so the arrival certainly kills. The Movement slot
+	// deals 100% of a weapon damage of 100, a hundred times that.
+	Doomed.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+
+	// EMBERHAUL'S OWN PARAMETER CELL: "bury your axe in the first enemy within
+	// 12 meters and haul yourself to it ... if the arrival kills them, the axe
+	// comes back ready to throw again."
+	UCataclysmMovementSkill* Haul = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Radius=1.5; Burn=1; Requires=Target; "
+			 "RefundsCooldown=Self"),
+		TEXT("Emberhaul"));
+	if (!Haul)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	// A SLOT WITH NO COOLDOWN WOULD MAKE THIS TEST PASS WITHOUT PROVING
+	// ANYTHING, so the cooldown is checked to exist first.
+	TestTrue(TEXT("The Movement slot has a cooldown at all"),
+		Haul->GetBaseCooldown() > 0.0f);
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Haul));
+	// AT NO HEALTH RATHER THAN MARKED DEAD. A fighter in these tests is a
+	// bare actor with an ability system, not a character class, so nothing
+	// runs the death path that writes the dead tag. Health reaching zero is
+	// what the arrival did, and it is what the skill asks about.
+	TestTrue(TEXT("The enemy it reached has no health left"),
+		Doomed.Health() <= 0.0f);
+
+	const FGameplayTag CooldownTag =
+		UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Movement);
+	TestFalse(TEXT("And the cooldown was returned, so its tag is gone"),
+		Caster.AbilitySystem->HasMatchingGameplayTag(CooldownTag));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoRefundWithoutAKillTest,
+	"Cataclysm.Skills.AMovementSkillKeepsItsCooldownWhenNothingDied",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoRefundWithoutAKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE CONTROL FOR THE TEST ABOVE: the same skill and a target with enough
+	// health to survive the arrival. Without it that test would pass just as
+	// well against a skill that returned its cooldown every time, which would
+	// make Emberhaul free.
+	FScopedFighter Survives(World, FVector(3 * M, 0, 0));
+
+	UCataclysmMovementSkill* Haul = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Radius=1.5; Burn=1; Requires=Target; "
+			 "RefundsCooldown=Self"),
+		TEXT("Emberhaul"));
+	if (!Haul)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Haul));
+	TestFalse(TEXT("The enemy survived"),
+		UCataclysmSkillEffects::IsDead(Survives.Actor));
+
+	const FGameplayTag CooldownTag =
+		UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Movement);
+	TestTrue(TEXT("And the cooldown is still running"),
+		Caster.AbilitySystem->HasMatchingGameplayTag(CooldownTag));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuriedAxeLeapsTest,
+	"Cataclysm.Skills.ABuriedAxeTearsFreeAndStrikesTheNextEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuriedAxeLeapsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Host(World, FVector(4 * M, 0, 0));
+	FScopedFighter Next(World, FVector(6 * M, 0, 0));
+	FScopedFighter Beyond(World, FVector(30 * M, 0, 0));
+
+	// HARROWER'S OWN PARAMETER CELL: "bury a burning axe in an enemy ... when
+	// that enemy dies it tears free and buries itself in the nearest living
+	// enemy within 10 meters."
+	UCataclysmProjectileSkill* Harrower = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=10; Radius=1; Speed=2200; Burn=1; OnDeath=Leap; "
+			 "OnDeathRange=10"),
+		TEXT("Harrower"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+	if (!Harrower)
+	{
+		AddError(TEXT("Could not grant the projectile."));
+		return false;
+	}
+
+	// DRIVEN DIRECTLY, because a throw flies on a timer and this world is never
+	// ticked. What is measured is what the axe does once it is in a creature,
+	// not the flight, which has its own tests.
+	TestEqual(TEXT("The axe is buried in the enemy it struck"),
+		Harrower->BuryInStruck({Host.Actor}), 1);
+
+	const float NextBefore = Next.Health();
+	const float BeyondBefore = Beyond.Health();
+
+	TestTrue(TEXT("The host dies"), UCataclysmSkillEffects::MarkDead(Host.Actor));
+
+	TestTrue(TEXT("The axe struck the nearest living enemy"),
+		Next.Health() < NextBefore);
+	TestTrue(TEXT("And set it alight"), IsAlight(Next));
+
+	// TEN METRES IS THE STATED REACH and this one stands at thirty. Without it
+	// the test would pass against an axe that struck the whole room.
+	TestEqual(TEXT("An enemy beyond the reach was not struck"),
+		Beyond.Health(), BeyondBefore);
+
+	// AND IT IS NOW IN THAT ONE, which is what "goes on doing so until nothing
+	// is left in reach" means. Killing the new host tries to move it again, and
+	// with nothing else within ten metres it stops.
+	TestTrue(TEXT("The new host dies too"),
+		UCataclysmSkillEffects::MarkDead(Next.Actor));
+	TestEqual(
+		TEXT("And with nothing in reach the axe stops rather than reaching "
+			 "thirty metres"),
+		Beyond.Health(), BeyondBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoAxeNoLeapTest,
+	"Cataclysm.Skills.AnEnemyWithNoAxeInItStrikesNobodyWhenItDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoAxeNoLeapTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ordinary(World, FVector(4 * M, 0, 0));
+	FScopedFighter Next(World, FVector(6 * M, 0, 0));
+
+	// THE CONTROL FOR THE TEST ABOVE. Every creature in the game dies without an
+	// axe in it, and none of them may strike anything on the way out.
+	const float NextBefore = Next.Health();
+	TestTrue(TEXT("It dies"), UCataclysmSkillEffects::MarkDead(Ordinary.Actor));
+	TestEqual(TEXT("And nothing was struck"), Next.Health(), NextBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAxeGlancesOnwardTest,
+	"Cataclysm.Skills.AThrownAxeGlancesOnwardThroughTheStatedNumberOfEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAxeGlancesOnwardTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// FOUR ENEMIES IN A LINE, spaced so a glance can reach the next each time.
+	// Carom states three glances, so it touches four: the one it was thrown at
+	// and three more.
+	FScopedFighter First(World, FVector(4 * M, 0, 0));
+	FScopedFighter Second(World, FVector(7 * M, 0, 0));
+	FScopedFighter Third(World, FVector(10 * M, 0, 0));
+	FScopedFighter Fourth(World, FVector(13 * M, 0, 0));
+
+	// AND A FIFTH THAT MUST BE LEFT ALONE, because the glances run out first.
+	FScopedFighter Fifth(World, FVector(16 * M, 0, 0));
+
+	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(4 * M, 0, 0),
+		/*InRadiusCm=*/120.0f, /*InSpeed=*/2000.0f, /*InPierce=*/0,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Axe)
+	{
+		AddError(TEXT("Could not fire the axe."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Axe)) { Axe->Destroy(); } };
+
+	// ELEVEN METRES OF REACH, which is what Carom's row states as its range.
+	Axe->GlancesOnward(/*InBounces=*/3, /*InReachCm=*/11 * M,
+					   /*InDamagePercentPer=*/0.0f);
+
+	const float FifthBefore = Fifth.Health();
+	CataclysmProjectileTest::FlyToCompletion(Axe);
+
+	TestEqual(TEXT("It glanced three times"), Axe->BouncesMade, 3);
+	TestTrue(TEXT("The first was hit"), First.Health() < 100000.0f);
+	TestTrue(TEXT("The second was hit"), Second.Health() < 100000.0f);
+	TestTrue(TEXT("The third was hit"), Third.Health() < 100000.0f);
+	TestTrue(TEXT("The fourth was hit"), Fourth.Health() < 100000.0f);
+
+	// THREE GLANCES IS FOUR ENEMIES AND NOT FIVE. Without this the test would
+	// pass against an axe that glanced for ever.
+	TestEqual(TEXT("The fifth was not, because the glances ran out"),
+		Fifth.Health(), FifthBefore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGlanceAddsDamageTest,
+	"Cataclysm.Skills.EachGlanceAddsToWhatTheAxeDeals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGlanceAddsDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(4 * M, 0, 0));
+	FScopedFighter Second(World, FVector(7 * M, 0, 0));
+	FScopedFighter Third(World, FVector(10 * M, 0, 0));
+
+	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(4 * M, 0, 0),
+		/*InRadiusCm=*/120.0f, /*InSpeed=*/2000.0f, /*InPierce=*/0,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Axe)
+	{
+		AddError(TEXT("Could not fire the axe."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Axe)) { Axe->Destroy(); } };
+
+	// TWENTY POINTS A GLANCE ON A HUNDRED PER CENT THROW, which is what Carom's
+	// "every enemy it touches after the first adds 20% to its damage" comes to
+	// on a throw dealing 100%: 100, then 120, then 140.
+	Axe->GlancesOnward(/*InBounces=*/3, /*InReachCm=*/11 * M,
+					   /*InDamagePercentPer=*/20.0f);
+
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	const float ThirdBefore = Third.Health();
+
+	CataclysmProjectileTest::FlyToCompletion(Axe);
+
+	TestEqual(TEXT("The first took the plain throw"),
+		FirstBefore - First.Health(), WeaponDamage, 0.01f);
+	TestEqual(TEXT("The second took a fifth more"),
+		SecondBefore - Second.Health(), WeaponDamage * 1.2f, 0.01f);
+	TestEqual(TEXT("The third took two fifths more"),
+		ThirdBefore - Third.Health(), WeaponDamage * 1.4f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackCountTest,
+	"Cataclysm.Skills.ARackThrowsItsStatedCountAndNoMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRackCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(4 * M, 0, 0));
+
+	// BUTCHER'S BILL WITH A SMALLER RACK, so the test is not driving thirty
+	// throws by hand. The limit is what is being measured, not the figure.
+	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Range=10; Radius=1; Speed=2000; Burn=1; Count=4; Duration=10; "
+			 "Interval=0.333; TargetMode=All"),
+		TEXT("Butcher's Bill"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+	if (!Rack)
+	{
+		AddError(TEXT("Could not grant the projectile."));
+		return false;
+	}
+
+	TestTrue(TEXT("It is a rack rather than a single throw"),
+		Rack->ThrowsRepeatedly());
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Rack));
+
+	// THE FIRST GOES AT ONCE and the rest are on a timer this world never runs,
+	// so they are driven by hand. That is the route every repeating shape's
+	// tests take.
+	TestEqual(TEXT("One was thrown on activation"), Rack->ThrowsMade, 1);
+
+	Rack->ThrowOne();
+	Rack->ThrowOne();
+	Rack->ThrowOne();
+	TestEqual(TEXT("Four have now been thrown"), Rack->ThrowsMade, 4);
+
+	// THE COUNT IS A LIMIT AND NOT A TARGET. Without this the test would pass
+	// against a rack that threw for ever.
+	Rack->ThrowOne();
+	TestEqual(TEXT("And a fifth is refused, because the row states four"),
+		Rack->ThrowsMade, 4);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackAttackSpeedTest,
+	"Cataclysm.Skills.AHigherAttackSpeedEmptiesTheRackSooner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRackAttackSpeedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Slow(World, FVector::ZeroVector);
+	FScopedFighter Fast(World, FVector(0, 40 * M, 0));
+
+	// ONE ATTACK A SECOND IS THE BASELINE THE ROW'S OWN NUMBERS ASSUME: thirty
+	// axes at 0.333 seconds is the ten seconds its description states.
+	Slow.Set(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.0f);
+	Fast.Set(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 2.0f);
+
+	const TCHAR* Params = TEXT("Range=10; Radius=1; Speed=2000; Burn=1; Count=30; "
+							   "Duration=10; Interval=0.333; TargetMode=All; "
+							   "ScalesWithAttackSpeed=1");
+
+	UCataclysmProjectileSkill* AtOne = GrantSkill<UCataclysmProjectileSkill>(
+		Slow, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Butcher's Bill"));
+	UCataclysmProjectileSkill* AtTwo = GrantSkill<UCataclysmProjectileSkill>(
+		Fast, ECataclysmAbilitySlot::Ultimate, Params, TEXT("Butcher's Bill"));
+	if (!AtOne || !AtTwo)
+	{
+		AddError(TEXT("Could not grant the projectiles."));
+		return false;
+	}
+
+	TestEqual(TEXT("At one attack a second the stated interval is kept"),
+		AtOne->SecondsBetweenThrows(), 0.333f, 0.001f);
+	TestEqual(TEXT("At two it is halved, so the rack empties in half the time"),
+		AtTwo->SecondsBetweenThrows(), 0.1665f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackWithoutAttackSpeedTest,
+	"Cataclysm.Skills.ARackThatDoesNotScaleKeepsItsStatedInterval",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRackWithoutAttackSpeedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	Caster.Set(UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 4.0f);
+
+	// THE CONTROL FOR THE TEST ABOVE: the same row without
+	// `ScalesWithAttackSpeed`. A very fast character is used, so reading the
+	// attribute when the row does not ask for it would be plainly visible.
+	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Range=10; Radius=1; Speed=2000; Count=30; Duration=10; "
+			 "Interval=0.333; TargetMode=All"),
+		TEXT("Butcher's Bill without its attack speed clause"));
+	if (!Rack)
+	{
+		AddError(TEXT("Could not grant the projectile."));
+		return false;
+	}
+
+	TestEqual(TEXT("The stated interval is kept whatever the attack speed"),
+		Rack->SecondsBetweenThrows(), 0.333f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackKeepsRunningTest,
+	"Cataclysm.Skills.ARackKeepsThrowingRatherThanEndingOnItsFirstAxe",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRackKeepsRunningTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Middle(World, FVector(5 * M, 0, 0));
+	FScopedFighter Far(World, FVector(7 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Range=10; Radius=1; Speed=2000; Burn=1; Count=3; Duration=10; "
+			 "Interval=0.333; TargetMode=All"),
+		TEXT("Butcher's Bill"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+	if (!Rack)
+	{
+		AddError(TEXT("Could not grant the projectile."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Rack));
+
+	// THE ABILITY DID NOT END WHEN THE FIRST AXE LEFT, which is the change that
+	// makes a rack possible at all: a single throw ends the skill when its
+	// projectile finishes, and thirty axes are in the air at once.
+	TestTrue(TEXT("The rack is still running after its first throw"),
+		Rack->IsActive());
+
+	Rack->ThrowOne();
+	Rack->ThrowOne();
+	TestEqual(TEXT("Three were thrown"), Rack->ThrowsMade, 3);
+
+	// EACH THROW IS A REAL PROJECTILE IN FLIGHT. This world is never ticked, so
+	// what is checked is that three exist rather than what they hit.
+	int32 Flying = 0;
+	for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+	{
+		++Flying;
+	}
+	TestEqual(TEXT("Three axes are in the air"), Flying, 3);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmButchersHeatTest,
+	"Cataclysm.Skills.AButchersHeatGrowsWithEveryKillAndLastsLonger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmButchersHeatTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// BUTCHER'S HEAT'S OWN PARAMETER CELL: "work yourself into a butcher's heat
+	// for 8 seconds. Every enemy you kill while it lasts grants 1% more damage
+	// and adds another second to the heat."
+	UCataclysmSelfBuffSkill* Heat = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=8; MoreDamagePer=1; DurationPer=1; ScalingSource=Kill"),
+		TEXT("Butcher's Heat"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Buff"));
+	if (!Heat)
+	{
+		AddError(TEXT("Could not grant the buff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Heat));
+	TestEqual(TEXT("It starts at no kills"), Heat->KillsCounted, 0);
+	TestEqual(TEXT("And grants nothing yet"), Heat->GrantedIncrease, 0.0f, 0.01f);
+	TestEqual(TEXT("And runs for the eight seconds its row states"),
+		Heat->TotalDuration, 8.0f, 0.01f);
+
+	// TOLD THROUGH THE ROUTE THE ENEMY DEATH PATH USES, so this exercises the
+	// same function the game calls rather than the buff's own method.
+	TestEqual(TEXT("One running buff was told about the kill"),
+		UCataclysmSkillTemplate::NoteKill(Caster.Actor), 1);
+
+	TestEqual(TEXT("The kill was counted"), Heat->KillsCounted, 1);
+	TestEqual(TEXT("And is worth one per cent more damage"),
+		Heat->GrantedIncrease, 1.0f, 0.01f);
+	TestEqual(TEXT("And added a second to the heat"),
+		Heat->TotalDuration, 9.0f, 0.01f);
+
+	// THE BONUS HAS NO CEILING, which the row says outright.
+	UCataclysmSkillTemplate::NoteKill(Caster.Actor);
+	UCataclysmSkillTemplate::NoteKill(Caster.Actor);
+	TestEqual(TEXT("Three kills is three per cent"),
+		Heat->GrantedIncrease, 3.0f, 0.01f);
+	TestEqual(TEXT("And three more seconds"), Heat->TotalDuration, 11.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIgnoresKillsTest,
+	"Cataclysm.Skills.ABuffThatDoesNotCountKillsIsUnchangedByThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffIgnoresKillsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Burning(World, FVector(3 * M, 0, 0));
+	SetAlight(Caster, Burning);
+
+	// THE CONTROL FOR THE TEST ABOVE, and it is Burning Wrath: a buff that
+	// counts something else. Its count is taken once, at the cast, so a kill
+	// afterwards must not move it. Without this the test above would pass just
+	// as well against a buff that grew on every kill whatever it counted.
+	UCataclysmSelfBuffSkill* Wrath = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"),
+		TEXT("Burning Wrath"),
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff"));
+	if (!Wrath)
+	{
+		AddError(TEXT("Could not grant the buff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Wrath));
+	TestEqual(TEXT("It counted the one burning enemy"),
+		Wrath->BurningEnemiesAtCast, 1);
+	const float Granted = Wrath->GrantedIncrease;
+	TestEqual(TEXT("And granted four per cent for it"), Granted, 4.0f, 0.01f);
+
+	UCataclysmSkillTemplate::NoteKill(Caster.Actor);
+
+	TestEqual(TEXT("A kill counts for nothing on it"), Wrath->KillsCounted, 0);
+	TestEqual(TEXT("And the bonus has not moved"),
+		Wrath->GrantedIncrease, Granted, 0.01f);
+	TestEqual(TEXT("Nor has its length"), Wrath->TotalDuration, 10.0f, 0.01f);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
