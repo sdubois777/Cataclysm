@@ -1011,6 +1011,18 @@ There are three leech stats, and all three work the same way. Life leech fills h
 
   
 
+**A health debt comes out of health the same way, over 5 seconds, and it is the same rule with the sign reversed.** Several Masochist nodes let part of a skill's health cost be owed rather than paid at the moment of the cast; what is owed is then taken as a drain rather than in one hit. The reason is the one above read backwards: a lump taken three seconds after a cast arrives detached from anything the player pressed, so it reads as damage from nowhere, and a player cannot react to a number that has already been subtracted. A drain is visible while it happens and can be healed against, outrun, or answered by killing something. Decided by the project owner on 2026-08-31. Issue #1120.
+
+  
+
+**The Reckoning's debt bleeds the character out instead of killing it outright.** That keystone never takes health for a cost at all, so its debt accumulates until it passes what health the character has left; at that point health drains at the debt divided by 5 per second. The debt itself is not paid off by that draining — the keystone says it "is cleared only by killing an enemy" and that is still true — so the character dies unless it gets a kill, heals past the debt, or is rescued by a node watching a low-health threshold. It dies in less than 5 seconds, and sooner the deeper in debt it is, because its health runs out before the span does.
+
+  
+
+**Both periods are tuning values and are expected to move.** Three seconds for leech and five for a debt are starting points chosen by eye, not figures derived from anything. `docs/DECISIONS.md` records what each is for.
+
+  
+
 | Rule | Value |
 | :-- | :-- |
 | What is leeched | A percentage of damage actually dealt |

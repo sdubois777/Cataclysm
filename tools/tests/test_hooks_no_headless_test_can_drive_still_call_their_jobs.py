@@ -62,10 +62,11 @@ HOOKS = {
                 "health, mana and energy shield coming back",
             "UCataclysmLeech::PayOutStep":
                 "what leech owes the character being paid out",
-            "UCataclysmHealthDebt::SettleIfDue":
-                "a deferred health cost falling due",
-            "UCataclysmHealthDebt::KillIfDebtExceedsHealth":
-                "a character dying when it owes more health than it has",
+            "UCataclysmHealthDebt::DrainIfDue":
+                "a deferred health cost draining out of health, issue #1120",
+            "UCataclysmHealthDebt::DrainWhileDebtExceedsHealth":
+                "a character bleeding out while it owes more health than it "
+                "has, issue #1120",
             "UCataclysmFervour::GainPerSecondStep":
                 "the Fervour that arrives from the passage of time",
             "UCataclysmNova::Step":
@@ -194,7 +195,7 @@ def body_of(path: pathlib.Path, signature: str, returns: str = "void") -> str:
     pass with the call itself deleted.
 
     `returns` DEFAULTS TO `void` BECAUSE EVERY HOOK ABOVE IS ONE. The death-log
-    check below reads `KillIfDebtExceedsHealth`, which answers `bool`, and
+    check below reads `DrainWhileDebtExceedsHealth`, which answers `float`, and
     without this it reported the function as missing rather than as the wrong
     shape -- which reads like the function was renamed.
     """
@@ -291,9 +292,9 @@ DEATHS_THAT_MUST_BE_LOGGED = [
      "died at",
      "owing",
      "a player dying, with the health it had and the health it owed"),
-    (ABILITY_SYSTEM / "CataclysmHealthDebt.cpp", "bool",
-     "UCataclysmHealthDebt::KillIfDebtExceedsHealth",
-     "died of it",
+    (ABILITY_SYSTEM / "CataclysmHealthDebt.cpp", "float",
+     "UCataclysmHealthDebt::DrainWhileDebtExceedsHealth",
+     "bled out",
      "owed",
      "a character killed by owing more health than it had"),
     (ABILITY_SYSTEM / "CataclysmSkillTemplate.cpp", "void",

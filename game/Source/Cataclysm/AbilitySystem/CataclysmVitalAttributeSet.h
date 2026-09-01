@@ -43,7 +43,7 @@ public:
 	 *
 	 *   a blow                a gameplay effect on the Damage meta attribute
 	 *   a health cost         `UCataclysmSkillTemplate::PayHealthCost`
-	 *   a debt falling due    `UCataclysmHealthDebt::SettleIfDue`
+	 *   a debt draining out   `UCataclysmHealthDebt::DrainIfDue`
 	 *
 	 * The last two call `UAbilitySystemComponent::ApplyModToAttribute`, so a
 	 * Masochist paying health for every skill could empty its health without

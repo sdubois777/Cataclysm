@@ -279,7 +279,7 @@ int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
 		return 0;
 	}
 
-	// A CORPSE IS SKIPPED, for the reason `UCataclysmHealthDebt::SettleIfDue`
+	// A CORPSE IS SKIPPED, for the reason `UCataclysmHealthDebt::DrainIfDue`
 	// gives: a creature is destroyed on the step AFTER it dies, so there is a
 	// real window in which a dead one still stands there with an ability system
 	// and a burn on it.

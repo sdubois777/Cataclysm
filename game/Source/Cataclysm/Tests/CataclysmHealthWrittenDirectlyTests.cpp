@@ -29,7 +29,7 @@
  *
  *   a blow                a gameplay effect on the Damage meta attribute
  *   a health cost         `UCataclysmSkillTemplate::PayHealthCost`
- *   a debt falling due    `UCataclysmHealthDebt::SettleIfDue`
+ *   a debt draining out   `UCataclysmHealthDebt::DrainIfDue`
  *
  * The two notifications that matter -- `NotifyIfHealthReachedZero`, which kills,
  * and `NotifyHealthChanged`, which is where a health threshold is noticed --
@@ -458,7 +458,7 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmDebtFallingDueKillsTest,
 	using namespace CataclysmHealthWriteTest;
 
 	// THE THIRD ROUTE, AND THE ONE MOST LIKELY TO HAVE EMPTIED THE OWNER'S
-	// CHARACTER. `UCataclysmHealthDebt::SettleIfDue` charges the whole debt with
+	// CHARACTER. `UCataclysmHealthDebt::DrainIfDue` charges the whole debt with
 	// no floor under it -- deliberately, and its own comment says so -- so a
 	// character that owes more than it has left is emptied by a clock rather
 	// than by anything it did that instant.
@@ -484,13 +484,13 @@ CATACLYSM_HEALTH_WRITE_TEST(FCataclysmDebtFallingDueKillsTest,
 	// BEFORE THE THREE SECONDS ARE UP NOTHING IS TAKEN, which says the death
 	// below came from the debt falling due rather than from `Defer` itself.
 	TestEqual(TEXT("nothing is taken before the debt is due"),
-			  Debt::SettleIfDue(Player.Character), 0.0f, 0.01f);
+			  Debt::DrainIfDue(Player.Character, Debt::DrainSeconds), 0.0f, 0.01f);
 	TestFalse(TEXT("and the character is alive"), Player.IsDead());
 
 	World->TimeSeconds += 4.0f;
 
 	TestEqual(TEXT("the whole debt is taken at once"),
-			  Debt::SettleIfDue(Player.Character), 500.0f, 0.01f);
+			  Debt::DrainIfDue(Player.Character, Debt::DrainSeconds), 500.0f, 0.01f);
 	TestEqual(TEXT("which emptied the character"), Player.Health(), 0.0f, 0.01f);
 	TestTrue(TEXT("and killed it"), Player.IsDead());
 	TestTrue(TEXT("and it is waiting to stand back up"),
