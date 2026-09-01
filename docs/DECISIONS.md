@@ -20,6 +20,117 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — The player wears the Mannequin from the engine's template resources, and swings the four attack clips that come with it
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and
+`.cpp`, `game/Content/Characters/Mannequins/`,
+`game/docs/player-source-assets.md`, `game/docs/content-layout.md`. The body is
+applied; the attack clips are decided and not yet built. Issues #1124 and #1126.
+
+### Where the player's body comes from
+
+The player was two engine primitives from `/Engine/BasicShapes`: a cylinder for
+the body and a cone stuck on the front, because with a bare cylinder there was no
+way to see which way the character faced. It had no skeleton, nothing to hang a
+weapon on, and nothing to play a death animation on.
+
+Issue #1124 was written against the Mannequin in
+`Engine/Plugins/Experimental/MoverExamples/`, which would have meant enabling an
+experimental plugin, restarting the editor, copying the assets out, disabling the
+plugin and restarting again.
+
+**A better source was found while building it, and it is not a plugin:**
+
+```
+Engine/Templates/TemplateResources/High/Characters/Content/Mannequins/
+```
+
+That is the folder Unreal copies into a project made from the Third Person
+template. Three things make it the right one:
+
+1. **Nothing has to be enabled.** Every asset in it already records
+   `/Game/Characters/Mannequins/...` as its own package path, so an ordinary file
+   copy put them where they already believed they were, with every reference
+   between them intact. No plugin, no editor restart, no path fixing.
+2. **Its animation Blueprint works on an ordinary Unreal character.**
+   `ABP_Unarmed` casts its owner to `ACharacter` and reads velocity and falling
+   state off the standard `UCharacterMovementComponent`, which is exactly what
+   `ACataclysmPlayerCharacter` is and has. The plugin's `ABP_Manny` casts to
+   `MoverExamplesCharacter` and reads a `CharacterMoverComponent` instead, so it
+   could never have driven this character: that cast fails every frame and the
+   blend space receives no speed at all.
+3. **It ships far more animation.** Four attack clips and six death clips against
+   the plugin copy's none and one.
+
+47 of its 128 assets were copied, 58.4 MB. `game/docs/player-source-assets.md`
+records exactly what was taken, what was left behind and why.
+
+### What that costs, stated rather than hidden
+
+58.4 MB of binary assets go into Git LFS, and every clone and continuous
+integration checkout draws that much LFS bandwidth. `.gitignore` reasons
+carefully about this for the third-party packs and excludes them because they are
+17.31 GB and can be re-acquired from Fab by anyone who owns them.
+
+**The Mannequin is committed rather than ignored**, for two reasons the packs do
+not share. It is 0.3% of their size. And it is the player character: a checkout
+that silently lacks it has no visible player, where a checkout lacking a Paragon
+pack only has a placeholder enemy. The same `.gitignore` comment already draws
+this line — "work derived from these packs is this project's own work and belongs
+in git".
+
+### Attack animations: the engine clips, not retargeted Paragon clips
+
+**This reverses the decision recorded in issue #1126 on the same day**, and it
+reverses it because the fact that decision rested on was wrong.
+
+#1126 chose to retarget Paragon hero attacks onto the Mannequin, having checked
+three sources and found no player attack animation in any of them. That check
+missed the template resources folder above.
+
+| Clip | Length | Root motion |
+| :-- | --: | :-: |
+| `MM_Attack_01` | 1.0000 s | yes |
+| `MM_Attack_02` | 1.0000 s | yes |
+| `MM_Attack_03` | 1.6667 s | yes |
+| `MM_ChargedAttack` | 1.8333 s | yes |
+
+Measured through the editor on 2026-09-01, not estimated. **All four are already
+bound to `SK_Mannequin`**, the skeleton the player now wears, so they need no
+retargeting at all.
+
+**The decision, taken by the project owner on 2026-09-01: use these four.** A
+clip authored for this skeleton looks correct; a retargeted Paragon clip was
+expected to look imperfect, and Grux probably unusable. Four clips is not
+fourteen weapon bases, so this buys a character that swings correctly rather than
+one that swings differently per weapon. #1126 stays open for that variety,
+whether it later arrives by retargeting or by a bought animation pack.
+
+This is the same order #1124 took: something correct now, better art later.
+
+### Two measurements that constrain the work #1126 still has to do
+
+**Every attack clip is longer than the interval it has to fit inside.** Attack
+speed in `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an interval
+of 0.833 down to 0.667 seconds. The shortest clip is 1.0 second, so even the
+fastest is 1.2 to 1.5 times too long and `MM_ChargedAttack` is more than double.
+Either the clip plays faster than authored, or it is cut short, or the swing rate
+stops being the clip rate. Issue #784 records the same problem one step earlier:
+three telegraphed basic attacks already land damage 0.46 to 1.14 seconds away
+from where the animation strikes.
+
+**All four carry root motion**, unlike the six death clips, which do not. A basic
+attack that walks the character forward on every swing is not wanted, so root
+motion has to be suppressed deliberately.
+
+`ABP_Unarmed` has a `DefaultSlot`, so attacks can be played with
+`PlaySlotAnimationAsDynamicMontage` and will blend over the locomotion graph
+rather than cutting to it. `ACataclysmAbyssalWardenCharacter::PlayOneShot` wanted
+exactly that and could not have it, because `ABP_AbyssalWarden` has never been
+authored.
+
+---
+
 ## 2026-09-01 — Two nodes have to be readable together, a crafting material is named at any distance, and the health debt can be looked at
 
 Three decisions taken by the project owner on 2026-09-01, recorded together

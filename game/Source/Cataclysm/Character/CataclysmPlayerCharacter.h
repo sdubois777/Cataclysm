@@ -7,12 +7,13 @@
 #include "AbilitySystem/CataclysmAbilitySet.h"
 #include "CataclysmPlayerCharacter.generated.h"
 
+class UAnimSequence;
+class USkeletalMeshComponent;
 class UCameraComponent;
 class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
-class UStaticMeshComponent;
 struct FOnAttributeChangeData;
 
 /**
@@ -247,6 +248,51 @@ public:
 	/** The ItemBases row the character begins wearing. Issue #840. */
 	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
 
+	// ----------------------------------------------------------------------
+	// Art. Issue #1124.
+	// ----------------------------------------------------------------------
+	//
+	// WHERE THESE ASSETS CAME FROM AND WHY THEY ARE COPIES. They were copied
+	// out of the engine's own template resources, at
+	// Engine/Templates/TemplateResources/High/Characters/Content/Mannequins.
+	// That is the folder Unreal copies into a project made from the Third
+	// Person template, so the assets already record /Game/Characters/Mannequins
+	// as their own package path and an ordinary file copy put them in the right
+	// place with every reference intact.
+	//
+	// NOT LOADED FROM THE ENGINE WHERE THEY SIT, because template resources are
+	// not a mounted content root: the editor cannot see them at all until they
+	// are copied into a project. game/docs/player-source-assets.md records what
+	// was taken and what was deliberately left behind.
+
+	/** The skeletal mesh. `SKM_Manny_Simple` is the body; `SK_Mannequin`
+	 *  beside it is the Skeleton every clip below is bound to. */
+	static const TCHAR* BodyMeshPath;
+
+	/**
+	 * The animation Blueprint's generated class. The `_C` suffix is what makes
+	 * it the class rather than the asset, and without it
+	 * `TryLoadClass<UAnimInstance>` returns null and the character holds its
+	 * reference pose.
+	 *
+	 * EPIC'S OWN, AND IT DRIVES AN ORDINARY `ACharacter`. `ABP_Unarmed` casts
+	 * its owner to `ACharacter` and reads velocity and falling state off the
+	 * standard `UCharacterMovementComponent`, which is exactly what this pawn
+	 * has, so it needed no change to work here. Its blend space blends idle,
+	 * walk and run by speed and direction.
+	 *
+	 * THE OTHER MANNEQUIN ANIMATION BLUEPRINT IN THE ENGINE DOES NOT WORK HERE.
+	 * `ABP_Manny`, in the experimental MoverExamples plugin, casts to
+	 * `MoverExamplesCharacter` and reads a `CharacterMoverComponent`. This
+	 * project does not use the Mover plugin, so that cast fails every frame and
+	 * the blend space gets no speed at all.
+	 */
+	static const TCHAR* AnimationBlueprintPath;
+
+	/** The folder holding the six death clips, and their names in it. */
+	static const TCHAR* DeathAnimationFolder;
+	static const TCHAR* DeathAnimationNames[6];
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
@@ -290,21 +336,67 @@ protected:
 	TObjectPtr<UCameraComponent> TopDownCamera;
 
 	/**
-	 * A stand-in body, so there is something to see before there is any art.
+	 * Puts the Mannequin body, its animation Blueprint and its death clips on
+	 * this character. Issue #1124.
 	 *
-	 * Two engine primitives: a cylinder for the body and a cone for the nose.
-	 * The nose is not decoration. The character turns to face the direction it
-	 * is moving, and with a bare cylinder that rotation is invisible, so there
-	 * is no way to tell whether facing is working.
+	 * WHAT IT REPLACED. Two engine primitives from /Engine/BasicShapes: a
+	 * cylinder for the body and a cone stuck on the front, because with a bare
+	 * cylinder there was no way to see which way the character faced. Nothing
+	 * could be hung on either of them and neither could play anything, so a
+	 * player character had no death animation at all.
 	 *
-	 * Both come from /Engine/BasicShapes, so this adds no asset to the project
-	 * and nothing to Git LFS. Replaced when there is a real mesh.
+	 * CALLED FROM BeginPlay AND NOT FROM THE CONSTRUCTOR. Loading assets in a
+	 * constructor also loads them for the class default object, which is built
+	 * during module startup. This is the same place and the same reason
+	 * `ACataclysmAbyssalWardenCharacter::ResolveBody` is called from.
+	 *
+	 * @return false when the mesh could not be loaded, which leaves an
+	 *         invisible capsule that still walks and still fights. That is the
+	 *         state a checkout without the Mannequin assets is in, and it says
+	 *         so in the log rather than failing.
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
-	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
+	bool ResolveBody();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
-	TObjectPtr<UStaticMeshComponent> PlaceholderFacingMarker;
+	/**
+	 * Points the mesh component at `ABP_Unarmed`, or falls back to playing
+	 * single clips when it cannot be loaded.
+	 *
+	 * SEPARATE FROM ResolveBody SO REVIVING CAN REACH IT ON ITS OWN. Dying
+	 * switches the component into single-node mode to hold the last frame of a
+	 * death clip, so coming back has to put the animation Blueprint back
+	 * without reloading the mesh and the six clips again.
+	 *
+	 * @return whether an animation Blueprint is now driving the mesh
+	 */
+	bool ResolveAnimationBlueprint(USkeletalMeshComponent* MeshComponent);
+
+	/**
+	 * Draws one of the six death clips, at its authored speed.
+	 *
+	 * SINGLE-NODE MODE RATHER THAN THE ANIMATION BLUEPRINT'S SLOT, and the
+	 * reason is timing rather than taste. `ABP_Unarmed` does have a
+	 * `DefaultSlot` -- that is what issue #1126 should swing attacks through --
+	 * but a montage blends back out to the locomotion graph when its clip ends.
+	 * The death clips are around 1.1 seconds and `RespawnDelaySeconds` is 3, so
+	 * through the slot the corpse would stand back up in an idle pose and wait
+	 * there for nearly two seconds. Played onto the component directly it holds
+	 * its last frame, which is what a body on the floor should do. `Revive`
+	 * puts the animation Blueprint back.
+	 *
+	 * @return the clip's length in seconds, or 0 when there was nothing to play
+	 */
+	float PlayDeathAnimation();
+
+	/**
+	 * The six death clips, in the order `Anims/Death` lists them.
+	 *
+	 * A NULL ENTRY IS KEPT rather than dropped, which is the rule
+	 * `ACataclysmEnemyCharacter::PlayDeathAnimation` already follows: dropping
+	 * one would change how many clips there are and therefore which one every
+	 * death draws.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> DeathAnimations;
 
 	/**
 	 * Fills the six ability slots from the equipped weapon.

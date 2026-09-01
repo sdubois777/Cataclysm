@@ -36,15 +36,22 @@ game/Content/
 ├── Input/           Generated. Input actions and mapping contexts.
 ├── Maps/            Every level, without exception.
 ├── Enemies/         Authored enemy work, split by Cataclysm then by enemy.
+├── Characters/      Player character art. Mannequins/ is the shared body.
 ├── Developers/      Per-user sandbox. Not project content. Ignored by git.
 └── Paragon*/        Third-party packs, where Fab installs them. Ignored by git.
 ```
 
+`Characters/` was created on 2026-09-01 by issue #1124, which gave the player a
+body. It holds `Mannequins/` today, which is the one body every player character
+wears; when the 24 classes have art of their own it gets the same
+split-by-Cataclysm-then-by-class shape `Enemies/` has, because 24 classes divide
+the same way seven enemies do.
+
 Reserved names, to be created when something needs them rather than now:
-`Characters/` (the 24 player classes), `Abilities/` (Gameplay Abilities, Effects
-and Cues, which both characters and enemies reference), `Items/`, `Empire/`,
-`Effects/` (Niagara shared across enemies and skills), `MaterialLibrary/`
-(master materials and functions), `UI/`, `Audio/`.
+`Abilities/` (Gameplay Abilities, Effects and Cues, which both characters and
+enemies reference), `Items/`, `Empire/`, `Effects/` (Niagara shared across
+enemies and skills), `MaterialLibrary/` (master materials and functions), `UI/`,
+`Audio/`.
 
 **Empty folders are not created in advance.** Git does not track them and they
 would need a placeholder file each, guarding nothing.
@@ -60,6 +67,15 @@ One exception, also from that guide: fifteen or more closely related assets of
 one kind may get their own folder. In practice that means animation. So
 `Enemies/Demonic/Brute/Animations/` is fine once there are enough of them, and
 `Enemies/Demonic/Brute/Meshes/` is not.
+
+**`Characters/Mannequins/` breaks this rule and has to.** It has `Meshes/`,
+`Textures/` and `Materials/` folders. Those assets were copied out of the
+engine's template resources and each one records its own package path
+internally, so the layout is fixed by the files rather than chosen: moving
+`SK_Mannequin` out of `Meshes/` breaks every animation bound to it and every
+material reference. Renaming 47 assets by hand and re-pointing every reference
+would buy a shorter path and nothing else. `game/docs/player-source-assets.md`
+records what was copied and why.
 
 ### Enemies split by Cataclysm, then by enemy
 
