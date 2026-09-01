@@ -190,15 +190,58 @@ keeping up with the damage rather than turning into a blur.
 
 ### Where the damage lands is not where the swing strikes
 
-**Not fixed, and worth knowing.** Damage is applied when the ability activates,
-which is the start of the clip; the animation's own impact is somewhere in the
-middle of it. So a hit registers before the weapon appears to connect.
+**Not fixed.** Damage is applied when the ability activates, which is the start
+of the clip; the swing's own impact is a third to a half of the way through it.
+So a hit registers before the weapon appears to connect. Issue #1133.
 
 Issue #784 records the same problem one step earlier for enemies: three
 telegraphed basic attacks land damage 0.46 to 1.14 seconds away from where the
-animation strikes. Fixing it for the player means delaying damage to an animation
-notify, which changes how combat feels and is a larger change than drawing a
-swing.
+animation strikes.
+
+#### When each clip strikes, measured
+
+Measured 2026-09-01 by `tools/measure_attack_impact.py`, the same script and the
+same three rules used for the thirteen enemy clips under issue #784. **None of
+the four clips carries an animation notify**, so every figure is read from the
+pose.
+
+**Read the caveat before the numbers: the script refused two of the four.** It
+computes three independent answers per clip and reports disagreement rather than
+choosing between them. On `MM_Attack_01` and `MM_Attack_02` all three disagree.
+
+| Clip | Length | Peak speed | As a fraction | The three rules |
+| :-- | --: | --: | --: | :-- |
+| `MM_Attack_01` | 1.0000 | 0.3708 s | 37.1% | **disagree**, spread 0.5000 s |
+| `MM_Attack_02` | 1.0000 | 0.3458 s | 34.6% | **disagree**, spread 1.0000 s |
+| `MM_Attack_03` | 1.6667 | 0.7847 s | 47.1% | two agree at 0.7535 s (45.2%) |
+| `MM_ChargedAttack` | 1.8333 | 1.0771 s | 58.8% | two agree at 1.1115 s (60.6%) |
+
+**The control is the strongest result here, and it passed.** The same rules run
+on `MM_Idle`, which strikes nothing, find a peak of 9 cm/s. The four attack clips
+peak at 883 to 2396 cm/s, a factor of about 100 to 260. So the method can tell a
+swing from a standing pose on this rig, which is what the control exists to
+establish.
+
+**Why two of the three rules do not apply to these clips.** "Furthest reach from
+the pelvis" and "lowest point" were written for a weapon swing and a downward
+blow. These are unarmed clips, and the giveaway is that furthest reach lands on
+0.0000 s, the very first sample, for `MM_Attack_02` and `MM_Attack_03`. That is a
+rule returning nothing rather than a rule returning an answer.
+
+**Peak speed is the rule that applies, and it has separate corroboration.** On
+`MM_Attack_01` the `hand_r` and `weapon_r` bones peak at the same sample, 0.3708
+s, at 2015 and 2029 cm/s. Two bones agreeing to the sample is evidence the
+three-rule test could not give.
+
+**`MM_Attack_02` may be two motions rather than one.** Its `hand_l` peaks at
+0.3958 s (2011 cm/s) and its `hand_r` at 0.3458 s (1739 cm/s), a twentieth of a
+second apart at comparable speeds. If it is a left-then-right movement, a single
+strike moment will be wrong for one of the two halves.
+
+**Nobody has looked at these clips yet.** The automation command passes
+`-nullrhi`, so no test run can show what a swing looks like. The figures above
+are arithmetic on bone positions, and they need an eye on them before they are
+trusted as the moment a blow lands.
 
 ### Root motion is switched off
 
