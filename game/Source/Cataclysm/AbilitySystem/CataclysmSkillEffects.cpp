@@ -9,6 +9,9 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 // For a curse that passes to the nearest enemy when its holder dies.
 // The Wand's Anathema is the only thing that marks a creature that way.
+// For a weapon left in a creature that tears free when it dies. The Axe's
+// Harrower is the only thing that buries one.
+#include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1112,6 +1115,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// INERT FOR EVERY CREATURE CARRYING NO SPREADING CURSE, which is all of them
 	// but the targets of one Anathema: it costs a component lookup.
 	UCataclysmCurseSpread::SpreadFromDying(Actor);
+
+	// AND A WEAPON LEFT IN IT TEARS FREE, for the same reasons and at the same
+	// moment. The Axe's Harrower: "when that enemy dies it tears free and
+	// buries itself in the nearest living enemy within 10 meters". Inert for
+	// every creature with nothing buried in it, which is all of them but one
+	// Harrower's host: it costs a component lookup.
+	UCataclysmBuriedWeapon::LeapFromDying(Actor);
 
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
 	// granted for a duration and this one must never expire on its own. A

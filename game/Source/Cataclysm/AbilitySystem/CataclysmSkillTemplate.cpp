@@ -1,6 +1,10 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For UCataclysmSelfBuffSkill, which is the one shape that reacts to a kill.
+// A base including its own subclass is confined to this .cpp; the header
+// knows nothing about it.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For the health cost a character adds to every skill. Issue #970.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -409,6 +413,111 @@ bool UCataclysmSkillTemplate::RequirementsAreMet(
 		}
 	}
 	return false;
+}
+
+// ==========================================================================
+// A kill this character made
+// ==========================================================================
+
+int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Killer);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED OF THE RUNNING ABILITIES RATHER THAN HELD AS STATE, which is the
+	// route `HeldConsumeSpreadRadiusCm` already takes for the Sword's Ashen
+	// Edge. A buff that lasts IS an active ability for as long as it lasts, so
+	// there is nothing to register and nothing to clear when it ends, is
+	// cancelled, or its owner dies.
+	int32 Told = 0;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		if (UCataclysmSelfBuffSkill* Buff =
+				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		{
+			Buff->NoteKill();
+			++Told;
+		}
+	}
+
+	return Told;
+}
+
+// ==========================================================================
+// Returning a cooldown
+// ==========================================================================
+
+bool UCataclysmSkillTemplate::AtNoHealth(const AActor* Actor)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Actor);
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Health))
+	{
+		return false;
+	}
+
+	return AbilitySystem->GetNumericAttribute(Health) <= 0.0f;
+}
+
+bool UCataclysmSkillTemplate::RefundCooldown()
+{
+	if (Params.RefundsCooldown.IsEmpty())
+	{
+		return false;
+	}
+
+	// WHICH SLOT'S COOLDOWN. `Self` is this skill's own, whichever slot it was
+	// granted into; `Movement` is that slot's, whatever skill happens to be in
+	// it. Those are the only two values `REFUND_TARGETS` in
+	// `tools/generate_datatables.py` allows.
+	ECataclysmAbilitySlot Which = Slot;
+	if (Params.RefundsCooldown.Equals(TEXT("Movement"), ESearchCase::IgnoreCase))
+	{
+		Which = ECataclysmAbilitySlot::Movement;
+	}
+	else if (!Params.RefundsCooldown.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' says it refunds the '%s' cooldown, which is neither Self "
+				 "nor Movement, so nothing was returned."),
+			*SkillName, *Params.RefundsCooldown);
+		return false;
+	}
+
+	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Which);
+	if (!Tag.IsValid())
+	{
+		return false;
+	}
+
+	// TAKEN OFF BY TAG, WHICH IS HOW IT WENT ON.
+	// `UCataclysmGameplayAbility::ApplyCooldown` builds a duration effect that
+	// grants the slot's tag and nothing else, so removing every effect granting
+	// that tag is exactly undoing it.
+	const int32 Removed =
+		UCataclysmSkillEffects::RemoveEffectsGranting(Avatar(), Tag);
+	if (Removed > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' returned the %s cooldown."), *SkillName, *Tag.ToString());
+	}
+	return Removed > 0;
 }
 
 // ==========================================================================

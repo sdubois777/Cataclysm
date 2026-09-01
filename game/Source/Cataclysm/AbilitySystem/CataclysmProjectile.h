@@ -352,6 +352,60 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Projectile")
 	TArray<AActor*> StruckEnemies() const;
 
+	/**
+	 * Make it glance from each enemy it hits to the next nearest.
+	 *
+	 * THE AXE'S CAROM AND NOTHING ELSE TODAY: "hurl your axe at an enemy up to
+	 * 11 meters away. It glances from them to the next nearest and onward
+	 * through three more, setting each one alight, then returns to your hand.
+	 * Every enemy it touches after the first adds 20% to its damage."
+	 *
+	 * SET AFTER FIRING RATHER THAN PASSED IN. `Fire` already takes thirteen
+	 * arguments and three more would make every existing call site harder to
+	 * read for the one projectile that wants them.
+	 *
+	 * A GLANCE IS NOT A PIERCE, and the difference is what the object does after
+	 * the hit. A piercing bolt carries straight on through, which is why it does
+	 * not detonate; a glancing axe turns toward a new target and keeps its
+	 * detonation for wherever it finally stops. Carom is not a piercing
+	 * projectile and must not become one.
+	 *
+	 * WHEN IT RUNS OUT OF GLANCES it behaves exactly as it did before this
+	 * existed: it stops at the next enemy and detonates there.
+	 *
+	 * @param InBounces          how many times it may glance onward
+	 * @param InReachCm          how far it looks for the next enemy
+	 * @param InDamagePercentPer percentage points of increased damage each
+	 *                           enemy after the first adds
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Projectile")
+	void GlancesOnward(int32 InBounces, float InReachCm,
+					   float InDamagePercentPer);
+
+	/** How many more times it may glance onward. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	int32 BouncesLeft = 0;
+
+	/**
+	 * Whether stopping sets off the blast a non-piercing projectile makes.
+	 *
+	 * TRUE FOR EVERY PROJECTILE THAT DOES NOT GLANCE, which is all of them
+	 * but Carom: one that does not pierce passes its target by without
+	 * hitting and lets the blast in `Finish` do the hitting, so the blast is
+	 * the whole point of stopping.
+	 *
+	 * CLEARED THE MOMENT IT GLANCES. An axe that glances has already struck
+	 * what it touched, so a blast where it finally stops would hit that last
+	 * enemy a second time. A test caught it: the third enemy took 300 where
+	 * 140 was expected, which is its own hit plus the blast.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	bool bDetonatesWhenItStops = true;
+
+	/** How many times it has glanced. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	int32 BouncesMade = 0;
+
 	/** Whether it pierces at all. Decides whether stopping detonates in a radius. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	bool bPierces = false;
@@ -429,6 +483,25 @@ private:
 
 	/** Turn round and fly back to where it started, hitting again on the way. */
 	void BeginReturn();
+
+	/**
+	 * Turn toward the nearest enemy it has not hit, and say whether it found one.
+	 *
+	 * THE SHAPE `BeginReturn` ALREADY HAD, which is why turning a projectile
+	 * mid-flight needed no new machinery: set a direction, set how far is left
+	 * to travel, face that way. The difference is that a return aims at a known
+	 * point and this has to look for one.
+	 *
+	 * NOT BACK ONTO ANYTHING IT HAS ALREADY HIT, so an axe cannot glance between
+	 * two enemies for ever.
+	 */
+	bool GlanceOnwardFrom(const FVector& At);
+
+	/** How far a glance looks for its next target, in centimetres. */
+	float BounceReachCm = 0.0f;
+
+	/** Percentage points each enemy after the first adds to what it deals. */
+	float BounceDamagePercentPer = 0.0f;
 
 	/** Unit vector along the direction of travel, on the ground plane. */
 	FVector Direction = FVector::ForwardVector;

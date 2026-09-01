@@ -96,6 +96,9 @@ HOOKS = {
             "UCataclysmContagion::SpreadOnDeath":
                 "this creature's debuffs passing to whatever stands by its "
                 "body, issue #1060",
+            "UCataclysmSkillTemplate::NoteKill":
+                "telling the killer's running skills that it killed something, "
+                "which is what feeds the Axe's Butcher's Heat, issue #37",
         },
         "questions": {
             "UCataclysmSkillEffects::MarkDead",

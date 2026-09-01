@@ -484,6 +484,55 @@ bool ACataclysmProjectile::HitAlongStep(const FVector& Previous,
 
 		if (!bPierces)
 		{
+			// AN AXE THAT GLANCES HITS THIS ONE AND TURNS, rather than stopping.
+			// The Axe's Carom: "it glances from them to the next nearest and
+			// onward through three more". A glance is not a pierce: a piercing
+			// bolt carries straight on and never detonates, while this turns and
+			// keeps its detonation for wherever it finally stops.
+			if (BouncesLeft > 0)
+			{
+				HitOne(Target);
+				--BouncesLeft;
+				++BouncesMade;
+
+				// AND IT NO LONGER GOES OFF WHERE IT STOPS. It has struck what
+				// it touched, so the blast a non-piercing projectile makes would
+				// hit the last enemy a second time.
+				bDetonatesWhenItStops = false;
+
+				// "Every enemy it touches after the first adds 20% to its
+				// damage." Raised after the hit, so the enemy that was struck
+				// pays the old figure and the next pays the new one.
+				DamagePercent += BounceDamagePercentPer;
+
+				if (GlanceOnwardFrom(Target->GetActorLocation()))
+				{
+					return false;
+				}
+
+				// NOTHING LEFT TO GLANCE TO, so the throw is over. Its remaining
+				// range is set to nothing rather than finishing outright, so a
+				// throw that returns still comes back: Carom "glances ... onward
+				// through three more ... then returns to your hand".
+				RemainingRangeCm = 0.0f;
+				return false;
+			}
+
+			// AN AXE THAT HAS ALREADY GLANCED HITS BY TOUCHING, so the enemy it
+			// reaches with no glances left is struck here and the throw ends.
+			// Three glances touch four enemies, which is what Carom's "onward
+			// through three more" means. A test caught the fourth being missed
+			// when the blast was turned off and nothing replaced it.
+			//
+			// ITS RANGE IS SET TO NOTHING RATHER THAN FINISHING OUTRIGHT, so a
+			// throw that returns still comes back to the hand.
+			if (!bDetonatesWhenItStops)
+			{
+				HitOne(Target);
+				RemainingRangeCm = 0.0f;
+				return false;
+			}
+
 			// It stops here. The hit itself happens in Finish, which detonates
 			// in a radius and catches this target along with anything standing
 			// near it, so hitting it now as well would hit it twice.
@@ -547,6 +596,51 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	}
 }
 
+void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
+										float InDamagePercentPer)
+{
+	BouncesLeft = FMath::Max(0, InBounces);
+	BounceReachCm = FMath::Max(0.0f, InReachCm);
+	BounceDamagePercentPer = InDamagePercentPer;
+}
+
+bool ACataclysmProjectile::GlanceOnwardFrom(const FVector& At)
+{
+	AActor* Firer = GetOwner();
+	if (!Firer || BounceReachCm <= 0.0f)
+	{
+		return false;
+	}
+
+	// NEAREST TO WHERE IT JUST LANDED, not to the caster. "It glances from them
+	// to the next nearest" describes a chain travelling outward through a group,
+	// which is what makes Carom worth throwing into a crowd.
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Firer, At, BounceReachCm))
+	{
+		if (AlreadyHit.Contains(Candidate))
+		{
+			continue;
+		}
+
+		// THE SAME THREE THINGS `BeginReturn` SETS, for the same reason: a
+		// direction to travel, how far is left, and which way to face.
+		const FVector Toward = Candidate->GetActorLocation() - At;
+		const FVector Flat = FVector(Toward.X, Toward.Y, 0.0f);
+		if (Flat.IsNearlyZero())
+		{
+			continue;
+		}
+
+		Direction = Flat.GetSafeNormal();
+		RemainingRangeCm = Flat.Size();
+		SetActorRotation(Direction.Rotation());
+		return true;
+	}
+
+	return false;
+}
+
 void ACataclysmProjectile::BeginReturn()
 {
 	bReturning = true;
@@ -575,7 +669,7 @@ void ACataclysmProjectile::Finish()
 	// stopped is now a real place rather than where it was aimed. Blood Pyre and
 	// Magma Quake go off against the first thing they touch, against the wall
 	// that blocked them, or at the end of the throw if they touch nothing.
-	if (!bPierces)
+	if (!bPierces && bDetonatesWhenItStops)
 	{
 		if (AActor* Firer = GetOwner())
 		{

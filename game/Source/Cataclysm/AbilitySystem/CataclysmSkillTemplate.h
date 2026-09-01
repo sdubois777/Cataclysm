@@ -271,6 +271,28 @@ public:
 		const FGameplayTagContainer* TargetTags = nullptr,
 		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 
+	/**
+	 * Tell this character's running skills that it killed something.
+	 *
+	 * ONE SKILL LISTENS TODAY: the Axe's Butcher's Heat, "every enemy you kill
+	 * while it lasts grants 1% more damage and adds another second to the heat".
+	 * A buff whose `ScalingSource` is not `Kill` ignores it.
+	 *
+	 * CALLED FROM `ACataclysmEnemyCharacter::HandleDeath`, beside the three
+	 * things a kill already does there -- granting experience, clearing a health
+	 * debt and building a Carnage stack. That file's comment already calls
+	 * itself "the one place a kill is known about at all", and this is a fourth
+	 * reader of the same event rather than a second source of it.
+	 *
+	 * IT CREDITS WHOEVER THAT FILE CREDITS, which is the first player
+	 * controller's pawn. That is a simplification already in place for the other
+	 * three and is not made worse here.
+	 *
+	 * @return how many running self buffs were told, whether or not each one
+	 *         counts kills
+	 */
+	static int32 NoteKill(AActor* Killer);
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.
@@ -450,6 +472,44 @@ protected:
 	 * allowed to activate for is the same one it then travels to.
 	 */
 	float RequirementReachCm() const;
+
+	/**
+	 * Whether this creature's health has run out.
+	 *
+	 * ASKED BESIDE `UCataclysmSkillEffects::IsDead` RATHER THAN INSTEAD OF
+	 * IT. That one reads a tag written by a character's own death path, and
+	 * whether that path has run by the time a blow returns depends on the
+	 * character class. A creature at no health has been killed either way,
+	 * and the Axe's Emberhaul asks whether its arrival killed.
+	 *
+	 * False for anything with no health attribute at all, which is every
+	 * actor that is not a fighter.
+	 */
+	static bool AtNoHealth(const AActor* Actor);
+
+	/**
+	 * Return a cooldown, if this skill's `RefundsCooldown` names one.
+	 *
+	 * TWO SKILLS ASK FOR IT and they ask for different cooldowns. The Axe's
+	 * Emberhaul writes `Self`: "if the arrival kills them, the axe comes back
+	 * ready to throw again". The Dagger's Slipstream writes `Movement`: "every
+	 * enemy you strike from behind returns your movement skill to you at once".
+	 * `REFUND_TARGETS` in `tools/generate_datatables.py` closes the list at
+	 * those two.
+	 *
+	 * A COOLDOWN IS A DURATION EFFECT GRANTING THE SLOT'S TAG, which
+	 * `UCataclysmGameplayAbility::ApplyCooldown` builds, so returning one is
+	 * taking that effect off. It is per slot rather than per skill, so returning
+	 * the Movement cooldown returns it for whatever skill is in that slot --
+	 * which is what Slipstream's sentence describes.
+	 *
+	 * WHEN IT HAPPENS IS THE CALLER'S BUSINESS. This says what to return, not
+	 * when: Emberhaul's condition is that its own arrival killed something, and
+	 * only the Movement template knows that.
+	 *
+	 * @return whether a cooldown was actually taken off
+	 */
+	bool RefundCooldown();
 
 	/**
 	 * The status effects this skill's `Effect` cell names, as tags.

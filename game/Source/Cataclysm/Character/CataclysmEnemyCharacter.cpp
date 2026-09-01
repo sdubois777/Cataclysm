@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the stack a kill may build. Issue #1004.
 #include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 // For turning an ability's tag list into a container, the same way a player's
 // skill row is read. Issue #519.
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -283,6 +284,17 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// health debt beside it. All three find the player through the same
 			// controller, and the two that touch attributes read the pawn.
 			UCataclysmStacks::NoteEnemyKilled(Watching->GetPawn());
+
+			// AND THE KILLER'S RUNNING SKILLS ARE TOLD. Issue #37. The Axe's
+			// Butcher's Heat: "every enemy you kill while it lasts grants 1%
+			// more damage and adds another second to the heat." Nothing else
+			// listens; a buff that does not count kills ignores it.
+			//
+			// THE FOURTH READER OF THIS EVENT, after the experience, the health
+			// debt and the stack above. All four find the player through the
+			// same controller, and the three that touch a character read the
+			// pawn.
+			UCataclysmSkillTemplate::NoteKill(Watching->GetPawn());
 
 			// AND WHAT THIS CREATURE WAS SUFFERING FROM MAY PASS TO WHATEVER
 			// STANDS BY ITS BODY. Issue #1060. The Masochist's Empathic Link:
