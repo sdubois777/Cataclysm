@@ -425,9 +425,17 @@ bool FCataclysmGroundPercentTest::RunTest(const FString&)
 
 	// A floor, so that losing the column entirely fails rather than passing
 	// vacuously with nothing to check.
+	//
+	// TEN SINCE 2026-09-01, NOT TWENTY. The Demonic verb rewrite made burning
+	// ground the Greataxe's verb rather than the whole element's habit, so the
+	// number of rows leaving ground fell from 22 to 12.
+	// FEWEST_SKILLS_LEAVING_GROUND in tools/tests/test_burning_ground_damage.py
+	// is this same floor and moved to 10 at the time; this copy did not, and a
+	// stale DT_WeaponSkills asset hid the disagreement, because the asset still
+	// held the data where 22 rows left ground. Rebuilding the asset showed it.
 	TestTrue(FString::Printf(
-		TEXT("at least twenty rows leave burning ground (found %d)"), Checked),
-		Checked >= 20);
+		TEXT("at least ten rows leave burning ground (found %d)"), Checked),
+		Checked >= 10);
 
 	return true;
 }

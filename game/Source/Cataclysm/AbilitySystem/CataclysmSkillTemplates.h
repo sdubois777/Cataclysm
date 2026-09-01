@@ -175,10 +175,10 @@ public:
 	int32 BurningEnemiesAtCast = 0;
 
 	/**
-	 * Percentage points of increased damage this buff is currently granting.
+	 * Percentage points of MORE damage this buff is currently granting.
 	 *
 	 * Zero while the buff is down, and zero for a self buff whose row carries no
-	 * IncreasePerBurning. Read by tests and by anything that shows the player
+	 * MoreDamagePer. Read by tests and by anything that shows the player
 	 * what a buff is worth.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
