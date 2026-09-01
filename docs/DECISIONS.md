@@ -20,6 +20,123 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — Which mesh each weapon base draws, where that mapping lives, and what a two-handed weapon does when the pack has no two-handed mesh
+
+**Affects:** a new "Weapon Meshes" sheet in `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponMeshes.csv`, `game/Content/Data/DT_WeaponMeshes.uasset`,
+`game/Source/Cataclysm/Items/CataclysmWeaponMeshes.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/docs/weapon-source-assets.md`. Applied. Issue #1125.
+
+No weapon was drawn anywhere in this game. A player equipped a Greataxe, its
+stats and its six skills changed, and nothing on screen changed at all.
+
+### Where the mapping lives
+
+Issue #1125 proposed putting the mesh path in `game/Data/ItemBases.csv` "beside
+the other per-base columns ... so it can change without a rebuild". **That file
+is generated from the Item Bases sheet of the design workbook**, so a column
+added to it by hand is overwritten by the next
+`python tools/generate_datatables.py`.
+
+**The decision, taken by the project owner on 2026-09-01: a sheet of its own.**
+`Weapon Meshes` in `docs/All_Things_Cataclysm.xlsx`, keyed by base name, becoming
+`game/Data/WeaponMeshes.csv` and then `DT_WeaponMeshes`.
+
+**Why a separate sheet rather than columns on Item Bases.** A mesh path is an art
+binding rather than a design decision: it changes when the art changes and says
+nothing about how the weapon plays. Keeping third-party asset paths out of the
+design's own sheet means a new weapons pack moves one sheet instead of editing
+the design. This follows `Element Visuals`, which is the same shape for the same
+reason and was added by issue #549.
+
+The row key is the Item Bases row name, so `FCataclysmItem::Base` finds the mesh
+with one lookup and no translation. Both are built by the same
+`row_name("Weapon", name)` call.
+
+### What a two-handed weapon draws
+
+**Measured on 2026-09-01, through the editor, not estimated.** The character is
+180.5 cm tall, read from `SKM_Manny_Simple`'s reference-pose bounds. Against
+that:
+
+| Mesh | Length | Reads as |
+| :-- | --: | :-- |
+| `SM_Sword_1`, `SM_Sword_2`, `SM_Sword_3` | 88, 84, 93 cm | one-handed |
+| `SM_Axe` | 91 cm | one-handed |
+| `SM_Mace` | 83 cm | one-handed |
+| `SM_Spear` | 244 cm | two-handed |
+| `SM_Staff` | 106 cm | two-handed |
+
+**The pack has no two-handed melee weapon.** Six of the fourteen bases are
+two-handed and only two of those six have a correctly sized mesh.
+
+**The decision, taken by the project owner on 2026-09-01: scale the nearest
+one-hander up.** Greatsword draws the longest sword at 1.45, Greataxe the axe at
+1.45, Warhammer the mace at 1.45. The scale is a per-base column in the data, so
+tuning it costs no rebuild.
+
+**Why 1.45 and not more.** Real two-handed weapons are longer — a zweihänder is
+150 to 180 cm, a Dane axe 120 to 170 — but **uniform scaling thickens the grip as
+well as lengthening the blade**, and a 1.8x handle does not fit in a hand. 1.45
+reads as a bigger weapon while keeping the grip plausible. It is a judgement and
+is expected to be tuned by looking at the game.
+
+**Why the Greataxe uses the axe and not the scythe.** Issue #1125 offered the
+scythe as the alternative and answered its own question: a scythe is not an axe.
+A scaled axe is still recognisably an axe, and recognising the weapon matters
+more than avoiding the scale.
+
+### Three bases draw nothing, and that is written down rather than left blank
+
+Fist, Wand and Whip. The workbook writes the word `None` in the Mesh column
+rather than leaving the cell empty, and `tools/generate_datatables.py` refuses a
+blank cell, so a base nobody filled in can be told apart from a weapon meant to
+be invisible. Issue #1125 asked for exactly that: "Drawing nothing is a
+reasonable answer; drawing nothing silently is not."
+
+**The Fist is a design decision and the other two are a gap in the art.** Unarmed
+should show no weapon. The Wand and the Whip have nothing suitable in this pack,
+so buying another pack should fix two of these three and must not fix the first.
+
+### A two-handed weapon is drawn in one hand, and that is a limitation
+
+`UCataclysmEquipmentComponent` puts a two-handed weapon in `Weapon1` and blocks
+`Weapon2`, so the left hand is empty. Holding it in both hands needs a two-handed
+grip pose, and nothing this project owns has one.
+
+### Which hand a swapped-in weapon lands in is now visible, and is asked about
+
+**Not decided here, and raised as issue #1128 rather than settled quietly.**
+
+`UCataclysmEquipmentComponent::Equip` takes the gear slot as an **output**: it
+chooses the first free candidate itself and writes back which one it used.
+`EquipInto` is the one that takes a slot named by the caller. A two-handed weapon
+is stored only in `Weapon1`, so `Weapon2` reads as empty, so **a one-handed
+weapon equipped over a two-handed one lands in `Weapon2` and is drawn in the left
+hand.**
+
+That follows a rule the component states deliberately — "The two weapon slots are
+interchangeable, the design says there is no primary hand" — and it had no
+visible consequence until this change, because nothing was drawn. Now that a
+weapon can be seen, whether that rule is still wanted is a question for the
+project owner. Nothing here changes it.
+
+**Found by a test that failed.** Two of the automation tests for this feature
+asserted the right hand and failed. The test was wrong about the design rather
+than the code being wrong, which is worth recording: the fix was to follow the
+slot the component reports, and to add a test that starts from the character's
+real starting state so the swap path is covered rather than avoided.
+
+### The Paragon packs hold no weapons to borrow
+
+Asked by the project owner on 2026-09-01. Every Paragon hero's weapon is skinned
+into the hero's own body mesh. Across all six packs the only separately-held prop
+is `SM_Rock_To_Hold`, which is the rock `ACataclysmBruteCharacter` already
+carries. `game/docs/weapon-source-assets.md` has the per-pack counts.
+
+---
+
 ## 2026-09-01 — The player wears the Mannequin from the engine's template resources, and swings the four attack clips that come with it
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and

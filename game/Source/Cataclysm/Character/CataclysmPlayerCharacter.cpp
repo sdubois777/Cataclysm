@@ -36,8 +36,12 @@
 #include "Character/CataclysmEnemyDeath.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/DataTable.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "Items/CataclysmWeaponMeshes.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -169,6 +173,94 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// THE MESH COMPONENT ITSELF ALREADY EXISTS. `ACharacter` creates one in its
 	// own constructor and `GetMesh()` returns it; nothing here has to make one.
 	// It is empty until ResolveBody puts a mesh on it.
+
+	// WHAT IS HELD IN EACH HAND. Issue #1125. Empty until something is
+	// equipped, and attached to the mesh's hand sockets rather than to the
+	// capsule so that they follow the animation instead of floating beside it.
+	//
+	// ATTACHED IN THE CONSTRUCTOR AND FILLED LATER. A socket name is resolved
+	// when the skeletal mesh arrives, so naming one that does not exist yet is
+	// correct rather than early: until it appears the component simply follows
+	// the component it is attached to.
+	RightHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("RightHandWeapon"));
+	RightHandWeapon->SetupAttachment(GetMesh(),
+									 UCataclysmWeaponMeshes::RightHandSocket);
+
+	LeftHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("LeftHandWeapon"));
+	LeftHandWeapon->SetupAttachment(GetMesh(),
+									UCataclysmWeaponMeshes::LeftHandSocket);
+
+	// NO COLLISION ON EITHER. A weapon in this game hits through the ability
+	// system rather than by touching anything -- see UCataclysmStrikeTemplate --
+	// so collision here would only push the character around and catch on
+	// scenery.
+	RightHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RightHandWeapon->SetGenerateOverlapEvents(false);
+	LeftHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	LeftHandWeapon->SetGenerateOverlapEvents(false);
+}
+
+void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
+{
+	if (!RightHandWeapon || !LeftHandWeapon)
+	{
+		return;
+	}
+
+	const UDataTable* Table = UCataclysmWeaponMeshes::LoadTable();
+
+	// THE TWO SLOTS THE DESIGN HAS, RIGHT THEN LEFT. A two-handed weapon sits in
+	// Weapon1 and blocks Weapon2, so it draws in the right hand and the left
+	// stays empty. See the header for why that is a limitation and not a
+	// decision.
+	const TPair<ECataclysmGearSlot, UStaticMeshComponent*> Hands[] = {
+		{ECataclysmGearSlot::Weapon1, RightHandWeapon},
+		{ECataclysmGearSlot::Weapon2, LeftHandWeapon},
+	};
+
+	for (const TPair<ECataclysmGearSlot, UStaticMeshComponent*>& Hand : Hands)
+	{
+		const FCataclysmItem* Worn =
+			Equipment ? Equipment->EquippedAt(Hand.Key) : nullptr;
+
+		if (!Worn)
+		{
+			// EMPTIED RATHER THAN LEFT ALONE, AND THIS IS THE HALF THAT WOULD
+			// BREAK SILENTLY. Taking a weapon off has to remove it from the
+			// hand, or the character goes on holding a weapon it no longer has
+			// while every number says otherwise.
+			Hand.Value->SetStaticMesh(nullptr);
+			continue;
+		}
+
+		// SAID WHEN A BASE HAS NO ROW AT ALL, which is a different thing from a
+		// base that draws nothing on purpose. tools/generate_datatables.py
+		// refuses a weapon base with no row, so reaching this means the table on
+		// disk is older than the design -- exactly the case that would otherwise
+		// look like a weapon quietly failing to appear.
+		if (Table && !UCataclysmWeaponMeshes::HasRowFor(Table, Worn->Base))
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("%s is worn but has no row in DT_WeaponMeshes, so nothing "
+					 "is drawn for it. Every weapon base needs a row, including "
+					 "the ones that draw nothing. Regenerate the table with "
+					 "tools/generate_datatable_assets.py."),
+				*Worn->Base.ToString());
+		}
+
+		// NOT CALLED `Mesh`. `ACharacter` has a member of that name -- the
+		// character's own skeletal mesh -- and the build refuses a local that
+		// hides it, which is the right call twice over here: the two are one
+		// letter apart in meaning and the wrong one would compile.
+		float Scale = 1.0f;
+		UStaticMesh* WeaponMesh =
+			UCataclysmWeaponMeshes::MeshFor(Table, Worn->Base, Scale);
+
+		Hand.Value->SetStaticMesh(WeaponMesh);
+		Hand.Value->SetRelativeScale3D(FVector(Scale));
+	}
 }
 
 bool ACataclysmPlayerCharacter::ResolveBody()
@@ -371,6 +463,21 @@ void ACataclysmPlayerCharacter::BeginPlay()
 	{
 		GiveStartingWeapon();
 	}
+
+	// AND WHATEVER IS WORN GETS DRAWN. Issue #1125.
+	//
+	// HERE AS WELL AS ON OnEquipmentChanged, AND BOTH ARE NEEDED. Equipping
+	// broadcasts, so the starting weapon above already reaches
+	// RefreshWeaponMeshes through the handler bound earlier in this function.
+	// A character that arrives ALREADY WEARING something broadcasts nothing --
+	// GiveStartingWeapon deliberately does nothing when a weapon is already on,
+	// which is the case for a character restored from a save -- and without
+	// this line that character would stand there with empty hands and a full
+	// gear panel.
+	//
+	// RUNNING TWICE COSTS A TABLE LOOKUP AND CHANGES NOTHING, because the
+	// function reads what is worn rather than toggling anything.
+	RefreshWeaponMeshes();
 
 	// Taken from the boom rather than repeated as a number here. The resting
 	// distance is stated once, in the constructor, and clamping it means a boom
@@ -953,6 +1060,15 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
 	FillAbilitySlotsFromWornWeapon();
+
+	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
+	// could equip a Greataxe and see nothing change at all.
+	//
+	// ON EVERY EQUIPMENT CHANGE RATHER THAN ONLY A WEAPON ONE, which costs a
+	// table lookup for a change of boots and is what makes taking a weapon off
+	// reliably clear the hand. This function already recomputes the whole stat
+	// line for a change of boots for the same reason.
+	RefreshWeaponMeshes();
 }
 
 void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
