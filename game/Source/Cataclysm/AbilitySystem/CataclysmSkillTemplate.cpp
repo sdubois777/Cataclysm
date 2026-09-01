@@ -120,6 +120,39 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// to use the skill.
 	if (AActor* Self = Avatar())
 	{
+		// THE CHARACTER TURNS TO FACE WHAT IT IS HITTING. Decided by the project
+		// owner on 2026-09-01, after seeing the first attack animations: a skill
+		// aimed its damage and its effect at the cursor while the body kept
+		// facing whatever direction it last walked in, so the character swung
+		// away from the thing it was killing.
+		//
+		// EVERY SKILL, NOT JUST THE BASIC ATTACK, because the mismatch is the
+		// same for all of them and this function is the one place all eight
+		// shapes pass through.
+		//
+		// YAW ONLY. A character stands upright; pitching it at a cursor on the
+		// floor would tip it over.
+		//
+		// A NO-OP FOR AN ENEMY, WHICH IS WHY IT IS SAFE HERE. AimDirection falls
+		// back to the caster's own forward vector when there is no cursor -- and
+		// no enemy has one -- so turning to face it changes nothing.
+		// ACataclysmHellhoundCharacter uses a skill template and reaches this
+		// line every time it casts.
+		//
+		// NOT A LOCK. `bOrientRotationToMovement` is on, so a character that is
+		// walking is turned back toward its movement direction over the next few
+		// frames. Standing still, the facing stays. That is the behaviour the
+		// genre has: a glance toward the target rather than a snap that fights
+		// the player's movement.
+		const FVector Aim = AimDirection();
+		if (!Aim.IsNearlyZero())
+		{
+			FRotator Facing = Aim.Rotation();
+			Facing.Pitch = 0.0f;
+			Facing.Roll = 0.0f;
+			Self->SetActorRotation(Facing);
+		}
+
 		UCataclysmCastEffect::PlayFor(
 			Self, AimDirection(),
 			UCataclysmCastEffect::DamageTypeFor(Self, ElementTag()),

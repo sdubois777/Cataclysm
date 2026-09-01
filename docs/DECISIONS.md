@@ -99,16 +99,72 @@ passives raise it and nothing caps it, so a character stacked far enough would
 otherwise ask for a swing at many times speed. Past the cap the animation stops
 keeping up with the damage rather than becoming a blur.
 
-### Root motion is switched off on every swing
+### Root motion is switched off on every swing, and the first attempt did not work
 
-**All four clips carry it**, measured through the editor on 2026-09-01, and a
-`UCharacterMovementComponent` takes root motion from montages by default. Left
-alone, every basic attack would shove the character a step forward — several
-times a second, at whatever happens to be in reach.
+**All four clips carry it**, measured through the editor on 2026-09-01, and an
+animation instance takes root motion from montages by default. Left alone, every
+basic attack shoves the character a step forward — several times a second, at
+whatever happens to be in reach.
 
-**Cleared on the montage rather than on the movement component**, because the
-movement component's setting is global to the character and would disable root
-motion for anything else that ever wants it.
+**The first version cleared `bEnableRootMotionTranslation` and
+`bEnableRootMotionRotation` on the montage after playing it, and that does
+nothing.** The project owner played it and reported every ability making the
+character surge forward: "it's just a slide forward".
+
+Those two flags are read in `UAnimMontage::PostLoad` and nowhere else at run
+time; they push a setting onto the referenced sequence when the asset loads. What
+actually decides it is `UAnimMontage::HasRootMotion()`, which asks each sequence
+and never looks at either flag — and `UAnimInstance::Montage_Play` consults it
+while starting the montage, so a flag set afterwards was set too late twice over.
+
+**What works is `SetRootMotionMode(ERootMotionMode::IgnoreRootMotion)`** on the
+animation instance, set once when the animation Blueprint is bound.
+`IgnoreRootMotion` means "extract it but do not apply it": the motion comes out
+of the pose so the mesh stays on its capsule, then is discarded so nothing moves.
+`NoRootMotionExtraction` would leave it in the pose and the mesh would walk away
+from the capsule it is attached to.
+
+**On the animation instance rather than per montage**, because it is a statement
+about this character: nothing it plays is meant to move it. A skill that should
+move the character has a Movement shape and moves it through the movement
+component, which this does not touch.
+
+**The test that should have caught this could not, and that is the lesson worth
+keeping.** It asserted that the two flags were set to false — that a line
+somebody wrote was present — rather than that the character stayed still. A world
+built by `UWorld::CreateWorld` is never ticked, so no test in this project can
+watch a character move. A check of that shape is worth having, but it must not be
+mistaken for evidence of behaviour, and the engine's own source has to be read
+rather than the API guessed at.
+
+### The character turns to face what it is aimed at
+
+**Decided by the project owner on 2026-09-01**, in the same session, after seeing
+the character attack in the direction it happened to be facing "instead of
+attacking towards the mouse".
+
+**Nothing in this project had ever turned a character.** `AimDirection` has
+always aimed a skill's damage and its effect at the cursor while the body kept
+facing whatever direction it last walked in. With nothing drawn that was
+invisible; with a visible body swinging a visible weapon it is not.
+
+`UCataclysmSkillTemplate::CommitAndBegin` now turns the caster to face its aim,
+yaw only — pitch is cleared because a cursor trace lands on the floor and aiming
+a character at it would tip the character over. **Every skill, not just the basic
+attack**, because the mismatch is the same for all of them and that function is
+the one place all eight shapes pass through.
+
+**Chosen over turning only when standing still**, which was the alternative
+offered. Path of Exile, Diablo and Last Epoch all face the body at what it is
+hitting regardless of movement.
+
+**A no-op for every enemy, which is what makes it safe in shared code.**
+`AimDirection` falls back to the caster's own forward vector when there is no
+cursor, and no enemy has one.
+
+**Not a lock.** `bOrientRotationToMovement` is on, so a character that is walking
+is turned back toward its movement direction over the next few frames. Standing
+still, the facing stays.
 
 ### What is deliberately not fixed
 

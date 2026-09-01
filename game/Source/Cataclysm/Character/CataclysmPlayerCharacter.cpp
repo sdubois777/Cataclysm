@@ -449,24 +449,13 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 		}
 	}
 
-	UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(
+	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
+	// animation instance is set to ERootMotionMode::IgnoreRootMotion when the
+	// animation Blueprint is bound; see ResolveAnimationBlueprint, which also
+	// records what was tried first and why it did nothing.
+	AnimInstance->PlaySlotAnimationAsDynamicMontage(
 		Clip, AttackSlotName, AttackBlendInSeconds, AttackBlendOutSeconds,
 		Rate, /*LoopCount=*/1);
-
-	// AND THE SWING DOES NOT WALK THE CHARACTER FORWARD. All three attack clips
-	// carry root motion, measured through the editor on 2026-09-01, and
-	// UCharacterMovementComponent takes root motion from montages by default.
-	// Left alone, every basic attack would shove the character a step forward --
-	// several times a second, at whatever happens to be in reach.
-	//
-	// ON THE MONTAGE RATHER THAN ON THE MOVEMENT COMPONENT, because the movement
-	// component's setting is global to the character and would also disable root
-	// motion for anything else that ever wants it.
-	if (Montage)
-	{
-		Montage->bEnableRootMotionTranslation = false;
-		Montage->bEnableRootMotionRotation = false;
-	}
 }
 
 bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
@@ -502,6 +491,36 @@ bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
 
 	MeshComponent->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	MeshComponent->SetAnimInstanceClass(AnimationClass);
+
+	// NO ANIMATION EVER MOVES THIS CHARACTER. Issue #1126.
+	//
+	// WHAT WENT WRONG WITHOUT IT. The project owner played the first version of
+	// the attack animations on 2026-09-01 and reported that every ability made
+	// the character surge forward: "it's just a slide forward". All three attack
+	// clips carry root motion, and a character's animation instance defaults to
+	// `RootMotionFromMontagesOnly`, so every swing drove the capsule.
+	//
+	// `IgnoreRootMotion` MEANS "EXTRACT IT BUT DO NOT APPLY IT", which is the
+	// one that is wanted. `NoRootMotionExtraction` leaves the motion in the pose
+	// instead, so the mesh would walk away from the capsule it is attached to.
+	//
+	// WHAT WAS TRIED FIRST AND DOES NOTHING, recorded so it is not tried again:
+	// clearing `bEnableRootMotionTranslation` and `bEnableRootMotionRotation` on
+	// the montage after playing it. Those two are read in `UAnimMontage::PostLoad`
+	// and nowhere else at run time -- they push a setting onto the referenced
+	// sequence when the asset loads. What actually decides it is
+	// `UAnimMontage::HasRootMotion()`, which asks each sequence and never looks
+	// at either flag, and `UAnimInstance::Montage_Play` consults it while
+	// starting the montage, so a flag set afterwards is set too late twice over.
+	//
+	// ON THE ANIMATION INSTANCE RATHER THAN PER MONTAGE, because it is a
+	// statement about this character: nothing it plays is meant to move it. A
+	// skill that should move the character has a Movement shape and moves it
+	// through the movement component, which this does not touch.
+	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+	{
+		AnimInstance->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+	}
 
 	return true;
 }

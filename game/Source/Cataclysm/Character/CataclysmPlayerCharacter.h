@@ -281,11 +281,13 @@ public:
 	 * opposite case and is played onto the component directly, because it has to
 	 * hold its last frame; see PlayDeathAnimation.
 	 *
-	 * ROOT MOTION IS SWITCHED OFF ON THE MONTAGE. All four attack clips carry
-	 * root motion, measured on 2026-09-01, and a character movement component
-	 * takes root motion from montages by default. Left on, every swing would
-	 * walk the character forward, which is not what a basic attack should do
-	 * when it fires by itself at whatever is in reach.
+	 * ROOT MOTION IS SWITCHED OFF, AND NOT HERE. All four attack clips carry it
+	 * and an animation instance defaults to taking root motion from montages, so
+	 * without something stopping it every swing walks the character forward --
+	 * which the project owner saw and reported on 2026-09-01 as "just a slide
+	 * forward". What stops it is `SetRootMotionMode(IgnoreRootMotion)` in
+	 * `ResolveAnimationBlueprint`, which also records the approach that was
+	 * tried first and did nothing.
 	 *
 	 * THE CLIPS ARE LONGER THAN THE INTERVAL THEY FIT IN, so the rate is raised
 	 * rather than the clip being cut off. Attack speed in

@@ -177,33 +177,42 @@ CATACLYSM_TEST(FCataclysmSwingRootMotionTest,
 
 		if (AnimInstance)
 		{
+			// WHAT THIS CAN AND CANNOT SEE, SAID FIRST. A world built by
+			// UWorld::CreateWorld is never ticked, so no animation ever
+			// advances and no test in this project can watch a character move.
+			// This checks the setting the engine actually consults. Whether the
+			// character stays still on screen is something a person has to look
+			// at, and the first version of this feature shipped because a check
+			// of this shape was mistaken for one.
+			//
+			// TRUE IS THE WANTED ANSWER HERE, WHICH READS BACKWARDS.
+			// ShouldExtractRootMotion is true for RootMotionFromEverything and
+			// for IgnoreRootMotion, and false for the RootMotionFromMontagesOnly
+			// an animation instance starts at. IgnoreRootMotion means "extract
+			// it but do not apply it": the motion is taken out of the pose, so
+			// the mesh stays on the capsule, and then discarded, so nothing
+			// moves. So the character is correctly set exactly when this is
+			// true, and the default it has to be moved away from makes it false.
+			TestTrue(TEXT("the character is set to take root motion out of the "
+						  "pose and then discard it"),
+				AnimInstance->ShouldExtractRootMotion());
+
 			Player->PlayAttackAnimation();
 
 			UAnimMontage* Montage = AnimInstance->GetCurrentActiveMontage();
 			if (TestNotNull(TEXT("a swing is playing"), Montage))
 			{
-				// THE ASSERTION THIS FILE EXISTS FOR. All three attack clips
-				// carry root motion and a character movement component takes
-				// root motion from montages by default, so without these two
-				// being cleared the character walks forward on every swing --
-				// several times a second, at whatever is in reach.
-				TestFalse(TEXT("the swing does not translate the character"),
-					Montage->bEnableRootMotionTranslation);
-
-				TestFalse(TEXT("and does not turn it"),
-					Montage->bEnableRootMotionRotation);
-
-				// AND THE CLIP IT WAS BUILT FROM STILL CARRIES ROOT MOTION,
-				// which is what makes the two assertions above load-bearing
-				// rather than checks against a default. If the clips are ever
-				// replaced with ones that carry none, this says so rather than
-				// letting the guard quietly become worthless.
+				// AND THE CLIP DOES CARRY ROOT MOTION, which is what makes the
+				// assertion above load-bearing rather than a check against a
+				// default. If the clips are ever replaced with ones carrying
+				// none, this says so rather than letting the guard quietly
+				// become worthless.
 				const UAnimSequenceBase* Clip =
 					CataclysmPlayerAttackTest::ClipInside(Montage);
 				if (const UAnimSequence* Sequence = Cast<UAnimSequence>(Clip))
 				{
 					TestTrue(TEXT("and the clip it came from does carry root "
-								  "motion, so switching it off matters"),
+								  "motion, so discarding it matters"),
 						Sequence->bEnableRootMotion);
 				}
 			}

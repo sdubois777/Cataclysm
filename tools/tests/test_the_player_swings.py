@@ -152,24 +152,84 @@ def test_the_default_is_to_do_nothing_so_enemies_are_unaffected():
 # --------------------------------------------------------------------------
 
 
-def test_root_motion_is_switched_off_on_the_swing():
+def test_no_animation_may_move_the_character():
     """The half that breaks silently, and the reason this file exists.
 
-    All three attack clips carry root motion and a character movement component
-    takes root motion from montages by default. Without these two lines every
-    basic attack shoves the character forward -- several times a second, at
-    whatever happens to be in reach -- and nothing in the code that plays the
-    clip would look wrong.
+    All three attack clips carry root motion and an animation instance defaults
+    to `RootMotionFromMontagesOnly`, so without something stopping it every
+    basic attack drives the capsule forward -- several times a second, at
+    whatever happens to be in reach.
+
+    THIS CHECK REPLACED ONE THAT WAS WORTHLESS, AND THAT IS WORTH RECORDING.
+    The first version asserted that `PlayAttackAnimation` cleared
+    `bEnableRootMotionTranslation` and `bEnableRootMotionRotation` on the
+    montage. It passed. The project owner then played the game and reported
+    every ability making the character surge forward: "it's just a slide
+    forward". Those two flags are read in `UAnimMontage::PostLoad` and nowhere
+    else at run time; what decides it is `UAnimMontage::HasRootMotion()`, which
+    asks each sequence and never looks at either flag, and which
+    `UAnimInstance::Montage_Play` consults while starting the montage -- so a
+    flag set afterwards was set too late twice over.
+
+    THE LESSON IS THE SHAPE OF THE CHECK, not the API. The old one asserted
+    that a line I wrote was present. It could not tell whether the character
+    moved, so it could not fail for the reason it existed.
     """
     body = function_body(
-        read(PLAYER_CPP), "void ACataclysmPlayerCharacter::PlayAttackAnimation")
+        read(PLAYER_CPP),
+        "bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint")
+
+    assert "SetRootMotionMode(ERootMotionMode::IgnoreRootMotion)" in body, (
+        "ResolveAnimationBlueprint does not set the animation instance to "
+        "ignore root motion, so every attack clip drives the character "
+        "forward. IgnoreRootMotion means 'extract it but do not apply it', "
+        "which keeps the mesh on the capsule while moving neither.")
+
+
+def test_using_a_skill_turns_the_character_to_face_the_aim():
+    """The body faces what the skill is aimed at.
+
+    WHY THIS EXISTS. The project owner played the first attack animations on
+    2026-09-01 and reported that the character attacked in the direction it was
+    facing "instead of attacking towards the mouse". A skill has always aimed
+    its damage and its effect with `AimDirection`; nothing ever turned the
+    character, so the body faced whatever direction it last walked in. With
+    nothing drawn that was invisible. With a visible body swinging a visible
+    weapon it is not.
+
+    IN THE SHARED FUNCTION, so all eight skill shapes turn rather than one.
+    """
+    body = function_body(
+        read(SKILL_CPP), "bool UCataclysmSkillTemplate::CommitAndBegin")
+
+    assert "SetActorRotation" in body, (
+        "UCataclysmSkillTemplate::CommitAndBegin does not turn the character to "
+        "face its aim, so a skill hits toward the cursor while the body faces "
+        "wherever it last walked.")
+
+    assert "Facing.Pitch = 0.0f" in body and "Facing.Roll = 0.0f" in body, (
+        "the facing is not flattened to yaw. A cursor trace lands on the floor, "
+        "so aiming a character at it without clearing pitch tips the character "
+        "over.")
+
+
+def test_the_ineffective_montage_flags_are_not_used_again():
+    """The approach that looks right, does nothing, and was tried.
+
+    PINNED SO IT IS NOT TRIED A SECOND TIME. Clearing the montage's root motion
+    flags is the obvious-looking answer and reads correctly in a diff. It has
+    no effect at run time. If it ever comes back it will come back with a
+    confident comment attached, so this is what says otherwise.
+    """
+    code = strip_comments(read(PLAYER_CPP))
 
     for flag in ("bEnableRootMotionTranslation", "bEnableRootMotionRotation"):
-        assert f"{flag} = false" in body, (
-            f"PlayAttackAnimation does not set {flag} to false on the montage "
-            f"it plays. All three attack clips carry root motion, so every "
-            f"swing would move the character. Measured through the editor on "
-            f"2026-09-01; see game/docs/player-source-assets.md.")
+        assert flag not in code, (
+            f"CataclysmPlayerCharacter.cpp sets {flag} again. Those two are "
+            f"read in UAnimMontage::PostLoad and nowhere else at run time, so "
+            f"setting them on a montage does not stop root motion. "
+            f"SetRootMotionMode(ERootMotionMode::IgnoreRootMotion) in "
+            f"ResolveAnimationBlueprint is what does.")
 
 
 def test_the_swing_goes_through_the_animation_blueprint_slot():
