@@ -188,15 +188,45 @@ passives raise it and nothing caps it, so a character stacked far enough would
 otherwise ask for a swing at many times speed. Past 2.5 the animation stops
 keeping up with the damage rather than turning into a blur.
 
-### Where the damage lands is not where the swing strikes
+### Where the damage lands, and how it is timed
 
-**Not fixed.** Damage is applied when the ability activates, which is the start
-of the clip; the swing's own impact is a third to a half of the way through it.
-So a hit registers before the weapon appears to connect. Issue #1133.
+**Damage waits for the swing to connect, as of 2026-09-01.** Issue #1133. Until
+then it was applied in the frame the ability activated, which is the start of the
+clip, while the swing's own impact is a third to a half of the way through it, so
+a hit registered before the weapon appeared to connect.
+
+**How it works now.** Each clip carries a `UCataclysmSwingConnectsNotify` marker
+on a notify track named `Cataclysm`, placed by `tools/place_swing_markers.py`.
+`ACataclysmPlayerCharacter::PlayAttackAnimation` reads where the marker sits and
+divides by the play rate it is about to use, and leaves the answer for
+`UCataclysmSkillTemplate::WhenTheSwingConnects` to schedule against.
+
+**The marker's position is read, not waited for**, and that is deliberate:
+
+- It works in a world that is never ticked, which is every automation test here.
+- It works with no art at all, where it falls back to zero and the blow lands at
+  once, exactly as it did before.
+- It is the same number either way. A notify's time is a position inside the
+  clip, and a montage advances that position by real time multiplied by the play
+  rate, so the wall-clock moment is the position divided by the rate.
+
+**It scales with attack speed for free**, because the play rate is what already
+carries attack speed.
+
+**Three of the eight skill shapes wait**: the melee strike, the projectile
+release and the curse. The other five do not land a blow at the moment a weapon
+connects, so deferring them would delay things that are not swings.
+
+**Whether it looks right has not been checked by anybody.** The automation
+command passes `-nullrhi`, so no test run can see a swing. Somebody has to play
+it.
 
 Issue #784 records the same problem one step earlier for enemies: three
 telegraphed basic attacks land damage 0.46 to 1.14 seconds away from where the
-animation strikes.
+animation strikes. **That is still open.** Their clips are in the ignored Paragon
+folders, so a marker on one would never be committed; the route for those is a
+small Animation Montage in `game/Content/Enemies/<Cataclysm>/<Enemy>/`, which is
+tracked, carrying the marker on its own notify track.
 
 #### When each clip strikes, measured
 
