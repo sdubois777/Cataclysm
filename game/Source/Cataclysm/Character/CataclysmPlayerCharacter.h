@@ -7,12 +7,14 @@
 #include "AbilitySystem/CataclysmAbilitySet.h"
 #include "CataclysmPlayerCharacter.generated.h"
 
+class UAnimSequence;
+class USkeletalMeshComponent;
+class UStaticMeshComponent;
 class UCameraComponent;
 class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
-class UStaticMeshComponent;
 struct FOnAttributeChangeData;
 
 /**
@@ -247,6 +249,160 @@ public:
 	/** The ItemBases row the character begins wearing. Issue #840. */
 	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
 
+	/**
+	 * Draws whatever is worn in the two weapon slots, and clears a hand that
+	 * holds nothing. Issue #1125.
+	 *
+	 * CLEARS AS WELL AS SETS, WHICH IS THE HALF THAT BREAKS SILENTLY. Taking a
+	 * weapon off has to remove its mesh, and a version that only ever assigned
+	 * would leave the last weapon in the character's hand for ever -- looking
+	 * exactly like a weapon that was still equipped, while every number said
+	 * otherwise. That is issue #840 one step along: the character's hand and
+	 * the character's stats disagreeing, with nothing on screen to say so.
+	 *
+	 * HUNG ON OnEquipmentChanged RATHER THAN A NEW MOMENT, because that already
+	 * runs on every equipment change and already recomputes the stat line and
+	 * the ability slots from the same event.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason
+	 * `ApplyChosenClassStats` and `Revive` are public. A test world built with
+	 * `UWorld::CreateWorld` has no controller to possess with, so a test cannot
+	 * rely on the equipment broadcast reaching a handler bound at BeginPlay.
+	 */
+	void RefreshWeaponMeshes();
+
+	/**
+	 * Swings when the character uses any skill, including the basic attack.
+	 * Issue #1126.
+	 *
+	 * THROUGH THE ANIMATION BLUEPRINT'S SLOT, UNLIKE THE DEATH CLIP. `ABP_Unarmed`
+	 * carries a `DefaultSlot`, so an attack blends over the locomotion graph and
+	 * back out again rather than cutting to it and cutting back. A death is the
+	 * opposite case and is played onto the component directly, because it has to
+	 * hold its last frame; see PlayDeathAnimation.
+	 *
+	 * ROOT MOTION IS SWITCHED OFF, AND NOT HERE. All four attack clips carry it
+	 * and an animation instance defaults to taking root motion from montages, so
+	 * without something stopping it every swing walks the character forward --
+	 * which the project owner saw and reported on 2026-09-01 as "just a slide
+	 * forward". What stops it is `SetRootMotionMode(IgnoreRootMotion)` in
+	 * `ResolveAnimationBlueprint`, which also records the approach that was
+	 * tried first and did nothing.
+	 *
+	 * THE CLIPS ARE LONGER THAN THE INTERVAL THEY FIT IN, so the rate is raised
+	 * rather than the clip being cut off. Attack speed in
+	 * `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an interval of
+	 * 0.833 down to 0.667 seconds, and the shortest clip is 1.0 second. The rule
+	 * is the Abyssal Warden's: never slower than authored, only faster, and only
+	 * when it must be.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason `Revive` and
+	 * `RefreshWeaponMeshes` above are. The base class declares this public, so
+	 * an override tucked into the protected section narrows it and stops
+	 * anything outside the class from calling it -- which the build refuses
+	 * rather than allowing quietly.
+	 */
+	virtual void PlayAttackAnimation() override;
+
+	// ----------------------------------------------------------------------
+	// Art. Issue #1124.
+	// ----------------------------------------------------------------------
+	//
+	// WHERE THESE ASSETS CAME FROM AND WHY THEY ARE COPIES. They were copied
+	// out of the engine's own template resources, at
+	// Engine/Templates/TemplateResources/High/Characters/Content/Mannequins.
+	// That is the folder Unreal copies into a project made from the Third
+	// Person template, so the assets already record /Game/Characters/Mannequins
+	// as their own package path and an ordinary file copy put them in the right
+	// place with every reference intact.
+	//
+	// NOT LOADED FROM THE ENGINE WHERE THEY SIT, because template resources are
+	// not a mounted content root: the editor cannot see them at all until they
+	// are copied into a project. game/docs/player-source-assets.md records what
+	// was taken and what was deliberately left behind.
+
+	/** The skeletal mesh. `SKM_Manny_Simple` is the body; `SK_Mannequin`
+	 *  beside it is the Skeleton every clip below is bound to. */
+	static const TCHAR* BodyMeshPath;
+
+	/**
+	 * The animation Blueprint's generated class. The `_C` suffix is what makes
+	 * it the class rather than the asset, and without it
+	 * `TryLoadClass<UAnimInstance>` returns null and the character holds its
+	 * reference pose.
+	 *
+	 * EPIC'S OWN, AND IT DRIVES AN ORDINARY `ACharacter`. `ABP_Unarmed` casts
+	 * its owner to `ACharacter` and reads velocity and falling state off the
+	 * standard `UCharacterMovementComponent`, which is exactly what this pawn
+	 * has, so it needed no change to work here. Its blend space blends idle,
+	 * walk and run by speed and direction.
+	 *
+	 * THE OTHER MANNEQUIN ANIMATION BLUEPRINT IN THE ENGINE DOES NOT WORK HERE.
+	 * `ABP_Manny`, in the experimental MoverExamples plugin, casts to
+	 * `MoverExamplesCharacter` and reads a `CharacterMoverComponent`. This
+	 * project does not use the Mover plugin, so that cast fails every frame and
+	 * the blend space gets no speed at all.
+	 */
+	static const TCHAR* AnimationBlueprintPath;
+
+	/** The folder holding the six death clips, and their names in it. */
+	static const TCHAR* DeathAnimationFolder;
+	static const TCHAR* DeathAnimationNames[6];
+
+	/**
+	 * The folder holding the attack clips, and the three that are used.
+	 *
+	 * THREE OF THE FOUR THE ENGINE SHIPS. `MM_ChargedAttack` is copied beside
+	 * them and is deliberately not in this list: at 1.8333 seconds it is nearly
+	 * three times a fast weapon's swing interval, so cycling it into an attack
+	 * that fires by itself would mean playing it at close to triple speed. It is
+	 * there for a skill that deserves a heavier swing, which is work this does
+	 * not do.
+	 *
+	 * MEASURED, NOT ESTIMATED. `MM_Attack_01` and `MM_Attack_02` are 1.0 second
+	 * each and `MM_Attack_03` is 1.6667, read through the editor on 2026-09-01.
+	 * `game/docs/player-source-assets.md` records all four.
+	 */
+	static const TCHAR* AttackAnimationFolder;
+	static const TCHAR* AttackAnimationNames[3];
+
+	/**
+	 * The animation Blueprint slot an attack is played into.
+	 *
+	 * `ABP_Unarmed` carries a slot node named `DefaultSlot`, which is what lets
+	 * an attack blend over the locomotion graph instead of replacing it.
+	 * `ACataclysmAbyssalWardenCharacter` wanted exactly this and could not have
+	 * it, because no animation Blueprint has ever been authored for that
+	 * creature.
+	 */
+	static const FName AttackSlotName;
+
+	/**
+	 * How long an attack takes to blend in and out of the locomotion graph.
+	 *
+	 * SHORTER IN THAN OUT, WHICH IS DELIBERATE. A swing should arrive promptly
+	 * or it reads as late against the damage, which already lands at the start
+	 * of the ability. Leaving is not urgent, so a longer blend out settles back
+	 * into walking without a visible step.
+	 *
+	 * A JUDGEMENT. Nothing measured these; they are a starting point and are
+	 * expected to change once somebody watches a fight.
+	 */
+	static constexpr float AttackBlendInSeconds = 0.10f;
+	static constexpr float AttackBlendOutSeconds = 0.25f;
+
+	/**
+	 * The most an attack clip may be sped up to fit the swing interval.
+	 *
+	 * A CEILING RATHER THAN A HOPE, the same shape as the Abyssal Warden's
+	 * MaximumPlayRate and the ceiling on how long a corpse is kept. Attack speed
+	 * is a stat that affixes and passives raise, and nothing in the design caps
+	 * it, so a character stacked far enough would otherwise ask for a clip at
+	 * ten times speed, which is a blur rather than a swing. Past this the
+	 * animation simply stops keeping up with the damage.
+	 */
+	static constexpr float MaximumAttackPlayRate = 2.5f;
+
 protected:
 	virtual void InitAbilityActorInfo() override;
 
@@ -290,21 +446,112 @@ protected:
 	TObjectPtr<UCameraComponent> TopDownCamera;
 
 	/**
-	 * A stand-in body, so there is something to see before there is any art.
+	 * Puts the Mannequin body, its animation Blueprint and its death clips on
+	 * this character. Issue #1124.
 	 *
-	 * Two engine primitives: a cylinder for the body and a cone for the nose.
-	 * The nose is not decoration. The character turns to face the direction it
-	 * is moving, and with a bare cylinder that rotation is invisible, so there
-	 * is no way to tell whether facing is working.
+	 * WHAT IT REPLACED. Two engine primitives from /Engine/BasicShapes: a
+	 * cylinder for the body and a cone stuck on the front, because with a bare
+	 * cylinder there was no way to see which way the character faced. Nothing
+	 * could be hung on either of them and neither could play anything, so a
+	 * player character had no death animation at all.
 	 *
-	 * Both come from /Engine/BasicShapes, so this adds no asset to the project
-	 * and nothing to Git LFS. Replaced when there is a real mesh.
+	 * CALLED FROM BeginPlay AND NOT FROM THE CONSTRUCTOR. Loading assets in a
+	 * constructor also loads them for the class default object, which is built
+	 * during module startup. This is the same place and the same reason
+	 * `ACataclysmAbyssalWardenCharacter::ResolveBody` is called from.
+	 *
+	 * @return false when the mesh could not be loaded, which leaves an
+	 *         invisible capsule that still walks and still fights. That is the
+	 *         state a checkout without the Mannequin assets is in, and it says
+	 *         so in the log rather than failing.
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
-	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
+	bool ResolveBody();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
-	TObjectPtr<UStaticMeshComponent> PlaceholderFacingMarker;
+	/**
+	 * Points the mesh component at `ABP_Unarmed`, or falls back to playing
+	 * single clips when it cannot be loaded.
+	 *
+	 * SEPARATE FROM ResolveBody SO REVIVING CAN REACH IT ON ITS OWN. Dying
+	 * switches the component into single-node mode to hold the last frame of a
+	 * death clip, so coming back has to put the animation Blueprint back
+	 * without reloading the mesh and the six clips again.
+	 *
+	 * @return whether an animation Blueprint is now driving the mesh
+	 */
+	bool ResolveAnimationBlueprint(USkeletalMeshComponent* MeshComponent);
+
+	/**
+	 * Draws one of the six death clips, at its authored speed.
+	 *
+	 * SINGLE-NODE MODE RATHER THAN THE ANIMATION BLUEPRINT'S SLOT, and the
+	 * reason is timing rather than taste. `ABP_Unarmed` does have a
+	 * `DefaultSlot` -- that is what issue #1126 should swing attacks through --
+	 * but a montage blends back out to the locomotion graph when its clip ends.
+	 * The death clips are around 1.1 seconds and `RespawnDelaySeconds` is 3, so
+	 * through the slot the corpse would stand back up in an idle pose and wait
+	 * there for nearly two seconds. Played onto the component directly it holds
+	 * its last frame, which is what a body on the floor should do. `Revive`
+	 * puts the animation Blueprint back.
+	 *
+	 * @return the clip's length in seconds, or 0 when there was nothing to play
+	 */
+	float PlayDeathAnimation();
+
+	/**
+	 * The six death clips, in the order `Anims/Death` lists them.
+	 *
+	 * A NULL ENTRY IS KEPT rather than dropped, which is the rule
+	 * `ACataclysmEnemyCharacter::PlayDeathAnimation` already follows: dropping
+	 * one would change how many clips there are and therefore which one every
+	 * death draws.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> DeathAnimations;
+
+	/**
+	 * The attack clips, drawn in turn rather than at random.
+	 *
+	 * IN TURN, UNLIKE THE DEATH CLIPS, and the difference is how often they are
+	 * seen. A death happens once and a random draw stops two deaths in a row
+	 * looking identical. A basic attack fires every two thirds of a second, and
+	 * a random draw over three clips repeats one about a third of the time,
+	 * which reads as the animation sticking. Cycling is what
+	 * `ACataclysmAbyssalWardenCharacter` does with its left and right swings.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> AttackAnimations;
+
+	/** Which attack clip comes next. Wraps. */
+	int32 NextAttackAnimation = 0;
+
+	/**
+	 * What is drawn in each hand. Issue #1125.
+	 *
+	 * WHAT THEY REPLACED: nothing at all. No weapon was drawn anywhere in this
+	 * game. A player equipped a Greataxe, its stats and its six skills changed,
+	 * and nothing on screen changed.
+	 *
+	 * ONE PER HAND, BECAUSE THE DESIGN HAS AN OFF-HAND. The Shield is a
+	 * one-handed base, so a character can hold a sword and a shield at once.
+	 * `ECataclysmGearSlot::Weapon1` is drawn in the right hand and `Weapon2` in
+	 * the left, which is also how the equipment component already thinks about
+	 * them.
+	 *
+	 * A TWO-HANDED WEAPON DRAWS IN THE RIGHT HAND ONLY, and that is a
+	 * limitation rather than a decision. `UCataclysmEquipmentComponent` puts a
+	 * two-handed weapon in Weapon1 and blocks Weapon2, so the left hand is
+	 * empty. Making both hands hold it needs an animation authored for it, and
+	 * there is no two-handed grip pose in anything this project owns.
+	 *
+	 * ATTACHED TO THE MESH'S HAND SOCKETS, not to the capsule, so they follow
+	 * the animation. `SK_Mannequin` ships `HandGrip_R` and `HandGrip_L`, so
+	 * neither socket had to be authored.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> RightHandWeapon;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> LeftHandWeapon;
 
 	/**
 	 * Fills the six ability slots from the equipped weapon.

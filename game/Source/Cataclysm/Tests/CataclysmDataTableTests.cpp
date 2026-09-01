@@ -338,6 +338,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// moment ANY of its three options has a row.
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        130)
 
+	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
+	// Issue #1125. The design has fourteen weapon bases and every one of them
+	// needs a row, including the three that draw nothing on purpose -- a base
+	// with no row would show no weapon and say nothing about why.
+	// tools/generate_datatables.py refuses to write the file if a weapon base
+	// is missing, and this is what notices if that check is ever loosened.
+	CHECK_TABLE(FCataclysmWeaponMeshRow,        "WeaponMeshes.csv",           14)
+
 	#undef CHECK_TABLE
 
 	return true;
@@ -525,6 +533,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
 		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
 		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },
+		{ TEXT("DT_WeaponMeshes"),          TEXT("WeaponMeshes.csv") },
 		{ TEXT("DT_WeaponSkills"),          TEXT("WeaponSkills.csv") },
 	};
 

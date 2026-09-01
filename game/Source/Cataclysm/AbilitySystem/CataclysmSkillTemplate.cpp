@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmCharacterBase.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
@@ -119,10 +120,64 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// to use the skill.
 	if (AActor* Self = Avatar())
 	{
+		// THE CHARACTER TURNS TO FACE WHAT IT IS HITTING. Decided by the project
+		// owner on 2026-09-01, after seeing the first attack animations: a skill
+		// aimed its damage and its effect at the cursor while the body kept
+		// facing whatever direction it last walked in, so the character swung
+		// away from the thing it was killing.
+		//
+		// EVERY SKILL, NOT JUST THE BASIC ATTACK, because the mismatch is the
+		// same for all of them and this function is the one place all eight
+		// shapes pass through.
+		//
+		// YAW ONLY. A character stands upright; pitching it at a cursor on the
+		// floor would tip it over.
+		//
+		// A NO-OP FOR AN ENEMY, WHICH IS WHY IT IS SAFE HERE. AimDirection falls
+		// back to the caster's own forward vector when there is no cursor -- and
+		// no enemy has one -- so turning to face it changes nothing.
+		// ACataclysmHellhoundCharacter uses a skill template and reaches this
+		// line every time it casts.
+		//
+		// NOT A LOCK. `bOrientRotationToMovement` is on, so a character that is
+		// walking is turned back toward its movement direction over the next few
+		// frames. Standing still, the facing stays. That is the behaviour the
+		// genre has: a glance toward the target rather than a snap that fights
+		// the player's movement.
+		const FVector Aim = AimDirection();
+		if (!Aim.IsNearlyZero())
+		{
+			FRotator Facing = Aim.Rotation();
+			Facing.Pitch = 0.0f;
+			Facing.Roll = 0.0f;
+			Self->SetActorRotation(Facing);
+		}
+
 		UCataclysmCastEffect::PlayFor(
 			Self, AimDirection(),
 			UCataclysmCastEffect::DamageTypeFor(Self, ElementTag()),
 			ScaledRadiusCm());
+
+		// AND THE CHARACTER MOVES. Issue #1126. Until this line the player used
+		// every skill it had without moving at all: the effect flashed, damage
+		// landed, and the body stood still through it.
+		//
+		// HERE FOR THE SAME REASON THE CAST EFFECT ABOVE IS. All eight skill
+		// shapes call this function first, so this reaches every one of them and
+		// the basic attack, and it sits past the commit so a skill refused by
+		// its cost or its cooldown animates nothing.
+		//
+		// WHAT PLAYS IS THE CHARACTER'S BUSINESS, NOT THE SKILL'S. The clip has
+		// to suit the skeleton, and the skeletons differ -- see
+		// ACataclysmCharacterBase::PlayAttackAnimation. A character with no
+		// override does nothing, which is what every enemy does: they animate
+		// their own attacks from their own classes with clips from their own
+		// packs.
+		if (ACataclysmCharacterBase* Character =
+				Cast<ACataclysmCharacterBase>(Self))
+		{
+			Character->PlayAttackAnimation();
+		}
 	}
 
 	return true;

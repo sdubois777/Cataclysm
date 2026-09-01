@@ -30,11 +30,19 @@
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
+#include "Character/CataclysmEnemyDeath.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/DataTable.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "Items/CataclysmWeaponMeshes.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -46,7 +54,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "TimerManager.h"
-#include "UObject/ConstructorHelpers.h"
+#include "UObject/SoftObjectPath.h"
 #include "Save/CataclysmSaveWriter.h"
 
 namespace
@@ -56,6 +64,44 @@ namespace
 	constexpr float CapsuleHalfHeight = 96.0f;
 
 }
+
+const TCHAR* ACataclysmPlayerCharacter::BodyMeshPath =
+	TEXT("/Game/Characters/Mannequins/Meshes/"
+		 "SKM_Manny_Simple.SKM_Manny_Simple");
+
+const TCHAR* ACataclysmPlayerCharacter::AnimationBlueprintPath =
+	TEXT("/Game/Characters/Mannequins/Anims/Unarmed/"
+		 "ABP_Unarmed.ABP_Unarmed_C");
+
+const TCHAR* ACataclysmPlayerCharacter::AttackAnimationFolder =
+	TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Attack");
+
+// THREE OF THE FOUR THE ENGINE SHIPS, AND THE ORDER IS THE CYCLE. See the
+// header for why MM_ChargedAttack is not among them.
+const TCHAR* ACataclysmPlayerCharacter::AttackAnimationNames[3] = {
+	TEXT("MM_Attack_01"),
+	TEXT("MM_Attack_02"),
+	TEXT("MM_Attack_03"),
+};
+
+const FName ACataclysmPlayerCharacter::AttackSlotName = TEXT("DefaultSlot");
+
+const TCHAR* ACataclysmPlayerCharacter::DeathAnimationFolder =
+	TEXT("/Game/Characters/Mannequins/Anims/Death");
+
+// ALL SIX, AND THE ORDER IS THE DRAW. `UCataclysmEnemyDeath::ClipToPlay` picks
+// an index into this array, so reordering these changes which clip a given
+// death plays. There is no reason to prefer one over another: nothing carries
+// the direction a killing blow came from, which is what would let the front,
+// back, left and right clips be chosen rather than drawn.
+const TCHAR* ACataclysmPlayerCharacter::DeathAnimationNames[6] = {
+	TEXT("MM_Death_Front_01"),
+	TEXT("MM_Death_Front_02"),
+	TEXT("MM_Death_Front_03"),
+	TEXT("MM_Death_Back_01"),
+	TEXT("MM_Death_Left_01"),
+	TEXT("MM_Death_Right_01"),
+};
 
 ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 {
@@ -131,45 +177,406 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// equipped, which is the state every character was permanently in before.
 	Equipment = CreateDefaultSubobject<UCataclysmEquipmentComponent>(TEXT("Equipment"));
 
-	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderBody"));
-	PlaceholderBody->SetupAttachment(RootComponent);
-	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PlaceholderBody->SetRelativeScale3D(FVector(
-		(CapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
-		(CapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
-		(CapsuleHalfHeight * 2.0f) / ACataclysmCharacterBase::BasicShapeSize));
+	// THE BODY IS PUT ON IN BeginPlay, NOT HERE. Issue #1124. What used to be
+	// here was a cylinder and a cone from /Engine/BasicShapes, found with
+	// ConstructorHelpers because they are engine content and cost nothing to
+	// reference. The Mannequin is project content and is loaded by path at
+	// BeginPlay instead, so that the class default object built during module
+	// startup does not drag a 15 MB skeletal mesh in with it. See ResolveBody.
+	//
+	// THE MESH COMPONENT ITSELF ALREADY EXISTS. `ACharacter` creates one in its
+	// own constructor and `GetMesh()` returns it; nothing here has to make one.
+	// It is empty until ResolveBody puts a mesh on it.
 
-	PlaceholderFacingMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderFacingMarker"));
-	PlaceholderFacingMarker->SetupAttachment(RootComponent);
-	PlaceholderFacingMarker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// WHAT IS HELD IN EACH HAND. Issue #1125. Empty until something is
+	// equipped, and attached to the mesh's hand sockets rather than to the
+	// capsule so that they follow the animation instead of floating beside it.
+	//
+	// ATTACHED IN THE CONSTRUCTOR AND FILLED LATER. A socket name is resolved
+	// when the skeletal mesh arrives, so naming one that does not exist yet is
+	// correct rather than early: until it appears the component simply follows
+	// the component it is attached to.
+	RightHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("RightHandWeapon"));
+	RightHandWeapon->SetupAttachment(GetMesh(),
+									 UCataclysmWeaponMeshes::RightHandSocket);
 
-	// Tipped forward so the cone points along +X, which is the character's
-	// forward axis, and pushed out to the front of the body at head height.
-	PlaceholderFacingMarker->SetRelativeRotation(FRotator(-90.0f, 0.0f, 0.0f));
-	PlaceholderFacingMarker->SetRelativeLocation(FVector(CapsuleRadius, 0.0f, CapsuleHalfHeight * 0.5f));
-	PlaceholderFacingMarker->SetRelativeScale3D(FVector(0.3f, 0.3f, 0.4f));
+	LeftHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("LeftHandWeapon"));
+	LeftHandWeapon->SetupAttachment(GetMesh(),
+									UCataclysmWeaponMeshes::LeftHandSocket);
 
-	// Found by path rather than referenced as an asset, because these are engine
-	// content and the project's own Content folder holds no meshes at all yet.
-	// A failure here is not fatal: the capsule still moves, it is just invisible.
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(
-		TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-	if (CylinderMesh.Succeeded())
+	// NO COLLISION ON EITHER. A weapon in this game hits through the ability
+	// system rather than by touching anything -- see UCataclysmStrikeTemplate --
+	// so collision here would only push the character around and catch on
+	// scenery.
+	RightHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	RightHandWeapon->SetGenerateOverlapEvents(false);
+	LeftHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	LeftHandWeapon->SetGenerateOverlapEvents(false);
+}
+
+void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
+{
+	if (!RightHandWeapon || !LeftHandWeapon)
 	{
-		PlaceholderBody->SetStaticMesh(CylinderMesh.Object);
+		return;
 	}
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> ConeMesh(
-		TEXT("/Engine/BasicShapes/Cone.Cone"));
-	if (ConeMesh.Succeeded())
+	const UDataTable* Table = UCataclysmWeaponMeshes::LoadTable();
+
+	// THE TWO SLOTS THE DESIGN HAS, RIGHT THEN LEFT. A two-handed weapon sits in
+	// Weapon1 and blocks Weapon2, so it draws in the right hand and the left
+	// stays empty. See the header for why that is a limitation and not a
+	// decision.
+	const TPair<ECataclysmGearSlot, UStaticMeshComponent*> Hands[] = {
+		{ECataclysmGearSlot::Weapon1, RightHandWeapon},
+		{ECataclysmGearSlot::Weapon2, LeftHandWeapon},
+	};
+
+	for (const TPair<ECataclysmGearSlot, UStaticMeshComponent*>& Hand : Hands)
 	{
-		PlaceholderFacingMarker->SetStaticMesh(ConeMesh.Object);
+		const FCataclysmItem* Worn =
+			Equipment ? Equipment->EquippedAt(Hand.Key) : nullptr;
+
+		if (!Worn)
+		{
+			// EMPTIED RATHER THAN LEFT ALONE, AND THIS IS THE HALF THAT WOULD
+			// BREAK SILENTLY. Taking a weapon off has to remove it from the
+			// hand, or the character goes on holding a weapon it no longer has
+			// while every number says otherwise.
+			Hand.Value->SetStaticMesh(nullptr);
+			continue;
+		}
+
+		// SAID WHEN A BASE HAS NO ROW AT ALL, which is a different thing from a
+		// base that draws nothing on purpose. tools/generate_datatables.py
+		// refuses a weapon base with no row, so reaching this means the table on
+		// disk is older than the design -- exactly the case that would otherwise
+		// look like a weapon quietly failing to appear.
+		if (Table && !UCataclysmWeaponMeshes::HasRowFor(Table, Worn->Base))
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("%s is worn but has no row in DT_WeaponMeshes, so nothing "
+					 "is drawn for it. Every weapon base needs a row, including "
+					 "the ones that draw nothing. Regenerate the table with "
+					 "tools/generate_datatable_assets.py."),
+				*Worn->Base.ToString());
+		}
+
+		// NOT CALLED `Mesh`. `ACharacter` has a member of that name -- the
+		// character's own skeletal mesh -- and the build refuses a local that
+		// hides it, which is the right call twice over here: the two are one
+		// letter apart in meaning and the wrong one would compile.
+		float Scale = 1.0f;
+		UStaticMesh* WeaponMesh =
+			UCataclysmWeaponMeshes::MeshFor(Table, Worn->Base, Scale);
+
+		Hand.Value->SetStaticMesh(WeaponMesh);
+		Hand.Value->SetRelativeScale3D(FVector(Scale));
 	}
+}
+
+bool ACataclysmPlayerCharacter::ResolveBody()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	USkeletalMesh* Body =
+		Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad());
+	if (!Body)
+	{
+		// NOT AN ERROR, AND NOT FATAL. A checkout without the Mannequin assets
+		// gets an invisible capsule that still walks, still fights and still
+		// dies. Everything this class does other than being looked at is
+		// unaffected, which is why this is a warning and the function returns
+		// rather than refusing to start.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The player's Mannequin mesh was not found at %s, so the "
+				 "character will be invisible. It still walks and still "
+				 "fights. See game/docs/player-source-assets.md."),
+			BodyMeshPath);
+		return false;
+	}
+
+	MeshComponent->SetSkeletalMesh(Body);
+
+	// FEET ON THE CAPSULE BOTTOM, AND THE ENGINE'S YAW. The same two lines the
+	// Brute and the Abyssal Warden use, for the same two reasons. A skeletal
+	// mesh is authored with its origin at the feet and a capsule's origin is its
+	// centre, so the mesh drops by the half-height or the character walks around
+	// with its waist at floor level. The -90 degree yaw is the engine's
+	// convention for character meshes, which face -Y while the actor faces +X;
+	// without it the character walks sideways.
+	MeshComponent->SetRelativeLocationAndRotation(
+		FVector(0.0f, 0.0f, -CapsuleHalfHeight),
+		FRotator(0.0f, -90.0f, 0.0f));
+
+	ResolveAnimationBlueprint(MeshComponent);
+
+	// THE DEATH CLIPS, AND A NULL ENTRY IS KEPT rather than skipped, which is
+	// the rule ACataclysmEnemyCharacter::PlayDeathAnimation already follows:
+	// dropping one would change how many clips there are and therefore which one
+	// every other death draws.
+	DeathAnimations.Reset();
+	int32 Found = 0;
+	for (const TCHAR* Name : DeathAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 DeathAnimationFolder, Name, Name);
+		UAnimSequence* Clip =
+			Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad());
+		DeathAnimations.Add(Clip);
+		Found += Clip ? 1 : 0;
+	}
+
+	if (Found < static_cast<int32>(UE_ARRAY_COUNT(DeathAnimationNames)))
+	{
+		// SAID EVEN THOUGH THE MESH LOADED, because these are separate assets
+		// and one can be missing while the body is not. A character with no
+		// death clip dies exactly as it did before this change: it stops, and
+		// stands there until it comes back.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The player found %d of %d death clips in %s. A death with no "
+				 "clip stands still instead of falling."),
+			Found, static_cast<int32>(UE_ARRAY_COUNT(DeathAnimationNames)),
+			DeathAnimationFolder);
+	}
+
+	// THE ATTACK CLIPS. Issue #1126. Loaded here for the same reason the death
+	// clips above are: once, when the body goes on, rather than on every swing.
+	// A basic attack fires every two thirds of a second at a fast weapon, so
+	// resolving a path each time would be a load attempt several times a second.
+	//
+	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
+	// nulls because a random draw over a fixed count decides which one plays,
+	// and removing one would change every other draw. These are cycled through
+	// in order, so a missing clip should simply not be part of the cycle rather
+	// than showing as a swing where the character does nothing.
+	AttackAnimations.Reset();
+	for (const TCHAR* Name : AttackAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 AttackAnimationFolder, Name, Name);
+		if (UAnimSequence* Clip =
+				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
+		{
+			AttackAnimations.Add(Clip);
+		}
+	}
+	NextAttackAnimation = 0;
+
+	if (AttackAnimations.Num() < UE_ARRAY_COUNT(AttackAnimationNames))
+	{
+		// SAID EVEN THOUGH THE MESH LOADED, for the same reason the death clip
+		// warning above is. A character with no attack clip fights exactly as it
+		// did before this change: damage lands and the body does not move.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The player found %d of %d attack clips in %s. A skill with no "
+				 "clip deals its damage without the character moving."),
+			AttackAnimations.Num(),
+			static_cast<int32>(UE_ARRAY_COUNT(AttackAnimationNames)),
+			AttackAnimationFolder);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("The player character is wearing %s."), BodyMeshPath);
+
+	return true;
+}
+
+void ACataclysmPlayerCharacter::PlayAttackAnimation()
+{
+	if (AttackAnimations.Num() == 0)
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	UAnimInstance* AnimInstance =
+		MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
+	if (!AnimInstance)
+	{
+		// NO ANIMATION BLUEPRINT MEANS NO SLOT TO PLAY INTO, which is the state
+		// a checkout without the Mannequin assets is in. Playing the clip onto
+		// the component instead is deliberately not done: that is what a death
+		// does, and it would leave the character holding the last frame of a
+		// swing until something else took the mesh back.
+		return;
+	}
+
+	// IN TURN RATHER THAN AT RANDOM. See the header: a basic attack fires often
+	// enough that a random draw over three clips repeats one about a third of
+	// the time, which reads as the animation sticking rather than as variety.
+	UAnimSequence* Clip =
+		AttackAnimations[NextAttackAnimation % AttackAnimations.Num()].Get();
+	NextAttackAnimation = (NextAttackAnimation + 1) % AttackAnimations.Num();
+
+	if (!Clip)
+	{
+		return;
+	}
+
+	const float Length = Clip->GetPlayLength();
+	if (Length <= 0.0f)
+	{
+		return;
+	}
+
+	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
+	// Abyssal Warden's rule, and it is here for a sharper version of the same
+	// reason. Every attack clip is longer than the interval a weapon's attack
+	// speed allows: the shortest is 1.0 second against an interval of 0.833 down
+	// to 0.667. Stretching a clip to fill a longer window reads as slow motion,
+	// which is why the floor is 1.
+	//
+	// AN INTERVAL OF ZERO MEANS NOTHING IS DRIVING A RATE. A character with no
+	// weapon, or one whose ability system has not arrived yet, has no attack
+	// speed to fit to, so the clip plays at the speed it was authored at.
+	float Rate = 1.0f;
+	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		const float Interval =
+			UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
+		if (Interval > 0.0f)
+		{
+			Rate = FMath::Clamp(FMath::Max(1.0f, Length / Interval),
+								1.0f, MaximumAttackPlayRate);
+		}
+	}
+
+	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
+	// animation instance is set to ERootMotionMode::IgnoreRootMotion when the
+	// animation Blueprint is bound; see ResolveAnimationBlueprint, which also
+	// records what was tried first and why it did nothing.
+	AnimInstance->PlaySlotAnimationAsDynamicMontage(
+		Clip, AttackSlotName, AttackBlendInSeconds, AttackBlendOutSeconds,
+		Rate, /*LoopCount=*/1);
+}
+
+bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
+	USkeletalMeshComponent* MeshComponent)
+{
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	UClass* AnimationClass =
+		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+
+	if (!AnimationClass)
+	{
+		// THE SAME FALLBACK THE ABYSSAL WARDEN HAS, and for once it is expected
+		// not to be reached: ABP_Unarmed ships with the Mannequin and is copied
+		// beside it, unlike ABP_AbyssalWarden which has never been authored.
+		// Without it the character stands in its reference pose and slides.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The player's animation Blueprint was not found at %s, so the "
+				 "character will slide rather than walk. Its death clips are "
+				 "played onto the component directly and are unaffected."),
+			AnimationBlueprintPath);
+
+		// SAID OUTRIGHT RATHER THAN LEFT AT THE DEFAULT, which is what the
+		// Warden does and for the reason recorded there: a mesh component
+		// starts in single-node mode, so this line changes nothing today and is
+		// what stops the fallback breaking silently if that default ever moves.
+		MeshComponent->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		return false;
+	}
+
+	MeshComponent->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	MeshComponent->SetAnimInstanceClass(AnimationClass);
+
+	// NO ANIMATION EVER MOVES THIS CHARACTER. Issue #1126.
+	//
+	// WHAT WENT WRONG WITHOUT IT. The project owner played the first version of
+	// the attack animations on 2026-09-01 and reported that every ability made
+	// the character surge forward: "it's just a slide forward". All three attack
+	// clips carry root motion, and a character's animation instance defaults to
+	// `RootMotionFromMontagesOnly`, so every swing drove the capsule.
+	//
+	// `IgnoreRootMotion` MEANS "EXTRACT IT BUT DO NOT APPLY IT", which is the
+	// one that is wanted. `NoRootMotionExtraction` leaves the motion in the pose
+	// instead, so the mesh would walk away from the capsule it is attached to.
+	//
+	// WHAT WAS TRIED FIRST AND DOES NOTHING, recorded so it is not tried again:
+	// clearing `bEnableRootMotionTranslation` and `bEnableRootMotionRotation` on
+	// the montage after playing it. Those two are read in `UAnimMontage::PostLoad`
+	// and nowhere else at run time -- they push a setting onto the referenced
+	// sequence when the asset loads. What actually decides it is
+	// `UAnimMontage::HasRootMotion()`, which asks each sequence and never looks
+	// at either flag, and `UAnimInstance::Montage_Play` consults it while
+	// starting the montage, so a flag set afterwards is set too late twice over.
+	//
+	// ON THE ANIMATION INSTANCE RATHER THAN PER MONTAGE, because it is a
+	// statement about this character: nothing it plays is meant to move it. A
+	// skill that should move the character has a Movement shape and moves it
+	// through the movement component, which this does not touch.
+	if (UAnimInstance* AnimInstance = MeshComponent->GetAnimInstance())
+	{
+		AnimInstance->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+	}
+
+	return true;
+}
+
+float ACataclysmPlayerCharacter::PlayDeathAnimation()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return 0.0f;
+	}
+
+	// ITS OWN STREAM, seeded from this character and the moment it died, so two
+	// deaths in the same session do not always fall the same way.
+	//
+	// NO SALT, UNLIKE THE ENEMIES'. `ACataclysmEnemyCharacter` salts its death
+	// draw so it cannot share a stream with the one its drops were rolled from.
+	// A player character drops nothing on death -- issue #529 is where that
+	// would be decided -- so there is no second stream to be kept apart from.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	FRandomStream Stream(GetUniqueID() ^ static_cast<int32>(Now * 1000.0f));
+
+	const int32 Index =
+		UCataclysmEnemyDeath::ClipToPlay(DeathAnimations.Num(), Stream);
+	if (!DeathAnimations.IsValidIndex(Index))
+	{
+		return 0.0f;
+	}
+
+	UAnimSequence* Clip = DeathAnimations[Index].Get();
+	if (!Clip)
+	{
+		return 0.0f;
+	}
+
+	// SINGLE-NODE MODE, WHICH IS WHAT MAKES THE BODY STAY DOWN. See the header:
+	// the clips are about 1.1 seconds and the character lies dead for 3, so a
+	// montage through the animation Blueprint's slot would blend back to an
+	// idle stand and hold it for the rest. Played onto the component the clip
+	// holds its last frame. `Revive` puts the animation Blueprint back.
+	MeshComponent->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	MeshComponent->PlayAnimation(Clip, /*bLooping=*/false);
+	MeshComponent->SetPlayRate(1.0f);
+
+	return Clip->GetPlayLength();
 }
 
 void ACataclysmPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// THE CHARACTER PUTS ITS BODY ON. Issue #1124. Before this the player was a
+	// cylinder with a cone on the front and could not play anything at all.
+	// A failure here is logged and survivable; see ResolveBody.
+	ResolveBody();
 
 	// HERE RATHER THAN IN THE CONSTRUCTOR. A constructor also runs for the
 	// class default object, and binding a live pawn's handler from it would
@@ -206,6 +613,21 @@ void ACataclysmPlayerCharacter::BeginPlay()
 	{
 		GiveStartingWeapon();
 	}
+
+	// AND WHATEVER IS WORN GETS DRAWN. Issue #1125.
+	//
+	// HERE AS WELL AS ON OnEquipmentChanged, AND BOTH ARE NEEDED. Equipping
+	// broadcasts, so the starting weapon above already reaches
+	// RefreshWeaponMeshes through the handler bound earlier in this function.
+	// A character that arrives ALREADY WEARING something broadcasts nothing --
+	// GiveStartingWeapon deliberately does nothing when a weapon is already on,
+	// which is the case for a character restored from a save -- and without
+	// this line that character would stand there with empty hands and a full
+	// gear panel.
+	//
+	// RUNNING TWICE COSTS A TABLE LOOKUP AND CHANGES NOTHING, because the
+	// function reads what is worn rather than toggling anything.
+	RefreshWeaponMeshes();
 
 	// Taken from the boom rather than repeated as a number here. The resting
 	// distance is stated once, in the constructor, and clamping it means a boom
@@ -453,6 +875,16 @@ void ACataclysmPlayerCharacter::HandleDeath()
 		Movement->DisableMovement();
 	}
 
+	// AND THE BODY FALLS OVER. Issue #1124. Nothing played a death animation on
+	// a player before this, because a cylinder has nothing to play one on.
+	//
+	// AFTER MOVEMENT IS OFF, AND THAT ORDER MATTERS. The animation Blueprint
+	// picks its pose from the movement component's velocity, so a death clip
+	// started while the character was still sliding would be fighting the
+	// locomotion graph for the first frames. DisableMovement clears the
+	// velocity, so by here there is nothing to fight.
+	PlayDeathAnimation();
+
 	// AND THE PLAYER STOPS DRIVING IT. Without this a dead character still
 	// answers the keyboard: it cannot walk, because movement is off, but it can
 	// still swing, and a corpse attacking is worse than a corpse standing still.
@@ -621,6 +1053,16 @@ void ACataclysmPlayerCharacter::Revive()
 		Movement->SetMovementMode(MOVE_Walking);
 	}
 
+	// AND THE CHARACTER STANDS BACK UP. Issue #1124. `PlayDeathAnimation` put
+	// the mesh into single-node mode so the corpse would hold the last frame of
+	// its death clip, and nothing else would ever take it out again: without
+	// this the revived character walks around frozen in the pose it died in.
+	//
+	// THE ANIMATION BLUEPRINT ONLY, NOT THE WHOLE BODY. The mesh and the six
+	// death clips were loaded once at BeginPlay and are still loaded, so there
+	// is nothing to reload -- only the animation mode to put back.
+	ResolveAnimationBlueprint(GetMesh());
+
 	if (APlayerController* Driver = Cast<APlayerController>(GetController()))
 	{
 		EnableInput(Driver);
@@ -768,6 +1210,15 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
 	FillAbilitySlotsFromWornWeapon();
+
+	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
+	// could equip a Greataxe and see nothing change at all.
+	//
+	// ON EVERY EQUIPMENT CHANGE RATHER THAN ONLY A WEAPON ONE, which costs a
+	// table lookup for a change of boots and is what makes taking a weapon off
+	// reliably clear the hand. This function already recomputes the whole stat
+	// line for a change of boots for the same reason.
+	RefreshWeaponMeshes();
 }
 
 void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(

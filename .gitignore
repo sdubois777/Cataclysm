@@ -85,7 +85,28 @@ game/Content/_SplineVFX/
 game/Content/SplineEffect2/
 game/Content/Vefects/
 game/Content/Knife_light/
+game/Content/Medieval_Weapons/
 # THIRD-PARTY-PACKS-END
+
+# The world-partition actor storage for the weapons pack's own demo levels.
+# Unreal keeps a partitioned level's actors in per-actor files under
+# __ExternalActors__/<name>/ rather than inside the .umap, so these are around
+# 900 more files belonging to the pack above, and they do not sit under the
+# pack's own folder.
+#
+# TWO ENTRIES BECAUSE THE PACK USES TWO NAMES -- its vendor, Hivemind, and its
+# content folder. Checking only the first left the second still committable.
+#
+# THESE SUBFOLDERS RATHER THAN THE WHOLE DIRECTORY, because __ExternalActors__
+# is where this project's OWN partitioned levels would keep their actors too,
+# and ignoring all of it would silently drop them.
+#
+# NOT INSIDE THE PARSED BLOCK ABOVE, because tools/third_party_content.py reads
+# those patterns as folders sitting directly under game/Content/ and reduces
+# each to a first-path-component prefix. These are two levels down, so they
+# would parse into prefixes that never match anything.
+game/Content/__ExternalActors__/Hivemind/
+game/Content/__ExternalActors__/Medieval_Weapons/
 
 # Unreal crash and log output
 *.log

@@ -216,6 +216,398 @@ and animation follows weapon and slot rather than damage type.
 
 ---
 
+## 2026-09-01 — The character moves when it uses a skill: where that hook lives, which clips play, and what happens to a clip that will not fit
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/docs/player-source-assets.md`. Applied. Issue #1126.
+
+The player used every skill it had without moving at all. The cast effect
+flashed, damage landed, and the body stood still through it.
+
+### The hook is the one function every skill already calls
+
+**`UCataclysmSkillTemplate::CommitAndBegin`.** All eight skill shapes call it as
+the first thing in their `ActivateAbility`, so one call there reaches every shape
+and the basic attack.
+
+That is not a new idea; it is the same place and the same reasoning issue #811
+used for `UCataclysmCastEffect::PlayFor`, whose comment already says it: "Every
+one of the eight skill shapes calls this function first, so one call here gives
+all of them the beat that was missing."
+
+**It sits past the commit**, so a skill refused by its cost or its cooldown
+animates nothing. A swing on a refused skill would read as a bug.
+
+### What plays is the character's business, not the skill's
+
+**A virtual on `ACataclysmCharacterBase` that does nothing by default**, rather
+than a helper like the cast effect's.
+
+The cast effect is a Niagara system and works on anything. An animation is bound
+to a skeleton, and the skeletons differ: the player wears the Mannequin, and
+`ACataclysmHellhoundCharacter` uses a skill template while wearing a Paragon
+body. A Mannequin clip played on it would be an animation for a skeleton it does
+not have.
+
+**Doing nothing is the correct default and not an omission.** Every enemy that
+animates an attack already does it from its own class, in `AttackTarget` or
+`UseEnemyAbility`, with clips from its own pack.
+
+### Three clips, cycled in order, and the fourth left out
+
+The engine ships four Mannequin attack clips. Three are used.
+
+| Clip | Length | Cycled |
+| :-- | --: | :-: |
+| `MM_Attack_01` | 1.0000 s | yes |
+| `MM_Attack_02` | 1.0000 s | yes |
+| `MM_Attack_03` | 1.6667 s | yes |
+| `MM_ChargedAttack` | 1.8333 s | **no** |
+
+**In turn rather than at random, which is the opposite of the death clips.** The
+difference is how often each is seen. A death happens once, so a random draw
+stops two deaths in a row looking identical. A basic attack fires every two
+thirds of a second at a fast weapon, and a random draw over three clips repeats
+one about a third of the time, which reads as the animation sticking rather than
+as variety. Cycling is what `ACataclysmAbyssalWardenCharacter` does with its left
+and right swings.
+
+**`MM_ChargedAttack` is excluded because of its length.** At 1.8333 seconds it is
+nearly three times a fast weapon's swing interval, so cycling it into an attack
+that fires by itself would mean playing it at close to triple speed. It stays in
+the repository for a skill that deserves a heavier swing.
+
+### A clip that will not fit is played faster, never stretched
+
+Attack speed in `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an
+interval of 0.833 down to 0.667 seconds. **Every attack clip is longer than
+that**, the shortest being 1.0 second.
+
+**The rate is the clip's length divided by the interval, floored at 1 and capped
+at 2.5.** That is the Abyssal Warden's rule, recorded in its own comments: never
+slower than authored, only faster, and only when it must be. Stretching a short
+clip across a long window was tried on the Brute and read as slow motion.
+
+**The cap exists because attack speed has no design ceiling.** Affixes and
+passives raise it and nothing caps it, so a character stacked far enough would
+otherwise ask for a swing at many times speed. Past the cap the animation stops
+keeping up with the damage rather than becoming a blur.
+
+### Root motion is switched off on every swing, and the first attempt did not work
+
+**All four clips carry it**, measured through the editor on 2026-09-01, and an
+animation instance takes root motion from montages by default. Left alone, every
+basic attack shoves the character a step forward — several times a second, at
+whatever happens to be in reach.
+
+**The first version cleared `bEnableRootMotionTranslation` and
+`bEnableRootMotionRotation` on the montage after playing it, and that does
+nothing.** The project owner played it and reported every ability making the
+character surge forward: "it's just a slide forward".
+
+Those two flags are read in `UAnimMontage::PostLoad` and nowhere else at run
+time; they push a setting onto the referenced sequence when the asset loads. What
+actually decides it is `UAnimMontage::HasRootMotion()`, which asks each sequence
+and never looks at either flag — and `UAnimInstance::Montage_Play` consults it
+while starting the montage, so a flag set afterwards was set too late twice over.
+
+**What works is `SetRootMotionMode(ERootMotionMode::IgnoreRootMotion)`** on the
+animation instance, set once when the animation Blueprint is bound.
+`IgnoreRootMotion` means "extract it but do not apply it": the motion comes out
+of the pose so the mesh stays on its capsule, then is discarded so nothing moves.
+`NoRootMotionExtraction` would leave it in the pose and the mesh would walk away
+from the capsule it is attached to.
+
+**On the animation instance rather than per montage**, because it is a statement
+about this character: nothing it plays is meant to move it. A skill that should
+move the character has a Movement shape and moves it through the movement
+component, which this does not touch.
+
+**The test that should have caught this could not, and that is the lesson worth
+keeping.** It asserted that the two flags were set to false — that a line
+somebody wrote was present — rather than that the character stayed still. A world
+built by `UWorld::CreateWorld` is never ticked, so no test in this project can
+watch a character move. A check of that shape is worth having, but it must not be
+mistaken for evidence of behaviour, and the engine's own source has to be read
+rather than the API guessed at.
+
+### The character turns to face what it is aimed at
+
+**Decided by the project owner on 2026-09-01**, in the same session, after seeing
+the character attack in the direction it happened to be facing "instead of
+attacking towards the mouse".
+
+**Nothing in this project had ever turned a character.** `AimDirection` has
+always aimed a skill's damage and its effect at the cursor while the body kept
+facing whatever direction it last walked in. With nothing drawn that was
+invisible; with a visible body swinging a visible weapon it is not.
+
+`UCataclysmSkillTemplate::CommitAndBegin` now turns the caster to face its aim,
+yaw only — pitch is cleared because a cursor trace lands on the floor and aiming
+a character at it would tip the character over. **Every skill, not just the basic
+attack**, because the mismatch is the same for all of them and that function is
+the one place all eight shapes pass through.
+
+**Chosen over turning only when standing still**, which was the alternative
+offered. Path of Exile, Diablo and Last Epoch all face the body at what it is
+hitting regardless of movement.
+
+**A no-op for every enemy, which is what makes it safe in shared code.**
+`AimDirection` falls back to the caster's own forward vector when there is no
+cursor, and no enemy has one.
+
+**Not a lock.** `bOrientRotationToMovement` is on, so a character that is walking
+is turned back toward its movement direction over the next few frames. Standing
+still, the facing stays.
+
+### What is deliberately not fixed
+
+**Damage lands at the start of the swing, not where the weapon connects.** A
+skill applies its damage when the ability activates, which is the beginning of
+the clip, while the animation's own impact is partway through it.
+
+Fixing it means moving damage to an animation notify, which changes how combat
+feels and is a larger change than drawing a swing. Issue #784 records the same
+problem one step earlier for enemies: three telegraphed basic attacks land damage
+0.46 to 1.14 seconds away from where the animation strikes. Recorded in
+`game/docs/player-source-assets.md` rather than left to be rediscovered.
+
+**Which clip suits which weapon.** All fourteen weapon bases swing the same three
+unarmed clips. A dagger and a greataxe move identically. #1126 stays open for
+per-weapon attacks, whether those come from retargeting or a bought pack.
+
+---
+
+## 2026-09-01 — Which mesh each weapon base draws, where that mapping lives, and what a two-handed weapon does when the pack has no two-handed mesh
+
+**Affects:** a new "Weapon Meshes" sheet in `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponMeshes.csv`, `game/Content/Data/DT_WeaponMeshes.uasset`,
+`game/Source/Cataclysm/Items/CataclysmWeaponMeshes.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`,
+`game/docs/weapon-source-assets.md`. Applied. Issue #1125.
+
+No weapon was drawn anywhere in this game. A player equipped a Greataxe, its
+stats and its six skills changed, and nothing on screen changed at all.
+
+### Where the mapping lives
+
+Issue #1125 proposed putting the mesh path in `game/Data/ItemBases.csv` "beside
+the other per-base columns ... so it can change without a rebuild". **That file
+is generated from the Item Bases sheet of the design workbook**, so a column
+added to it by hand is overwritten by the next
+`python tools/generate_datatables.py`.
+
+**The decision, taken by the project owner on 2026-09-01: a sheet of its own.**
+`Weapon Meshes` in `docs/All_Things_Cataclysm.xlsx`, keyed by base name, becoming
+`game/Data/WeaponMeshes.csv` and then `DT_WeaponMeshes`.
+
+**Why a separate sheet rather than columns on Item Bases.** A mesh path is an art
+binding rather than a design decision: it changes when the art changes and says
+nothing about how the weapon plays. Keeping third-party asset paths out of the
+design's own sheet means a new weapons pack moves one sheet instead of editing
+the design. This follows `Element Visuals`, which is the same shape for the same
+reason and was added by issue #549.
+
+The row key is the Item Bases row name, so `FCataclysmItem::Base` finds the mesh
+with one lookup and no translation. Both are built by the same
+`row_name("Weapon", name)` call.
+
+### What a two-handed weapon draws
+
+**Measured on 2026-09-01, through the editor, not estimated.** The character is
+180.5 cm tall, read from `SKM_Manny_Simple`'s reference-pose bounds. Against
+that:
+
+| Mesh | Length | Reads as |
+| :-- | --: | :-- |
+| `SM_Sword_1`, `SM_Sword_2`, `SM_Sword_3` | 88, 84, 93 cm | one-handed |
+| `SM_Axe` | 91 cm | one-handed |
+| `SM_Mace` | 83 cm | one-handed |
+| `SM_Spear` | 244 cm | two-handed |
+| `SM_Staff` | 106 cm | two-handed |
+
+**The pack has no two-handed melee weapon.** Six of the fourteen bases are
+two-handed and only two of those six have a correctly sized mesh.
+
+**The decision, taken by the project owner on 2026-09-01: scale the nearest
+one-hander up.** Greatsword draws the longest sword at 1.45, Greataxe the axe at
+1.45, Warhammer the mace at 1.45. The scale is a per-base column in the data, so
+tuning it costs no rebuild.
+
+**Why 1.45 and not more.** Real two-handed weapons are longer — a zweihänder is
+150 to 180 cm, a Dane axe 120 to 170 — but **uniform scaling thickens the grip as
+well as lengthening the blade**, and a 1.8x handle does not fit in a hand. 1.45
+reads as a bigger weapon while keeping the grip plausible. It is a judgement and
+is expected to be tuned by looking at the game.
+
+**Why the Greataxe uses the axe and not the scythe.** Issue #1125 offered the
+scythe as the alternative and answered its own question: a scythe is not an axe.
+A scaled axe is still recognisably an axe, and recognising the weapon matters
+more than avoiding the scale.
+
+### Three bases draw nothing, and that is written down rather than left blank
+
+Fist, Wand and Whip. The workbook writes the word `None` in the Mesh column
+rather than leaving the cell empty, and `tools/generate_datatables.py` refuses a
+blank cell, so a base nobody filled in can be told apart from a weapon meant to
+be invisible. Issue #1125 asked for exactly that: "Drawing nothing is a
+reasonable answer; drawing nothing silently is not."
+
+**The Fist is a design decision and the other two are a gap in the art.** Unarmed
+should show no weapon. The Wand and the Whip have nothing suitable in this pack,
+so buying another pack should fix two of these three and must not fix the first.
+
+### A two-handed weapon is drawn in one hand, and that is a limitation
+
+`UCataclysmEquipmentComponent` puts a two-handed weapon in `Weapon1` and blocks
+`Weapon2`, so the left hand is empty. Holding it in both hands needs a two-handed
+grip pose, and nothing this project owns has one.
+
+### Which hand a swapped-in weapon lands in is now visible, and is asked about
+
+**Not decided here, and raised as issue #1128 rather than settled quietly.**
+
+`UCataclysmEquipmentComponent::Equip` takes the gear slot as an **output**: it
+chooses the first free candidate itself and writes back which one it used.
+`EquipInto` is the one that takes a slot named by the caller. A two-handed weapon
+is stored only in `Weapon1`, so `Weapon2` reads as empty, so **a one-handed
+weapon equipped over a two-handed one lands in `Weapon2` and is drawn in the left
+hand.**
+
+That follows a rule the component states deliberately — "The two weapon slots are
+interchangeable, the design says there is no primary hand" — and it had no
+visible consequence until this change, because nothing was drawn. Now that a
+weapon can be seen, whether that rule is still wanted is a question for the
+project owner. Nothing here changes it.
+
+**Found by a test that failed.** Two of the automation tests for this feature
+asserted the right hand and failed. The test was wrong about the design rather
+than the code being wrong, which is worth recording: the fix was to follow the
+slot the component reports, and to add a test that starts from the character's
+real starting state so the swap path is covered rather than avoided.
+
+### The Paragon packs hold no weapons to borrow
+
+Asked by the project owner on 2026-09-01. Every Paragon hero's weapon is skinned
+into the hero's own body mesh. Across all six packs the only separately-held prop
+is `SM_Rock_To_Hold`, which is the rock `ACataclysmBruteCharacter` already
+carries. `game/docs/weapon-source-assets.md` has the per-pack counts.
+
+---
+
+## 2026-09-01 — The player wears the Mannequin from the engine's template resources, and swings the four attack clips that come with it
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and
+`.cpp`, `game/Content/Characters/Mannequins/`,
+`game/docs/player-source-assets.md`, `game/docs/content-layout.md`. The body is
+applied; the attack clips are decided and not yet built. Issues #1124 and #1126.
+
+### Where the player's body comes from
+
+The player was two engine primitives from `/Engine/BasicShapes`: a cylinder for
+the body and a cone stuck on the front, because with a bare cylinder there was no
+way to see which way the character faced. It had no skeleton, nothing to hang a
+weapon on, and nothing to play a death animation on.
+
+Issue #1124 was written against the Mannequin in
+`Engine/Plugins/Experimental/MoverExamples/`, which would have meant enabling an
+experimental plugin, restarting the editor, copying the assets out, disabling the
+plugin and restarting again.
+
+**A better source was found while building it, and it is not a plugin:**
+
+```
+Engine/Templates/TemplateResources/High/Characters/Content/Mannequins/
+```
+
+That is the folder Unreal copies into a project made from the Third Person
+template. Three things make it the right one:
+
+1. **Nothing has to be enabled.** Every asset in it already records
+   `/Game/Characters/Mannequins/...` as its own package path, so an ordinary file
+   copy put them where they already believed they were, with every reference
+   between them intact. No plugin, no editor restart, no path fixing.
+2. **Its animation Blueprint works on an ordinary Unreal character.**
+   `ABP_Unarmed` casts its owner to `ACharacter` and reads velocity and falling
+   state off the standard `UCharacterMovementComponent`, which is exactly what
+   `ACataclysmPlayerCharacter` is and has. The plugin's `ABP_Manny` casts to
+   `MoverExamplesCharacter` and reads a `CharacterMoverComponent` instead, so it
+   could never have driven this character: that cast fails every frame and the
+   blend space receives no speed at all.
+3. **It ships far more animation.** Four attack clips and six death clips against
+   the plugin copy's none and one.
+
+47 of its 128 assets were copied, 58.4 MB. `game/docs/player-source-assets.md`
+records exactly what was taken, what was left behind and why.
+
+### What that costs, stated rather than hidden
+
+58.4 MB of binary assets go into Git LFS, and every clone and continuous
+integration checkout draws that much LFS bandwidth. `.gitignore` reasons
+carefully about this for the third-party packs and excludes them because they are
+17.31 GB and can be re-acquired from Fab by anyone who owns them.
+
+**The Mannequin is committed rather than ignored**, for two reasons the packs do
+not share. It is 0.3% of their size. And it is the player character: a checkout
+that silently lacks it has no visible player, where a checkout lacking a Paragon
+pack only has a placeholder enemy. The same `.gitignore` comment already draws
+this line — "work derived from these packs is this project's own work and belongs
+in git".
+
+### Attack animations: the engine clips, not retargeted Paragon clips
+
+**This reverses the decision recorded in issue #1126 on the same day**, and it
+reverses it because the fact that decision rested on was wrong.
+
+#1126 chose to retarget Paragon hero attacks onto the Mannequin, having checked
+three sources and found no player attack animation in any of them. That check
+missed the template resources folder above.
+
+| Clip | Length | Root motion |
+| :-- | --: | :-: |
+| `MM_Attack_01` | 1.0000 s | yes |
+| `MM_Attack_02` | 1.0000 s | yes |
+| `MM_Attack_03` | 1.6667 s | yes |
+| `MM_ChargedAttack` | 1.8333 s | yes |
+
+Measured through the editor on 2026-09-01, not estimated. **All four are already
+bound to `SK_Mannequin`**, the skeleton the player now wears, so they need no
+retargeting at all.
+
+**The decision, taken by the project owner on 2026-09-01: use these four.** A
+clip authored for this skeleton looks correct; a retargeted Paragon clip was
+expected to look imperfect, and Grux probably unusable. Four clips is not
+fourteen weapon bases, so this buys a character that swings correctly rather than
+one that swings differently per weapon. #1126 stays open for that variety,
+whether it later arrives by retargeting or by a bought animation pack.
+
+This is the same order #1124 took: something correct now, better art later.
+
+### Two measurements that constrain the work #1126 still has to do
+
+**Every attack clip is longer than the interval it has to fit inside.** Attack
+speed in `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an interval
+of 0.833 down to 0.667 seconds. The shortest clip is 1.0 second, so even the
+fastest is 1.2 to 1.5 times too long and `MM_ChargedAttack` is more than double.
+Either the clip plays faster than authored, or it is cut short, or the swing rate
+stops being the clip rate. Issue #784 records the same problem one step earlier:
+three telegraphed basic attacks already land damage 0.46 to 1.14 seconds away
+from where the animation strikes.
+
+**All four carry root motion**, unlike the six death clips, which do not. A basic
+attack that walks the character forward on every swing is not wanted, so root
+motion has to be suppressed deliberately.
+
+`ABP_Unarmed` has a `DefaultSlot`, so attacks can be played with
+`PlaySlotAnimationAsDynamicMontage` and will blend over the locomotion graph
+rather than cutting to it. `ACataclysmAbyssalWardenCharacter::PlayOneShot` wanted
+exactly that and could not have it, because `ABP_AbyssalWarden` has never been
+authored.
+
+---
+
 ## 2026-09-01 — Two nodes have to be readable together, a crafting material is named at any distance, and the health debt can be looked at
 
 Three decisions taken by the project owner on 2026-09-01, recorded together
