@@ -6257,7 +6257,11 @@ different and much darker background. Decided on 2026-08-19, issue #734, and
 
   
 
-**A name is drawn only for a drop within ten metres of the character, and a name that is not drawn cannot be clicked.** Ten metres sits between the three metres a click can reach from and the fifteen metres a crafting material comes from on its own, so a player reads a name, decides, and walks to it. Past ten metres there is no name and therefore no click target at all, which ends the walk-and-collect that a click from across a room used to start; that is what Path of Exile and Last Epoch do, where a ground label is only drawn within a radius of the character and a label you cannot see is a label you cannot click. Decided by the project owner on 2026-08-31 after a play session where the names covered the screen. Issue #1116.
+**A piece of gear has its name drawn only within ten metres of the character, and a name that is not drawn cannot be clicked.** Ten metres sits between the three metres a click can reach from and the fifteen metres a crafting material comes from on its own, so a player reads a name, decides, and walks to it. Past ten metres there is no name and therefore no click target at all, which ends the walk-and-collect that a click from across a room used to start; that is what Path of Exile and Last Epoch do, where a ground label is only drawn within a radius of the character and a label you cannot see is a label you cannot click. Decided by the project owner on 2026-08-31 after a play session where the names covered the screen. Issue #1116.
+
+  
+
+**A crafting material has its name drawn at any distance, and that exemption is forced rather than chosen.** Ten metres is shorter than the fifteen metres at which a material is collected without being clicked, and that collection is checked every frame, so a material is only ever still lying on the floor when it is already too far away to be named. The two windows do not overlap at all, and the effect of applying the rule to materials was that a material's name was never drawn in play. Exempting them means a player sees a material named across the room, and sees the name wink out as they walk into the fifteen metres and it comes to them; that is the whole of the feedback that a kill produced materials. It is the mirror of the rule that gear is never collected automatically: the two kinds of drop are collected differently, so they are shown differently. Decided by the project owner on 2026-09-01. Issue #1117.
 
   
 

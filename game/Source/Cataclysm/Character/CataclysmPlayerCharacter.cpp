@@ -10,6 +10,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For the Cataclysm.ShowDebt console command. Issue #1100.
+#include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmLowHealthRelief.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -1513,6 +1516,131 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowFervour(
 				// reads as a broken feature otherwise.
 				Ar.Log(TEXT("  No generator. Fervour cannot move. Buy one with "
 							"Cataclysm.SpendPassivePoint Masochist_basic_spine_000"));
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowDebt(
+	TEXT("Cataclysm.ShowDebt"),
+	TEXT("How much health the character owes, whether it is being taken yet, "
+		 "and whether the low health rescue that clears it is ready. Nothing in "
+		 "the game shows any of this, and it is the number that decides whether "
+		 "a Masochist lives."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+			using Resource = UCataclysmClassResourceAttributeSet;
+			using Vital = UCataclysmVitalAttributeSet;
+			using Debt = UCataclysmHealthDebt;
+
+			// WHY THIS COMMAND EXISTS. Issue #1100. Every fault found on
+			// 2026-08-31 was invisible for the same reason: a debt is a number
+			// that kills the character and nothing anywhere displayed it. The
+			// project owner died repeatedly without being able to say why.
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			UCataclysmAbilitySystemComponent* ASC =
+				Character ? Cast<UCataclysmAbilitySystemComponent>(
+								Character->GetAbilitySystemComponent())
+						  : nullptr;
+			if (!ASC || !ASC->GetSet<Resource>())
+			{
+				Ar.Log(TEXT("No character that can owe health."));
+				return;
+			}
+
+			const float Owed = ASC->GetNumericAttribute(
+				Resource::GetHealthOwedAttribute());
+			const float Health =
+				ASC->GetNumericAttribute(Vital::GetHealthAttribute());
+			const float Maximum =
+				ASC->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+
+			Ar.Logf(TEXT("Health debt %.1f. Health %.1f of %.1f."),
+					Owed, Health, Maximum);
+
+			if (Owed <= 0.0f)
+			{
+				// SAID PLAINLY, because zero owed and a character that cannot
+				// owe anything at all look identical in a number.
+				Ar.Log(TEXT("  Nothing owed."));
+			}
+			else if (Maximum > 0.0f)
+			{
+				// AS A SHARE OF MAXIMUM HEALTH, because that is what the two
+				// damage bonuses read: The Reckoning gives 1% more damage per 2%
+				// owed, and Compound Interest 1% increased per 5%.
+				Ar.Logf(TEXT("  which is %.1f%% of maximum health, and that is "
+							 "what the damage bonuses read"),
+						Owed / Maximum * 100.0f);
+			}
+
+			const bool bOnlyAKill = Debt::IsClearedOnlyByAKill(ASC);
+			if (bOnlyAKill)
+			{
+				Ar.Log(TEXT("  The Reckoning: it never falls due, and killing "
+							"an enemy is what clears it."));
+
+				if (Owed > Health)
+				{
+					// THE STATE THAT KILLS, AND THE ONE A PLAYER MOST NEEDS TO
+					// SEE. Since issue #1120 this is a drain rather than an
+					// instant death, so there are a few seconds in which asking
+					// this question is worth something.
+					const float Rate = Owed / Debt::DrainSeconds;
+					Ar.Logf(TEXT("  BLEEDING OUT at %.1f a second. %.1f seconds "
+								 "of health left unless something dies."),
+							Rate, Rate > 0.0f ? Health / Rate : 0.0f);
+				}
+				else
+				{
+					Ar.Logf(TEXT("  Not bleeding. %.1f more owed would start "
+								 "it."), Health - Owed + 1.0f);
+				}
+			}
+			else if (Owed > 0.0f)
+			{
+				// AN ORDINARY DEFERRED DEBT, which falls due and then drains.
+				const float Now = World ? World->GetTimeSeconds() : 0.0f;
+				const float DueAt = ASC->HealthDebtDueAt();
+				if (DueAt < 0.0f)
+				{
+					Ar.Log(TEXT("  Owed with no due time recorded."));
+				}
+				else if (ASC->IsHealthDebtDue())
+				{
+					Ar.Logf(TEXT("  Draining now, %.1f seconds into a %.1f "
+								 "second drain."),
+							Now - DueAt, Debt::DrainSeconds);
+				}
+				else
+				{
+					Ar.Logf(TEXT("  Falls due in %.1f seconds, then drains over "
+								 "%.1f."),
+							DueAt - Now, Debt::DrainSeconds);
+				}
+			}
+
+			// AND WHETHER THE WAY OUT IS AVAILABLE. Rock Bottom is what turns a
+			// bleeding character into a living one, and its cooldown is the
+			// difference between the two. Issue #1119 recorded how little that
+			// option was worth before the debt became a drain.
+			const bool bHasRescue = ASC->GetNumericAttribute(
+				Resource::GetDebtClearedOnDroppingLowAttribute()) > 0.0f;
+			if (!bHasRescue)
+			{
+				Ar.Log(TEXT("  No low health rescue. Rock Bottom grants one."));
+			}
+			else if (ASC->MayTakeLowHealthRelief())
+			{
+				Ar.Logf(TEXT("  Rock Bottom is ready: falling below %.0f%% of "
+							 "maximum health clears the whole debt."),
+						UCataclysmLowHealthRelief::HealthShare * 100.0f);
+			}
+			else
+			{
+				const float Now = World ? World->GetTimeSeconds() : 0.0f;
+				Ar.Logf(TEXT("  Rock Bottom used. Ready again in %.1f seconds."),
+						ASC->LowHealthReliefAllowedAt() - Now);
 			}
 		}));
 

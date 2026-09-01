@@ -62,6 +62,29 @@ namespace CataclysmDropPickupTest
 		return Drop;
 	}
 
+	/**
+	 * A pile of crafting material lying at a place. Issue #1117.
+	 *
+	 * A MATERIAL AND A PIECE OF GEAR ARE THE SAME ACTOR and differ only in what
+	 * is filled in, which is what `ACataclysmDroppedItem::IsMaterial` reads: a
+	 * material name and a quantity above zero. Both are needed, so a helper
+	 * makes it hard to build half a material by accident.
+	 */
+	ACataclysmDroppedItem* MaterialAt(UWorld* World, const FVector& Where,
+									  const TCHAR* Which, const TCHAR* Name)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+			Where, FRotator::ZeroRotator);
+		if (Drop)
+		{
+			Drop->Material = FName(Which);
+			Drop->MaterialQuantity = 3;
+			Drop->MaterialTier = 2;
+			Drop->DisplayName = Name;
+		}
+		return Drop;
+	}
+
 	/** A rectangle, given its corners. Not named Rect: SlateRenderer.h declares
 	 *  a struct by that name and the two are ambiguous here. */
 	FBox2D MakeRect(float Left, float Top, float Right, float Bottom)
@@ -166,7 +189,7 @@ bool FCataclysmNameRangeTest::RunTest(const FString&)
 				  "is something to walk towards"),
 		FPickup::NameShownRangeCm > FPickup::PickupRangeCm);
 	TestTrue(TEXT("and nearer than a material's automatic sweep, which is why "
-				  "a material is never named -- issue #1117"),
+				  "a material is exempt from it altogether -- issue #1117"),
 		FPickup::NameShownRangeCm < FPickup::AutomaticMaterialRangeCm);
 
 	const FVector Standing(0.0f, 0.0f, 0.0f);
@@ -368,6 +391,115 @@ bool FCataclysmDropsToNameTest::RunTest(const FString&)
 	// NO WORLD NAMES NOTHING, rather than reading through a null pointer.
 	FPickup::DropsToName(nullptr, Origin, Named);
 	TestEqual(TEXT("no world names nothing"), Named.Num(), 0);
+
+	return true;
+}
+
+/**
+ * A crafting material is named however far away it is, and gear is not.
+ *
+ * WHY MATERIALS ARE EXEMPT AT ALL. Issue #1117. The ten metre name range is
+ * shorter than the fifteen metre range at which a material is collected without
+ * being clicked, and that collection runs every frame, so a material was only
+ * ever still lying on the floor when it was already too far away to be named.
+ * The two windows did not overlap and a material's name was therefore never
+ * drawn in play at all. The project owner chose on 2026-09-01 to exempt
+ * materials rather than accept that.
+ *
+ * WHAT A PLAYER SEES because of it: a material named across the room, which
+ * winks out as they walk into the fifteen metres and it comes to them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialsAreNamedAtAnyDistanceTest,
+	"Cataclysm.DropPickup.ACraftingMaterialIsNamedAtAnyDistanceAndGearIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialsAreNamedAtAnyDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FVector Origin(0.0f, 0.0f, 0.0f);
+
+	// THE SAME TWO DISTANCES FOR EACH KIND, so the only thing that differs
+	// between the pairs is whether the drop is a material.
+	const FVector Near(500.0f, 0.0f, 0.0f);
+	const FVector FarOff(5000.0f, 0.0f, 0.0f);
+
+	ACataclysmDroppedItem* NearGear =
+		DropAt(World, Near, TEXT("Greataxe"), TEXT("Gear five metres"));
+	ACataclysmDroppedItem* FarGear =
+		DropAt(World, FarOff, TEXT("Greataxe"), TEXT("Gear fifty metres"));
+	ACataclysmDroppedItem* NearMaterial =
+		MaterialAt(World, Near, TEXT("IronOre"), TEXT("Iron Ore five metres"));
+	ACataclysmDroppedItem* FarMaterial =
+		MaterialAt(World, FarOff, TEXT("IronOre"), TEXT("Iron Ore fifty metres"));
+
+	if (!TestNotNull(TEXT("near gear"), NearGear)
+		|| !TestNotNull(TEXT("far gear"), FarGear)
+		|| !TestNotNull(TEXT("near material"), NearMaterial)
+		|| !TestNotNull(TEXT("far material"), FarMaterial))
+	{
+		return false;
+	}
+
+	// THE HELPER REALLY BUILT A MATERIAL AND REALLY DID NOT for the gear. Both
+	// are asserted, because every claim below rests on this one test and a
+	// helper that quietly built two pieces of gear would make the whole thing
+	// pass for the wrong reason.
+	TestTrue(TEXT("the material drops are materials"),
+			 NearMaterial->IsMaterial() && FarMaterial->IsMaterial());
+	TestFalse(TEXT("and the gear drops are not"),
+			  NearGear->IsMaterial() || FarGear->IsMaterial());
+
+	TArray<ACataclysmDroppedItem*> Named;
+	FPickup::DropsToName(World, Origin, Named);
+
+	// FIFTY METRES IS FIVE TIMES THE NAME RANGE AND MORE THAN THREE TIMES THE
+	// SWEEP, so nothing about either distance is borderline.
+	TestTrue(TEXT("a material five metres away is named"),
+			 Named.Contains(NearMaterial));
+	TestTrue(TEXT("and one fifty metres away is named too"),
+			 Named.Contains(FarMaterial));
+
+	TestTrue(TEXT("gear five metres away is named"), Named.Contains(NearGear));
+	TestFalse(TEXT("and gear fifty metres away is not, which is the rule the "
+				   "material is exempt from"),
+			  Named.Contains(FarGear));
+
+	TestEqual(TEXT("three of the four drops are named"), Named.Num(), 3);
+
+	// AND MOVING DOES NOT CHANGE THE MATERIAL'S ANSWER, which is what "at any
+	// distance" means and what a single position could not show. Standing on
+	// top of the far pair, the near gear is now the one out of range and both
+	// materials are still named.
+	FPickup::DropsToName(World, FarOff, Named);
+	TestTrue(TEXT("standing beside the far material, it is still named"),
+			 Named.Contains(FarMaterial));
+	TestTrue(TEXT("and the material now fifty metres away is still named"),
+			 Named.Contains(NearMaterial));
+	TestTrue(TEXT("the gear underfoot is named"), Named.Contains(FarGear));
+	TestFalse(TEXT("and the gear now fifty metres away is not"),
+			  Named.Contains(NearGear));
+
+	// A MATERIAL WITH NO NAME IS STILL REJECTED. The exemption is from the
+	// distance rule and from nothing else, so a malformed drop is not drawn
+	// just because it is a material.
+	ACataclysmDroppedItem* Nameless =
+		MaterialAt(World, FarOff, TEXT("IronOre"), TEXT(""));
+	if (!TestNotNull(TEXT("nameless material"), Nameless))
+	{
+		return false;
+	}
+	FPickup::DropsToName(World, Origin, Named);
+	TestFalse(TEXT("a material with no name is not named"),
+			  Named.Contains(Nameless));
+	TestEqual(TEXT("so the count is unchanged"), Named.Num(), 3);
 
 	return true;
 }

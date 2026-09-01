@@ -365,12 +365,14 @@ public:
 	 * play rather than a number copied from a shipped game. Expected to be tuned
 	 * by eye, the same footing as PickupRangeCm above.
 	 *
-	 * IT IS SHORTER THAN AutomaticMaterialRangeCm BELOW, WHICH MEANS A CRAFTING
-	 * MATERIAL IS NEVER NAMED. The sweep runs every frame and takes any material
-	 * within fifteen metres, so a material is only still lying there when it is
-	 * too far away to have a tag. That is recorded as issue #1117 rather than
-	 * fixed here: it may be exactly what is wanted, since a material collects
-	 * itself and its name is never something a player has to click.
+	 * IT APPLIES TO GEAR AND NOT TO A CRAFTING MATERIAL, which is named at any
+	 * distance. Issue #1117. It has to: this range is SHORTER than
+	 * AutomaticMaterialRangeCm below, the sweep runs every frame, so a material
+	 * was only ever still lying there when it was already too far away to have a
+	 * tag. The two windows did not overlap and a material's name was never drawn
+	 * at all. The project owner chose on 2026-09-01 to exempt materials rather
+	 * than accept that. UCataclysmDropPickup::DropsToName is where the exemption
+	 * is, beside the reasoning for it.
 	 */
 	static constexpr float NameShownRangeCm = 1000.0f;
 
@@ -447,6 +449,13 @@ public:
 	 * IT TAKES A POSITION RATHER THAN FINDING THE PLAYER ITSELF, so the answer
 	 * does not depend on there being a possessed pawn. The heads-up display
 	 * already has one to hand.
+	 *
+	 * A CRAFTING MATERIAL IS NAMED AT ANY DISTANCE AND GEAR IS NOT. Issue #1117,
+	 * decided by the project owner on 2026-09-01. The ten metre rule is shorter
+	 * than the fifteen metre automatic sweep, so a material was only ever still
+	 * lying there when it was already too far away to be named, and its name was
+	 * therefore never drawn at all. The body of this function carries the whole
+	 * reasoning.
 	 *
 	 * WHAT IT DOES NOT DECIDE IS WHETHER A DROP IS ON SCREEN. Rejecting what is
 	 * behind the camera needs the projection, which needs the canvas, so

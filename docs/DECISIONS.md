@@ -20,6 +20,98 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — Two nodes have to be readable together, a crafting material is named at any distance, and the health debt can be looked at
+
+Three decisions taken by the project owner on 2026-09-01, recorded together
+because one sentence of theirs settles all three. Issues #1122, #1117 and #1100.
+
+### The rule underneath all of them
+
+Asked whether Rock Bottom should still be allowed to clear a Reckoning debt,
+when The Reckoning says its debt is cleared only by a kill, the project owner
+answered yes, and gave the reason:
+
+> What matters most with these things is that they work how the player expects
+> them to when reading and combining them together.
+
+**That is a standing rule and not an answer to one question.** It says the test
+of a node is not whether its own sentence is true, but whether a player holding
+two nodes can predict what happens. It is why the wording change below is worth
+a data regeneration and an asset rebuild for one word, and why the crafting
+material exemption is worth having at all.
+
+### The Reckoning drops the word "only"
+
+**Affects:** `docs/Masochist_Class_Tree_Final.json`. Applied. Issue #1122.
+
+| | Text |
+| :-- | :-- |
+| Before | ...and the debt is cleared **only by killing an enemy**... |
+| After | ...and the debt is cleared **by killing an enemy and never by time**... |
+
+The Reckoning claimed a kill was the only way out. Rock Bottom says dropping
+below a fifth of health "clears all outstanding debt". Both were true of the
+code, in that Rock Bottom wins, and a player holding both could not tell that
+from the words.
+
+**"Never by time" is the part that had to survive the edit**, because it is the
+real difference between this debt and an ordinary deferred one, which falls due
+three seconds after the cast whether or not anything died. Dropping "only" alone
+would have lost the fact a player needs.
+
+**Rock Bottom is not changed.** With "only" gone its sentence reads as the
+exception it is, no keystone name has to appear inside a capstone option, and
+nothing has to be repeated on whatever clears a debt next.
+
+**It stopped being a corner case on 2026-09-01.** Issue #1120 turned a Reckoning
+debt from an instant death into a drain, so health now falls across the
+threshold Rock Bottom watches. That clearing used to almost never happen and is
+now worth five extra casts.
+
+### A crafting material is named at any distance
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `.cpp`.
+Applied. Issue #1117.
+
+Issue #1116 limited a drop's name tag to ten metres. That range is **shorter**
+than the fifteen metres at which a crafting material is collected without being
+clicked, and that collection is checked every frame, so a material was only ever
+still lying on the floor when it was already too far away to be named. The two
+windows did not overlap and the effect was that a material's name was never
+drawn in play at all.
+
+**Materials are exempt from the ten metre rule; gear is not.** So a player sees
+a material named across the room, and sees the name wink out as they walk into
+the fifteen metres and it comes to them. That is the whole of the feedback that
+a kill produced materials.
+
+**The consequence was put to the project owner before it was built, and they
+chose it anyway.** Because a material inside fifteen metres is already gone, the
+only material tags ever on screen are the distant ones -- which is the category
+that produced the original complaint. That is recorded here rather than
+discovered later.
+
+**It is the mirror of `ComesAutomatically`, which exempts gear from the sweep.**
+The two kinds of drop are collected differently, so they are shown differently.
+
+### A character's health debt can be looked at
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`.
+Applied. Issue #1100.
+
+`Cataclysm.ShowDebt` prints what is owed, what share of maximum health that is
+-- which is the figure the two damage bonuses read -- whether The Reckoning is
+stopping it falling due, whether the character is bleeding out and how many
+seconds of health are left, and whether Rock Bottom's rescue is ready or how
+long until it is.
+
+**Every fault found on 2026-08-31 was invisible for one reason**: the debt kills
+the character and nothing displayed it. The project owner died repeatedly and
+could not say why. This does not fix that in the game itself, which needs an
+interface rather than a console command, but it makes the number answerable.
+
+---
+
 ## 2026-09-01 — A health debt comes out as a drain over five seconds, and a Reckoning debt bleeds the character out rather than killing it on the spot
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.h` and

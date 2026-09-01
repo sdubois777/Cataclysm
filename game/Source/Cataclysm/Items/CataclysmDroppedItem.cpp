@@ -128,7 +128,24 @@ void UCataclysmDropPickup::DropsToName(const UWorld* World,
 			continue;
 		}
 
-		if (!IsWithinNameRange(Standing, Drop->GetActorLocation()))
+		// A CRAFTING MATERIAL IS NAMED AT ANY DISTANCE, and gear is not. Issue
+		// #1117, decided by the project owner on 2026-09-01.
+		//
+		// WHY THE TEN METRE RULE HAD TO EXEMPT ONE OF THEM. A material within
+		// fifteen metres is collected without being clicked, so a material was
+		// only ever still lying there when it was already too far away to be
+		// named. The rule and the sweep did not overlap at all, and the effect
+		// was that a material's name was never drawn in play.
+		//
+		// SO WHAT A PLAYER SEES IS A MATERIAL ACROSS THE ROOM, and it winks out
+		// as they walk into the fifteen metres and it comes to them. That is the
+		// whole of the feedback that a kill produced materials.
+		//
+		// THE MIRROR OF ComesAutomatically, WHICH EXEMPTS GEAR FROM THE SWEEP
+		// for the same shape of reason: the two kinds of drop are collected
+		// differently, so they are shown differently.
+		if (!Drop->IsMaterial()
+			&& !IsWithinNameRange(Standing, Drop->GetActorLocation()))
 		{
 			continue;
 		}
