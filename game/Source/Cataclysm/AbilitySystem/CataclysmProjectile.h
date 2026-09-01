@@ -338,6 +338,20 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	int32 EnemiesHit = 0;
 
+	/**
+	 * Which enemies it struck, skipping any destroyed since.
+	 *
+	 * WHAT ASKS FOR IT. The Wand's Malefice, "copying every curse it already
+	 * carries onto the two nearest enemies": the skill that fired the bolt has
+	 * to know which enemy the bolt reached, and until this the count above was
+	 * the only thing it could learn.
+	 *
+	 * Held as a set internally so a piercing bolt cannot hit one enemy twice,
+	 * and answered as an array because that is what a caller walks.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Projectile")
+	TArray<AActor*> StruckEnemies() const;
+
 	/** Whether it pierces at all. Decides whether stopping detonates in a radius. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	bool bPierces = false;

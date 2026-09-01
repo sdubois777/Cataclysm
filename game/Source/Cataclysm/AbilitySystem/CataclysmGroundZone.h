@@ -3,6 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+// For the Status.* tag a zone may lay on whatever stands in it. The Wand's
+// Foul Wake strips resistance from anything that walks into its ground.
+#include "GameplayTagContainer.h"
 #include "GameFramework/Actor.h"
 #include "CataclysmGroundZone.generated.h"
 
@@ -102,6 +105,33 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	bool bBurnsEveryone = false;
 
+	/**
+	 * Also lay a named status effect on whatever is standing in it.
+	 *
+	 * THE WAND'S FOUL WAKE ASKS FOR IT: "the ground you fled burns for 6 seconds
+	 * and strips the Demonic resistance of anything that walks into it". Until
+	 * 2026-09-01 a zone could only deal damage, so that row's `Effect=Shred`
+	 * reached nothing.
+	 *
+	 * SET AFTER SPAWNING RATHER THAN PASSED IN. `SpawnAlong` already takes seven
+	 * arguments and four more would make every existing call site harder to read
+	 * for the sake of the one zone that wants them.
+	 *
+	 * APPLIED ON EVERY SWEEP, which refreshes rather than stacks: every
+	 * player-applied effect in this design is single stack. So the curse lasts
+	 * its own duration from the moment the target last stood in the zone, which
+	 * is what "anything that walks into it" means.
+	 *
+	 * @param EffectTag  the Status.* tag to lay, or an invalid tag for none
+	 * @param Seconds    how long it lasts on the target
+	 * @param Magnitude  its size, or zero to take the effect's designed strength
+	 * @param InDamageType  the caster's damage type, deciding which resistance a
+	 *                      Shred reduces
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")
+	void AlsoApply(FGameplayTag EffectTag, float Seconds, float Magnitude,
+				   FName InDamageType);
+
 	/** Seconds between one sweep of who is standing in it and the next. */
 	static constexpr float TickSeconds = 1.0f;
 
@@ -133,6 +163,22 @@ public:
 	/** How many enemies the last sweep found. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	int32 LastSweepCount = 0;
+
+	/** The status effect each sweep lays, or an invalid tag for none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	FGameplayTag AppliedEffect;
+
+	/** How long that effect lasts on whatever the sweep found. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	float AppliedEffectSeconds = 0.0f;
+
+	/** Its size, or zero to take the effect's own designed strength. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	float AppliedEffectMagnitude = 0.0f;
+
+	/** The caster's damage type, deciding which resistance a Shred reduces. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	FName AppliedEffectDamageType;
 
 	/** Burn everything standing in it now. Called on a timer, and by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")

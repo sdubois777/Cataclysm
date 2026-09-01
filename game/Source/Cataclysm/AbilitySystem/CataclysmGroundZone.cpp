@@ -146,8 +146,29 @@ void ACataclysmGroundZone::Sweep()
 		Delivery.bIsDamageOverTime = true;
 		UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, DamagePerTick,
 												  Delivery);
+
+		// AND THE CURSE, IF THIS ZONE CARRIES ONE. The Wand's Foul Wake: "the
+		// ground you fled ... strips the Demonic resistance of anything that
+		// walks into it". Laid on every sweep, which refreshes rather than
+		// stacks, so the curse runs its own duration from the moment the target
+		// last stood here.
+		if (AppliedEffect.IsValid() && AppliedEffectSeconds > 0.0f)
+		{
+			UCataclysmSkillEffects::ApplyNamedEffect(
+				Source, Target, AppliedEffect, AppliedEffectSeconds,
+				AppliedEffectMagnitude, AppliedEffectDamageType);
+		}
 	}
 
 	LastSweepCount = Inside.Num();
 	++TicksElapsed;
+}
+
+void ACataclysmGroundZone::AlsoApply(FGameplayTag EffectTag, float Seconds,
+									 float Magnitude, FName InDamageType)
+{
+	AppliedEffect = EffectTag;
+	AppliedEffectSeconds = Seconds;
+	AppliedEffectMagnitude = Magnitude;
+	AppliedEffectDamageType = InDamageType;
 }

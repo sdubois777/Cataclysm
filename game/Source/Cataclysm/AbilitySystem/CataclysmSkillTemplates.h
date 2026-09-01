@@ -117,6 +117,34 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TObjectPtr<ACataclysmProjectile> InFlight;
 
+	/** How many curse applications this use copied outward. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CursesSpread = 0;
+
+	/**
+	 * Copy the curses on each of these enemies onto the nearest others.
+	 *
+	 * THE WAND'S MALEFICE AND NOTHING ELSE TODAY: "copying every curse it
+	 * already carries onto the two nearest enemies". `SpreadCurses` says how
+	 * many others each struck enemy passes its curses to, and a skill stating
+	 * none does nothing here.
+	 *
+	 * NEAREST TO THE ENEMY THAT CARRIED THEM, not to the caster. The curse
+	 * spreads from the cursed creature outward, which is what the sentence
+	 * describes and what makes hitting a clustered enemy worth more than hitting
+	 * a lone one.
+	 *
+	 * WITHIN THE SKILL'S OWN RANGE, because nothing else bounds it and a curse
+	 * jumping to an enemy the bolt could never have reached is not what the row
+	 * says. Malefice reaches fourteen metres.
+	 *
+	 * Public so a test can drive it without a projectile in flight.
+	 *
+	 * @return how many effect applications landed, summed
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 SpreadCursesFrom(const TArray<AActor*>& Struck);
+
 private:
 	void LandThenFinish();
 	void Return();

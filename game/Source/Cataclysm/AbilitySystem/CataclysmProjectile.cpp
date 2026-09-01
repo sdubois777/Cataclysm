@@ -380,6 +380,24 @@ bool ACataclysmProjectile::Step(float DeltaSeconds)
 	return !bFinished;
 }
 
+TArray<AActor*> ACataclysmProjectile::StruckEnemies() const
+{
+	TArray<AActor*> Struck;
+	Struck.Reserve(AlreadyHit.Num());
+	for (const TWeakObjectPtr<AActor>& One : AlreadyHit)
+	{
+		// HELD WEAKLY, because an enemy the bolt killed on its way through is
+		// gone by the time anything asks. Dropping it here is why a caller does
+		// not have to check.
+		AActor* Alive = One.Get();
+		if (IsValid(Alive))
+		{
+			Struck.Add(Alive);
+		}
+	}
+	return Struck;
+}
+
 float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
 {
 	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)

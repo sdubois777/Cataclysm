@@ -452,6 +452,60 @@ protected:
 	float RequirementReachCm() const;
 
 	/**
+	 * The status effects this skill's `Effect` cell names, as tags.
+	 *
+	 * A LIST RATHER THAN ONE NAME, because the Wand's Anathema writes
+	 * `Effect=Shred, Madness` -- "laying every curse you know on it". Until
+	 * 2026-09-01 the cell was read as a single name, so that row named an effect
+	 * called "Shred, Madness" which no sheet has and which granted nothing.
+	 *
+	 * A NAME NO SHEET CARRIES IS SKIPPED rather than failing the skill, on the
+	 * same reasoning `TagsFromCell` gives: `tools/generate_datatables.py` already
+	 * refuses an unknown effect, so a name arriving here means the table was
+	 * edited in the editor rather than generated.
+	 */
+	TArray<FGameplayTag> NamedEffectTags() const;
+
+	/**
+	 * How many seconds an applied effect lasts.
+	 *
+	 * `EffectDuration` WHEN THE SKILL STATES ONE, AND THE EFFECT'S OWN DESIGNED
+	 * DURATION OTHERWISE. Not `Duration`, which is the skill's own length: the
+	 * two were one key until the sheet split them on 2026-09-01, and every
+	 * Debuff-shaped row in the game now states `EffectDuration` and no
+	 * `Duration`. Reading the wrong one is why all three of them applied a curse
+	 * for zero seconds, which `ApplyTagForDuration` refuses outright.
+	 *
+	 * THE FALLBACK IS THE SHEET AND NOT A NUMBER IN C++. Foul Wake states
+	 * `Effect=Shred` and no duration at all, and the Status Effects sheet gives
+	 * Shred six seconds, which is exactly what that row's own sentence says its
+	 * ground does.
+	 */
+	float AppliedEffectSeconds(const FGameplayTag& EffectTag) const;
+
+	/**
+	 * Apply every effect this skill names to one target.
+	 *
+	 * @param DurationScale  multiplies the duration. The Debuff template passes
+	 *                       two for a target already alight, which is Whisper of
+	 *                       Madness's "lasts twice as long in a mind that is
+	 *                       already burning".
+	 * @return how many effects were applied
+	 */
+	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f);
+
+	/**
+	 * This skill's damage type as the name the resistance slots are keyed by,
+	 * or none for a skill carrying no element tag.
+	 *
+	 * WHY IT IS NEEDED SEPARATELY FROM `ElementTag`. A Shred cuts the resistance
+	 * matching the attacker's own type, and the resistance attributes are keyed
+	 * by the plain name -- `Demonic` -- while a stat modifier scopes by the tag.
+	 * `UCataclysmDamageCalculation` owns both and the conversion between them.
+	 */
+	FName DamageTypeName() const;
+
+	/**
 	 * Put out the fire on every one of these targets that carries it.
 	 *
 	 * THE SWORD'S WHOLE VERB. `docs/DECISIONS.md` gives each Demonic weapon one
