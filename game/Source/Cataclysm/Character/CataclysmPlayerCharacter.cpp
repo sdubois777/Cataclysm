@@ -16,6 +16,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
+// For when the swing this clip is about to play actually connects. Issue #1133.
+#include "AbilitySystem/CataclysmSwingTiming.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -390,6 +392,15 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 
 void ACataclysmPlayerCharacter::PlayAttackAnimation()
 {
+	// CLEARED FIRST, AND EVERY EARLY RETURN BELOW DEPENDS ON IT. Issue #1133.
+	// Zero means "the blow lands now". Five of the paths through this function
+	// give up without playing anything -- no clips, no animation Blueprint, a
+	// null clip, a clip of no length -- and each one has to leave a character
+	// that deals damage at once rather than one still holding the delay its
+	// previous swing worked out. Setting it only on success would make a
+	// refused animation silently reuse the last figure.
+	SwingConnectsInSeconds = 0.0f;
+
 	if (AttackAnimations.Num() == 0)
 	{
 		return;
@@ -437,17 +448,34 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	// weapon, or one whose ability system has not arrived yet, has no attack
 	// speed to fit to, so the clip plays at the speed it was authored at.
 	float Rate = 1.0f;
+	float Interval = 0.0f;
 	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
 			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
 	{
-		const float Interval =
-			UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
+		Interval = UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
 		if (Interval > 0.0f)
 		{
 			Rate = FMath::Clamp(FMath::Max(1.0f, Length / Interval),
 								1.0f, MaximumAttackPlayRate);
 		}
 	}
+
+	// WHEN THIS SWING WILL CONNECT, LEFT FOR THE SKILL TO READ. Issue #1133.
+	// Until this line every skill dealt its damage in the frame it activated,
+	// while the swing played for a second or more beside it, so an enemy was
+	// hurt while the weapon was still going backwards.
+	//
+	// THIS IS THE ONLY PLACE THAT CAN WORK IT OUT, which is why it is here and
+	// not in the skill. The answer depends on which of the three clips came up
+	// in the cycle and on the rate that clip is being played at, and both are
+	// decided immediately above.
+	//
+	// THE CLIP'S OWN MARKER FIRST. `MarkedStrikeSeconds` answers negative for a
+	// clip that carries no `UCataclysmSwingConnectsNotify`, and
+	// `SecondsUntilSwingConnects` falls back to the middle of the clip for that
+	// case, so an unmarked clip behaves sensibly rather than failing.
+	SwingConnectsInSeconds = UCataclysmSwingTiming::SecondsUntilSwingConnects(
+		Length, UCataclysmSwingTiming::MarkedStrikeSeconds(Clip), Rate, Interval);
 
 	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
 	// animation instance is set to ERootMotionMode::IgnoreRootMotion when the

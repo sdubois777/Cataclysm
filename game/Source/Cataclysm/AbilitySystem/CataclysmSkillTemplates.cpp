@@ -35,39 +35,52 @@ void UCataclysmStrikeSkill::ActivateAbility(
 		return;
 	}
 
-	SwingsMade = 0;
-	SwingOnce();
-
-	AActor* Self = Avatar();
-	if (Self)
+	// EVERYTHING BELOW WAITS FOR THE WEAPON TO ARRIVE. Issue #1133. Until this,
+	// the whole of it ran in the frame the ability activated while the swing
+	// animation played for a second or more beside it, so an enemy took damage
+	// and the arc was drawn while the weapon was still going backwards.
+	//
+	// THE END OF THE ABILITY IS INSIDE HERE FOR THE SAME REASON. Ending it on
+	// the line after this call would cancel the wait and no blow would land at
+	// all. `WhenTheSwingConnects` says so; this is the shape its comment points
+	// at.
+	//
+	// THE HANDLE AND THE ACTOR INFORMATION ARE ASKED FOR AGAIN RATHER THAN
+	// CAPTURED. `ActorInfo` is a raw pointer owned by the ability system and
+	// holding it across a wait is not safe. `Finish` below already takes this
+	// route, and it is the same three accessors.
+	WhenTheSwingConnects([this]()
 	{
-		// Under the caster's own feet. Molten Cleave drags its slag from where
-		// the swing started; Pyroclasm leaves "the ground within 5 meters".
-		LeaveGroundAt(Self->GetActorLocation());
-	}
+		SwingsMade = 0;
+		SwingOnce();
 
-	// A single swing with no duration is over. Pyroclasm's spin is the other
-	// case: it repeats for Duration and then lands its final hit.
-	const bool bRepeats = Params.Duration > 0.0f && Params.Interval > 0.0f;
-	if (!bRepeats)
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-		return;
-	}
+		AActor* Self = Avatar();
+		if (Self)
+		{
+			// Under the caster's own feet. Molten Cleave drags its slag from
+			// where the swing started; Pyroclasm leaves "the ground within 5
+			// meters".
+			LeaveGroundAt(Self->GetActorLocation());
+		}
 
-	UWorld* World = Self ? Self->GetWorld() : nullptr;
-	if (!World)
-	{
-		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
-		return;
-	}
+		// A single swing with no duration is over. Pyroclasm's spin is the
+		// other case: it repeats for Duration and then lands its final hit.
+		const bool bRepeats = Params.Duration > 0.0f && Params.Interval > 0.0f;
+		UWorld* World = Self ? Self->GetWorld() : nullptr;
+		if (!bRepeats || !World)
+		{
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, false);
+			return;
+		}
 
-	World->GetTimerManager().SetTimer(
-		RepeatTimer, this, &UCataclysmStrikeSkill::Repeat,
-		Params.Interval, /*bLoop=*/true, /*InFirstDelay=*/Params.Interval);
-	World->GetTimerManager().SetTimer(
-		FinishTimer, this, &UCataclysmStrikeSkill::Finish,
-		Params.Duration, /*bLoop=*/false);
+		World->GetTimerManager().SetTimer(
+			RepeatTimer, this, &UCataclysmStrikeSkill::Repeat,
+			Params.Interval, /*bLoop=*/true, /*InFirstDelay=*/Params.Interval);
+		World->GetTimerManager().SetTimer(
+			FinishTimer, this, &UCataclysmStrikeSkill::Finish,
+			Params.Duration, /*bLoop=*/false);
+	});
 }
 
 int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
@@ -164,38 +177,67 @@ void UCataclysmProjectileSkill::ActivateAbility(
 	// Both ends fixed here and not re-read later. A projectile that followed the
 	// cursor after it was thrown would be a homing missile, which none of these
 	// are.
-	Origin = Self->GetActorLocation();
+	//
+	// WHERE IT IS AIMED IS FIXED WHEN THE PLAYER ASKS, NOT WHEN IT LEAVES.
+	// Issue #1133 put a wait between the two, and reading the cursor at the far
+	// end of that wait would let a shot curve toward a cursor moved during the
+	// wind-up. It would also disagree with the body, which turned to face this
+	// point in CommitAndBegin before the wait began.
 	Destination = AimedPointWithin(Params.RangeCm);
 
-	// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each one,
-	// so who it hits is decided by where they stood as it went past rather than
-	// by where they stand when it arrives, and a wall stops it. Issue #164.
-	// THIS SKILL'S OWN CRITICAL STRIKE CHANCE GOES WITH IT. A projectile lands
-	// after this ability has ended, so it has to carry the chance rather than
-	// read it off the character on arrival. Named explicitly because the two
-	// arguments before it are defaulted. Issue #657.
+	// AND IT LEAVES WHEN THE THROW REACHES ITS RELEASE. Issue #1133. Until then
+	// the shot appeared in the frame the ability activated, before the arm had
+	// moved.
 	//
-	// AND WHAT THIS SKILL JUST COST, for the same reason and with more at stake.
-	// Blood Pyre is the one skill in the game with a health cost of its own and
-	// it is a projectile, so this is the route that matters most for the
-	// Masochist's Grand Tithe node. Reading the cost when the shot landed would
-	// credit the blow with whatever the character last paid. Issue #983.
-	InFlight = ACataclysmProjectile::Fire(
-		Self, Origin, Destination, ScaledRadiusCm(), Params.SpeedCmPerSecond,
-		Params.Pierce, Params.bReturns, GetDamagePercent(), SkillTags,
-		Params.bBurns, /*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
-		CritChancePercent, LastHealthCostPercentOfMaximum);
-
-	if (!InFlight)
+	// THE ORIGIN IS TAKEN AT THAT MOMENT AND NOT BEFORE IT, unlike the
+	// destination, because it is where the projectile physically comes from and
+	// the character may have walked during the wind-up. A shot leaving from
+	// where the character used to stand would be visibly wrong.
+	WhenTheSwingConnects([this]()
 	{
-		// No speed, or nowhere to fly. A beam: Infernal Lance drives a lance
-		// forward and its description says it arrives at once.
-		LandThenFinish();
-		return;
-	}
+		AActor* Caster = Avatar();
+		if (!Caster)
+		{
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, true);
+			return;
+		}
 
-	InFlight->OnFinished.AddUObject(
-		this, &UCataclysmProjectileSkill::OnProjectileFinished);
+		Origin = Caster->GetActorLocation();
+
+		// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each
+		// one, so who it hits is decided by where they stood as it went past
+		// rather than by where they stand when it arrives, and a wall stops it.
+		// Issue #164.
+		// THIS SKILL'S OWN CRITICAL STRIKE CHANCE GOES WITH IT. A projectile
+		// lands after this ability has ended, so it has to carry the chance
+		// rather than read it off the character on arrival. Named explicitly
+		// because the two arguments before it are defaulted. Issue #657.
+		//
+		// AND WHAT THIS SKILL JUST COST, for the same reason and with more at
+		// stake. Blood Pyre is the one skill in the game with a health cost of
+		// its own and it is a projectile, so this is the route that matters most
+		// for the Masochist's Grand Tithe node. Reading the cost when the shot
+		// landed would credit the blow with whatever the character last paid.
+		// Issue #983.
+		InFlight = ACataclysmProjectile::Fire(
+			Caster, Origin, Destination, ScaledRadiusCm(),
+			Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
+			GetDamagePercent(), SkillTags, Params.bBurns,
+			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
+			CritChancePercent, LastHealthCostPercentOfMaximum);
+
+		if (!InFlight)
+		{
+			// No speed, or nowhere to fly. A beam: Infernal Lance drives a lance
+			// forward and its description says it arrives at once.
+			LandThenFinish();
+			return;
+		}
+
+		InFlight->OnFinished.AddUObject(
+			this, &UCataclysmProjectileSkill::OnProjectileFinished);
+	});
 }
 
 void UCataclysmProjectileSkill::OnProjectileFinished(
@@ -1061,58 +1103,84 @@ void UCataclysmDebuffSkill::ActivateAbility(
 	EnemiesAffected = 0;
 	LastDurationApplied = 0.0f;
 
-	// IN RANGE OF THE CASTER, ORDERED BY WHERE THE PLAYER IS POINTING. The first
-	// attempt searched a small circle at the aim point, and it was wrong twice
-	// over: a cursor a metre off the enemy took nobody, and with no cursor at
-	// all -- an enemy casting, or a test -- the aim ran out to the full 15
-	// metres and found empty ground.
+	// THE CURSE LANDS WHEN THE GESTURE REACHES ITS POINT. Issue #1133. Until
+	// then it was applied in the frame the ability activated, with the body
+	// still winding up.
 	//
-	// Range bounds who can be reached, which is what Subjugate's "up to 15
-	// meters" means; the cursor only decides which of those is picked. So a
-	// player pointing roughly at an enemy takes that enemy, and pointing at
-	// nothing takes the nearest, which is what a single-target curse should do.
-	TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Self, Self->GetActorLocation(), Params.RangeCm);
-
-	const FVector Aim = AimPoint();
-	InRange.Sort([&Aim](const AActor& A, const AActor& B)
+	// WHO IT TAKES IS DECIDED AT THAT MOMENT AND NOT BEFORE IT. The search below
+	// is deliberately inside the wait: enemies move, and a curse that picked its
+	// victim at the start of a wind-up and applied it at the end would curse
+	// whoever used to be nearest.
+	WhenTheSwingConnects([this]()
 	{
-		return FVector::DistSquared(A.GetActorLocation(), Aim)
-			 < FVector::DistSquared(B.GetActorLocation(), Aim);
-	});
-
-	const int32 Cap = Params.MaxTargets > 0 ? Params.MaxTargets : 1;
-	if (InRange.Num() > Cap)
-	{
-		InRange.SetNum(Cap);
-	}
-	const TArray<AActor*>& Targets = InRange;
-
-	// Subjugate applies Madness, which the design's own effect table gives as
-	// "the enemy attacks anything nearby, friend or foe, for 3 seconds". The
-	// tag comes from that name via the Debuffs sheet, so a skill applying an
-	// effect nobody designed grants nothing and the generator refuses the row.
-	const FGameplayTag Effect = UCataclysmSkillShapes::StatusTagFor(Params.Effect);
-	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
-
-	for (AActor* Target : Targets)
-	{
-		// "Subjugating an enemy that is already burning makes the madness last
-		// twice as long." Read off the target's own tags, so any source of burn
-		// counts and not only this character's.
-		const bool bAlreadyBurning = UCataclysmSkillEffects::HasTag(Target, Burn);
-		const float Duration = Params.Duration * (bAlreadyBurning ? 2.0f : 1.0f);
-
-		if (UCataclysmSkillEffects::ApplyTagForDuration(Self, Target, Effect, Duration))
+		AActor* Caster = Avatar();
+		if (!Caster)
 		{
-			LastDurationApplied = Duration;
-			++EnemiesAffected;
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, true);
+			return;
 		}
-	}
 
-	// A Support slot deals no damage by design, so this only lands a hit for a
-	// debuff whose slot has one.
-	HitTargets(Targets);
+		// IN RANGE OF THE CASTER, ORDERED BY WHERE THE PLAYER IS POINTING. The
+		// first attempt searched a small circle at the aim point, and it was
+		// wrong twice over: a cursor a metre off the enemy took nobody, and with
+		// no cursor at all -- an enemy casting, or a test -- the aim ran out to
+		// the full 15 metres and found empty ground.
+		//
+		// Range bounds who can be reached, which is what Subjugate's "up to 15
+		// meters" means; the cursor only decides which of those is picked. So a
+		// player pointing roughly at an enemy takes that enemy, and pointing at
+		// nothing takes the nearest, which is what a single-target curse should
+		// do.
+		TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Caster, Caster->GetActorLocation(), Params.RangeCm);
 
-	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		const FVector Aim = AimPoint();
+		InRange.Sort([&Aim](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Aim)
+				 < FVector::DistSquared(B.GetActorLocation(), Aim);
+		});
+
+		const int32 Cap = Params.MaxTargets > 0 ? Params.MaxTargets : 1;
+		if (InRange.Num() > Cap)
+		{
+			InRange.SetNum(Cap);
+		}
+		const TArray<AActor*>& Targets = InRange;
+
+		// Subjugate applies Madness, which the design's own effect table gives
+		// as "the enemy attacks anything nearby, friend or foe, for 3 seconds".
+		// The tag comes from that name via the Debuffs sheet, so a skill
+		// applying an effect nobody designed grants nothing and the generator
+		// refuses the row.
+		const FGameplayTag Effect =
+			UCataclysmSkillShapes::StatusTagFor(Params.Effect);
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+		for (AActor* Target : Targets)
+		{
+			// "Subjugating an enemy that is already burning makes the madness
+			// last twice as long." Read off the target's own tags, so any source
+			// of burn counts and not only this character's.
+			const bool bAlreadyBurning =
+				UCataclysmSkillEffects::HasTag(Target, Burn);
+			const float Duration =
+				Params.Duration * (bAlreadyBurning ? 2.0f : 1.0f);
+
+			if (UCataclysmSkillEffects::ApplyTagForDuration(
+					Caster, Target, Effect, Duration))
+			{
+				LastDurationApplied = Duration;
+				++EnemiesAffected;
+			}
+		}
+
+		// A Support slot deals no damage by design, so this only lands a hit for
+		// a debuff whose slot has one.
+		HitTargets(Targets);
+
+		EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+				   GetCurrentActivationInfo(), true, false);
+	});
 }

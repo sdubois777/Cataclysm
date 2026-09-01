@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — A blow lands where the animation connects: the moment is marked on the clip, and the game reads the marker's position rather than waiting for it
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSwingTiming.h` and
+`.cpp`, `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and
+`.cpp`, `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`,
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.h`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`,
+`tools/place_swing_markers.py`, the four `MM_Attack_*` clips,
+`game/docs/player-source-assets.md`. Applied. Issue #1133.
+
+Damage, the swing arc and every other effect fired in the frame a skill
+activated, while the attack animation played for one to nearly two seconds beside
+it. An enemy took damage while the weapon was still going backwards. The project
+owner reported it after playing the attack animations that landed the same day,
+and asked for the industry standard answer, one that "would allow for it to scale
+with attack speed and everything".
+
+### What the research settled
+
+**The moment is stored as a position inside the animation, never as a number of
+seconds.** That is common to Unreal's own animation notify system and to all
+three shipped games looked at. It is what makes the timing scale with attack
+speed without anything being told about attack speed: the animation's playback
+rate carries that already.
+
+| Source | How the hit is tied to the swing | At high attack speed |
+| :-- | :-- | :-- |
+| **Unreal** | an `AnimNotify` at a position on the clip | position divided by play rate, automatically |
+| **Diablo 4** | a frame index in a fixed 60-frames-a-second simulation | whole-frame breakpoints; between two of them extra attack speed does nothing |
+| **Last Epoch** | attack speed reduces the animation's duration and the gap between uses together | the two stay locked because they are the same number |
+| **Path of Exile** | attack speed sets attack time; a separate "action speed" scales animation playback | the two systems can visibly disagree |
+
+The Unreal half was confirmed by reading the installed engine rather than
+documentation: `AnimMontage.cpp:2234` multiplies the play rate into the montage's
+advance, `AnimMontage.cpp:2253` applies it to the position, and
+`AnimCompositeBase.cpp:136` scales the window handed to the notify search by the
+same rate. `AnimMontage.cpp:2864` shows notifies are collected from a slot
+track's source clip, so a marker on a plain clip fires through
+`PlaySlotAnimationAsDynamicMontage`, which is what the player uses.
+
+Sources are listed in full on issue #1133.
+
+### What the research did not settle, and was a judgement
+
+**Whether to wait for the marker to fire, or to read where it sits.** The
+ordinary Unreal pattern is to wait: a notify sends a gameplay event and the
+ability acts on it. **This project reads the position instead**, and schedules
+the blow itself.
+
+- **It works in a world that is never ticked.** Every automation test here builds
+  its world with `UWorld::CreateWorld`, which is never ticked, and the test
+  command passes `-nullrhi`. A design that waited would deal no damage at all
+  under test, and none of it could be checked.
+- **It works with no art.** A checkout with no animation reaches no marker ever.
+  Reading a position lets that case answer zero, which means the blow lands at
+  once, exactly as before. Waiting would mean it never landed.
+- **It is the same number.** A marker reached at wall-clock `position / rate` is
+  exactly what is computed. Nothing about scaling with attack speed is given up.
+
+**Where the marker lives.** On the clip itself for the player, because
+`game/Content/Characters/Mannequins/` is tracked in git, so the marker is
+committed and travels with the repository.
+
+**Not by un-ignoring the art packs.** The project owner asked why not. The
+Paragon and weapon packs are about 20.7 GB, every `.uasset` goes through Git
+LFS, and a GitHub Free or Pro account includes 10 GiB of LFS storage and 10 GiB
+of bandwidth a month, drawn on every clone and every continuous integration
+checkout. For the enemy clips, which are in those ignored folders, the route is a
+small Animation Montage in `game/Content/Enemies/<Cataclysm>/<Enemy>/`, which is
+tracked; `AM_Brute_RockThrow.uasset` and `AM_Brute_Stomp.uasset` already sit
+there at about 5 KB each, referencing Paragon clips that are not in git. That is
+issue #784 and is not done.
+
+**Three of the eight skill shapes wait, not all eight.** The melee strike, the
+projectile release and the curse. The self-buff, the summon, the deployable, the
+aura and the movement dash do not land a blow at the moment a weapon connects, so
+delaying them would delay things that are not swings. The mechanism still lives
+in one place, `UCataclysmSkillTemplate::WhenTheSwingConnects`, which is what the
+issue asked for.
+
+**A blow is pulled back inside its own swing when the animation cannot keep up.**
+The play rate is capped at 2.5 and attack speed has no design ceiling, so past
+that cap a clip takes longer than the interval between swings and a late blow
+would land after the following swing had begun. It is clamped to nine tenths of
+the swing interval. **That fraction is a judgement and is expected to be tuned by
+playing**; it is not derived from anything. Diablo 4's answer, quantising to
+whole frames and accepting breakpoints, is not available here because this game
+has no fixed simulation rate.
+
+### Where the marker positions came from
+
+`tools/measure_attack_impact.py`, which measures the strike moment from the pose
+with three independent rules and a control. **It refused two of the four clips**:
+on `MM_Attack_01` and `MM_Attack_02` all three rules disagree, because two of the
+three were written for weapon swings and downward blows and these are unarmed
+clips. Peak speed is the rule that applies and has separate corroboration. The
+control passed strongly. `game/docs/player-source-assets.md` records all of it.
+
+**Nobody has watched these clips.** The figures are a starting point to be
+adjusted by playing.
+
+---
+
 ## 2026-09-01 — Every Demonic weapon owns one mechanical verb, and forty rows were rewritten to it
 
 **Affects:** the Weapon Skills sheet in `docs/All_Things_Cataclysm.xlsx`, and the

@@ -22,6 +22,8 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Engine/World.h"
+// For the wait between a swing starting and its blow landing. Issue #1133.
+#include "TimerManager.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
 #include "Items/CataclysmItem.h"
@@ -181,6 +183,81 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	}
 
 	return true;
+}
+
+float UCataclysmSkillTemplate::SecondsUntilTheSwingConnects() const
+{
+	// THE CHARACTER IS THE ONLY THING THAT KNOWS. It chose which of its clips
+	// came up in the cycle and what rate to play it at, both inside
+	// PlayAttackAnimation, which CommitAndBegin called moments ago.
+	//
+	// ZERO FOR ANYTHING THAT IS NOT ONE OF OUR CHARACTERS, which is the same
+	// answer as "no animation played" and means the blow lands now.
+	const ACataclysmCharacterBase* Character =
+		Cast<ACataclysmCharacterBase>(Avatar());
+	return Character ? Character->SecondsUntilTheSwingConnects() : 0.0f;
+}
+
+void UCataclysmSkillTemplate::WhenTheSwingConnects(TFunction<void()> Blow)
+{
+	if (!Blow)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	const float Delay = SecondsUntilTheSwingConnects();
+
+	// STRIKE NOW WHEN THERE IS NOTHING TO WAIT FOR, AND THIS IS AN ORDINARY PATH
+	// RATHER THAN AN EXCEPTION. Every enemy reaches it, because enemies animate
+	// from their own classes and never set the figure. Every automation test
+	// reaches it, because a world built by UWorld::CreateWorld is never ticked
+	// and a timer set in one would never fire, so deferring there would silently
+	// stop all damage in the suite. A checkout with no animation assets reaches
+	// it too.
+	//
+	// NO WORLD MEANS THE SAME. A timer needs one, and having nowhere to put the
+	// blow is not a reason to drop it.
+	if (Delay <= 0.0f || !World)
+	{
+		Blow();
+		return;
+	}
+
+	// A WEAK LAMBDA, NOT A PLAIN ONE. It binds to this ability object, so a
+	// swing still travelling when the ability is destroyed is dropped rather
+	// than run against freed memory.
+	World->GetTimerManager().SetTimer(
+		SwingTimer,
+		FTimerDelegate::CreateWeakLambda(this, [Blow]() { Blow(); }),
+		Delay, /*bLoop=*/false);
+}
+
+void UCataclysmSkillTemplate::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A CANCELLED SKILL STRIKES NOTHING. That is one of the four things issue
+	// #1133 requires to still hold once damage moves later in time. Before that
+	// issue a refused skill could not deal damage because the refusal and the
+	// damage were in the same frame; with a wait in between, an interrupted
+	// skill would otherwise still land its blow.
+	//
+	// ONLY ON CANCELLATION. An ordinary end is called from inside the blow, once
+	// it has already landed, so clearing there would be clearing a timer that
+	// has already fired.
+	if (bWasCancelled && SwingTimer.IsValid())
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(SwingTimer);
+		}
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
 }
 
 AActor* UCataclysmSkillTemplate::Avatar() const

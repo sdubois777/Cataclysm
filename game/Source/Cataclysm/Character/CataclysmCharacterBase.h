@@ -298,6 +298,30 @@ public:
 	virtual void PlayAttackAnimation() {}
 
 	/**
+	 * How long from now until the swing just started lands its blow.
+	 *
+	 * WHY IT IS A STORED ANSWER RATHER THAN A CALCULATION. Issue #1133. The
+	 * figure depends on which clip was chosen, and the player cycles through
+	 * three of different lengths, so only `PlayAttackAnimation` knows. It works
+	 * that number out and leaves it here for `UCataclysmSkillTemplate` to read
+	 * on the very next line.
+	 *
+	 * ZERO IS THE CORRECT DEFAULT AND MEANS "NOW". A character that played no
+	 * animation has no swing to wait for, so its blow lands in the activation
+	 * frame exactly as every blow in the game did before issue #1133. That
+	 * covers every enemy, which animates from its own class and never sets
+	 * this, and it covers a checkout with no animation assets, and it covers
+	 * every automation test, which runs in a world that is never ticked.
+	 *
+	 * READ IT ONLY STRAIGHT AFTER `PlayAttackAnimation`. It is not cleared
+	 * afterwards, so it holds whatever the last swing decided.
+	 */
+	float SecondsUntilTheSwingConnects() const
+	{
+		return SwingConnectsInSeconds;
+	}
+
+	/**
 	 * What this character can do beyond its ordinary attack, in the order it
 	 * would rather use them. Empty means it only has AttackTarget.
 	 *
@@ -382,6 +406,14 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/**
+	 * Set by `PlayAttackAnimation` in whichever class overrides it, and read
+	 * back through `SecondsUntilTheSwingConnects`. Issue #1133.
+	 *
+	 * ZERO UNTIL SOMETHING SETS IT, which is what every enemy leaves it at.
+	 */
+	float SwingConnectsInSeconds = 0.0f;
 
 	/** One step of regeneration. Driven by RegenerationTimer. */
 	void RegenerationStep();

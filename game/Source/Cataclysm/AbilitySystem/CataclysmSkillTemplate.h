@@ -234,6 +234,25 @@ public:
 	static bool ManaPoolBecomesHealth(
 		const UAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * Ends the skill, and drops a blow that was waiting for the swing.
+	 *
+	 * PUBLIC BECAUSE THE BASE IS. `UGameplayAbility::EndAbility` is public, and
+	 * an override in a protected section narrows it, which stops every existing
+	 * caller compiling.
+	 *
+	 * IT ONLY DROPS THE BLOW WHEN THE SKILL WAS CANCELLED. Issue #1133 requires
+	 * that moving damage later must not let a cancelled skill still deal it, and
+	 * this is where that holds. An ordinary end happens from inside the blow
+	 * itself, after it has landed, so clearing the wait then would be clearing a
+	 * timer that has already fired.
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility,
+							bool bWasCancelled) override;
+
 protected:
 	/**
 	 * Spend the cost, start the cooldown, and say whether the skill may run.
@@ -251,6 +270,44 @@ protected:
 	bool CommitAndBegin(const FGameplayAbilitySpecHandle Handle,
 						const FGameplayAbilityActorInfo* ActorInfo,
 						const FGameplayAbilityActivationInfo ActivationInfo);
+
+	/**
+	 * Run `Blow` at the moment the swing started by CommitAndBegin connects.
+	 *
+	 * WHY. Issue #1133. Damage, the swing arc and every other effect used to
+	 * fire in the frame the ability activated, while the animation played for
+	 * one to nearly two seconds beside it, so an enemy was hurt while the weapon
+	 * was still going backwards.
+	 *
+	 * CALL IT STRAIGHT AFTER CommitAndBegin RETURNS TRUE. It reads the figure
+	 * that `PlayAttackAnimation` just worked out and left on the character, and
+	 * nothing else refreshes that figure.
+	 *
+	 * IT RUNS `Blow` IMMEDIATELY WHEN THERE IS NOTHING TO WAIT FOR, and that is
+	 * the case that keeps the game working rather than an edge case. A character
+	 * that played no animation reports zero. That covers every enemy, which
+	 * animates from its own class; a checkout with no animation assets; and
+	 * every automation test, whose world is never ticked and so could never
+	 * reach a later moment at all. In all of those the behaviour is exactly what
+	 * it was before issue #1133.
+	 *
+	 * WHATEVER ENDS THE ABILITY BELONGS INSIDE `Blow`, NOT AFTER THIS CALL.
+	 * Calling EndAbility on the next line cancels the wait and the blow is never
+	 * struck. `UCataclysmStrikeSkill::ActivateAbility` shows the shape.
+	 *
+	 * A CANCELLED SKILL STRIKES NOTHING. EndAbility with bWasCancelled clears
+	 * the wait, which is what stops a skill that was interrupted from still
+	 * dealing its damage a second later.
+	 */
+	void WhenTheSwingConnects(TFunction<void()> Blow);
+
+	/**
+	 * How long until the swing connects, from the character that is swinging.
+	 *
+	 * Zero when the avatar is not a Cataclysm character, or played no animation.
+	 * Separated from WhenTheSwingConnects so a test can ask without waiting.
+	 */
+	float SecondsUntilTheSwingConnects() const;
 
 	/** The actor doing the hitting: the avatar, not the player state. */
 	AActor* Avatar() const;
@@ -418,4 +475,13 @@ protected:
 	 * allows to kill. See `AddedHealthCostPercent` above.
 	 */
 	static constexpr float LeastHealthAfterCurrentHealthCost = 1.0f;
+
+	/**
+	 * The wait between a swing starting and its blow landing. Issue #1133.
+	 *
+	 * ARMED BY WhenTheSwingConnects AND CLEARED BY A CANCELLED EndAbility.
+	 * It stays unset for every skill whose character played no animation,
+	 * because those strike immediately and never arm a timer at all.
+	 */
+	FTimerHandle SwingTimer;
 };
