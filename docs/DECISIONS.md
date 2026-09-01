@@ -20,6 +20,149 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — The Wand inflicts: a curse lasts what its own cell says, carries its magnitude, spreads from a bolt, sits in burning ground, and passes on when its holder dies
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmGroundZone.h` and `.cpp`, `CataclysmDamageCalculation.h` and
+`.cpp`, `CataclysmProjectile.h` and `.cpp`, the new `CataclysmCurseSpread.h` and
+`.cpp`, and `Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue #37.
+
+The project owner asked for the Wand next, after the Sword and Fist landed
+earlier the same day.
+
+### The live bug this started from, which nothing reported
+
+The Weapon Skills sheet split `Duration` from `EffectDuration` on 2026-09-01 --
+a skill's own length against the length of what it leaves behind -- and
+`UCataclysmDebuffSkill` kept reading `Duration`.
+
+**Every Debuff-shaped row in the game states `EffectDuration` and none states
+`Duration`.** There are three: the Wand's Hex of Cinders and Whisper of Madness,
+and the Staff's Quarry. All three therefore asked for a curse lasting zero
+seconds, and `ApplyTagForDuration` refuses a duration of zero outright. **The
+whole Debuff shape applied nothing at all.**
+
+**1134 automation tests passed over it.** The one debuff test wrote
+`Duration=3` into a parameter string of its own rather than the shape a real row
+has, so it proved the template read that key and nothing more. That is the
+failure `docs/DECISIONS.md` has recorded before under a different name: a test
+that supplies the missing step proves nothing.
+
+### What a curse's length is now, and the fallback is the sheet
+
+`EffectDuration` when the skill states one. **The effect's own designed duration
+from `game/Data/StatusEffects.csv` otherwise.** Foul Wake writes `Effect=Shred`
+and no duration at all, and Shred's row gives six seconds, which is exactly what
+Foul Wake's own sentence says its ground lasts. Falling back to a number written
+in C++ instead would let the two drift.
+
+### Shred moves a resistance, and which one comes from the skill
+
+`EffectMagnitude` was read by nothing. Shred's row states "reduces the affected
+enemy's resistance by 10 for 6 seconds" and Anathema states 40.
+
+**Which resistance is decided by the attacker's own damage type, not by the
+effect.** Anathema reads "Demonic resistance cut by 40%" and carries
+`Element.Demonic`; a Shred from a Death skill should cut Death resistance. An
+untyped attacker cuts the generic All Resistance, the only slot that applies to
+everything.
+
+**The pairing of a damage type with its resistance slot moved onto
+`UCataclysmDamageCalculation::ResistanceAttributeFor`.** It was a lambda table
+inside the mitigation order, and a second copy of it beside the debuff is how the
+two would have come to disagree -- the same reasoning `ElementTagFor` and
+`DamageTypeFromTags` already carry for living beside each other.
+
+**The reduction is clamped at zero.** Shred's own row says so: "magnitude raises
+the reduction until that resistance reaches zero, then extends the duration
+instead". The clamp is built; the spill into duration is not, and #1144 carries
+it along with the fact that the Strength column does not say what the strength is
+of.
+
+### Where the mapping from an effect to a stat lives, and why not in the sheet
+
+In C++, and only Shred is in it. The Status Effects sheet has a `Strength` column
+and no column saying what the strength is **of**: Cripple's 30 is a slow,
+Weaken's 20 is a damage reduction, Shred's 10 is resistance. **The second effect
+that needs one is the point at which that becomes a column** rather than a second
+name written into C++, because a vocabulary invented from one example is a guess.
+#1144.
+
+### A curse spreads by `Status.*`, not by what the code calls a debuff
+
+Malefice copies "every curse it already carries onto the two nearest enemies".
+The obvious route was `UCataclysmDebuffs::TagsOnActor`, and it answered nothing.
+
+**`UCataclysmDebuffs::DebuffRootNames` lists two roots, `Keyword.DoT` and
+`State.Stunned`.** None of the twenty-seven named effects from the Debuffs sheet
+is under either; they all grant `Status.*`. So the Masochist's branch, which is
+paid per debuff carried, counts none of the named curses, and Wound Channeling
+never matches on one.
+
+`CopyDebuffsTo` gathers `Status.*` itself rather than widening those roots,
+**because widening them changes what eleven Masochist nodes are paid**, and that
+is a balance decision rather than a bug fix. #1145 puts it to the project owner
+with a recommendation.
+
+### Burning ground can carry a curse
+
+Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic
+resistance of anything that walks into it." A zone could only deal damage.
+
+**Set after spawning rather than passed in.** `SpawnAlong` already takes seven
+arguments and four more would make every existing call site harder to read for
+the one zone that wants them.
+
+**Laid on every sweep, which refreshes rather than stacks**, so the curse runs
+its own duration from the moment the target last stood in the zone. That is what
+"anything that walks into it" means.
+
+### A curse passes on when its holder dies, and where that hook lives
+
+Anathema: "anything that dies while damned passes the curse to the nearest living
+enemy."
+
+**`UCataclysmSkillEffects::MarkDead` is the hook**, because it is the one place a
+death is recorded for the player and for every creature. A creature killed by a
+burn, by a patch of burning ground or by another creature passes its curse the
+same way one killed by a blow does. Hooking each character class instead would
+have covered the blow and missed the rest.
+
+**A component on the cursed creature carries the instruction, not the skill.**
+Anathema is a Strike: it ends in the frame it activates and the curse it left
+runs for ten seconds afterwards, so the instruction outlives the ability. A map
+keyed by actor kept on a static would need sweeping for creatures that died, were
+destroyed, or left the level; a component is destroyed with its actor.
+
+**The nearest one, singular**, which is what the row says. A curse jumping to
+everything in range would clear a room from one cast.
+
+### Two effects deliberately do not come through the curse path
+
+**A stun.** `ApplyStun` carries three rules the design states -- a damage
+threshold, five seconds of immunity after one lands, and bosses immune outright
+-- and granting `Status.Stunned` as a plain tag walks past all three. Four rows
+write `Effect=Stun` beside a `StunSeconds`, and that number is still read by
+nothing, so those four do not stun.
+
+**Anything that is damage over time.** Burn and bleed take their per-tick amount
+from the hit that caused them, so granting the tag alone would leave a target
+bleeding for nothing. The Crossbow's Bolt Turret writes `Effect=Bleed`.
+
+### What the Wand does not do
+
+**Hex of Cinders' second sentence.** "Hexing an enemy that is already burning
+also sets alight everything within 4 meters of them" has **no parameter in its
+row at all**, so it is a missing parameter rather than an unread one. Reusing the
+Sword's `ConsumeRadius` would take the Sword's verb. #1146 puts the three ways
+out to the project owner and recommends dropping the condition and making the
+spread unconditional.
+
+Four of the Wand's five skills now do everything they say.
+
+---
+
 ## 2026-09-01 — The Sword consumes burn, six skills gained a condition on the cast, and a skill's own scaling moves the skill's own damage percent rather than the character's increases
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h`,

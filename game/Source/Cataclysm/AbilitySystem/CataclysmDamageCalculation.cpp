@@ -101,31 +101,20 @@ namespace
 			Total += Generic->GetAllResistance();
 		}
 
-		const UCataclysmResistanceAttributeSet* Set =
-			Defender->GetSet<UCataclysmResistanceAttributeSet>();
-		if (!Set || DamageType.IsNone())
-		{
-			return Total;
-		}
-
-		static const TMap<FName, TFunction<float(const UCataclysmResistanceAttributeSet*)>> Lookup = {
-			{ TEXT("War"),        [](const UCataclysmResistanceAttributeSet* S) { return S->GetWarResistance(); } },
-			{ TEXT("Demonic"),    [](const UCataclysmResistanceAttributeSet* S) { return S->GetDemonicResistance(); } },
-			{ TEXT("Death"),      [](const UCataclysmResistanceAttributeSet* S) { return S->GetDeathResistance(); } },
-			{ TEXT("Pestilence"), [](const UCataclysmResistanceAttributeSet* S) { return S->GetPestilenceResistance(); } },
-			{ TEXT("Famine"),     [](const UCataclysmResistanceAttributeSet* S) { return S->GetFamineResistance(); } },
-			{ TEXT("Celestial"),  [](const UCataclysmResistanceAttributeSet* S) { return S->GetCelestialResistance(); } },
-			{ TEXT("Chaos"),      [](const UCataclysmResistanceAttributeSet* S) { return S->GetChaosResistance(); } },
-			{ TEXT("Void"),       [](const UCataclysmResistanceAttributeSet* S) { return S->GetVoidResistance(); } },
-		};
-
-		if (const auto* Getter = Lookup.Find(DamageType))
-		{
-			Total += (*Getter)(Set);
-		}
+		// THE PAIRING OF A DAMAGE TYPE WITH ITS RESISTANCE SLOT MOVED ONTO THE
+		// CLASS ON 2026-09-01, because the Wand's Shred writes the same slot this
+		// reads. It was a lambda table here, and a second copy of it beside the
+		// debuff is how the two would have come to disagree.
+		const FGameplayAttribute Typed =
+			UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
 
 		// A damage type nobody has heard of adds nothing, and the generic figure
 		// still applies, because it applies to everything by definition.
+		if (Typed.IsValid() && Defender->HasAttributeSetForAttribute(Typed))
+		{
+			Total += Defender->GetNumericAttribute(Typed);
+		}
+
 		return Total;
 	}
 }
@@ -214,6 +203,39 @@ FGameplayTag UCataclysmDamageCalculation::ElementIsForColourOnlyTag()
 FGameplayTag UCataclysmDamageCalculation::SkillCritChanceDataTag()
 {
 	return TagNamed(SkillCritChanceDataTagName);
+}
+
+FGameplayAttribute UCataclysmDamageCalculation::ResistanceAttributeFor(
+	FName DamageType)
+{
+	if (DamageType.IsNone())
+	{
+		// An untyped hit has no slot to read, which is what the mitigation order
+		// above already means by falling back to the generic figure alone.
+		return FGameplayAttribute();
+	}
+
+	// BUILT ONCE ON FIRST USE RATHER THAN AS A FILE-SCOPE STATIC, for the reason
+	// UCataclysmPlayerClassStats::StatToAttribute gives: an FGameplayAttribute
+	// wraps an FProperty found by reflection, and that data is not ready during
+	// static initialisation.
+	static const TMap<FName, FGameplayAttribute> Slots = []
+	{
+		using Resist = UCataclysmResistanceAttributeSet;
+		return TMap<FName, FGameplayAttribute>{
+			{TEXT("War"),        Resist::GetWarResistanceAttribute()},
+			{TEXT("Demonic"),    Resist::GetDemonicResistanceAttribute()},
+			{TEXT("Death"),      Resist::GetDeathResistanceAttribute()},
+			{TEXT("Pestilence"), Resist::GetPestilenceResistanceAttribute()},
+			{TEXT("Famine"),     Resist::GetFamineResistanceAttribute()},
+			{TEXT("Celestial"),  Resist::GetCelestialResistanceAttribute()},
+			{TEXT("Chaos"),      Resist::GetChaosResistanceAttribute()},
+			{TEXT("Void"),       Resist::GetVoidResistanceAttribute()},
+		};
+	}();
+
+	const FGameplayAttribute* Found = Slots.Find(DamageType);
+	return Found ? *Found : FGameplayAttribute();
 }
 
 FGameplayTag UCataclysmDamageCalculation::ElementTagFor(FName DamageType)

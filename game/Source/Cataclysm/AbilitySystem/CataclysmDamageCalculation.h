@@ -3,6 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+// For FGameplayAttribute, which ResistanceAttributeFor answers with. The
+// mitigation order reads that slot and the Wand's Shred writes it.
+#include "AttributeSet.h"
 #include "GameplayTagContainer.h"
 #include "CataclysmDamageCalculation.generated.h"
 
@@ -599,6 +602,23 @@ public:
 	 * describes.
 	 */
 	static FName DamageTypeFromTags(const FGameplayTagContainer& Tags);
+
+	/**
+	 * The resistance attribute a damage type is read from, or an invalid
+	 * attribute for an untyped hit or a type nobody has heard of.
+	 *
+	 * THE ONE PLACE THAT PAIRS A DAMAGE TYPE WITH ITS RESISTANCE SLOT. The
+	 * mitigation order reads it to work out what a blow is reduced by, and the
+	 * Wand's Shred writes it to reduce that resistance for a duration. A second
+	 * copy of the pairing is how the two would come to disagree, which is the
+	 * reasoning `ElementTagFor` and `DamageTypeFromTags` already give for living
+	 * beside each other.
+	 *
+	 * IT ANSWERS THE PER-TYPE SLOT ONLY. The generic All Resistance attribute
+	 * applies to everything by definition, so it is not one of these eight and
+	 * is added separately by whoever needs a total.
+	 */
+	static FGameplayAttribute ResistanceAttributeFor(FName DamageType);
 
 	/** Armor as a percentage of damage removed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")

@@ -16,6 +16,8 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+// For the resistance a Shred cuts, and for reading it back. Issue #37.
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStacks.h"
@@ -110,6 +112,14 @@ namespace CataclysmSkillTest
 			UCataclysmClassResourceAttributeSet* Resource =
 				NewObject<UCataclysmClassResourceAttributeSet>(Actor);
 			AbilitySystem->AddAttributeSetSubobject(Resource);
+
+			// RESISTANCES, SO A SHRED HAS SOMETHING TO CUT. Issue #37, for the
+			// Wand's set. All eight start at zero, so no existing test's damage
+			// moves for having this present: a fighter without the set was
+			// already treated as having zero resistance.
+			UCataclysmResistanceAttributeSet* Resistances =
+				NewObject<UCataclysmResistanceAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(Resistances);
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
@@ -2586,14 +2596,25 @@ bool FCataclysmDebuffTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Target(World, FVector(1 * M, 0, 0));
 
-	// Subjugate: "subjugating an enemy that is already burning makes the madness
-	// last twice as long." Madness itself is three seconds, which is what the
+	// Whisper of Madness: "the whisper lasts twice as long in a mind that is
+	// already burning." Madness itself is three seconds, which is what the
 	// design document's effect table states: "the enemy attacks anything nearby,
 	// friend or foe, for 3 seconds".
+	//
+	// THE KEY IS `EffectDuration` AND THIS TEST USED TO WRITE `Duration`, which
+	// no Debuff row in the game states. That is why the whole shape could apply
+	// a curse for zero seconds with 1134 tests passing: this test supplied a key
+	// the real data does not carry, so it proved the template read that key and
+	// nothing more. `ACurseLastsTheEffectDurationItsRowStates` at the end of this
+	// file is the test that would have caught it.
+	//
+	// THE SKILL WAS CALLED Subjugate UNTIL 2026-09-01, when issue #1136 moved
+	// this behaviour to the Wand under its present name and gave the Staff's
+	// Subjugate the possession it was always described as having.
 	UCataclysmDebuffSkill* Subjugate = GrantSkill<UCataclysmDebuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
-		TEXT("Range=15; MaxTargets=1; Duration=3; Effect=Madness"),
-		TEXT("Subjugate"));
+		TEXT("Range=15; MaxTargets=1; EffectDuration=3; Effect=Madness"),
+		TEXT("Whisper of Madness"));
 	if (!Subjugate)
 	{
 		AddError(TEXT("Could not grant the debuff."));
@@ -5691,6 +5712,575 @@ bool FCataclysmHeldBuffWidensSpreadTest::RunTest(const FString&)
 	TestTrue(TEXT("The strike activates"), Activate(Caster, Strike));
 	TestTrue(TEXT("With the buff held, the fire spreads four metres"),
 		IsAlight(Bystander));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Applied status effects: the Wand's set. Issue #37.
+//
+// THE BUG THESE START FROM. The Weapon Skills sheet split `Duration` from
+// `EffectDuration` on 2026-09-01 -- a skill's own length against the length of
+// what it leaves behind -- and the Debuff template kept reading `Duration`.
+// Every Debuff-shaped row in the game states `EffectDuration` and none states
+// `Duration`, so all three of them asked for a curse lasting zero seconds and
+// `ApplyTagForDuration` refused every one.
+//
+// 1134 TESTS PASSED OVER IT, because the one debuff test wrote `Duration=3`
+// into a parameter string of its own rather than using the shape a real row
+// has. The first test below is the one that would have caught it.
+// --------------------------------------------------------------------------
+
+namespace CataclysmSkillTest
+{
+	/** The Status.* tag for a named effect, the way a skill row names it. */
+	FGameplayTag StatusTag(const TCHAR* Name)
+	{
+		return UCataclysmSkillShapes::StatusTagFor(FString(Name));
+	}
+
+	/** Whether this target carries a named status effect. */
+	bool Carries(const FScopedFighter& Target, const TCHAR* Name)
+	{
+		return UCataclysmSkillEffects::HasTag(Target.Actor, StatusTag(Name));
+	}
+
+	/** A target's Demonic resistance right now. */
+	float DemonicResistance(const FScopedFighter& Target)
+	{
+		return Target.Get(
+			UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebuffUsesEffectDurationTest,
+	"Cataclysm.Skills.ACurseLastsTheEffectDurationItsRowStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDebuffUsesEffectDurationTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// HEX OF CINDERS' PARAMETER CELL WITH ONE NUMBER CHANGED, and the change is
+	// the whole point. `EffectDuration` and no `Duration`, which is the shape
+	// every Debuff row in the game has and the shape the template did not read.
+	//
+	// NINE SECONDS AND NOT THE SIX ITS REAL ROW STATES. Shred's own designed
+	// duration in `game/Data/StatusEffects.csv` is six, and this skill falls
+	// back to that figure when it states none of its own -- so a test using six
+	// here cannot tell reading `EffectDuration` from ignoring it and falling
+	// back. Nine is a number only the skill's own cell can produce. Proved by
+	// breaking it: with the cell ignored this reads six and this test fails.
+	UCataclysmDebuffSkill* Hex = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Range=12; MaxTargets=1; EffectDuration=9; Effect=Shred"),
+		TEXT("Hex of Cinders"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Debuff"));
+	if (!Hex)
+	{
+		AddError(TEXT("Could not grant the debuff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Hex));
+	TestEqual(TEXT("It cursed one enemy"), Hex->EnemiesAffected, 1);
+	TestTrue(TEXT("The enemy carries the curse"), Carries(Enemy, TEXT("Shred")));
+	TestEqual(TEXT("For the nine seconds its own cell states, not Shred's six"),
+		Hex->LastDurationApplied, 9.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEffectFallsBackToTheSheetTest,
+	"Cataclysm.Skills.ACurseWithNoStatedLengthTakesTheEffectsOwnDuration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEffectFallsBackToTheSheetTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// THE WAND'S FOUL WAKE NAMES SHRED AND NO DURATION AT ALL. The Status
+	// Effects sheet gives Shred six seconds, which is what that row's own
+	// sentence says its ground lasts. The fallback is the sheet rather than a
+	// number written in C++, so the two cannot drift apart.
+	UCataclysmDebuffSkill* Curse = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Range=12; MaxTargets=1; Effect=Shred"), TEXT("Foul Wake"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Debuff"));
+	if (!Curse)
+	{
+		AddError(TEXT("Could not grant the debuff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Curse));
+	TestTrue(TEXT("The enemy carries the curse"), Carries(Enemy, TEXT("Shred")));
+	TestEqual(TEXT("For Shred's own designed six seconds"),
+		Curse->LastDurationApplied, 6.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSeveralEffectsTest,
+	"Cataclysm.Skills.ASkillMayNameMoreThanOneCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSeveralEffectsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// ANATHEMA WRITES `Effect=Shred, Madness` -- "laying every curse you know on
+	// it". Read as a single name, that row named an effect called
+	// "Shred, Madness", which no sheet has, so it granted nothing at all.
+	UCataclysmDebuffSkill* Curse = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Range=12; MaxTargets=1; EffectDuration=10; Effect=Shred, Madness"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Debuff"));
+	if (!Curse)
+	{
+		AddError(TEXT("Could not grant the debuff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Curse));
+	TestTrue(TEXT("The enemy is shredded"), Carries(Enemy, TEXT("Shred")));
+	TestTrue(TEXT("And maddened"), Carries(Enemy, TEXT("Madness")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShredCutsResistanceTest,
+	"Cataclysm.Skills.ShredCutsTheResistanceMatchingTheSkillsOwnElement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShredCutsResistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// SEVENTY, SO THERE IS PLENTY TO TAKE AND THE CLAMP AT ZERO IS NOT WHAT IS
+	// BEING MEASURED HERE. The clamp is the next test's subject.
+	Enemy.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			  70.0f);
+	Enemy.Set(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute(),
+			  70.0f);
+
+	// ANATHEMA STATES `EffectMagnitude=40` and its sentence reads "Demonic
+	// resistance cut by 40%". Which resistance is decided by the skill's own
+	// Element tag, not by the effect: a Shred from a Death skill cuts Death.
+	UCataclysmDebuffSkill* Curse = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Range=12; MaxTargets=1; EffectDuration=10; Effect=Shred; "
+			 "EffectMagnitude=40"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Debuff"));
+	if (!Curse)
+	{
+		AddError(TEXT("Could not grant the debuff."));
+		return false;
+	}
+
+	TestEqual(TEXT("It starts at seventy"), DemonicResistance(Enemy), 70.0f, 0.01f);
+	TestTrue(TEXT("It activates"), Activate(Caster, Curse));
+
+	TestTrue(TEXT("The enemy is shredded"), Carries(Enemy, TEXT("Shred")));
+	TestEqual(TEXT("Its Demonic resistance is cut by the stated forty"),
+		DemonicResistance(Enemy), 30.0f, 0.01f);
+
+	// AND NOTHING ELSE MOVED, which is what says the element chose the slot
+	// rather than every resistance being reduced at once.
+	TestEqual(TEXT("Its Death resistance is untouched"),
+		Enemy.Get(UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute()),
+		70.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShredClampsAtZeroTest,
+	"Cataclysm.Skills.ShredCannotTakeAResistanceBelowZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmShredClampsAtZeroTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// TEN TO TAKE AND FORTY ASKED FOR. `game/Data/StatusEffects.csv` states the
+	// rule on Shred's own row: "magnitude raises the reduction until that
+	// resistance reaches zero". A negative resistance would make the enemy take
+	// MORE than unmitigated damage, which no row asks for.
+	Enemy.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			  10.0f);
+
+	UCataclysmDebuffSkill* Curse = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Range=12; MaxTargets=1; EffectDuration=10; Effect=Shred; "
+			 "EffectMagnitude=40"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Debuff"));
+	if (!Curse)
+	{
+		AddError(TEXT("Could not grant the debuff."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Curse));
+	TestEqual(TEXT("The resistance stops at zero rather than going to -30"),
+		DemonicResistance(Enemy), 0.0f, 0.01f);
+	TestTrue(TEXT("And the curse is still carried, so a second skill can read it"),
+		Carries(Enemy, TEXT("Shred")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeAppliesCursesTest,
+	"Cataclysm.Skills.AStrikeAppliesTheCursesItNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStrikeAppliesCursesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Far(World, FVector(30 * M, 0, 0));
+
+	Near.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			 70.0f);
+
+	// ANATHEMA IS A STRIKE, NOT A DEBUFF, and until 2026-09-01 only the Debuff
+	// shape applied a named effect, so this row's whole second sentence did
+	// nothing: "laying every curse you know on it for 10 seconds".
+	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=12; Angle=360; Burn=1; EffectDuration=10; "
+			 "Effect=Shred, Madness; EffectMagnitude=40"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.PointBlank"));
+	if (!Damn)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Damn));
+
+	TestTrue(TEXT("The enemy in the ring is shredded"), Carries(Near, TEXT("Shred")));
+	TestTrue(TEXT("And maddened"), Carries(Near, TEXT("Madness")));
+	TestEqual(TEXT("And its Demonic resistance is cut by forty"),
+		DemonicResistance(Near), 30.0f, 0.01f);
+
+	// THE RING IS TWELVE METRES AND THIS ONE STANDS AT THIRTY. Without it the
+	// test would pass against a skill that cursed the whole world.
+	TestFalse(TEXT("An enemy outside the ring is not cursed"),
+		Carries(Far, TEXT("Shred")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunNotAppliedAsATagTest,
+	"Cataclysm.Skills.AStunIsNotGrantedAsAPlainTagByTheCursePath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+
+	// FOUR REAL ROWS WRITE `Effect=Stun` -- Shield Bash, Shockwave Leap, Lunge
+	// and Whip Swing. `UCataclysmSkillEffects::ApplyStun` carries three rules the
+	// design states: a damage threshold, five seconds of immunity after one
+	// lands, and bosses immune outright. Granting `Status.Stunned` as a plain
+	// tag through the curse path would walk past all three, so the curse path
+	// refuses it.
+	UCataclysmStrikeSkill* Bash = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Effect=Stun; StunSeconds=1.5"),
+		TEXT("Shield Bash"));
+	if (!Bash)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Bash));
+	TestTrue(TEXT("The enemy was hit"), Enemy.Health() < 100000.0f);
+	TestFalse(TEXT("And is not stunned by the curse path"),
+		UCataclysmSkillEffects::IsStunned(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpreadCursesTest,
+	"Cataclysm.Skills.MaleficeCopiesACursedEnemysCursesOntoTheNearestOthers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpreadCursesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Cursed(World, FVector(5 * M, 0, 0));
+	FScopedFighter NearA(World, FVector(6 * M, 0, 0));
+	FScopedFighter NearB(World, FVector(7 * M, 0, 0));
+	FScopedFighter Third(World, FVector(9 * M, 0, 0));
+
+	// THE TARGET ALREADY CARRIES A CURSE, put there the way any hex would. The
+	// row copies what the enemy carries; it does not invent one.
+	UCataclysmSkillEffects::ApplyNamedEffect(
+		Caster.Actor, Cursed.Actor, StatusTag(TEXT("Madness")), 6.0f);
+	TestTrue(TEXT("The struck enemy starts cursed"), Carries(Cursed, TEXT("Madness")));
+
+	UCataclysmProjectileSkill* Bolt = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Range=14; Radius=1; Speed=2600; Burn=1; SpreadCurses=2"),
+		TEXT("Malefice"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.Projectile"));
+	if (!Bolt)
+	{
+		AddError(TEXT("Could not grant the projectile."));
+		return false;
+	}
+
+	// DRIVEN DIRECTLY, because a projectile's flight runs on a timer and this
+	// world is never ticked. What is being measured is the copying, not the
+	// flight, and the flight is covered by its own tests.
+	const int32 Applied = Bolt->SpreadCursesFrom({Cursed.Actor});
+
+	TestEqual(TEXT("Two copies were applied, one per recipient"), Applied, 2);
+	TestTrue(TEXT("The nearest other enemy carries it"), Carries(NearA, TEXT("Madness")));
+	TestTrue(TEXT("So does the second nearest"), Carries(NearB, TEXT("Madness")));
+
+	// `SpreadCurses=2` IS A CAP AND NOT A RADIUS. Without this the test would
+	// pass against a skill that cursed everything within reach.
+	TestFalse(TEXT("The third nearest does not, because the row says two"),
+		Carries(Third, TEXT("Madness")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundCarriesACurseTest,
+	"Cataclysm.Skills.BurningGroundStripsResistanceWhenTheSkillNamesACurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundCarriesACurseTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Standing(World, FVector(2 * M, 0, 0));
+
+	Standing.Set(
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(), 70.0f);
+
+	// FOUL WAKE: "the ground you fled burns for 6 seconds and strips the
+	// Demonic resistance of anything that walks into it". Its `Effect=Shred`
+	// reached nothing before 2026-09-01, because a zone could only deal damage.
+	UCataclysmMovementSkill* Slip = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=8; Radius=3.5; Burn=1; GroundRadius=3.5; "
+			 "GroundDuration=6; GroundPercent=16.7; Effect=Shred"),
+		TEXT("Foul Wake"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+	if (!Slip)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Slip));
+
+	// A BLINK LEAVES GROUND AT BOTH ENDS -- the point left and the point arrived
+	// at -- so there are two patches, and which of the two the standing enemy is
+	// in depends on where the blink went. Every patch is collected and every one
+	// is swept, because what is being tested is that a patch carries the curse
+	// and lays it, not which end of a blink the enemy happened to be near.
+	TArray<ACataclysmGroundZone*> Patches;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Patches.Add(*It);
+	}
+
+	TestEqual(TEXT("A blink left two patches, one at each end"), Patches.Num(), 2);
+	if (Patches.IsEmpty())
+	{
+		AddError(TEXT("The skill left no burning ground at all."));
+		return false;
+	}
+
+	int32 CarryingTheCurse = 0;
+	int32 FoundStanding = 0;
+	for (ACataclysmGroundZone* Patch : Patches)
+	{
+		if (Patch->AppliedEffect.IsValid())
+		{
+			++CarryingTheCurse;
+			TestEqual(TEXT("It lasts Shred's own designed six seconds"),
+				Patch->AppliedEffectSeconds, 6.0f, 0.01f);
+		}
+
+		// A ZONE THAT DEALS NOTHING SWEEPS NOTHING, which is a real early return
+		// in `Sweep` and would make the assertions below pass or fail for the
+		// wrong reason.
+		TestTrue(FString::Printf(TEXT("Each patch deals something per tick (%.1f)"),
+								 Patch->DamagePerTick),
+			Patch->DamagePerTick > 0.0f);
+
+		// DRIVEN DIRECTLY, because a zone sweeps on a timer and this world is
+		// never ticked. What one sweep DOES is the subject; the scheduling of
+		// them has its own tests.
+		Patch->Sweep();
+		FoundStanding += Patch->LastSweepCount;
+	}
+
+	TestEqual(TEXT("Both patches carry the curse the skill named"),
+		CarryingTheCurse, Patches.Num());
+	TestTrue(TEXT("At least one patch found the enemy standing in it"),
+		FoundStanding > 0);
+
+	TestTrue(TEXT("Whatever stood in it is shredded"),
+		Carries(Standing, TEXT("Shred")));
+	TestEqual(TEXT("And its Demonic resistance is cut by Shred's designed ten"),
+		DemonicResistance(Standing), 60.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCursePassesOnDeathTest,
+	"Cataclysm.Skills.ACurseThatSpreadsOnDeathPassesToTheNearestLivingEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCursePassesOnDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Damned(World, FVector(4 * M, 0, 0));
+	FScopedFighter Nearest(World, FVector(6 * M, 0, 0));
+	FScopedFighter Further(World, FVector(20 * M, 0, 0));
+
+	// ANATHEMA'S LAST SENTENCE: "anything that dies while damned passes the
+	// curse to the nearest living enemy." `OnDeath=SpreadDebuff` and
+	// `OnDeathRange=8` said so and nothing read either.
+	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=5; Angle=360; EffectDuration=10; Effect=Madness; "
+			 "OnDeath=SpreadDebuff; OnDeathRange=8"),
+		TEXT("Anathema"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.PointBlank"));
+	if (!Damn)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Damn));
+
+	// A FIVE METRE RING, so only the first enemy is damned. Without that the
+	// spread could not be told from the original cast.
+	TestTrue(TEXT("The enemy in the ring is damned"), Carries(Damned, TEXT("Madness")));
+	TestFalse(TEXT("The one outside the ring is not"),
+		Carries(Nearest, TEXT("Madness")));
+	TestFalse(TEXT("Nor is the far one"), Carries(Further, TEXT("Madness")));
+
+	// KILLED THROUGH THE ONE PLACE A DEATH IS RECORDED, which is what every
+	// character class calls and where the spread is hooked.
+	TestTrue(TEXT("The damned enemy dies"),
+		UCataclysmSkillEffects::MarkDead(Damned.Actor));
+
+	TestTrue(TEXT("The curse passed to the nearest living enemy"),
+		Carries(Nearest, TEXT("Madness")));
+
+	// THE NEAREST ONE, SINGULAR. Twenty metres is outside the eight the row
+	// states, and passing to everything in range would clear a room from one
+	// cast.
+	TestFalse(TEXT("And not to anything else"), Carries(Further, TEXT("Madness")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseDoesNotSpreadUnaskedTest,
+	"Cataclysm.Skills.ACurseWithNoOnDeathDoesNotPassOnWhenItsHolderDies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseDoesNotSpreadUnaskedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Cursed(World, FVector(4 * M, 0, 0));
+	FScopedFighter Nearest(World, FVector(6 * M, 0, 0));
+
+	// THE CONTROL FOR THE TEST ABOVE, and the same skill without the two
+	// on-death parameters. Without it that test would pass just as well against
+	// a curse that always passed on, which would make every curse in the game
+	// unkillable.
+	UCataclysmStrikeSkill* Damn = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=5; Angle=360; EffectDuration=10; Effect=Madness"),
+		TEXT("Anathema without its on-death clause"),
+		TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.PointBlank"));
+	if (!Damn)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Damn));
+	TestTrue(TEXT("The enemy in the ring is cursed"), Carries(Cursed, TEXT("Madness")));
+
+	TestTrue(TEXT("It dies"), UCataclysmSkillEffects::MarkDead(Cursed.Actor));
+	TestFalse(TEXT("And the curse passes to nobody"),
+		Carries(Nearest, TEXT("Madness")));
 
 	return true;
 }

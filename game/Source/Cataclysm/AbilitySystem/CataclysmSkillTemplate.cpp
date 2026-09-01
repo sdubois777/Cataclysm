@@ -4,6 +4,9 @@
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For the health cost a character adds to every skill. Issue #970.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For marking a cursed creature so its curse passes on when it dies.
+// The Wand's Anathema. Issue #37.
+#include "AbilitySystem/CataclysmCurseSpread.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -406,6 +409,145 @@ bool UCataclysmSkillTemplate::RequirementsAreMet(
 		}
 	}
 	return false;
+}
+
+// ==========================================================================
+// Applied status effects -- the Wand's verb
+// ==========================================================================
+
+TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
+{
+	TArray<FGameplayTag> Tags;
+	if (Params.Effect.IsEmpty())
+	{
+		return Tags;
+	}
+
+	// COMMA SEPARATED, because Anathema writes `Effect=Shred, Madness` --
+	// "laying every curse you know on it". Read as one name, that row named an
+	// effect called "Shred, Madness" which no sheet has, and granted nothing.
+	const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+
+	TArray<FString> Named;
+	Params.Effect.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		const FGameplayTag Tag =
+			UCataclysmSkillShapes::StatusTagFor(One.TrimStartAndEnd());
+		if (!Tag.IsValid())
+		{
+			continue;
+		}
+
+		// A STUN IS LEFT OUT, and letting one through would be a fault rather
+		// than a gap. `UCataclysmSkillEffects::ApplyStun` carries three rules the
+		// design states -- a damage threshold, five seconds of immunity after one
+		// lands, and bosses immune outright -- and granting `Status.Stunned` as a
+		// plain tag walks past all three. Four skills write `Effect=Stun` beside
+		// a `StunSeconds`, and that number is read by nothing, so those four do
+		// not stun today.
+		if (Stunned.IsValid() && Tag == Stunned)
+		{
+			continue;
+		}
+
+		// AND SO IS ANYTHING THAT IS DAMAGE OVER TIME. `ApplyDamageOverTime` is
+		// the path for burn and bleed and works out a per-tick amount from the
+		// hit that caused it; granting the tag instead would leave a target
+		// bleeding for nothing. `bUsable` is the sheet's own answer to "is this
+		// row damage over time": true only for a row carrying both a duration
+		// and a per-tick amount. The Crossbow's Bolt Turret writes `Effect=Bleed`.
+		if (UCataclysmSkillEffects::NumbersForEffectTag(Tag).bUsable)
+		{
+			continue;
+		}
+
+		Tags.AddUnique(Tag);
+	}
+	return Tags;
+}
+
+float UCataclysmSkillTemplate::AppliedEffectSeconds(
+	const FGameplayTag& EffectTag) const
+{
+	if (Params.EffectDuration > 0.0f)
+	{
+		return Params.EffectDuration;
+	}
+
+	// THE SHEET'S OWN FIGURE AND NOT A NUMBER WRITTEN HERE. Foul Wake states
+	// `Effect=Shred` and no duration at all; the Status Effects sheet gives
+	// Shred six seconds, which is exactly what that row's sentence says.
+	return UCataclysmSkillEffects::NumbersForEffectTag(EffectTag).DurationSeconds;
+}
+
+FName UCataclysmSkillTemplate::DamageTypeName() const
+{
+	return UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags);
+}
+
+int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
+												  float DurationScale)
+{
+	if (!IsValid(Target) || DurationScale <= 0.0f)
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	// STUNS AND DAMAGE OVER TIME ARE ALREADY GONE. `NamedEffectTags` drops both,
+	// so every caller of it gets the same rule rather than each remembering.
+	const FName Type = DamageTypeName();
+
+	int32 Applied = 0;
+	for (const FGameplayTag& EffectTag : NamedEffectTags())
+	{
+		const float Seconds = AppliedEffectSeconds(EffectTag) * DurationScale;
+		if (Seconds <= 0.0f)
+		{
+			// A skill naming an effect that neither it nor the sheet gives a
+			// duration. The Staff's Quarry is why this is said out loud rather
+			// than passed over: its designed duration is zero and its row
+			// carries `EffectDuration=12`, so a row losing that one cell would
+			// apply nothing and report nothing.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' names the effect %s, and neither the skill nor the "
+					 "Status Effects sheet says how long it lasts, so it "
+					 "applies nothing."),
+				*SkillName, *EffectTag.ToString());
+			continue;
+		}
+
+		if (UCataclysmSkillEffects::ApplyNamedEffect(
+				Self, Target, EffectTag, Seconds, Params.EffectMagnitude, Type))
+		{
+			++Applied;
+		}
+	}
+
+	// AND THE CURSE PASSES ON WHEN ITS HOLDER DIES, IF THE ROW SAYS SO. The
+	// Wand's Anathema: "anything that dies while damned passes the curse to the
+	// nearest living enemy", written as `OnDeath=SpreadDebuff; OnDeathRange=8`.
+	//
+	// MARKED ONLY WHEN SOMETHING WAS ACTUALLY APPLIED, so a creature that took
+	// no curse is not left carrying an instruction with nothing to pass on.
+	//
+	// `Leap` AND `Release` ARE THE OTHER TWO VALUES `OnDeath` MAY TAKE, and
+	// neither is built. The Axe's Harrower leaps a buried axe onward and the
+	// Spear's Skewer releases what it pinned; both need a thing to move rather
+	// than a tag to copy, which is why they are not handled here.
+	if (Applied > 0 && Params.OnDeathRangeCm > 0.0f
+		&& Params.OnDeath.Equals(TEXT("SpreadDebuff"), ESearchCase::IgnoreCase))
+	{
+		UCataclysmCurseSpread::MarkOn(Target, Self, Params.OnDeathRangeCm);
+	}
+
+	return Applied;
 }
 
 // ==========================================================================
@@ -1026,8 +1168,28 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 							SkillTags)
 						* Params.GroundPercent / 100.0f;
 
-	return ACataclysmGroundZone::SpawnAlong(Self, Start, End, ScaledGroundRadiusCm(),
-											Params.GroundDuration, PerTick);
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
+		Self, Start, End, ScaledGroundRadiusCm(), Params.GroundDuration, PerTick);
+
+	// AND THE GROUND CARRIES THE SKILL'S CURSE, IF IT NAMES ONE. The Wand's
+	// Foul Wake: "the ground you fled burns for 6 seconds and strips the Demonic
+	// resistance of anything that walks into it". Set after spawning rather than
+	// passed in, because `SpawnAlong` already takes seven arguments and only one
+	// zone in the game wants these.
+	//
+	// THE FIRST NAMED EFFECT ONLY. No row leaves ground carrying two, and a zone
+	// holds one.
+	if (Zone)
+	{
+		const TArray<FGameplayTag> Named = NamedEffectTags();
+		if (!Named.IsEmpty())
+		{
+			Zone->AlsoApply(Named[0], AppliedEffectSeconds(Named[0]),
+							Params.EffectMagnitude, DamageTypeName());
+		}
+	}
+
+	return Zone;
 }
 
 float UCataclysmSkillTemplate::AddedHealthCostPercent(

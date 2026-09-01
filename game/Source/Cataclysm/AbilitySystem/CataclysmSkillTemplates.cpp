@@ -132,6 +132,20 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// with while it runs. Nothing happens for a skill with neither.
 	IgniteAroundConsumed(Consumed);
 
+	// AND THE CURSE GOES ON WHATEVER THE SWING TOUCHED. The Wand's Anathema:
+	// "laying every curse you know on it for 10 seconds: Demonic resistance cut
+	// by 40%, and madness on all of them". Until 2026-09-01 only the Debuff
+	// shape applied a named effect, so a Strike stating one applied nothing.
+	//
+	// AFTER THE BLOW RATHER THAN BEFORE IT, so a Shred cutting resistance does
+	// not also reduce the damage of the hit that applied it. The row reads
+	// "damn everything ... for 350% weapon damage, setting it alight and laying
+	// every curse", in that order.
+	for (AActor* Target : Targets)
+	{
+		ApplyNamedEffectsTo(Target);
+	}
+
 	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one
 	// place a Strike swings, so it is the one place the arc has to be spawned
 	// from; every repeating strike reaches here through Repeat and Finish as
@@ -286,6 +300,11 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// stopped by a wall half way burns half the path; one that returns
 		// finishes back at the caster and still burns the whole flight.
 		LeaveGroundForFlight(Projectile->StartedAt, Projectile->FurthestReached);
+
+		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
+		// Malefice: "copying every curse it already carries onto the two nearest
+		// enemies". Nothing read `SpreadCurses` before 2026-09-01.
+		CursesSpread += SpreadCursesFrom(Projectile->StruckEnemies());
 	}
 	else
 	{
@@ -294,6 +313,55 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
 			   GetCurrentActivationInfo(), true, false);
+}
+
+int32 UCataclysmProjectileSkill::SpreadCursesFrom(const TArray<AActor*>& Struck)
+{
+	if (Params.SpreadCurses <= 0 || Struck.IsEmpty())
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	const float ReachCm = Params.RangeCm > 0.0f ? Params.RangeCm : ScaledRadiusCm();
+	const FName Type = DamageTypeName();
+
+	int32 Applied = 0;
+	for (AActor* Cursed : Struck)
+	{
+		if (!IsValid(Cursed))
+		{
+			continue;
+		}
+
+		// NEAREST TO THE CURSED ENEMY, which `FindEnemiesInSphere` answers in
+		// order. Searched around that enemy rather than around the caster,
+		// because the curse spreads outward from the creature carrying it.
+		TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Cursed->GetActorLocation(), ReachCm);
+
+		// NOT BACK ONTO THE ONE IT CAME FROM, and not onto anything the bolt
+		// already struck: those carry the curse already, and re-applying would
+		// refresh a duration the row says nothing about.
+		Nearby.RemoveAll([&Struck](AActor* One)
+		{
+			return Struck.Contains(One);
+		});
+
+		if (Nearby.Num() > Params.SpreadCurses)
+		{
+			Nearby.SetNum(Params.SpreadCurses);
+		}
+
+		Applied += UCataclysmSkillEffects::CopyDebuffsTo(Self, Cursed, Nearby, Type);
+	}
+
+	return Applied;
 }
 
 void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
@@ -1236,29 +1304,37 @@ void UCataclysmDebuffSkill::ActivateAbility(
 		}
 		const TArray<AActor*>& Targets = InRange;
 
-		// Subjugate applies Madness, which the design's own effect table gives
-		// as "the enemy attacks anything nearby, friend or foe, for 3 seconds".
-		// The tag comes from that name via the Debuffs sheet, so a skill
-		// applying an effect nobody designed grants nothing and the generator
-		// refuses the row.
-		const FGameplayTag Effect =
-			UCataclysmSkillShapes::StatusTagFor(Params.Effect);
+		// THE DURATION COMES FROM `EffectDuration` AND USED TO COME FROM
+		// `Duration`, which is a different number and one that no Debuff row in
+		// the game states. The sheet split the two on 2026-09-01 -- a skill's own
+		// length against the length of what it leaves behind -- and this was not
+		// changed with it, so all three Debuff-shaped skills asked for a curse
+		// lasting zero seconds and `ApplyTagForDuration` refused every one.
+		// `AppliedEffectSeconds` reads the right key and falls back to the
+		// effect's own designed duration.
+		//
+		// AND MORE THAN ONE EFFECT MAY BE NAMED. Anathema writes
+		// `Effect=Shred, Madness`; the Wand's verb is inflicting, so a curse
+		// arriving with company is the ordinary case rather than an oddity.
 		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
 
 		for (AActor* Target : Targets)
 		{
-			// "Subjugating an enemy that is already burning makes the madness
-			// last twice as long." Read off the target's own tags, so any source
-			// of burn counts and not only this character's.
+			// "The whisper lasts twice as long in a mind that is already
+			// burning." Read off the target's own tags, so any source of burn
+			// counts and not only this character's.
 			const bool bAlreadyBurning =
 				UCataclysmSkillEffects::HasTag(Target, Burn);
-			const float Duration =
-				Params.Duration * (bAlreadyBurning ? 2.0f : 1.0f);
+			const float Scale = bAlreadyBurning ? 2.0f : 1.0f;
 
-			if (UCataclysmSkillEffects::ApplyTagForDuration(
-					Caster, Target, Effect, Duration))
+			if (ApplyNamedEffectsTo(Target, Scale) > 0)
 			{
-				LastDurationApplied = Duration;
+				// The first named effect's length, which is every skill's whole
+				// answer today: no row names two effects of different durations.
+				const TArray<FGameplayTag> Named = NamedEffectTags();
+				LastDurationApplied =
+					Named.IsEmpty() ? 0.0f
+									: AppliedEffectSeconds(Named[0]) * Scale;
 				++EnemiesAffected;
 			}
 		}

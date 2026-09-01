@@ -2,6 +2,14 @@
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the resistance a Shred reduces. The per-type slot is picked by
+// UCataclysmDamageCalculation::ResistanceAttributeFor and the generic one is
+// what an untyped attacker cuts instead.
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For a curse that passes to the nearest enemy when its holder dies.
+// The Wand's Anathema is the only thing that marks a creature that way.
+#include "AbilitySystem/CataclysmCurseSpread.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For how long a lasting harmful effect really runs on its target, which is
@@ -670,6 +678,12 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	Numbers.PercentOfHit = Row->PercentOfHit;
 	Numbers.PercentOfCurrentHealth = Row->PercentOfCurrentHealth;
 
+	// AND HOW LARGE THE EFFECT IS, WHICH IS NOT DAMAGE. Shred's 10 resistance
+	// and Cripple's 30% slow are read from here by `ApplyNamedEffect`, and that
+	// is a different path from the damage over time one below: an effect can
+	// carry a strength and no per-tick amount, and Shred does.
+	Numbers.Strength = Row->Strength;
+
 	// BOTH HALVES ARE NEEDED AND EITHER ONE MISSING IS THE SAME FAULT. Burn had
 	// neither until issue #895, and an effect lasting zero seconds or worth zero
 	// damage is indistinguishable from an effect nobody wrote -- which is exactly
@@ -1083,6 +1097,22 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 		return false;
 	}
 
+	// A CURSE THAT PASSES ON DOES SO NOW, BEFORE THE DEATH IS RECORDED. The
+	// Wand's Anathema: "anything that dies while damned passes the curse to the
+	// nearest living enemy". Here rather than in each character class, because
+	// this is the one place a death is recorded for the player and for every
+	// creature -- so one killed by a burn, by a patch of burning ground or by
+	// another creature passes its curse the same way one killed by a blow does.
+	//
+	// BEFORE THE TAG RATHER THAN AFTER IT, so the search for the next holder is
+	// made while the dying creature is still an ordinary target and has to be
+	// excluded by name, which `SpreadFromDying` does. Ordering it the other way
+	// would make it depend on how every other reader treats a corpse.
+	//
+	// INERT FOR EVERY CREATURE CARRYING NO SPREADING CURSE, which is all of them
+	// but the targets of one Anathema: it costs a component lookup.
+	UCataclysmCurseSpread::SpreadFromDying(Actor);
+
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
 	// granted for a duration and this one must never expire on its own. A
 	// duration effect with an infinite duration would do the same thing with
@@ -1250,6 +1280,229 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
 
 	return true;
+}
+
+namespace
+{
+	/**
+	 * Which attribute a named status effect moves, for a hit of this type.
+	 *
+	 * ONE EFFECT IS LISTED AND FOUR HAVE A STRENGTH. Shred is the only one with
+	 * a stat this project can reach: Cripple's slow has no movement-speed debuff
+	 * route, and Weaken's damage reduction is a defender attribute rather than
+	 * an attacker one. Issue #1144 carries turning this into a column on the
+	 * Status Effects sheet, which is what a second entry here should trigger
+	 * rather than a second name in C++.
+	 *
+	 * SHRED CUTS THE ATTACKER'S OWN ELEMENT. Anathema reads "Demonic resistance
+	 * cut by 40%" and carries `Element.Demonic`; a Shred applied by a Death
+	 * skill should cut Death resistance. An untyped attacker cuts the generic
+	 * All Resistance instead, which is the only slot that applies to everything.
+	 */
+	FGameplayAttribute CataclysmStatMovedByEffect(const FGameplayTag& EffectTag,
+												  FName DamageType)
+	{
+		const FGameplayTag Shred = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Status.Shred")), /*ErrorIfNotFound=*/false);
+		if (!Shred.IsValid() || EffectTag != Shred)
+		{
+			return FGameplayAttribute();
+		}
+
+		const FGameplayAttribute Typed =
+			UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
+		return Typed.IsValid()
+			? Typed
+			: UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute();
+	}
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::NumbersForEffectTag(
+	const FGameplayTag& EffectTag)
+{
+	const FName Row = StatusEffectRowForTag(EffectTag);
+	if (Row.IsNone())
+	{
+		return FCataclysmStatusEffectNumbers();
+	}
+
+	// The two strings live until the end of this full expression, which is as
+	// long as StatusEffectNumbers looks at them.
+	const FString RowName = Row.ToString();
+	const FString HumanName = EffectTag.ToString();
+	return StatusEffectNumbers(*RowName, *HumanName);
+}
+
+bool UCataclysmSkillEffects::ApplyNamedEffect(
+	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
+	float DurationSeconds, float Magnitude, FName DamageType)
+{
+	if (!EffectTag.IsValid() || DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Stat =
+		CataclysmStatMovedByEffect(EffectTag, DamageType);
+	if (!Stat.IsValid())
+	{
+		// THE TAG IS THE WHOLE EFFECT, which is true of every debuff but Shred.
+		// Madness is the one that matters: `UCataclysmTeams` reads the tag and
+		// makes the creature hostile to everything, so there is no number to
+		// apply and nothing is missing.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender || !Defender->HasAttributeSetForAttribute(Stat))
+	{
+		// A target with no resistance set at all still takes the tag, so a curse
+		// is never silently refused for want of a stat it does not carry.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	// THE SKILL'S OWN FIGURE FIRST AND THE EFFECT'S DESIGNED ONE OTHERWISE.
+	// Anathema states 40 and the Status Effects sheet gives Shred 10, so a skill
+	// that says nothing still applies the effect the design describes.
+	float Size = Magnitude;
+	if (Size <= 0.0f)
+	{
+		Size = NumbersForEffectTag(EffectTag).Strength;
+	}
+
+	// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states outright.
+	// The other half of that sentence -- the excess lengthening the effect
+	// instead of being discarded -- is not built, and #1144 carries it.
+	const float Current = Defender->GetNumericAttribute(Stat);
+	Size = FMath::Clamp(Size, 0.0f, FMath::Max(0.0f, Current));
+	if (Size <= 0.0f)
+	{
+		// Nothing left to take. The tag still goes on, because carrying the
+		// curse is what a second skill asking "is it shredded?" reads.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+		GetTransientPackage(),
+		FName(*FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString())));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+
+	// SUBTRACTED RATHER THAN SET, so two sources of Shred stack down the same
+	// resistance and the attribute returns to where it was when each expires.
+	// The single-stack rule below still holds: a second Shred refreshes the one
+	// effect rather than adding a second, so the reduction does not double from
+	// reapplication.
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = Stat;
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(-Size);
+
+	MakeSingleStackTagged(Effect, EffectTag);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s applied %s to %s for %.1fs, cutting %s by %.0f."),
+		*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+		OnTarget, *Stat.GetName(), Size);
+
+	return true;
+}
+
+int32 UCataclysmSkillEffects::CopyDebuffsTo(
+	AActor* Instigator, const AActor* From, const TArray<AActor*>& To,
+	FName DamageType)
+{
+	if (!From || To.IsEmpty())
+	{
+		return 0;
+	}
+
+	// NAMED CURSES AND NOTHING ELSE, gathered here rather than asked of
+	// `UCataclysmDebuffs::TagsOnActor`. That function answers what sits under
+	// the debuff roots, and those are `Keyword.DoT` and `State.Stunned` only, so
+	// it finds none of the twenty-seven named effects from the Debuffs sheet --
+	// every one of which grants a `Status.*` tag. A test caught it: two copies
+	// were expected and none were applied. Issue #1145 carries whether those
+	// roots should widen, and doing it there changes what eleven Masochist nodes
+	// are paid, which is a balance decision rather than this change's to make.
+	//
+	// A BURN IS NOT A CURSE FOR THIS PURPOSE and could not be spread anyway. Its
+	// tag is `Keyword.DoT.Burn`, outside this namespace, and its per-tick amount
+	// comes from the hit that caused it rather than travelling with the tag.
+	UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(From);
+	if (!Carrier)
+	{
+		return 0;
+	}
+
+	FGameplayTagContainer Owned;
+	Carrier->GetOwnedGameplayTags(Owned);
+
+	FGameplayTagContainer Carried;
+	for (const FGameplayTag& One : Owned)
+	{
+		if (One.ToString().StartsWith(TEXT("Status."), ESearchCase::CaseSensitive))
+		{
+			Carried.AddTag(One);
+		}
+	}
+
+	if (Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	int32 Applied = 0;
+	for (AActor* Recipient : To)
+	{
+		if (!IsValid(Recipient) || Recipient == From)
+		{
+			continue;
+		}
+
+		for (const FGameplayTag& Curse : Carried)
+		{
+			// THE EFFECT'S OWN DESIGNED DURATION, not what is left of the
+			// original. Neither row that spreads states a duration for the copy,
+			// and handing on the remaining time would make a curse spread late
+			// worth almost nothing.
+			const float Seconds = NumbersForEffectTag(Curse).DurationSeconds;
+			if (Seconds <= 0.0f)
+			{
+				continue;
+			}
+
+			if (ApplyNamedEffect(Instigator, Recipient, Curse, Seconds,
+								 /*Magnitude=*/0.0f, DamageType))
+			{
+				++Applied;
+			}
+		}
+	}
+
+	if (Applied > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s copied %d curses from %s onto %d others, %d applications."),
+			*GetNameSafe(Instigator), Carried.Num(), *GetNameSafe(From),
+			To.Num(), Applied);
+	}
+
+	return Applied;
 }
 
 int32 UCataclysmSkillEffects::RemoveEffectsGranting(

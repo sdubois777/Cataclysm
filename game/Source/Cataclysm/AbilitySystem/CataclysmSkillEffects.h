@@ -271,6 +271,24 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	float PercentOfCurrentHealth = 0.0f;
 
 	/**
+	 * How large the effect is, in whatever unit its own description states.
+	 *
+	 * Shred's 10 is resistance, Cripple's 30 is a percentage slow, Weaken's 20 is
+	 * a percentage damage reduction. **What the number is OF is not in the data**
+	 * -- there is no column saying so -- which is issue #1144.
+	 *
+	 * ZERO IS THE ORDINARY CASE. Twenty-three of the twenty-seven debuff rows
+	 * state none, because they are a tag and a duration and nothing more.
+	 *
+	 * IT IS NOT COVERED BY `bUsable` BELOW, deliberately. That flag asks whether
+	 * this row can be applied as damage over time, and Shred is not damage: it
+	 * has a strength and no per-tick amount, so it is usable through
+	 * `ApplyNamedEffect` and not through `ApplyDamageOverTime`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
+	float Strength = 0.0f;
+
+	/**
 	 * False when no row was found, or when the row states nothing this path can
 	 * apply -- no duration, or no flat amount and no percent of the hit.
 	 */
@@ -551,6 +569,20 @@ public:
 		const TCHAR* RowName, const TCHAR* HumanName);
 
 	/**
+	 * The same numbers, found from a status tag rather than a row name.
+	 *
+	 * WHY BOTH EXIST. Burn and Bleed are asked for by name, because the code
+	 * asking is written for those two specifically. Everything that reads a
+	 * skill's `Effect` cell has a tag instead, and turning one into the other at
+	 * every call site is three lines of `FName` and `FString` juggling that
+	 * would be copied rather than shared.
+	 *
+	 * Answers a struct with `bUsable` false when the tag names no row.
+	 */
+	static FCataclysmStatusEffectNumbers NumbersForEffectTag(
+		const FGameplayTag& EffectTag);
+
+	/**
 	 * Which row of `game/Data/StatusEffects.csv` a lasting effect's tag names.
 	 *
 	 * THE OTHER DIRECTION FROM EVERYTHING ELSE HERE, and issues #1057 and #1058
@@ -766,6 +798,69 @@ public:
 	static bool ApplyTagForDuration(AActor* Instigator, AActor* Target,
 									const FGameplayTag& EffectTag,
 									float DurationSeconds);
+
+	/**
+	 * Apply a named status effect together with the stat change it carries.
+	 *
+	 * WHAT THIS ADDS OVER `ApplyTagForDuration` ABOVE, which grants the tag and
+	 * nothing else: a debuff whose sentence names a number now applies that
+	 * number. Shred is the first. Its row in `game/Data/StatusEffects.csv` reads
+	 * "reduces the affected enemy's resistance by 10 for 6 seconds", and until
+	 * this the tag went on and the resistance did not move.
+	 *
+	 * ONLY SHRED CARRIES A STAT TODAY, and the mapping from an effect to the
+	 * attribute it moves is written in the .cpp rather than in the sheet.
+	 * `game/Data/StatusEffects.csv` has a `Strength` column and no column saying
+	 * what the strength is OF, so a second effect wanting one is the point at
+	 * which that column should be added rather than a second name written into
+	 * C++. Issue #1144.
+	 *
+	 * WHICH RESISTANCE IT REDUCES COMES FROM THE SKILL, not from the effect.
+	 * Anathema reads "Demonic resistance cut by 40%" and carries
+	 * `Element.Demonic`; a Shred from a Death skill should cut Death resistance.
+	 * Passing no damage type reduces every resistance at once, through the
+	 * generic All Resistance attribute.
+	 *
+	 * THE REDUCTION CANNOT TAKE A RESISTANCE PAST ZERO. `game/Data/StatusEffects.csv`
+	 * says so for Shred: "magnitude raises the reduction until that resistance
+	 * reaches zero, then extends the duration instead". The clamp is here; the
+	 * spilling-into-duration half is not built, and #1144 carries it.
+	 *
+	 * @param Magnitude  the size to apply, or zero or less to take the effect's
+	 *                   own designed Strength out of the status effect table
+	 * @param DamageType the attacker's damage type, deciding which resistance is
+	 *                   reduced. None reduces all resistance.
+	 * @return whether anything was applied
+	 */
+	static bool ApplyNamedEffect(AActor* Instigator, AActor* Target,
+								 const FGameplayTag& EffectTag,
+								 float DurationSeconds,
+								 float Magnitude = 0.0f,
+								 FName DamageType = NAME_None);
+
+	/**
+	 * Copy every debuff this actor carries onto each of these others.
+	 *
+	 * WHAT ASKS FOR IT. The Wand's Malefice, "copying every curse it already
+	 * carries onto the two nearest enemies", and its Anathema, whose curse
+	 * "passes to the nearest living enemy" when a damned enemy dies. Both are
+	 * the Wand's designed verb, which `docs/DECISIONS.md` gives as inflicting.
+	 *
+	 * THE COPY LASTS THE EFFECT'S OWN DESIGNED DURATION, not whatever is left of
+	 * the original. Neither row states a duration for the copy, and reading the
+	 * remaining time off an active gameplay effect and handing it on would make
+	 * a curse spread late worth almost nothing, which is not what either
+	 * sentence describes.
+	 *
+	 * IT COPIES DEBUFFS AND NOT EVERY TAG. `UCataclysmDebuffs::TagsOnActor`
+	 * answers only the tags under the debuff roots, so a burn, a stun or a buff
+	 * the target happens to carry is not spread by this.
+	 *
+	 * @return how many effects were applied, summed over every recipient
+	 */
+	static int32 CopyDebuffsTo(AActor* Instigator, const AActor* From,
+							   const TArray<AActor*>& To,
+							   FName DamageType = NAME_None);
 
 	/**
 	 * Take back every effect on this actor that grants the tag.
