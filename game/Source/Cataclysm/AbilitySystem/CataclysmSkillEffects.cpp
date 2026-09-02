@@ -22,6 +22,7 @@
 // the target's own stat rather than the attacker's. Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -1234,6 +1235,26 @@ namespace
 			return false;
 		}
 
+		// A SKILL THE TARGET IS RUNNING MAY REFUSE TO BE MOVED AT ALL. Section VI
+		// of the design document sanctions it: "outright immunity to displacement
+		// still exists, as a skill effect rather than as a rule", and names five
+		// skills that say so. The Greatsword's Unbroken -- "cannot be staggered"
+		// -- is a sixth, and this project's own tag vocabulary is what settles
+		// that stagger means displacement here: `Keyword.Stagger` is described as
+		// "stagger and knockback effects".
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS ABOVE IT, because a knockback, a
+		// pull, a drag and a launch are one body with four directions and this is
+		// that body. A row immune to being shoved is immune to being hauled.
+		//
+		// BEFORE THE DIMINISHING-RETURNS SHARE IS TAKEN, so a refused
+		// displacement does not spend the target's window. Being immune should
+		// not make the next shove -- after the immunity ends -- land for half.
+		if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Displacement")))
+		{
+			return false;
+		}
+
 		float Share = 1.0f;
 		if (UCataclysmAbilitySystemComponent* TargetAbilities =
 				Cast<UCataclysmAbilitySystemComponent>(
@@ -1412,6 +1433,18 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
+	// AND A SKILL THE TARGET IS RUNNING MAY REFUSE IT OUTRIGHT. Section VI of
+	// the design document sanctions skill-stated immunity, and a row writing
+	// `Immune=Stun` or `Immune=CrowdControl` says so.
+	//
+	// BESIDE THE WINDOW ABOVE RATHER THAN BELOW THE DAMAGE THRESHOLD, because
+	// it applies to a designed one as much as to an incidental one: "cannot be
+	// stunned" is not a question about how hard the blow was.
+	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stun")))
+	{
+		return false;
+	}
+
 	// RULE ONE: A HIT MUST TAKE AT LEAST A TENTH OF MAXIMUM HEALTH TO STUN.
 	//
 	// A DESIGNED STUN SKIPS THIS AND ONLY THIS. An attack whose entire purpose
@@ -1505,6 +1538,18 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	// stunned cannot be knocked down, and a target just knocked down cannot be
 	// stunned -- which is only true because both read and write this one tag.
 	if (HasTag(Target, StunImmuneTag()))
+	{
+		return false;
+	}
+
+	// AND A SKILL THE TARGET IS RUNNING MAY REFUSE IT OUTRIGHT. Section VI of
+	// the design document sanctions skill-stated immunity, and a row writing
+	// `Immune=Knockdown` or `Immune=CrowdControl` says so.
+	//
+	// BESIDE THE WINDOW ABOVE RATHER THAN BELOW THE DAMAGE THRESHOLD, because
+	// it applies to a designed one as much as to an incidental one: "cannot be knocked
+	// down" is not a question about how hard the blow was.
+	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Knockdown")))
 	{
 		return false;
 	}

@@ -204,6 +204,7 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			TEXT("ScalingSource"), TEXT("ForcedMovement"), TEXT("Terrain"),
 			TEXT("Requires"), TEXT("ChargeBreaksOn"), TEXT("RefundsCooldown"),
 			TEXT("TargetMode"), TEXT("OnDeath"), TEXT("SpreadWhen"),
+			TEXT("Immune"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -287,6 +288,13 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("BurnsAttackers"), ESearchCase::IgnoreCase))
 		{
 			Params.bBurnsAttackers = Number != 0.0f;
+		}
+		// WHAT THE CASTER CANNOT BE SUBJECTED TO WHILE THIS RUNS. Seven rows
+		// across four weapons state one, and section VI of the design document
+		// sanctions skill-stated immunity outright.
+		else if (Key.Equals(TEXT("Immune"), ESearchCase::IgnoreCase))
+		{
+			Params.Immune = Value;
 		}
 		else if (Key.Equals(TEXT("GroundRadius"), ESearchCase::IgnoreCase))
 		{

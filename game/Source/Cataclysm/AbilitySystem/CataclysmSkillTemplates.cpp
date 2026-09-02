@@ -900,6 +900,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	TerrainLeft = 0;
 	CooldownsReturned = 0;
 	AttackersLit = 0;
+	SecondsHeld = 0;
 
 	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
 	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
@@ -959,6 +960,25 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 				Params.Interval, /*bLoop=*/true,
 				/*InFirstDelay=*/Params.Interval);
 		}
+
+		// AND A ROW WHOSE BONUS GROWS WITH TIME COUNTS ITS OWN SECONDS. The
+		// Greatsword's Unbroken: "you gain 5% more damage every second".
+		//
+		// A SEPARATE TIMER FROM THE REPEAT ABOVE, AND ONE SECOND RATHER THAN
+		// `Interval`. The row says "every second", and `Interval` already
+		// means something else on this shape, so a buff may state both and
+		// they do not interfere.
+		//
+		// FIRST FIRING A SECOND IN, because no time has passed at the moment
+		// the buff goes up and the row pays for seconds held rather than for
+		// casting it.
+		if (Params.ScalingSource.Equals(TEXT("Second"),
+										ESearchCase::IgnoreCase))
+		{
+			World->GetTimerManager().SetTimer(
+				SecondTimer, this, &UCataclysmSelfBuffSkill::SecondPassed,
+				1.0f, /*bLoop=*/true, /*InFirstDelay=*/1.0f);
+		}
 	}
 	else
 	{
@@ -986,6 +1006,11 @@ void UCataclysmSelfBuffSkill::EndAbility(
 	if (const UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RepeatTimer);
+
+		// AND THE PER-SECOND TALLY STOPS FOR THE SAME REASON. A looping timer
+		// left running would go on raising a bonus after the buff was
+		// cancelled, the character died, or its duration ran out.
+		World->GetTimerManager().ClearTimer(SecondTimer);
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
@@ -1084,10 +1109,66 @@ int32 UCataclysmSelfBuffSkill::ScalingCount() const
 		return PinnedEnemiesAtCast;
 	}
 
-	// One of the eight sources nothing counts. A buff naming one grants nothing,
-	// which is the safe answer: the alternative is a number taken from whatever
+	// AND `Second` IS A TALLY THAT CLIMBS ON ITS OWN. The Greatsword's Unbroken:
+	// "while you do not move you gain 5% more damage every second". It is the
+	// first source counting something the world does rather than something the
+	// player did, which is why it needs a timer of its own: `Burning` is read
+	// once at the cast, `Kill` and `Pinned` are told when they change, and
+	// nothing tells anybody that a second has gone by.
+	if (Params.ScalingSource.Equals(TEXT("Second"), ESearchCase::IgnoreCase))
+	{
+		return SecondsHeld;
+	}
+
+	// One of the sources nothing counts. A buff naming one grants nothing, which
+	// is the safe answer: the alternative is a number taken from whatever
 	// happened to be to hand.
 	return 0;
+}
+
+void UCataclysmSelfBuffSkill::SecondPassed()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return;
+	}
+
+	// "THE WHOLE BONUS IS LOST THE INSTANT YOU TAKE A STEP", AND THE BONUS IS
+	// WHAT IS LOST RATHER THAN THE SKILL. Unbroken lasts ten seconds and its own
+	// sentence keeps them: what a step costs is the tally, so standing still
+	// again builds it back from nothing. Ending the whole skill on one accidental
+	// step is a harsher reading than the row asks for, and the Greatsword's other
+	// rows show it has words for that when it means it -- Backswing says "loses
+	// the swing entirely".
+	//
+	// `Requires=Stationary` IS WHAT ASKS. The same key is judged once before the
+	// cast, in `RequirementsAreMet`, whose comment has said since it was written
+	// that only the casting half is judged there. This is the other half.
+	if (RequiresCondition(TEXT("Stationary"))
+		&& !Self->GetVelocity().IsNearlyZero())
+	{
+		if (SecondsHeld > 0)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' lost %d seconds of bonus to a step."),
+				*SkillName, SecondsHeld);
+		}
+
+		SecondsHeld = 0;
+	}
+	else
+	{
+		++SecondsHeld;
+	}
+
+	// PUT BACK RATHER THAN ADJUSTED, which is what `NoteKill` below does and for
+	// the reason it records: a stat modifier is held by a handle and has no route
+	// to change its value in place, so moving the bonus means taking the old one
+	// off and putting the new one on. `GrantIncrease` reads the tally through
+	// `ScalingCount` and grants nothing at all when it is zero.
+	RevokeIncrease();
+	GrantIncrease();
 }
 
 void UCataclysmSelfBuffSkill::NoteKill()

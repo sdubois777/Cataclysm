@@ -428,6 +428,46 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bBurnsAttackers = false;
 
+	/**
+	 * What the caster cannot be subjected to while this skill runs, as written
+	 * in the sheet. More than one may be named, comma separated.
+	 *
+	 * THE DESIGN ALREADY SANCTIONS THIS AND ALREADY NAMES FIVE SKILLS THAT USE
+	 * IT. Section VI: "outright immunity to displacement still exists, as a skill
+	 * effect rather than as a rule. Living Pyre, Unstoppable Force and Forge
+	 * Stance each state that their user cannot be knocked back, and Bull Rush and
+	 * Cinder Rush grant immunity to all crowd control while charging." Two more
+	 * arrived with the Greatsword -- Unbroken's "cannot be staggered" and
+	 * Inexorable's "immune to crowd control" -- and none of the seven had a
+	 * parameter until 2026-09-02.
+	 *
+	 * THE VALUES ARE THE DESIGN'S OWN WORDS, from the table in section VI that
+	 * says which effects the anti-stun-lock rule covers: `Stun`, `Knockdown`,
+	 * `Slow`, `Displacement`, `Pin` and `Madness`. `CrowdControl` names all six
+	 * at once, which is what "immunity to all crowd control" says and what saves
+	 * a row from listing six things to mean one.
+	 *
+	 * "CANNOT BE STAGGERED" IS `Displacement`, AND THAT READING IS NOT OBVIOUS.
+	 * The design's table has no row for stagger, and this project's own tag
+	 * vocabulary settles it: `Keyword.Stagger` is described as "stagger and
+	 * knockback effects", so the two are one category here.
+	 *
+	 * IMMUNITY RATHER THAN RESISTANCE, WHICH THE DESIGN CHOSE AFTER A SURVEY IT
+	 * RECORDS. Section VI: none of Path of Exile, Last Epoch or Diablo IV uses
+	 * plain immunity for stunning -- they use a conditional window, a health
+	 * multiplier and a stagger meter -- and "outright immunity is the simplest of
+	 * the four and it is what was chosen". That decision was made for boss
+	 * immunity and this is the same shape, so it is followed rather than
+	 * re-argued.
+	 *
+	 * IT DOES NOT COVER DAMAGE. Living Pyre's "your own fire does you no harm"
+	 * and Blood Pyre's "standing in your own pyre does you no harm" are immunity
+	 * to a source of damage rather than to an effect, which is a different axis
+	 * and a different parameter. Issue #1162.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Immune;
+
 	/** Radius of the burning ground left behind, in centimetres. Zero leaves none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float GroundRadiusCm = 0.0f;

@@ -20,6 +20,101 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A skill can state what it is immune to, a bonus can grow with time, and the Greatsword's Unbroken is finished
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmSkillEffects.cpp`, the Weapon Skills sheet of
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset`, `tools/generate_datatables.py`,
+`sim/cataclysm_sim/enemy_abilities.py` and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issues
+#37 and #1141.
+
+**The first of several stages on the Greatsword**, which is five separate
+mechanics rather than the four an earlier note recorded. This one finishes
+Unbroken and builds the parameter five other rows are waiting on.
+
+### A skill can state what its caster is immune to
+
+**A row may name what it cannot be subjected to while it runs**, from a closed
+list: `Stun`, `Knockdown`, `Slow`, `Displacement`, `Pin`, `Madness`, and
+`CrowdControl` for all six at once. Comma separated, the way `ForcedMovement`
+already is.
+
+**The design settled this before it was asked and the decision was followed
+rather than re-argued.** Section VI of `Cataclysm_GDD_v2.md`: "outright immunity
+to displacement still exists, as a skill effect rather than as a rule. Living
+Pyre, Unstoppable Force and Forge Stance each state that their user cannot be
+knocked back, and Bull Rush and Cinder Rush grant immunity to all crowd control
+while charging." That is five rows. Unbroken and Inexorable are the sixth and
+seventh, and none of the seven had a parameter.
+
+**Immunity rather than resistance, and the design records the survey.** Section
+VI: none of Path of Exile, Last Epoch or Diablo IV uses plain immunity for
+stunning — they use a conditional window, a health multiplier and a stagger meter
+— and "outright immunity is the simplest of the four and it is what was chosen".
+That reasoning was for boss immunity and this is the same shape.
+
+**"CANNOT BE STAGGERED" IS DISPLACEMENT, AND THE DESIGN'S OWN TABLE DOES NOT SAY
+SO.** That table has no row for stagger. What settles it is this project's tag
+vocabulary: `Keyword.Stagger` is described as "stagger and knockback effects", so
+the two are one category here.
+
+**It is asked of every running skill and not only self buffs.** Unbroken is a
+self buff and Inexorable is a Movement row, so narrowing it to one shape would
+have covered one of the two rows it was written for.
+
+**It does not cover damage.** Living Pyre's "your own fire does you no harm" is
+immunity to a source rather than to an effect, which is a different axis. Issue
+#1162.
+
+### A bonus can grow with time, and a step loses it
+
+**`ScalingSource=Second` is now counted.** Unbroken: "while you do not move you
+gain 5% more damage every second." It is the first source that counts something
+the world does rather than something the player did — `Burning` is read once at
+the cast, `Kill` and `Pinned` are told when they change, and nothing tells anybody
+that a second has gone by — so it needs a timer of its own.
+
+**One second, not the row's `Interval`.** The row says "every second", and
+`Interval` already means something else on this shape: the Spear's Held Fast uses
+it to relight pinned enemies. A row may state both and they do not interfere.
+
+**The bonus is lost on a step and the skill is not**, which is a reading rather
+than a reading-off. "The whole bonus is lost the instant you take a step" says the
+BONUS, and Unbroken's ten seconds are its own sentence. Standing still again
+builds it back from nothing. The Greatsword's Backswing shows the sheet has
+harsher words when it means them: "being staggered loses the swing entirely".
+
+**`Requires=Stationary` is what asks, and this is its second half.** The same key
+is judged once before the cast, in `RequirementsAreMet`, whose comment has said
+since it was written that only the casting half is judged there.
+
+### What a test found that reading had not
+
+**A Movement skill ends in the frame it activates, so it is never running when
+anything asks whether it grants immunity.** The first version of one test used a
+Movement skill, because Inexorable is one and covering it was the whole reason
+the immunity question asks every running skill. Every assertion failed.
+
+**So Inexorable's immunity is blocked on Inexorable's duration, not on this
+parameter.** The two looked like separate pieces of work and are one. A test now
+pins it: it activates a Movement skill stating immunity and asserts it grants
+none.
+
+### Where the Greatsword stands
+
+One of five. Unbroken is finished. The other four are: a walk lasting three
+seconds that cannot be steered or stopped, which Inexorable's immunity and its
+damage-per-metre both wait on; planting the weapon and fighting unarmed until a
+second press recalls it; and the hold-and-release verb two rows share (#1141).
+Two of its four scaling sources are still counted by nothing — `Meter` and
+`HitTaken` — and the hook added for the Greataxe earlier today is what `HitTaken`
+will read.
+
+---
+
 ## 2026-09-02 — A buff can be told its holder was struck, and the Greataxe is finished
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and

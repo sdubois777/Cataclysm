@@ -238,6 +238,9 @@ SHAPE_RIDERS = {
 
     # A skill that does not fire, or does not pay out, without its condition.
     "Requires": "a condition the skill needs, one or more of REQUIREMENTS",
+    "Immune": "what the caster cannot be subjected to while the skill runs, "
+              "one or more of IMMUNITIES. Not immunity to DAMAGE, which is a "
+              "different axis and is issue #1162",
 
     # NOT `Duration`, DELIBERATELY. Anathema's ten seconds is how long its curse
     # sits on an enemy and Butcher's Bill's ten seconds is how long the skill
@@ -293,6 +296,25 @@ FORCED_MOVEMENTS = frozenset({"Knockdown", "Launch", "Pull", "Drag", "Pin"})
 TERRAIN_KINDS = frozenset({"Pit", "Wall", "Fissure", "Thicket"})
 REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
 ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release"})
+
+#: What a skill may make its caster immune to while it runs.
+#:
+#: THE DESIGN'S OWN WORDS, from the table in section VI of
+#: `docs/Cataclysm_GDD_v2.md` listing which effects the anti-stun-lock rule
+#: covers: Stun, Knockdown, Slow, Displacement and Madness. Pin is added
+#: because it is an effect a row could reasonably refuse and the engine already
+#: applies it, and CrowdControl names all six at once -- which is what "immunity
+#: to all crowd control" says and what saves a row from listing six things to
+#: mean one.
+#:
+#: SEVEN ROWS ACROSS FOUR WEAPONS STATE ONE. Section VI names five of them
+#: outright -- Living Pyre, Unstoppable Force, Forge Stance, Bull Rush and
+#: Cinder Rush -- and the Greatsword's Unbroken and Inexorable are the other
+#: two. None had a parameter until 2026-09-02.
+IMMUNITIES = frozenset({
+    "Stun", "Knockdown", "Slow", "Displacement", "Pin", "Madness",
+    "CrowdControl",
+})
 CHARGE_BREAKS = frozenset({"Stagger", "Death", "Movement", "None"})
 REFUND_TARGETS = frozenset({"Self", "Movement"})
 TARGET_MODES = frozenset({"All", "Nearest", "Furthest"})
@@ -313,6 +335,7 @@ TEXT_PARAM_VALUES = {
     "Terrain": TERRAIN_KINDS,
     "SpreadWhen": SPREAD_CONDITIONS,
     "Requires": REQUIREMENTS,
+    "Immune": IMMUNITIES,
     "OnDeath": ON_DEATHS,
     "ChargeBreaksOn": CHARGE_BREAKS,
     "RefundsCooldown": REFUND_TARGETS,
