@@ -22,6 +22,9 @@
 // For the resistance a Shred cuts, and for reading it back. Issue #37.
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For asking whether two actors are on the same side, which is what an aura's
+// ally half is about. Issue #1182.
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStacks.h"
@@ -10722,6 +10725,317 @@ bool FCataclysmUnchargedStrikeUnaffectedTest::RunTest(const FString&)
 		UCataclysmStrikeSkill::IsHoldingASwing(Caster.Actor));
 	TestEqual(TEXT("and the enemy took the Heavy slot's 250%"),
 		Before - Enemy.Health(), 250.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// What an aura does besides burning. Issue #1182.
+//
+// CONFLAGRATION'S ROW HAS THREE SENTENCES AND IMPLEMENTED ONE. "Enemies within
+// it are continuously set alight AND have their Demonic resistance reduced by
+// 15%. ALLIES within it deal 8% increased fire damage." The aura applied no
+// named effect and never looked for an ally at all.
+//
+// HOW AN ALLY IS BUILT HERE, because it is not obvious and it is not a
+// test-only trick. `UCataclysmTeams::AttitudeBetween` asks about the owner chain
+// BEFORE it asks about team numbers, and says why in its own comment: "anything
+// a character puts in the world is on that character's side even if nothing gave
+// it a team". So an actor owned by the caster is an ally, which is exactly what
+// a summoned minion standing in the ring is.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraShredsInsideTest,
+	"Cataclysm.Skills.AnAuraCutsTheResistanceItsRowStatesOnEveryEnemyInside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraShredsInsideTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Inside(World, FVector(4 * M, 0, 0));
+	FScopedFighter Outside(World, FVector(30 * M, 0, 0));
+
+	// SEVENTY, so there is plenty to take and the clamp at zero is not what is
+	// being measured. The same figure the Anathema test uses, for the same
+	// reason.
+	Inside.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			   70.0f);
+	Outside.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+				70.0f);
+
+	// Conflagration's own row as the sheet now states it.
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura,
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; "
+			 "AllyIncreasedDamage=8"),
+		TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Aura));
+	TestEqual(TEXT("and nothing is shredded yet"),
+		DemonicResistance(Inside), 70.0f, 0.01f);
+
+	Aura->Pulse();
+
+	TestTrue(TEXT("an enemy inside the ring is shredded"),
+		Carries(Inside, TEXT("Shred")));
+	TestEqual(TEXT("its Demonic resistance is cut by the 15 the row states"),
+		DemonicResistance(Inside), 55.0f, 0.01f);
+
+	// TEN METRES IS THE RING, and thirty is outside it. Without this the test
+	// would pass for an aura that shredded the whole level.
+	TestFalse(TEXT("an enemy outside it is not"),
+		Carries(Outside, TEXT("Shred")));
+	TestEqual(TEXT("and keeps its whole resistance"),
+		DemonicResistance(Outside), 70.0f, 0.01f);
+
+	// A SECOND PULSE REFRESHES RATHER THAN STACKS, which is what "continuously"
+	// has to mean: standing in the ring for six seconds must not take 90 points
+	// of resistance off a creature that has 70.
+	Aura->Pulse();
+	Aura->Pulse();
+
+	TestEqual(TEXT("three pulses have run"), Aura->Pulses, 3);
+	TestEqual(TEXT("and the cut is still the one 15, not three of them"),
+		DemonicResistance(Inside), 55.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraHelpsAlliesTest,
+	"Cataclysm.Skills.AnAuraGivesAlliesInsideTheIncreasedDamageItsRowStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraHelpsAlliesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ally(World, FVector(4 * M, 0, 0));
+	FScopedFighter Enemy(World, FVector(6 * M, 0, 0));
+
+	// See the block comment above: ownership is what puts the two on one side.
+	Ally.Actor->SetOwner(Caster.Actor);
+
+	TestTrue(TEXT("the owned actor is the caster's ally"),
+		UCataclysmTargeting::IsFriendlyTo(Ally.Actor, Caster.Actor));
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura,
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; "
+			 "AllyIncreasedDamage=8"),
+		TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	// The ally's own swing, so what the aura is worth can be measured rather
+	// than only read off a handle.
+	UCataclysmStrikeSkill* AllysSwing = GrantSkill<UCataclysmStrikeSkill>(
+		Ally, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	if (!AllysSwing)
+	{
+		AddError(TEXT("Could not grant the ally its swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the aura activates"), Activate(Caster, Aura));
+	TestEqual(TEXT("and helps nobody before its first pulse"),
+		Aura->AlliesHelped(), 0);
+
+	Aura->Pulse();
+
+	TestEqual(TEXT("one ally is helped"), Aura->AlliesHelped(), 1);
+	TestTrue(TEXT("and it is the one standing inside"), Aura->IsHelping(Ally.Actor));
+
+	// AND NOT THE CASTER. `FindAlliesInSphere` excludes it deliberately and its
+	// header says why: the design writes a benefit for the caster as a separate
+	// clause where it means one. Conflagration does not.
+	TestFalse(TEXT("the caster does not help itself"),
+		Aura->IsHelping(Caster.Actor));
+	TestEqual(TEXT("and carries no modifier of its own"),
+		Caster.AbilitySystem->GetStatModifiers().Num(), 0);
+
+	// READ THE BUCKET DIRECTLY AS WELL AS THROUGH THE DAMAGE, so a failure says
+	// which of the two went wrong rather than only that a number moved.
+	const TArray<FCataclysmStatModifier>& OnAlly =
+		Ally.AbilitySystem->GetStatModifiers();
+	TestEqual(TEXT("the ally carries exactly one modifier"), OnAlly.Num(), 1);
+	if (OnAlly.Num() != 1)
+	{
+		return false;
+	}
+
+	// `increased`, NOT `more`, AND THAT IS THE WHOLE DIFFERENCE. The row says
+	// "8% INCREASED fire damage", and that word is reserved in this project for
+	// the sum every gear affix joins. A self buff's `MoreDamagePer` takes the
+	// other bucket for the opposite reason.
+	TestEqual(TEXT("in the additive bucket, because the row says increased"),
+		static_cast<int32>(OnAlly[0].Bucket),
+		static_cast<int32>(ECataclysmStatBucket::Increased));
+	TestEqual(TEXT("carrying the 8 the row states"), OnAlly[0].Value, 8.0f, 0.01f);
+	TestTrue(TEXT("and scoped to the aura's own element, so it is FIRE damage"),
+		OnAlly[0].RequiredTags.HasTag(
+			UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(TEXT("Element.Demonic")), /*ErrorIfNotFound=*/false)));
+
+	// AND IT REACHES A REAL BLOW. The Heavy slot is 250% of a weapon dealing
+	// 100, and 8% increased makes it 270.
+	const float Before = Enemy.Health();
+	TestTrue(TEXT("the ally swings"), Activate(Ally, AllysSwing));
+	TestEqual(TEXT("and its 250% blow landed for 270"),
+		Before - Enemy.Health(), 270.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraStopsHelpingTest,
+	"Cataclysm.Skills.AnAllyLeavingTheRingOrTheAuraEndingTakesTheBonusBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraStopsHelpingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ally(World, FVector(4 * M, 0, 0));
+	FScopedFighter Stayer(World, FVector(3 * M, 0, 0));
+	Ally.Actor->SetOwner(Caster.Actor);
+	Stayer.Actor->SetOwner(Caster.Actor);
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura,
+		TEXT("Radius=10; Interval=1; Burn=1; AllyIncreasedDamage=8"),
+		TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Aura));
+	Aura->Pulse();
+
+	TestEqual(TEXT("both allies inside are helped"), Aura->AlliesHelped(), 2);
+	TestEqual(TEXT("and each carries one modifier"),
+		Ally.AbilitySystem->GetStatModifiers().Num(), 1);
+
+	// PULSING AGAIN MUST NOT GIVE A SECOND ONE. This is the one way the aura
+	// could go badly wrong: a modifier added every second would stack a bonus
+	// without limit for as long as somebody stood still.
+	Aura->Pulse();
+	Aura->Pulse();
+
+	TestEqual(TEXT("three pulses have run"), Aura->Pulses, 3);
+	TestEqual(TEXT("and the ally still carries exactly one"),
+		Ally.AbilitySystem->GetStatModifiers().Num(), 1);
+	TestEqual(TEXT("and the aura still counts two"), Aura->AlliesHelped(), 2);
+
+	// ONE WALKS OUT. Ten metres is the ring, so forty is well outside it.
+	Ally.Actor->SetActorLocation(FVector(40 * M, 0, 0));
+	Aura->Pulse();
+
+	TestFalse(TEXT("the one who left is no longer helped"),
+		Aura->IsHelping(Ally.Actor));
+	TestEqual(TEXT("and its bonus was taken back"),
+		Ally.AbilitySystem->GetStatModifiers().Num(), 0);
+	TestTrue(TEXT("the one who stayed still has it"),
+		Aura->IsHelping(Stayer.Actor));
+	TestEqual(TEXT("and still exactly one"),
+		Stayer.AbilitySystem->GetStatModifiers().Num(), 1);
+
+	// AND SWITCHING THE AURA OFF TAKES IT BACK FROM WHOEVER IS LEFT. Every way
+	// this skill can stop has to end with nobody carrying it, which is why the
+	// removal is in `EndAbility` rather than beside the toggle.
+	Caster.AbilitySystem->CancelAbilityHandle(
+		Aura->GetCurrentAbilitySpecHandle());
+
+	TestEqual(TEXT("the aura helps nobody once it ends"),
+		Aura->AlliesHelped(), 0);
+	TestEqual(TEXT("and the one who stayed carries nothing"),
+		Stayer.AbilitySystem->GetStatModifiers().Num(), 0);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraWithoutTheseGivesNeitherTest,
+	"Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraWithoutTheseGivesNeitherTest::RunTest(const FString&)
+{
+	// THE CONTROL FOR THE THREE ABOVE. Living Pyre is the other Aura row in the
+	// sheet and states neither key, so an implementation that shredded or helped
+	// unconditionally would change a skill nobody asked to change.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ally(World, FVector(2 * M, 0, 0));
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	Ally.Actor->SetOwner(Caster.Actor);
+
+	Enemy.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+			  70.0f);
+
+	// Living Pyre's own row as the sheet states it today.
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	const float EnemyBefore = Enemy.Health();
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
+	Pyre->Pulse();
+
+	TestTrue(TEXT("it still burns what is inside it"),
+		Enemy.Health() < EnemyBefore);
+	TestFalse(TEXT("but shreds nothing, because its row names no effect"),
+		Carries(Enemy, TEXT("Shred")));
+	TestEqual(TEXT("and takes no resistance"),
+		DemonicResistance(Enemy), 70.0f, 0.01f);
+	TestEqual(TEXT("and helps no ally, because its row states no bonus"),
+		Pyre->AlliesHelped(), 0);
+	TestEqual(TEXT("so the ally carries nothing"),
+		Ally.AbilitySystem->GetStatModifiers().Num(), 0);
+
+	// AND AN ALLY IS NOT BURNED BY THE RING EITHER, which is a separate sentence
+	// worth pinning: `FindEnemiesInSphere` excludes anything on the caster's
+	// side, so "your own fire does you no harm" already holds for whoever the
+	// caster owns as well as for the caster.
+	TestEqual(TEXT("and the ally standing in it is unharmed"),
+		Ally.Health(), 100000.0f, 0.01f);
 
 	return true;
 }

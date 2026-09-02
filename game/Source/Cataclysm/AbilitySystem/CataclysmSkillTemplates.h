@@ -1474,10 +1474,49 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bEndedForLackOfMana = false;
 
+	/**
+	 * How many allies are currently carrying this aura's damage bonus.
+	 *
+	 * CONFLAGRATION: "allies within it deal 8% increased fire damage." Zero for
+	 * an aura whose row states no `AllyIncreasedDamage`, which is every other
+	 * aura. Read by tests. Issue #1182.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	int32 AlliesHelped() const { return HelpedAllies.Num(); }
+
+	/** Whether this ally is currently carrying the bonus. Read by tests. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	bool IsHelping(const AActor* Ally) const;
+
 private:
 	/** Pulse's return value is for tests; a timer can only call a void. */
 	void PulseTick();
 	void Finish();
+
+	/**
+	 * Give the bonus to allies standing inside, and take it back from those who
+	 * left.
+	 *
+	 * RECOMPUTED EVERY PULSE RATHER THAN WATCHED FOR. Who is inside a moving ring
+	 * is a question about now, which is exactly the reasoning
+	 * `ACataclysmGroundZone::Sweep` gives for asking afresh every sweep. Nothing
+	 * in the project reports "an actor left a radius", and building that for one
+	 * row would be a worse trade than one search a second.
+	 *
+	 * A MODIFIER PER ALLY, HELD BY HANDLE. `UCataclysmAbilitySystemComponent::
+	 * AddStatModifier` answers a handle and `RemoveStatModifier` takes one, so
+	 * the aura keeps the handle it was given for each ally and gives exactly that
+	 * one back. Applying an effect with a one-pulse duration instead would make
+	 * the bonus flicker off between pulses.
+	 *
+	 * REFRESHED, NOT RE-ADDED, for an ally who is still inside. Adding a second
+	 * modifier every second would stack the bonus without limit, which is the
+	 * one way this could go badly wrong and is why the set is kept at all.
+	 */
+	void HelpAlliesInside();
+
+	/** Take the bonus back from every ally still carrying it. */
+	void StopHelpingEveryone();
 
 	bool bHeld = false;
 
@@ -1492,6 +1531,17 @@ private:
 	 * moment at which "the key has not been let go yet" is true again.
 	 */
 	bool bKeyReleasedSinceActivation = false;
+
+	/**
+	 * Every ally currently carrying this aura's bonus, and the handle to take
+	 * back.
+	 *
+	 * WEAK KEYS, so an ally that dies or is destroyed while standing in the ring
+	 * cannot be reached for through a dangling pointer. `HelpAlliesInside`
+	 * drops any key that has gone stale rather than trying to remove a modifier
+	 * from something that no longer exists.
+	 */
+	TMap<TWeakObjectPtr<AActor>, int32> HelpedAllies;
 
 	FTimerHandle PulseTimer;
 	FTimerHandle FinishTimer;

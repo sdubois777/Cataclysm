@@ -142,6 +142,12 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "ForcedMovement", "ForcedMovementDistance", "ForcedMovementDuration",
           "Terrain", "TerrainSize", "TerrainDuration",
           "Requires", "EffectDuration", "EffectMagnitude",
+          # `AllyIncreasedDamage` joined on 2026-09-02 with Conflagration,
+          # "allies within it deal 8% increased fire damage". It is the one
+          # rider that gives rather than takes, and the only one so far that an
+          # enemy ability could not sensibly state: nothing in the game buffs a
+          # creature's allies. Issue #1182.
+          "AllyIncreasedDamage",
           # Immune joined on 2026-09-02 with the Greatsword. Seven rows
           # across four weapons state one. No enemy ability does yet.
           "Immune",
