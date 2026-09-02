@@ -470,20 +470,28 @@ void UCataclysmInventoryWidget::Refresh(
 	}
 
 	// THE WORN GEAR IS REBUILT EVERY FRAME AND THE CARRIED CELLS ARE NOT, and
-	// the difference is only that there is no cheap way to notice a change to
-	// what is worn: UCataclysmEquipmentComponent raises a delegate rather than
-	// keeping a count, and this widget is not the thing bound to it. Nineteen
-	// cells is a small enough loop to do plainly; if it ever stops being one,
-	// the answer is a change count of the same shape the inventory has.
+	// that used to be true of its TOOL TIP TEXT as well, which is the whole of
+	// issue #1192: hovering a worn helmet showed no pop-up while hovering the
+	// same helmet in the bag did. The old comment here said there was "no cheap
+	// way to notice a change to what is worn". There is now --
+	// UCataclysmEquipmentComponent::ChangeCount, added for this and the same
+	// shape as the inventory's -- and the tool tip is the one thing that must
+	// use it. Everything else in RefreshGear is cheap and stays per frame.
+	const int32 GearChanges = Equipment ? Equipment->ChangeCount() : 0;
+	const bool bWornChanged = GearChanges != LastGearChangeCount
+		|| !bGearToolTipsBuilt;
+	LastGearChangeCount = GearChanges;
+	bGearToolTipsBuilt = true;
+
 	RefreshGear(Equipment, Bases, Affixes, Rarities, Materials, Tiers,
-				bResized, CellPx, LabelFontPx);
+				bResized, CellPx, LabelFontPx, bWornChanged);
 }
 
 void UCataclysmInventoryWidget::RefreshGear(
 	const UCataclysmEquipmentComponent* Equipment, const UDataTable* Bases,
 	const UDataTable* Affixes, const UDataTable* Rarities,
 	const UDataTable* Materials, const UDataTable* Tiers, bool bResized,
-	float CellPx, float LabelFontPx)
+	float CellPx, float LabelFontPx, bool bWornChanged)
 {
 	if (GearCells.Num() != UCataclysmGearSlots::AllSlots().Num() || !GearHeader)
 	{
@@ -527,6 +535,26 @@ void UCataclysmInventoryWidget::RefreshGear(
 
 		Widgets.Label->SetText(FText::FromString(
 			UCataclysmGearPanel::LabelFor(GearSlot, Worn, Bases)));
+
+		// ONLY WHEN WHAT IS WORN HAS CHANGED, AND THAT IS THE FIX FOR #1192.
+		//
+		// Setting a widget's tool tip text builds a NEW tool tip object every
+		// call: UWidget::SetToolTipText hands it to SWidget::SetToolTipText,
+		// which calls FSlateApplicationBase::MakeToolTip. FSlateUser::UpdateTooltip
+		// then decides whether the tool tip changed by comparing that object
+		// against the active one, so a fresh object every frame reads as a
+		// change every frame. It closes and re-opens the tool tip window each
+		// time, and FSlateUser::ShowTooltip sets the window's opacity to zero
+		// and restarts its fade-in clock, so the opacity it computes is
+		// negative every frame and clamps to zero. The pop-up is summoned
+		// constantly and never allowed to become visible.
+		//
+		// The carried grid above was already guarded this way and its pop-ups
+		// worked, which is exactly the difference the play test reported.
+		if (!bWornChanged)
+		{
+			continue;
+		}
 
 		// THE SECOND HAND SAYS WHY IT IS EMPTY when a two-handed weapon fills
 		// both. Otherwise a player sees a free hand and tries to use it.
