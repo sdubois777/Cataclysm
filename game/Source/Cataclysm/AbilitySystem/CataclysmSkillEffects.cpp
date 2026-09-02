@@ -13,6 +13,9 @@
 // Harrower is the only thing that buries one.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For a line of creatures run through by one spear, which comes apart when any
+// one of them dies. The Spear's Skewer is the only thing that binds one.
+#include "AbilitySystem/CataclysmPinnedLine.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For how long a lasting harmful effect really runs on its target, which is
@@ -1030,9 +1033,94 @@ FGameplayTag UCataclysmSkillEffects::StunImmuneTag()
 		FName(TEXT("State.StunImmune")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmSkillEffects::KnockedDownTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.KnockedDown")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::PinnedTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Pinned")), /*ErrorIfNotFound=*/false);
+}
+
 bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
 {
 	return HasTag(Actor, StunnedTag());
+}
+
+bool UCataclysmSkillEffects::IsKnockedDown(const AActor* Actor)
+{
+	return HasTag(Actor, KnockedDownTag());
+}
+
+bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
+{
+	return HasTag(Actor, PinnedTag());
+}
+
+bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)
+{
+	// THE DESIGN'S OWN ROW AND NOT EITHER HALF OF IT. Section VI puts Stun and
+	// Knockdown together as the two effects that "completely stop the target
+	// operating any part of its character", so everything that has to refuse to
+	// drive a character asks this rather than `IsStunned`.
+	//
+	// A PIN IS NOT HERE. It stops movement and leaves everything else, which is
+	// the whole difference between the two groups.
+	return IsStunned(Actor) || IsKnockedDown(Actor);
+}
+
+namespace
+{
+	/**
+	 * Move a target by an offset, under the design's diminishing-returns rule.
+	 *
+	 * ONE BODY FOR EVERY DISPLACEMENT IN THE GAME. A knockback, a pull, a drag
+	 * and a launch differ only in which way they point, and section VI of
+	 * `docs/Cataclysm_GDD_v2.md` limits all four the same way: each displacement
+	 * applied to a target already displaced inside the last 5 seconds moves it
+	 * half as far as the one before. Writing that rule once is the point of this
+	 * function; four copies of it would drift.
+	 *
+	 * HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
+	 * WINDOW: the full distance, then half, then a quarter, resetting once 5
+	 * seconds pass with no displacement at all. Three shoves inside the window
+	 * move a target seven metres in total rather than twelve, which is what stops
+	 * it being held at the far end of a room. Issues #302 and #628.
+	 *
+	 * ASKED OF THE TARGET, because the count belongs to the target rather than to
+	 * whatever is shoving: the previous shove was usually a different attack and
+	 * often a different actor. It is kept on the ability system component because
+	 * that is what everything hittable has.
+	 *
+	 * A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
+	 * no physics body and a knockback that silently did nothing would look
+	 * exactly like a knockback. Swept, so a shove into a wall stops at the wall
+	 * and a launch under a ceiling stops at the ceiling.
+	 *
+	 * @param Offset  the full move, before the halving rule
+	 * @return whether the target was moved
+	 */
+	bool CataclysmDisplace(AActor* Target, const FVector& Offset)
+	{
+		if (!IsValid(Target) || Offset.IsNearlyZero())
+		{
+			return false;
+		}
+
+		float Share = 1.0f;
+		if (UCataclysmAbilitySystemComponent* TargetAbilities =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			Share = TargetAbilities->TakeNextDisplacementShare();
+		}
+
+		Target->AddActorWorldOffset(Offset * Share, /*bSweep=*/true);
+		return true;
+	}
 }
 
 bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
@@ -1054,30 +1142,56 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
-	// HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
-	// WINDOW: the full distance, then half, then a quarter, resetting once 5
-	// seconds pass with no displacement at all. Three shoves inside the window
-	// move a target seven metres in total rather than twelve, which is what stops
-	// it being held at the far end of a room. Issues #302 and #628.
-	//
-	// ASKED OF THE TARGET, because the count belongs to the target rather than to
-	// whatever is shoving: the previous shove was usually a different attack and
-	// often a different actor. It is kept on the ability system component because
-	// that is what everything hittable has.
-	float Share = 1.0f;
-	if (UCataclysmAbilitySystemComponent* TargetAbilities =
-			Cast<UCataclysmAbilitySystemComponent>(
-				UCataclysmTargeting::AbilitySystemOf(Target)))
+	return CataclysmDisplace(Target, Away.GetSafeNormal() * DistanceCm);
+}
+
+bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
+									   float DistanceCm)
+{
+	if (!IsValid(Instigator) || !IsValid(Target))
 	{
-		Share = TargetAbilities->TakeNextDisplacementShare();
+		return false;
 	}
 
-	// A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
-	// no physics body and a knockback that silently did nothing would look
-	// exactly like a knockback. Swept, so a shove into a wall stops at the wall.
-	Target->AddActorWorldOffset(Away.GetSafeNormal() * DistanceCm * Share,
-								/*bSweep=*/true);
-	return true;
+	// Toward whatever hauled it, along the ground. The opposite of a knockback's
+	// direction and nothing else about it differs.
+	FVector Toward = Instigator->GetActorLocation() - Target->GetActorLocation();
+	Toward.Z = 0.0f;
+	if (Toward.IsNearlyZero())
+	{
+		// Already standing on the instigator, which is where a pull would put
+		// it. Nothing to do, and no direction to do it in.
+		return false;
+	}
+
+	// ZERO OR LESS MEANS THE WHOLE WAY, WHICH IS WHAT BOTH ROWS THAT PULL ASK
+	// FOR. The Whip's The Gathering hauls its catch "into a burning heap at your
+	// feet" and its Reel dumps them "at your feet"; neither states a distance,
+	// and neither could without repeating its own range in a second cell.
+	//
+	// A STATED DISTANCE IS HONOURED AND IS NEVER LONGER THAN THE GAP, so a pull
+	// that overshot would not drag a target past the caster and out the far
+	// side.
+	const float Gap = Toward.Size();
+	const float Move = DistanceCm > 0.0f ? FMath::Min(DistanceCm, Gap) : Gap;
+
+	return CataclysmDisplace(Target, Toward.GetSafeNormal() * Move);
+}
+
+bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
+										 float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// STRAIGHT UP, AND THE INSTIGATOR'S POSITION DOES NOT ENTER INTO IT. Upthrust
+	// drives a ridge of rock out of the ground and throws whatever stood on it
+	// into the air, so the direction is the world's up and not a line between two
+	// actors. The instigator is still required, so that a launch with no source
+	// is refused the same way every other displacement here is.
+	return CataclysmDisplace(Target, FVector(0.0f, 0.0f, DistanceCm));
 }
 
 FGameplayTag UCataclysmSkillEffects::DeadTag()
@@ -1122,6 +1236,16 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// every creature with nothing buried in it, which is all of them but one
 	// Harrower's host: it costs a component lookup.
 	UCataclysmBuriedWeapon::LeapFromDying(Actor);
+
+	// AND A LINE RUN THROUGH BY ONE SPEAR COMES APART, for the third time for
+	// the same reasons and at the same moment. The Spear's Skewer: "the whole
+	// line is held together for 4 seconds. Killing any one of them frees the
+	// rest." A pinned creature standing in fire is exactly how a line is likely
+	// to end, and being here rather than in a character class is what makes that
+	// free the others the same way a killing blow does. Inert for every creature
+	// bound to no line, which is all of them but one Skewer's catch: it costs a
+	// component lookup.
+	UCataclysmPinnedLine::ReleaseFromDying(Actor);
 
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
 	// granted for a duration and this one must never expire on its own. A
@@ -1233,6 +1357,171 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 						StunImmunityWindowSeconds);
 
 	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
+											float DurationSeconds,
+											float DamageDealt,
+											bool bKnockdownIsDesigned)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE SAME THREE RULES A STUN TAKES, IN THE SAME ORDER, because section VI of
+	// the design document puts the two effects in one row of its table and says
+	// so outright: "The same exemption applies as for stun: a skill whose stated
+	// effect is to knock down ignores the damage threshold, and does not ignore
+	// boss immunity or the immunity window."
+	//
+	// RULE TWO FIRST, AND IT IS THE SAME WINDOW RATHER THAN A SECOND ONE. "The
+	// two share one window rather than one each, because two 3-second holds taken
+	// in turn is exactly the failure the window exists to stop." So a target just
+	// stunned cannot be knocked down, and a target just knocked down cannot be
+	// stunned -- which is only true because both read and write this one tag.
+	if (HasTag(Target, StunImmuneTag()))
+	{
+		return false;
+	}
+
+	// RULE ONE: A HIT MUST TAKE AT LEAST A TENTH OF MAXIMUM HEALTH. A designed
+	// knockdown skips this and only this, exactly as a designed stun does. All
+	// three rows that state `ForcedMovement=Knockdown` are designed, so this
+	// branch is the one an incidental knockdown would take if one ever existed.
+	if (!bKnockdownIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A target already dead is not put on the floor, for the reason a
+		// killing blow does not stun a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (Health <= 0.0f || MaxHealth <= 0.0f
+			|| DamageDealt < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
+	}
+
+	// RULE THREE: A BOSS CANNOT BE KNOCKED DOWN AT ALL. Unconditionally,
+	// including for a designed knockdown, which is what "at all" means and is
+	// how the stun above reads the same sentence.
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Target))
+	{
+		if (Enemy->IsBoss())
+		{
+			return false;
+		}
+	}
+
+	if (!ApplyTagForDuration(Instigator, Target, KnockedDownTag(), DurationSeconds))
+	{
+		return false;
+	}
+
+	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
+						StunImmunityWindowSeconds);
+
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
+									  float DurationSeconds,
+									  float DamageTakenIncrease)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// NONE OF THE THREE ANTI-STUN-LOCK RULES IS CHECKED HERE, AND THAT IS THE
+	// DECISION RATHER THAN AN OMISSION. A pinned target still turns, attacks and
+	// uses any skill that does not need movement, so it fails the design's own
+	// test for what the rules cover. The header carries the full reasoning and
+	// issue #1149 puts it to the project owner.
+	const FGameplayTag Pinned = PinnedTag();
+	if (!Pinned.IsValid())
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// THE TAG ALONE WHEN THE SKILL STATES NO MAGNITUDE, which is three of the
+	// four rows that pin: Nail Down, Skewer and Thicket all hold a target still
+	// and say nothing about what it then takes. Only Impale states 30.
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+	if (DamageTakenIncrease <= 0.0f || !Defender->HasAttributeSetForAttribute(Taken))
+	{
+		return ApplyTagForDuration(Instigator, Target, Pinned, DurationSeconds);
+	}
+
+	const float OnTarget =
+		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+		GetTransientPackage(), FName(TEXT("CataclysmStatus_Pinned")));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+
+	// ADDED TO THE DAMAGE TAKEN STAT, WHOSE BASELINE IS A HUNDRED. Impale's "30%
+	// more damage from every source" is +30 on a stat that reads 100 unchanged,
+	// which `UCataclysmDamageCalculation` divides by 100 at step 6. So a pinned
+	// target reads 130 and takes 1.3 times what it otherwise would.
+	//
+	// ON THE SAME EFFECT AS THE TAG, WHICH IS WHY NOTHING HAS TO TAKE IT BACK.
+	// The increase expires when the pin does and is removed when the pin is
+	// removed, so no path -- an early release, a death, a second pin -- can leave
+	// a creature permanently softer. That is the whole reason it is one effect
+	// and not a tag plus a separate modifier.
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = Taken;
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(DamageTakenIncrease);
+
+	MakeSingleStackTagged(Effect, Pinned);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s pinned %s for %.1fs, and it takes %.0f%% more damage while "
+			 "held."),
+		*GetNameSafe(Instigator), *GetNameSafe(Target), OnTarget,
+		DamageTakenIncrease);
+
+	return true;
+}
+
+bool UCataclysmSkillEffects::ReleasePin(AActor* Target)
+{
+	// THE EFFECT AND NOT THE TAG, so Impale's damage taken increase comes off
+	// with it. Removing the tag alone would leave a creature softer for the rest
+	// of what would have been the pin, with nothing left saying why.
+	return RemoveEffectsGranting(Target, PinnedTag()) > 0;
 }
 
 bool UCataclysmSkillEffects::HasTag(const AActor* Actor, const FGameplayTag& Tag)

@@ -989,6 +989,193 @@ public:
 	static bool ApplyKnockback(AActor* Instigator, AActor* Target,
 							   float DistanceCm);
 
+	// --- Forced movement --------------------------------------------------
+	//
+	// THE FIVE VERBS `ForcedMovement` MAY NAME: Knockdown, Launch, Pull, Drag
+	// and Pin. `Knockback` is deliberately not one of them and is the function
+	// above; the header on `FCataclysmSkillShapeParams::ForcedMovement` says so.
+	// Nine skill rows across the Spear, the Warhammer and the Whip state one or
+	// more of these and until now nothing read the key at all.
+	//
+	// TWO OF THE FIVE ARE HOLDS AND THREE ARE DISPLACEMENTS, and section VI of
+	// `docs/Cataclysm_GDD_v2.md` treats those two groups completely differently.
+	// A hold is checked against the anti-stun-lock rules; a displacement is not,
+	// and is limited instead by halving its distance on repeat.
+	//
+	//   Knockdown  a hard stop. Covered by all three anti-stun-lock rules
+	//   Pin        movement only. Covered by none of them -- see `ApplyPin`
+	//   Pull       displacement toward whatever applied it
+	//   Drag       the same displacement, applied after the caster has moved
+	//   Launch     displacement straight up
+
+	/**
+	 * Put a target on the floor for a duration, honouring the anti-stun-lock
+	 * rules in full.
+	 *
+	 * A HARD STOP, AND THE DESIGN SAYS SO IN TERMS. Section VI of
+	 * `docs/Cataclysm_GDD_v2.md` lists Knockdown beside Stun in its table of
+	 * what the rule covers -- "the target cannot act at all; it is simply on the
+	 * floor while it happens" -- and then spends a paragraph on why: a knockdown
+	 * runs 2 to 3 seconds where every stun runs 0.75 to 1.5, so leaving it
+	 * outside the rule would make the longest hold in the game the one nothing
+	 * limits.
+	 *
+	 * IT SHARES ONE IMMUNITY WINDOW WITH THE STUN RATHER THAN HAVING ITS OWN,
+	 * which is the design's own wording: "The two share one window rather than
+	 * one each, because two 3-second holds taken in turn is exactly the failure
+	 * the window exists to stop." So this reads and writes `State.StunImmune`,
+	 * and a target just stunned cannot be knocked down either.
+	 *
+	 * THE SAME ONE EXEMPTION AS A STUN. A skill whose stated effect is to knock
+	 * down skips the damage threshold and skips neither the window nor boss
+	 * immunity. Every row that states `ForcedMovement=Knockdown` means to, so
+	 * `bKnockdownIsDesigned` is true for all three of them.
+	 *
+	 * @param DamageDealt  what this hit actually did, after mitigation. Ignored
+	 *                     when the knockdown is designed.
+	 * @return whether the target was knocked down
+	 */
+	static bool ApplyKnockdown(AActor* Instigator, AActor* Target,
+							   float DurationSeconds, float DamageDealt,
+							   bool bKnockdownIsDesigned);
+
+	/**
+	 * Hold a target where it stands for a duration, and optionally make it take
+	 * more damage while held.
+	 *
+	 * NOT A HARD STOP, AND THEREFORE NOT COVERED BY THE ANTI-STUN-LOCK RULES.
+	 * This is the one judgement in forced movement that the design document does
+	 * not settle outright, so the reasoning is written here rather than assumed.
+	 * Section VI states the test -- an effect is covered "when it completely
+	 * stops the target operating any part of its character" -- and then applies
+	 * it to Disarm, which is not covered because "movement and any skill that
+	 * does not need the weapon still work". A pin is that sentence with the two
+	 * halves swapped: attacks, turning and any skill that does not need movement
+	 * still work. So it takes no damage threshold, no immunity window and no
+	 * boss exemption, exactly as a slow does not.
+	 *
+	 * IT IS RECORDED AS A DECISION RATHER THAN A DERIVATION, because the covered
+	 * table in section VI lists seven effects and pinning is not one of them:
+	 * the Spear kit that introduced `ForcedMovement=Pin` was added on 2026-09-01
+	 * and no entry was written for it. Issue #1149 puts the question to the
+	 * project owner. The consequence if it is wrong is that Thicket holds a boss
+	 * still for 6 seconds; the boss can still fight back throughout.
+	 *
+	 * WHAT THE TAG STOPS IS DECIDED BY WHAT READS IT, the same way a stun works.
+	 * `ACataclysmEnemyController` stops ordering a pinned creature to walk and
+	 * lets it keep attacking, and `ACataclysmPlayerController` refuses movement
+	 * input and allows skills.
+	 *
+	 * @param DamageTakenIncrease  percentage points added to the target's Damage
+	 *                             Taken stat for as long as the pin lasts, or
+	 *                             zero for none. The Spear's Impale states 30:
+	 *                             "while a target is pinned it takes 30% more
+	 *                             damage from every source". It rides on the
+	 *                             same gameplay effect as the tag, so it is
+	 *                             taken back when the pin ends and cannot be
+	 *                             left behind by any path.
+	 * @return whether the target was pinned
+	 */
+	static bool ApplyPin(AActor* Instigator, AActor* Target,
+						 float DurationSeconds,
+						 float DamageTakenIncrease = 0.0f);
+
+	/**
+	 * Take a pin off a target early.
+	 *
+	 * WHAT ASKS FOR IT. The Spear's Skewer: "the whole line is held together for
+	 * 4 seconds. Killing any one of them frees the rest." `UCataclysmPinnedLine`
+	 * is what remembers which creatures are in one line and calls this on the
+	 * survivors.
+	 *
+	 * THE DAMAGE TAKEN INCREASE GOES WITH IT, because the two ride on one
+	 * gameplay effect and this removes the effect rather than the tag.
+	 *
+	 * @return whether a pin was actually removed
+	 */
+	static bool ReleasePin(AActor* Target);
+
+	/**
+	 * Haul a target toward whatever applied it.
+	 *
+	 * THE SAME DISPLACEMENT AS A KNOCKBACK, POINTED THE OTHER WAY, and it goes
+	 * through the same halving rule for the reason the design gives: a pull is
+	 * a displacement, section VI does not cover displacement with the
+	 * anti-stun-lock rules, and what limits it instead is that each one inside
+	 * the five second window moves the target half as far as the one before.
+	 *
+	 * ZERO DISTANCE MEANS ALL THE WAY, WHICH IS WHAT THE TWO ROWS ASK FOR AND
+	 * WHAT NEITHER OF THEM STATES. The Whip's The Gathering hauls enemies "into
+	 * a burning heap at your feet" and its Reel dumps them "at your feet", and
+	 * neither writes `ForcedMovementDistance`. A stated distance is honoured and
+	 * moves the target that far toward the instigator instead. The halving still
+	 * applies to both, so a second haul inside the window brings a target half
+	 * the remaining way rather than all of it.
+	 *
+	 * A TARGET STANDING ON ITS INSTIGATOR IS NOT MOVED, for the reason a
+	 * knockback does not move one: there is no direction, and it is already
+	 * where a pull would put it.
+	 *
+	 * @param DistanceCm  how far to haul before the halving rule, or zero or
+	 *                    less for the whole distance to the instigator
+	 * @return whether the target was moved
+	 */
+	static bool ApplyPull(AActor* Instigator, AActor* Target,
+						  float DistanceCm);
+
+	/**
+	 * Throw a target straight up.
+	 *
+	 * THE WARHAMMER'S UPTHRUST IS THE ONLY ROW THAT STATES IT: "anything
+	 * standing where it rises is thrown into the air and set alight."
+	 *
+	 * A DISPLACEMENT AND NOT A HOLD. The row states no
+	 * `ForcedMovementDuration`, and nothing about being in the air stops a
+	 * character acting, so this takes no anti-stun-lock rule. It is halved on
+	 * repeat like every other displacement.
+	 *
+	 * SWEPT, so a launch under a low ceiling stops at the ceiling rather than
+	 * putting the target inside it. That is the same reason `ApplyKnockback`
+	 * sweeps.
+	 *
+	 * WHAT BRINGS IT BACK DOWN IS GRAVITY AND NOTHING HERE. A character with a
+	 * movement component falls; a bare actor with none stays where it was put,
+	 * which is what the test harness sees and is why a test measures the rise
+	 * rather than the fall.
+	 *
+	 * @param DistanceCm  how far up, before the halving rule. Zero or less does
+	 *                    nothing, so a row that states no distance launches
+	 *                    nobody rather than guessing a height.
+	 * @return whether the target was moved
+	 */
+	static bool ApplyLaunch(AActor* Instigator, AActor* Target,
+							float DistanceCm);
+
+	/** Whether this actor is pinned right now and may not move. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsPinned(const AActor* Actor);
+
+	/** Whether this actor is on the floor right now and may not act. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsKnockedDown(const AActor* Actor);
+
+	/**
+	 * Whether this actor is under a hard stop and may not act at all.
+	 *
+	 * ONE QUESTION RATHER THAN TWO, AND THAT IS THE POINT. Section VI of the
+	 * design document puts Stun and Knockdown in one row of its table -- both
+	 * "completely stop the target operating any part of its character" -- and
+	 * everything that has to refuse to drive a character wants that row and not
+	 * either half of it. Three places ask: the enemy brain, the player
+	 * controller and the basic attack. Asking `IsStunned` alone at any of them
+	 * would let a knocked-down creature keep fighting from the floor.
+	 *
+	 * A PIN IS DELIBERATELY NOT INCLUDED. It stops movement and nothing else;
+	 * see `ApplyPin`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool CannotAct(const AActor* Actor);
+
 	/**
 	 * Whether this actor's health has reached zero.
 	 *
@@ -1032,6 +1219,12 @@ public:
 
 	/** The State.StunImmune tag, or an invalid tag if the vocabulary lacks it. */
 	static FGameplayTag StunImmuneTag();
+
+	/** The State.KnockedDown tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag KnockedDownTag();
+
+	/** The State.Pinned tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag PinnedTag();
 
 private:
 	/** Where the imported status effect table lives. */

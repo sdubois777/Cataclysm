@@ -20,6 +20,277 @@ applied or still pending.
 
 ---
 
+## 2026-09-01 — Forced movement: five verbs, of which two hold a target and three move it, and the Spear gets three of its five
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmSkillShape.h`, `CataclysmBasicAttack.cpp`, the new
+`CataclysmPinnedLine.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyController.h` and `.cpp`,
+`CataclysmEnemyCharacter.cpp`,
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`, the Tags
+and Weapon Skills sheets of `docs/All_Things_Cataclysm.xlsx`,
+`tools/generate_datatables.py`, `sim/cataclysm_sim/enemy_abilities.py`, and three
+test files. Applied. Issue #37.
+
+The project owner chose forced movement over the alternatives, and asked for the
+Spear to be finished with it.
+
+### What forced movement is, and why it is one change and not five
+
+`ForcedMovement` may name one or more of Knockdown, Launch, Pull, Drag and Pin.
+Nine rows across the Spear, the Warhammer and the Whip state one, and nothing
+read the column at all: every one of those rows ran as though the cell were
+empty.
+
+**They are one change because they ride one hook.** The nine rows are spread over
+three shapes — Impale is a Strike, Nail Down a Movement, Skewer a Projectile — so
+anything written into one template would have to be written into all three.
+`UCataclysmSkillTemplate::HitTargets` is the single place every template that
+hits anything passes through, and the knockback rider already lives there for the
+same reason. Issue #626 made that argument for displacement; this is the same
+argument again.
+
+**They are not one behaviour, and the design document is emphatic about it.**
+Section VI of `Cataclysm_GDD_v2.md` divides crowd control into hard stops, which
+take three anti-stun-lock rules, and everything else, which takes none of them.
+Two of the five verbs are holds and three are displacements, and they fall on
+opposite sides of that line.
+
+### A knockdown is a stun that happens to be on the floor
+
+Section VI puts Knockdown beside Stun in its table of what the rules cover —
+"the target cannot act at all; it is simply on the floor while it happens" — and
+then explains why: a knockdown runs 2 to 3 seconds where every stun in the game
+runs 0.75 to 1.5, so leaving it outside would mean "the longest hold in the game
+is the one nothing limits".
+
+So `ApplyKnockdown` makes the same three checks `ApplyStun` makes, in the same
+order, with the same one exemption: a skill whose stated effect is to knock down
+skips the damage threshold and skips neither boss immunity nor the immunity
+window.
+
+**It shares one window rather than having its own**, which is the document's own
+sentence: "The two share one window rather than one each, because two 3-second
+holds taken in turn is exactly the failure the window exists to stop." That is
+why both read and write `State.StunImmune` — a creature just stunned cannot be
+knocked down, and a creature just knocked down cannot be stunned. Two windows
+would pass a test that only tried one order, so the test tries both.
+
+### A pin is not covered, and that is a decision rather than a derivation
+
+**Section VI's table lists seven effects and pinning is not one of them.**
+`ForcedMovement=Pin` arrived with the Spear kit earlier the same day, after the
+table was written, and no entry was added for it.
+
+The reading taken is that a pin is **not** covered, on the strength of the Disarm
+row: disarming is not covered because "movement and any skill that does not need
+the weapon still work". A pin is that sentence with its halves swapped — a pinned
+target turns, attacks and uses any skill that does not need movement — so it
+fails the document's own test, which is whether the effect "completely stops the
+target operating any part of its character".
+
+**What that means in play, said plainly.** A boss can be pinned, including by
+Thicket for 6 seconds, and can fight throughout. Pins can be chained, because
+there is no window. A weak hit can pin, because there is no threshold.
+
+**Issue #1149 puts it to the project owner**, with a recommendation to cover a
+pin partly — the window and boss immunity but not the threshold — if anything
+changes, because the document's own worry about a long unlimited hold applies to
+Thicket word for word.
+
+### What a tag stops is decided by what reads it
+
+A hold is a tag held for a duration and stops nothing by itself. Three places had
+to learn about the two new ones:
+
+| Where | Knockdown | Pin |
+| :-- | :-- | :-- |
+| The enemy brain, `Think` | abandons a wind-up, cancels a charge, does not act | does not walk; still turns, uses abilities and attacks in reach |
+| The player controller | movement and skill input both refused | movement refused, skills allowed |
+| The automatic basic attack | refused | allowed |
+
+**One question rather than two.** `UCataclysmSkillEffects::CannotAct` answers
+stunned-or-knocked-down, and all three places ask it. Asking `IsStunned` at any
+of them would leave a knocked-down creature fighting from the floor, and that is a
+defect no existing test could see.
+
+**A pinned creature gets its own brain state**, `ECataclysmBrainAction::Pinned`,
+rather than reporting `Stunned`. The two look similar in a log and are opposite in
+play: a stunned creature is safe to stand next to and a pinned one is not. A test
+that could not tell them apart could not tell a working pin from a pin that had
+accidentally been given a stun's behaviour.
+
+**A pin stops a charge in the character's own tick and not in the brain.** The
+brain thinks four times a second and a charge covers metres in that time, so a
+creature pinned mid-lane would keep going for a quarter of a second. It is
+cancelled rather than paused, which is what a stun does and for the same reason: a
+charge that resumed would land an attack the player had already walked out of.
+
+### Pull and drag are one displacement applied at two different moments
+
+The sheet gives them two names and they are the same movement: both haul a target
+toward the caster. The difference is when the rider runs. A Movement shape has
+already relocated the caster by then, so `Drag` on the Whip's Reel carries its
+catch along the whole run and dumps it at the destination; `Pull` on The Gathering
+hauls to a caster that never moved.
+
+**Zero distance means the whole way.** Neither row states a distance, because a
+distance in a cell could only repeat the skill's own range: The Gathering brings
+its catch "into a burning heap at your feet" and Reel dumps them "at your feet". A
+reading in which zero meant "do nothing" would leave both rows hauling nobody,
+silently, because the rest of each skill still works.
+
+**All four displacements now share one body**, so the design's halving rule —
+each displacement inside five seconds moves half as far as the one before —
+covers a pull, a drag and a launch as well as a knockback. It was written for
+"displacement" and these are displacements. Four copies of that rule would have
+drifted.
+
+**A launch with no distance throws nobody**, deliberately, because unlike a pull
+there is no height a launch obviously means. Upthrust's row now states three
+metres; guessing a number in C++ would have hidden that the row said nothing.
+
+### Two rows now say what their descriptions say, and one generator table was wrong
+
+**Nail Down gained `MaxTargets=1` and `Drag`.** Its description reads "impale the
+first enemy you reach, carrying them to the end of the run", and neither half was
+in the cell: with no cap it pinned everything on the line, and with no Drag
+nothing was carried anywhere.
+
+**`MaxTargets` was missing from the Movement shape's parameter list in
+`tools/generate_datatables.py`, and the engine had always read it.** All three
+movement modes that hit anything hand it straight to the targeting search, so a
+row stating it would have worked and the generator refused to let one say so.
+Nail Down is what made it visible: it impales "the first enemy you reach" where
+Reel takes "every enemy the line crosses", and the two charges differ in nothing
+else, so without this there was no way to write the difference down.
+`sim/cataclysm_sim/enemy_abilities.py` holds the same table and is pinned to it by
+a test, so both moved together.
+
+### Killing one of a skewered line frees the rest
+
+Skewer's last sentence, and `OnDeath=Release` was the third of the three values
+`OnDeath` may take that nothing handled.
+
+**A component, for the reason the curse spreading uses one.** The instruction
+outlives the skill: Skewer is a Projectile that ends in the frame its throw lands,
+and the line it made holds for four seconds afterwards. A map keyed by actor on a
+static would need sweeping for creatures that died or left the level; a component
+is destroyed with its actor.
+
+**Hooked into `UCataclysmSkillEffects::MarkDead`**, which is now the third job
+hanging off it. That is the one place a death is recorded for the player and for
+every creature, so a pinned creature killed by a burn or by burning ground frees
+its line the same way one killed by a blow does — and a pinned creature standing
+in fire is exactly how a line is likely to end.
+
+**The line is bound from what was actually pinned and not from what was hit.**
+A boss is not pinned if issue #1149 is settled that way, and binding the hit list
+would put creatures in a line that were never held in it.
+
+### What the Spear got, and what it did not
+
+**Three of its five skills now do everything they say**: Impale, Nail Down and
+Skewer.
+
+**Impale's second sentence needed no new parameter.** "While a target is pinned
+it takes 30% more damage from every source" is `EffectMagnitude=30`, which the row
+already carried and which nothing read, because `EffectMagnitude` was only ever
+consulted for a named status effect and Impale names none. It is applied to the
+`DamageTaken` attribute, whose baseline is 100, and it rides on the pin's own
+gameplay effect — so it is taken back when the pin ends and cannot be left behind
+by an early release, a death or a second pin.
+
+**Held Fast got half of what it needs.** `ScalingSource=Pinned` is now counted, at
+the cast and inside the radius, exactly as Burning Wrath's `Burning` is and for
+the same reason. Its second sentence — "any pinned enemy within 12 meters is set
+alight again each second it is held" — has no parameter in the row at all, and a
+Support skill deals no damage to burn with, since the slot's Damage Percent is
+zero by design. That is issue #1150, and it is a missing parameter rather than an
+unread one. **Burning Wrath has the same silent nothing today** and would be fixed
+by the same decision.
+
+**Thicket needs terrain**, which does not exist. It is the Spear's fifth skill and
+the last of the twelve weapons whichever order the rest are done in.
+
+### What the other two weapons got
+
+**The Whip goes from one working skill to three.** The Gathering and Reel are
+complete. Coil of Embers still needs `RangeIncrease` and Tether still needs its
+three parameters.
+
+**The Warhammer gains nothing complete.** All four of its unfinished skills state
+`Terrain` as well, so Knockdown now lands on Break the World and Crater and Launch
+on Upthrust, and none of the three does everything it says. That was known before
+starting and is the reason terrain is the natural next piece of work.
+
+### What went wrong
+
+**Two builds failed before any test ran.**
+
+First, Unreal Header Tool refuses `TArray<TWeakObjectPtr<AActor>>` as a
+Blueprint-readable property, while a single `TWeakObjectPtr` is fine — which is
+why `UCataclysmCurseSpread::Caster` beside it is exposed. The property is now
+plain `UPROPERTY()`.
+
+Second, five `TestEqual` calls in the new test file were ambiguous. An `FVector`'s
+components are doubles in Unreal 5 and the tolerance argument is a float, so the
+overload set cannot choose. Every measured position is now read into a `float`
+first, which is what every other position test in this project already did.
+
+**A third build failed, and only after the work was committed.** The new test file
+opened its own namespace with a `using namespace` at file scope. This module is
+built as a unity blob — several `.cpp` files concatenated into one translation
+unit — so that directive reached every other test file in the module and broke two
+things in `CataclysmGatekeeperTests.cpp`: its own `MakeWorldThatHasBegunPlay`
+became an ambiguous call against the new one, and a constant named `M` hid a
+declaration of the same name inside an engine header. Twelve errors, none of them
+in the file that caused them.
+
+**It could not have shown before the commit**, which is the whole reason the
+build-again-with-the-tree-clean rule exists. Unreal keeps modified and untracked
+files out of the blob and compiles them on their own, so three clean builds and
+three full test runs over a dirty tree all passed with the collision present. Every
+other test file in this project already writes its `using namespace` inside each
+test body; this one now does too, and carries a comment saying why.
+
+**AND THE BUILD-AGAIN-WITH-THE-TREE-CLEAN RULE HAS A CACHE THAT DEFEATS IT.** The
+first run after committing the correction reported 1177 of 1177 while the build
+tool's own log at `C:\Users\iamst\AppData\Local\UnrealBuildTool\Log.txt` still
+said `[Adaptive Build] Excluded from Cataclysm unity file:
+CataclysmForcedMovementTests.cpp`. The exclusion decided while the file was
+uncommitted is stored in
+`game/Intermediate/Build/Win64/x64/CataclysmEditor/Development/Makefile.bin` and
+survives the commit, so that run had the file compiled on its own again and could
+not have seen the collision either.
+
+**What to check, rather than trusting the pass.** Deleting that `Makefile.bin` and
+building again with nothing modified put `CataclysmForcedMovementTests.cpp` and
+`CataclysmGatekeeperTests.cpp` into one translation unit,
+`Module.Cataclysm.10.cpp`. Two commands say whether a run was worth anything: grep
+the build tool's log for `Excluded from Cataclysm unity file`, and grep
+`game/Intermediate/Build/Win64/x64/UnrealEditor/Development/Cataclysm/Module.Cataclysm.*.cpp`
+for the file's name to see which blob holds it. A file in no blob was compiled
+alone.
+
+**No test failed on its first run**, which is unusual enough to be worth
+recording: three of the twelve written for the Axe failed and two of those were
+real defects. It is why two guard proofs were run rather than one, and both
+predicted their failures by name before the run.
+
+**One behaviour has no automation test and needs somebody to look at it.** A
+charge that drags its catch along and dumps it at the destination cannot be shown
+headless: with no player controller the aim point falls back to the caster's own
+position, so a charging caster in a test world never travels anywhere. The
+existing charge test says so in its own comment. The Whip's Reel and the Spear's
+Nail Down both depend on that ordering — the caster moves, then the rider hauls
+the target to where the caster now is. What the tests do cover is that the right
+creature is pinned and hauled; where it ends up after a real charge is not
+covered.
+
+---
+
 ## 2026-09-01 — The Axe throws: an axe glances onward, stays in what it kills, empties a rack over time, returns its own cooldown, and feeds a buff that grows with every kill
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and

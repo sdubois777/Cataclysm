@@ -364,7 +364,19 @@ SHAPE_PARAMS = {
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
-    "Movement": {"Mode", "Range", "Radius", "Duration", "Interval", "RearHits"},
+    #
+    # `MaxTargets` WAS MISSING AND THE ENGINE HAS ALWAYS READ IT. All three
+    # movement modes that hit anything hand it straight to the targeting search:
+    # a charge caps what it catches along the line, and a leap and a blink cap
+    # what they catch at the ends. A row stating it would therefore have worked,
+    # and this table refused to let one say so.
+    #
+    # WHAT MADE IT VISIBLE is the Spear's Nail Down, which impales "the first
+    # enemy you reach" where the Whip's Reel takes "every enemy the line
+    # crosses". The two are both charges and differ in nothing else, so without
+    # this there is no way to write the difference down at all.
+    "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
+                 "RearHits"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",

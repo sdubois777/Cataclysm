@@ -3269,4 +3269,138 @@ bool FCataclysmMinionNeverCriticallyStrikesTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Being held: a pin stops the walk, a knockdown stops everything
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPinnedMonsterCannotChaseTest,
+	"Cataclysm.AI.APinnedEnemyStopsWalkingAndKeepsFighting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPinnedMonsterCannotChaseTest::RunTest(const FString&)
+{
+	// WHAT A PIN IS, IN THE ONE PLACE IT IS VISIBLE. The tag is applied by
+	// `UCataclysmSkillEffects::ApplyPin` and stops nothing by itself; what it
+	// means is decided entirely by what reads it, which is this brain and the
+	// player controller. So the difference between a pin and a stun -- the whole
+	// reason they are two effects -- lives here and has to be checked here.
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Monster(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	FScopedFighter Player(World, FVector(10 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	ACataclysmEnemyController* Brain = Monster.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned monster has no controller, so nothing drives it."));
+		return false;
+	}
+
+	// THE CONTROL FIRST. Ten metres is inside the notice radius of fifteen and
+	// outside the reach of two, so an unpinned monster walks. Without this
+	// reading, a pinned monster reporting anything but Chasing would prove
+	// nothing -- it might simply have failed to see the player at all.
+	TestEqual(TEXT("a monster ten metres away chases"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+
+	UCataclysmSkillEffects::ApplyPin(Player.Actor, Monster.Actor,
+									 /*DurationSeconds=*/7.0f);
+	TestTrue(TEXT("the monster is pinned"),
+		UCataclysmSkillEffects::IsPinned(Monster.Actor));
+
+	TestEqual(TEXT("and now it stands where it is instead of chasing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Pinned));
+
+	// IT HAS NOT LOST ITS TARGET, only its feet. A pin that cleared the target
+	// would make the creature forget the player for the whole hold and have to
+	// find them again afterwards.
+	TestEqual(TEXT("and it is still after the player"),
+		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
+
+	// AND IT STILL FIGHTS WHATEVER COMES TO IT. This is the half that separates a
+	// pin from a stun: bring the player inside the monster's reach and the pinned
+	// monster attacks, where a stunned one would do nothing.
+	Player.Actor->SetActorLocation(FVector(1 * M, 0, 0));
+
+	const float Before = Player.Health();
+	TestEqual(TEXT("a pinned monster within reach attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
+		Before, Player.Health()), Player.Health() < Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKnockedDownMonsterDoesNothingTest,
+	"Cataclysm.AI.AKnockedDownEnemyDoesNothingAtAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKnockedDownMonsterDoesNothingTest::RunTest(const FString&)
+{
+	// SECTION VI PUTS A KNOCKDOWN IN THE SAME ROW AS A STUN: "the target cannot
+	// act at all; it is simply on the floor while it happens." The brain asks one
+	// question covering both, so this is what says the second half of that
+	// question is wired up. A brain still asking `IsStunned` alone would let a
+	// knocked-down creature fight from the floor and would pass every other test
+	// in this file.
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Monster(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	FScopedFighter Player(World, FVector(1 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	ACataclysmEnemyController* Brain = Monster.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned monster has no controller, so nothing drives it."));
+		return false;
+	}
+
+	// THE CONTROL: one metre is inside the reach, so an unhindered monster hits.
+	const float BeforeControl = Player.Health();
+	TestEqual(TEXT("a monster within reach attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("and the player lost health"),
+		Player.Health() < BeforeControl);
+
+	UCataclysmSkillEffects::ApplyKnockdown(
+		Player.Actor, Monster.Actor, /*DurationSeconds=*/7.0f,
+		/*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+	TestTrue(TEXT("the monster is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Monster.Actor));
+
+	// THE BRAIN REPORTS `Stunned` FOR BOTH, deliberately: the enum names what the
+	// creature is doing, and for a stun and a knockdown the answer is "not acting
+	// at all until it wears off". The enum's own comment carries that reasoning.
+	const float BeforeFloored = Player.Health();
+	TestEqual(TEXT("and now it does nothing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+	TestEqual(TEXT("so the player takes nothing from it"),
+		Player.Health(), BeforeFloored, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -763,7 +763,13 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	KillsCounted = 0;
 	TotalDuration = Params.Duration;
 
+	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
+	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
+	// enemy you currently have pinned". One search of the radius answers both
+	// questions, where asking separately would walk the same enemies twice for a
+	// skill that states only one of the two sources.
 	BurningEnemiesAtCast = 0;
+	PinnedEnemiesAtCast = 0;
 	if (ScaledRadiusCm() > 0.0f)
 	{
 		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
@@ -773,6 +779,11 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 			if (UCataclysmSkillEffects::HasTag(Nearby, Burn))
 			{
 				++BurningEnemiesAtCast;
+			}
+
+			if (UCataclysmSkillEffects::IsPinned(Nearby))
+			{
+				++PinnedEnemiesAtCast;
 			}
 		}
 	}
@@ -903,7 +914,12 @@ int32 UCataclysmSelfBuffSkill::ScalingCount() const
 		return KillsCounted;
 	}
 
-	// One of the nine sources nothing counts. A buff naming one grants nothing,
+	if (Params.ScalingSource.Equals(TEXT("Pinned"), ESearchCase::IgnoreCase))
+	{
+		return PinnedEnemiesAtCast;
+	}
+
+	// One of the eight sources nothing counts. A buff naming one grants nothing,
 	// which is the safe answer: the alternative is a number taken from whatever
 	// happened to be to hand.
 	return 0;

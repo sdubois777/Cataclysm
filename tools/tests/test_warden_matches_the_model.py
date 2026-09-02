@@ -485,16 +485,22 @@ def test_the_brain_stops_deciding_while_a_charge_is_in_flight():
         "creature is stunned. A stunned creature that keeps travelling is "
         "acting, which the design says a stunned creature cannot do.")
 
-    # THE ORDER IS THE RULE, NOT JUST THE PRESENCE. A stun has to outrank a
-    # charge, so the charge test must come after the stun test. Written the
-    # other way round a stun could never interrupt one.
-    stun_at = text.index("UCataclysmSkillEffects::IsStunned(Driven)")
+    # THE ORDER IS THE RULE, NOT JUST THE PRESENCE. A hard stop has to outrank a
+    # charge, so the charge test must come after it. Written the other way round
+    # a stun could never interrupt one.
+    #
+    # `CannotAct` RATHER THAN `IsStunned` SINCE 2026-09-01, when knockdown
+    # arrived. Section VI of the design document puts stun and knockdown in one
+    # row of its table of hard stops, so the brain asks one question covering
+    # both. Naming `IsStunned` here would now pass while a knocked-down creature
+    # kept charging.
+    stop_at = text.index("UCataclysmSkillEffects::CannotAct(Driven)")
     charge_at = text.index("Charger->IsCharging()")
-    assert stun_at < charge_at, (
-        "the running-charge test now comes before the stun test in Think. A "
-        "stun outranks everything, including a committed attack, so a charge "
-        "checked first would make a charging creature immune to being "
-        "interrupted.")
+    assert stop_at < charge_at, (
+        "the running-charge test now comes before the hard-stop test in Think. "
+        "A stun or a knockdown outranks everything, including a committed "
+        "attack, so a charge checked first would make a charging creature "
+        "immune to being interrupted.")
 
 
 # --------------------------------------------------------------------------

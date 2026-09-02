@@ -316,13 +316,18 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * Pierced, Pinned or HealthMissing. The generator holds that closed list and
 	 * refuses anything else, so this is stored rather than validated again here.
 	 *
-	 * FOUR OF THE ELEVEN ARE ACTED ON. `Burning` by UCataclysmSelfBuffSkill,
-	 * which counts once when the buff goes up; `HealthMissing`, `Consumed` and
-	 * `Consume` by UCataclysmSkillTemplate::ScalingUnits, which is asked once
-	 * per blow. The remaining seven -- Kill, Second, Meter, HitTaken, Bounce,
-	 * Pierced and Pinned -- are read so the design can state them and scale by
-	 * nothing, which is the state StunSeconds is in and is recorded rather than
-	 * hidden. A skill naming one deals its plain damage.
+	 * SEVEN OF THE ELEVEN ARE ACTED ON. `Burning`, `Kill` and `Pinned` by
+	 * UCataclysmSelfBuffSkill -- the first and third counted once when the buff
+	 * goes up, the second counted forward as kills happen; `HealthMissing`,
+	 * `Consumed` and `Consume` by UCataclysmSkillTemplate::ScalingUnits, which is
+	 * asked once per blow; and `Bounce` by UCataclysmProjectileSkill, which
+	 * counts how far along a chain of glances a hit is.
+	 *
+	 * THE REMAINING FOUR -- Second, Meter, HitTaken and Pierced -- are read so
+	 * the design can state them and scale by nothing, which is the state
+	 * StunSeconds is in and is recorded rather than hidden. A skill naming one
+	 * deals its plain damage. Three of the four belong to the Greatsword and
+	 * issue #1141 carries them.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ScalingSource;
@@ -448,7 +453,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float EffectDuration = 0.0f;
 
-	/** Size of the applied Effect, in whatever unit that effect is measured in. */
+	/**
+	 * Size of the applied Effect, in whatever unit that effect is measured in.
+	 *
+	 * TWO READERS SINCE 2026-09-01, AND ONE OF THEM NEEDS NO NAMED EFFECT.
+	 * `UCataclysmSkillEffects::ApplyNamedEffect` uses it as the size of the
+	 * status the row's `Effect` names, and `ApplyPin` uses it as the percentage
+	 * points a pinned target adds to its Damage Taken. The Spear's Impale is the
+	 * only row in the sheet that states a magnitude without naming an effect --
+	 * "while a target is pinned it takes 30% more damage from every source" --
+	 * and no row states both a named effect and forced movement, so there is
+	 * nothing today for which the two readings could disagree.
+	 *
+	 * A ROW THAT EVER STATED BOTH WOULD APPLY ONE NUMBER TWICE, and that is the
+	 * thing to notice here rather than to guard against now: splitting the key in
+	 * two before a row needs it would be a second name one typo away from the
+	 * first, which is the mistake `MoreDamagePer` and `IncreasedDamagePer` above
+	 * were deliberately kept apart to avoid making cheaply.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float EffectMagnitude = 0.0f;
 
@@ -461,15 +483,39 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * `Knockback` ABOVE IS NOT ONE OF THESE. That key is metres away from the
 	 * caster and stays exactly what issue #626 made it; three enemy abilities
 	 * write it. This carries the verbs a distance cannot express.
+	 *
+	 * ALL FIVE ARE READ, by `UCataclysmSkillTemplate::ApplyForcedMovementTo`,
+	 * which rides every blow the way the knockback above does. Two of the five
+	 * hold a target and three move it, and section VI of the design document
+	 * treats those two groups completely differently: a Knockdown takes all
+	 * three anti-stun-lock rules, a Pin takes none of them, and Pull, Drag and
+	 * Launch are displacements limited only by halving on repeat. Issue #1149
+	 * carries the open question of whether a Pin should be covered after all.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ForcedMovement;
 
-	/** Centimetres a pull or drag carries the target. */
+	/**
+	 * Centimetres a pull, drag or launch carries the target.
+	 *
+	 * ZERO MEANS ALL THE WAY FOR A PULL OR A DRAG, which is what both rows that
+	 * haul ask for and neither states: The Gathering brings its catch "into a
+	 * burning heap at your feet" and Reel dumps them "at your feet", and a
+	 * distance in a cell could only repeat the skill's own range.
+	 *
+	 * ZERO MEANS NOTHING AT ALL FOR A LAUNCH, deliberately, because there is no
+	 * height a launch obviously means. Upthrust states 3.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ForcedMovementDistanceCm = 0.0f;
 
-	/** Seconds the target is held where it was put. */
+	/**
+	 * Seconds the target is held where it was put.
+	 *
+	 * READ BY A PIN AND A KNOCKDOWN AND BY NOTHING ELSE. A displacement is over
+	 * the moment it lands, so the three rows that only displace state no
+	 * duration and none is wanted.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ForcedMovementDuration = 0.0f;
 

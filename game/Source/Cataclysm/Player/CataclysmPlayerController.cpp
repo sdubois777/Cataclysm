@@ -181,7 +181,34 @@ void ACataclysmPlayerController::OnUnPossess()
 
 bool ACataclysmPlayerController::IsPawnStunned() const
 {
-	return UCataclysmSkillEffects::IsStunned(GetPawn());
+	// KNOCKED DOWN AS WELL AS STUNNED, which is what `CannotAct` answers. Section
+	// VI of the design document puts the two in one row of its table of hard
+	// stops, so everything this gates -- movement, item pickup and skill input --
+	// is refused for both.
+	//
+	// THE FUNCTION KEEPS ITS NAME, because a stun is still the only thing in the
+	// game that reaches a PLAYER: all three rows that knock down are player
+	// skills aimed at enemies. Renaming it would rename it in the header, both
+	// tests that call it and every log line, to describe a case nothing can
+	// currently produce.
+	return UCataclysmSkillEffects::CannotAct(GetPawn());
+}
+
+bool ACataclysmPlayerController::IsPawnPinned() const
+{
+	return UCataclysmSkillEffects::IsPinned(GetPawn());
+}
+
+bool ACataclysmPlayerController::PawnCannotWalk() const
+{
+	// WHAT EVERY MOVEMENT GATE ASKS, AND NO ABILITY GATE DOES. A hard stop
+	// refuses everything; a pin refuses travel and leaves casting, swinging and
+	// picking up alone. Four movement sites and one ability site read these two
+	// questions, and getting one of the five wrong is the mistake this pair of
+	// functions exists to make visible: a movement site asking `IsPawnStunned`
+	// lets a pinned player walk, and an ability site asking this one takes a
+	// pinned player's skills away.
+	return IsPawnStunned() || IsPawnPinned();
 }
 
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)
@@ -197,7 +224,19 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	// handlers only run when a key is down. A stun that lands while nothing is
 	// pressed still has to stop the pawn.
 	const bool bStunned = IsPawnStunned();
-	if (bStunned)
+
+	// A PIN STOPS THE WALK AND NOTHING ELSE, and that is the whole difference
+	// between the two. A pinned character still casts, still swings and still
+	// picks up what is already at its feet; it cannot travel. So this joins the
+	// movement half below and is deliberately absent from the ability half.
+	//
+	// NOTHING APPLIES A PIN TO THE PLAYER TODAY. All four rows that pin are
+	// player skills aimed at enemies. It is wired here because the tag is applied
+	// by a function that takes "a target" rather than "an enemy", the same way
+	// `UCataclysmSkillEffects::ApplyKnockback` was written for both directions,
+	// and because a pin that silently did nothing to the player would be found
+	// the day an enemy ability first states one.
+	if (PawnCannotWalk())
 	{
 		StopMovement();
 
@@ -316,7 +355,7 @@ void ACataclysmPlayerController::Input_AbilitySlotReleased(FGameplayTag SlotTag)
 void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 {
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn || bStandStill || IsPawnStunned())
+	if (!ControlledPawn || bStandStill || PawnCannotWalk())
 	{
 		return;
 	}
@@ -821,7 +860,7 @@ void ACataclysmPlayerController::Input_MoveToCursorHeld()
 	}
 
 	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn || bStandStill || IsPawnStunned())
+	if (!ControlledPawn || bStandStill || PawnCannotWalk())
 	{
 		return;
 	}
@@ -847,7 +886,7 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 
 	// Released quickly: treat it as a click and path to the point. Released after
 	// a hold: the steering above already happened and there is nothing to add.
-	if (FollowTime <= ShortPressThreshold && !bStandStill && !IsPawnStunned())
+	if (FollowTime <= ShortPressThreshold && !bStandStill && !PawnCannotWalk())
 	{
 		// A CLICK ON A DROP'S NAME IS A PICK-UP AND NOT A MOVE ORDER. That is
 		// the project owner's decision of 2026-08-18: "a player sees a drop as a

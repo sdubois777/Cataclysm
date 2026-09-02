@@ -636,6 +636,27 @@ void ACataclysmEnemyCharacter::AdvanceCharge(float DeltaSeconds)
 		return;
 	}
 
+	// A PIN STOPS A CHARGE ALREADY IN FLIGHT. `ForcedMovement=Pin` means the
+	// target cannot move, and a creature travelling ten metres down a lane is
+	// moving whatever else is true of it. The Spear's Thicket pins everything
+	// within twelve metres, so a charging creature caught by one is an ordinary
+	// case rather than a corner.
+	//
+	// CANCELLED RATHER THAN PAUSED, which is what the controller does for a stun
+	// and for the same reason: a charge that resumed when the pin ended would
+	// land an attack the player had already walked out of, several seconds after
+	// its telegraph.
+	//
+	// HERE RATHER THAN IN THE BRAIN, because the brain thinks four times a second
+	// and this runs every frame. A charge covers metres inside one thinking pass,
+	// so a creature pinned mid-lane would otherwise keep going for a quarter of a
+	// second after it was held.
+	if (UCataclysmSkillEffects::IsPinned(this))
+	{
+		CancelCharge();
+		return;
+	}
+
 	// SPLIT INTO STEPS NO LONGER THAN LongestChargeStepCm. See the header: one
 	// long sweep can tunnel a thin wall. A whole frame's travel is covered
 	// either way, so this changes where the charge is checked and not how far
