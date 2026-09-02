@@ -20,6 +20,66 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — Twelve skills deal what their own sentence says, and the check that finds the next one
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`, and the
+new `tools/tests/test_a_skill_deals_the_damage_its_description_states.py`.
+Applied. Issue #1142.
+
+### The decision
+
+**Each row deals what its own description states.** The `DamagePercent` column was
+empty on all 403 rows, so every skill took its slot's figure, and ten rows said
+one number in prose and dealt another. The project owner chose to fill the column
+from the descriptions rather than rewrite the descriptions to match the slots.
+
+**Eight are reductions and two are increases.** Break the World rises from the
+Ultimate slot's 400 to 450 and Skull Splitter to 500; both were written to be the
+hardest Ultimates and reducing them to the slot's figure would have made every
+Ultimate identical.
+
+**The largest single correction is the Axe's Butcher's Bill**, which throws thirty
+axes. At the slot's 400% each that is 12,000% of weapon damage against a row
+asking for 420%. It now deals 14% each.
+
+**No C++ changed.** `UCataclysmSkillTemplate::GetDamagePercent` already prefers
+the skill's own figure and falls back to the slot's, which issue #836 records as
+the right order. The fallback stays for the 391 rows that state nothing.
+
+### The check found two rows the audit had missed
+
+Issue #1142 was written by reading descriptions one at a time and listed ten
+rows. The test written alongside this change reads every description for "N%
+weapon damage" and compares N against the row, and it named twelve.
+
+**The Greatsword's Backswing is a real fault the audit missed.** It says "the
+swing lands for 175% weapon damage at once, rising to 350% if you hold the full 2
+seconds" and took the Heavy slot's 250%. Its `MinDamagePercent` and
+`MaxDamagePercent` already carry the range; the base it rises from is the 175.
+
+**The Spear's Thicket agreed with its slot by coincidence.** It says 400% and the
+Ultimate slot gives 400%, so it dealt the right amount while stating nothing.
+Stating it means the two cannot drift apart if the slot ever moves.
+
+### Why the check is in Python and why it checks its own exemption list
+
+Continuous integration runs `python -m pytest` and nothing else, so nothing under
+`game/Source/Cataclysm/Tests/` runs on a pull request and this does. It is also
+the right shape: it compares two columns of a generated table and needs no engine.
+
+**Four rows state a percentage that is not the blow's** -- Pyroclasm's closing
+hit, Martyr's Ember's and Braced Guard's stored-damage caps, and Haymaker's
+wall-impact extra -- and each is exempted by name with its reason written beside
+it.
+
+**Two more checks guard the exemption list itself**: that every name in it still
+exists in the sheet, and that every name in it still matches the pattern. A stale
+exemption silently stops guarding, and worse, a future row given the same name
+would inherit an exemption nobody chose for it.
+
+---
+
 ## 2026-09-02 — Terrain is four mechanics and only one of them is geometry, and the Warhammer is finished
 
 **Affects:** the new
