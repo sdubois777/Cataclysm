@@ -7,9 +7,11 @@
 #include "CataclysmTestWorld.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmWearing.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -1166,6 +1168,472 @@ bool FCataclysmMaterialsComeToTheCharacter::RunTest(const FString& Parameters)
 		FPickup::IsWithinPickupRange(Standing, Beyond));
 	TestTrue(TEXT("and a material there still comes on its own"),
 		FPickup::ComesAutomatically(Material, Standing, Beyond));
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Putting one on the floor, which is the other direction. Issue #1190.
+// --------------------------------------------------------------------------
+
+/**
+ * Tests for taking an item out of the bag and leaving it on the floor.
+ *
+ * WHY THIS MATTERS MORE THAN CONVENIENCE. `docs/Cataclysm_GDD_v2.md` gives this
+ * game no town portal, so a player who fills the bag part way down a dungeon
+ * cannot leave, cannot sell and cannot destroy anything. Dropping is the only
+ * release valve there is, and until issue #1190 it did not exist at all -- not
+ * by click, not by key, and not by console.
+ *
+ * THE ONE THING WORTH GUARDING IS THE SAME ONE `CataclysmWearingTests.cpp`
+ * guards: **nothing is ever destroyed**. Dropping is the first operation in the
+ * project that takes an item out of both the bag and the body, so the count
+ * that file checks -- worn plus carried -- deliberately falls here. What must
+ * hold instead is that the item is on the floor when it leaves the bag and in
+ * the bag when it is not, and never in neither. The refusal test below is the
+ * one that checks the "neither" case cannot happen.
+ */
+namespace CataclysmDropFromBagTest
+{
+	/** How many drops are lying in this world. */
+	int32 OnTheFloor(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	}
+
+	/** The one drop lying in this world, or null when there is not exactly one. */
+	ACataclysmDroppedItem* TheOnlyDrop(UWorld* World)
+	{
+		ACataclysmDroppedItem* Found = nullptr;
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			if (!IsValid(*It))
+			{
+				continue;
+			}
+			if (Found)
+			{
+				return nullptr;
+			}
+			Found = *It;
+		}
+		return Found;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropLeavesTheBagTest,
+	"Cataclysm.DropPickup.DroppingTakesTheItemOutOfTheBagAndPutsItOnTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropLeavesTheBagTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+	using namespace CataclysmDropFromBagTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const int32 Slot = Inventory->AddItem(SomeItem(TEXT("Greataxe")));
+	Inventory->AddItem(SomeItem(TEXT("Head_Helm")));
+	TestEqual(TEXT("two items are carried to begin with"),
+		Inventory->NumItems(), 2);
+	TestEqual(TEXT("and the floor is empty"), OnTheFloor(World), 0);
+
+	const ECataclysmWearResult Result = UCataclysmWearing::DropCarried(
+		Inventory, Slot, World, FVector(250.0f, 0.0f, 0.0f));
+
+	TestEqual(TEXT("it was dropped"), Result, ECataclysmWearResult::Dropped);
+	TestEqual(TEXT("one item is left in the bag"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("and exactly one is on the floor"), OnTheFloor(World), 1);
+
+	// THE SLOT IT CAME OUT OF IS EMPTY AND THE OTHER IS UNTOUCHED. Removing the
+	// wrong slot would keep both counts right and lose the wrong item.
+	TestNull(TEXT("the slot it came out of is empty"), Inventory->ItemAt(Slot));
+
+	ACataclysmDroppedItem* Drop = TheOnlyDrop(World);
+	if (!TestNotNull(TEXT("the drop"), Drop))
+	{
+		return false;
+	}
+
+	// THE WHOLE ITEM, not just its base. A drop that kept only the base would
+	// silently strip every roll off anything the player put down.
+	TestEqual(TEXT("the base went with it"), Drop->Item.Base,
+		FName(TEXT("Greataxe")));
+	TestEqual(TEXT("the upgrade level went with it"), Drop->Item.GearLevel, 3);
+	TestEqual(TEXT("the sockets went with it"), Drop->Item.Sockets, 1);
+	TestEqual(TEXT("the residue went with it"), Drop->Item.Residue, 42.0f);
+
+	// AND IT LANDED WHERE IT WAS ASKED TO. A drop that ignored the location
+	// would sit at the world origin, which is issue #723 all over again.
+	TestEqual(TEXT("it is lying where it was put"), Drop->GetActorLocation(),
+		FVector(250.0f, 0.0f, 0.0f));
+
+	return true;
+}
+
+/**
+ * The round trip, which is what makes dropping without a confirmation safe.
+ *
+ * The project owner chose on 2026-09-02 that a drop asks nothing at any rarity.
+ * That is only reasonable if the item can be picked straight back up, so this
+ * checks the two directions compose and the item survives both.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropThenPickUpTest,
+	"Cataclysm.DropPickup.ADroppedItemCanBePickedStraightBackUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropThenPickUpTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+	using namespace CataclysmDropFromBagTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const int32 Slot = Inventory->AddItem(SomeItem(TEXT("Greataxe")));
+	TestEqual(TEXT("it was dropped"),
+		UCataclysmWearing::DropCarried(Inventory, Slot, World,
+									   FVector(150.0f, 0.0f, 0.0f)),
+		ECataclysmWearResult::Dropped);
+	TestEqual(TEXT("the bag is empty"), Inventory->NumItems(), 0);
+
+	ACataclysmDroppedItem* Drop = TheOnlyDrop(World);
+	if (!TestNotNull(TEXT("the drop"), Drop))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("it was taken back"), FPickup::TakeInto(Inventory, Drop));
+	TestEqual(TEXT("it is carried again"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("and nothing is left lying there"), OnTheFloor(World), 0);
+
+	const FCataclysmItem* Back = Inventory->ItemAt(0);
+	if (!TestNotNull(TEXT("back in the bag"), Back))
+	{
+		return false;
+	}
+
+	// THE SAME ITEM CAME BACK. A round trip that reset the rolls would be a way
+	// to lose everything about an item by putting it down and picking it up.
+	TestEqual(TEXT("the base survived the round trip"), Back->Base,
+		FName(TEXT("Greataxe")));
+	TestEqual(TEXT("the upgrade level survived"), Back->GearLevel, 3);
+	TestEqual(TEXT("the sockets survived"), Back->Sockets, 1);
+	TestEqual(TEXT("the residue survived"), Back->Residue, 42.0f);
+
+	return true;
+}
+
+/**
+ * The drop lands inside pickup range, which is what the round trip above relies
+ * on being true in the running game rather than at a location a test chose.
+ *
+ * NOT A RESTATEMENT OF THE CONSTANT. It spawns a real actor, faces it, asks
+ * UCataclysmDropSpawner::DropSpotInFrontOf where a drop would go, and measures
+ * that against UCataclysmDropPickup::IsWithinPickupRange -- the same function
+ * the game uses to decide whether a click can reach a drop. Setting
+ * DropInFrontCm above the pickup range would fail this.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropLandsWithinReachTest,
+	"Cataclysm.DropPickup.ADroppedItemLandsWithinReachOfTheCharacterWhoDroppedIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropLandsWithinReachTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Character = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("a character to drop from"), Character))
+	{
+		return false;
+	}
+
+	// FOUR DIRECTIONS, because a spot worked out with the forward vector ignored
+	// would be within range facing one way and wrong facing another.
+	const float Yaws[] = { 0.0f, 90.0f, 180.0f, -45.0f };
+	for (const float Yaw : Yaws)
+	{
+		Character->SetActorLocation(FVector(1000.0f, -400.0f, 90.0f));
+		Character->SetActorRotation(FRotator(0.0f, Yaw, 0.0f));
+
+		const FVector Spot =
+			UCataclysmDropSpawner::DropSpotInFrontOf(*Character);
+
+		TestTrue(*FString::Printf(
+			TEXT("facing %.0f degrees, the drop is close enough to pick back up"),
+			Yaw),
+			FPickup::IsWithinPickupRange(Character->GetActorLocation(), Spot));
+
+		// AND NOT UNDER FOOT. The heads-up display draws the drop's name at its
+		// position, so a drop at the character's own feet is a name behind the
+		// character.
+		TestTrue(*FString::Printf(
+			TEXT("facing %.0f degrees, it is not on top of the character"), Yaw),
+			FVector::Dist2D(Character->GetActorLocation(), Spot) > 50.0f);
+	}
+
+	return true;
+}
+
+/**
+ * Dropping an empty slot, or one outside the grid, does nothing.
+ *
+ * THE CONSOLE COMMAND TAKES A TYPED NUMBER, so a slot outside 0 to 47 is a
+ * thing a person will actually pass, and it must not be treated as slot 0.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropNothingTest,
+	"Cataclysm.DropPickup.DroppingAnEmptyOrImpossibleSlotDoesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+	using namespace CataclysmDropFromBagTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	Inventory->AddItem(SomeItem(TEXT("Greataxe")));
+
+	// SLOT 0 IS TAKEN, SO SLOT 1 IS THE EMPTY ONE. Asking for an occupied slot
+	// here would prove nothing.
+	const int32 Cases[] = { 1, 47, -1, 48, 5000 };
+	for (const int32 Slot : Cases)
+	{
+		TestEqual(*FString::Printf(TEXT("slot %d has nothing to drop"), Slot),
+			UCataclysmWearing::DropCarried(Inventory, Slot, World,
+										   FVector::ZeroVector),
+			ECataclysmWearResult::NothingToDrop);
+	}
+
+	TestEqual(TEXT("the carried item is untouched"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("and nothing was put on the floor"), OnTheFloor(World), 0);
+
+	return true;
+}
+
+/**
+ * A crafting material drops as its whole stack, with the count intact.
+ *
+ * A SLOT HOLDS ONE STACK AND THIS EMPTIES ONE SLOT. Dropping part of a stack
+ * would need a quantity to be chosen and there is no screen for choosing one.
+ * The quantity is the part that would be easy to lose: ACataclysmDroppedItem
+ * carries the material name and the count in two separate fields, and a drop
+ * that set only the name would put a stack of zero on the floor.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropMaterialStackTest,
+	"Cataclysm.DropPickup.DroppingACraftingMaterialDropsTheWholeStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropMaterialStackTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropFromBagTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const int32 Slot =
+		Inventory->AddMaterial(FName(TEXT("Material_Corrupted_Mote")), 7);
+	// TestTrue RATHER THAN TestNotEqual, because INDEX_NONE is an untyped -1 and
+	// the overload set cannot pick between its int32 and int64 forms.
+	if (!TestTrue(TEXT("the materials went in"), Slot != INDEX_NONE))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("they were dropped"),
+		UCataclysmWearing::DropCarried(Inventory, Slot, World,
+									   FVector(150.0f, 0.0f, 0.0f)),
+		ECataclysmWearResult::Dropped);
+	TestEqual(TEXT("the bag is empty"), Inventory->NumItems(), 0);
+
+	ACataclysmDroppedItem* Drop = TheOnlyDrop(World);
+	if (!TestNotNull(TEXT("the drop"), Drop))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("what is lying there is a material"), Drop->IsMaterial());
+	TestEqual(TEXT("it is the material that was carried"), Drop->Material,
+		FName(TEXT("Material_Corrupted_Mote")));
+	TestEqual(TEXT("and all seven went, not one"), Drop->MaterialQuantity, 7);
+
+	return true;
+}
+
+/**
+ * The cursor is released when the slot dropped was the one being held, and only
+ * then.
+ *
+ * A SCREEN LEFT HOLDING A SLOT WHOSE ITEM IS ON THE FLOOR would draw an item on
+ * the cursor that is no longer in the bag, and the next click would put down
+ * something that does not exist. The second half matters because
+ * `Cataclysm.Drop` can be typed while a screen is open holding a different
+ * slot, and that must not silently put the other item down.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropReleasesTheCursorTest,
+	"Cataclysm.DropPickup.DroppingTheHeldSlotReleasesTheCursorAndAnotherSlotDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropReleasesTheCursorTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const int32 Held = Inventory->AddItem(SomeItem(TEXT("Greataxe")));
+	const int32 Other = Inventory->AddItem(SomeItem(TEXT("Head_Helm")));
+
+	TestEqual(TEXT("it was picked up onto the cursor"),
+		UCataclysmWearing::PickUpCarried(Inventory, Held),
+		ECataclysmWearResult::PickedUp);
+	TestTrue(TEXT("something is held"), Inventory->IsHolding());
+
+	// A DIFFERENT SLOT FIRST. The cursor must survive this.
+	TestEqual(TEXT("the other slot was dropped"),
+		UCataclysmWearing::DropCarried(Inventory, Other, World,
+									   FVector(150.0f, 0.0f, 0.0f)),
+		ECataclysmWearResult::Dropped);
+	TestTrue(TEXT("the cursor still holds what it held"),
+		Inventory->IsHolding());
+	TestEqual(TEXT("and it still points at the same slot"),
+		Inventory->HeldSlot(), Held);
+
+	// NOW THE HELD ONE.
+	TestEqual(TEXT("the held slot was dropped"),
+		UCataclysmWearing::DropCarried(Inventory, Held, World,
+									   FVector(150.0f, 0.0f, 0.0f)),
+		ECataclysmWearResult::Dropped);
+	TestFalse(TEXT("the cursor is empty now"), Inventory->IsHolding());
+	TestEqual(TEXT("and points at nothing"), Inventory->HeldSlot(), INDEX_NONE);
+
+	return true;
+}
+
+/**
+ * When the floor refuses the item, the item is still in the bag.
+ *
+ * THIS IS THE ONE THAT PROVES NOTHING IS DESTROYED. Every other test here
+ * checks a path that worked. The order inside DropCarried -- spawn first, empty
+ * the slot second -- exists only for this case, and reversing it would pass
+ * every other test in this file while quietly deleting a player's item whenever
+ * a spawn failed.
+ *
+ * A NULL WORLD IS HOW THE FAILURE IS REACHED. A drop is asked for with
+ * AlwaysSpawn, so a world that exists will not refuse one; the real cases are a
+ * world that is missing or shutting down.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropRefusedKeepsTheItemTest,
+	"Cataclysm.DropPickup.AnItemTheFloorRefusesIsStillInTheBag",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropRefusedKeepsTheItemTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	if (!TestNotNull(TEXT("inventory"), Inventory))
+	{
+		return false;
+	}
+
+	const int32 Slot = Inventory->AddItem(SomeItem(TEXT("Greataxe")));
+
+	TestEqual(TEXT("the floor refused it"),
+		UCataclysmWearing::DropCarried(Inventory, Slot, /*World=*/nullptr,
+									   FVector::ZeroVector),
+		ECataclysmWearResult::TheFloorRefusedIt);
+
+	TestEqual(TEXT("it is still carried"), Inventory->NumItems(), 1);
+
+	const FCataclysmItem* Kept = Inventory->ItemAt(Slot);
+	if (!TestNotNull(TEXT("still in the slot it was in"), Kept))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the same item"), Kept->Base,
+		FName(TEXT("Greataxe")));
+	TestEqual(TEXT("with its rolls intact"), Kept->Residue, 42.0f);
+
+	// AND WITHOUT AN INVENTORY THERE IS NOTHING TO WORK WITH, which is a
+	// different answer from "the floor refused it" on purpose: one means the
+	// item is safe and the other means there was no item.
+	TestEqual(TEXT("no inventory is a different answer"),
+		UCataclysmWearing::DropCarried(nullptr, 0, nullptr, FVector::ZeroVector),
+		ECataclysmWearResult::NothingToWorkWith);
 
 	return true;
 }

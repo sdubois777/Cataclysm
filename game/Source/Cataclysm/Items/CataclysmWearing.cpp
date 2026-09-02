@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 
+#include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 
@@ -281,6 +282,53 @@ void UCataclysmWearing::ReleaseHeld(UCataclysmInventoryComponent* Inventory)
 	}
 }
 
+ECataclysmWearResult UCataclysmWearing::DropCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot, UWorld* World,
+	const FVector& At)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+	if (!Slots.IsValidIndex(CarriedSlot)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(Slots[CarriedSlot]))
+	{
+		return ECataclysmWearResult::NothingToDrop;
+	}
+
+	// COPIED BEFORE ANYTHING IS EMPTIED. RemoveItemAt overwrites the slot, so a
+	// reference into the array would be reading freed contents by the time the
+	// spawn needed them.
+	const FCataclysmCarriedSlot Leaving = Slots[CarriedSlot];
+
+	// THE FLOOR IS ASKED FIRST. If this fails the item is still in the bag and
+	// the character has lost nothing, which is this class's one rule. Emptying
+	// the slot first would destroy the item on a failed spawn, and a spawn is
+	// the only step here that can fail for a reason the rules did not choose.
+	// THE TWO NAMES FOR THE COUNT ARE NOT THE SAME. A carried slot calls it
+	// `Quantity` and a drop on the floor calls it `MaterialQuantity`.
+	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving.Item,
+											  Leaving.Material,
+											  Leaving.Quantity))
+	{
+		return ECataclysmWearResult::TheFloorRefusedIt;
+	}
+
+	Inventory->RemoveItemAt(CarriedSlot);
+
+	// THE CURSOR IS ONLY RELEASED WHEN IT WAS POINTING AT THIS SLOT. Dropping by
+	// console command while a screen holds a different slot must not silently
+	// put that other item down.
+	if (Inventory->HeldSlot() == CarriedSlot)
+	{
+		ReleaseHeld(Inventory);
+	}
+
+	return ECataclysmWearResult::Dropped;
+}
+
 FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 {
 	switch (Result)
@@ -316,6 +364,13 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 		return TEXT("Nothing is being held.");
 	case ECataclysmWearResult::AlreadyHolding:
 		return TEXT("Something is already being held. Put it down first.");
+	case ECataclysmWearResult::Dropped:
+		return TEXT("Dropped on the floor in front of you.");
+	case ECataclysmWearResult::NothingToDrop:
+		return TEXT("There is nothing there to drop.");
+	case ECataclysmWearResult::TheFloorRefusedIt:
+		return TEXT("It could not be put on the floor, so it is still in "
+					"the bag.");
 	}
 	return FString();
 }

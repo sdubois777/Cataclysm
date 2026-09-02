@@ -862,6 +862,28 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 		return;
 	}
 
+	// A PRESS ON NEITHER PANEL WHILE HOLDING SOMETHING IS THE DROP GESTURE, and
+	// it is the only way an item leaves the bag without going onto the body.
+	// docs/Cataclysm_GDD_v2.md gives this game no town portal, so a player who
+	// fills the bag part way down a dungeon cannot leave, sell or destroy
+	// anything; dropping is the whole release valve. Issue #1190.
+	//
+	// THE EXISTING GESTURE EXTENDED RATHER THAN A SECOND ONE ADDED. The screen
+	// is click-to-pick-up and click-to-place, which docs/Inventory_Screen_Design.md
+	// chose over press-and-drag after looking at Path of Exile, Last Epoch and
+	// Diablo. This is one more place to click, not a new way to operate the
+	// screen.
+	//
+	// NO CONFIRMATION AT ANY RARITY, decided by the project owner on 2026-09-02.
+	// The item lands within reach and can be picked straight back up.
+	if (Bag && Bag->IsHolding())
+	{
+		ReportInventoryPress(UCataclysmWearing::DropCarried(
+			Bag, Bag->HeldSlot(), GetWorld(),
+			UCataclysmDropSpawner::DropSpotInFrontOf(*Wearer)));
+		return;
+	}
+
 	// SAME REPORT AS THE RIGHT BUTTON. Issue #1016 is about equipping, which is
 	// the right button, but the two share every step up to this point and a
 	// left press that lands on nothing is the same silence.

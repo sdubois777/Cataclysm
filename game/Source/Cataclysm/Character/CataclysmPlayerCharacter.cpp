@@ -48,6 +48,7 @@
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmWeaponMeshes.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -1702,6 +1703,38 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmUnequip(
 
 			Ar.Log(*UCataclysmWearing::Explain(UCataclysmWearing::TakeOffInto(
 				Character->GetInventory(), Character->GetEquipment(), Slot)));
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmDrop(
+	TEXT("Cataclysm.Drop"),
+	TEXT("Take the item in a carried inventory slot, 0 to 47, out of the bag "
+		 "and leave it on the floor in front of the character."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character)
+			{
+				return;
+			}
+
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.Drop <carried slot 0 to 47>. "
+							"Cataclysm.ShowEquipment lists what is carried."));
+				return;
+			}
+
+			// THE SAME RULE THE SCREEN USES. A left press on neither panel while
+			// holding an item runs UCataclysmWearing::DropCarried too, so this
+			// command cannot drift away from the gesture it stands in for.
+			// Issue #1190 asked for this because there was no way to drop an
+			// item at all -- not by click, not by key, and not by console.
+			Ar.Log(*UCataclysmWearing::Explain(UCataclysmWearing::DropCarried(
+				Character->GetInventory(), FCString::Atoi(*Args[0]), World,
+				UCataclysmDropSpawner::DropSpotInFrontOf(*Character))));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(

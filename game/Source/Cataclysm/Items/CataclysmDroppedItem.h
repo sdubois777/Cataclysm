@@ -173,6 +173,58 @@ public:
 	 */
 	static FVector ScatterOffset(int32 Index, int32 Count);
 
+	/**
+	 * How far in front of a character a deliberately dropped item lands, in
+	 * centimetres.
+	 *
+	 * WELL INSIDE PICKUP RANGE, WHICH IS THE POINT. The project owner decided on
+	 * 2026-09-02 that dropping asks for no confirmation at any rarity, and the
+	 * reason that is safe is that the item lies on the floor and can be picked
+	 * straight back up. That is only true if it lands within
+	 * UCataclysmDropPickup::PickupRangeCm, which is 300, so this is half of it
+	 * and a mis-click costs nothing. Guarded by
+	 * Cataclysm.DropPickup.ADroppedItemLandsWithinReachOfTheCharacterWhoDroppedIt.
+	 *
+	 * IN FRONT RATHER THAN UNDER FOOT so the name the heads-up display draws is
+	 * not hidden behind the character.
+	 */
+	static constexpr float DropInFrontCm = 150.0f;
+
+	/**
+	 * Where an item dropped by this character should land.
+	 *
+	 * FLAT, WITH NO HEIGHT CHANGE, for the same reason ScatterOffset is: nothing
+	 * here knows where the floor is. It does not matter for reaching the drop
+	 * again, because UCataclysmDropPickup::IsWithinPickupRange ignores height,
+	 * and it cannot strand the item, because ACataclysmDroppedItem has no
+	 * physics and no mesh -- it stays exactly where it is put.
+	 */
+	static FVector DropSpotInFrontOf(const AActor& Character);
+
+	/**
+	 * Put one particular item on the floor. Nothing is rolled.
+	 *
+	 * LIFTED OUT OF THE SAVE SYSTEM, where it was a private static called
+	 * `FCataclysmSaveApply::GroundItemInto` and was the only code in the project
+	 * that could put a KNOWN item on the ground -- everything else rolls a new
+	 * one. Restoring a floor from a save and dropping an item out of the bag are
+	 * the same operation, and issues #1176 and #1190 both needed it. One copy,
+	 * here beside the two spawners that roll.
+	 *
+	 * @param Item              the gear item, or a default one when dropping a
+	 *                          crafting material
+	 * @param Material          the material's row key, or None for gear
+	 * @param MaterialQuantity  how many, or 0 for gear
+	 *
+	 * @return the actor, or null when the world was missing or the spawn was
+	 *         refused. A caller that is taking the item from somewhere else
+	 *         MUST check this before removing it, or the item is destroyed.
+	 */
+	static ACataclysmDroppedItem* PutOnTheFloor(UWorld* World, const FVector& At,
+												const FCataclysmItem& Item,
+												FName Material,
+												int32 MaterialQuantity);
+
 	/** The colour an item of this rarity has its name drawn in, or white when
 	 *  the table is missing it. */
 	static FLinearColor ColourFor(const UDataTable* GearRarityTable,
