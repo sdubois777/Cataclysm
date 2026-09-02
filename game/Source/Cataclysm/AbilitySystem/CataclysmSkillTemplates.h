@@ -883,6 +883,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	static bool IsBeingWalkedByASkill(const AActor* Who);
 
+	/**
+	 * Which way a skill is carrying this character, or a zero vector.
+	 *
+	 * WHAT ASKS, AND WHY A ROOT MOTION SOURCE IS NOT ENOUGH BY ITSELF.
+	 * `ACataclysmPlayerController::PostProcessInput` feeds this back to the pawn
+	 * as movement input every frame while a charge runs. The root motion source
+	 * decides where the character goes and how fast; this decides what the
+	 * movement component THINKS about it, and two things read that rather than
+	 * the velocity:
+	 *
+	 * - `ABP_Unarmed`, the animation Blueprint, sets its `ShouldMove` flag from
+	 *   `GroundSpeed > 0.01 AND GetCurrentAcceleration != 0`. Read out of the
+	 *   asset's own event graph on 2026-09-02. Root motion writes velocity and
+	 *   never writes acceleration, so a charged character was moving with the
+	 *   idle animation playing -- which the project owner reported as sliding.
+	 * - `bOrientRotationToMovement` turns the character to face its
+	 *   ACCELERATION, not its velocity, so without this a charge could carry a
+	 *   character sideways.
+	 *
+	 * IT CHANGES NEITHER THE SPEED NOR THE DIRECTION OF TRAVEL. The root motion
+	 * source is in `Override` mode, so whatever velocity the input would have
+	 * produced is discarded. This is the skill saying which way it is going, not
+	 * a second thing pushing.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	static FVector AdvanceDirectionFor(const AActor* Who);
+
 	/** How many steps a lasting charge has taken. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 StepsTaken = 0;
@@ -962,6 +989,16 @@ private:
 
 	/** Ends a lasting charge when its duration runs out. */
 	void FinishAdvance();
+
+	/**
+	 * The lasting charge running on this character, or null.
+	 *
+	 * ONE SEARCH BEHIND TWO QUESTIONS. `IsBeingWalkedByASkill` and
+	 * `AdvanceDirectionFor` differ only in what they read off the answer, and
+	 * two copies of the loop would be two places for the definition of "is being
+	 * carried by a charge" to drift apart.
+	 */
+	static const UCataclysmMovementSkill* RunningAdvanceOn(const AActor* Who);
 
 	/** The direction a lasting charge travels, fixed when it began. */
 	FVector Advance = FVector::ZeroVector;

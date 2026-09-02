@@ -10031,4 +10031,76 @@ bool FCataclysmAdvanceHandsItsMovementOverTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAdvanceReportsItsDirectionTest,
+	"Cataclysm.Skills.AChargeSaysWhichWayItIsCarryingTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAdvanceReportsItsDirectionTest::RunTest(const FString&)
+{
+	// WHY ANYTHING NEEDS TO ASK. A root motion source writes the character's
+	// velocity and never writes its acceleration, and two things read the
+	// acceleration rather than the velocity: `ABP_Unarmed` sets its `ShouldMove`
+	// flag from `GroundSpeed > 0.01 AND GetCurrentAcceleration != 0`, and
+	// `bOrientRotationToMovement` turns the character toward its acceleration.
+	// So a charging character played its idle animation while travelling, which
+	// the project owner reported as sliding.
+	//
+	// `ACataclysmPlayerController::PostProcessInput` feeds this answer back to
+	// the pawn as movement input every frame. That half has no automation
+	// coverage and cannot have any -- the tests run with no player controller --
+	// so what is covered here is that the question has a right answer to feed.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Walker(World, FVector::ZeroVector);
+
+	UCataclysmMovementSkill* Advance = GrantSkill<UCataclysmMovementSkill>(
+		Walker, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=1.5"),
+		TEXT("Inexorable"));
+	if (!Advance)
+	{
+		AddError(TEXT("Could not grant the advance."));
+		return false;
+	}
+
+	// NOTHING IS CARRYING ANYBODY BEFORE THE CAST, and a zero vector is how that
+	// is said. The controller tests for exactly this before adding any input, so
+	// an answer of "forwards" here would push every character every frame.
+	TestTrue(TEXT("nothing is carrying the character before the cast"),
+		UCataclysmMovementSkill::AdvanceDirectionFor(Walker.Actor).IsNearlyZero());
+
+	TestTrue(TEXT("the charge activates"), Activate(Walker, Advance));
+
+	// THE DIRECTION IS THE ONE THE CHARGE TOOK AT THE CAST. With no player
+	// controller there is no cursor, so the aim falls back to the caster's own
+	// facing, which is the positive X axis for a fighter spawned unrotated.
+	const FVector Carried =
+		UCataclysmMovementSkill::AdvanceDirectionFor(Walker.Actor);
+
+	TestTrue(TEXT("and now it says which way it is carrying it"),
+		Carried.Equals(FVector(1.0f, 0.0f, 0.0f), 0.01f));
+
+	// AND IT AGREES WITH THE QUESTION THE MOVEMENT GATE ASKS, which is the same
+	// search behind both. A direction without the gate would mean the player's
+	// own input was still accepted while the charge carried them.
+	TestTrue(TEXT("and agrees that a skill is walking the character"),
+		UCataclysmMovementSkill::IsBeingWalkedByASkill(Walker.Actor));
+
+	// AND IT STOPS SAYING SO WHEN THE CHARGE ENDS. Without this the controller
+	// would go on pushing the character after the skill was over.
+	Walker.AbilitySystem->CancelAbilityHandle(
+		Advance->GetCurrentAbilitySpecHandle());
+
+	TestTrue(TEXT("and a finished charge carries nobody"),
+		UCataclysmMovementSkill::AdvanceDirectionFor(Walker.Actor).IsNearlyZero());
+	TestFalse(TEXT("and no skill is walking the character any more"),
+		UCataclysmMovementSkill::IsBeingWalkedByASkill(Walker.Actor));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

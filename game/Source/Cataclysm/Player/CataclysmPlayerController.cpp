@@ -266,6 +266,45 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 		PendingPickup = nullptr;
 	}
 
+	// A CHARGE TELLS THE MOVEMENT COMPONENT WHICH WAY IT IS GOING, AND IT HAS TO
+	// DO THAT SEPARATELY FROM MOVING. The Greatsword's Inexorable is carried by a
+	// root motion source, which writes the character's velocity directly and
+	// never writes its acceleration. Two things read the acceleration rather
+	// than the velocity, and both were wrong without this:
+	//
+	// - `ABP_Unarmed`, the animation Blueprint, sets `ShouldMove` from
+	//   `GroundSpeed > 0.01 AND GetCurrentAcceleration != 0`. Read out of that
+	//   asset's own event graph on 2026-09-02. So a charging character played
+	//   its idle animation while travelling, which the project owner reported as
+	//   sliding.
+	// - `bOrientRotationToMovement` turns the character toward its acceleration,
+	//   so a charge could otherwise carry it sideways.
+	//
+	// AFTER `StopMovement` AND NOT BEFORE. That call ends with
+	// `StopMovementImmediately`, which zeroes both velocity and acceleration, so
+	// input added before it would be thrown away in the same frame.
+	//
+	// IT CHANGES NOTHING ABOUT WHERE THE CHARACTER GOES. The root motion source
+	// is in `Override` mode, so it replaces whatever velocity this input would
+	// have produced. This is the skill saying which way it is going, not a second
+	// thing pushing.
+	//
+	// **STILL NO AUTOMATION COVERAGE, FOR THE REASON `PawnCannotWalk` GIVES.**
+	// The automation tests run with no player controller, so nothing they do
+	// reaches this function. What IS covered is that the skill can be asked its
+	// direction, in `Cataclysm.Skills.AChargeSaysWhichWayItIsCarryingTheCharacter`;
+	// that the answer arrives
+	// here has to be judged by pressing a key.
+	if (APawn* ControlledPawn = GetPawn())
+	{
+		const FVector Carried =
+			UCataclysmMovementSkill::AdvanceDirectionFor(ControlledPawn);
+		if (!Carried.IsNearlyZero())
+		{
+			ControlledPawn->AddMovementInput(Carried, 1.0f, /*bForce=*/false);
+		}
+	}
+
 	UpdatePendingPickup();
 	CollectMaterialsNearby();
 
