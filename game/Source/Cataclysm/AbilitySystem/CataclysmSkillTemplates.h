@@ -810,27 +810,51 @@ public:
 	TObjectPtr<AActor> SwappedWith;
 
 	/**
-	 * One step of a charge that lasts. `Mode=Charge` with a `Duration`.
+	 * Strike whatever the charge has passed through since this was last asked.
 	 *
 	 * ONE ROW STATES IT: the Greatsword's Inexorable, "begin an advance that
-	 * cannot be turned aside. You walk forward for 3 seconds, immune to crowd
-	 * control and unable to change direction or stop, throwing aside and setting
-	 * alight everything you pass through. The further you walked, the harder it
-	 * hits."
+	 * cannot be turned aside. You charge 14 meters in 1.5 seconds, immune to
+	 * crowd control and unable to change direction or stop, throwing aside and
+	 * setting alight everything you pass through. The further you charged, the
+	 * harder it hits."
+	 *
+	 * IT NO LONGER MOVES ANYTHING, AND UNTIL 2026-09-02 IT DID. It used to
+	 * teleport the character 46.7cm with `SetActorLocation`, ten times a second.
+	 * That is what the project owner saw in the first play session: the camera
+	 * held still for five rendered frames and then jumped, and the character slid
+	 * rather than walked, because the walk animation is driven by the movement
+	 * component's velocity and a teleport never writes one. Issue #1169.
+	 *
+	 * `UCharacterMovementComponent` MOVES THE CHARACTER NOW, through the root
+	 * motion source `BeginAdvance` applies. That gives a real velocity, so the
+	 * animation and the camera both follow, and the movement component does the
+	 * sweeping, so a charge still stops against a wall.
+	 *
+	 * SO THIS IS AN OBSERVER. It notices how far the character has actually
+	 * moved since it was last asked, adds that to the tally, and strikes what
+	 * the line between the two positions passed through. Ten times a second is
+	 * often enough to miss nothing, because the search covers the whole line
+	 * rather than a point.
 	 *
 	 * A CHARGE WITHOUT A DURATION IS UNCHANGED AND STILL ARRIVES AT ONCE. The
 	 * Fist's Cinder Rush and the Whip's Reel both state `Mode=Charge` and no
 	 * duration, and both are one move to a point that hits what the line crosses.
-	 * Stating a duration is what makes a charge a walk.
+	 * Stating a duration is what makes a charge last.
 	 *
 	 * THE DIRECTION IS FIXED AT THE CAST AND NEVER RE-READ, which is what "cannot
 	 * be turned aside" and "unable to change direction" say. Reading the cursor
 	 * each step would make it a chase.
 	 *
-	 * EACH STEP HITS WHAT IT PASSES AND NOTHING TWICE. A creature the advance
-	 * walks through is struck once, on the step that reaches it, and remembered
-	 * afterwards -- without that, a three second walk would strike whatever it
-	 * was standing beside on every one of its steps.
+	 * IT HITS WHAT IT PASSES AND NOTHING TWICE. A creature the charge runs
+	 * through is struck once and remembered afterwards -- without that, it would
+	 * strike whatever it was standing beside on every one of its searches.
+	 *
+	 * A TEST HAS TO MOVE THE CHARACTER ITSELF BEFORE CALLING THIS. A world built
+	 * by `UWorld::CreateWorld` is never ticked, so no root motion is ever
+	 * applied, and the test fighters are plain actors with no movement component
+	 * for it to be applied to. What a search DOES is covered; that the engine
+	 * moves the character is covered by asking whether the root motion source was
+	 * applied, in `Cataclysm.Skills.AnAdvanceHandsItsMovementToTheMovementComponent`.
 	 *
 	 * Public so a test can drive it without a world that ticks.
 	 */
@@ -914,38 +938,67 @@ private:
 	void FinishFlicker();
 
 	/**
-	 * How often a lasting charge takes a step, in seconds.
+	 * How often a lasting charge looks for what it has run through, in seconds.
 	 *
-	 * TEN TIMES A SECOND, WHICH IS A COMPROMISE BETWEEN TWO FAILURES. Fewer steps
-	 * would let the advance jump past a creature standing between two of them --
-	 * the line search covers the gap, but a character teleporting a metre at a
-	 * time reads as stuttering rather than walking. More steps would search the
-	 * level more often for no visible gain.
+	 * TEN TIMES A SECOND, AND WHAT THAT RATE DECIDES CHANGED ON 2026-09-02. It
+	 * used to be how often the character was teleported forward, so it decided
+	 * how the charge LOOKED, and it looked like stuttering. The movement
+	 * component moves the character every frame now, so this only decides how
+	 * often the skill asks what it has passed through.
 	 *
-	 * NOT A PER-FRAME TICK, for the reason `ACataclysmGroundZone` gives: the work
-	 * is a move and a sweep, and a tick would run it six times more often for the
-	 * same result.
+	 * TEN IS STILL RIGHT FOR THAT, and for a different reason from before. The
+	 * search covers the whole line between two positions rather than a point, so
+	 * nothing is missed however far apart they are; what a fast rate buys is that
+	 * a creature is struck near the moment the charge reaches it rather than up
+	 * to a tenth of a second late. Searching every frame would ask the level the
+	 * same question six times over for no visible gain, which is the reason
+	 * `ACataclysmGroundZone` gives for not ticking.
 	 */
 	static constexpr float SecondsPerAdvanceStep = 0.1f;
 
-	/** Sets up a charge that lasts, and starts its step timer. */
+	/** Sets up a charge that lasts, hands its movement to the engine, and starts
+	 *  its search timer. */
 	void BeginAdvance(const FVector& Start);
 
 	/** Ends a lasting charge when its duration runs out. */
 	void FinishAdvance();
 
-	/** The direction a lasting charge walks, fixed when it began. */
+	/** The direction a lasting charge travels, fixed when it began. */
 	FVector Advance = FVector::ZeroVector;
 
-	/** How far one step of it travels, in centimetres. */
-	float StepCm = 0.0f;
+	/**
+	 * How fast it travels, in centimetres per second.
+	 *
+	 * THE ROW'S TWO NUMBERS ARE ITS SPEED. `Range` is how far the charge goes and
+	 * `Duration` is how long it takes, so the pair is a speed and the sheet
+	 * states both. Inexorable's fourteen metres in one and a half seconds is 9.3
+	 * metres a second, a little over twice a Ravager's 4.6 metre walk.
+	 *
+	 * IT WAS 4.67 UNTIL 2026-09-02, which is 1.5% faster than that walk. The
+	 * project owner played it and said it was "just less optimal walking", and
+	 * the arithmetic agreed. Issue #1170. The comment that used to sit here
+	 * compared the old figure against the Ritualist's 3.5, which is the slowest
+	 * of the three classes rather than the one holding the weapon, and that
+	 * comparison is part of what let it through.
+	 */
+	float SpeedCmPerSecond = 0.0f;
+
+	/**
+	 * Where the last search for things to strike started from.
+	 *
+	 * NEEDED BECAUSE THE SKILL NO LONGER MOVES THE CHARACTER. The movement
+	 * component does, every frame, so by the time a search runs the character has
+	 * already travelled and there is no step to read the two ends off. This is
+	 * the far end of the last search and therefore the near end of the next.
+	 */
+	FVector LastSearchedFrom = FVector::ZeroVector;
 
 	/**
 	 * What a lasting charge has already struck, so nothing is struck twice.
 	 *
-	 * A WALK NEEDS THIS AND AN ARRIVAL DOES NOT. A creature standing beside the
-	 * path would otherwise be found by the line search on every one of a three
-	 * second advance's thirty steps.
+	 * A CHARGE NEEDS THIS AND AN ARRIVAL DOES NOT. A creature standing beside the
+	 * path would otherwise be found by the line search on every one of a charge's
+	 * fifteen searches.
 	 */
 	TSet<TWeakObjectPtr<AActor>> StruckAlready;
 

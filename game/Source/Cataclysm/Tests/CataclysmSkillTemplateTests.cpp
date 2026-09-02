@@ -35,6 +35,12 @@
 // wall, a fissure or a thicket. Issue #37.
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the character a root motion source can actually be applied to, and
+// for reading the source back off its movement component. Issue #1169.
+#include "Character/CataclysmPlayerCharacter.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RootMotionSource.h"
+#include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
@@ -9118,23 +9124,36 @@ bool FCataclysmLastingChargeWalksTest::RunTest(const FString&)
 	TestTrue(TEXT("it is still running, so its immunity holds"),
 		UCataclysmSkillTemplate::IsImmuneTo(Walker.Actor, TEXT("Stun")));
 
-	// DRIVEN DIRECTLY, because the steps run on the world's timer manager and a
-	// world built by `UWorld::CreateWorld` is never ticked.
-	Advance->AdvanceOneStep();
-	Advance->AdvanceOneStep();
-	Advance->AdvanceOneStep();
+	// DRIVEN DIRECTLY, because the searches run on the world's timer manager
+	// and a world built by `UWorld::CreateWorld` is never ticked.
+	//
+	// AND THE TEST MOVES THE CHARACTER, WHICH CHANGED ON 2026-09-02.
+	// `AdvanceOneStep` used to teleport the character itself and now only
+	// notices where it has got to; `UCharacterMovementComponent` moves it,
+	// through a root motion source, and there is no movement component here
+	// because a test fighter is a plain actor. So the test plays the part the
+	// engine plays in the game and what is left to check is that the skill
+	// notices. That the skill really hands its movement over is checked
+	// separately, in
+	// `Cataclysm.Skills.AnAdvanceHandsItsMovementToTheMovementComponent`.
+	for (int32 Search = 0; Search < 3; ++Search)
+	{
+		Walker.Actor->SetActorLocation(
+			Walker.Actor->GetActorLocation() + FVector(50.0f, 0.0f, 0.0f));
+		Advance->AdvanceOneStep();
+	}
 
-	TestEqual(TEXT("three steps have been taken"), Advance->StepsTaken, 3);
-	TestTrue(TEXT("and it has walked somewhere"), Advance->WalkedCm > 0.0f);
-	TestTrue(TEXT("and moved"),
-		static_cast<float>(Walker.Actor->GetActorLocation().X) > StartedAt + 1.0f);
+	TestEqual(TEXT("three searches have been made"), Advance->StepsTaken, 3);
+	TestEqual(TEXT("and the character moved"),
+		static_cast<float>(Walker.Actor->GetActorLocation().X),
+		StartedAt + 150.0f, 1.0f);
 
-	// THE DISTANCE IS THE GROUND COVERED. Fourteen metres over three seconds at
-	// ten steps a second is about forty-seven centimetres a step, so three steps
-	// is about a metre and a half. Checked loosely, because what matters is that
-	// the row's range and duration decide it rather than a number in code.
-	TestTrue(TEXT("three steps is roughly a tenth of the stated range"),
-		Advance->WalkedCm > 100.0f && Advance->WalkedCm < 200.0f);
+	// THE TALLY IS THE GROUND ACTUALLY COVERED, which is what
+	// `ScalingSource=Meter` reads. Three moves of fifty centimetres is exactly a
+	// metre and a half, because the tally measures rather than assumes -- and
+	// that is why a charge held against a wall grows no stronger.
+	TestEqual(TEXT("and the tally is the ground actually covered"),
+		Advance->WalkedCm, 150.0f, 1.0f);
 
 	return true;
 }
@@ -9177,11 +9196,17 @@ bool FCataclysmAdvanceStrikesWhatItPassesOnceTest::RunTest(const FString&)
 
 	const float Before = InThePath.Health();
 
-	// ENOUGH STEPS TO WALK PAST THE ENEMY AND WELL BEYOND IT. Each step is about
-	// forty-seven centimetres, so ten steps covers nearly five metres against an
-	// enemy standing one metre along.
-	for (int32 Step = 0; Step < 10; ++Step)
+	// ENOUGH MOVEMENT TO PASS THE ENEMY AND GO WELL BEYOND IT. Fifty centimetres
+	// a search over ten searches is five metres, against an enemy standing one
+	// metre along.
+	//
+	// THE TEST MOVES THE CHARACTER because a plain actor has no movement
+	// component for the skill's root motion to reach. See the header on
+	// `AdvanceOneStep`.
+	for (int32 Search = 0; Search < 10; ++Search)
 	{
+		Walker.Actor->SetActorLocation(
+			Walker.Actor->GetActorLocation() + FVector(50.0f, 0.0f, 0.0f));
 		Advance->AdvanceOneStep();
 	}
 
@@ -9191,15 +9216,17 @@ bool FCataclysmAdvanceStrikesWhatItPassesOnceTest::RunTest(const FString&)
 		UCataclysmSkillEffects::HasTag(InThePath.Actor,
 									   UCataclysmSkillEffects::BurnTag()));
 
-	// STRUCK ONCE AND NOT ONCE PER STEP, which is the whole point of this test.
-	// Ten steps went past it and the count is one.
+	// STRUCK ONCE AND NOT ONCE PER SEARCH, which is the whole point of this
+	// test. Ten searches went past it and the count is one.
 	const float AfterTen = InThePath.Health();
-	for (int32 Step = 0; Step < 10; ++Step)
+	for (int32 Search = 0; Search < 10; ++Search)
 	{
+		Walker.Actor->SetActorLocation(
+			Walker.Actor->GetActorLocation() + FVector(50.0f, 0.0f, 0.0f));
 		Advance->AdvanceOneStep();
 	}
 
-	TestEqual(TEXT("ten more steps strike it no further times"),
+	TestEqual(TEXT("ten more searches strike it no further times"),
 		Advance->EnemiesHit, 1);
 	TestEqual(TEXT("so it lost no more health"), InThePath.Health(), AfterTen,
 		0.01f);
@@ -9254,15 +9281,20 @@ bool FCataclysmAdvanceHitsHarderTheFurtherItWentTest::RunTest(const FString&)
 	const float EarlyBefore = StruckEarly.Health();
 	const float LateBefore = StruckLate.Health();
 
-	// THE NEAR ENEMY IS STRUCK AFTER THREE STEPS, about a metre and a half in.
-	for (int32 Step = 0; Step < 3; ++Step)
+	// THE NEAR ENEMY IS STRUCK A METRE AND A HALF IN, and the far one twelve and
+	// a half metres in. The test moves each caster because a plain actor has no
+	// movement component for the skill's root motion to reach.
+	for (int32 Search = 0; Search < 3; ++Search)
 	{
+		Near.Actor->SetActorLocation(
+			Near.Actor->GetActorLocation() + FVector(50.0f, 0.0f, 0.0f));
 		ShortWalk->AdvanceOneStep();
 	}
 
-	// AND THE FAR ONE AFTER TWENTY-FIVE, about twelve metres in.
-	for (int32 Step = 0; Step < 25; ++Step)
+	for (int32 Search = 0; Search < 25; ++Search)
 	{
+		Far.Actor->SetActorLocation(
+			Far.Actor->GetActorLocation() + FVector(50.0f, 0.0f, 0.0f));
 		LongWalk->AdvanceOneStep();
 	}
 
@@ -9866,6 +9898,135 @@ bool FCataclysmPlantWithNoWindowIsRefusedTest::RunTest(const FString&)
 		++Patches;
 	}
 	TestEqual(TEXT("and no ground was left burning"), Patches, 0);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAdvanceHandsItsMovementOverTest,
+	"Cataclysm.Skills.AnAdvanceHandsItsMovementToTheMovementComponent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAdvanceHandsItsMovementOverTest::RunTest(const FString&)
+{
+	// WHAT EVERY OTHER ADVANCE TEST CANNOT CHECK. They move their fighter by
+	// hand, because a fighter is a plain actor with no movement component, so
+	// none of them would notice if the skill stopped asking to be moved at all.
+	// Issue #1169.
+	//
+	// IT DOES NOT CHECK THAT THE CHARACTER ARRIVES, EITHER. A world built for a
+	// test is never ticked, so the movement component never runs and nothing
+	// moves. What is checked is that the request was made and carries the row's
+	// own numbers, which is the half that would break silently. Whether it looks
+	// smooth is judged by pressing a key.
+	//
+	// A REAL PLAYER CHARACTER, because a root motion source needs a
+	// `UCharacterMovementComponent` to be applied to and the engine's own task
+	// quietly does nothing without one.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player state"), State)
+		|| !TestNotNull(TEXT("a player"), Player))
+	{
+		return false;
+	}
+
+	Player->SetPlayerState(State);
+	Player->OnRep_PlayerState();
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			Player->GetAbilitySystemComponent());
+	UCharacterMovementComponent* Movement = Player->GetCharacterMovement();
+	if (!TestNotNull(TEXT("an ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("a movement component"), Movement))
+	{
+		return false;
+	}
+
+	// ENOUGH MANA THAT THE CAST CANNOT BE REFUSED FOR THE WRONG REASON. Without
+	// this a failure below would read as "the advance did not hand its movement
+	// over" when what happened was that the Movement slot could not be paid for.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+
+	const FGameplayAbilitySpecHandle Handle = AbilitySystem->GiveAbilityInSlot(
+		UCataclysmMovementSkill::StaticClass(),
+		ECataclysmAbilitySlot::Movement, /*Level=*/100, Player);
+	FGameplayAbilitySpec* Spec = AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmMovementSkill* Advance =
+		Spec ? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!Advance)
+	{
+		AddError(TEXT("Could not grant the advance."));
+		return false;
+	}
+
+	Advance->SkillName = TEXT("Inexorable");
+	Advance->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=1.5"));
+
+	const FName ForceName(TEXT("CataclysmAdvance"));
+
+	TestNull(TEXT("nothing is moving the character before the cast"),
+		Movement->GetRootMotionSource(ForceName).Get());
+
+	TestTrue(TEXT("the advance activates"),
+		AbilitySystem->TryActivateAbility(Handle,
+										  /*bAllowRemoteActivation=*/false));
+
+	TSharedPtr<FRootMotionSource> Source = Movement->GetRootMotionSource(ForceName);
+	if (!TestTrue(TEXT("the advance asked the movement component to move it"),
+			Source.IsValid()))
+	{
+		return false;
+	}
+
+	// A CONSTANT FORCE, WHOSE STRENGTH IS A SPEED.
+	// `FRootMotionSource_ConstantForce` multiplies the direction by it, so the
+	// length of that vector is centimetres a second.
+	//
+	// COMPARED WITH `TestTrue` RATHER THAN `TestEqual`, because there is no
+	// overload for two struct pointers.
+	if (!TestTrue(TEXT("and it is a constant force"),
+			Source->GetScriptStruct()
+				== FRootMotionSource_ConstantForce::StaticStruct()))
+	{
+		return false;
+	}
+
+	const FRootMotionSource_ConstantForce* Force =
+		static_cast<const FRootMotionSource_ConstantForce*>(Source.Get());
+
+	// THE ROW'S OWN TWO NUMBERS. `Range` over `Duration` is the speed: fourteen
+	// metres in one and a half seconds is 933 centimetres a second, which is a
+	// little over twice a Ravager's 4.6 metre walk. Issue #1170; it used to be
+	// 467, which was 1.5% faster than that walk.
+	TestEqual(TEXT("at the speed the row's range and duration give"),
+		static_cast<float>(Force->Force.Size()), 933.3f, 1.0f);
+	TestEqual(TEXT("for the duration the row states"), Force->Duration, 1.5f,
+		0.01f);
+
+	// OVERRIDE RATHER THAN ADDITIVE, WHICH IS WHAT "CANNOT BE TURNED ASIDE"
+	// MEANS TO A MOVEMENT COMPONENT. It replaces the character's velocity rather
+	// than adding to it, so the player's own input decides nothing while the
+	// charge runs. The player controller refuses that input as well; this is the
+	// same sentence enforced on the movement itself.
+	TestTrue(TEXT("and it overrides the character's own movement"),
+		Force->AccumulateMode == ERootMotionAccumulateMode::Override);
 
 	return true;
 }
