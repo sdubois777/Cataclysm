@@ -20,6 +20,156 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — Terrain is four mechanics and only one of them is geometry, and the Warhammer is finished
+
+**Affects:** the new
+`game/Source/Cataclysm/AbilitySystem/CataclysmTerrain.h` and `.cpp`,
+`CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`, and two test
+files. Applied. Issue #37.
+
+Five rows across the Spear and the Warhammer state a `Terrain` kind, and nothing
+read the column: every one of them ran as though the cell were empty.
+
+### Terrain is four different mechanics, and the estimate that called it one was wrong
+
+The handoff that recommended this work described terrain as needing "geometry
+that blocks movement", and priced it as one large subsystem. Reading the five
+rows against what the design says each kind does gives a different shape:
+
+| Kind | What its row says it does | What it actually needed |
+| :-- | :-- | :-- |
+| **Thicket** | "anything that walks into them is pinned as well" | a swept zone that pins on entry. `ApplyPin` already existed |
+| **Fissure** | "knocks down the next enemy to cross it" | a swept zone that floors the first creature to enter, then is spent |
+| **Pit** | "anything that falls back in is knocked down again", "enemies in the pit cannot charge or leap" | a swept zone that floors what newly enters, and two refusals |
+| **Wall** | "blocks movement and projectiles for 8 seconds" | collision geometry the navigation system can see |
+
+**Only one of the four is geometry.** Three reuse the pin and the knockdown that
+landed hours earlier, and the fourth had a worked example already in the project.
+
+**AND THE CLAIM THAT NOTHING HERE BUILDS BLOCKING GEOMETRY WAS FALSE.**
+`ACataclysmDungeonFloor` builds exactly that at runtime and its comments record
+both traps: a runtime-built mesh component must be `Movable` or its geometry
+stays at the world origin while the actor reports its real position, and
+`SetCanEverAffectNavigation(true)` is required because the default is false and a
+solid wall is otherwise invisible to pathfinding. Both are copied here with
+attribution.
+
+### A separate actor from the burning ground, and the parameter header says why
+
+`ACataclysmGroundZone` is a damage patch; the `Terrain` header says this "changes
+where a fight can happen -- one burns you for standing there, the other decides
+where 'there' is". They share almost nothing in practice: a ground zone **refuses
+to do anything at all when its damage is zero**, and terrain deals no damage by
+design, since not one of the five rows states a figure for it to deal.
+
+What they do share is the shape. Both are capsules -- a near end, a far end and a
+radius -- because a wall has a length and a pit has a radius, and a circle is the
+case where the two ends are the same point. The sheet already draws that line:
+`TerrainSize` is documented as "radius for a pit, fissure or thicket, length for
+a wall".
+
+### Entering is a different question from being inside, and a pit needs it
+
+Break the World floors "anything that **falls back in**", not anything inside. A
+creature that has been in the hole since it opened must not be floored twice a
+second for the whole twelve, so each sweep is compared against the last and only
+newly-arrived creatures are acted on.
+
+**The same rule serves the thicket for a different reason.** A pin is single
+stack, so re-pinning a creature that stands still would refresh it every half
+second and hold it for the thicket's twelve seconds rather than the six its row
+states.
+
+**A fissure is destroyed by the first creature to cross it.** "The next enemy" is
+singular, and Groundbreaker opens one under every blow for ten seconds with "no
+limit to how many you may open". Each being worth exactly one knockdown is what
+stops a Support skill flooring a room continuously.
+
+### One skill reacts to a blow it did not deal, which needed a new notification
+
+Groundbreaker: "for 10 seconds every blow you land cracks the ground beneath what
+it hits." It is a Support skill, so its own damage percent is zero and it never
+deals a blow itself -- it can only ever hear about other skills' blows.
+
+`UCataclysmSkillTemplate::NoteBlowLanded` is the same shape as `NoteKill` beside
+it and for the same reason: a buff that lasts IS an active ability for as long as
+it lasts, so asking the running abilities beats registering and unregistering
+something. It is called from `HitTargets`, where every blow in the game is dealt,
+so a fissure opens under a strike, a projectile, an aura pulse or a leap alike --
+which is what "every blow you land" says.
+
+**Only for a blow that actually dealt damage**, which is the test the burn and the
+mana-on-hit riders make and the opposite of the knockback rider. A swing that was
+evaded did not land, so it cracks nothing.
+
+### A pit refuses every movement mode, not only a leap
+
+Crater says "enemies in the pit cannot charge or leap". A blink, a charge and a
+flicker all leave a hole the same way, so a pit that stopped one arc and let a
+blink through would be a hole with a door in it.
+
+**Refused in the activation gate rather than in the body**, so a refused skill
+costs no mana and starts no cooldown -- by the time `ActivateAbility` runs,
+`CommitAndBegin` has already spent both. A creature's charge is refused
+separately in `ACataclysmEnemyCharacter::BeginCharge`, because an enemy attack is
+C++ on the creature rather than a skill template.
+
+### What is finished and what is not
+
+| Weapon | Before | After |
+| :-- | --: | --: |
+| **Warhammer** | 1 of 5 | **5 of 5** |
+| **Spear** | 3 of 5 | **4 of 5** |
+
+**The Spear's Held Fast is the one still short**, and terrain has nothing to do
+with it: its second sentence has no parameter and a Support skill deals no damage
+to burn with. That is issue #1150 and it is a design decision.
+
+**A pit does not make leaving cost anything**, which two rows say it should.
+Issue #1152: there is no route in this project to change a character's movement
+speed, and the same missing piece is why the Cripple curse slows nothing.
+
+### What went wrong
+
+**A test found a real defect in this work on its first run, and it turned out to
+be two defects.**
+
+`UWorld::SpawnActor` runs the new actor's `BeginPlay` **before it returns**, in
+any world that has already begun play. So every property assigned after the spawn
+call is set too late for `BeginPlay` to read. The wall builder ran seeing a kind
+of `None` and raised nothing at all. Only the wall noticed: the three sweeping
+kinds read their properties when their timer fires, long after the spawn
+returned. Fixed with a two-step spawn -- `SpawnActorDeferred`, set everything,
+`FinishSpawning`.
+
+**`ACataclysmGroundZone` has the identical pattern and it is live.** Its
+`BeginPlay` asks for the zone's visual effect with `FarEnd`, `RadiusCm` and
+`GetLifeSpan()`, all three of which are set afterwards. So every patch of burning
+ground in the game is drawn with a far end at the world origin, a radius of zero
+and no duration, across the twenty-two rows that leave one. The damage is
+unaffected, because the sweep reads those values when its timer fires. Issue
+#1153 carries it, with the fix and the test that would have caught it; it is not
+fixed here because it touches the spawn path every burning-ground test
+exercises.
+
+**AND ONE OF THE TESTS WRITTEN HERE WAS COMPLETELY INERT, WHICH ONLY THE GUARD
+PROOF FOUND.** The test that a movement skill is REFUSED inside a pit cast once
+with no pit as a control, spawned a pit, and cast again expecting false. It got
+false -- from the skill's own cooldown, not from the pit -- so it passed, and the
+mana assertion beside it passed too, because a cooldown refusal spends nothing
+either. Both halves agreed and both were wrong.
+
+**The rule that comes out of it is stronger than the one already recorded.** It
+was already known that a second cast in one test fails because casting commits a
+cooldown. What this adds is that **any test whose expected answer is a refusal
+cannot use a second cast at all**, because the cooldown supplies the expected
+answer and the test becomes inert while looking perfect. Each case now gets its
+own caster and its own freshly granted instance, thirty metres apart, so neither
+has ever fired.
+
+---
+
 ## 2026-09-01 — Forced movement: five verbs, of which two hold a target and three move it, and the Spear gets three of its five
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and

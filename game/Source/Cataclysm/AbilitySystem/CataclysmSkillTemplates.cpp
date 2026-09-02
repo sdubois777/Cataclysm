@@ -11,6 +11,9 @@
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For deciding whether a row's Terrain cell names a wall, whose two ends
+// differ, or a round kind, whose two ends are the same point.
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -66,6 +69,31 @@ void UCataclysmStrikeSkill::ActivateAbility(
 			// where the swing started; Pyroclasm leaves "the ground within 5
 			// meters".
 			LeaveGroundAt(Self->GetActorLocation());
+
+			// AND THE TERRAIN, WHICH IS A DIFFERENT THING FROM THE GROUND ABOVE.
+			// Three Strike rows leave some: the Spear's Thicket raises spears
+			// within 12 metres, the Warhammer's Break the World collapses the
+			// floor within 12, and its Upthrust drives a ridge along a 10 metre
+			// line.
+			//
+			// THE TWO ENDS DIFFER FOR A WALL AND ONLY FOR A WALL. A pit and a
+			// thicket are circles centred on the caster, so both ends are its
+			// feet. A ridge runs away from the caster along the way it is facing,
+			// for the length its row states -- which is what "along a 10 meter
+			// line" means, and is the only reading under which `TerrainSize` is a
+			// length rather than a radius.
+			//
+			// THE SWING'S OWN FACING, taken at the moment the weapon connects
+			// rather than when the ability began, so a player who turned during
+			// the wind-up raises the ridge where they are pointing now.
+			const FVector Feet = Self->GetActorLocation();
+			const bool bIsWall = ACataclysmTerrain::KindFromCell(Params.Terrain)
+				== ECataclysmTerrainKind::Wall;
+			LeaveTerrainAlong(
+				Feet,
+				bIsWall
+					? Feet + Self->GetActorForwardVector() * Params.TerrainSizeCm
+					: Feet);
 		}
 
 		// A single swing with no duration is over. Pyroclasm's spin is the
@@ -973,6 +1001,28 @@ void UCataclysmSelfBuffSkill::NoteKill()
 		Remaining + Params.DurationPer, /*bLoop=*/false);
 }
 
+void UCataclysmSelfBuffSkill::NoteBlowLanded(const FVector& Where)
+{
+	if (Params.Terrain.IsEmpty())
+	{
+		// Every self buff in the game but Groundbreaker. It costs a string test.
+		return;
+	}
+
+	// BENEATH WHAT THE BLOW HIT, WHICH IS WHY THE POSITION IS PASSED IN.
+	// Groundbreaker says "cracks the ground beneath what it hits", so a fissure
+	// opens where the target stood and not under the character that swung. The
+	// two are a weapon's reach apart, which for a Warhammer is three and a half
+	// metres and is more than a fissure's own two metre radius.
+	//
+	// A CIRCLE, SO BOTH ENDS ARE THAT POINT. A wall is the only kind whose ends
+	// differ and no self buff leaves one.
+	if (LeaveTerrainAlong(Where, Where))
+	{
+		++TerrainLeft;
+	}
+}
+
 void UCataclysmSelfBuffSkill::RevokeIncrease()
 {
 	if (IncreaseHandle == 0)
@@ -1162,6 +1212,16 @@ void UCataclysmMovementSkill::ActivateAbility(
 	{
 		LeaveGroundAt(ArrivedAt);
 	}
+
+	// AND THE TERRAIN, WHERE IT LANDED. The Warhammer's Crater is the only
+	// Movement row that leaves any: "Rise and fall on a point up to 9 meters
+	// away, breaking the ground open into a pit 5 meters across."
+	//
+	// AT THE ARRIVAL AND NOT ALONG THE RUN, for every mode. A pit is a hole
+	// where the hammer came down, and no movement row leaves a wall -- which is
+	// the only kind whose two ends differ. Passing the arrival twice makes it the
+	// circle it is.
+	LeaveTerrainAlong(ArrivedAt, ArrivedAt);
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 }

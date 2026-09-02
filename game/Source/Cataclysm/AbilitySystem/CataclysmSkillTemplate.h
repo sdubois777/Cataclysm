@@ -8,6 +8,7 @@
 #include "CataclysmSkillTemplate.generated.h"
 
 class ACataclysmGroundZone;
+class ACataclysmTerrain;
 
 /**
  * What every shape template shares: its designed identity and its numbers.
@@ -292,6 +293,33 @@ public:
 	 *         counts kills
 	 */
 	static int32 NoteKill(AActor* Killer);
+
+	/**
+	 * Tell this character's running skills that one of its blows landed, and
+	 * where.
+	 *
+	 * ONE SKILL LISTENS TODAY: the Warhammer's Groundbreaker, "for 10 seconds
+	 * every blow you land cracks the ground beneath what it hits, leaving a
+	 * fissure that knocks down the next enemy to cross it". A buff that states no
+	 * `Terrain` ignores it.
+	 *
+	 * CALLED FROM `HitTargets`, WHICH IS WHERE EVERY BLOW IN THE GAME IS DEALT,
+	 * so a fissure opens under a strike, a projectile, an aura pulse or a leap
+	 * alike -- which is what "every blow you land" says. It is the same argument
+	 * that put the knockback and the forced movement riders there.
+	 *
+	 * ONLY FOR A BLOW THAT ACTUALLY DEALT DAMAGE. "Every blow you land" is not
+	 * every swing: one that was evaded, or that armour and resistance stopped
+	 * completely, did not land. That is the same test the mana-on-hit rider makes
+	 * and the opposite of the knockback rider, which pushes whether or not it
+	 * hurt.
+	 *
+	 * @param Where  the position of what was hit, which is where the ground
+	 *               cracks. "Beneath what it hits", not beneath the attacker
+	 * @return how many running self buffs were told, whether or not each one
+	 *         does anything with it
+	 */
+	static int32 NoteBlowLanded(AActor* Attacker, const FVector& Where);
 
 protected:
 	/**
@@ -765,6 +793,28 @@ protected:
 	 * The skill's GroundRadius becomes the half-width of the path.
 	 */
 	ACataclysmGroundZone* LeaveGroundAlong(const FVector& Start, const FVector& End);
+
+	/**
+	 * Leave persistent terrain, if this skill's `Terrain` cell names a kind.
+	 *
+	 * A SECOND RIDER BESIDE THE BURNING GROUND, AND NOT THE SAME THING. The
+	 * parameter header draws the line: burning ground is a damage patch and
+	 * terrain "changes where a fight can happen -- one burns you for standing
+	 * there, the other decides where 'there' is". Five rows across the Spear and
+	 * the Warhammer state one, and three of those five state burning ground as
+	 * well, so a skill can leave both and they do not interfere.
+	 *
+	 * THE HOLD IT APPLIES COMES FROM `ForcedMovementDuration`, which four of the
+	 * five rows state. That is deliberate rather than a shortcut: Thicket pins
+	 * for 6 seconds whether a creature was caught by the cast or walked into the
+	 * spears afterwards, and reading one number for both is what keeps those two
+	 * the same. Groundbreaker states none, so its fissures take the default on
+	 * `ACataclysmTerrain`.
+	 *
+	 * @param Start  the near end. A pit, fissure or thicket puts both ends here
+	 * @param End    the far end, which only a wall uses
+	 */
+	ACataclysmTerrain* LeaveTerrainAlong(const FVector& Start, const FVector& End);
 
 	/**
 	 * Take the health this cast costs, and generate Fervour from it.

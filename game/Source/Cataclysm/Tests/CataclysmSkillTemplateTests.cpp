@@ -27,6 +27,9 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
+// For the persistent geometry a row's Terrain cell leaves behind: a pit, a
+// wall, a fissure or a thicket. Issue #37.
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Components/BoxComponent.h"
@@ -7167,6 +7170,398 @@ bool FCataclysmHeldFastCountsPinnedEnemiesTest::RunTest(const FString&)
 		HeldFast->BurningEnemiesAtCast, 0);
 	TestFalse(TEXT("the loose enemy was never pinned"),
 		UCataclysmSkillEffects::IsPinned(Loose.Actor));
+
+	return true;
+}
+
+// ==========================================================================
+// Terrain as a rider -- the Spear's Thicket and the Warhammer's four
+// ==========================================================================
+
+namespace CataclysmSkillTest
+{
+	/** The only terrain in the world, or null when there is not exactly one. */
+	static ACataclysmTerrain* TheOnlyTerrainIn(UWorld* World)
+	{
+		ACataclysmTerrain* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmTerrain> It(World); It; ++It)
+		{
+			Found = *It;
+			++Count;
+		}
+		return Count == 1 ? Found : nullptr;
+	}
+
+	/** How many pieces of terrain of this kind stand in the world. */
+	static int32 CountTerrainOfKind(UWorld* World, ECataclysmTerrainKind Kind)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmTerrain> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->Kind == Kind)
+			{
+				++Count;
+			}
+		}
+		return Count;
+	}
+}
+
+/**
+ * A skill's `Terrain` column reaches the world.
+ *
+ * WHAT THIS GUARDS THAT `CataclysmTerrainTests.cpp` DOES NOT. That file checks
+ * what a pit, a wall, a fissure and a thicket DO once something has spawned one.
+ * Nothing there says a skill row ever spawns one. Before this change five rows
+ * stated a kind and the column was read by nothing at all, and every test in the
+ * project passed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeLeavesTerrainTest,
+	"Cataclysm.Skills.AStrikeStatingTerrainLeavesItWhereItSwung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStrikeLeavesTerrainTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(3 * M, 0, 0));
+
+	// The Spear's Thicket, as its row states it: "Drive a forest of burning
+	// spears up out of the ground within 12 meters ... The spears stand for 12
+	// seconds afterward, and anything that walks into them is pinned as well."
+	UCataclysmStrikeSkill* Thicket = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=12; Angle=360; Burn=1; ForcedMovement=Pin; "
+			 "ForcedMovementDuration=6; Terrain=Thicket; TerrainSize=12; "
+			 "TerrainDuration=12"),
+		TEXT("Thicket"));
+	if (!Thicket)
+	{
+		AddError(TEXT("Could not grant Thicket."));
+		return false;
+	}
+
+	TestEqual(TEXT("no terrain stands before the cast"),
+		CountTerrainOfKind(World, ECataclysmTerrainKind::Thicket), 0);
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Thicket));
+
+	ACataclysmTerrain* Spears = TheOnlyTerrainIn(World);
+	if (!Spears)
+	{
+		AddError(TEXT("A Strike stating Terrain=Thicket should leave exactly one."));
+		return false;
+	}
+
+	TestEqual(TEXT("and what it left is a thicket"),
+		static_cast<int32>(Spears->Kind),
+		static_cast<int32>(ECataclysmTerrainKind::Thicket));
+
+	// TWELVE METRES, THE SIZE THE ROW STATES. Reading the wrong cell would give
+	// the strike's own radius, which this row sets to the same 12 -- so the
+	// numbers are checked against the ground radius instead, which this row does
+	// not state at all and which would therefore read zero.
+	TestEqual(TEXT("as wide as the row asked for"),
+		Spears->RadiusCm, 12 * M, 1.0f);
+
+	// AND ITS TWO ENDS ARE THE SAME POINT, because a thicket is a circle. A wall
+	// is the only kind whose ends differ, and reading a length here would mean
+	// the Strike template had raised a ridge instead.
+	TestEqual(TEXT("and it is round rather than a line"),
+		Spears->FarEnd, Spears->GetActorLocation());
+
+	// AND ITS HOLD CAME FROM `ForcedMovementDuration`, WHICH IS WHY THE SPEARS
+	// PIN FOR THE SAME SIX SECONDS THE CAST DID. The row says "pinning everything
+	// caught for 6 seconds" and "anything that walks into them is pinned as
+	// well", and one number serving both is what keeps those two the same.
+	TestEqual(TEXT("and it pins for the six seconds the row states"),
+		Spears->HoldSeconds, 6.0f, 0.01f);
+
+	// AND THE BLOW ITSELF STILL PINNED WHAT IT CAUGHT, which is the forced
+	// movement rider rather than the terrain one. Both riders run on one cast and
+	// neither may swallow the other.
+	TestTrue(TEXT("and the blow pinned what it caught"),
+		UCataclysmSkillEffects::IsPinned(Target.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeRaisesAWallTest,
+	"Cataclysm.Skills.AStrikeStatingTerrainWallRaisesARidgeAlongItsFacing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStrikeRaisesAWallTest::RunTest(const FString&)
+{
+	// THE WARHAMMER'S UPTHRUST: "drive a ridge of broken rock up out of the
+	// ground along a 10 meter line." A wall is the one kind whose two ends
+	// differ, so this is what says the Strike template treats it differently from
+	// the round kinds rather than dropping a circle where a line was asked for.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Upthrust = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=10; Angle=15; Burn=1; Terrain=Wall; TerrainSize=10; "
+			 "TerrainDuration=8; ForcedMovement=Launch; "
+			 "ForcedMovementDistance=3"),
+		TEXT("Upthrust"));
+	if (!Upthrust)
+	{
+		AddError(TEXT("Could not grant Upthrust."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Upthrust));
+
+	ACataclysmTerrain* Ridge = TheOnlyTerrainIn(World);
+	if (!Ridge)
+	{
+		AddError(TEXT("A Strike stating Terrain=Wall should leave exactly one."));
+		return false;
+	}
+
+	TestEqual(TEXT("and what it left is a wall"),
+		static_cast<int32>(Ridge->Kind),
+		static_cast<int32>(ECataclysmTerrainKind::Wall));
+
+	// ITS TWO ENDS ARE TEN METRES APART. This is the assertion the round kinds
+	// cannot pass: a thicket puts both ends on the caster, so a template that
+	// treated a wall the same way would leave a ridge of no length, which
+	// `ACataclysmTerrain` refuses to raise at all.
+	//
+	// READ INTO A FLOAT FIRST, because an FVector's components are doubles and
+	// TestEqual's tolerance is a float.
+	const float LengthCm = FVector::Dist2D(Ridge->GetActorLocation(),
+										   Ridge->FarEnd);
+	TestEqual(TEXT("and it runs ten metres from the caster"), LengthCm, 10 * M,
+			  1.0f);
+
+	// ALONG THE CASTER'S FACING, which with no controller is +X. A ridge raised
+	// in some other direction would still be ten metres long and would be in the
+	// wrong place.
+	TestTrue(TEXT("and it runs forward rather than backward"),
+		Ridge->FarEnd.X > Ridge->GetActorLocation().X);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementLeavesAPitTest,
+	"Cataclysm.Skills.AMovementSkillStatingTerrainLeavesItWhereItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMovementLeavesAPitTest::RunTest(const FString&)
+{
+	// THE WARHAMMER'S CRATER: "Rise and fall on a point up to 9 meters away,
+	// breaking the ground open into a pit 5 meters across."
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmMovementSkill* Crater = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Leap; Range=9; Radius=5; Burn=1; Terrain=Pit; TerrainSize=5; "
+			 "TerrainDuration=8; ForcedMovement=Knockdown; "
+			 "ForcedMovementDuration=2"),
+		TEXT("Crater"));
+	if (!Crater)
+	{
+		AddError(TEXT("Could not grant Crater."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Crater));
+
+	ACataclysmTerrain* Hole = TheOnlyTerrainIn(World);
+	if (!Hole)
+	{
+		AddError(TEXT("A Movement skill stating Terrain=Pit should leave one."));
+		return false;
+	}
+
+	TestEqual(TEXT("and what it left is a pit"),
+		static_cast<int32>(Hole->Kind),
+		static_cast<int32>(ECataclysmTerrainKind::Pit));
+
+	// WHERE IT LANDED AND NOT WHERE IT SET OFF. With no player controller the aim
+	// point falls back to the caster's own position, so the two are the same here
+	// and this reading cannot tell them apart -- which is why it asserts the
+	// arrival rather than a difference. What it does catch is a pit left at the
+	// world origin, which is what a template passing the wrong vector produces.
+	TestEqual(TEXT("and it is where the leap arrived"),
+		Hole->GetActorLocation(), Crater->ArrivedAt);
+
+	TestEqual(TEXT("five metres across, as the row states"),
+		Hole->RadiusCm, 5 * M, 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSelfBuffCracksTheGroundTest,
+	"Cataclysm.Skills.ASelfBuffStatingTerrainCracksTheGroundUnderEveryBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSelfBuffCracksTheGroundTest::RunTest(const FString&)
+{
+	// THE WARHAMMER'S GROUNDBREAKER: "For 10 seconds every blow you land cracks
+	// the ground beneath what it hits, leaving a fissure that knocks down the
+	// next enemy to cross it. Fissures last 6 seconds and there is no limit to
+	// how many you may open."
+	//
+	// THIS IS THE ONLY SKILL IN THE GAME THAT REACTS TO A BLOW IT DID NOT DEAL,
+	// which is why it needed a new notification rather than a new rider.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Groundbreaker = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Terrain=Fissure; TerrainSize=2; TerrainDuration=6"),
+		TEXT("Groundbreaker"));
+	if (!Groundbreaker)
+	{
+		AddError(TEXT("Could not grant Groundbreaker."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Groundbreaker));
+	TestEqual(TEXT("and casting it alone cracks nothing"),
+		Groundbreaker->TerrainLeft, 0);
+	TestEqual(TEXT("so no fissure stands yet"),
+		CountTerrainOfKind(World, ECataclysmTerrainKind::Fissure), 0);
+
+	// AND NOW A SEPARATE SKILL LANDS A BLOW. A Heavy strike, cast while the buff
+	// runs beside it. Groundbreaker deals no damage of its own -- the Support
+	// slot's damage percent is zero -- so it can only ever hear about another
+	// skill's blows, and this is that.
+	UCataclysmStrikeSkill* Crush = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=3.5; Angle=80; Burn=1"), TEXT("Molten Crush"));
+	if (!Crush)
+	{
+		AddError(TEXT("Could not grant the heavy blow."));
+		return false;
+	}
+
+	TestTrue(TEXT("the heavy blow activates"), Activate(Caster, Crush));
+
+	TestEqual(TEXT("and landing it opened one fissure"),
+		Groundbreaker->TerrainLeft, 1);
+	TestEqual(TEXT("which stands in the world"),
+		CountTerrainOfKind(World, ECataclysmTerrainKind::Fissure), 1);
+
+	// BENEATH WHAT THE BLOW HIT, NOT BENEATH THE CHARACTER THAT SWUNG. The two
+	// are two metres apart here, and a fissure's radius is two, so a crack under
+	// the caster would be a different place by its own whole width.
+	ACataclysmTerrain* Crack = TheOnlyTerrainIn(World);
+	if (!Crack)
+	{
+		AddError(TEXT("Exactly one fissure should stand."));
+		return false;
+	}
+	const float FromTheTarget =
+		FVector::Dist2D(Crack->GetActorLocation(), Target.Actor->GetActorLocation());
+	TestEqual(TEXT("and it opened under what the blow hit"), FromTheTarget, 0.0f,
+			  1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPitRefusesAMovementSkillTest,
+	"Cataclysm.Skills.AMovementSkillIsRefusedWhileStandingInAPit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPitRefusesAMovementSkillTest::RunTest(const FString&)
+{
+	// THE WARHAMMER'S CRATER: "anything inside has to climb out: enemies in the
+	// pit cannot charge or leap." The enemy half is refused in
+	// `ACataclysmEnemyCharacter::BeginCharge` and checked in
+	// `CataclysmTerrainTests.cpp`; this is the skill half, which covers the
+	// player.
+	// TWO CASTERS AND TWO SKILL INSTANCES, WHICH IS NOT TIDINESS. Written the
+	// obvious way -- one caster, cast once with no pit and once with one -- this
+	// test passed while the pit check was deliberately broken, because a skill
+	// commits its cooldown when it is used and the SECOND activation was refused
+	// by that cooldown rather than by the pit. It reported the right answer for
+	// the wrong reason and would have gone on doing so for ever.
+	//
+	// THE GUARD PROOF IS WHAT CAUGHT IT. Pointing the pit check at a skill shape
+	// no row uses changed nothing here, which is what a worthless guard looks
+	// like from the outside.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THIRTY METRES APART, so the five metre pit under one of them is nowhere
+	// near the other.
+	FScopedFighter Free(World, FVector::ZeroVector);
+	FScopedFighter Trapped(World, FVector(30 * M, 0, 0));
+
+	ACataclysmTerrain* Hole = ACataclysmTerrain::Spawn(
+		Trapped.Actor, ECataclysmTerrainKind::Pit,
+		Trapped.Actor->GetActorLocation(), Trapped.Actor->GetActorLocation(),
+		/*SizeCm=*/5 * M, /*Duration=*/12.0f, /*HoldSeconds=*/2.0f);
+	if (!Hole)
+	{
+		AddError(TEXT("A pit should have spawned."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Hole)) { Hole->Destroy(); } };
+
+	TestFalse(TEXT("the one out of the pit is not standing in one"),
+		ACataclysmTerrain::IsStandingIn(Free.Actor, ECataclysmTerrainKind::Pit));
+	TestTrue(TEXT("and the other is"),
+		ACataclysmTerrain::IsStandingIn(Trapped.Actor,
+										ECataclysmTerrainKind::Pit));
+
+	// THE SAME SKILL, GRANTED TO EACH. Two fresh instances, neither of which has
+	// ever been used, so no cooldown exists on either and the only difference
+	// between the two activations is where the caster is standing.
+	const TCHAR* const Row = TEXT("Mode=Blink; Range=9; Radius=2");
+	UCataclysmMovementSkill* FreeStep = GrantSkill<UCataclysmMovementSkill>(
+		Free, ECataclysmAbilitySlot::Movement, Row, TEXT("Ashwalk"));
+	UCataclysmMovementSkill* TrappedStep = GrantSkill<UCataclysmMovementSkill>(
+		Trapped, ECataclysmAbilitySlot::Movement, Row, TEXT("Ashwalk"));
+	if (!FreeStep || !TrappedStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+
+	const float TrappedManaBefore = Trapped.Mana();
+
+	// THE CONTROL. Without it, a skill refused for some entirely different reason
+	// would read as a working pit.
+	TestTrue(TEXT("a character outside a pit may use a movement skill"),
+		Activate(Free, FreeStep));
+
+	// EVERY MOVEMENT MODE, NOT ONLY A LEAP. This one is a blink, and the row that
+	// asks for the rule names leaping -- a pit that stopped one arc and let a
+	// blink through would be a hole with a door in it.
+	TestFalse(TEXT("and a character standing in one may not"),
+		Activate(Trapped, TrappedStep));
+
+	// AND IT COSTS NOTHING, which is why the refusal is in the activation gate
+	// rather than in the body. A skill refused after `CommitAndBegin` would have
+	// already spent the mana and started the cooldown.
+	TestEqual(TEXT("and spends no mana"), Trapped.Mana(), TrappedManaBefore,
+			  0.01f);
 
 	return true;
 }

@@ -26,6 +26,9 @@
 #include "AbilitySystem/CataclysmPinnedLine.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+// For the persistent geometry a skill leaves: a pit, a wall, a fissure
+// or a thicket. Five rows across the Spear and the Warhammer. Issue #37.
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -283,6 +286,29 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 		return false;
 	}
 
+	// A CHARACTER STANDING IN A PIT CANNOT LEAP OUT OF IT. The Warhammer's
+	// Crater: "anything inside has to climb out: enemies in the pit cannot charge
+	// or leap." An enemy's charge is refused in
+	// `ACataclysmEnemyCharacter::BeginCharge`, which is C++ on the creature
+	// rather than a skill template; this is the other half, and it covers the
+	// player as well as any creature that ever gets a Movement skill.
+	//
+	// HERE RATHER THAN IN `ActivateAbility`, so a refused leap costs no mana and
+	// starts no cooldown. By the time `ActivateAbility` runs, `CommitAndBegin`
+	// has already spent both.
+	//
+	// EVERY MOVEMENT MODE, NOT ONLY `Leap`. The row says a creature cannot leave
+	// by leaping, and a blink, a charge and a flicker all leave the same way. A
+	// pit that stopped one arc and let a blink through would be a hole with a
+	// door in it.
+	if (Shape() == ECataclysmSkillShape::Movement
+		&& ACataclysmTerrain::IsStandingIn(ActorInfo ? ActorInfo->AvatarActor.Get()
+													: Avatar(),
+										   ECataclysmTerrainKind::Pit))
+	{
+		return false;
+	}
+
 	// THE BASE'S ANSWER FIRST, so a skill that cannot be paid for is refused for
 	// that reason rather than for a condition it also happens to fail. The order
 	// decides which of the two the player is told about.
@@ -448,6 +474,43 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
 			Buff->NoteKill();
+			++Told;
+		}
+	}
+
+	return Told;
+}
+
+int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
+											  const FVector& Where)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Attacker);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// THE SAME SHAPE AS `NoteKill` DIRECTLY ABOVE, and for the same reason: a
+	// buff that lasts IS an active ability for as long as it lasts, so asking the
+	// running abilities beats registering and unregistering something.
+	//
+	// A SECOND FUNCTION RATHER THAN A FLAG ON THE FIRST. A kill and a landed blow
+	// are different events -- one skill counts kills to grow its bonus and
+	// another cracks the ground under every blow -- and a shared entry point
+	// taking "which kind" would put the two one argument apart.
+	int32 Told = 0;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		if (UCataclysmSelfBuffSkill* Buff =
+				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		{
+			Buff->NoteBlowLanded(Where);
 			++Told;
 		}
 	}
@@ -1096,6 +1159,27 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt);
 		}
 
+		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
+		// The Warhammer's Groundbreaker: "for 10 seconds every blow you land
+		// cracks the ground beneath what it hits". Here rather than in the Strike
+		// template, because "every blow you land" includes a projectile, an aura
+		// pulse and a leap, and this is the one place all of them pass through.
+		//
+		// ONLY WHEN SOMETHING WAS ACTUALLY DEALT, which is the same test the burn
+		// above makes and the same one `ApplyManaOnHit` makes below. A swing that
+		// was evaded, or that armour stopped completely, did not land -- so it
+		// cracks nothing.
+		//
+		// IT IS ASKED OF THE CASTER'S OWN ABILITIES, so a skill notifies the buff
+		// running beside it rather than itself. Groundbreaker deals no damage of
+		// its own: the Support slot's damage percent is zero, so it never reaches
+		// this line through its own casting and only ever hears about other
+		// skills' blows.
+		if (Dealt > 0.0f)
+		{
+			NoteBlowLanded(Self, Target->GetActorLocation());
+		}
+
 		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
 		// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
 		// shove. Issue #626 moved it: displacement is not specific to one kind of
@@ -1334,6 +1418,64 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAt(const FVector& Loca
 {
 	// A patch is a path whose two ends are the same point.
 	return LeaveGroundAlong(Location, Location);
+}
+
+ACataclysmTerrain* UCataclysmSkillTemplate::LeaveTerrainAlong(
+	const FVector& Start, const FVector& End)
+{
+	const ECataclysmTerrainKind Kind =
+		ACataclysmTerrain::KindFromCell(Params.Terrain);
+	if (Kind == ECataclysmTerrainKind::None)
+	{
+		// The ordinary case: 398 of the 403 rows in the sheet leave no terrain.
+		return nullptr;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	if (Params.TerrainSizeCm <= 0.0f || Params.TerrainDuration <= 0.0f)
+	{
+		// A kind with no size or no duration would be terrain occupying nothing
+		// or vanishing at once, which reads as working and is not. All five rows
+		// state both, so reaching here means the imported table is older than the
+		// sheet.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' states Terrain='%s' and no size or no duration, so none "
+				 "was left. Run tools/generate_datatable_assets.py."),
+			*SkillName, *Params.Terrain);
+		return nullptr;
+	}
+
+	// WIDENED BY THE CHARACTER'S AREA OF EFFECT, the same as the burning ground
+	// and the strike itself. Terrain is an area the skill covers, and a passive
+	// node saying "+15% area of effect" has no reason to widen a patch of fire
+	// and leave a thicket of spears the size the sheet wrote.
+	//
+	// A WALL IS NOT WIDENED BY IT, because its size is a length rather than a
+	// radius and its two ends are handed in already. `ACataclysmTerrain::Spawn`
+	// reads the length off those ends and ignores the size for a wall.
+	const float SizeCm = Params.TerrainSizeCm * AreaOfEffectMultiplier();
+
+	// THE HOLD COMES FROM `ForcedMovementDuration`, WHICH IS WHY THICKET PINS FOR
+	// THE SAME SIX SECONDS EITHER WAY. Its row states "pinning everything caught
+	// for 6 seconds" and "anything that walks into them is pinned as well", and
+	// reading one number for both is what stops those two drifting apart.
+	ACataclysmTerrain* Terrain = ACataclysmTerrain::Spawn(
+		Self, Kind, Start, End, SizeCm, Params.TerrainDuration,
+		Params.ForcedMovementDuration);
+
+	if (Terrain)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' left %s terrain for %.1fs."),
+			*SkillName, *Params.Terrain, Params.TerrainDuration);
+	}
+
+	return Terrain;
 }
 
 ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
