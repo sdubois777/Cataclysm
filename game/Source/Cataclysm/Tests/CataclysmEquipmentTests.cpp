@@ -1980,4 +1980,135 @@ bool FCataclysmDefensiveAffixesReachTheCharacter::RunTest(const FString& Paramet
 	return true;
 }
 
+/**
+ * Every change to what is worn raises the change count, and nothing else does.
+ *
+ * WHAT THE COUNT IS FOR, AND IT IS NOT SAVED WORK. `UCataclysmInventoryWidget`
+ * refreshes from `NativeTick` and writes a tool tip onto each of the nineteen
+ * gear cells. Setting a widget's tool tip text builds a NEW tool tip object
+ * every call -- `SWidget::SetToolTipText` calls
+ * `FSlateApplicationBase::MakeToolTip` -- and `FSlateUser::UpdateTooltip`
+ * decides whether the tool tip changed by comparing that object against the
+ * active one. So setting it every frame reads as a change every frame: the
+ * pop-up window is closed and re-opened each frame and
+ * `FSlateUser::ShowTooltip` restarts its fade-in clock, leaving the window
+ * permanently transparent. **Hovering worn gear showed no pop-up at all.**
+ * Issue #1192.
+ *
+ * A COUNT THAT MISSES A CHANGE IS THE FAILURE THAT MATTERS, because the panel
+ * would then describe a piece of gear the character is no longer wearing. A
+ * count that rises when nothing changed costs one frame's work and one
+ * flickered pop-up, which is why the refusal cases below are checked but are
+ * the less serious of the two.
+ *
+ * THE COUNT AND THE DELEGATE ARE CHECKED TOGETHER. Both are raised by
+ * `AnnounceChange` and nothing else, so a future change that raises one and
+ * forgets the other fails here rather than silently leaving a screen stale.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquipmentCountsItsChanges,
+	"Cataclysm.Equipment.EveryChangeToWhatIsWornRaisesTheChangeCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEquipmentCountsItsChanges::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UCataclysmEquipmentComponent* Equipment = MakeEquipment();
+	if (!TestNotNull(TEXT("equipment"), Equipment))
+	{
+		return false;
+	}
+
+	int32 Broadcasts = 0;
+	Equipment->EquipmentChanged.AddLambda([&Broadcasts]() { ++Broadcasts; });
+
+	ECataclysmGearSlot Where = ECataclysmGearSlot::Count;
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+
+	const int32 Start = Equipment->ChangeCount();
+	TestEqual(TEXT("nothing has been announced yet"), Broadcasts, 0);
+
+	Equipment->Equip(Plain(HeadBase), Removed, AlsoRemoved, Where);
+	const int32 AfterHelm = Equipment->ChangeCount();
+	TestTrue(TEXT("putting a helm on raises the count"), AfterHelm > Start);
+	TestEqual(TEXT("and announced it once"), Broadcasts, 1);
+
+	// SWAPPING ONE PIECE FOR ANOTHER IN THE SAME SLOT IS A CHANGE, and it is the
+	// case a count comparing "how many are worn" would miss entirely: nineteen
+	// slots hold one helm before and one helm after.
+	Equipment->Equip(Plain(HeadBase, /*GearLevel=*/5), Removed, AlsoRemoved,
+					 Where);
+	const int32 AfterSwap = Equipment->ChangeCount();
+	TestTrue(TEXT("swapping a helm for another raises it"),
+		AfterSwap > AfterHelm);
+	TestEqual(TEXT("and announced it again"), Broadcasts, 2);
+
+	Equipment->Unequip(ECataclysmGearSlot::Head, Removed);
+	const int32 AfterOff = Equipment->ChangeCount();
+	TestTrue(TEXT("taking it off raises it"), AfterOff > AfterSwap);
+	TestEqual(TEXT("and announced it"), Broadcasts, 3);
+
+	// A REFUSED CHANGE IS NOT A CHANGE. Taking off an empty slot answers false
+	// and touches nothing.
+	Equipment->Unequip(ECataclysmGearSlot::Head, Removed);
+	TestEqual(TEXT("taking off an empty slot does not raise it"),
+		Equipment->ChangeCount(), AfterOff);
+	TestEqual(TEXT("and announces nothing"), Broadcasts, 3);
+
+	// An item with no base is not an item, so it is refused.
+	Equipment->Equip(FCataclysmItem(), Removed, AlsoRemoved, Where);
+	TestEqual(TEXT("a refused equip does not raise it"),
+		Equipment->ChangeCount(), AfterOff);
+	TestEqual(TEXT("and announces nothing"), Broadcasts, 3);
+
+	// A TWO-HANDED WEAPON GOES THROUGH ITS OWN BRANCH, which takes both weapon
+	// slots and hands back two items. It is a separate return path and would be
+	// the easiest one to leave without a count.
+	Equipment->Equip(Plain(TwoHandedBase), Removed, AlsoRemoved, Where);
+	const int32 AfterTwoHanded = Equipment->ChangeCount();
+	TestTrue(TEXT("wearing a two-handed weapon raises it"),
+		AfterTwoHanded > AfterOff);
+	TestEqual(TEXT("and announced it"), Broadcasts, 4);
+
+	// A ONE-HANDER OVER A TWO-HANDER IS A THIRD BRANCH, AND IT ANNOUNCES TWICE.
+	//
+	// THAT IS NOT A TYPING MISTAKE IN THIS TEST AND IT IS NOT NEW. That branch
+	// of UCataclysmEquipmentComponent::EquipInto calls Unequip to take the
+	// two-handed weapon off, and Unequip announces; then the branch announces
+	// again after placing the new weapon. So one player action produces two
+	// announcements, and it did before issue #1192 added the count -- the
+	// existing test Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced never
+	// exercised a weapon swap, so nothing had noticed.
+	//
+	// HARMLESS FOR THE COUNT, WHICH IS WHAT THIS TEST IS FOR. A screen only asks
+	// whether the number differs from the one it saw last, so rising by two
+	// costs nothing. It is NOT obviously harmless for the delegate, because the
+	// first announcement fires while the character is momentarily holding no
+	// weapon at all. That is filed separately rather than changed here, and the
+	// exact figure is asserted so that a later change to it is deliberate.
+	Equipment->Equip(Plain(OneHandedBase), Removed, AlsoRemoved, Where);
+	const int32 AfterOneHanded = Equipment->ChangeCount();
+	TestTrue(TEXT("a one-hander over a two-hander raises it"),
+		AfterOneHanded > AfterTwoHanded);
+	TestEqual(TEXT("and announces twice, which is its own branch doing it once "
+				   "through Unequip and once itself"), Broadcasts, 6);
+
+	Equipment->UnequipEverything();
+	const int32 AfterAllOff = Equipment->ChangeCount();
+	TestTrue(TEXT("taking everything off raises it"),
+		AfterAllOff > AfterOneHanded);
+	TestEqual(TEXT("and announced it"), Broadcasts, 7);
+
+	// TAKING EVERYTHING OFF A CHARACTER WEARING NOTHING CHANGES NOTHING, which
+	// the component already guarded for the delegate's sake and which the count
+	// must agree with.
+	Equipment->UnequipEverything();
+	TestEqual(TEXT("taking nothing off does not raise it"),
+		Equipment->ChangeCount(), AfterAllOff);
+	TestEqual(TEXT("and announces nothing"), Broadcasts, 7);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

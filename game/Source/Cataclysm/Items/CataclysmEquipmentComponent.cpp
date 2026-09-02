@@ -316,7 +316,7 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 		OutRemoved = FromFirst;
 		OutAlsoRemoved = FromSecond;
 
-		EquipmentChanged.Broadcast();
+		AnnounceChange();
 		return (FromFirst.Base.IsNone() && FromSecond.Base.IsNone())
 			? ECataclysmEquipResult::Equipped
 			: ECataclysmEquipResult::Swapped;
@@ -334,15 +334,24 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 		PlaceInto(Item, Slot, OutRemoved);
 		OutRemoved = Displaced;
 
-		EquipmentChanged.Broadcast();
+		AnnounceChange();
 		return ECataclysmEquipResult::Swapped;
 	}
 
 	PlaceInto(Item, Slot, OutRemoved);
 
-	EquipmentChanged.Broadcast();
+	AnnounceChange();
 	return bWasEmpty ? ECataclysmEquipResult::Equipped
 					 : ECataclysmEquipResult::Swapped;
+}
+
+void UCataclysmEquipmentComponent::AnnounceChange()
+{
+	// THE COUNT FIRST. A listener on the delegate may read ChangeCount while
+	// handling the broadcast, and it should see the change it is being told
+	// about rather than the one before it.
+	++Changes;
+	EquipmentChanged.Broadcast();
 }
 
 bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
@@ -357,7 +366,7 @@ bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
 	OutRemoved = Slots[Index];
 	Slots[Index] = FCataclysmItem();
 
-	EquipmentChanged.Broadcast();
+	AnnounceChange();
 	return true;
 }
 
@@ -377,7 +386,7 @@ void UCataclysmEquipmentComponent::UnequipEverything()
 	// wearing nothing does not make every listener recompute for no reason.
 	if (bAnything)
 	{
-		EquipmentChanged.Broadcast();
+		AnnounceChange();
 	}
 }
 

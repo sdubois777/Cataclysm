@@ -342,7 +342,52 @@ public:
 	DECLARE_MULTICAST_DELEGATE(FOnEquipmentChanged);
 	FOnEquipmentChanged EquipmentChanged;
 
+	/**
+	 * How many times what is worn has changed, for a screen that redraws every
+	 * frame and must not redo work every frame.
+	 *
+	 * THE SAME SHAPE AS UCataclysmInventoryComponent::ChangeCount, and added for
+	 * the same reason. The delegate above answers "tell me when it changes" and
+	 * needs a listener with a lifetime; this answers "has it changed since I
+	 * last looked", which is what something running from NativeTick actually
+	 * wants. UCataclysmInventoryWidget is that something and is not bound to the
+	 * delegate.
+	 *
+	 * WHY THIS IS NOT A COSMETIC SAVING. Setting a widget's tool tip text builds
+	 * a NEW tool tip object on every call -- SWidget::SetToolTipText calls
+	 * FSlateApplicationBase::MakeToolTip -- and FSlateUser::UpdateTooltip
+	 * decides whether the tool tip changed by comparing that object against the
+	 * active one. Setting it every frame therefore closes and re-opens the tool
+	 * tip window every frame, and FSlateUser::ShowTooltip resets the fade-in
+	 * clock each time, so the window is held permanently transparent. The worn
+	 * gear panel did exactly that and showed no pop-up at all, while the carried
+	 * grid beside it was already guarded and worked. Issue #1192.
+	 *
+	 * IT IS NOT A SAVED FIELD AND MUST NOT BECOME ONE. It says nothing about
+	 * what is worn, only that it differs from a moment ago, and a loaded
+	 * character starting again from zero is correct.
+	 */
+	int32 ChangeCount() const { return Changes; }
+
 private:
+	/**
+	 * Raise the count and tell every listener, in that order.
+	 *
+	 * ONE FUNCTION SO THE TWO CANNOT SEPARATE. Before this there were five bare
+	 * calls to EquipmentChanged.Broadcast(). A sixth added later that raised the
+	 * count and forgot the delegate, or the reverse, would leave a screen
+	 * drawing gear that is no longer worn, and nothing would fail.
+	 */
+	void AnnounceChange();
+
+	/**
+	 * The count ChangeCount answers with. Starts at zero, only ever rises.
+	 *
+	 * DELIBERATELY NOT SaveGame, unlike the slots beside it. It describes the
+	 * session rather than the character.
+	 */
+	int32 Changes = 0;
+
 	/**
 	 * One entry per slot, always SlotCount long, an empty item meaning nothing
 	 * is worn there.

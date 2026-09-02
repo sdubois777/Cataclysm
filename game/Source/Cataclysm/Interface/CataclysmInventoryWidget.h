@@ -197,12 +197,20 @@ private:
 	/** Builds the panel of worn gear into a column. Called from BuildTree. */
 	void BuildGearPanel(UVerticalBox* Into);
 
-	/** Fills the panel of worn gear. Called from Refresh. */
+	/**
+	 * Fills the panel of worn gear. Called from Refresh.
+	 *
+	 * @param bWornChanged  whether what is worn has changed since the last
+	 *                      refresh. ONLY THE TOOL TIP TEXT IS GATED ON IT. The
+	 *                      colour, the border thickness and the label are cheap
+	 *                      and are written every frame as before; the tool tip
+	 *                      is the one thing that must not be. Issue #1192.
+	 */
 	void RefreshGear(const UCataclysmEquipmentComponent* Equipment,
 					 const UDataTable* Bases, const UDataTable* Affixes,
 					 const UDataTable* Rarities, const UDataTable* Materials,
 					 const UDataTable* Tiers, bool bResized, float CellPx,
-					 float LabelFontPx);
+					 float LabelFontPx, bool bWornChanged);
 
 	/** The panel behind everything. What CursorIsOverPanel measures. */
 	UPROPERTY()
@@ -261,4 +269,25 @@ private:
 	 * change and leave all 48 cells with no tool tip at all.
 	 */
 	bool bToolTipsBuilt = false;
+
+	/**
+	 * What UCataclysmEquipmentComponent::ChangeCount read last refresh.
+	 *
+	 * THE WORN GEAR'S EQUIVALENT OF LastChangeCount ABOVE, and the reason it
+	 * exists is not saved work. Setting a tool tip's text builds a new tool tip
+	 * object, and Slate reads a new object as a changed tool tip, so setting it
+	 * every frame closes and re-opens the pop-up window every frame and never
+	 * lets it fade in. Hovering worn gear showed nothing at all. Issue #1192.
+	 */
+	int32 LastGearChangeCount = 0;
+
+	/**
+	 * Whether the worn gear's tool tips have been built at all.
+	 *
+	 * NEEDED SEPARATELY FROM THE COUNT, for the same reason bToolTipsBuilt is:
+	 * a fresh widget and a character wearing its starting gear both begin at
+	 * zero, so the first refresh would see no change and leave all nineteen
+	 * cells with no tool tip.
+	 */
+	bool bGearToolTipsBuilt = false;
 };
