@@ -685,6 +685,29 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float StoreSpentPerHit = 0.0f;
 
+	/**
+	 * What the caster's health regeneration becomes, as a percent of normal,
+	 * while it stands in the burning ground this skill left.
+	 *
+	 * ONE ROW STATES ONE. The Fist's Blood Pyre: "standing in your own pyre does
+	 * you no harm and DOUBLES YOUR HEALTH REGENERATION", so 200. Issue #1162.
+	 *
+	 * A PERCENT OF NORMAL RATHER THAN A MULTIPLIER, because every other scale in
+	 * the sheet is written that way and 200 reads as "twice" to anybody who has
+	 * read one of the others. 100 or less changes nothing.
+	 *
+	 * IT SCALES A RATE AND IS NOT A SECOND SOURCE OF HEALING, so a character
+	 * with no regeneration still gets none. "Doubles your health regeneration"
+	 * is a multiplier and reads as one.
+	 *
+	 * THE OTHER HALF OF THAT SENTENCE NEEDED NOTHING. "Does you no harm" was
+	 * already true: `ACataclysmGroundZone::Sweep` searches for the owner's
+	 * enemies unless its `bBurnsEveryone` flag is set, and nothing in the
+	 * project sets it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float OwnGroundRegenPercent = 0.0f;
+
 	// --- Forced movement ---------------------------------------------------
 
 	/**

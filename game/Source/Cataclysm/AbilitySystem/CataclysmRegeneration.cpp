@@ -6,6 +6,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+// For a patch of burning ground that heals whoever left it faster while they
+// stand in it. Blood Pyre. Issue #1162.
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -175,11 +178,26 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 						 : Stored;
 	};
 
+	// AND STANDING IN A PATCH OF GROUND YOU LEFT MAY HEAL YOU FASTER. The Fist's
+	// Blood Pyre: "standing in your own pyre does you no harm and DOUBLES YOUR
+	// HEALTH REGENERATION." One in the ordinary case, which is every character
+	// in the game not standing in its own Blood Pyre. Issue #1162.
+	//
+	// ON THE RATE AND NOT ON THE GAIN, so it composes with everything else that
+	// touches the rate rather than being applied after them. The two give the
+	// same number today; they would not once a second scale existed.
+	//
+	// HEALTH ONLY. The row says "health regeneration", and mana and the energy
+	// shield below are deliberately untouched.
+	const float FromOwnGround =
+		ACataclysmGroundZone::RegenerationScaleFor(Character);
+
 	TopUp(*AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
 		  GainPerStep(
 			  RateOf(HealthRegenStat,
-					 UCataclysmVitalAttributeSet::GetHealthRegenAttribute()),
+					 UCataclysmVitalAttributeSet::GetHealthRegenAttribute())
+				  * FromOwnGround,
 			  SecondsInStep),
 		  Regeneration);
 
