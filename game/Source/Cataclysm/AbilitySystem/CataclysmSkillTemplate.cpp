@@ -1159,6 +1159,28 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		return FMath::Clamp((Maximum - Current) / Maximum * 100.0f, 0.0f, 100.0f);
 	}
 
+	if (Params.ScalingSource.Equals(TEXT("Meter"), ESearchCase::IgnoreCase))
+	{
+		// HOW FAR A LASTING CHARGE HAS ALREADY WALKED. The Greatsword's
+		// Inexorable: "the further you walked, the harder it hits", written as
+		// `MoreDamagePer=3; ScalingSource=Meter`.
+		//
+		// A CAST RATHER THAN A VIRTUAL, BECAUSE THIS IS THE ONE SOURCE THAT
+		// BELONGS TO ONE SHAPE. Every other source here is a question any skill
+		// could ask, and no shape but Movement has a distance to report. A row
+		// naming `Meter` on any other shape answers zero, which is the same
+		// answer every uncounted source already gives.
+		if (const UCataclysmMovementSkill* Walk =
+				Cast<const UCataclysmMovementSkill>(this))
+		{
+			// METRES, because the row is written per metre and the engine keeps
+			// centimetres.
+			return Walk->WalkedCm / 100.0f;
+		}
+
+		return 0.0f;
+	}
+
 	if (Params.ScalingSource.Equals(TEXT("Consumed"), ESearchCase::IgnoreCase))
 	{
 		// EVERY OTHER ENEMY, so one fire put out is worth nothing. Extinction:

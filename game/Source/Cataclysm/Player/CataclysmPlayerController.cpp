@@ -12,6 +12,7 @@
 #include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
@@ -208,7 +209,26 @@ bool ACataclysmPlayerController::PawnCannotWalk() const
 	// functions exists to make visible: a movement site asking `IsPawnStunned`
 	// lets a pinned player walk, and an ability site asking this one takes a
 	// pinned player's skills away.
-	return IsPawnStunned() || IsPawnPinned();
+	//
+	// AND A THIRD REASON JOINED THEM ON 2026-09-02: the player's own skill may be
+	// walking them. The Greatsword's Inexorable is "an advance that cannot be
+	// turned aside ... unable to change direction or stop", so while it runs the
+	// character's own movement input is refused and the skill's step timer is the
+	// only thing moving it.
+	//
+	// IT BELONGS HERE AND NOT IN `IsPawnStunned`, though all three refuse a step.
+	// A stun and a pin are done TO the player and this is a thing the player
+	// chose; more practically, the ability gate reads `IsPawnStunned`, so putting
+	// it there would take the player's other skills away during their own
+	// advance.
+	//
+	// **THIS HAS NO AUTOMATION COVERAGE AND CANNOT HAVE ANY.** The automation
+	// tests run with no player controller at all, so nothing they do reaches this
+	// function. Every other part of the advance -- the walk, what it strikes, how
+	// far it counts, the immunity it grants -- is covered by tests; whether the
+	// player can still steer it has to be judged by pressing a key.
+	return IsPawnStunned() || IsPawnPinned()
+		|| UCataclysmMovementSkill::IsBeingWalkedByASkill(GetPawn());
 }
 
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)

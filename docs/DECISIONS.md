@@ -20,6 +20,109 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A charge can last, and the Greatsword's Inexorable is finished
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmSkillTemplate.cpp`,
+`game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`, the Weapon Skills
+sheet of `docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset`, and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issues
+#37 and #1141.
+
+**The second stage on the Greatsword.** Inexorable: "begin an advance that cannot
+be turned aside. You walk forward for 3 seconds, immune to crowd control and
+unable to change direction or stop, throwing aside and setting alight everything
+you pass through. The further you walked, the harder it hits."
+
+### A charge that states a duration walks; one that states none is unchanged
+
+**Stating a duration is what makes a charge a walk.** The Fist's Cinder Rush and
+the Whip's Reel both state a charge with no duration and are one move to a point
+that hits what the line crosses. Both weapons are finished, so leaving them
+untouched was the constraint this had to satisfy.
+
+**The direction is taken once at the cast and never re-read.** That is "cannot be
+turned aside" and "unable to change direction". Reading the cursor on each step
+would make the advance a chase.
+
+**Ten steps a second**, which is a compromise. Fewer would let a character
+visibly jump a metre at a time. More would search the level more often for no
+visible gain.
+
+**The speed comes from the row rather than from code.** `Range` is how far the
+advance travels and `Duration` is how long it takes, and the row states both:
+fourteen metres over three seconds, a little under five metres a second. That is
+faster than the Ritualist's walk and slower than a sprint, which is what the word
+advance suggests.
+
+**Distance is the ground actually covered, not the distance from where it
+started.** An advance held against a wall stops adding to its tally and so stops
+growing stronger, which is the honest reading of "the further you walked".
+
+**Each step strikes what it passes, and nothing twice.** A walk needs this and an
+arrival does not: without it, a creature standing beside the path would be struck
+on all thirty steps of a three second advance.
+
+### `ScalingSource=Meter` is counted, and it belongs to one shape
+
+**A cast rather than a virtual**, because this is the one scaling source that
+belongs to a single shape. Every other source is a question any skill could ask,
+and no shape but Movement has a distance to report. A row naming `Meter` on any
+other shape answers zero, which is what every uncounted source already does.
+
+### The player cannot steer their own advance, and no test can say so
+
+**The refusal lives in the player controller's movement gate**, beside the stun
+and pin checks already there. It belongs there and not with the stun: the ability
+gate reads the stun question, so putting it there would take the player's other
+skills away during their own advance.
+
+**IT HAS NO AUTOMATION COVERAGE AND CANNOT HAVE ANY.** The automation tests run
+with no player controller, so nothing they do reaches that function. Every other
+part of the advance is covered. Whether the player can still steer it has to be
+judged by pressing a key, and the project owner chose to build it on that basis
+rather than leave it out.
+
+### A guard proof found a test that could not fail
+
+**The first version of the test separating a walking charge from an arriving one
+had a control that proved nothing.** It asserted that a charge with no duration
+had taken no steps and walked no distance. Both are zero immediately after
+activation for a WALKING charge too, because the steps run on a timer a test world
+never fires. The control passed against a build where every charge in the game had
+started walking.
+
+**Four other tests caught that regression instead**, which was luck rather than
+design: they belong to the Fist's Cinder Rush, the Whip's Reel and the Sword's
+Flashpoint, and all three check that a charge arrives.
+
+**The control now asserts what actually differs**: a charge with no duration has
+moved ten metres by the end of the frame it was cast in. The reason is written
+into the test so it is not weakened the same way again.
+
+**And one break hid another in the same run.** The strike-once memory break and
+the distance-scaling break were run together. With nothing remembered, the far
+enemy took fifteen blows and the near one three, so the test comparing a long walk
+against a short one passed on hit count alone and reported the scaling as proven
+when it had been switched off. The proof is now two passes.
+
+**Nothing was wrong with the code either time.** What was wrong was a test that
+could not fail, which is what a guard proof is for.
+
+### Where the Greatsword stands
+
+Three of five. Unbroken and Inexorable are done, and the immunity Inexorable
+states now works, because a Movement skill that lasts is one that is still running
+when anything asks.
+
+Two remain: planting the weapon and fighting unarmed until a second press recalls
+it, and the hold-and-release verb Backswing and The Whole Weight share (#1141).
+`HitTaken` is the last uncounted scaling source of the four, and the hook it will
+read was built earlier today for the Greataxe.
+
+---
+
 ## 2026-09-02 — A skill can state what it is immune to, a bonus can grow with time, and the Greatsword's Unbroken is finished
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and

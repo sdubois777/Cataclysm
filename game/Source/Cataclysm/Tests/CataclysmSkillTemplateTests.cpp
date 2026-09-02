@@ -9019,4 +9019,267 @@ bool FCataclysmBonusGrowsWhileStandingStillTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// A charge that lasts: the Greatsword's Inexorable
+// ==========================================================================
+
+/**
+ * A charge stating a duration walks, and a charge stating none still arrives.
+ *
+ * WHAT THIS GUARDS. The Greatsword's Inexorable: "begin an advance that cannot
+ * be turned aside. You walk forward for 3 seconds ... throwing aside and setting
+ * alight everything you pass through." Until 2026-09-02 every charge in the game
+ * arrived in the frame it was cast, so the row's `Duration=3` did nothing.
+ *
+ * THE CONTROL IS THE OTHER KIND OF CHARGE, AND IT IS THE HALF MOST AT RISK. The
+ * Fist's Cinder Rush and the Whip's Reel both state `Mode=Charge` with no
+ * duration and must be completely unchanged, so a charge that started walking
+ * for everybody would be caught here rather than by somebody playing it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastingChargeWalksTest,
+	"Cataclysm.Skills.AChargeStatingADurationWalksInsteadOfArriving",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLastingChargeWalksTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL FIRST, ON ITS OWN CASTER: a charge with no duration arrives at
+	// once, the way every charge in the game did before this change.
+	FScopedFighter Rusher(World, FVector::ZeroVector);
+
+	UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
+		Rusher, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=10; Radius=2"), TEXT("Cinder Rush"));
+	if (!Rush)
+	{
+		AddError(TEXT("Could not grant the rush."));
+		return false;
+	}
+
+	const float RusherStartedAt =
+		static_cast<float>(Rusher.Actor->GetActorLocation().X);
+
+	TestTrue(TEXT("a charge with no duration activates"), Activate(Rusher, Rush));
+
+	// IT ARRIVED IN THE FRAME IT WAS CAST, WHICH IS THE ASSERTION THAT
+	// ACTUALLY SEPARATES THE TWO KINDS. An earlier version of this control
+	// checked only that no steps had been taken and no distance walked, and
+	// both of those are zero immediately after activation for a WALKING
+	// charge too -- the steps run on a timer that a test world never fires.
+	// So the control passed against a build where every charge had started
+	// walking, and four other tests caught that regression instead. A guard
+	// proof found it.
+	//
+	// TEN METRES, because with no player controller there is no cursor and
+	// the aim falls back to the full range in the caster's facing direction.
+	TestEqual(TEXT("and arrives at once, the way every charge did before"),
+		static_cast<float>(Rusher.Actor->GetActorLocation().X),
+		RusherStartedAt + 10 * M, 1.0f);
+
+	TestEqual(TEXT("so it takes no steps, because it is not a walk"),
+		Rush->StepsTaken, 0);
+	TestEqual(TEXT("and walks no distance"), Rush->WalkedCm, 0.0f, 0.01f);
+
+	// AND NOW ONE THAT LASTS, on its own caster so the cooldown from the cast
+	// above cannot be what decides anything below.
+	FScopedFighter Walker(World, FVector(0, 30 * M, 0));
+
+	UCataclysmMovementSkill* Advance = GrantSkill<UCataclysmMovementSkill>(
+		Walker, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=3; Burn=1; "
+			 "MoreDamagePer=3; ScalingSource=Meter; Immune=CrowdControl"),
+		TEXT("Inexorable"));
+	if (!Advance)
+	{
+		AddError(TEXT("Could not grant the advance."));
+		return false;
+	}
+
+	const float StartedAt = static_cast<float>(Walker.Actor->GetActorLocation().X);
+
+	TestTrue(TEXT("the advance activates"), Activate(Walker, Advance));
+
+	// IT HAS NOT ARRIVED ANYWHERE YET, which is the difference from every other
+	// movement mode: it walks rather than moving once.
+	TestEqual(TEXT("it has taken no steps yet"), Advance->StepsTaken, 0);
+	TestEqual(TEXT("and has not moved"),
+		static_cast<float>(Walker.Actor->GetActorLocation().X), StartedAt, 1.0f);
+
+	// AND IT IS STILL RUNNING, WHICH IS WHAT ITS IMMUNITY DEPENDS ON. Every other
+	// movement mode has ended by this line, which is why a Movement row stating
+	// `Immune` did nothing before a charge could last.
+	TestTrue(TEXT("it is still running, so its immunity holds"),
+		UCataclysmSkillTemplate::IsImmuneTo(Walker.Actor, TEXT("Stun")));
+
+	// DRIVEN DIRECTLY, because the steps run on the world's timer manager and a
+	// world built by `UWorld::CreateWorld` is never ticked.
+	Advance->AdvanceOneStep();
+	Advance->AdvanceOneStep();
+	Advance->AdvanceOneStep();
+
+	TestEqual(TEXT("three steps have been taken"), Advance->StepsTaken, 3);
+	TestTrue(TEXT("and it has walked somewhere"), Advance->WalkedCm > 0.0f);
+	TestTrue(TEXT("and moved"),
+		static_cast<float>(Walker.Actor->GetActorLocation().X) > StartedAt + 1.0f);
+
+	// THE DISTANCE IS THE GROUND COVERED. Fourteen metres over three seconds at
+	// ten steps a second is about forty-seven centimetres a step, so three steps
+	// is about a metre and a half. Checked loosely, because what matters is that
+	// the row's range and duration decide it rather than a number in code.
+	TestTrue(TEXT("three steps is roughly a tenth of the stated range"),
+		Advance->WalkedCm > 100.0f && Advance->WalkedCm < 200.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAdvanceStrikesWhatItPassesOnceTest,
+	"Cataclysm.Skills.AnAdvanceStrikesWhatItPassesAndStrikesItOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAdvanceStrikesWhatItPassesOnceTest::RunTest(const FString&)
+{
+	// "THROWING ASIDE AND SETTING ALIGHT EVERYTHING YOU PASS THROUGH", and the
+	// half that needs a test is "everything", singular per creature: a walk that
+	// searched a line on every step would strike whatever it stood beside on all
+	// thirty of them.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Walker(World, FVector::ZeroVector);
+
+	// ONE ENEMY A LITTLE WAY ALONG THE PATH, AND ONE WELL OFF IT. With no player
+	// controller the advance walks in the caster's own facing direction, which is
+	// the positive X axis for a fighter spawned with no rotation.
+	FScopedFighter InThePath(World, FVector(1 * M, 0, 0));
+	FScopedFighter WellClear(World, FVector(0, 20 * M, 0));
+
+	UCataclysmMovementSkill* Advance = GrantSkill<UCataclysmMovementSkill>(
+		Walker, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=3; Burn=1"),
+		TEXT("Inexorable"));
+	if (!Advance)
+	{
+		AddError(TEXT("Could not grant the advance."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Walker, Advance));
+	TestEqual(TEXT("and has struck nobody yet"), Advance->EnemiesHit, 0);
+
+	const float Before = InThePath.Health();
+
+	// ENOUGH STEPS TO WALK PAST THE ENEMY AND WELL BEYOND IT. Each step is about
+	// forty-seven centimetres, so ten steps covers nearly five metres against an
+	// enemy standing one metre along.
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Advance->AdvanceOneStep();
+	}
+
+	TestEqual(TEXT("it struck the one in its path"), Advance->EnemiesHit, 1);
+	TestTrue(TEXT("which lost health"), InThePath.Health() < Before);
+	TestTrue(TEXT("and was set alight"),
+		UCataclysmSkillEffects::HasTag(InThePath.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	// STRUCK ONCE AND NOT ONCE PER STEP, which is the whole point of this test.
+	// Ten steps went past it and the count is one.
+	const float AfterTen = InThePath.Health();
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Advance->AdvanceOneStep();
+	}
+
+	TestEqual(TEXT("ten more steps strike it no further times"),
+		Advance->EnemiesHit, 1);
+	TestEqual(TEXT("so it lost no more health"), InThePath.Health(), AfterTen,
+		0.01f);
+
+	// AND NOTHING TWENTY METRES OFF THE PATH WAS TOUCHED.
+	TestFalse(TEXT("and the one well clear of the path was never struck"),
+		UCataclysmSkillEffects::HasTag(WellClear.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAdvanceHitsHarderTheFurtherItWentTest,
+	"Cataclysm.Skills.AnAdvanceHitsHarderTheFurtherItHasWalked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAdvanceHitsHarderTheFurtherItWentTest::RunTest(const FString&)
+{
+	// "THE FURTHER YOU WALKED, THE HARDER IT HITS", written as `MoreDamagePer=3;
+	// ScalingSource=Meter`. `Meter` was one of the sources nothing counted.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=3; "
+			 "MoreDamagePer=3; ScalingSource=Meter");
+
+	// TWO CASTERS THIRTY METRES APART, each with its own freshly granted skill.
+	// One enemy stands close to its caster and the other stands far, so the two
+	// blows differ only in how far the advance had walked before landing them.
+	FScopedFighter Near(World, FVector::ZeroVector);
+	FScopedFighter StruckEarly(World, FVector(1 * M, 0, 0));
+
+	FScopedFighter Far(World, FVector(0, 30 * M, 0));
+	FScopedFighter StruckLate(World, FVector(10 * M, 30 * M, 0));
+
+	UCataclysmMovementSkill* ShortWalk = GrantSkill<UCataclysmMovementSkill>(
+		Near, ECataclysmAbilitySlot::Movement, Row, TEXT("Inexorable"));
+	UCataclysmMovementSkill* LongWalk = GrantSkill<UCataclysmMovementSkill>(
+		Far, ECataclysmAbilitySlot::Movement, Row, TEXT("Inexorable"));
+	if (!ShortWalk || !LongWalk)
+	{
+		AddError(TEXT("Could not grant the advances."));
+		return false;
+	}
+
+	TestTrue(TEXT("the short advance activates"), Activate(Near, ShortWalk));
+	TestTrue(TEXT("the long advance activates"), Activate(Far, LongWalk));
+
+	const float EarlyBefore = StruckEarly.Health();
+	const float LateBefore = StruckLate.Health();
+
+	// THE NEAR ENEMY IS STRUCK AFTER THREE STEPS, about a metre and a half in.
+	for (int32 Step = 0; Step < 3; ++Step)
+	{
+		ShortWalk->AdvanceOneStep();
+	}
+
+	// AND THE FAR ONE AFTER TWENTY-FIVE, about twelve metres in.
+	for (int32 Step = 0; Step < 25; ++Step)
+	{
+		LongWalk->AdvanceOneStep();
+	}
+
+	const float DealtEarly = EarlyBefore - StruckEarly.Health();
+	const float DealtLate = LateBefore - StruckLate.Health();
+
+	// BOTH LANDED, which is the control: two blows that both dealt nothing would
+	// otherwise satisfy the comparison below.
+	TestTrue(TEXT("the early blow landed"), DealtEarly > 0.0f);
+	TestTrue(TEXT("and the late blow landed"), DealtLate > 0.0f);
+
+	TestTrue(TEXT("and the blow after a longer walk hit harder"),
+		DealtLate > DealtEarly);
+
+	// AND THE DISTANCES ARE WHAT DIFFER, which is what says the comparison is
+	// about the walk rather than about the two casters.
+	TestTrue(TEXT("because the long advance had walked further"),
+		LongWalk->WalkedCm > ShortWalk->WalkedCm);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
