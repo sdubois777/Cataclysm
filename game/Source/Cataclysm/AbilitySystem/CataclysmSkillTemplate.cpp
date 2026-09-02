@@ -606,7 +606,8 @@ bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 
 int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 											 bool bWasMelee,
-											 bool bWasDamageOverTime)
+											 bool bWasDamageOverTime,
+											 float DealtToHealth)
 {
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Defender);
@@ -665,6 +666,21 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 				Swing->NoteBlowTakenWhileHolding();
 				++Told;
 			}
+		}
+
+		// AND A RUNNING AURA COUNTS IT AND MAY GIVE HEALTH BACK FOR IT. The
+		// Fist's Living Pyre: "every hit you take raises the pyre's fire damage
+		// by 8% with no cap, and returns health equal to 25% of the damage that
+		// hit dealt." Issue #1162.
+		//
+		// THE AURA DECIDES WHAT TO DO WITH IT, not this loop. An aura whose row
+		// names neither `ScalingSource=HitTaken` nor `HealthFromHitTaken` counts
+		// the blow and does nothing with the count, which is Conflagration.
+		if (UCataclysmAuraSkill* Ring =
+				Cast<UCataclysmAuraSkill>(Spec.GetPrimaryInstance()))
+		{
+			Ring->NoteBlowTaken(DealtToHealth);
+			++Told;
 		}
 	}
 
@@ -1314,21 +1330,32 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		// wind-up adds 8% more damage to what follows", written as
 		// `MoreDamagePer=8; ScalingSource=HitTaken`. Issue #1141.
 		//
-		// A CAST RATHER THAN A VIRTUAL, FOR THE REASON `Meter` ABOVE GIVES. This
-		// is the second source that belongs to one shape: only a Strike can be
-		// held, so only a Strike has a wind-up to have been struck during. A row
-		// naming `HitTaken` on any other shape answers zero, which is the same
-		// answer every uncounted source already gives.
+		// AND HOW MANY LANDED ON THE HOLDER WHILE THE AURA WAS UP. The Fist's
+		// Living Pyre: "every hit you take raises the pyre's fire damage by 8%
+		// with no cap", the same two keys on a different shape. Issue #1162.
+		//
+		// TWO SHAPES ASKED IN TURN RATHER THAN A VIRTUAL, which is what `Meter`
+		// and `Second` above already do for one shape each. Each of the two
+		// counts its own window: a Strike counts blows during a wind-up, an aura
+		// counts blows while the ring burns, and neither could answer for the
+		// other. A row naming `HitTaken` on any of the other six shapes answers
+		// zero, which is the same answer every uncounted source already gives.
 		//
 		// `UCataclysmSelfBuffSkill` COUNTS BLOWS TAKEN AS WELL AND NEVER REACHES
 		// HERE, the same way it does for `Second`. The Greataxe's Burning Wrath
 		// reacts to being struck while it lasts, and a buff has its own `Units`.
-		// Two different things are counted and each is counted by whatever it
+		// Three different things are counted and each is counted by whatever it
 		// happened to.
 		if (const UCataclysmStrikeSkill* Held =
 				Cast<const UCataclysmStrikeSkill>(this))
 		{
 			return static_cast<float>(Held->BlowsTakenWhileHolding);
+		}
+
+		if (const UCataclysmAuraSkill* Ring =
+				Cast<const UCataclysmAuraSkill>(this))
+		{
+			return static_cast<float>(Ring->BlowsTaken);
 		}
 
 		return 0.0f;

@@ -20,6 +20,110 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — Health returned from a blow taken is paid at once, and a rush needs a duration to be immune during
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`tools/generate_datatables.py`, `sim/cataclysm_sim/enemy_abilities.py`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`,
+`CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp`, and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue
+#1162.
+
+**What was wrong.** The Fist was recorded as five of five and was two of five.
+Three rows had sentences with no parameter behind them. This entry covers two of
+those three; Martyr's Ember is separate and is not done.
+
+### 1. `HealthFromHitTaken`, and why it is paid at once
+
+Living Pyre: "returns health equal to 25% of the damage that hit dealt." There
+was no key for it, so the sentence lived only in the prose.
+
+**Of what reached health, not of what was sent.** That is the figure
+`UCataclysmSkillTemplate::NoteBlowTaken` now carries, and it is the same one the
+design defines leech against — "the damage the target really took, after its
+resistances, armour and block, not the damage that was sent". A share of what was
+sent would pay out on a blow that was entirely stopped.
+
+**It is not leech, though the row carries `Stat.Recovery.Leech`.** Leech in this
+project is what a hit gives back to whoever *landed* it, paid over three seconds.
+This is what a hit gives back to whoever *took* it. `UCataclysmLeech` is
+untouched.
+
+**What the genre says, and the judgement that goes the other way.** Path of
+Exile's **Recoup** is this exact mechanic and pays out **over four seconds**: each
+hit makes its own instance, there is no cap on how many run at once, and recovery
+is scaled by the receiver's own recovery-rate modifiers. Diablo and Last Epoch
+have no direct equivalent.
+
+**This project pays it at once, and that is a judgement rather than a
+derivation.** Three reasons, in order of weight:
+
+1. **The row states no duration**, and this project writes a duration when it
+   means one — the design's leech section states three seconds explicitly, and
+   nine Demonic rows state an `EffectDuration`. An omission that consistent reads
+   as "now".
+2. **Living Pyre is a six second Ultimate the player casts in order to be hit.**
+   A four second smear would deliver a large share of the return *after* the pyre
+   was out, which reads as the skill not working.
+3. **It is legible.** A number that arrives with the blow can be seen; one spread
+   over four seconds while a pyre burns cannot be told from regeneration.
+
+**The balance figure is recorded rather than argued.** At 25% returned instantly
+with no cap, the holder effectively takes 75% damage for six seconds, which is a
+third more effective health while it runs. That is a constant to tune against real
+play, not a reason to change the shape.
+
+### 2. Cinder Rush needed a duration before its immunity could mean anything
+
+Its row says "you are immune to crowd control during the rush", and issue #1162
+recorded this as "a one-cell data change" because `Immune=CrowdControl` already
+existed and was enforced. **That was wrong, and a test found it.**
+
+`UCataclysmMovementSkill::ActivateAbility` begins a lasting advance only when the
+mode is `Charge` **and** a `Duration` is stated. Cinder Rush stated none, so the
+charge arrived in the frame it activated and the ability ended — and
+`UCataclysmSkillTemplate::IsImmuneTo` asks the *running* abilities. "During the
+rush" was a window of no length, so the immunity was stated and could never fire.
+
+**The duration is derived from a decision already made, not invented.** The
+2026-09-02 entry on Inexorable set a charge at 14 metres in 1.5 seconds — 9.33
+metres a second — after finding that 4.67 was 1.5% faster than walking and
+therefore not a movement ability. Cinder Rush is a 10 metre charge, so the same
+speed gives 1.07 seconds. The row now states **1.1**, which is 9.09 metres a
+second: 1.98 times a Ravager's 4.6 walk, against Inexorable's 2.03.
+
+That is a real change to how the skill plays and it is the owner's to retune. It
+is made because the alternative is a row whose own sentence cannot be true.
+
+### 3. Living Pyre names three effects and not all six
+
+"You cannot be stunned, slowed or knocked back" is `Immune=Stun, Slow,
+Displacement` rather than `Immune=CrowdControl`, which would also grant immunity
+to knockdown, pinning and madness — three things the row does not mention. Cinder
+Rush says "all crowd control" and gets the single word.
+
+**One of the three is inert today and it is worth saying so.** Nothing in this
+game slows anything: `CataclysmStatMovedByEffect` records that "Cripple's slow
+has no movement-speed debuff route", so `Immune=Slow` is immunity to something no
+skill applies. The row states it because the row means it, and the day a slow
+exists it will already be covered.
+
+### 4. "Your own fire does you no harm" was already true
+
+Issue #1162 listed this as needing a new axis of immunity — to a damage *source*
+rather than to an effect — for Living Pyre and Blood Pyre both.
+**`ACataclysmGroundZone::Sweep` already searches for the owner's enemies** unless
+its `bBurnsEveryone` flag is set, and nothing in the project passes that flag as
+true; the Hellhound, the one design case that asked for it, passes false. So no
+patch of burning ground can hurt whoever left it.
+
+**That behaviour was load-bearing for two rows and was resting on a default
+nothing checked**, so it now has a test rather than a change.
+
+---
+
 ## 2026-09-02 — An aura can help the people standing in it, and `AllyIncreasedDamage` is the key
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,

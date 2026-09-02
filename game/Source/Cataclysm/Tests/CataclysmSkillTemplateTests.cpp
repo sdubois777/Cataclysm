@@ -10426,7 +10426,7 @@ bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
 	// in play either.
 	const int32 Told = UCataclysmSkillTemplate::NoteBlowTaken(
 		Caster.Actor, Striker.Actor, /*bWasMelee=*/true,
-		/*bWasDamageOverTime=*/false);
+		/*bWasDamageOverTime=*/false, /*DealtToHealth=*/40.0f);
 
 	TestTrue(TEXT("the held swing was one of the running skills told"), Told >= 1);
 	TestEqual(TEXT("and it counted the blow"), Swing->BlowsTakenWhileHolding, 1);
@@ -10437,7 +10437,8 @@ bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
 	{
 		UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
 											   /*bWasMelee=*/true,
-											   /*bWasDamageOverTime=*/false);
+											   /*bWasDamageOverTime=*/false,
+											   /*DealtToHealth=*/40.0f);
 	}
 
 	TestEqual(TEXT("five blows are counted"), Swing->BlowsTakenWhileHolding, 5);
@@ -10448,18 +10449,22 @@ bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
 	// separates a rate from a rate with a ceiling.
 	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
 										   /*bWasMelee=*/true,
-										   /*bWasDamageOverTime=*/false);
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/40.0f);
 
 	TestEqual(TEXT("six blows are counted"), Swing->BlowsTakenWhileHolding, 6);
 	TestEqual(TEXT("but the swing is capped at the 500% its row states"),
 		Swing->ChargedDamagePercent(3.0f), 500.0f, 0.01f);
 
 	// AND A BURN TICKING COUNTS TOO. The row says "every hit you take" with no
-	// qualification, unlike Burning Wrath's "strikes you in melee", so the two
-	// arguments are deliberately not read here.
+	// qualification, unlike Burning Wrath's "strikes you in melee", so the melee
+	// and over-time arguments are deliberately not read by a held swing. Nor is
+	// how much the blow dealt: The Whole Weight's 8% is per HIT, not per point,
+	// so all five of these carry the same 40 and each is worth exactly one step.
 	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
 										   /*bWasMelee=*/false,
-										   /*bWasDamageOverTime=*/true);
+										   /*bWasDamageOverTime=*/true,
+										   /*DealtToHealth=*/40.0f);
 
 	TestEqual(TEXT("and a tick of a burn is a hit taken as well"),
 		Swing->BlowsTakenWhileHolding, 7);
@@ -10469,7 +10474,8 @@ bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
 	Swing->LetTheHoldFinish();
 	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
 										   /*bWasMelee=*/true,
-										   /*bWasDamageOverTime=*/false);
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/40.0f);
 
 	TestEqual(TEXT("and a blow after the swing counts for nothing"),
 		Swing->BlowsTakenWhileHolding, 7);
@@ -11036,6 +11042,481 @@ bool FCataclysmAuraWithoutTheseGivesNeitherTest::RunTest(const FString&)
 	// caster owns as well as for the caster.
 	TestEqual(TEXT("and the ally standing in it is unharmed"),
 		Ally.Health(), 100000.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The Fist's Living Pyre and Cinder Rush. Issue #1162.
+//
+// THE FIST WAS RECORDED AS FIVE OF FIVE AND WAS TWO OF FIVE. Searing Hook and
+// Blood Pyre's throw did everything they said; the other three had sentences
+// with no parameter behind them.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreGrowsWithBlowsTakenTest,
+	"Cataclysm.Skills.EveryBlowTakenMakesTheLivingPyreHotterWithNoCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPyreGrowsWithBlowsTakenTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// Living Pyre's own row as the sheet now states it.
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// A FIGURE OF ITS OWN, so the arithmetic below is exact and does not depend
+	// on what the Ultimate slot happens to be worth. 100% of a weapon dealing
+	// 100, over a one second interval, is 100 a pulse.
+	Pyre->DamagePercentOverride = 100.0f;
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
+	TestEqual(TEXT("and no blows have landed on the holder"), Pyre->BlowsTaken, 0);
+
+	float Before = Enemy.Health();
+	Pyre->Pulse();
+	TestEqual(TEXT("a cold pyre deals its plain figure"),
+		Before - Enemy.Health(), 100.0f, 0.01f);
+
+	// ONE BLOW TAKEN, THROUGH THE SHARED ENTRY POINT THE DAMAGE PIPELINE USES.
+	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Enemy.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/200.0f);
+
+	TestEqual(TEXT("the pyre counted the blow"), Pyre->BlowsTaken, 1);
+
+	Before = Enemy.Health();
+	Pyre->Pulse();
+	TestEqual(TEXT("and one blow makes it 8% hotter"),
+		Before - Enemy.Health(), 108.0f, 0.01f);
+
+	for (int32 More = 0; More < 9; ++More)
+	{
+		UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Enemy.Actor,
+											   /*bWasMelee=*/true,
+											   /*bWasDamageOverTime=*/false,
+											   /*DealtToHealth=*/200.0f);
+	}
+
+	TestEqual(TEXT("ten blows are counted"), Pyre->BlowsTaken, 10);
+
+	// "WITH NO CAP" IS THE SENTENCE THIS ASSERTION IS FOR. Ten blows is 80%
+	// more, which is past every ceiling any other row in the sheet states, and
+	// the row states none. An implementation that borrowed a default cap from
+	// somewhere would land under 180 here.
+	Before = Enemy.Health();
+	Pyre->Pulse();
+	TestEqual(TEXT("and ten blows make it 80% hotter, with no cap binding"),
+		Before - Enemy.Health(), 180.0f, 0.01f);
+
+	// AND A FRESH CAST STARTS COLD. The ability instance is per actor and
+	// outlives its activation, so without the reset a second Living Pyre would
+	// begin at whatever the first one ended at.
+	//
+	// THE COOLDOWN HAS TO BE CLEARED FIRST OR THE SECOND CAST IS REFUSED, and
+	// the refusal is silent: `TryActivateAbility` simply answers false, and
+	// every assertion after it then reads the FIRST cast's state, which still
+	// says ten. The Ultimate slot waits between uses and the first cast
+	// committed that wait.
+	Caster.AbilitySystem->CancelAbilityHandle(
+		Pyre->GetCurrentAbilitySpecHandle());
+	Caster.AbilitySystem->RemoveActiveEffectsWithGrantedTags(
+		FGameplayTagContainer(
+			UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Ultimate)));
+
+	TestTrue(TEXT("it is cast again"), Activate(Caster, Pyre));
+	TestEqual(TEXT("and the new pyre is cold"), Pyre->BlowsTaken, 0);
+
+	Before = Enemy.Health();
+	Pyre->Pulse();
+	TestEqual(TEXT("dealing its plain figure again"),
+		Before - Enemy.Health(), 100.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreReturnsHealthTest,
+	"Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPyreReturnsHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Striker(World, FVector(2 * M, 0, 0));
+
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// HURT FIRST, SO THERE IS ROOM TO HEAL INTO. The test fighter starts at its
+	// maximum, and health returned to a character already full is nothing --
+	// which would make this test pass for an implementation that returned
+	// nothing at all.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
+
+	const float Wounded = Caster.Health();
+	const float Given = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	// 25% OF WHAT THE BLOW DEALT, which is 100 of 400.
+	TestEqual(TEXT("a blow dealing 400 returns 100"), Given, 100.0f, 0.01f);
+	TestEqual(TEXT("and the holder's health rose by exactly that"),
+		Caster.Health() - Wounded, 100.0f, 0.01f);
+	TestEqual(TEXT("and the pyre reports what it has given"),
+		Pyre->HealthReturned, 100.0f, 0.01f);
+
+	// AND IT CANNOT HEAL PAST FULL.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 99990.0f);
+	const float Capped = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a blow near full health returns only the room left"),
+		Capped, 10.0f, 0.01f);
+	TestEqual(TEXT("and the holder is at its maximum, not above it"),
+		Caster.Health(), 100000.0f, 0.01f);
+
+	// A BLOW THAT REACHED NO HEALTH RETURNS NOTHING, which is what makes this a
+	// share of what got through rather than of what was thrown. An evaded blow,
+	// or one armour and resistance stopped completely, arrives here as zero.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+	const float Nothing = Pyre->NoteBlowTaken(/*DealtToHealth=*/0.0f);
+
+	TestEqual(TEXT("a blow that reached no health returns nothing"),
+		Nothing, 0.0f, 0.01f);
+	TestEqual(TEXT("but it is still counted, because it still happened"),
+		Pyre->BlowsTaken, 3);
+
+	// AND AN AURA WHOSE ROW STATES NO SHARE RETURNS NOTHING AT ALL. Conflagration
+	// is the control, and without it an implementation that healed every aura's
+	// holder would pass everything above.
+	FScopedFighter Other(World, FVector(20 * M, 0, 0));
+	Other.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	UCataclysmAuraSkill* Ring = GrantSkill<UCataclysmAuraSkill>(
+		Other, ECataclysmAbilitySlot::Aura,
+		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; "
+			 "AllyIncreasedDamage=8"),
+		TEXT("Conflagration"), TEXT("Element.Demonic"));
+	if (!Ring)
+	{
+		AddError(TEXT("Could not grant the ring."));
+		return false;
+	}
+
+	TestTrue(TEXT("the other aura activates"), Activate(Other, Ring));
+	const float RingHealth = Other.Health();
+
+	TestEqual(TEXT("it returns nothing, because its row states no share"),
+		Ring->NoteBlowTaken(/*DealtToHealth=*/400.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and its holder's health did not move"),
+		Other.Health(), RingHealth, 0.01f);
+	TestEqual(TEXT("though it counted the blow all the same"),
+		Ring->BlowsTaken, 1);
+
+	return true;
+}
+
+
+/**
+ * A real blow, dealt by another character's real skill, returns the health.
+ *
+ * WHY THIS EXISTS AND WHAT IT COST TO FIND. The three tests above all call
+ * `NoteBlowTaken` with a number written into the test, so between them they
+ * prove what the aura does with a figure and prove nothing about where the
+ * figure comes from. Breaking `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+ * so that it passes 0 instead of `Outcome.DealtToHealth` was noticed by NOTHING:
+ * `prove_cpp_guard` reported 190 performed, 190 succeeded, and the health return
+ * was dead in play while every test still passed.
+ *
+ * SO THE BLOW HERE IS NOT SIMULATED. Another character activates a real Strike
+ * against the holder, and the whole chain runs: the swing, the damage
+ * calculation, the health attribute, and the one place every incoming blow in
+ * the game is resolved.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreReturnsFromARealBlowTest,
+	"Cataclysm.Skills.ARealBlowFromAnotherCharacterFeedsTheLivingPyresReturn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPyreReturnsFromARealBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// EXACT DAMAGE IS ASSERTED, so the one random roll that fires on an ordinary
+	// hit is pinned. 100 never critically strikes.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(-3 * M, 0, 0));
+
+	// HURT FIRST, SO THERE IS ROOM TO HEAL INTO. A character at full health
+	// gains nothing from a return, which would make this pass for an
+	// implementation that returned nothing.
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Holder, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// A RING AROUND THE ATTACKER SO IT CANNOT MISS. The Heavy slot is 250% of a
+	// weapon dealing 100, so the blow is 250 with resistances at zero.
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Attacker, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("A blow from somebody else"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the attacker its swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the pyre is lit"), Activate(Holder, Pyre));
+
+	const float Before = Holder.Health();
+
+	TestTrue(TEXT("and somebody hits its holder for real"),
+		Activate(Attacker, Swing));
+
+	// 250 TAKEN, 62.5 GIVEN BACK, SO 187.5 NET. Asserting the net rather than
+	// the two halves separately is deliberate: it is the number a player would
+	// see on the health bar, and it is wrong under every failure this test is
+	// for -- no return at all reads 250, and a return sized from what was SENT
+	// rather than what got through would read differently the moment armour
+	// existed.
+	TestEqual(TEXT("the pyre gave back a quarter of what got through"),
+		Pyre->HealthReturned, 62.5f, 0.01f);
+	TestEqual(TEXT("so its holder is down 187.5 rather than 250"),
+		Before - Holder.Health(), 187.5f, 0.01f);
+	TestEqual(TEXT("and the blow was counted, so the pyre is hotter"),
+		Pyre->BlowsTaken, 1);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFistImmunitiesTest,
+	"Cataclysm.Skills.TheFistsTwoRowsThatNameAnImmunityAreActuallyImmune",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFistImmunitiesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// LIVING PYRE FIRST: "you cannot be stunned, slowed or knocked back."
+	// Three of the six named effects, not all six, which is why the row states
+	// them one by one rather than writing `CrowdControl` the way Cinder Rush
+	// does.
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	TestFalse(TEXT("nothing is immune before the cast"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Stun")));
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
+
+	TestTrue(TEXT("its holder cannot be stunned"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Stun")));
+	TestTrue(TEXT("nor slowed"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Slow")));
+	TestTrue(TEXT("nor knocked back"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Displacement")));
+
+	// AND ONLY THOSE THREE. The row names three of the six and writing
+	// `CrowdControl` instead would have granted all of them, which is a
+	// different sentence.
+	TestFalse(TEXT("but it can still be knocked down, which its row does not "
+				   "name"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Knockdown")));
+	TestFalse(TEXT("nor pinned"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Pin")));
+
+	// THE STUN AND THE SHOVE ARE BOTH REFUSED FOR REAL, not only reported as
+	// immune. These are the two of the three that anything in the game applies.
+	const FVector Stood = Caster.Actor->GetActorLocation();
+
+	// A DESIGNED STUN, which is the hardest case: it skips the damage threshold
+	// deliberately, so it lands on anything that is not immune. Refusing this
+	// one is what says the immunity is what stopped it rather than the blow
+	// being too small.
+	TestFalse(TEXT("a stun aimed at it does not land"),
+		UCataclysmSkillEffects::ApplyStun(Enemy.Actor, Caster.Actor,
+										  /*DurationSeconds=*/2.0f,
+										  /*DamageDealt=*/0.0f,
+										  /*bStunIsDesigned=*/true));
+	TestFalse(TEXT("and a knockback moves it nowhere"),
+		UCataclysmSkillEffects::ApplyKnockback(Enemy.Actor, Caster.Actor,
+											   5.0f * M));
+	TestEqual(TEXT("so it is standing exactly where it was"),
+		Caster.Actor->GetActorLocation(), Stood);
+
+	// AND THE IMMUNITY ENDS WITH THE SKILL.
+	Caster.AbilitySystem->CancelAbilityHandle(
+		Pyre->GetCurrentAbilitySpecHandle());
+
+	TestFalse(TEXT("once the pyre goes out the holder can be stunned again"),
+		UCataclysmSkillTemplate::IsImmuneTo(Caster.Actor, TEXT("Stun")));
+
+	// CINDER RUSH: "you are immune to crowd control during the rush." One word
+	// covering all six, which is what "all crowd control" says.
+	//
+	// AND IT NEEDS A `Duration` FOR THAT SENTENCE TO MEAN ANYTHING, which is the
+	// part this test found. `UCataclysmMovementSkill::ActivateAbility` only
+	// begins a lasting advance when the mode is `Charge` AND a duration is
+	// stated; without one the charge arrives in the frame it activates and the
+	// ability ends, so "during the rush" is a window of no length and
+	// `IsImmuneTo` -- which asks the RUNNING abilities -- answers false a moment
+	// later. The row now states 1.1 seconds. Issue #1162.
+	FScopedFighter Runner(World, FVector(30 * M, 0, 0));
+	UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
+		Runner, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=10; Radius=2; Duration=1.1; Burn=1; "
+			 "GroundRadius=2; GroundDuration=5; GroundPercent=20.0; "
+			 "Immune=CrowdControl"),
+		TEXT("Cinder Rush"), TEXT("Element.Demonic"));
+	if (!Rush)
+	{
+		AddError(TEXT("Could not grant the rush."));
+		return false;
+	}
+
+	TestFalse(TEXT("nothing is immune before the rush"),
+		UCataclysmSkillTemplate::IsImmuneTo(Runner.Actor, TEXT("Stun")));
+
+	TestTrue(TEXT("the rush activates"), Activate(Runner, Rush));
+
+	// ALL SIX, WHICH IS THE DIFFERENCE FROM LIVING PYRE ABOVE.
+	for (const TCHAR* Effect : { TEXT("Stun"), TEXT("Knockdown"), TEXT("Slow"),
+								 TEXT("Displacement"), TEXT("Pin"),
+								 TEXT("Madness") })
+	{
+		TestTrue(FString::Printf(TEXT("the rush is immune to %s"), Effect),
+			UCataclysmSkillTemplate::IsImmuneTo(Runner.Actor, Effect));
+	}
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnFireDoesNoHarmTest,
+	"Cataclysm.Skills.YourOwnBurningGroundDoesYouNoHarm",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOwnFireDoesNoHarmTest::RunTest(const FString&)
+{
+	// THIS SENTENCE WAS ALREADY TRUE AND NOTHING SAID SO. Blood Pyre: "standing
+	// in your own pyre does you no harm." Living Pyre: "your own fire does you
+	// no harm." Both were listed in issue #1162 as needing an immunity to a
+	// DAMAGE SOURCE, which the `Immune` parameter deliberately does not cover.
+	//
+	// WHAT IS ACTUALLY THE CASE. `ACataclysmGroundZone::Sweep` searches for the
+	// owner's ENEMIES unless its `bBurnsEveryone` flag is set, and nothing in
+	// the project passes that flag as true -- the Hellhound, the one design case
+	// that asked for it, passes false. So no patch of burning ground in the game
+	// can hurt whoever left it.
+	//
+	// SO THIS IS A TEST AND NOT A CHANGE, and it is worth having because the
+	// behaviour was load-bearing for two rows and was resting on a default that
+	// nothing checked.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(1 * M, 0, 0));
+
+	// Blood Pyre's own row, aimed at the caster's own feet so that both of them
+	// are standing in the pyre it leaves.
+	UCataclysmProjectileSkill* Blood = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
+			 "GroundPercent=12.5; HealthCostPercent=8"),
+		TEXT("Blood Pyre"), TEXT("Element.Demonic"));
+	if (!Blood)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Blood));
+
+	ACataclysmGroundZone* Patch = TheOnlyGroundZone(World);
+	if (!Patch)
+	{
+		AddError(TEXT("The throw left no burning ground to stand in."));
+		return false;
+	}
+
+	// THE CASTER IS STANDING IN IT. The zone is left at the aim point, which
+	// with no cursor is the caster's own facing at its own feet.
+	Patch->SetActorLocation(Caster.Actor->GetActorLocation());
+
+	const float CasterBefore = Caster.Health();
+	const float EnemyBefore = Enemy.Health();
+
+	Patch->Sweep();
+
+	TestTrue(TEXT("the pyre burns an enemy standing in it"),
+		Enemy.Health() < EnemyBefore);
+	TestEqual(TEXT("and does its own caster no harm"),
+		Caster.Health(), CasterBefore, 0.01f);
 
 	return true;
 }

@@ -614,6 +614,29 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float AllyIncreasedDamage = 0.0f;
 
+	/**
+	 * Percent of a blow taken that is returned to the caster as health, while
+	 * the skill runs.
+	 *
+	 * ONE ROW STATES ONE. The Fist's Living Pyre: "returns health equal to 25%
+	 * of the damage that hit dealt." Issue #1162.
+	 *
+	 * OF WHAT REACHED HEALTH, NOT OF WHAT WAS SENT.
+	 * `UCataclysmSkillTemplate::NoteBlowTaken` carries that figure and its
+	 * header says why: it is the same one the design defines leech against, "the
+	 * damage the target really took, after its resistances, armour and block".
+	 * A share of what was sent would pay out on a blow that was entirely
+	 * stopped.
+	 *
+	 * IT IS NOT LEECH, THOUGH THE ROW CARRIES `Stat.Recovery.Leech`. Leech in
+	 * this project is what a hit gives back to whoever LANDED it, paid out over
+	 * three seconds; this is what a hit gives back to whoever TOOK it, paid at
+	 * once. The row says "returns health" with no duration, against a design
+	 * section that states one for leech. `UCataclysmLeech` is untouched by this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float HealthFromHitTaken = 0.0f;
+
 	// --- Forced movement ---------------------------------------------------
 
 	/**
