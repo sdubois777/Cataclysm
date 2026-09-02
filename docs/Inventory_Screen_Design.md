@@ -177,15 +177,64 @@ agrees on and a mixed pair carries none.
 
 ## How it is operated
 
-| Button | On a carried item | On a worn item |
-| :-- | :-- | :-- |
-| Left | Pick it up and hold it on the cursor; a second left click puts it down under the cursor | Take it off onto the cursor the same way |
-| Right | Wear it | Take it off into the bag |
+| Button | On a carried item | On a worn item | On neither panel |
+| :-- | :-- | :-- | :-- |
+| Left | Pick it up and hold it on the cursor; a second left click puts it down under the cursor | Take it off onto the cursor the same way | While holding an item, drop it on the floor. Otherwise nothing |
+| Right | Wear it | Take it off into the bag | Nothing |
 
 This is issue #853, and it is what Path of Exile, Last Epoch and Diablo all do.
-Today left click is the only button the screen understands and it means "wear or
-take off". A held item is a third place an item can be, besides the bag and the
-body, so the rule that no item is ever destroyed has to cover it.
+
+**A held item is not a third place an item can be**, and it was described as one
+here until 2026-09-02. `UCataclysmInventoryComponent` holds only the slot number
+the cursor is pointing at; the item stays in its slot the whole time it is drawn
+on the cursor. That is deliberate, and it is what makes a save taken part way
+through a drag lose nothing.
+
+## Dropping an item on the floor
+
+**Left click outside both panels while holding an item and it lands on the floor
+in front of the character.** Issue #1190.
+
+**Why this exists at all.** The Storage section of `Cataclysm_GDD_v2.md` gives
+this game no town portal: a player who fills the bag part way down a dungeon
+cannot leave, and a dungeon runs 100 to 150 floors at one day each. So a full bag
+cannot be sold from, cannot be emptied, and nothing in it can be destroyed.
+Dropping is the only release valve there is. It is the third of the four options
+in issue #323, "cannot leave; excess drops are left behind", and that option
+needs this to be true.
+
+**The existing gesture extended, not a second one added.** The screen is
+click-to-pick-up and click-to-place rather than press-and-drag, chosen above
+after looking at what the three games do. Dropping is one more place to click
+rather than a second way of operating the same screen. Whether press-and-drag
+should also work is a separate question and is not decided here.
+
+**It asks for no confirmation, at any rarity.** Decided by the project owner on
+2026-09-02. The item lies where it fell and can be picked straight back up, so a
+mis-click costs a walk rather than an item, and this is what Path of Exile, Last
+Epoch and Diablo all do. The engine keeps that promise by putting the item 150 cm
+in front of the character, which is half of the three metres a player can reach a
+drop from.
+
+**A crafting material drops as its whole stack.** A carried slot holds one stack
+and dropping empties one slot. Dropping part of a stack would need a quantity to
+be chosen and there is no screen for choosing one.
+
+**Taking a piece of gear off is still refused when the bag is full**, rather than
+dropping it. Taking something off is not a request to put it on the floor, and
+quietly leaving a player's gear on the ground because the bag was full is worse
+than refusing and saying so.
+
+**The rule that no item is ever destroyed still holds, and dropping is the first
+thing that tests it.** Every other operation moves an item between the bag and
+the body, so counting worn plus carried before and after is enough. Dropping is
+the first that takes an item out of both. The rule it keeps instead is that the
+item is on the floor whenever it is not in the bag: the floor is asked first and
+the slot is emptied only once the floor has accepted it, so a failure leaves the
+item exactly where it was.
+
+`Cataclysm.Drop <carried slot>` does the same thing from the console, through the
+same code, so the two cannot drift apart.
 
 ## What has to change elsewhere, and what is holding it
 

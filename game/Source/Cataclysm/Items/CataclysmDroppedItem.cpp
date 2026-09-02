@@ -352,6 +352,49 @@ FVector UCataclysmDropSpawner::ScatterOffset(int32 Index, int32 Count)
 	return FVector(Radius * FMath::Cos(Angle), Radius * FMath::Sin(Angle), 0.0f);
 }
 
+FVector UCataclysmDropSpawner::DropSpotInFrontOf(const AActor& Character)
+{
+	// THE FORWARD VECTOR AND NOT THE CAMERA'S, because what a player is looking
+	// at and which way the character is facing are two different things, and the
+	// item should land where the character could reach for it.
+	return Character.GetActorLocation()
+		+ Character.GetActorForwardVector() * DropInFrontCm;
+}
+
+ACataclysmDroppedItem* UCataclysmDropSpawner::PutOnTheFloor(
+	UWorld* World, const FVector& At, const FCataclysmItem& Item,
+	FName Material, int32 MaterialQuantity)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	FActorSpawnParameters Parameters;
+	Parameters.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+		ACataclysmDroppedItem::StaticClass(), At, FRotator::ZeroRotator,
+		Parameters);
+	if (!Drop)
+	{
+		return nullptr;
+	}
+
+	Drop->Item = Item;
+	Drop->Material = Material;
+	Drop->MaterialQuantity = MaterialQuantity;
+
+	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE WORKED OUT rather than
+	// passed in, because all four follow from what the drop IS. A caller holding
+	// them would hand back the name an item had when it was picked up, which is
+	// the wrong one after a rename in the design workbook.
+	Drop->DescribeItself();
+
+	return Drop;
+}
+
 FLinearColor UCataclysmDropSpawner::ColourFor(const UDataTable* GearRarityTable,
 											  ECataclysmRarity Rarity)
 {

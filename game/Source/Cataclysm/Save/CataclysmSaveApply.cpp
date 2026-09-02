@@ -258,29 +258,16 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto(
 	UWorld& World, const FCataclysmSavedGroundItem& Saved)
 {
-	FActorSpawnParameters Parameters;
-	Parameters.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ACataclysmDroppedItem* Drop = World.SpawnActor<ACataclysmDroppedItem>(
-		ACataclysmDroppedItem::StaticClass(), Saved.Location, FRotator::ZeroRotator,
-		Parameters);
-	if (!Drop)
-	{
-		return nullptr;
-	}
-
-	Drop->Item = Saved.Item;
-	Drop->Material = Saved.Material;
-	Drop->MaterialQuantity = Saved.MaterialQuantity;
-
-	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE WORKED OUT AGAIN rather
-	// than restored, because all four follow from what the drop IS. A record
-	// holding them would hand back the name an item had when it was dropped,
-	// which is the wrong one after a rename in the design workbook.
-	Drop->DescribeItself();
-
-	return Drop;
+	// THE BODY OF THIS FUNCTION MOVED, and this is now the save record's half of
+	// it. Restoring a floor and dropping an item out of the bag both need to put
+	// one KNOWN item on the ground, which nothing else in the project does --
+	// every other path rolls a new item. Two copies of that, one of them private
+	// to the save system where no other caller could reach it, is what issues
+	// #1176 and #1190 both ran into. UCataclysmDropSpawner::PutOnTheFloor is the
+	// one copy; what is left here is unpacking the record.
+	return UCataclysmDropSpawner::PutOnTheFloor(
+		&World, Saved.Location, Saved.Item, Saved.Material,
+		Saved.MaterialQuantity);
 }
 
 bool FCataclysmSaveApply::PlacementInto(

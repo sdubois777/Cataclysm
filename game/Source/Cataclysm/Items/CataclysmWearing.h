@@ -9,6 +9,7 @@
 #include "CataclysmWearing.generated.h"
 
 class UCataclysmInventoryComponent;
+class UWorld;
 
 /** What taking an item out of the bag and putting it on, or the reverse, did. */
 UENUM(BlueprintType)
@@ -97,6 +98,26 @@ enum class ECataclysmWearResult : uint8
 
 	/** Asked to pick something up while already holding something. */
 	AlreadyHolding		UMETA(DisplayName = "Something is already held"),
+
+	// ADDED AT THE END AGAIN, for issue #1190, so every value above keeps the
+	// number it had.
+
+	/** It is out of the bag and lying on the floor. */
+	Dropped				UMETA(DisplayName = "Dropped on the floor"),
+
+	/** That carried slot is empty, so there is nothing there to drop. */
+	NothingToDrop		UMETA(DisplayName = "Nothing there to drop"),
+
+	/**
+	 * The floor refused the item, so it is still in the bag.
+	 *
+	 * THE ONLY RESULT HERE THAT MEANS THE WORLD SAID NO rather than the rules
+	 * did. A drop is spawned with AlwaysSpawn, so reaching this needs a world
+	 * that is missing or shutting down. It exists because the alternative is
+	 * emptying the slot first and then finding there is nowhere to put the item,
+	 * which destroys it -- the one thing this whole class exists to prevent.
+	 */
+	TheFloorRefusedIt	UMETA(DisplayName = "It could not be put on the floor"),
 };
 
 /**
@@ -150,7 +171,15 @@ public:
 	 * Take off what is worn in a gear slot and put it in the bag.
 	 *
 	 * REFUSED WHEN THE BAG IS FULL, rather than taking the item off and leaving
-	 * it nowhere. There is no floor to drop it on from a screen.
+	 * it nowhere.
+	 *
+	 * THIS COMMENT USED TO SAY "there is no floor to drop it on from a screen",
+	 * AND SINCE ISSUE #1190 THERE IS: DropCarried below puts a carried item on
+	 * the ground. The refusal is unchanged all the same, and deliberately.
+	 * Taking a piece off is not a request to drop it, and quietly putting a
+	 * player's gear on the floor because the bag was full is a worse outcome
+	 * than refusing and saying so. Whether a full bag should offer to drop
+	 * instead is a design question nobody has been asked.
 	 *
 	 * @param OutCarriedSlot  which carried slot the piece landed in.
 	 *                        Untouched unless the result is TakenOff.
@@ -209,6 +238,45 @@ public:
 	 * lost, because the item never left the bag to begin with.
 	 */
 	static void ReleaseHeld(UCataclysmInventoryComponent* Inventory);
+
+	/**
+	 * Take a carried item out of the bag and leave it on the floor. Issue #1190.
+	 *
+	 * THE ONLY WAY AN ITEM LEAVES THE BAG WITHOUT GOING ONTO THE BODY, and
+	 * before this there was none. `docs/Inventory_Screen_Design.md` inherits the
+	 * rule from `docs/Cataclysm_GDD_v2.md` that this game has no town portal, so
+	 * a player who fills the bag part way down a dungeon cannot leave, cannot
+	 * sell and cannot destroy anything. Dropping is the whole release valve.
+	 *
+	 * THE FLOOR IS ASKED FIRST AND THE SLOT IS EMPTIED SECOND, which is the
+	 * order that keeps this class's one rule. Emptying first and then failing to
+	 * spawn would destroy the item, and it is the only step here that can fail
+	 * for a reason the rules did not choose.
+	 *
+	 * NO CONFIRMATION AT ANY RARITY. The project owner decided this on
+	 * 2026-09-02: the item lies where it fell and can be picked straight back
+	 * up, so a mis-click costs a walk. Path of Exile, Last Epoch and Diablo all
+	 * behave this way. UCataclysmDropSpawner::DropInFrontCm is set to half the
+	 * pickup range so that remains true.
+	 *
+	 * A CRAFTING MATERIAL DROPS AS ITS WHOLE STACK, because a carried slot holds
+	 * one stack and this empties one slot. Dropping part of a stack would need a
+	 * quantity to be chosen and there is no screen for that.
+	 *
+	 * THE CURSOR IS RELEASED when the slot dropped was the one being held, so a
+	 * screen cannot be left carrying a slot whose item is now on the floor.
+	 *
+	 * @param At  where to put it. UCataclysmDropSpawner::DropSpotInFrontOf works
+	 *            this out from a character; it is passed in rather than derived
+	 *            here so this stays testable without an actor.
+	 *
+	 * @return Dropped, NothingToDrop for an empty slot or one outside the grid,
+	 *         TheFloorRefusedIt when the spawn failed and the item is untouched,
+	 *         or NothingToWorkWith when there is no inventory.
+	 */
+	static ECataclysmWearResult DropCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot,
+		UWorld* World, const FVector& At);
 
 	/** What a result should say to somebody, in one line. */
 	static FString Explain(ECataclysmWearResult Result);
