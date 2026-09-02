@@ -8784,4 +8784,239 @@ bool FCataclysmBuffIgnoresBlowsThatAreNotMeleeTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// A skill can state what its caster cannot be subjected to
+// ==========================================================================
+
+/**
+ * A running skill can refuse displacement, stunning and knockdown.
+ *
+ * WHAT THIS GUARDS. Section VI of `docs/Cataclysm_GDD_v2.md` sanctions
+ * skill-stated immunity -- "outright immunity to displacement still exists, as a
+ * skill effect rather than as a rule" -- and names five skills that state one.
+ * The Greatsword's Unbroken and Inexorable are a sixth and seventh. None of the
+ * seven had a parameter until 2026-09-02.
+ *
+ * THE CONTROL IS A SECOND CHARACTER WITH NO BUFF UP, standing beside the first
+ * and taking the identical effect, so a refusal that had broken displacement,
+ * stunning or knockdown for everybody would be caught rather than read as
+ * immunity working.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillStatedImmunityTest,
+	"Cataclysm.Skills.ASkillCanStateWhatItsCasterCannotBeSubjectedTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillStatedImmunityTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Attacker(World, FVector::ZeroVector);
+	FScopedFighter Immune(World, FVector(3 * M, 0, 0));
+	FScopedFighter Ordinary(World, FVector(6 * M, 0, 0));
+
+	// UNBROKEN'S OWN IMMUNITY. Its sentence is "cannot be staggered", and this
+	// project's tag vocabulary is what says that means displacement:
+	// `Keyword.Stagger` is described as "stagger and knockback effects".
+	UCataclysmSelfBuffSkill* Unbroken = GrantSkill<UCataclysmSelfBuffSkill>(
+		Immune, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; MoreDamagePer=5; ScalingSource=Second; "
+			 "Requires=Stationary; Immune=Displacement"),
+		TEXT("Unbroken"));
+	if (!Unbroken)
+	{
+		AddError(TEXT("Could not grant Unbroken."));
+		return false;
+	}
+
+	TestTrue(TEXT("the buff goes up"), Activate(Immune, Unbroken));
+
+	const float ImmuneWas = static_cast<float>(Immune.Actor->GetActorLocation().X);
+	const float OrdinaryWas =
+		static_cast<float>(Ordinary.Actor->GetActorLocation().X);
+
+	TestFalse(TEXT("a character holding the buff is not shoved"),
+		UCataclysmSkillEffects::ApplyKnockback(Attacker.Actor, Immune.Actor,
+											   /*DistanceCm=*/4 * M));
+	TestEqual(TEXT("so it has not moved"),
+		static_cast<float>(Immune.Actor->GetActorLocation().X), ImmuneWas, 1.0f);
+
+	// THE CONTROL. The identical shove against somebody holding nothing.
+	TestTrue(TEXT("and one holding nothing is shoved"),
+		UCataclysmSkillEffects::ApplyKnockback(Attacker.Actor, Ordinary.Actor,
+											   /*DistanceCm=*/4 * M));
+	TestTrue(TEXT("so it has moved"),
+		static_cast<float>(Ordinary.Actor->GetActorLocation().X) > OrdinaryWas + 1.0f);
+
+	// AND IT REFUSES ONLY WHAT ITS ROW NAMES. Unbroken says displacement and
+	// says nothing about stunning, so a stun still lands on it. Without this a
+	// rule that refused everything would look identical.
+	TestTrue(TEXT("a stun still lands on it, because its row does not refuse one"),
+		UCataclysmSkillEffects::ApplyStun(Attacker.Actor, Immune.Actor,
+										  /*DurationSeconds=*/1.5f,
+										  /*DamageDealt=*/0.0f,
+										  /*bStunIsDesigned=*/true));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlImmunityCoversAllTest,
+	"Cataclysm.Skills.ImmunityToCrowdControlCoversEveryOneOfThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCrowdControlImmunityCoversAllTest::RunTest(const FString&)
+{
+	// TWO ROWS SAY "IMMUNE TO ALL CROWD CONTROL" RATHER THAN LISTING WHAT THEY
+	// MEAN: the Fist's Cinder Rush and the Greatsword's Inexorable, and section
+	// VI names Bull Rush as a third. One word covering all of them is what saves
+	// a row from listing six things and losing one in a later edit.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Attacker(World, FVector::ZeroVector);
+	FScopedFighter Charging(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Stance = GrantSkill<UCataclysmSelfBuffSkill>(
+		Charging, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=6; Immune=CrowdControl"),
+		TEXT("A stance that cannot be turned aside"));
+	if (!Stance)
+	{
+		AddError(TEXT("Could not grant the stance."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Charging, Stance));
+
+	TestTrue(TEXT("one word covers displacement"),
+		UCataclysmSkillTemplate::IsImmuneTo(Charging.Actor,
+											TEXT("Displacement")));
+	TestTrue(TEXT("and stunning"),
+		UCataclysmSkillTemplate::IsImmuneTo(Charging.Actor, TEXT("Stun")));
+	TestTrue(TEXT("and knockdown"),
+		UCataclysmSkillTemplate::IsImmuneTo(Charging.Actor, TEXT("Knockdown")));
+
+	// AND SOMEBODY RUNNING NOTHING IS IMMUNE TO NONE OF IT, which is the control
+	// for all three assertions above.
+	TestFalse(TEXT("somebody running nothing is immune to none of it"),
+		UCataclysmSkillTemplate::IsImmuneTo(Attacker.Actor, TEXT("Stun")));
+
+	// AND IMMUNITY LASTS EXACTLY AS LONG AS THE SKILL DOES, WHICH IS THE ONE
+	// THING THIS TEST HAD TO BE REWRITTEN TO SAY. It first used a Movement skill,
+	// because the Greatsword's Inexorable is one and the whole reason this asks
+	// every running skill rather than only self buffs was to cover it. Every
+	// assertion failed, and the reason is worth pinning rather than working
+	// around: a Movement skill calls `EndAbility` in the frame it activates, so
+	// it is never running when anything asks.
+	//
+	// SO A MOVEMENT ROW STATING `Immune` DOES NOTHING AT ALL TODAY, and
+	// Inexorable's immunity is waiting on its own `Duration=3` rather than on
+	// this parameter. The two looked like separate pieces of work and are one.
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Attacker, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=0; Immune=CrowdControl"), TEXT("A step"));
+	if (Step)
+	{
+		TestTrue(TEXT("a movement skill activates"), Activate(Attacker, Step));
+		TestFalse(TEXT("and grants no immunity, because it has already ended"),
+			UCataclysmSkillTemplate::IsImmuneTo(Attacker.Actor, TEXT("Stun")));
+	}
+
+	return true;
+}
+
+// ==========================================================================
+// The Greatsword's Unbroken
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBonusGrowsWhileStandingStillTest,
+	"Cataclysm.Skills.ABuffsBonusGrowsEachSecondAndIsLostOnAStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBonusGrowsWhileStandingStillTest::RunTest(const FString&)
+{
+	// THE GREATSWORD'S UNBROKEN: "plant yourself for 10 seconds. While you do not
+	// move you gain 5% more damage every second and cannot be staggered. The
+	// whole bonus is lost the instant you take a step." Its
+	// `ScalingSource=Second` was one of the sources nothing counted until
+	// 2026-09-02, and the second half of `Requires=Stationary` was never judged.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmSelfBuffSkill* Unbroken = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; MoreDamagePer=5; ScalingSource=Second; "
+			 "Requires=Stationary; Immune=Displacement"),
+		TEXT("Unbroken"));
+	if (!Unbroken)
+	{
+		AddError(TEXT("Could not grant Unbroken."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Unbroken));
+
+	// CASTING IT IS WORTH NOTHING ON ITS OWN, which is what "every second" says:
+	// no time has passed at the moment it goes up.
+	TestEqual(TEXT("casting it alone has counted no seconds"),
+		Unbroken->SecondsHeld, 0);
+
+	// DRIVEN DIRECTLY, because the count runs on the world's timer manager and a
+	// world built by `UWorld::CreateWorld` is never ticked. The same reason
+	// `RepeatTick` and `NoteBlowTaken` are public.
+	Unbroken->SecondPassed();
+	Unbroken->SecondPassed();
+	Unbroken->SecondPassed();
+
+	TestEqual(TEXT("three seconds standing still count three"),
+		Unbroken->SecondsHeld, 3);
+
+	// THE STEP. What the check reads is `AActor::GetVelocity`, which on a bare
+	// test actor comes from its root component rather than from a movement
+	// component it does not have.
+	UPrimitiveComponent* Root =
+		Cast<UPrimitiveComponent>(Caster.Actor->GetRootComponent());
+	if (!Root)
+	{
+		AddError(TEXT("The test fighter has no primitive root to move."));
+		return false;
+	}
+
+	Root->ComponentVelocity = FVector(200.0f, 0.0f, 0.0f);
+
+	// THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED, and this is the whole
+	// reason. If the velocity above did not take, the check below would read a
+	// stationary character, the tally would climb, and the test would fail for a
+	// reason that looks nothing like "the fake step did not work". This line
+	// says which of the two happened.
+	TestFalse(TEXT("the fighter now reports that it is moving"),
+		Caster.Actor->GetVelocity().IsNearlyZero());
+
+	Unbroken->SecondPassed();
+
+	TestEqual(TEXT("a step loses the whole bonus"), Unbroken->SecondsHeld, 0);
+
+	// AND STANDING STILL AGAIN BUILDS IT BACK, which is the reading taken: the
+	// row says the BONUS is lost, not the skill, and the Greatsword's Backswing
+	// shows the sheet says "loses the swing entirely" when it means that.
+	Root->ComponentVelocity = FVector::ZeroVector;
+	TestTrue(TEXT("and now reports that it is still"),
+		Caster.Actor->GetVelocity().IsNearlyZero());
+
+	Unbroken->SecondPassed();
+
+	TestEqual(TEXT("and standing still again starts it building"),
+		Unbroken->SecondsHeld, 1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

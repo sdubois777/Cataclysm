@@ -322,6 +322,37 @@ public:
 	static float HeldRangeIncreasePercent(const AActor* Self);
 
 	/**
+	 * Whether any skill this character is running makes it immune to an effect.
+	 *
+	 * SEVEN ROWS ACROSS FOUR WEAPONS STATE ONE and none had a parameter until
+	 * 2026-09-02. Section VI of `docs/Cataclysm_GDD_v2.md` sanctions it outright:
+	 * "outright immunity to displacement still exists, as a skill effect rather
+	 * than as a rule", and it names five of the seven.
+	 *
+	 * ASKED OF THE RUNNING ABILITIES, which is the shape
+	 * `HeldConsumeSpreadRadiusCm` and `HeldRangeIncreasePercent` already use: a
+	 * skill that lasts IS an active ability while it lasts, so its own numbers
+	 * are the answer and nothing has to be cleared when it ends, is cancelled, or
+	 * its owner dies.
+	 *
+	 * EVERY RUNNING SKILL AND NOT ONLY SELF BUFFS, unlike those two. Unbroken is
+	 * a self buff and Inexorable is a Movement skill that runs for three seconds,
+	 * so narrowing this to one shape would have covered one of the two rows it
+	 * was written for.
+	 *
+	 * `CrowdControl` IN A ROW ANSWERS TRUE FOR ALL SIX EFFECTS, because that is
+	 * what "immune to all crowd control" says and listing six things to mean one
+	 * is how a row loses one of them in a later edit.
+	 *
+	 * @param Who     the character that might be immune
+	 * @param Effect  one of `Stun`, `Knockdown`, `Slow`, `Displacement`, `Pin`
+	 *                or `Madness`. The design's own words, from its table of
+	 *                which effects the anti-stun-lock rule covers
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	static bool IsImmuneTo(const AActor* Who, const FString& Effect);
+
+	/**
 	 * Tell this character's running skills that a blow landed ON it, and who
 	 * threw it.
 	 *

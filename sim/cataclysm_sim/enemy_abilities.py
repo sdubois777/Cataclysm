@@ -142,6 +142,9 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "ForcedMovement", "ForcedMovementDistance", "ForcedMovementDuration",
           "Terrain", "TerrainSize", "TerrainDuration",
           "Requires", "EffectDuration", "EffectMagnitude",
+          # Immune joined on 2026-09-02 with the Greatsword. Seven rows
+          # across four weapons state one. No enemy ability does yet.
+          "Immune",
           "OnDeath", "OnDeathRange", "ConsumeBurn", "ConsumeRadius",
           "SpreadWhen", "SpreadRadius",
           "MaxDamagePercent", "MinDamagePercent",

@@ -472,6 +472,33 @@ public:
 	int32 AttackersLit = 0;
 
 	/**
+	 * One second of a buff whose bonus grows with time.
+	 *
+	 * ONE ROW STATES IT: the Greatsword's Unbroken, "while you do not move you
+	 * gain 5% more damage every second. The whole bonus is lost the instant you
+	 * take a step." Its `ScalingSource=Second` is one of the sources nothing
+	 * counted until 2026-09-02.
+	 *
+	 * IT CHECKS THE STEP AS WELL AS COUNTING THE SECOND, because both halves of
+	 * that sentence are about the same beat: the tally climbs while the holder
+	 * stands still and resets when it does not. Splitting them would need a
+	 * second timer answering the same question.
+	 *
+	 * A SECOND IS NOT A CONFIGURABLE INTERVAL. The row says "every second" and
+	 * `Interval` already means something else on this shape -- the Spear's Held
+	 * Fast uses it to relight pinned enemies -- so a buff can state one of each
+	 * and they do not interfere.
+	 *
+	 * Public so a test can drive it without a world that ticks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void SecondPassed();
+
+	/** How many seconds this buff's bonus has been building. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 SecondsHeld = 0;
+
+	/**
 	 * One repeat of a self buff that states an `Interval`.
 	 *
 	 * ONE ROW STATES ONE: the Spear's Held Fast, "any pinned enemy within 12
@@ -536,6 +563,16 @@ private:
 
 	/** Fires once per `Interval` while the buff runs. Idle for a row with none. */
 	FTimerHandle RepeatTimer;
+
+	/**
+	 * Fires once a second for a buff whose bonus grows with time.
+	 *
+	 * SEPARATE FROM `RepeatTimer` ABOVE, because the two answer different
+	 * questions on different beats: that one fires on the row's stated
+	 * `Interval` and does whatever the row says, this one counts seconds. A row
+	 * may state both.
+	 */
+	FTimerHandle SecondTimer;
 
 	/** The caster's handle for the granted modifier. Zero means none is live. */
 	int32 IncreaseHandle = 0;

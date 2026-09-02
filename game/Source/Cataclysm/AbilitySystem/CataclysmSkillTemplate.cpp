@@ -499,6 +499,53 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 	return Told;
 }
 
+bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
+										 const FString& Effect)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem || Effect.IsEmpty())
+	{
+		return false;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		// EVERY RUNNING SKILL, NOT ONLY SELF BUFFS. Unbroken is a self buff and
+		// Inexorable is a Movement skill that runs for three seconds; asking only
+		// one shape would have covered one of the two rows this was written for.
+		const UCataclysmSkillTemplate* Running =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (!Running || Running->Params.Immune.IsEmpty())
+		{
+			continue;
+		}
+
+		// COMMA SEPARATED, LIKE `ForcedMovement` IS. A row writes
+		// `Immune=Stun, Knockdown` when it means two and `Immune=CrowdControl`
+		// when it means all of them.
+		TArray<FString> Named;
+		Running->Params.Immune.ParseIntoArray(Named, TEXT(","));
+
+		for (FString One : Named)
+		{
+			One.TrimStartAndEndInline();
+			if (One.Equals(Effect, ESearchCase::IgnoreCase)
+				|| One.Equals(TEXT("CrowdControl"), ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 											 bool bWasMelee,
 											 bool bWasDamageOverTime)
