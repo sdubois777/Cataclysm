@@ -63,7 +63,12 @@ KEY_LABEL_TO_ENGINE_KEYS = {
 #: generator binds. Matching is on the document cell starting with the phrase,
 #: so the table can carry an explanation after it.
 ACTION_PHRASE_TO_INPUT_ACTION = {
-    "Move to the point clicked": "IA_MoveToCursor",
+    # The left mouse button. Its cell used to begin "Move to the point clicked",
+    # because moving was the only thing it did. Since issues #1187 and #1188 it
+    # attacks in both schemes, picks up in both, and moves in one, so the cell
+    # begins with the job it always has and the rest of the sentence says the
+    # rest. One phrase covers both tables.
+    "Attack the enemy under the cursor": "IA_MoveToCursor",
     "Held: stand still": "IA_StandStill",
     "Heavy ability": "IA_SlotHeavy",
     "Special ability": "IA_SlotSpecial",
@@ -81,8 +86,8 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
 #: The heading above each table in the document, and the list in the generator it
 #: has to agree with.
 SCHEMES = (
-    ("Scheme 1: mouse movement (default)", "MOUSE_MAPPINGS"),
-    ("Scheme 2: keyboard movement", "KEYBOARD_MAPPINGS"),
+    ("Scheme 1: mouse movement", "MOUSE_MAPPINGS"),
+    ("Scheme 2: keyboard movement (default)", "KEYBOARD_MAPPINGS"),
 )
 
 
@@ -199,31 +204,39 @@ def test_the_document_invents_no_binding(heading: str, list_name: str) -> None:
     )
 
 
-def test_the_left_mouse_button_does_not_fire_the_basic_attack() -> None:
-    """The specific claim issue #138 was filed about.
+def test_no_section_still_calls_the_basic_attack_automatic() -> None:
+    """The reverse of what this test used to guard, and why.
 
-    The Combat System section says basic attacks are handled automatically. A
-    control table that also puts the basic attack on a key contradicts it, which
-    is what the document said for a month. This looks for that claim coming back
-    in any wording that names both the mouse button and an attack.
+    IT USED TO ASSERT THAT THE LEFT MOUSE BUTTON DID NOT ATTACK. That was issue
+    #138: the control table said the button fired the basic attack while the
+    Combat System section said basic attacks were automatic, the two
+    contradicted each other for a month, and the code followed the combat
+    section.
+
+    THE PROJECT OWNER REVERSED IT ON 2026-09-02, after playing the automatic
+    attack. Issue #1187. So the contradiction this guards against is now pointed
+    the other way: a section still calling the basic attack automatic is the
+    stale one, and the control table is right.
+
+    THE DOCUMENT IS A SNAPSHOT OF A GOOGLE DRIVE FOLDER. Editing `docs/` changes
+    nothing about the design, so a failure here means the real document in Drive
+    is out of date and the export was taken before it was fixed.
     """
     text = DESIGN_DOC.read_text(encoding="utf-8")
-    start = text.find("## **Controls and Key Bindings**")
-    assert start != -1, "docs/Cataclysm_GDD_v2.md has no Controls and Key Bindings section."
-    end = text.find("\n## ", start + 1)
-    section = text[start : end if end != -1 else len(text)]
 
+    # "Automatic" is an ordinary word and appears about several other systems --
+    # the day clock, the empire's resolution, the save. Only a sentence tying it
+    # to the basic attack is a claim about the control scheme.
     offenders = [
         line.strip()
-        for line in section.splitlines()
-        if re.search(r"\b(LMB|left mouse button)\b", line, re.IGNORECASE)
-        and re.search(r"\battack", line, re.IGNORECASE)
-        and "does not attack" not in line
+        for line in text.splitlines()
+        if re.search(r"basic attacks?\b", line, re.IGNORECASE)
+        and re.search(r"\bautomatic", line, re.IGNORECASE)
     ]
     assert not offenders, (
-        "The Controls and Key Bindings section ties the left mouse button to an "
-        "attack. The Combat System section says basic attacks are automatic, and "
-        "the code agrees. See issue #138. Offending lines:\n  "
+        "A section still says the basic attack is automatic. It fires on the "
+        "left mouse button since issue #1187, and the code agrees. Fix the real "
+        "document in Google Drive and re-export it. Offending lines:\n  "
         + "\n  ".join(offenders)
     )
 

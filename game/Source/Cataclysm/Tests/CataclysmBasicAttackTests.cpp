@@ -673,4 +673,135 @@ bool FCataclysmSwingRateIsAskedForTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Swinging at one chosen target, because the player clicked it. Issue #1187
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackOneTargetInReach,
+	"Cataclysm.BasicAttack.OnlyALivingEnemyInsideTheReachCanBeSwungAt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackOneTargetInReach::RunTest(const FString&)
+{
+	/**
+	 * THE NARROW FORM OF THE QUESTION ABOVE. `SomethingInReach` asks whether a
+	 * fight is happening, which is what an automatic attack needed to know.
+	 * Issue #1187 put the basic attack on the left mouse button, so the question
+	 * became "is the thing the player pointed at close enough to hit".
+	 *
+	 * IT MUST REFUSE THE SAME THINGS THE SPHERE SEARCH REFUSES -- an ally and a
+	 * corpse -- or a click would start a swing the automatic search never would.
+	 */
+	UWorld* World = CataclysmBasicAttackTest::MakeWorld();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player =
+		CataclysmBasicAttackTest::SpawnPlayer(World);
+	if (!TestNotNull(TEXT("a player pawn"), Player))
+	{
+		return false;
+	}
+
+	// A Greataxe's basic attack has a radius of 2.4 metres.
+	constexpr float GreataxeReachCm = 240.0f;
+
+	ACataclysmEnemyCharacter* Close = CataclysmBasicAttackTest::SpawnEnemyAt(
+		World, FVector(100.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Far = CataclysmBasicAttackTest::SpawnEnemyAt(
+		World, FVector(900.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an enemy one metre away"), Close)
+		|| !TestNotNull(TEXT("an enemy nine metres away"), Far))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the near enemy can be swung at"),
+		UCataclysmBasicAttack::TargetIsInReach(Player, Close, GreataxeReachCm));
+	TestFalse(TEXT("the far one cannot, and distance is why"),
+		UCataclysmBasicAttack::TargetIsInReach(Player, Far, GreataxeReachCm));
+
+	// AN ALLY IS NOT A TARGET. A second player-team character standing in the
+	// same place as the enemy above is refused, so the answer is about sides and
+	// not only about distance.
+	ACataclysmPlayerCharacter* Ally =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector(100.0f, 0.0f, 0.0f),
+													 FRotator::ZeroRotator);
+	if (TestNotNull(TEXT("an ally one metre away"), Ally))
+	{
+		Ally->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		TestFalse(TEXT("an ally in reach is not a target"),
+			UCataclysmBasicAttack::TargetIsInReach(Player, Ally, GreataxeReachCm));
+	}
+
+	// A CORPSE IS NOT A TARGET EITHER, and it is an actor for as long as its
+	// death clip runs, so this is a real case rather than a defensive one.
+	UCataclysmSkillEffects::MarkDead(Close);
+	TestFalse(TEXT("a dead enemy in reach is not a target"),
+		UCataclysmBasicAttack::TargetIsInReach(Player, Close, GreataxeReachCm));
+
+	// AND THE DEGENERATE ANSWERS, which a Shield produces: it grants no basic
+	// attack, so it reaches nothing whatever is standing next to it.
+	TestFalse(TEXT("no reach means nothing is ever in reach"),
+		UCataclysmBasicAttack::TargetIsInReach(Player, Far, 0.0f));
+	TestFalse(TEXT("no target is not a target"),
+		UCataclysmBasicAttack::TargetIsInReach(Player, nullptr, GreataxeReachCm));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackRateLimit,
+	"Cataclysm.BasicAttack.ClickingFasterThanTheWeaponSwingsDoesNotSwingFaster",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackRateLimit::RunTest(const FString&)
+{
+	/**
+	 * THE RATE LIMIT THAT USED TO BE THE TIMER ITSELF. While the basic attack
+	 * fired from a repeating timer, the weapon's attack speed WAS the interval
+	 * and nothing else had to enforce it. A button can be pressed faster than
+	 * any weapon swings, so removing the timer in issue #1187 removed the rate
+	 * limit with it, and this is what puts it back.
+	 *
+	 * `Swing` REFUSING A SECOND COPY IS NOT THIS. That asks whether the previous
+	 * activation is still running, which is about the animation; a weapon whose
+	 * animation is shorter than its interval would pass it and still swing too
+	 * often.
+	 */
+
+	// An Axe swings 1.25 times a second, so 0.8 seconds between swings.
+	constexpr float AxeInterval = 0.8f;
+
+	// A FIRST SWING IS ALWAYS ALLOWED. The controller starts with a last-swing
+	// time far in the past so that a character does not have to wait one
+	// interval before its first hit.
+	TestTrue(TEXT("a character that has never swung may swing"),
+		UCataclysmBasicAttack::IntervalHasPassed(-1000.0f, 0.0f, AxeInterval));
+
+	TestFalse(TEXT("pressing again immediately does not swing"),
+		UCataclysmBasicAttack::IntervalHasPassed(10.0f, 10.0f, AxeInterval));
+	TestFalse(TEXT("nor does pressing again halfway through the interval"),
+		UCataclysmBasicAttack::IntervalHasPassed(10.0f, 10.4f, AxeInterval));
+
+	// EXACTLY ONE INTERVAL IS ENOUGH, rather than needing to be exceeded. A
+	// weapon that states 1.25 swings a second must actually reach 1.25.
+	TestTrue(TEXT("a full interval later, it swings"),
+		UCataclysmBasicAttack::IntervalHasPassed(10.0f, 10.8f, AxeInterval));
+	TestTrue(TEXT("and longer than that certainly does"),
+		UCataclysmBasicAttack::IntervalHasPassed(10.0f, 30.0f, AxeInterval));
+
+	// NO RATE MEANS NEVER SWING, NOT SWING CONTINUOUSLY. A character holding
+	// nothing, or holding something that states no attack speed, reads zero
+	// here, and `SecondsBetweenSwings` says that means "never".
+	TestFalse(TEXT("no rate at all means it never swings"),
+		UCataclysmBasicAttack::IntervalHasPassed(-1000.0f, 500.0f, 0.0f));
+	TestFalse(TEXT("and a negative rate is the same answer"),
+		UCataclysmBasicAttack::IntervalHasPassed(-1000.0f, 500.0f, -1.0f));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
