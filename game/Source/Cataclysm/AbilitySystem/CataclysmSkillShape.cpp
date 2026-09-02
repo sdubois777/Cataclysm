@@ -415,6 +415,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.StoreSpentPerHit = Number;
 		}
+		else if (Key.Equals(TEXT("OwnGroundRegenPercent"), ESearchCase::IgnoreCase))
+		{
+			Params.OwnGroundRegenPercent = Number;
+		}
 		// --- Forced movement --------------------------------------------
 		else if (Key.Equals(TEXT("ForcedMovement"), ESearchCase::IgnoreCase))
 		{

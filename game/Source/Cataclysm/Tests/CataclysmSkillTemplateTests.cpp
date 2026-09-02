@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 // For the resistance a Shred cuts, and for reading it back. Issue #37.
+// For driving one step of health regeneration by hand, which is how a test
+// reaches a rate the game applies on a timer. Issue #1162.
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For asking whether two actors are on the same side, which is what an aura's
@@ -11490,7 +11493,8 @@ bool FCataclysmOwnFireDoesNoHarmTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Blood = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
-			 "GroundPercent=12.5; HealthCostPercent=8"),
+			 "GroundPercent=12.5; HealthCostPercent=8; "
+			 "OwnGroundRegenPercent=200"),
 		TEXT("Blood Pyre"), TEXT("Element.Demonic"));
 	if (!Blood)
 	{
@@ -11520,6 +11524,102 @@ bool FCataclysmOwnFireDoesNoHarmTest::RunTest(const FString&)
 		Enemy.Health() < EnemyBefore);
 	TestEqual(TEXT("and does its own caster no harm"),
 		Caster.Health(), CasterBefore, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnPyreDoublesRegenTest,
+	"Cataclysm.Skills.StandingInYourOwnPyreDoublesYourHealthRegeneration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOwnPyreDoublesRegenTest::RunTest(const FString&)
+{
+	// THE SECOND HALF OF BLOOD PYRE'S CLOSING SENTENCE. "Standing in your own
+	// pyre does you no harm AND DOUBLES YOUR HEALTH REGENERATION." The first
+	// half was already true and is the test above; this half had no parameter at
+	// all and nothing in the project changed a regeneration rate for standing
+	// somewhere. Issue #1162.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// A RATE OF TEN A SECOND AND ROOM TO HEAL INTO, so the two figures below are
+	// exact rather than merely different.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 10.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	UCataclysmProjectileSkill* Blood = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
+			 "GroundPercent=12.5; OwnGroundRegenPercent=200"),
+		TEXT("Blood Pyre"), TEXT("Element.Demonic"));
+	if (!Blood)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// STANDING NOWHERE IN PARTICULAR FIRST, so the plain rate is measured before
+	// there is any ground at all. One second of a rate of ten is ten.
+	const float PlainBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("with no pyre it regenerates its plain ten a second"),
+		Caster.Health() - PlainBefore, 10.0f, 0.01f);
+
+	TestEqual(TEXT("and nothing is scaling it"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 1.0f, 0.01f);
+
+	TestTrue(TEXT("the pyre is thrown"), Activate(Caster, Blood));
+
+	ACataclysmGroundZone* Patch = TheOnlyGroundZone(World);
+	if (!Patch)
+	{
+		AddError(TEXT("The throw left no burning ground to stand in."));
+		return false;
+	}
+
+	// THE CASTER IS STANDING IN IT.
+	Patch->SetActorLocation(Caster.Actor->GetActorLocation());
+
+	TestTrue(TEXT("the patch covers where the caster is standing"),
+		Patch->Covers(Caster.Actor->GetActorLocation()));
+	TestEqual(TEXT("and doubles its owner's regeneration"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 2.0f, 0.01f);
+
+	const float InsideBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("so one second inside it returns twenty rather than ten"),
+		Caster.Health() - InsideBefore, 20.0f, 0.01f);
+
+	// AND STEPPING OUT ENDS IT. Thirty metres is well outside a three metre
+	// patch. Without this the test would pass for an implementation that
+	// doubled the rate from the moment the pyre existed, wherever its owner
+	// stood.
+	Caster.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+
+	TestEqual(TEXT("stepping out of it stops the doubling"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 1.0f, 0.01f);
+
+	const float OutsideBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("so a second outside returns the plain ten again"),
+		Caster.Health() - OutsideBefore, 10.0f, 0.01f);
+
+	// AND SOMEBODY ELSE'S PYRE HEALS NOBODY, which is what "your OWN pyre"
+	// means. The stranger stands in the same patch and is not its owner.
+	FScopedFighter Stranger(World, Patch->GetActorLocation());
+	TestEqual(TEXT("a character standing in somebody else's pyre is unscaled"),
+		ACataclysmGroundZone::RegenerationScaleFor(Stranger.Actor), 1.0f, 0.01f);
 
 	return true;
 }

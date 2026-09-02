@@ -286,6 +286,15 @@ SHAPE_RIDERS = {
                         "of the store and adds to what it hit. Once per enemy "
                         "hit, not once per use",
 
+    # THE ONE THING A PATCH OF BURNING GROUND GIVES THE PERSON WHO LEFT IT.
+    # Added 2026-09-02 for Blood Pyre, "standing in your own pyre does you no
+    # harm and doubles your health regeneration", whose second half had no key.
+    # The first half needed none: a ground zone already burns only its owner's
+    # enemies. Issue #1162.
+    "OwnGroundRegenPercent": "what the caster's health regeneration becomes, "
+                             "as a percent of normal, while it stands in the "
+                             "burning ground this skill left",
+
     "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
     "OnDeathRange": "metres the on-death effect reaches for its next target",
 
