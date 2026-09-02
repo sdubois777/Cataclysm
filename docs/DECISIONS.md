@@ -255,6 +255,25 @@ three full test runs over a dirty tree all passed with the collision present. Ev
 other test file in this project already writes its `using namespace` inside each
 test body; this one now does too, and carries a comment saying why.
 
+**AND THE BUILD-AGAIN-WITH-THE-TREE-CLEAN RULE HAS A CACHE THAT DEFEATS IT.** The
+first run after committing the correction reported 1177 of 1177 while the build
+tool's own log at `C:\Users\iamst\AppData\Local\UnrealBuildTool\Log.txt` still
+said `[Adaptive Build] Excluded from Cataclysm unity file:
+CataclysmForcedMovementTests.cpp`. The exclusion decided while the file was
+uncommitted is stored in
+`game/Intermediate/Build/Win64/x64/CataclysmEditor/Development/Makefile.bin` and
+survives the commit, so that run had the file compiled on its own again and could
+not have seen the collision either.
+
+**What to check, rather than trusting the pass.** Deleting that `Makefile.bin` and
+building again with nothing modified put `CataclysmForcedMovementTests.cpp` and
+`CataclysmGatekeeperTests.cpp` into one translation unit,
+`Module.Cataclysm.10.cpp`. Two commands say whether a run was worth anything: grep
+the build tool's log for `Excluded from Cataclysm unity file`, and grep
+`game/Intermediate/Build/Win64/x64/UnrealEditor/Development/Cataclysm/Module.Cataclysm.*.cpp`
+for the file's name to see which blob holds it. A file in no blob was compiled
+alone.
+
 **No test failed on its first run**, which is unusual enough to be worth
 recording: three of the twelve written for the Axe failed and two of those were
 real defects. It is why two guard proofs were run rather than one, and both
