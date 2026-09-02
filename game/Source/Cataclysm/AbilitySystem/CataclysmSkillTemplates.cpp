@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For the greatsword Buried Fire leaves standing in the ground. Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -24,6 +26,9 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameplayTagsManager.h"
+// For which weapon type a planted sword records as being in the ground.
+// Issue #1141.
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "TimerManager.h"
 
 namespace
@@ -59,8 +64,33 @@ void UCataclysmStrikeSkill::ActivateAbility(
 	// CAPTURED. `ActorInfo` is a raw pointer owned by the ability system and
 	// holding it across a wait is not safe. `Finish` below already takes this
 	// route, and it is the same three accessors.
+	//
+	// ARMED HERE RATHER THAN WHEN THE SWORD GOES IN, because the key is already
+	// down at this moment and has to be let go before the second press counts.
+	// See `InputPressed`.
+	bKeyReleasedSincePlanting = false;
+
 	WhenTheSwingConnects([this]()
 	{
+		// A ROW THAT LEAVES ITS WEAPON IN THE GROUND NEVER SWINGS. The
+		// Greatsword's Buried Fire: "drive the greatsword into the ground and
+		// leave it there." Everything below this assumes a blow that lands now
+		// -- a cone of targets, an arc drawn, an ability that ends -- and a
+		// plant is none of those things.
+		if (Params.bDisarmsUntilRecalled)
+		{
+			if (!PlantTheWeapon())
+			{
+				EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+						   GetCurrentActivationInfo(), true, true);
+			}
+
+			// DELIBERATELY NOT ENDED WHEN THE PLANT SUCCEEDED. The skill stays
+			// active for as long as the sword stands, so that the second press
+			// reaches `InputPressed` rather than the Special slot's cooldown.
+			return;
+		}
+
 		SwingsMade = 0;
 		SwingOnce();
 
@@ -227,6 +257,238 @@ void UCataclysmStrikeSkill::Finish()
 
 	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
 			   GetCurrentActivationInfo(), true, false);
+}
+
+// --------------------------------------------------------------------------
+// Buried Fire -- the one Strike that leaves its weapon behind
+// --------------------------------------------------------------------------
+
+ACataclysmPlantedWeapon* UCataclysmStrikeSkill::PlantTheWeapon()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// A PLANT WITH NO WINDOW IS REFUSED OUTRIGHT, AND THIS IS THE ONE GUARD HERE
+	// THAT IS NOT TIDINESS. `GroundDuration` is how long the sword may be left,
+	// so a row stating none would leave it standing until something else ended
+	// the skill -- which is fighting unarmed for ever on a mistimed press, the
+	// exact outcome the window's own reading was chosen to avoid. The generator
+	// writes GroundDuration on every row that leaves ground, so reaching here
+	// means the imported table is older than the sheet.
+	//
+	// BEFORE THE GROUND IS LEFT, so a refusal does not leave a patch burning with
+	// no sword in it. The same reason the check for a sword already planted is
+	// here rather than left to `Plant`.
+	if (Params.GroundDuration <= 0.0f)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' leaves its weapon in the ground and states no "
+				 "GroundDuration, so there would be no window to pull it free "
+				 "in. Nothing was planted. Run "
+				 "tools/generate_datatable_assets.py."),
+			*SkillName);
+		return nullptr;
+	}
+
+	if (ACataclysmPlantedWeapon::HeldBy(Self))
+	{
+		// `Plant` refuses this too and says so. Refused here as well so that no
+		// patch of burning ground is left by a plant that then does not happen.
+		return nullptr;
+	}
+
+	const FVector Where = Self->GetActorLocation();
+
+	// THE BURNING GROUND IS LEFT FIRST, SO THE SWORD CAN BE HANDED THE PATCH IT
+	// IS STANDING IN. "It burns everything within 4 meters and grows hotter every
+	// second it stands": the burning is an ordinary `LeaveGroundAt` and the
+	// growing hotter is the sword raising that patch's figure once a second.
+	// Every other row that leaves ground leaves it and forgets it.
+	ACataclysmGroundZone* Patch = LeaveGroundAt(Where);
+
+	// WHAT IS IN THE GROUND, ASKED OF THE CHARACTER RATHER THAN ASSUMED. A test
+	// caster has no weapon slots component and answers empty, which costs
+	// nothing: the name is what the log and anything asking what a character left
+	// behind reads, and no behaviour turns on it.
+	FString WeaponType;
+	if (const UCataclysmWeaponSlotsComponent* Slots =
+			Self->FindComponentByClass<UCataclysmWeaponSlotsComponent>())
+	{
+		WeaponType = Slots->GetEquippedWeaponType();
+	}
+
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::Plant(
+		Self, Where, WeaponType, Patch, Params.MoreDamagePer);
+	if (!Sword)
+	{
+		return nullptr;
+	}
+
+	// AND THE WINDOW STARTS. `GroundDuration` is the row's only ten and it is
+	// both how long the fire burns and how long the sword may be left; see the
+	// header. A row stating none was refused above.
+	if (UWorld* World = Self->GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			WindowTimer, this, &UCataclysmStrikeSkill::LetTheWindowClose,
+			Params.GroundDuration, /*bLoop=*/false);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' planted a weapon; it may be pulled free for %.1f seconds."),
+		*SkillName, Params.GroundDuration);
+
+	return Sword;
+}
+
+int32 UCataclysmStrikeSkill::PullTheWeaponFree()
+{
+	AActor* Self = Avatar();
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::HeldBy(Self);
+	if (!Self || !Sword)
+	{
+		return 0;
+	}
+
+	// WHERE THE SWORD IS, NOT WHERE THE PLAYER IS. "Pull it free within 10
+	// seconds to erupt": the eruption belongs to the sword, and walking away
+	// before pressing again is a use of the skill rather than a mistake.
+	const FVector Where = Sword->GetActorLocation();
+
+	// THE SAME CONE EVERY OTHER STRIKE USES, CENTRED ON THE SWORD. The row states
+	// `Angle=360`, so the direction decides nothing and the shape is a ring --
+	// but reading the angle rather than assuming a sphere is what lets a later
+	// row plant something that erupts in a wedge.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInCone(
+		GetWorld(), Self, Where, AimDirection(), ScaledRadiusCm(),
+		Params.AngleDegrees, Params.MaxTargets);
+
+	// `HitScaled` READS `ScalingSource=Second`, WHICH `ScalingUnits` ANSWERS BY
+	// ASKING THE SWORD HOW LONG IT HAS STOOD. Done that way round rather than
+	// passing the figure in, so that the eruption is sized by the same route
+	// every other scaled blow in the project is sized by.
+	//
+	// BEFORE THE SWORD IS DESTROYED, WHICH `EndAbility` BELOW DOES. Asking
+	// afterwards would find no sword and scale by nothing.
+	Erupted = HitScaled(Caught, TArray<AActor*>());
+
+	UCataclysmStrikeEffect::PlayAt(Self, Where, AimDirection(),
+								   UCataclysmStrikeEffect::DamageTypeFor(
+									   Self, ElementTag()),
+								   ScaledRadiusCm());
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was pulled free after %.0f seconds and erupted on %d for "
+			 "%.1f."),
+		*SkillName, Sword->SecondsPlanted(), Caught.Num(), Erupted);
+
+	// THE SWORD IS TAKEN OUT OF THE GROUND BY `EndAbility`, WHICH IS THE ONE
+	// PLACE THAT DOES IT. See the header: every way this skill can stop has to
+	// leave the character holding something, and there are four of them.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+
+	return Caught.Num();
+}
+
+void UCataclysmStrikeSkill::LetTheWindowClose()
+{
+	// NOTHING ERUPTS. See the header: this is the reading recorded on
+	// 2026-09-02, and the sword coming back is the whole of what happens.
+	if (const ACataclysmPlantedWeapon* Sword =
+			ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was left for its whole %.0f seconds, so the weapon came "
+				 "back and nothing erupted."),
+			*SkillName, Sword->SecondsPlanted());
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmStrikeSkill::InputPressed(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
+
+	// A PRESS ARRIVING WHILE THE KEY WAS NEVER LET GO is another frame of the
+	// press that planted the sword, not a second press. Issue #1114 is the
+	// incident that established this: the input is bound to
+	// `ETriggerEvent::Triggered` and fires every frame the key is held.
+	if (!bKeyReleasedSincePlanting)
+	{
+		return;
+	}
+
+	// AND A STRIKE THAT PLANTS NOTHING IGNORES THIS ENTIRELY. Every other Strike
+	// in the game ends in the frame it swings, so it is never running when a key
+	// press arrives; reaching here without a sword means one of them has a
+	// duration and an interval and is still spinning, and a press during a spin
+	// is not a second half of anything.
+	if (!ACataclysmPlantedWeapon::HeldBy(ActorInfo ? ActorInfo->AvatarActor.Get()
+												  : Avatar()))
+	{
+		return;
+	}
+
+	PullTheWeaponFree();
+}
+
+void UCataclysmStrikeSkill::InputReleased(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+
+	// THE RELEASE PULLS NOTHING FREE. This is not a hold-and-release skill: the
+	// sword stays in the ground when the key comes up, which is what "leave it
+	// there" means. What the release changes is that the next press is a new
+	// press. Issue #1141 carries the hold-and-release verb the Greatsword's
+	// other two rows want, and it is a different mechanic.
+	bKeyReleasedSincePlanting = true;
+}
+
+void UCataclysmStrikeSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(WindowTimer);
+	}
+
+	// THE ONE PLACE THE SWORD LEAVES THE GROUND. Four things end this skill --
+	// the second press, the window closing, a cancel, and the character dying --
+	// and all four have to leave the character holding something. Destroying the
+	// actor is the whole of it: `ACataclysmPlantedWeapon::EndPlay` fills the
+	// hands again and `HeldBy` stops finding it, which is what the refused skills
+	// ask.
+	//
+	// BEHIND THE ROW'S OWN FLAG, so that the other 21 Strike rows in the sheet do
+	// not search the level for a sword every time they finish a swing. `HeldBy`
+	// walks the world's actors, which is nothing at the rate a player presses a
+	// key and is not nothing once per blow.
+	if (Params.bDisarmsUntilRecalled)
+	{
+		if (ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::HeldBy(
+				ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar()))
+		{
+			Sword->Destroy();
+		}
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
 }
 
 // ==========================================================================

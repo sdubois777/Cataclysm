@@ -15,6 +15,9 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For the weapon Buried Fire leaves standing in the ground, and for the
+// seconds it counts while it stands. Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 // For the resistance a Shred cuts, and for reading it back. Issue #37.
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -9278,6 +9281,591 @@ bool FCataclysmAdvanceHitsHarderTheFurtherItWentTest::RunTest(const FString&)
 	// about the walk rather than about the two casters.
 	TestTrue(TEXT("because the long advance had walked further"),
 		LongWalk->WalkedCm > ShortWalk->WalkedCm);
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// Buried Fire -- a weapon left standing in the ground. Issue #1141.
+//
+// THE ROW, so the tests below can be read against it. `Demonic_Greatsword_
+// Special`: "drive the greatsword into the ground and leave it there. It burns
+// everything within 4 meters and grows hotter every second it stands. Pull it
+// free within 10 seconds to erupt for damage that rises with how long you left
+// it. You fight unarmed until you do."
+// --------------------------------------------------------------------------
+
+namespace CataclysmSkillTest
+{
+	/** The Buried Fire row, exactly as game/Data/WeaponSkills.csv writes it. */
+	const TCHAR* const BuriedFire =
+		TEXT("Radius=4; Angle=360; Burn=1; GroundRadius=4; GroundDuration=10; "
+			 "GroundPercent=10.0; MoreDamagePer=12; ScalingSource=Second; "
+			 "DisarmsUntilRecalled=1");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantLeavesTheWeaponStandingTest,
+	"Cataclysm.Skills.PlantingAWeaponLeavesItStandingInBurningGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantLeavesTheWeaponStandingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestNull(TEXT("nothing is in the ground before the cast"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Plant));
+
+	ACataclysmPlantedWeapon* Sword =
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor);
+	if (!Sword)
+	{
+		AddError(TEXT("The weapon was not left in the ground."));
+		return false;
+	}
+
+	// WHERE THE CASTER WAS STANDING. "Drive the greatsword into the ground"
+	// leaves it underfoot; there is no aim point in the sentence.
+	TestTrue(TEXT("it stands where the caster was"),
+		Sword->GetActorLocation().Equals(Caster.Actor->GetActorLocation(), 1.0f));
+
+	TestEqual(TEXT("and it has stood no seconds yet"),
+		Sword->SecondsPlanted(), 0.0f);
+
+	// AND IT SWUNG AT NOBODY. A plant is not a blow, which is the half of this
+	// that the Strike shape would otherwise have done anyway.
+	TestEqual(TEXT("and nothing was swung at"), Plant->SwingsMade, 0);
+
+	ACataclysmGroundZone* Fire = TheOnlyGroundZone(World);
+	if (!Fire)
+	{
+		AddError(TEXT("The plant left no burning ground."));
+		return false;
+	}
+
+	TestTrue(TEXT("the ground it stands in burns"), Fire->DamagePerTick > 0.0f);
+	TestTrue(TEXT("and the sword knows about that patch"),
+		Fire == Sword->Fire.Get());
+
+	// THE SKILL IS STILL RUNNING, WHICH IS WHAT MAKES THE SECOND PRESS POSSIBLE.
+	// A Strike that ends in the frame it activates is never running when a key
+	// press arrives, so the press would go to the Special slot's five second
+	// cooldown instead of to the sword.
+	TestTrue(TEXT("and the skill is still running, so it can be pressed again"),
+		Plant->IsActive());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantedWeaponDisarmsTest,
+	"Cataclysm.Skills.AWeaponInTheGroundRefusesTheRestOfItsSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantedWeaponDisarmsTest::RunTest(const FString&)
+{
+	// "YOU FIGHT UNARMED UNTIL YOU DO", written as `DisarmsUntilRecalled=1`.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+
+	// ANOTHER OF THE SAME WEAPON'S SKILLS, WHICH STATES NO DISARM. Any of the
+	// Greatsword's other four would do; a plain Heavy swing is the shortest.
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=180"),
+		TEXT("Executioner's Arc"));
+
+	// AND THE BASIC ATTACK, WHICH IS EXEMPT ON PURPOSE. "You fight unarmed" says
+	// the character goes on fighting.
+	UCataclysmStrikeSkill* Basic = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::BasicAttack,
+		TEXT("Radius=2.7; Angle=140; MaxTargets=1"), TEXT("Greatsword Swing"));
+
+	if (!Plant || !Swing || !Basic)
+	{
+		AddError(TEXT("Could not grant the three skills."));
+		return false;
+	}
+
+	// THE CONTROL, AND IT HAS TO COME FIRST. Without it a Heavy swing refused for
+	// some unrelated reason -- no mana, a cooldown, a missing attribute -- would
+	// read exactly like a disarm that worked.
+	TestTrue(TEXT("the Heavy swing works before anything is planted"),
+		Activate(Caster, Swing));
+	Caster.AbilitySystem->CancelAbilityHandle(
+		Swing->GetCurrentAbilitySpecHandle());
+
+	// AND ITS COOLDOWN IS CLEARED, or the refusal below would be the cooldown's
+	// doing rather than the sword's. This is the same removal
+	// `UCataclysmSkillTemplate::RefundCooldown` performs.
+	UCataclysmSkillEffects::RemoveEffectsGranting(
+		Caster.Actor, UCataclysmSkillSlots::CooldownTag(
+			ECataclysmAbilitySlot::Heavy));
+	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+	if (!ACataclysmPlantedWeapon::HeldBy(Caster.Actor))
+	{
+		AddError(TEXT("The weapon was not left in the ground."));
+		return false;
+	}
+
+	TestFalse(TEXT("and now the Heavy swing is refused"),
+		Activate(Caster, Swing));
+
+	TestTrue(TEXT("but the basic attack still works, because you still fight"),
+		Activate(Caster, Basic));
+
+	// AND THE REFUSAL LIFTS WHEN THE SWORD COMES BACK. Without this the test
+	// would pass on a disarm that never ended.
+	Plant->PullTheWeaponFree();
+	TestNull(TEXT("the sword is out of the ground"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+
+	UCataclysmSkillEffects::RemoveEffectsGranting(
+		Caster.Actor, UCataclysmSkillSlots::CooldownTag(
+			ECataclysmAbilitySlot::Heavy));
+	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+
+	TestTrue(TEXT("so the Heavy swing works again"), Activate(Caster, Swing));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPullingTheWeaponFreeEruptsTest,
+	"Cataclysm.Skills.PullingAWeaponFreeEruptsWhereItStandsAndNotWhereYouAre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPullingTheWeaponFreeEruptsTest::RunTest(const FString&)
+{
+	// "PULL IT FREE WITHIN 10 SECONDS TO ERUPT." The eruption belongs to the
+	// sword, so walking away before pressing again erupts where the sword is.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// ONE STANDING BESIDE THE SWORD, AND ONE BESIDE WHERE THE CASTER WALKS TO.
+	// Thirty metres apart, so neither is inside the other's four metre ring.
+	FScopedFighter ByTheSword(World, FVector(2 * M, 0, 0));
+	FScopedFighter ByTheCaster(World, FVector(32 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+
+	// THE CASTER WALKS THIRTY METRES OFF, leaving the sword behind.
+	Caster.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+
+	const float SwordSideBefore = ByTheSword.Health();
+	const float CasterSideBefore = ByTheCaster.Health();
+
+	const int32 Caught = Plant->PullTheWeaponFree();
+
+	TestEqual(TEXT("the eruption caught the one standing by the sword"),
+		Caught, 1);
+	TestTrue(TEXT("which lost health"),
+		ByTheSword.Health() < SwordSideBefore);
+	TestTrue(TEXT("and was set alight, because the row states Burn=1"),
+		UCataclysmSkillEffects::HasTag(ByTheSword.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	// THE ONE STANDING NEXT TO THE PLAYER WAS NOT TOUCHED, which is what says
+	// the ring went off at the sword rather than at the caster.
+	TestEqual(TEXT("and the one beside the caster lost nothing"),
+		ByTheCaster.Health(), CasterSideBefore, 0.01f);
+	TestFalse(TEXT("and was not set alight"),
+		UCataclysmSkillEffects::HasTag(ByTheCaster.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	TestNull(TEXT("and the sword is out of the ground"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+	TestFalse(TEXT("and the skill has finished"), Plant->IsActive());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeaponLeftLongerEruptsHarderTest,
+	"Cataclysm.Skills.AWeaponLeftLongerEruptsHarder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWeaponLeftLongerEruptsHarderTest::RunTest(const FString&)
+{
+	// "ERUPT FOR DAMAGE THAT RISES WITH HOW LONG YOU LEFT IT", written as
+	// `MoreDamagePer=12; ScalingSource=Second`. `Second` was one of the sources
+	// nothing counted for a Strike.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// TWO CASTERS THIRTY METRES APART, each with its own sword and its own
+	// enemy, so the two eruptions differ only in how long the sword stood.
+	FScopedFighter Quick(World, FVector::ZeroVector);
+	FScopedFighter HitEarly(World, FVector(2 * M, 0, 0));
+
+	FScopedFighter Patient(World, FVector(0, 30 * M, 0));
+	FScopedFighter HitLate(World, FVector(2 * M, 30 * M, 0));
+
+	UCataclysmStrikeSkill* QuickPlant = GrantSkill<UCataclysmStrikeSkill>(
+		Quick, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	UCataclysmStrikeSkill* PatientPlant = GrantSkill<UCataclysmStrikeSkill>(
+		Patient, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!QuickPlant || !PatientPlant)
+	{
+		AddError(TEXT("Could not grant the two plants."));
+		return false;
+	}
+
+	TestTrue(TEXT("the first plant activates"), Activate(Quick, QuickPlant));
+	TestTrue(TEXT("the second plant activates"), Activate(Patient, PatientPlant));
+
+	ACataclysmPlantedWeapon* Waited =
+		ACataclysmPlantedWeapon::HeldBy(Patient.Actor);
+	if (!Waited)
+	{
+		AddError(TEXT("The second weapon was not left in the ground."));
+		return false;
+	}
+
+	// EIGHT SECONDS ON ONE OF THEM AND NONE ON THE OTHER. Driven by hand,
+	// because a world built by UWorld::CreateWorld never ticks and its timers
+	// never fire.
+	for (int32 Second = 0; Second < 8; ++Second)
+	{
+		Waited->GrowHotter();
+	}
+
+	TestEqual(TEXT("the second sword has stood eight seconds"),
+		Waited->SecondsPlanted(), 8.0f);
+
+	const float EarlyBefore = HitEarly.Health();
+	const float LateBefore = HitLate.Health();
+
+	QuickPlant->PullTheWeaponFree();
+	PatientPlant->PullTheWeaponFree();
+
+	const float DealtEarly = EarlyBefore - HitEarly.Health();
+	const float DealtLate = LateBefore - HitLate.Health();
+
+	// BOTH LANDED, which is the control: two eruptions that both dealt nothing
+	// would otherwise satisfy the comparison below.
+	TestTrue(TEXT("the immediate eruption landed"), DealtEarly > 0.0f);
+	TestTrue(TEXT("and the delayed one landed"), DealtLate > 0.0f);
+
+	TestTrue(TEXT("and the sword left standing longer erupted harder"),
+		DealtLate > DealtEarly);
+
+	// AND BY THE EXACT FIGURE THE ROW STATES. Eight seconds at 12% more each is
+	// 1.96 times, and the two blows are otherwise identical: same weapon damage,
+	// same slot, same untouched target.
+	//
+	// A TIGHT TOLERANCE, AND THAT IS AFFORDABLE BECAUSE NOTHING HERE ROLLS.
+	// `UCataclysmCombatAttributeSet` starts a character at zero critical strike
+	// chance -- the design puts that on the skill rather than on the character --
+	// and neither of these skills states one, so no critical strike can land on
+	// either blow and move the ratio. A loose tolerance on a figure this exact
+	// would let a wrong constant through: 10% per second gives 1.80 and 15%
+	// gives 2.20, and both sit inside anything generous enough to absorb a
+	// critical strike.
+	TestEqual(TEXT("by exactly 12% more per second stood"),
+		DealtLate / DealtEarly, 1.96f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantedGroundGrowsHotterTest,
+	"Cataclysm.Skills.TheGroundAroundAPlantedWeaponGrowsHotterEverySecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantedGroundGrowsHotterTest::RunTest(const FString&)
+{
+	// "IT BURNS EVERYTHING WITHIN 4 METERS AND GROWS HOTTER EVERY SECOND IT
+	// STANDS." One `MoreDamagePer=12` read by two things: this, and the
+	// eruption above.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+
+	ACataclysmPlantedWeapon* Sword =
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor);
+	ACataclysmGroundZone* Fire = TheOnlyGroundZone(World);
+	if (!Sword || !Fire)
+	{
+		AddError(TEXT("The plant left no sword or no burning ground."));
+		return false;
+	}
+
+	const float AtFirst = Fire->DamagePerTick;
+	TestTrue(TEXT("the patch burns to begin with"), AtFirst > 0.0f);
+
+	for (int32 Second = 0; Second < 5; ++Second)
+	{
+		Sword->GrowHotter();
+	}
+
+	TestEqual(TEXT("after five seconds it is 60% hotter"),
+		Fire->DamagePerTick, AtFirst * 1.6f, AtFirst * 0.001f);
+
+	for (int32 Second = 0; Second < 5; ++Second)
+	{
+		Sword->GrowHotter();
+	}
+
+	// NOT COMPOUNDING, WHICH IS THE POINT OF THIS SECOND HALF. Ten steps of "12%
+	// hotter than it is now" would be 3.106 times; ten seconds of "12% per
+	// second" is 2.2. The design's `more` bucket is a rate multiplied by a
+	// count, and 1.6 twice over would pass the first assertion alone.
+	TestEqual(TEXT("and after ten it is 120% hotter, not 211%"),
+		Fire->DamagePerTick, AtFirst * 2.2f, AtFirst * 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantWindowClosingTest,
+	"Cataclysm.Skills.AWeaponLeftTooLongComesBackAndEruptsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantWindowClosingTest::RunTest(const FString&)
+{
+	// WHAT THE ROW LEAVES OPEN. It says "pull it free within 10 seconds to
+	// erupt" and does not say what a player who does not gets. Recorded in
+	// docs/DECISIONS.md on 2026-09-02: the weapon comes back and nothing erupts.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Bystander(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+	if (!ACataclysmPlantedWeapon::HeldBy(Caster.Actor))
+	{
+		AddError(TEXT("The weapon was not left in the ground."));
+		return false;
+	}
+
+	const float Before = Bystander.Health();
+
+	Plant->LetTheWindowClose();
+
+	TestNull(TEXT("the weapon came back"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+	TestFalse(TEXT("and the skill has finished"), Plant->IsActive());
+
+	TestEqual(TEXT("and nothing erupted, so the bystander lost nothing"),
+		Bystander.Health(), Before, 0.01f);
+	TestEqual(TEXT("and the skill recorded no eruption"), Plant->Erupted, 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCancelledPlantGivesTheWeaponBackTest,
+	"Cataclysm.Skills.CancellingAPlantTakesTheWeaponOutOfTheGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCancelledPlantGivesTheWeaponBackTest::RunTest(const FString&)
+{
+	// THE CASE NOBODY PRESSES A KEY FOR: the character dies, or something else
+	// cancels the skill, while the sword is still in the ground. All four ways
+	// this skill can stop go through EndAbility, and this is the one of them a
+	// test can reach without a world that ticks.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+	if (!ACataclysmPlantedWeapon::HeldBy(Caster.Actor))
+	{
+		AddError(TEXT("The weapon was not left in the ground."));
+		return false;
+	}
+
+	Caster.AbilitySystem->CancelAbilityHandle(
+		Plant->GetCurrentAbilitySpecHandle());
+
+	TestNull(TEXT("a cancelled plant leaves nothing in the ground"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSecondPressNeedsAReleaseTest,
+	"Cataclysm.Skills.TheSecondPressPullsTheWeaponFreeAndAHeldKeyDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSecondPressNeedsAReleaseTest::RunTest(const FString&)
+{
+	// ISSUE #1114 AGAIN. `ACataclysmPlayerController::Input_AbilitySlotPressed`
+	// is bound to `ETriggerEvent::Triggered`, which fires every frame the key is
+	// held, so without waiting for a release the sword would be planted on one
+	// frame and pulled straight back out on the next.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, BuriedFire, TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant Buried Fire."));
+		return false;
+	}
+
+	TestTrue(TEXT("the plant activates"), Activate(Caster, Plant));
+
+	const FGameplayAbilitySpecHandle Handle = Plant->GetCurrentAbilitySpecHandle();
+	FGameplayAbilitySpec* Spec =
+		Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	if (!Spec)
+	{
+		AddError(TEXT("The plant has no spec."));
+		return false;
+	}
+
+	// THE NEXT FRAME OF THE SAME PRESS. The key has not come up, so this must
+	// change nothing at all.
+	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
+
+	TestNotNull(TEXT("a held key leaves the sword where it is"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+	TestTrue(TEXT("and the skill is still running"), Plant->IsActive());
+
+	// THE KEY COMES UP, WHICH PULLS NOTHING FREE. This is not a hold-and-release
+	// skill; the sword stays in the ground when the key is let go.
+	Caster.AbilitySystem->AbilitySpecInputReleased(*Spec);
+
+	TestNotNull(TEXT("letting go leaves the sword where it is too"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+
+	const float Before = Enemy.Health();
+
+	// AND NOW A REAL SECOND PRESS.
+	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
+
+	TestNull(TEXT("the second press pulls it free"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+	TestTrue(TEXT("and it erupted on what was standing there"),
+		Enemy.Health() < Before);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlantWithNoWindowIsRefusedTest,
+	"Cataclysm.Skills.APlantWithNoWindowIsRefusedRatherThanLeftStandingForEver",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlantWithNoWindowIsRefusedTest::RunTest(const FString&)
+{
+	// THE WORST OUTCOME THIS SKILL COULD HAVE. `GroundDuration` is how long the
+	// sword may be left, so a row stating a disarm and no duration would leave
+	// the weapon standing until something else ended the skill -- a character
+	// fighting unarmed with no way back. `tools/generate_datatables.py` writes
+	// GroundDuration on every row that leaves ground, so this state is only
+	// reachable with a data table older than the sheet, and it is refused rather
+	// than assumed impossible.
+	using namespace CataclysmSkillTest;
+
+	AddExpectedError(TEXT("states no GroundDuration"),
+		EAutomationExpectedErrorFlags::Contains, 1);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Plant = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=4; Angle=360; Burn=1; DisarmsUntilRecalled=1"),
+		TEXT("Buried Fire"));
+	if (!Plant)
+	{
+		AddError(TEXT("Could not grant the plant."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Plant));
+
+	TestNull(TEXT("and nothing was left in the ground"),
+		ACataclysmPlantedWeapon::HeldBy(Caster.Actor));
+	TestFalse(TEXT("and the skill ended rather than running for ever"),
+		Plant->IsActive());
+
+	// AND NO PATCH WAS LEFT BURNING WITH NO SWORD IN IT, which is why the
+	// refusal comes before `LeaveGroundAt` rather than after it.
+	int32 Patches = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		++Patches;
+	}
+	TestEqual(TEXT("and no ground was left burning"), Patches, 0);
 
 	return true;
 }

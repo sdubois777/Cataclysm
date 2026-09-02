@@ -7,6 +7,7 @@
 #include "CataclysmSkillTemplates.generated.h"
 
 class ACataclysmMinion;
+class ACataclysmPlantedWeapon;
 class ACataclysmProjectile;
 
 /**
@@ -34,6 +35,14 @@ class ACataclysmProjectile;
  * and an Interval it repeats for that long, and FinalHitPercent lands once at
  * the end -- Pyroclasm's "final hit at the end of the spin deals 300% weapon
  * damage". With neither it is a single swing.
+ *
+ * AND ONE ROW DOES NOT SWING AT ALL. The Greatsword's Buried Fire states
+ * `DisarmsUntilRecalled=1`: "drive the greatsword into the ground and leave it
+ * there ... pull it free within 10 seconds to erupt". It is a Strike because
+ * what it eventually does is hit everything in a ring, but the ring goes off
+ * where the sword is standing and at a moment the player chooses, so the whole
+ * of its behaviour is `PlantTheWeapon` and `PullTheWeaponFree` below rather than
+ * `SwingOnce`.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmStrikeSkill : public UCataclysmSkillTemplate
@@ -48,20 +57,138 @@ public:
 								 const FGameplayAbilityActivationInfo ActivationInfo,
 								 const FGameplayEventData* TriggerEventData) override;
 
+	/**
+	 * The key was pressed again while the sword is still in the ground. Pull it
+	 * free.
+	 *
+	 * THE SECOND PRESS ARRIVES HERE AND NOT AS A FRESH ACTIVATION, AND THAT IS
+	 * WHAT MAKES THE ROW'S TEN SECONDS TEN SECONDS. The Special slot waits five
+	 * seconds between uses, so a second press routed through
+	 * `TryActivateAbility` would be refused by the engine's own cooldown check
+	 * for the first half of the window -- "pull it free within 10 seconds" would
+	 * mean "between 5 and 10". `UCataclysmAbilitySystemComponent::
+	 * ProcessAbilityInput` already tells the two cases apart: a press on an
+	 * ability that is not running activates it, and a press on one that IS
+	 * running comes here. So the skill stays active for as long as the sword
+	 * stands.
+	 *
+	 * THE DAGGER'S ECHO SOLVES THE SAME PROBLEM THE OTHER WAY ROUND AND COULD
+	 * NOT HERE. `Mode=Recall` leaves its mark before `CommitAndBegin`, so the
+	 * first press is free and the second one pays. That works because leaving a
+	 * mark moves nobody and burns nothing. Planting a sword sets ten seconds of
+	 * ground alight, so a free first press would be ten seconds of area denial
+	 * for nothing, repeatable as fast as the key can be pressed.
+	 *
+	 * AND IT NEEDS A RELEASE FIRST, WHICH IS THE WHOLE OF ISSUE #1114 AGAIN.
+	 * `ACataclysmPlayerController::Input_AbilitySlotPressed` is bound to
+	 * `ETriggerEvent::Triggered`, which fires every frame the key is held.
+	 * Without waiting for a release, holding the Special key would plant the
+	 * sword on one frame and pull it straight back out on the next.
+	 */
+	virtual void InputPressed(const FGameplayAbilitySpecHandle Handle,
+							  const FGameplayAbilityActorInfo* ActorInfo,
+							  const FGameplayAbilityActivationInfo ActivationInfo) override;
+
+	/** The key came up. Nothing happens except arming the second press above. */
+	virtual void InputReleased(const FGameplayAbilitySpecHandle Handle,
+							   const FGameplayAbilityActorInfo* ActorInfo,
+							   const FGameplayAbilityActivationInfo ActivationInfo) override;
+
+	/**
+	 * Whatever ends this skill takes the sword out of the ground with it.
+	 *
+	 * THE ONE PLACE THE SWORD IS DESTROYED, so a character cannot be left
+	 * fighting unarmed by a skill that ended for a reason nobody thought of --
+	 * dying during the ten seconds, a cancel, or the window running out. The
+	 * eruption happens before this and separately; reaching here with a sword
+	 * still standing means it was never pulled free, and the row's own answer to
+	 * that is below.
+	 */
+	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
+							const FGameplayAbilityActorInfo* ActorInfo,
+							const FGameplayAbilityActivationInfo ActivationInfo,
+							bool bReplicateEndAbility, bool bWasCancelled) override;
+
 	/** One swing. Public so a test can drive it without a timer. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 SwingOnce(float DamagePercent = -1.0f);
+
+	/**
+	 * Drive the weapon into the ground and leave it standing. Public so a test
+	 * can drive it without waiting for a swing.
+	 *
+	 * @return the sword, or null if it could not be planted
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	ACataclysmPlantedWeapon* PlantTheWeapon();
+
+	/**
+	 * Pull it free: erupt where it stands, then end. Public so a test can drive
+	 * it without pressing a key.
+	 *
+	 * "ERUPT FOR DAMAGE THAT RISES WITH HOW LONG YOU LEFT IT", which is the row's
+	 * `MoreDamagePer=12` beside `ScalingSource=Second`. The seconds are counted
+	 * by the sword rather than by this skill, because the sword is what has been
+	 * standing there; `UCataclysmSkillTemplate::ScalingUnits` asks it.
+	 *
+	 * AT THE SWORD AND NOT AT THE PLAYER, which is what makes the ten seconds a
+	 * decision rather than a delay. Walking away and pressing again erupts where
+	 * the sword is.
+	 *
+	 * @return how many enemies the eruption caught
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 PullTheWeaponFree();
+
+	/**
+	 * The ten seconds ran out and the sword was never pulled free.
+	 *
+	 * IT COMES BACK AND NOTHING ERUPTS. The row leaves this open -- it says "pull
+	 * it free within 10 seconds to erupt" and does not say what a player who does
+	 * not gets -- and this is the reading recorded in `docs/DECISIONS.md` on
+	 * 2026-09-02. It is the same reading `Mode=Recall` took for a return that is
+	 * refused: the skill was paid for, the burning ground it left was the payment
+	 * earned, and the eruption is what the second press buys. The alternative,
+	 * fighting unarmed for ever on a mistimed press, is a worse outcome than any
+	 * the design asks for.
+	 *
+	 * Public so a test can drive it without a world that ticks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void LetTheWindowClose();
 
 	/** How many swings have landed this activation. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 SwingsMade = 0;
 
+	/** What the eruption dealt, in total. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float Erupted = 0.0f;
+
 private:
 	void Repeat();
 	void Finish();
 
+	/**
+	 * Whether the key has come up since the sword went in.
+	 *
+	 * FALSE UNTIL `InputReleased` ARRIVES. See `InputPressed` above: without it,
+	 * holding the Special key plants and erupts inside two frames.
+	 */
+	bool bKeyReleasedSincePlanting = false;
+
 	FTimerHandle RepeatTimer;
 	FTimerHandle FinishTimer;
+
+	/**
+	 * When the sword comes back by itself. `GroundDuration`.
+	 *
+	 * THE SAME TEN AS THE BURNING GROUND, AND THE ROW STATES ONE TEN. "It burns
+	 * everything within 4 meters ... pull it free within 10 seconds" is one
+	 * sentence about one object: the sword stands as long as the fire around it
+	 * burns. A second parameter would let the two drift apart.
+	 */
+	FTimerHandle WindowTimer;
 };
 
 /**

@@ -25,6 +25,10 @@
 // For binding together the creatures one throw pinned, so that killing any of
 // them frees the rest. The Spear's Skewer. Issue #37.
 #include "AbilitySystem/CataclysmPinnedLine.h"
+// For the weapon Buried Fire leaves standing in the ground, which decides both
+// how long a plant has been growing hotter and which skills are refused while it
+// stands. Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 // For the persistent geometry a skill leaves: a pit, a wall, a fissure
@@ -306,6 +310,36 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 		&& ACataclysmTerrain::IsStandingIn(ActorInfo ? ActorInfo->AvatarActor.Get()
 													: Avatar(),
 										   ECataclysmTerrainKind::Pit))
+	{
+		return false;
+	}
+
+	// A CHARACTER WHOSE WEAPON IS IN THE GROUND FIGHTS UNARMED. The Greatsword's
+	// Buried Fire: "you fight unarmed until you do." Its row states
+	// `DisarmsUntilRecalled=1` and nothing read it until 2026-09-02.
+	//
+	// A REFUSAL RATHER THAN A REMOVAL, AND THAT IS THE WHOLE OF WHY THIS IS HERE
+	// AND NOT IN `UCataclysmWeaponSlotsComponent`. That component's
+	// `UnequipWeapon` begins with `GrantedHandles.TakeFromAbilitySystem`, which
+	// revokes every ability the weapon granted -- including the running Buried
+	// Fire that is holding the sword. Taking the weapon away for real would
+	// destroy the state the second press needs. Nothing is taken away here, so
+	// there is nothing to give back and no way to be left permanently weaponless.
+	//
+	// THE SKILL THAT PLANTED IT IS EXEMPT, WHICH IS WHAT MAKES IT RECOVERABLE,
+	// and `bDisarmsUntilRecalled` is how it names itself. Buried Fire is the only
+	// row in the sheet that states it.
+	//
+	// SO IS THE BASIC ATTACK, DELIBERATELY. "You fight unarmed" says the
+	// character goes on fighting; refusing every slot would leave them unable to
+	// act at all for ten seconds, which reads as the game having stopped working
+	// rather than as a cost. What they swing with is still the buried weapon's
+	// damage, because attack damage comes from what is WORN and the item is still
+	// worn -- that is issue #1166 and not this.
+	if (Slot != ECataclysmAbilitySlot::BasicAttack
+		&& !Params.bDisarmsUntilRecalled
+		&& ACataclysmPlantedWeapon::HeldBy(
+			   ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar()))
 	{
 		return false;
 	}
@@ -1181,6 +1215,31 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		return 0.0f;
 	}
 
+	if (Params.ScalingSource.Equals(TEXT("Second"), ESearchCase::IgnoreCase))
+	{
+		// HOW LONG A PLANTED WEAPON HAS STOOD IN THE GROUND. The Greatsword's
+		// Buried Fire: "erupt for damage that rises with how long you left it",
+		// written as `MoreDamagePer=12; ScalingSource=Second`.
+		//
+		// ASKED OF THE SWORD RATHER THAN OF THE SKILL, unlike `Meter` above,
+		// which asks the movement skill that did the walking. The sword is the
+		// thing that has been standing there and it is what counts the seconds,
+		// so the eruption and the fire around it cannot disagree about how long
+		// it has been.
+		//
+		// `UCataclysmSelfBuffSkill` NAMES THE SAME SOURCE AND NEVER REACHES HERE.
+		// The Greatsword's Unbroken counts seconds of standing still, and the
+		// buff has its own `Units`, which answers `SecondsHeld`. Two different
+		// things are being counted and each is counted by whatever did it.
+		if (const ACataclysmPlantedWeapon* Sword =
+				ACataclysmPlantedWeapon::HeldBy(Avatar()))
+		{
+			return Sword->SecondsPlanted();
+		}
+
+		return 0.0f;
+	}
+
 	if (Params.ScalingSource.Equals(TEXT("Consumed"), ESearchCase::IgnoreCase))
 	{
 		// EVERY OTHER ENEMY, so one fire put out is worth nothing. Extinction:
@@ -1196,11 +1255,11 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		return bThisTargetConsumed ? 1.0f : 0.0f;
 	}
 
-	// One of the eight sources nothing counts yet -- Kill, Second, Meter,
-	// HitTaken, Bounce, Pierced, Pinned -- or Burning, which the self buff
-	// counts for itself. Scaling by nothing is the safe answer: a skill naming
-	// one deals its plain damage rather than a figure taken from the wrong
-	// thing.
+	// One of the sources nothing counts here -- Kill, HitTaken, Bounce, Pierced,
+	// Pinned -- or Burning, Kill, Pinned and a buff's own Second, which
+	// `UCataclysmSelfBuffSkill::Units` counts for itself. Scaling by nothing is
+	// the safe answer: a skill naming one deals its plain damage rather than a
+	// figure taken from the wrong thing.
 	return 0.0f;
 }
 
