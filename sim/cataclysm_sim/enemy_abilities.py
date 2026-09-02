@@ -148,6 +148,11 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           # enemy ability could not sensibly state: nothing in the game buffs a
           # creature's allies. Issue #1182.
           "AllyIncreasedDamage",
+          # `HealthFromHitTaken` joined on 2026-09-02 with Living Pyre,
+          # "returns health equal to 25% of the damage that hit dealt". It is
+          # the other half of the event `ScalingSource=HitTaken` reads. No
+          # enemy ability states it yet. Issue #1162.
+          "HealthFromHitTaken",
           # Immune joined on 2026-09-02 with the Greatsword. Seven rows
           # across four weapons state one. No enemy ability does yet.
           "Immune",
