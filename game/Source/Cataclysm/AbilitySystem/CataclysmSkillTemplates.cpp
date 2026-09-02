@@ -350,6 +350,34 @@ bool UCataclysmStrikeSkill::HoldBreaksOn(const TCHAR* What) const
 	return false;
 }
 
+bool UCataclysmStrikeSkill::HoldForbids(const TCHAR* What) const
+{
+	if (Params.HoldForbids.IsEmpty() || !What)
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED, the same way `Immune` and `ChargeBreaksOn` are read. The
+	// Whole Weight names two: `Acting, Healing`.
+	TArray<FString> Named;
+	Params.HoldForbids.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(What, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmStrikeSkill::AHeldSwingForbids(const AActor* Who,
+											  const TCHAR* What)
+{
+	const UCataclysmStrikeSkill* Held = HeldSwingOn(Who);
+	return Held && Held->HoldForbids(What);
+}
+
 void UCataclysmStrikeSkill::BeginTheHold()
 {
 	UWorld* World = GetWorld();

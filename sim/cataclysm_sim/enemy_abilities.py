@@ -163,6 +163,11 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           # the one thing a patch of burning ground gives the person who left
           # it. No enemy ability states it yet. Issue #1162.
           "OwnGroundRegenPercent",
+          # `HoldForbids` joined on 2026-09-02 with The Whole Weight, "you
+          # cannot move, act or be healed". Moving is refused for every held
+          # swing and needs no key; this carries the other two. No enemy
+          # ability states it yet. Issue #1162.
+          "HoldForbids",
           # Immune joined on 2026-09-02 with the Greatsword. Seven rows
           # across four weapons state one. No enemy ability does yet.
           "Immune",

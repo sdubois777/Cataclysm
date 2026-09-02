@@ -204,7 +204,7 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			TEXT("ScalingSource"), TEXT("ForcedMovement"), TEXT("Terrain"),
 			TEXT("Requires"), TEXT("ChargeBreaksOn"), TEXT("RefundsCooldown"),
 			TEXT("TargetMode"), TEXT("OnDeath"), TEXT("SpreadWhen"),
-			TEXT("Immune"),
+			TEXT("Immune"), TEXT("HoldForbids"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -418,6 +418,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("OwnGroundRegenPercent"), ESearchCase::IgnoreCase))
 		{
 			Params.OwnGroundRegenPercent = Number;
+		}
+		else if (Key.Equals(TEXT("HoldForbids"), ESearchCase::IgnoreCase))
+		{
+			Params.HoldForbids = Value;
 		}
 		// --- Forced movement --------------------------------------------
 		else if (Key.Equals(TEXT("ForcedMovement"), ESearchCase::IgnoreCase))

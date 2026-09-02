@@ -298,6 +298,29 @@ public:
 	bool HoldBreaksOn(const TCHAR* What) const;
 
 	/**
+	 * Whether this row's `HoldForbids` names the given word.
+	 *
+	 * `Acting` AND `Healing` ARE THE TWO VALUES, and one row states either: The
+	 * Whole Weight's "you cannot move, act or be healed". Moving is not one of
+	 * them, because every held swing roots its caster and needs no key to say
+	 * so. Issue #1162.
+	 */
+	bool HoldForbids(const TCHAR* What) const;
+
+	/**
+	 * Whether a swing held on this character forbids the given word.
+	 *
+	 * READ BY THE TWO PLACES THAT HAVE TO REFUSE SOMETHING.
+	 * `UCataclysmSkillTemplate::CanActivateAbility` asks about `Acting`, and
+	 * `UCataclysmRegeneration::TopUp` asks about `Healing` -- so neither of them
+	 * needs to know what a held swing is.
+	 *
+	 * FALSE FOR EVERY CHARACTER IN THE GAME BUT ONE HOLDING THE GREATSWORD'S
+	 * ULTIMATE, and false the moment that swing goes.
+	 */
+	static bool AHeldSwingForbids(const AActor* Who, const TCHAR* What);
+
+	/**
 	 * A blow landed on the caster while the swing was drawn back. Count it.
 	 *
 	 * THE WHOLE WEIGHT'S `ScalingSource=HitTaken`: "every hit you take during the

@@ -20,7 +20,74 @@ applied or still pending.
 
 ---
 
-## 2026-09-02 — A patch of burning ground can heal whoever left it, and that was the last unimplemented Demonic sentence
+## 2026-09-02 — A held swing may forbid its caster more than moving, and the previous entry's title was wrong
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`tools/generate_datatables.py`, `sim/cataclysm_sim/enemy_abilities.py`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`,
+`CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.h` and `.cpp`,
+`CataclysmRegeneration.cpp`, and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue
+#1162.
+
+**The entry below this one is titled "that was the last unimplemented Demonic
+sentence" and it was not.** The same word search that found Blood Pyre's
+"doubles" was widened to `cannot|never|no limit|immune` and turned up one more:
+
+> The Whole Weight: "You cannot move, **act or be healed**, and every hit you
+> take during the wind-up adds 8% more damage to what follows."
+
+**Only the first of the three was built.** Every held swing roots its caster,
+because Backswing says so too — but "act" and "be healed" had nothing behind
+them, in work merged earlier the same day.
+
+**Six other rows the widened search flagged were all already correct**, and are
+listed here so the next sweep does not re-check them: Unbroken's "cannot be
+staggered" is `Immune=Displacement`; Nail Down's "cannot move for 3 seconds" and
+The Gathering's "cannot rise for 2 seconds" are `ForcedMovement` with a duration;
+Crater's "enemies in the pit cannot charge or leap" is refused in
+`CanActivateAbility`; Subjugate's "bosses cannot be taken" is refused in
+`UCataclysmCommand`; Groundbreaker's "no limit to how many you may open" is taken
+literally and its own comment says why; and Ashen Edge's "never wholly lost" is
+prose describing `ConsumeRadius`.
+
+### `HoldForbids`
+
+What the caster may not do while the skill is held: `Acting`, `Healing`, or both,
+comma separated. The Whole Weight states both. Backswing states neither.
+
+**Moving is deliberately not one of the values.** Every held swing roots its
+caster — both charged rows say so — so it is refused for all of them by
+`ACataclysmPlayerController::PawnCannotWalk` and needs no key. These are the two
+extra restrictions one row asks for.
+
+**`Acting` refuses the basic attack as well, which is the opposite of what a
+planted sword does**, and both follow their own row's wording. Buried Fire's "you
+fight unarmed" says the character goes on fighting, so it exempts the basic
+attack; "you cannot act" says it does not. The player's basic attack fires on its
+own timer, so without this a held Ultimate would be swinging a greatsword while
+it was raised over the character's head.
+
+**The held swing's own release is untouched**, because it is not an activation:
+the release and the hold timer both act on an ability that is already running and
+never pass through `CanActivateAbility`.
+
+**`Healing` stops every pool, not only health.** "You cannot be healed" says
+nothing comes back while the swing is up, and the hold is three seconds.
+`UCataclysmRegeneration::TopUp` is the one place health regeneration and life
+leech both land, which is where it is refused.
+
+### One thing that is out of reach and costs nothing
+
+The Fist's Living Pyre returns health by another route and `HoldForbids=Healing`
+does not reach it. That costs nothing: The Whole Weight is a **Greatsword**
+Ultimate and Living Pyre is a **Fist** Ultimate, and a character holds one
+weapon, so the two can never be up at once.
+
+---
+
+## 2026-09-02 — A patch of burning ground can heal whoever left it, and it was not the last unimplemented Demonic sentence
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
 `game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
@@ -106,7 +173,15 @@ Issue #1162.
 > weapon damage.**
 
 Three numbers, none of them in the row, and nothing in the project held damage
-at all. This was the last Demonic row with sentences that nothing read.
+at all.
+
+**This entry originally said it was the last Demonic row with sentences nothing
+read, and it was not.** Two more were found afterwards by widening the audit from
+numbers to words — Blood Pyre's "doubles your health regeneration" and The Whole
+Weight's "cannot act or be healed" — and both have their own entries above. The
+claim is corrected here rather than deleted, because the mistake is the useful
+part: **an audit that looks for digits does not find a promise written in
+words.**
 
 ### Two of the three numbers are read straight off the sentence
 
