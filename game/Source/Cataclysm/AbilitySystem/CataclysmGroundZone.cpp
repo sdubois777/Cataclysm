@@ -7,6 +7,9 @@
 #include "Cataclysm.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
+// For walking the level's patches to answer whether a character is standing in
+// one of its own. Issue #1162.
+#include "EngineUtils.h"
 #include "TimerManager.h"
 
 ACataclysmGroundZone::ACataclysmGroundZone()
@@ -171,4 +174,63 @@ void ACataclysmGroundZone::AlsoApply(FGameplayTag EffectTag, float Seconds,
 	AppliedEffectSeconds = Seconds;
 	AppliedEffectMagnitude = Magnitude;
 	AppliedEffectDamageType = InDamageType;
+}
+
+void ACataclysmGroundZone::AlsoHealItsOwner(float Scale)
+{
+	// A SCALE OF ONE OR LESS IS NOT RECORDED, so `RegenerationScaleFor` can skip
+	// a zone by reading one field. Every patch in the game but Blood Pyre's is
+	// in that state and never asks the geometry question below.
+	OwnersRegenerationScale = FMath::Max(1.0f, Scale);
+}
+
+bool ACataclysmGroundZone::Covers(const FVector& Point) const
+{
+	// THE SAME TEST THE SWEEP MAKES, and deliberately the same one:
+	// `FindEnemiesInLine` and `FindEveryoneInLine` both decide who is inside
+	// with `IsInLine`, and a segment of no length is a circle at that point. So
+	// a round patch and a long one cannot disagree about their own extent, and
+	// what heals the owner covers exactly the ground that burns everybody else.
+	return UCataclysmTargeting::IsInLine(GetActorLocation(), FarEnd, Point,
+										 RadiusCm);
+}
+
+float ACataclysmGroundZone::RegenerationScaleFor(const AActor* Who)
+{
+	if (!IsValid(Who))
+	{
+		return 1.0f;
+	}
+
+	UWorld* World = Who->GetWorld();
+	if (!World)
+	{
+		return 1.0f;
+	}
+
+	float Scale = 1.0f;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		const ACataclysmGroundZone* Zone = *It;
+
+		// ITS OWN, WHICH IS THE WHOLE OF "YOUR OWN PYRE". A patch somebody else
+		// left heals nobody, including whoever is standing in it.
+		//
+		// THE SCALE IS READ BEFORE THE GEOMETRY, so every other patch in the
+		// level costs one float comparison rather than a containment test.
+		if (!IsValid(Zone) || Zone->OwnersRegenerationScale <= 1.0f
+			|| Zone->GetOwner() != Who)
+		{
+			continue;
+		}
+
+		if (Zone->Covers(Who->GetActorLocation()))
+		{
+			// THE LARGEST RATHER THAN THE PRODUCT. See the header: two patches
+			// that each promise "doubles" do not promise a quadrupling.
+			Scale = FMath::Max(Scale, Zone->OwnersRegenerationScale);
+		}
+	}
+
+	return Scale;
 }

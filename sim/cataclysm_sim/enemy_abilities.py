@@ -153,6 +153,16 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           # the other half of the event `ScalingSource=HitTaken` reads. No
           # enemy ability states it yet. Issue #1162.
           "HealthFromHitTaken",
+          # The three store keys joined on 2026-09-02 with Martyr's Ember,
+          # which holds a share of the damage its holder takes and gives it
+          # back on the blows it lands. No enemy ability states any of them
+          # yet. Issue #1162.
+          "StoresFromHitTaken", "StoreCapPercent", "StoreSpentPerHit",
+          # `OwnGroundRegenPercent` joined on 2026-09-02 with Blood Pyre,
+          # "standing in your own pyre doubles your health regeneration". It is
+          # the one thing a patch of burning ground gives the person who left
+          # it. No enemy ability states it yet. Issue #1162.
+          "OwnGroundRegenPercent",
           # Immune joined on 2026-09-02 with the Greatsword. Seven rows
           # across four weapons state one. No enemy ability does yet.
           "Immune",

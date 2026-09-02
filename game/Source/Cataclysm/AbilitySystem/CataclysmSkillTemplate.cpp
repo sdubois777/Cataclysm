@@ -636,7 +636,8 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 		if (UCataclysmSelfBuffSkill* Buff =
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
-			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime);
+			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime,
+								DealtToHealth);
 			++Told;
 		}
 
@@ -688,6 +689,7 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 }
 
 int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
+											  AActor* Target,
 											  const FVector& Where,
 											  bool bFromBehind)
 {
@@ -717,7 +719,7 @@ int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 		if (UCataclysmSelfBuffSkill* Buff =
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
-			Buff->NoteBlowLanded(Where, bFromBehind);
+			Buff->NoteBlowLanded(Target, Where, bFromBehind);
 			++Told;
 		}
 	}
@@ -1643,7 +1645,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// skills' blows.
 		if (Dealt > 0.0f)
 		{
-			NoteBlowLanded(Self, Target->GetActorLocation(), bFromBehind);
+			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
 		}
 
 		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
@@ -2035,6 +2037,20 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		{
 			Zone->AlsoApply(Named[0], AppliedEffectSeconds(Named[0]),
 							Params.EffectMagnitude, DamageTypeName());
+		}
+
+		// AND IT MAY HEAL WHOEVER LEFT IT. The Fist's Blood Pyre: "standing in
+		// your own pyre does you no harm and DOUBLES YOUR HEALTH REGENERATION."
+		// Told to the zone rather than passed to `SpawnAlong` for the reason the
+		// effect above gives: that function already takes seven arguments and
+		// one row in the sheet wants this.
+		//
+		// A PERCENT OF NORMAL TURNED INTO A MULTIPLIER HERE, so the sheet reads
+		// 200 for "doubles" and the zone holds 2. Every other row states none and
+		// the zone keeps its scale of one.
+		if (Params.OwnGroundRegenPercent > 100.0f)
+		{
+			Zone->AlsoHealItsOwner(Params.OwnGroundRegenPercent / 100.0f);
 		}
 	}
 

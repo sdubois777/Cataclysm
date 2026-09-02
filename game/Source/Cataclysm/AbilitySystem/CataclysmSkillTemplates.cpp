@@ -1478,6 +1478,12 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	AttackersLit = 0;
 	SecondsHeld = 0;
 
+	// AND THE STORE STARTS EMPTY, for the same reason. Martyr's Ember holds "40%
+	// of all damage you take WHILE IT LASTS", so what was held during the last
+	// ten seconds is not carried into the next ten. Issue #1162.
+	Stored = 0.0f;
+	StoreSpent = 0.0f;
+
 	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
 	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
 	// enemy you currently have pinned". One search of the radius answers both
@@ -1877,8 +1883,46 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 }
 
 void UCataclysmSelfBuffSkill::NoteBlowTaken(AActor* Striker, bool bWasMelee,
-											bool bWasDamageOverTime)
+											bool bWasDamageOverTime,
+											float DealtToHealth)
 {
+	// THE STORE FILLS FIRST AND IS A SEPARATE SENTENCE FROM SETTING ATTACKERS
+	// ALIGHT. Martyr's Ember: "40% of all damage you take while it lasts is
+	// stored." Two rows react to a blow taken and they react to different halves
+	// of it, so neither may return early past the other. Issue #1162.
+	//
+	// EVERY BLOW, INCLUDING ONE OVER TIME AND ONE FROM A DISTANCE. The row says
+	// "all damage you take" with no qualification, unlike Burning Wrath's
+	// "strikes you in MELEE" below, which is why the two arguments are read
+	// there and not here.
+	//
+	// OF WHAT REACHED HEALTH, which is the figure the dispatcher carries and the
+	// same one the design defines leech against. A share of what was SENT would
+	// fill the store from a blow that armour stopped completely.
+	if (Params.StoresFromHitTaken > 0.0f && DealtToHealth > 0.0f)
+	{
+		const float Ceiling = StoreCeiling();
+		if (Ceiling > 0.0f)
+		{
+			const float Added = DealtToHealth * Params.StoresFromHitTaken / 100.0f;
+			Stored = FMath::Min(Stored + Added, Ceiling);
+		}
+		else
+		{
+			// A STORE WITH NO CEILING IS REFUSED RATHER THAN LEFT UNBOUNDED. The
+			// row states "capped at 200% weapon damage", and a store that grew
+			// for as long as its holder could survive being hit is the one
+			// outcome the cap exists to prevent. The generator writes the cap on
+			// every row that states a store, so reaching here means the imported
+			// table is older than the sheet.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' stores a share of the damage its holder takes and "
+					 "states no StoreCapPercent, so nothing was stored. Run "
+					 "tools/generate_datatable_assets.py."),
+				*SkillName);
+		}
+	}
+
 	if (!Params.bBurnsAttackers)
 	{
 		// Every self buff in the game but Burning Wrath. It costs one test.
@@ -1924,9 +1968,75 @@ void UCataclysmSelfBuffSkill::NoteBlowTaken(AActor* Striker, bool bWasMelee,
 	}
 }
 
-void UCataclysmSelfBuffSkill::NoteBlowLanded(const FVector& Where,
+float UCataclysmSelfBuffSkill::StoreCeiling() const
+{
+	if (Params.StoreCapPercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(
+		UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	return WeaponDamage * Params.StoreCapPercent / 100.0f;
+}
+
+float UCataclysmSelfBuffSkill::StoreSpendPerBlow() const
+{
+	if (Params.StoreSpentPerHit <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(
+		UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	return WeaponDamage * Params.StoreSpentPerHit / 100.0f;
+}
+
+void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
+											const FVector& Where,
 											bool bFromBehind)
 {
+	// THE STORE PAYS OUT FIRST, AND IT IS A SEPARATE SENTENCE FROM THE TWO
+	// BELOW. Martyr's Ember: "each hit you land spends part of the store as
+	// bonus fire damage until it is empty." Issue #1162.
+	//
+	// ONCE PER ENEMY HIT, BECAUSE THIS FUNCTION IS CALLED ONCE PER ENEMY HIT.
+	// `UCataclysmSkillTemplate::HitTargets` walks its targets and calls the
+	// dispatcher inside that loop, so a blow catching four enemies lands four
+	// hits and gives every one of them the bonus. That follows from the row's own
+	// words -- "each hit you land" -- and it means a wide skill empties the store
+	// faster than a single-target one. The parameter's own header says so, since
+	// it is the largest thing to know before tuning the number.
+	//
+	// AS AN ABSOLUTE AMOUNT RATHER THAN AS A PERCENT OF WEAPON DAMAGE, so the
+	// caster's own increases are not applied to it a second time. The store was
+	// filled from damage that had already been through the pipeline once, and
+	// `StoreSpentPerHit` has already been turned into damage by
+	// `StoreSpendPerBlow`.
+	//
+	// IT CANNOT SET OFF ANOTHER ROUND OF THIS. `ApplyDirectDamage` is not the
+	// path that calls the dispatcher -- `HitTargets` is -- so a bonus landing on
+	// a target cannot spend the store again.
+	if (Stored > 0.0f && IsValid(Target))
+	{
+		const float Spend = FMath::Min(StoreSpendPerBlow(), Stored);
+		if (Spend > 0.0f)
+		{
+			AActor* Self = Avatar();
+			FCataclysmHitDelivery Delivery;
+			if (Self && UCataclysmSkillEffects::ApplyDirectDamage(
+					Self, Target, Spend, Delivery))
+			{
+				Stored -= Spend;
+				StoreSpent += Spend;
+
+				UE_LOG(LogCataclysm, Verbose,
+					TEXT("'%s' spent %.1f of its store on '%s', leaving %.1f."),
+					*SkillName, Spend, *Target->GetName(), Stored);
+			}
+		}
+	}
+
 	// THE DAGGER'S SLIPSTREAM: "every enemy you strike from behind returns your
 	// movement skill to you at once. Blows landed from the front do nothing for
 	// it." The second sentence is why this is a test and not an unconditional

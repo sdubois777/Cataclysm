@@ -132,6 +132,44 @@ public:
 	void AlsoApply(FGameplayTag EffectTag, float Seconds, float Magnitude,
 				   FName InDamageType);
 
+	/**
+	 * Also make this patch heal whoever left it faster while they stand in it.
+	 *
+	 * ONE ROW ASKS. The Fist's Blood Pyre: "standing in your own pyre does you
+	 * no harm AND DOUBLES YOUR HEALTH REGENERATION." Issue #1162.
+	 *
+	 * A SCALE ON THE RATE AND NOT A SECOND SOURCE OF HEALING, so a character
+	 * with no regeneration at all still gets none. "Doubles your health
+	 * regeneration" is a multiplier and reads as one.
+	 *
+	 * @param Scale  what the owner's health regeneration is multiplied by while
+	 *               it stands inside. Two for "doubles". One or less changes
+	 *               nothing
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")
+	void AlsoHealItsOwner(float Scale);
+
+	/**
+	 * What this character's health regeneration is multiplied by, from any
+	 * patch of ground it left and is standing in.
+	 *
+	 * ONE, WHICH IS THE ANSWER FOR EVERY CHARACTER IN THE GAME BUT ONE STANDING
+	 * IN ITS OWN BLOOD PYRE. Read by `UCataclysmRegeneration::ApplyStep`.
+	 *
+	 * THE LARGEST OF THEM RATHER THAN THEIR PRODUCT, when a character somehow
+	 * stands in two of its own. Nothing can produce that today -- Blood Pyre is
+	 * the only row that asks and its cooldown is longer than its ground lasts --
+	 * and multiplying two doublings into a quadrupling is the wrong answer for a
+	 * pair of patches that each promise "doubles".
+	 *
+	 * IT WALKS THE WORLD'S ZONES, which is what `HeldBy` does for a planted
+	 * weapon and for the same reason: a patch of ground has no component on the
+	 * character and registering one would need clearing on every way a zone can
+	 * end. There are single figures of these in a level.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")
+	static float RegenerationScaleFor(const AActor* Who);
+
 	/** Seconds between one sweep of who is standing in it and the next. */
 	static constexpr float TickSeconds = 1.0f;
 
@@ -179,6 +217,17 @@ public:
 	/** The caster's damage type, deciding which resistance a Shred reduces. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	FName AppliedEffectDamageType;
+
+	/**
+	 * What the owner's health regeneration is multiplied by while it stands in
+	 * this patch. One for every patch but Blood Pyre's.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	float OwnersRegenerationScale = 1.0f;
+
+	/** Whether this point falls inside this patch. Read by tests. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")
+	bool Covers(const FVector& Point) const;
 
 	/** Burn everything standing in it now. Called on a timer, and by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")

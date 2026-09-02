@@ -751,7 +751,8 @@ public:
 	 *               a buff stating `Requires=RearHit` asks
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
-	void NoteBlowLanded(const FVector& Where, bool bFromBehind = false);
+	void NoteBlowLanded(AActor* Target, const FVector& Where,
+						bool bFromBehind = false);
 
 	/** How many cooldowns this buff has returned. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -782,11 +783,53 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	void NoteBlowTaken(AActor* Striker, bool bWasMelee,
-					   bool bWasDamageOverTime);
+					   bool bWasDamageOverTime, float DealtToHealth);
 
 	/** How many attackers this buff has set alight. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 AttackersLit = 0;
+
+	// ----------------------------------------------------------------------
+	// Martyr's Ember -- the one buff that holds damage rather than granting a
+	// number. Issue #1162.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Damage held in this buff's store, in damage rather than in percent.
+	 *
+	 * "40% OF ALL DAMAGE YOU TAKE WHILE IT LASTS IS STORED." Filled by
+	 * `NoteBlowTaken` from `StoresFromHitTaken`, capped by `StoreCeiling`, and
+	 * emptied by `NoteBlowLanded` at `StoreSpentPerHit` of weapon damage a blow.
+	 *
+	 * ZERO FOR EVERY OTHER BUFF IN THE GAME, which state none of the three keys.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float Stored = 0.0f;
+
+	/** How much the store has paid out this activation. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float StoreSpent = 0.0f;
+
+	/**
+	 * The most the store may hold, in damage.
+	 *
+	 * `StoreCapPercent` OF THE CASTER'S WEAPON DAMAGE, which is the row's own
+	 * unit: "the store is capped at 200% weapon damage". Zero for a buff stating
+	 * no cap, and a store with no ceiling is refused rather than left unbounded
+	 * -- see `NoteBlowTaken`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float StoreCeiling() const;
+
+	/**
+	 * The most one landed blow may take out of the store, in damage.
+	 *
+	 * `StoreSpentPerHit` OF THE CASTER'S WEAPON DAMAGE. A blow spends this or
+	 * whatever is left, whichever is smaller, which is what lets "until it is
+	 * empty" actually happen.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float StoreSpendPerBlow() const;
 
 	/**
 	 * One second of a buff whose bonus grows with time.

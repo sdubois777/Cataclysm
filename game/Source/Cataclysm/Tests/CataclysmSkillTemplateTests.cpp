@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 // For the resistance a Shred cuts, and for reading it back. Issue #37.
+// For driving one step of health regeneration by hand, which is how a test
+// reaches a rate the game applies on a timer. Issue #1162.
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For asking whether two actors are on the same side, which is what an aura's
@@ -8067,13 +8070,15 @@ bool FCataclysmSlipstreamReturnsTheMoveTest::RunTest(const FString&)
 	// A BLOW FROM THE FRONT DOES NOTHING FOR IT, WHICH IS THE ROW'S SECOND
 	// SENTENCE AND THE CONTROL FOR THE WHOLE TEST. Without it, a buff that
 	// returned the cooldown on every blow would pass the assertion below.
-	Slipstream->NoteBlowLanded(FVector(2 * M, 0, 0), /*bFromBehind=*/false);
+	Slipstream->NoteBlowLanded(/*Target=*/nullptr, FVector(2 * M, 0, 0),
+							   /*bFromBehind=*/false);
 	TestEqual(TEXT("a blow from the front returns nothing"),
 		Slipstream->CooldownsReturned, 0);
 	TestTrue(TEXT("so the movement slot is still on cooldown"),
 		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
 
-	Slipstream->NoteBlowLanded(FVector(2 * M, 0, 0), /*bFromBehind=*/true);
+	Slipstream->NoteBlowLanded(/*Target=*/nullptr, FVector(2 * M, 0, 0),
+							   /*bFromBehind=*/true);
 	TestEqual(TEXT("and one from behind returns it"),
 		Slipstream->CooldownsReturned, 1);
 	TestFalse(TEXT("so the movement slot is ready again"),
@@ -8788,7 +8793,8 @@ bool FCataclysmBuffIgnoresBlowsThatAreNotMeleeTest::RunTest(const FString&)
 									  /*bScalesWithInstigator=*/true,
 									  /*bBurnIsDesigned=*/true);
 	Wrath->NoteBlowTaken(AtRange.Actor, /*bWasMelee=*/true,
-						 /*bWasDamageOverTime=*/true);
+						 /*bWasDamageOverTime=*/true,
+						 /*DealtToHealth=*/25.0f);
 
 	TestEqual(TEXT("and a damage over time tick sets nobody alight"),
 		Wrath->AttackersLit, 1);
@@ -11487,7 +11493,8 @@ bool FCataclysmOwnFireDoesNoHarmTest::RunTest(const FString&)
 	UCataclysmProjectileSkill* Blood = GrantSkill<UCataclysmProjectileSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
 		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
-			 "GroundPercent=12.5; HealthCostPercent=8"),
+			 "GroundPercent=12.5; HealthCostPercent=8; "
+			 "OwnGroundRegenPercent=200"),
 		TEXT("Blood Pyre"), TEXT("Element.Demonic"));
 	if (!Blood)
 	{
@@ -11517,6 +11524,392 @@ bool FCataclysmOwnFireDoesNoHarmTest::RunTest(const FString&)
 		Enemy.Health() < EnemyBefore);
 	TestEqual(TEXT("and does its own caster no harm"),
 		Caster.Health(), CasterBefore, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnPyreDoublesRegenTest,
+	"Cataclysm.Skills.StandingInYourOwnPyreDoublesYourHealthRegeneration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOwnPyreDoublesRegenTest::RunTest(const FString&)
+{
+	// THE SECOND HALF OF BLOOD PYRE'S CLOSING SENTENCE. "Standing in your own
+	// pyre does you no harm AND DOUBLES YOUR HEALTH REGENERATION." The first
+	// half was already true and is the test above; this half had no parameter at
+	// all and nothing in the project changed a regeneration rate for standing
+	// somewhere. Issue #1162.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// A RATE OF TEN A SECOND AND ROOM TO HEAL INTO, so the two figures below are
+	// exact rather than merely different.
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 10.0f);
+	Caster.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	UCataclysmProjectileSkill* Blood = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=3; Burn=1; GroundRadius=3; GroundDuration=8; "
+			 "GroundPercent=12.5; OwnGroundRegenPercent=200"),
+		TEXT("Blood Pyre"), TEXT("Element.Demonic"));
+	if (!Blood)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// STANDING NOWHERE IN PARTICULAR FIRST, so the plain rate is measured before
+	// there is any ground at all. One second of a rate of ten is ten.
+	const float PlainBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("with no pyre it regenerates its plain ten a second"),
+		Caster.Health() - PlainBefore, 10.0f, 0.01f);
+
+	TestEqual(TEXT("and nothing is scaling it"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 1.0f, 0.01f);
+
+	TestTrue(TEXT("the pyre is thrown"), Activate(Caster, Blood));
+
+	ACataclysmGroundZone* Patch = TheOnlyGroundZone(World);
+	if (!Patch)
+	{
+		AddError(TEXT("The throw left no burning ground to stand in."));
+		return false;
+	}
+
+	// THE CASTER IS STANDING IN IT.
+	Patch->SetActorLocation(Caster.Actor->GetActorLocation());
+
+	TestTrue(TEXT("the patch covers where the caster is standing"),
+		Patch->Covers(Caster.Actor->GetActorLocation()));
+	TestEqual(TEXT("and doubles its owner's regeneration"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 2.0f, 0.01f);
+
+	const float InsideBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("so one second inside it returns twenty rather than ten"),
+		Caster.Health() - InsideBefore, 20.0f, 0.01f);
+
+	// AND STEPPING OUT ENDS IT. Thirty metres is well outside a three metre
+	// patch. Without this the test would pass for an implementation that
+	// doubled the rate from the moment the pyre existed, wherever its owner
+	// stood.
+	Caster.Actor->SetActorLocation(FVector(30 * M, 0, 0));
+
+	TestEqual(TEXT("stepping out of it stops the doubling"),
+		ACataclysmGroundZone::RegenerationScaleFor(Caster.Actor), 1.0f, 0.01f);
+
+	const float OutsideBefore = Caster.Health();
+	UCataclysmRegeneration::ApplyStep(Caster.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+
+	TestEqual(TEXT("so a second outside returns the plain ten again"),
+		Caster.Health() - OutsideBefore, 10.0f, 0.01f);
+
+	// AND SOMEBODY ELSE'S PYRE HEALS NOBODY, which is what "your OWN pyre"
+	// means. The stranger stands in the same patch and is not its owner.
+	FScopedFighter Stranger(World, Patch->GetActorLocation());
+	TestEqual(TEXT("a character standing in somebody else's pyre is unscaled"),
+		ACataclysmGroundZone::RegenerationScaleFor(Stranger.Actor), 1.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Martyr's Ember, the Fist's Support slot. Issue #1162.
+//
+// "Take the pain inward and hold it as heat for 10 seconds. 40% of all damage
+// you take while it lasts is stored, and each hit you land spends part of the
+// store as bonus fire damage until it is empty. The store is capped at 200%
+// weapon damage."
+//
+// ITS ROW WAS `Duration=10` AND NOTHING ELSE, so the three numbers in that
+// sentence lived only in its prose and nothing in the project held damage.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmberStoresAndSpendsTest,
+	"Cataclysm.Skills.MartyrsEmberStoresDamageTakenAndSpendsItOnBlowsLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmberStoresAndSpendsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// Martyr's Ember's own row as the sheet now states it.
+	UCataclysmSelfBuffSkill* Ember = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; StoresFromHitTaken=40; StoreCapPercent=200; "
+			 "StoreSpentPerHit=50"),
+		TEXT("Martyr's Ember"), TEXT("Element.Demonic"));
+	if (!Ember)
+	{
+		AddError(TEXT("Could not grant the ember."));
+		return false;
+	}
+
+	// The holder's own blow, so the store has something to be spent by.
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the holder its swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the ember goes up"), Activate(Holder, Ember));
+	TestEqual(TEXT("and holds nothing yet"), Ember->Stored, 0.0f, 0.01f);
+
+	// THE CEILING IS 200% OF A WEAPON DEALING 100, so 200.
+	TestEqual(TEXT("its ceiling is 200% of weapon damage"),
+		Ember->StoreCeiling(), 200.0f, 0.01f);
+	TestEqual(TEXT("and one blow spends 50% of weapon damage"),
+		Ember->StoreSpendPerBlow(), 50.0f, 0.01f);
+
+	// 40% OF A BLOW OF 300 IS 120.
+	UCataclysmSkillTemplate::NoteBlowTaken(Holder.Actor, Enemy.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/300.0f);
+
+	TestEqual(TEXT("a blow of 300 stores 120"), Ember->Stored, 120.0f, 0.01f);
+
+	// AND A SECOND WOULD BE 240, WHICH THE CEILING CUTS TO 200. This is the
+	// assertion that separates a rate from a rate with a cap.
+	UCataclysmSkillTemplate::NoteBlowTaken(Holder.Actor, Enemy.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/300.0f);
+
+	TestEqual(TEXT("a second stops at the 200 the row caps it to"),
+		Ember->Stored, 200.0f, 0.01f);
+
+	// THE HOLDER SWINGS. The Heavy slot is 250% of a weapon dealing 100, and the
+	// store adds 50 on top, so the enemy takes 300 from one blow.
+	const float EnemyBefore = Enemy.Health();
+	TestTrue(TEXT("the holder swings"), Activate(Holder, Swing));
+
+	TestEqual(TEXT("the enemy took the 250 blow and 50 from the store"),
+		EnemyBefore - Enemy.Health(), 300.0f, 0.01f);
+	TestEqual(TEXT("the store paid out 50"), Ember->StoreSpent, 50.0f, 0.01f);
+	TestEqual(TEXT("so 150 is left"), Ember->Stored, 150.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmberEmptiesTest,
+	"Cataclysm.Skills.MartyrsEmberSpendsOncePerEnemyHitAndStopsWhenEmpty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmberEmptiesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Ember = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; StoresFromHitTaken=40; StoreCapPercent=200; "
+			 "StoreSpentPerHit=50"),
+		TEXT("Martyr's Ember"), TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	if (!Ember || !Cleave)
+	{
+		AddError(TEXT("Could not grant the ember or the cleave."));
+		return false;
+	}
+
+	TestTrue(TEXT("the ember goes up"), Activate(Holder, Ember));
+
+	// A STORE OF 100, WHICH IS TWO BLOWS' WORTH AND NOT THREE.
+	UCataclysmSkillTemplate::NoteBlowTaken(Holder.Actor, First.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/250.0f);
+
+	TestEqual(TEXT("a blow of 250 stores 100"), Ember->Stored, 100.0f, 0.01f);
+
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	const float ThirdBefore = Third.Health();
+
+	// ONE SWING CATCHING THREE ENEMIES IS THREE HITS LANDED, which is what "each
+	// hit you land" means and is the largest thing to know about this parameter.
+	// Two of the three get the bonus and the third does not, because the store
+	// runs out part way through the swing.
+	TestTrue(TEXT("one swing catches all three"), Activate(Holder, Cleave));
+
+	const float OnFirst = FirstBefore - First.Health();
+	const float OnSecond = SecondBefore - Second.Health();
+	const float OnThird = ThirdBefore - Third.Health();
+
+	TestEqual(TEXT("the store paid out its whole 100"),
+		Ember->StoreSpent, 100.0f, 0.01f);
+	TestEqual(TEXT("and is empty"), Ember->Stored, 0.0f, 0.01f);
+
+	// THE ORDER THE TARGETS COME BACK IN IS NOT ASSERTED, only the totals. The
+	// cone search answers nearest first today and nothing in the row depends on
+	// that, so pinning it would be testing the search rather than the store.
+	const float Total = OnFirst + OnSecond + OnThird;
+	TestEqual(TEXT("three blows of 250 plus the whole store is 850"),
+		Total, 850.0f, 0.01f);
+
+	// EXACTLY ONE OF THE THREE TOOK THE PLAIN BLOW.
+	int32 Plain = 0;
+	int32 Boosted = 0;
+	for (const float Taken : { OnFirst, OnSecond, OnThird })
+	{
+		if (FMath::IsNearlyEqual(Taken, 250.0f, 0.01f)) { ++Plain; }
+		if (FMath::IsNearlyEqual(Taken, 300.0f, 0.01f)) { ++Boosted; }
+	}
+	TestEqual(TEXT("two enemies took 300"), Boosted, 2);
+	TestEqual(TEXT("and one took the plain 250, because the store ran out"),
+		Plain, 1);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmberRealBlowTest,
+	"Cataclysm.Skills.ARealBlowFromAnotherCharacterFillsMartyrsEmbersStore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmberRealBlowTest::RunTest(const FString&)
+{
+	// THE WIRING, NOT THE REACTION. The two tests above call `NoteBlowTaken`
+	// with a figure written into the test, so between them they prove what the
+	// store does with a number and prove nothing about where the number comes
+	// from. Breaking the real caller was noticed by no test at all when the same
+	// mistake was made for Living Pyre earlier the same day, so this is here from
+	// the start rather than after a guard proof found it missing.
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(-3 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Ember = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; StoresFromHitTaken=40; StoreCapPercent=200; "
+			 "StoreSpentPerHit=50"),
+		TEXT("Martyr's Ember"), TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* TheirSwing = GrantSkill<UCataclysmStrikeSkill>(
+		Attacker, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("A blow from somebody else"));
+	if (!Ember || !TheirSwing)
+	{
+		AddError(TEXT("Could not grant the ember or the attacker's swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the ember goes up"), Activate(Holder, Ember));
+	TestEqual(TEXT("and holds nothing"), Ember->Stored, 0.0f, 0.01f);
+
+	TestTrue(TEXT("somebody hits its holder for real"),
+		Activate(Attacker, TheirSwing));
+
+	// THE HEAVY SLOT IS 250% OF A WEAPON DEALING 100, so 250 got through and 40%
+	// of that is 100.
+	TestEqual(TEXT("40% of the 250 that got through is stored"),
+		Ember->Stored, 100.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffWithNoStoreTest,
+	"Cataclysm.Skills.ABuffStatingNoStoreHoldsNothingAndSpendsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffWithNoStoreTest::RunTest(const FString&)
+{
+	// THE CONTROL FOR THE THREE ABOVE. Nine self buff rows in the sheet state no
+	// store, and an implementation that stored or spent unconditionally would
+	// change every one of them.
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// The Greataxe's Burning Wrath, which reacts to a blow taken in a completely
+	// different way and must go on doing exactly that.
+	UCataclysmSelfBuffSkill* Wrath = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; Burn=1; BurnsAttackers=1; "
+			 "MoreDamagePer=4; ScalingSource=Burning"),
+		TEXT("Burning Wrath"), TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	if (!Wrath || !Swing)
+	{
+		AddError(TEXT("Could not grant the wrath or the swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the buff goes up"), Activate(Holder, Wrath));
+
+	TestEqual(TEXT("it has no ceiling, because its row states no cap"),
+		Wrath->StoreCeiling(), 0.0f, 0.01f);
+	TestEqual(TEXT("and spends nothing a blow"),
+		Wrath->StoreSpendPerBlow(), 0.0f, 0.01f);
+
+	UCataclysmSkillTemplate::NoteBlowTaken(Holder.Actor, Enemy.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false,
+										   /*DealtToHealth=*/500.0f);
+
+	TestEqual(TEXT("a blow of 500 stores nothing"), Wrath->Stored, 0.0f, 0.01f);
+
+	// AND ITS OWN SENTENCE STILL WORKS. "Any enemy that strikes you in melee is
+	// set alight" -- the store must not have displaced it.
+	TestEqual(TEXT("but it still set the attacker alight"),
+		Wrath->AttackersLit, 1);
+
+	// AND ITS BLOW LANDS FOR THE PLAIN FIGURE, with nothing added.
+	const float Before = Enemy.Health();
+	TestTrue(TEXT("the holder swings"), Activate(Holder, Swing));
+
+	TestEqual(TEXT("the enemy took the Heavy slot's 250 and nothing more"),
+		Before - Enemy.Health(), 250.0f, 0.01f);
+	TestEqual(TEXT("and nothing was spent"), Wrath->StoreSpent, 0.0f, 0.01f);
 
 	return true;
 }
