@@ -12075,4 +12075,118 @@ bool FCataclysmHoldForbidsNothingTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A charge that says it shoves what it passes through. Issue #1162.
+//
+// TWO ROWS SAY SO AND NEITHER STATED A `Knockback`. Cinder Rush: "barrelling
+// through any enemies in your path and KNOCKING THEM ASIDE." Inexorable:
+// "THROWING ASIDE and setting alight everything you pass through." The shove
+// rider has ridden every blow since issue #626, so this was a missing cell
+// rather than missing behaviour -- but nothing in the project said so, and the
+// check that now would is
+// `tools/tests/test_a_skill_states_the_keys_its_description_promises.py`.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeShovesTest,
+	"Cataclysm.Skills.AChargeThatSaysItShovesMovesWhatItPassesThrough",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargeShovesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// WITHIN THE CHARGE'S OWN RADIUS OF WHERE IT STARTS, and that is not
+	// arbitrary. A lasting charge is carried by a root motion source, which
+	// the movement component applies -- and a test fighter is a plain actor
+	// with no movement component, so THE CASTER NEVER ACTUALLY MOVES HERE.
+	// Each step searches around wherever the caster is, which stays the
+	// origin, so a target four metres ahead of a two metre radius is never
+	// found. `AdvanceOneStep`'s own header records the same limitation.
+	FScopedFighter InTheWay(World, FVector(1.5f * M, 0, 0));
+
+	// Cinder Rush's own row as the sheet now states it.
+	UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=10; Radius=2; Duration=1.1; Knockback=2; "
+			 "Burn=1; GroundRadius=2; GroundDuration=5; GroundPercent=20.0; "
+			 "Immune=CrowdControl"),
+		TEXT("Cinder Rush"), TEXT("Element.Demonic"));
+	if (!Rush)
+	{
+		AddError(TEXT("Could not grant the rush."));
+		return false;
+	}
+
+	const FVector Stood = InTheWay.Actor->GetActorLocation();
+
+	TestTrue(TEXT("the charge begins"), Activate(Caster, Rush));
+
+	// A LASTING CHARGE WALKS ON A TIMER AND THE TEST WORLD NEVER TICKS, so the
+	// step is driven by hand, the way every other timer in this file is.
+	Rush->AdvanceOneStep();
+
+	TestTrue(TEXT("it caught the enemy standing in its path"),
+		Rush->EnemiesHit > 0);
+
+	const FVector Moved = InTheWay.Actor->GetActorLocation() - Stood;
+
+	// AWAY FROM THE CASTER, WHICH IS FURTHER ALONG THE POSITIVE X AXIS. The
+	// direction matters as much as the distance: a shove that pulled its target
+	// toward the charge would read as the charge dragging people along.
+	TestTrue(FString::Printf(
+		TEXT("and shoved it about two metres (it moved %.0f cm)"),
+		Moved.Size()), Moved.Size() > 1.5f * M);
+	TestTrue(TEXT("away from the caster rather than toward it"), Moved.X > 0.0f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeWithoutAShoveTest,
+	"Cataclysm.Skills.AChargeStatingNoKnockbackMovesNobody",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargeWithoutAShoveTest::RunTest(const FString&)
+{
+	// THE CONTROL. Without it an implementation that shoved every charge would
+	// pass the test above, and there are charges in the sheet whose own
+	// sentences say nothing about knocking anybody aside -- the Whip's Reel
+	// hauls its catch toward the caster instead.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	// Within the radius, for the reason the test above gives.
+	FScopedFighter InTheWay(World, FVector(1.5f * M, 0, 0));
+
+	UCataclysmMovementSkill* Rush = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=10; Radius=2; Duration=1.1; Burn=1"),
+		TEXT("A charge that states no shove"), TEXT("Element.Demonic"));
+	if (!Rush)
+	{
+		AddError(TEXT("Could not grant the rush."));
+		return false;
+	}
+
+	const FVector Stood = InTheWay.Actor->GetActorLocation();
+
+	TestTrue(TEXT("the charge begins"), Activate(Caster, Rush));
+	Rush->AdvanceOneStep();
+
+	TestTrue(TEXT("it caught the enemy standing in its path"),
+		Rush->EnemiesHit > 0);
+	TestTrue(TEXT("and moved it nowhere, because its row states no shove"),
+		InTheWay.Actor->GetActorLocation().Equals(Stood, 1.0f));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
