@@ -10,6 +10,9 @@
 // stand in it. Blood Pyre. Issue #1162.
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For a swing drawn back whose row says its caster cannot be healed. The
+// Greatsword's The Whole Weight. Issue #1162.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -27,6 +30,28 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayTagContainer& Healing)
 {
 	if (Gain <= 0.0f)
+	{
+		return;
+	}
+
+	// A CHARACTER WITH A SWING DRAWN BACK MAY BE UNABLE TO BE HEALED. The
+	// Greatsword's The Whole Weight: "you cannot move, act or be healed",
+	// written as `HoldForbids=Acting, Healing`. Issue #1162.
+	//
+	// HERE BECAUSE THIS IS THE ONE PLACE HEALTH REGENERATION AND LIFE LEECH BOTH
+	// RESTORE HEALTH, which is the same argument the healing ceiling below makes
+	// for sitting here rather than at each caller.
+	//
+	// EVERY POOL, NOT ONLY HEALTH, and that is the row's own wording read
+	// plainly: "you cannot be healed" says nothing comes back while the swing is
+	// up. A held Ultimate lasts three seconds.
+	//
+	// THE FIST'S LIVING PYRE RETURNS HEALTH BY ANOTHER ROUTE AND IS NOT REACHED
+	// BY THIS, which costs nothing: The Whole Weight is a Greatsword Ultimate and
+	// Living Pyre is a Fist Ultimate, and a character holds one weapon, so the
+	// two can never be up at once.
+	if (UCataclysmStrikeSkill::AHeldSwingForbids(AbilitySystem.GetOwnerActor(),
+												 TEXT("Healing")))
 	{
 		return;
 	}

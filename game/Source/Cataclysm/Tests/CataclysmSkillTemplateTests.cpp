@@ -11914,4 +11914,165 @@ bool FCataclysmBuffWithNoStoreTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// "You cannot move, ACT OR BE HEALED." Issue #1162.
+//
+// THE FIRST OF THE THREE WAS BUILT WITH THE HOLD AND THE OTHER TWO WERE NOT.
+// Every held swing roots its caster, because Backswing says so too; only The
+// Whole Weight also forbids acting and being healed, and neither had a key.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoldForbidsActingTest,
+	"Cataclysm.Skills.AHeldSwingMayForbidItsCasterEveryOtherSkillAndAllHealing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoldForbidsActingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// A RATE TO BE DENIED, AND ROOM TO HEAL INTO. A character at full health is
+	// not healed anyway, which would make the healing half of this pass for an
+	// implementation that forbade nothing.
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 10.0f);
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	// The Whole Weight's own row as the sheet now states it.
+	UCataclysmStrikeSkill* Ultimate = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=9; Angle=180; Burn=1; ChargeTime=3; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; MaxDamagePercent=500; "
+			 "ChargeBreaksOn=Death; HoldForbids=Acting, Healing"),
+		TEXT("The Whole Weight"), TEXT("Element.Demonic"));
+
+	// ANOTHER SKILL TO BE REFUSED, AND THE BASIC ATTACK AS WELL. "Cannot act" is
+	// stronger than Buried Fire's "you fight unarmed", which deliberately leaves
+	// the basic attack alone, so both are checked.
+	UCataclysmStrikeSkill* Other = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* Basic = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=4; Angle=360"),
+		TEXT("A basic attack"), TEXT("Element.Demonic"));
+	if (!Ultimate || !Other || !Basic)
+	{
+		AddError(TEXT("Could not grant the three skills."));
+		return false;
+	}
+
+	// BEFORE THE HOLD, EVERYTHING WORKS. Without this the assertions below would
+	// pass for a skill that was refused for some other reason.
+	TestFalse(TEXT("nothing is forbidden before the hold"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Acting")));
+
+	const float BeforeHold = Holder.Health();
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and it regenerates its plain ten a second"),
+		Holder.Health() - BeforeHold, 10.0f, 0.01f);
+
+	TestTrue(TEXT("the greatsword is raised"), Activate(Holder, Ultimate));
+	TestTrue(TEXT("and the swing is drawn back"), Ultimate->IsHoldingASwing());
+
+	TestTrue(TEXT("acting is now forbidden"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Acting")));
+	TestTrue(TEXT("and so is healing"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Healing")));
+
+	// EVERY OTHER SKILL IS REFUSED.
+	const float EnemyBefore = Enemy.Health();
+	TestFalse(TEXT("another skill is refused while the swing is held"),
+		Activate(Holder, Other));
+	TestFalse(TEXT("and so is the basic attack, because the row says CANNOT ACT"),
+		Activate(Holder, Basic));
+	TestEqual(TEXT("so the enemy was not touched"), Enemy.Health(), EnemyBefore);
+
+	// AND NOTHING HEALS.
+	const float DuringHold = Holder.Health();
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and a second of regeneration returns nothing"),
+		Holder.Health(), DuringHold, 0.01f);
+
+	// AND BOTH COME BACK WHEN THE SWING GOES.
+	Ultimate->LetTheHoldFinish();
+
+	TestFalse(TEXT("nothing is forbidden once the swing has gone"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Acting")));
+
+	const float AfterHold = Holder.Health();
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and regeneration returns its plain ten again"),
+		Holder.Health() - AfterHold, 10.0f, 0.01f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHoldForbidsNothingTest,
+	"Cataclysm.Skills.AHeldSwingStatingNoRestrictionsForbidsNeither",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHoldForbidsNothingTest::RunTest(const FString&)
+{
+	// THE CONTROL. Backswing is held exactly the same way and its own text says
+	// only "you cannot move while holding", so an implementation that forbade
+	// acting for every hold would silently take the player's other skills away
+	// during a two second Heavy.
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 10.0f);
+	Holder.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 50000.0f);
+
+	// Backswing's own row, which states no `HoldForbids`.
+	UCataclysmStrikeSkill* Backswing = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4.5; Angle=140; Burn=1; ChargeTime=2; "
+			 "MinDamagePercent=175; MaxDamagePercent=350; "
+			 "ChargeBreaksOn=Stagger"),
+		TEXT("Backswing"), TEXT("Element.Demonic"));
+	UCataclysmStrikeSkill* Basic = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=4; Angle=360"),
+		TEXT("A basic attack"), TEXT("Element.Demonic"));
+	if (!Backswing || !Basic)
+	{
+		AddError(TEXT("Could not grant the swing or the basic attack."));
+		return false;
+	}
+
+	TestTrue(TEXT("the greatsword is drawn back"), Activate(Holder, Backswing));
+	TestTrue(TEXT("and the swing is held"), Backswing->IsHoldingASwing());
+
+	TestFalse(TEXT("but acting is not forbidden, because its row says nothing"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Acting")));
+	TestFalse(TEXT("nor is healing"),
+		UCataclysmStrikeSkill::AHeldSwingForbids(Holder.Actor, TEXT("Healing")));
+
+	const float EnemyBefore = Enemy.Health();
+	TestTrue(TEXT("so the basic attack still swings"), Activate(Holder, Basic));
+	TestTrue(TEXT("and hurt the enemy"), Enemy.Health() < EnemyBefore);
+
+	const float Before = Holder.Health();
+	UCataclysmRegeneration::ApplyStep(Holder.Actor, /*SecondsInStep=*/1.0f,
+									  /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("and regeneration returns its plain ten"),
+		Holder.Health() - Before, 10.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

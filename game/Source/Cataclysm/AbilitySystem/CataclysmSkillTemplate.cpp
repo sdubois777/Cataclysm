@@ -368,6 +368,31 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 		return false;
 	}
 
+	// A CHARACTER WITH A SWING DRAWN BACK MAY BE UNABLE TO ACT AT ALL. The
+	// Greatsword's The Whole Weight: "you cannot move, act or be healed",
+	// written as `HoldForbids=Acting, Healing`. Issue #1162.
+	//
+	// THE BASIC ATTACK IS REFUSED TOO, WHICH IS THE OPPOSITE OF THE PLANT ABOVE
+	// AND IS THE ROW'S OWN WORDING. "You fight unarmed" says the character goes
+	// on fighting, so Buried Fire leaves the basic attack alone; "you cannot
+	// act" says it does not. The player's basic attack fires on its own timer,
+	// so without this a held Ultimate would be swinging a greatsword while it
+	// was held over the character's head.
+	//
+	// THE HELD SWING'S OWN RELEASE IS UNTOUCHED, because it is not an
+	// activation: `UCataclysmStrikeSkill::InputReleased` and the hold timer both
+	// act on an ability that is already running and never come through here.
+	//
+	// ONLY WHEN THE ROW SAYS SO. Backswing is held the same way and states
+	// nothing here, because its own text says only "you cannot move while
+	// holding".
+	if (UCataclysmStrikeSkill::AHeldSwingForbids(
+			ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar(),
+			TEXT("Acting")))
+	{
+		return false;
+	}
+
 	// A TRADE NEEDS SOMETHING TO TRADE PLACES WITH. The Staff's Vesselstep:
 	// "trade places with a creature you command up to 14 meters away."
 	//

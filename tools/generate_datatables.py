@@ -295,6 +295,14 @@ SHAPE_RIDERS = {
                              "as a percent of normal, while it stands in the "
                              "burning ground this skill left",
 
+    # WHAT A HELD SWING TAKES AWAY FROM ITS OWN CASTER BEYOND MOVING. Added
+    # 2026-09-02 for The Whole Weight, "you cannot move, act or be healed",
+    # whose second and third words had nothing behind them. Moving is refused
+    # for every held swing and needs no key, because both charged rows say so.
+    # Issue #1162.
+    "HoldForbids": "what the caster may not do while this skill is held, one "
+                   "or more of HOLD_FORBIDS",
+
     "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
     "OnDeathRange": "metres the on-death effect reaches for its next target",
 
@@ -361,6 +369,15 @@ IMMUNITIES = frozenset({
     "CrowdControl",
 })
 CHARGE_BREAKS = frozenset({"Stagger", "Death", "Movement", "None"})
+
+#: What a skill may forbid its own caster while it is being held.
+#:
+#: ONE ROW STATES ANY OF THEM. The Greatsword's The Whole Weight: "you cannot
+#: move, act or be healed." Moving is refused for EVERY held swing, because both
+#: charged rows say so, and needs no key; these are the two extra restrictions
+#: that only this row asks for. Backswing states none and says only "you cannot
+#: move while holding". Issue #1162.
+HOLD_FORBIDS = frozenset({"Acting", "Healing"})
 REFUND_TARGETS = frozenset({"Self", "Movement"})
 TARGET_MODES = frozenset({"All", "Nearest", "Furthest"})
 
@@ -381,6 +398,7 @@ TEXT_PARAM_VALUES = {
     "SpreadWhen": SPREAD_CONDITIONS,
     "Requires": REQUIREMENTS,
     "Immune": IMMUNITIES,
+    "HoldForbids": HOLD_FORBIDS,
     "OnDeath": ON_DEATHS,
     "ChargeBreaksOn": CHARGE_BREAKS,
     "RefundsCooldown": REFUND_TARGETS,

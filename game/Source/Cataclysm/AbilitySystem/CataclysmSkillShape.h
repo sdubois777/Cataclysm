@@ -708,6 +708,30 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float OwnGroundRegenPercent = 0.0f;
 
+	/**
+	 * What the caster may not do while this skill is held, as written in the
+	 * sheet: `Acting`, `Healing`, or both, comma separated.
+	 *
+	 * ONE ROW STATES ANY OF THEM. The Greatsword's The Whole Weight: "you cannot
+	 * move, act or be healed." Issue #1162.
+	 *
+	 * MOVING IS NOT ONE OF THE VALUES, AND THAT IS DELIBERATE. Every held swing
+	 * roots its caster, because both charged rows say so -- Backswing "you cannot
+	 * move while holding" and this one -- so it is refused by
+	 * `ACataclysmPlayerController::PawnCannotWalk` for all of them and needs no
+	 * key. These are the two extra restrictions only one row asks for.
+	 *
+	 *   `Acting`   every other skill is refused, INCLUDING the basic attack.
+	 *              "Cannot act" is stronger than Buried Fire's "you fight
+	 *              unarmed", which deliberately leaves the basic attack alone.
+	 *              The held swing's own release is not an activation and is
+	 *              untouched.
+	 *   `Healing`  health regeneration and life leech both restore nothing.
+	 *              `UCataclysmRegeneration::TopUp` is the one place both land.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString HoldForbids;
+
 	// --- Forced movement ---------------------------------------------------
 
 	/**
