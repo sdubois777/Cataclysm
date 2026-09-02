@@ -582,6 +582,38 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float EffectMagnitude = 0.0f;
 
+	/**
+	 * Percentage points of INCREASED damage an aura grants everyone on the
+	 * caster's side who is standing inside it.
+	 *
+	 * ONE ROW STATES ONE. Conflagration: "allies within it deal 8% increased
+	 * fire damage." Issue #1182. The War aura, Blood and Iron, is written with
+	 * the same shape of sentence and does not state a number yet.
+	 *
+	 * THE ADDITIVE BUCKET, BECAUSE THE ROW SAYS `increased`. That word is not
+	 * decoration in this project: section VI of the design document reserves it
+	 * for the sum every gear affix and passive node joins, against `more` for a
+	 * multiplier that applies on its own. `UCataclysmSelfBuffSkill::GrantIncrease`
+	 * reads `MoreDamagePer` and takes the other bucket for the opposite reason,
+	 * and both are doing what their row's own word says.
+	 *
+	 * NOT `IncreasedDamagePer`, WHICH IS A DIFFERENT NUMBER. That one is per unit
+	 * of a `ScalingSource` and sizes one blow; this is a flat grant to somebody
+	 * else, for as long as they stand in the ring.
+	 *
+	 * SCOPED TO THE SKILL'S OWN ELEMENT, so "increased FIRE damage" is data
+	 * rather than code: Conflagration carries `Element.Demonic`, which is this
+	 * project's fire, and a War aura written the same way would scope to
+	 * `Element.War` with nothing changing here.
+	 *
+	 * IT REACHES ALLIES AND NOT THE CASTER.
+	 * `UCataclysmTargeting::FindAlliesInSphere` excludes the caster, and its
+	 * header gives the reason: the design writes a benefit for the caster as a
+	 * separate clause where it means one.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AllyIncreasedDamage = 0.0f;
+
 	// --- Forced movement ---------------------------------------------------
 
 	/**

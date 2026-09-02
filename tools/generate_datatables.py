@@ -250,6 +250,21 @@ SHAPE_RIDERS = {
     "EffectMagnitude": "size of the applied Effect, in whatever unit that "
                        "effect is measured in",
 
+    # THE ONE THING AN AURA GIVES RATHER THAN TAKES. Added 2026-09-02 for
+    # Conflagration's "allies within it deal 8% increased fire damage", which
+    # had no key at all, so half the row lived only in its prose. Issue #1182.
+    #
+    # `increased` IS THE ADDITIVE BUCKET AND THE NAME SAYS SO, the same way
+    # `MoreDamagePer` and `IncreasedDamagePer` below carry their bucket in their
+    # names. It joins the sum every gear affix and passive node joins.
+    #
+    # NOT `IncreasedDamagePer`, WHICH IS A DIFFERENT NUMBER. That is per unit of
+    # a ScalingSource and sizes one blow. This is a flat grant to somebody else
+    # for as long as they stand inside.
+    "AllyIncreasedDamage": "percentage points of increased damage an aura "
+                           "grants allies standing in it, scoped to the "
+                           "skill's own element",
+
     "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
     "OnDeathRange": "metres the on-death effect reaches for its next target",
 
