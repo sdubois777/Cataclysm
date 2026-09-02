@@ -20,6 +20,76 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A charge shoves for 2 metres, and the audit that found it is now a test
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, and a new file
+`tools/tests/test_a_skill_states_the_keys_its_description_promises.py`. Applied.
+Issue #1162. **No engine code changed**: all three mechanics already existed and
+three rows simply did not state them.
+
+**What was wrong.** A third audit pass — after numbers, and after words — compared
+description *phrases* against the parameter each would need. Three Demonic rows
+were short:
+
+| Row | Its promise | The key it did not state |
+| :-- | :-- | :-- |
+| the Spear's Held Fast | "any pinned enemy within 12 meters is set alight again each second it is held" | `Burn` |
+| the Fist's Cinder Rush | "knocking them aside" | `Knockback` |
+| the Greatsword's Inexorable | "throwing aside" | `Knockback` |
+
+### Held Fast is the one that shows why the new test exists
+
+**`Cataclysm.Skills.ASelfBuffStatingAnIntervalRelightsPinnedEnemies` had passed
+for months.** It grants the skill with `Burn=1` **written into the test**, so it
+proved that the repeat lights pinned enemies *given* a burn key, and never asked
+whether the sheet supplies one. It did not. The whole sentence did nothing in
+play.
+
+That is the third time on 2026-09-02 that a test which hands the code its missing
+piece hid a real defect, after the passive tree case in issue #1056 and Living
+Pyre's health return earlier the same day. **A check that reads the generated
+table cannot be fooled that way**, which is why the new test is in Python under
+`tools/tests/` rather than beside the skill tests — and it also means continuous
+integration runs it, which nothing under `game/Source/Cataclysm/Tests/` is.
+
+### The two metres is a judgement
+
+**Every existing shove in the sheet is a deliberate blow**, and all four are 3 or
+4 metres: the Warhammer's Shockwave Leap at 3, its Molten Crush at 3, the Whip's
+Coil of Embers at 3, and the Fist's Searing Hook at 4, whose own sentence states
+the number outright.
+
+**Being shouldered aside by a charge passing through is a lesser thing than being
+hit with a hook**, so 2 is below all of them. The design's diminishing-returns
+rule already halves each displacement a target takes inside five seconds, so a
+charge that catches several enemies does not launch them further and further.
+
+Neither row states a distance, so this is a constant to tune against real play
+rather than a number read off the design.
+
+### What the new test can and cannot do
+
+It compares a column of prose against a column of keys, in three ways:
+
+- **A phrase that names a mechanic must be matched by its key.** Five narrow
+  patterns, with an exemption map that records *why* each accepted row is right
+  without the key.
+- **A promise written in words forces a human to look.** Nothing can decide
+  mechanically whether "doubles your health regeneration" is implemented, so any
+  Demonic row using `doubles`, `twice`, `cannot`, `never`, `no cap`, `no limit`
+  or `immune` fails until somebody records what carries it. Fifteen rows are
+  listed today.
+- **A stale exemption fails too.** An entry naming a renamed skill would excuse
+  nothing and quietly hide the row under its new name.
+
+**It cannot tell whether a key is implemented, only whether the row states one.**
+A parameter nothing reads passes this and is caught instead by grepping for
+readers, which is the audit written up in issue #1141.
+
+---
+
 ## 2026-09-02 — A held swing may forbid its caster more than moving, and the previous entry's title was wrong
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,

@@ -5080,7 +5080,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 
   
 
-- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 45 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
+- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 46 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 
