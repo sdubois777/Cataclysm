@@ -171,7 +171,20 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// ability LANDS, in ContinueWindUp, so an attack that was interrupted before
 	// it landed was never spent and is available again. That is what makes
 	// interrupting worth doing to the enemy rather than to the player.
-	if (UCataclysmSkillEffects::IsStunned(Driven))
+	//
+	// A KNOCKDOWN IS THE SAME HARD STOP AND TAKES THE SAME BRANCH, which is why
+	// this asks `CannotAct` rather than `IsStunned`. Section VI of the design
+	// document puts the two in one row of its table -- a knocked-down target
+	// "cannot act at all; it is simply on the floor while it happens" -- so
+	// everything below applies to it word for word: the wind-up is abandoned,
+	// the charge stops, the marker goes and the creature does not move.
+	//
+	// THE BRAIN STILL RECORDS IT AS `Stunned`, because ECataclysmBrainAction
+	// names what the creature is doing and the answer for both is "not acting at
+	// all until it wears off". A second enum value would be two names for one
+	// behaviour, and every test and log line reading the first would have to
+	// learn about the second.
+	if (UCataclysmSkillEffects::CannotAct(Driven))
 	{
 		WindingUpAbility = INDEX_NONE;
 		WindUpPassesLeft = 0;
@@ -338,6 +351,27 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// this comes from and why no other enemy needs it.
 	if (Distance > Reach + ContactToleranceCm)
 	{
+		// A PINNED CREATURE DOES NOT CHASE, AND STILL FACES WHAT IT IS FIGHTING.
+		// `ForcedMovement=Pin` holds a target where it stands and leaves
+		// everything else working -- it turns, it uses abilities and it swings at
+		// whatever comes within reach. That is the whole difference between a pin
+		// and the hard stop above, which returns before any of this.
+		//
+		// AFTER `UseAbilitiesOn` RATHER THAN BEFORE IT, so a pinned creature can
+		// still throw a rock at a player standing out of its reach. Four Spear
+		// skills pin, and one that made a creature harmless as well as immobile
+		// would be a stun by another name.
+		//
+		// EVERY PASS, NOT ONCE. Think runs four times a second and StopMovement is
+		// not sticky, which is the same trap the stun branch above records.
+		if (UCataclysmSkillEffects::IsPinned(Driven))
+		{
+			StopMovement();
+			FaceTarget(Driven, Target);
+			LastAction = ECataclysmBrainAction::Pinned;
+			return LastAction;
+		}
+
 		// BACK TO FACING WHERE IT WALKS. An ability that made it turn on the
 		// spot left the movement component pointed at the controller's
 		// rotation, and a creature that then chases would walk forward while
@@ -1072,6 +1106,23 @@ ECataclysmBrainAction ACataclysmEnemyController::Roam()
 		StopMovement();
 		bHasRoamTarget = false;
 		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	// A PINNED CREATURE DOES NOT WANDER EITHER. This is the second of the two
+	// places the brain orders a walk, and a pin that stopped only the chase would
+	// leave a creature with nothing in sight strolling out of the thicket it was
+	// nailed into.
+	//
+	// THE ROAM TARGET IS ABANDONED RATHER THAN KEPT, so the creature picks a
+	// fresh point when the pin ends. Keeping it would send it walking to a place
+	// it chose several seconds earlier, from a position it can no longer reach it
+	// from.
+	if (UCataclysmSkillEffects::IsPinned(Driven))
+	{
+		StopMovement();
+		bHasRoamTarget = false;
+		LastAction = ECataclysmBrainAction::Pinned;
 		return LastAction;
 	}
 

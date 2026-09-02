@@ -313,13 +313,37 @@ private:
 	bool UpdateCachedDestination();
 
 	/**
-	 * Whether the possessed pawn is stunned and may not act.
+	 * Whether the possessed pawn is under a hard stop and may not act.
 	 *
 	 * SEPARATE FROM bStandStill, WHICH SUPPRESSES MOVEMENT ONLY. The design
 	 * defines a stun as the target being unable to act at all, so this gates
 	 * skills as well, and the player did not choose it.
+	 *
+	 * IT ANSWERS FOR A KNOCKDOWN TOO, which section VI of the design document
+	 * puts in the same row of its table as a stun. The name is unchanged because
+	 * a stun is still the only one of the two that anything can apply to a
+	 * player; see the .cpp.
 	 */
 	bool IsPawnStunned() const;
+
+	/**
+	 * Whether the possessed pawn is pinned and may not travel.
+	 *
+	 * NOT A HARD STOP AND DELIBERATELY NOT PART OF THE ONE ABOVE. A pinned
+	 * character casts, swings and picks up as normal; the one thing it cannot do
+	 * is walk. `UCataclysmSkillEffects::ApplyPin` carries the reasoning and issue
+	 * #1149 carries the open question behind it.
+	 */
+	bool IsPawnPinned() const;
+
+	/**
+	 * Whether the possessed pawn may not travel, for either reason.
+	 *
+	 * WHAT EVERY MOVEMENT GATE ASKS. Three input handlers and the per-frame
+	 * suppression read this; the one gate that refuses SKILLS reads
+	 * `IsPawnStunned` instead, because a pin does not take a skill away.
+	 */
+	bool PawnCannotWalk() const;
 
 	/**
 	 * The drop whose drawn name the cursor is over, or nullptr for none.

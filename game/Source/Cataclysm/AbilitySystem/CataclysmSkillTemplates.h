@@ -290,6 +290,27 @@ public:
 	int32 BurningEnemiesAtCast = 0;
 
 	/**
+	 * Enemies pinned within Radius when the buff went up. Held Fast scales on it.
+	 *
+	 * COUNTED ONCE, AT THE CAST, EXACTLY AS THE BURNING COUNT ABOVE IS. The
+	 * Spear's Held Fast reads "you deal 10% more damage for every enemy you
+	 * currently have pinned", and Burning Wrath's "every enemy currently burning"
+	 * is the same word settled the same way: the count is taken when the buff
+	 * goes up and does not move afterwards. So the skill is cast after pinning
+	 * rather than before, and a pin that expires during the ten seconds does not
+	 * lower it.
+	 *
+	 * IT COUNTS PINNED ENEMIES AND NOT PINS THE CASTER APPLIED. "Enemy you
+	 * currently have pinned" could mean either, and tracking who applied each pin
+	 * would mean carrying an instigator on every pin for the benefit of one row.
+	 * Nothing else in the game pins, so the two readings give the same number
+	 * today; the day a second thing pins, this is where the difference would
+	 * show.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 PinnedEnemiesAtCast = 0;
+
+	/**
 	 * Percentage points of MORE damage this buff is currently granting.
 	 *
 	 * Zero while the buff is down, and zero for a self buff whose row carries no

@@ -105,7 +105,15 @@ bool UCataclysmBasicAttack::MaySwing(const AActor* Character)
 	// design defines a stun as the target being unable to act at all, so an
 	// automatic attack carrying on through one would leave a stunned character
 	// with exactly one thing it could still do.
-	return !UCataclysmSkillEffects::IsStunned(Character);
+	//
+	// A KNOCKDOWN COUNTS TOO, WHICH IS WHY THIS ASKS `CannotAct` AND NOT
+	// `IsStunned`. Section VI of the design document puts stun and knockdown in
+	// one row of its table of hard stops, so a creature that kept swinging from
+	// the floor would be exactly the defect this line was written to stop.
+	//
+	// A PIN DOES NOT COUNT. A pinned character cannot move and can still fight,
+	// so its automatic attack keeps swinging at whatever stays within reach.
+	return !UCataclysmSkillEffects::CannotAct(Character);
 }
 
 float UCataclysmBasicAttack::ReachCmOf(

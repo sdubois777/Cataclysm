@@ -412,13 +412,61 @@ protected:
 	 *
 	 * A REPEATING SHAPE SHOVES ON EVERY TICK. An Aura pulses through HitTargets
 	 * once per Interval, so an Aura stating a Knockback would push on each pulse.
-	 * No designed skill states one, and what would bound it is the design's own
-	 * limit on repeated displacement -- each one inside 5 seconds moves half as
-	 * far as the one before, decided on issue #302. That rule is stated in
-	 * docs/Cataclysm_GDD_v2.md and implemented nowhere, for either direction.
-	 * Issue #628 carries it.
+	 * No designed skill states one, and what bounds it is the design's own limit
+	 * on repeated displacement -- each one inside 5 seconds moves half as far as
+	 * the one before, decided on issue #302 and implemented on #628 inside
+	 * `UCataclysmSkillEffects::ApplyKnockback`. That rule now covers a pull, a
+	 * drag and a launch as well, because all four share one displacement body.
 	 */
 	void ApplyKnockbackTo(AActor* Self, AActor* Target) const;
+
+	/**
+	 * Do to one target whatever this skill's `ForcedMovement` names, if it names
+	 * anything. Does nothing when it does not.
+	 *
+	 * A RIDER BESIDE THE KNOCKBACK ABOVE AND FOR THE SAME REASON. Nine rows
+	 * across three weapons state one of the five verbs, and they are spread over
+	 * three different shapes: the Spear's Impale is a Strike, its Nail Down a
+	 * Movement and its Skewer a Projectile. Anything written into one template
+	 * would have to be written into the other two.
+	 *
+	 * MORE THAN ONE VERB MAY BE NAMED, comma separated, and the Whip's The
+	 * Gathering is the row that needs it: `ForcedMovement=Pull, Knockdown` hauls
+	 * its catch to the caster's feet and then puts it on the floor. They are
+	 * applied in the order written here -- displacements first, then holds --
+	 * so a target is moved before it is held rather than being pinned where it
+	 * stood and then dragged out of its own pin.
+	 *
+	 * DRAG AND PULL ARE ONE DISPLACEMENT APPLIED AT DIFFERENT MOMENTS, which is
+	 * worth stating because the sheet gives them two names. Both haul a target
+	 * toward the caster; the difference is that a Movement shape has already
+	 * moved the caster by the time this runs, so `Drag` on the Whip's Reel
+	 * carries its catch along the whole run and dumps it at the destination,
+	 * while `Pull` on The Gathering hauls to a caster that never moved.
+	 *
+	 * A KNOCKDOWN FROM A ROW THAT STATES ONE IS ALWAYS A DESIGNED KNOCKDOWN, so
+	 * it skips the damage threshold. Every row here means to knock down; the
+	 * threshold exists to stop small incidental hits interrupting, and there is
+	 * nothing incidental about a parameter.
+	 *
+	 * @param DamageDealt  what this blow actually did, after mitigation, which
+	 *                     only an undesigned knockdown would weigh
+	 * @return whether the target was pinned, which is what `OnDeath=Release`
+	 *         needs to know to bind a line together afterwards
+	 */
+	bool ApplyForcedMovementTo(AActor* Self, AActor* Target,
+							   float DamageDealt) const;
+
+	/**
+	 * Whether this skill's `ForcedMovement` names one particular verb.
+	 *
+	 * The same shape as `RequiresCondition` above, over a different comma
+	 * separated column. Kept separate rather than made generic over both,
+	 * because the two are read at completely different moments -- one gates a
+	 * cast and one rides a blow -- and a shared helper would be a parameter
+	 * saying which column, which is longer than the four lines it saves.
+	 */
+	bool ForcedMovementNames(const TCHAR* Verb) const;
 
 	/**
 	 * Whether every condition this skill's `Requires` names holds right now.

@@ -6858,4 +6858,316 @@ bool FCataclysmBuffIgnoresKillsTest::RunTest(const FString&)
 
 	return true;
 }
+
+// ==========================================================================
+// Forced movement as a rider -- the Spear, the Whip and the Warhammer
+// ==========================================================================
+
+/**
+ * A skill's `ForcedMovement` column reaches its targets.
+ *
+ * WHAT THIS GUARDS THAT THE EFFECTS TESTS DO NOT.
+ * `CataclysmForcedMovementTests.cpp` checks what a pin, a knockdown, a pull and
+ * a launch DO when something calls them. Nothing there says a skill row ever
+ * calls one. Between 2026-09-01 and this change, nine rows stated a verb and the
+ * column was read by nothing at all, and every test in the project passed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForcedMovementIsARiderTest,
+	"Cataclysm.Skills.AStrikeStatingForcedMovementPinsWhatItHits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmForcedMovementIsARiderTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	FScopedFighter Bystander(World, FVector(9 * M, 0, 0));
+
+	// The Spear's Impale, as its row states it: "holding them in place for 4
+	// seconds. While a target is pinned it takes 30% more damage from every
+	// source."
+	UCataclysmStrikeSkill* Impale = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4; Angle=30; MaxTargets=1; Burn=1; ForcedMovement=Pin; "
+			 "ForcedMovementDuration=4; EffectMagnitude=30"),
+		TEXT("Impale"));
+	if (!Impale)
+	{
+		AddError(TEXT("Could not grant Impale."));
+		return false;
+	}
+
+	TestFalse(TEXT("nothing is pinned before the cast"),
+		UCataclysmSkillEffects::IsPinned(Target.Actor));
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Impale));
+
+	TestTrue(TEXT("what it hit is pinned"),
+		UCataclysmSkillEffects::IsPinned(Target.Actor));
+
+	// AND THE MAGNITUDE CAME OFF THE ROW. A hundred is the attribute's own
+	// baseline, so reading a hundred here is what "the 30 reached nothing" looks
+	// like -- which is exactly the state this row was in before.
+	TestEqual(TEXT("and takes 30% more damage while it is held"),
+		Target.Get(UCataclysmCombatAttributeSet::GetDamageTakenAttribute()),
+		130.0f, 0.01f);
+
+	// NINE METRES IS OUTSIDE THE FOUR METRE RADIUS. Without this, a rider that
+	// pinned every enemy in the level rather than the ones the blow caught would
+	// pass every assertion above.
+	TestFalse(TEXT("but something out of reach is not pinned"),
+		UCataclysmSkillEffects::IsPinned(Bystander.Actor));
+	TestEqual(TEXT("and takes an ordinary share of a hit"),
+		Bystander.Get(UCataclysmCombatAttributeSet::GetDamageTakenAttribute()),
+		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForcedMovementNamesTwoVerbsTest,
+	"Cataclysm.Skills.ASkillMayNameTwoForcedMovementVerbsAndBothHappen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmForcedMovementNamesTwoVerbsTest::RunTest(const FString&)
+{
+	// THE WHIP'S THE GATHERING IS THE ROW THAT NEEDS IT: "haul every enemy you
+	// catch into a burning heap at your feet. They land for 350% weapon damage,
+	// are set alight, and cannot rise for 2 seconds." Its cell reads
+	// `ForcedMovement=Pull, Knockdown`, and a reader that took the first word and
+	// stopped would haul the catch and leave it standing.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Caught(World, FVector(0, 10 * M, 0));
+
+	UCataclysmStrikeSkill* Gathering = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=14; Angle=360; Burn=1; ForcedMovement=Pull, Knockdown; "
+			 "ForcedMovementDuration=2"),
+		TEXT("The Gathering"));
+	if (!Gathering)
+	{
+		AddError(TEXT("Could not grant The Gathering."));
+		return false;
+	}
+
+	const float StartedAt = Caught.Actor->GetActorLocation().Y;
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Gathering));
+
+	// THE PULL: no distance is stated, so it comes the whole way. Eight of the
+	// ten metres is far past anything a partial move produces and far short of
+	// standing still; the sweep stops it against the caster's body rather than
+	// inside it.
+	TestTrue(FString::Printf(
+			TEXT("it was hauled most of the way in (moved %.0f cm of 1000)"),
+			StartedAt - Caught.Actor->GetActorLocation().Y),
+		StartedAt - Caught.Actor->GetActorLocation().Y >= 8 * M);
+
+	// AND THE KNOCKDOWN, WHICH IS THE SECOND WORD IN THE CELL.
+	TestTrue(TEXT("and it cannot rise"),
+		UCataclysmSkillEffects::IsKnockedDown(Caught.Actor));
+	TestTrue(TEXT("so it cannot act at all"),
+		UCataclysmSkillEffects::CannotAct(Caught.Actor));
+
+	// AND IT IS NOT PINNED, which says the verb list is read as a list of names
+	// rather than as "this row states forced movement, so do everything".
+	TestFalse(TEXT("but it is not pinned, which the row does not ask for"),
+		UCataclysmSkillEffects::IsPinned(Caught.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkewerBindsWhatItPinsTest,
+	"Cataclysm.Skills.AProjectileStatingOnDeathReleaseBindsTheLineItPinned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkewerBindsWhatItPinsTest::RunTest(const FString&)
+{
+	// THE SPEAR'S SKEWER, END TO END: hurl through a line, pin all of it, and
+	// bind it so that killing any one frees the rest.
+	// `CataclysmForcedMovementTests.cpp` checks that a bound line comes apart;
+	// this is what says a skill row ever binds one.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(3 * M, 0, 0));
+	FScopedFighter Second(World, FVector(6 * M, 0, 0));
+
+	// SKEWER'S ROW STATES `Speed=1800` AND THIS USES ZERO, deliberately. A speed
+	// puts a projectile actor in the world that has to be flown frame by frame,
+	// which is a test about flight; zero means it arrives at once and the
+	// activation resolves the hit itself, which is what the Infernal Lance test
+	// above does for the same reason. Nothing about pinning a line depends on how
+	// long the spear was in the air.
+	//
+	// Aimed forward: with no player controller the aim point falls back to the
+	// caster's own position, so the line runs along the caster's facing, +X.
+	UCataclysmProjectileSkill* Skewer = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=14; Radius=1.5; Pierce=99; Speed=0; Burn=1; "
+			 "ForcedMovement=Pin; ForcedMovementDuration=4; OnDeath=Release"),
+		TEXT("Skewer"));
+	if (!Skewer)
+	{
+		AddError(TEXT("Could not grant Skewer."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Skewer));
+	TestEqual(TEXT("and lands once, with no flight time"), Skewer->Landings, 1);
+
+	TestTrue(TEXT("both are pinned"),
+		UCataclysmSkillEffects::IsPinned(First.Actor)
+			&& UCataclysmSkillEffects::IsPinned(Second.Actor));
+
+	// KILLING ONE FREES THE OTHER, which is what the binding was for. Marked dead
+	// directly: this harness spawns bare actors, so nothing here runs the death
+	// path that would otherwise record it.
+	TestTrue(TEXT("the first one dies"),
+		UCataclysmSkillEffects::MarkDead(First.Actor));
+	TestFalse(TEXT("and the second is freed"),
+		UCataclysmSkillEffects::IsPinned(Second.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeCappedToOneTargetPinsOneTest,
+	"Cataclysm.Skills.AChargeCappedToOneTargetPinsOnlyTheFirstItReaches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargeCappedToOneTargetPinsOneTest::RunTest(const FString&)
+{
+	// THE SPEAR'S NAIL DOWN IMPALES "THE FIRST ENEMY YOU REACH" WHERE THE WHIP'S
+	// REEL TAKES "EVERY ENEMY THE LINE CROSSES". The two are both charges and
+	// differ in nothing else, so `MaxTargets` is the only thing that can separate
+	// them -- and until 2026-09-01 `tools/generate_datatables.py` refused
+	// `MaxTargets` on a Movement row, while the engine had always read it. This
+	// is the behaviour that refusal made unwritable.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL FIRST, ON ITS OWN CASTER AND WITH THE SAME ROW MINUS THE CAP.
+	// Without it, a run in which the second creature was simply out of the line
+	// would read exactly like a working cap.
+	{
+		FScopedFighter Caster(World, FVector(0, 50 * M, 0));
+		FScopedFighter Nearer(World, FVector(3 * M, 50 * M, 0));
+		FScopedFighter Farther(World, FVector(3 * M, 50 * M + 100.0f, 0));
+
+		UCataclysmMovementSkill* Uncapped = GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Charge; Range=12; Radius=1.5; Burn=1; Requires=Target; "
+				 "ForcedMovement=Pin, Drag; ForcedMovementDuration=3"),
+			TEXT("Nail Down without a cap"));
+		if (!Uncapped)
+		{
+			AddError(TEXT("Could not grant the uncapped charge."));
+			return false;
+		}
+
+		TestTrue(TEXT("the uncapped charge activates"), Activate(Caster, Uncapped));
+		TestTrue(TEXT("and it pins both creatures standing together"),
+			UCataclysmSkillEffects::IsPinned(Nearer.Actor)
+				&& UCataclysmSkillEffects::IsPinned(Farther.Actor));
+	}
+
+	// AND NOW THE SAME ARRANGEMENT WITH THE CAP THE ROW ACTUALLY CARRIES.
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Nearer(World, FVector(3 * M, 0, 0));
+	FScopedFighter Farther(World, FVector(3 * M, 100.0f, 0));
+
+	UCataclysmMovementSkill* NailDown = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=12; Radius=1.5; MaxTargets=1; Burn=1; "
+			 "Requires=Target; ForcedMovement=Pin, Drag; "
+			 "ForcedMovementDuration=3"),
+		TEXT("Nail Down"));
+	if (!NailDown)
+	{
+		AddError(TEXT("Could not grant Nail Down."));
+		return false;
+	}
+
+	TestTrue(TEXT("Nail Down activates"), Activate(Caster, NailDown));
+
+	TestTrue(TEXT("the first enemy it reaches is pinned"),
+		UCataclysmSkillEffects::IsPinned(Nearer.Actor));
+	TestFalse(TEXT("and the one beside it is not, because the row caps at one"),
+		UCataclysmSkillEffects::IsPinned(Farther.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldFastCountsPinnedEnemiesTest,
+	"Cataclysm.Skills.ASelfBuffScalesOnHowManyEnemiesArePinned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldFastCountsPinnedEnemiesTest::RunTest(const FString&)
+{
+	// THE FIRST HALF OF THE SPEAR'S HELD FAST: "you deal 10% more damage for
+	// every enemy you currently have pinned". `ScalingSource=Pinned` was one of
+	// the seven values nothing counted, so the row granted nothing at all.
+	//
+	// ITS SECOND HALF IS NOT BUILT and is not checked here: "any pinned enemy
+	// within 12 meters is set alight again each second it is held" has no
+	// parameter in the row, and a Support skill deals no damage to burn with.
+	// Issue #1150.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Pinned(World, FVector(4 * M, 0, 0));
+	FScopedFighter Loose(World, FVector(6 * M, 0, 0));
+	FScopedFighter FarAway(World, FVector(20 * M, 0, 0));
+
+	// TWO PINNED, ONE OF THEM OUTSIDE THE RADIUS. Without the far one, a count
+	// that ignored the radius entirely would read the same as one that honoured
+	// it.
+	UCataclysmSkillEffects::ApplyPin(Caster.Actor, Pinned.Actor,
+									 /*DurationSeconds=*/7.0f);
+	UCataclysmSkillEffects::ApplyPin(Caster.Actor, FarAway.Actor,
+									 /*DurationSeconds=*/7.0f);
+
+	UCataclysmSelfBuffSkill* HeldFast = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=12; MoreDamagePer=10; ScalingSource=Pinned"),
+		TEXT("Held Fast"));
+	if (!HeldFast)
+	{
+		AddError(TEXT("Could not grant Held Fast."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, HeldFast));
+
+	TestEqual(TEXT("it counted the one pinned enemy inside twelve metres"),
+		HeldFast->PinnedEnemiesAtCast, 1);
+	TestEqual(TEXT("and granted ten per cent for it"),
+		HeldFast->GrantedIncrease, 10.0f, 0.01f);
+
+	// NOT THE BURNING COUNT, which is the other thing the same sweep answers.
+	// Nothing here is alight, so a Pinned source reading the wrong tally would
+	// grant nothing and this reading is what separates the two.
+	TestEqual(TEXT("and nothing was burning"),
+		HeldFast->BurningEnemiesAtCast, 0);
+	TestFalse(TEXT("the loose enemy was never pinned"),
+		UCataclysmSkillEffects::IsPinned(Loose.Actor));
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

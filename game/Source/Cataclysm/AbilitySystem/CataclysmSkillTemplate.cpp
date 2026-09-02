@@ -21,6 +21,9 @@
 // For the stack a cost paid soon after the last one builds. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+// For binding together the creatures one throw pinned, so that killing any of
+// them frees the rest. The Spear's Skewer. Issue #37.
+#include "AbilitySystem/CataclysmPinnedLine.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -1069,6 +1072,14 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
 
 	float Total = 0.0f;
+
+	// EVERYTHING THIS USE PINNED, KEPT SO THAT `OnDeath=Release` CAN BIND IT
+	// AFTERWARDS. The Spear's Skewer: "the whole line is held together for 4
+	// seconds. Killing any one of them frees the rest." The line is not known
+	// until every target has been dealt with, so it cannot be bound inside the
+	// loop. Empty for every skill that does not pin, which is all but four.
+	TArray<AActor*> Pinned;
+
 	for (AActor* Target : Targets)
 	{
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(Self, Target, Percent,
@@ -1098,6 +1109,40 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// opposite number would be. That is the difference between this and the
 		// burn above.
 		ApplyKnockbackTo(Self, Target);
+
+		// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
+		// across the Spear, the Warhammer and the Whip state one of the five
+		// verbs, spread over three different shapes, so putting it in any one
+		// template would mean putting it in three.
+		//
+		// AFTER THE KNOCKBACK RATHER THAN BEFORE IT, which matters only for a
+		// row that states both. None does today: `Knockback` and `ForcedMovement`
+		// are separate columns and no designed row fills them together. If one
+		// ever did, the shove would happen first and then the haul, which is the
+		// order the two columns are written in.
+		//
+		// NOT SCALED BY THE DAMAGE DEALT, like the knockback and unlike the
+		// burn. The damage is handed over only because an undesigned knockdown
+		// would weigh it against the target's maximum health, and every row here
+		// states a designed one.
+		if (ApplyForcedMovementTo(Self, Target, Dealt))
+		{
+			Pinned.Add(Target);
+		}
+	}
+
+	// A LINE IS BOUND ONLY WHEN THE ROW ASKS FOR ONE. `OnDeath` may take three
+	// values and this is the third: `Leap` buries a weapon, `SpreadDebuff`
+	// passes a curse, and `Release` frees the survivors of a pinned line.
+	//
+	// FROM WHAT WAS ACTUALLY PINNED AND NOT FROM WHAT WAS HIT. A boss is not
+	// pinned once issue #1149 is settled that way, and a target that was already
+	// pinned by something else has its pin refreshed rather than joining this
+	// line. Binding the hit list instead would put creatures in a line that were
+	// never held in it.
+	if (Params.OnDeath.Equals(TEXT("Release"), ESearchCase::IgnoreCase))
+	{
+		UCataclysmPinnedLine::BindTogether(Pinned);
 	}
 
 	// MANA ON HIT, WHICH ONLY THE BASIC ATTACK HAS. SkillSlots.csv gives the
@@ -1162,6 +1207,76 @@ void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) con
 	// the Abyssal Warden's Stampede had no way to reach any of it. Issue #625
 	// moved it out; there is one definition of a shove and both directions use it.
 	UCataclysmSkillEffects::ApplyKnockback(Self, Target, Params.KnockbackCm);
+}
+
+bool UCataclysmSkillTemplate::ForcedMovementNames(const TCHAR* Verb) const
+{
+	if (Params.ForcedMovement.IsEmpty())
+	{
+		return false;
+	}
+
+	TArray<FString> Named;
+	Params.ForcedMovement.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(Verb, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmSkillTemplate::ApplyForcedMovementTo(AActor* Self, AActor* Target,
+													float DamageDealt) const
+{
+	if (Params.ForcedMovement.IsEmpty() || !IsValid(Self) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// THE DISPLACEMENTS FIRST. A target that is going to be both moved and held
+	// must be moved before it is held, or the hold applies where the target is
+	// about to stop being. The Whip's The Gathering is the row that does both:
+	// "haul every enemy you catch into a burning heap at your feet ... and they
+	// cannot rise for 2 seconds."
+	if (ForcedMovementNames(TEXT("Pull")) || ForcedMovementNames(TEXT("Drag")))
+	{
+		UCataclysmSkillEffects::ApplyPull(Self, Target,
+										  Params.ForcedMovementDistanceCm);
+	}
+
+	if (ForcedMovementNames(TEXT("Launch")))
+	{
+		UCataclysmSkillEffects::ApplyLaunch(Self, Target,
+											Params.ForcedMovementDistanceCm);
+	}
+
+	// THEN THE HOLDS. A knockdown is checked against all three anti-stun-lock
+	// rules inside `ApplyKnockdown` and a pin against none of them; the reasoning
+	// for that difference is on `UCataclysmSkillEffects::ApplyPin` and the
+	// question is open as issue #1149.
+	if (ForcedMovementNames(TEXT("Knockdown")))
+	{
+		UCataclysmSkillEffects::ApplyKnockdown(
+			Self, Target, Params.ForcedMovementDuration, DamageDealt,
+			/*bKnockdownIsDesigned=*/true);
+	}
+
+	if (!ForcedMovementNames(TEXT("Pin")))
+	{
+		return false;
+	}
+
+	// THE MAGNITUDE ON A PINNING ROW IS WHAT THE TARGET TAKES WHILE HELD, and
+	// only the Spear's Impale states one: "while a target is pinned it takes 30%
+	// more damage from every source". `EffectMagnitude` is the column that
+	// carries the size of an applied effect, and a pin is one, so no new
+	// parameter was needed. A pinning row that states no magnitude simply holds.
+	return UCataclysmSkillEffects::ApplyPin(Self, Target,
+											Params.ForcedMovementDuration,
+											Params.EffectMagnitude);
 }
 
 float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const

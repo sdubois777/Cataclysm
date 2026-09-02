@@ -87,7 +87,13 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    "CommandStrike",
                    "TetherTargets", "TetherLength", "TetherDuration"),
     "SelfBuff": ("Duration", "Radius", "RangeIncrease"),
-    "Movement": ("Mode", "Range", "Radius", "Duration", "Interval", "RearHits"),
+    # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
+    # three movement modes that hit anything hand it straight to the targeting
+    # search. The Spear's Nail Down impales "the first enemy you reach" where the
+    # Whip's Reel takes "every enemy the line crosses", and without this the two
+    # charges have no way to differ. No enemy ability states it yet.
+    "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
+                 "RearHits"),
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
                "HealthThresholdPercent"),

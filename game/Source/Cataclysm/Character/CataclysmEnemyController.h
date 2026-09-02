@@ -103,6 +103,30 @@ enum class ECataclysmBrainAction : uint8
 	 * UENUM and inserting renumbers every value after it.
 	 */
 	Charging,
+
+	/**
+	 * Held where it stands and unable to close, but still fighting.
+	 *
+	 * `ForcedMovement=Pin`, which four Spear skills state. A pinned creature
+	 * turns to face its target, uses any ability that reaches, and swings at
+	 * anything that comes within its reach; the one thing it cannot do is walk.
+	 *
+	 * WHY IT IS NOT `Stunned`. The two look similar in a log and are opposite in
+	 * play: a stunned creature is safe to stand next to and a pinned one is not.
+	 * A test that could not tell them apart could not tell a working pin from a
+	 * pin that had accidentally been given a stun's behaviour, which is the
+	 * mistake most worth catching here. Section VI of the design document draws
+	 * the same line -- a hard stop is covered by the anti-stun-lock rules and a
+	 * pin is not.
+	 *
+	 * IT IS ONLY REACHED WHEN THE CREATURE WOULD OTHERWISE CHASE. A pinned
+	 * creature already in reach of its target reports `Attacking`, because that
+	 * is what it is doing; the pin costs it nothing when it has nowhere to walk.
+	 *
+	 * Appended, like Roaming, WindingUp, Stunned, Turning and Charging, because
+	 * this is a UENUM and inserting renumbers every value after it.
+	 */
+	Pinned,
 };
 
 /**
