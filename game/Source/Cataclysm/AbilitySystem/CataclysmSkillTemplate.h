@@ -376,13 +376,19 @@ public:
 	 * not describe a fire already burning. A future row that wanted to count
 	 * every tick would be able to.
 	 *
-	 * @param Defender  who was hit. Its running self buffs are the ones told
+	 * TWO KINDS OF RUNNING SKILL ARE TOLD, NOT ONE. A self buff, which is what
+	 * this was written for, and a Strike with its swing drawn back -- the
+	 * Greatsword's The Whole Weight, "every hit you take during the wind-up adds
+	 * 8% more damage to what follows". The held swing counts every blow,
+	 * including a tick, because its row states no qualification. Issue #1141.
+	 *
+	 * @param Defender  who was hit. Its running skills are the ones told
 	 * @param Striker   what hit it, or null when the blow has no causer -- a
 	 *                  patch of burning ground whose caster has left the level
 	 * @param bWasMelee whether the blow carried the melee tag
 	 * @param bWasDamageOverTime  whether it was a tick rather than a blow
-	 * @return how many running self buffs were told, whether or not each one
-	 *         does anything with it
+	 * @return how many running skills were told, whether or not each one does
+	 *         anything with it
 	 */
 	static int32 NoteBlowTaken(AActor* Defender, AActor* Striker,
 							   bool bWasMelee, bool bWasDamageOverTime);
@@ -830,7 +836,7 @@ protected:
 	/**
 	 * How many units of this skill's `ScalingSource` apply to one blow.
 	 *
-	 * THREE SOURCES ARE COUNTED HERE AND ELEVEN EXIST. `SCALING_SOURCES` in
+	 * SIX SOURCES ARE COUNTED HERE AND ELEVEN EXIST. `SCALING_SOURCES` in
 	 * `tools/generate_datatables.py` closes the list; a source this does not
 	 * know answers zero, so a skill naming one scales by nothing rather than
 	 * counting the wrong thing.
@@ -838,6 +844,15 @@ protected:
 	 *   `HealthMissing`  percentage points of maximum health the caster lacks.
 	 *                    The Fist's Searing Hook: "1% increased damage for every
 	 *                    1% of your maximum health you are currently missing".
+	 *   `Meter`          metres a lasting charge has already walked. The
+	 *                    Greatsword's Inexorable: "the further you charged, the
+	 *                    harder it hits".
+	 *   `Second`         seconds a planted weapon has stood in the ground. The
+	 *                    Greatsword's Buried Fire: "damage that rises with how
+	 *                    long you left it".
+	 *   `HitTaken`       blows landed on the caster while a swing was drawn
+	 *                    back. The Greatsword's The Whole Weight: "every hit you
+	 *                    take during the wind-up adds 8% more damage".
 	 *   `Consumed`       how many OTHER enemies had their fire put out by the
 	 *                    same use. The Sword's Extinction: "rising by 15% for
 	 *                    every other enemy consumed in the same instant".
@@ -846,9 +861,16 @@ protected:
 	 *                    alight has their fire consumed and takes 50% more
 	 *                    damage for it".
 	 *
+	 * THREE OF THE SIX BELONG TO ONE SHAPE EACH and are read through a cast
+	 * rather than a virtual: `Meter` asks the Movement skill that did the
+	 * walking, `Second` asks the sword that did the standing, and `HitTaken`
+	 * asks the Strike that was drawn back. Naming one of them on any other shape
+	 * answers zero.
+	 *
 	 * `Burning` IS NOT HERE AND IS NOT MISSING. `UCataclysmSelfBuffSkill` counts
 	 * it for itself, because a buff counts once when it goes up and this is
-	 * asked once per blow.
+	 * asked once per blow. The same is true of that class's own `Second` and its
+	 * own count of blows taken.
 	 *
 	 * @param ConsumedCount        how many enemies this use put out
 	 * @param bThisTargetConsumed  whether the target being priced was one of them
@@ -878,9 +900,11 @@ protected:
 	 * buff grants something that lasts and reaches every skill it is scoped to,
 	 * while this sizes one blow. Both use the same words for the same buckets.
 	 *
-	 * `MinDamagePercent` IS NOT READ HERE. It is the floor of a charged skill
-	 * released early, and nothing in the game holds a skill: only the
-	 * Greatsword's Backswing states one. Issue #1141.
+	 * `MinDamagePercent` IS STILL NOT READ HERE, AND THAT IS NOW A DIVISION OF
+	 * LABOUR RATHER THAN A GAP. It is the floor of a swing released early, which
+	 * only a held skill has, so `UCataclysmStrikeSkill::ChargedDamagePercent`
+	 * reads it and calls this one for the rows that do not state a floor. Two
+	 * rows in the sheet are held and only Backswing states a floor. Issue #1141.
 	 */
 	float ScaledDamagePercent(float Units) const;
 

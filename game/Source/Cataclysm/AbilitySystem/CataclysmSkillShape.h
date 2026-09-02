@@ -380,10 +380,18 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/**
 	 * Floor for a charged skill released at once, as percent of weapon damage.
 	 *
-	 * NOT READ. The Greatsword's Backswing is the only row that states one, and
-	 * a floor for an early release means nothing until something can be held and
-	 * released early. Issue #1141 carries the whole hold-and-release verb --
-	 * this, ChargeTime, ChargeBreaksOn and bDisarmsUntilRecalled.
+	 * READ BY `UCataclysmStrikeSkill::ChargedDamagePercent`, which runs the
+	 * swing's percent from here up to MaxDamagePercent across ChargeTime. The
+	 * Greatsword's Backswing is the only row that states one: "the swing lands
+	 * for 175% weapon damage at once, rising to 350% if you hold the full 2
+	 * seconds."
+	 *
+	 * AND STATING ONE IS WHAT MAKES A HELD SKILL RELEASABLE EARLY AT ALL, which
+	 * is the part that is not obvious from the name. A floor is what an early
+	 * release lands for, so a charged row without one has no answer for being
+	 * let go early and does not accept the key coming up: The Whole Weight says
+	 * "hold it for 3 seconds" and names being killed as the only escape.
+	 * `UCataclysmStrikeSkill::InputReleased` is where that is decided.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float MinDamagePercent = 0.0f;
@@ -661,7 +669,16 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	/**
 	 * Seconds of hold before a full release. Backswing states 2.
 	 *
-	 * NOT READ. Nothing in the game can be held. Issue #1141.
+	 * STATING ONE IS WHAT MAKES A STRIKE A HELD SKILL. `UCataclysmStrikeSkill::
+	 * ActivateAbility` draws the swing back instead of swinging when this is
+	 * above zero, and lets it go by itself after this many seconds. Two rows in
+	 * the sheet state one: Backswing at 2 and The Whole Weight at 3, both
+	 * Greatsword Demonic. Issue #1141.
+	 *
+	 * IT IS A CEILING AND NOT A WAIT. Neither row offers anything for holding
+	 * longer, so the hold releases itself when it gets here rather than waiting
+	 * for the key -- which also means a player who never lets go still swings
+	 * rather than standing rooted.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ChargeTime = 0.0f;
@@ -671,7 +688,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * None when nothing can. Inexorable is the one that writes None, because
 	 * the player cannot stop it either.
 	 *
-	 * NOT READ, for the same reason as ChargeTime above. Issue #1141.
+	 * READ BY `UCataclysmStrikeSkill::HoldBreaksOn`. A break deals nothing and
+	 * refunds nothing, which is what "loses the swing entirely" means.
+	 *
+	 *   `Stagger`    a displacement that actually lands breaks it. Backswing.
+	 *                Hooked in `CataclysmDisplace`, the one body every knockback,
+	 *                pull, drag and launch in the game passes through.
+	 *   `Movement`   the same event. A character holding a swing cannot walk, so
+	 *                being shoved is the only way it moves. No row states it.
+	 *   `Death`      the caster dying breaks it. The Whole Weight. Hooked in
+	 *                `UCataclysmSkillEffects::MarkDead`.
+	 *   `None`       nothing named here breaks it.
+	 *
+	 * DEATH BREAKS A HOLD WHETHER OR NOT THE ROW NAMES IT, and that is worth
+	 * knowing before writing a row that says otherwise. A corpse cannot swing;
+	 * what `Death` adds is that the row says so out loud.
+	 *
+	 * INEXORABLE STATES `None` AND LOSES NOTHING BY THIS. It is a Movement skill
+	 * with no `ChargeTime`, so it is never held and there is nothing to break.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ChargeBreaksOn;

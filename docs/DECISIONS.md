@@ -20,6 +20,112 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A swing can be drawn back and held, and three things decide what it lands for
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and
+`.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillEffects.cpp`,
+`CataclysmSkillShape.h`, `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`,
+and `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue
+#1141. **No data changed**: both rows already stated every parameter this reads.
+
+**What was wrong.** The Greatsword's designed verb is commitment — draw back,
+root, release — and nothing in the game could be held. Four parameters expressed
+it and three were read by nothing: `ChargeTime`, `ChargeBreaksOn` and
+`MinDamagePercent`. Backswing, written as "hold up to 2 seconds for 175% rising
+to 350%", was one immediate swing. The Whole Weight, written as a 3 second
+wind-up rising to 500% with every blow taken, was one immediate swing. A fourth
+scaling source, `HitTaken`, was named by The Whole Weight and counted by nothing.
+
+### What the genre settles
+
+Hold-and-release with damage rising toward a ceiling is standard, and **every
+shipped example lets the player release early for less**. That settles Backswing's
+"release at any time" as the normal shape rather than a special case.
+
+- **Path of Exile, Blade Flurry.** Channelled: each attack while channelling adds
+  a stage worth 20% more damage, to six stages and 120% more. Releasing unleashes
+  extra attacks equal to the stage reached, so an early release is a smaller
+  payoff rather than a refusal.
+- **Path of Exile 2, Perfect Strike.** Channelled: the weapon charges, and
+  releasing at the moment it completes launches a wave of fire. A window rather
+  than a ramp, and support gems trade the window's width against damage.
+- **Monster Hunter, Great Sword.** Three discrete charge levels with distinct
+  damage brackets, and an overcharge penalty that drops a level 3 back to a level
+  2 if the player waits too long.
+- **Path of Exile 2, Shield Charge.** Up to 100% more damage from distance
+  travelled. Not a hold, but it is the shape this project already uses for
+  Inexorable's `ScalingSource=Meter`, so the two Greatsword skills scale by the
+  same kind of accumulation.
+
+### What it does not settle, and the three judgements taken instead
+
+**1. The ramp is linear and continuous, not staged.** Two of the three examples
+above use discrete stages, so staged is the commoner shape and this goes the
+other way deliberately. A stage count is a number the Weapon Skills sheet does
+not carry, and a stage the player cannot see is not a stage — the project has no
+charge indicator on screen. Backswing's own text is written as a continuous rise:
+"175% weapon damage at once, rising to 350% if you hold the full 2 seconds."
+Revisit this if a charge indicator is ever built, because stages are what make a
+hold readable.
+
+**2. Holding past the full time is worth nothing, and there is no overcharge
+penalty.** Monster Hunter punishes it and Path of Exile 2 rewards a narrow
+window; this does neither, because neither row's text mentions either. The hold
+releases itself when it reaches `ChargeTime`, so overcharging cannot happen at
+all — which also stops a player who never lets go from standing rooted until
+something kills them.
+
+**3. `MinDamagePercent` is what makes a held skill releasable early.** This is
+the load-bearing judgement. A floor is what an early release lands for, so a row
+without one has no answer for being let go early — and the two rows are written
+exactly that way:
+
+| Row | Its own words | What that means |
+| :-- | :-- | :-- |
+| Backswing | "release at any time" | states `MinDamagePercent=175`, ramps 175 to 350 across 2 seconds, and the key coming up lets it go |
+| The Whole Weight | "hold it for 3 seconds" | states no floor, so the key coming up is ignored and its own 3 seconds finish it |
+
+The Whole Weight does not ramp with time either, for the same reason: what raises
+its blow is `MoreDamagePer=8` beside `ScalingSource=HitTaken`, which counts blows
+rather than seconds, and adding a time ramp on top would charge one sentence
+twice. So a charged row is read as **either** a time ramp **or** a scaling source,
+and which one it is is decided by whether it states a floor.
+
+### What breaks a hold
+
+`ChargeBreaksOn` names the event, and a break deals nothing and refunds nothing —
+the mana and the cooldown were spent at activation, which is what makes it a cost
+rather than a cancelled press.
+
+| Value | What fires it | Which row |
+| :-- | :-- | :-- |
+| `Stagger` | a displacement that actually lands | Backswing |
+| `Movement` | the same event, because a rooted character only moves by being shoved | no row states it |
+| `Death` | the caster dying | The Whole Weight |
+| `None` | nothing | Inexorable, which has no `ChargeTime` and is never held |
+
+**A stagger is a displacement here**, and that reading comes from this project's
+own tag vocabulary rather than from the design document, whose table of hard
+stops has no row for stagger: `Keyword.Stagger` is described as "stagger and
+knockback effects". So the break hangs off `CataclysmDisplace`, the one body every
+knockback, pull, drag and launch in the game passes through.
+
+**Death breaks a hold whether or not the row names it.** A corpse cannot swing,
+and a hold left standing would be a timer waiting to deal damage on behalf of
+somebody who is dead. What `ChargeBreaksOn=Death` adds is that the row says so.
+
+### What is still missing, and is not this
+
+**The wind-up has no animation.** A held swing plays whatever attack clip the
+character cycles at the moment of the press, then stands still until it is
+released, so on screen it reads as a swing followed by nothing. There is no
+draw-back clip in the project to play instead — issue #1126 is that every weapon
+swings the same three unarmed clips — and issue #1180 is the open question about
+what the shapes that are not swings should play. The mechanic is complete and
+what it looks like is not.
+
+---
+
 ## 2026-09-02 — The Greatsword's Movement skill is a charge rather than a walk, and the engine moves it
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
