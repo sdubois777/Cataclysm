@@ -13,6 +13,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
+#include "Dungeon/CataclysmFloorContents.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
@@ -785,12 +786,46 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	FloorNumber = FMath::Max(1, NewFloorNumber);
 	DungeonGameModeFollowFloorAtTheConsole(FloorNumber);
 
+	// ASKED BEFORE THE FLOOR IS REPLACED AND ACTED ON AFTER. `BuildFloor` spawns
+	// `CurrentFloor` the first time it runs, so afterwards there is no way to
+	// tell a floor being replaced from the first floor of the run.
+	const bool bReplacingAFloor = CurrentFloor != nullptr;
+
 	if (!BuildFloor())
 	{
 		// NOTHING ELSE IS TOUCHED. The floor before is still standing and still
 		// has its creatures on it, which is a better place to be left than on a
 		// floor that does not exist.
 		return false;
+	}
+
+	// THE LAST FLOOR'S CONTENTS COME OUT OF THE WORLD. Every floor is built at
+	// the same world coordinates -- `BuildFloor` reuses one `ACataclysmDungeonFloor`
+	// -- so a dropped item, a called Imp or a burning patch left behind is not
+	// somewhere the player has walked away from. It is standing inside the new
+	// floor. Reported from play as items still visible on later floors and the
+	// game slowing badly after four or five of them, which is issue #1176: two
+	// things walk every dropped item in the world every frame, and both were
+	// written when a floor's worth was the most there could ever be.
+	//
+	// AFTER `BuildFloor` AND NOT BEFORE, so a floor that fails to build leaves
+	// the player standing on the last one with its creatures still on it, which
+	// is what the branch above promises.
+	//
+	// BEFORE `PopulateFloor`, which is what puts the new floor's creatures out.
+	// Clearing afterwards would destroy the creatures it had just spawned.
+	//
+	// NOT ON THE FIRST FLOOR OF A RUN. There is nothing to clear, and a level
+	// may hold actors somebody placed by hand for the game mode to find.
+	if (bReplacingAFloor)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			const int32 Removed = UCataclysmFloorContents::ClearTheFloor(*World);
+			UE_LOG(LogCataclysm, Verbose,
+				   TEXT("Floor %d: %d actors left on the last floor were removed."),
+				   FloorNumber, Removed);
+		}
 	}
 
 	PopulateFloor();

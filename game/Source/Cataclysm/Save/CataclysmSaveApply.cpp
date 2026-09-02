@@ -3,14 +3,12 @@
 #include "Save/CataclysmSaveApply.h"
 
 #include "AbilitySystemComponent.h"
-#include "AbilitySystem/CataclysmGroundZone.h"
-#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmTargeting.h"
-#include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -91,33 +89,6 @@ namespace
 		}
 
 		return Map;
-	}
-
-	/** Destroy every actor of one class in a world. Returns how many. */
-	template <typename TActor>
-	int32 DestroyEvery(UWorld& World)
-	{
-		TArray<TActor*> Doomed;
-		for (TActorIterator<TActor> It(&World); It; ++It)
-		{
-			if (IsValid(*It))
-			{
-				Doomed.Add(*It);
-			}
-		}
-
-		// GATHERED FIRST, THEN DESTROYED. Destroying from inside TActorIterator
-		// modifies the level's actor array while it is being walked.
-		int32 Destroyed = 0;
-		for (TActor* Actor : Doomed)
-		{
-			if (IsValid(Actor))
-			{
-				Actor->Destroy();
-				++Destroyed;
-			}
-		}
-		return Destroyed;
 	}
 }
 
@@ -327,31 +298,15 @@ bool FCataclysmSaveApply::PlacementInto(
 	return VitalsInto(Character, Saved.Health, Saved.Mana, Saved.EnergyShield);
 }
 
-int32 FCataclysmSaveApply::ClearTheFloor(UWorld& World)
-{
-	int32 Destroyed = 0;
-
-	Destroyed += DestroyEvery<ACataclysmEnemyCharacter>(World);
-	Destroyed += DestroyEvery<ACataclysmDroppedItem>(World);
-
-	// AND THE THREE THINGS SECTION 6 SAYS ARE NOT RESTORED. A projectile still
-	// flying across a floor that has just been rebuilt, a burning patch of
-	// ground under a creature that was never there, or a marker telegraphing a
-	// wind-up that is not happening are each worse than a floor that simply
-	// starts still. "Every creature resumes from a still moment."
-	Destroyed += DestroyEvery<ACataclysmProjectile>(World);
-	Destroyed += DestroyEvery<ACataclysmGroundZone>(World);
-	Destroyed += DestroyEvery<ACataclysmTelegraphMarker>(World);
-
-	return Destroyed;
-}
-
 FCataclysmFloorRestored FCataclysmSaveApply::FloorInto(
 	UWorld& World, const FCataclysmSavedFloor& Saved)
 {
 	FCataclysmFloorRestored Restored;
 
-	Restored.Removed = ClearTheFloor(World);
+	// EMPTIED BY THE DUNGEON RATHER THAN HERE, since issue #1176. What a floor
+	// holds is the dungeon's question, and going down a flight of stairs asks it
+	// too -- `UCataclysmFloorContents` is where the one answer now lives.
+	Restored.Removed = UCataclysmFloorContents::ClearTheFloor(World);
 
 	for (const FCataclysmSavedCreature& Creature : Saved.Creatures)
 	{
