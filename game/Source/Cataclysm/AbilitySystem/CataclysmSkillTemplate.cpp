@@ -636,7 +636,8 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 		if (UCataclysmSelfBuffSkill* Buff =
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
-			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime);
+			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime,
+								DealtToHealth);
 			++Told;
 		}
 
@@ -688,6 +689,7 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 }
 
 int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
+											  AActor* Target,
 											  const FVector& Where,
 											  bool bFromBehind)
 {
@@ -717,7 +719,7 @@ int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 		if (UCataclysmSelfBuffSkill* Buff =
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
-			Buff->NoteBlowLanded(Where, bFromBehind);
+			Buff->NoteBlowLanded(Target, Where, bFromBehind);
 			++Told;
 		}
 	}
@@ -1643,7 +1645,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// skills' blows.
 		if (Dealt > 0.0f)
 		{
-			NoteBlowLanded(Self, Target->GetActorLocation(), bFromBehind);
+			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
 		}
 
 		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to

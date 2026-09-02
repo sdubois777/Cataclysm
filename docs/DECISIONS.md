@@ -20,6 +20,84 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — Martyr's Ember holds damage rather than granting a number, and one landed blow spends 50% of weapon damage
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`tools/generate_datatables.py`, `sim/cataclysm_sim/enemy_abilities.py`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`,
+`CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and `.cpp`,
+and `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied.
+Issue #1162.
+
+**What was wrong.** Martyr's Ember's row was `Duration=10` and nothing else.
+
+> Take the pain inward and hold it as heat for 10 seconds. **40% of all damage
+> you take while it lasts is stored**, and **each hit you land spends part of the
+> store as bonus fire damage until it is empty**. **The store is capped at 200%
+> weapon damage.**
+
+Three numbers, none of them in the row, and nothing in the project held damage
+at all. This was the last Demonic row with sentences that nothing read.
+
+### Two of the three numbers are read straight off the sentence
+
+`StoresFromHitTaken=40` and `StoreCapPercent=200`. The store holds damage rather
+than a percentage, and it is filled from **what reached health** — the same
+figure the design defines leech against — so a blow that armour stopped
+completely fills nothing.
+
+### The third is not in the sentence at all
+
+"Each hit you land spends **part** of the store" says that a part is spent and
+never says how much. **`StoreSpentPerHit=50` is a judgement**, not a derivation,
+and it is the number to change first if the skill feels wrong.
+
+**What the genre settles.** Absorbing damage and giving it back as fire is a
+shipped shape: **Path of Exile's Molten Shell** absorbs incoming damage into a
+shield and releases it as fire damage. Storing a *share* of damage taken is
+shipped too — **Recoup** recovers a percentage over four seconds, and
+**Absorption Charges** recoup a share of elemental damage taken as energy shield.
+
+**What it does not settle.** No shipped ARPG mechanic drains a stored-damage pool
+by a fixed amount per landed blow. Molten Shell releases the whole thing at once;
+Recoup pays on a clock. The per-blow drain is specific to this row and had to be
+chosen.
+
+**Why 50% of weapon damage:**
+
+| | |
+| :-- | :-- |
+| a full store is 200% of weapon damage | so it is emptied by **four** landed blows |
+| a character swings a little over once a second | so four blows is about four seconds of the buff's ten |
+| a Heavy blow is 250% of weapon damage | so 50% is a fifth on top: felt, not dominant |
+
+**In weapon damage and not as a share of the store**, so that "until it is empty"
+can happen at all. A share of the store halves it for ever and never empties it,
+and the row's own ceiling is written in weapon damage too.
+
+### One consequence worth knowing before tuning it
+
+**The spend is once per enemy hit, not once per use.**
+`UCataclysmSkillTemplate::HitTargets` walks its targets and tells the running
+buffs inside that loop, so a blow catching four enemies lands four hits and gives
+every one of them the bonus. That follows from the row's own words — "each hit
+you land" — and it means **a wide skill empties the store roughly four times
+faster than a single-target one.** A full store spent across one three-enemy
+cleave is 100 extra damage spread over two of the three.
+
+That is a real strategic choice for the player rather than a defect, but it is
+the largest thing about this number, so it is written into the parameter's own
+header as well as here.
+
+### It is not leech and it does not touch the leech system
+
+Leech in this project is what a hit gives back to whoever **landed** it, paid out
+over three seconds. This is damage a character **took**, held, and given back on
+its own blows. `UCataclysmLeech` is untouched.
+
+---
+
 ## 2026-09-02 — Health returned from a blow taken is paid at once, and a rush needs a duration to be immune during
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
