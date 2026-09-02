@@ -273,6 +273,19 @@ SHAPE_RIDERS = {
     "HealthFromHitTaken": "percent of a blow taken that is returned to the "
                           "caster as health while the skill runs",
 
+    # THE OTHER WAY A SKILL MAY USE A BLOW TAKEN. Added 2026-09-02 for Martyr's
+    # Ember, which holds it as damage to give back rather than turning it into
+    # health at once. Three keys because the row states three numbers -- "40% of
+    # all damage you take is stored", "capped at 200% weapon damage", and a
+    # spend the row does NOT state, whose value is a judgement recorded in
+    # docs/DECISIONS.md. Issue #1162.
+    "StoresFromHitTaken": "percent of a blow taken that is put into the "
+                          "skill's store instead of being paid back",
+    "StoreCapPercent": "ceiling on that store, as percent of weapon damage",
+    "StoreSpentPerHit": "percent of weapon damage one landed blow takes out "
+                        "of the store and adds to what it hit. Once per enemy "
+                        "hit, not once per use",
+
     "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
     "OnDeathRange": "metres the on-death effect reaches for its next target",
 

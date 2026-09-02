@@ -403,6 +403,18 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.HealthFromHitTaken = Number;
 		}
+		else if (Key.Equals(TEXT("StoresFromHitTaken"), ESearchCase::IgnoreCase))
+		{
+			Params.StoresFromHitTaken = Number;
+		}
+		else if (Key.Equals(TEXT("StoreCapPercent"), ESearchCase::IgnoreCase))
+		{
+			Params.StoreCapPercent = Number;
+		}
+		else if (Key.Equals(TEXT("StoreSpentPerHit"), ESearchCase::IgnoreCase))
+		{
+			Params.StoreSpentPerHit = Number;
+		}
 		// --- Forced movement --------------------------------------------
 		else if (Key.Equals(TEXT("ForcedMovement"), ESearchCase::IgnoreCase))
 		{

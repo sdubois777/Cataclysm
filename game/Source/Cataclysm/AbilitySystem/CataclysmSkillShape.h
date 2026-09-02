@@ -637,6 +637,54 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float HealthFromHitTaken = 0.0f;
 
+	/**
+	 * Percent of a blow taken that is put into the skill's store instead of
+	 * being paid straight back.
+	 *
+	 * ONE ROW STATES ONE. The Fist's Martyr's Ember: "40% of all damage you take
+	 * while it lasts is stored." Issue #1162.
+	 *
+	 * THE OPPOSITE END OF THE SAME EVENT `HealthFromHitTaken` ABOVE READS, and
+	 * the two rows are written as opposites on purpose. Living Pyre turns the
+	 * blow into health at once; Martyr's Ember holds it as damage to give back.
+	 * A row could state both; none does.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float StoresFromHitTaken = 0.0f;
+
+	/**
+	 * Ceiling on that store, as percent of the caster's weapon damage.
+	 *
+	 * "THE STORE IS CAPPED AT 200% WEAPON DAMAGE", which is the row's own
+	 * sentence and its own unit. A store with no ceiling would grow for as long
+	 * as the holder could survive being hit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float StoreCapPercent = 0.0f;
+
+	/**
+	 * Percent of the caster's weapon damage one landed blow takes out of the
+	 * store and adds to what it hit.
+	 *
+	 * THE ROW DOES NOT STATE THIS NUMBER AND THAT IS WHY IT IS WORTH READING
+	 * TWICE. "Each hit you land spends PART of the store as bonus fire damage
+	 * until it is empty" says that a part is spent and never says how much. The
+	 * 50 is a judgement recorded in `docs/DECISIONS.md` for 2026-09-02, chosen so
+	 * that a full store -- 200% of weapon damage -- is emptied by four landed
+	 * blows. It is a constant to tune against real play.
+	 *
+	 * IN WEAPON DAMAGE AND NOT IN A SHARE OF THE STORE, so that "until it is
+	 * empty" can happen. A share of the store halves it for ever and never
+	 * empties it, and the row's own ceiling is written in weapon damage too.
+	 *
+	 * ONCE PER ENEMY HIT, NOT ONCE PER USE. A blow that catches four enemies
+	 * lands four hits, so a wide skill empties the store faster and gives every
+	 * one of the four the bonus. That follows from the row's own words and is
+	 * the largest thing about this parameter to know before tuning it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float StoreSpentPerHit = 0.0f;
+
 	// --- Forced movement ---------------------------------------------------
 
 	/**

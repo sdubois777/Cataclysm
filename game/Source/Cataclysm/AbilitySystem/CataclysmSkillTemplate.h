@@ -416,12 +416,19 @@ public:
 	 * Tell this character's running skills that one of its blows landed, and
 	 * where.
 	 *
-	 * TWO SKILLS LISTEN. The Warhammer's Groundbreaker, "for 10 seconds every
+	 * THREE SKILLS LISTEN. The Warhammer's Groundbreaker, "for 10 seconds every
 	 * blow you land cracks the ground beneath what it hits, leaving a fissure
-	 * that knocks down the next enemy to cross it"; and the Dagger's Slipstream,
+	 * that knocks down the next enemy to cross it"; the Dagger's Slipstream,
 	 * "for 8 seconds every enemy you strike from behind returns your movement
-	 * skill to you at once. Blows landed from the front do nothing for it." A
-	 * buff that states neither `Terrain` nor `Requires=RearHit` ignores it.
+	 * skill to you at once. Blows landed from the front do nothing for it."; and
+	 * the Fist's Martyr's Ember, "each hit you land spends part of the store as
+	 * bonus fire damage until it is empty". A buff that states none of `Terrain`,
+	 * `Requires=RearHit` or `StoreSpentPerHit` ignores it.
+	 *
+	 * WHAT WAS HIT TRAVELS AS WELL AS WHERE IT WAS STANDING, and the two are not
+	 * interchangeable. Groundbreaker cracks the floor at a position and does not
+	 * care what stood there; Martyr's Ember adds damage to the thing itself, so
+	 * it needs the actor. Issue #1162.
 	 *
 	 * CALLED FROM `HitTargets`, WHICH IS WHERE EVERY BLOW IN THE GAME IS DEALT,
 	 * so a fissure opens under a strike, a projectile, an aura pulse or a leap
@@ -434,6 +441,7 @@ public:
 	 * and the opposite of the knockback rider, which pushes whether or not it
 	 * hurt.
 	 *
+	 * @param Target what was hit, which is what a store adds its bonus to
 	 * @param Where  the position of what was hit, which is where the ground
 	 *               cracks. "Beneath what it hits", not beneath the attacker
 	 * @param bFromBehind  whether the attacker was inside the cone behind what
@@ -443,8 +451,8 @@ public:
 	 * @return how many running self buffs were told, whether or not each one
 	 *         does anything with it
 	 */
-	static int32 NoteBlowLanded(AActor* Attacker, const FVector& Where,
-								bool bFromBehind = false);
+	static int32 NoteBlowLanded(AActor* Attacker, AActor* Target,
+								const FVector& Where, bool bFromBehind = false);
 
 protected:
 	/**
