@@ -91,6 +91,13 @@ enum class ECataclysmMovementMode : uint8
 	 * THE ONLY MOVEMENT THAT COSTS SOMETHING THE PLAYER OWNS. A blink needs
 	 * only a destination; this needs a creature standing somewhere useful, so
 	 * the Staff's minions become a mobility resource as well as a damage one.
+	 *
+	 * **NOT BUILT. IT RUNS AS A LEAP.** The Movement template has no branch for
+	 * it, so Vesselstep moves the caster to the aimed point and leaves the minion
+	 * where it was. Issue #1139, which named three modes in this state;
+	 * `Recall` and `Flicker` below were built on 2026-09-02 and this is the one
+	 * left. The paragraph above describes what it is meant to do, not what it
+	 * does.
 	 */
 	Swap			UMETA(DisplayName = "Swap"),
 
@@ -282,6 +289,31 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float MoreDamagePer = 0.0f;
+
+	/**
+	 * Percentage points of MORE damage on a blow landed from behind.
+	 *
+	 * ONE ROW STATES IT: the Dagger's Emberpierce, "the strike deals 40% more
+	 * damage from behind". Its sentence had no parameter at all until 2026-09-02,
+	 * so the row read as finished and dealt the same damage from every side.
+	 *
+	 * `PER`-LESS, UNLIKE `MoreDamagePer` ABOVE, AND THAT IS THE DIFFERENCE. That
+	 * one is a rate multiplied by a count of something, so it needs a
+	 * `ScalingSource` to say what it counts. This is a flat multiplier applied
+	 * once when a condition holds, and the condition is geometric rather than
+	 * countable.
+	 *
+	 * IT IS THE `more` BUCKET AND NOT THE `increased` ONE, which is why the name
+	 * says so. `UCataclysmSkillTemplate::HitTargets` multiplies the skill's own
+	 * damage percent by it, and everything else the design's pipeline applies --
+	 * the character's increases, its other more multipliers, the target's
+	 * mitigation -- is applied to that result.
+	 *
+	 * WHICH BLOWS COUNT IS `UCataclysmSkillEffects::IsBehind`, or the whole skill
+	 * when its row states `RearHits=1`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MoreDamageFromBehind = 0.0f;
 
 	/**
 	 * Percentage points of INCREASED damage per unit of ScalingSource -- the

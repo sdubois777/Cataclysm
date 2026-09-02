@@ -295,13 +295,42 @@ public:
 	static int32 NoteKill(AActor* Killer);
 
 	/**
+	 * How much further a self buff this character is holding makes its blows
+	 * reach, as a percentage.
+	 *
+	 * THE WHIP'S COIL OF EMBERS AND NOTHING ELSE TODAY: "wind burning coils about
+	 * yourself for 10 seconds. Your attack range is increased by 30%." Its
+	 * `RangeIncrease=30` was parsed and read by nothing at all until 2026-09-02.
+	 *
+	 * READ FROM THE RUNNING ABILITY, exactly as `HeldConsumeSpreadRadiusCm`
+	 * above is, and for the same reason: a buff that lasts is an active ability
+	 * while it lasts, so nothing has to be written onto the character and
+	 * nothing has to be cleared when it ends.
+	 *
+	 * NOT AN ATTRIBUTE, WHICH IS THE OTHER PLACE IT COULD HAVE GONE. An
+	 * attribute would let gear and passive nodes grant attack range too, and
+	 * nothing in the game wants to today: no affix, no node and no enemy modifier
+	 * mentions reach. Adding one now would be a stat with a single writer and
+	 * three test files to keep in step with it.
+	 *
+	 * THE LARGEST RATHER THAN THE SUM, because the design gives every
+	 * player-applied effect a single stack, so two copies of one buff are one
+	 * buff.
+	 *
+	 * Zero for a character holding no such buff, which is the ordinary case.
+	 */
+	static float HeldRangeIncreasePercent(const AActor* Self);
+
+	/**
 	 * Tell this character's running skills that one of its blows landed, and
 	 * where.
 	 *
-	 * ONE SKILL LISTENS TODAY: the Warhammer's Groundbreaker, "for 10 seconds
-	 * every blow you land cracks the ground beneath what it hits, leaving a
-	 * fissure that knocks down the next enemy to cross it". A buff that states no
-	 * `Terrain` ignores it.
+	 * TWO SKILLS LISTEN. The Warhammer's Groundbreaker, "for 10 seconds every
+	 * blow you land cracks the ground beneath what it hits, leaving a fissure
+	 * that knocks down the next enemy to cross it"; and the Dagger's Slipstream,
+	 * "for 8 seconds every enemy you strike from behind returns your movement
+	 * skill to you at once. Blows landed from the front do nothing for it." A
+	 * buff that states neither `Terrain` nor `Requires=RearHit` ignores it.
 	 *
 	 * CALLED FROM `HitTargets`, WHICH IS WHERE EVERY BLOW IN THE GAME IS DEALT,
 	 * so a fissure opens under a strike, a projectile, an aura pulse or a leap
@@ -316,10 +345,15 @@ public:
 	 *
 	 * @param Where  the position of what was hit, which is where the ground
 	 *               cracks. "Beneath what it hits", not beneath the attacker
+	 * @param bFromBehind  whether the attacker was inside the cone behind what
+	 *               it struck. Decided by the caller rather than here, because
+	 *               `RearHits=1` lets a row declare it outright and only the
+	 *               skill knows whether its own row says so
 	 * @return how many running self buffs were told, whether or not each one
 	 *         does anything with it
 	 */
-	static int32 NoteBlowLanded(AActor* Attacker, const FVector& Where);
+	static int32 NoteBlowLanded(AActor* Attacker, const FVector& Where,
+								bool bFromBehind = false);
 
 protected:
 	/**

@@ -482,7 +482,8 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 }
 
 int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
-											  const FVector& Where)
+											  const FVector& Where,
+											  bool bFromBehind)
 {
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Attacker);
@@ -510,7 +511,7 @@ int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 		if (UCataclysmSelfBuffSkill* Buff =
 				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
-			Buff->NoteBlowLanded(Where);
+			Buff->NoteBlowLanded(Where, bFromBehind);
 			++Told;
 		}
 	}
@@ -991,6 +992,36 @@ float UCataclysmSkillTemplate::HeldConsumeSpreadRadiusCm(const AActor* Self)
 	return Largest;
 }
 
+float UCataclysmSkillTemplate::HeldRangeIncreasePercent(const AActor* Self)
+{
+	// THE SAME SHAPE AS `HeldConsumeSpreadRadiusCm` DIRECTLY ABOVE, for the same
+	// reasons its comments give: a lasting buff is an active ability while it
+	// lasts, so its own numbers are the answer and nothing has to be cleared.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	float Largest = 0.0f;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmSkillTemplate* Running =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (Running && Running->Shape() == ECataclysmSkillShape::SelfBuff)
+		{
+			Largest = FMath::Max(Largest, Running->Params.RangeIncrease);
+		}
+	}
+	return Largest;
+}
+
 // ==========================================================================
 // A skill's own damage scaling
 // ==========================================================================
@@ -1246,8 +1277,42 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 
 	for (AActor* Target : Targets)
 	{
-		const float Dealt = UCataclysmSkillEffects::ApplyHit(Self, Target, Percent,
-															SkillTags, Delivery);
+		// WHICH SIDE THIS BLOW CAME FROM, ASKED BEFORE IT LANDS. Three Dagger
+		// rows want the answer and each wants it for something different: a
+		// damage bonus here, a cooldown returned to a running buff below, and a
+		// row that declares every one of its blows a rear hit outright.
+		//
+		// BEFORE THE HIT, BECAUSE THE HIT CAN MOVE WHAT IT STRUCK. Knockback and
+		// the five forced-movement verbs are all applied further down this same
+		// loop, and asking afterwards would judge a position the blow itself
+		// created.
+		//
+		// `RearHits=1` WINS OUTRIGHT RATHER THAN BEING CHECKED AS WELL. The
+		// Dagger's Everywhere at Once reads "striking each from behind as you
+		// arrive", which is a statement about the skill and not about where the
+		// player managed to stand. Making it merely likely -- by teleporting to
+		// the far side and then measuring -- would leave the row's own sentence
+		// depending on which way each creature happened to turn.
+		const bool bFromBehind =
+			Params.bRearHits || UCataclysmSkillEffects::IsBehind(Self, Target);
+
+		// AND A ROW MAY ASK FOR MORE DAMAGE WHEN IT IS. The Dagger's Emberpierce:
+		// "the strike deals 40% more damage from behind."
+		//
+		// APPLIED TO THE SKILL'S OWN PERCENT, WHICH MAKES IT A `more` MULTIPLIER
+		// IN THE DESIGN'S SENSE. `ApplyHit` takes this as the percent of weapon
+		// damage the blow is worth and everything else -- the character's
+		// increases, its own more multipliers, the target's mitigation -- is
+		// applied to the result, so multiplying here composes with all of them
+		// rather than summing into any of them. That is what the three-bucket
+		// pipeline means by "more".
+		const float PercentThisBlow =
+			bFromBehind && Params.MoreDamageFromBehind > 0.0f
+				? Percent * (1.0f + Params.MoreDamageFromBehind / 100.0f)
+				: Percent;
+
+		const float Dealt = UCataclysmSkillEffects::ApplyHit(
+			Self, Target, PercentThisBlow, SkillTags, Delivery);
 		Total += Dealt;
 
 		// A ROW THAT STATES `Burn=1` SETS ITS TARGET ALIGHT WHETHER OR NOT THE
@@ -1287,7 +1352,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// skills' blows.
 		if (Dealt > 0.0f)
 		{
-			NoteBlowLanded(Self, Target->GetActorLocation());
+			NoteBlowLanded(Self, Target->GetActorLocation(), bFromBehind);
 		}
 
 		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
@@ -1513,7 +1578,24 @@ float UCataclysmSkillTemplate::ScaledRadiusCm() const
 	// says it does.
 	if (!SkillTags.HasTag(UCataclysmDamageCalculation::AreaDamageTag()))
 	{
-		return Params.RadiusCm;
+		// AND THAT REACH IS WHAT A RANGE INCREASE LENGTHENS. The Whip's Coil of
+		// Embers: "your attack range is increased by 30%". The paragraph above
+		// establishes that a radius which is not an area IS the reach of the
+		// blow, so this is the one place in the function where the increase
+		// belongs and the area branch below is the one place it does not.
+		//
+		// A SELF BUFF IS EXEMPT FROM ITS OWN INCREASE, and without this line Coil
+		// of Embers would grow its own three metre coil to 3.9 while it ran. A
+		// buff does not reach out and hit anything: its radius says how close
+		// something has to come, which the row states as a plain number and means
+		// as one.
+		if (Shape() == ECataclysmSkillShape::SelfBuff)
+		{
+			return Params.RadiusCm;
+		}
+
+		return Params.RadiusCm
+			* (1.0f + HeldRangeIncreasePercent(Avatar()) / 100.0f);
 	}
 
 	return Params.RadiusCm * AreaOfEffectMultiplier();

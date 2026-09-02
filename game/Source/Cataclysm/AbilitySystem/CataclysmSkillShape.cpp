@@ -335,6 +335,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.MoreDamagePer = Number;
 		}
+		// AND A FLAT MULTIPLIER WHEN THE BLOW CAME FROM BEHIND, which is
+		// Emberpierce's "40% more damage from behind". No `ScalingSource`,
+		// because it counts nothing: the condition is where the attacker was
+		// standing.
+		else if (Key.Equals(TEXT("MoreDamageFromBehind"),
+							ESearchCase::IgnoreCase))
+		{
+			Params.MoreDamageFromBehind = Number;
+		}
 		else if (Key.Equals(TEXT("IncreasedDamagePer"), ESearchCase::IgnoreCase))
 		{
 			Params.IncreasedDamagePer = Number;

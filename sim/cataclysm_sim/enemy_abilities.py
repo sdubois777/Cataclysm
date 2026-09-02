@@ -131,6 +131,9 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Burn", "Effect", "StunSeconds", "FinalHitPercent",
           "HealthCostPercent", "Knockback",
           "MoreDamagePer", "IncreasedDamagePer", "DurationPer", "ScalingSource",
+          # `MoreDamageFromBehind` joined on 2026-09-02 with the Dagger's
+          # Emberpierce. No enemy ability states it yet.
+          "MoreDamageFromBehind",
           "ForcedMovement", "ForcedMovementDistance", "ForcedMovementDuration",
           "Terrain", "TerrainSize", "TerrainDuration",
           "Requires", "EffectDuration", "EffectMagnitude",

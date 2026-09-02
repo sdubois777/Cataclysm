@@ -20,6 +20,226 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A blow can land from behind, a character can be untouchable, a move can repeat or return to a mark, and two enemies can be tied together
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmSkillShape.h` and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
+`CataclysmSkillTemplates.h` and `.cpp`, `CataclysmBasicAttack.cpp`, the new
+`CataclysmTether.h` and `.cpp`, the Weapon Skills and Tags sheets of
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`,
+`game/Config/Tags/CataclysmTags.ini`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`tools/generate_datatables.py` and `sim/cataclysm_sim/enemy_abilities.py`.
+Applied. Issues #37 and #1139.
+
+**Six skills across two weapons.** Every parameter these rows name was already
+parsed into a field and six of them were read by nothing at all: `RangeIncrease`,
+`TetherTargets`, `TetherLength`, `TetherDuration`, `RearHits` and `Untargetable`.
+The rows said what the skills did and no code listened.
+
+### A blow can land from behind, and the cone is 90 degrees
+
+**A blow counts as landed from behind when the attacker stands within 45 degrees
+of directly behind the target, measured off the target's facing.** Three Dagger
+rows are written as though this already existed. `UCataclysmSkillEffects::IsBehind`
+is the one place that answers it.
+
+**Measured from the target's facing and not the attacker's.** What makes a blow a
+blow in the back is that the creature taking it was looking the other way.
+
+**Flattened to the ground plane**, so a creature on a ledge above another is
+behind it for the same reason one standing level with it is.
+
+**Ninety degrees is a judgement and the shape is not.** The genre settles the
+shape and disagrees about the number. Guild Wars 2 defines "behind" as the 180
+degree cone directly behind a target, and "flanking" as everything outside the
+front 90. Final Fantasy XIV divides a creature's hitbox into a front, two flanks
+and a rear off its facing arrow. Divinity: Original Sin 2 draws a rear arc on the
+targeting circle and allows a backstab only from inside it, and only with a
+dagger.
+
+Ninety was taken because it is the stricter of the two published numbers and this
+is the Dagger's identity rather than a bonus every weapon gets. It is also the
+vocabulary the Weapon Skills sheet already uses: `Angle` is a cone in degrees and
+Emberpierce's own is 60.
+
+**It is a tuning number and should move against real play.** How often a player
+can stand inside 45 degrees of a creature's back is a question about how fast the
+enemy brain turns, and reading cannot settle it. It is one named constant,
+`UCataclysmSkillEffects::RearArcDegrees`, so moving it moves all three skills.
+
+**Emberpierce needed a new parameter and had none.** Its description has said "the
+strike deals 40% more damage from behind" since it was written and its row stated
+nothing for it, so it dealt the same from every side and read as a finished skill.
+`MoreDamageFromBehind` is that parameter. It multiplies the skill's own damage
+percent, which makes it a `more` multiplier in the design's sense: everything else
+the pipeline applies is applied to the result.
+
+### A character can be impossible to hit
+
+**A new `State.Untargetable` tag, and `UCataclysmSkillEffects::ApplyHit` refuses
+any blow against a character carrying it.** The Dagger's Everywhere at Once:
+"nothing can touch you between arrivals."
+
+**It refuses the hit rather than hiding the character, which is the narrower of
+the two readings.** "Nothing can touch you" is a statement about what lands, and
+every source of damage in the game passes through that one function. Making
+enemies fail to FIND the character instead would mean changing what the enemy
+brain searches, and a creature that forgot its target for four seconds would still
+be wandering off after the skill ended.
+
+**It is not a hard stop and does not join `CannotAct`.** The character keeps
+acting throughout — the skill is a string of blows — so it is the opposite of a
+stun rather than a relative of it.
+
+**Damage over time already on the character keeps ticking**, because a burn is
+applied once and then deals its damage through the attribute set rather than
+through a hit. Being reached is what the sentence is about, and a fire already
+burning has reached you.
+
+### Two of the three movement modes that silently ran as a leap now exist
+
+Issue #1139 recorded that `Swap`, `Recall` and `Flicker` were named by the data,
+had no branch, and fell through to the `Leap` code. Two of the three are now
+built. `Swap`, which the Staff's Vesselstep states, is still not.
+
+**`Flicker` fixes a circuit of enemies when the skill goes up and steps to the
+next one every interval.** The Dagger's Everywhere at Once: "you flicker between
+every enemy within 10 meters, striking each from behind as you arrive."
+
+The list is read once and never re-searched. "Every enemy within 10 meters" is
+read at the moment of casting, and each arrival moves the caster, so a fresh
+search would be centred somewhere new every time and could wander from one group
+to the next for as long as the skill ran.
+
+**When the circuit runs out it starts again**, because four seconds at a third of
+a second is twelve arrivals and a fight with three enemies is meant to see each of
+them four times rather than to stop after three.
+
+**The first arrival is at once rather than an interval in**, which is the opposite
+of what burning ground and the aura do. Those describe what happens while they
+run; this skill IS its arrivals.
+
+**`Recall` is two presses, and the first one costs nothing.** The Dagger's Echo:
+"leave a burning after-image where you stand. For 8 seconds you may return to it
+from anywhere within 14 meters."
+
+**Charging on the first press would have contradicted the row.** The Special
+slot's cooldown is five seconds and the mark lasts eight, so "for 8 seconds you
+may return to it" would have been three, and the player would have paid for a
+skill that had not happened yet. Leaving a mark moves nobody, damages nobody and
+burns nothing; the return is the whole of what the row describes, so that is what
+is charged for.
+
+**A second first-press moves the mark rather than keeping two.** Nothing is spent,
+so nothing is lost by moving it, and two marks would need a rule about which one a
+return takes that the row does not give.
+
+**The fourteen metres is a real limit and refuses the return.** Standing further
+from the mark than the row's range leaves the mark where it is and costs nothing,
+rather than returning from any distance.
+
+### Two enemies can be tied together
+
+**A new world object, `ACataclysmTether`, holds two creatures within a stated
+distance of each other, drags them back when they exceed it, and sets alight
+whatever crosses the line between them.** The Whip's Tether states all three
+things and `TetherTargets`, `TetherLength` and `TetherDuration` were read by
+nothing.
+
+**An actor rather than a component on each end, which is the opposite choice from
+`UCataclysmPinnedLine`.** That one records a fact and does nothing until somebody
+dies, so a component destroyed with its owner is right. This one keeps acting —
+measuring a distance, moving two creatures and burning what is between them — and
+putting that on both ends would mean two copies of one timer doing the same work
+and disagreeing whenever one ran first.
+
+**It corrects position directly rather than going through
+`UCataclysmSkillEffects::ApplyPull`, and that is deliberate.** Every displacement
+in that file obeys the design's diminishing-returns rule, which halves each shove
+applied to a target already displaced within the last five seconds. That rule
+exists to stop crowd control chaining. A tether is a constraint rather than a
+shove, and running it through that rule would mean the line held for about a
+second and then let go, because it corrects four times a second and every
+correction after the first would be worth half of the last.
+
+**Both ends move, and the correction is split evenly.** The row says "both are
+dragged back together". Nothing knows which of them walked, and finding out would
+mean remembering both positions from the last check — which would still be wrong
+when both moved at once.
+
+**It checks four times a second**, which is a compromise. Once a second would let
+a creature run most of a second past the limit and then snap back. Every frame
+would rebuild the burning effect sixty times a second for everything standing on
+the line, and a burn is single-stack, so fifty-nine of those would refresh what
+the sixtieth had just applied.
+
+**Either end dying ends the line.** The row binds two creatures to each other and
+says nothing about what a survivor stays bound to.
+
+### Attack range can be increased, and it is not a new stat
+
+**A running self buff may state a `RangeIncrease`, and it lengthens both the
+character's automatic swing and the reach of its skills.** The Whip's Coil of
+Embers: "your attack range is increased by 30%."
+
+**Read off the character's running abilities rather than held as a gameplay
+attribute.** A buff that lasts is an active ability while it lasts, so its own
+numbers are already the answer and nothing has to be cleared when it ends, is
+cancelled, or its owner dies. That is the shape `HeldConsumeSpreadRadiusCm`
+already uses for the Sword's Ashen Edge.
+
+**An attribute was the other option and nothing wants it yet.** An attribute would
+let gear and passive nodes grant attack range too, and no affix, no node and no
+enemy modifier mentions reach. It would be a stat with a single writer and three
+test files to keep in step with it.
+
+**It lengthens a reach and not an area, and the distinction already existed.**
+`UCataclysmSkillTemplate::ScaledRadiusCm` already separates a radius that is an
+area of effect from one that is how far a blow reaches, and says so at length. The
+increase applies to the second and not the first.
+
+**A self buff is exempt from its own increase.** Without that, Coil of Embers
+would grow its own three metre coil to 3.9 while it ran. A buff does not reach out
+and hit anything: its radius says how close something has to come, which the row
+states as a plain number and means as one.
+
+### A self buff can shove what comes near it
+
+**A repeating self buff that states a `Knockback` shoves everything its radius
+catches.** Coil of Embers: "any enemy that comes within 3 meters is hauled off
+their feet and dragged back out to the edge of your reach."
+
+**There was no way to express a condition about approaching.** The shove every
+other skill in the game uses hangs off a landed blow, and a Support-slot buff
+never strikes anything, so that rider could never have fired for this row. A
+repeat that looks at the radius is the only shape that says "comes within".
+
+**"Off their feet" is not a knockdown, and the row says so by omission.** The
+Whip's own Gathering states `ForcedMovement=Pull, Knockdown` when it means a
+creature cannot rise. This row states a knockback and nothing else.
+
+**The shove is the stated three metres and not a measurement of the reach.** "Out
+to the edge of your reach" is a description of where three metres puts a creature
+that came within three, not a second formula. The row states the number.
+
+### What this finishes
+
+**The Whip and the Dagger each reach five of five Demonic skills that do
+everything their descriptions say.** That makes eight of the eleven weapons
+finished: the Sword, the Fist, the Axe, the Warhammer, the Wand, the Spear, and
+now the Whip and the Dagger.
+
+**Three are not.** The Greataxe is four of five, because Burning Wrath's "any
+enemy that strikes you in melee is set alight" needs a hook saying the buff
+holder was struck and there is none — issue #1157. The Staff is one of five and
+the Greatsword none of five.
+
+**One correction to an earlier count.** The Dagger was recorded as two of five.
+It was one: Emberpierce's "40% more damage from behind" had no parameter and no
+mechanism, so only Ashwalk did everything it said.
+
+---
+
 ## 2026-09-02 — A skill that states an ailment applies it whatever its blow did, a hex spreads fire from a target already burning, and a self buff can repeat
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and

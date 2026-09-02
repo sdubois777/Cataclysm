@@ -122,6 +122,31 @@ public:
 	int32 CursesSpread = 0;
 
 	/**
+	 * Bind a burning line between enemies near the caster, if the row asks.
+	 *
+	 * ONE ROW ASKS: the Whip's Tether, "bind two enemies within 12 meters
+	 * together with a burning line". `TetherTargets` says how many, `TetherLength`
+	 * how far apart they may get, and `TetherDuration` how long it holds. A row
+	 * stating none of them does nothing here, which is every other projectile.
+	 *
+	 * THE NEAREST ONES, because `FindEnemiesInSphere` answers nearest first and
+	 * the row asks for "two enemies within 12 meters" without saying which two.
+	 *
+	 * FEWER THAN IT ASKED FOR BINDS NOTHING AND IS NOT A FAILURE. A Tether thrown
+	 * at a lone enemy has nothing to tie it to. The bolt still flies.
+	 *
+	 * Public so a test can bind a line without waiting for a throw to connect.
+	 *
+	 * @return the line, or null when none was made
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	class ACataclysmTether* BindTether(AActor* Caster);
+
+	/** The line this use bound, or null. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	TObjectPtr<class ACataclysmTether> Tethered;
+
+	/**
 	 * Copy the curses on each of these enemies onto the nearest others.
 	 *
 	 * THE WAND'S MALEFICE AND NOTHING ELSE TODAY: "copying every curse it
@@ -361,13 +386,25 @@ public:
 	void NoteKill();
 
 	/**
-	 * Crack the ground where a blow landed, if this buff's row says to.
+	 * React to one of this character's blows landing, if this buff's row says to.
 	 *
 	 * CALLED FROM `UCataclysmSkillTemplate::NoteBlowLanded`, which every blow in
-	 * the game goes through. It does nothing for a buff that states no `Terrain`,
-	 * which is every other buff in the game.
+	 * the game goes through. Two rows react and they react to different halves of
+	 * what it is told; every other buff in the game ignores it.
 	 *
-	 * ONE ROW STATES IT: the Warhammer's Groundbreaker, "for 10 seconds every
+	 * THE DAGGER'S SLIPSTREAM READS THE SIDE. "For 8 seconds every enemy you
+	 * strike from behind returns your movement skill to you at once. Blows landed
+	 * from the front do nothing for it." Its row states `Requires=RearHit` and
+	 * `RefundsCooldown=Movement`, and both halves of that sentence are those two
+	 * keys.
+	 *
+	 * `Requires=RearHit` IS READ HERE AND NOWHERE ELSE, which is what its comment
+	 * in `RequirementsAreMet` has said since before anything read it: it is a
+	 * condition on what a running buff reacts to, not on whether the buff may be
+	 * cast. Refusing to cast Slipstream until the player was already behind
+	 * something would be a different skill.
+	 *
+	 * THE WARHAMMER'S GROUNDBREAKER READS THE POSITION: "for 10 seconds every
 	 * blow you land cracks the ground beneath what it hits, leaving a fissure
 	 * that knocks down the next enemy to cross it. Fissures last 6 seconds and
 	 * there is no limit to how many you may open."
@@ -383,9 +420,15 @@ public:
 	 *
 	 * @param Where  the position of what was hit. The crack opens beneath what
 	 *               the blow struck, not beneath the character that swung
+	 * @param bFromBehind  whether the attacker was behind what it struck. Only
+	 *               a buff stating `Requires=RearHit` asks
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
-	void NoteBlowLanded(const FVector& Where);
+	void NoteBlowLanded(const FVector& Where, bool bFromBehind = false);
+
+	/** How many cooldowns this buff has returned. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CooldownsReturned = 0;
 
 	/**
 	 * One repeat of a self buff that states an `Interval`.
@@ -420,6 +463,10 @@ public:
 	/** How many enemies the last repeat set alight. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 LastRepeatLit = 0;
+
+	/** How many enemies the last repeat shoved away. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 LastRepeatShoved = 0;
 
 	/** How long this buff will now run in total, after any extensions. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -510,6 +557,79 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	FVector ConditionalDestination(const FVector& Start) const;
+
+	/**
+	 * One arrival of a move that repeats. `Mode=Flicker`.
+	 *
+	 * ONE ROW STATES IT: the Dagger's Everywhere at Once, "for 4 seconds you are
+	 * nowhere long enough to be hit. You flicker between every enemy within 10
+	 * meters, striking each from behind as you arrive for 30% weapon damage and
+	 * setting them alight."
+	 *
+	 * EVERY ENEMY, ONE AT A TIME, IN A CIRCUIT. Each firing takes the next
+	 * creature in the list gathered when the skill went up and moves to it. When
+	 * the list runs out it starts again, which is what "flicker between" says: a
+	 * four second skill at a third of a second an arrival makes twelve arrivals,
+	 * and a fight with three enemies is meant to see each of them four times
+	 * rather than to stop after three.
+	 *
+	 * THE LIST IS FIXED WHEN THE SKILL GOES UP AND IS NOT RE-SEARCHED. "Every
+	 * enemy within 10 meters" is read at the moment of casting; a creature that
+	 * wanders into range afterwards was not one of them. It also stops the skill
+	 * chasing a fleeing enemy across the level, because each arrival moves the
+	 * caster and a fresh search would be centred somewhere new every time.
+	 *
+	 * ANYTHING THAT DIED OR LEFT IS SKIPPED, and a circuit with nothing left in
+	 * it stops moving the caster while the skill runs out its duration. The
+	 * untargetability is the other half of what the row pays for, so ending
+	 * early would take that away as well.
+	 *
+	 * Public so a test can drive it without a world that ticks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void FlickerOnce();
+
+	/** How many arrivals a flicker has made. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 Arrivals = 0;
+
+	/**
+	 * Whether this skill is holding a mark to return to. `Mode=Recall`.
+	 *
+	 * THE DAGGER'S ECHO IS TWO PRESSES AND THIS IS WHICH ONE THE NEXT WILL BE.
+	 * "Leave a burning after-image where you stand. For 8 seconds you may return
+	 * to it from anywhere within 14 meters."
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	bool HasMark() const;
+
+	/** Where a held mark is. Meaningless when `HasMark` is false. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	FVector MarkedAt = FVector::ZeroVector;
+
+private:
+	/**
+	 * When a held mark stops being usable, on the world's clock.
+	 *
+	 * A DEADLINE RATHER THAN A TIMER, so nothing has to be cancelled. Echo's mark
+	 * is not an object and does nothing while it waits; it only has to answer
+	 * whether it is still good at the moment the player presses again. A timer
+	 * would need clearing when the ability ended, when the character died and
+	 * when a second cast replaced the mark, and each of those is a way to leave
+	 * one running.
+	 */
+	double MarkExpiresAt = 0.0;
+
+	/** The circuit a flicker walks, fixed when the skill goes up. */
+	TArray<TWeakObjectPtr<AActor>> FlickerCircuit;
+
+	/** Which of them the next arrival takes. */
+	int32 NextInCircuit = 0;
+
+	FTimerHandle FlickerTimer;
+
+	/** Ends a flicker when its duration runs out. */
+	void FinishFlicker();
 };
 
 /**
