@@ -20,6 +20,117 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — The Greatsword's Movement skill is a charge rather than a walk, and the engine moves it
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`, and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issues
+#1169 and #1170.
+
+**Both came out of the first play session in which this skill could be pressed.**
+It had been built two merges earlier and, like every skill built that day, had
+never been seen on a screen. The project owner pressed the key and reported two
+separate things, and both were real.
+
+### It was 1.5% faster than walking, which is not a movement ability
+
+> barely moving faster and being locked on one path isn't a movement ability,
+> it's just less optimal walking
+
+**Measured rather than judged.** The row stated `Range=14; Duration=3`, and the
+speed is one over the other: 4.67 metres a second. The Ravager's `movement_speed`
+in `game/Data/ClassStats.csv` is 4.6. So the skill spent a key press and a five
+second cooldown to move 1.5% faster than the player already was, and took away
+steering and stopping to do it.
+
+**The code comment beside the calculation compared it against the Ritualist's
+3.5**, which is the slowest of the three classes rather than the one holding the
+weapon. That comparison is part of what let it through, and it is worth saying so
+plainly: a comment that picks the flattering comparison is worse than no comment.
+
+**Decision: keep the shape, raise the speed.** `Duration` is now 1.5 seconds,
+giving 9.33 metres a second — a little over twice a Ravager's walk — and halving
+the time the player cannot steer. `Range` is unchanged at 14 metres, so the
+distance the row promises is the distance it travels.
+
+**What the genre research settles.** Every charge in the games this project takes
+its structure from is materially faster than running, and the two nearest to this
+skill scale their damage with distance travelled, which this skill already did.
+
+- **Path of Exile, Shield Charge.** Damage and reduced stun threshold are
+  proportional to distance charged; movement speed modifiers affect the
+  travelling portion and quality adds up to 20% more on top.
+- **Path of Exile 2, Shield Charge.** Up to +100% more damage based on distance
+  travelled. Patch 0.3.0 cut its base movement speed by 25% and removed its
+  cooldown — so even a deliberate nerf left it a faster-than-walking charge, and
+  speed was the lever the designers reached for.
+- **Last Epoch, Shield Rush.** A channelled charge through enemies in the target
+  direction, granting stun immunity while it runs.
+- **Diablo's Charge** runs on its own speed system that walking-speed items do
+  not scale.
+
+So the structure was right and only the number was wrong. **The number itself is
+a judgement, not a derivation** — those games' walk speeds and map scales do not
+transfer — and it is a starting point to be tuned against play.
+
+Sources:
+[Shield Charge, Path of Exile Wiki](https://pathofexile.fandom.com/wiki/Shield_Charge),
+[Shield Charge, Path of Exile 2 Wiki](https://pathofexile2.wiki.fextralife.com/Shield+Charge),
+[Shield Rush, Last Epoch Wiki](https://lastepoch.fandom.com/wiki/Shield_Rush),
+[Charge, Diablo Wiki](https://diablo.fandom.com/wiki/Charge_(Diablo_IV)).
+
+### The skill moved the character itself, and now the movement component does
+
+> The entire screen turns into a jerky set of steps, and the character is just
+> sliding. Like it isn't just a smooth movement.
+
+**One cause, two symptoms.** `UCataclysmMovementSkill::AdvanceOneStep` teleported
+the character 46.7 centimetres with `SetActorLocation`, ten times a second, and
+`UCharacterMovementComponent` was never involved. The camera follows the
+character's position, which changed ten times a second against sixty rendered
+frames, so it held still and then jumped. The walk animation is driven by the
+movement component's velocity, which a teleport never writes, so the character
+was played standing while being moved.
+
+**Decision: hand the movement to the engine.** The skill now applies a root
+motion source through the Gameplay Ability System's own
+`UAbilityTask_ApplyRootMotionConstantForce`, in `Override` mode, with the
+direction fixed at the cast and the strength set to `Range` over `Duration`. The
+movement component moves the character every frame from that, which gives a real
+velocity, a smooth camera and correct sweeping against walls for free.
+
+**`Override` is what "cannot be turned aside" means to a movement component.** It
+replaces the character's velocity rather than adding to it, so the player's own
+input decides nothing while the charge runs. The player controller already
+refused that input; this is the same sentence enforced on the movement itself,
+and neither half now depends on the other being right.
+
+**`AdvanceOneStep` became an observer.** It no longer moves anything: ten times a
+second it asks how far the character has actually got, adds that to the tally
+`ScalingSource=Meter` reads, and strikes whatever the line between the two
+positions passed through. The search covers a line rather than a point, so
+nothing is missed however far the character travelled between two searches.
+
+### What this cost the tests, said plainly
+
+**A test fighter is a plain actor with no movement component**, so a root motion
+source cannot be applied to one and a world built for a test is never ticked
+anyway. Three existing tests drove the movement by calling `AdvanceOneStep`; they
+now move their fighter themselves and check that the skill notices.
+
+That leaves a gap those tests cannot cover — nothing in them would notice if the
+skill stopped asking to be moved at all — so a new test spawns a real player
+character and reads the root motion source back off its movement component:
+`Cataclysm.Skills.AnAdvanceHandsItsMovementToTheMovementComponent` checks that the
+request was made, that its speed is the row's range over its duration, that it
+lasts the row's duration, and that it overrides rather than adds.
+
+**What no test covers, and cannot:** that the character actually arrives, and
+whether it looks smooth. Both need a ticking world or a person watching.
+
+---
+
 ## 2026-09-02 — A weapon can be left standing in the ground, and Buried Fire is finished
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPlantedWeapon.h` and

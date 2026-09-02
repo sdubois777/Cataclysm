@@ -6,6 +6,10 @@
 // that creature dies and buries itself in the next. Issue #37.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+// For handing a lasting charge's movement to UCharacterMovementComponent, so
+// the character has a real velocity and the camera follows it every frame
+// rather than ten times a second. Issue #1169.
+#include "Abilities/Tasks/AbilityTask_ApplyRootMotionConstantForce.h"
 #include "AbilitySystem/CataclysmMinion.h"
 // For the greatsword Buried Fire leaves standing in the ground. Issue #1141.
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
@@ -2232,13 +2236,51 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 
 	// HOW FAR EACH STEP GOES. `Range` is how far the advance travels in total and
 	// `Duration` is how long it takes, so the two together are its speed, and the
-	// row states both. Inexorable's fourteen metres over three seconds is a
-	// little under five metres a second, which is faster than the Ritualist's 3.5
-	// and slower than a charge -- an advance rather than a sprint, which is what
-	// the word says.
-	const float StepsInAll =
-		FMath::Max(1.0f, Params.Duration / SecondsPerAdvanceStep);
-	StepCm = Params.RangeCm / StepsInAll;
+	// row states both. Inexorable's fourteen metres in one and a half seconds is
+	// 9.3 metres a second, a little over twice a Ravager's 4.6 metre walk.
+	SpeedCmPerSecond = Params.RangeCm / Params.Duration;
+	LastSearchedFrom = Start;
+
+	// THE ENGINE MOVES THE CHARACTER, AND THIS SKILL USED TO DO IT ITSELF. Until
+	// 2026-09-02 `AdvanceOneStep` teleported the character 46.7cm at a time with
+	// `SetActorLocation`, ten times a second. The project owner played it and
+	// reported "a jerky set of steps, and the character is just sliding". Both
+	// halves of that follow from the same cause: the camera follows a position
+	// that only changed ten times a second against sixty rendered frames, and the
+	// walk animation is driven by the movement component's velocity, which a
+	// teleport never writes. Issue #1169.
+	//
+	// A ROOT MOTION SOURCE IN `Override` MODE, WHICH IS WHAT "CANNOT BE TURNED
+	// ASIDE" MEANS TO A MOVEMENT COMPONENT. It replaces the character's velocity
+	// rather than adding to it, so the player's own input decides nothing while
+	// it runs -- the same sentence the player controller's `PawnCannotWalk`
+	// enforces on the input side, now true of the movement itself as well.
+	//
+	// THE STRENGTH IS A SPEED. `FRootMotionSource_ConstantForce` multiplies the
+	// direction by it and the accumulate mode is Override, so the character
+	// travels at exactly this many centimetres a second for exactly this long:
+	// `Range` over `Duration`, and then `Range` again.
+	//
+	// IT STOPS DEAD AT THE END rather than sliding on, because the row's own
+	// sentence is about being unable to stop until it is over.
+	//
+	// NOTHING HAPPENS FOR AN ACTOR WITH NO CHARACTER MOVEMENT COMPONENT, and the
+	// engine's own task checks for one. That is every caster an automation test
+	// builds, which is why the tests move their fighters by hand.
+	if (UAbilityTask_ApplyRootMotionConstantForce* Push =
+			UAbilityTask_ApplyRootMotionConstantForce::ApplyRootMotionConstantForce(
+				this, FName(TEXT("CataclysmAdvance")), Advance,
+				SpeedCmPerSecond, Params.Duration, /*bIsAdditive=*/false,
+				/*StrengthOverTime=*/nullptr,
+				ERootMotionFinishVelocityMode::SetVelocity,
+				/*SetVelocityOnFinish=*/FVector::ZeroVector,
+				/*ClampVelocityOnFinish=*/0.0f, /*bEnableGravity=*/false))
+	{
+		// REQUIRED FROM C++ AND NOT FROM A BLUEPRINT. `NewAbilityTask` builds the
+		// task; nothing registers it or starts it ticking until this is called,
+		// and the Blueprint node does it for you.
+		Push->ReadyForActivation();
+	}
 
 	World->GetTimerManager().SetTimer(
 		AdvanceTimer, this, &UCataclysmMovementSkill::AdvanceOneStep,
@@ -2254,32 +2296,39 @@ void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
 void UCataclysmMovementSkill::AdvanceOneStep()
 {
 	AActor* Self = Avatar();
-	if (!Self || StepCm <= 0.0f)
+	if (!Self || SpeedCmPerSecond <= 0.0f)
 	{
 		return;
 	}
 
-	// SWEPT, so an advance that meets a wall stops against it rather than walking
-	// through. That is also what makes the distance below honest: a walk held
-	// against a wall covers no more ground and so grows no stronger.
-	const FVector Before = Self->GetActorLocation();
-	Self->SetActorLocation(Before + Advance * StepCm, /*bSweep=*/true);
-
+	// WHERE THE CHARACTER WAS WHEN THIS LAST RAN, AND WHERE IT IS NOW. The
+	// movement component has been moving it every frame in between; this asks how
+	// far it got rather than deciding it. See the header.
+	//
+	// THE DISTANCE IS THE GROUND ACTUALLY COVERED, which is what keeps it honest:
+	// a charge held against a wall covers none, so it adds nothing to the tally
+	// and grows no stronger. That was true before and it is true for a better
+	// reason now, because the movement component is what stopped against the
+	// wall.
+	const FVector Before = LastSearchedFrom;
 	const FVector After = Self->GetActorLocation();
+	LastSearchedFrom = After;
+
 	WalkedCm += static_cast<float>(FVector::Dist2D(Before, After));
 	ArrivedAt = After;
 	++StepsTaken;
 
 	// "THROWING ASIDE AND SETTING ALIGHT EVERYTHING YOU PASS THROUGH." The line
-	// from where this step began to where it ended, at the skill's own radius, so
-	// nothing is missed between two steps.
+	// from where the last search ended to where the character is now, at the
+	// skill's own radius, so nothing between two searches is missed however far
+	// the character travelled in between.
 	TArray<AActor*> Caught;
 	for (AActor* One : UCataclysmTargeting::FindEnemiesInLine(
 			GetWorld(), Self, Before, After, ScaledRadiusCm()))
 	{
-		// NOTHING IS STRUCK TWICE, WHICH IS THE ONE THING A WALK NEEDS AND AN
+		// NOTHING IS STRUCK TWICE, WHICH IS THE ONE THING A CHARGE NEEDS AND AN
 		// ARRIVAL DOES NOT. A creature standing beside the path would otherwise
-		// be hit on every step of a three second advance.
+		// be hit on every one of a charge's searches.
 		if (StruckAlready.Contains(One))
 		{
 			continue;
