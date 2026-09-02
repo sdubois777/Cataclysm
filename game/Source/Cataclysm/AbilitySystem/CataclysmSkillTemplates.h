@@ -360,6 +360,37 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	void NoteKill();
 
+	/**
+	 * Crack the ground where a blow landed, if this buff's row says to.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteBlowLanded`, which every blow in
+	 * the game goes through. It does nothing for a buff that states no `Terrain`,
+	 * which is every other buff in the game.
+	 *
+	 * ONE ROW STATES IT: the Warhammer's Groundbreaker, "for 10 seconds every
+	 * blow you land cracks the ground beneath what it hits, leaving a fissure
+	 * that knocks down the next enemy to cross it. Fissures last 6 seconds and
+	 * there is no limit to how many you may open."
+	 *
+	 * "NO LIMIT TO HOW MANY YOU MAY OPEN" IS TAKEN LITERALLY, and it is bounded
+	 * by the skill rather than by a cap here: a fissure is spent by the first
+	 * creature to cross it, the buff runs ten seconds, and a character swings a
+	 * little over once a second. What stops a room filling with cracks is that
+	 * each one is worth a single knockdown and every knockdown takes the five
+	 * second immunity window it shares with the stun.
+	 *
+	 * Public so a test can drive it without landing a blow.
+	 *
+	 * @param Where  the position of what was hit. The crack opens beneath what
+	 *               the blow struck, not beneath the character that swung
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void NoteBlowLanded(const FVector& Where);
+
+	/** How many fissures this buff has opened. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 TerrainLeft = 0;
+
 	/** How long this buff will now run in total, after any extensions. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float TotalDuration = 0.0f;

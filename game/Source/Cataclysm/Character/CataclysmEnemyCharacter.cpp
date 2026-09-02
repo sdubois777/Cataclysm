@@ -7,6 +7,9 @@
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For refusing a charge out of a pit. The Warhammer's Crater: "enemies in
+// the pit cannot charge or leap."
+#include "AbilitySystem/CataclysmTerrain.h"
 // For the stack a kill may build. Issue #1004.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -592,6 +595,20 @@ void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 	{
 		// A charge with no speed would never end, because nothing else finishes
 		// one. Refused rather than started, so the creature keeps walking.
+		return;
+	}
+
+	// A CREATURE STANDING IN A PIT CANNOT CHARGE OUT OF IT. The Warhammer's
+	// Crater says so outright: "anything inside has to climb out: enemies in the
+	// pit cannot charge or leap."
+	//
+	// REFUSED AT THE START RATHER THAN STOPPED PART WAY, unlike the pin check in
+	// `AdvanceCharge`. A pin arrives while a charge is already running and has to
+	// interrupt one; a pit is somewhere the creature is standing before it
+	// decides, so the decision is what is refused. The creature keeps walking,
+	// which is the ordinary way out of a hole.
+	if (ACataclysmTerrain::IsStandingIn(this, ECataclysmTerrainKind::Pit))
+	{
 		return;
 	}
 
