@@ -322,6 +322,41 @@ public:
 	static float HeldRangeIncreasePercent(const AActor* Self);
 
 	/**
+	 * Tell this character's running skills that a blow landed ON it, and who
+	 * threw it.
+	 *
+	 * THE MIRROR OF `NoteBlowLanded` BELOW, AND THE MISSING HALF OF THE PAIR.
+	 * That one says "you hit something"; this says "something hit you". Until
+	 * 2026-09-02 only the first existed, which is why the Greataxe's Burning
+	 * Wrath had carried `Burn=1` since it was written and had never set anything
+	 * alight: "while it lasts, any enemy that strikes you in melee is set alight"
+	 * is a sentence about a blow TAKEN, and nothing recorded one. Issue #1157.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which
+	 * is where every incoming blow in the game is resolved, and from the same
+	 * branch retaliation already answers from. That branch is reached only when
+	 * something got through, so a swing that was evaded, or that armour and
+	 * resistance stopped completely, tells nobody anything -- which is the same
+	 * rule `NoteBlowLanded` follows for the attacking side.
+	 *
+	 * IT IS TOLD ABOUT DAMAGE OVER TIME TICKS AS WELL, and the buff decides. A
+	 * burn ticking on the holder is a blow taken by any honest reading, and
+	 * Burning Wrath refuses it further down because "strikes you in MELEE" does
+	 * not describe a fire already burning. A future row that wanted to count
+	 * every tick would be able to.
+	 *
+	 * @param Defender  who was hit. Its running self buffs are the ones told
+	 * @param Striker   what hit it, or null when the blow has no causer -- a
+	 *                  patch of burning ground whose caster has left the level
+	 * @param bWasMelee whether the blow carried the melee tag
+	 * @param bWasDamageOverTime  whether it was a tick rather than a blow
+	 * @return how many running self buffs were told, whether or not each one
+	 *         does anything with it
+	 */
+	static int32 NoteBlowTaken(AActor* Defender, AActor* Striker,
+							   bool bWasMelee, bool bWasDamageOverTime);
+
+	/**
 	 * Tell this character's running skills that one of its blows landed, and
 	 * where.
 	 *

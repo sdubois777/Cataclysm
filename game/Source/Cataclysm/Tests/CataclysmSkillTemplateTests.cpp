@@ -8636,4 +8636,152 @@ bool FCataclysmCoilLengthensReachTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// A buff can react to a blow its holder TAKES
+// ==========================================================================
+
+/**
+ * Burning Wrath sets alight whatever strikes its holder in melee.
+ *
+ * WHAT THIS GUARDS. Issue #1157. The row has said "while it lasts, any enemy
+ * that strikes you in melee is set alight" since it was written, and had carried
+ * `Burn=1` for just as long, and had never set anything alight -- because
+ * nothing in the project recorded that a character had been STRUCK. There were
+ * hooks for landing a blow and for getting a kill, and none for taking one.
+ *
+ * THE WHOLE PATH, NOT THE HOOK ALONE. The blow below is a real one through
+ * `ApplyHit`, so what is checked is that an ordinary hit reaches the buff, not
+ * that the buff reacts when handed the answer.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffBurnsWhatStrikesItTest,
+	"Cataclysm.Skills.ABuffSetsAlightWhatStrikesItsHolderInMelee",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffBurnsWhatStrikesItTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Striker(World, FVector(2 * M, 0, 0));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+	// THE CONTROL COMES FIRST, WITH NO BUFF UP AT ALL. Without it, a rule that
+	// set every attacker alight regardless would pass everything below.
+	FCataclysmHitDelivery Melee;
+	Melee.bIsMelee = true;
+
+	UCataclysmSkillEffects::ApplyHit(Striker.Actor, Holder.Actor,
+									 /*DamagePercent=*/100.0f,
+									 FGameplayTagContainer(), Melee);
+
+	TestFalse(TEXT("with no buff up, striking the holder sets nobody alight"),
+		UCataclysmSkillEffects::HasTag(Striker.Actor, Burn));
+
+	UCataclysmSelfBuffSkill* Wrath = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; Burn=1; BurnsAttackers=1; "
+			 "MoreDamagePer=4; ScalingSource=Burning"),
+		TEXT("Burning Wrath"));
+	if (!Wrath)
+	{
+		AddError(TEXT("Could not grant Burning Wrath."));
+		return false;
+	}
+
+	TestTrue(TEXT("the buff goes up"), Activate(Holder, Wrath));
+	TestEqual(TEXT("and has set nobody alight yet"), Wrath->AttackersLit, 0);
+
+	UCataclysmSkillEffects::ApplyHit(Striker.Actor, Holder.Actor,
+									 /*DamagePercent=*/100.0f,
+									 FGameplayTagContainer(), Melee);
+
+	TestEqual(TEXT("striking the holder in melee sets the striker alight"),
+		Wrath->AttackersLit, 1);
+	TestTrue(TEXT("and it is burning"),
+		UCataclysmSkillEffects::HasTag(Striker.Actor, Burn));
+
+	// THE HOLDER IS NOT SET ALIGHT BY ITS OWN BUFF. It was the one struck.
+	TestFalse(TEXT("and the holder is not"),
+		UCataclysmSkillEffects::HasTag(Holder.Actor, Burn));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffIgnoresBlowsThatAreNotMeleeTest,
+	"Cataclysm.Skills.ABuffThatBurnsAttackersIgnoresBlowsThatAreNotMelee",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBuffIgnoresBlowsThatAreNotMeleeTest::RunTest(const FString&)
+{
+	// "ANY ENEMY THAT STRIKES YOU IN MELEE", and the last two words are the
+	// whole of this test. A character shot from across the room sets nothing
+	// alight, and neither does a fire already burning on it.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter AtRange(World, FVector(2 * M, 0, 0));
+	FScopedFighter UpClose(World, FVector(4 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Wrath = GrantSkill<UCataclysmSelfBuffSkill>(
+		Holder, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; Burn=1; BurnsAttackers=1"),
+		TEXT("Burning Wrath"));
+	if (!Wrath)
+	{
+		AddError(TEXT("Could not grant Burning Wrath."));
+		return false;
+	}
+
+	TestTrue(TEXT("the buff goes up"), Activate(Holder, Wrath));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+	// A BLOW THAT IS NOT MELEE. Everything about it is identical to the one
+	// below except the one flag, which is what makes this a test of the flag.
+	UCataclysmSkillEffects::ApplyHit(AtRange.Actor, Holder.Actor,
+									 /*DamagePercent=*/100.0f,
+									 FGameplayTagContainer(),
+									 FCataclysmHitDelivery());
+
+	TestEqual(TEXT("a blow that is not melee sets nobody alight"),
+		Wrath->AttackersLit, 0);
+	TestFalse(TEXT("so the one at range is not burning"),
+		UCataclysmSkillEffects::HasTag(AtRange.Actor, Burn));
+
+	// AND THE SAME BLOW CALLED MELEE DOES, which is what says the refusal above
+	// was about the flag rather than about the buff being inert.
+	FCataclysmHitDelivery Melee;
+	Melee.bIsMelee = true;
+
+	UCataclysmSkillEffects::ApplyHit(UpClose.Actor, Holder.Actor,
+									 /*DamagePercent=*/100.0f,
+									 FGameplayTagContainer(), Melee);
+
+	TestEqual(TEXT("and a melee blow does"), Wrath->AttackersLit, 1);
+	TestTrue(TEXT("so the one up close is burning"),
+		UCataclysmSkillEffects::HasTag(UpClose.Actor, Burn));
+
+	// A BURN ALREADY ON THE HOLDER IS NOT A STRIKE. Damage over time reaches the
+	// same place a blow does, and the row's wording refuses it: a character
+	// standing in a fire is not being struck in melee by anything.
+	UCataclysmSkillEffects::ApplyBurn(AtRange.Actor, Holder.Actor,
+									  /*HitDamage=*/0.0f,
+									  /*bScalesWithInstigator=*/true,
+									  /*bBurnIsDesigned=*/true);
+	Wrath->NoteBlowTaken(AtRange.Actor, /*bWasMelee=*/true,
+						 /*bWasDamageOverTime=*/true);
+
+	TestEqual(TEXT("and a damage over time tick sets nobody alight"),
+		Wrath->AttackersLit, 1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

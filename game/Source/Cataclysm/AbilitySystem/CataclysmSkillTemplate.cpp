@@ -499,6 +499,45 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 	return Told;
 }
 
+int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
+											 bool bWasMelee,
+											 bool bWasDamageOverTime)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Defender);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// THE SAME SHAPE AS `NoteKill` AND `NoteBlowLanded`, and for the same reason
+	// both of those give: a buff that lasts IS an active ability for as long as
+	// it lasts, so asking the running abilities beats registering and
+	// unregistering something.
+	//
+	// A THIRD FUNCTION RATHER THAN A FLAG ON THE SECOND. A blow landed and a blow
+	// taken are opposite events with different arguments -- one carries where it
+	// hit, the other carries who threw it -- and a shared entry point taking
+	// "which direction" would put the two one argument apart.
+	int32 Told = 0;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		if (UCataclysmSelfBuffSkill* Buff =
+				Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		{
+			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime);
+			++Told;
+		}
+	}
+
+	return Told;
+}
+
 int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 											  const FVector& Where,
 											  bool bFromBehind)

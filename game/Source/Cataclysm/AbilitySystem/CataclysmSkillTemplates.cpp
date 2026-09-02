@@ -899,6 +899,7 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	LastRepeatShoved = 0;
 	TerrainLeft = 0;
 	CooldownsReturned = 0;
+	AttackersLit = 0;
 
 	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
 	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
@@ -1215,6 +1216,54 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 			TEXT("'%s' set %d %senemies alight and shoved %d on repeat %d."),
 			*SkillName, LastRepeatLit, bOnlyPinned ? TEXT("pinned ") : TEXT(""),
 			LastRepeatShoved, Repeats);
+	}
+}
+
+void UCataclysmSelfBuffSkill::NoteBlowTaken(AActor* Striker, bool bWasMelee,
+											bool bWasDamageOverTime)
+{
+	if (!Params.bBurnsAttackers)
+	{
+		// Every self buff in the game but Burning Wrath. It costs one test.
+		return;
+	}
+
+	// "ANY ENEMY THAT STRIKES YOU IN MELEE", AND BOTH HALVES OF THAT ARE
+	// REFUSALS. An arrow or a spell is a blow taken and is not a strike in melee;
+	// a burn already on the holder is not a strike at all. The dispatcher is told
+	// about all of them and this is where the row's own wording narrows it.
+	if (!bWasMelee || bWasDamageOverTime || !IsValid(Striker))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return;
+	}
+
+	// A DESIGNED BURN, because the row states it and this is its own sentence
+	// rather than a chance on hit. Issue #917: without that decision a
+	// Support-slot buff could not set anything alight, because its damage is zero
+	// by design and this passes zero.
+	//
+	// ZERO IS PASSED AS THE HIT, AND IT IS THE TRUTH. The holder struck nobody --
+	// it was struck -- and burn has been a flat 25 a second since 2026-08-24, so
+	// the figure changes nothing about what the burn deals.
+	//
+	// THE HOLDER IS CREDITED WITH IT rather than the striker, so the burn is the
+	// player's damage, scales with the player's three damage over time stats, and
+	// is what a Masochist's own nodes can read.
+	if (UCataclysmSkillEffects::ApplyBurn(Self, Striker, /*HitDamage=*/0.0f,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/true))
+	{
+		++AttackersLit;
+
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' set '%s' alight for striking its holder."),
+			*SkillName, *Striker->GetName());
 	}
 }
 

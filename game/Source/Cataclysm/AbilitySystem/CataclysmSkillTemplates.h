@@ -441,6 +441,37 @@ public:
 	int32 CooldownsReturned = 0;
 
 	/**
+	 * React to a blow landed ON this buff's holder, if its row says to.
+	 *
+	 * ONE ROW STATES IT: the Greataxe's Burning Wrath, "while it lasts, any enemy
+	 * that strikes you in melee is set alight". Its `BurnsAttackers=1` is what
+	 * asks, and until 2026-09-02 the sentence had no parameter and no hook behind
+	 * it -- the skill's `Burn=1` had been there since it was written and had never
+	 * set anything alight. Issue #1157.
+	 *
+	 * THE MIRROR OF `NoteBlowLanded` ABOVE. That one is told when the holder hits
+	 * something; this is told when something hits the holder.
+	 *
+	 * MELEE ONLY, AND NOT A DAMAGE OVER TIME TICK. The row says "strikes you in
+	 * melee", so an arrow, a spell and a fire already burning all set nothing
+	 * alight. Both refusals are here rather than at the caller, because the
+	 * caller is one place that has to serve every buff and only this row cares.
+	 *
+	 * Public so a test can drive it without taking a blow.
+	 *
+	 * @param Striker   what hit the holder, or null when the blow had no causer
+	 * @param bWasMelee whether the blow carried the melee tag
+	 * @param bWasDamageOverTime  whether it was a tick rather than a blow
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void NoteBlowTaken(AActor* Striker, bool bWasMelee,
+					   bool bWasDamageOverTime);
+
+	/** How many attackers this buff has set alight. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 AttackersLit = 0;
+
+	/**
 	 * One repeat of a self buff that states an `Interval`.
 	 *
 	 * ONE ROW STATES ONE: the Spear's Held Fast, "any pinned enemy within 12

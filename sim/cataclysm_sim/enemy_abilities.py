@@ -129,6 +129,11 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
 #: pull, drag and pin. No enemy ability writes it yet.
 RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Burn", "Effect", "StunSeconds", "FinalHitPercent",
+          # `BurnsAttackers` joined on 2026-09-02 with the Greataxe's Burning
+          # Wrath, which says "any enemy that strikes you in melee is set
+          # alight". `Burn` above says a skill burns; this says whom. No enemy
+          # ability states it yet.
+          "BurnsAttackers",
           "HealthCostPercent", "Knockback",
           "MoreDamagePer", "IncreasedDamagePer", "DurationPer", "ScalingSource",
           # `MoreDamageFromBehind` joined on 2026-09-02 with the Dagger's

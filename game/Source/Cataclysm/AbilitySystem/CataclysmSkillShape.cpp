@@ -281,6 +281,13 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bBurns = Number != 0.0f;
 		}
+		// AND A BUFF MAY BURN WHOEVER STRIKES ITS HOLDER, which is a different
+		// question from whom the skill itself burns. The Greataxe's Burning
+		// Wrath: "any enemy that strikes you in melee is set alight".
+		else if (Key.Equals(TEXT("BurnsAttackers"), ESearchCase::IgnoreCase))
+		{
+			Params.bBurnsAttackers = Number != 0.0f;
+		}
 		else if (Key.Equals(TEXT("GroundRadius"), ESearchCase::IgnoreCase))
 		{
 			Params.GroundRadiusCm = Number * ToCm;

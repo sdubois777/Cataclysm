@@ -400,6 +400,34 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bBurns = false;
 
+	/**
+	 * True when a running buff sets alight whatever strikes its holder in melee.
+	 *
+	 * ONE ROW STATES IT: the Greataxe's Burning Wrath, "while it lasts, any enemy
+	 * that strikes you in melee is set alight". That sentence had no parameter at
+	 * all until 2026-09-02, and the row's `Burn=1` beside it was not enough on its
+	 * own -- a self buff's `Burn` says the skill burns and not WHOM, and the
+	 * Spear's Held Fast states the same flag while meaning "the pinned enemies
+	 * inside my radius, once a second".
+	 *
+	 * A SEPARATE KEY RATHER THAN A READING OF `Burn`, because the two rows would
+	 * otherwise be indistinguishable and a third would have no way to say which it
+	 * meant. It is the same argument that split `EffectDuration` from `Duration`.
+	 *
+	 * NOT READ OFF `Trigger.OnHit` IN THE TAGS CELL EITHER, though five rows carry
+	 * it. That tag does not say which direction the hit went: Slipstream and
+	 * Groundbreaker carry it for blows their holder LANDS, and this row and
+	 * Martyr's Ember carry it for blows their holder TAKES. A parameter that meant
+	 * two opposite things depending on the row would be worse than none.
+	 *
+	 * MELEE ONLY, WHICH THE ROW SAYS AND WHICH MATTERS. A character shot from
+	 * across the room, or standing in a fire somebody else lit, sets nothing
+	 * alight. `UCataclysmSkillTemplate::NoteBlowTaken` is told about every blow
+	 * and the buff refuses the ones that were not melee.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bBurnsAttackers = false;
+
 	/** Radius of the burning ground left behind, in centimetres. Zero leaves none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float GroundRadiusCm = 0.0f;
