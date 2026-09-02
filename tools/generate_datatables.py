@@ -265,6 +265,14 @@ SHAPE_RIDERS = {
                            "grants allies standing in it, scoped to the "
                            "skill's own element",
 
+    # THE OTHER HALF OF THE SAME EVENT `ScalingSource=HitTaken` READS. Added
+    # 2026-09-02 for Living Pyre, "returns health equal to 25% of the damage
+    # that hit dealt", which had no key. Of what reached health, not of what
+    # was sent. It is NOT leech: leech is what a hit gives back to whoever
+    # landed it, paid out over three seconds. Issue #1162.
+    "HealthFromHitTaken": "percent of a blow taken that is returned to the "
+                          "caster as health while the skill runs",
+
     "OnDeath": "what happens when an affected enemy dies, one of ON_DEATHS",
     "OnDeathRange": "metres the on-death effect reaches for its next target",
 

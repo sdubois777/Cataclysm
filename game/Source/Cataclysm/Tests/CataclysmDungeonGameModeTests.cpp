@@ -6,8 +6,11 @@
 
 // For killing a player and standing it back up, to see where it lands.
 // Issue #1103.
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -21,7 +24,9 @@
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -1028,6 +1033,171 @@ bool FCataclysmDungeonRevivalStandsAtTheEntranceTest::RunTest(const FString& Par
 	// generated floor entirely.
 	TestTrue(TEXT("and not where it died"),
 			 FVector::Dist2D(StandingAgain, Away) > 1.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a floor holds when the player leaves it. Issue #1176
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClearsTheFloorTest,
+	"Cataclysm.DungeonMode.GoingDownAFlightOfStairsTakesTheLastFloorsContentsWithIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClearsTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	/**
+	 * REPORTED FROM PLAY, NOT FOUND BY READING. Items left on the floor were
+	 * still visible while walking the next one, and the game slowed badly after
+	 * four or five floors. Issue #1176.
+	 *
+	 * WHY IT LOOKS LIKE THAT RATHER THAN LIKE LITTER LEFT BEHIND. `BuildFloor`
+	 * reuses one `ACataclysmDungeonFloor` actor, so every floor stands at the
+	 * same world coordinates and anything left over is inside the new floor.
+	 *
+	 * WHY IT SLOWS DOWN. `ACataclysmHUD::DrawDropNames` and
+	 * `ACataclysmPlayerController::CollectMaterialsNearby` each walk every
+	 * dropped item in the world every frame. Both were written when one floor's
+	 * worth was the most there could be.
+	 *
+	 * THE UNTRACKED CREATURE IS THE POINT OF THE IMP HERE.
+	 * `ClearFloorEnemies` only empties the array `PopulateFloor` filled, and a
+	 * Gatekeeper's called Imps are spawned straight into the world mid-fight and
+	 * were never in it. One spawned by hand stands in for that.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A THIN FLOOR, for the reason the test above gives: this is about removal
+	// and two full floors of characters would be slower for no more evidence.
+	Mode->EnemyScale = 0.1f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// ONE OF EVERY KIND A FIGHT LEAVES BEHIND, at made-up positions. Where they
+	// are does not matter; that they are in the world does.
+	const FRotator Level = FRotator::ZeroRotator;
+	TWeakObjectPtr<AActor> Drop =
+		World->SpawnActor<ACataclysmDroppedItem>(FVector(150.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> InFlight =
+		World->SpawnActor<ACataclysmProjectile>(FVector(200.0f, 0.0f, 120.0f), Level);
+	TWeakObjectPtr<AActor> Burning =
+		World->SpawnActor<ACataclysmGroundZone>(FVector(250.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> Telegraph =
+		World->SpawnActor<ACataclysmTelegraphMarker>(FVector(300.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> CalledImp =
+		World->SpawnActor<ACataclysmImpCharacter>(FVector(350.0f, 0.0f, 90.0f), Level);
+
+	const bool bAllPlaced = Drop.IsValid() && InFlight.IsValid() && Burning.IsValid()
+						 && Telegraph.IsValid() && CalledImp.IsValid();
+	if (!TestTrue(TEXT("one of each of the five kinds was left on the floor"),
+				  bAllPlaced))
+	{
+		return false;
+	}
+
+	// AND THE IMP IS NOT ONE THE GAME MODE KNOWS ABOUT, which is the case
+	// `ClearFloorEnemies` cannot reach. Stated as an assertion rather than
+	// assumed, because a later change that registers every spawned creature
+	// would quietly turn this test into a weaker one.
+	TestFalse(TEXT("the loose imp is not in the game mode's list"),
+			  Mode->FloorEnemies.Contains(Cast<ACataclysmEnemyCharacter>(CalledImp.Get())));
+
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the dropped item did not come with the player"), Drop.IsValid());
+	TestFalse(TEXT("nor did the projectile"), InFlight.IsValid());
+	TestFalse(TEXT("nor did the burning ground"), Burning.IsValid());
+	TestFalse(TEXT("nor did the telegraph marker"), Telegraph.IsValid());
+	TestFalse(TEXT("nor did the imp nobody was tracking"), CalledImp.IsValid());
+
+	int32 DropsLeft = 0;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			++DropsLeft;
+		}
+	}
+	TestEqual(TEXT("and no dropped item at all is left in the world"), DropsLeft, 0);
+
+	// THE OTHER HALF OF BEING RIGHT, and the one an over-eager clear would fail:
+	// the new floor still has to have its own creatures. Clearing after
+	// `PopulateFloor` instead of before would destroy the ones just spawned and
+	// every assertion above would still pass.
+	TestTrue(TEXT("and the new floor has creatures of its own"),
+			 Mode->FloorEnemies.Num() > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeFirstFloorKeepsTheLevelTest,
+	"Cataclysm.DungeonMode.ArrivingOnTheFirstFloorTakesNothingOffTheLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeFirstFloorKeepsTheLevelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	/**
+	 * THE GUARD ON THE CLEAR, WHICH IS NOT DECORATION. `StartPlay` reaches
+	 * `GoToFloor` for the first floor of a run, and a level can hold actors
+	 * somebody placed by hand for the game mode to find. Emptying the world on
+	 * arrival would take those with it and the only symptom would be a level
+	 * that behaves differently from the one that was authored.
+	 *
+	 * A DROPPED ITEM STANDS IN FOR ANY OF THEM. It is the kind this reaches that
+	 * a player would notice first.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->EnemyScale = 0.1f;
+
+	// BEFORE ANY FLOOR EXISTS, which is what makes this the first arrival rather
+	// than a change of floor.
+	TWeakObjectPtr<AActor> AlreadyThere = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector(150.0f, 0.0f, 90.0f), FRotator::ZeroRotator);
+	if (!TestTrue(TEXT("something was standing in the level first"),
+				  AlreadyThere.IsValid()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("what the level held is still there"), AlreadyThere.IsValid());
 
 	return true;
 }

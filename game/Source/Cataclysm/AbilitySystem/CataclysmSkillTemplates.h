@@ -1488,6 +1488,43 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	bool IsHelping(const AActor* Ally) const;
 
+	/**
+	 * A blow landed on the aura's holder. Count it, and give back what the row
+	 * says it is worth.
+	 *
+	 * THE FIST'S LIVING PYRE: "every hit you take raises the pyre's fire damage
+	 * by 8% with no cap, and returns health equal to 25% of the damage that hit
+	 * dealt." Two sentences, two parameters, one event. Issue #1162.
+	 *
+	 *   `MoreDamagePer=8; ScalingSource=HitTaken`  raises the pulse, through
+	 *   `UCataclysmSkillTemplate::ScalingUnits`, which counts `BlowsTaken`.
+	 *   `HealthFromHitTaken=25`                    gives health back, here.
+	 *
+	 * "WITH NO CAP" IS WHY THE ROW STATES NO `MaxDamagePercent`, and it is worth
+	 * saying out loud because every other row using `MoreDamagePer` states one.
+	 * `ScaledDamagePercent` only caps when a ceiling is stated, so leaving it out
+	 * is how the row says "no cap" rather than an omission.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteBlowTaken`, from the one place in
+	 * the game every incoming blow is resolved. An aura whose row names neither
+	 * parameter counts the blow and does nothing with the count.
+	 *
+	 * Public so a test can drive it without taking a real blow.
+	 *
+	 * @param DealtToHealth  how much of the blow reached the holder's health
+	 * @return how much health was given back
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	float NoteBlowTaken(float DealtToHealth);
+
+	/** Blows landed on the holder since this aura went up. `HitTaken`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BlowsTaken = 0;
+
+	/** Health this aura has given back, in total. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float HealthReturned = 0.0f;
+
 private:
 	/** Pulse's return value is for tests; a timer can only call a void. */
 	void PulseTick();
