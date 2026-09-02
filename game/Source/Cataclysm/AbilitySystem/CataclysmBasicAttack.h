@@ -146,4 +146,44 @@ public:
 	 * those, and it is where every rule above meets.
 	 */
 	static bool ShouldSwingNow(const AActor* Character, float ReachCm);
+
+	// ----------------------------------------------------------------------
+	// Swinging at one chosen target, because a player presses a button now
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether this one target is something the character would attack, and near
+	 * enough to attack.
+	 *
+	 * THE NARROW FORM OF `SomethingInReach`, WHICH ASKS ABOUT ANYTHING. Issue
+	 * #1187 moved the basic attack onto the left mouse button, so the question
+	 * stopped being "is a fight happening" and became "is the thing the player
+	 * pointed at close enough to hit".
+	 *
+	 * IT ASKS THE SAME THREE QUESTIONS THE SPHERE SEARCH DOES -- hostile, not
+	 * already dead, within reach -- rather than a distance alone, so a click on
+	 * a corpse or on an ally does not start a swing.
+	 */
+	static bool TargetIsInReach(const AActor* Character, const AActor* Target,
+								float ReachCm);
+
+	/**
+	 * Whether enough time has passed since the last swing to swing again.
+	 *
+	 * THE RATE LIMIT, WHICH USED TO BE THE TIMER ITSELF. While the basic attack
+	 * fired from a repeating timer, the weapon's attack speed WAS the timer's
+	 * interval and nothing else had to enforce it. A button can be pressed
+	 * faster than any weapon swings, so removing the timer removed the rate
+	 * limit with it and this is what puts it back.
+	 *
+	 * `Swing` REFUSING A SECOND COPY IS NOT THIS. That check asks whether the
+	 * previous activation is still running, which is about the animation. A
+	 * weapon whose animation is shorter than its interval would pass it and
+	 * still swing faster than its attack speed allows.
+	 *
+	 * AN INTERVAL OF ZERO OR LESS MEANS NO RATE, which is what a character
+	 * holding nothing reads, and the answer is false: never swing.
+	 */
+	static bool IntervalHasPassed(float LastSwingSeconds, float NowSeconds,
+								  float IntervalSeconds);
 };

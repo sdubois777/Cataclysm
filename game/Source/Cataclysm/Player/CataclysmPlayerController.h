@@ -392,6 +392,60 @@ private:
 	 */
 	void UpdatePendingPickup();
 
+	// ----------------------------------------------------------------------
+	// The basic attack, which is on this button since issue #1187
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The enemy the cursor is over, or null.
+	 *
+	 * TRACED ON THE PAWN CHANNEL rather than on visibility, which is what
+	 * `UpdateCachedDestination` uses to place a move order. Visibility stops at
+	 * the floor and would answer with a piece of ground under the creature.
+	 *
+	 * IT REFUSES AN ALLY AND A CORPSE, not only a non-actor, so that pointing at
+	 * either is a click on the world rather than a click on a target.
+	 */
+	AActor* EnemyUnderCursor() const;
+
+	/**
+	 * Swing at this target if it is close enough and the weapon is ready.
+	 *
+	 * @return whether a swing was actually started. False is the ordinary answer
+	 *         while walking toward something or between swings, not an error.
+	 */
+	bool TrySwingAt(AActor* Target);
+
+	/**
+	 * Walk toward the enemy the player clicked, and swing on arrival.
+	 *
+	 * THE SAME SHAPE AS `UpdatePendingPickup` AND FOR THE SAME REASON: a target
+	 * can be clicked from anywhere on screen, the character has to be within the
+	 * basic attack's reach to hit it, and arriving is not an event anything here
+	 * is told about. Runs every frame from `PostProcessInput`.
+	 */
+	void UpdatePendingAttack();
+
+	/**
+	 * Whether this button moves the character as well as attacking with it.
+	 *
+	 * TRUE UNDER MOUSE MOVEMENT AND FALSE UNDER KEYBOARD MOVEMENT, and read off
+	 * the active mapping context rather than stored as a second setting that
+	 * could disagree with it. The question asked is the real one: **does
+	 * something other than this button already move the character?** If a key
+	 * is bound to directional movement then the answer is yes and this button
+	 * only attacks and picks things up.
+	 *
+	 * GAMEPAD BINDINGS DO NOT COUNT. Directional movement is on the left stick
+	 * in both schemes, so counting it would make both schemes look like keyboard
+	 * movement and the left mouse button would stop moving anybody.
+	 *
+	 * NO CONTEXT MEANS TRUE, which is how this behaved before either scheme
+	 * existed, so a failure to load an asset does not silently take movement
+	 * away.
+	 */
+	bool LeftButtonAlsoMoves() const;
+
 	/**
 	 * The carried inventory screen, once it has been opened at least once.
 	 *
@@ -459,6 +513,36 @@ private:
 	 * away, when the player orders a move somewhere else, and on a stun.
 	 */
 	TWeakObjectPtr<ACataclysmDroppedItem> PendingPickup;
+
+	/**
+	 * The enemy the player clicked and is walking toward, if any.
+	 *
+	 * WEAK, for the reason `PendingPickup` above is: a creature can be killed by
+	 * anything at any time. Cleared when it is reached, when it dies, when the
+	 * player orders a move somewhere else, and on a movement key press.
+	 */
+	TWeakObjectPtr<AActor> PendingAttack;
+
+	/**
+	 * When the last basic attack swing was started, in world seconds.
+	 *
+	 * FAR ENOUGH IN THE PAST THAT THE FIRST SWING IS ALLOWED. A character that
+	 * has never swung must not have to wait one interval before its first hit,
+	 * and a large negative number says that without a separate "has ever swung"
+	 * flag for the two to disagree about.
+	 */
+	float LastSwingSeconds = -1000.0f;
+
+	/**
+	 * True when this press of the button started on an enemy.
+	 *
+	 * DECIDED AT THE PRESS AND REMEMBERED, the same as `bPressBeganOnInterface`
+	 * below and for the same reason: a player who presses on a creature and
+	 * drags the cursor off it has ordered an attack, not a walk, and asking
+	 * again each frame would turn the attack into a move the moment the creature
+	 * stepped aside.
+	 */
+	bool bPressBeganOnAnEnemy = false;
 
 	/** How long the move button has been held this press, in seconds. */
 	float FollowTime = 0.0f;

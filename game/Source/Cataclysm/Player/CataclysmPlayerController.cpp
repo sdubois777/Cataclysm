@@ -11,8 +11,10 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
@@ -319,6 +321,7 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	}
 
 	UpdatePendingPickup();
+	UpdatePendingAttack();
 	CollectMaterialsNearby();
 
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
@@ -435,6 +438,17 @@ void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 	// Directional movement cancels any path the character is following, so the
 	// two schemes cannot fight each other for the same frame.
 	StopMovement();
+
+	// AND IT ABANDONS WHAT THE CHARACTER WAS WALKING TO. Issue #1188, decided by
+	// the project owner on 2026-09-02.
+	//
+	// WHY THIS CASE IS NEW. Under mouse movement every move was a click, and a
+	// click anywhere else already cleared both of these. Under keyboard movement
+	// there are moves that are not clicks, so without this a player could click a
+	// distant sword, walk away on the keys, and silently pick it up much later by
+	// passing within three metres of it.
+	PendingPickup = nullptr;
+	PendingAttack = nullptr;
 
 	const FVector2D Axis = Value.Get<FVector2D>();
 
@@ -912,6 +926,26 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	StopMovement();
 	FollowTime = 0.0f;
 	UpdateCachedDestination();
+
+	// AND A PRESS ON A CREATURE IS AN ATTACK ORDER. Issue #1187, which took the
+	// basic attack off its own timer and put it on this button. Remembered here
+	// rather than asked again on every frame of the hold, for the reason
+	// `bPressBeganOnAnEnemy` records: a creature that steps aside mid-swing must
+	// not turn the attack into a walk.
+	//
+	// IT IS SET WHETHER OR NOT THE TARGET IS IN REACH. Out of reach is a walk
+	// followed by a swing, which `UpdatePendingAttack` performs, and it is the
+	// same shape a click on a distant dropped item already had.
+	AActor* Enemy = EnemyUnderCursor();
+	bPressBeganOnAnEnemy = Enemy != nullptr;
+	if (Enemy)
+	{
+		PendingAttack = Enemy;
+
+		// THE FIRST SWING HAPPENS ON THE PRESS rather than waiting for the next
+		// frame, so a click on something already in reach answers immediately.
+		TrySwingAt(Enemy);
+	}
 }
 
 void ACataclysmPlayerController::Input_MoveToCursorHeld()
@@ -925,6 +959,24 @@ void ACataclysmPlayerController::Input_MoveToCursorHeld()
 	}
 
 	FollowTime += GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.0f;
+
+	// HOLDING ON A CREATURE KEEPS ATTACKING IT, which is the project owner's
+	// decision of 2026-09-02 and what Path of Exile and Last Epoch both do.
+	// `UpdatePendingAttack` does the work every frame; there is nothing to do
+	// here except refuse to steer, because a player holding the button on an
+	// enemy is not driving the character across the floor.
+	if (bPressBeganOnAnEnemy)
+	{
+		return;
+	}
+
+	// AND UNDER KEYBOARD MOVEMENT THIS BUTTON DOES NOT STEER AT ALL. Issue
+	// #1188: the keys move the character, so the only jobs left for this button
+	// are attacking and picking things up.
+	if (!LeftButtonAlsoMoves())
+	{
+		return;
+	}
 
 	if (!UpdateCachedDestination())
 	{
@@ -955,6 +1007,25 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 		FollowTime = 0.0f;
 		return;
 	}
+
+	// THE PRESS BEGAN ON A CREATURE, so releasing it finishes an attack order and
+	// not a move order. Issue #1187.
+	//
+	// THE TARGET IS KEPT RATHER THAN CLEARED, which is what makes a click on
+	// something out of reach walk to it and swing on arrival -- the behaviour the
+	// project owner asked for on 2026-09-02 and the one a click on a distant
+	// dropped item already had. `UpdatePendingAttack` carries it from here.
+	if (bPressBeganOnAnEnemy)
+	{
+		bPressBeganOnAnEnemy = false;
+		FollowTime = 0.0f;
+		return;
+	}
+
+	// AND UNDER KEYBOARD MOVEMENT A RELEASE ORDERS NO WALK. Issue #1188. The
+	// branches below still run, because a click on a dropped item's name is a
+	// pick-up in either scheme; only the move order at the end is dropped.
+	const bool bMayOrderAWalk = LeftButtonAlsoMoves();
 
 	// Released quickly: treat it as a click and path to the point. Released after
 	// a hold: the steering above already happened and there is nothing to add.
@@ -996,12 +1067,19 @@ void ACataclysmPlayerController::Input_MoveToCursorReleased()
 			return;
 		}
 
-		// A CLICK ANYWHERE ELSE ABANDONS THE ITEM the player was walking to.
-		// They changed their mind, and the walk that follows is a move order
-		// rather than the tail of the last one.
+		// A CLICK ANYWHERE ELSE ABANDONS THE ITEM the player was walking to, and
+		// the creature they were walking to attack. They changed their mind, and
+		// the walk that follows is a move order rather than the tail of the last
+		// one.
 		PendingPickup = nullptr;
+		PendingAttack = nullptr;
 
-		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, CachedDestination);
+		// UNDER KEYBOARD MOVEMENT THERE IS NO WALK TO ORDER. Everything above
+		// still ran, because a click on a drop's name loots it in either scheme.
+		if (bMayOrderAWalk)
+		{
+			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, CachedDestination);
+		}
 	}
 
 	FollowTime = 0.0f;
@@ -1025,6 +1103,185 @@ ACataclysmDroppedItem* ACataclysmPlayerController::DropUnderCursor() const
 	}
 
 	return Overlay->DropUnderPoint(FVector2D(X, Y));
+}
+
+// ---------------------------------------------------------------------------
+// The basic attack, which is on this button since issue #1187
+// ---------------------------------------------------------------------------
+
+AActor* ACataclysmPlayerController::EnemyUnderCursor() const
+{
+	const APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		return nullptr;
+	}
+
+	// THE PAWN CHANNEL, NOT VISIBILITY. `UpdateCachedDestination` traces on
+	// visibility because it wants the piece of floor under the cursor; that
+	// trace stops at the ground and would answer with the ground beneath a
+	// creature rather than the creature.
+	FHitResult Hit;
+	if (!GetHitResultUnderCursor(ECollisionChannel::ECC_Pawn,
+								 /*bTraceComplex=*/false, Hit))
+	{
+		return nullptr;
+	}
+
+	AActor* Found = Hit.GetActor();
+	if (!IsValid(Found) || Found == ControlledPawn)
+	{
+		return nullptr;
+	}
+
+	// AN ALLY AND A CORPSE ARE BOTH "NOT A TARGET" rather than "a target that
+	// cannot be hit", so pointing at either leaves the click as a click on the
+	// world. The same two questions `UCataclysmBasicAttack::TargetIsInReach`
+	// asks, minus the distance, because reach is not what decides whether the
+	// player aimed at something.
+	if (!UCataclysmTargeting::IsHostileTo(Found, ControlledPawn)
+		|| UCataclysmSkillEffects::IsDead(Found))
+	{
+		return nullptr;
+	}
+
+	return Found;
+}
+
+bool ACataclysmPlayerController::TrySwingAt(AActor* Target)
+{
+	APawn* ControlledPawn = GetPawn();
+	UCataclysmAbilitySystemComponent* AbilitySystem = GetCataclysmAbilitySystem();
+	const UWorld* World = GetWorld();
+	if (!ControlledPawn || !AbilitySystem || !World || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// THE SAME GATE THE TIMER USED TO ASK. A stunned or knocked-down character
+	// cannot act, and pressing a button does not change that.
+	if (!UCataclysmBasicAttack::MaySwing(ControlledPawn))
+	{
+		return false;
+	}
+
+	if (!UCataclysmBasicAttack::TargetIsInReach(
+			ControlledPawn, Target,
+			UCataclysmBasicAttack::ReachCmOf(AbilitySystem)))
+	{
+		return false;
+	}
+
+	// AND NOT FASTER THAN THE WEAPON SWINGS. While the basic attack ran off a
+	// repeating timer the weapon's attack speed WAS the interval; a button can
+	// be pressed faster than any weapon, so the rate has to be enforced here
+	// instead. Issue #1187.
+	//
+	// THE RATE IS READ FRESH EVERY SWING rather than cached, so swapping a
+	// weapon or gaining an attack speed affix takes effect on the next swing
+	// rather than on the next possession -- which is what the timer did too.
+	const float Now = World->GetTimeSeconds();
+	if (!UCataclysmBasicAttack::IntervalHasPassed(
+			LastSwingSeconds, Now,
+			UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem)))
+	{
+		return false;
+	}
+
+	if (!UCataclysmBasicAttack::Swing(AbilitySystem))
+	{
+		return false;
+	}
+
+	// RECORDED ONLY WHEN A SWING ACTUALLY STARTED. Writing it on every attempt
+	// would let a refused activation -- no basic attack granted, or the previous
+	// swing still running -- push the next allowed swing further away.
+	LastSwingSeconds = Now;
+	return true;
+}
+
+void ACataclysmPlayerController::UpdatePendingAttack()
+{
+	AActor* Target = PendingAttack.Get();
+	if (!Target)
+	{
+		// EITHER NOTHING WAS CLICKED OR IT IS GONE. Both mean there is nothing
+		// left to walk to, and a weak pointer answers the second for free.
+		PendingAttack = nullptr;
+		return;
+	}
+
+	// A CREATURE THAT HAS DIED IS FINISHED WITH, even though its corpse is an
+	// actor for as long as its death clip runs. Without this the character would
+	// stand over the body swinging at it.
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		PendingAttack = nullptr;
+		return;
+	}
+
+	const APawn* ControlledPawn = GetPawn();
+	UCataclysmAbilitySystemComponent* AbilitySystem = GetCataclysmAbilitySystem();
+	if (!ControlledPawn || !AbilitySystem)
+	{
+		return;
+	}
+
+	if (UCataclysmBasicAttack::TargetIsInReach(
+			ControlledPawn, Target,
+			UCataclysmBasicAttack::ReachCmOf(AbilitySystem)))
+	{
+		// CLOSE ENOUGH. Stop walking and swing whenever the weapon is ready.
+		// The target is KEPT rather than cleared, so a held button keeps
+		// swinging and a click that arrived after a walk swings on arrival. It
+		// is released when the button is, when the creature dies, or when the
+		// player orders something else.
+		StopMovement();
+		TrySwingAt(Target);
+		return;
+	}
+
+	// TOO FAR. Walk toward it, and only while the button is down. A click that
+	// has been released already issued its walk; re-issuing it every frame would
+	// override a move order the player gave afterwards.
+	if (bPressBeganOnAnEnemy && !bStandStill && !PawnCannotWalk())
+	{
+		UAIBlueprintHelperLibrary::SimpleMoveToLocation(
+			this, Target->GetActorLocation());
+	}
+}
+
+bool ACataclysmPlayerController::LeftButtonAlsoMoves() const
+{
+	const UInputMappingContext* Context = DefaultMappingContext.Get();
+	const UCataclysmInputConfig* Config = InputConfig.Get();
+	if (!Context || !Config)
+	{
+		// NOTHING LOADED YET, OR NOTHING TO LOAD. Answering true is how this
+		// button behaved before either scheme existed, so a missing asset does
+		// not silently take movement away from the player.
+		return true;
+	}
+
+	const UInputAction* Move =
+		Config->FindNativeAction(CataclysmInputActionNames::Move);
+	if (!Move)
+	{
+		return true;
+	}
+
+	for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
+	{
+		// A GAMEPAD STICK DOES NOT COUNT. Directional movement is on the left
+		// stick in BOTH schemes, so counting it would make every scheme look
+		// like keyboard movement and no scheme would move on this button.
+		if (Mapping.Action == Move && !Mapping.Key.IsGamepadKey())
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool ACataclysmPlayerController::TakeDrop(ACataclysmDroppedItem* Drop)
