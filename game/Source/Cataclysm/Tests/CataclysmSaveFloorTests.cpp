@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDropRoll.h"
@@ -490,7 +491,7 @@ bool FCataclysmSaveClearingTakesEverythingNotRestored::RunTest(const FString&)
 		return false;
 	}
 
-	const int32 Cleared = FCataclysmSaveApply::ClearTheFloor(*World);
+	const int32 Cleared = UCataclysmFloorContents::ClearTheFloor(*World);
 
 	TestEqual(TEXT("all five were taken"), Cleared, Placed);
 	TestEqual(TEXT("no creature is left"), CountCreatures(World), 0);
