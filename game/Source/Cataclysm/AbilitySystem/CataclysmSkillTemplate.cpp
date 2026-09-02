@@ -638,6 +638,34 @@ int32 UCataclysmSkillTemplate::NoteBlowTaken(AActor* Defender, AActor* Striker,
 			Buff->NoteBlowTaken(Striker, bWasMelee, bWasDamageOverTime);
 			++Told;
 		}
+
+		// AND A SWING BEING HELD COUNTS IT. The Greatsword's The Whole Weight:
+		// "every hit you take during the wind-up adds 8% more damage to what
+		// follows." Issue #1141.
+		//
+		// IN THE SAME LOOP RATHER THAN IN A SECOND SEARCH, because the question
+		// is the same one -- which of this character's running abilities cares
+		// that it was just struck -- and the answer is read off the same list.
+		//
+		// EVERY BLOW, INCLUDING ONE OVER TIME. The row says "every hit you take"
+		// with no qualification, and a burn ticking on somebody who has raised a
+		// greatsword over their head is a hit they took. Burning Wrath above
+		// makes the opposite choice for its own sentence, "any enemy that
+		// strikes you in MELEE", which is why the two arguments are handed on to
+		// it and ignored here.
+		//
+		// `NoteBlowTakenWhileHolding` IS WHAT DECIDES, not this loop: a Strike
+		// that is not being held counts nothing, which is every Strike in the
+		// game but two.
+		if (UCataclysmStrikeSkill* Swing =
+				Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance()))
+		{
+			if (Swing->IsHoldingASwing())
+			{
+				Swing->NoteBlowTakenWhileHolding();
+				++Told;
+			}
+		}
 	}
 
 	return Told;
@@ -1279,8 +1307,35 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		return bThisTargetConsumed ? 1.0f : 0.0f;
 	}
 
-	// One of the sources nothing counts here -- Kill, HitTaken, Bounce, Pierced,
-	// Pinned -- or Burning, Kill, Pinned and a buff's own Second, which
+	if (Params.ScalingSource.Equals(TEXT("HitTaken"), ESearchCase::IgnoreCase))
+	{
+		// HOW MANY BLOWS LANDED ON THE CASTER WHILE THE SWING WAS DRAWN BACK.
+		// The Greatsword's The Whole Weight: "every hit you take during the
+		// wind-up adds 8% more damage to what follows", written as
+		// `MoreDamagePer=8; ScalingSource=HitTaken`. Issue #1141.
+		//
+		// A CAST RATHER THAN A VIRTUAL, FOR THE REASON `Meter` ABOVE GIVES. This
+		// is the second source that belongs to one shape: only a Strike can be
+		// held, so only a Strike has a wind-up to have been struck during. A row
+		// naming `HitTaken` on any other shape answers zero, which is the same
+		// answer every uncounted source already gives.
+		//
+		// `UCataclysmSelfBuffSkill` COUNTS BLOWS TAKEN AS WELL AND NEVER REACHES
+		// HERE, the same way it does for `Second`. The Greataxe's Burning Wrath
+		// reacts to being struck while it lasts, and a buff has its own `Units`.
+		// Two different things are counted and each is counted by whatever it
+		// happened to.
+		if (const UCataclysmStrikeSkill* Held =
+				Cast<const UCataclysmStrikeSkill>(this))
+		{
+			return static_cast<float>(Held->BlowsTakenWhileHolding);
+		}
+
+		return 0.0f;
+	}
+
+	// One of the sources nothing counts here -- Kill, Bounce, Pierced, Pinned --
+	// or Burning, Kill, Pinned and a buff's own Second, which
 	// `UCataclysmSelfBuffSkill::Units` counts for itself. Scaling by nothing is
 	// the safe answer: a skill naming one deals its plain damage rather than a
 	// figure taken from the wrong thing.

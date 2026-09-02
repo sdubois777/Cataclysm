@@ -216,19 +216,32 @@ bool ACataclysmPlayerController::PawnCannotWalk() const
 	// character's own movement input is refused and the skill's step timer is the
 	// only thing moving it.
 	//
-	// IT BELONGS HERE AND NOT IN `IsPawnStunned`, though all three refuse a step.
-	// A stun and a pin are done TO the player and this is a thing the player
+	// AND A FOURTH ON THE SAME DAY, WHICH IS THE OPPOSITE CASE: the player's own
+	// skill may be holding them still. The Greatsword's Backswing is "you cannot
+	// move while holding" and its The Whole Weight "you cannot move, act or be
+	// healed", so while either is drawn back the character stands where it is.
+	// Issue #1141.
+	//
+	// THE THIRD AND THE FOURTH BELONG TOGETHER, though one is a skill moving the
+	// player and the other a skill rooting them. Both are things the player
+	// chose, both refuse a step, and both are read from the running abilities
+	// rather than from a flag somebody has to remember to clear.
+	//
+	// IT BELONGS HERE AND NOT IN `IsPawnStunned`, though all four refuse a step.
+	// A stun and a pin are done TO the player and these two are things the player
 	// chose; more practically, the ability gate reads `IsPawnStunned`, so putting
-	// it there would take the player's other skills away during their own
+	// them there would take the player's other skills away during their own
 	// advance.
 	//
 	// **THIS HAS NO AUTOMATION COVERAGE AND CANNOT HAVE ANY.** The automation
 	// tests run with no player controller at all, so nothing they do reaches this
-	// function. Every other part of the advance -- the walk, what it strikes, how
-	// far it counts, the immunity it grants -- is covered by tests; whether the
-	// player can still steer it has to be judged by pressing a key.
+	// function. Every other part of the advance and of the hold -- the walk, what
+	// it strikes, how far it counts, the immunity it grants, what a held swing
+	// lands for and what breaks it -- is covered by tests; whether the player can
+	// still take a step has to be judged by pressing a key.
 	return IsPawnStunned() || IsPawnPinned()
-		|| UCataclysmMovementSkill::IsBeingWalkedByASkill(GetPawn());
+		|| UCataclysmMovementSkill::IsBeingWalkedByASkill(GetPawn())
+		|| UCataclysmStrikeSkill::IsHoldingASwing(GetPawn());
 }
 
 void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const bool bGamePaused)

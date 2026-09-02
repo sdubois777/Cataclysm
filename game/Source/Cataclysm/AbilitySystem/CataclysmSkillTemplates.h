@@ -36,6 +36,14 @@ class ACataclysmProjectile;
  * the end -- Pyroclasm's "final hit at the end of the spin deals 300% weapon
  * damage". With neither it is a single swing.
  *
+ * AND TWO ROWS DO NOT SWING WHEN THE KEY GOES DOWN. A `ChargeTime` draws the
+ * swing back and holds it: the Greatsword's Backswing, "draw the greatsword back
+ * and hold, release at any time", and its The Whole Weight, "raise the
+ * greatsword and hold it for 3 seconds". They are Strikes because what they
+ * eventually do is hit everything in a cone, but when that happens is the
+ * player's decision rather than the animation's. `BeginTheHold`,
+ * `ReleaseTheSwing` and `BreakTheHold` are the whole of it. Issue #1141.
+ *
  * AND ONE ROW DOES NOT SWING AT ALL. The Greatsword's Buried Fire states
  * `DisarmsUntilRecalled=1`: "drive the greatsword into the ground and leave it
  * there ... pull it free within 10 seconds to erupt". It is a Strike because
@@ -84,12 +92,25 @@ public:
 	 * `ETriggerEvent::Triggered`, which fires every frame the key is held.
 	 * Without waiting for a release, holding the Special key would plant the
 	 * sword on one frame and pull it straight back out on the next.
+	 *
+	 * A HELD SWING IGNORES THIS ENTIRELY, and that is the same fact read the
+	 * other way round. Every frame the key stays down arrives here, so a hold
+	 * that acted on a press would release on the frame after it began.
 	 */
 	virtual void InputPressed(const FGameplayAbilitySpecHandle Handle,
 							  const FGameplayAbilityActorInfo* ActorInfo,
 							  const FGameplayAbilityActivationInfo ActivationInfo) override;
 
-	/** The key came up. Nothing happens except arming the second press above. */
+	/**
+	 * The key came up.
+	 *
+	 * FOR A PLANTED SWORD, nothing happens except arming the second press above.
+	 *
+	 * FOR A HELD SWING, this is what lets it go -- but only for a row that
+	 * states a `MinDamagePercent`, because that floor is what an early release
+	 * lands for and a row without one has no answer for being let go early. See
+	 * `ChargedDamagePercent`.
+	 */
 	virtual void InputReleased(const FGameplayAbilitySpecHandle Handle,
 							   const FGameplayAbilityActorInfo* ActorInfo,
 							   const FGameplayAbilityActivationInfo ActivationInfo) override;
@@ -157,6 +178,140 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	void LetTheWindowClose();
 
+	// ----------------------------------------------------------------------
+	// Backswing and The Whole Weight -- the two Strikes that are held
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether this skill is drawn back with its swing not yet released.
+	 *
+	 * A ROW WITH A `ChargeTime` AND NO OTHER, which is two rows in the whole
+	 * sheet. Every other Strike swings in the frame it activates.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	bool IsHoldingASwing() const { return bHolding; }
+
+	/**
+	 * The held swing this character is drawing back, or null when there is none.
+	 *
+	 * THE SAME SHAPE AS `UCataclysmMovementSkill::RunningAdvanceOn`, and for the
+	 * same reason: a skill that lasts IS an active ability for as long as it
+	 * lasts, so asking the running abilities beats registering and
+	 * unregistering something that then has to be cleaned up on death.
+	 */
+	static UCataclysmStrikeSkill* HeldSwingOn(const AActor* Who);
+
+	/**
+	 * Whether a swing is being held on this character.
+	 *
+	 * READ BY THE MOVEMENT GATE. Both rows say the caster is rooted --
+	 * Backswing "you cannot move while holding", The Whole Weight "you cannot
+	 * move, act or be healed" -- and
+	 * `ACataclysmPlayerController::PawnCannotWalk` is where every movement site
+	 * in the project asks one question about whether a step is allowed.
+	 */
+	static bool IsHoldingASwing(const AActor* Who);
+
+	/**
+	 * What the swing lands for, as percent of weapon damage, for a hold of this
+	 * length.
+	 *
+	 * TWO ROWS, TWO SHAPES, AND `MinDamagePercent` IS WHAT TELLS THEM APART.
+	 *
+	 *   A ROW STATING A FLOOR RAMPS WITH TIME AND MAY BE LET GO EARLY.
+	 *   Backswing: "release at any time: the swing lands for 175% weapon damage
+	 *   at once, rising to 350% if you hold the full 2 seconds". So the percent
+	 *   runs from `MinDamagePercent` to `MaxDamagePercent` across `ChargeTime`.
+	 *
+	 *   A ROW STATING NONE CANNOT BE LET GO EARLY AND DOES NOT RAMP WITH TIME.
+	 *   The Whole Weight: "raise the greatsword and hold it for 3 seconds", and
+	 *   the only escape its text names is being killed. What raises its blow is
+	 *   `MoreDamagePer=8` beside `ScalingSource=HitTaken`, which is a count of
+	 *   blows rather than a length of time, so a time ramp on top would charge
+	 *   the same sentence twice.
+	 *
+	 * LINEAR BETWEEN THE TWO, WHICH IS A JUDGEMENT AND IS RECORDED AS ONE.
+	 * `docs/DECISIONS.md` for 2026-09-02 has the genre survey behind it: Path of
+	 * Exile's Blade Flurry builds six discrete stages and Monster Hunter's great
+	 * sword three discrete levels, so a staged ramp is the commoner shape --
+	 * but a stage count is a number the sheet does not carry, and a stage the
+	 * player cannot see is not a stage. The row is written as a continuous rise
+	 * and that is what this is.
+	 *
+	 * PURE AND PUBLIC SO A TEST CAN WALK THE WHOLE RAMP without a world that
+	 * ticks. Nothing in an automation world advances time, so a test that could
+	 * only release now or release at the end would leave the middle unproven.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	float ChargedDamagePercent(float SecondsOfHold) const;
+
+	/**
+	 * Let the swing go now, for whatever the hold so far is worth.
+	 *
+	 * Public so a test can drive it without pressing a key.
+	 *
+	 * @return how many enemies the swing caught
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	int32 ReleaseTheSwing();
+
+	/**
+	 * The hold reached its full `ChargeTime`, so the swing goes at its ceiling.
+	 *
+	 * THE HOLD RELEASES ITSELF RATHER THAN WAITING FOR THE KEY, which is what
+	 * "rising to 350% if you hold the full 2 seconds" and "hold it for 3
+	 * seconds" both describe: neither row offers anything for holding longer. It
+	 * also means a player who keeps the key down still swings, rather than
+	 * standing rooted until something kills them.
+	 *
+	 * Public so a test can drive it without a world that ticks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void LetTheHoldFinish();
+
+	/**
+	 * Something the row names in `ChargeBreaksOn` happened. The swing is lost.
+	 *
+	 * NOTHING LANDS, WHICH IS WHAT BOTH ROWS SAY. Backswing: "being staggered
+	 * loses the swing entirely." The Whole Weight: "if you are killed during the
+	 * wind-up, nothing lands at all." The mana and the cooldown were spent at
+	 * activation and are not given back, which is what makes a break a cost.
+	 *
+	 * Public so a test can drive it without arranging a real stagger.
+	 *
+	 * @param What  the word from `ChargeBreaksOn` that fired, for the log
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void BreakTheHold(const FString& What);
+
+	/**
+	 * Whether this row's `ChargeBreaksOn` names the given word.
+	 *
+	 * `Movement` AND `Stagger` ARE THE SAME EVENT HERE, and that is worth saying
+	 * rather than leaving to be discovered. A character holding a swing cannot
+	 * walk -- the movement gate refuses it -- so the only way it moves is by
+	 * being shoved, which is exactly what this project's vocabulary calls a
+	 * stagger: `Keyword.Stagger` is described as "stagger and knockback
+	 * effects". A row naming either breaks on a displacement. No row names
+	 * `Movement` today.
+	 */
+	bool HoldBreaksOn(const TCHAR* What) const;
+
+	/**
+	 * A blow landed on the caster while the swing was drawn back. Count it.
+	 *
+	 * THE WHOLE WEIGHT'S `ScalingSource=HitTaken`: "every hit you take during the
+	 * wind-up adds 8% more damage to what follows, to a maximum of 500%."
+	 * `UCataclysmSkillTemplate::NoteBlowTaken` calls this, from the one place in
+	 * the game every incoming blow is resolved.
+	 *
+	 * IT COUNTS ON EVERY HELD SWING, NOT ONLY ON ONE NAMING THE SOURCE. The
+	 * count is cheap and a row that does not name `HitTaken` never reads it, so
+	 * gating the count on the row would only make the number wrong for anything
+	 * that later wanted to look at it.
+	 */
+	void NoteBlowTakenWhileHolding();
+
 	/** How many swings have landed this activation. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 SwingsMade = 0;
@@ -165,9 +320,44 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float Erupted = 0.0f;
 
+	/** Blows landed on the caster during this wind-up. `HitTaken`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 BlowsTakenWhileHolding = 0;
+
+	/** What the released swing landed for, as a percent. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float ReleasedAtPercent = 0.0f;
+
 private:
 	void Repeat();
 	void Finish();
+
+	/**
+	 * Draw the swing back and wait.
+	 *
+	 * NO BLOW IS SCHEDULED HERE. Every other Strike hands its blow to
+	 * `WhenTheSwingConnects` and is done with it; a held swing has no idea yet
+	 * when it lands, because that is the player's decision.
+	 */
+	void BeginTheHold();
+
+	/** How long the swing has been drawn back, in seconds. */
+	float SecondsOfHoldSoFar() const;
+
+	/** True between `BeginTheHold` and whatever ends the hold. */
+	bool bHolding = false;
+
+	/**
+	 * World time when the swing was drawn back.
+	 *
+	 * ONLY AN EARLY RELEASE READS IT. A hold that runs its full length is
+	 * released by `HoldTimer`, which fires at exactly `ChargeTime`, so that path
+	 * never consults the clock and the two cannot disagree.
+	 */
+	float HoldBeganAtSeconds = 0.0f;
+
+	/** When the hold lets go by itself. `ChargeTime`. */
+	FTimerHandle HoldTimer;
 
 	/**
 	 * Whether the key has come up since the sword went in.

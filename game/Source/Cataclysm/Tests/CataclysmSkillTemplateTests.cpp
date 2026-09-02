@@ -10103,4 +10103,627 @@ bool FCataclysmAdvanceReportsItsDirectionTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A swing that is drawn back and held. Issue #1141.
+// --------------------------------------------------------------------------
+
+/**
+ * The ramp from floor to ceiling, walked end to end.
+ *
+ * A PURE FUNCTION IS TESTED DIRECTLY BECAUSE THE MIDDLE OF THE RAMP CANNOT BE
+ * REACHED ANY OTHER WAY. A world made by `UWorld::CreateWorld` is never ticked,
+ * so its clock never moves; a test that could only release now or release at the
+ * end would leave everything between them unproven, which is the whole of what
+ * this parameter does.
+ *
+ * THE NUMBERS ARE DELIBERATELY NOT THE REAL ROW'S. Backswing states
+ * `MinDamagePercent=175` and its `DamagePercent` column is also 175, so a floor
+ * of 175 cannot tell "reads MinDamagePercent" apart from "reads the skill's
+ * ordinary damage percent" -- both answer 175 and the test would pass either
+ * way. A floor of 100 on a slot whose damage is 250 separates them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldSwingRampsTest,
+	"Cataclysm.Skills.AHeldSwingRisesFromItsFloorToItsCeilingAcrossItsChargeTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldSwingRampsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4.5; Angle=140; ChargeTime=2; MinDamagePercent=100; "
+			 "MaxDamagePercent=300"),
+		TEXT("Test Backswing"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	// THE FLOOR IS THE ROW'S AND NOT THE SLOT'S, which is what the 100 against
+	// the Heavy slot's 250 is here to say.
+	TestEqual(TEXT("let go at once it lands for its floor"),
+		Swing->ChargedDamagePercent(0.0f), 100.0f, 0.01f);
+	TestEqual(TEXT("a quarter of the way it is a quarter of the way up"),
+		Swing->ChargedDamagePercent(0.5f), 150.0f, 0.01f);
+	TestEqual(TEXT("halfway it is halfway up"),
+		Swing->ChargedDamagePercent(1.0f), 200.0f, 0.01f);
+	TestEqual(TEXT("three quarters of the way it is three quarters up"),
+		Swing->ChargedDamagePercent(1.5f), 250.0f, 0.01f);
+	TestEqual(TEXT("held its whole time it lands for its ceiling"),
+		Swing->ChargedDamagePercent(2.0f), 300.0f, 0.01f);
+
+	// HOLDING LONGER IS WORTH NOTHING, which is what makes the ceiling a
+	// ceiling. Nothing can reach this through the skill, because the hold
+	// releases itself at ChargeTime; a frame that ran long could.
+	TestEqual(TEXT("and holding past its whole time is worth no more"),
+		Swing->ChargedDamagePercent(9.0f), 300.0f, 0.01f);
+
+	// AND A NEGATIVE HOLD IS THE FLOOR RATHER THAN LESS THAN IT.
+	TestEqual(TEXT("and a hold of less than nothing is still the floor"),
+		Swing->ChargedDamagePercent(-1.0f), 100.0f, 0.01f);
+
+	return true;
+}
+
+
+/**
+ * Pressing the key draws the swing back. Nothing lands until it is let go.
+ *
+ * THIS IS THE SENTENCE THE WHOLE MECHANIC EXISTS FOR. Before it, Backswing was
+ * one immediate swing: the row's `ChargeTime`, `MinDamagePercent` and
+ * `ChargeBreaksOn` all parsed and were read by nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldSwingWaitsTest,
+	"Cataclysm.Skills.PressingAHeldSwingDrawsItBackAndLandsNothingUntilItIsLetGo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldSwingWaitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// EXACT DAMAGE IS ASSERTED BELOW, so the one random roll that fires on an
+	// ordinary hit is pinned. 100 never critically strikes.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4.5; Angle=140; ChargeTime=2; MinDamagePercent=100; "
+			 "MaxDamagePercent=300"),
+		TEXT("Test Backswing"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	TestFalse(TEXT("nothing is being held before the press"),
+		UCataclysmStrikeSkill::IsHoldingASwing(Caster.Actor));
+
+	const float Before = Enemy.Health();
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+
+	// THE PRESS COSTS MANA AND STARTS THE COOLDOWN AND LANDS NOTHING, which is
+	// what "draw the greatsword back and hold" means. A swing that landed here
+	// would be the old behaviour with a hold bolted on beside it.
+	TestEqual(TEXT("and nothing has been swung"), Swing->SwingsMade, 0);
+	TestEqual(TEXT("and the enemy is untouched"), Enemy.Health(), Before);
+	TestTrue(TEXT("and the swing is drawn back"), Swing->IsHoldingASwing());
+
+	// AND THE MOVEMENT GATE CAN SEE IT. `ACataclysmPlayerController::
+	// PawnCannotWalk` asks this exact question, and both rows say the caster
+	// cannot move while holding. That half has no automation coverage -- the
+	// tests run with no player controller -- so what is covered is that the
+	// question it asks has the right answer.
+	TestTrue(TEXT("and the movement gate is told so"),
+		UCataclysmStrikeSkill::IsHoldingASwing(Caster.Actor));
+
+	const int32 Caught = Swing->ReleaseTheSwing();
+
+	TestEqual(TEXT("letting go swings once"), Swing->SwingsMade, 1);
+	TestEqual(TEXT("and catches the enemy in front"), Caught, 1);
+
+	// LET GO AT ONCE IN A WORLD WHOSE CLOCK NEVER MOVED, so the hold was worth
+	// nothing and the floor is what lands. 100% of a weapon dealing 100.
+	TestEqual(TEXT("for its floor, because no time passed"),
+		Swing->ReleasedAtPercent, 100.0f, 0.01f);
+	TestEqual(TEXT("and that percent is what the enemy actually took"),
+		Before - Enemy.Health(), 100.0f, 0.01f);
+
+	TestFalse(TEXT("and nothing is being held any more"),
+		UCataclysmStrikeSkill::IsHoldingASwing(Caster.Actor));
+
+	return true;
+}
+
+
+/**
+ * Held its whole time, the swing lands for its ceiling.
+ *
+ * `LetTheHoldFinish` IS WHAT THE TIMER CALLS. Driving it by hand is the only way
+ * to reach it in a world that never ticks, and it is the path a player who keeps
+ * the key down takes.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldSwingFullTest,
+	"Cataclysm.Skills.AHeldSwingKeptItsWholeTimeLandsForItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldSwingFullTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4.5; Angle=140; ChargeTime=2; MinDamagePercent=100; "
+			 "MaxDamagePercent=300"),
+		TEXT("Test Backswing"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	const float Before = Enemy.Health();
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+	Swing->LetTheHoldFinish();
+
+	TestEqual(TEXT("the full hold swings once"), Swing->SwingsMade, 1);
+	TestEqual(TEXT("for its ceiling"), Swing->ReleasedAtPercent, 300.0f, 0.01f);
+	TestEqual(TEXT("and three times the floor is what the enemy took"),
+		Before - Enemy.Health(), 300.0f, 0.01f);
+	TestFalse(TEXT("and nothing is held afterwards"), Swing->IsHoldingASwing());
+
+	return true;
+}
+
+
+/**
+ * A row stating no floor cannot be let go early, and does not ramp with time.
+ *
+ * THE WHOLE WEIGHT IS THE ROW. "Raise the greatsword and hold it for 3 seconds",
+ * and the only escape its own text names is being killed. Backswing is the one
+ * that says "release at any time", and `MinDamagePercent` is the difference
+ * between them.
+ *
+ * WHY THIS NEEDS ITS OWN TEST RATHER THAN A LINE IN ANOTHER. It is the one place
+ * a key release is deliberately ignored, and an implementation that released
+ * everything on the key coming up would pass every other test here.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldSwingWithNoFloorTest,
+	"Cataclysm.Skills.AHeldSwingStatingNoFloorIgnoresTheKeyComingUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldSwingWithNoFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// The Whole Weight's own row, with its stated 350 supplied the way the
+	// weapon slots component supplies it.
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=9; Angle=180; ChargeTime=3; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; MaxDamagePercent=500; "
+			 "ChargeBreaksOn=Death"),
+		TEXT("The Whole Weight"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+	Swing->DamagePercentOverride = 350.0f;
+
+	const float Before = Enemy.Health();
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+	TestTrue(TEXT("and is drawn back"), Swing->IsHoldingASwing());
+
+	// THE KEY COMES UP AND NOTHING HAPPENS. This is the real input path, not a
+	// direct call: `AbilitySpecInputReleased` is what the player controller's
+	// release reaches.
+	Caster.AbilitySystem->AbilityInputTagReleased(
+		CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Ultimate));
+	Caster.AbilitySystem->ProcessAbilityInput();
+
+	TestTrue(TEXT("it is still drawn back after the key came up"),
+		Swing->IsHoldingASwing());
+	TestEqual(TEXT("and nothing has been swung"), Swing->SwingsMade, 0);
+	TestEqual(TEXT("and the enemy is untouched"), Enemy.Health(), Before);
+
+	// AND ITS OWN THREE SECONDS FINISH IT, at its stated 350 rather than at
+	// anything the clock decided.
+	Swing->LetTheHoldFinish();
+
+	TestEqual(TEXT("its own time finishes it"), Swing->SwingsMade, 1);
+	TestEqual(TEXT("for the 350% its row states, with no hits taken"),
+		Swing->ReleasedAtPercent, 350.0f, 0.01f);
+
+	return true;
+}
+
+
+/**
+ * Every blow taken during the wind-up makes the swing heavier, up to its cap.
+ *
+ * THE WHOLE WEIGHT'S `ScalingSource=HitTaken`: "every hit you take during the
+ * wind-up adds 8% more damage to what follows, to a maximum of 500%." Before
+ * this, `UCataclysmSkillTemplate::ScalingUnits` answered zero for `HitTaken` and
+ * said so in a comment, so the row's `MoreDamagePer=8` multiplied nothing.
+ *
+ * THE CAP IS TESTED AND NOT ONLY THE RATE, because 8% per hit with no cap passes
+ * every assertion below except the last two.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldSwingCountsBlowsTest,
+	"Cataclysm.Skills.BlowsTakenDuringAWindUpMakeTheSwingHeavierUpToItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHeldSwingCountsBlowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Striker(World, FVector(3 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=9; Angle=180; ChargeTime=3; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; MaxDamagePercent=500; "
+			 "ChargeBreaksOn=Death"),
+		TEXT("The Whole Weight"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+	Swing->DamagePercentOverride = 350.0f;
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+
+	TestEqual(TEXT("no blows have landed on the caster yet"),
+		Swing->BlowsTakenWhileHolding, 0);
+	TestEqual(TEXT("so it would land for the 350% its row states"),
+		Swing->ChargedDamagePercent(3.0f), 350.0f, 0.01f);
+
+	// THROUGH THE SHARED ENTRY POINT THE DAMAGE PIPELINE USES, not by writing
+	// the count. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls
+	// exactly this, from the one place every incoming blow in the game is
+	// resolved, so a held swing that this could not reach would not be reachable
+	// in play either.
+	const int32 Told = UCataclysmSkillTemplate::NoteBlowTaken(
+		Caster.Actor, Striker.Actor, /*bWasMelee=*/true,
+		/*bWasDamageOverTime=*/false);
+
+	TestTrue(TEXT("the held swing was one of the running skills told"), Told >= 1);
+	TestEqual(TEXT("and it counted the blow"), Swing->BlowsTakenWhileHolding, 1);
+	TestEqual(TEXT("one blow is worth 8% more"),
+		Swing->ChargedDamagePercent(3.0f), 378.0f, 0.01f);
+
+	for (int32 More = 0; More < 4; ++More)
+	{
+		UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
+											   /*bWasMelee=*/true,
+											   /*bWasDamageOverTime=*/false);
+	}
+
+	TestEqual(TEXT("five blows are counted"), Swing->BlowsTakenWhileHolding, 5);
+	TestEqual(TEXT("and are worth 40% more"),
+		Swing->ChargedDamagePercent(3.0f), 490.0f, 0.01f);
+
+	// A SIXTH WOULD BE 518% AND THE ROW SAYS 500. This is the assertion that
+	// separates a rate from a rate with a ceiling.
+	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false);
+
+	TestEqual(TEXT("six blows are counted"), Swing->BlowsTakenWhileHolding, 6);
+	TestEqual(TEXT("but the swing is capped at the 500% its row states"),
+		Swing->ChargedDamagePercent(3.0f), 500.0f, 0.01f);
+
+	// AND A BURN TICKING COUNTS TOO. The row says "every hit you take" with no
+	// qualification, unlike Burning Wrath's "strikes you in melee", so the two
+	// arguments are deliberately not read here.
+	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
+										   /*bWasMelee=*/false,
+										   /*bWasDamageOverTime=*/true);
+
+	TestEqual(TEXT("and a tick of a burn is a hit taken as well"),
+		Swing->BlowsTakenWhileHolding, 7);
+
+	// AND THE SWING IS NOT HELD ANY MORE ONCE IT GOES, so a blow landing after
+	// the release cannot raise a swing that has already happened.
+	Swing->LetTheHoldFinish();
+	UCataclysmSkillTemplate::NoteBlowTaken(Caster.Actor, Striker.Actor,
+										   /*bWasMelee=*/true,
+										   /*bWasDamageOverTime=*/false);
+
+	TestEqual(TEXT("and a blow after the swing counts for nothing"),
+		Swing->BlowsTakenWhileHolding, 7);
+
+	return true;
+}
+
+
+/**
+ * Being staggered loses the swing entirely.
+ *
+ * BACKSWING'S `ChargeBreaksOn=Stagger`: "being staggered loses the swing
+ * entirely." A stagger in this project's vocabulary is a displacement --
+ * `Keyword.Stagger` is described as "stagger and knockback effects" -- so a
+ * knockback is what a stagger is.
+ *
+ * THE COST IS NOT REFUNDED, and that is what makes a break a cost rather than a
+ * cancelled press.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStaggerLosesHeldSwingTest,
+	"Cataclysm.Skills.BeingStaggeredLosesAHeldSwingEntirely",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStaggerLosesHeldSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4.5; Angle=140; ChargeTime=2; MinDamagePercent=175; "
+			 "MaxDamagePercent=350; ChargeBreaksOn=Stagger"),
+		TEXT("Backswing"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	const float Before = Enemy.Health();
+	const float ManaAfterCasting = [&]()
+	{
+		Activate(Caster, Swing);
+		return Caster.Mana();
+	}();
+
+	TestTrue(TEXT("it is drawn back"), Swing->IsHoldingASwing());
+	TestTrue(TEXT("and it cost mana"), ManaAfterCasting < 1000.0f);
+
+	// THE REAL PATH: a knockback, which reaches `CataclysmDisplace`, the one
+	// body every displacement in the game passes through.
+	TestTrue(TEXT("the caster is shoved"),
+		UCataclysmSkillEffects::ApplyKnockback(Enemy.Actor, Caster.Actor,
+											   3.0f * M));
+
+	TestFalse(TEXT("and the swing is no longer held"),
+		Swing->IsHoldingASwing());
+	TestEqual(TEXT("nothing was swung"), Swing->SwingsMade, 0);
+	TestEqual(TEXT("nothing landed on the enemy"), Enemy.Health(), Before);
+	TestEqual(TEXT("and the mana was not given back"),
+		Caster.Mana(), ManaAfterCasting);
+
+	// AND LETTING GO AFTERWARDS DOES NOTHING, which is what "loses the swing
+	// entirely" has to mean for a key that is still down when the stagger lands.
+	TestEqual(TEXT("and letting go of a broken hold swings nothing"),
+		Swing->ReleaseTheSwing(), 0);
+	TestEqual(TEXT("still nothing swung"), Swing->SwingsMade, 0);
+
+	return true;
+}
+
+
+/**
+ * A row that does not name a stagger keeps its swing when it is shoved.
+ *
+ * THE CONTROL FOR THE TEST ABOVE. Without it, an implementation that broke every
+ * hold on every displacement would pass, and `ChargeBreaksOn` would be a
+ * parameter that is read and never consulted.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStaggerSparesUnnamedHoldTest,
+	"Cataclysm.Skills.AHeldSwingThatDoesNotNameAStaggerSurvivesBeingShoved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStaggerSparesUnnamedHoldTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// The Whole Weight's `ChargeBreaksOn=Death`, which does not name a stagger.
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500; "
+			 "ChargeBreaksOn=Death"),
+		TEXT("The Whole Weight"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+	TestTrue(TEXT("and is drawn back"), Swing->IsHoldingASwing());
+
+	TestTrue(TEXT("the caster is shoved"),
+		UCataclysmSkillEffects::ApplyKnockback(Enemy.Actor, Caster.Actor,
+											   3.0f * M));
+
+	TestTrue(TEXT("and the swing survives, because its row names death and not "
+				  "a stagger"),
+		Swing->IsHoldingASwing());
+
+	return true;
+}
+
+
+/**
+ * Being killed during the wind-up loses the swing entirely.
+ *
+ * THE WHOLE WEIGHT'S `ChargeBreaksOn=Death`: "if you are killed during the
+ * wind-up, nothing lands at all."
+ *
+ * IT IS BROKEN WHETHER OR NOT THE ROW NAMES DEATH, and the second half of this
+ * test is what says so. A corpse cannot swing whatever its row says, and a hold
+ * left standing would be a timer waiting to deal damage on behalf of somebody
+ * who is dead.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathLosesHeldSwingTest,
+	"Cataclysm.Skills.BeingKilledDuringAWindUpLosesTheSwingEntirely",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeathLosesHeldSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	{
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+		UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate,
+			TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500; "
+				 "ChargeBreaksOn=Death"),
+			TEXT("The Whole Weight"));
+		if (!Swing)
+		{
+			AddError(TEXT("Could not grant the swing."));
+			return false;
+		}
+
+		const float Before = Enemy.Health();
+
+		TestTrue(TEXT("it activates"), Activate(Caster, Swing));
+		TestTrue(TEXT("and is drawn back"), Swing->IsHoldingASwing());
+
+		// THE ONE PLACE A DEATH IS RECORDED for the player and for every
+		// creature, which is why the break hangs off it.
+		TestTrue(TEXT("the caster dies"),
+			UCataclysmSkillEffects::MarkDead(Caster.Actor));
+
+		TestFalse(TEXT("and the swing is lost"), Swing->IsHoldingASwing());
+		TestEqual(TEXT("nothing was swung"), Swing->SwingsMade, 0);
+		TestEqual(TEXT("and nothing landed on the enemy"),
+			Enemy.Health(), Before);
+	}
+
+	{
+		FScopedFighter Other(World, FVector(20 * M, 0, 0));
+
+		// A ROW NAMING NOTHING AT ALL. `ChargeBreaksOn` is absent, so the row
+		// says nothing breaks its hold -- and death still does.
+		UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+			Other, ECataclysmAbilitySlot::Ultimate,
+			TEXT("Radius=9; Angle=180; ChargeTime=3; MaxDamagePercent=500"),
+			TEXT("A row naming no break"));
+		if (!Swing)
+		{
+			AddError(TEXT("Could not grant the second swing."));
+			return false;
+		}
+
+		TestTrue(TEXT("it activates"), Activate(Other, Swing));
+		TestTrue(TEXT("and is drawn back"), Swing->IsHoldingASwing());
+		TestFalse(TEXT("and its row names nothing that breaks it"),
+			Swing->HoldBreaksOn(TEXT("Death")));
+
+		TestTrue(TEXT("the caster dies"),
+			UCataclysmSkillEffects::MarkDead(Other.Actor));
+
+		TestFalse(TEXT("and the swing is lost anyway, because a corpse cannot "
+					   "swing"),
+			Swing->IsHoldingASwing());
+		TestEqual(TEXT("nothing was swung"), Swing->SwingsMade, 0);
+	}
+
+	return true;
+}
+
+
+/**
+ * A Strike with no ChargeTime is untouched by any of this.
+ *
+ * TWENTY-ONE OF THE TWENTY-THREE STRIKE ROWS IN THE SHEET state no `ChargeTime`,
+ * and every one of them has to go on swinging in the frame it activates. The
+ * hold is a rider on the shape, so the shape's ordinary behaviour is what this
+ * guards.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnchargedStrikeUnaffectedTest,
+	"Cataclysm.Skills.AStrikeStatingNoChargeTimeStillSwingsAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUnchargedStrikeUnaffectedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// Molten Cleave's own shape: a plain wide swing with no hold.
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=4; Angle=120"), TEXT("Molten Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	const float Before = Enemy.Health();
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Cleave));
+
+	TestEqual(TEXT("and swings in the same frame"), Cleave->SwingsMade, 1);
+	TestFalse(TEXT("and nothing is being held"), Cleave->IsHoldingASwing());
+	TestFalse(TEXT("and the movement gate is not told to root anybody"),
+		UCataclysmStrikeSkill::IsHoldingASwing(Caster.Actor));
+	TestEqual(TEXT("and the enemy took the Heavy slot's 250%"),
+		Before - Enemy.Health(), 250.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

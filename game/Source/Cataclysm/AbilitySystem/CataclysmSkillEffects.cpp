@@ -23,6 +23,8 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For a swing drawn back, which a stagger and a death both lose. Issue #1141.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
@@ -1264,6 +1266,39 @@ namespace
 		}
 
 		Target->AddActorWorldOffset(Offset * Share, /*bSweep=*/true);
+
+		// AND A SWING DRAWN BACK IS LOST, IF ITS ROW SAYS A STAGGER LOSES IT.
+		// The Greatsword's Backswing: "being staggered loses the swing
+		// entirely", written as `ChargeBreaksOn=Stagger`. Issue #1141.
+		//
+		// HERE BECAUSE THIS IS THE ONE BODY EVERY DISPLACEMENT IN THE GAME PASSES
+		// THROUGH, which is the same argument the immunity check above it makes.
+		// A knockback, a pull, a drag and a launch are one function with four
+		// directions, and a swing lost to being shoved should not depend on which
+		// of the four did the shoving.
+		//
+		// AFTER THE MOVE RATHER THAN BEFORE IT, so a displacement that the
+		// immunity refused or that moved the target nowhere breaks nothing. The
+		// row says being staggered loses the swing, and a shove that did not
+		// land is not a stagger.
+		//
+		// `Movement` IS TREATED AS THE SAME EVENT, and `HoldBreaksOn`'s header
+		// says why: a character holding a swing cannot walk, so being shoved is
+		// the only way it moves. No row names `Movement` today.
+		//
+		// INERT FOR EVERYTHING BUT TWO ROWS. `HeldSwingOn` answers null for any
+		// character with no swing drawn back, which is every character in the
+		// game except one holding a Greatsword's Heavy or Ultimate.
+		if (UCataclysmStrikeSkill* Held =
+				UCataclysmStrikeSkill::HeldSwingOn(Target))
+		{
+			if (Held->HoldBreaksOn(TEXT("Stagger"))
+				|| Held->HoldBreaksOn(TEXT("Movement")))
+			{
+				Held->BreakTheHold(TEXT("a stagger"));
+			}
+		}
+
 		return true;
 	}
 }
@@ -1391,6 +1426,26 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// bound to no line, which is all of them but one Skewer's catch: it costs a
 	// component lookup.
 	UCataclysmPinnedLine::ReleaseFromDying(Actor);
+
+	// AND A SWING THIS CHARACTER HAD DRAWN BACK IS LOST, for the fourth time for
+	// the same reasons and at the same moment. The Greatsword's The Whole
+	// Weight: "if you are killed during the wind-up, nothing lands at all",
+	// written as `ChargeBreaksOn=Death`. Issue #1141.
+	//
+	// UNCONDITIONALLY RATHER THAN ONLY FOR A ROW THAT NAMES `Death`, and that is
+	// the one of these four hooks that does not read the row first. A corpse
+	// cannot swing whatever its row says, so a hold left standing here would be
+	// a timer waiting to deal damage on behalf of somebody who is dead. What
+	// `ChargeBreaksOn=Death` adds is that the row SAYS so; the behaviour is not
+	// optional.
+	//
+	// INERT FOR EVERY CHARACTER WITH NO SWING DRAWN BACK, which is all of them
+	// but one holding a Greatsword's Heavy or Ultimate: it costs a walk over the
+	// dying character's own running abilities.
+	if (UCataclysmStrikeSkill* Held = UCataclysmStrikeSkill::HeldSwingOn(Actor))
+	{
+		Held->BreakTheHold(TEXT("death"));
+	}
 
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
 	// granted for a duration and this one must never expire on its own. A

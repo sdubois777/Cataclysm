@@ -74,6 +74,29 @@ void UCataclysmStrikeSkill::ActivateAbility(
 	// See `InputPressed`.
 	bKeyReleasedSincePlanting = false;
 
+	// A ROW WITH A `ChargeTime` DRAWS THE SWING BACK INSTEAD OF SWINGING, AND
+	// DOES NOT WAIT FOR THE ANIMATION FIRST. Backswing: "draw the greatsword
+	// back and hold." Two rows in the sheet state one and both are Greatsword
+	// Demonic. Issue #1141.
+	//
+	// BEFORE `WhenTheSwingConnects` RATHER THAN INSIDE IT, and that ordering is
+	// the point. Every other Strike waits for the moment its clip connects and
+	// then hits; a hold has no such moment yet, because when the blow lands is
+	// the player's decision. Putting the hold inside the wait would delay the
+	// start of the wind-up by the length of an attack animation the player never
+	// asked to play.
+	//
+	// **THE WIND-UP HAS NO ANIMATION OF ITS OWN AND THIS DOES NOT GIVE IT ONE.**
+	// `CommitAndBegin` has already played whatever attack clip the character
+	// cycles, so a held swing currently looks like an ordinary swing followed by
+	// standing still. There is no draw-back clip in the project to play instead;
+	// issue #1126 is that every weapon swings the same three unarmed clips.
+	if (Params.ChargeTime > 0.0f)
+	{
+		BeginTheHold();
+		return;
+	}
+
 	WhenTheSwingConnects([this]()
 	{
 		// A ROW THAT LEAVES ITS WEAPON IN THE GROUND NEVER SWINGS. The
@@ -264,6 +287,257 @@ void UCataclysmStrikeSkill::Finish()
 }
 
 // --------------------------------------------------------------------------
+// Backswing and The Whole Weight -- the two Strikes that are held
+// --------------------------------------------------------------------------
+
+UCataclysmStrikeSkill* UCataclysmStrikeSkill::HeldSwingOn(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		UCataclysmStrikeSkill* Running =
+			Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance());
+
+		// A HELD SWING AND NOTHING ELSE. Two other kinds of Strike can be found
+		// running here -- a spin part way through its duration, and Buried Fire
+		// with its sword in the ground -- and neither is drawn back. The flag is
+		// what says which, rather than the row's parameters, because it is also
+		// false again the moment the swing goes.
+		if (Running && Running->bHolding)
+		{
+			return Running;
+		}
+	}
+
+	return nullptr;
+}
+
+bool UCataclysmStrikeSkill::IsHoldingASwing(const AActor* Who)
+{
+	return HeldSwingOn(Who) != nullptr;
+}
+
+bool UCataclysmStrikeSkill::HoldBreaksOn(const TCHAR* What) const
+{
+	if (Params.ChargeBreaksOn.IsEmpty() || !What)
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED, the same way `Requires` and `Immune` are read. No row
+	// names two today; Backswing names `Stagger`, The Whole Weight `Death` and
+	// Inexorable `None`.
+	TArray<FString> Named;
+	Params.ChargeBreaksOn.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(What, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmStrikeSkill::BeginTheHold()
+{
+	UWorld* World = GetWorld();
+
+	bHolding = true;
+	BlowsTakenWhileHolding = 0;
+	ReleasedAtPercent = 0.0f;
+	SwingsMade = 0;
+	HoldBeganAtSeconds = World ? World->GetTimeSeconds() : 0.0f;
+
+	// THE HOLD LETS GO BY ITSELF AT `ChargeTime`. Neither row offers anything
+	// for holding longer, and a hold that waited for the key would leave a
+	// player who kept it down rooted until something killed them.
+	//
+	// NO WORLD MEANS NO TIMER AND THE HOLD STAYS UP, which is the state every
+	// automation test runs in: a world made by `UWorld::CreateWorld` is never
+	// ticked, so no timer set in one ever fires. `LetTheHoldFinish` and
+	// `ReleaseTheSwing` are public for exactly that reason.
+	if (World && Params.ChargeTime > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(
+			HoldTimer, this, &UCataclysmStrikeSkill::LetTheHoldFinish,
+			Params.ChargeTime, /*bLoop=*/false);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' is drawn back. It goes in %.1f seconds, or sooner if let "
+			 "go, for between %.0f%% and %.0f%%."),
+		*SkillName, Params.ChargeTime, ChargedDamagePercent(0.0f),
+		ChargedDamagePercent(Params.ChargeTime));
+}
+
+float UCataclysmStrikeSkill::SecondsOfHoldSoFar() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !bHolding)
+	{
+		return 0.0f;
+	}
+
+	// CLAMPED TO THE ROW'S OWN LENGTH, because the ceiling is the ceiling. The
+	// timer normally gets there first; this is what holds if a frame ran long.
+	return FMath::Clamp(World->GetTimeSeconds() - HoldBeganAtSeconds,
+						0.0f, Params.ChargeTime);
+}
+
+float UCataclysmStrikeSkill::ChargedDamagePercent(float SecondsOfHold) const
+{
+	// A ROW STATING NO FLOOR DOES NOT RAMP WITH TIME. The Whole Weight: what
+	// raises its blow is `MoreDamagePer=8` with `ScalingSource=HitTaken`, which
+	// `ScaledDamagePercent` already applies and `MaxDamagePercent` already caps.
+	// Handing it a time ramp as well would charge one sentence twice.
+	if (Params.MinDamagePercent <= 0.0f)
+	{
+		return ScaledDamagePercent(ScalingUnits(/*ConsumedCount=*/0,
+												/*bThisTargetConsumed=*/false));
+	}
+
+	// A CEILING IS NOT REQUIRED. A row stating a floor and no ceiling holds
+	// still at its floor rather than rising to zero.
+	const float Floor = Params.MinDamagePercent;
+	const float Ceiling = Params.MaxDamagePercent > 0.0f
+		? FMath::Max(Params.MaxDamagePercent, Floor)
+		: Floor;
+
+	// AND A ROW WITH NO `ChargeTime` NEVER REACHES HERE THROUGH THE SKILL, but
+	// a test or a mis-generated row could, and dividing by it is the one thing
+	// in this function that could go wrong.
+	if (Params.ChargeTime <= 0.0f)
+	{
+		return Ceiling;
+	}
+
+	const float Share = FMath::Clamp(SecondsOfHold / Params.ChargeTime, 0.0f, 1.0f);
+	return FMath::Lerp(Floor, Ceiling, Share);
+}
+
+int32 UCataclysmStrikeSkill::ReleaseTheSwing()
+{
+	if (!bHolding)
+	{
+		return 0;
+	}
+
+	const float Held = SecondsOfHoldSoFar();
+	ReleasedAtPercent = ChargedDamagePercent(Held);
+
+	// THE FLAG GOES DOWN BEFORE THE BLOW, not after it. `SwingOnce` reaches
+	// `ApplyHit`, which can kill what it touches, and a death reaches
+	// `UCataclysmSkillEffects::MarkDead` -- so a swing that is still marked as
+	// held could be broken by the consequences of its own blow.
+	bHolding = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	const int32 Caught = SwingOnce(ReleasedAtPercent);
+
+	// AND THE BURNING GROUND, THE SAME WAY AN ORDINARY STRIKE LEAVES IT. Neither
+	// held row states any today, so this is inert for both; leaving it out would
+	// make a third charged row silently drop the rider every other Strike has.
+	if (const AActor* Self = Avatar())
+	{
+		LeaveGroundAt(Self->GetActorLocation());
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was let go after %.2f of %.1f seconds, landing for %.0f%% "
+			 "on %d enemies after %d blows taken."),
+		*SkillName, Held, Params.ChargeTime, ReleasedAtPercent, Caught,
+		BlowsTakenWhileHolding);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+	return Caught;
+}
+
+void UCataclysmStrikeSkill::LetTheHoldFinish()
+{
+	if (!bHolding)
+	{
+		return;
+	}
+
+	// THE CEILING, TAKEN FROM THE ROW RATHER THAN FROM THE CLOCK. The timer
+	// fired at exactly `ChargeTime`, so asking the world what time it is could
+	// only introduce a disagreement with the thing that just woke this up.
+	ReleasedAtPercent = ChargedDamagePercent(Params.ChargeTime);
+
+	bHolding = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	const int32 Caught = SwingOnce(ReleasedAtPercent);
+
+	if (const AActor* Self = Avatar())
+	{
+		LeaveGroundAt(Self->GetActorLocation());
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was held its full %.1f seconds, landing for %.0f%% on %d "
+			 "enemies after %d blows taken."),
+		*SkillName, Params.ChargeTime, ReleasedAtPercent, Caught,
+		BlowsTakenWhileHolding);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmStrikeSkill::BreakTheHold(const FString& What)
+{
+	if (!bHolding)
+	{
+		return;
+	}
+
+	bHolding = false;
+	ReleasedAtPercent = 0.0f;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was broken by %s after %.1f seconds. Nothing lands."),
+		*SkillName, *What, Params.ChargeTime);
+
+	// CANCELLED RATHER THAN ENDED, so anything else watching for an interrupted
+	// skill agrees with what happened. `UCataclysmSkillTemplate::EndAbility`
+	// clears its swing timer only on a cancel, for the same reason.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), /*bReplicateEndAbility=*/true,
+			   /*bWasCancelled=*/true);
+}
+
+void UCataclysmStrikeSkill::NoteBlowTakenWhileHolding()
+{
+	if (bHolding)
+	{
+		++BlowsTakenWhileHolding;
+	}
+}
+
+// --------------------------------------------------------------------------
 // Buried Fire -- the one Strike that leaves its weapon behind
 // --------------------------------------------------------------------------
 
@@ -422,6 +696,16 @@ void UCataclysmStrikeSkill::InputPressed(
 {
 	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
 
+	// A SWING BEING HELD IGNORES EVERY PRESS, AND THAT IS THE SAME FACT AS THE
+	// GUARD BELOW READ THE OTHER WAY ROUND. The input is bound to
+	// `ETriggerEvent::Triggered`, so every frame the key stays down arrives
+	// here; a hold is exactly the state of the key still being down. What ends
+	// it is the release, the timer, or a break. Issue #1141.
+	if (bHolding)
+	{
+		return;
+	}
+
 	// A PRESS ARRIVING WHILE THE KEY WAS NEVER LET GO is another frame of the
 	// press that planted the sword, not a second press. Issue #1114 is the
 	// incident that established this: the input is bound to
@@ -452,11 +736,27 @@ void UCataclysmStrikeSkill::InputReleased(
 {
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
 
-	// THE RELEASE PULLS NOTHING FREE. This is not a hold-and-release skill: the
-	// sword stays in the ground when the key comes up, which is what "leave it
-	// there" means. What the release changes is that the next press is a new
-	// press. Issue #1141 carries the hold-and-release verb the Greatsword's
-	// other two rows want, and it is a different mechanic.
+	// A SWING THAT IS BEING HELD GOES NOW, AND ONLY FOR A ROW THAT STATES A
+	// FLOOR. Backswing: "release at any time: the swing lands for 175% weapon
+	// damage at once." `MinDamagePercent` IS that floor, so a row without one
+	// has no answer for being let go early -- The Whole Weight says "hold it for
+	// 3 seconds" and names being killed as the only escape. Issue #1141.
+	//
+	// THE KEY COMING UP IS NOT AN INTERRUPTION FOR SUCH A ROW. It goes on
+	// holding and `HoldTimer` finishes it, which is what its own text describes.
+	if (bHolding)
+	{
+		if (Params.MinDamagePercent > 0.0f)
+		{
+			ReleaseTheSwing();
+		}
+		return;
+	}
+
+	// THE RELEASE PULLS NOTHING FREE. Buried Fire is not a hold-and-release
+	// skill: the sword stays in the ground when the key comes up, which is what
+	// "leave it there" means. What the release changes is that the next press is
+	// a new press.
 	bKeyReleasedSincePlanting = true;
 }
 
@@ -469,7 +769,17 @@ void UCataclysmStrikeSkill::EndAbility(
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(WindowTimer);
+
+		// AND A HELD SWING LETS GO OF ITS TIMER TOO, WHICH IS WHAT MAKES "IF YOU
+		// ARE KILLED DURING THE WIND-UP, NOTHING LANDS AT ALL" TRUE FOR EVERY
+		// WAY OF DYING. `BreakTheHold` clears it on the paths that name
+		// themselves; this covers the ones that do not -- an ability cancelled
+		// from outside, the avatar being destroyed, the player being unpossessed
+		// -- so no route out of a hold can leave a timer behind to swing on
+		// behalf of somebody who is no longer there.
+		World->GetTimerManager().ClearTimer(HoldTimer);
 	}
+	bHolding = false;
 
 	// THE ONE PLACE THE SWORD LEAVES THE GROUND. Four things end this skill --
 	// the second press, the window closing, a cancel, and the character dying --
