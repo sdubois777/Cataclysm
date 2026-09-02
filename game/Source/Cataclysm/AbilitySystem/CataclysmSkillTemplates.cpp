@@ -1615,6 +1615,28 @@ void UCataclysmMovementSkill::ActivateAbility(
 		return;
 	}
 
+	// A CHARGE THAT STATES A DURATION IS A WALK RATHER THAN AN ARRIVAL, AND ALSO
+	// LEAVES THIS FUNCTION EARLY. The Greatsword's Inexorable: "begin an advance
+	// that cannot be turned aside. You walk forward for 3 seconds ... throwing
+	// aside and setting alight everything you pass through."
+	//
+	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Fist's Cinder Rush and the
+	// Whip's Reel both state `Mode=Charge` and no duration, and both are one move
+	// to a point that hits what the line crosses. Everything below assumes that
+	// shape -- one search, one `SetActorLocation`, one patch of ground -- and a
+	// walk is none of those.
+	//
+	// THE DIRECTION IS TAKEN ONCE, HERE, AND NEVER RE-READ. That is what "cannot
+	// be turned aside" says, and it is also why the aimed point is read before
+	// the first step rather than on each one: reading it every step would make
+	// the advance follow the cursor, which is the opposite of the row.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge
+		&& Params.Duration > 0.0f)
+	{
+		BeginAdvance(Start);
+		return;
+	}
+
 	// WHERE IT ARRIVES IS THE ENEMY, NOT THE CURSOR, WHEN THE ROW SAYS SO. The
 	// Sword's Flashpoint reads "dart to a burning enemy up to 14 meters away"
 	// and closes with "only something already alight can be reached", so the
@@ -1872,6 +1894,176 @@ void UCataclysmMovementSkill::FlickerOnce()
 
 		return;
 	}
+}
+
+bool UCataclysmMovementSkill::IsBeingWalkedByASkill(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmMovementSkill* Running =
+			Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance());
+
+		// A LASTING CHARGE AND NOTHING ELSE. Every other movement mode ends in
+		// the frame it activates, so it could never be found here anyway; the
+		// two tests are what say this asks about walking rather than about
+		// having a Movement skill at all.
+		if (Running
+			&& Running->Params.MovementMode == ECataclysmMovementMode::Charge
+			&& Running->Params.Duration > 0.0f)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
+{
+	AActor* Self = Avatar();
+	UWorld* World = GetWorld();
+	if (!Self || !World)
+	{
+		EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+				   GetCurrentActivationInfo(), true, true);
+		return;
+	}
+
+	StepsTaken = 0;
+	WalkedCm = 0.0f;
+	EnemiesHit = 0;
+	StruckAlready.Reset();
+	ArrivedAt = Start;
+
+	// THE DIRECTION, TAKEN ONCE. `AimedPointWithin` is what every other movement
+	// mode uses to find where the player pointed, and taking it here rather than
+	// on each step is the whole of "cannot be turned aside".
+	//
+	// FLATTENED, so an advance does not walk into the floor or the sky when the
+	// cursor lands on ground above or below the caster.
+	FVector Facing = AimedPointWithin(Params.RangeCm) - Start;
+	Facing.Z = 0.0f;
+	Advance = Facing.GetSafeNormal();
+
+	if (Advance.IsNearlyZero())
+	{
+		// Nowhere to walk. With no player controller there is no cursor, so
+		// `AimedPointWithin` falls back to the caster's own facing, which is why
+		// this is rare rather than ordinary -- but a caster with no facing at all
+		// would otherwise walk on the spot for three seconds.
+		Advance = Self->GetActorForwardVector();
+		Advance.Z = 0.0f;
+		Advance = Advance.GetSafeNormal();
+	}
+
+	// HOW FAR EACH STEP GOES. `Range` is how far the advance travels in total and
+	// `Duration` is how long it takes, so the two together are its speed, and the
+	// row states both. Inexorable's fourteen metres over three seconds is a
+	// little under five metres a second, which is faster than the Ritualist's 3.5
+	// and slower than a charge -- an advance rather than a sprint, which is what
+	// the word says.
+	const float StepsInAll =
+		FMath::Max(1.0f, Params.Duration / SecondsPerAdvanceStep);
+	StepCm = Params.RangeCm / StepsInAll;
+
+	World->GetTimerManager().SetTimer(
+		AdvanceTimer, this, &UCataclysmMovementSkill::AdvanceOneStep,
+		SecondsPerAdvanceStep, /*bLoop=*/true,
+		/*InFirstDelay=*/SecondsPerAdvanceStep);
+
+	FTimerHandle Stop;
+	World->GetTimerManager().SetTimer(
+		Stop, this, &UCataclysmMovementSkill::FinishAdvance,
+		Params.Duration, /*bLoop=*/false);
+}
+
+void UCataclysmMovementSkill::AdvanceOneStep()
+{
+	AActor* Self = Avatar();
+	if (!Self || StepCm <= 0.0f)
+	{
+		return;
+	}
+
+	// SWEPT, so an advance that meets a wall stops against it rather than walking
+	// through. That is also what makes the distance below honest: a walk held
+	// against a wall covers no more ground and so grows no stronger.
+	const FVector Before = Self->GetActorLocation();
+	Self->SetActorLocation(Before + Advance * StepCm, /*bSweep=*/true);
+
+	const FVector After = Self->GetActorLocation();
+	WalkedCm += static_cast<float>(FVector::Dist2D(Before, After));
+	ArrivedAt = After;
+	++StepsTaken;
+
+	// "THROWING ASIDE AND SETTING ALIGHT EVERYTHING YOU PASS THROUGH." The line
+	// from where this step began to where it ended, at the skill's own radius, so
+	// nothing is missed between two steps.
+	TArray<AActor*> Caught;
+	for (AActor* One : UCataclysmTargeting::FindEnemiesInLine(
+			GetWorld(), Self, Before, After, ScaledRadiusCm()))
+	{
+		// NOTHING IS STRUCK TWICE, WHICH IS THE ONE THING A WALK NEEDS AND AN
+		// ARRIVAL DOES NOT. A creature standing beside the path would otherwise
+		// be hit on every step of a three second advance.
+		if (StruckAlready.Contains(One))
+		{
+			continue;
+		}
+
+		StruckAlready.Add(One);
+		Caught.Add(One);
+	}
+
+	if (Caught.IsEmpty())
+	{
+		return;
+	}
+
+	EnemiesHit += Caught.Num();
+
+	// AND THE BLOW GROWS WITH THE DISTANCE ALREADY WALKED. "The further you
+	// walked, the harder it hits", written as `MoreDamagePer=3;
+	// ScalingSource=Meter`. `HitScaled` reads the skill's own damage percent, so
+	// the multiplier is applied to that rather than to the character.
+	HitScaled(Caught, TArray<AActor*>());
+}
+
+void UCataclysmMovementSkill::FinishAdvance()
+{
+	// THE STEP TIMER IS STOPPED BEFORE THE ABILITY ENDS, not left to
+	// `EndAbility`. A looping timer on an object the engine keeps alive would go
+	// on walking the character after the skill was over, for ever, because
+	// nothing else clears it.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AdvanceTimer);
+	}
+
+	// THE GROUND IS LEFT ALONG THE WHOLE WALK RATHER THAN AT EITHER END, which is
+	// what a charge already does and what "leave a trail of fire behind you"
+	// means for the rows that state one. Inexorable states none, so this is idle
+	// for it and correct for whatever states one next.
+	LeaveGroundAlong(ArrivedAt - Advance * WalkedCm, ArrivedAt);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' advanced %.0fcm over %d steps and struck %d."),
+		*SkillName, WalkedCm, StepsTaken, EnemiesHit);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
 }
 
 void UCataclysmMovementSkill::FinishFlicker()

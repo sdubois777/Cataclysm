@@ -683,6 +683,72 @@ public:
 	TObjectPtr<AActor> SwappedWith;
 
 	/**
+	 * One step of a charge that lasts. `Mode=Charge` with a `Duration`.
+	 *
+	 * ONE ROW STATES IT: the Greatsword's Inexorable, "begin an advance that
+	 * cannot be turned aside. You walk forward for 3 seconds, immune to crowd
+	 * control and unable to change direction or stop, throwing aside and setting
+	 * alight everything you pass through. The further you walked, the harder it
+	 * hits."
+	 *
+	 * A CHARGE WITHOUT A DURATION IS UNCHANGED AND STILL ARRIVES AT ONCE. The
+	 * Fist's Cinder Rush and the Whip's Reel both state `Mode=Charge` and no
+	 * duration, and both are one move to a point that hits what the line crosses.
+	 * Stating a duration is what makes a charge a walk.
+	 *
+	 * THE DIRECTION IS FIXED AT THE CAST AND NEVER RE-READ, which is what "cannot
+	 * be turned aside" and "unable to change direction" say. Reading the cursor
+	 * each step would make it a chase.
+	 *
+	 * EACH STEP HITS WHAT IT PASSES AND NOTHING TWICE. A creature the advance
+	 * walks through is struck once, on the step that reaches it, and remembered
+	 * afterwards -- without that, a three second walk would strike whatever it
+	 * was standing beside on every one of its steps.
+	 *
+	 * Public so a test can drive it without a world that ticks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void AdvanceOneStep();
+
+	/**
+	 * Whether a skill this character is running is walking it right now.
+	 *
+	 * WHAT ASKS: the player controller's movement gate. The Greatsword's
+	 * Inexorable is "an advance that cannot be turned aside ... unable to change
+	 * direction or stop", so while it runs the player's own movement input is
+	 * refused and the skill's step timer is the only thing moving the character.
+	 *
+	 * NOT AN ENTRY IN `Immune`, THOUGH IT REFUSES SOMETHING. That parameter names
+	 * effects done TO a character by somebody else, from a closed list the design
+	 * document supplies. Being carried along by your own skill is not one of
+	 * them, and putting it there would have meant inventing a value the design
+	 * never wrote.
+	 *
+	 * ASKED RATHER THAN FLAGGED, which is the shape every other question of this
+	 * kind in this file takes: a skill that lasts IS an active ability while it
+	 * lasts, so nothing has to be written onto the character and nothing has to
+	 * be cleared when it ends, is cancelled, or its owner dies.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	static bool IsBeingWalkedByASkill(const AActor* Who);
+
+	/** How many steps a lasting charge has taken. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 StepsTaken = 0;
+
+	/**
+	 * How far a lasting charge has walked, in centimetres. Read by tests.
+	 *
+	 * WHAT `ScalingSource=Meter` COUNTS. Inexorable: "the further you walked, the
+	 * harder it hits." Measured as the distance actually covered rather than as
+	 * the distance from where it began, so an advance that walks into a wall
+	 * stops adding to it -- which is the honest reading of "the further you
+	 * walked".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float WalkedCm = 0.0f;
+
+	/**
 	 * Whether this skill is holding a mark to return to. `Mode=Recall`.
 	 *
 	 * THE DAGGER'S ECHO IS TWO PRESSES AND THIS IS WHICH ONE THE NEXT WILL BE.
@@ -719,6 +785,44 @@ private:
 
 	/** Ends a flicker when its duration runs out. */
 	void FinishFlicker();
+
+	/**
+	 * How often a lasting charge takes a step, in seconds.
+	 *
+	 * TEN TIMES A SECOND, WHICH IS A COMPROMISE BETWEEN TWO FAILURES. Fewer steps
+	 * would let the advance jump past a creature standing between two of them --
+	 * the line search covers the gap, but a character teleporting a metre at a
+	 * time reads as stuttering rather than walking. More steps would search the
+	 * level more often for no visible gain.
+	 *
+	 * NOT A PER-FRAME TICK, for the reason `ACataclysmGroundZone` gives: the work
+	 * is a move and a sweep, and a tick would run it six times more often for the
+	 * same result.
+	 */
+	static constexpr float SecondsPerAdvanceStep = 0.1f;
+
+	/** Sets up a charge that lasts, and starts its step timer. */
+	void BeginAdvance(const FVector& Start);
+
+	/** Ends a lasting charge when its duration runs out. */
+	void FinishAdvance();
+
+	/** The direction a lasting charge walks, fixed when it began. */
+	FVector Advance = FVector::ZeroVector;
+
+	/** How far one step of it travels, in centimetres. */
+	float StepCm = 0.0f;
+
+	/**
+	 * What a lasting charge has already struck, so nothing is struck twice.
+	 *
+	 * A WALK NEEDS THIS AND AN ARRIVAL DOES NOT. A creature standing beside the
+	 * path would otherwise be found by the line search on every one of a three
+	 * second advance's thirty steps.
+	 */
+	TSet<TWeakObjectPtr<AActor>> StruckAlready;
+
+	FTimerHandle AdvanceTimer;
 };
 
 /**
