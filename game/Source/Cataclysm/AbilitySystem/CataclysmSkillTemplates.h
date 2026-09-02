@@ -387,9 +387,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	void NoteBlowLanded(const FVector& Where);
 
+	/**
+	 * One repeat of a self buff that states an `Interval`.
+	 *
+	 * ONE ROW STATES ONE: the Spear's Held Fast, "any pinned enemy within 12
+	 * meters is set alight again each second it is held". Until 2026-09-02 a
+	 * self buff was the only lasting shape that could not repeat, so that half
+	 * of the row could not be written down at all.
+	 *
+	 * WHAT IT DOES IS DECIDED BY THE ROW AND NOT BY THIS SHAPE. A buff that
+	 * states `Burn` sets alight what its radius catches; one that states none
+	 * ticks and does nothing, which costs a search and is the honest answer for
+	 * a row that asked to repeat without saying what repeats.
+	 *
+	 * IT SETS ALIGHT WHAT THE ROW'S `ScalingSource` NAMES, WHEN IT NAMES ONE.
+	 * Held Fast says "any PINNED enemy", and its `ScalingSource=Pinned` is
+	 * already the word for that, so the tick reuses it rather than adding a
+	 * second parameter meaning the same thing. A buff naming no source lights
+	 * everything its radius catches.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void RepeatTick();
+
 	/** How many fissures this buff has opened. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 TerrainLeft = 0;
+
+	/** How many times it has repeated. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 Repeats = 0;
+
+	/** How many enemies the last repeat set alight. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 LastRepeatLit = 0;
 
 	/** How long this buff will now run in total, after any extensions. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -413,7 +443,11 @@ private:
 	 */
 	int32 ScalingCount() const;
 
+
 	FTimerHandle FinishTimer;
+
+	/** Fires once per `Interval` while the buff runs. Idle for a row with none. */
+	FTimerHandle RepeatTimer;
 
 	/** The caster's handle for the granted modifier. Zero means none is live. */
 	int32 IncreaseHandle = 0;
@@ -733,4 +767,14 @@ public:
 	/** How many enemies it took hold of. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	int32 EnemiesAffected = 0;
+
+	/**
+	 * How many bystanders the spread set alight. Read by tests.
+	 *
+	 * SEPARATE FROM `EnemiesAffected`, which counts the ones the curse itself
+	 * took. Hex of Cinders lays its hex on one enemy and may light several
+	 * around it, so one number could not answer both questions.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 SpreadsLit = 0;
 };

@@ -791,6 +791,14 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	KillsCounted = 0;
 	TotalDuration = Params.Duration;
 
+	// RESET ON EVERY CAST, for the reason the kill tally above is: an ability is
+	// instanced per actor, so one instance stands for this character's Held Fast
+	// across every use of it, and a count left from the last use would start the
+	// next one part way through.
+	Repeats = 0;
+	LastRepeatLit = 0;
+	TerrainLeft = 0;
+
 	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
 	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
 	// enemy you currently have pinned". One search of the radius answers both
@@ -832,6 +840,23 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 		World->GetTimerManager().SetTimer(
 			FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
 			Params.Duration, /*bLoop=*/false);
+
+		// AND A ROW THAT STATES AN `Interval` REPEATS WHILE IT RUNS. The Spear's
+		// Held Fast: "any pinned enemy within 12 meters is set alight again each
+		// second it is held." Idle for every other self buff, none of which
+		// states one.
+		//
+		// FIRST FIRING A FULL INTERVAL IN RATHER THAN AT ONCE, which is what the
+		// burning ground and the aura both do and for the same reason: "again
+		// each second it is held" describes what happens while it runs, not a
+		// tick in the instant it goes up.
+		if (Params.Interval > 0.0f)
+		{
+			World->GetTimerManager().SetTimer(
+				RepeatTimer, this, &UCataclysmSelfBuffSkill::RepeatTick,
+				Params.Interval, /*bLoop=*/true,
+				/*InFirstDelay=*/Params.Interval);
+		}
 	}
 	else
 	{
@@ -850,6 +875,16 @@ void UCataclysmSelfBuffSkill::EndAbility(
 	// died, or because the ability system was cleared, and an increase left
 	// behind by any of those would last until the character was destroyed.
 	RevokeIncrease();
+
+	// AND THE REPEAT STOPS FOR THE SAME REASON. A looping timer left running
+	// would go on setting things alight after the buff was cancelled, the
+	// character died, or the ten seconds ran out -- for ever, because nothing
+	// else clears it. The finish timer needs no such line: it does not loop and
+	// firing it again is what ends the ability anyway.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RepeatTimer);
+	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
@@ -999,6 +1034,62 @@ void UCataclysmSelfBuffSkill::NoteKill()
 	World->GetTimerManager().SetTimer(
 		FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
 		Remaining + Params.DurationPer, /*bLoop=*/false);
+}
+
+void UCataclysmSelfBuffSkill::RepeatTick()
+{
+	++Repeats;
+	LastRepeatLit = 0;
+
+	AActor* Self = Avatar();
+	if (!Self || !Params.bBurns || ScaledRadiusCm() <= 0.0f)
+	{
+		// A buff that states an interval and nothing to do on it ticks and
+		// changes nothing. That is the honest answer for a row that asked to
+		// repeat without saying what repeats, and it costs one test.
+		return;
+	}
+
+	// WHICH ENEMIES, AND THE ROW ALREADY HAS A WORD FOR IT. Held Fast says "any
+	// PINNED enemy within 12 meters", and its `ScalingSource=Pinned` is that
+	// word. Reusing it means the count that feeds the damage bonus and the set
+	// that gets relit cannot disagree; a second parameter meaning the same thing
+	// could.
+	const bool bOnlyPinned =
+		Params.ScalingSource.Equals(TEXT("Pinned"), ESearchCase::IgnoreCase);
+
+	for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
+	{
+		if (bOnlyPinned && !UCataclysmSkillEffects::IsPinned(Nearby))
+		{
+			continue;
+		}
+
+		// A DESIGNED BURN, because the row states `Burn` and this is its own
+		// sentence rather than a chance on hit. Issue #917: without that
+		// decision a Support-slot buff could not set anything alight at all,
+		// because its damage is zero by design and this passes zero.
+		//
+		// ZERO IS PASSED AS THE HIT, AND IT IS THE TRUTH. Nothing was struck --
+		// the fire is the buff's, not a blow's -- and burn has been a flat 25 a
+		// second since 2026-08-24, so the figure changes nothing about what the
+		// burn deals.
+		if (UCataclysmSkillEffects::ApplyBurn(Self, Nearby, /*HitDamage=*/0.0f,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true))
+		{
+			++LastRepeatLit;
+		}
+	}
+
+	if (LastRepeatLit > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' set %d %senemies alight on repeat %d."),
+			*SkillName, LastRepeatLit, bOnlyPinned ? TEXT("pinned ") : TEXT(""),
+			Repeats);
+	}
 }
 
 void UCataclysmSelfBuffSkill::NoteBlowLanded(const FVector& Where)
@@ -1714,6 +1805,7 @@ void UCataclysmDebuffSkill::ActivateAbility(
 
 	EnemiesAffected = 0;
 	LastDurationApplied = 0.0f;
+	SpreadsLit = 0;
 
 	// THE CURSE LANDS WHEN THE GESTURE REACHES ITS POINT. Issue #1133. Until
 	// then it was applied in the frame the ability activated, with the body
@@ -1794,6 +1886,21 @@ void UCataclysmDebuffSkill::ActivateAbility(
 									: AppliedEffectSeconds(Named[0]) * Scale;
 				++EnemiesAffected;
 			}
+
+			// AND THE FIRE SPREADS FROM A TARGET THAT ALREADY MET THE CONDITION.
+			// Hex of Cinders: "hexing an enemy that is already burning also sets
+			// alight everything within 4 meters of them."
+			//
+			// THE CONDITION IS ON THE TARGET AND NOT ON THE CAST. A hex laid on
+			// an enemy that is not burning is a working cast that spreads
+			// nothing, which is why the row states `SpreadWhen` rather than
+			// `Requires`: the latter would refuse the whole skill.
+			//
+			// THE TARGET KEEPS ITS OWN FIRE, which is the difference between
+			// this and `ConsumeRadius`. Consuming takes the burn out and spends
+			// it; this leaves it burning and lights the neighbours as well.
+			// Issue #1146 records the choice between the two.
+			SpreadsLit += SpreadFireAround(Target);
 		}
 
 		// A Support slot deals no damage by design, so this only lands a hit for

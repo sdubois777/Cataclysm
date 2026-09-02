@@ -317,10 +317,14 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// sub-type and no leech: it is applied with the summoner as the instigator,
 	// and the design names damage over time among what a minion does not take
 	// from its summoner. Issue #895.
-	if (bBurnsWhatItHits && Dealt > 0.0f)
+	// A DESIGNED BURN, because `bBurnsWhatItHits` comes from the minion's own
+	// row in the Minion Types sheet rather than from a chance on hit. Issue
+	// #917: a designed ailment applies whether or not the blow hurt.
+	if (bBurnsWhatItHits)
 	{
 		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt,
-										  /*bScalesWithInstigator=*/false);
+										  /*bScalesWithInstigator=*/false,
+										  /*bBurnIsDesigned=*/true);
 	}
 
 	++AttacksMade;
@@ -340,11 +344,13 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 			const float Dealt = UCataclysmSkillEffects::ApplyHit(
 				Summoner, Target, DamagePercent, FGameplayTagContainer(),
 				MinionDelivery(/*bIsArea=*/true));
-			if (bBurnsWhatItHits && Dealt > 0.0f)
+			// Designed, for the reason the melee attack above records.
+			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
 					Summoner, Target, Dealt,
-					/*bScalesWithInstigator=*/false);
+					/*bScalesWithInstigator=*/false,
+					/*bBurnIsDesigned=*/true);
 			}
 		}
 	}

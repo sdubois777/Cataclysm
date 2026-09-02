@@ -586,12 +586,18 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	{
 		++EnemiesHit;
 
-		// A burn is a share of the hit that caused it, so a projectile dealing
-		// nothing sets nothing alight. That is the rule every other template
-		// uses, and it is why a Support skill lights nothing.
+		// A DESIGNED BURN, because `bBurns` is the firing row's own `Burn=1`.
+		// Issue #917: a skill that states an ailment applies it whether or not
+		// the blow hurt, and only an incidental one has to clear the damage
+		// threshold.
+		//
+		// THE COMMENT THAT STOOD HERE SAID A BURN IS A SHARE OF THE HIT. That
+		// stopped being true on 2026-08-24, when burn became a flat 25 a second.
 		if (bBurns)
 		{
-			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt);
+			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true);
 		}
 	}
 }

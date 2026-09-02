@@ -360,8 +360,10 @@ bool FCataclysmStrikeTest::RunTest(const FString&)
 	TestEqual(TEXT("It dealt the Heavy slot's 250% of weapon damage"),
 		FrontBefore - InFront.Health(), Expected);
 
-	// BURN IS A SHARE OF THE HIT, so the tag proves the rider fired and the
-	// damage over time is separately covered.
+	// THE TAG PROVES THE RIDER FIRED, and what the burn then deals is covered
+	// separately. Burn has been a flat 25 a second since 2026-08-24, so its
+	// amount does not depend on this blow at all; the comment here used to say
+	// it was a share of the hit.
 	TestTrue(TEXT("The enemy in front is alight"),
 		UCataclysmSkillEffects::HasTag(InFront.Actor, UCataclysmSkillEffects::BurnTag()));
 	TestFalse(TEXT("The enemy behind is not"),
@@ -2644,7 +2646,9 @@ bool FCataclysmDebuffTest::RunTest(const FString&)
 		FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(
 			ECataclysmAbilitySlot::Support)));
 
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Target.Actor, /*HitDamage=*/100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Target.Actor,
+		/*HitDamage=*/100.0f, /*bScalesWithInstigator=*/true,
+		/*bBurnIsDesigned=*/true);
 	TestTrue(TEXT("The target is now burning"),
 		UCataclysmSkillEffects::HasTag(Target.Actor, UCataclysmSkillEffects::BurnTag()));
 
@@ -3119,8 +3123,10 @@ bool FCataclysmBuffIncreaseAppliesTest::RunTest(const FString&)
 	// Wrath's count is two and its increase is 4% x 2 = 8%.
 	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
 	FScopedFighter AlsoAlight(World, FVector(4 * M, 0, 0));
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, AlsoAlight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, AlsoAlight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
@@ -3194,7 +3200,8 @@ bool FCataclysmBuffGrantsMoreNotIncreasedTest::RunTest(const FString&)
 	// One burning enemy inside the fifteen metre radius, so the buff's number
 	// is a single 4 rather than a multiple of it.
 	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 
 	// THE SECOND MODIFIER, which is the whole point of this test. It is scoped
 	// to the same element the buff scopes to, so both reach the same strike.
@@ -3275,7 +3282,8 @@ bool FCataclysmBuffIncreaseIsScopedTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 
 	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
@@ -3315,7 +3323,8 @@ bool FCataclysmBuffIncreaseEndsTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
@@ -3399,7 +3408,8 @@ bool FCataclysmBuffLeavesPricedGroundTest::RunTest(const FString&)
 	// apply to the skill and not to what the skill leaves behind.
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Alight(World, FVector(3 * M, 0, 0));
-	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, Alight.Actor, 100.0f,
+		/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 
 	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
 		Caster, ECataclysmAbilitySlot::Support,
@@ -5047,7 +5057,8 @@ namespace CataclysmSkillTest
 	/** Put a target alight, the way any damaging skill would. */
 	void SetAlight(FScopedFighter& By, FScopedFighter& Target)
 	{
-		UCataclysmSkillEffects::ApplyBurn(By.Actor, Target.Actor, WeaponDamage);
+		UCataclysmSkillEffects::ApplyBurn(By.Actor, Target.Actor, WeaponDamage,
+			/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
 	}
 
 	/** Whether this target carries the burn tag right now. */
@@ -7562,6 +7573,287 @@ bool FCataclysmPitRefusesAMovementSkillTest::RunTest(const FString&)
 	// already spent the mana and started the cooldown.
 	TestEqual(TEXT("and spends no mana"), Trapped.Mana(), TrappedManaBefore,
 			  0.01f);
+
+	return true;
+}
+
+// ==========================================================================
+// A skill that states an ailment applies it, whatever its blow did
+// ==========================================================================
+
+/**
+ * A Support-slot skill sets alight what its row says it does.
+ *
+ * WHAT THIS GUARDS. Issue #917, settled on 2026-09-02. Three rows carried
+ * `Burn=1` on a slot whose damage is zero by design and had never set anything
+ * alight, because `ApplyBurn` refused any hit that dealt nothing. That refusal
+ * was arithmetic while burn was a percent of the hit and became a decision when
+ * burn went flat on 2026-08-24.
+ *
+ * THE GREATAXE'S BURNING WRATH IS THE CLEAREST OF THE THREE: "while it lasts,
+ * any enemy that strikes you in melee is set alight". It has carried the flag
+ * since it was written.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZeroDamageSkillStillBurnsTest,
+	"Cataclysm.Skills.ASkillStatingBurnSetsAlightEvenDealingNoDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmZeroDamageSkillStillBurnsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	// A SUPPORT-SLOT STRIKE, WHOSE DAMAGE PERCENT IS ZERO BY DESIGN.
+	// `game/Data/SkillSlots.csv` gives the Support slot 0.0 with the note
+	// "usually no damage at all, which is why its typical value is zero".
+	UCataclysmStrikeSkill* Ward = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Radius=5; Angle=360; Burn=1"), TEXT("A Support skill that burns"));
+	if (!Ward)
+	{
+		AddError(TEXT("Could not grant the Support skill."));
+		return false;
+	}
+
+	const float Before = Target.Health();
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Ward));
+
+	// THE CONTROL FOR THE WHOLE TEST: it really did deal nothing. Without this
+	// reading, a skill that quietly dealt damage would make the burn below prove
+	// nothing about a zero-damage blow.
+	TestEqual(TEXT("and deals no damage, as its slot says"),
+		Target.Health(), Before, 0.01f);
+
+	TestTrue(TEXT("and still sets its target alight"),
+		UCataclysmSkillEffects::HasTag(Target.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIncidentalBurnNeedsTheThresholdTest,
+	"Cataclysm.Skills.AnIncidentalBurnNeedsATenthOfMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIncidentalBurnNeedsTheThresholdTest::RunTest(const FString&)
+{
+	// THE OTHER HALF OF ISSUE #917. A skill that states the ailment applies it
+	// regardless; one that does not -- a gem, an affix, an enemy modifier --
+	// still has to clear the same tenth of maximum health that stunning does.
+	//
+	// NOTHING PASSES `bBurnIsDesigned=false` IN THE GAME TODAY, which is why
+	// this drives `ApplyBurn` directly. Every caller reads a row or a minion
+	// type, and all of them are designed. The eleven ailment affixes of issue
+	// #899 are what will use the other branch, and this is what says that branch
+	// works before they arrive.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Attacker(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	// A THOUSAND MAXIMUM HEALTH MAKES THE THRESHOLD A ROUND HUNDRED, which is
+	// the same arrangement `CataclysmStunTests.cpp` uses for the stun's identical
+	// rule. The harness sets 100,000 by default, so this is set deliberately.
+	Target.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Target.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+	TestFalse(TEXT("an incidental burn from a scratch is refused"),
+		UCataclysmSkillEffects::ApplyBurn(Attacker.Actor, Target.Actor,
+										  /*HitDamage=*/99.0f,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/false));
+	TestFalse(TEXT("so the target is not alight"),
+		UCataclysmSkillEffects::HasTag(Target.Actor, Burn));
+
+	TestTrue(TEXT("and one taking a tenth of maximum health lands"),
+		UCataclysmSkillEffects::ApplyBurn(Attacker.Actor, Target.Actor,
+										  /*HitDamage=*/100.0f,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/false));
+	TestTrue(TEXT("so now it is alight"),
+		UCataclysmSkillEffects::HasTag(Target.Actor, Burn));
+
+	// AND A DESIGNED ONE SKIPS THAT TEST ENTIRELY, on its own target so the
+	// refreshed burn above cannot be mistaken for this one.
+	FScopedFighter Second(World, FVector(4 * M, 0, 0));
+	Second.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Second.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+
+	TestTrue(TEXT("a designed burn lands from a blow that dealt nothing at all"),
+		UCataclysmSkillEffects::ApplyBurn(Attacker.Actor, Second.Actor,
+										  /*HitDamage=*/0.0f,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/true));
+	TestTrue(TEXT("and that target is alight"),
+		UCataclysmSkillEffects::HasTag(Second.Actor, Burn));
+
+	return true;
+}
+
+// ==========================================================================
+// The Wand's Hex of Cinders and the Spear's Held Fast
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHexSpreadsFromABurningTargetTest,
+	"Cataclysm.Skills.AHexSpreadsFireOnlyFromATargetAlreadyBurning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHexSpreadsFromABurningTargetTest::RunTest(const FString&)
+{
+	// THE WAND'S HEX OF CINDERS: "Lay a hex on an enemy up to 12 meters away,
+	// applying Shred ... Hexing an enemy that is ALREADY BURNING also sets alight
+	// everything within 4 meters of them." Its second sentence had no parameter
+	// in the row at all until 2026-09-02, which is issue #1146.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE HEXED ENEMY, AND A BYSTANDER TWO METRES FROM IT -- inside the four
+	// metre spread. A third stands twenty metres away, outside everything, so a
+	// spread that lit the level rather than the neighbourhood would be caught.
+	FScopedFighter Hexed(World, FVector(6 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(8 * M, 0, 0));
+	FScopedFighter FarOff(World, FVector(20 * M, 0, 0));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+	const TCHAR* const Row =
+		TEXT("Range=12; MaxTargets=1; EffectDuration=6; Effect=Shred; "
+			 "SpreadWhen=Burning; SpreadRadius=4");
+
+	// THE CONTROL FIRST, ON A TARGET THAT IS NOT BURNING. Without it, a spread
+	// that fired unconditionally would pass every assertion below.
+	UCataclysmDebuffSkill* First = GrantSkill<UCataclysmDebuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support, Row, TEXT("Hex of Cinders"));
+	if (!First)
+	{
+		AddError(TEXT("Could not grant the hex."));
+		return false;
+	}
+
+	TestTrue(TEXT("the hex activates on an enemy that is not burning"),
+		Activate(Caster, First));
+	TestEqual(TEXT("and spreads to nobody"), First->SpreadsLit, 0);
+	TestFalse(TEXT("so the bystander is not alight"),
+		UCataclysmSkillEffects::HasTag(Beside.Actor, Burn));
+
+	// AND NOW THE SAME ROW ON A TARGET THAT IS ALREADY BURNING. A second caster
+	// with its own instance, because a skill commits its cooldown when it fires
+	// and a second cast of the first would be refused by that rather than tested.
+	FScopedFighter SecondCaster(World, FVector(0, 40 * M, 0));
+	FScopedFighter Alight(World, FVector(6 * M, 40 * M, 0));
+	FScopedFighter Neighbour(World, FVector(8 * M, 40 * M, 0));
+
+	UCataclysmSkillEffects::ApplyBurn(SecondCaster.Actor, Alight.Actor,
+									  /*HitDamage=*/0.0f,
+									  /*bScalesWithInstigator=*/true,
+									  /*bBurnIsDesigned=*/true);
+	TestTrue(TEXT("the second target starts alight"),
+		UCataclysmSkillEffects::HasTag(Alight.Actor, Burn));
+	TestFalse(TEXT("and its neighbour does not"),
+		UCataclysmSkillEffects::HasTag(Neighbour.Actor, Burn));
+
+	UCataclysmDebuffSkill* Second = GrantSkill<UCataclysmDebuffSkill>(
+		SecondCaster, ECataclysmAbilitySlot::Support, Row,
+		TEXT("Hex of Cinders"));
+	if (!Second)
+	{
+		AddError(TEXT("Could not grant the second hex."));
+		return false;
+	}
+
+	TestTrue(TEXT("the hex activates"), Activate(SecondCaster, Second));
+
+	TestEqual(TEXT("and the fire spreads to the one neighbour"),
+		Second->SpreadsLit, 1);
+	TestTrue(TEXT("which is now alight"),
+		UCataclysmSkillEffects::HasTag(Neighbour.Actor, Burn));
+
+	// AND NOT TO SOMETHING TWENTY METRES AWAY, which is what says the radius is
+	// read rather than ignored.
+	TestFalse(TEXT("and nothing outside the four metres was lit"),
+		UCataclysmSkillEffects::HasTag(FarOff.Actor, Burn));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSelfBuffRepeatsAndLightsPinnedTest,
+	"Cataclysm.Skills.ASelfBuffStatingAnIntervalRelightsPinnedEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSelfBuffRepeatsAndLightsPinnedTest::RunTest(const FString&)
+{
+	// THE SPEAR'S HELD FAST: "any pinned enemy within 12 meters is set alight
+	// again each second it is held." Until 2026-09-02 a self buff was the only
+	// lasting shape that could not repeat, so this half of the row could not be
+	// written down at all. Issue #1150.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Pinned(World, FVector(4 * M, 0, 0));
+	FScopedFighter Loose(World, FVector(6 * M, 0, 0));
+	FScopedFighter FarOff(World, FVector(20 * M, 0, 0));
+
+	UCataclysmSkillEffects::ApplyPin(Caster.Actor, Pinned.Actor,
+									 /*DurationSeconds=*/7.0f);
+	UCataclysmSkillEffects::ApplyPin(Caster.Actor, FarOff.Actor,
+									 /*DurationSeconds=*/7.0f);
+
+	UCataclysmSelfBuffSkill* HeldFast = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Interval=1; Radius=12; Burn=1; MoreDamagePer=10; "
+			 "ScalingSource=Pinned"),
+		TEXT("Held Fast"));
+	if (!HeldFast)
+	{
+		AddError(TEXT("Could not grant Held Fast."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, HeldFast));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	TestFalse(TEXT("casting it alone sets nobody alight"),
+		UCataclysmSkillEffects::HasTag(Pinned.Actor, Burn));
+	TestEqual(TEXT("and it has not repeated yet"), HeldFast->Repeats, 0);
+
+	// DRIVEN DIRECTLY, because the repeat runs on the world's timer manager and
+	// a world built by `UWorld::CreateWorld` is never ticked. `RepeatTick` is
+	// public for exactly this, the way `Sweep`, `Pulse` and `SwingOnce` are.
+	HeldFast->RepeatTick();
+
+	TestEqual(TEXT("one repeat has run"), HeldFast->Repeats, 1);
+	TestEqual(TEXT("and it lit the one pinned enemy in range"),
+		HeldFast->LastRepeatLit, 1);
+	TestTrue(TEXT("which is alight"),
+		UCataclysmSkillEffects::HasTag(Pinned.Actor, Burn));
+
+	// PINNED IS THE TEST AND NOT MERELY NEARBY. The loose enemy is two metres
+	// closer than the twelve metre radius and is not pinned, so a repeat that
+	// lit everything in range would be caught here.
+	TestFalse(TEXT("an unpinned enemy in range is not lit"),
+		UCataclysmSkillEffects::HasTag(Loose.Actor, Burn));
+
+	// AND THE RADIUS IS READ. The far enemy IS pinned and is twenty metres away.
+	TestFalse(TEXT("and a pinned enemy outside the radius is not lit"),
+		UCataclysmSkillEffects::HasTag(FarOff.Actor, Burn));
 
 	return true;
 }

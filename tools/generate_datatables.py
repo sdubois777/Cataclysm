@@ -237,6 +237,17 @@ SHAPE_RIDERS = {
                    "applying it. The Sword's verb",
     "ConsumeRadius": "metres of whatever consumption produces",
 
+    # SPREADING FIRE WITHOUT CONSUMING IT, which is the opposite of the two
+    # keys directly above. Consuming takes the burn OUT of a target and
+    # spends it; this leaves it burning and lights its neighbours as well.
+    # The Wand's Hex of Cinders is the only row that states it, and issue
+    # #1146 records why it is not written with GroundRadius instead.
+    "SpreadWhen": "what a TARGET must already carry for the skill to spread "
+                  "fire from it, one of SPREAD_CONDITIONS. Not a condition "
+                  "on the cast, which is Requires",
+    "SpreadRadius": "metres the fire spreads from a target that met "
+                    "SpreadWhen",
+
     "MaxDamagePercent": "ceiling on a skill whose damage scales, as percent of "
                         "weapon damage",
     "MinDamagePercent": "floor for a charged skill released immediately, as "
@@ -269,12 +280,21 @@ CHARGE_BREAKS = frozenset({"Stagger", "Death", "Movement", "None"})
 REFUND_TARGETS = frozenset({"Self", "Movement"})
 TARGET_MODES = frozenset({"All", "Nearest", "Furthest"})
 
+#: What a target may already carry for a skill to spread fire from it.
+#:
+#: ONE VALUE, because one row states the key. It is a closed set rather than
+#: free text for the reason every other rider here is: a misspelling would
+#: otherwise reach the engine, fail to match any branch, and spread nothing
+#: while the row read as though it worked.
+SPREAD_CONDITIONS = frozenset({"Burning"})
+
 #: Which closed set each text rider draws from. A rider absent from this map is
 #: a number.
 TEXT_PARAM_VALUES = {
     "ScalingSource": SCALING_SOURCES,
     "ForcedMovement": FORCED_MOVEMENTS,
     "Terrain": TERRAIN_KINDS,
+    "SpreadWhen": SPREAD_CONDITIONS,
     "Requires": REQUIREMENTS,
     "OnDeath": ON_DEATHS,
     "ChargeBreaksOn": CHARGE_BREAKS,
@@ -360,7 +380,13 @@ SHAPE_PARAMS = {
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
                    "TetherTargets", "TetherLength", "TetherDuration"},
-    "SelfBuff": {"Duration", "Radius", "RangeIncrease"},
+    # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
+    # sentence has a per-second half: "any pinned enemy within 12 meters is
+    # set alight again each second it is held". Until then a self buff was
+    # the one lasting shape that could not repeat, so that half of the row
+    # could not be written down at all. Strike, Projectile, Movement, Summon,
+    # Deployable and Aura all already had it.
+    "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease"},
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
@@ -393,7 +419,8 @@ SHAPE_PARAMS = {
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent"},
     "Aura": {"Radius", "Duration", "Interval"},
-    "Debuff": {"Range", "Radius", "MaxTargets", "Duration"},
+    "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
+               "SpreadWhen", "SpreadRadius"},
 }
 
 #: The movement modes, and what each one is.
