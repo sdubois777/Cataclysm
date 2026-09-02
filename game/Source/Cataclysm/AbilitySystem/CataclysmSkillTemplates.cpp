@@ -2196,11 +2196,19 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// that cannot be turned aside. You walk forward for 3 seconds ... throwing
 	// aside and setting alight everything you pass through."
 	//
-	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Fist's Cinder Rush and the
-	// Whip's Reel both state `Mode=Charge` and no duration, and both are one move
-	// to a point that hits what the line crosses. Everything below assumes that
-	// shape -- one search, one `SetActorLocation`, one patch of ground -- and a
-	// walk is none of those.
+	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Whip's Reel states
+	// `Mode=Charge` and no duration, and is one move to a point that hits what
+	// the line crosses. Everything below assumes that shape -- one search, one
+	// `SetActorLocation`, one patch of ground -- and a walk is none of those.
+	//
+	// THE FIST'S CINDER RUSH USED TO BE THE SECOND SUCH ROW AND IS NOT ANY MORE,
+	// AND WHY IT CHANGED IS WORTH KNOWING BEFORE WRITING ANOTHER CHARGE. Its own
+	// sentence is "you are immune to crowd control DURING THE RUSH", and
+	// `UCataclysmSkillTemplate::IsImmuneTo` asks the RUNNING abilities -- so with
+	// no duration the ability ended in the frame it activated and the window was
+	// of no length. The immunity was stated in the row and could never fire. The
+	// row now states `Duration=1.1`, which is a 10 metre charge at the 9.33
+	// metres a second the Greatsword's Inexorable was set to. Issue #1162.
 	//
 	// THE DIRECTION IS TAKEN ONCE, HERE, AND NEVER RE-READ. That is what "cannot
 	// be turned aside" says, and it is also why the aimed point is read before
