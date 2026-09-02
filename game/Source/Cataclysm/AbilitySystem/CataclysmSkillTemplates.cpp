@@ -2162,13 +2162,14 @@ void UCataclysmMovementSkill::FlickerOnce()
 	}
 }
 
-bool UCataclysmMovementSkill::IsBeingWalkedByASkill(const AActor* Who)
+const UCataclysmMovementSkill* UCataclysmMovementSkill::RunningAdvanceOn(
+	const AActor* Who)
 {
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Who);
 	if (!AbilitySystem)
 	{
-		return false;
+		return nullptr;
 	}
 
 	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
@@ -2183,17 +2184,28 @@ bool UCataclysmMovementSkill::IsBeingWalkedByASkill(const AActor* Who)
 
 		// A LASTING CHARGE AND NOTHING ELSE. Every other movement mode ends in
 		// the frame it activates, so it could never be found here anyway; the
-		// two tests are what say this asks about walking rather than about
+		// two tests are what say this asks about a charge rather than about
 		// having a Movement skill at all.
 		if (Running
 			&& Running->Params.MovementMode == ECataclysmMovementMode::Charge
 			&& Running->Params.Duration > 0.0f)
 		{
-			return true;
+			return Running;
 		}
 	}
 
-	return false;
+	return nullptr;
+}
+
+bool UCataclysmMovementSkill::IsBeingWalkedByASkill(const AActor* Who)
+{
+	return RunningAdvanceOn(Who) != nullptr;
+}
+
+FVector UCataclysmMovementSkill::AdvanceDirectionFor(const AActor* Who)
+{
+	const UCataclysmMovementSkill* Running = RunningAdvanceOn(Who);
+	return Running ? Running->Advance : FVector::ZeroVector;
 }
 
 void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
