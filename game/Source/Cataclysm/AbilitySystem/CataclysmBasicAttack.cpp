@@ -145,7 +145,24 @@ float UCataclysmBasicAttack::ReachCmOf(
 	// THE SHIELD IS THE CASE WITH NO BASIC ATTACK AT ALL, and it is handled
 	// above by finding no spec: UCataclysmWeaponSkills::BasicAttackFor leaves
 	// the slot as None for a base with an empty shape, so nothing is granted.
-	return Skill ? Skill->Params.RadiusCm : 0.0f;
+	if (!Skill)
+	{
+		return 0.0f;
+	}
+
+	// AND A RUNNING BUFF MAY LENGTHEN IT. The Whip's Coil of Embers: "your
+	// attack range is increased by 30%". The basic attack is the clearest thing
+	// "attack range" can mean, and it is a separate read from the one in
+	// `UCataclysmSkillTemplate::ScaledRadiusCm` because the two answer different
+	// questions -- that one is how far a SKILL reaches, this one is how far the
+	// automatic swing reaches and how far away it will start swinging at all.
+	//
+	// `ShouldSwingNow` READS THIS, so a character holding the coil begins
+	// swinging at something further away rather than reaching it and missing.
+	return Skill->Params.RadiusCm
+		* (1.0f + UCataclysmSkillTemplate::HeldRangeIncreasePercent(
+					  AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr)
+					  / 100.0f);
 }
 
 bool UCataclysmBasicAttack::SomethingInReach(const AActor* Character,

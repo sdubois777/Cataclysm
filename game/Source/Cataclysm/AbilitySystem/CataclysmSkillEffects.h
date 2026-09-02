@@ -1203,6 +1203,42 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsPinned(const AActor* Actor);
 
+	/** The tag a character carries while nothing can hit it. */
+	static FGameplayTag UntargetableTag();
+
+	/**
+	 * Make this actor impossible to hit for a while.
+	 *
+	 * ONE ROW STATES IT: the Dagger's Everywhere at Once, "for 4 seconds you are
+	 * nowhere long enough to be hit ... nothing can touch you between arrivals".
+	 * Its `Untargetable=1` is what asks.
+	 *
+	 * IT REFUSES THE HIT RATHER THAN HIDING THE CHARACTER, and that is the
+	 * narrower of the two readings on purpose. "Nothing can touch you" is a
+	 * statement about what lands, so `ApplyHit` refuses a blow against a carrier
+	 * and every source of damage in the game goes through that one function.
+	 * Making enemies fail to FIND the character instead would mean changing what
+	 * the enemy brain searches, and a creature that forgot its target for four
+	 * seconds would still be wandering off after the skill ended.
+	 *
+	 * IT IS NOT A HARD STOP AND DOES NOT JOIN `CannotAct`. The character keeps
+	 * acting throughout -- the whole skill is a string of blows -- so this is the
+	 * opposite of a stun rather than a relative of it.
+	 *
+	 * DAMAGE OVER TIME ALREADY ON THE CHARACTER KEEPS TICKING, because a burn is
+	 * applied once and then deals its damage through the attribute set rather
+	 * than through `ApplyHit`. "Nothing can touch you" is about being reached,
+	 * and a fire already burning has reached you.
+	 *
+	 * @return whether the tag was applied
+	 */
+	static bool ApplyUntargetable(AActor* Instigator, AActor* Target,
+								  float DurationSeconds);
+
+	/** Whether this actor cannot be hit right now. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsUntargetable(const AActor* Actor);
+
 	/** Whether this actor is on the floor right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsKnockedDown(const AActor* Actor);
@@ -1223,6 +1259,62 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool CannotAct(const AActor* Actor);
+
+	/**
+	 * How wide the cone behind a creature is, in degrees, for a blow to count
+	 * as landed from behind.
+	 *
+	 * NINETY, MEASURED SYMMETRICALLY ABOUT THE CREATURE'S BACK, so an attacker
+	 * must be within 45 degrees of directly behind it. That is the rear quadrant
+	 * Final Fantasy XIV uses, which divides a creature's hitbox into a front, two
+	 * flanks and a rear off its facing.
+	 *
+	 * THE ALTERNATIVE THE GENRE ALSO OFFERS IS TWICE AS WIDE. Guild Wars 2
+	 * defines "behind" as the 180 degree cone directly behind a target, and
+	 * "flanking" as everything outside the front 90. Divinity: Original Sin 2
+	 * draws a rear arc segment on the targeting circle and allows a backstab only
+	 * from inside it, and only with a dagger.
+	 *
+	 * NINETY WAS CHOSEN BECAUSE IT IS THE STRICTER OF THE TWO and this is the
+	 * Dagger's identity rather than a bonus every weapon gets. It is also the
+	 * vocabulary the Weapon Skills sheet already uses: `Angle` is a cone in
+	 * degrees, and Emberpierce's own is 60.
+	 *
+	 * IT IS A TUNING NUMBER AND SHOULD MOVE AGAINST REAL PLAY. Enemies turn to
+	 * face whoever is hitting them, so how often a player can be inside 45
+	 * degrees of a creature's back is a question about the enemy brain's turning
+	 * speed and cannot be settled by reading. One constant, so moving it moves
+	 * every skill that asks.
+	 */
+	static constexpr float RearArcDegrees = 90.0f;
+
+	/**
+	 * Whether the attacker is standing behind the target.
+	 *
+	 * THREE DAGGER ROWS ASK. Slipstream returns the movement cooldown for "every
+	 * enemy you strike from behind"; Emberpierce "deals 40% more damage from
+	 * behind"; and Everywhere at Once strikes "each from behind as you arrive",
+	 * which its `RearHits=1` states outright rather than leaving to geometry.
+	 *
+	 * MEASURED FROM THE TARGET'S FACING AND NOT FROM THE ATTACKER'S. What makes
+	 * a blow a blow in the back is that the creature taking it was looking the
+	 * other way. Where the attacker happens to be facing does not enter into it,
+	 * and asking about it would mean a character walking backwards out of a fight
+	 * could not be struck from behind at all.
+	 *
+	 * FLATTENED TO THE GROUND PLANE. A creature standing on a ledge above another
+	 * is behind it or not for the same reason one standing level with it is, and
+	 * leaving the height in would make the same ground position answer
+	 * differently for a tall creature and a short one.
+	 *
+	 * FALSE WHEN THE TWO ARE IN THE SAME PLACE, because there is no direction
+	 * between them to judge, and false for anything with no facing at all.
+	 *
+	 * @return whether the attacker is inside `RearArcDegrees` about the target's
+	 *         back
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsBehind(const AActor* Attacker, const AActor* Target);
 
 	/**
 	 * Whether this actor's health has reached zero.

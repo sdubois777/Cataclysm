@@ -14,6 +14,7 @@
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
 #include "AbilitySystem/CataclysmTerrain.h"
+#include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmStrikeEffect.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -231,6 +232,44 @@ void UCataclysmStrikeSkill::Finish()
 // Projectile -- Emberhurl, Blood Pyre, Infernal Lance
 // ==========================================================================
 
+ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
+{
+	Tethered = nullptr;
+
+	if (Params.TetherTargets < 2 || Params.TetherLengthCm <= 0.0f
+		|| Params.TetherDuration <= 0.0f || !IsValid(Caster))
+	{
+		// Every projectile in the game but Tether. It costs three comparisons.
+		return nullptr;
+	}
+
+	// THE NEAREST ONES WITHIN THE SKILL'S RANGE. `FindEnemiesInSphere` answers
+	// nearest first, and "two enemies within 12 meters" does not say which two.
+	//
+	// `RangeCm` AND NOT `ScaledRadiusCm`. The radius of this skill is how wide
+	// its bolt is -- and, now, how close something must come to the line to be
+	// burned by it -- while the range is how far the whip is thrown. Asking the
+	// wrong one would look for two enemies inside a metre and a half.
+	TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Caster, Caster->GetActorLocation(), Params.RangeCm,
+		Params.TetherTargets);
+
+	if (Found.Num() < Params.TetherTargets)
+	{
+		// A Tether thrown at a lone enemy has nothing to tie it to. Not a
+		// failure: the bolt still flies and still sets alight what it touches.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' needed %d enemies to bind and found %d, so it bound "
+				 "nothing."),
+			*SkillName, Params.TetherTargets, Found.Num());
+		return nullptr;
+	}
+
+	Tethered = ACataclysmTether::Bind(Caster, Found, Params.TetherLengthCm,
+									  Params.TetherDuration, ScaledRadiusCm());
+	return Tethered;
+}
+
 void UCataclysmProjectileSkill::ActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -281,6 +320,23 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		}
 
 		Origin = Caster->GetActorLocation();
+
+		// A LINE BOUND BETWEEN TWO ENEMIES, IF THE ROW ASKS FOR ONE. The Whip's
+		// Tether: "bind two enemies within 12 meters together with a burning
+		// line." Its `TetherTargets`, `TetherLength` and `TetherDuration` were
+		// parsed and read by nothing at all until 2026-09-02.
+		//
+		// AT THE MOMENT OF RELEASE AND NOT WHEN THE BOLT ARRIVES. The row binds
+		// "two enemies within 12 meters", which is a statement about the fight
+		// when the whip is thrown; waiting for the bolt would bind whichever two
+		// happened to be nearest a fifth of a second later, and a Tether thrown
+		// at a group that then scattered would bind nobody.
+		//
+		// THE BOLT IS NOT WHAT BINDS THEM, WHICH IS WHY THIS IS NOT IN
+		// `ACataclysmProjectile`. The row does not say the line is drawn between
+		// what the whip hit; it says two enemies within range are bound. The
+		// projectile still flies and still sets alight what it touches.
+		BindTether(Caster);
 
 		// A RACK OF THIRTY RATHER THAN ONE THROW. The Axe's Butcher's Bill is
 		// the only row that states a Count beside an Interval, and it needs the
@@ -797,7 +853,9 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	// next one part way through.
 	Repeats = 0;
 	LastRepeatLit = 0;
+	LastRepeatShoved = 0;
 	TerrainLeft = 0;
+	CooldownsReturned = 0;
 
 	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
 	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
@@ -1040,9 +1098,11 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 {
 	++Repeats;
 	LastRepeatLit = 0;
+	LastRepeatShoved = 0;
 
 	AActor* Self = Avatar();
-	if (!Self || !Params.bBurns || ScaledRadiusCm() <= 0.0f)
+	const bool bDoesSomething = Params.bBurns || Params.KnockbackCm > 0.0f;
+	if (!Self || !bDoesSomething || ScaledRadiusCm() <= 0.0f)
 	{
 		// A buff that states an interval and nothing to do on it ticks and
 		// changes nothing. That is the honest answer for a row that asked to
@@ -1075,25 +1135,69 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 		// the fire is the buff's, not a blow's -- and burn has been a flat 25 a
 		// second since 2026-08-24, so the figure changes nothing about what the
 		// burn deals.
-		if (UCataclysmSkillEffects::ApplyBurn(Self, Nearby, /*HitDamage=*/0.0f,
-											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true))
+		if (Params.bBurns
+			&& UCataclysmSkillEffects::ApplyBurn(Self, Nearby, /*HitDamage=*/0.0f,
+												 /*bScalesWithInstigator=*/true,
+												 /*bBurnIsDesigned=*/true))
 		{
 			++LastRepeatLit;
 		}
+
+		// AND A ROW MAY SHOVE ON THE SAME REPEAT. The Whip's Coil of Embers:
+		// "any enemy that comes within 3 meters is hauled off their feet and
+		// dragged back out to the edge of your reach."
+		//
+		// THE SWEEP IS WHAT MAKES IT "ANY ENEMY THAT COMES WITHIN". There is no
+		// blow to hang it on: the coil is a Support-slot buff that never strikes
+		// anything, so the knockback rider in `HitTargets` -- which is where
+		// every other shove in the game happens -- can never fire for it. A
+		// repeat that looks at the radius is the only shape that expresses a
+		// condition about approaching rather than about being hit.
+		//
+		// "OFF THEIR FEET" IS NOT A KNOCKDOWN AND THE ROW SAYS SO BY OMISSION.
+		// The Whip's own Gathering states `ForcedMovement=Pull, Knockdown` when
+		// it means a creature cannot rise; this row states `Knockback` and
+		// nothing else, so what it describes is the shove.
+		if (Params.KnockbackCm > 0.0f
+			&& UCataclysmSkillEffects::ApplyKnockback(Self, Nearby,
+													  Params.KnockbackCm))
+		{
+			++LastRepeatShoved;
+		}
 	}
 
-	if (LastRepeatLit > 0)
+	if (LastRepeatLit > 0 || LastRepeatShoved > 0)
 	{
 		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' set %d %senemies alight on repeat %d."),
+			TEXT("'%s' set %d %senemies alight and shoved %d on repeat %d."),
 			*SkillName, LastRepeatLit, bOnlyPinned ? TEXT("pinned ") : TEXT(""),
-			Repeats);
+			LastRepeatShoved, Repeats);
 	}
 }
 
-void UCataclysmSelfBuffSkill::NoteBlowLanded(const FVector& Where)
+void UCataclysmSelfBuffSkill::NoteBlowLanded(const FVector& Where,
+											bool bFromBehind)
 {
+	// THE DAGGER'S SLIPSTREAM: "every enemy you strike from behind returns your
+	// movement skill to you at once. Blows landed from the front do nothing for
+	// it." The second sentence is why this is a test and not an unconditional
+	// refund, and it is the only reason the side travels this far.
+	//
+	// `Requires=RearHit` IS WHAT ASKS. Every other condition that key may name is
+	// judged before the cast in `RequirementsAreMet`, which deliberately leaves
+	// this one out; this is the other end of that decision finally being read.
+	//
+	// AT ONCE AND EVERY TIME, WITH NO LIMIT, which is what the row says. What
+	// bounds it is that returning a cooldown already returned does nothing:
+	// `RefundCooldown` answers false when there was no cooldown effect to take
+	// off, so a second rear blow while the movement skill is already ready is
+	// counted as nothing rather than banked.
+	if (bFromBehind && RequiresCondition(TEXT("RearHit"))
+		&& RefundCooldown())
+	{
+		++CooldownsReturned;
+	}
+
 	if (Params.Terrain.IsEmpty())
 	{
 		// Every self buff in the game but Groundbreaker. It costs a string test.
@@ -1181,6 +1285,82 @@ void UCataclysmMovementSkill::ActivateAbility(
 	const FGameplayAbilityActivationInfo ActivationInfo,
 	const FGameplayEventData* TriggerEventData)
 {
+	// THE FIRST PRESS OF A RECALL LEAVES A MARK AND COSTS NOTHING, WHICH IS THE
+	// ONE PLACE THIS SHAPE COMMITS LATE. The Dagger's Echo: "leave a burning
+	// after-image where you stand. For 8 seconds you may return to it from
+	// anywhere within 14 meters; the image bursts as you arrive."
+	//
+	// THE SKILL IS TWO PRESSES AND ONLY THE SECOND ONE DOES ANYTHING. Leaving a
+	// mark moves nobody, damages nobody and burns nothing; the return is the
+	// whole of what the row describes. So the mana and the cooldown are charged
+	// then, and this branch runs before `CommitAndBegin`.
+	//
+	// IT HAD TO BE THIS WAY ROUND RATHER THAN THE OBVIOUS ONE. Charging on the
+	// first press starts the Special slot's five second cooldown, and the mark
+	// lasts eight, so the row's "for 8 seconds you may return to it" would have
+	// been three -- and the player would have paid for a skill that had not
+	// happened yet.
+	//
+	// A SECOND FIRST-PRESS SIMPLY MOVES THE MARK, because a mark is not an object
+	// and holding two of them would need a rule about which one a return takes.
+	// Nothing is spent, so nothing is lost by moving it.
+	if (Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		AActor* Marker = Avatar();
+		const UWorld* World = GetWorld();
+		if (!Marker || !World || Params.EffectDuration <= 0.0f)
+		{
+			// A Recall row stating no window cannot be returned to, so refusing
+			// here is better than leaving a mark that never expires.
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+
+		if (!HasMark())
+		{
+			MarkedAt = Marker->GetActorLocation();
+			MarkExpiresAt = World->GetTimeSeconds() + Params.EffectDuration;
+
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' left a mark, good for %.1f seconds."),
+				*SkillName, Params.EffectDuration);
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+			return;
+		}
+
+		// AND THE RETURN HAS A RANGE, WHICH THE ROW STATES AND WHICH IS EASY TO
+		// MISS BECAUSE THE FIRST PRESS DOES NOT USE IT. Echo reads "for 8 seconds
+		// you may return to it FROM ANYWHERE WITHIN 14 METERS", so the fourteen
+		// is a limit on the return and on nothing else. Without this the mark
+		// could be reached from the far side of the level.
+		//
+		// REFUSED RATHER THAN CLAMPED, and the mark is kept. Walking too far and
+		// pressing again is the player getting the distance wrong, not asking to
+		// throw the mark away; a clamp would drop them somewhere they did not
+		// mark, which is worse than not moving.
+		//
+		// BEFORE `CommitAndBegin`, SO A REFUSED RETURN COSTS NOTHING. That is the
+		// same order `CanActivateAbility` uses for the conditions in the
+		// `Requires` column: a skill whose condition fails spends no mana and
+		// starts no cooldown.
+		//
+		// ALONG THE GROUND, so standing on a ledge above the mark does not put it
+		// out of reach.
+		FVector Apart = MarkedAt - Marker->GetActorLocation();
+		Apart.Z = 0.0f;
+		if (Params.RangeCm > 0.0f && Apart.Size() > Params.RangeCm)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' is %.0fcm from its mark and may return from %.0fcm, "
+					 "so the mark was kept and nothing was spent."),
+				*SkillName, Apart.Size(), Params.RangeCm);
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+	}
+
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
@@ -1195,6 +1375,73 @@ void UCataclysmMovementSkill::ActivateAbility(
 
 	const FVector Start = Self->GetActorLocation();
 
+	// A FLICKER DOES NOT ARRIVE ONCE, SO IT LEAVES THIS FUNCTION EARLY. The
+	// Dagger's Everywhere at Once: "for 4 seconds you are nowhere long enough to
+	// be hit. You flicker between every enemy within 10 meters, striking each
+	// from behind as you arrive."
+	//
+	// EVERYTHING BELOW THIS ASSUMES ONE DEPARTURE AND ONE ARRIVAL -- one search,
+	// one `SetActorLocation`, one patch of ground -- and a repeat is none of
+	// those things. Threading it through the same body would mean a condition on
+	// every one of them.
+	if (Params.MovementMode == ECataclysmMovementMode::Flicker)
+	{
+		// THE CIRCUIT IS FIXED HERE AND NEVER RE-SEARCHED. "Every enemy within
+		// 10 meters" is read at the moment of casting. It also stops the skill
+		// walking across the level: each arrival moves the caster, so a fresh
+		// search would be centred somewhere new every time and could wander from
+		// one group to the next for as long as the skill ran.
+		FlickerCircuit.Reset();
+		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+				GetWorld(), Self, Start, Params.RangeCm, Params.MaxTargets))
+		{
+			FlickerCircuit.Add(Enemy);
+		}
+
+		NextInCircuit = 0;
+		Arrivals = 0;
+		EnemiesHit = FlickerCircuit.Num();
+		ArrivedAt = Start;
+
+		// "NOTHING CAN TOUCH YOU BETWEEN ARRIVALS", FOR THE WHOLE DURATION. It
+		// is applied whether or not anything was found: the row pays for the
+		// four seconds of safety as much as for the blows, and a flicker cast
+		// into an empty room should not also strip the escape it was.
+		if (Params.bUntargetable)
+		{
+			UCataclysmSkillEffects::ApplyUntargetable(Self, Self,
+													  Params.Duration);
+		}
+
+		// THE FIRST ARRIVAL IS AT ONCE AND NOT AN INTERVAL IN, which is the
+		// opposite of what burning ground and the aura do and the difference is
+		// what the sentence describes. Those two say what happens WHILE they
+		// run; this one IS its arrivals, and a third of a second of standing
+		// still at the start would be a third of a second the row does not
+		// mention.
+		FlickerOnce();
+
+		if (UWorld* World = GetWorld();
+			World && Params.Interval > 0.0f && Params.Duration > 0.0f)
+		{
+			World->GetTimerManager().SetTimer(
+				FlickerTimer, this, &UCataclysmMovementSkill::FlickerOnce,
+				Params.Interval, /*bLoop=*/true,
+				/*InFirstDelay=*/Params.Interval);
+
+			FTimerHandle Stop;
+			World->GetTimerManager().SetTimer(
+				Stop, this, &UCataclysmMovementSkill::FinishFlicker,
+				Params.Duration, /*bLoop=*/false);
+			return;
+		}
+
+		// A row stating no interval or no duration flickers once and stops,
+		// rather than running for ever.
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
 	// WHERE IT ARRIVES IS THE ENEMY, NOT THE CURSOR, WHEN THE ROW SAYS SO. The
 	// Sword's Flashpoint reads "dart to a burning enemy up to 14 meters away"
 	// and closes with "only something already alight can be reached", so the
@@ -1205,7 +1452,21 @@ void UCataclysmMovementSkill::ActivateAbility(
 	//
 	// THE AXE'S EMBERHAUL WORKS THE SAME WAY through `Requires=Target`: "bury
 	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
-	const FVector End = ConditionalDestination(Start);
+	FVector End = ConditionalDestination(Start);
+
+	// AND A RETURN GOES WHERE THE MARK IS, WHICH IS THE WHOLE OF WHAT SEPARATES
+	// `Recall` FROM `Blink`. Both arrive somewhere and burst; a blink picks the
+	// destination now, and a recall picked it on the press that left the mark.
+	// Echo: "for 8 seconds you may return to it."
+	//
+	// THE MARK IS SPENT AS IT IS READ, so the next press of the skill leaves a
+	// fresh one rather than returning to a place the character is already
+	// standing in.
+	if (Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		End = MarkedAt;
+		MarkExpiresAt = 0.0;
+	}
 
 	TArray<AActor*> Targets;
 	switch (Params.MovementMode)
@@ -1230,6 +1491,13 @@ void UCataclysmMovementSkill::ActivateAbility(
 		}
 		break;
 
+	case ECataclysmMovementMode::Recall:
+		// "THE IMAGE BURSTS AS YOU ARRIVE, SETTING ALIGHT EVERYTHING WITHIN 3
+		// METERS": the arrival only, which is the same search the Leap below
+		// makes. Named here rather than left to fall through, because a mode
+		// reaching `default` by accident is exactly what issue #1139 was about
+		// -- Recall, Flicker and Swap all silently ran the Leap code, and two of
+		// those were wrong.
 	case ECataclysmMovementMode::Leap:
 	default:
 		// "Slam down, dealing damage in a 5 meter radius on impact": where it
@@ -1315,6 +1583,82 @@ void UCataclysmMovementSkill::ActivateAbility(
 	LeaveTerrainAlong(ArrivedAt, ArrivedAt);
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+bool UCataclysmMovementSkill::HasMark() const
+{
+	const UWorld* World = GetWorld();
+	return World && MarkExpiresAt > World->GetTimeSeconds();
+}
+
+void UCataclysmMovementSkill::FlickerOnce()
+{
+	AActor* Self = Avatar();
+	if (!Self || FlickerCircuit.Num() == 0)
+	{
+		return;
+	}
+
+	// THE NEXT ONE STILL STANDING, AND THE SEARCH GIVES UP AFTER A FULL LAP. A
+	// flicker that has killed everything it found keeps its four seconds of
+	// safety and simply stops moving, which is why this returns quietly rather
+	// than ending the ability: the untargetability is half of what the row paid
+	// for.
+	const int32 Count = FlickerCircuit.Num();
+	for (int32 Tried = 0; Tried < Count; ++Tried)
+	{
+		AActor* Next = FlickerCircuit[NextInCircuit].Get();
+		NextInCircuit = (NextInCircuit + 1) % Count;
+
+		if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+		{
+			continue;
+		}
+
+		// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
+		// arrangement `ConditionalDestination` uses and for the same two
+		// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
+		// collision stops the caster short of it; and taking the creature's
+		// height would drop a character through the floor when it arrived at
+		// something standing lower.
+		const FVector Feet(Next->GetActorLocation().X,
+						   Next->GetActorLocation().Y,
+						   Self->GetActorLocation().Z);
+		Self->SetActorLocation(Feet, /*bSweep=*/true);
+		ArrivedAt = Self->GetActorLocation();
+		++Arrivals;
+
+		// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
+		// one blow at the one it arrived at, not a sweep of whatever is nearby.
+		//
+		// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
+		// `RearHits=1` is read in `HitTargets`, which is also where the burn
+		// rider fires, so both halves of "striking each from behind ... and
+		// setting them alight" are handled by the blow rather than here.
+		TArray<AActor*> One;
+		One.Add(Next);
+		HitScaled(One, TArray<AActor*>());
+
+		return;
+	}
+}
+
+void UCataclysmMovementSkill::FinishFlicker()
+{
+	// THE REPEAT IS STOPPED BEFORE THE ABILITY ENDS, not left to `EndAbility`.
+	// A looping timer on an object the engine keeps alive would go on arriving
+	// after the skill was over, for ever, because nothing else clears it.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FlickerTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' made %d arrivals among %d enemies."),
+		*SkillName, Arrivals, FlickerCircuit.Num());
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
 }
 
 // ==========================================================================

@@ -260,6 +260,30 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// NOTHING CAN TOUCH A CHARACTER THAT CANNOT BE TOUCHED. The Dagger's
+	// Everywhere at Once: "for 4 seconds you are nowhere long enough to be hit
+	// ... nothing can touch you between arrivals."
+	//
+	// HERE, BECAUSE THIS IS THE ONE PLACE EVERY BLOW IN THE GAME IS DEALT. A
+	// strike, a projectile, an aura pulse, a minion's swing and a patch of
+	// burning ground all arrive at this function, so one test covers all of them
+	// -- the same argument that put the knockback and forced-movement riders in
+	// `HitTargets`.
+	//
+	// BEFORE ANY OF THE PIPELINE BELOW, so an untargetable character is not
+	// merely taking zero: nothing is computed, nothing is applied, and no rider
+	// downstream sees a blow that landed for nothing. `ApplyHit` returning zero
+	// is what every caller already treats as "this did not land".
+	//
+	// IT DOES NOT STOP DAMAGE OVER TIME ALREADY ON THE CHARACTER. A burn deals
+	// its damage through the attribute set rather than through this function, so
+	// a fire lit before the skill went up keeps burning. That is the right
+	// reading of "nothing can touch you", which is about being reached.
+	if (IsUntargetable(Target))
+	{
+		return 0.0f;
+	}
+
 	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
 	//
 	// `AttackDamage` is already `(base + flat) x (1 + increases)`, and two
@@ -1091,6 +1115,35 @@ bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
 	return HasTag(Actor, PinnedTag());
 }
 
+FGameplayTag UCataclysmSkillEffects::UntargetableTag()
+{
+	// Requested by name rather than declared natively, for the reason `BurnTag`
+	// gives: a native declaration would create the tag whether or not the
+	// workbook still lists it, hiding exactly the disagreement that matters.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Untargetable")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::ApplyUntargetable(AActor* Instigator,
+											   AActor* Target,
+											   float DurationSeconds)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		// A row stating `Untargetable=1` and no duration protects nobody, rather
+		// than protecting them for ever.
+		return false;
+	}
+
+	return ApplyTagForDuration(Instigator, Target, UntargetableTag(),
+							   DurationSeconds);
+}
+
+bool UCataclysmSkillEffects::IsUntargetable(const AActor* Actor)
+{
+	return HasTag(Actor, UntargetableTag());
+}
+
 bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)
 {
 	// THE DESIGN'S OWN ROW AND NOT EITHER HALF OF IT. Section VI puts Stun and
@@ -1101,6 +1154,46 @@ bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)
 	// A PIN IS NOT HERE. It stops movement and leaves everything else, which is
 	// the whole difference between the two groups.
 	return IsStunned(Actor) || IsKnockedDown(Actor);
+}
+
+bool UCataclysmSkillEffects::IsBehind(const AActor* Attacker,
+									  const AActor* Target)
+{
+	if (!IsValid(Attacker) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// THE TARGET'S FACING, FLATTENED. Both reasons are in the header: what makes
+	// a blow a blow in the back is that the creature taking it was looking the
+	// other way, and a ledge above a creature is behind it or not for the same
+	// reason level ground is.
+	FVector Facing = Target->GetActorForwardVector();
+	Facing.Z = 0.0f;
+
+	FVector ToAttacker =
+		Attacker->GetActorLocation() - Target->GetActorLocation();
+	ToAttacker.Z = 0.0f;
+
+	// `Normalize` ANSWERS FALSE FOR A VECTOR TOO SHORT TO HAVE A DIRECTION, and
+	// both cases are real. Two characters standing in the same place have no
+	// direction between them, and an actor with no rotation at all -- which a
+	// bare test fighter can be -- has no facing to be behind.
+	if (!Facing.Normalize() || !ToAttacker.Normalize())
+	{
+		return false;
+	}
+
+	// THE ANGLE BETWEEN THE TARGET'S FACING AND THE DIRECTION TO THE ATTACKER.
+	// Zero means the attacker is directly in front and 180 means directly
+	// behind, so the distance from straight-behind is what is left of half a
+	// turn -- and the arc is symmetric about the back, which is why one
+	// subtraction answers both sides of it.
+	const float FromFacing = FMath::RadiansToDegrees(FMath::Acos(
+		FMath::Clamp(static_cast<float>(FVector::DotProduct(Facing, ToAttacker)),
+					 -1.0f, 1.0f)));
+
+	return 180.0f - FromFacing <= RearArcDegrees / 2.0f;
 }
 
 namespace

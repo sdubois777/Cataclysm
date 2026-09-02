@@ -71,7 +71,7 @@ War_Spear_Heavy,Spear,War,Heavy,Impaler,"Drive your spear into the ground with f
 Death_Dagger_Support,Dagger,Death,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 Chaos_Dagger_Support,Dagger,Chaos,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 Famine_Dagger_Support,Dagger,Famine,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
-Demonic_Dagger_Heavy,Dagger,Demonic,Heavy,Emberpierce,"Drive the dagger into a single enemy and leave the heat behind in the wound, setting them alight. The strike deals 40% more damage from behind.","Item.Weapon.Dagger, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Burn=1,-1.0,-1.0,-1.0,-1.0
+Demonic_Dagger_Heavy,Dagger,Demonic,Heavy,Emberpierce,"Drive the dagger into a single enemy and leave the heat behind in the wound, setting them alight. The strike deals 40% more damage from behind.","Item.Weapon.Dagger, Element.Demonic, Type.Strike, Type.Melee, Stat.Offense.Global, Keyword.DoT.Burn, Slot.Heavy",Strike,Radius=2.5; Angle=60; MaxTargets=1; Burn=1; MoreDamageFromBehind=40,-1.0,-1.0,-1.0,-1.0
 Pestilence_Dagger_Heavy,Dagger,Pestilence,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 Void_Dagger_Heavy,Dagger,Void,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 War_Sword_Heavy,Sword,War,Heavy,Rending Strike,"Drive your sword forward in a powerful lunge that pierces through the target, dealing heavy damage and applying a deep wound that causes the target to bleed for 8 seconds. The wound reduces the target's armor by 15% for the duration.","Item.Weapon.Sword, Element.War, Type.Strike, Type.Melee, Keyword.DoT.Bleed, Stat.Defense.Armor, Slot.Heavy",,,-1.0,-1.0,-1.0,-1.0
@@ -287,7 +287,7 @@ War_Fist_Support,Fist,War,Support,Iron Skin,"Harden your body against incoming b
 Death_Staff_Special,Staff,Death,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
 Chaos_Staff_Special,Staff,Chaos,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
 Famine_Staff_Special,Staff,Famine,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
-Demonic_Whip_Support,Whip,Demonic,Support,Coil of Embers,"Wind burning coils about yourself for 10 seconds. Your attack range is increased by 30%, and any enemy that comes within 3 meters is hauled off their feet and dragged back out to the edge of your reach.","Item.Weapon.Whip, Element.Demonic, Type.Buff, Stat.Offense.Range, Keyword.CC, Keyword.Stagger, Slot.Support",SelfBuff,Duration=10; Radius=3; RangeIncrease=30; Knockback=3,-1.0,-1.0,-1.0,-1.0
+Demonic_Whip_Support,Whip,Demonic,Support,Coil of Embers,"Wind burning coils about yourself for 10 seconds. Your attack range is increased by 30%, and any enemy that comes within 3 meters is hauled off their feet and dragged back out to the edge of your reach.","Item.Weapon.Whip, Element.Demonic, Type.Buff, Stat.Offense.Range, Keyword.CC, Keyword.Stagger, Slot.Support",SelfBuff,Duration=10; Interval=1; Radius=3; RangeIncrease=30; Knockback=3,-1.0,-1.0,-1.0,-1.0
 Pestilence_Whip_Support,Whip,Pestilence,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 Void_Whip_Support,Whip,Void,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 War_Shield_Support,Shield,War,Support,Braced Guard,"Raise your shield and brace for impact, increasing your block chance to 100% for 3 seconds. Damage blocked during this time is stored and added to your next attack as bonus damage up to a cap of 200% weapon damage.","Item.Weapon.Shield, Element.War, Stat.Defense.Block, Stat.Offense.Global, Slot.Support",,,-1.0,-1.0,-1.0,-1.0

@@ -19,6 +19,7 @@
 // For the resistance a Shred cuts, and for reading it back. Issue #37.
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -7857,4 +7858,782 @@ bool FCataclysmSelfBuffRepeatsAndLightsPinnedTest::RunTest(const FString&)
 
 	return true;
 }
+// ==========================================================================
+// Which side a blow came from, and the three Dagger rows that ask
+// ==========================================================================
+
+/**
+ * A blow from behind is told apart from one from the front.
+ *
+ * WHAT THIS GUARDS. Nothing in the project computed this before 2026-09-02, and
+ * three Dagger rows are written as though it did: Slipstream returns the
+ * movement cooldown for "every enemy you strike from behind", Emberpierce "deals
+ * 40% more damage from behind", and Everywhere at Once strikes "each from behind
+ * as you arrive".
+ *
+ * A FIGHTER SPAWNS WITH NO ROTATION, so its forward direction is +X. An attacker
+ * standing at -X is directly behind it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBehindIsMeasuredFromTheTargetTest,
+	"Cataclysm.Skills.ABlowFromBehindIsToldApartFromOneInFront",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBehindIsMeasuredFromTheTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Target(World, FVector::ZeroVector);
+	FScopedFighter Behind(World, FVector(-2 * M, 0, 0));
+	FScopedFighter InFront(World, FVector(2 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(0, 2 * M, 0));
+
+	TestTrue(TEXT("directly behind is behind"),
+		UCataclysmSkillEffects::IsBehind(Behind.Actor, Target.Actor));
+	TestFalse(TEXT("directly in front is not"),
+		UCataclysmSkillEffects::IsBehind(InFront.Actor, Target.Actor));
+
+	// A QUARTER TURN AWAY IS THE FLANK AND IS NOT BEHIND. The cone is 90 degrees
+	// wide about the back, so a right angle from the target's facing is 90
+	// degrees from straight-behind and outside it.
+	TestFalse(TEXT("and standing at its side is not"),
+		UCataclysmSkillEffects::IsBehind(Beside.Actor, Target.Actor));
+
+	// THE EDGE OF THE CONE, FROM BOTH SIDES OF IT. An attacker 140 degrees round
+	// from the target's facing is 40 from straight-behind and inside the 45 the
+	// arc allows; one at 130 degrees is 50 from straight-behind and outside. Two
+	// cases ten degrees apart, so neither can pass by accident.
+	const float JustInside = FMath::DegreesToRadians(140.0f);
+	const float JustOutside = FMath::DegreesToRadians(130.0f);
+	FScopedFighter Inside(World,
+		FVector(FMath::Cos(JustInside) * 2 * M, FMath::Sin(JustInside) * 2 * M, 0));
+	FScopedFighter Outside(World,
+		FVector(FMath::Cos(JustOutside) * 2 * M, FMath::Sin(JustOutside) * 2 * M, 0));
+
+	TestTrue(TEXT("forty degrees off straight-behind is still behind"),
+		UCataclysmSkillEffects::IsBehind(Inside.Actor, Target.Actor));
+	TestFalse(TEXT("and fifty degrees off is not"),
+		UCataclysmSkillEffects::IsBehind(Outside.Actor, Target.Actor));
+
+	// AND IT IS THE TARGET'S FACING THAT DECIDES, WHICH IS THE WHOLE POINT.
+	// Turning the target around, without moving anybody, swaps both answers.
+	Target.Actor->SetActorRotation(FRotator(0.0f, 180.0f, 0.0f));
+
+	TestFalse(TEXT("turning the target round makes the one behind it in front"),
+		UCataclysmSkillEffects::IsBehind(Behind.Actor, Target.Actor));
+	TestTrue(TEXT("and the one in front of it behind"),
+		UCataclysmSkillEffects::IsBehind(InFront.Actor, Target.Actor));
+
+	// NOBODY IS BEHIND SOMETHING THEY ARE STANDING INSIDE. There is no direction
+	// between two characters in the same place to judge.
+	TestFalse(TEXT("and a target is not behind itself"),
+		UCataclysmSkillEffects::IsBehind(Target.Actor, Target.Actor));
+
+	return true;
+}
+
+/**
+ * Emberpierce deals what its row says from behind, and its slot's figure in
+ * front.
+ *
+ * ITS SENTENCE HAD NO PARAMETER AT ALL UNTIL 2026-09-02. "Drive the dagger into
+ * a single enemy and leave the heat behind in the wound, setting them alight.
+ * The strike deals 40% more damage from behind." The row stated `Radius=2.5;
+ * Angle=60; MaxTargets=1; Burn=1` and nothing else, so it dealt the same from
+ * every side and read as a finished skill.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRearDamageBonusTest,
+	"Cataclysm.Skills.AStrikeDealsMoreFromBehindWhenItsRowSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRearDamageBonusTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// EMBERPIERCE'S OWN ROW WITHOUT ITS BURN. The burn is covered elsewhere and
+	// leaving it in would put a second source of damage on the target between
+	// the two readings taken below.
+	const TCHAR* const Row =
+		TEXT("Radius=2.5; Angle=60; MaxTargets=1; MoreDamageFromBehind=40");
+
+	// TWO CASTERS AND TWO TARGETS, THIRTY METRES APART, so neither cast can see
+	// the other's target and neither instance has ever fired before. A single
+	// caster would have committed the Heavy slot's cooldown on the first cast and
+	// the second would have been refused by that rather than measured.
+	FScopedFighter FromBehind(World, FVector::ZeroVector);
+	FScopedFighter Unaware(World, FVector(2 * M, 0, 0));
+
+	FScopedFighter FromTheFront(World, FVector(0, 30 * M, 0));
+	FScopedFighter Facing(World, FVector(2 * M, 30 * M, 0));
+
+	// THE CONTROL IS THE TARGET'S ROTATION AND NOTHING ELSE. Both targets stand
+	// two metres in front of their caster; this one is turned to face it, so the
+	// identical blow arrives from the front.
+	Facing.Actor->SetActorRotation(FRotator(0.0f, 180.0f, 0.0f));
+
+	UCataclysmStrikeSkill* Rear = GrantSkill<UCataclysmStrikeSkill>(
+		FromBehind, ECataclysmAbilitySlot::Heavy, Row, TEXT("Emberpierce"));
+	UCataclysmStrikeSkill* Front = GrantSkill<UCataclysmStrikeSkill>(
+		FromTheFront, ECataclysmAbilitySlot::Heavy, Row, TEXT("Emberpierce"));
+	if (!Rear || !Front)
+	{
+		AddError(TEXT("Could not grant the strikes."));
+		return false;
+	}
+
+	const float UnawareBefore = Unaware.Health();
+	const float FacingBefore = Facing.Health();
+
+	TestTrue(TEXT("the blow from behind lands"), Activate(FromBehind, Rear));
+	TestTrue(TEXT("and the blow from the front lands"),
+		Activate(FromTheFront, Front));
+
+	const float DealtFromBehind = UnawareBefore - Unaware.Health();
+	const float DealtFromTheFront = FacingBefore - Facing.Health();
+
+	// THE FRONT READING IS THE CONTROL AND IT HAS TO BE A REAL BLOW. Without
+	// this, two blows that both dealt nothing would satisfy the ratio below.
+	TestTrue(TEXT("the blow from the front dealt something"),
+		DealtFromTheFront > 0.0f);
+
+	TestEqual(TEXT("and the one from behind dealt 40% more"),
+		DealtFromBehind, DealtFromTheFront * 1.4f, 0.5f);
+
+	return true;
+}
+
+/**
+ * Slipstream returns the movement cooldown for a blow from behind and not for
+ * one from the front.
+ *
+ * BOTH HALVES OF ITS SENTENCE. "For 8 seconds every enemy you strike from behind
+ * returns your movement skill to you at once. Blows landed from the front do
+ * nothing for it." Its row is `Duration=8; Requires=RearHit;
+ * RefundsCooldown=Movement`, and `Requires=RearHit` was deliberately excluded
+ * from the cast-time condition check with a comment saying it belonged here.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSlipstreamReturnsTheMoveTest,
+	"Cataclysm.Skills.ABuffReturnsTheMovementCooldownOnlyForARearBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSlipstreamReturnsTheMoveTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// A MOVEMENT SKILL THAT DOES NOT MOVE, cast only to put its slot on
+	// cooldown. `Range=0` makes its destination the caster's own position, so
+	// the character is standing where the rest of the test expects it.
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=0"), TEXT("A step"));
+	UCataclysmSelfBuffSkill* Slipstream = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=8; Requires=RearHit; RefundsCooldown=Movement"),
+		TEXT("Slipstream"));
+	if (!Step || !Slipstream)
+	{
+		AddError(TEXT("Could not grant the skills."));
+		return false;
+	}
+
+	TestTrue(TEXT("the movement skill fires"), Activate(Caster, Step));
+	TestTrue(TEXT("so the movement slot is on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	TestTrue(TEXT("and the buff goes up"), Activate(Caster, Slipstream));
+
+	// A BLOW FROM THE FRONT DOES NOTHING FOR IT, WHICH IS THE ROW'S SECOND
+	// SENTENCE AND THE CONTROL FOR THE WHOLE TEST. Without it, a buff that
+	// returned the cooldown on every blow would pass the assertion below.
+	Slipstream->NoteBlowLanded(FVector(2 * M, 0, 0), /*bFromBehind=*/false);
+	TestEqual(TEXT("a blow from the front returns nothing"),
+		Slipstream->CooldownsReturned, 0);
+	TestTrue(TEXT("so the movement slot is still on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	Slipstream->NoteBlowLanded(FVector(2 * M, 0, 0), /*bFromBehind=*/true);
+	TestEqual(TEXT("and one from behind returns it"),
+		Slipstream->CooldownsReturned, 1);
+	TestFalse(TEXT("so the movement slot is ready again"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	return true;
+}
+
+/**
+ * A real blow landed from behind reaches the buff, without the test telling it
+ * which side the blow came from.
+ *
+ * THE OTHER HALF OF THE TEST ABOVE, AND THE REASON IT EXISTS. That one hands
+ * `NoteBlowLanded` the answer, which proves the buff reacts correctly and proves
+ * nothing about whether a blow in the game ever arrives with that answer set.
+ * This one strikes a real target and lets the geometry decide.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSlipstreamHearsARealBlowTest,
+	"Cataclysm.Skills.ARealBlowFromBehindReachesTheBuffThatWantsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSlipstreamHearsARealBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// TWO METRES IN FRONT OF THE CASTER AND FACING AWAY FROM IT, so the caster
+	// is behind it. A fighter spawns facing +X and this one is not turned round.
+	FScopedFighter Unaware(World, FVector(2 * M, 0, 0));
+
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=0"), TEXT("A step"));
+	UCataclysmSelfBuffSkill* Slipstream = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=8; Requires=RearHit; RefundsCooldown=Movement"),
+		TEXT("Slipstream"));
+	UCataclysmStrikeSkill* Stab = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=3; Angle=60; MaxTargets=1"), TEXT("A stab"));
+	if (!Step || !Slipstream || !Stab)
+	{
+		AddError(TEXT("Could not grant the skills."));
+		return false;
+	}
+
+	TestTrue(TEXT("the movement skill fires"), Activate(Caster, Step));
+	TestTrue(TEXT("the buff goes up"), Activate(Caster, Slipstream));
+	TestTrue(TEXT("the movement slot is on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	TestTrue(TEXT("and the stab lands"), Activate(Caster, Stab));
+
+	TestEqual(TEXT("the buff was told, and returned the cooldown"),
+		Slipstream->CooldownsReturned, 1);
+	TestFalse(TEXT("so the movement slot is ready again"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	return true;
+}
+
+// ==========================================================================
+// Nothing can touch a character that cannot be touched
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUntargetableRefusesEveryHitTest,
+	"Cataclysm.Skills.NothingCanHitACharacterThatCannotBeTargeted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUntargetableRefusesEveryHitTest::RunTest(const FString&)
+{
+	// THE DAGGER'S EVERYWHERE AT ONCE: "for 4 seconds you are nowhere long
+	// enough to be hit ... nothing can touch you between arrivals." Its
+	// `Untargetable=1` was parsed and read by nothing until 2026-09-02.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Attacker(World, FVector::ZeroVector);
+	FScopedFighter Hidden(World, FVector(2 * M, 0, 0));
+	FScopedFighter Exposed(World, FVector(4 * M, 0, 0));
+
+	// THE CONTROL COMES FIRST AND ON THE SAME CHARACTER: an ordinary blow, so a
+	// target that was never hittable could not pass the refusal below.
+	const float BeforeAnything = Hidden.Health();
+	const float Landed = UCataclysmSkillEffects::ApplyHit(
+		Attacker.Actor, Hidden.Actor, /*DamagePercent=*/100.0f,
+		FGameplayTagContainer(), FCataclysmHitDelivery());
+
+	TestTrue(TEXT("an ordinary blow lands"), Landed > 0.0f);
+	TestTrue(TEXT("and takes health"), Hidden.Health() < BeforeAnything);
+
+	TestTrue(TEXT("it can be made untargetable"),
+		UCataclysmSkillEffects::ApplyUntargetable(Attacker.Actor, Hidden.Actor,
+												  /*DurationSeconds=*/4.0f));
+	TestTrue(TEXT("and says so"),
+		UCataclysmSkillEffects::IsUntargetable(Hidden.Actor));
+
+	const float BeforeTheSecond = Hidden.Health();
+	const float Refused = UCataclysmSkillEffects::ApplyHit(
+		Attacker.Actor, Hidden.Actor, /*DamagePercent=*/100.0f,
+		FGameplayTagContainer(), FCataclysmHitDelivery());
+
+	TestEqual(TEXT("the same blow now lands for nothing"), Refused, 0.0f);
+	TestEqual(TEXT("and takes no health"), Hidden.Health(), BeforeTheSecond,
+		0.01f);
+
+	// AND IT IS THIS CHARACTER AND NOT EVERY CHARACTER. Without this a refusal
+	// that had broken hitting altogether would look identical.
+	const float ExposedBefore = Exposed.Health();
+	TestTrue(TEXT("somebody else is still hittable"),
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, Exposed.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery()) > 0.0f);
+	TestTrue(TEXT("and loses health"), Exposed.Health() < ExposedBefore);
+
+	return true;
+}
+
+// ==========================================================================
+// The Dagger's Everywhere at Once and Echo
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFlickerVisitsEachEnemyTest,
+	"Cataclysm.Skills.AFlickerArrivesAtEachEnemyInTurnAndCannotBeHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFlickerVisitsEachEnemyTest::RunTest(const FString&)
+{
+	// THE DAGGER'S EVERYWHERE AT ONCE: "for 4 seconds you are nowhere long
+	// enough to be hit. You flicker between every enemy within 10 meters,
+	// striking each from behind as you arrive for 30% weapon damage and setting
+	// them alight." Until 2026-09-02 `Mode=Flicker` had no branch at all and
+	// silently ran the Leap code, so it teleported once and ended. Issue #1139.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THREE INSIDE THE TEN METRES AND ONE WELL OUTSIDE. The far one is what says
+	// the range is read rather than ignored.
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Middle(World, FVector(6 * M, 0, 0));
+	FScopedFighter Far(World, FVector(9 * M, 0, 0));
+	FScopedFighter Outside(World, FVector(25 * M, 0, 0));
+
+	UCataclysmMovementSkill* Flicker = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33; Burn=1; "
+			 "RearHits=1; Untargetable=1"),
+		TEXT("Everywhere at Once"));
+	if (!Flicker)
+	{
+		AddError(TEXT("Could not grant the flicker."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Flicker));
+
+	TestEqual(TEXT("it found the three enemies inside its range"),
+		Flicker->EnemiesHit, 3);
+
+	// AND IT MOVED AT ONCE RATHER THAN AN INTERVAL IN, because the skill IS its
+	// arrivals.
+	TestEqual(TEXT("and arrived once immediately"), Flicker->Arrivals, 1);
+
+	TestTrue(TEXT("nothing can touch the caster while it runs"),
+		UCataclysmSkillEffects::IsUntargetable(Caster.Actor));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	TestTrue(TEXT("the first enemy it reached is alight"),
+		UCataclysmSkillEffects::HasTag(Near.Actor, Burn));
+	TestFalse(TEXT("the second is not yet"),
+		UCataclysmSkillEffects::HasTag(Middle.Actor, Burn));
+
+	// DRIVEN DIRECTLY, because the repeat runs on the world's timer manager and
+	// a world built by `UWorld::CreateWorld` is never ticked. The same reason
+	// `RepeatTick` and `Sweep` are public.
+	Flicker->FlickerOnce();
+	Flicker->FlickerOnce();
+
+	TestEqual(TEXT("three arrivals have been made"), Flicker->Arrivals, 3);
+
+	TestTrue(TEXT("so the second enemy is alight"),
+		UCataclysmSkillEffects::HasTag(Middle.Actor, Burn));
+	TestTrue(TEXT("and the third"),
+		UCataclysmSkillEffects::HasTag(Far.Actor, Burn));
+
+	// AND NOTHING OUTSIDE THE RANGE WAS EVER VISITED.
+	TestFalse(TEXT("and the one outside ten metres was never reached"),
+		UCataclysmSkillEffects::HasTag(Outside.Actor, Burn));
+
+	// THE CASTER IS STANDING ON THE THIRD ONE, which is what "arriving" means
+	// and what says the move actually happened rather than only the blow.
+	// Read into floats first: an FVector's components are doubles and
+	// `TestEqual`'s tolerance is a float, which makes comparing one directly an
+	// ambiguous overload rather than a rounding problem.
+	const float ArrivedX = static_cast<float>(Caster.Actor->GetActorLocation().X);
+	TestEqual(TEXT("and the caster is standing where the third one is"),
+		ArrivedX, static_cast<float>(Far.Actor->GetActorLocation().X), 1.0f);
+
+	// A FOURTH ARRIVAL STARTS THE CIRCUIT AGAIN RATHER THAN STOPPING. Twelve
+	// arrivals among three enemies is what four seconds at a third of a second
+	// asks for, so the list has to be walked more than once.
+	Flicker->FlickerOnce();
+	TestEqual(TEXT("a fourth arrival goes back to the first enemy"),
+		static_cast<float>(Caster.Actor->GetActorLocation().X),
+		static_cast<float>(Near.Actor->GetActorLocation().X), 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoReturnsToItsMarkTest,
+	"Cataclysm.Skills.AnEchoLeavesAMarkAndASecondPressReturnsToIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoReturnsToItsMarkTest::RunTest(const FString&)
+{
+	// THE DAGGER'S ECHO: "leave a burning after-image where you stand. For 8
+	// seconds you may return to it from anywhere within 14 meters; the image
+	// bursts as you arrive, setting alight everything within 3 meters." Until
+	// 2026-09-02 `Mode=Recall` had no branch and ran the Leap code, so it blinked
+	// once, immediately, with no mark and no second press. Issue #1139.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// STANDING WHERE THE MARK WILL BE, so the burst on the return has something
+	// to catch. It is two metres from the origin, inside the three metre radius.
+	FScopedFighter AtTheMark(World, FVector(2 * M, 0, 0));
+
+	UCataclysmMovementSkill* Echo = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Mode=Recall; Range=14; Radius=3; Burn=1; EffectDuration=8"),
+		TEXT("Echo"));
+	if (!Echo)
+	{
+		AddError(TEXT("Could not grant the echo."));
+		return false;
+	}
+
+	TestFalse(TEXT("it holds no mark to begin with"), Echo->HasMark());
+
+	const FVector Where = Caster.Actor->GetActorLocation();
+
+	TestTrue(TEXT("the first press works"), Activate(Caster, Echo));
+	TestTrue(TEXT("and leaves a mark"), Echo->HasMark());
+
+	// THE FIRST PRESS MOVES NOBODY AND COSTS NOTHING, which is what makes the
+	// second press possible at all: the Special slot's cooldown is five seconds
+	// and the mark lasts eight, so charging on the first press would have made
+	// "for 8 seconds you may return to it" mean three.
+	const float StillX = static_cast<float>(Caster.Actor->GetActorLocation().X);
+	TestEqual(TEXT("the caster has not moved"), StillX,
+		static_cast<float>(Where.X), 1.0f);
+	TestFalse(TEXT("and the special slot is not on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Special));
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	TestFalse(TEXT("and nothing at the mark is alight yet"),
+		UCataclysmSkillEffects::HasTag(AtTheMark.Actor, Burn));
+
+	// WALK TOO FAR FIRST. The row says the return may be made "from anywhere
+	// within 14 meters", so twenty is outside it. This is easy to get wrong
+	// because the first press does not read the range at all, and a return that
+	// ignored it could be made from the far side of the level.
+	Caster.Actor->SetActorLocation(FVector(20 * M, 0, 0));
+
+	Activate(Caster, Echo);
+
+	const float StayedAway = static_cast<float>(Caster.Actor->GetActorLocation().X);
+	TestEqual(TEXT("pressing it from outside the range moves nobody"),
+		StayedAway, 20 * M, 1.0f);
+
+	// AND IT COSTS NOTHING AND KEEPS THE MARK, so walking back and pressing
+	// again still works. A refusal that spent the mark would make one mistimed
+	// press throw the skill away.
+	TestTrue(TEXT("and keeps the mark"), Echo->HasMark());
+	TestFalse(TEXT("and spends no cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Special));
+
+	// NOW WALK BACK INSIDE IT, so returning is still a real move rather than
+	// standing still.
+	Caster.Actor->SetActorLocation(FVector(10 * M, 0, 0));
+
+	TestTrue(TEXT("the second press works"), Activate(Caster, Echo));
+
+	TestEqual(TEXT("and puts the caster back on the mark"),
+		static_cast<float>(Caster.Actor->GetActorLocation().X),
+		static_cast<float>(Where.X), 5.0f);
+
+	TestTrue(TEXT("the burst sets alight what was standing there"),
+		UCataclysmSkillEffects::HasTag(AtTheMark.Actor, Burn));
+
+	// AND THE MARK IS SPENT, so the next press leaves a fresh one rather than
+	// returning to a place the character is already standing in.
+	TestFalse(TEXT("and the mark is spent"), Echo->HasMark());
+
+	return true;
+}
+
+// ==========================================================================
+// The Whip's Tether and Coil of Embers
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTetherDragsThemBackTest,
+	"Cataclysm.Skills.ATetherDragsTwoEnemiesBackWithinItsLength",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTetherDragsThemBackTest::RunTest(const FString&)
+{
+	// THE WHIP'S TETHER: "bind two enemies within 12 meters together with a
+	// burning line. Neither can move more than 5 meters from the other ... and if
+	// either tries to break away both are dragged back together." Its
+	// `TetherTargets`, `TetherLength` and `TetherDuration` were parsed and read
+	// by nothing at all until 2026-09-02.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter One(World, FVector(2 * M, 0, 0));
+	FScopedFighter Two(World, FVector(4 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Tether = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Speed=2000; Burn=1; TetherTargets=2; "
+			 "TetherLength=5; TetherDuration=8"),
+		TEXT("Tether"));
+	if (!Tether)
+	{
+		AddError(TEXT("Could not grant the tether skill."));
+		return false;
+	}
+
+	ACataclysmTether* Line = Tether->BindTether(Caster.Actor);
+	if (!Line)
+	{
+		AddError(TEXT("The tether bound nothing."));
+		return false;
+	}
+
+	TestTrue(TEXT("the line holds"), Line->IsHolding());
+
+	// TWO METRES APART TO BEGIN WITH, WELL INSIDE THE FIVE, so a check now must
+	// do nothing. That is the control: a line that dragged on every check would
+	// pass every assertion below without reading the length at all.
+	Line->Check();
+	TestEqual(TEXT("a check inside the length drags nobody"),
+		Line->TimesDragged, 0);
+	TestEqual(TEXT("and leaves them where they were"), Line->SeparationCm(),
+		2 * M, 1.0f);
+
+	// NOW ONE OF THEM RUNS.
+	Two.Actor->SetActorLocation(FVector(15 * M, 0, 0));
+	TestEqual(TEXT("they are now thirteen metres apart"),
+		Line->SeparationCm(), 13 * M, 1.0f);
+
+	Line->Check();
+
+	TestEqual(TEXT("the check dragged them"), Line->TimesDragged, 1);
+	TestEqual(TEXT("back to the five metres the row states"),
+		Line->SeparationCm(), 5 * M, 1.0f);
+
+	// BOTH OF THEM MOVED, WHICH IS WHAT THE ROW SAYS. "Both are dragged back
+	// together", so the correction is split rather than falling on whichever one
+	// walked. Each should have moved four metres: the eight metres of excess,
+	// halved.
+	TestEqual(TEXT("the one that stayed put was pulled forward"),
+		static_cast<float>(One.Actor->GetActorLocation().X), 6 * M, 1.0f);
+	TestEqual(TEXT("and the one that ran was pulled back"),
+		static_cast<float>(Two.Actor->GetActorLocation().X), 11 * M, 1.0f);
+
+	// AND EITHER END DYING ENDS THE LINE.
+	UCataclysmSkillEffects::MarkDead(Two.Actor);
+	TestFalse(TEXT("a line to a dead enemy no longer holds"),
+		Line->IsHolding());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTetherBurnsWhatCrossesItTest,
+	"Cataclysm.Skills.ATetherSetsAlightWhatStandsOnTheLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTetherBurnsWhatCrossesItTest::RunTest(const FString&)
+{
+	// "THE LINE SETS ALIGHT ANYTHING THAT TOUCHES IT", which is the third of the
+	// three things Tether's row says and the one with no parameter of its own:
+	// how close is close enough is the skill's own radius.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// THE TWO ENDS, FOUR METRES APART ALONG X, and a bystander standing exactly
+	// between them. A second bystander stands well off the line.
+	FScopedFighter One(World, FVector(2 * M, 0, 0));
+	FScopedFighter Two(World, FVector(6 * M, 0, 0));
+	FScopedFighter OnTheLine(World, FVector(4 * M, 0, 0));
+	FScopedFighter WellClear(World, FVector(4 * M, 20 * M, 0));
+
+	UCataclysmProjectileSkill* Tether = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=12; Radius=1.5; Speed=2000; TetherTargets=2; "
+			 "TetherLength=5; TetherDuration=8"),
+		TEXT("Tether"));
+	if (!Tether)
+	{
+		AddError(TEXT("Could not grant the tether skill."));
+		return false;
+	}
+
+	// BOUND BY HAND RATHER THAN BY THE SKILL, so the two ends are the two this
+	// test placed rather than whichever two the search happened to answer with
+	// first. The bystander standing between them is nearer the caster than one
+	// of the ends, so a search would have bound the wrong pair.
+	TArray<AActor*> Pair;
+	Pair.Add(One.Actor);
+	Pair.Add(Two.Actor);
+
+	ACataclysmTether* Line = ACataclysmTether::Bind(
+		Caster.Actor, Pair, /*MaxSeparationCm=*/5 * M,
+		/*DurationSeconds=*/8.0f, /*LineHalfWidthCm=*/1.5f * M);
+	if (!Line)
+	{
+		AddError(TEXT("The line was not bound."));
+		return false;
+	}
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	TestFalse(TEXT("nobody is alight before the first check"),
+		UCataclysmSkillEffects::HasTag(OnTheLine.Actor, Burn));
+
+	Line->Check();
+
+	TestEqual(TEXT("the check set one bystander alight"), Line->LastCheckLit, 1);
+	TestTrue(TEXT("and it is the one standing on the line"),
+		UCataclysmSkillEffects::HasTag(OnTheLine.Actor, Burn));
+
+	// AND NOT THE ONE STANDING TWENTY METRES OFF IT, which is what says the line
+	// is a line rather than a circle around either end.
+	TestFalse(TEXT("and not the one standing clear of it"),
+		UCataclysmSkillEffects::HasTag(WellClear.Actor, Burn));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoilShovesWhatComesCloseTest,
+	"Cataclysm.Skills.ACoilOfEmbersShovesWhatComesWithinItsRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoilShovesWhatComesCloseTest::RunTest(const FString&)
+{
+	// THE WHIP'S COIL OF EMBERS, SECOND HALF: "any enemy that comes within 3
+	// meters is hauled off their feet and dragged back out to the edge of your
+	// reach." There was no way to express a condition about APPROACHING until a
+	// self buff could repeat, because the shove rider every other skill uses
+	// hangs off a blow and a Support-slot buff never strikes anything.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Close(World, FVector(2 * M, 0, 0));
+	FScopedFighter WellBack(World, FVector(10 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Coil = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Interval=1; Radius=3; RangeIncrease=30; Knockback=3"),
+		TEXT("Coil of Embers"));
+	if (!Coil)
+	{
+		AddError(TEXT("Could not grant the coil."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Coil));
+
+	// CASTING IT ALONE SHOVES NOBODY, which is the control: the row says enemies
+	// are shoved as they COME WITHIN, on the repeat, not at the moment it goes
+	// up.
+	TestEqual(TEXT("casting it alone shoves nobody"), Coil->LastRepeatShoved, 0);
+	const float StillAt = static_cast<float>(Close.Actor->GetActorLocation().X);
+	TestEqual(TEXT("and the near enemy has not moved"), StillAt, 2 * M, 1.0f);
+
+	Coil->RepeatTick();
+
+	TestEqual(TEXT("one repeat shoved the near enemy"),
+		Coil->LastRepeatShoved, 1);
+	TestTrue(TEXT("which is now further away"),
+		static_cast<float>(Close.Actor->GetActorLocation().X) > 2 * M + 1.0f);
+
+	// AND THE RADIUS IS READ. Ten metres is well outside the three the row
+	// states, so an enemy there is untouched.
+	TestEqual(TEXT("and the one ten metres away was not shoved"),
+		static_cast<float>(WellBack.Actor->GetActorLocation().X), 10 * M, 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoilLengthensReachTest,
+	"Cataclysm.Skills.ACoilOfEmbersLengthensTheReachOfAStrike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoilLengthensReachTest::RunTest(const FString&)
+{
+	// THE WHIP'S COIL OF EMBERS, FIRST HALF: "your attack range is increased by
+	// 30%." Its `RangeIncrease=30` was parsed and read by nothing at all until
+	// 2026-09-02.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A FIVE METRE STRIKE AND A TARGET AT SIX. Out of reach normally, and inside
+	// the six and a half metres the coil's thirty per cent makes of five.
+	const TCHAR* const Lash = TEXT("Radius=5; Angle=360");
+
+	// TWO CASTERS THIRTY METRES APART, each with its own freshly granted strike
+	// that has never fired. One holds the coil and the other does not, and that
+	// is the only difference between them.
+	FScopedFighter Without(World, FVector::ZeroVector);
+	FScopedFighter OutOfReach(World, FVector(6 * M, 0, 0));
+
+	FScopedFighter With(World, FVector(0, 30 * M, 0));
+	FScopedFighter InReach(World, FVector(6 * M, 30 * M, 0));
+
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Without, ECataclysmAbilitySlot::Heavy, Lash, TEXT("Searing Lash"));
+	UCataclysmStrikeSkill* Coiled = GrantSkill<UCataclysmStrikeSkill>(
+		With, ECataclysmAbilitySlot::Heavy, Lash, TEXT("Searing Lash"));
+	UCataclysmSelfBuffSkill* Coil = GrantSkill<UCataclysmSelfBuffSkill>(
+		With, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=3; RangeIncrease=30"), TEXT("Coil of Embers"));
+	if (!Plain || !Coiled || !Coil)
+	{
+		AddError(TEXT("Could not grant the skills."));
+		return false;
+	}
+
+	// THE CONTROL FIRST, WITH NO COIL. Six metres is outside a five metre reach,
+	// so this must hit nobody. Without it, a strike that reached six metres
+	// anyway would pass the assertion below and prove nothing.
+	const float OutOfReachBefore = OutOfReach.Health();
+	TestTrue(TEXT("the plain strike fires"), Activate(Without, Plain));
+	TestEqual(TEXT("and reaches nobody six metres away"),
+		OutOfReach.Health(), OutOfReachBefore, 0.01f);
+
+	TestTrue(TEXT("the coil goes up on the other caster"), Activate(With, Coil));
+
+	const float InReachBefore = InReach.Health();
+	TestTrue(TEXT("its strike fires"), Activate(With, Coiled));
+
+	TestTrue(TEXT("and now reaches the enemy six metres away"),
+		InReach.Health() < InReachBefore);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

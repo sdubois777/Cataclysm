@@ -197,6 +197,15 @@ SHAPE_RIDERS = {
                      "bucket -- per unit of ScalingSource",
     "IncreasedDamagePer": "percentage points of INCREASED damage -- the "
                           "additive bucket -- per unit of ScalingSource",
+
+    # A FLAT MULTIPLIER ON A CONDITION RATHER THAN A RATE PER COUNT, which is
+    # what separates this from the two keys above. Those need a ScalingSource
+    # to say what they count; the condition here is where the attacker stood.
+    # Added 2026-09-02 for the Dagger's Emberpierce, whose "40% more damage
+    # from behind" had no parameter at all and so did nothing.
+    "MoreDamageFromBehind": "percentage points of MORE damage -- the "
+                            "multiplicative bucket -- on a blow landed from "
+                            "behind the target",
     "DurationPer": "seconds added to the skill's own duration per unit of "
                    "ScalingSource",
     "ScalingSource": "what the three keys above count, one of SCALING_SOURCES",
