@@ -376,22 +376,41 @@ public:
 	 * not describe a fire already burning. A future row that wanted to count
 	 * every tick would be able to.
 	 *
-	 * TWO KINDS OF RUNNING SKILL ARE TOLD, NOT ONE. A self buff, which is what
-	 * this was written for, and a Strike with its swing drawn back -- the
-	 * Greatsword's The Whole Weight, "every hit you take during the wind-up adds
-	 * 8% more damage to what follows". The held swing counts every blow,
-	 * including a tick, because its row states no qualification. Issue #1141.
+	 * THREE KINDS OF RUNNING SKILL ARE TOLD, NOT ONE.
+	 *
+	 *   A SELF BUFF, which is what this was written for. The Greataxe's Burning
+	 *   Wrath sets alight whatever struck its holder in melee.
+	 *   A STRIKE WITH ITS SWING DRAWN BACK. The Greatsword's The Whole Weight:
+	 *   "every hit you take during the wind-up adds 8% more damage to what
+	 *   follows". Issue #1141.
+	 *   AN AURA THAT IS RUNNING. The Fist's Living Pyre: "every hit you take
+	 *   raises the pyre's fire damage by 8% with no cap, and returns health
+	 *   equal to 25% of the damage that hit dealt". Issue #1162.
+	 *
+	 * The last two count every blow, including a tick, because their rows state
+	 * no qualification. Burning Wrath refuses the ones its own row excludes,
+	 * which is why the arguments travel this far rather than being judged here.
+	 *
+	 * HOW MUCH THE BLOW DEALT TRAVELS TOO, AND ONLY ONE ROW READS IT SO FAR.
+	 * Living Pyre's "25% of the damage that hit dealt" cannot be answered from
+	 * anything else the defender can see afterwards: the health has already
+	 * moved by the time a skill could look. It is what reached HEALTH, after
+	 * evasion, armour, resistance and the energy shield, which is the same
+	 * figure the design defines leech against -- "the damage the target really
+	 * took, not the damage that was sent".
 	 *
 	 * @param Defender  who was hit. Its running skills are the ones told
 	 * @param Striker   what hit it, or null when the blow has no causer -- a
 	 *                  patch of burning ground whose caster has left the level
 	 * @param bWasMelee whether the blow carried the melee tag
 	 * @param bWasDamageOverTime  whether it was a tick rather than a blow
+	 * @param DealtToHealth  how much of it reached the defender's health
 	 * @return how many running skills were told, whether or not each one does
 	 *         anything with it
 	 */
 	static int32 NoteBlowTaken(AActor* Defender, AActor* Striker,
-							   bool bWasMelee, bool bWasDamageOverTime);
+							   bool bWasMelee, bool bWasDamageOverTime,
+							   float DealtToHealth);
 
 	/**
 	 * Tell this character's running skills that one of its blows landed, and

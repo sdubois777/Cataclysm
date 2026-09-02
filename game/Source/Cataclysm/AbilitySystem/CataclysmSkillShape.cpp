@@ -399,6 +399,10 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.AllyIncreasedDamage = Number;
 		}
+		else if (Key.Equals(TEXT("HealthFromHitTaken"), ESearchCase::IgnoreCase))
+		{
+			Params.HealthFromHitTaken = Number;
+		}
 		// --- Forced movement --------------------------------------------
 		else if (Key.Equals(TEXT("ForcedMovement"), ESearchCase::IgnoreCase))
 		{

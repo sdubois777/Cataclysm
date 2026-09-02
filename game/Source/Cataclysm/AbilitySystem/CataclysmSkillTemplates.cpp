@@ -2196,11 +2196,19 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// that cannot be turned aside. You walk forward for 3 seconds ... throwing
 	// aside and setting alight everything you pass through."
 	//
-	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Fist's Cinder Rush and the
-	// Whip's Reel both state `Mode=Charge` and no duration, and both are one move
-	// to a point that hits what the line crosses. Everything below assumes that
-	// shape -- one search, one `SetActorLocation`, one patch of ground -- and a
-	// walk is none of those.
+	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Whip's Reel states
+	// `Mode=Charge` and no duration, and is one move to a point that hits what
+	// the line crosses. Everything below assumes that shape -- one search, one
+	// `SetActorLocation`, one patch of ground -- and a walk is none of those.
+	//
+	// THE FIST'S CINDER RUSH USED TO BE THE SECOND SUCH ROW AND IS NOT ANY MORE,
+	// AND WHY IT CHANGED IS WORTH KNOWING BEFORE WRITING ANOTHER CHARGE. Its own
+	// sentence is "you are immune to crowd control DURING THE RUSH", and
+	// `UCataclysmSkillTemplate::IsImmuneTo` asks the RUNNING abilities -- so with
+	// no duration the ability ended in the frame it activated and the window was
+	// of no length. The immunity was stated in the row and could never fire. The
+	// row now states `Duration=1.1`, which is a 10 metre charge at the 9.33
+	// metres a second the Greatsword's Inexorable was set to. Issue #1162.
 	//
 	// THE DIRECTION IS TAKEN ONCE, HERE, AND NEVER RE-READ. That is what "cannot
 	// be turned aside" says, and it is also why the aimed point is read before
@@ -3178,6 +3186,14 @@ void UCataclysmAuraSkill::ActivateAbility(
 	bEndedForLackOfMana = false;
 	Pulses = 0;
 
+	// THE PYRE STARTS COLD EVERY TIME IT IS LIT. Living Pyre's "every hit you
+	// take raises the pyre's fire damage" is a count for this use of the skill,
+	// not a tally the character carries between casts, and the ability instance
+	// is per actor and outlives the activation -- so a second cast would
+	// otherwise begin at whatever the first one ended at. Issue #1162.
+	BlowsTaken = 0;
+	HealthReturned = 0.0f;
+
 	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
 	// Cleared here rather than in `EndAbility`, because the aura also ends for
 	// reasons that are not a key press -- running out of mana, or a duration
@@ -3246,8 +3262,21 @@ int32 UCataclysmAuraSkill::Pulse()
 	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInSphere(
 		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
 
+	// SCALED BY WHATEVER THE ROW SAYS RAISES IT, WHICH IS ONE ROW. The Fist's
+	// Living Pyre: "every hit you take raises the pyre's fire damage by 8% with
+	// no cap", written as `MoreDamagePer=8; ScalingSource=HitTaken`. Issue
+	// #1162.
+	//
+	// `ScaledDamagePercent(0)` IS `GetDamagePercent()`, so an aura naming no
+	// scaling source deals exactly what it dealt before this line changed, which
+	// is every other aura in the sheet.
+	//
+	// NO CEILING BINDS UNLESS THE ROW STATES ONE, and Living Pyre states none
+	// because its own sentence says "with no cap".
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
-	HitTargets(Inside, GetDamagePercent() * Period);
+	const float Percent = ScaledDamagePercent(
+		ScalingUnits(/*ConsumedCount=*/0, /*bThisTargetConsumed=*/false));
+	HitTargets(Inside, Percent * Period);
 
 	// AND THE EFFECT THE ROW NAMES GOES ON WHAT IS STANDING IN THE RING.
 	// Conflagration: "enemies within it are continuously set alight AND have
@@ -3282,6 +3311,77 @@ int32 UCataclysmAuraSkill::Pulse()
 
 	++Pulses;
 	return Inside.Num();
+}
+
+float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
+{
+	// A BLOW TAKEN WHILE THE AURA IS NOT UP IS NOT THIS AURA'S BUSINESS. The
+	// ability instance is per actor and outlives its activation, so it can be
+	// found by the dispatcher's walk over the running abilities only while it is
+	// running -- but a pulse that ended the aura for lack of mana can still be
+	// on the stack when a blow arrives.
+	if (!bHeld)
+	{
+		return 0.0f;
+	}
+
+	// COUNTED EVEN FOR AN AURA THAT READS NEITHER PARAMETER, which is
+	// Conflagration. The count is one integer and a row that does not name
+	// `HitTaken` never reads it, so gating the count on the row would only make
+	// the number wrong for anything that later wanted to look at it. The same
+	// reasoning `UCataclysmStrikeSkill::NoteBlowTakenWhileHolding` gives.
+	++BlowsTaken;
+
+	if (Params.HealthFromHitTaken <= 0.0f || DealtToHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	// "RETURNS HEALTH EQUAL TO 25% OF THE DAMAGE THAT HIT DEALT."
+	//
+	// OF WHAT REACHED HEALTH, NOT OF WHAT WAS SENT. `NoteBlowTaken`'s header
+	// says which figure travels and why: it is the same one the design defines
+	// leech against -- "the damage the target really took, after its
+	// resistances, armour and block, not the damage that was sent". A share of
+	// what was sent would pay out on a blow that was entirely stopped.
+	//
+	// AT ONCE RATHER THAN OVER THREE SECONDS. Leech in this project pays out
+	// over time and this is not leech: leech is what a hit gives back to whoever
+	// LANDED it, and this is what a hit gives back to whoever TOOK it. The row
+	// says "returns health", with no duration, against the design's leech
+	// section which states one.
+	//
+	// CAPPED AT MAXIMUM HEALTH, which `SetHealth` would not do on its own.
+	using Vitals = UCataclysmVitalAttributeSet;
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+	const float Current =
+		AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
+	const float Wanted = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
+	const float Given = FMath::Clamp(Wanted, 0.0f, FMath::Max(0.0f, Maximum - Current));
+
+	if (Given <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Vitals::GetHealthAttribute(),
+									   EGameplayModOp::Additive, Given);
+	HealthReturned += Given;
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' returned %.1f health from a blow that dealt %.1f, and is now "
+			 "%d hits hotter."),
+		*SkillName, Given, DealtToHealth, BlowsTaken);
+
+	return Given;
 }
 
 bool UCataclysmAuraSkill::IsHelping(const AActor* Ally) const

@@ -634,10 +634,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// A damage over time tick and a blow carrying the no-retaliation
 				// tag both still happened to the defender; whether they count is
 				// the buff's business, and it is handed what it needs to decide.
+				//
+				// AND HOW MUCH REACHED HEALTH GOES WITH IT, added 2026-09-02 for
+				// the Fist's Living Pyre: "returns health equal to 25% of the
+				// damage that hit dealt". Issue #1162.
+				//
+				// `Outcome.DealtToHealth` AND NOT WHAT WAS SENT, which is the
+				// same figure the design defines leech against. It is read here
+				// rather than by the skill because by the time a skill could
+				// look, the health has already moved and the amount is gone.
+				//
+				// BEFORE THE ENERGY SHIELD IS SUBTRACTED BELOW AND THAT CHANGES
+				// NOTHING: `DealtToHealth` is already what is left once the
+				// shield has absorbed its share. `Outcome.AbsorbedByShield` is
+				// the other part and is deliberately not counted -- a blow the
+				// shield swallowed dealt nothing to health.
 				UCataclysmSkillTemplate::NoteBlowTaken(
 					GetOwningActor(),
 					Data.EffectSpec.GetContext().GetEffectCauser(),
-					Hit.bIsMelee, Hit.bIsDamageOverTime);
+					Hit.bIsMelee, Hit.bIsDamageOverTime,
+					Outcome.DealtToHealth);
 			}
 
 			if (Outcome.AbsorbedByShield > 0.0f)
