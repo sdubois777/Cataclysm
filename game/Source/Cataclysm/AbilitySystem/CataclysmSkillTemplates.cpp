@@ -3249,8 +3249,172 @@ int32 UCataclysmAuraSkill::Pulse()
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 	HitTargets(Inside, GetDamagePercent() * Period);
 
+	// AND THE EFFECT THE ROW NAMES GOES ON WHAT IS STANDING IN THE RING.
+	// Conflagration: "enemies within it are continuously set alight AND have
+	// their Demonic resistance reduced by 15%." The second half of that sentence
+	// had no parameter until 2026-09-02 and the aura applied no named effect at
+	// all. Issue #1182.
+	//
+	// EVERY PULSE, WHICH IS WHAT "CONTINUOUSLY" MEANS.
+	// `UCataclysmSkillEffects::ApplyNamedEffect` refreshes rather than stacks, so
+	// an enemy standing in the ring carries one Shred whose clock restarts every
+	// second, and an enemy that walks out keeps it for the rest of its own
+	// duration and then loses it. That is the same shape
+	// `ACataclysmGroundZone::Sweep` uses for the curse it lays, and it says so
+	// there for the same reason.
+	//
+	// AFTER THE BLOW RATHER THAN BEFORE IT, matching
+	// `UCataclysmStrikeSkill::SwingOnce`: a Shred cutting resistance must not
+	// also reduce the damage of the pulse that applied it.
+	//
+	// INERT FOR AN AURA NAMING NO EFFECT, which is every other aura in the
+	// sheet: `NamedEffectTags` answers an empty list.
+	for (AActor* Target : Inside)
+	{
+		ApplyNamedEffectsTo(Target);
+	}
+
+	// AND THE ALLIES INSIDE ARE HELPED. Conflagration: "allies within it deal 8%
+	// increased fire damage." The aura never looked for an ally at all before
+	// this, though `UCataclysmTargeting::FindAlliesInSphere` had existed for it
+	// and said so in its own header.
+	HelpAlliesInside();
+
 	++Pulses;
 	return Inside.Num();
+}
+
+bool UCataclysmAuraSkill::IsHelping(const AActor* Ally) const
+{
+	// A raw const pointer cannot key a TMap of weak pointers directly, so the
+	// comparison is done the long way round rather than casting the constness
+	// away.
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		if (Helped.Key.Get() == Ally)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmAuraSkill::HelpAlliesInside()
+{
+	AActor* Self = Avatar();
+	if (Params.AllyIncreasedDamage <= 0.0f || !Self)
+	{
+		return;
+	}
+
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
+
+	// WHO SHOULD BE CARRYING IT AFTER THIS PULSE. Built first so the two passes
+	// below -- give to the new ones, take back from the ones who left -- are
+	// decided against one answer rather than two searches a moment apart.
+	TSet<AActor*> ShouldCarry;
+	ShouldCarry.Reserve(Allies.Num());
+	for (AActor* Ally : Allies)
+	{
+		if (IsValid(Ally))
+		{
+			ShouldCarry.Add(Ally);
+		}
+	}
+
+	// TAKE IT BACK FROM WHOEVER WALKED OUT, and drop any key whose actor has
+	// gone. A dead ally is removed with its owner rather than reached for.
+	TArray<TWeakObjectPtr<AActor>> Leaving;
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		AActor* Ally = Helped.Key.Get();
+		if (!IsValid(Ally) || !ShouldCarry.Contains(Ally))
+		{
+			Leaving.Add(Helped.Key);
+		}
+	}
+	for (const TWeakObjectPtr<AActor>& Gone : Leaving)
+	{
+		if (AActor* Ally = Gone.Get())
+		{
+			if (UCataclysmAbilitySystemComponent* Abilities =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Ally)))
+			{
+				Abilities->RemoveStatModifier(HelpedAllies[Gone]);
+			}
+		}
+		HelpedAllies.Remove(Gone);
+	}
+
+	// AND GIVE IT TO WHOEVER ARRIVED. An ally already carrying it is skipped
+	// rather than given a second modifier, which is the one way this could
+	// silently stack a bonus without limit.
+	for (AActor* Ally : ShouldCarry)
+	{
+		if (IsHelping(Ally))
+		{
+			continue;
+		}
+
+		UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Ally));
+		if (!Abilities)
+		{
+			continue;
+		}
+
+		// THE ADDITIVE BUCKET, BECAUSE THE ROW SAYS `increased`. See the
+		// parameter's own header: that word is reserved in this project for the
+		// sum every gear affix and passive node joins.
+		//
+		// `SkillBuff` AS THE SOURCE, matching `UCataclysmSelfBuffSkill::
+		// GrantIncrease`. The source decides whether a modifier is allowed into
+		// the `More` bucket at all, and this one is not asking for that bucket.
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::SkillBuff;
+		Modifier.Value = Params.AllyIncreasedDamage;
+
+		// SCOPED TO THE AURA'S OWN ELEMENT, so "increased FIRE damage" is data.
+		// Conflagration carries `Element.Demonic`, which is this project's fire.
+		// An aura carrying no element grants an increase that reaches
+		// everything, which is what an unscoped modifier means throughout the
+		// pipeline.
+		const FGameplayTag Scope = ElementTag();
+		if (Scope.IsValid())
+		{
+			Modifier.RequiredTags.AddTag(Scope);
+		}
+
+		const int32 Handle = Abilities->AddStatModifier(Modifier);
+		if (Handle != 0)
+		{
+			HelpedAllies.Add(Ally, Handle);
+		}
+	}
+}
+
+void UCataclysmAuraSkill::StopHelpingEveryone()
+{
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		AActor* Ally = Helped.Key.Get();
+		if (!IsValid(Ally))
+		{
+			continue;
+		}
+
+		if (UCataclysmAbilitySystemComponent* Abilities =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Ally)))
+		{
+			Abilities->RemoveStatModifier(Helped.Value);
+		}
+	}
+	HelpedAllies.Reset();
 }
 
 void UCataclysmAuraSkill::PulseTick()
@@ -3276,6 +3440,14 @@ void UCataclysmAuraSkill::EndAbility(
 		World->GetTimerManager().ClearTimer(PulseTimer);
 		World->GetTimerManager().ClearTimer(FinishTimer);
 	}
+
+	// AND EVERY ALLY GIVES THE BONUS BACK. Conflagration's is granted for as
+	// long as the aura runs, so every way it can stop -- the second press, the
+	// mana running out, a duration expiring, a cancel, the caster dying -- has to
+	// end with nobody still carrying it. This is the one place all five meet,
+	// which is the same argument `UCataclysmStrikeSkill::EndAbility` makes for
+	// taking the sword out of the ground here. Issue #1182.
+	StopHelpingEveryone();
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);

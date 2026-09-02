@@ -20,6 +20,100 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — An aura can help the people standing in it, and `AllyIncreasedDamage` is the key
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Content/Data/DT_WeaponSkills.uasset`,
+`tools/generate_datatables.py`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp`,
+`CataclysmSkillTemplates.h` and `.cpp`, and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue
+#1182.
+
+**What was wrong.** Conflagration, the shared Demonic aura every weapon carries,
+was recorded as finished and implemented one of its three sentences. It burned
+what stood in the ring and drained mana. It did not cut anybody's resistance and
+it never looked for an ally at all.
+
+> Emanate a ring of hellfire in a 10 meter radius. Enemies within it are
+> continuously set alight **and have their Demonic resistance reduced by 15%**.
+> **Allies within it deal 8% increased fire damage.** Drains mana per second
+> while active.
+
+Neither the 15 nor the 8 was anywhere in the row, because there was no key for
+either. The resistance cut had a key that simply was not used; the ally bonus had
+no key in the whole vocabulary.
+
+### The enemy half needed no new vocabulary
+
+`Effect` and `EffectMagnitude` are riders any shape may state, and the `Shred`
+status effect already reduces a resistance by its magnitude — the Wand's Anathema
+writes `EffectMagnitude=40` for "Demonic resistance cut by 40%". So Conflagration
+states `Effect=Shred; EffectMagnitude=15` and the aura's pulse applies it, the
+same way a Strike's swing already did.
+
+**Applied every pulse, refreshing rather than stacking**, which is what
+"continuously" has to mean: standing in the ring for six seconds must not take 90
+points of resistance off a creature that has 70. That is also the shape a burning
+patch of ground already uses for the curse it lays.
+
+### The ally half needed a new key: `AllyIncreasedDamage`
+
+**Percentage points of increased damage an aura grants everyone on the caster's
+side who is standing inside it**, scoped to the skill's own element. Conflagration
+states 8. The War aura, Blood and Iron, is written with the same shape of
+sentence and does not carry a number yet.
+
+**It joins the additive bucket, because the row says `increased`.** That word is
+not decoration in this project: section VI reserves it for the sum every gear
+affix and passive node joins, against `more` for a multiplier that applies on its
+own. `UCataclysmSelfBuffSkill::GrantIncrease` reads `MoreDamagePer` and takes the
+other bucket for the opposite reason, and both are doing what their row's own
+word says. So the bucket was read off the data rather than chosen.
+
+**It is not `IncreasedDamagePer`, which already exists and is a different
+number.** That one is per unit of a `ScalingSource` and sizes one blow; this is a
+flat grant to somebody else for as long as they stand inside. Sharing the key
+would have made the two indistinguishable in a row.
+
+**It reaches allies and not the caster.**
+`UCataclysmTargeting::FindAlliesInSphere` excludes the caster deliberately, and
+its header gives the reason: the design writes a benefit for the caster as a
+separate clause where it means one. Conflagration does not.
+
+### What the genre settles
+
+**Path of Exile's auras** buff every ally inside their radius and **re-evaluate
+who is inside on a period** — the wiki gives 250 ms — rather than watching for
+entry and exit events. That is the shape used here: who is inside a ring that
+follows a moving caster is a question about now, and it is recomputed on every
+pulse, which is also the reasoning `ACataclysmGroundZone::Sweep` already gives
+for asking afresh every sweep.
+
+**One deliberate difference from Path of Exile, already decided elsewhere.** Its
+auras *reserve* mana — a permanent share set aside while the aura is up — and
+this project's drain it per second and switch the aura off when it runs out.
+That was issue #36 and is not reopened here.
+
+**A judgement the research does not settle:** whether an ally's own modifiers
+should scale a buff they receive. Path of Exile says the receiver's own bonuses
+apply and the caster's aura-effect bonuses do not. Nothing in this project scales
+a received buff at all yet, so the question is recorded rather than answered; the
+modifier granted is the flat number the row states.
+
+### How it is held
+
+A stat modifier per ally, kept by the handle
+`UCataclysmAbilitySystemComponent::AddStatModifier` answers, and given back with
+`RemoveStatModifier`. **An ally already carrying it is skipped rather than given a
+second one** — that is the single way this could go badly wrong, since a modifier
+added every second would stack a bonus without limit for as long as somebody
+stood still. Every way the aura can stop takes the bonus back from whoever is
+left, which is why the removal lives in `EndAbility` rather than beside the
+toggle.
+
+---
+
 ## 2026-09-02 — A swing can be drawn back and held, and three things decide what it lands for
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and
