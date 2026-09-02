@@ -239,6 +239,22 @@ components are doubles in Unreal 5 and the tolerance argument is a float, so the
 overload set cannot choose. Every measured position is now read into a `float`
 first, which is what every other position test in this project already did.
 
+**A third build failed, and only after the work was committed.** The new test file
+opened its own namespace with a `using namespace` at file scope. This module is
+built as a unity blob — several `.cpp` files concatenated into one translation
+unit — so that directive reached every other test file in the module and broke two
+things in `CataclysmGatekeeperTests.cpp`: its own `MakeWorldThatHasBegunPlay`
+became an ambiguous call against the new one, and a constant named `M` hid a
+declaration of the same name inside an engine header. Twelve errors, none of them
+in the file that caused them.
+
+**It could not have shown before the commit**, which is the whole reason the
+build-again-with-the-tree-clean rule exists. Unreal keeps modified and untracked
+files out of the blob and compiles them on their own, so three clean builds and
+three full test runs over a dirty tree all passed with the collision present. Every
+other test file in this project already writes its `using namespace` inside each
+test body; this one now does too, and carries a comment saying why.
+
 **No test failed on its first run**, which is unusual enough to be worth
 recording: three of the twelve written for the Axe failed and two of those were
 real defects. It is why two guard proofs were run rather than one, and both
