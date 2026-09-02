@@ -23,6 +23,7 @@
 // For how much a defender strikes back for, at whom, and what it leeches from
 // it. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the stack that taking damage builds. Issue #1003.
@@ -610,6 +611,33 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						GetOwningAbilitySystemComponent(), GetOwningActor(),
 						Data.EffectSpec.GetContext().GetEffectCauser());
 				}
+
+				// AND ANY RUNNING BUFF THAT REACTS TO A BLOW TAKEN IS TOLD, AND
+				// BY WHOM. The Greataxe's Burning Wrath: "while it lasts, any
+				// enemy that strikes you in melee is set alight." That sentence
+				// had no hook at all until 2026-09-02, which is why the row had
+				// carried `Burn=1` since it was written and had never set
+				// anything alight. Issue #1157.
+				//
+				// HERE BECAUSE THIS IS THE ONE PLACE EVERY INCOMING BLOW IN THE
+				// GAME IS RESOLVED, which is the same argument that put
+				// retaliation directly above it. A strike, a projectile, a
+				// minion's swing and an enemy ability all arrive at this
+				// function.
+				//
+				// IN THE SAME BRANCH AS RETALIATION, so a blow that was evaded,
+				// or that armour and resistance stopped completely, tells nobody
+				// anything. "Strikes you" is not "swings at you", and it is the
+				// rule the attacking side's `NoteBlowLanded` already follows.
+				//
+				// OUTSIDE THE RETALIATION TEST, THOUGH, AND THAT IS DELIBERATE.
+				// A damage over time tick and a blow carrying the no-retaliation
+				// tag both still happened to the defender; whether they count is
+				// the buff's business, and it is handed what it needs to decide.
+				UCataclysmSkillTemplate::NoteBlowTaken(
+					GetOwningActor(),
+					Data.EffectSpec.GetContext().GetEffectCauser(),
+					Hit.bIsMelee, Hit.bIsDamageOverTime);
 			}
 
 			if (Outcome.AbsorbedByShield > 0.0f)

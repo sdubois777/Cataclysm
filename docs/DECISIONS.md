@@ -20,6 +20,91 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A buff can be told its holder was struck, and the Greataxe is finished
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and
+`.cpp`, `CataclysmSkillTemplates.h` and `.cpp`, `CataclysmSkillShape.h` and
+`.cpp`, `CataclysmVitalAttributeSet.cpp`, the Weapon Skills sheet of
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset`, `tools/generate_datatables.py`,
+`sim/cataclysm_sim/enemy_abilities.py` and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issue
+#1157.
+
+### The third hook, which completes a set of three
+
+**A running self buff can be told that its holder was struck, by whom, whether
+the blow was melee, and whether it was a damage over time tick.** Two hooks
+already existed and the third did not: `NoteKill` says the holder killed
+something and `NoteBlowLanded` says the holder hit something. Nothing said
+something hit the holder.
+
+**That absence is why the Greataxe's Burning Wrath had never worked.** Its second
+sentence — "while it lasts, any enemy that strikes you in melee is set alight" —
+is about a blow TAKEN, and the row had carried `Burn=1` since it was written with
+nothing to react to.
+
+**It is called from where every incoming blow in the game is resolved**, in the
+same branch that already decides whether a defender strikes back. That branch is
+reached only when something got through, so a swing that was evaded, or that
+armour and resistance stopped completely, tells nobody anything — the same rule
+the attacking side already follows.
+
+**It is told about damage over time ticks as well, and the buff decides.** A burn
+ticking on the holder is a blow taken by any honest reading. Burning Wrath refuses
+it, because "strikes you in melee" does not describe a fire already burning; a
+future row that wanted to count every tick could.
+
+### Whom a buff burns is a different question from whether it burns
+
+**A new `BurnsAttackers` parameter, and the existing `Burn` was not enough on its
+own.** A self buff's `Burn` says the skill burns and does not say whom: the
+Spear's Held Fast states the same flag meaning "the pinned enemies inside my
+radius, once a second". One key cannot mean both, and a third row would have had
+no way to say which it meant. It is the same argument that split `EffectDuration`
+from `Duration`.
+
+**Not read off `Trigger.OnHit` in the Tags cell either, though five rows carry
+it.** That tag does not say which direction the hit went. Slipstream and
+Groundbreaker carry it for blows their holder LANDS; Burning Wrath and Martyr's
+Ember carry it for blows their holder TAKES. A parameter that meant two opposite
+things depending on the row would be worse than none.
+
+**Melee only, which the row says and which matters.** A character shot from across
+the room, or standing in a fire somebody else lit, sets nothing alight.
+
+### What this finishes, and one count that was wrong
+
+**The Greataxe reaches five of five.**
+
+**The Fist does not, and was recorded as though it did.** Looking for other rows
+with the same shape of gap found three: Martyr's Ember's row is `Duration=10` and
+nothing else against a description promising a damage store of 40% capped at
+200%; Living Pyre's three immunities, own-fire exemption, 8% per hit taken and 25%
+health return have no parameters; and Cinder Rush's "immune to crowd control
+during the rush" has none. **The Fist is two of five.** Issue #1162.
+
+**Three of those clauses are immunity, and so are two Greatsword clauses.** The
+project owner approved building one parameter naming what a skill is immune to on
+2026-09-02 and it has not been built. Five rows across three weapons now want it,
+which is a stronger case than the two it was raised for, and it should be designed
+once.
+
+### Where the weapons stand
+
+Nine of the eleven weapons have all five Demonic skills doing everything they say:
+the Sword, Axe, Warhammer, Wand, Spear, Whip, Dagger, Staff and now the Greataxe.
+
+**Two do not.** The Fist is two of five (#1162). The Greatsword is none of five,
+and reading its rows against the code makes it five separate mechanics rather than
+the four an earlier note recorded: a hold-and-release verb (#1141), a walk that
+cannot be steered or stopped, planting the weapon and fighting unarmed until it is
+recalled, damage growing per second while stationary, and immunity. Three of its
+four scaling sources — `Second`, `HitTaken` and `Meter` — are counted by nothing;
+the hook added here is what `HitTaken` will read.
+
+---
+
 ## 2026-09-02 — A character can be asked what it commands, an enemy can be taken rather than summoned, and the Staff is finished
 
 **Affects:** the new

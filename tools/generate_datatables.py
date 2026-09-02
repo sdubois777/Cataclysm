@@ -156,6 +156,14 @@ def dungeon_modifiers(book) -> list[dict]:
 #: naming skills, where every other entry names skills.
 SHAPE_RIDERS = {
     "Burn": "1 if the skill sets what it hits alight, 0 or absent if not",
+
+    # WHOM A BUFF BURNS, WHICH `Burn` ABOVE DOES NOT SAY. A self buff
+    # stating `Burn` may mean "the pinned enemies in my radius, once a
+    # second" (the Spear's Held Fast) or "whatever strikes me in melee"
+    # (the Greataxe's Burning Wrath). One key cannot mean both, so the
+    # second is its own. Added 2026-09-02.
+    "BurnsAttackers": "1 if a running buff sets alight whatever strikes its "
+                      "holder in melee, 0 or absent if not",
     "GroundRadius": "metres of burning ground left behind, 0 for none",
     "GroundDuration": "seconds that ground burns",
     "GroundPercent": "percent of the skill's damage that ground deals per "
