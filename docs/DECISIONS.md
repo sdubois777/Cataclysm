@@ -20,6 +20,141 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A weapon can be left standing in the ground, and Buried Fire is finished
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmPlantedWeapon.h` and
+`.cpp`, both new; `CataclysmSkillTemplates.h` and `.cpp`;
+`CataclysmSkillTemplate.cpp`;
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`; and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. Applied. Issues
+#37, #1141 and #1166.
+
+**The third of the Greatsword's five.** Buried Fire: "drive the greatsword into
+the ground and leave it there. It burns everything within 4 meters and grows
+hotter every second it stands. Pull it free within 10 seconds to erupt for damage
+that rises with how long you left it. You fight unarmed until you do." Its row
+states `DisarmsUntilRecalled=1`, which was one of the four parameters issue #1141
+records as parsed and read by nothing.
+
+### The planted state lives in a world object, chosen by the project owner over two alternatives
+
+**The obvious place for it cannot hold it.**
+`UCataclysmWeaponSlotsComponent::UnequipWeapon` begins with
+`GrantedHandles.TakeFromAbilitySystem`, which revokes every ability the weapon
+granted. Any design in which the disarm really takes the weapon's abilities away
+destroys the skill instance that would be holding the sword's position, so the
+skill would delete the state its own second press needs.
+
+`UCataclysmBuriedWeapon` was checked and does not fit: it is a weapon left *in a
+creature* that leaps to the next when that creature dies, with no position, no
+timer and no recall.
+
+`ACataclysmPlantedWeapon` is the world object. It records where the sword is,
+how many seconds it has stood, which weapon type is in the ground, and the patch
+of burning ground it stands in. It cannot be revoked by an ability system, which
+is the whole reason it exists.
+
+### The disarm is a refusal, not a removal
+
+Nothing is taken away. While a character has a weapon in the ground,
+`UCataclysmSkillTemplate::CanActivateAbility` refuses every skill that weapon
+granted except the one that planted it, which names itself by stating
+`DisarmsUntilRecalled`.
+
+**Asked rather than flagged**, which is the shape
+`UCataclysmMovementSkill::IsBeingWalkedByASkill` already established and its
+header argues for: nothing is written onto the character, and nothing has to be
+cleared when the skill ends, is cancelled, or its owner dies.
+
+Two consequences, both wanted. The skill that planted the sword is still
+granted, so the second press reaches it. And a character cannot be left
+permanently weaponless by a plant that went wrong, because there is nothing to
+give back — only an actor to destroy.
+
+### The basic attack is exempt, and that leaves one thing wrong
+
+"You fight unarmed" says the character goes on fighting. Refusing every slot
+would leave them unable to act at all for ten seconds, which reads as the game
+having stopped working rather than as a cost.
+
+**What they swing for is still the buried weapon's damage.** Attack damage comes
+from what is worn, and the item is still worn — nothing is unequipped. There is
+no unarmed damage figure anywhere in the design to put in its place. That is
+issue #1166, and it belongs with issue #841, which is where "what should an
+unarmed character have" already lives.
+
+### The second press arrives as input to a running skill, not as a fresh activation
+
+**The Special slot waits five seconds between uses and the window is ten.** A
+second press routed through `TryActivateAbility` would be refused by the engine's
+own cooldown check for the first half of the window, so "pull it free within 10
+seconds" would have meant "between 5 and 10".
+
+So Buried Fire stays active for as long as the sword stands, and the press
+arrives at `InputPressed`. `UCataclysmAbilitySystemComponent::ProcessAbilityInput`
+already tells the two cases apart: a press on an ability that is not running
+activates it, and a press on one that is running is delivered to it.
+
+**The Dagger's Echo solves the same problem the other way round and could not
+here.** `Mode=Recall` leaves its mark before `CommitAndBegin`, so the first press
+is free and the second one pays. That works because leaving a mark moves nobody
+and burns nothing. Planting a sword sets ten seconds of ground alight, so a free
+first press would be ten seconds of area denial for nothing, repeatable as fast
+as the key can be pressed.
+
+**It needs a release before the second press counts**, which is issue #1114
+again: the input is bound to `ETriggerEvent::Triggered` and fires every frame the
+key is held, so without waiting for a release the sword would be planted on one
+frame and pulled straight back out on the next.
+
+### The open question the row left: a window that closes gives the weapon back and erupts nothing
+
+The row says "pull it free within 10 seconds to erupt" and does not say what a
+player who does not gets. **Decided: the weapon comes back and nothing erupts.**
+
+It is the same reading `Mode=Recall` took for a return that is refused — the mark
+is kept and nothing is lost. The skill was paid for, the burning ground it left
+was the payment earned, and the eruption is what the second press buys. The
+alternative, fighting unarmed for ever on a mistimed press, is a worse outcome
+than anything else in the design asks for.
+
+**The ten seconds is `GroundDuration` and the row states only one ten.** "It
+burns everything within 4 meters … pull it free within 10 seconds" is one
+sentence about one object: the sword stands for as long as the fire around it
+burns. A second parameter would let the two drift apart.
+
+### One `MoreDamagePer` read by two things
+
+The row states `MoreDamagePer=12; ScalingSource=Second` once, and two sentences
+depend on it: "grows hotter every second it stands", and "erupt for damage that
+rises with how long you left it". Both read the same number, because two
+parameters would let the burning and the eruption disagree about the same sword.
+
+**It is a rate multiplied by a count, not a compounding proportion.** Ten seconds
+at 12% is 2.2 times, not 3.1. That is what the design's `more` bucket means and
+what `UCataclysmSkillTemplate::ScaledDamagePercent` already does with the same
+two numbers.
+
+**The seconds are counted by the sword and not by the skill**, because the sword
+is the thing that has been standing there. `ScalingUnits` asks it. The
+Greatsword's Unbroken names the same `ScalingSource=Second` and counts something
+else — seconds of standing still — through `UCataclysmSelfBuffSkill::Units`, so
+the two never meet.
+
+### What is not covered
+
+**The sword in the ground is invisible.** What the character is holding is
+emptied, so a planted greatsword can be seen as empty hands, but there is no mesh
+standing in the ground. Issue #811 carries the visual work.
+
+**Nothing about the timers is covered by an automation test.** A world built by
+`UWorld::CreateWorld` is never ticked, so the once-a-second count and the ten
+second window are driven by hand — `GrowHotter` and `LetTheWindowClose` are
+public for exactly that reason. What one second does is covered; the scheduling
+of them is not.
+
+---
+
 ## 2026-09-02 — A charge can last, and the Greatsword's Inexorable is finished
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and

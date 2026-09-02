@@ -10,6 +10,9 @@
 #include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+// For a weapon left standing in the ground, which draws no weapon in a
+// hand while it stands there. Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -507,6 +510,84 @@ CATACLYSM_TEST(FCataclysmTwoHandedUsesOneHandTest,
 				// a two-handed grip pose, and nothing this project owns has one.
 				TestTrue(TEXT("and the off hand stays empty"),
 					Left->GetStaticMesh() == nullptr);
+			}
+		}
+		else
+		{
+			CataclysmTestSkip::ReportSkippedHalf(
+				*this, CataclysmWeaponMeshTest::NoArtReason());
+		}
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+
+CATACLYSM_TEST(FCataclysmPlantedWeaponLeavesTheHandTest,
+	"Cataclysm.WeaponMesh.AWeaponLeftInTheGroundIsNotDrawnInTheHand")
+{
+	// THE VISIBLE HALF OF "YOU FIGHT UNARMED UNTIL YOU DO". The Greatsword's
+	// Buried Fire leaves the sword standing in the ground, and nothing is
+	// unequipped -- the item stays in Weapon1 the whole time -- so without this
+	// the character would go on holding a greatsword the player can see is
+	// somewhere else. Issue #1141.
+	//
+	// AND THE HALF THAT WOULD BREAK SILENTLY IS THE SECOND ONE. Hands that empty
+	// and never fill again look exactly like a skill that worked, until the
+	// player pulls the sword free and finds they are still holding nothing.
+	// `ACataclysmPlantedWeapon::EndPlay` lets go of its caster before asking for
+	// the redraw for that reason, and this is what says so.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmWeaponMeshTest::SpawnPlayer(World);
+	if (TestNotNull(TEXT("a player"), Player))
+	{
+		if (CataclysmWeaponMeshTest::WeaponArtIsPresent())
+		{
+			ECataclysmGearSlot WentTo = ECataclysmGearSlot::Weapon1;
+			const FName Worn = CataclysmWeaponMeshTest::Wear(
+				Player, CataclysmWeaponMeshTest::TwoHandedBase, WentTo);
+
+			TestEqual(TEXT("the greatsword is worn to begin with"),
+				Worn, FName(CataclysmWeaponMeshTest::TwoHandedBase));
+
+			UStaticMeshComponent* Right =
+				CataclysmWeaponMeshTest::HandNamed(Player, TEXT("RightHandWeapon"));
+
+			if (TestNotNull(TEXT("the right hand component"), Right))
+			{
+				TestTrue(TEXT("it starts by holding something"),
+					Right->GetStaticMesh() != nullptr);
+
+				// DRIVEN THROUGH THE ACTOR RATHER THAN THROUGH THE SKILL,
+				// because what is being checked is the drawing. What plants the
+				// sword in play is UCataclysmStrikeSkill and
+				// CataclysmSkillTemplateTests.cpp covers that.
+				ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::Plant(
+					Player, Player->GetActorLocation(), TEXT("Greatsword"),
+					/*InFire=*/nullptr, /*InMorePerSecond=*/12.0f);
+
+				if (TestNotNull(TEXT("the sword went into the ground"), Sword))
+				{
+					// THE ITEM IS STILL WORN, which is what makes this a real
+					// test rather than a test of unequipping. Without it, empty
+					// hands would only mean the greatsword had come off.
+					TestNotNull(TEXT("and the greatsword is still worn"),
+						Player->GetEquipment()->EquippedAt(WentTo));
+
+					TestTrue(TEXT("but the hand is empty while it stands there"),
+						Right->GetStaticMesh() == nullptr);
+
+					Sword->Destroy();
+
+					TestTrue(TEXT("and it is back in the hand once it is gone"),
+						Right->GetStaticMesh() != nullptr);
+				}
 			}
 		}
 		else

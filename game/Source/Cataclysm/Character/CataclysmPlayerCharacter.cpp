@@ -13,6 +13,9 @@
 // For the Cataclysm.ShowDebt console command. Issue #1100.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmLowHealthRelief.h"
+// For a weapon left standing in the ground, whose hands are drawn empty.
+// Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -222,6 +225,24 @@ void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
 {
 	if (!RightHandWeapon || !LeftHandWeapon)
 	{
+		return;
+	}
+
+	// A WEAPON LEFT STANDING IN THE GROUND IS NOT IN A HAND. The Greatsword's
+	// Buried Fire: "drive the greatsword into the ground and leave it there ...
+	// you fight unarmed until you do." The item is still worn -- nothing is
+	// unequipped, and what makes the character unarmed is a refusal asked in
+	// `UCataclysmSkillTemplate::CanActivateAbility` -- so the ordinary path below
+	// would go on drawing a greatsword the player can see is somewhere else.
+	//
+	// ASKED HERE RATHER THAN FLAGGED ON THE CHARACTER, which is the shape
+	// `ACataclysmPlantedWeapon::HeldBy`'s other callers take. Nothing has to be
+	// cleared when the sword comes back: the actor is destroyed, and its own
+	// `EndPlay` calls this again to fill the hands.
+	if (ACataclysmPlantedWeapon::HeldBy(this))
+	{
+		RightHandWeapon->SetStaticMesh(nullptr);
+		LeftHandWeapon->SetStaticMesh(nullptr);
 		return;
 	}
 
