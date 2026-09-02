@@ -147,6 +147,16 @@ public:
 	TObjectPtr<class ACataclysmTether> Tethered;
 
 	/**
+	 * How many commanded creatures this use ordered onto its target.
+	 *
+	 * ONE ROW ORDERS ANY: the Staff's Compel, "everything you command strikes
+	 * that same enemy at once". Zero for every other projectile, and zero for
+	 * Compel cast by a character commanding nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CommandedStrikes = 0;
+
+	/**
 	 * Copy the curses on each of these enemies onto the nearest others.
 	 *
 	 * THE WAND'S MALEFICE AND NOTHING ELSE TODAY: "copying every curse it
@@ -594,6 +604,17 @@ public:
 	int32 Arrivals = 0;
 
 	/**
+	 * The creature a `Swap` traded places with, or null. Read by tests.
+	 *
+	 * THE STAFF'S VESSELSTEP IS THE ONE ROW: "trade places with a creature you
+	 * command up to 14 meters away." It is the only movement mode whose
+	 * destination is a creature rather than a place, which is why it is the only
+	 * one that has anything to record here.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	TObjectPtr<AActor> SwappedWith;
+
+	/**
 	 * Whether this skill is holding a mark to return to. `Mode=Recall`.
 	 *
 	 * THE DAGGER'S ECHO IS TWO PRESSES AND THIS IS WHICH ONE THE NEXT WILL BE.
@@ -669,6 +690,47 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TArray<TObjectPtr<ACataclysmMinion>> Minions;
+
+	/**
+	 * Strike one enemy and take it if the blow left it weak enough.
+	 *
+	 * ONE ROW STATES IT: the Staff's Subjugate, "drive your will into an enemy up
+	 * to 15 meters away for 300% weapon damage, setting it alight. If the blow
+	 * leaves it below half health you take it permanently: it fights for you
+	 * until it dies, keeps its own abilities, and sets alight what it strikes.
+	 * Holding a thrall reserves 30 Fervour, so your army is only as large as your
+	 * pool. Bosses cannot be taken."
+	 *
+	 * A SUMMON THAT SUMMONS NOTHING, and this shape is still the right home. What
+	 * the row produces is a creature fighting for the caster; whether it was torn
+	 * out of a rift or taken off the other side is one branch rather than a ninth
+	 * skill template.
+	 *
+	 * THE BLOW LANDS WHETHER OR NOT ANYTHING IS TAKEN. Every refusal below it --
+	 * too healthy, a boss, no room in the pool -- leaves an enemy that has been
+	 * hit for 300% and set alight, which is what "if the blow leaves it" says.
+	 *
+	 * Public so a test can drive it without aiming.
+	 *
+	 * @return whether an enemy was taken
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	bool Possess();
+
+	/** Whether the last use took an enemy. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bTookIt = false;
+
+	/**
+	 * Whether the last use was refused for want of room in the pool.
+	 *
+	 * SEPARATE FROM `bTookIt` BEING FALSE, which has four causes: nothing where
+	 * the player pointed, a target left too healthy, a boss, and this. A test
+	 * that only asked whether something was taken could not tell the cap working
+	 * from the threshold working.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bRefusedForRoom = false;
 
 	/** How many are alive, after dropping the ones that expired. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")

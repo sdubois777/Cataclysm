@@ -11,6 +11,7 @@
 // For marking a cursed creature so its curse passes on when it dies.
 // The Wand's Anathema. Issue #37.
 #include "AbilitySystem/CataclysmCurseSpread.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -305,6 +306,23 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 		&& ACataclysmTerrain::IsStandingIn(ActorInfo ? ActorInfo->AvatarActor.Get()
 													: Avatar(),
 										   ECataclysmTerrainKind::Pit))
+	{
+		return false;
+	}
+
+	// A TRADE NEEDS SOMETHING TO TRADE PLACES WITH. The Staff's Vesselstep:
+	// "trade places with a creature you command up to 14 meters away."
+	//
+	// REFUSED HERE FOR THE REASON THE PIT ABOVE IS. With nothing to swap with
+	// there is no destination at all: every other movement mode falls back to the
+	// aimed point, and this one cannot, because the row says the destination IS
+	// the creature. Letting it through would either spend the mana and the
+	// cooldown on a skill that then stood still, or turn Vesselstep into a blink,
+	// which is a different skill.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap
+		&& UCataclysmCommand::ThingsCommandedBy(
+			   ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar(),
+			   Params.RangeCm).IsEmpty())
 	{
 		return false;
 	}

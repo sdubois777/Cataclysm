@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
@@ -781,6 +782,48 @@ int32 UCataclysmProjectileSkill::Land()
 	}
 
 	HitTargets(Targets);
+
+	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
+	// SO. The Staff's Compel: "everything you command strikes that same enemy at
+	// once, wherever it happens to be standing." Its `CommandStrike=1` was parsed
+	// and read by nothing until 2026-09-02.
+	//
+	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it
+	// is why nothing here checks a distance. A creature ordered onto an enemy
+	// across the room strikes it from where it is; the row is explicit that
+	// reaching it is not the player's problem. That is what makes Compel worth a
+	// Heavy slot rather than being a slower Quarry.
+	//
+	// THE ENEMY THE BOLT ITSELF HIT, AND ONLY ONE. Compel states `MaxTargets=1`
+	// and `Pierce=0`, so the search above answers at most one creature and "that
+	// same enemy" is it. Taking the first is the only reading a singular sentence
+	// allows.
+	if (Params.bCommandStrike && !Targets.IsEmpty())
+	{
+		CommandedStrikes = 0;
+		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+		{
+			if (ACataclysmCharacterBase* Body =
+					Cast<ACataclysmCharacterBase>(Follower))
+			{
+				// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING,
+				// so ordering one is the same act the creature would have taken
+				// itself. A minion swings; a subjugated enemy uses its own
+				// attack, which is what "keeps its own abilities" means for a
+				// thrall; the base class does nothing at all.
+				Body->AttackTarget(Targets[0]);
+				++CommandedStrikes;
+			}
+		}
+
+		if (CommandedStrikes > 0)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' ordered %d commanded creatures onto '%s'."),
+				*SkillName, CommandedStrikes, *Targets[0]->GetName());
+		}
+	}
+
 	++Landings;
 	return Targets.Num();
 }
@@ -1468,6 +1511,55 @@ void UCataclysmMovementSkill::ActivateAbility(
 		MarkExpiresAt = 0.0;
 	}
 
+	// AND A TRADE GOES WHERE ONE OF THE CASTER'S OWN CREATURES IS STANDING, AND
+	// SENDS IT BACK. The Staff's Vesselstep: "trade places with a creature you
+	// command up to 14 meters away."
+	//
+	// THE NEAREST ONE, because `ThingsCommandedBy` answers nearest first and the
+	// row does not say which creature. "Up to 14 meters" is the range, so
+	// anything further away is not a candidate at all.
+	//
+	// THE CREATURE IS MOVED HERE AND THE CASTER IS MOVED BELOW, which is the one
+	// place these two lines could disagree: `Start` is read before this and the
+	// caster's own move happens after, so the creature goes to where the caster
+	// WAS rather than to where it ends up. Doing both here would put them in the
+	// same place.
+	//
+	// AT THE CASTER'S OWN HEIGHT, the arrangement every other arrival in this
+	// file uses: taking the other body's height drops one of them through the
+	// floor when the two stand at different levels.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap)
+	{
+		const TArray<AActor*> Commanded =
+			UCataclysmCommand::ThingsCommandedBy(Self, Params.RangeCm);
+		if (Commanded.IsEmpty())
+		{
+			// A TRADE WITH NOBODY IS NOT A MOVE. Every other movement mode has
+			// somewhere to go when it finds nothing -- the aimed point -- and
+			// this one does not: "trade places with a creature you command" says
+			// the destination IS the creature, so with none there is no
+			// destination. Refused rather than blinking to the cursor, which
+			// would be a different skill.
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' commands nothing within %.0fcm, so there was nothing "
+					 "to trade places with."),
+				*SkillName, Params.RangeCm);
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+
+		AActor* Partner = Commanded[0];
+		End = FVector(Partner->GetActorLocation().X,
+					  Partner->GetActorLocation().Y, Start.Z);
+
+		Partner->SetActorLocation(
+			FVector(Start.X, Start.Y, Partner->GetActorLocation().Z),
+			/*bSweep=*/true);
+
+		SwappedWith = Partner;
+	}
+
 	TArray<AActor*> Targets;
 	switch (Params.MovementMode)
 	{
@@ -1477,6 +1569,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 			GetWorld(), Self, Start, End, ScaledRadiusCm(), Params.MaxTargets);
 		break;
 
+	case ECataclysmMovementMode::Swap:
+		// "HELLFIRE ERUPTS AT BOTH ENDS OF THE TRADE, SETTING ALIGHT
+		// EVERYTHING NEAR EITHER POINT." Word for word the same search a blink
+		// makes, so it shares the branch rather than copying it: two circles,
+		// merged, and nothing in between.
 	case ECataclysmMovementMode::Blink:
 		// "Enemies at the point you left and the point you arrive": both ends,
 		// nothing between. Gathered from both and merged, because an enemy
@@ -1510,7 +1607,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// The ground is left BEFORE the move for a blink, because Emberstep burns
 	// "both points", and the point left behind stops being the caster's position
 	// the moment they arrive.
-	if (Params.MovementMode == ECataclysmMovementMode::Blink)
+	// AND A SWAP LEAVES ONE TOO, for the reason the blink does and with the same
+	// wording behind it. Vesselstep: "leaving both burning for 4 seconds". The
+	// point left behind stops being the caster's position the moment it arrives.
+	if (Params.MovementMode == ECataclysmMovementMode::Blink
+		|| Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
 		LeaveGroundAt(Start);
 	}
@@ -1781,6 +1882,88 @@ int32 UCataclysmSummonSkill::LivingMinionCount()
 	return Minions.Num();
 }
 
+bool UCataclysmSummonSkill::Possess()
+{
+	bTookIt = false;
+	bRefusedForRoom = false;
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return false;
+	}
+
+	// ONE ENEMY, WITHIN THE ROW'S RANGE. Subjugate states `MaxTargets=1` and
+	// "an enemy up to 15 meters away", so this is the same search every other
+	// single-target skill makes.
+	TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Self, AimedPointWithin(Params.RangeCm), ScaledRadiusCm(),
+		FMath::Max(1, Params.MaxTargets));
+
+	if (Targets.IsEmpty())
+	{
+		// Nothing where the player pointed. The skill was spent, which is the
+		// same answer every other aimed skill gives for a miss.
+		return false;
+	}
+
+	AActor* Target = Targets[0];
+
+	// THE BLOW FIRST, AND EVERYTHING ABOUT WHETHER IT CAN BE TAKEN IS JUDGED
+	// AFTER IT. "If the BLOW LEAVES IT below half health you take it
+	// permanently": the health that matters is what is left when the damage has
+	// landed, not what it had when the skill was pressed. `HitTargets` also
+	// carries the row's `Burn=1`, so "setting it alight" comes with it.
+	HitTargets(Targets);
+
+	// THE THRESHOLD IS A SHARE OF MAXIMUM HEALTH, the same reading the stun's
+	// threshold takes and for the same reason: what matters is whether the blow
+	// was a real blow for that creature, and a Common enemy and a Rare one do not
+	// have the same numbers.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const float Health = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float MaxHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+
+	if (MaxHealth <= 0.0f
+		|| Health > MaxHealth * Params.HealthThresholdPercent / 100.0f)
+	{
+		// IT SURVIVED TOO WELL. The row makes this the ordinary outcome against
+		// anything healthy, which is what stops Subjugate being a button that
+		// takes whatever it is pointed at.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' left '%s' at %.0f of %.0f health, above the %.0f%% it "
+				 "must be under to be taken."),
+			*SkillName, *Target->GetName(), Health, MaxHealth,
+			Params.HealthThresholdPercent);
+		return false;
+	}
+
+	// AND THE POOL HAS TO HAVE ROOM. "Holding a thrall reserves 30 Fervour, so
+	// your army is only as large as your pool." Asked before the taking rather
+	// than after, so a refusal leaves the creature exactly as the blow left it
+	// rather than taking it and giving it back.
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, Params.FervourReserve))
+	{
+		bRefusedForRoom = true;
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' has no room for another thrall at %.0f reserved each, so "
+				 "'%s' was left where it was."),
+			*SkillName, Params.FervourReserve, *Target->GetName());
+		return false;
+	}
+
+	bTookIt = UCataclysmCommand::Subjugate(Self, Target);
+	return bTookIt;
+}
+
 ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 {
 	AActor* Self = Avatar();
@@ -1853,6 +2036,24 @@ void UCataclysmSummonSkill::ActivateAbility(
 	if (!Self)
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// A SUMMON ROW THAT TAKES RATHER THAN MAKES LEAVES HERE. The Staff's
+	// Subjugate: "drive your will into an enemy up to 15 meters away for 300%
+	// weapon damage, setting it alight. If the blow leaves it below half health
+	// you take it permanently."
+	//
+	// IT IS A SUMMON SHAPE AND SUMMONS NOTHING, WHICH IS THE RIGHT SHAPE ANYWAY.
+	// What the row produces is a creature fighting for the caster, and that is
+	// what this shape is for; where it comes from -- torn out of a rift or taken
+	// off the other side -- is the difference, and it is one branch rather than a
+	// ninth template. Everything below this assumes a rift and a spawn, and a
+	// possession has neither.
+	if (Params.bPossess)
+	{
+		Possess();
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
 	}
 
