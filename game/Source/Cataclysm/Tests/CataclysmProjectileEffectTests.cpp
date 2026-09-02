@@ -21,7 +21,9 @@
 #include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraSpriteRendererProperties.h"
 #include "NiagaraSystem.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/SoftObjectPath.h"
 
 /**
  * NS_Proj_Body: what a projectile looks like while it is in the air.
@@ -53,6 +55,37 @@ namespace CataclysmProjectileEffectTest
 	{
 		return LoadObject<UNiagaraSystem>(
 			nullptr, UCataclysmProjectileEffect::SystemAssetPath);
+	}
+
+	/**
+	 * The two assets NS_Proj_Body draws with that are NOT in this repository.
+	 *
+	 * Both come from bought packs listed between THIRD-PARTY-PACKS-BEGIN and
+	 * THIRD-PARTY-PACKS-END in .gitignore, so on any machine where the pack has
+	 * not been installed -- which includes every git worktree -- they resolve to
+	 * null. Named here so the test can ask whether the PACK is present rather
+	 * than inferring it from a null reference inside the Niagara asset, which
+	 * cannot tell an uninstalled pack from an assignment somebody cleared.
+	 * Issue #1197.
+	 */
+	const TCHAR* HeadMeshAssetPath =
+		TEXT("/Game/SplineEffect2/Mesh/SM_FractalElement.SM_FractalElement");
+	const TCHAR* StreakMaterialAssetPath =
+		TEXT("/Game/_SplineVFX/_GenericSource/Material/MI/"
+			 "MI_Basic_trail05.MI_Basic_trail05");
+
+	/**
+	 * True when the asset at this path loads, so the pack supplying it is here.
+	 *
+	 * FSoftObjectPath::TryLoad rather than a bare LoadObject, because that is
+	 * what the fifteen Paragon-dependent tests already use for exactly this
+	 * question -- see ACataclysmBruteCharacter::BodyMeshPath in
+	 * CataclysmBruteTests.cpp -- and a missing package through it does not
+	 * produce a warning the automation run would count against the test.
+	 */
+	bool PackAssetIsInstalled(const TCHAR* Path)
+	{
+		return FSoftObjectPath(Path).TryLoad() != nullptr;
 	}
 
 	/** The named emitter's handle, or null. */
@@ -269,25 +302,62 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 	// 2026-08-22 this test asserted the opposite -- that the head drew with the
 	// shared sprite material -- so it pinned the fault in place.
 	//
-	// THE MESH REFERENCE IS CHECKED RATHER THAN ITS CONTENTS, because it comes
-	// out of an installed pack and is absent on a fresh clone, exactly as the
-	// Paragon meshes are. A renderer whose mesh was never assigned carries null
-	// and fails here.
-	bool bFoundAShapedHead = false;
+	// THE RENDERER CLASS AND THE MESH ASSIGNMENT ARE TWO FACTS, AND THEY USED TO
+	// BE ONE. Requiring a mesh renderer AND a resolved mesh in a single boolean
+	// made this test fail on every machine without the SplineEffect2 pack, which
+	// is every git worktree and every fresh clone. A red suite that is not a
+	// regression cannot be told apart from one that is, and establishing that
+	// cost a build cycle on 2026-09-02. Issue #1197.
+	//
+	// So: the renderer class lives in the committed asset and is checked always.
+	// Which mesh it resolves to depends on a pack that is not in git, so that
+	// half is checked when the pack is present and REPORTED AS SKIPPED when it
+	// is not. Probing the pack separately, rather than reading a null reference
+	// as "the pack is missing", is what keeps this honest -- an assignment
+	// somebody cleared still fails on a machine that has the pack, and that is
+	// the fault the original single boolean was written to catch.
+	const bool bHeadMeshPackInstalled = PackAssetIsInstalled(HeadMeshAssetPath);
+
+	const UNiagaraMeshRendererProperties* HeadMeshRenderer = nullptr;
 	for (const UNiagaraRendererProperties* Renderer : HeadData->GetRenderers())
 	{
-		const auto* Meshes = Cast<UNiagaraMeshRendererProperties>(Renderer);
-		if (Meshes && Meshes->Meshes.Num() > 0 && Meshes->Meshes[0].Mesh)
+		if (const auto* AsMesh = Cast<UNiagaraMeshRendererProperties>(Renderer))
 		{
-			bFoundAShapedHead = true;
-			TestFalse(TEXT("the head's mesh is not a sphere, which would be the "
-						   "round non-shape again in three dimensions"),
-				Meshes->Meshes[0].Mesh->GetName().Contains(TEXT("Sphere")));
+			HeadMeshRenderer = AsMesh;
 		}
 	}
-	TestTrue(TEXT("the head is drawn by a mesh renderer with a mesh assigned, "
-				  "so it has an outline to read rather than being a round dot"),
-		bFoundAShapedHead);
+	TestTrue(TEXT("the head is drawn by a mesh renderer, so it has an outline "
+				  "to read rather than being a round dot"),
+		HeadMeshRenderer != nullptr);
+
+	if (HeadMeshRenderer)
+	{
+		const bool bMeshAssigned = HeadMeshRenderer->Meshes.Num() > 0
+			&& HeadMeshRenderer->Meshes[0].Mesh != nullptr;
+
+		if (bMeshAssigned)
+		{
+			TestFalse(TEXT("the head's mesh is not a sphere, which would be the "
+						   "round non-shape again in three dimensions"),
+				HeadMeshRenderer->Meshes[0].Mesh->GetName().Contains(
+					TEXT("Sphere")));
+		}
+		else if (!bHeadMeshPackInstalled)
+		{
+			CataclysmTestSkip::ReportSkippedHalf(*this,
+				TEXT("which mesh the head draws with is not checked, so neither "
+					 "is that the mesh is not a sphere; that the head has a mesh "
+					 "renderer rather than a sprite one IS checked. The "
+					 "SplineEffect2 pack supplying SM_FractalElement is not "
+					 "installed."));
+		}
+		else
+		{
+			AddError(TEXT("the head's mesh renderer has no mesh assigned, and "
+						  "the SplineEffect2 pack IS installed, so the "
+						  "assignment was cleared rather than unresolvable."));
+		}
+	}
 
 	bool bHeadStillDrawsARoundSprite = false;
 	for (const UNiagaraRendererProperties* Renderer : HeadData->GetRenderers())
@@ -330,25 +400,49 @@ bool FCataclysmProjectileHeadRidesAndTrailStaysBehind::RunTest(const FString& Pa
 	// different class from a sprite renderer, so this cannot be satisfied by an
 	// emitter that merely draws something.
 	//
-	// ITS MATERIAL COMES OUT OF THE INSTALLED PACK and is therefore absent on a
-	// fresh clone, exactly as the Paragon meshes are. The reference is checked
-	// rather than the asset's contents, so this still says something when the
-	// pack is not installed: a renderer whose material was never assigned
-	// carries null and would fail here.
-	bool bFoundARibbon = false;
+	// SPLIT FROM ITS MATERIAL, for the reason set out on the head above. The
+	// ribbon renderer is in the committed asset; MI_Basic_trail05 comes from
+	// the _SplineVFX pack, which is not in git. Issue #1197.
+	const bool bStreakMaterialPackInstalled =
+		PackAssetIsInstalled(StreakMaterialAssetPath);
+
+	const UNiagaraRibbonRendererProperties* StreakRibbon = nullptr;
 	for (const UNiagaraRendererProperties* Renderer : StreakData->GetRenderers())
 	{
-		const auto* Ribbon = Cast<UNiagaraRibbonRendererProperties>(Renderer);
-		if (Ribbon && Ribbon->Material)
+		if (const auto* AsRibbon =
+				Cast<UNiagaraRibbonRendererProperties>(Renderer))
 		{
-			bFoundARibbon = true;
-			TestEqual(TEXT("the streak draws with the pack's trail material"),
-				Ribbon->Material->GetName(), FString(TEXT("MI_Basic_trail05")));
+			StreakRibbon = AsRibbon;
 		}
 	}
 	TestTrue(TEXT("the streak is drawn by a ribbon renderer, so it is a "
 				  "continuous streak rather than a line of separate sprites"),
-		bFoundARibbon);
+		StreakRibbon != nullptr);
+
+	if (StreakRibbon)
+	{
+		if (StreakRibbon->Material)
+		{
+			TestEqual(TEXT("the streak draws with the pack's trail material"),
+				StreakRibbon->Material->GetName(),
+				FString(TEXT("MI_Basic_trail05")));
+		}
+		else if (!bStreakMaterialPackInstalled)
+		{
+			CataclysmTestSkip::ReportSkippedHalf(*this,
+				TEXT("which material the streak draws with is not checked; that "
+					 "the streak is a ribbon renderer rather than a line of "
+					 "separate sprites IS checked. The _SplineVFX pack "
+					 "supplying MI_Basic_trail05 is not installed."));
+		}
+		else
+		{
+			AddError(TEXT("the streak's ribbon renderer has no material "
+						  "assigned, and the _SplineVFX pack IS installed, so "
+						  "the assignment was cleared rather than "
+						  "unresolvable."));
+		}
+	}
 
 	// A LIGHT ON THE HEAD, which is what makes a bolt light the floor it passes
 	// over rather than being a bright shape pasted on top of an unlit room. It

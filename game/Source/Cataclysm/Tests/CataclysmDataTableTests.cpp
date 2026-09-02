@@ -9,6 +9,7 @@
 #include "GameplayTagsManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Tests/CataclysmTestSkip.h"
 
 /**
  * Loads every generated CSV through the struct it is supposed to match.
@@ -607,6 +608,21 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		//
 		// Both sides are re-exported through the same function so the comparison
 		// is of contents rather than of file formatting.
+		//
+		// EDITOR ONLY, AND THAT IS THE ENGINE'S CHOICE RATHER THAN THIS TEST'S.
+		// UDataTable::GetTableAsCSV is declared inside #if WITH_EDITOR in
+		// Engine/Classes/Engine/DataTable.h. This file compiles under
+		// WITH_AUTOMATION_TESTS, which is true in a Development PACKAGED build
+		// and does not imply WITH_EDITOR, so without this guard the packaged
+		// `Cataclysm` target fails to compile while the `CataclysmEditor` target
+		// builds fine. It did fail, from 2026-09-01 to 2026-09-02, and nothing
+		// noticed because continuous integration does not build the C++ at all
+		// (that is #20). Issue #1196.
+		//
+		// There is no runtime substitute. The row-name comparison above uses
+		// GetRowMap and runs in both targets; only this contents comparison is
+		// lost, and the #else below says so rather than passing quietly.
+#if WITH_EDITOR
 		const FString AssetAsCsv = Table->GetTableAsCSV();
 		const FString FileAsCsv = FromCsv->GetTableAsCSV();
 		if (AssetAsCsv != FileAsCsv)
@@ -637,7 +653,20 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 				TEXT("First difference at %s"),
 				Pair.Asset, Pair.File, *FirstDifference));
 		}
+#endif // WITH_EDITOR
 	}
+
+#if !WITH_EDITOR
+	// SAID ONCE, NOT ONCE PER TABLE. The loop above covers every generated
+	// DataTable, and one report naming the whole comparison is what a reader
+	// needs; twenty-eight identical lines would bury the run's other output.
+	CataclysmTestSkip::ReportSkippedHalf(*this,
+		TEXT("whether each DataTable asset's row CONTENTS match its CSV is not "
+			 "checked; that every row name is present in both is. "
+			 "UDataTable::GetTableAsCSV is editor-only and this is a packaged "
+			 "build, so the comparison cannot be made here. Run the automation "
+			 "tests against the CataclysmEditor target to check it."));
+#endif // !WITH_EDITOR
 
 	return true;
 }
