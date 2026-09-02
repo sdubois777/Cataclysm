@@ -156,7 +156,7 @@ their descriptions say. Two data rows changed: Hex of Cinders gained
 not enough on its own.** Its first sentence works: `MoreDamagePer=4;
 ScalingSource=Burning` grants 4% more damage for every burning enemy within
 fifteen metres. Its second, "any enemy that strikes you in melee is set alight",
-asks for something that does not exist -- a hook telling a running self buff that
+asks for something that does not exist — a hook telling a running self buff that
 its holder was **struck**. `UCataclysmSelfBuffSkill` can be told the holder landed
 a blow (`NoteBlowLanded`) or killed something (`NoteKill`), and it can now repeat
 on an interval (`RepeatTick`), and none of those is being hit. An interval would
