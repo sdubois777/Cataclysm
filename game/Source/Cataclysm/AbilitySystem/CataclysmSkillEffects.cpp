@@ -984,20 +984,51 @@ FGameplayTag UCataclysmSkillEffects::BurnTag()
 
 bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   float HitDamage,
-									   bool bScalesWithInstigator)
+									   bool bScalesWithInstigator,
+									   bool bBurnIsDesigned)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
-
-	// THE ZERO-DAMAGE REFUSAL USED TO BE REDUNDANT AND IS NOW LOAD-BEARING.
-	// While Burn was a percent of the hit, a hit dealing nothing produced a burn
-	// worth nothing and ApplyDamageOverTime refused it anyway. Burn is a flat
-	// amount since 2026-08-24, so without this a fully mitigated hit would apply
-	// a burn at full strength. Keeping it preserves the behaviour the project
-	// already had; whether a hit that dealt nothing should apply an ailment at
-	// all is a design question and is issue #917.
-	if (!Burn.bUsable || HitDamage <= 0.0f)
+	if (!Burn.bUsable)
 	{
 		return false;
+	}
+
+	// A DESIGNED BURN SKIPS THE THRESHOLD AND ONLY THE THRESHOLD, which is the
+	// shape `ApplyStun` below already has and the wording section VI of the
+	// design document uses: a hit must take a tenth of maximum health "unless
+	// the skill states stunning as its effect". Issue #917 settled on 2026-09-02
+	// that an ailment reads the same way.
+	//
+	// UNTIL THEN THIS REFUSED ANY HIT THAT DEALT NOTHING. That was arithmetic
+	// while burn was a percent of the hit -- a zero hit made a zero burn, which
+	// `ApplyDamageOverTime` refused anyway -- and it became a decision when burn
+	// went flat on 2026-08-24. Three rows had never worked because of it: the
+	// Greataxe's Burning Wrath, the Spear's Held Fast and the Wand's Hex of
+	// Cinders all state a burn on a Support slot whose damage is zero by design.
+	//
+	// IT DOES NOT TAKE THE STUN'S OTHER TWO RULES. The five second immunity
+	// window and boss immunity belong to hard stops, which completely stop a
+	// target operating. A burn is damage over time, and a boss burns.
+	if (!bBurnIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A TARGET ALREADY DEAD IS NOT SET ALIGHT, matching the stun. Without
+		// this a killing blow would ignite a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (Health <= 0.0f || MaxHealth <= 0.0f
+			|| HitDamage < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
 	}
 
 	// WHAT THE TABLE STATES IS WHAT ONE TICK DEALS, AND IT WAS READ AS A TOTAL

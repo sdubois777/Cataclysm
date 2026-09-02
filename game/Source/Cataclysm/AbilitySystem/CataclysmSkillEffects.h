@@ -476,11 +476,59 @@ public:
 	 * sixteen designed Demonic skills apply burn, and several apply it many
 	 * times a second.
 	 *
-	 * @param HitDamage  the damage of the hit that caused it, before mitigation
+	 * A DESIGNED BURN LANDS WHATEVER THE HIT DID, AND AN INCIDENTAL ONE NEEDS
+	 * THE HIT TO HAVE HURT. Issue #917, settled on 2026-09-02. Until then this
+	 * refused any hit that dealt nothing, which was arithmetic while burn was a
+	 * percent of the hit and became a decision when burn went flat on
+	 * 2026-08-24 -- a fully mitigated hit would otherwise have set a target
+	 * alight at full strength.
+	 *
+	 * WHY THE THRESHOLD RATHER THAN ALLOWING IT OUTRIGHT. The design already
+	 * says damage over time bypasses an energy shield, so ailments are the
+	 * existing route past one defensive layer. Letting an incidental one ignore
+	 * every layer is a larger change than it looks and nobody asked for it. A
+	 * designed one is different: it is part of what the skill IS, so a Support
+	 * skill dealing no damage by design still sets alight what its sentence
+	 * says it does.
+	 *
+	 * THE THRESHOLD IS ON MAXIMUM HEALTH AND NOT ON THE HIT, so a scratch
+	 * against a Boss cannot ignite it while the same scratch against a Common
+	 * enemy can. That is the shape stunning already has and the reason is the
+	 * same: what matters is whether the blow was a real blow for that target.
+	 *
+	 * IT IS THE SAME NUMBER AS THE STUN'S AND READS `StunDamageThresholdPercent`
+	 * RATHER THAN DECLARING A SECOND ONE. The design states one figure and one
+	 * figure is what the code holds, so moving it moves both.
+	 *
+	 * WHAT IT DOES NOT TAKE FROM THE STUN: the five second immunity window and
+	 * boss immunity. Those belong to hard stops -- effects that completely stop
+	 * a target operating -- and an ailment is damage over time. A boss burns.
+	 *
+	 * **THE THRESHOLD CANNOT FIRE TODAY AND THAT IS WORTH KNOWING.**
+	 * `HitDamage` is what the attacker SENT, not what got through: `ApplyHit`
+	 * returns the figure it handed to `ApplyDirectDamage`, and evasion, block,
+	 * armour and resistance are all applied afterwards, inside the defender's
+	 * own attribute set. So an incidental burn always arrives here with a
+	 * positive figure, and a hit that was evaded outright sets a target alight
+	 * exactly as it did before this change. Issue #1156 carries that, because it
+	 * is a fault in what the number means rather than in this rule.
+	 *
+	 * WHAT THIS RULE ACTUALLY CHANGES TODAY, THEREFORE, is one thing: a skill
+	 * whose own damage is zero can now set alight what its row says it does.
+	 * That is the three Support-slot rows and nothing else. Every other caller
+	 * behaves exactly as it did.
+	 *
+	 * @param HitDamage  the damage of the hit that caused it, BEFORE the
+	 *                   defender's mitigation. Ignored when the burn is designed
+	 * @param bBurnIsDesigned  true when the skill's own row states it burns.
+	 *                   `Params.bBurns` is exactly that, so every caller that
+	 *                   reads a skill row passes it. A gem, an affix or an
+	 *                   enemy modifier passes false
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
-						  bool bScalesWithInstigator = true);
+						  bool bScalesWithInstigator = true,
+						  bool bBurnIsDesigned = false);
 
 	/**
 	 * A percentage-of-normal stat read as a plain multiplier.

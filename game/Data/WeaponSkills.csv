@@ -208,7 +208,7 @@ Death_Fist_Special,Fist,Death,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
 Chaos_Fist_Special,Fist,Chaos,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
 Famine_Fist_Special,Fist,Famine,Special,,,Slot.Special,,,-1.0,-1.0,-1.0,-1.0
 Celestial_Wand_Support,Wand,Celestial,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
-Demonic_Wand_Support,Wand,Demonic,Support,Hex of Cinders,"Lay a hex on an enemy up to 12 meters away, applying Shred: their resistance is reduced for 6 seconds. Hexing an enemy that is already burning also sets alight everything within 4 meters of them.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Debuff, Stat.Defense.Resist, Keyword.DoT.Burn, Slot.Support",Debuff,Range=12; MaxTargets=1; EffectDuration=6; Effect=Shred,-1.0,-1.0,-1.0,-1.0
+Demonic_Wand_Support,Wand,Demonic,Support,Hex of Cinders,"Lay a hex on an enemy up to 12 meters away, applying Shred: their resistance is reduced for 6 seconds. Hexing an enemy that is already burning also sets alight everything within 4 meters of them.","Item.Weapon.Wand, Element.Demonic, Type.Spell, Type.Debuff, Stat.Defense.Resist, Keyword.DoT.Burn, Slot.Support",Debuff,Range=12; MaxTargets=1; EffectDuration=6; Effect=Shred; SpreadWhen=Burning; SpreadRadius=4,-1.0,-1.0,-1.0,-1.0
 Pestilence_Wand_Support,Wand,Pestilence,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 Void_Wand_Support,Wand,Void,Support,,,Slot.Support,,,-1.0,-1.0,-1.0,-1.0
 War_Sword_Special,Sword,War,Special,Skirmish,"Hurl a throwing sword at a distant target, dealing physical damage and applying bleed. The thrown sword embeds in the target, reducing their movement speed by 30% for 4 seconds.","Item.Weapon.Sword, Element.War, Type.Projectile, Keyword.DoT.Bleed, Keyword.CC, Slot.Special",,,-1.0,-1.0,-1.0,-1.0
@@ -298,7 +298,7 @@ Demonic_Whip_Heavy,Whip,Demonic,Heavy,Searing Lash,"Crack the whip out to 5 mete
 Pestilence_Whip_Heavy,Whip,Pestilence,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 Void_Whip_Heavy,Whip,Void,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 War_Spear_Support,Spear,War,Support,Phalanx Stance,"Brace your spear and enter a defensive stance, reducing incoming melee damage by 25% and granting all active gadgets within 10 meters +20% HP and +15% damage for 8 seconds.","Item.Weapon.Spear, Element.War, Stat.Defense.Melee, Stat.Offense.Global, Type.Deployable, Slot.Support",,,-1.0,-1.0,-1.0,-1.0
-Demonic_Spear_Support,Spear,Demonic,Support,Held Fast,"Set the spear and read the field for 10 seconds. You deal 10% more damage for every enemy you currently have pinned, and any pinned enemy within 12 meters is set alight again each second it is held.","Item.Weapon.Spear, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.CC, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Radius=12; MoreDamagePer=10; ScalingSource=Pinned,-1.0,-1.0,-1.0,-1.0
+Demonic_Spear_Support,Spear,Demonic,Support,Held Fast,"Set the spear and read the field for 10 seconds. You deal 10% more damage for every enemy you currently have pinned, and any pinned enemy within 12 meters is set alight again each second it is held.","Item.Weapon.Spear, Element.Demonic, Type.Buff, Stat.Offense.Global, Keyword.CC, Keyword.DoT.Burn, Slot.Support",SelfBuff,Duration=10; Interval=1; Radius=12; MoreDamagePer=10; ScalingSource=Pinned,-1.0,-1.0,-1.0,-1.0
 Death_Whip_Heavy,Whip,Death,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 Chaos_Whip_Heavy,Whip,Chaos,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0
 Famine_Whip_Heavy,Whip,Famine,Heavy,,,Slot.Heavy,,,-1.0,-1.0,-1.0,-1.0

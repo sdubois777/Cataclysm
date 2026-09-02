@@ -686,6 +686,32 @@ protected:
 	int32 IgniteAroundConsumed(const TArray<AActor*>& Consumed);
 
 	/**
+	 * Set alight everything standing near one target, if that target already
+	 * carries what this skill's `SpreadWhen` names.
+	 *
+	 * ONE ROW STATES IT: the Wand's Hex of Cinders, "hexing an enemy that is
+	 * already burning also sets alight everything within 4 meters of them".
+	 *
+	 * THE OPPOSITE OF `IgniteAroundConsumed` ABOVE IN ONE RESPECT, AND THAT IS
+	 * THE WHOLE DIFFERENCE. Consuming takes the fire OUT of the target and
+	 * spends it, so the target is deliberately not relit. This leaves the target
+	 * burning and lights its neighbours as well, so the target is skipped only
+	 * because it is already alight rather than because relighting it would be
+	 * wrong. Issue #1146 records the choice between the two shapes.
+	 *
+	 * A TARGET THAT DOES NOT MEET THE CONDITION SPREADS NOTHING, and the skill
+	 * around it still worked. A hex laid on an enemy that is not burning is a
+	 * working cast; it just lights nobody.
+	 *
+	 * IT SETS ALIGHT AND DEALS NO DAMAGE OF ITS OWN, which is what "sets alight
+	 * everything within 4 meters" says and what the consuming spread above also
+	 * does.
+	 *
+	 * @return how many enemies were set alight
+	 */
+	int32 SpreadFireAround(AActor* From);
+
+	/**
 	 * How far a self buff this character is holding spreads a consumed fire.
 	 *
 	 * THE SWORD'S ASHEN EDGE AND NOTHING ELSE TODAY. It states a `ConsumeRadius`

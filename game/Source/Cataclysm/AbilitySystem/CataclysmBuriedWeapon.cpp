@@ -80,12 +80,17 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 		Credited, NextHost, Buried->DamagePercent, Buried->SkillTags,
 		FCataclysmHitDelivery());
 
-	// A BURN IS A SHARE OF THE HIT THAT CAUSED IT, so an axe that dealt nothing
-	// sets nothing alight. That is the rule every other blow in the project
-	// follows.
-	if (Buried->bBurns && Dealt > 0.0f)
+	// A DESIGNED BURN, because `bBurns` was copied from the throwing row's own
+	// `Burn=1`. Issue #917: a skill that states an ailment applies it whether or
+	// not the blow hurt.
+	//
+	// THE COMMENT THAT STOOD HERE SAID A BURN IS A SHARE OF THE HIT. That
+	// stopped being true on 2026-08-24, when burn became a flat 25 a second.
+	if (Buried->bBurns)
 	{
-		UCataclysmSkillEffects::ApplyBurn(Credited, NextHost, Dealt);
+		UCataclysmSkillEffects::ApplyBurn(Credited, NextHost, Dealt,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/true);
 	}
 
 	// AND IT IS NOW IN THAT ONE, which is what makes it go on. Copied from the

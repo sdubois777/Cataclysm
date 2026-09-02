@@ -194,11 +194,16 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		// have gone through Atof, come back 0, and failed the guard below,
 		// which marks the WHOLE cell invalid: the same failure Minions caused
 		// on issue #622, where every summon lost its Count and MaxActive too.
+		// AND `SpreadWhen` JOINED ON 2026-09-02, for the same reason as the eight
+		// above: it names a condition rather than a number, so leaving it off
+		// would fail the guard below and take the whole cell down -- which for
+		// Hex of Cinders means losing its range, its target cap and the curse it
+		// applies, not only the spread.
 		static const TCHAR* const TextKeys[] = {
 			TEXT("Mode"), TEXT("Effect"), TEXT("Minions"),
 			TEXT("ScalingSource"), TEXT("ForcedMovement"), TEXT("Terrain"),
 			TEXT("Requires"), TEXT("ChargeBreaksOn"), TEXT("RefundsCooldown"),
-			TEXT("TargetMode"), TEXT("OnDeath"),
+			TEXT("TargetMode"), TEXT("OnDeath"), TEXT("SpreadWhen"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -413,6 +418,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("ConsumeRadius"), ESearchCase::IgnoreCase))
 		{
 			Params.ConsumeRadiusCm = Number * ToCm;
+		}
+		// --- Spreading fire from a target that already carries something --
+		else if (Key.Equals(TEXT("SpreadWhen"), ESearchCase::IgnoreCase))
+		{
+			Params.SpreadWhen = Value;
+		}
+		else if (Key.Equals(TEXT("SpreadRadius"), ESearchCase::IgnoreCase))
+		{
+			Params.SpreadRadiusCm = Number * ToCm;
 		}
 		// --- On death ---------------------------------------------------
 		else if (Key.Equals(TEXT("OnDeath"), ESearchCase::IgnoreCase))

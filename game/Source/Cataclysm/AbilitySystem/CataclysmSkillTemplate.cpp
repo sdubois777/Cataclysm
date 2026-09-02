@@ -798,9 +798,17 @@ int32 UCataclysmSkillTemplate::IgniteAroundConsumed(
 		return 0;
 	}
 
-	// WHAT THE SPREAD BURN IS WORTH. A burn is a share of the hit that caused
-	// it, so a spread with no hit behind it needs a figure of its own: this uses
-	// the skill's own blow, which is what the fire being spent was worth.
+	// WHAT THE SPREAD BURN IS WORTH, AND SINCE 2026-08-24 THE ANSWER IS THE SAME
+	// WHATEVER THIS COMPUTES. Burn is a flat 25 a second, so the figure below
+	// reaches `DamagePerTickAgainst`, which reads the percent-of-hit column, and
+	// that column is zero for Burn. Nothing about the spread's strength depends
+	// on it.
+	//
+	// IT IS COMPUTED ANYWAY, AND KEPT, for two reasons. `ApplyBurn` still takes
+	// a hit figure and would refuse an incidental burn without one, and a future
+	// ailment stating a percent of the hit would need exactly this number. The
+	// skill's own blow is the right one: it is what the fire being spent was
+	// worth.
 	const UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Self);
 	const float HitDamage = UCataclysmSkillEffects::ModifiedDamage(
@@ -832,7 +840,13 @@ int32 UCataclysmSkillTemplate::IgniteAroundConsumed(
 				continue;
 			}
 
-			if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage))
+			// A DESIGNED BURN, because spreading fire is the whole of what this
+			// function is for: the Sword's Flashpoint says "set alight
+			// everything the burst catches" and it is the row's own sentence
+			// rather than a chance on hit.
+			if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage,
+												  /*bScalesWithInstigator=*/true,
+												  /*bBurnIsDesigned=*/true))
 			{
 				++Lit;
 			}
@@ -845,6 +859,93 @@ int32 UCataclysmSkillTemplate::IgniteAroundConsumed(
 			TEXT("'%s' spread fire from %d consumed enemies to %d others, "
 				 "within %.0fcm."),
 			*SkillName, Consumed.Num(), Lit, RadiusCm);
+	}
+
+	return Lit;
+}
+
+int32 UCataclysmSkillTemplate::SpreadFireAround(AActor* From)
+{
+	if (Params.SpreadWhen.IsEmpty() || Params.SpreadRadiusCm <= 0.0f
+		|| !IsValid(From))
+	{
+		// The ordinary case: one row in the sheet states this.
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	// ONE CONDITION IS DEFINED AND IT IS THE ONE THE ROW STATES. `Burning` is
+	// all Hex of Cinders asks for. A cell naming anything else spreads nothing
+	// and says so, rather than spreading from every target as though the
+	// condition had been met -- which is the failure mode that made
+	// `MovementMode` and `OnDeath` silently run the wrong branch before.
+	if (!Params.SpreadWhen.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' states SpreadWhen='%s', which is not a condition this "
+				 "build knows. No fire was spread."),
+			*SkillName, *Params.SpreadWhen);
+		return 0;
+	}
+
+	// READ OFF THE TARGET'S OWN TAGS, so any source of burn counts and not only
+	// this character's. That is the same reading the doubled curse duration
+	// beside it takes for Whisper of Madness.
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!Burn.IsValid() || !UCataclysmSkillEffects::HasTag(From, Burn))
+	{
+		// A hex laid on an enemy that is not burning is a working cast that
+		// spreads nothing. The condition is on the target, not on the cast.
+		return 0;
+	}
+
+	// WHAT THE SPREAD BURN IS WORTH, and since burn went flat on 2026-08-24 the
+	// answer does not depend on this figure at all -- `DamagePerTickAgainst`
+	// reads the percent-of-hit column and that column is zero for Burn. It is
+	// computed for the reason the consuming spread above computes one: a future
+	// ailment stating a percent of the hit would need it.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+	const float HitDamage = UCataclysmSkillEffects::ModifiedDamage(
+		AbilitySystem,
+		UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem)
+			* GetDamagePercent() / 100.0f,
+		SkillTags);
+
+	int32 Lit = 0;
+	for (AActor* Caught : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, From->GetActorLocation(), Params.SpreadRadiusCm))
+	{
+		// NOT THE ENEMY THE FIRE CAME FROM. It is already alight -- that is the
+		// condition this whole function tested -- so relighting it would only
+		// refresh a burn the row never said it refreshes.
+		if (Caught == From)
+		{
+			continue;
+		}
+
+		// A DESIGNED BURN, because spreading fire is the row's own sentence.
+		// Issue #917: Hex of Cinders is a Support-slot skill dealing no damage,
+		// so without that decision this would light nobody at all.
+		if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true))
+		{
+			++Lit;
+		}
+	}
+
+	if (Lit > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' spread fire from a burning target to %d others, within "
+				 "%.0fcm."),
+			*SkillName, Lit, Params.SpreadRadiusCm);
 	}
 
 	return Lit;
@@ -1149,14 +1250,23 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 															SkillTags, Delivery);
 		Total += Dealt;
 
-		// The burn is a share of the hit that caused it, so a skill that deals
-		// no damage sets nothing alight. That is right for a Support skill,
-		// whose slot damage is zero by design, and it is why Subjugate reads
-		// "subjugating an enemy that is ALREADY burning" rather than burning it
-		// itself.
-		if (Params.bBurns && Dealt > 0.0f)
+		// A ROW THAT STATES `Burn=1` SETS ITS TARGET ALIGHT WHETHER OR NOT THE
+		// BLOW HURT. Issue #917, settled on 2026-09-02: a skill that states an
+		// ailment applies it, and only an incidental one -- from a gem, an affix
+		// or an enemy modifier -- has to clear the damage threshold.
+		//
+		// THE `Dealt > 0` TEST THAT USED TO BE HERE IS GONE, AND THE COMMENT
+		// BESIDE IT WAS WRONG TWICE OVER. It said "the burn is a share of the hit
+		// that caused it", which stopped being true on 2026-08-24 when burn
+		// became a flat 25 a second; and it concluded that a Support skill
+		// therefore lights nothing, which was the defect rather than the design.
+		// Three rows had never worked because of it: the Greataxe's Burning
+		// Wrath, the Spear's Held Fast and the Wand's Hex of Cinders.
+		if (Params.bBurns)
 		{
-			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt);
+			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true);
 		}
 
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.

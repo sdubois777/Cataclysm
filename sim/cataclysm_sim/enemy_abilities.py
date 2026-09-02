@@ -86,7 +86,9 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    "ScalesWithAttackSpeed", "Bounces", "SpreadCurses",
                    "CommandStrike",
                    "TetherTargets", "TetherLength", "TetherDuration"),
-    "SelfBuff": ("Duration", "Radius", "RangeIncrease"),
+    # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
+    # the first self buff that repeats. No enemy ability states it yet.
+    "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease"),
     # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
     # three movement modes that hit anything hand it straight to the targeting
     # search. The Spear's Nail Down impales "the first enemy you reach" where the
@@ -100,7 +102,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent"),
     "Aura": ("Radius", "Duration", "Interval"),
-    "Debuff": ("Range", "Radius", "MaxTargets", "Duration"),
+    # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
+    # Wand's Hex of Cinders. No enemy ability states either yet.
+    "Debuff": ("Range", "Radius", "MaxTargets", "Duration",
+               "SpreadWhen", "SpreadRadius"),
 }
 
 #: Riders any shape may carry, from the same section of the design document.
@@ -130,6 +135,7 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "Terrain", "TerrainSize", "TerrainDuration",
           "Requires", "EffectDuration", "EffectMagnitude",
           "OnDeath", "OnDeathRange", "ConsumeBurn", "ConsumeRadius",
+          "SpreadWhen", "SpreadRadius",
           "MaxDamagePercent", "MinDamagePercent",
           "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable")
 

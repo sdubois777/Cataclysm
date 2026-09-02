@@ -20,6 +20,151 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A skill that states an ailment applies it whatever its blow did, a hex spreads fire from a target already burning, and a self buff can repeat
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp`, `CataclysmSkillShape.h` and `.cpp`, `CataclysmSkillTemplate.h` and `.cpp`,
+`CataclysmSkillTemplates.h` and `.cpp`, `CataclysmProjectile.cpp`,
+`CataclysmMinion.cpp`, `CataclysmBuriedWeapon.cpp`, the Weapon Skills sheet of
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset`, `tools/generate_datatables.py` and
+`sim/cataclysm_sim/enemy_abilities.py`. Applied. Issues #917, #1146 and #1150.
+
+### The first decision, which is what makes the other two possible
+
+**A skill whose row states an ailment applies it whether or not the blow hurt.**
+An incidental ailment — one that comes from a gem, an affix or an enemy modifier
+rather than from the skill's own row — still needs the hit to have taken at least
+a tenth of the target's maximum health.
+
+That is the shape section VI of `Cataclysm_GDD_v2.md` already states for
+stunning: a hit must take at least 10% of maximum health to stun, *unless the
+skill states stunning as its effect*. Ailments now read the same way, with the
+same figure and the same exemption, so `ApplyBurn` and `ApplyStun` are the same
+three-part test.
+
+**What it does not take from the stun** is the five second immunity window and
+boss immunity. Those belong to hard stops — effects that completely stop a target
+operating — and an ailment is damage over time. A boss burns.
+
+### Why the threshold rather than the two simpler answers
+
+**Refusing outright** was the behaviour before this change, and it blocked three
+rows. All three sit on the Support slot, whose Damage Percent is 0.0 by design, so
+all three stated a burn that could never happen. The Greataxe's Burning Wrath —
+"any enemy that strikes you in melee is set alight" — has carried `Burn=1` since
+it was written and had never set anything alight. Lifting the refusal frees two of
+the three; Burning Wrath needs a second thing it still does not have, which the
+last section of this entry describes.
+
+The refusal was not a decision when it was written. Burn was a percent of the hit
+until 2026-08-24, so a hit dealing nothing produced a burn worth nothing that
+`ApplyDamageOverTime` refused anyway. Two guards agreeing. When burn became a
+flat 25 a second the arithmetic went away and the line became the only thing
+deciding the outcome, which is what issue #917 was opened to record.
+
+**Allowing outright** is what Path of Exile does: whether a hit landed and whether
+it dealt damage are separate questions there, and bleeding is calculated from
+pre-mitigation damage. The objection is that `Cataclysm_GDD_v2.md` already says
+damage over time bypasses an energy shield, so ailments are the existing route
+past one defensive layer. Letting an incidental one ignore every layer is a
+larger change than it looks.
+
+**The threshold keeps both halves.** A designed ailment is part of what the skill
+is, so it lands. An incidental one is a bonus on a hit, so the hit has to have
+been a real hit for that target.
+
+**The threshold is measured against maximum health and not against the hit**, so
+a scratch cannot ignite a Boss while the same scratch can ignite a Common enemy.
+That is the stun's shape and the reason is the same.
+
+### The threshold cannot fire today, and that is a separate fault
+
+`HitDamage` is what the attacker **sent**, not what got through. `ApplyHit`
+returns the figure it handed to `ApplyDirectDamage`, and evasion, block, armour
+and resistance are all applied afterwards inside the defender's own attribute
+set. So an incidental burn always arrives with a positive figure, and a hit that
+was evaded outright still sets its target alight exactly as it did before.
+
+That is issue #1156, and it is a fault in what the number means rather than in
+this rule. **What this decision changes in the game today is therefore one
+thing:** a skill whose own damage is zero can now set alight what its row says it
+does. Every other caller behaves exactly as it did.
+
+**It reaches all eleven ailments** once #899 makes them rollable on gear, which
+is why it was worth settling once rather than eleven times.
+
+### The second decision: a condition-and-spread parameter for the Wand
+
+**A row may say "when the target already carries this effect, also set alight
+everything within N metres of them".** Two parameters, `SpreadWhen` and
+`SpreadRadius`, read by the Debuff shape. The Wand's Hex of Cinders is the only
+row that states them: "Hexing an enemy that is already burning also sets alight
+everything within 4 meters of them."
+
+**Not the burning-ground parameters, which were the cheaper option.**
+`GroundRadius` and `GroundDuration` would have left a patch of fire under the
+target, and that differs from the row in two ways that matter. It is not gated on
+the target already burning, and the sentence spends half its words on that
+condition — it is what makes Hex of Cinders a follow-up to something else rather
+than a stand-alone curse. And a patch keeps burning whatever walks into it a
+second later, where "sets alight everything within 4 meters" is one application
+to whatever is standing there at that instant.
+
+**The condition is asked of the target, not of the cast.** That is the difference
+between `SpreadWhen` and the existing `Requires`, which refuses a whole cast
+before anything is spent. A hex laid on an enemy that is not burning is a working
+cast that spreads nothing.
+
+**The target keeps its own fire.** That is the difference between this and the
+existing `ConsumeBurn` and `ConsumeRadius`, which take the burn out of a target
+and spend it. Issue #1146 records the choice between the two shapes.
+
+### The third decision: a self buff may state an interval
+
+**A self buff that states an `Interval` repeats while it runs.** The Spear's Held
+Fast: "any pinned enemy within 12 meters is set alight again each second it is
+held." Until now a self buff was the only lasting shape that could not repeat —
+Strike, Projectile, Movement, Summon, Deployable and Aura all had `Interval`
+already — so that half of the row could not be written down at all.
+
+**Each repeat sets alight what the row's `ScalingSource` names, when it names
+one.** Held Fast says "any *pinned* enemy", and its `ScalingSource=Pinned` is
+already that word, so the repeat reuses it rather than adding a second parameter
+meaning the same thing. The count that feeds the damage bonus and the set that
+gets relit then cannot disagree. A buff naming no source lights everything its
+radius catches; one stating no burn ticks and does nothing.
+
+**The first firing is a full interval in rather than at once**, which is what
+burning ground and the aura both do, because "again each second it is held"
+describes what happens while it runs rather than a tick in the instant it goes
+up.
+
+**Issue #1150 recommended a different answer and the first decision above made it
+unnecessary.** That issue proposed inventing a `BurnPercent` parameter so a
+zero-damage skill would have a burn figure of its own. Burn has been flat since
+2026-08-24, so no per-skill figure is needed; #917 removed the obstacle instead
+of working around it.
+
+### What the three together finish, and the one they do not
+
+The Wand and the Spear each reach five of five Demonic skills that do everything
+their descriptions say. Two data rows changed: Hex of Cinders gained
+`SpreadWhen=Burning; SpreadRadius=4` and Held Fast gained `Interval=1`.
+
+**The Greataxe's Burning Wrath is still half a skill, and lifting the refusal was
+not enough on its own.** Its first sentence works: `MoreDamagePer=4;
+ScalingSource=Burning` grants 4% more damage for every burning enemy within
+fifteen metres. Its second, "any enemy that strikes you in melee is set alight",
+asks for something that does not exist -- a hook telling a running self buff that
+its holder was **struck**. `UCataclysmSelfBuffSkill` can be told the holder landed
+a blow (`NoteBlowLanded`) or killed something (`NoteKill`), and it can now repeat
+on an interval (`RepeatTick`), and none of those is being hit. An interval would
+be the wrong shape for it anyway: it lights everything the radius catches on a
+timer, where the sentence names one enemy at one moment. Issue #1157.
+
+---
+
 ## 2026-09-02 — Twelve skills deal what their own sentence says, and the check that finds the next one
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,

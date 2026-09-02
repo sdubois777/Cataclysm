@@ -609,6 +609,46 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ConsumeRadiusCm = 0.0f;
 
+	// --- Spreading fire from a target that already carries something --------
+
+	/**
+	 * What a target must already carry for the skill to spread fire from it, as
+	 * written in the sheet. Only `Burning` today.
+	 *
+	 * ONE ROW STATES IT: the Wand's Hex of Cinders, "hexing an enemy that is
+	 * ALREADY BURNING also sets alight everything within 4 meters of them". The
+	 * condition is half the sentence and is the point of the skill -- it makes
+	 * Hex of Cinders a follow-up to something else rather than a stand-alone
+	 * curse.
+	 *
+	 * NOT `Requires` ABOVE, WHICH IS A DIFFERENT QUESTION. That one refuses the
+	 * whole cast before anything is spent, and asks about the caster's situation.
+	 * This one is asked of each TARGET after the skill has already landed, and a
+	 * target failing it simply gets no spread while the curse still lands. A
+	 * Hex of Cinders cast at an enemy that is not burning is a working cast.
+	 *
+	 * NOT `ConsumeRadius` ABOVE EITHER, and the difference is what happens to
+	 * the fire. Consuming takes the burn OUT of the target and spends it; this
+	 * leaves it burning and lights its neighbours as well. Issue #1146 records
+	 * the choice between the two.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString SpreadWhen;
+
+	/**
+	 * Centimetres the fire spreads from a target that met `SpreadWhen`.
+	 *
+	 * ZERO SPREADS NOTHING, so a row stating the condition and no radius does
+	 * nothing rather than spreading everywhere. Hex of Cinders states 4 metres.
+	 *
+	 * IT SETS ALIGHT WHAT IS INSIDE IT ONCE, at the moment the skill lands, and
+	 * leaves nothing behind. That is what "sets alight everything within 4
+	 * meters of them" says, and it is why this is not `GroundRadius`: a patch of
+	 * burning ground would keep lighting whatever walked in a second later.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float SpreadRadiusCm = 0.0f;
+
 	// --- On death ----------------------------------------------------------
 
 	/** What happens when an affected enemy dies: Leap, SpreadDebuff or Release. */
