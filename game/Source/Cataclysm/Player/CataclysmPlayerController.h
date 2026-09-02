@@ -544,6 +544,23 @@ private:
 	 */
 	bool bPressBeganOnAnEnemy = false;
 
+	/**
+	 * True when a movement key moved the character this frame.
+	 *
+	 * SET BY `Input_Move` AND CLEARED AT THE END OF `PostProcessInput`, so it
+	 * always describes the frame being processed. The engine runs that function
+	 * after the frame's input, which is what makes the ordering work.
+	 *
+	 * WHAT IT IS FOR. `UpdatePendingAttack` walks the character toward a target
+	 * that is out of reach and stops the walk when it arrives. Both of those
+	 * fight the player's own keys: a path issued while they are steering is
+	 * cancelled by `Input_Move` on the next frame and re-issued on the one after,
+	 * and a `StopMovement` on arrival would cancel a walk the player is giving
+	 * rather than one this code started. Reading this makes the player's keys win
+	 * instead of whichever ran last.
+	 */
+	bool bSteeredByAKeyThisFrame = false;
+
 	/** How long the move button has been held this press, in seconds. */
 	float FollowTime = 0.0f;
 

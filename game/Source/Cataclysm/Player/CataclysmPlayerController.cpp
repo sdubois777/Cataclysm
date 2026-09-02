@@ -324,6 +324,17 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	UpdatePendingAttack();
 	CollectMaterialsNearby();
 
+	// CLEARED AFTER EVERYTHING THAT READS IT, AND EVERY FRAME. `Input_Move` sets
+	// it while a movement key is down and this is the only place it is unset, so
+	// a frame with no key press reads false without anything having to remember
+	// to clear it.
+	//
+	// THIS FUNCTION IS `PostProcessInput`, WHICH IS WHY THE ORDERING WORKS: the
+	// engine runs it after the frame's input has been processed, so `Input_Move`
+	// has already had its say and the flag describes this frame rather than the
+	// last one. Nothing above returns early, so it is never left set.
+	bSteeredByAKeyThisFrame = false;
+
 	if (UCataclysmAbilitySystemComponent* ASC = GetCataclysmAbilitySystem())
 	{
 		if (bGamePaused || bStunned)
@@ -439,16 +450,39 @@ void ACataclysmPlayerController::Input_Move(const FInputActionValue& Value)
 	// two schemes cannot fight each other for the same frame.
 	StopMovement();
 
-	// AND IT ABANDONS WHAT THE CHARACTER WAS WALKING TO. Issue #1188, decided by
-	// the project owner on 2026-09-02.
+	// AND IT ABANDONS THE ITEM THE CHARACTER WAS WALKING TO. Issue #1188,
+	// decided by the project owner on 2026-09-02.
 	//
 	// WHY THIS CASE IS NEW. Under mouse movement every move was a click, and a
-	// click anywhere else already cleared both of these. Under keyboard movement
-	// there are moves that are not clicks, so without this a player could click a
-	// distant sword, walk away on the keys, and silently pick it up much later by
-	// passing within three metres of it.
+	// click anywhere else already cleared this. Under keyboard movement there are
+	// moves that are not clicks, so without it a player could click a distant
+	// sword, walk away on the keys, and silently pick it up much later by passing
+	// within three metres of it.
 	PendingPickup = nullptr;
-	PendingAttack = nullptr;
+
+	// THE ENEMY IS ONLY ABANDONED IF THE BUTTON IS NOT BEING HELD, and that
+	// difference is the whole of issue #1209. This used to forget the target
+	// unconditionally, which read in play as "moving cancels the attack": this
+	// runs on `Triggered`, so it fires on EVERY frame a movement key is down, and
+	// it wiped the target faster than the player could re-acquire it. Holding the
+	// button on a creature and walking is a thing a player should be able to do,
+	// and it was the one thing the new control scheme got wrong.
+	//
+	// A RELEASED CLICK IS STILL ABANDONED, which is the case the rule above was
+	// written for: a player who clicked a distant creature and then walked off on
+	// the keys has changed their mind, exactly as with the sword.
+	if (!bPressBeganOnAnEnemy)
+	{
+		PendingAttack = nullptr;
+	}
+
+	// AND THE KEYS WIN THE MOVEMENT ARGUMENT THIS FRAME. `UpdatePendingAttack`
+	// walks toward a target that is out of reach, and a path issued there while
+	// the player is steering would be cancelled by the `StopMovement` above on
+	// the next frame and re-issued on the one after. Recording it here and
+	// reading it there stops the two fighting rather than letting one win by
+	// running last.
+	bSteeredByAKeyThisFrame = true;
 
 	const FVector2D Axis = Value.Get<FVector2D>();
 
@@ -1231,12 +1265,19 @@ void ACataclysmPlayerController::UpdatePendingAttack()
 			ControlledPawn, Target,
 			UCataclysmBasicAttack::ReachCmOf(AbilitySystem)))
 	{
-		// CLOSE ENOUGH. Stop walking and swing whenever the weapon is ready.
-		// The target is KEPT rather than cleared, so a held button keeps
-		// swinging and a click that arrived after a walk swings on arrival. It
-		// is released when the button is, when the creature dies, or when the
-		// player orders something else.
-		StopMovement();
+		// CLOSE ENOUGH. Swing whenever the weapon is ready. The target is KEPT
+		// rather than cleared, so a held button keeps swinging and a click that
+		// arrived after a walk swings on arrival. It is released when the button
+		// is, when the creature dies, or when the player orders something else.
+		//
+		// THE WALK IS ONLY STOPPED IF THIS CODE STARTED IT. Stopping it whenever
+		// a target came into reach would cancel a walk the player is giving on
+		// the keys, which is issue #1209 pointed the other way: swinging must
+		// not take movement away any more than moving takes the swing away.
+		if (!bSteeredByAKeyThisFrame)
+		{
+			StopMovement();
+		}
 		TrySwingAt(Target);
 		return;
 	}
@@ -1244,7 +1285,13 @@ void ACataclysmPlayerController::UpdatePendingAttack()
 	// TOO FAR. Walk toward it, and only while the button is down. A click that
 	// has been released already issued its walk; re-issuing it every frame would
 	// override a move order the player gave afterwards.
-	if (bPressBeganOnAnEnemy && !bStandStill && !PawnCannotWalk())
+	//
+	// AND NOT WHILE THE PLAYER IS STEERING. A path issued here would be cancelled
+	// by `Input_Move`'s `StopMovement` next frame and re-issued the frame after,
+	// which is two systems fighting over the character rather than one answer.
+	// The player's own keys win.
+	if (bPressBeganOnAnEnemy && !bSteeredByAKeyThisFrame
+		&& !bStandStill && !PawnCannotWalk())
 	{
 		UAIBlueprintHelperLibrary::SimpleMoveToLocation(
 			this, Target->GetActorLocation());
