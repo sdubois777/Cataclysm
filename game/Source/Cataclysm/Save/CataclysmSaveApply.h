@@ -110,14 +110,6 @@ public:
 							  const FCataclysmSavedCharacterPlacement& Saved);
 
 	/**
-	 * Destroy every creature, drop, projectile, ground effect and telegraph
-	 * marker in the world.
-	 *
-	 * @return how many actors were destroyed
-	 */
-	static int32 ClearTheFloor(UWorld& World);
-
-	/**
 	 * Clear the floor and rebuild it from the record.
 	 *
 	 * A RECORD WITH NO FLOOR IN IT CLEARS AND PUTS NOTHING BACK, which is what

@@ -85,7 +85,8 @@ public:
 	 * | Stat, flat | 20 | `+120 to maximum health (tier 7)` |
 	 * | Stat, increased | 38 | `12% increased maximum health (tier 7)` |
 	 * | Resistance | 3 | `+45 to Fire resistance (tier 7)` |
-	 * | Ailment and Hybrid | 24 | falls back to the sheet's own phrase |
+	 * | Hybrid | 13 | `+8 to maximum health, +5 to armor (tier 3)` |
+	 * | Ailment | 11 | falls back to the sheet's own phrase |
 	 *
 	 * THE FLAT AND INCREASED WORDING FOLLOWS PATH OF EXILE, which writes
 	 * `+120 to maximum Life` and `12% increased maximum Life`. Last Epoch and
@@ -93,13 +94,20 @@ public:
 	 * coming from any of them already reads without being taught, and the
 	 * project has no reason to differ.
 	 *
-	 * THE FALLBACK IS NOT A PLACEHOLDER. An Ailment affix carries no value kind
-	 * at all and a Hybrid one grants two stats named in other columns, so
-	 * neither has a "+N to X" shape to be put into. Both name themselves clearly
-	 * in the sheet -- `Chance to bleed`, `Health and armor` -- so the line is
-	 * that phrase and the number. `Cataclysm.Tooltip.EveryAffixInTheDataReads`
-	 * walks all 85 rows and fails on any that produces nothing, which is what
-	 * stops a shape added later being silently blank.
+	 * A HYBRID READS AS ITS TWO HALVES, each at the seventy per cent share
+	 * `UCataclysmItemValues::HybridFraction` states, joined onto one line
+	 * because they came from one affix and occupy one of the item's four slots.
+	 * Until issue #1177 it read the hybrid row's own top value, which is 0.0 on
+	 * all thirteen of them, and printed `Health and armor: 0` on an item that
+	 * was granting both halves perfectly well -- issue #847 fixed what a hybrid
+	 * is WORTH and left what it SAYS.
+	 *
+	 * THE AILMENT FALLBACK IS NOT A PLACEHOLDER. An Ailment affix carries no
+	 * value kind at all, so it has no "+N to X" shape to be put into. It names
+	 * itself clearly in the sheet -- `Chance to bleed` -- so the line is that
+	 * phrase and the number. `Cataclysm.Tooltip.EveryAffixInTheDataReads` walks
+	 * all 85 rows and fails on any that produces nothing, which is what stops a
+	 * shape added later being silently blank.
 	 *
 	 * @return an empty string when the affix is not in the table, since an affix
 	 *         that cannot be looked up has nothing to say

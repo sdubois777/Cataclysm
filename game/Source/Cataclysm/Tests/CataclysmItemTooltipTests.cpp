@@ -740,4 +740,176 @@ bool FCataclysmTooltipWholeWeapon::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A hybrid affix says what it grants rather than zero. Issue #1177
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipHybridReadsBothHalves,
+	"Cataclysm.Tooltip.AHybridAffixReadsAsBothOfItsHalves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipHybridReadsBothHalves::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	/**
+	 * REPORTED FROM PLAY on 2026-09-02: some affixes on gear show a value of 0.
+	 *
+	 * WHY. All thirteen hybrid rows carry no stat, no value kind and a top value
+	 * of 0.0, because what they grant is named in HybridPart1 and HybridPart2
+	 * instead. The line was built from the hybrid row's own top value, so it read
+	 * "Health and armor: 0" on an item that was granting both halves correctly.
+	 *
+	 * ISSUE #847 FIXED WHAT A HYBRID IS WORTH AND LEFT WHAT IT SAYS. Its fourth
+	 * listed piece of work was a test that no affix resolves to a zero, and that
+	 * test is the one below this.
+	 */
+	const UDataTable* AffixTable = Affixes();
+	if (!TestNotNull(TEXT("the affix table loaded"), AffixTable))
+	{
+		return false;
+	}
+
+	const FCataclysmItem Item = HelmWith(TEXT("Hybrid_Health_and_armor"));
+	const FString Line = OneAffixLine(Item);
+
+	// THE EXPECTED NUMBERS ARE WORKED OUT FROM THE DATA rather than written down,
+	// so a change to either part's top value fails on the wording rather than on
+	// a number somebody forgot to update here.
+	const FCataclysmAffixRow* Health =
+		UCataclysmItemModifiers::AffixNamed(AffixTable, TEXT("Flat maximum health"));
+	const FCataclysmAffixRow* Armour =
+		UCataclysmItemModifiers::AffixNamed(AffixTable, TEXT("Flat armor"));
+	if (!TestNotNull(TEXT("the health half is in the table"), Health)
+		|| !TestNotNull(TEXT("the armour half is in the table"), Armour))
+	{
+		return false;
+	}
+
+	auto HalfInWords = [&Item](const FCataclysmAffixRow& Part)
+	{
+		return UCataclysmItemTooltip::NumberInWords(
+			UCataclysmItemValues::AffixValue(Part.TopValue,
+											 Item.Affixes[0].Tier,
+											 Item.Affixes[0].Roll,
+											 Item.GearLevel,
+											 /*bTwoHanded=*/false)
+			* UCataclysmItemValues::HybridFraction);
+	};
+
+	const FString HealthPhrase =
+		FString::Printf(TEXT("+%s to maximum health"), *HalfInWords(*Health));
+	const FString ArmourPhrase =
+		FString::Printf(TEXT("+%s to armor"), *HalfInWords(*Armour));
+
+	TestTrue(FString::Printf(
+		TEXT("the health half is named with its own value: '%s' in '%s'"),
+		*HealthPhrase, *Line), Line.Contains(HealthPhrase));
+	TestTrue(FString::Printf(
+		TEXT("the armour half is named with its own value: '%s' in '%s'"),
+		*ArmourPhrase, *Line), Line.Contains(ArmourPhrase));
+
+	// BOTH ON ONE LINE, because one affix fills one of the item's four slots and
+	// two lines would make the item look richer than it is.
+	TestTrue(FString::Printf(TEXT("both halves are on one line: '%s'"), *Line),
+			 Line.Contains(TEXT(", ")));
+
+	// AND THE TIER IS SAID ONCE, not once per half.
+	int32 FirstTier = INDEX_NONE;
+	int32 LastTier = INDEX_NONE;
+	Line.FindChar(TEXT('('), FirstTier);
+	Line.FindLastChar(TEXT('('), LastTier);
+	TestEqual(TEXT("the tier is written once for the pair"), FirstTier, LastTier);
+
+	// THE FAULT ITSELF, NAMED. This is the string a player saw.
+	TestFalse(FString::Printf(TEXT("it no longer reads as a bare zero: '%s'"), *Line),
+			  Line.Contains(TEXT("Health and armor: 0")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipNoAffixReadsZero,
+	"Cataclysm.Tooltip.NoAffixInTheDataReadsAsZeroOnAFullyUpgradedItem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipNoAffixReadsZero::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	/**
+	 * THE GUARD ISSUE #847 ASKED FOR AND DID NOT GET. It walks all 85 rows and
+	 * fails on any whose line states a value of zero, which is what a hybrid did
+	 * for thirteen of them.
+	 *
+	 * AT THE TOP TIER ON A FULLY UPGRADED ITEM, WHICH IS NOT AN EVASION. Three
+	 * affixes really are worth less than a twentieth of a point at tier 1 on an
+	 * un-upgraded item and really do print 0.0 there -- flat life leech, flat
+	 * mana leech and flat energy shield leech. That is issue #858, it is a
+	 * separate fault with a separate answer, and a check written at tier 1 would
+	 * fail for it and hide anything else. The figures in
+	 * `game/Data/Affixes.csv` are stated for tier 7 on a +10 item, so that is
+	 * the one place every affix must have something to say.
+	 */
+	const UDataTable* AffixTable = Affixes();
+	if (!TestNotNull(TEXT("the affix table loaded"), AffixTable))
+	{
+		return false;
+	}
+
+	// EVERY WAY A ZERO CAN BE WRITTEN, in the three shapes a line takes.
+	const TArray<FString> ReadsAsZero = {
+		TEXT("+0 to"), TEXT("+0.0 to"),
+		TEXT("0% increased"), TEXT("0.0% increased"),
+		TEXT(": 0 "), TEXT(": 0.0 "),
+	};
+
+	int32 Checked = 0;
+	for (const TPair<FName, uint8*>& Row : AffixTable->GetRowMap())
+	{
+		const FCataclysmAffixRow* Affix =
+			reinterpret_cast<const FCataclysmAffixRow*>(Row.Value);
+		if (!Affix)
+		{
+			continue;
+		}
+
+		// A resistance family says how many damage types it covers and the item
+		// says which, so one is made up here to match its breadth. The same
+		// arrangement Cataclysm.Tooltip.EveryAffixInTheDataReads uses.
+		TArray<FName> Types;
+		for (int32 Index = 0; Index < Affix->Breadth
+			 && Index < UCataclysmItemModifiers::DamageTypeNames().Num(); ++Index)
+		{
+			Types.Add(UCataclysmItemModifiers::DamageTypeNames()[Index]);
+		}
+		if (Affix->Breadth == UCataclysmItemModifiers::DamageTypeNames().Num())
+		{
+			Types.Empty();
+		}
+
+		FCataclysmItem Item = HelmWith(*Row.Key.ToString(), Types);
+		Item.GearLevel = UCataclysmItemValues::MaxGearLevel;
+
+		const FString Line = OneAffixLine(Item);
+
+		for (const FString& Zero : ReadsAsZero)
+		{
+			if (Line.Contains(Zero))
+			{
+				AddError(FString::Printf(
+					TEXT("%s (kind %s) reads as zero at tier %d on a +%d item: '%s'"),
+					*Row.Key.ToString(), *Affix->AffixKind,
+					UCataclysmItemValues::MaxAffixTier,
+					UCataclysmItemValues::MaxGearLevel, *Line));
+				break;
+			}
+		}
+		++Checked;
+	}
+
+	AddInfo(FString::Printf(TEXT("%d affixes checked."), Checked));
+	TestTrue(TEXT("affixes were found to check"), Checked > 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
