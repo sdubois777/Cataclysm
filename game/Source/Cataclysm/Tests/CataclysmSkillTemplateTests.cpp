@@ -9585,13 +9585,20 @@ bool FCataclysmWeaponLeftLongerEruptsHarderTest::RunTest(const FString&)
 	TestTrue(TEXT("and the sword left standing longer erupted harder"),
 		DealtLate > DealtEarly);
 
-	// AND BY THE FIGURE THE ROW STATES. Eight seconds at 12% more each is 1.96
-	// times, and both blows are otherwise identical -- same weapon damage, same
-	// slot, same target, no critical strike difference to speak of at this
-	// margin. Generous tolerance because a critical strike on either blow moves
-	// it; the point is the shape of the figure, not the third decimal.
-	TestEqual(TEXT("by about 12% more per second stood"),
-		DealtLate / DealtEarly, 1.96f, 0.35f);
+	// AND BY THE EXACT FIGURE THE ROW STATES. Eight seconds at 12% more each is
+	// 1.96 times, and the two blows are otherwise identical: same weapon damage,
+	// same slot, same untouched target.
+	//
+	// A TIGHT TOLERANCE, AND THAT IS AFFORDABLE BECAUSE NOTHING HERE ROLLS.
+	// `UCataclysmCombatAttributeSet` starts a character at zero critical strike
+	// chance -- the design puts that on the skill rather than on the character --
+	// and neither of these skills states one, so no critical strike can land on
+	// either blow and move the ratio. A loose tolerance on a figure this exact
+	// would let a wrong constant through: 10% per second gives 1.80 and 15%
+	// gives 2.20, and both sit inside anything generous enough to absorb a
+	// critical strike.
+	TestEqual(TEXT("by exactly 12% more per second stood"),
+		DealtLate / DealtEarly, 1.96f, 0.01f);
 
 	return true;
 }
