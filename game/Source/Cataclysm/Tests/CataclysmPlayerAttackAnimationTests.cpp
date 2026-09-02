@@ -7,6 +7,12 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
+// For granting a charge and a strike to the same character, so that what a
+// Movement skill plays can be told from what a Strike plays. Issue #1180.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -284,6 +290,117 @@ CATACLYSM_TEST(FCataclysmSwingCyclesTest,
 				TestTrue(TEXT("and it is one already seen, so the cycle wraps"),
 					Seen.Contains(Fourth->GetName()));
 			}
+		}
+		else
+		{
+			CataclysmTestSkip::ReportSkippedHalf(
+				*this, CataclysmPlayerAttackTest::NoArtReason());
+		}
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+
+CATACLYSM_TEST(FCataclysmMovementSkillDoesNotPunchTest,
+	"Cataclysm.PlayerAttack.AMovementSkillPlaysNoSwingAndAStrikeStillDoes")
+{
+	// WHAT THE PROJECT OWNER SAW. Pressing the Greatsword's charge on 2026-09-02:
+	// "he does this weird punch when he starts moving and then switches to
+	// running". Every skill shape calls `UCataclysmSkillTemplate::CommitAndBegin`
+	// first, and that played an attack clip for all eight of them -- and the
+	// three clips the player cycles are the Mannequin's UNARMED attacks, so a
+	// charge threw a punch and then ran. Issue #1180.
+	//
+	// THE CONTROL IS THE HALF THAT MAKES THIS WORTH ANYTHING. A build where
+	// nothing ever played a clip would satisfy the first assertion on its own, so
+	// a Strike is cast on the same character straight afterwards and has to
+	// still swing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmPlayerAttackTest::SpawnPlayer(World);
+	if (TestNotNull(TEXT("a player"), Player))
+	{
+		UAnimInstance* AnimInstance =
+			CataclysmPlayerAttackTest::DressedAnimInstanceOf(Player);
+
+		UCataclysmAbilitySystemComponent* AbilitySystem =
+			Cast<UCataclysmAbilitySystemComponent>(
+				Player->GetAbilitySystemComponent());
+
+		if (AnimInstance && AbilitySystem)
+		{
+			// ENOUGH MANA THAT NEITHER CAST CAN BE REFUSED FOR THE WRONG REASON.
+			// A skill turned down for its cost animates nothing either, and
+			// would read here as the shape test working.
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+
+			TestNull(TEXT("nothing is playing to begin with"),
+				AnimInstance->GetCurrentActiveMontage());
+
+			// --- the charge, which must not swing ------------------------
+			const FGameplayAbilitySpecHandle MoveHandle =
+				AbilitySystem->GiveAbilityInSlot(
+					UCataclysmMovementSkill::StaticClass(),
+					ECataclysmAbilitySlot::Movement, /*Level=*/100, Player);
+			FGameplayAbilitySpec* MoveSpec =
+				AbilitySystem->FindAbilitySpecFromHandle(MoveHandle);
+			UCataclysmMovementSkill* Charge =
+				MoveSpec ? Cast<UCataclysmMovementSkill>(
+							   MoveSpec->GetPrimaryInstance())
+						 : nullptr;
+			if (!Charge)
+			{
+				AddError(TEXT("Could not grant the charge."));
+				return false;
+			}
+
+			Charge->SkillName = TEXT("Inexorable");
+			Charge->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Mode=Charge; Range=14; Radius=2.5; Duration=1.5"));
+
+			TestTrue(TEXT("the charge activates"),
+				AbilitySystem->TryActivateAbility(
+					MoveHandle, /*bAllowRemoteActivation=*/false));
+
+			TestNull(TEXT("and it played no swing, because a charge is not one"),
+				AnimInstance->GetCurrentActiveMontage());
+
+			// --- the control: a Strike on the same character still swings --
+			const FGameplayAbilitySpecHandle StrikeHandle =
+				AbilitySystem->GiveAbilityInSlot(
+					UCataclysmStrikeSkill::StaticClass(),
+					ECataclysmAbilitySlot::Heavy, /*Level=*/100, Player);
+			FGameplayAbilitySpec* StrikeSpec =
+				AbilitySystem->FindAbilitySpecFromHandle(StrikeHandle);
+			UCataclysmStrikeSkill* Swing =
+				StrikeSpec ? Cast<UCataclysmStrikeSkill>(
+								 StrikeSpec->GetPrimaryInstance())
+						   : nullptr;
+			if (!Swing)
+			{
+				AddError(TEXT("Could not grant the strike."));
+				return false;
+			}
+
+			Swing->SkillName = TEXT("Executioner's Arc");
+			Swing->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Radius=4; Angle=180"));
+
+			TestTrue(TEXT("the strike activates"),
+				AbilitySystem->TryActivateAbility(
+					StrikeHandle, /*bAllowRemoteActivation=*/false));
+
+			TestNotNull(TEXT("and a strike still swings"),
+				AnimInstance->GetCurrentActiveMontage());
 		}
 		else
 		{

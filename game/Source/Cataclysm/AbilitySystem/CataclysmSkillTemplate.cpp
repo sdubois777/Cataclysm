@@ -193,10 +193,34 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// override does nothing, which is what every enemy does: they animate
 		// their own attacks from their own classes with clips from their own
 		// packs.
-		if (ACataclysmCharacterBase* Character =
-				Cast<ACataclysmCharacterBase>(Self))
+		//
+		// SEVEN SHAPES AND NOT EIGHT, WHICH CHANGED ON 2026-09-02. A Movement
+		// skill is not a swing and it plays no attack clip. The project owner
+		// pressed the Greatsword's charge and reported "he does this weird punch
+		// when he starts moving and then switches to running": the three clips
+		// the player cycles are the Mannequin's UNARMED attacks, so every skill
+		// press threw a punch, and on a charge that punch fought the running the
+		// charge had just been given.
+		//
+		// IT COSTS THE MOVEMENT SHAPE NOTHING ELSE. `SecondsUntilTheSwingConnects`
+		// reads a figure `PlayAttackAnimation` leaves behind, and only the
+		// Strike, Projectile and Debuff shapes wait on it -- a Movement skill
+		// never asks, so skipping the clip cannot move a blow.
+		//
+		// THE OTHER FOUR NON-STRIKING SHAPES STILL PUNCH. A self buff, a summon,
+		// a deployable and an aura are not swings either, and taking the clip
+		// away from them would leave them standing still, which is the state
+		// issue #1126 existed to end. There is no gesture in the project for
+		// "you did something that is not a swing", and choosing between a wrong
+		// animation and no animation is the project owner's call rather than
+		// this function's. Issue #1180.
+		if (Shape() != ECataclysmSkillShape::Movement)
 		{
-			Character->PlayAttackAnimation();
+			if (ACataclysmCharacterBase* Character =
+					Cast<ACataclysmCharacterBase>(Self))
+			{
+				Character->PlayAttackAnimation();
+			}
 		}
 	}
 
