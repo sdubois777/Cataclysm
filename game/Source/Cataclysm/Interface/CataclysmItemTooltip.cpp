@@ -76,6 +76,36 @@ namespace
 		const FString Last = Words.Pop();
 		return FString::Join(Words, TEXT(", ")) + TEXT(" and ") + Last;
 	}
+
+	/**
+	 * One ordinary stat affix in words, with the value already worked out.
+	 *
+	 * THE TIER IS NOT PART OF IT, because a hybrid grants two of these and has
+	 * one tier between them. The caller appends it once.
+	 *
+	 * SHARED BY THE ORDINARY PATH AND THE HYBRID PATH so the two cannot word the
+	 * same stat differently. Before issue #1177 there was only one path.
+	 *
+	 * @return an empty string for a row that is neither flat nor increased,
+	 *         which is every Ailment row and every Hybrid row. Those have no
+	 *         "+N to X" shape and are not put into one.
+	 */
+	FString TooltipStatPhrase(const FCataclysmAffixRow& Row, float Value)
+	{
+		if (Row.ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
+		{
+			return FString::Printf(TEXT("+%s to %s"),
+				*UCataclysmItemTooltip::NumberInWords(Value),
+				*TooltipWithoutLeadingWord(Row.AffixName, TEXT("Flat")));
+		}
+		if (Row.ValueKind.Equals(TEXT("increased"), ESearchCase::IgnoreCase))
+		{
+			return FString::Printf(TEXT("%s%% increased %s"),
+				*UCataclysmItemTooltip::NumberInWords(Value),
+				*TooltipWithoutLeadingWord(Row.AffixName, TEXT("Increased")));
+		}
+		return FString();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -192,26 +222,69 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 							   *Tier);
 	}
 
-	// -- an ordinary stat, flat or increased --------------------------------
-	if (Affix->ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
+	// -- a hybrid names its two halves in other columns ---------------------
+	// ITS OWN COLUMNS ARE EMPTY. All thirteen hybrid rows carry no stat, no
+	// value kind and a top value of 0.0, because what they grant is written in
+	// HybridPart1 and HybridPart2 instead. So `Value` above is zero for one, and
+	// until issue #1177 this fell through to the sheet's-phrase branch below and
+	// printed "Health and armor: 0 (tier 3)" on an item that was granting both
+	// halves perfectly well. Issue #847 fixed what a hybrid is WORTH and left
+	// what it SAYS.
+	//
+	// THE SAME LOOKUP AND THE SAME SHARE `UCataclysmItemModifiers::AccumulateInto`
+	// USES, read from the same constant, so the line and the modifier cannot
+	// drift. A part is found by its AffixName rather than by a row name, which is
+	// what the columns hold.
+	if (Affix->AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
 	{
-		return FString::Printf(TEXT("+%s to %s%s"), *NumberInWords(Value),
-							   *TooltipWithoutLeadingWord(Affix->AffixName, TEXT("Flat")),
-							   *Tier);
-	}
-	if (Affix->ValueKind.Equals(TEXT("increased"), ESearchCase::IgnoreCase))
-	{
-		return FString::Printf(TEXT("%s%% increased %s%s"), *NumberInWords(Value),
-							   *TooltipWithoutLeadingWord(Affix->AffixName, TEXT("Increased")),
-							   *Tier);
+		TArray<FString> Halves;
+		for (const FString& PartName : { Affix->HybridPart1, Affix->HybridPart2 })
+		{
+			const FCataclysmAffixRow* Part =
+				UCataclysmItemModifiers::AffixNamed(AffixTable, PartName);
+			if (!Part)
+			{
+				continue;
+			}
+
+			const float PartValue = UCataclysmItemValues::AffixValue(
+										Part->TopValue, Rolled.Tier, Rolled.Roll,
+										Item.GearLevel, bTwoHanded)
+								  * UCataclysmItemValues::HybridFraction;
+
+			const FString Phrase = TooltipStatPhrase(*Part, PartValue);
+			if (!Phrase.IsEmpty())
+			{
+				Halves.Add(Phrase);
+			}
+		}
+
+		// BOTH HALVES ON ONE LINE, joined, because they came from one affix and
+		// occupy one of the item's four slots. Two lines would read as two
+		// affixes and make the item look richer than it is.
+		//
+		// AN EMPTY LIST FALLS THROUGH rather than returning nothing, so a hybrid
+		// whose parts are missing from the table still says its own name instead
+		// of vanishing off the item.
+		if (Halves.Num() > 0)
+		{
+			return FString::Join(Halves, TEXT(", ")) + Tier;
+		}
 	}
 
-	// -- an ailment or a hybrid, which have no such shape -------------------
-	// NOT A PLACEHOLDER. An Ailment affix carries no value kind and a Hybrid one
-	// grants two stats named in other columns, so neither can be put into
-	// "+N to X". Both name themselves clearly in the sheet -- "Chance to bleed",
-	// "Health and armor" -- so the sheet's phrase and the number is the honest
-	// line, and it is the one 24 of the 85 rows take.
+	// -- an ordinary stat, flat or increased --------------------------------
+	const FString Phrase = TooltipStatPhrase(*Affix, Value);
+	if (!Phrase.IsEmpty())
+	{
+		return Phrase + Tier;
+	}
+
+	// -- an ailment, which has no such shape --------------------------------
+	// NOT A PLACEHOLDER. An Ailment affix carries no value kind, so it cannot be
+	// put into "+N to X". It names itself clearly in the sheet -- "Chance to
+	// bleed" -- so the sheet's phrase and the number is the honest line, and it
+	// is the one the eleven Ailment rows take. A hybrid whose parts could not be
+	// looked up reaches here too, which is a data fault rather than a shape.
 	if (!Affix->AffixName.IsEmpty())
 	{
 		return FString::Printf(TEXT("%s: %s%s"), *Affix->AffixName,
