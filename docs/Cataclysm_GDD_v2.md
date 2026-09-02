@@ -193,19 +193,19 @@ The following are default controls. Players with multiple damage types can map m
 
   
 
-**The basic attack is on no key.** It fires automatically, as the Combat System section says. Nothing the player presses triggers it.
+**The basic attack is on the left mouse button.** It fires when the player clicks an enemy that is within its reach, and keeps firing at the weapon's attack speed while the button is held on one. Clicking an enemy that is further away walks the character into reach and then swings. It used to fire by itself whenever any creature was near; the project owner reversed that on 2026-09-02 after playing it.
 
   
 
-**There are two schemes and only one is active at a time.** They differ in what moves the character. The Support ability and directional movement both want W, and one key cannot be both, so each scheme gives W to one of them. Mouse movement ships as the default. The scheme is chosen by `DefaultMappingContext` in `game/Config/DefaultGame.ini`; there is no in-game setting for it yet, which needs the interface work in the Core Interface Screens section.
+**There are two schemes and only one is active at a time.** They differ in what moves the character. The Support ability and directional movement both want W, and one key cannot be both, so each scheme gives W to one of them. Keyboard movement ships as the default. The scheme is chosen by `DefaultMappingContext` in `game/Config/DefaultGame.ini`; there is no in-game setting for it yet, which needs the interface work in the Core Interface Screens section.
 
   
 
-### **Scheme 1: mouse movement (default)**
+### **Scheme 1: mouse movement**
 
 | Input | Action |
 | :-: | :-: |
-| LMB | Move to the point clicked. Clicking an enemy walks toward it; it does not attack. |
+| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -221,15 +221,16 @@ The following are default controls. Players with multiple damage types can map m
 
   
 
-### **Scheme 2: keyboard movement**
+### **Scheme 2: keyboard movement (default)**
 
-WASD moves the character, so the Support ability moves off W to 1 and the left mouse button is left unbound. Every other binding is the same as scheme 1.
+WASD moves the character, so the Support ability moves off W to 1. The left mouse button keeps its other two jobs and loses the move order: it attacks and picks things up. Every other binding is the same as scheme 1.
 
   
 
 | Input | Action |
 | :-: | :-: |
 | WASD | Directional movement |
+| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -436,7 +437,7 @@ Combat is real-time top-down action. Players must read and dodge telegraphed ene
 
 ### **Skill Slots**
 
-Each player has six skill slots. Basic attacks are handled automatically and are enhanced by all damage types present.
+Each player has six skill slots. The basic attack is on the left mouse button and is enhanced by all damage types present.
 
   
 
@@ -462,7 +463,7 @@ A player carrying several damage types will have far more skills available than 
 
 | Slot | Description |
 | :-: | :-: |
-| Basic Attack | Automatic — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
+| Basic Attack | Left mouse button — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
 | Heavy Attack (RMB) | Moderate cooldown. More impactful hits with slower or longer animations. Often the primary damage button. |
 | Special (Q) | Highly varied — traps, deployables, grenades, pets, terrain effects. Defines playstyle more than any other slot. |
 | Support (W) | Buffs, shields, stances, curses, banners. Shorter to medium duration utility. |
@@ -488,7 +489,7 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 
 | Slot | Typical | Range | Why |
 | :-- | :-: | :-: | :-- |
-| Basic Attack | 100% | fixed | Automatic and free. It is weapon damage. |
+| Basic Attack | 100% | fixed | Free, and on the left mouse button. It is weapon damage. |
 | Movement | 100% | 75–150% | Some also deal damage, so an ordinary hit is the right middle. |
 | Support | 0% | 0–100% | Buffs, shields, stances, curses and banners usually deal none. |
 | Aura | 25% per second | 15–40% | Persistent and toggled, draining resource while active. |
@@ -528,7 +529,7 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
   
 
-**Only two slots have no cooldown, and each has a different reason.** The Basic Attack is automatic, so the weapon's attack speed sets its rate. The Aura is a toggle, so there is nothing to wait for; it is paid for by draining mana instead. Every other slot waits.
+**Only two slots have no cooldown, and each has a different reason.** The Basic Attack has no cooldown because the weapon's attack speed already sets how often it can swing. The Aura is a toggle, so there is nothing to wait for; it is paid for by draining mana instead. Every other slot waits.
 
   
 
@@ -544,7 +545,7 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
   
 
-The automatic basic attack returns 6 mana each time it lands. At a typical 1.3 attacks per second that is about 8 mana per second while fighting.
+The basic attack returns 6 mana each time it lands. At a typical 1.3 attacks per second that is about 8 mana per second while fighting.
 
   
 
@@ -552,7 +553,7 @@ The automatic basic attack returns 6 mana each time it lands. At a typical 1.3 a
 
   
 
-  - **The basic attack is automatic.** There is no button to press and no rotation to perform. It is income for being in a fight rather than a filler action.
+  - **The basic attack is one button and no rotation.** It is held on a target rather than pressed repeatedly, and it is income for being in a fight rather than a filler action.
   - **The Heavy Attack is affordable from mana regeneration alone.** Used the moment it returns, it costs 10 mana per second against the 10.9 per second a character regenerates at level 100. It works with no basic attacks landing at all. Mana on hit pays for the other slots, so it is a supplement and never the thing that makes the primary damage button function.
 
   

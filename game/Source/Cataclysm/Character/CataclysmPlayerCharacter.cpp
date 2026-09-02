@@ -685,60 +685,13 @@ void ACataclysmPlayerCharacter::BeginPlay()
 		MinCameraDistance, MaxCameraDistance);
 	CameraBoom->TargetArmLength = TargetCameraDistance;
 
-	// THE BASIC ATTACK STARTS LOOKING FOR SOMETHING TO HIT. Nothing swings yet.
-	// A weapon is worn by this point, since issue #840, but the ability system
-	// lives on the player state and does not exist until possession, so no
-	// attack speed has been written to anything. It reads as zero and the first
-	// attempt only re-arms the clock. Issues #36 and #647.
-	ScheduleNextBasicAttack(0.0f);
-}
-
-void ACataclysmPlayerCharacter::ScheduleNextBasicAttack(
-	float SecondsBetweenSwings)
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	// ZERO MEANS NO RATE, WHICH IS NOT THE SAME AS NO CLOCK. A character holding
-	// nothing looks again shortly, so that equipping a weapon starts the basic
-	// attack by itself rather than the equip path having to remember to.
-	const float Delay = SecondsBetweenSwings > 0.0f ? SecondsBetweenSwings
-													: NoWeaponRecheckSeconds;
-
-	World->GetTimerManager().SetTimer(
-		BasicAttackTimer, this, &ACataclysmPlayerCharacter::BasicAttackTick,
-		Delay, /*bLoop=*/false);
-}
-
-void ACataclysmPlayerCharacter::BasicAttackTick()
-{
-	UCataclysmAbilitySystemComponent* AbilitySystem =
-		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
-
-	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, since issue #1002. The
-	// attribute holds what a character's attack speed is with no state taken
-	// into account, so a node whose attack speed grows with a stack count that
-	// expires -- the Masochist's Sanguine Momentum -- would be dropped entirely
-	// by a read of it. `SecondsBetweenSwingsFor` says why in full, and it is a
-	// function rather than a line here so a test can reach it: this tick runs
-	// off a timer on a possessed pawn and nothing in the suite drives it.
-	const float Interval =
-		UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
-
-	// THE RATE IS READ FRESH EVERY TIME rather than cached, so swapping a weapon
-	// or gaining an increased attack speed affix takes effect on the next swing
-	// rather than on the next possession.
-	if (Interval > 0.0f
-		&& UCataclysmBasicAttack::ShouldSwingNow(
-			this, UCataclysmBasicAttack::ReachCmOf(AbilitySystem)))
-	{
-		UCataclysmBasicAttack::Swing(AbilitySystem);
-	}
-
-	ScheduleNextBasicAttack(Interval);
+	// NOTHING STARTS THE BASIC ATTACK ANY MORE, and that is the change rather
+	// than an omission. Issue #1187: it used to run off a timer that re-armed
+	// itself at the weapon's attack speed and swung whenever any creature was
+	// inside its reach, which is what "The basic attack is on no key. It fires
+	// automatically" asked for. The project owner reversed that on 2026-09-02
+	// after playing it, so a swing now happens because the player clicked a
+	// creature. `ACataclysmPlayerController` owns that.
 }
 
 void ACataclysmPlayerCharacter::Tick(float DeltaSeconds)

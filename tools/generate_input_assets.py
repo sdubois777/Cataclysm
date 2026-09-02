@@ -95,8 +95,12 @@ ABILITY_ACTIONS = [
 # "negate" and "swizzle", which are what turn four separate keys into one
 # two-axis value.
 MOUSE_MAPPINGS = [
-    # The left mouse button moves and only moves. It does not fire the basic
-    # attack; that is automatic. Recorded in docs/DECISIONS.md.
+    # The left mouse button moves, attacks and picks things up. Which of the
+    # three a press means is decided by what is under the cursor: a creature is
+    # an attack, a dropped item's name is a pick-up, anything else is a move.
+    # That is the Path of Exile rule, and it replaced "it moves and only moves"
+    # on 2026-09-02 when the project owner reversed the automatic basic attack.
+    # Issue #1187.
     ("IA_MoveToCursor", "LeftMouseButton", []),
     ("IA_StandStill", "LeftShift", []),
     ("IA_SlotHeavy", "RightMouseButton", []),
@@ -129,6 +133,19 @@ KEYBOARD_MAPPINGS = [
     ("IA_Move", "A", ["negate"]),
     ("IA_Move", "D", []),
     ("IA_Move", "Gamepad_Left2D", []),
+    # The left mouse button attacks and picks things up, and does NOT move --
+    # the keys do that here. Issue #1188.
+    #
+    # THE SAME ACTION AS UNDER MOUSE MOVEMENT, not a second one. The controller
+    # tells the two schemes apart by asking whether a non-gamepad key is bound
+    # to IA_Move, which is the real question -- does something else already move
+    # the character -- and keeps one source of truth rather than a setting that
+    # could disagree with this table.
+    #
+    # WITHOUT IT, GEAR COULD NOT BE PICKED UP AT ALL under this scheme. Looting
+    # a weapon or a piece of armour is a click on its floating name and that
+    # click arrives on this action; only crafting materials come automatically.
+    ("IA_MoveToCursor", "LeftMouseButton", []),
     ("IA_StandStill", "LeftShift", []),
     ("IA_SlotHeavy", "RightMouseButton", []),
     ("IA_SlotSpecial", "Q", []),

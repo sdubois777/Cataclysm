@@ -388,15 +388,28 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	const UInputAction* MoveToCursor =
 		Config->FindNativeAction(CataclysmInputActionNames::MoveToCursor);
 
+	const UInputAction* Move =
+		Config->FindNativeAction(CataclysmInputActionNames::Move);
+
 	struct FContextExpectation
 	{
 		const TCHAR* Path;
-		bool bBindsMoveToCursor;
+
+		/**
+		 * Whether a key that is not on a gamepad moves the character.
+		 *
+		 * THIS IS THE ONE THING THAT TELLS THE TWO SCHEMES APART, and it is what
+		 * `ACataclysmPlayerController::LeftButtonAlsoMoves` reads to decide
+		 * whether the left mouse button moves as well as attacking. Directional
+		 * movement is on the left stick in BOTH schemes, so the gamepad has to
+		 * be excluded or every scheme looks like keyboard movement. Issue #1188.
+		 */
+		bool bAKeyMovesTheCharacter;
 	};
 
 	const FContextExpectation Contexts[] = {
-		{ CataclysmInputTest::MouseContextPath,    true  },
-		{ CataclysmInputTest::KeyboardContextPath, false },
+		{ CataclysmInputTest::MouseContextPath,    false },
+		{ CataclysmInputTest::KeyboardContextPath, true  },
 	};
 
 	for (const FContextExpectation& Expectation : Contexts)
@@ -413,6 +426,7 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 
 		TSet<const UInputAction*> Mapped;
 		TMap<FKey, const UInputAction*> KeyOwner;
+		bool bAKeyMoves = false;
 
 		for (const FEnhancedActionKeyMapping& Mapping : Mappings)
 		{
@@ -423,6 +437,11 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 			}
 
 			Mapped.Add(Mapping.Action);
+
+			if (Mapping.Action == Move && !Mapping.Key.IsGamepadKey())
+			{
+				bAKeyMoves = true;
+			}
 
 			if (const UInputAction** Existing = KeyOwner.Find(Mapping.Key))
 			{
@@ -448,9 +467,22 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 				Mapped.Contains(Action));
 		}
 
+		// THE LEFT MOUSE BUTTON IS BOUND IN BOTH SCHEMES since issues #1187 and
+		// #1188. It used to be bound only under mouse movement, because it only
+		// moved. It now also fires the basic attack at a creature under the
+		// cursor and picks up a dropped item, and neither of those has anything
+		// to do with which scheme is running -- so a scheme without it could not
+		// attack and could not loot a piece of gear at all.
+		TestTrue(
+			FString::Printf(TEXT("%s binds the left mouse button's action"), Path),
+			Mapped.Contains(MoveToCursor));
+
+		// AND WHETHER A KEY MOVES THE CHARACTER IS WHAT SEPARATES THE TWO. The
+		// controller reads exactly this to decide whether that button also
+		// issues a move order.
 		TestEqual(
-			FString::Printf(TEXT("%s binds click-to-move only if its scheme uses it"), Path),
-			Mapped.Contains(MoveToCursor), Expectation.bBindsMoveToCursor);
+			FString::Printf(TEXT("%s: a key other than a gamepad stick moves"), Path),
+			bAKeyMoves, Expectation.bAKeyMovesTheCharacter);
 	}
 
 	return true;

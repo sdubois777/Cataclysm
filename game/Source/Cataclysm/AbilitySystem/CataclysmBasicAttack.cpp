@@ -213,3 +213,54 @@ bool UCataclysmBasicAttack::Swing(
 	return AbilitySystem->TryActivateAbility(Spec->Handle,
 											 /*bAllowRemoteActivation=*/true);
 }
+
+// ---------------------------------------------------------------------------
+// Swinging at one chosen target. Issue #1187
+// ---------------------------------------------------------------------------
+
+bool UCataclysmBasicAttack::TargetIsInReach(const AActor* Character,
+											const AActor* Target, float ReachCm)
+{
+	if (!Character || !Target || ReachCm <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE SAME THREE QUESTIONS THE SPHERE SEARCH ASKS, in the same order, so a
+	// click cannot start a swing the automatic search would never have started.
+	// `UCataclysmTargeting::FindEnemiesInSphere` refuses anything on the same
+	// side and, since issue #570, anything already marked dead.
+	if (!UCataclysmTargeting::IsHostileTo(Target, Character))
+	{
+		return false;
+	}
+
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+
+	// MEASURED BETWEEN THE ACTORS' ORIGINS, which is what the sphere search does
+	// too. Neither takes a capsule radius off, so a large creature is reached
+	// from slightly further away than a small one in both.
+	return FVector::Dist(Character->GetActorLocation(),
+						 Target->GetActorLocation()) <= ReachCm;
+}
+
+bool UCataclysmBasicAttack::IntervalHasPassed(float LastSwingSeconds,
+											  float NowSeconds,
+											  float IntervalSeconds)
+{
+	if (IntervalSeconds <= 0.0f)
+	{
+		// No rate at all: holding nothing, or holding something that states no
+		// attack speed. `SecondsBetweenSwings` says this reads as "never swing"
+		// rather than as "swing continuously", and it is read that way here.
+		return false;
+	}
+
+	// A FIRST SWING IS ALWAYS ALLOWED. A controller that has never swung holds a
+	// last-swing time far enough in the past that the subtraction answers true,
+	// and there is nothing to special-case.
+	return (NowSeconds - LastSwingSeconds) >= IntervalSeconds;
+}
