@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmEnemyController.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -110,6 +111,27 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	if (!Driven)
 	{
 		return nullptr;
+	}
+
+	// AN ORDER OUTRANKS WHATEVER IS NEAREST, AND IT IS ASKED FIRST FOR THAT
+	// REASON. The Staff's Quarry: "mark an enemy as your quarry for 12 seconds.
+	// Everything you command breaks off and attacks it." "Breaks off" is the
+	// whole value of the skill -- it is how a Ritualist aims an army that
+	// otherwise fights whatever wandered closest -- so it has to beat the search
+	// below rather than be considered alongside it.
+	//
+	// IT IGNORES SIGHT DELIBERATELY. A creature is told what to attack by its
+	// commander, not by what it can see, and Compel beside it is explicit that
+	// distance is not the player's problem: "wherever it happens to be standing".
+	// A mark that only worked on what a minion had already noticed would order
+	// nothing that was not already being fought.
+	//
+	// NOTHING HERE IS SPECIFIC TO A MINION. A subjugated enemy is driven by this
+	// same controller and takes the same orders, which is what makes a thrall
+	// part of the army rather than a creature that happens to be friendly.
+	if (AActor* Ordered = UCataclysmCommand::OrderedTargetFor(Driven))
+	{
+		return Ordered;
 	}
 
 	const float Sight = Driven->SightRadiusCm();
@@ -417,7 +439,19 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	if (!bHasAttacked || Now - LastAttackTime >= Driven->SecondsBetweenAttacks())
+	// AND THE MARK MAKES THE ARMY SWING FASTER AT IT. Quarry grants "30%
+	// attack speed while the mark holds", and attacking faster is a shorter
+	// interval. `AttackIntervalScaleFor` answers 1 for everything that is not
+	// a commanded creature hitting its commander's quarry, which is every
+	// creature in the game but a Ritualist's army.
+	//
+	// HERE RATHER THAN INSIDE `SecondsBetweenAttacks`, because that is a
+	// property of the creature and this is a property of what it is hitting.
+	// It is also the one place a minion and a subjugated enemy share: they are
+	// different classes with different overrides and one controller.
+	const float Interval = Driven->SecondsBetweenAttacks()
+		* UCataclysmCommand::AttackIntervalScaleFor(Driven, Target);
+	if (!bHasAttacked || Now - LastAttackTime >= Interval)
 	{
 		LastAttackTime = Now;
 		bHasAttacked = true;
@@ -917,8 +951,12 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	// RETURNING Idle MEANS "NO ABILITY", not "do nothing" -- see ChooseAbility.
 	// The caller falls through to chasing or to the ordinary swing, and the
 	// ordinary swing has always been gated by this same interval.
-	if (bHasAttacked && Driven->SecondsBetweenAttacks() > 0.0f
-		&& Now - LastAttackTime < Driven->SecondsBetweenAttacks())
+	// THE SAME SCALE THE ORDINARY SWING TAKES, so a hurried creature is not
+	// hurried for its swing and held back for its abilities.
+	const float AbilityInterval = Driven->SecondsBetweenAttacks()
+		* UCataclysmCommand::AttackIntervalScaleFor(Driven, CurrentTarget.Get());
+	if (bHasAttacked && AbilityInterval > 0.0f
+		&& Now - LastAttackTime < AbilityInterval)
 	{
 		return ECataclysmBrainAction::Idle;
 	}

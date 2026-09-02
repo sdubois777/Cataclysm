@@ -20,6 +20,159 @@ applied or still pending.
 
 ---
 
+## 2026-09-02 — A character can be asked what it commands, an enemy can be taken rather than summoned, and the Staff is finished
+
+**Affects:** the new
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`,
+`CataclysmSkillTemplate.h` and `.cpp`, `CataclysmSkillTemplates.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`, the Weapon Skills
+and Debuffs sheets of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/WeaponSkills.csv`, `game/Data/StatusEffects.csv`,
+`game/Content/Data/DT_WeaponSkills.uasset`, and the new
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp`. Applied. Issues #37 and
+#1139.
+
+**Four skills, and eight parameters that nothing read.** `CommandStrike`,
+`Possess`, `FervourReserve` and `HealthThresholdPercent` were parsed into fields
+and read by nothing. `Status.Quarry` was applied to an enemy for twelve seconds
+and its only mention anywhere in the C++ was inside a comment. `Mode=Swap` had no
+branch and ran the leap code.
+
+### A character can be asked what it commands
+
+**One question answers for a summoned minion and for a taken enemy alike.**
+Three of the Staff's four rows ask it: Quarry's "everything you command breaks off
+and attacks it", Compel's "everything you command strikes that same enemy at
+once", Vesselstep's "trade places with a creature you command".
+
+**Nothing could answer it before.** `UCataclysmSummonSkill::Minions` holds what
+one skill made, so a character holding imps from one skill and thralls from
+another had two lists and no way to ask about both — and a thrall is not a minion
+actor at all, so it would never have appeared in either.
+
+**The world is asked rather than a register kept.** Walking the characters in the
+level and asking each who it follows needs no bookkeeping, cannot fall out of step
+when a minion expires or a thrall dies, and finds both kinds with one question.
+A register would have to be maintained in four places, one of which is a
+thrall-death hook that does not exist. The project already prefers asking:
+`HeldConsumeSpreadRadiusCm` asks the caster's running abilities rather than
+recording what they granted.
+
+**What it can ever return is small by design**: three imps, and at 30 Fervour
+each from a pool of 150, five thralls.
+
+### An enemy can be taken rather than summoned
+
+**Subjugate changes which side a creature is on and gives it an owner. Nothing is
+destroyed and nothing is spawned.** That is what "it fights for you until it
+dies, keeps its own abilities" requires: replacing the creature with a minion
+would have given every thrall in the game the same three attacks.
+
+**The blow lands whether or not anything is taken.** "If the blow leaves it below
+half health" makes the damage unconditional and the taking conditional, so a
+target that was too healthy, or a boss, or one there was no room for, has still
+been hit for 300% and set alight.
+
+**The threshold is a share of maximum health**, which is the reading the stun's
+threshold already takes and for the same reason: what matters is whether the blow
+was a real blow for that creature, and a Common enemy and a Rare one do not have
+the same numbers.
+
+**Bosses are refused off the rarity the spawner set**, the same source
+`ApplyStun` reads its own boss immunity from, so the two cannot drift apart.
+
+**Its brain needs no special handling, and that is worth saying rather than
+leaving as an absence.** `ACataclysmEnemyController::Think` calls `ChooseTarget`
+on every pass and that search asks about the body's side, so the next think finds
+the thrall's new enemies on its own. A stale target survives at most one pass.
+
+### The army is capped by the pool, and the reservation itself is not built
+
+**"Holding a thrall reserves 30 Fervour, so your army is only as large as your
+pool."** The cap is built: a new thrall is refused when the claim would exceed the
+character's maximum class resource. The Ritualist's pool is 150 in
+`game/Data/ClassStats.csv`, so five, and raising the pool raises the army — which
+is the sentence's point, since every point of maximum resource a passive tree
+grants is progress toward a sixth.
+
+**Nothing is subtracted from the usable pool, and that is deliberate rather than
+missed.** Nothing the Ritualist has spends the class resource: it has no passive
+tree and no designed generator, which is issue #950. So the cap is the whole of
+the observable behaviour today. Issue #1160 carries the subtraction and weighs
+the two shapes it could take.
+
+**Measured against the maximum rather than the current value.** A reservation is a
+standing claim rather than a payment, which is how Path of Exile's mana
+reservation behaves, so a Ritualist that has just spent its Fervour has not
+thereby lost a thrall.
+
+**One correction to the record.** The 2026-09-01 entry says the Fervour reserve
+"waits on issue #950". It does not, and did not: that issue is about the missing
+tree and generator, while the pool this measures against already existed at the
+value the entry's own arithmetic uses.
+
+### A mark orders an army, and it is credited to whoever cast it
+
+**An order outranks whatever is nearest.** "Breaks off" is the word Quarry uses,
+and it is the whole value of the skill: it is how a Ritualist aims an army that
+otherwise fights whatever wandered closest. So the order is asked for before the
+proximity search rather than weighed against it.
+
+**It ignores sight deliberately.** A creature is told what to attack by its
+commander, not by what it can see, and Compel beside it is explicit that distance
+is not the player's problem — "wherever it happens to be standing". A mark that
+only worked on what a minion had already noticed would order nothing that was not
+already being fought.
+
+**A mark belongs to the character that applied it, and getting this wrong was
+caught by a test rather than by reading.** A gameplay tag records nothing about
+who applied it, so the first implementation returned any marked creature to any
+commander — one player's mark would have ordered every army in the level. The
+running effect that granted the tag is now asked instead, and its context carries
+the instigator.
+
+**"30% attack speed" is 30% more swings in the same time**, so the interval is
+multiplied by 1 divided by 1.30 — about 0.769 — and not by 0.70. The two differ
+by enough to matter and the test checks the first to within a thousandth.
+
+**The figure lives in the Debuffs sheet rather than in code**, where Shred's ten
+already does, so moving the balance number needs no build.
+
+**The mark jumping when its carrier dies needed no code at all.** "If the quarry
+dies before the mark expires, it jumps to the nearest enemy" is what
+`OnDeath=SpreadDebuff` already does for the Wand's Anathema — the carrier is
+removed, so copying to the nearest is the mark moving. One data change.
+
+### A trade is the one movement that has no fallback
+
+**Vesselstep is refused before anything is spent when the caster commands
+nothing.** Every other movement mode falls back to the aimed point; this one
+cannot, because the row says the destination IS the creature. Letting it through
+would either spend the mana and the cooldown on a skill that then stood still, or
+turn it into a blink, which is a different skill.
+
+**Both ends move, and the creature goes to where the caster was rather than where
+it ends up.** The caster's starting position is read before the trade and its own
+move happens afterwards, which is the one place the two lines could have put both
+of them in the same place.
+
+**`Swap` was the last of the three modes issue #1139 named.** `Recall` and
+`Flicker` were built on the same day for the Dagger; all three had silently run
+the leap code.
+
+### What this finishes
+
+**The Staff reaches five of five Demonic skills that do everything they say.**
+That is nine of the eleven weapons: the Sword, Fist, Axe, Warhammer, Wand, Spear,
+Whip, Dagger and Staff.
+
+**Two are not.** The Greataxe is four of five, because Burning Wrath's "any enemy
+that strikes you in melee is set alight" needs a hook saying the buff holder was
+struck and there is none — issue #1157. The Greatsword is none of five, and it is
+four separate mechanics rather than one.
+
+---
+
 ## 2026-09-02 — A blow can land from behind, a character can be untouchable, a move can repeat or return to a mark, and two enemies can be tied together
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
