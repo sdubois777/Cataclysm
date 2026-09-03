@@ -17,6 +17,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -105,6 +106,83 @@ namespace CataclysmWeaponSlotsTest
 		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
 		TObjectPtr<UCataclysmWeaponSlotsComponent> Slots = nullptr;
 	};
+
+	/**
+	 * Keeps everything written to the log while it is alive, instead of only
+	 * letting it through.
+	 *
+	 * IT KEEPS THE VERBOSITY AND THE CATEGORY, NOT ONLY THE TEXT, and that is
+	 * the whole point. The fault being guarded against is a line existing but
+	 * being written at a level the log file never records, which is what every
+	 * line describing an equip did before issue #1221. A test that checked only
+	 * the words would pass for a Verbose line and prove nothing.
+	 *
+	 * REGISTERED WITH GLog, because UE_LOG writes there rather than to anything
+	 * a caller can pass in. Removed again in the destructor, so a failing test
+	 * cannot leave a dangling device on the global redirector.
+	 */
+	struct FScopedLogCapture : public FOutputDevice
+	{
+		struct FCapturedLine
+		{
+			FString Text;
+			ELogVerbosity::Type Verbosity = ELogVerbosity::NoLogging;
+			FName Category;
+		};
+
+		FScopedLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FScopedLogCapture()
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity,
+							   const class FName& Category) override
+		{
+			Lines.Add({ FString(Text), Verbosity, Category });
+		}
+
+		/**
+		 * Everything LogCataclysm wrote at exactly Log verbosity containing
+		 * Needle. Flushes first: FOutputDeviceRedirector buffers lines written
+		 * from a thread that is not the primary one, and a test that read its
+		 * own captures without flushing could see none of them.
+		 */
+		TArray<FString> CataclysmLogLinesContaining(const TCHAR* Needle)
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+
+			TArray<FString> Found;
+			for (const FCapturedLine& Line : Lines)
+			{
+				if (Line.Category == FName(TEXT("LogCataclysm"))
+					&& Line.Verbosity == ELogVerbosity::Log
+					&& Line.Text.Contains(Needle))
+				{
+					Found.Add(Line.Text);
+				}
+			}
+			return Found;
+		}
+
+		TArray<FCapturedLine> Lines;
+	};
+
+	/** The prefix the one line per equip begins with. */
+	const TCHAR* EquipLinePrefix = TEXT("Weapon change:");
 
 	UWorld* MakeWorld()
 	{
@@ -1196,6 +1274,130 @@ bool FCataclysmStartingWeaponItemMatchesType::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the starting item's weapon type is the starting weapon type"),
 		Row->WeaponType,
 		GetDefault<UCataclysmWeaponSlotsComponent>()->GetStartingWeaponType());
+
+	return true;
+}
+
+/**
+ * Every equip writes exactly one line to the log, at a level the log file
+ * records, naming the weapon type, the damage type and how many slots filled.
+ *
+ * WHY THIS EXISTS. Nothing about equipping a weapon reached
+ * game/Saved/Logs/Cataclysm.log before issue #1221. The three lines in the
+ * component describing an equip are all UE_LOG(LogCataclysm, Verbose, ...),
+ * and LogCataclysm's default verbosity is Log, so none of them is written.
+ * A play report saying the abilities were wrong as weapons changed therefore
+ * could not be checked against the log at all -- the log did not record which
+ * weapon type the game believed was equipped.
+ *
+ * WHAT IT CHECKS, AND WHY EACH PART. That the line is at Log verbosity and in
+ * the LogCataclysm category, because a Verbose line is the exact fault. That
+ * there is exactly one, because two per equip is the beginning of noise and
+ * zero is the fault returning. That it names the weapon type and damage type,
+ * because those are what a play report has to be matched against. And that
+ * the paths which return early are covered too: taking a weapon off, and a
+ * weapon type that grants nothing. Those are four separate returns inside
+ * FillSlotsFromWeaponType, and each one used to say nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquipIsLoggedTest,
+	"Cataclysm.WeaponSlots.EveryEquipWritesOneLineTheLogFileKeeps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEquipIsLoggedTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	CataclysmWeaponSlotsTest::FScopedWeaponFixture Fixture(World);
+
+	// A weapon that grants everything it has. The fixture pins War, so a
+	// Greataxe fills all seven slots.
+	{
+		CataclysmWeaponSlotsTest::FScopedLogCapture Capture;
+		Fixture.Slots->EquipWeaponType(TEXT("Greataxe"));
+
+		const TArray<FString> Lines = Capture.CataclysmLogLinesContaining(
+			CataclysmWeaponSlotsTest::EquipLinePrefix);
+		if (!TestEqual(TEXT("equipping a Greataxe writes exactly one line at Log "
+						   "level in LogCataclysm"), Lines.Num(), 1))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("and it names the weapon type"),
+			Lines[0].Contains(TEXT("Greataxe")));
+		TestTrue(TEXT("and the damage type"),
+			Lines[0].Contains(TEXT("War damage")));
+		TestTrue(TEXT("and how many of how many slots it filled"),
+			Lines[0].Contains(TEXT("7 of 7 skill slots filled")));
+	}
+
+	// TAKING A WEAPON OFF, which returns before any skill is looked at. It is
+	// the change a reader most needs to see, because an empty hand is what
+	// makes the next equip look like it granted nothing.
+	{
+		CataclysmWeaponSlotsTest::FScopedLogCapture Capture;
+		Fixture.Slots->EquipWeaponType(FString());
+
+		const TArray<FString> Lines = Capture.CataclysmLogLinesContaining(
+			CataclysmWeaponSlotsTest::EquipLinePrefix);
+		if (!TestEqual(TEXT("taking the weapon off writes one line too"),
+				Lines.Num(), 1))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("and it says so in words rather than leaving a gap"),
+			Lines[0].Contains(TEXT("no weapon")));
+		TestTrue(TEXT("and reports nothing filled"),
+			Lines[0].Contains(TEXT("0 of 0 skill slots filled")));
+	}
+
+	// A NAME THAT IS NO WEAPON AT ALL, which reaches the return taken when the
+	// weapon offers no skills. That return already had a line and it was
+	// Verbose, so this is the case the fix is most directly about.
+	{
+		CataclysmWeaponSlotsTest::FScopedLogCapture Capture;
+		const int32 Filled = Fixture.Slots->EquipWeaponType(TEXT("Greetaxe"));
+		TestEqual(TEXT("a misspelled weapon type still grants nothing"),
+			Filled, 0);
+
+		const TArray<FString> Lines = Capture.CataclysmLogLinesContaining(
+			CataclysmWeaponSlotsTest::EquipLinePrefix);
+		if (!TestEqual(TEXT("a weapon granting nothing writes one line as well"),
+				Lines.Num(), 1))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("and it names the weapon type it was given, so a "
+					  "misspelling is visible"),
+			Lines[0].Contains(TEXT("Greetaxe")));
+	}
+
+	// SIX CHANGES GIVE SIX LINES. Without this the checks above would pass for
+	// a line written once and never again, and the reason to have it at all is
+	// to follow a play session through its weapon changes.
+	{
+		CataclysmWeaponSlotsTest::FScopedLogCapture Capture;
+		const TCHAR* Sequence[] = {
+			TEXT("Greataxe"), TEXT("Whip"), TEXT("Greatsword"),
+			TEXT("Axe"), TEXT("Greataxe"), TEXT("Whip"),
+		};
+		for (const TCHAR* Weapon : Sequence)
+		{
+			Fixture.Slots->EquipWeaponType(Weapon);
+		}
+
+		const TArray<FString> Lines = Capture.CataclysmLogLinesContaining(
+			CataclysmWeaponSlotsTest::EquipLinePrefix);
+		TestEqual(TEXT("six weapon changes write six lines"), Lines.Num(), 6);
+	}
 
 	return true;
 }
