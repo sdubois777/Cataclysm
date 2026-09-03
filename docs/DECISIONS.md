@@ -20,6 +20,101 @@ applied or still pending.
 
 ---
 
+## 2026-09-03 — The basic attack fires on the left mouse button, and WASD is the default, which supersedes two earlier entries
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (Controls and Key Bindings, and Combat
+System), already applied. `game/Config/DefaultGame.ini`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` and
+`tools/generate_input_assets.py`, all applied by #1187, #1188 and #1209.
+
+**This entry exists because the decisions log did not record the reversal.** The
+code landed on 2026-09-02 and the design document was corrected, but this log
+still read as though the basic attack fires by itself, in three places. Issue
+#1204 is that gap. Nothing below edits an older entry: each was true on its own
+date, and a log that is rewritten backwards is no longer evidence of anything.
+
+### What changed
+
+**The basic attack no longer fires by itself.** It fires when the player left
+clicks an enemy that is in range. Nothing swings without a press.
+
+**WASD is the default movement scheme.** It was built and unused; the game
+shipped starting in the mouse-movement scheme.
+
+| | Before 2026-09-02 | Now |
+| :-- | :-- | :-- |
+| Basic attack | automatic, at the weapon's rate, whenever an enemy was near | left mouse button, on an enemy in range |
+| Default scheme | `IMC_MouseMovement` | `IMC_KeyboardMovement` |
+| Left mouse button under the default scheme | moved, and only moved | attacks or picks up; movement is on WASD |
+| Holding the button on an enemy in range | nothing to hold | keeps attacking that enemy |
+| Clicking an enemy out of range | walked toward it | moves into range, then attacks |
+
+### Which earlier entries this supersedes, and how far
+
+| Entry | What it says | Status now |
+| :-- | :-- | :-- |
+| 2026-08-03, "The control scheme: what the left mouse button does" | the left mouse button "moves, and only moves", because an automatic basic attack leaves it no second job | **The conclusion is superseded.** Its research is not — see below. |
+| 2026-08-16, "The basic attack swings by itself, at the weapon's rate" | the automatic attack and its timer | **Superseded entirely.** |
+| 2026-08-04, "What a skill costs" | names "the automatic basic attack" as the source of returned mana | **The wording is superseded.** The mana still returns; it returns on a swing the player pressed for. |
+
+Two of the 2026-08-03 entry's four decisions are untouched and still hold: shift
+means stand still rather than force move, and a key press names a slot rather
+than an ability.
+
+### Why it was reversed, and this is the part worth keeping
+
+**How the automatic attack felt in play.** That is better evidence than the
+reasoning it replaces, which was an inference from a document rather than from
+playing. The 2026-08-03 entry reached its conclusion honestly and from the right
+premise — if the attack fires on its own then the button has no second job — but
+the premise itself was what turned out to be wrong.
+
+**The rule adopted is the one that entry had already researched and set aside.**
+It recorded that "Path of Exile 2 resolves it by what is under the cursor: a
+click on the ground moves, a click on an enemy attacks", and then did not need
+it. That is now exactly the rule, so the research was right and only its
+application changed.
+
+**The second problem that entry names is what made this cheap.** It had already
+built two mapping contexts because W could not be both the Support ability and
+movement. Making WASD the default was therefore one line in
+`game/Config/DefaultGame.ini` rather than new input work, and the left mouse
+button was already free under that scheme because that entry had left it unbound.
+
+### What holds the design document to the code
+
+`tools/tests/test_controls_table_matches_the_input_assets.py` compares both
+scheme tables in `docs/Cataclysm_GDD_v2.md` against the bindings in
+`tools/generate_input_assets.py` and fails on any binding present in one and not
+the other. It also fails on any sentence anywhere in that document that still
+calls the basic attack automatic, which is what stops the old wording returning.
+
+**There is no re-export to worry about.** Issue #1204 warned that re-exporting
+from Google Drive before Drive was corrected would fail the test suite. That
+warning quoted a rule deleted from `CLAUDE.md` by commit `d13a037` on
+2026-08-02: the repository copies are authoritative, are not synced back to
+Drive, and nothing re-exports. The Drive originals are historical.
+
+### One thing that could not be caught by any test here
+
+Issue #1209 was found by playing, after #1187 and #1188 had both merged with a
+green test suite: moving cancelled a held attack. **An automation world has no
+player controller and is never ticked**, so nothing about clicking, holding a
+button or moving can be covered by an automation test in this project at all.
+Every control change has to be judged by playing it, and the test named above
+checks only that the document and the input assets agree about which key does
+what.
+
+**Sources.** No new research was needed and none was done. The rule adopted is
+the Path of Exile 2 rule the 2026-08-03 entry had already looked up and set
+aside, so that entry's sources stand unchanged: Path of Exile 2 controls from
+the Fextralife wiki and Game8, and Diablo 4 keyboard movement presets from the
+Turtle Beach and Dexerto guides.
+
+**What settled it was not research.** It was how the automatic attack felt in
+play on 2026-09-02, which is a kind of evidence the earlier entry could not have
+had.
+
 ## 2026-09-03 — Three weapon damage questions from a play test, and two of the three answers are "the design is right"
 
 **Affects:** `sim/analyse_two_handed_multiplier.py`,
