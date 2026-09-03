@@ -565,6 +565,23 @@ void UCataclysmInventoryWidget::RefreshGear(
 			continue;
 		}
 
+		// AND AN EMPTY HAND SAYS WHAT IT COSTS. Every other empty gear slot is
+		// worth nothing and obviously so; a weapon hand is not, because the two
+		// weapons' attack damage SUMS. Swapping a one-handed weapon in over a
+		// two-handed one leaves a hand empty without asking, so a player can
+		// arrive here having lost most of their damage in one click with
+		// nothing on screen saying so. Issue #1184.
+		if (!Worn)
+		{
+			const FString EmptyHand =
+				UCataclysmGearPanel::EmptyWeaponHandNote(GearSlot, Equipment);
+			if (!EmptyHand.IsEmpty())
+			{
+				Widgets.Frame->SetToolTipText(FText::FromString(EmptyHand));
+				continue;
+			}
+		}
+
 		Widgets.Frame->SetToolTipText(FText::FromString(
 			Worn ? UCataclysmItemTooltip::TextFor(AsCarried, Bases, Affixes,
 												  Materials)
