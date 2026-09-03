@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-03 — Retaliation is a share of the blow taken, not a flat amount
+
+### What was wrong, measured
+
+Retaliation was a flat number. The Masochist class stat line carried 158 at
+level 100 and the `Stat_Flat_retaliation` affix added 9.5 a piece. Against the
+enemies `sim/cataclysm_sim/enemy_stats.py` produces at difficulty tier 8:
+
+| Enemy | Its health | Blows you must take to kill it by retaliation alone | What that costs you |
+| :-- | --: | --: | --: |
+| Common | 3,238 | 11.1 | 4,745 health |
+| Boss | 40,048 | 137.6 | 238,058 health |
+
+The geared character in `sim/cataclysm_sim/reference_build.py` has 11,023
+maximum health, so killing one Boss by retaliation would have cost twenty-one
+times its whole health pool. A character wearing the affix on all fourteen
+pieces that take it reached 291 returned a blow.
+
+**A flat number cannot follow enemy health upwards.** To return 5% of a Boss's
+health it would have had to be 2,000, thirteen times the entire class baseline.
+
+### What was decided
+
+The project owner, 2026-09-03: retaliation counts as damage, is a share of the
+damage the character takes before its own mitigation, and runs through the
+ordinary damage formula against the enemy. **15%** for the Masochist, chosen
+from a table of what 5, 10, 15, 20 and 25 per cent each produce: "It's not like
+you give up regular weapons and attacks for building into retaliation."
+
+### The numbers, and how they were derived
+
+| | Before | After |
+| :-- | --: | --: |
+| Masochist class line, base at level 1 | 10 | 1 |
+| Masochist class line, per level | 1.5 | 0.15 |
+| Masochist at level 100 | 158.5 | 15.85% |
+| `Stat_Flat_retaliation` top value | 9.5 | 2.0 |
+
+**The class line is divided by exactly ten**, which is what makes 15% out of a
+figure that was 158.5, and keeps the shape of the level curve untouched.
+
+**The affix is not divided by ten**, which would have given 0.95. Every affix's
+worst roll is a tenth of its stated top, so 0.95 would have put the bottom of
+that ladder at 0.095 — the fault issue #1230 is about. At 2.0 a character
+wearing a perfect one on all fourteen eligible pieces reaches 43.85% in total,
+which returns 7,489 of a difficulty tier 8 Boss's 17,075 blow before the Boss's
+own armour and resistance. Its worst roll is still 0.20 and that is #1230's to
+settle.
+
+### The share is taken before the character's own mitigation
+
+`Hit.Damage`, which is what the blow was worth before this character's armour,
+resistance and reductions took anything off it. Using what actually landed
+would have made a well-defended Masochist retaliate for less than a poorly
+defended one struck by the same blow, which punishes the class for its own
+defences.
+
+### What comes back is damage, and is still not a hit
+
+It used to be written straight to the target's health, so nothing the target
+wore touched it. It goes through `UCataclysmSkillEffects::ApplyDirectDamage`
+now, so the enemy's armour, resistance, evasion and block all apply, and every
+increase to the character's own damage reaches it.
+
+**Four flags stop it becoming a hit**, and they already existed for summoned
+minions:
+
+| Flag | Why |
+| :-- | :-- |
+| `bCannotBeRetaliatedAgainst` | Load-bearing. Without it two characters who both retaliate reflect at one another without end. |
+| `bCannotCriticallyStrike` | Path of Exile's rule for reflected damage. This is not a blow you aimed. |
+| `bCarriesNoWeaponSubType` | Retaliation is not a weapon swing, so the weapon's slashing or piercing bonus is not its to carry. |
+| `bCannotLeech` | The ordinary leech path must not fire. The Masochist's Feeding Wound capstone keeps its own separate route. |
+
+### Where the shape comes from
+
+Last Epoch's reflected damage does not hit and bypasses the damage calculation
+entirely; Path of Exile's cannot critically strike, cannot cause ailments and
+does not trigger on-hit effects. This takes the middle of the two: the enemy's
+mitigation applies, which is what makes retaliation worth building for, and
+everything that would make it an attack does not.
+
+Issue #1227.
+
 **The files in this folder are authoritative.** Edit them directly. They began as
 exports from Google Drive, but as of 2026-08-02 the repository copies are the
 source of truth and are not synced back; treat the Drive originals as historical.

@@ -1738,13 +1738,22 @@ def test_four_affixes_still_show_only_one_number(affix_spread_run):
         f"regression.")
 
 
-def test_the_squeezed_list_shrank_from_twelve_to_eight(affix_spread_run):
+def test_the_squeezed_list_shrank_from_twelve_to_nine(affix_spread_run):
     """What issue #1179 bought, measured rather than asserted.
 
     Before the change, twelve affixes could show three different numbers or
-    fewer on an early drop. Eight can now, and the four that left are ones a
+    fewer on an early drop. Nine can now, and the four that left are ones a
     player notices: all resistances, block chance, critical strike chance and
     crowd control resistance.
+
+    IT WAS EIGHT UNTIL ISSUE #1227, AND RETALIATION JOINED IT. That is not a
+    regression and it is not the ladders being steepened. Retaliation stopped
+    being a flat amount and became a share of the blow taken, so its stated
+    top value went from 9.5 to 2.0 -- percentage points rather than flat
+    damage. A tenth of 2.0 is 0.2, which cannot show three different numbers.
+    The affix is worth far more than it was; it simply reads as a smaller
+    figure now, and the bottom of its ladder is #1230's to settle along with
+    the other eight.
 
     WRITTEN OUT RATHER THAN COUNTED, because the interesting failure is a
     DIFFERENT affix joining or leaving the list, which a count would hide.
@@ -1768,9 +1777,11 @@ def test_the_squeezed_list_shrank_from_twelve_to_eight(affix_spread_run):
         "Flat mana leech",
         "Flat mana regeneration",
         "Flat penetration",
+        "Flat retaliation",
     ], (
         f"the affixes that can show three numbers or fewer on an early drop "
-        f"have changed to {squeezed}. Before #1179 there were twelve. A longer "
+        f"have changed to {squeezed}. Before #1179 there were twelve, and "
+        f"before #1227 there were eight. A longer "
         f"list means the ladders were steepened again; a shorter one means "
         f"#858 was acted on and this list needs updating.")
 

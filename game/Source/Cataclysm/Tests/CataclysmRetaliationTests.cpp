@@ -129,7 +129,7 @@ namespace CataclysmRetaliationTest
 	bool TestClass::RunTest(const FString& Parameters)
 
 CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationHitsBackTest,
-	"Cataclysm.Retaliation.AHitThatGotThroughSendsAFlatAmountBack")
+	"Cataclysm.Retaliation.AHitThatGotThroughSendsAShareOfItBack")
 {
 	using namespace CataclysmRetaliationTest;
 
@@ -146,7 +146,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationHitsBackTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	// A CHARACTER WITH NONE OF IT SENDS NOTHING BACK, asserted first so the
 	// figure below is evidence of the stat rather than of anything else the hit
@@ -161,7 +161,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationHitsBackTest,
 
 	// AND ONE WITH IT SENDS EXACTLY THAT MUCH. The Masochist's own figure at
 	// level 100, taken from game/Data/ClassStats.csv.
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 	Before = Attacker.Vitals->GetHealth();
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
@@ -174,18 +174,23 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationHitsBackTest,
 	}
 
 	TestEqual(TEXT("and the attacker takes the defender's retaliation"),
-		Before - Attacker.Vitals->GetHealth(), 158.0f, 0.01f);
+		Before - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
 
-	// A FLAT AMOUNT AND NOT A SHARE OF THE HIT, which is what the class stat
-	// table already says by writing it as a bare 158 while writing damage
-	// reduction as "8%". A hit five times the size sends back the same number.
+	// A SHARE OF THE HIT AND NOT A FLAT AMOUNT, WHICH IS ISSUE #1227 AND IS
+	// THE OPPOSITE OF WHAT THIS TEST USED TO ASSERT. It read "a hit five
+	// times the size sends back the same amount", because the class stat
+	// table wrote retaliation as a bare 158 while writing damage reduction as
+	// "8%". A flat number could not follow enemy health upwards: at difficulty
+	// tier 8 a Common enemy has 3,238 health and a Boss 40,048, and a
+	// character wearing the affix on every piece that takes it reached 291 a
+	// blow -- 137 blows taken to kill one Boss.
 	Attacker.Combat->SetAttackDamage(2'500.0f);
 	Before = Attacker.Vitals->GetHealth();
 	UCataclysmSkillEffects::ApplyHit(
 		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
 		FGameplayTagContainer(), FCataclysmHitDelivery());
-	TestEqual(TEXT("a hit five times the size sends back the same amount"),
-		Before - Attacker.Vitals->GetHealth(), 158.0f, 0.01f);
+	TestEqual(TEXT("a hit five times the size sends back five times as much"),
+		Before - Attacker.Vitals->GetHealth(), 500.0f, 0.01f);
 
 	return true;
 }
@@ -211,8 +216,8 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationIsNotAHitTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Attacker.Combat->SetRetaliation(158.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Attacker.Combat->SetRetaliation(20.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	const float AttackerBefore = Attacker.Vitals->GetHealth();
 	const float DefenderBefore = Defender.Vitals->GetHealth();
@@ -224,7 +229,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationIsNotAHitTest,
 	// THE ATTACKER TAKES ONE LOT AND NOT TWO. Its own retaliation must not
 	// answer what the defender sent back.
 	TestEqual(TEXT("the attacker takes the defender's retaliation once"),
-		AttackerBefore - Attacker.Vitals->GetHealth(), 158.0f, 0.01f);
+		AttackerBefore - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
 
 	// AND THE DEFENDER TOOK ONLY THE ORIGINAL BLOW. If retaliation were a hit,
 	// the attacker's own would have come back to the defender on top of it.
@@ -233,17 +238,39 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationIsNotAHitTest,
 		TEXT("the defender took the blow and nothing more: %.1f"), DefenderTook),
 		DefenderTook > 0.0f);
 	TestTrue(TEXT("and not the attacker's retaliation on top of it"),
-		!FMath::IsNearlyEqual(DefenderTook, 500.0f + 158.0f, 0.01f));
+		!FMath::IsNearlyEqual(DefenderTook, 500.0f + 100.0f, 0.01f));
 
-	// ARMOUR DOES NOT REDUCE IT, because it is not a hit. A blow of 158 against
-	// this much armour would arrive far smaller.
+	// ARMOUR REDUCES IT NOW, AND THIS ASSERTION IS THE REVERSE OF WHAT IT WAS.
+	// Issue #1227. Retaliation used to be written straight to the target's
+	// health, so nothing the target wore touched it; it goes through the
+	// ordinary damage formula now, so armour, resistance, evasion and block all
+	// apply. What it still cannot do is critically strike, apply an ailment,
+	// carry the weapon's sub-type, or provoke retaliation back -- the four flags
+	// UCataclysmRetaliation::Pay sets on the blow, and the rest of this test is
+	// what checks the last of them.
+	//
+	// A RELATIONSHIP AND NOT A CONSTANT. What 5,000 armour leaves of a 100
+	// point blow is the armour curve's answer, and writing that number here
+	// would make this test a copy of the curve rather than a check that armour
+	// reached the blow at all. It would also have to be rewritten every time the
+	// curve moved, which is how a test stops being read.
 	Attacker.Combat->SetArmor(5'000.0f);
 	const float ArmouredBefore = Attacker.Vitals->GetHealth();
 	UCataclysmSkillEffects::ApplyHit(
 		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
 		FGameplayTagContainer(), FCataclysmHitDelivery());
-	TestEqual(TEXT("armour on the attacker does not reduce what comes back"),
-		ArmouredBefore - Attacker.Vitals->GetHealth(), 158.0f, 0.01f);
+	const float ThroughArmour = ArmouredBefore - Attacker.Vitals->GetHealth();
+
+	TestTrue(FString::Printf(
+		TEXT("armour on the attacker reduces what comes back: %.1f of 100"),
+		ThroughArmour), ThroughArmour < 100.0f);
+
+	// AND DOES NOT STOP IT ALTOGETHER, which is the half a one-sided assertion
+	// would miss: a change that made retaliation deal nothing at all would pass
+	// the line above and fail here.
+	TestTrue(FString::Printf(
+		TEXT("but does not stop it altogether: %.1f"), ThroughArmour),
+		ThroughArmour > 0.0f);
 
 	return true;
 }
@@ -266,7 +293,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationExclusionsTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	// A DAMAGE OVER TIME TICK PROVOKES NOTHING. All three games in the genre
 	// agree that reflection answers a hit rather than a tick, and a burn ticking
@@ -316,7 +343,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationExclusionsTest,
 		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
 		FGameplayTagContainer(), OwnBlow);
 	TestEqual(TEXT("the same blow struck in the attacker's own name does"),
-		Before - Attacker.Vitals->GetHealth(), 158.0f, 0.01f);
+		Before - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
 
 	return true;
 }
@@ -339,7 +366,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationEvadedTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	// EVERY HIT IS EVADED, so nothing gets through and nothing comes back. The
 	// design: only a hit that got through provokes it.
@@ -388,7 +415,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationGrowsWithTheResourceTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(100.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	// THE POOL IS ADDED HERE RATHER THAN IN THE SHARED HARNESS, so the other
 	// four tests in this file keep asking with no class resource at all, which
@@ -410,7 +437,11 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationGrowsWithTheResourceTest,
 	Reciprocity.ScaleStep = 1.0f;
 
 	FCataclysmStatInputs Inputs;
-	Inputs.Base = 100.0f;
+	// TWENTY, NOT A HUNDRED, SINCE ISSUE #1227. Retaliation is percentage
+	// points now, so the three figures below are 20, 30 and 40 per cent of the
+	// 500 blow rather than three flat amounts. The expected 100, 150 and 200 are
+	// unchanged, because the bonus is a ratio and ratios do not care.
+	Inputs.Base = 20.0f;
 	Inputs.Modifiers = {Reciprocity};
 
 	TMap<FName, FCataclysmStatInputs> Recorded;
@@ -446,7 +477,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationGrowsWithTheResourceTest,
 	// in the game that has not spent this point. Its ability system records no
 	// inputs for the stat at all, so the attribute is the whole answer.
 	FRetaliator Plain(World);
-	Plain.Combat->SetRetaliation(100.0f);
+	Plain.Combat->SetRetaliation(20.0f);
 	const float Before = Attacker.Vitals->GetHealth();
 	UCataclysmSkillEffects::ApplyHit(
 		Attacker.Actor, Plain.Actor, /*DamagePercent=*/100.0f,
@@ -485,7 +516,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveTest,
 	FRetaliator Far(World, FVector(6 * M, 0.0f, 0.0f));
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 
 	const auto StrikeTheDefender = [&]
 	{
@@ -507,7 +538,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveTest,
 	}
 
 	TestEqual(TEXT("the attacker takes the retaliation"),
-		RetaliationHealthLostSince(Attacker, AttackerBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Attacker, AttackerBefore), 100.0f, 0.01f);
 	TestEqual(TEXT("and a bystander two metres away takes nothing"),
 		RetaliationHealthLostSince(Near, NearBefore), 0.0f, 0.001f);
 	TestEqual(TEXT("and one six metres away takes nothing"),
@@ -532,13 +563,13 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveTest,
 	// the targets would leave the total unchanged and make the option worth
 	// nothing at all.
 	TestEqual(TEXT("a bystander two metres away now takes the whole amount"),
-		RetaliationHealthLostSince(Near, NearBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Near, NearBefore), 100.0f, 0.01f);
 
 	// AND THE ATTACKER TAKES ONE LOT AND NOT TWO. It is standing one metre away,
 	// so the search returns it as well as it being the thing that hit; without
 	// the check that drops it from the search's results it would pay twice.
 	TestEqual(TEXT("and the attacker still takes exactly one payment"),
-		RetaliationHealthLostSince(Attacker, AttackerBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Attacker, AttackerBefore), 100.0f, 0.01f);
 
 	// AND SIX METRES IS OUTSIDE FOUR.
 	TestEqual(TEXT("and one six metres away still takes nothing"),
@@ -547,7 +578,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveTest,
 	// AND THE WAVE IS NOT ITSELF A HIT, so a bystander that also retaliates
 	// sends nothing back. Without that, two retaliating characters standing near
 	// one another would reflect without end.
-	Near.Combat->SetRetaliation(158.0f);
+	Near.Combat->SetRetaliation(20.0f);
 	const float DefenderBefore = Defender.Vitals->GetHealth();
 	NearBefore = Near.Vitals->GetHealth();
 
@@ -557,7 +588,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveTest,
 	}
 
 	TestEqual(TEXT("a bystander the wave struck takes it"),
-		RetaliationHealthLostSince(Near, NearBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Near, NearBefore), 100.0f, 0.01f);
 
 	// The defender took the attacker's blow and NOT the bystander's retaliation
 	// on top of it. 500 attack damage against no armour or resistance.
@@ -595,7 +626,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveKeepsTheAttackerTest,
 	FRetaliator Near(World, FVector(2 * M, 0.0f, 0.0f));
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 	Defender.Combat->SetRetaliationRadiusMetres(4.0f);
 
 	const float AttackerBefore = Attacker.Vitals->GetHealth();
@@ -611,9 +642,9 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationWaveKeepsTheAttackerTest,
 	}
 
 	TestEqual(TEXT("an attacker twenty metres away still takes retaliation"),
-		RetaliationHealthLostSince(Attacker, AttackerBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Attacker, AttackerBefore), 100.0f, 0.01f);
 	TestEqual(TEXT("and the enemy standing beside the defender takes it too"),
-		RetaliationHealthLostSince(Near, NearBefore), 158.0f, 0.01f);
+		RetaliationHealthLostSince(Near, NearBefore), 100.0f, 0.01f);
 
 	return true;
 }
@@ -640,7 +671,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechTest,
 	FRetaliator Defender(World);
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 	Defender.Vitals->SetLifeLeech(10.0f);
 
 	const auto StrikeTheDefender = [&]
@@ -673,8 +704,8 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechTest,
 		Attacker.AbilitySystem->GetLeechPayments().Num(), 1);
 
 	// AND WITH THE OPTION, RETALIATION LEECHES. "Your life leech applies to your
-	// retaliation damage as well as to your attacks." Ten per cent of the 158
-	// the attacker took is 15.8.
+	// retaliation damage as well as to your attacks." Ten per cent of the 100
+	// the attacker took is 10.
 	Defender.Combat->SetRetaliationLeeches(1.0f);
 	if (!TestTrue(TEXT("the third blow landed"), StrikeTheDefender() > 0.0f))
 	{
@@ -689,7 +720,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechTest,
 		return false;
 	}
 	TestEqual(TEXT("and it is ten per cent of what the retaliation took"),
-		Promised[0].Remaining, 15.8f, 0.01f);
+		Promised[0].Remaining, 10.0f, 0.01f);
 
 	// HEALTH AND NOT ONE OF THE OTHER TWO POOLS. The node names LIFE leech, so
 	// mana leech and energy shield leech stay on attacks alone.
@@ -741,7 +772,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechCountsWhatLandedTest,
 	FRetaliator Dying(World, FVector(2 * M, 0.0f, 0.0f));
 
 	Attacker.Combat->SetAttackDamage(500.0f);
-	Defender.Combat->SetRetaliation(158.0f);
+	Defender.Combat->SetRetaliation(20.0f);
 	Defender.Combat->SetRetaliationRadiusMetres(4.0f);
 	Defender.Combat->SetRetaliationLeeches(1.0f);
 	Defender.Vitals->SetLifeLeech(10.0f);
@@ -760,7 +791,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechCountsWhatLandedTest,
 		return false;
 	}
 
-	TestEqual(TEXT("the enemy with 25 health left loses 25 and not 158"),
+	TestEqual(TEXT("the enemy with 25 health left loses 25 and not 100"),
 		Dying.Vitals->GetHealth(), 0.0f, 0.001f);
 
 	const TArray<FCataclysmLeechPayment>& Promised =
@@ -774,7 +805,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationLeechCountsWhatLandedTest,
 	// the damage actually dealt and each of them took some. Ten per cent of
 	// 158 + 25.
 	TestEqual(TEXT("and it is ten per cent of what the two of them really lost"),
-		Promised[0].Remaining, 18.3f, 0.01f);
+		Promised[0].Remaining, 12.5f, 0.01f);
 
 	return true;
 }

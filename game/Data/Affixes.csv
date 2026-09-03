@@ -21,7 +21,7 @@ Stat_Increased_energy_shield_regeneration,Increased energy shield regeneration,S
 Stat_Flat_life_leech,Flat life leech,Stat,suffix,life_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Leech
 Stat_Flat_block_chance,Flat block chance,Stat,suffix,block_chance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Shield
 Stat_Flat_damage_reduction,Flat damage reduction,Stat,suffix,damage_reduction,flat,2.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Aegis
-Stat_Flat_retaliation,Flat retaliation,Stat,suffix,retaliation,flat,9.5,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Reprisal
+Stat_Flat_retaliation,Flat retaliation,Stat,suffix,retaliation,flat,2.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Reprisal
 Stat_Flat_crowd_control_resistance,Flat crowd control resistance,Stat,suffix,crowd_control_resistance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Steadfastness
 Stat_Flat_critical_strike_chance,Flat critical strike chance,Stat,suffix,crit_chance,flat,5.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Precision
 Stat_Increased_critical_strike_chance,Increased critical strike chance,Stat,suffix,crit_chance,increased,25.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Keen Edge
