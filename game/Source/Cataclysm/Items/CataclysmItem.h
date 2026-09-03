@@ -217,11 +217,42 @@ public:
 	static constexpr float RollBandFraction = 0.25f;
 
 	/**
-	 * Each upgrade level adds this share. The same constant the Power Score
-	 * model uses, rather than a second copy of it, so gear level cannot mean two
-	 * different things in two places.
+	 * Each upgrade level adds this share, so a +10 piece is 2.5 times a +0 one.
+	 *
+	 * WAS 0.25245807054891267 AND IS NOW 0.15, changed on 2026-09-03 for issue
+	 * #1179. The old figure was the Power Score model's own upgrade weight,
+	 * shared deliberately so gear level could not mean two things in two places.
+	 * It now does mean two things, and that is the point: how much an upgrade is
+	 * WORTH to a rating is one question, and how much it MULTIPLIES the numbers
+	 * printed on an item is another. Easing the second would otherwise have
+	 * moved every Power Score in the game, which has its own anchors and no
+	 * reason to change.
+	 *
+	 * WHY IT WAS EASED. This ladder multiplies the affix tier ladder, and 9.33
+	 * times 3.52 put a tier 1 roll on an un-upgraded drop at 3.04% of the
+	 * endgame value -- against Last Epoch's 16.7% across its own seven tiers.
+	 * Twelve affixes could not show more than three different numbers early in
+	 * the game and three could only ever display 0.0.
+	 *
+	 * BOTH LADDERS WERE EASED AND NEITHER WAS DELETED, which is the project
+	 * owner's decision of 2026-09-03: two levers are the point, and the fault
+	 * was the size of their product. See TierFraction for the other half. 3.0
+	 * times 2.5 is about 10x, against 32.9x before.
+	 *
+	 * `sim/cataclysm_sim/affixes.py` holds the same number as
+	 * `GEAR_LEVEL_FACTOR`, and `POWER_SCORE_UPGRADE_FACTOR` beside it still
+	 * holds the Power Score weight, so a reader sees both and sees they differ.
 	 */
-	static constexpr float GearLevelFactor = 0.25245807054891267f;
+	static constexpr float GearLevelFactor = 0.15f;
+
+	/**
+	 * How much more a tier 7 affix is worth than a tier 1 one, before the roll.
+	 *
+	 * WAS EFFECTIVELY 7.0, as the ladder `Tier / MaxAffixTier`, AND IS NOW 3.0.
+	 * See TierFraction for the shape and GearLevelFactor above for why.
+	 * Issue #1179.
+	 */
+	static constexpr float TierLadderSpan = 3.0f;
 
 	/**
 	 * What each half of a hybrid affix is worth, against the whole affix.

@@ -1685,36 +1685,73 @@ def test_the_tool_tip_rounding_copy_matches_the_engine():
     assert words(0.35) == "0.3" or words(0.35) == "0.4"
 
 
-def test_three_affixes_can_only_ever_show_zero(affix_spread_run):
-    """The sharpest form of the finding, and the one that is plainly a fault.
+def test_no_affix_can_only_ever_show_zero_any_more(affix_spread_run):
+    """The sharpest form of the finding, and it is now fixed. Issue #1179.
 
-    A slot granting a number the player reads as 0 is a slot granting nothing.
-    That half is issue #858 and should be fixed whatever is decided about the
-    wider spread question.
+    Until both affix ladders were eased on 2026-09-03, three affixes could only
+    ever display `0.0` on an early drop -- a slot granting a number the player
+    reads as nothing. All three now display `0.1`.
+
+    ASSERTED AS "NONE" RATHER THAN AS A LIST OF NAMES, because a list of zero
+    names is the same assertion written less clearly, and any affix falling back
+    to zero is a regression whichever one it is.
     """
-    printed, ns = affix_spread_run
+    _, ns = affix_spread_run
 
-    stuck_at_zero = [
+    stuck_at_zero = sorted(
         affix.name for affix in ns["every_measurable_affix"]()
-        if ns["displayed_values"](affix)[0] == ["0.0"]]
+        if set(ns["displayed_values"](affix)[0]) <= {"0", "0.0"})
 
-    assert sorted(stuck_at_zero) == [
-        "Flat energy shield leech", "Flat life leech", "Flat mana leech"], (
-        f"the affixes that can only ever display 0.0 have changed to "
-        f"{sorted(stuck_at_zero)}. If they were fixed, say so in #858 and "
-        f"update this list; if new ones appeared, that is a regression.")
-
-    assert "ALWAYS SHOW ZERO" in printed
+    assert stuck_at_zero == [], (
+        f"these affixes can only ever display zero on an early drop: "
+        f"{stuck_at_zero}. Before #1179 the three leech affixes did. An affix "
+        f"back at zero means either the two ladders were steepened again, or "
+        f"its stated top value is too small to survive them.")
 
 
-def test_the_squeezed_affixes_are_the_twelve_the_issue_named(affix_spread_run):
-    """The list issue #1179 measured, reproduced from the model.
+def test_four_affixes_still_show_only_one_number(affix_spread_run):
+    """WHAT EASING THE LADDERS DID NOT FIX, kept visible on purpose.
+
+    These four have stated top values of 0.5, 0.5, 0.5 and 0.7, which is what
+    they give at tier 7 on fully upgraded gear. That is too small to be worth a
+    slot at the END of the game, let alone the start, so no change to either
+    ladder can rescue them -- they now show `0.1` rather than `0.0`, which is an
+    improvement and not a fix.
+
+    That half is issue #858 and needs their stated values raised.
+    """
+    _, ns = affix_spread_run
+
+    one_number = sorted(
+        affix.name for affix in ns["every_measurable_affix"]()
+        if len(ns["displayed_values"](affix)[0]) == 1)
+
+    assert one_number == [
+        "Flat energy shield leech",
+        "Flat life leech",
+        "Flat mana leech",
+        "Flat mana regeneration",
+    ], (
+        f"the affixes that can show only one number on an early drop have "
+        f"changed to {one_number}. If their stated values were raised, say so "
+        f"on #858 and update this list; if new ones appeared, that is a "
+        f"regression.")
+
+
+def test_the_squeezed_list_shrank_from_twelve_to_eight(affix_spread_run):
+    """What issue #1179 bought, measured rather than asserted.
+
+    Before the change, twelve affixes could show three different numbers or
+    fewer on an early drop. Eight can now, and the four that left are ones a
+    player notices: all resistances, block chance, critical strike chance and
+    crowd control resistance.
 
     WRITTEN OUT RATHER THAN COUNTED, because the interesting failure is a
-    DIFFERENT affix joining or leaving the list, which a count would hide. The
-    denominator differs from the issue on purpose: the issue counted 12 of the
-    72 non-hybrid rows in `game/Data/Affixes.csv`, and this script measures the
-    53 affixes the model carries. Same twelve either way.
+    DIFFERENT affix joining or leaving the list, which a count would hide.
+
+    The denominator differs from the issue on purpose: the issue counted against
+    the 72 non-hybrid rows in `game/Data/Affixes.csv`, and this script measures
+    the 53 affixes the model carries.
     """
     _, ns = affix_spread_run
 
@@ -1723,10 +1760,6 @@ def test_the_squeezed_affixes_are_the_twelve_the_issue_named(affix_spread_run):
         if len(ns["displayed_values"](affix)[0]) <= ns["FEW"])
 
     assert squeezed == [
-        "All resistances",
-        "Flat block chance",
-        "Flat critical strike chance",
-        "Flat crowd control resistance",
         "Flat damage reduction",
         "Flat energy shield leech",
         "Flat evasion",
@@ -1737,31 +1770,39 @@ def test_the_squeezed_affixes_are_the_twelve_the_issue_named(affix_spread_run):
         "Flat penetration",
     ], (
         f"the affixes that can show three numbers or fewer on an early drop "
-        f"have changed to {squeezed}. That is the measurement issue #1179 "
-        f"rests on, so a change here means the finding has moved.")
+        f"have changed to {squeezed}. Before #1179 there were twelve. A longer "
+        f"list means the ladders were steepened again; a shorter one means "
+        f"#858 was acted on and this list needs updating.")
 
 
-def test_the_two_affix_tiers_are_two_bands_and_skip_a_displayed_number(
+def test_the_headline_numbers_a_player_reads_are_no_longer_fractions(
         affix_spread_run):
-    """WHY "All resistances" shows 0.2, 0.4 and 0.5 but never 0.3.
+    """THE COMPLAINT #1179 STARTED FROM, in the project owner's words: the
+    values should be actually useful, and no more of this fraction-of-a-per-cent
+    nonsense.
 
-    At difficulty tier 1 a drop rolls affix tier 1 or 2 and nothing between, so
-    the reachable values are TWO SEPARATE BANDS rather than one continuous
-    range. A reader who assumes one range would expect every number between the
-    ends to be reachable and would think this script had a rounding bug.
-
-    This is the clearest evidence that the tier gate, not the roll band, is
-    what compresses the early game -- which is the question issue #1179 asks
-    and does not answer.
+    These four are the affixes a player looks at first. Before the change the
+    best a tier 1 drop could show for maximum health was 4.9 and for increased
+    damage 5.1; both now start above 12. Stated as a floor rather than a range,
+    so a future retune that raises them further does not fail this.
     """
     _, ns = affix_spread_run
-    from cataclysm_sim import affixes as af
 
-    shown, low, high = ns["displayed_values"](af.ALL_RESISTANCE)
-    assert sorted(shown) == ["0.2", "0.4", "0.5"], sorted(shown)
-    assert low < 0.3 < high, (
-        f"0.3 lies inside the true range {low:.3f} to {high:.3f} and is still "
-        f"never displayed, which is the two-band effect this test is about")
+    floors = {
+        "Flat maximum health": 12.0,
+        "Increased damage": 12.0,
+        "Flat damage": 2.0,
+        "Increased maximum health": 1.0,
+    }
+    by_name = {a.name: a for a in ns["every_measurable_affix"]()}
+
+    for name, floor in floors.items():
+        _, low, high = ns["displayed_values"](by_name[name])
+        assert low >= floor, (
+            f"the worst {name} an early drop can give is {low:.2f}, below the "
+            f"floor of {floor} this test holds. Issue #1179 raised these from "
+            f"fractions of a point; something has pushed them back down.")
+        assert high > low
 
 
 def test_the_headline_affixes_do_show_a_spread(affix_spread_run):

@@ -67,19 +67,47 @@ bool FCataclysmItemCurvesTest::RunTest(const FString& Parameters)
 	using namespace CataclysmItemTest;
 
 	// Printed by sim/cataclysm_sim/affixes.py.
+	//
+	// A +10 PIECE WAS 3.5245807 AND IS NOW 2.5, changed on 2026-09-03 for issue
+	// #1179. The old figure was the Power Score model's own upgrade weight; the
+	// two are decoupled now, because how much an upgrade is worth to a rating
+	// and how much it multiplies the numbers on an item are different questions.
 	TestTrue(TEXT("a +0 piece multiplies by 1"),
 		FMath::IsNearlyEqual(FValues::GearLevelMultiplier(0), 1.0f, 0.0001f));
-	TestTrue(TEXT("a +10 piece multiplies by 3.5245807"),
-		FMath::IsNearlyEqual(FValues::GearLevelMultiplier(10), 3.5245807f, 0.0001f));
+	TestTrue(TEXT("a +10 piece multiplies by 2.5"),
+		FMath::IsNearlyEqual(FValues::GearLevelMultiplier(10), 2.5f, 0.0001f));
 
-	// Tier N is worth N sevenths. Linear, not front-loaded, so the later tiers
-	// stay worth crafting for.
+	// THE TIER LADDER IS GEOMETRIC AND WAS LINEAR. It ran `Tier / 7`, so tier 7
+	// was worth seven times tier 1; it now spans 3.0 with a constant ratio
+	// between tiers. A constant ratio rather than a flatter straight line,
+	// because squashing a LINEAR ladder to 3.0 breaks the one-tier overlap bound
+	// that the test below asserts. See TierFraction for the working.
 	for (int32 Tier = 1; Tier <= FValues::MaxAffixTier; ++Tier)
 	{
-		TestTrue(FString::Printf(TEXT("tier %d is %d sevenths"), Tier, Tier),
-			FMath::IsNearlyEqual(FValues::TierFraction(Tier),
-								 static_cast<float>(Tier) / 7.0f, 0.0001f));
+		const float Expected = FMath::Pow(
+			FValues::TierLadderSpan,
+			static_cast<float>(Tier - FValues::MaxAffixTier)
+			/ static_cast<float>(FValues::MaxAffixTier - 1));
+		TestTrue(FString::Printf(TEXT("tier %d is %.4f of the top value"),
+								 Tier, Expected),
+			FMath::IsNearlyEqual(FValues::TierFraction(Tier), Expected, 0.0001f));
 	}
+
+	// TIER 7 IS EXACTLY 1.0, which is what keeps the stated top values meaning
+	// what they always meant.
+	TestTrue(TEXT("tier 7 is the whole stated value"),
+		FMath::IsNearlyEqual(FValues::TierFraction(FValues::MaxAffixTier),
+							 1.0f, 0.0001f));
+
+	// AND THE LADDER IS BACK-LOADED, which is what the linear one was protecting
+	// and this protects harder: the last step up is worth more than the first,
+	// so the later tiers are the hardest to skip.
+	const float FirstStep = FValues::TierFraction(2) - FValues::TierFraction(1);
+	const float LastStep = FValues::TierFraction(7) - FValues::TierFraction(6);
+	TestTrue(FString::Printf(
+			TEXT("the last tier step (%.4f) is larger than the first (%.4f)"),
+			LastStep, FirstStep),
+		LastStep > FirstStep * 2.0f);
 
 	// The band for a top value of 120, quoted from the model.
 	float Low = 0.0f, High = 0.0f;
@@ -89,19 +117,51 @@ bool FCataclysmItemCurvesTest::RunTest(const FString& Parameters)
 		&& FMath::IsNearlyEqual(High, 120.0f, 0.001f));
 
 	FValues::TierBand(120.0f, 1, Low, High);
-	TestTrue(TEXT("tier 1 of 120 runs 12.857 to 17.143"),
-		FMath::IsNearlyEqual(Low, 12.8571f, 0.001f)
-		&& FMath::IsNearlyEqual(High, 17.1429f, 0.001f));
+	TestTrue(TEXT("tier 1 of 120 runs 30 to 40"),
+		FMath::IsNearlyEqual(Low, 30.0f, 0.01f)
+		&& FMath::IsNearlyEqual(High, 40.0f, 0.01f));
 
 	// Four values quoted from the model, covering both ends of every axis.
+	//
+	// THREE OF THESE CHANGED ON 2026-09-03. Tier 1 of 120 ran 12.857 to 17.143,
+	// a T7 perfect roll on a +0 piece gave 34.0466, and a T4 middle roll on a +5
+	// piece gave 38.5117. Both affix ladders were eased for issue #1179 -- the
+	// tier ladder from a span of 7.0 to 3.0 and made geometric, and the gear
+	// level ladder from 3.52 to 2.5 -- because their product put a starting
+	// affix at 3.04% of the endgame value. See TierFraction and GearLevelFactor.
+	//
+	// THE FIRST TWO DID NOT CHANGE, and that is the point: the stated top values
+	// are still the tier 7 figures on a +10 piece, so nothing above the top of
+	// the curve moved.
 	TestTrue(TEXT("T7, perfect roll, +10 gives the stated top value of 120"),
 		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 1.0f, 10), 120.0f, 0.01f));
 	TestTrue(TEXT("T7, worst roll, +10 gives 90"),
 		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 0.0f, 10), 90.0f, 0.01f));
-	TestTrue(TEXT("T7, perfect roll, +0 gives 34.0466"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 1.0f, 0), 34.0466f, 0.01f));
-	TestTrue(TEXT("T4, middle roll, +5 gives 38.5117"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 4, 0.5f, 5), 38.5117f, 0.01f));
+	TestTrue(TEXT("T7, perfect roll, +0 gives 48"),
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 1.0f, 0), 48.0f, 0.01f));
+	TestTrue(TEXT("T4, middle roll, +5 gives 42.4352"),
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 4, 0.5f, 5), 42.4352f, 0.01f));
+
+	// THE TWO LADDERS TOGETHER, which is the number issue #1179 is about. A
+	// tier 1 roll at its worst on an un-upgraded drop, against a tier 7 roll at
+	// its best on a finished one. It was 32.9x, which is what made a starting
+	// affix 3.04% of a finished one; it is now about 10x.
+	const float Fresh = FValues::AffixValue(120.0f, 1, 0.0f, 0);
+	const float Finished = FValues::AffixValue(120.0f, 7, 1.0f, FValues::MaxGearLevel);
+	TestTrue(FString::Printf(
+			TEXT("the two ladders span %.2fx, which should be about 10"),
+			Finished / Fresh),
+		FMath::IsNearlyEqual(Finished / Fresh, 10.0f, 0.05f));
+
+	// AND NEITHER LADDER IS FLAT, because deleting one was tried and rejected:
+	// two levers are the point, and removing the gear one put a hole in the late
+	// game where a character's affix tier has already capped at 7.
+	TestTrue(TEXT("the tier ladder still does something"),
+		FValues::AffixValue(120.0f, 7, 1.0f, 10)
+		> FValues::AffixValue(120.0f, 1, 1.0f, 10) * 2.0f);
+	TestTrue(TEXT("the gear level ladder still does something"),
+		FValues::AffixValue(120.0f, 7, 1.0f, 10)
+		> FValues::AffixValue(120.0f, 7, 1.0f, 0) * 2.0f);
 
 	// A roll outside the band is clamped rather than escaping it.
 	TestTrue(TEXT("a roll above 1 does not exceed the band"),
@@ -723,14 +783,20 @@ bool FCataclysmUpgradeLevelReachesWeaponDamage::RunTest(const FString& Parameter
 	TestEqual(TEXT("a +10 Whip carries the 32 the sheet states"),
 		AtTen, 32.0f, 0.01f);
 
-	// ABOUT 3.52 TIMES, which is the upgrade curve stated on FCataclysmItem
-	// itself. Asserted as a ratio rather than as a second literal, so this test
-	// does not have to change when the curve is re-tuned -- only when the
-	// upgrade level stops reaching the damage at all, which is the fault.
+	// ABOUT 2.5 TIMES, which is the upgrade curve stated on FCataclysmItem
+	// itself. It was 3.52 until 2026-09-03, when the gear level ladder was eased
+	// for issue #1179; an implicit uses the same multiplier as an affix, so a
+	// weapon's base damage moved with it.
+	//
+	// Asserted as a ratio rather than as a second literal, so this test does not
+	// have to change when the curve is re-tuned -- only when the upgrade level
+	// stops reaching the damage at all, which is the fault it is written for.
+	// The figure itself is quoted because a curve that silently flattened to 1.0
+	// would still be "a ratio".
 	if (TestTrue(TEXT("a +0 Whip is worth something"), AtZero > 0.0f))
 	{
-		TestEqual(TEXT("and a +10 Whip is about 3.52 times a +0 one"),
-			AtTen / AtZero, 3.52f, 0.05f);
+		TestEqual(TEXT("and a +10 Whip is about 2.5 times a +0 one"),
+			AtTen / AtZero, 2.5f, 0.05f);
 	}
 
 	// THE TWO WEAPONS IN A PAIR ARE READ SEPARATELY, so a player holding one

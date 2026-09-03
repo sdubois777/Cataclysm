@@ -373,26 +373,56 @@ def test_the_starting_character_survives_a_pack_of_imps(
         f"#806 is the fight this describes.")
 
 
-def test_the_shared_line_still_loses_that_same_fight(
+#: Where the shared line and the starting class still come apart.
+#:
+#: MOVED FROM 20 TO 10 ON 2026-09-03. The control below used to run at the
+#: default level of 20, where the shared "Default" line lost and the starting
+#: class won. Issue #1179 eased both affix ladders, which made every early
+#: character stronger, and at level 20 the shared line now wins too -- so the
+#: control stopped discriminating and started passing for the wrong reason.
+#:
+#: 10 IS MEASURED RATHER THAN CHOSEN. At levels 1 and 5 both lines lose; at 15
+#: and 20 both win; at 10 the shared line loses and the starting class wins,
+#: which is the only level of those tried where the fight tells them apart.
+#: Re-measure it rather than nudging it if this ever fails again.
+CONTROL_LEVEL = 10
+
+
+def test_the_shared_line_still_loses_a_fight_the_starting_class_wins(
         constants, class_lines, slots, weapon) -> None:
     """Proves the measurement can tell the two apart.
 
     Without this, a bug making every fight winnable would leave the test above
     passing and saying nothing. The shared line losing is the reason the
     starting class was changed, so it is the control.
-    """
-    shared = constants["shared_line"]
-    level = int(constants["default_level"])
-    result = fight(shared, level=level, lines=class_lines,
-                   constants=constants, slots=slots, weapon=weapon)
 
-    assert result["won"] is False, (
-        f"the shared {shared!r} line now WINS the pack fight at level {level}, "
-        f"which it did not on 2026-08-24. That is not a failure -- it may be "
-        f"good news -- but this file exists because it lost, and the test "
-        f"above can no longer tell a survivable starting class from an "
-        f"unsurvivable one. Re-read issue #806 and decide whether this control "
-        f"is still worth keeping.")
+    BOTH HALVES ARE ASSERTED AT THE SAME LEVEL, which the earlier version did
+    not do -- it only checked that the shared line lost, at a different level
+    from the test it was controlling for. Checking the pair at one level is what
+    actually demonstrates the fight discriminates, rather than demonstrating
+    that some character loses somewhere.
+    """
+    shared, starting = constants["shared_line"], constants["starting_class"]
+
+    lost = fight(shared, level=CONTROL_LEVEL, lines=class_lines,
+                 constants=constants, slots=slots, weapon=weapon)
+    won = fight(starting, level=CONTROL_LEVEL, lines=class_lines,
+                constants=constants, slots=slots, weapon=weapon)
+
+    assert lost["won"] is False, (
+        f"the shared {shared!r} line now WINS the pack fight at level "
+        f"{CONTROL_LEVEL}, so this control no longer tells a survivable "
+        f"starting class from an unsurvivable one. That is not necessarily a "
+        f"failure -- characters getting stronger is what moved it from level 20 "
+        f"to level 10 on 2026-09-03 -- but the level has to be re-measured "
+        f"rather than nudged. Try each level and find the one where these two "
+        f"lines still come apart. Issue #806.")
+
+    assert won["won"] is True, (
+        f"the {starting!r} starting class now LOSES the pack fight at level "
+        f"{CONTROL_LEVEL}, where it used to win. Either a class stat was "
+        f"re-tuned or the fight got harder; this control needs both halves to "
+        f"hold to mean anything.")
 
 
 def test_no_class_survives_that_fight_at_level_one(

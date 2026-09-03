@@ -65,7 +65,30 @@ float UCataclysmItemValues::GearLevelMultiplier(int32 GearLevel)
 float UCataclysmItemValues::TierFraction(int32 Tier)
 {
 	const int32 Clamped = FMath::Clamp(Tier, 1, MaxAffixTier);
-	return static_cast<float>(Clamped) / static_cast<float>(MaxAffixTier);
+
+	// GEOMETRIC, AND IT WAS LINEAR UNTIL 2026-09-03. It ran
+	// `Clamped / MaxAffixTier`, so tier 7 was worth seven times tier 1;
+	// multiplied by the gear level ladder that put a tier 1 roll on an
+	// un-upgraded drop at 3.04% of the endgame value. Issue #1179.
+	//
+	// A CONSTANT RATIO RATHER THAN A FLATTER STRAIGHT LINE, and that is not a
+	// taste. A roll band runs from 75% to 100% of its tier, so a tier is
+	// undercut by the one below whenever the gap between them is less than a
+	// quarter. Squashing a LINEAR ladder to span 3.0 lets a perfect tier 5 roll
+	// beat a poor tier 7 one -- a two-tier overlap, which
+	// Cataclysm.Item.BandsOverlapByExactlyOneTier forbids and which the note on
+	// RollBandFraction proves cannot happen. A constant ratio of 1.2009 keeps
+	// the bound: two tiers apart is 1.442 and the bound needs more than 1.333.
+	//
+	// AND IT IS BACK-LOADED, which serves the reason the linear ladder existed
+	// rather than overturning it. The step from tier 6 to tier 7 is now worth
+	// more than the step from tier 1 to tier 2, so the last tiers are the ones
+	// that matter most and the hardest to skip.
+	//
+	// Tier 7 is 1.0 exactly, so the stated top values are unchanged.
+	return FMath::Pow(TierLadderSpan,
+					  static_cast<float>(Clamped - MaxAffixTier)
+					  / static_cast<float>(MaxAffixTier - 1));
 }
 
 void UCataclysmItemValues::TierBand(float TopValue, int32 Tier,
@@ -84,10 +107,33 @@ float UCataclysmItemValues::AffixValue(float TopValue, int32 Tier, float Roll,
 
 	const float Within = Low + (High - Low) * FMath::Clamp(Roll, 0.0f, 1.0f);
 
-	// The stated top values are the +10 figures, so the band is divided back to
-	// +0 before the piece's own level is applied. Doing it the other way round
-	// would make a +10 piece worth 3.52 times a number that already included
-	// 3.52.
+	// BOTH LADDERS ARE KEPT AND BOTH WERE EASED ON 2026-09-03, for issue #1179.
+	// The shape of this function did not change; the two constants it leans on
+	// did. TierFraction now spans 3.0 rather than 7.0 and GearLevelFactor gives
+	// 2.5 rather than 3.52, so the two multiply to about 10x instead of 32.9x.
+	//
+	// WHY THEY NEEDED EASING. At 32.9x a tier 1 roll on an un-upgraded drop was
+	// 3.04% of the endgame value, against Last Epoch's 16.7% across its own
+	// seven tiers. Twelve affixes could not show more than three different
+	// numbers early in the game and three could only ever display 0.0, which is
+	// a slot granting a number the player reads as nothing.
+	//
+	// WHY NEITHER WAS DELETED. An earlier attempt removed the gear level ladder
+	// entirely, on the reasoning that Path of Exile and Last Epoch both express
+	// progression once by gating which tiers can appear. The project owner
+	// rejected that: two levers are the point, and the fault was the size of
+	// their product rather than their number. Deleting one also put a hole in
+	// the late game -- a character's affix tier caps at 7 by difficulty tier 6,
+	// so beyond that the gear ladder is the only thing still raising their
+	// affixes, and without it their damage rose 7.7% across the last three
+	// difficulty tiers while everything scaling with character level kept
+	// climbing.
+	//
+	// The stated top values are still the +10 figures, so the band is divided
+	// back to +0 before the piece's own level is applied. Doing it the other way
+	// round would make a +10 piece worth 2.5 times a number that already
+	// included 2.5. The endgame value is therefore unchanged by all of this;
+	// what moved is everything below it.
 	const float AtZero = Within / GearLevelMultiplier(MaxGearLevel);
 	return AtZero * GearLevelMultiplier(GearLevel)
 		 * (bTwoHanded ? TwoHandedMultiplier : 1.0f);

@@ -1026,12 +1026,13 @@ bool FCataclysmUpgradeLevelReachesAttackDamage::RunTest(const FString& Parameter
 		Upgraded, 32.0f, 0.05f);
 	if (TestTrue(TEXT("a +0 Whip is worth something"), Fresh > 0.0f))
 	{
-		// About 3.52 times, the upgrade curve stated on FCataclysmItem itself.
-		// Asserted as a ratio rather than a second literal, so re-tuning the
-		// curve does not break this -- only the upgrade level ceasing to apply,
-		// which is the fault.
-		TestEqual(TEXT("and a +10 Whip is about 3.52 times a +0 one"),
-			Upgraded / Fresh, 3.52f, 0.05f);
+		// About 2.5 times, the upgrade curve stated on FCataclysmItem itself.
+		// It was 3.52 until 2026-09-03, when the gear level ladder was eased for
+		// issue #1179. Asserted as a ratio rather than a second literal, so
+		// re-tuning the curve does not break this -- only the upgrade level
+		// ceasing to apply, which is the fault it is written for.
+		TestEqual(TEXT("and a +10 Whip is about 2.5 times a +0 one"),
+			Upgraded / Fresh, 2.5f, 0.05f);
 	}
 
 	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one item
