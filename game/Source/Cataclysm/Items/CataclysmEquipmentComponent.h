@@ -400,9 +400,34 @@ private:
 	UPROPERTY(SaveGame)
 	TArray<FCataclysmItem> Slots;
 
-	/** Puts the item in, reports what came out, and raises the change. */
+	/**
+	 * Puts the item in and reports what came out. Announces nothing.
+	 *
+	 * THE COMMENT HERE USED TO SAY IT RAISED THE CHANGE AND IT NEVER HAS.
+	 * Every caller announces for itself, because a caller may make two edits
+	 * to the slots and owes the listeners one announcement rather than two.
+	 */
 	void PlaceInto(const FCataclysmItem& Item, ECataclysmGearSlot Slot,
 				   FCataclysmItem& OutRemoved);
+
+	/**
+	 * Takes the item out of a slot and tells nobody.
+	 *
+	 * WHY IT IS SEPARATE FROM Unequip, WHICH IS ISSUE #1214. Swapping a
+	 * one-handed weapon in over a two-handed one has to remove the two-hander
+	 * and then place the new weapon, and that is one player action. Calling
+	 * the public Unequip for the first half announced it, so the one action
+	 * raised the change twice and the first of the two fired while the
+	 * character held no weapon at all.
+	 *
+	 * A LISTENER MUST NEVER SEE A HALF-FINISHED SWAP.
+	 * ACataclysmPlayerCharacter::OnEquipmentChanged recomputes the whole stat
+	 * line and refills every ability slot from the worn weapon's type, so the
+	 * first announcement had it do all of that for an unarmed character.
+	 *
+	 * @return whether there was one to take.
+	 */
+	bool TakeOutOf(ECataclysmGearSlot Slot, FCataclysmItem& OutRemoved);
 };
 
 /**

@@ -872,6 +872,17 @@ bool FCataclysmEquipmentRaisesItsChange::RunTest(const FString& Parameters)
 	Equipment->UnequipEverything();
 	TestEqual(TEXT("but stripping one wearing something is"), Announced, 4);
 
+	// A WEAPON SWAP, WHICH THIS TEST NEVER REACHED UNTIL ISSUE #1214.
+	// EquipInto has three branches that announce and only the ordinary one was
+	// covered here, so the branch that was announcing twice was invisible to
+	// the test whose whole subject is the announcement.
+	Equipment->Equip(Plain(TwoHandedBase), Removed, AlsoRemoved, Slot);
+	TestEqual(TEXT("wearing a two-handed weapon is announced"), Announced, 5);
+
+	Equipment->Equip(Plain(OneHandedBase), Removed, AlsoRemoved, Slot);
+	TestEqual(TEXT("and swapping a one-hander in over it is announced once, "
+				   "not twice"), Announced, 6);
+
 	return true;
 }
 
@@ -2072,34 +2083,37 @@ bool FCataclysmEquipmentCountsItsChanges::RunTest(const FString& Parameters)
 		AfterTwoHanded > AfterOff);
 	TestEqual(TEXT("and announced it"), Broadcasts, 4);
 
-	// A ONE-HANDER OVER A TWO-HANDER IS A THIRD BRANCH, AND IT ANNOUNCES TWICE.
+	// A ONE-HANDER OVER A TWO-HANDER IS A THIRD BRANCH, AND IT NOW ANNOUNCES
+	// ONCE.
 	//
-	// THAT IS NOT A TYPING MISTAKE IN THIS TEST AND IT IS NOT NEW. That branch
-	// of UCataclysmEquipmentComponent::EquipInto calls Unequip to take the
-	// two-handed weapon off, and Unequip announces; then the branch announces
-	// again after placing the new weapon. So one player action produces two
-	// announcements, and it did before issue #1192 added the count -- the
-	// existing test Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced never
-	// exercised a weapon swap, so nothing had noticed.
+	// IT ANNOUNCED TWICE UNTIL ISSUE #1214, AND THIS TEST ASSERTED THAT ON
+	// PURPOSE so that changing it would be a decision rather than an accident.
+	// The decision has been made. That branch of
+	// UCataclysmEquipmentComponent::EquipInto called the public Unequip to take
+	// the two-handed weapon off, and Unequip announces; then the branch
+	// announced again after placing the new weapon. One player action raised
+	// the change twice, and the first of the two fired while the character was
+	// holding no weapon at all. It calls the private TakeOutOf for the first
+	// half now, which removes without announcing.
 	//
-	// HARMLESS FOR THE COUNT, WHICH IS WHAT THIS TEST IS FOR. A screen only asks
-	// whether the number differs from the one it saw last, so rising by two
-	// costs nothing. It is NOT obviously harmless for the delegate, because the
-	// first announcement fires while the character is momentarily holding no
-	// weapon at all. That is filed separately rather than changed here, and the
-	// exact figure is asserted so that a later change to it is deliberate.
+	// THE COUNT WAS NEVER THE PART THAT MINDED, WHICH IS WHY THIS IS NOT THE
+	// TEST THAT HOLDS THE RULE. A screen only asks whether the number differs
+	// from the one it saw last, so two cost it nothing. The delegate is what
+	// minded, and
+	// Cataclysm.Equipment.NoListenerSeesAHalfFinishedWeaponSwap is where that
+	// is checked.
 	Equipment->Equip(Plain(OneHandedBase), Removed, AlsoRemoved, Where);
 	const int32 AfterOneHanded = Equipment->ChangeCount();
 	TestTrue(TEXT("a one-hander over a two-hander raises it"),
 		AfterOneHanded > AfterTwoHanded);
-	TestEqual(TEXT("and announces twice, which is its own branch doing it once "
-				   "through Unequip and once itself"), Broadcasts, 6);
+	TestEqual(TEXT("and announces once, rather than once through Unequip and "
+				   "once again itself"), Broadcasts, 5);
 
 	Equipment->UnequipEverything();
 	const int32 AfterAllOff = Equipment->ChangeCount();
 	TestTrue(TEXT("taking everything off raises it"),
 		AfterAllOff > AfterOneHanded);
-	TestEqual(TEXT("and announced it"), Broadcasts, 7);
+	TestEqual(TEXT("and announced it"), Broadcasts, 6);
 
 	// TAKING EVERYTHING OFF A CHARACTER WEARING NOTHING CHANGES NOTHING, which
 	// the component already guarded for the delegate's sake and which the count
@@ -2107,7 +2121,114 @@ bool FCataclysmEquipmentCountsItsChanges::RunTest(const FString& Parameters)
 	Equipment->UnequipEverything();
 	TestEqual(TEXT("taking nothing off does not raise it"),
 		Equipment->ChangeCount(), AfterAllOff);
-	TestEqual(TEXT("and announces nothing"), Broadcasts, 7);
+	TestEqual(TEXT("and announces nothing"), Broadcasts, 6);
+
+	return true;
+}
+
+/**
+ * No listener is ever told about a weapon swap while it is half done.
+ *
+ * WHAT WENT WRONG. Swapping a one-handed weapon in over a two-handed one is
+ * its own branch of UCataclysmEquipmentComponent::EquipInto, and it has to
+ * remove the two-hander before it can place the new weapon. It called the
+ * public Unequip for the first half, and Unequip announces, so one player
+ * action raised the change twice -- the first time between the two, with the
+ * character holding nothing. Issue #1214.
+ *
+ * WHY THAT MATTERS RATHER THAN BEING UNTIDY.
+ * ACataclysmPlayerCharacter::OnEquipmentChanged is the only listener in the
+ * game and it recomputes the whole stat line and refills every ability slot
+ * from the worn weapon's TYPE. An empty weapon type does not leave the slots
+ * empty: ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon takes its
+ * fallback, which warns that no weapon is worn and fills the slots from the
+ * STARTING weapon type instead. So one swap granted a THIRD weapon's seven
+ * skills and took them off again, and wrote a warning telling the reader to
+ * check a StartingWeaponBase that is perfectly correct. Since #1222 it also
+ * writes one line per equip to game/Saved/Logs/Cataclysm.log, so the swap
+ * leaves a line naming the starting weapon that no player action matches.
+ *
+ * THAT PARAGRAPH IS READ FROM THE CODE AND NOT FROM A RUN, because an
+ * automation world has no player controller and never ticks, so this test
+ * cannot drive ACataclysmPlayerCharacter. What it checks instead is the part
+ * that can be checked here: what the component announces, and what was worn
+ * at the moment it announced.
+ *
+ * WHAT THIS CHECKS THAT A COUNT CANNOT. It records what was worn at the
+ * moment of each announcement, not how many announcements there were. A test
+ * that counted alone would pass for a change that still exposed the empty
+ * hand and merely announced it once.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEquipmentSwapIsWhole,
+	"Cataclysm.Equipment.NoListenerSeesAHalfFinishedWeaponSwap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEquipmentSwapIsWhole::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEquipmentTest;
+
+	UCataclysmEquipmentComponent* Equipment = MakeEquipment();
+	if (!TestNotNull(TEXT("equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Where = ECataclysmGearSlot::Count;
+
+	Equipment->Equip(Plain(TwoHandedBase), Removed, AlsoRemoved, Where);
+	if (!TestEqual(TEXT("a Greatsword is worn to begin with"),
+			Equipment->EquippedWeaponType(), FString(TEXT("Greatsword"))))
+	{
+		return false;
+	}
+
+	// The listener is added AFTER the two-hander is on, so what it collects is
+	// only what the swap itself said.
+	TArray<FString> WornWhenTold;
+	Equipment->EquipmentChanged.AddLambda([&WornWhenTold, Equipment]
+	{
+		WornWhenTold.Add(Equipment->EquippedWeaponType());
+	});
+
+	// A Sword goes to Weapon2, because Equip fills the first FREE slot and the
+	// Greatsword is in Weapon1. That is what reaches the branch under test.
+	Equipment->Equip(Plain(OneHandedBase), Removed, AlsoRemoved, Where);
+
+	TestEqual(TEXT("swapping a one-hander in over a two-hander tells the "
+				   "listeners once"), WornWhenTold.Num(), 1);
+
+	// EVERY announcement, not only the first, so this still fails if the count
+	// above ever rises again and the extra one is the empty-handed moment.
+	for (const FString& Worn : WornWhenTold)
+	{
+		TestEqual(TEXT("and the new weapon is already on when it is told"),
+			Worn, FString(TEXT("Sword")));
+	}
+
+	TestEqual(TEXT("the swap really happened"),
+		Equipment->EquippedWeaponType(), FString(TEXT("Sword")));
+	TestEqual(TEXT("and handed the Greatsword back"), Removed.Base,
+		FName(TwoHandedBase));
+
+	// TAKING A WEAPON OFF ON ITS OWN STILL ANNOUNCES, which is the thing the
+	// fix could plausibly have broken: TakeOutOf does not announce, and if
+	// Unequip had been pointed at it without keeping the announcement, every
+	// unequip in the game would have gone silent.
+	WornWhenTold.Reset();
+	FCataclysmItem TakenOff;
+	TestTrue(TEXT("taking the Sword off reports that it took something"),
+		Equipment->Unequip(ECataclysmGearSlot::Weapon2, TakenOff));
+	TestEqual(TEXT("and announces it"), WornWhenTold.Num(), 1);
+	TestEqual(TEXT("and it was the Sword that came off"), TakenOff.Base,
+		FName(OneHandedBase));
+
+	// AND TAKING NOTHING OFF STILL ANNOUNCES NOTHING.
+	WornWhenTold.Reset();
+	TestFalse(TEXT("taking off an empty slot reports it took nothing"),
+		Equipment->Unequip(ECataclysmGearSlot::Weapon2, TakenOff));
+	TestEqual(TEXT("and announces nothing"), WornWhenTold.Num(), 0);
 
 	return true;
 }

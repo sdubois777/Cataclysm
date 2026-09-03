@@ -329,8 +329,17 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 		// at. It occupies both, so there is no free hand to put anything in and
 		// refusing would leave the player unable to change weapon without an
 		// explicit unequip they have no reason to know about.
+		//
+		// TakeOutOf AND NOT Unequip, WHICH IS THE WHOLE OF ISSUE #1214. Unequip
+		// announces, so this branch used to raise the change twice for one
+		// player action -- and the first of the two fired between the two-handed
+		// weapon coming off and the new one going on, with the character holding
+		// nothing. ACataclysmPlayerCharacter::OnEquipmentChanged is the only
+		// listener and it takes back and regrants every ability from the worn
+		// weapon's type, so it did that once against an unarmed character and
+		// once against the real one.
 		FCataclysmItem Displaced;
-		Unequip(ECataclysmGearSlot::Weapon1, Displaced);
+		TakeOutOf(ECataclysmGearSlot::Weapon1, Displaced);
 		PlaceInto(Item, Slot, OutRemoved);
 		OutRemoved = Displaced;
 
@@ -354,8 +363,8 @@ void UCataclysmEquipmentComponent::AnnounceChange()
 	EquipmentChanged.Broadcast();
 }
 
-bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
-										   FCataclysmItem& OutRemoved)
+bool UCataclysmEquipmentComponent::TakeOutOf(ECataclysmGearSlot Slot,
+											 FCataclysmItem& OutRemoved)
 {
 	const int32 Index = static_cast<int32>(Slot);
 	if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone())
@@ -365,6 +374,19 @@ bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
 
 	OutRemoved = Slots[Index];
 	Slots[Index] = FCataclysmItem();
+	return true;
+}
+
+bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
+										   FCataclysmItem& OutRemoved)
+{
+	// TAKING A WEAPON OFF ON ITS OWN IS STILL ONE CHANGE AND IS STILL
+	// ANNOUNCED. What moved into TakeOutOf above is only the part that
+	// EquipInto's two-handed swap needs to do silently, mid-swap.
+	if (!TakeOutOf(Slot, OutRemoved))
+	{
+		return false;
+	}
 
 	AnnounceChange();
 	return true;
