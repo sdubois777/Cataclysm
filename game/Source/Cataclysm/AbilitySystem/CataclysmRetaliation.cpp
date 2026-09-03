@@ -66,11 +66,32 @@ namespace
 	}
 }
 
-float UCataclysmRetaliation::AmountFor(const UAbilitySystemComponent* Defender)
+float UCataclysmRetaliation::AmountFor(const UAbilitySystemComponent* Defender,
+									   float DamageTaken)
 {
-	return StatOfRetaliator(
+	if (DamageTaken <= 0.0f)
+	{
+		// A BLOW WORTH NOTHING SENDS NOTHING BACK. The caller only reaches
+		// here when something got through, so this is a guard rather than an
+		// ordinary case, and it keeps the share below from being taken of a
+		// negative number.
+		return 0.0f;
+	}
+
+	const float Percent = StatOfRetaliator(
 		Defender, AmountStat,
 		UCataclysmCombatAttributeSet::GetRetaliationAttribute());
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// AND IT COUNTS AS DAMAGE. See the header: the share is what the stat
+	// says, and then every increase the character carries applies to it the
+	// way it applies to an ordinary attack. NO SKILL TAGS, for the reason
+	// StatOfRetaliator gives: retaliation is not a skill and carries none.
+	return UCataclysmSkillEffects::ModifiedDamage(
+		Defender, DamageTaken * Percent / 100.0f, FGameplayTagContainer());
 }
 
 float UCataclysmRetaliation::RadiusMetresFor(
@@ -149,9 +170,10 @@ TArray<AActor*> UCataclysmRetaliation::TargetsOf(
 }
 
 float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
-								 AActor* Instigator, AActor* Attacker)
+								 AActor* Instigator, AActor* Attacker,
+								 float DamageTaken)
 {
-	const float Amount = AmountFor(Defender);
+	const float Amount = AmountFor(Defender, DamageTaken);
 	if (Amount <= 0.0f)
 	{
 		// A CHARACTER WITH NONE OF THE STAT SENDS NOTHING BACK. Three things
@@ -162,14 +184,26 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 		return 0.0f;
 	}
 
+	// FOUR THINGS THIS BLOW MAY NOT DO. See the header for why each one, and
+	// note that the first is what stops two retaliating characters reflecting
+	// at one another without end. It became necessary the moment retaliation
+	// started going through the damage formula rather than around it.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+
 	float TakenAltogether = 0.0f;
 	for (AActor* Target : TargetsOf(Defender, Attacker))
 	{
 		// MEASURED RATHER THAN ASSUMED, and that is the design's overkill rule.
-		// `ReduceHealthDirectly` answers only whether it sent anything, and what
-		// a target with 25 health left actually loses to a payment of 158 is 25.
+		// What a target with 25 health left actually loses to a payment of 400
+		// is 25, and the target's own armour and resistance now take a share
+		// before that -- so what was sent and what landed differ twice over.
 		const float Before = HealthOfRetaliationTarget(Target);
-		UCataclysmSkillEffects::ReduceHealthDirectly(Instigator, Target, Amount);
+		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount,
+												  Delivery);
 		TakenAltogether +=
 			FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Target));
 	}

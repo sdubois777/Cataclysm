@@ -1047,7 +1047,11 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 
-**It is a flat amount, not a share of the hit.** The class stat line writes it as a bare 158 while writing damage reduction as "8%" and life leech as "3%", so the table already says which of the two it is. A blow of any size sends back the same number.
+**It is a share of the hit, not a flat amount.** A character with 15% retaliation who is struck for 400 sends back 60. It is measured against the damage the blow was worth before the character's own armour, resistance and reductions took anything off it, so a well-defended character retaliates for as much as a poorly defended one struck by the same blow.
+
+
+
+**It was a flat amount until 2026-09-03 and could not matter.** The Masochist carried a bare 158 and the affix added 9.5 a piece, against enemies whose health runs from 3,238 to 40,048 at difficulty tier 8. A character wearing the affix on every piece that takes it reached 291 returned per blow, which is 137 blows taken to kill one Boss and twenty-one times that character's own health pool. A flat number cannot follow enemy health upwards; a share of the blow does.
 
 
 
@@ -1059,7 +1063,11 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 
-**What comes back is not itself a hit.** It cannot critically strike, cannot apply an ailment, is not reduced by the attacker's armour or resistance, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
+**What comes back is damage, and every increase to the character's damage reaches it.** It is worked out from the blow and then scaled by the same increases an ordinary attack gets, and the enemy's armour, resistance, evasion and block apply to it exactly as they apply to anything else. That is what makes retaliation worth building for rather than a number that stands still.
+
+
+
+**But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
 
 
 
@@ -1067,7 +1075,7 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 
-**It reaches one target, and one Masochist capstone option widens that.** Reprisal Wave, the second option of The First Vow, reads "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you." The sphere is centred on the retaliating character. Whatever landed the hit is struck whether or not it is inside that sphere, which is what the word "only" settles: a ranged attacker twenty metres away still takes retaliation exactly as it did before the option existed. Each enemy struck takes the whole amount rather than a share of it, because retaliation is a flat amount and splitting it would leave the total unchanged and make the option worth nothing. Nothing struck by the wave is struck by a hit, so a bystander that also retaliates sends nothing back.
+**It reaches one target, and one Masochist capstone option widens that.** Reprisal Wave, the second option of The First Vow, reads "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you." The sphere is centred on the retaliating character. Whatever landed the hit is struck whether or not it is inside that sphere, which is what the word "only" settles: a ranged attacker twenty metres away still takes retaliation exactly as it did before the option existed. Each enemy struck takes the whole amount rather than a share of it. Splitting it would leave the total unchanged and make the option worth nothing, which is true whether retaliation is a flat amount or a share of the blow. Nothing struck by the wave is struck by a hit, so a bystander that also retaliates sends nothing back.
 
 
 
@@ -1138,7 +1146,7 @@ These are the three classes the vertical slice needs, because a damage type unlo
 | Armor | 371 | 0 | 55 |
 | Evasion | 0 | 0 | 0 |
 | Damage Reduction | 8% | 0 | 0 |
-| Retaliation | 0 | 0 | 158 |
+| Retaliation | 0 | 0 | 15.8% |
 | Life Leech | 3% | 0 | 0 |
 | Movement Speed | 4.6 | 3.5 | 4.0 |
 | Spell Damage | 0 | 158 | 0 |

@@ -30,5 +30,5 @@ Ritualist_movement_speed,Ritualist,movement_speed,3.5,0.0
 Masochist_max_health,Masochist,max_health,150.0,24.0
 Masochist_health_regen,Masochist,health_regen,3.0,0.35
 Masochist_armor,Masochist,armor,5.0,0.5
-Masochist_retaliation,Masochist,retaliation,10.0,1.5
+Masochist_retaliation,Masochist,retaliation,1.0,0.15
 Masochist_crowd_control_resistance,Masochist,crowd_control_resistance,10.0,0.2

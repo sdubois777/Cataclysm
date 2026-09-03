@@ -1068,8 +1068,16 @@ FLAT_BLOCK_CHANCE = StatAffix("Flat block chance", "block_chance", "flat", 5.0,
 FLAT_DAMAGE_REDUCTION = StatAffix("Flat damage reduction", "damage_reduction",
                                   "flat", 2.0, DEFENSIVE_SLOTS, SUFFIX)
 
-#: Against the class base: the Masochist carries 158, and 6% is 9.5.
-FLAT_RETALIATION = StatAffix("Flat retaliation", "retaliation", "flat", 9.5,
+#: RETALIATION IS A PERCENTAGE OF THE BLOW SINCE ISSUE #1227, so this is
+#: percentage points and not flat damage. The Masochist class base is 15.85.
+#:
+#: NOT A TENTH OF THE OLD 9.5, WHICH WOULD BE 0.95. Every affix's worst roll
+#: is a tenth of its stated top, so 0.95 would put the bottom of this ladder
+#: at 0.095 -- the fault issue #1230 is about. At 2.0 a character wearing a
+#: perfect one on all fourteen eligible pieces reaches 43.85 in total, which
+#: returns 7,489 of a difficulty tier 8 Boss's 17,075 blow before the Boss's
+#: own armour and resistance.
+FLAT_RETALIATION = StatAffix("Flat retaliation", "retaliation", "flat", 2.0,
                              DEFENSIVE_SLOTS, SUFFIX)
 
 #: By convention: at 5 points a piece, twenty slots reach immunity, which the

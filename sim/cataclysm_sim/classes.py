@@ -161,7 +161,15 @@ MASOCHIST = ClassDefinition(
         # what lets health double as a resource.
         "health_regen": Scaling(base=3.0, per_level=0.35),      # L100: 37.65/s
         # The counterattack half of the class identity.
-        "retaliation": Scaling(base=10.0, per_level=1.5),       # L100: 158.5
+        #
+        # A PERCENTAGE OF THE BLOW SINCE ISSUE #1227, NOT A FLAT AMOUNT, and
+        # both constants are exactly a tenth of what they were. A flat 158.5
+        # could not matter against enemies whose health runs from 3,238 to
+        # 40,048 at difficulty tier 8: a build wearing the affix on every
+        # piece reached 291 returned per hit, which is 137 hits taken to kill
+        # one Boss. As a share of the damage taken it scales with the enemy
+        # instead of against it.
+        "retaliation": Scaling(base=1.0, per_level=0.15),        # L100: 15.85%
         # Some armor, but far less than the Ravager. It is not trying to reduce
         # what it takes, only to survive it.
         "armor": Scaling(base=5.0, per_level=0.5),              # L100: 54.5

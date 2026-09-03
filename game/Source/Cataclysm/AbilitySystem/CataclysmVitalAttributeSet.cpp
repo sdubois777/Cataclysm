@@ -607,9 +607,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// HEALTH LOSS IS CREDITED TO, which is what it was before
 					// this moved. `Pay` reaches for the avatar separately, and
 					// only for the area search, which needs a location.
+					// `Hit.Damage` AND NOT WHAT LANDED, since issue #1227. The
+					// share is taken of what the blow was worth before this
+					// character's own armour, resistance and reductions, so a
+					// well-defended Masochist retaliates for as much as a poorly
+					// defended one struck by the same blow. Using what landed
+					// would punish the class for its own defences.
 					UCataclysmRetaliation::Pay(
 						GetOwningAbilitySystemComponent(), GetOwningActor(),
-						Data.EffectSpec.GetContext().GetEffectCauser());
+						Data.EffectSpec.GetContext().GetEffectCauser(),
+						Hit.Damage);
 				}
 
 				// AND ANY RUNNING BUFF THAT REACTS TO A BLOW TAKEN IS TOLD, AND

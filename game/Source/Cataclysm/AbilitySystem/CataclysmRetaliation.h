@@ -75,7 +75,23 @@ public:
 	static constexpr float CentimetresPerMetre = 100.0f;
 
 	/**
-	 * How much this character strikes back for.
+	 * How much this character strikes back for, given the blow it took.
+	 *
+	 * A SHARE OF THE BLOW SINCE ISSUE #1227, NOT A FLAT AMOUNT. The stat is
+	 * percentage points now, so a character with 15 who is struck for 400
+	 * sends back 60. It is measured against what the blow was worth BEFORE
+	 * this character's own armour, resistance and reductions took anything
+	 * off, so being well defended does not also make you retaliate for less.
+	 *
+	 * WHY IT HAD TO CHANGE. A flat amount could not follow enemy health
+	 * upwards. The Masochist carried 158 and the affix added 9.5 a piece,
+	 * against enemies whose health runs from 3,238 to 40,048 at difficulty
+	 * tier 8; a character wearing the affix everywhere reached 291 per blow,
+	 * which is 137 blows taken to kill one Boss.
+	 *
+	 * IT COUNTS AS DAMAGE, so the character's increases reach it. That is
+	 * what UCataclysmSkillEffects::ModifiedDamage is for, and it is applied
+	 * here rather than by the caller so every route gets it.
 	 *
 	 * ASKED FOR RATHER THAN READ, and that is not a preference. A bonus whose
 	 * SIZE grows with a state -- Reciprocity gives "+1% for each point of
@@ -92,7 +108,8 @@ public:
 	 * ability system this project did not make, both get exactly what they got
 	 * before any of this existed.
 	 */
-	static float AmountFor(const UAbilitySystemComponent* Defender);
+	static float AmountFor(const UAbilitySystemComponent* Defender,
+						   float DamageTaken);
 
 	/**
 	 * How far this character's retaliation reaches, in metres.
@@ -149,11 +166,30 @@ public:
 	 * contributes 25 to the leech calculation and not 400." It is measured off
 	 * each target's health rather than assumed.
 	 *
-	 * STILL NOT A HIT, FOR EVERY TARGET.
-	 * `UCataclysmSkillEffects::ReduceHealthDirectly` writes the `Health`
-	 * attribute rather than the `Damage` meta attribute, so none of the
-	 * mitigation order runs and none of the targets retaliates back.
+	 * IT RUNS THROUGH THE ORDINARY DAMAGE FORMULA SINCE ISSUE #1227, and it
+	 * used to bypass it entirely. `ReduceHealthDirectly` wrote the `Health`
+	 * attribute rather than the `Damage` meta attribute, so the target's
+	 * armour, resistance, evasion and block did nothing to it. It goes
+	 * through `ApplyDirectDamage` now, so all of them apply.
+	 *
+	 * AND IT IS STILL NOT A HIT, WHICH IS FOUR SEPARATE FLAGS ON THE BLOW.
+	 * Going through the damage formula would otherwise make it one:
+	 *
+	 *   bCannotBeRetaliatedAgainst  load-bearing. Without it two characters
+	 *                               who both retaliate reflect at one another
+	 *                               without end.
+	 *   bCannotCriticallyStrike     Path of Exile's rule for reflected
+	 *                               damage. This is not a blow you aimed.
+	 *   bCarriesNoWeaponSubType     retaliation is not a weapon swing, so the
+	 *                               weapon's slashing or piercing bonus is not
+	 *                               its to carry.
+	 *   bCannotLeech                the ordinary leech path must not fire.
+	 *                               The Masochist's Feeding Wound has its own
+	 *                               route below and is untouched.
+	 *
+	 * @param DamageTaken  what the blow was worth before this character's own
+	 *                     mitigation, which is what the share is taken of
 	 */
 	static float Pay(UAbilitySystemComponent* Defender, AActor* Instigator,
-					 AActor* Attacker);
+					 AActor* Attacker, float DamageTaken);
 };
