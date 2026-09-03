@@ -256,6 +256,24 @@ protected:
 private:
 	UCataclysmAbilitySystemComponent* GetAbilitySystem() const;
 
+	/**
+	 * Everything EquipWeaponType does, apart from writing the log line.
+	 *
+	 * SPLIT OUT SO THE LOG LINE CANNOT BE MISSED. This function leaves by four
+	 * different early returns and a fifth is easy to add. EquipWeaponType wraps
+	 * it and writes exactly one Log-level line whichever way this one leaves, so
+	 * an equip that says nothing to the log is not something a later change can
+	 * reintroduce by accident.
+	 *
+	 * That is worth the extra function because it is exactly the fault being
+	 * fixed: every line describing an equip was Verbose, none reached the log
+	 * file, and a play report about weapons and abilities could not be checked
+	 * against the log at all. Issue #1221.
+	 *
+	 * @return how many slots were filled
+	 */
+	int32 FillSlotsFromWeaponType(const FString& NewWeaponType);
+
 	// THIS COMPONENT NO LONGER WRITES ATTACK DAMAGE OR ATTACK SPEED, and it did
 	// until issue #845. It wrote them from the equipped weapon TYPE, which meant
 	// a second worn weapon changed nothing and an upgrade level never applied

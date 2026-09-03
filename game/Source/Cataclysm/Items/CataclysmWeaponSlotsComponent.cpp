@@ -106,6 +106,42 @@ FString UCataclysmWeaponSlotsComponent::DamageTypeOf(const AActor* Actor)
 
 int32 UCataclysmWeaponSlotsComponent::EquipWeaponType(const FString& NewWeaponType)
 {
+	const int32 Filled = FillSlotsFromWeaponType(NewWeaponType);
+
+	// ONE LINE PER EQUIP AT Log LEVEL, BECAUSE Verbose IS NOT WRITTEN TO THE
+	// FILE. LogCataclysm is declared with a default verbosity of Log, so the
+	// three Verbose lines inside FillSlotsFromWeaponType below never reach
+	// game/Saved/Logs/Cataclysm.log, and before this nothing about equipping a
+	// weapon appeared there at all.
+	//
+	// WHAT THAT COST. Issue #1221 is a play report of 2026-09-03 saying the
+	// abilities were not changing correctly as weapons changed. Answering it
+	// meant reading 613 skill activations out of the log and matching every
+	// skill name against game/Data/WeaponSkills.csv by hand, and even then the
+	// log could not say which weapon type the game believed was equipped --
+	// which is the one fact the report turned on.
+	//
+	// IT IS NOT NOISY. An equip is an event and not a frame. This runs when
+	// UCataclysmEquipmentComponent::AnnounceChange fires, which is when
+	// something worn changes; the 2026-09-03 session had six weapon changes in
+	// twenty-five minutes.
+	//
+	// THE COUNT IS "of" WHAT THE WEAPON OFFERED, NOT OF SIX. A weapon offers
+	// as many skills as the matrix and its own basic attack give it, and the
+	// two numbers differing is itself worth seeing: it means an ability the
+	// weapon has was not granted.
+	UE_LOG(LogCataclysm, Log,
+		TEXT("Weapon change: %s, %s damage, %d of %d skill slots filled."),
+		NewWeaponType.IsEmpty() ? TEXT("no weapon") : *NewWeaponType,
+		DamageType.IsEmpty() ? TEXT("no") : *DamageType,
+		Filled, AvailableSkills.Num());
+
+	return Filled;
+}
+
+int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponType(
+	const FString& NewWeaponType)
+{
 	// Taken back first, and unconditionally. Refilling without emptying would
 	// leave the previous weapon's abilities granted alongside the new ones, and
 	// two abilities carrying the same slot tag means one key firing both.
