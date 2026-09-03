@@ -1465,7 +1465,7 @@ understanding that no critical strike layer compounds with it.
 
   
 
-**"Multiplicative" and "more" are the same word.** Twelve passive tree nodes — eleven in the Bulwark tree and one in the Saboteur tree — grant damage reduction and say "(multiplicative)". They mean "more", in the sense Path of Exile and Last Epoch both use it. The offensive pipeline above already uses "more" for exactly this, so the two sides of the game describe one idea.
+**"Multiplicative" and "more" are the same word.** Nine passive tree nodes, all of them in the Bulwark tree, grant damage reduction and say "(multiplicative)". They mean "more", in the sense Path of Exile and Last Epoch both use it. The offensive pipeline above already uses "more" for exactly this, so the two sides of the game describe one idea.
 
   
 
