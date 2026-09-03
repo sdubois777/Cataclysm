@@ -112,7 +112,8 @@ def penetration_run():
                                   "analyse_weakening_ailments.py",
                                   "analyse_margin_tolerance.py",
                                   "analyse_per_tier_rarity.py",
-                                  "analyse_experience_curve.py"])
+                                  "analyse_experience_curve.py",
+                                  "analyse_affix_spread.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -560,6 +561,85 @@ def test_the_chosen_design_puts_the_two_hander_ahead_on_both(two_handed_run):
     assert per_second > 1.0, (
         f"the chosen design no longer puts the two-hander ahead per second "
         f"({per_second:.3f}x).")
+
+
+def test_the_two_rate_constants_really_are_the_class_averages():
+    """The invariant `cataclysm_sim/affixes.py` claims, which nothing checked.
+
+    The comment on `ItemBase.attack_speed` says the per-weapon rates "average to
+    ONE_HANDED_RATE and TWO_HANDED_RATE in
+    sim/analyse_two_handed_multiplier.py, which is what the two-handed
+    multiplier of 2.0 was derived against. Changing one without the other moves
+    a multiplier that is already shipped."
+
+    **That was true and nothing enforced it.** Editing any single weapon's
+    attack speed in the design workbook would silently make the two constants
+    stop describing the fleet, and the multiplier the whole dual-wielding
+    decision of 2026-08-03 rests on would go on being quoted against rates no
+    weapon has. Issue #1185.
+    """
+    _, ns = run("analyse_two_handed_multiplier.py")
+    from cataclysm_sim import affixes as af
+
+    one_handed, two_handed = [], []
+    for base in af.WEAPON_BASES:
+        if base.attack_speed <= 0.0:
+            continue
+        (two_handed if base.value_multiplier != 1.0
+         else one_handed).append(base.attack_speed)
+
+    assert one_handed and two_handed, (
+        "no weapon bases carry an attack speed, so this check read nothing")
+
+    for label, speeds, constant in (
+            ("one-handed", one_handed, ns["ONE_HANDED_RATE"]),
+            ("two-handed", two_handed, ns["TWO_HANDED_RATE"])):
+        mean = sum(speeds) / len(speeds)
+        assert abs(mean - constant) < 0.005, (
+            f"{label} weapons now average {mean:.4f} attacks a second across "
+            f"{len(speeds)} bases, and analyse_two_handed_multiplier.py still "
+            f"says {constant}. The two-handed multiplier of 2.0 was derived "
+            f"against these rates, so changing one without the other moves a "
+            f"multiplier that is already shipped. Either put the weapon speed "
+            f"back or re-derive the multiplier.")
+
+
+def test_the_per_second_figure_is_given_for_the_pair_and_not_only_the_class(
+        two_handed_run):
+    """Both per-second figures are printed, and the pair's is the larger.
+
+    WHAT WENT WRONG. The script computed its per-hit ratio from the specific
+    Greatsword against the specific Axe and Sword, then divided it by the CLASS
+    AVERAGE rates to reach a per-second figure -- and the Axe and Sword average
+    1.275 a second, not the one-handed class average of 1.35. So it printed a
+    margin of 1.225x on a line naming the pair, while a player holding that pair
+    experiences more. Issue #1185.
+
+    Neither figure is wrong on its own terms, so both are printed now and this
+    checks that both still are. An edit that quietly drops the pair line puts
+    the misleading label back.
+    """
+    printed, ns = two_handed_run
+    from cataclysm_sim import affixes as af
+
+    pair_rate = (sum(af.base_named(n).attack_speed for n in ns["ONE_HANDED"])
+                 / len(ns["ONE_HANDED"]))
+    per_hit = ns["chosen_per_hit_ratio"]()
+    by_class = per_hit * (ns["TWO_HANDED_RATE"] / ns["ONE_HANDED_RATE"])
+    for_pair = per_hit * (af.base_named(ns["TWO_HANDED"]).attack_speed
+                          / pair_rate)
+
+    assert f"{by_class:.3f}x  comparing CLASS AVERAGES" in printed
+    assert f"{for_pair:.3f}x  for THIS PAIR" in printed
+
+    assert for_pair > by_class, (
+        f"the pair figure {for_pair:.3f}x is no longer larger than the class "
+        f"figure {by_class:.3f}x. That is the whole reason both are printed: "
+        f"the Axe and Sword are slower than the one-handed class average, so "
+        f"the two-hander is further ahead against them than against the class. "
+        f"If weapon speeds changed so this is no longer true, the wording "
+        f"around these two lines needs rewriting rather than this check "
+        f"relaxing.")
 
 
 def test_the_affix_only_multiplier_is_solved_rather_than_asserted(
@@ -1562,3 +1642,142 @@ def test_the_whole_number_curve_refuses_a_level_outside_the_range(experience_run
     assert ns["whole_level_cost"](ns["MAX_LEVEL"] + 1) == 0
     assert ns["whole_total_to_reach"](1) == 0
     assert ns["whole_total_to_reach"](2) == ns["whole_level_cost"](2)
+
+
+# --------------------------------------------------------------------------
+# analyse_affix_spread.py -- issue #1179
+#
+# The play report was that affixes "all spawn with the exact same numbers
+# instead of randomly within a range". The rolls ARE random; three multipliers
+# that were each designed separately squeeze the result until the randomness is
+# invisible on the tool tip. The script measures the product, which nobody
+# chose directly, and these check its conclusions rather than trusting them.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def affix_spread_run():
+    return run("analyse_affix_spread.py")
+
+
+def test_the_tool_tip_rounding_copy_matches_the_engine():
+    """`number_in_words` is a copy of `UCataclysmItemTooltip::NumberInWords`.
+
+    THE ONLY COPIED CODE IN THAT SCRIPT, and the whole measurement rests on it:
+    the finding is about what a player READS, not what the value is. The engine
+    prints a whole number with no decimal point and everything else to one
+    decimal place, so this states the boundary cases that distinguish the two
+    branches. A change to the engine's rounding that is not made here would
+    make the script report a spread nobody sees.
+    """
+    _, ns = run("analyse_affix_spread.py")
+    words = ns["number_in_words"]
+
+    # The whole-number branch, including the 0.005 tolerance either side.
+    assert words(0.0) == "0"
+    assert words(120.0) == "120"
+    assert words(120.004) == "120"
+    assert words(119.997) == "120"
+
+    # The one-decimal branch.
+    assert words(0.041) == "0.0"
+    assert words(0.152) == "0.2"
+    assert words(4.85) == "4.9" or words(4.85) == "4.8"  # float, either is fine
+    assert words(0.35) == "0.3" or words(0.35) == "0.4"
+
+
+def test_three_affixes_can_only_ever_show_zero(affix_spread_run):
+    """The sharpest form of the finding, and the one that is plainly a fault.
+
+    A slot granting a number the player reads as 0 is a slot granting nothing.
+    That half is issue #858 and should be fixed whatever is decided about the
+    wider spread question.
+    """
+    printed, ns = affix_spread_run
+
+    stuck_at_zero = [
+        affix.name for affix in ns["every_measurable_affix"]()
+        if ns["displayed_values"](affix)[0] == ["0.0"]]
+
+    assert sorted(stuck_at_zero) == [
+        "Flat energy shield leech", "Flat life leech", "Flat mana leech"], (
+        f"the affixes that can only ever display 0.0 have changed to "
+        f"{sorted(stuck_at_zero)}. If they were fixed, say so in #858 and "
+        f"update this list; if new ones appeared, that is a regression.")
+
+    assert "ALWAYS SHOW ZERO" in printed
+
+
+def test_the_squeezed_affixes_are_the_twelve_the_issue_named(affix_spread_run):
+    """The list issue #1179 measured, reproduced from the model.
+
+    WRITTEN OUT RATHER THAN COUNTED, because the interesting failure is a
+    DIFFERENT affix joining or leaving the list, which a count would hide. The
+    denominator differs from the issue on purpose: the issue counted 12 of the
+    72 non-hybrid rows in `game/Data/Affixes.csv`, and this script measures the
+    53 affixes the model carries. Same twelve either way.
+    """
+    _, ns = affix_spread_run
+
+    squeezed = sorted(
+        affix.name for affix in ns["every_measurable_affix"]()
+        if len(ns["displayed_values"](affix)[0]) <= ns["FEW"])
+
+    assert squeezed == [
+        "All resistances",
+        "Flat block chance",
+        "Flat critical strike chance",
+        "Flat crowd control resistance",
+        "Flat damage reduction",
+        "Flat energy shield leech",
+        "Flat evasion",
+        "Flat health regeneration",
+        "Flat life leech",
+        "Flat mana leech",
+        "Flat mana regeneration",
+        "Flat penetration",
+    ], (
+        f"the affixes that can show three numbers or fewer on an early drop "
+        f"have changed to {squeezed}. That is the measurement issue #1179 "
+        f"rests on, so a change here means the finding has moved.")
+
+
+def test_the_two_affix_tiers_are_two_bands_and_skip_a_displayed_number(
+        affix_spread_run):
+    """WHY "All resistances" shows 0.2, 0.4 and 0.5 but never 0.3.
+
+    At difficulty tier 1 a drop rolls affix tier 1 or 2 and nothing between, so
+    the reachable values are TWO SEPARATE BANDS rather than one continuous
+    range. A reader who assumes one range would expect every number between the
+    ends to be reachable and would think this script had a rounding bug.
+
+    This is the clearest evidence that the tier gate, not the roll band, is
+    what compresses the early game -- which is the question issue #1179 asks
+    and does not answer.
+    """
+    _, ns = affix_spread_run
+    from cataclysm_sim import affixes as af
+
+    shown, low, high = ns["displayed_values"](af.ALL_RESISTANCE)
+    assert sorted(shown) == ["0.2", "0.4", "0.5"], sorted(shown)
+    assert low < 0.3 < high, (
+        f"0.3 lies inside the true range {low:.3f} to {high:.3f} and is still "
+        f"never displayed, which is the two-band effect this test is about")
+
+
+def test_the_headline_affixes_do_show_a_spread(affix_spread_run):
+    """The play report is not literally true of every affix, and saying so
+    matters as much as the finding.
+
+    Flat damage, increased damage and the two health affixes all show several
+    different numbers. Overstating the fault would send somebody to fix the
+    roll band, which is the one part of this that is working as designed.
+    """
+    _, ns = affix_spread_run
+    from cataclysm_sim import affixes as af
+
+    for affix in (af.FLAT_DAMAGE, af.INCREASED_DAMAGE, af.FLAT_HEALTH):
+        shown, _, _ = ns["displayed_values"](affix)
+        assert len(shown) > ns["FEW"], (
+            f"{affix.name} now shows only {len(shown)} different numbers on an "
+            f"early drop, so it has joined the squeezed list and the test "
+            f"above needs updating too")

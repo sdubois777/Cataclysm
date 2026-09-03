@@ -20,6 +20,162 @@ applied or still pending.
 
 ---
 
+## 2026-09-03 — Three weapon damage questions from a play test, and two of the three answers are "the design is right"
+
+**Affects:** `sim/analyse_two_handed_multiplier.py`,
+`sim/analyse_affix_spread.py`, `sim/tests/test_analysis_scripts.py`. No game
+data and no engine code changes for the first two answers; the third is a
+direction rather than a change and is tracked on issue #1178.
+
+A play test on 2026-09-02 reported that one-handed weapons deal far too little
+damage compared to a Greataxe, that affixes "all spawn with the exact same
+numbers", and that a second Greataxe was worth nothing. Those produced issues
+#1183, #1185, #1178, #1179 and #1184. This entry records what the research
+settled and what the project owner decided on each.
+
+**Every measured figure below was reproduced from `sim/cataclysm_sim/player_damage.py`
+rather than copied from the issues**, because a comparison of weapon bases in
+this project has already had to be retracted once for holding investment fixed
+while the bases scaled.
+
+### 1. Nothing a character earns by LEVELLING adds flat attack damage, and that stands. Issue #1183.
+
+**Confirmed against the data.** `game/Data/PassiveEffects.csv` has 20 nodes
+naming `attack_damage`: 11 increased and 9 more, and **none flat**. The file
+does use flat nodes 37 times for other stats, so the mechanism exists and having
+none for attack damage is a choice rather than a gap. `game/Data/Attributes.csv`
+grants 17 stats and `attack_damage` is not among them.
+`game/Data/ClassStats.csv` names only `Ritualist_spell_damage`,
+`Default_dot_damage` and `Ravager_damage_reduction`.
+
+**The genre does the same thing.** In Path of Exile, character level adds no
+weapon damage, and Strength grants 1% *increased* melee physical damage per 5 —
+a multiplier, not a flat addition. In Path of Exile 2 Strength grants only life.
+So a Path of Exile character's weapon ratio is preserved by levelling exactly as
+this one's is.
+
+**Decision: change nothing.** Preserving the ratio is what keeps a weapon choice
+meaningful at every level.
+
+**One correction to the issue's framing, which was too strong.** Flat attack
+damage IS earned — through gear affixes — and it grows from 5.4 to 132.0 across
+the difficulty tiers. Because that addition is identical for both loadouts, it
+dilutes the weapon's share and **narrows the gap as a character progresses**:
+
+| Loadout | Un-upgraded drop | Difficulty tier 4 | Fully upgraded |
+| :-- | --: | --: | --: |
+| Greataxe | 46.2 | 170.0 | 276.0 |
+| Axe and Sword | 29.8 (0.644x) | 128.6 (0.757x) | 218.0 (0.790x) |
+| Axe alone | 18.4 (0.398x) | 100.1 (0.589x) | 178.0 (0.645x) |
+
+What is invariant is only the *multiplier* bucket: increases and more are shared
+by both loadouts, so they cancel in the ratio. That part is arithmetic.
+
+### 2. Two-handed weapons keep their attack speeds, and a figure that was mixing two comparisons is fixed. Issue #1185.
+
+**The overlap is deliberate and was already researched.** The decision of
+2026-08-03 in this log read Path of Exile's base weapon table, found one-handed
+1.15 to 1.55 against two-handed 1.15 to 1.45, and adopted the overlap. It
+explicitly rejected a derived 32% gap as "nothing like what a shipped game
+uses". An independent check for this entry found Path of Exile at one-handed
+1.15 to 1.60 and two-handed 1.10 to 1.45, which agrees.
+
+**Path of Exile has the very thing the issue calls wrong.** Its two-handed
+swords run 1.30 to 1.45 and its one-handed maces 1.15 to 1.45, so a fast
+two-hander outruns a slow one-hander there too. The Greataxe at 1.28 being
+faster than the Axe at 1.25 is normal for the genre, not a fault.
+
+**Diablo 4 is the counter-example and it was considered.** Its one-handed
+weapons sit at 1.1 to 1.2 attacks a second and its two-handed at 0.9 to 1.0,
+with no overlap at all. Adopting that shape would cut two-handed damage per
+second well below the margin this project already solved for, so the two-handed
+multiplier of 2.0 would need re-deriving. Rejected for that reason rather than
+on taste.
+
+**Decision: leave every weapon's attack speed alone.**
+
+**What was genuinely wrong.** `sim/analyse_two_handed_multiplier.py` computed
+its per-hit ratio from the specific Greatsword against the specific Axe and
+Sword, then divided by the **class average** rates — 1.28 against 1.35 — to
+reach a per-second figure. The Axe and Sword average 1.275 a second, not 1.35.
+So it printed a margin of 1.225x on a line naming the pair, while a player
+holding that pair experiences 1.266x. Against a Greataxe at 1.28 a second it is
+1.271x. Neither number was wrong on its own terms; printing only the first under
+a label naming the pair was.
+
+The script now prints both, labelled, and says which one a player feels.
+
+**An invariant that nothing enforced is now guarded.** The comment on
+`ItemBase.attack_speed` in `sim/cataclysm_sim/affixes.py` states that the
+per-weapon rates average to `ONE_HANDED_RATE` and `TWO_HANDED_RATE`, "which is
+what the two-handed multiplier of 2.0 was derived against. Changing one without
+the other moves a multiplier that is already shipped." That was true and no test
+checked it, so editing any single weapon's speed would have left the multiplier
+quoted against rates no weapon has.
+`test_the_two_rate_constants_really_are_the_class_averages` now fails if it
+drifts, and was confirmed to fail when the Axe's speed was changed.
+
+### 3. An implicit still does not roll, and a weapon-only damage multiplier is the direction instead. Issue #1178.
+
+**Path of Exile agrees with the current rule.** A plain base of a given type
+always carries identical base damage there; two of them are the same item. The
+rule that an implicit belongs to the base is also the project owner's own
+correction, recorded in "The affix pool" of 2026-08-03: a player wanting evasion
+"is not waiting for an evasion affix to roll; they are looking for an evasion
+base".
+
+**Decision: implicits stay fixed. Two drops of one base keep identical base
+damage.**
+
+**What Path of Exile has that this game does not, and it is the real answer.**
+Its "% increased Physical Damage" on a weapon is a **local** modifier: it
+multiplies only that weapon's own base damage, and does not apply to a second
+weapon held in the other hand. That is the main reason two Path of Exile swords
+of the same base differ enormously.
+
+This game has exactly two attack damage affixes — `Stat_Flat_damage` and
+`Stat_Increased_damage` in `game/Data/Affixes.csv` — and **both are global**.
+The increased one multiplies the whole damage bracket, so it is worth the same
+on a Dagger as on a Greataxe and does nothing to distinguish two weapons of the
+same base. There is no local-modifier concept in the engine at all.
+
+**Direction chosen: add a weapon-only increased damage affix**, so that a
+well-rolled Greataxe is genuinely a better Greataxe. Not yet implemented; issue
+#1178 carries it. It changes the Power Score model, so `sim/experiments.py`
+needs a run when it lands.
+
+### What #1179 measured, without needing a decision
+
+`sim/analyse_affix_spread.py` is new and reproduces the compression the play
+test reported, so it can be rechecked after any change to the roll band, the
+tier gate or the gear level curve. At difficulty tier 1 on a gear level 0 drop,
+**twelve affixes can show three different numbers or fewer**, and three of them
+can only ever show `0.0`. Every figure issue #1179 lists is reproduced to three
+decimal places.
+
+The clearest single finding is one the issue did not name: at difficulty tier 1
+a drop rolls affix tier 1 or 2 and nothing between, so the reachable values are
+**two separate bands rather than one range**. All resistances can show 0.2, 0.4
+and 0.5 and never 0.3, although 0.3 lies inside its true range. That points at
+the tier gate rather than the roll band as what compresses the early game, which
+is the question #1179 asks and leaves open.
+
+The roll band being a quarter wide is intended and is not the fault. Saying so
+matters: overstating this would send somebody to widen the one part that is
+working as designed.
+
+**Sources.**
+
+- Path of Exile, Strength and what it grants: https://pathofexile.fandom.com/wiki/Strength
+- Path of Exile 2, attributes: https://pathofexile2.wiki.fextralife.com/Stats+&+Attributes
+- Path of Exile base weapon table, attack speeds by class: https://incendar.com/poe_weapons.php
+- Path of Exile, local against global modifiers: http://www.vhpg.com/poe-local-vs-global/
+- Path of Exile, dual wielding bonuses: https://pathofexile.fandom.com/wiki/Dual_wielding
+- Diablo 4, base attacks per second by weapon type: https://mythicdrop.com/guide/diablo-4-attack-speed
+- Diablo 4, attack speed mechanics: https://maxroll.gg/d4/resources/attack-speed-mechanics
+- Last Epoch, dual wield mechanics: https://devtrackers.gg/last-epoch/p/8bcd18da-dual-wield-mechanics
+- Last Epoch, damage calculation: https://maxroll.gg/last-epoch/resources/damage-explained
+
 ## 2026-09-02 — A charge shoves for 2 metres, and the audit that found it is now a test
 
 **Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx`,
