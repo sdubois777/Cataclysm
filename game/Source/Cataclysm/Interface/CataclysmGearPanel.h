@@ -80,4 +80,34 @@ public:
 	 */
 	static bool SlotIsBlocked(ECataclysmGearSlot Slot,
 							  const UCataclysmEquipmentComponent* Equipment);
+
+	/**
+	 * What an empty weapon hand costs, in one sentence, or empty for any slot
+	 * this does not apply to.
+	 *
+	 * WHY AN EMPTY HAND NEEDS SAYING AND AN EMPTY BOOT SLOT DOES NOT. Every
+	 * other gear slot is worth nothing while empty and obviously so. A weapon
+	 * hand is different: `UCataclysmItemModifiers::BlendedWeaponDamage` SUMS the
+	 * attack damage of both weapons, so a character holding one one-handed
+	 * weapon deals a little over half the base damage of the same character
+	 * holding two, and nothing on the screen said so.
+	 *
+	 * IT IS EASY TO END UP HERE BY ACCIDENT, which is why this exists.
+	 * `UCataclysmEquipmentComponent::EquipInto` takes a two-handed weapon off
+	 * when a one-handed one is put into either hand, and leaves the other hand
+	 * empty. The player asked to wear one item and silently stopped holding
+	 * two. Issue #1184.
+	 *
+	 * A SHIELD IS NAMED BECAUSE IT LOOKS LIKE AN ANSWER AND IS NOT.
+	 * `BlendedWeaponDamage` skips a weapon supplying no attack damage, and a
+	 * Shield's implicits are block chance and armour, so an Axe and a Shield
+	 * deal exactly what the Axe deals alone. That is deliberate and documented;
+	 * what was missing is anywhere that says it.
+	 *
+	 * NOT SHOWN FOR A BLOCKED SLOT. A second hand held by a two-handed weapon
+	 * is not empty, and `SlotIsBlocked` already explains that one.
+	 */
+	static FString EmptyWeaponHandNote(
+		ECataclysmGearSlot Slot,
+		const UCataclysmEquipmentComponent* Equipment);
 };

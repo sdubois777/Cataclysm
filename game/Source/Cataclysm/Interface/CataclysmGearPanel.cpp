@@ -97,3 +97,52 @@ bool UCataclysmGearPanel::SlotIsBlocked(
 	return Slot == ECataclysmGearSlot::Weapon2
 		&& Equipment->TwoHandedOccupiesBothWeaponSlots();
 }
+
+FString UCataclysmGearPanel::EmptyWeaponHandNote(
+	ECataclysmGearSlot Slot, const UCataclysmEquipmentComponent* Equipment)
+{
+	if (!Equipment || !UCataclysmGearSlots::IsWeaponSlot(Slot))
+	{
+		return FString();
+	}
+
+	// SOMETHING IS IN THIS HAND, so there is nothing to say about it.
+	if (Equipment->EquippedAt(Slot) != nullptr)
+	{
+		return FString();
+	}
+
+	// HELD BY A TWO-HANDED WEAPON RATHER THAN EMPTY. SlotIsBlocked says that
+	// one, and saying both would contradict itself.
+	if (SlotIsBlocked(Slot, Equipment))
+	{
+		return FString();
+	}
+
+	// IS THE OTHER HAND HOLDING ANYTHING? The two cases read differently to a
+	// player. One empty hand beside a weapon is a loss they can do something
+	// about; two empty hands is being unarmed, which is a different problem and
+	// a much more obvious one.
+	bool bHoldingSomething = false;
+	for (const ECataclysmGearSlot Other : UCataclysmGearSlots::AllSlots())
+	{
+		if (Other != Slot && UCataclysmGearSlots::IsWeaponSlot(Other)
+			&& Equipment->EquippedAt(Other) != nullptr)
+		{
+			bHoldingSomething = true;
+			break;
+		}
+	}
+
+	if (!bHoldingSomething)
+	{
+		return TEXT("Both hands are empty.");
+	}
+
+	// NO NUMBERS, ON PURPOSE. What a second weapon is worth depends on which
+	// two weapons, so a figure here would be wrong for most pairs. What is true
+	// of every pair is that the damage sums.
+	return TEXT("This hand is empty. A second one-handed weapon adds its "
+				"damage to every swing; a shield adds armour and block "
+				"instead, and no damage.");
+}

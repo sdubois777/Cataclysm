@@ -208,4 +208,166 @@ bool FCataclysmGearPanelBlockedHand::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+/**
+ * An empty weapon hand says what it costs; an empty boot slot does not.
+ *
+ * WHY THE TWO DIFFER. Every other gear slot is worth nothing while empty and
+ * obviously so. A weapon hand is not: `UCataclysmItemModifiers::BlendedWeaponDamage`
+ * SUMS the attack damage of both weapons, so a character holding one one-handed
+ * weapon deals a little over half the base damage of the same character holding
+ * two.
+ *
+ * AND IT IS EASY TO END UP THERE WITHOUT ASKING.
+ * `UCataclysmEquipmentComponent::EquipInto` takes a two-handed weapon off when a
+ * one-handed one is put into either hand, leaving the other hand empty. Issue
+ * #1184 reported exactly that: a hand emptied and 40% of the damage gone, with
+ * nothing on screen saying so.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGearPanelSaysAnEmptyHandCosts,
+	"Cataclysm.GearPanel.AnEmptyWeaponHandSaysWhatItCostsAndOtherEmptySlotsDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGearPanelSaysAnEmptyHandCosts::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGearPanelTest;
+
+	UCataclysmEquipmentComponent* Equipment = MakeEquipment();
+	if (!TestNotNull(TEXT("equipment"), Equipment))
+	{
+		return false;
+	}
+
+	// NOTHING WORN AT ALL. Both hands are empty and that is its own sentence,
+	// because being unarmed is a different problem from having one hand free.
+	for (const ECataclysmGearSlot Hand : {ECataclysmGearSlot::Weapon1,
+										  ECataclysmGearSlot::Weapon2})
+	{
+		TestEqual(TEXT("with nothing worn, a hand says both are empty"),
+			UCataclysmGearPanel::EmptyWeaponHandNote(Hand, Equipment),
+			FString(TEXT("Both hands are empty.")));
+	}
+
+	// NO OTHER EMPTY SLOT SAYS ANYTHING. An empty boot slot is worth nothing and
+	// the player can see that; adding a note to all nineteen would be noise.
+	for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+	{
+		if (UCataclysmGearSlots::IsWeaponSlot(Slot))
+		{
+			continue;
+		}
+		TestTrue(*FString::Printf(
+			TEXT("the %s slot says nothing about being empty"),
+			*UCataclysmGearSlots::DisplayName(Slot)),
+			UCataclysmGearPanel::EmptyWeaponHandNote(Slot, Equipment).IsEmpty());
+	}
+
+	// ONE ONE-HANDED WEAPON WORN. The other hand now has something to say, and
+	// the hand holding the weapon does not.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Where = ECataclysmGearSlot::Count;
+	Equipment->Equip(Of(TEXT("Weapon_Sword")), Removed, AlsoRemoved, Where);
+	TestEqual(TEXT("the sword went into a weapon slot"),
+		static_cast<int32>(UCataclysmGearSlots::IsWeaponSlot(Where)), 1);
+
+	const ECataclysmGearSlot Other =
+		Where == ECataclysmGearSlot::Weapon1 ? ECataclysmGearSlot::Weapon2
+											 : ECataclysmGearSlot::Weapon1;
+
+	TestTrue(TEXT("the hand holding the sword says nothing"),
+		UCataclysmGearPanel::EmptyWeaponHandNote(Where, Equipment).IsEmpty());
+
+	const FString Note =
+		UCataclysmGearPanel::EmptyWeaponHandNote(Other, Equipment);
+	TestFalse(TEXT("the free hand says something"), Note.IsEmpty());
+	TestTrue(TEXT("and it says the damage of a second weapon adds"),
+		Note.Contains(TEXT("adds its damage")));
+
+	// A SHIELD IS NAMED, because it looks like an answer and is not: it supplies
+	// no attack damage, so Axe and Shield deals what Axe alone deals.
+	TestTrue(TEXT("and it warns that a shield adds no damage"),
+		Note.Contains(TEXT("shield")));
+
+	// A TWO-HANDED WEAPON WORN. The second hand is not empty, it is held, and
+	// SlotIsBlocked already says that. Two different sentences about the same
+	// cell would contradict each other.
+	UCataclysmEquipmentComponent* TwoHanded = MakeEquipment();
+	TwoHanded->Equip(Of(TEXT("Weapon_Greatsword")), Removed, AlsoRemoved, Where);
+	TestTrue(TEXT("a two-handed weapon holds both hands"),
+		TwoHanded->TwoHandedOccupiesBothWeaponSlots());
+	TestTrue(TEXT("so the blocked second hand adds no empty-hand note"),
+		UCataclysmGearPanel::EmptyWeaponHandNote(
+			ECataclysmGearSlot::Weapon2, TwoHanded).IsEmpty());
+
+	// AND NO EQUIPMENT AT ALL IS NOT A CRASH.
+	TestTrue(TEXT("no equipment component says nothing"),
+		UCataclysmGearPanel::EmptyWeaponHandNote(
+			ECataclysmGearSlot::Weapon1, nullptr).IsEmpty());
+
+	return true;
+}
+
+/**
+ * A one-handed weapon worn over a two-handed one leaves exactly ONE hand filled.
+ *
+ * THIS STATES WHAT THE GAME DOES RATHER THAN WHAT IT SHOULD DO, which is what
+ * issue #1184 asked for: "a test that a one-handed weapon equipped over a
+ * two-handed one leaves exactly one weapon slot filled, which states the current
+ * behaviour so a later change to it is deliberate."
+ *
+ * The behaviour is deliberate -- `EquipInto` records that refusing would leave
+ * the player unable to change weapon without an explicit unequip they have no
+ * reason to know about -- but it costs a large amount of damage silently, so the
+ * gear panel now says so and this pins the shape that note describes.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneHanderOverTwoLeavesAHandEmpty,
+	"Cataclysm.GearPanel.AOneHandedWeaponOverATwoHandedOneLeavesExactlyOneHandFilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOneHanderOverTwoLeavesAHandEmpty::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGearPanelTest;
+
+	UCataclysmEquipmentComponent* Equipment = MakeEquipment();
+	if (!TestNotNull(TEXT("equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Where = ECataclysmGearSlot::Count;
+
+	Equipment->Equip(Of(TEXT("Weapon_Greatsword")), Removed, AlsoRemoved, Where);
+	TestTrue(TEXT("the two-handed weapon holds both hands"),
+		Equipment->TwoHandedOccupiesBothWeaponSlots());
+
+	// THE SWAP. One item goes on and the two-handed weapon comes off.
+	Equipment->Equip(Of(TEXT("Weapon_Sword")), Removed, AlsoRemoved, Where);
+
+	int32 HandsFilled = 0;
+	for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+	{
+		if (UCataclysmGearSlots::IsWeaponSlot(Slot)
+			&& Equipment->EquippedAt(Slot) != nullptr)
+		{
+			++HandsFilled;
+		}
+	}
+
+	TestEqual(TEXT("exactly one hand is filled after the swap"), HandsFilled, 1);
+	TestFalse(TEXT("and no two-handed weapon is held any more"),
+		Equipment->TwoHandedOccupiesBothWeaponSlots());
+
+	// AND THE FREE HAND SAYS SO, which is the whole point of pinning this.
+	const ECataclysmGearSlot Free =
+		Equipment->EquippedAt(ECataclysmGearSlot::Weapon1) != nullptr
+			? ECataclysmGearSlot::Weapon2 : ECataclysmGearSlot::Weapon1;
+	TestFalse(TEXT("the hand emptied by the swap explains itself"),
+		UCataclysmGearPanel::EmptyWeaponHandNote(Free, Equipment).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
