@@ -470,11 +470,33 @@ def why_the_multiplier_applies_to_implicits_too() -> None:
     # Dual wielding averages the two weapons' rates. Both Path of Exile and Last
     # Epoch do this: Path of Exile alternates hands, which produces the average,
     # and Last Epoch states it as the arithmetic mean of the two implicits.
-    per_second = ((two_bracket * TWO_HANDED_RATE)
-                  / (dual_bracket * ONE_HANDED_RATE))
-    print(f"    damage per second       {per_second:.3f}x  "
-          f"(two-hander {TWO_HANDED_RATE}/s against a dual-wield average "
-          f"of {ONE_HANDED_RATE}/s)")
+    #
+    # TWO FIGURES, BECAUSE THE ONE PRINTED HERE USED TO MIX TWO COMPARISONS.
+    # The per-hit ratio above is the specific Greatsword against the specific
+    # Axe and Sword. The per-second line divided that by the CLASS AVERAGE
+    # rates, 1.28 against 1.35 -- and the Axe and Sword average 1.275, not 1.35.
+    # So it reported 1.225x, and a player actually holding the pair this whole
+    # file is about experiences 1.271x. Neither number was wrong on its own
+    # terms; printing only the first, labelled as though it described the pair,
+    # is what was wrong. Issue #1185.
+    per_second_by_class = ((two_bracket * TWO_HANDED_RATE)
+                           / (dual_bracket * ONE_HANDED_RATE))
+    pair_rate = sum(af.base_named(n).attack_speed for n in ONE_HANDED) / len(ONE_HANDED)
+    this_two_hander_rate = af.base_named(TWO_HANDED).attack_speed
+    per_second_for_this_pair = ((two_bracket * this_two_hander_rate)
+                                / (dual_bracket * pair_rate))
+
+    print(f"    damage per second       {per_second_by_class:.3f}x  "
+          f"comparing CLASS AVERAGES "
+          f"({TWO_HANDED_RATE}/s against {ONE_HANDED_RATE}/s)")
+    print(f"    damage per second       {per_second_for_this_pair:.3f}x  "
+          f"for THIS PAIR ({TWO_HANDED} at {this_two_hander_rate}/s against "
+          f"{' and '.join(ONE_HANDED)} averaging {pair_rate:.3f}/s)")
+    print()
+    print("  THE SECOND FIGURE IS THE ONE A PLAYER FEELS, and it is larger,")
+    print("  because these two one-handers are slower than the one-handed class")
+    print("  average. The class figure is what the multiplier was derived")
+    print("  against and is kept so that derivation stays checkable.")
     print()
     print("  So the two-hander hits considerably harder per swing and is modestly")
     print("  ahead per second, and the dual wielder holds a fourth damage type")
