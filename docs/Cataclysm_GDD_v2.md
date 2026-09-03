@@ -1262,7 +1262,15 @@ So the question a player is answering when they compare two items is which indep
 
   
 
-**Gear upgrade level multiplies every affix on that piece.** A +10 piece gives about 3.52 times what the same piece gives at +0, using the same factor by which upgrade level multiplies gear rarity for Power Score in section IV. Affix values stated anywhere in this document are the +10 figures.
+**Gear upgrade level multiplies every affix on that piece.** A +10 piece gives 2.5 times what the same piece gives at +0. Affix values stated anywhere in this document are the +10 figures.
+
+**There are two ladders and a player pulls both.** An affix tier is one, gear upgrade level is the other, and having both is what makes finished equipment powerful. A tier 7 affix is 3 times a tier 1 one, and a +10 piece is 2.5 times a +0 one, so the two together span about 10x from the worst early roll to the best late one.
+
+Both were eased on 2026-09-03. The tier ladder spanned 7 and the gear ladder 3.52, which multiplied to 32.9x and left a tier 1 roll on an un-upgraded drop at 3.04% of the endgame value -- against 16.7% for the equivalent in Last Epoch. Twelve affixes could not show more than three different numbers early in the game, and three could only ever display 0.0. The endgame values did not change; everything below them rose.
+
+**The tier ladder rises by a constant ratio rather than in even steps**, so the step from tier 6 to tier 7 is worth more than the step from tier 1 to tier 2. That keeps the later tiers the ones worth crafting for, and it is also what keeps a perfect roll from ever beating a roll two tiers above it.
+
+**Gear upgrade level no longer uses the Power Score's upgrade weight.** How much an upgrade is worth to a rating and how much it multiplies the numbers on an item are different questions; section IV still multiplies gear rarity by 3.52 for scoring.
 
   
 
@@ -2926,7 +2934,7 @@ Every slot is a **category**, not a single item. Each category contains several 
 
   
 
-There are 55 bases across the 11 slots. Gear upgrade level multiplies an implicit exactly as it multiplies an affix, so the values below are the fully upgraded ones.
+There are 55 bases across the 11 slots. Gear upgrade level multiplies an implicit exactly as it multiplies an affix -- 2.5 times from +0 to +10 -- so the values below are the fully upgraded ones.
 
   
 

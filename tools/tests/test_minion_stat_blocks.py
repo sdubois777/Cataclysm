@@ -264,26 +264,49 @@ def test_a_full_swarm_of_motes_deals_less_than_a_full_squad_of_imps():
             f"what three imps deal")
 
 
-def test_a_minion_falls_behind_a_geared_summoner_rather_than_keeping_pace():
-    """RECORDS A CONSEQUENCE, not a defect.
+def test_a_minion_keeps_pace_with_its_summoner_rather_than_running_away():
+    """RECORDS A CONSEQUENCE, not a defect. REWRITTEN ON 2026-09-03.
 
-    A minion's damage rises with the summoner's LEVEL only. The summoner's own
-    damage rises with level AND with affix tier AND with gear upgrade level, so
-    it climbs faster. The imp squad is therefore worth most against an
-    under-geared character and least at the level cap.
+    THIS TEST USED TO ASSERT THE OPPOSITE. It required the imp squad to be worth
+    MORE at difficulty tier 1 than at tier 8, on the reasoning that a minion's
+    damage rises with the summoner's LEVEL only while the summoner's own rises
+    with level AND affix tier AND gear upgrade level, so the summoner climbs
+    faster and the squad falls behind.
 
-    That gap is what minion affixes (issue #337) and points in Spirit exist to
-    close, and it is why an uninvested summoner is not the balance case.
+    That was true, and it was true because the gear ladder was steep. Issue
+    #1179 eased both affix ladders -- the tier ladder from a span of 7.0 to 3.0
+    and the gear ladder from 3.52 to 2.5 -- so the summoner's own damage now
+    climbs more gently, and the squad no longer falls away from it. The fall-off
+    was a consequence of the old numbers rather than something anybody chose.
+
+    WHAT IS WORTH GUARDING NOW is that the two stay near each other, in both
+    directions. A squad that runs away from its summoner makes an uninvested
+    summoner strictly better off ignoring their own weapon, and a squad that
+    falls far behind makes summoning pointless without the minion affixes of
+    issue #337. The band below is wide because nothing here has been played yet;
+    it is here to catch a change that breaks the relationship, not to pin a
+    tuned number.
     """
     imp = minion_rows()["Imp"]
-    ratios = []
-    for tier in (1, 8):
+    ratios = {}
+    for tier in range(1, 9):
         level = pp.reference_character(tier).level
-        ratios.append(squad_per_second(imp, level, IMP_MAX_ACTIVE)
-                      / pd.damage_per_second(tier, SUMMONER_WEAPON))
-    assert ratios[0] > ratios[1], (
-        f"three imps are worth {ratios[0]:.2f}x the basic attack at tier 1 and "
-        f"{ratios[1]:.2f}x at tier 8; the fall-off is expected")
+        ratios[tier] = (squad_per_second(imp, level, IMP_MAX_ACTIVE)
+                        / pd.damage_per_second(tier, SUMMONER_WEAPON))
+
+    for tier, ratio in ratios.items():
+        assert 1.0 < ratio < 2.0, (
+            f"at difficulty tier {tier} three imps are worth {ratio:.2f}x the "
+            f"summoner's own basic attack, outside the band this test holds. "
+            f"Below 1.0 there is no reason to summon; above 2.0 there is no "
+            f"reason to swing. Ratios across all eight tiers: "
+            f"{ {t: round(r, 2) for t, r in ratios.items()} }")
+
+    spread = max(ratios.values()) / min(ratios.values())
+    assert spread < 2.0, (
+        f"the squad's worth against the summoner varies {spread:.2f}x across "
+        f"the eight difficulty tiers, which is too much for one relationship. "
+        f"Ratios: { {t: round(r, 2) for t, r in ratios.items()} }")
 
 
 def test_a_minion_is_fragile_enough_to_be_worth_killing():

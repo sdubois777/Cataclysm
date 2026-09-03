@@ -220,13 +220,22 @@ def test_a_roll_at_a_difficulty_tier_outside_the_range_is_rejected():
 # --------------------------------------------------------------------------
 
 def test_a_capped_affix_is_worth_its_share_of_the_top_value():
-    """The gate and the linear tier curve have to agree: a tier 3 drop of the
-    flat health affix is worth three sevenths of a T7 one, not some other
-    number."""
+    """The gate and the tier curve have to agree.
+
+    THE SHARE CHANGED ON 2026-09-03. It was four sevenths, because the ladder
+    was `tier / 7`. The ladder is geometric now and spans 3.0 rather than 7.0,
+    so a tier 4 affix is worth `3 ** ((4 - 7) / 6)` of a tier 7 one, which is
+    about 0.577. Issue #1179 says why both ladders were eased.
+
+    Read from TIER_FRACTIONS rather than written out, so this states that the
+    gate and the curve agree rather than restating the curve's own formula and
+    being able to drift from it.
+    """
     cap = af.max_affix_tier_on_a_drop(3)
     assert cap == 4
     assert af.FLAT_HEALTH.value_at(cap) == pytest.approx(
-        af.FLAT_HEALTH.value_at(7) * 4 / 7)
+        af.FLAT_HEALTH.value_at(7) * af.TIER_FRACTIONS[cap])
+    assert af.TIER_FRACTIONS[cap] == pytest.approx(0.5774, abs=0.0005)
 
 
 def test_the_cap_at_every_difficulty_tier_produces_a_computable_value():

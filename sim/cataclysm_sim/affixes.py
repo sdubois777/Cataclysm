@@ -82,10 +82,31 @@ AFFIXABLE_STATS = (frozenset(ALL_STATS) | OFF_SHEET_STATS
 #: raises them.
 AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
 
+#: How much more a tier 7 affix is worth than a tier 1 one, before the roll.
+#:
+#: WAS 7.0 AND IS NOW 3.0, changed on 2026-09-03 for issue #1179. The ladder ran
+#: `tier / 7`, so a tier 1 affix was one seventh of a tier 7 one; multiplied by
+#: the gear level ladder underneath it, a tier 1 roll on an un-upgraded drop
+#: came to 3.04% of the endgame value. Twelve affixes could not show more than
+#: three different numbers early in the game and three could only ever show 0.0.
+#:
+#: THE TWO LADDERS ARE BOTH KEPT AND BOTH EASED, which is the project owner's
+#: decision of 2026-09-03. An earlier version of this change deleted the gear
+#: level ladder outright, on the reasoning that Path of Exile and Last Epoch
+#: express progression once by gating tiers. The owner's answer was that two
+#: levers are the point -- "they're just two levers the player can pull to
+#: increase their gear depending on their situation and once you've got both
+#: levers you have truly powerful equipment" -- and that the fault was the size
+#: of their product rather than their number. 3.0 here and 2.5 from
+#: AFFIX_GEAR_LEVEL_SPAN multiply to about 10x, against 32.9x before and Last
+#: Epoch's 6.0x.
+TIER_LADDER_SPAN = 3.0
+
 #: What share of its top-tier value an affix has at each tier.
 #:
-#: LINEAR, and deliberately so. Every step up is worth the same as every other,
-#: which means the value of one more upgrade never falls off.
+#: GEOMETRIC, and that replaced a linear ladder on 2026-09-03. The reasoning the
+#: linear one carried is kept below because it still holds and this serves it
+#: BETTER rather than overturning it.
 #:
 #: This is a pressure point rather than a neutral choice. The game's central
 #: tension is that a day spent at the forge is a day not spent defending the
@@ -95,10 +116,28 @@ AFFIX_TIERS = (1, 2, 3, 4, 5, 6, 7)
 #: makes the later ones easy to skip -- which relieves exactly the pressure the
 #: design wants to keep applying.
 #:
+#: A GEOMETRIC LADDER IS BACK-LOADED, so it pushes the other way from the curve
+#: that reasoning rejects: the step from T6 to T7 is worth 0.167 of the affix
+#: and the step from T1 to T2 is worth 0.067, so the later tiers are the ones
+#: that matter most and are the hardest to skip.
+#:
+#: AND IT IS WHAT KEEPS THE OVERLAP BOUNDED, which a flatter linear ladder does
+#: not. A band runs from 75% to 100% of its tier, so a tier is undercut by the
+#: one below whenever the gap between them is less than a quarter. Squashing a
+#: LINEAR ladder to span 3.0 puts a perfect T5 above a poor T7 -- a two-tier
+#: overlap, which `Cataclysm.Item.BandsOverlapByExactlyOneTier` forbids and the
+#: note on ROLL_BAND_FRACTION proves cannot happen. A geometric ladder holds a
+#: constant RATIO of 1.2009 between tiers, so the bound survives the squash:
+#: two tiers apart is 1.442 and the bound needs more than 1.333.
+#:
 #: The cost side already curves: gear upgrade levels cost 2^N - 1 stones, so
 #: diminishing returns arrive through rising cost rather than through falling
 #: value.
-TIER_FRACTIONS: dict[int, float] = {tier: tier / 7.0 for tier in range(1, 8)}
+TIER_FRACTIONS: dict[int, float] = {
+    tier: TIER_LADDER_SPAN ** ((tier - AFFIX_TIERS[-1])
+                               / (len(AFFIX_TIERS) - 1))
+    for tier in AFFIX_TIERS
+}
 
 #: EVERY AFFIX TIER IS A RANGE, NOT A SINGLE VALUE. A T5 single-resistance affix
 #: rolls somewhere between 11.4% and 13.1%, and where it lands is the difference
@@ -451,7 +490,29 @@ RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 #: how it plays." The alternatives measured at the time were applying it to the
 #: flat bracket only, which lands at 1.64 against a target of 1.56, or cutting
 #: the factor to 0.0268, which makes a +10 piece only 1.27 times a +0 one.
-GEAR_LEVEL_FACTOR = player_power.WEIGHTS["upgrade_factor"]
+#: The Power Score model's own upgrade weight. STILL USED FOR SCORING, and no
+#: longer used for what an item's values are -- see GEAR_LEVEL_FACTOR below.
+POWER_SCORE_UPGRADE_FACTOR = player_power.WEIGHTS["upgrade_factor"]
+
+#: How much one upgrade level adds to what a piece carries.
+#:
+#: DECOUPLED FROM THE POWER SCORE ON 2026-09-03, and it used to be the same
+#: number. Borrowing `player_power.WEIGHTS["upgrade_factor"]` meant that easing
+#: the gear ladder for issue #1179 would have moved every Power Score in the
+#: game, which is a separate model with its own anchors and no reason to change.
+#: They are two questions -- how much an upgrade is WORTH to a rating, and how
+#: much it MULTIPLIES the numbers on the item -- and they now have two constants.
+#:
+#: 0.15 makes a +10 piece 2.5 times a +0 one, where 0.2525 made it 3.52 times.
+#: Both ladders were eased rather than either removed, which is the project
+#: owner's decision of 2026-09-03; see TIER_LADDER_SPAN for why, and for the
+#: measurement that says 3.0 x 2.5 is about 10x against 32.9x before.
+GEAR_LEVEL_FACTOR = 0.15
+
+#: What a +10 piece is worth against a +0 one. Stated so the intent is readable
+#: without multiplying the factor out, and checked against it below.
+AFFIX_GEAR_LEVEL_SPAN = 2.5
+
 MAX_GEAR_LEVEL = player_power.MAX_UPGRADE
 
 
@@ -491,9 +552,45 @@ def affix_value(top_value: float, tier: int, roll: float = 1.0,
                 gear_level: int = MAX_GEAR_LEVEL) -> float:
     """One affix's value: its tier band, its roll, and the piece's upgrade level.
 
-    Defaults to a fully upgraded piece, because the questions this module answers
-    are about what a finished character reaches. The stated top values are
-    therefore the +10 figures; a +0 piece gives 1/3.525 of them.
+    Defaults to a fully upgraded piece, because the questions this module
+    answers are about what a finished character reaches. The stated top values
+    are therefore the +10 figures; a +0 piece gives 1/2.5 of them.
+
+    BOTH LADDERS ARE KEPT AND BOTH WERE EASED ON 2026-09-03, for issue #1179.
+    The shape of this function did not change; the two constants under it did.
+
+    | | before | after |
+    | :-- | --: | --: |
+    | tier ladder, T1 to T7 | 9.33x | 4.00x |
+    | gear ladder, +0 to +10 | 3.52x | 2.50x |
+    | the two multiplied | 32.90x | 10.00x |
+    | a T1 roll on a +0 drop, against the endgame value | 3.04% | 10.00% |
+
+    WHY IT NEEDED EASING. At 32.9x a tier 1 roll on an un-upgraded drop was
+    3.04% of the endgame value, against Last Epoch's 16.7% across its own seven
+    tiers. Twelve affixes could not show more than three different numbers early
+    in the game, and three could only ever display 0.0 -- a slot granting a
+    number the player reads as nothing.
+
+    WHY NEITHER LADDER WAS DELETED. An earlier version of this change removed
+    the gear level ladder, on the reasoning that Path of Exile and Last Epoch
+    both express progression once, by gating which tiers can appear and leaving
+    the value of a tier alone. The project owner rejected that: two levers are
+    the point -- "they're just two levers the player can pull to increase their
+    gear depending on their situation and once you've got both levers you have
+    truly powerful equipment" -- and the fault was the size of their product
+    rather than their number.
+
+    AND DELETING ONE PUT A HOLE IN THE LATE GAME, which is the measured reason
+    rather than only the stated one. A character's affix tier caps at 7 by
+    difficulty tier 6, so beyond that the gear ladder is the only thing still
+    raising their affixes. With it removed, a character's damage rose 7.7%
+    across the last three difficulty tiers while anything scaling with character
+    level kept climbing, and three summoned imps overtook their summoner's own
+    basic attack.
+
+    THE ENDGAME VALUE IS UNCHANGED BY ANY OF THIS. The stated top values are
+    still the tier 7 figures on a +10 piece. What moved is everything below.
     """
     low, high = tier_band(top_value, tier)
     at_zero = roll_within(low, high, roll) / gear_level_multiplier(MAX_GEAR_LEVEL)

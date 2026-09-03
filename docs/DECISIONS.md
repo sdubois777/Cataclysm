@@ -20,6 +20,170 @@ applied or still pending.
 
 ---
 
+## 2026-09-03 — Both affix ladders are eased rather than either removed, so an early affix is worth reading
+
+**Affects:** `sim/cataclysm_sim/affixes.py`,
+`game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`,
+`docs/Cataclysm_GDD_v2.md` (Affixes, and Item Bases and Implicits), and the
+Minion Types sheet of `docs/All_Things_Cataclysm.xlsx`. All applied.
+
+**The complaint.** A play test on 2026-09-02 reported that affixes "all spawn
+with the exact same numbers instead of randomly within a range", and several
+were too small to be worth a slot. The project owner restated it on 2026-09-03:
+the values should be actually useful, and no more values that read as a fraction
+of one per cent.
+
+### What was wrong, measured
+
+The rolls were always genuinely random. Two progression ladders multiplied:
+
+    affix tier ladder, T1 to T7             9.33x
+    gear upgrade ladder, +0 to +10          3.52x
+    the two multiplied                     32.90x
+
+    so a tier 1 roll on an un-upgraded drop was 3.04% of the endgame value
+
+Twelve affixes could show three different numbers or fewer on an early drop, and
+three could only ever display `0.0` — a slot granting a number the player reads
+as nothing. `sim/analyse_affix_spread.py` measures all of it.
+
+### What the genre does
+
+**Last Epoch** publishes a full ladder. Chance to Bleed on Hit runs T1 10–12%,
+T2 13–16%, T3 17–20%, T4 20–23%, T5 24–30%, T6 38–46%, T7 47–60%. A tier 1 affix
+is 16.7% of the endgame value, against our 3.04%, and the ladder **accelerates**
+rather than stepping evenly.
+
+**Path of Exile** gates which tiers can appear by item level and does not scale
+the value: a tier 6 dexterity roll is 23 to 27 whatever the item level.
+
+**So the genre expresses progression once.** That was the first proposal here and
+it was wrong for this game — see below.
+
+### The decision
+
+**Both ladders are kept and both are eased.** The project owner's words:
+
+> It is possible to maintain both, they're just two levers the player can pull to
+> increase their gear depending on their situation and once you've got both
+> levers you have truly powerful equipment.
+
+| | before | after |
+| :-- | --: | --: |
+| affix tier ladder, T1 to T7 | 9.33x | **4.00x** |
+| gear upgrade ladder, +0 to +10 | 3.52x | **2.50x** |
+| the two multiplied | 32.90x | **10.00x** |
+| a T1 roll on a +0 drop, against the endgame value | 3.04% | **10.00%** |
+
+**The endgame values did not move.** A tier 7 affix on a +10 piece is still
+exactly its stated value; everything below rose.
+
+What a player reads on an early drop, at best:
+
+| Affix | before | after |
+| :-- | --: | --: |
+| Flat maximum health | 4.9 | 19.2 |
+| Increased damage | 5.1 | 20.0 |
+| Flat damage | 1.8 | 3.5 |
+| Affixes displaying `0.0` | 3 | **none** |
+
+### A rejected proposal, recorded because it was nearly taken
+
+**Deleting the gear ladder outright** was recommended here first, on the genre
+reasoning above, and was written and tested before being reversed. Two things
+were wrong with it.
+
+**It answers a question nobody asked.** Having two levers is the design, not an
+accident of it.
+
+**And it put a hole in the late game, which is the measured objection rather
+than the stated one.** A character's affix tier caps at 7 by difficulty tier 6,
+so beyond that the gear ladder is the only thing still raising their affixes.
+Without it, a reference character's damage rose 7.7% across the last three
+difficulty tiers while everything scaling with character level kept climbing,
+and three summoned imps overtook their summoner's own basic attack.
+
+### The tier ladder is geometric, and that was forced rather than chosen
+
+Easing a ladder narrows the gaps between tiers. A roll band runs from 75% to
+100% of its tier, so a tier is undercut by the one below whenever the gap is
+less than a quarter.
+
+**A flatter STRAIGHT-LINE ladder breaks a bound the design relies on.** Squashing
+`tier / 7` to span 3.0 lets a perfect tier 5 roll beat a poor tier 7 one. That is
+a two-tier overlap, which `Cataclysm.Item.BandsOverlapByExactlyOneTier` forbids
+and which the note on `ROLL_BAND_FRACTION` proves cannot happen — the one-tier
+overlap is deliberate, because it is what the Corrupted Mote and Primal Spark
+crafting materials act on.
+
+**A constant RATIO keeps the bound at any span.** Tiers now rise by 1.2009 each,
+so two tiers apart is 1.442 and the bound needs more than 1.333.
+
+**And it serves the reason the linear ladder existed.** That reasoning rejected a
+front-loaded curve because it "hands over most of an affix's value early and
+makes the later tiers easy to skip". A geometric ladder is back-loaded: the step
+from tier 6 to tier 7 is worth more than the step from tier 1 to tier 2, so the
+later tiers are the hardest to skip. The pressure is stronger, not weaker.
+
+### Gear level is no longer the Power Score's upgrade weight
+
+They were the same constant, shared so that gear level could not mean two things.
+It now means two things deliberately: how much an upgrade is **worth to a
+rating** is the Power Score's question, and how much it **multiplies the numbers
+printed on an item** is the item's. Easing the second would otherwise have moved
+every Power Score in the game, which has its own anchors and no reason to change.
+`POWER_SCORE_UPGRADE_FACTOR` still holds the Power Score weight beside
+`GEAR_LEVEL_FACTOR`, so a reader sees both and sees they differ.
+
+### Three consequences, all handled
+
+**Minion damage rose 5%.** Every early character got stronger, so three imps fell
+0.7% short of their summoner's own basic attack at difficulty tier 6 — the one
+place they dipped below it. The project owner decided on 2026-08-15 that three
+imps should out-damage the basic attack at every tier. A 5% rise clears it with
+margin rather than sitting on the boundary. Every minion is scaled equally, so
+the four-motes-against-three-imps relationship is unchanged.
+
+**A minion test was rewritten rather than weakened.**
+`test_a_minion_falls_behind_a_geared_summoner_rather_than_keeping_pace` required
+the imp squad to be worth more at difficulty tier 1 than at tier 8. That was a
+consequence of the steep gear ladder rather than a designed intent, and it no
+longer holds. It now checks that the squad stays inside a band of the summoner in
+BOTH directions, which is the thing actually worth guarding: a squad that runs
+away makes a summoner's own weapon pointless, and one that falls far behind makes
+summoning pointless.
+
+**The starting-fight control moved from level 20 to level 10.** The shared
+"Default" line used to lose the opening pack fight at level 20 while the starting
+class won, which is what proved the fight could tell a survivable class from an
+unsurvivable one. Both now win at 20. Measured across levels: at 1 and 5 both
+lose, at 15 and 20 both win, and at 10 the shared line loses while the starting
+class wins. The control runs at 10 and now asserts both halves at the same level,
+which the earlier version did not.
+
+### What was not run, and why
+
+**`sim/experiments.py` was not run.** It was checked by loading rather than
+assumed: it pulls in nine modules from `cataclysm_sim` and `affixes` is not one
+of them, so the balance sweeps cannot see any of this and would take 20 to 40
+minutes to print identical numbers.
+
+### Still open
+
+**Four affixes can still show only one number on an early drop** — the three
+leech affixes and flat mana regeneration. Their stated top values are 0.5, 0.5,
+0.5 and 0.7, which is what they give at tier 7 on fully upgraded gear. That is
+too small to be worth a slot at the END of the game, so no change to either
+ladder can rescue them. That is issue #858 and needs their values raised.
+
+**Sources.**
+
+- Last Epoch, tier 6 and 7 developer blog with the worked ladder: https://forum.lastepoch.com/t/introducing-tier-6-and-7-item-affixes/22279
+- Last Epoch, affixes support page and the non-overlap rule: https://support.lastepoch.com/hc/en-us/articles/46361996533147-Affixes
+- Last Epoch, Chance to Bleed on Hit tier table: https://www.lastepochtools.com/db/suffixes/AAwNgHEA
+- Path of Exile, item level gating tiers rather than scaling values: https://www.pathofexile.com/forum/view-thread/693405/page/1#p6002952
+- Path of Exile, modifiers and tiers: https://pathofexile.fandom.com/wiki/Modifiers
+
 ## 2026-09-03 — The basic attack fires on the left mouse button, and WASD is the default, which supersedes two earlier entries
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (Controls and Key Bindings, and Combat

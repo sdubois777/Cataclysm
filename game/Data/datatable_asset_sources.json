@@ -113,7 +113,7 @@
       "asset": "DT_MinionTypes",
       "csv": "MinionTypes.csv",
       "rows": 5,
-      "csv_sha256": "30d4d1d688892b49ad3f56cff761671a8fabc5a7912c266d806333269107fdf2"
+      "csv_sha256": "1ad6f6fb20bc6c5df53fd20f4c5fbefde571cc320ef7d956e75065456f9d5863"
     },
     {
       "asset": "DT_MaterialTiers",

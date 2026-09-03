@@ -240,27 +240,98 @@ def test_affix_value_rises_with_every_tier():
         assert len(set(values)) == len(values)
 
 
-def test_the_tier_curve_is_linear():
-    """Every step up is worth the same as every other, so the value of one more
-    upgrade never falls off.
+def test_the_tier_curve_is_geometric():
+    """A constant RATIO between tiers, which replaced a constant DIFFERENCE on
+    2026-09-03 for issue #1179.
 
-    This is a deliberate pressure point. The game's central tension is that a day
-    at the forge is a day not defending the empire, so choosing to upgrade rather
-    than run a dungeon has to stay uncomfortable for the whole run. A
-    front-loaded curve, which an earlier version used, hands over most of an
-    affix's value early and makes the later tiers easy to skip.
+    The ladder ran `tier / 7`, so tier 7 was worth seven times tier 1. It now
+    spans 3.0, because that ladder multiplied by the gear level ladder put a
+    starting affix at 3.04% of the endgame value. Both ladders were eased rather
+    than either removed; see TIER_LADDER_SPAN.
+
+    GEOMETRIC RATHER THAN A FLATTER LINEAR LADDER, and that is not a taste.
+    Squashing a linear ladder to span 3.0 lets a perfect tier 5 roll beat a poor
+    tier 7 one, which is a two-tier overlap that
+    `Cataclysm.Item.BandsOverlapByExactlyOneTier` forbids. A constant ratio
+    keeps the bound at every tier, which the test below states directly.
     """
     for tier in af.AFFIX_TIERS:
-        assert af.TIER_FRACTIONS[tier] == pytest.approx(tier / 7.0)
+        expected = af.TIER_LADDER_SPAN ** ((tier - 7) / 6)
+        assert af.TIER_FRACTIONS[tier] == pytest.approx(expected)
+
+    assert af.TIER_FRACTIONS[7] == pytest.approx(1.0)
+    assert (af.TIER_FRACTIONS[7] / af.TIER_FRACTIONS[1]
+            == pytest.approx(af.TIER_LADDER_SPAN))
 
 
-def test_every_tier_step_is_worth_the_same():
-    """The property that keeps the upgrade decision uncomfortable. Stated
-    separately from the formula above, because a future curve could satisfy the
-    endpoints and still sag in the middle."""
+def test_every_tier_step_is_worth_the_same_share_of_the_tier_below():
+    """The property that keeps the upgrade decision uncomfortable, restated for
+    a geometric ladder.
+
+    It used to be a constant DIFFERENCE: every step added the same fraction of
+    the affix. It is now a constant RATIO: every step multiplies by 1.2009. The
+    pressure the old test protected is unchanged and is stronger -- see the test
+    below, which is why.
+
+    Stated separately from the formula above, because a future curve could
+    satisfy the endpoints and still sag in the middle.
+    """
+    ratios = [af.TIER_FRACTIONS[t + 1] / af.TIER_FRACTIONS[t]
+              for t in range(1, 7)]
+    assert max(ratios) == pytest.approx(min(ratios)), f"uneven ratios: {ratios}"
+    assert max(ratios) == pytest.approx(af.TIER_LADDER_SPAN ** (1 / 6))
+
+
+def test_the_tier_curve_is_back_loaded_rather_than_front_loaded():
+    """WHAT THE LINEAR LADDER WAS PROTECTING, and a geometric one protects it
+    harder.
+
+    The reasoning recorded on TIER_FRACTIONS rejects a front-loaded curve
+    because it "hands over most of an affix's value early and makes the later
+    tiers easy to skip", and the forge-versus-dungeon decision has to stay
+    uncomfortable for the whole run.
+
+    A geometric ladder is back-loaded: the step from tier 6 to tier 7 is worth
+    more than the step from tier 1 to tier 2, so the last tiers are the ones
+    that matter most and the hardest to skip.
+    """
     steps = [af.TIER_FRACTIONS[t + 1] - af.TIER_FRACTIONS[t]
              for t in range(1, 7)]
-    assert max(steps) == pytest.approx(min(steps)), f"uneven steps: {steps}"
+    assert steps == sorted(steps), f"the steps do not grow: {steps}"
+    assert steps[-1] > steps[0] * 2.0, (
+        f"the last step {steps[-1]:.4f} is not clearly larger than the first "
+        f"{steps[0]:.4f}, so the ladder is no longer back-loaded")
+
+
+def test_a_perfect_roll_can_beat_the_tier_above_but_never_two_tiers_above():
+    """THE BOUND THAT DECIDED THE LADDER'S SHAPE. Issue #1179.
+
+    `ROLL_BAND_FRACTION` records that the one-tier overlap is deliberate -- it
+    is what the reroll and perfect crafting materials act on -- and that it is
+    bounded to exactly one tier. `Cataclysm.Item.BandsOverlapByExactlyOneTier`
+    asserts the same thing in the engine.
+
+    Easing the ladder narrows the gaps between tiers, so the bound had to be
+    rechecked rather than assumed. A LINEAR ladder squashed to span 3.0 breaks
+    it: a perfect tier 5 beats a poor tier 7. A geometric one holds, because the
+    ratio between tiers stays constant while the band stays a fixed share.
+    """
+    for tier in af.AFFIX_TIERS:
+        low, high = af.tier_band(1.0, tier)
+
+        if tier >= 3:
+            two_below_high = af.tier_band(1.0, tier - 2)[1]
+            assert two_below_high < low, (
+                f"a perfect T{tier - 2} roll ({two_below_high:.4f}) beats the "
+                f"worst T{tier} roll ({low:.4f}), so the overlap now spans two "
+                f"tiers. See ROLL_BAND_FRACTION.")
+
+    # And the one-tier overlap really is there, so rerolling is worth doing.
+    overlaps = [t for t in af.AFFIX_TIERS[1:]
+                if af.tier_band(1.0, t - 1)[1] > af.tier_band(1.0, t)[0]]
+    assert overlaps, (
+        "no perfect roll can beat the tier above anywhere, so the Corrupted "
+        "Mote and Primal Spark crafting materials have nothing to act on")
 
 
 def test_no_single_tier_step_hands_over_most_of_an_affix():
@@ -595,23 +666,75 @@ def test_increased_damage_is_the_value_the_project_owner_set():
 # Gear upgrade level multiplies every affix on the piece
 # --------------------------------------------------------------------------
 
-def test_the_gear_level_factor_is_read_from_the_power_score_model():
-    """Not copied. `Cataclysm_GDD_v2.md` says gear upgrade level MULTIPLIES gear
-    rarity rather than adding to it, and `player_power.py` already implements
-    that. A second copy of the constant here could drift from the first, which
-    has happened elsewhere in this project."""
+def test_the_gear_level_factor_is_no_longer_the_power_score_weight():
+    """DECOUPLED ON 2026-09-03, and it used to be the same object. Issue #1179.
+
+    This read `player_power.WEIGHTS["upgrade_factor"]` directly, so that the two
+    could not drift. That was right while they answered the same question and
+    wrong once they did not: easing the gear ladder for #1179 would have moved
+    every Power Score in the game, and the Power Score is a separate model with
+    its own anchors and no reason to change.
+
+    They are two questions. How much an upgrade is WORTH to a rating is the
+    Power Score's; how much it MULTIPLIES the numbers printed on the item is
+    this one's. The Power Score weight is still imported, under a name that says
+    what it is, so a reader can see both and see that they differ.
+    """
     from cataclysm_sim import player_power as pp
-    assert af.GEAR_LEVEL_FACTOR is pp.WEIGHTS["upgrade_factor"]
+
+    assert af.POWER_SCORE_UPGRADE_FACTOR is pp.WEIGHTS["upgrade_factor"]
+    assert af.GEAR_LEVEL_FACTOR is not pp.WEIGHTS["upgrade_factor"]
+    assert af.GEAR_LEVEL_FACTOR < af.POWER_SCORE_UPGRADE_FACTOR, (
+        "the gear ladder was eased for #1179, so it should now be gentler than "
+        "the Power Score's upgrade weight rather than equal to it")
+
+    # The number of upgrade levels is still one fact, and is still shared.
     assert af.MAX_GEAR_LEVEL == pp.MAX_UPGRADE == 10
 
 
-def test_a_fully_upgraded_piece_is_about_three_and_a_half_times_a_fresh_one():
-    """The exact figure is 3.5246, not a round 3.525: the upgrade factor is
-    DERIVED from the tier anchors in `player_power.py` rather than chosen, so it
-    is not a tidy number. The tolerance here is loose enough to allow that and
-    tight enough to catch a real change to the Power Score model."""
+def test_a_fully_upgraded_piece_is_two_and_a_half_times_a_fresh_one():
+    """WAS 3.5246 AND IS NOW EXACTLY 2.5. Issue #1179.
+
+    The old figure was not a tidy number because it was derived from the Power
+    Score's tier anchors. This one is chosen: 0.15 a level, ten levels, so a +10
+    piece is 2.5 times a +0 one. Half of the pair of ladders the project owner
+    kept, the other being TIER_LADDER_SPAN at 3.0; together about 10x, against
+    32.9x before.
+    """
     assert af.gear_level_multiplier(0) == pytest.approx(1.0)
-    assert af.gear_level_multiplier(10) == pytest.approx(3.525, abs=0.005)
+    assert af.gear_level_multiplier(10) == pytest.approx(af.AFFIX_GEAR_LEVEL_SPAN)
+    assert af.gear_level_multiplier(10) == pytest.approx(2.5)
+
+    # Stated twice on purpose -- the span is what the design means and the
+    # factor is what the arithmetic uses, so they must agree.
+    assert (1.0 + af.GEAR_LEVEL_FACTOR * af.MAX_GEAR_LEVEL
+            == pytest.approx(af.AFFIX_GEAR_LEVEL_SPAN))
+
+
+def test_the_two_ladders_multiply_to_about_ten():
+    """THE NUMBER THE WHOLE OF #1179 IS ABOUT, asserted where both halves are in
+    scope.
+
+    A tier 1 roll at its worst on an un-upgraded drop, against a tier 7 roll at
+    its best on a fully upgraded one. It was 32.9x, which made a starting affix
+    3.04% of a finished one against Last Epoch's 16.7%. Twelve affixes could not
+    show more than three different numbers early in the game and three could
+    only ever display 0.0.
+
+    Neither ladder was deleted, which is the project owner's decision: two
+    levers are the point, and the fault was the size of their product.
+    """
+    fresh = af.affix_value(120.0, 1, roll=0.0, gear_level=0)
+    finished = af.affix_value(120.0, 7, roll=1.0, gear_level=af.MAX_GEAR_LEVEL)
+
+    assert finished / fresh == pytest.approx(10.0, abs=0.05), (
+        f"the two ladders now span {finished / fresh:.2f}x rather than about "
+        f"10x. Tier ladder {af.TIER_LADDER_SPAN}x times gear ladder "
+        f"{af.AFFIX_GEAR_LEVEL_SPAN}x, with the roll band inside the first.")
+
+    # And the endgame value did not move, which is what made this safe to do
+    # without retuning everything above it.
+    assert finished == pytest.approx(120.0)
 
 
 def test_a_gear_level_outside_the_designed_range_is_rejected():
