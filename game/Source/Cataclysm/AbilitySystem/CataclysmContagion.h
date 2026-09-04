@@ -83,7 +83,7 @@ public:
 	 * Six rows are the first kind and five are the second.
 	 *
 	 * THE TAG IT GRANTS IS THE ONE PASSED IN, not one worked out from the row.
-	 * The two are the same effect under different branches -- `Status.Bleed` and
+	 * The two are the same effect under different branches -- `Status.DoT.Bleed` and
 	 * `Keyword.DoT.Bleed` -- and granting the branch the character was carrying
 	 * keeps `UCataclysmDebuffs::CountOn` able to see it on the enemy too.
 	 *

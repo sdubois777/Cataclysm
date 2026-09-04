@@ -42,6 +42,20 @@ const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
 	// from the same call, and it protects the character rather than harming it.
 	// See the header.
 	TEXT("State.Stunned"),
+
+	// AND EVERY NAMED CURSE. Issue #1145. Shred, Madness, Cripple, Weaken,
+	// Quarry and the other twenty-two come from the Debuffs sheet of
+	// `docs/All_Things_Cataclysm.xlsx`, and since that sheet's name became a
+	// segment of the tag they all hang off this one parent.
+	//
+	// THE BUFFS ARE EXCLUDED BY NOT BEING UNDER IT, rather than by a list. The
+	// eighteen from the Buffs sheet are `Status.Buff.*`, so the Commander buff a
+	// Succubus grants its allies cannot be counted as a debuff by forgetting to
+	// name it. That is the whole reason the branch was split.
+	//
+	// `Status.DoT` IS NOT HERE ON PURPOSE. See the header: it would double-count
+	// against `Keyword.DoT` above.
+	TEXT("Status.Debuff"),
 };
 
 const int32 UCataclysmDebuffs::DebuffRootCount = UE_ARRAY_COUNT(DebuffRootNames);
@@ -112,7 +126,7 @@ int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
 {
 	// THE LENGTH OF THE LIST, SO THE TWO ANSWERS CANNOT DISAGREE. Issue #1057.
 	// This used to be its own walk of the owned tags; the list above is the same
-	// walk, and keeping two of them would let the eleven nodes that pay per
+	// walk, and keeping two of them would let the seven nodes that pay per
 	// debuff count one set while the two nodes that spread one chose from
 	// another.
 	return TagsOn(AbilitySystem).Num();

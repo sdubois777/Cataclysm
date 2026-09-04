@@ -835,14 +835,14 @@ TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
 	// COMMA SEPARATED, because Anathema writes `Effect=Shred, Madness` --
 	// "laying every curse you know on it". Read as one name, that row named an
 	// effect called "Shred, Madness" which no sheet has, and granted nothing.
-	// `Status.Stun` AND NOT `State.Stunned`, WHICH IS WHAT THIS COMPARED
+	// `Status.Debuff.Stun` AND NOT `State.Stunned`, WHICH IS WHAT THIS COMPARED
 	// UNTIL ISSUE #1195. Both tags exist and they are different things:
-	// `Status.Stun` is the row generated from the Debuffs sheet, which is
+	// `Status.Debuff.Stun` is the row generated from the Debuffs sheet, which is
 	// what a skill cell naming an effect resolves to, and `State.Stunned` is
 	// the tag that actually stops a character acting. Comparing one against
 	// the other meant this branch never ran, so the four rows writing
 	// `Effect=Stun` WERE granted a plain tag by the curse path -- harmless
-	// only because nothing reads `Status.Stun`.
+	// only because nothing reads `Status.Debuff.Stun`.
 	const FGameplayTag StunStatus =
 		UCataclysmSkillShapes::StatusTagFor(TEXT("Stun"));
 
@@ -860,7 +860,7 @@ TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
 		// A STUN IS LEFT OUT, and letting one through would be a fault rather
 		// than a gap. `UCataclysmSkillEffects::ApplyStun` carries three rules the
 		// design states -- a damage threshold, five seconds of immunity after one
-		// lands, and bosses immune outright -- and granting `Status.Stun` as a
+		// lands, and bosses immune outright -- and granting `Status.Debuff.Stun` as a
 		// plain tag walks past all three.
 		//
 		// THE FOUR SKILLS THAT WRITE `Effect=Stun` BESIDE A `StunSeconds` ARE
@@ -1814,7 +1814,7 @@ bool UCataclysmSkillTemplate::StatesStunAsItsEffect() const
 	// COMMA SEPARATED AND TRIMMED, the same way NamedEffectTags reads it,
 	// because Anathema writes `Effect=Shred, Madness` and a row could name a
 	// stun beside something else.
-	// `Status.Stun`, THE ROW FROM THE DEBUFFS SHEET, and not `State.Stunned`,
+	// `Status.Debuff.Stun`, THE ROW FROM THE DEBUFFS SHEET, and not `State.Stunned`,
 	// the tag that stops a character acting. A cell naming an effect resolves
 	// to the first; comparing against the second is the mistake that made the
 	// guard in NamedEffectTags above do nothing for as long as it existed.

@@ -102,9 +102,35 @@ FGameplayTag UCataclysmSkillShapes::StatusTagFor(const FString& EffectName)
 		return FGameplayTag();
 	}
 
-	return UGameplayTagsManager::Get().RequestGameplayTag(
-		FName(*FString::Printf(TEXT("Status.%s"), *Segment)),
-		/*ErrorIfNotFound=*/false);
+	// THE THREE BRANCHES IN TURN, AND THE VOCABULARY DECIDES WHICH. Issue #1145.
+	// A status effect's tag now carries the sheet it came from --
+	// `Status.Debuff.Cripple`, `Status.Buff.Commander`, `Status.DoT.Bleed` -- so
+	// that anything asking whether an effect harms can read the tag instead of
+	// keeping a list of names by hand.
+	//
+	// ASKED RATHER THAN LOOKED UP, so this needs no data table and cannot
+	// disagree with the tag list. `tools/generate_gameplay_tags.py` refuses to
+	// emit one effect name under two branches, so at most one of these three is
+	// a declared tag and the order below cannot change the answer.
+	//
+	// THE CALLER STILL PASSES ONLY A NAME. Every skill cell in
+	// `game/Data/WeaponSkills.csv` writes `Effect=Cripple`, which is the effect's
+	// name and says nothing about its kind, and that is what makes the sheet the
+	// single place the kind is decided.
+	static const TCHAR* const Branches[] = {TEXT("Debuff"), TEXT("Buff"),
+											TEXT("DoT")};
+	for (const TCHAR* const Branch : Branches)
+	{
+		const FGameplayTag Found = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(*FString::Printf(TEXT("Status.%s.%s"), Branch, *Segment)),
+			/*ErrorIfNotFound=*/false);
+		if (Found.IsValid())
+		{
+			return Found;
+		}
+	}
+
+	return FGameplayTag();
 }
 
 FGameplayTagContainer UCataclysmSkillShapes::TagsFromCell(const FString& Cell)

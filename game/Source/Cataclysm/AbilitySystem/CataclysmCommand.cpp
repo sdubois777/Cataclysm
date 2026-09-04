@@ -163,7 +163,7 @@ FGameplayTag UCataclysmCommand::QuarryTag()
 	// the tag whether or not the workbook still lists it, hiding exactly the
 	// disagreement that matters.
 	return UGameplayTagsManager::Get().RequestGameplayTag(
-		FName(TEXT("Status.Quarry")), /*ErrorIfNotFound=*/false);
+		FName(TEXT("Status.Debuff.Quarry")), /*ErrorIfNotFound=*/false);
 }
 
 AActor* UCataclysmCommand::QuarryOf(const AActor* Commander)

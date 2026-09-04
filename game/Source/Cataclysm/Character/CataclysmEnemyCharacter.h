@@ -495,7 +495,7 @@ public:
 	// Commander, the only thing in the game that makes a creature better
 	//
 	// GRANTED BY THE SUCCUBUS'S AURA and by nothing else today.
-	// `ACataclysmSuccubusCharacter::PulseDominion` puts the `Status.Commander`
+	// `ACataclysmSuccubusCharacter::PulseDominion` puts the `Status.Buff.Commander`
 	// tag on every ally within 8 metres and takes it off again when they leave
 	// or when it dies. This is what the tag DOES.
 	// ----------------------------------------------------------------------

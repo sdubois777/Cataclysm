@@ -19,8 +19,8 @@
 /**
  * Counting the harmful effects a character is under. Issue #962.
  *
- * WHAT IS BEING PINNED. Four Masochist nodes grant a bonus "for each unique
- * debuff on you" and a fifth applies "While you are Bleeding", so the count and
+ * WHAT IS BEING PINNED. Seven Masochist nodes grant a bonus "for each unique
+ * debuff on you" and another applies "While you are Bleeding", so the count and
  * the named kind are both load-bearing numbers rather than diagnostics. A count
  * that is one too high hands every one of those nodes more than it promises, and
  * nothing at run time would report it: the arithmetic runs and the number is
@@ -462,17 +462,60 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffNoAbilitySystemTest,
 
 	// THE ROOTS ARE THE LIST AND THE LIST IS SHORT ON PURPOSE. Pinning the
 	// membership is what makes a change to it somebody's decision rather than a
-	// side effect: adding a branch here changes what four passive nodes are worth
-	// to every character in the game.
+	// side effect: adding a branch here changes what seven passive nodes are
+	// worth to every character in the game.
+	//
+	// IT DID ITS JOB ON 2026-09-04. Adding `Status.Debuff` for issue #1145 failed
+	// this test and nothing else in the whole suite, which is exactly what it
+	// exists to do. The third entry below is that decision written down, rather
+	// than a number relaxed to make a failure go away.
 	const FGameplayTagContainer Roots = Debuffs::DebuffRoots();
-	TestEqual(TEXT("there are two debuff roots"), Roots.Num(), 2);
+	TestEqual(TEXT("there are three debuff roots"), Roots.Num(), 3);
 	TestTrue(TEXT("damage over time is one of them"),
 		Roots.HasTagExact(
 			UCataclysmDamageCalculation::DamageOverTimeTag()));
-	TestTrue(TEXT("and being stunned is the other"),
+	TestTrue(TEXT("being stunned is another"),
 		Roots.HasTagExact(UCataclysmSkillEffects::StunnedTag()));
+
+	// AND EVERY NAMED CURSE, AS ONE BRANCH. The twenty-seven effects from the
+	// Debuffs sheet are `Status.Debuff.*` since issue #1145, so this one entry
+	// takes all of them and cannot take a buff.
+	const FGameplayTag NamedCurses = UGameplayTagsManager::Get()
+		.RequestGameplayTag(FName(TEXT("Status.Debuff")),
+							/*ErrorIfNotFound=*/false);
+	TestTrue(TEXT("the vocabulary has a branch for the named curses"),
+		NamedCurses.IsValid());
+	TestTrue(TEXT("and it is the third root"), Roots.HasTagExact(NamedCurses));
+
 	TestFalse(TEXT("stun immunity is not a root"),
 		Roots.HasTagExact(UCataclysmSkillEffects::StunImmuneTag()));
+
+	// THE BUFFS ARE NOT, AND THAT IS THE WHOLE REASON THE BRANCH WAS SPLIT.
+	// `Status` used to be one flat branch holding the eighteen buffs beside the
+	// twenty-seven curses, so a root naming it would have paid those seven nodes
+	// for carrying the Commander buff a Succubus grants its allies.
+	const FGameplayTag Blessings = UGameplayTagsManager::Get()
+		.RequestGameplayTag(FName(TEXT("Status.Buff")),
+							/*ErrorIfNotFound=*/false);
+	TestTrue(TEXT("the vocabulary has a branch for the blessings too"),
+		Blessings.IsValid());
+	TestFalse(TEXT("and it is not a root"), Roots.HasTagExact(Blessings));
+
+	// NEITHER IS THE PARENT OF ALL THREE. `Status` still exists, because Unreal
+	// implies a parent for every branch under it, and naming it would take the
+	// buffs straight back in.
+	const FGameplayTag Everything = UGameplayTagsManager::Get()
+		.RequestGameplayTag(FName(TEXT("Status")), /*ErrorIfNotFound=*/false);
+	TestFalse(TEXT("the whole Status branch is not a root"),
+		Roots.HasTagExact(Everything));
+
+	// AND NEITHER IS THE DAMAGE OVER TIME BRANCH UNDER `Status`, which would
+	// double-count against `Keyword.DoT` above: the eight damage over time
+	// effects have a tag under each of the two.
+	const FGameplayTag StatusDoT = UGameplayTagsManager::Get()
+		.RequestGameplayTag(FName(TEXT("Status.DoT")), /*ErrorIfNotFound=*/false);
+	TestFalse(TEXT("and the Status damage over time branch is not either"),
+		Roots.HasTagExact(StatusDoT));
 
 	return true;
 }

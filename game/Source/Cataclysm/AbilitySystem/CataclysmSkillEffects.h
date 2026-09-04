@@ -643,7 +643,7 @@ public:
 	 * backwards: an effect's tag is its `EffectName` with every non-alphanumeric
 	 * character removed, so "Void Splinter" becomes `VoidSplinter`. This compares
 	 * the tag's LAST SEGMENT against that, which makes it right for both branches
-	 * without knowing there are two: `Status.VoidSplinter` and
+	 * without knowing there are two: `Status.DoT.VoidSplinter` and
 	 * `Keyword.DoT.VoidSplinter` are the same effect and both end in the same
 	 * word.
 	 *

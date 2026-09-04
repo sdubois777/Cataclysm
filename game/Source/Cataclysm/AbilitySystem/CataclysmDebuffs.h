@@ -61,30 +61,42 @@ public:
 	/**
 	 * The tag branches whose members are debuffs on whoever carries them.
 	 *
-	 * A NAMED LIST RATHER THAN A RULE, because there is no rule to write. The
-	 * tag vocabulary has no mark saying "this one is bad for you": `Status.` is
-	 * one flat branch holding the buffs, the debuffs and the damage over times
-	 * together, so `Status.DivineAegis` and `Status.Cripple` are indistinguishable
-	 * from their names. Any rule inferring harm from a tag would be guessing.
+	 * A NAMED LIST OF BRANCHES RATHER THAN A LIST OF EFFECTS, and since issue
+	 * #1145 the vocabulary supports that. `Status.` used to be one flat branch
+	 * holding the buffs, the debuffs and the damage over times together, so the
+	 * tags for Divine Aegis and Cripple differed only in their last segment while
+	 * one is a blessing and the other a curse. Anything asking "is this a debuff?"
+	 * had to keep a list of names by hand, and a list kept by hand falls behind
+	 * the sheet that fills it.
 	 *
-	 * `State.StunImmune` IS THE CASE THAT PROVES IT MATTERS. It is granted to
-	 * the target at the same instant as `State.Stunned`, by the same call in
-	 * `UCataclysmSkillEffects::ApplyStun`, and it is a PROTECTION -- it is what
-	 * stops the character being stunned again immediately. A rule that counted
-	 * everything a hit left behind would report one stun as two debuffs and
-	 * hand every one of the five nodes double what it promises.
+	 * THE SHEET AN EFFECT COMES FROM IS NOW A SEGMENT OF ITS TAG.
+	 * `tools/generate_gameplay_tags.py` emits `Status.Buff.DivineAegis` from the
+	 * Buffs sheet and `Status.Debuff.Cripple` from the Debuffs sheet, so naming
+	 * `Status.Debuff` here takes all 27 named curses and cannot take a buff. The
+	 * project owner chose this over an exclusion list on 2026-09-04; see
+	 * `docs/DECISIONS.md`.
+	 *
+	 * `State.StunImmune` IS THE CASE THAT PROVES A BRANCH IS NOT ENOUGH BY
+	 * ITSELF. It is granted to the target at the same instant as `State.Stunned`,
+	 * by the same call in `UCataclysmSkillEffects::ApplyStun`, and it is a
+	 * PROTECTION -- it is what stops the character being stunned again
+	 * immediately. A rule that counted everything a hit left behind would report
+	 * one stun as two debuffs and hand every one of the seven nodes paid per
+	 * debuff carried double what it promises. It is excluded by not being under
+	 * a listed root.
 	 *
 	 * A ROOT COUNTS ITSELF AND ITS CHILDREN. `Keyword.DoT` names the whole
 	 * damage over time branch, so `Keyword.DoT.Bleed` and `Keyword.DoT.Burn` are
 	 * both in without being listed, and the branch cannot grow a member this
-	 * list forgets.
+	 * list forgets. The same is now true of `Status.Debuff`: a curse added to the
+	 * Debuffs sheet counts from the moment its tag is generated.
 	 *
-	 * IT IS SHORT BECAUSE LITTLE REACHES A PLAYER YET, and that is the honest
-	 * position rather than an oversight. Damage over time and stunning are the
-	 * only lasting harmful effects anything applies to a character today. The
-	 * `Status.` effects are described in the design and applied by nothing;
-	 * issue #899 is the eleven affixes that would apply one. When something
-	 * does, its branch belongs here.
+	 * `Status.DoT` IS DELIBERATELY NOT HERE, and it is the one branch that would
+	 * double-count. The eight damage over time effects have a tag under both
+	 * `Status.DoT` and `Keyword.DoT` -- the branch says which vocabulary the tag
+	 * came from rather than which effect it is -- and everything that applies one
+	 * to a character grants the `Keyword.DoT` tag, which is already a root.
+	 * Listing both would count a single burn twice the day anything granted both.
 	 */
 	static const TCHAR* const DebuffRootNames[];
 
@@ -125,7 +137,7 @@ public:
 	 * WHICH debuffs this character is carrying, rather than how many.
 	 *
 	 * `CountOn` IS THIS COUNTED, and was written first because counting was all
-	 * the eleven nodes that pay per debuff needed. Issues #1057 and #1058 need
+	 * the seven nodes that pay per debuff needed. Issues #1057 and #1058 need
 	 * the list: "a random debuff you carry" cannot be chosen from a number. The
 	 * two answers must never disagree, so there is one walk of the tags and
 	 * `CountOn` reads its length.
@@ -237,7 +249,7 @@ public:
 	 * TWO NODES ASK FOR IT, both in the Masochist tree and both lengthening
 	 * rather than shortening: Symphony of Pain by 2% a point and Vessel of
 	 * Plagues by 50%. A Masochist WANTS harmful effects on itself, because
-	 * eleven nodes in that branch pay it for each one it carries.
+	 * seven nodes in that tree pay it for each one it carries.
 	 *
 	 * ASKED FOR RATHER THAN READ, so a future row carrying a condition works.
 	 * Neither row today carries one.

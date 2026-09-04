@@ -484,7 +484,7 @@ bool FCataclysmSuccubusFiresTheRightShotAndCastsTheRightCurse::RunTest(
 	const FGameplayTag Withered = WitheredTouchTag();
 	if (!Withered.IsValid())
 	{
-		AddError(TEXT("Status.WitheredTouch is not in the tag vocabulary, so "
+		AddError(TEXT("Status.Debuff.WitheredTouch is not in the tag vocabulary, so "
 					  "the curse could grant nothing whatever the code did. See "
 					  "game/Config/Tags/CataclysmTags.ini."));
 		return false;
@@ -540,7 +540,7 @@ bool FCataclysmSuccubusAuraBuffsAlliesAndNotThePlayer::RunTest(const FString&)
 	const FGameplayTag Commander = CommanderTag();
 	if (!Commander.IsValid())
 	{
-		AddError(TEXT("Status.Commander is not in the tag vocabulary, so the "
+		AddError(TEXT("Status.Buff.Commander is not in the tag vocabulary, so the "
 					  "aura could grant nothing whatever the code did. See "
 					  "game/Config/Tags/CataclysmTags.ini."));
 		return false;
@@ -652,7 +652,7 @@ bool FCataclysmSuccubusAuraEndsWhenItDies::RunTest(const FString&)
 	const FGameplayTag Commander = CommanderTag();
 	if (!Commander.IsValid())
 	{
-		AddError(TEXT("Status.Commander is not in the tag vocabulary."));
+		AddError(TEXT("Status.Buff.Commander is not in the tag vocabulary."));
 		return false;
 	}
 
