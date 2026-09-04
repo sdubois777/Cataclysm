@@ -22,6 +22,11 @@ const FName UCataclysmGroundEffect::DurationParameter(
 
 int32 UCataclysmGroundEffect::TimesAsked = 0;
 
+FVector UCataclysmGroundEffect::LastStart = FVector::ZeroVector;
+FVector UCataclysmGroundEffect::LastFarEnd = FVector::ZeroVector;
+float UCataclysmGroundEffect::LastRadiusCm = 0.0f;
+float UCataclysmGroundEffect::LastDuration = 0.0f;
+
 namespace
 {
 	/**
@@ -84,9 +89,19 @@ int32 UCataclysmGroundEffect::PlayFor(const UObject* WorldContextObject,
 									  const FVector& FarEnd, float RadiusCm,
 									  float Duration, FName DamageType)
 {
-	// COUNTED FIRST, BEFORE ANYTHING CAN REFUSE. See the declaration: this is
-	// the only thing an automation test can observe about this function.
+	// COUNTED FIRST, BEFORE ANYTHING CAN REFUSE. See the declaration: this and
+	// the four values below are the only things an automation test can observe
+	// about this function.
+	//
+	// AND WHAT WAS ASKED FOR, NOT ONLY THAT SOMETHING WAS. Issue #1153: every
+	// zone in the game asked for a radius of zero and a far end at the world
+	// origin for as long as this counter existed, and the counter went up each
+	// time.
 	++TimesAsked;
+	LastStart = Start;
+	LastFarEnd = FarEnd;
+	LastRadiusCm = RadiusCm;
+	LastDuration = Duration;
 
 	if (!WorldContextObject)
 	{

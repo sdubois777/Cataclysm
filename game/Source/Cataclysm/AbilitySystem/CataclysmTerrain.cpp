@@ -166,11 +166,13 @@ ACataclysmTerrain* ACataclysmTerrain::Spawn(
 	// READ BACK FROM THE ACTOR RATHER THAN TRUSTING `Start`, so the near end is
 	// wherever the actor actually is and the two ends cannot disagree.
 	//
-	// AND THAT IS EXACT HERE, unlike in `ACataclysmGroundZone::SpawnAlong` where
-	// the same line guards against the engine adjusting a spawn position:
-	// `AlwaysSpawn` does no adjusting, and a deferred spawn has not reached the
-	// point where it would anyway. It is written this way so the two actors read
-	// alike rather than because this one needs it.
+	// AND THAT IS EXACT RATHER THAN A GUARD. `AlwaysSpawn` does no adjusting, and
+	// a deferred spawn has not reached the point where it would anyway, so this
+	// reads back the position it was just given. It is written this way so this
+	// actor and `ACataclysmGroundZone::SpawnAlong` read alike rather than because
+	// either one needs it. That was the wording's original reason and it held
+	// while the ground zone still spawned in one step; since issue #1153 both
+	// spawn in two.
 	Terrain->FarEnd = Terrain->GetActorLocation() + (End - Start);
 
 	Terrain->HoldSeconds = HoldSeconds > 0.0f ? HoldSeconds : DefaultHoldSeconds;

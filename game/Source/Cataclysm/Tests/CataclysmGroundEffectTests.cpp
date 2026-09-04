@@ -394,4 +394,155 @@ bool FCataclysmEveryGroundZoneAsksToBeDrawn::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundZoneIsDrawnWithItsOwnSize,
+	"Cataclysm.Effects.AGroundZoneIsDrawnWithItsOwnSizeAndDuration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A zone asks to be drawn at the size, reach and duration it was spawned with.
+ * Issue #1153.
+ *
+ * WHAT WENT WRONG. `ACataclysmGroundZone::SpawnAlong` set the radius, the far end
+ * and the life span on the lines AFTER `UWorld::SpawnActor`. That function runs
+ * `BeginPlay` before it returns, in any world that has already begun play, and
+ * `BeginPlay` is where the zone asks to be drawn. So every patch of burning
+ * ground in the game asked for a radius of zero, a far end at the world origin
+ * and a duration of nothing. Twenty-two rows of `game/Data/WeaponSkills.csv`
+ * leave burning ground, so that was all of them.
+ *
+ * THE DAMAGE WAS NEVER AFFECTED. `Sweep` reads those members when its timer
+ * fires, long after the spawn returned, so standing in a patch always burned for
+ * the right amount over the right area. It was a drawing fault only, which is
+ * part of why it lasted.
+ *
+ * WHY THE TEST ABOVE COULD NOT CATCH IT.
+ * `Cataclysm.Effects.EveryGroundZoneAsksToBeDrawn` reads
+ * `UCataclysmGroundEffect::TimesAsked`, which counts that `PlayFor` was called
+ * and says nothing about what it was called with. The counter went up every time
+ * throughout. Nothing downstream can be looked at either: the automation command
+ * passes `-nullrhi` and Niagara creates no component, which is issue #559.
+ *
+ * SO THE ARGUMENTS ARE RECORDED, and this reads them back.
+ *
+ * THE RECORD IS POISONED FIRST, and that is not decoration. These are static and
+ * outlive one test, so a zone that asked for nothing at all would otherwise leave
+ * whatever the previous test wrote and every assertion below would pass on it.
+ *
+ * EVERY NUMBER DIFFERS FROM EVERY OTHER AND FROM ZERO, and neither zone sits on
+ * the world origin, because the broken values were zero and the origin. A round
+ * zone spawned at the origin would have had a correct far end by accident.
+ */
+bool FCataclysmGroundZoneIsDrawnWithItsOwnSize::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	const auto Poison = []()
+	{
+		UCataclysmGroundEffect::LastStart = FVector(-1.0f, -1.0f, -1.0f);
+		UCataclysmGroundEffect::LastFarEnd = FVector(-1.0f, -1.0f, -1.0f);
+		UCataclysmGroundEffect::LastRadiusCm = -1.0f;
+		UCataclysmGroundEffect::LastDuration = -1.0f;
+	};
+
+	// ---------------------------------------------------------------
+	// A long zone, which is the shape a dragged line of fire leaves
+	// ---------------------------------------------------------------
+
+	const FVector Start(2.0f * M, 1.0f * M, 0.0f);
+	const FVector End(11.0f * M, 1.0f * M, 0.0f);
+	const float HalfWidthCm = 1.5f * M;
+	const float LongDuration = 6.0f;
+
+	Poison();
+	const int32 BeforeLong = UCataclysmGroundEffect::TimesAsked;
+
+	ACataclysmGroundZone* Line = ACataclysmGroundZone::SpawnAlong(
+		Caster, Start, End, HalfWidthCm, LongDuration, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a long ground zone was left in the world"), Line))
+	{
+		return false;
+	}
+
+	// ASKED AT ALL, FIRST. Without this the four assertions below would be
+	// reading the poison rather than an answer, and would say so, but this names
+	// the reason directly.
+	if (!TestEqual(TEXT("the long zone asked to be drawn"),
+				   UCataclysmGroundEffect::TimesAsked, BeforeLong + 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the long zone asked at its own near end"),
+			  UCataclysmGroundEffect::LastStart, Start, 1.0f);
+	TestEqual(TEXT("reaching its own far end rather than the world origin"),
+			  UCataclysmGroundEffect::LastFarEnd, End, 1.0f);
+	TestEqual(TEXT("as wide as it burns rather than nothing"),
+			  UCataclysmGroundEffect::LastRadiusCm, HalfWidthCm, 0.01f);
+	TestEqual(TEXT("and for as long as it burns rather than no time at all"),
+			  UCataclysmGroundEffect::LastDuration, LongDuration, 0.5f);
+
+	// ---------------------------------------------------------------
+	// A round zone, which is a stomp and is the other spawn entry point
+	// ---------------------------------------------------------------
+
+	// `Spawn` HAS ITS OWN TURN because it is a separate function, even though it
+	// hands straight over to `SpawnAlong` today. Every skill that leaves a pool
+	// rather than a line comes through it.
+	const FVector Middle(3.0f * M, 4.0f * M, 0.0f);
+	const float RadiusCm = 4.0f * M;
+	const float RoundDuration = 5.0f;
+
+	Poison();
+	const int32 BeforeRound = UCataclysmGroundEffect::TimesAsked;
+
+	ACataclysmGroundZone* Pool = ACataclysmGroundZone::Spawn(
+		Caster, Middle, RadiusCm, RoundDuration, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a round ground zone was left in the world"), Pool))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("the round zone asked to be drawn"),
+				   UCataclysmGroundEffect::TimesAsked, BeforeRound + 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the round zone asked at its own middle"),
+			  UCataclysmGroundEffect::LastStart, Middle, 1.0f);
+
+	// A CIRCLE IS A PATH WHOSE TWO ENDS ARE THE SAME POINT, which is what
+	// `Spawn` says in its own comment. The far end being the middle is the right
+	// answer here and the world origin is not, which is why this zone is not
+	// spawned at the origin.
+	TestEqual(TEXT("with both ends at that middle rather than one at the origin"),
+			  UCataclysmGroundEffect::LastFarEnd, Middle, 1.0f);
+	TestEqual(TEXT("at its own radius"),
+			  UCataclysmGroundEffect::LastRadiusCm, RadiusCm, 0.01f);
+	TestEqual(TEXT("and for its own duration"),
+			  UCataclysmGroundEffect::LastDuration, RoundDuration, 0.5f);
+
+	// AND THE ZONE STILL HOLDS WHAT IT WAS GIVEN AFTERWARDS, so a repair that
+	// somehow reached the drawing without reaching the actor is caught. `Sweep`
+	// reads these when its timer fires and burns whoever is standing there.
+	TestEqual(TEXT("the round zone kept its radius"), Pool->RadiusCm, RadiusCm,
+			  0.01f);
+	TestEqual(TEXT("and the long one kept its far end"), Line->FarEnd, End, 1.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
