@@ -219,7 +219,17 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * furthest, reaches an apex of one quarter of its range, which is why the
 	 * Brute's thrown rock states 0.25.
 	 *
-	 * NO PLAYER SKILL STATES IT TODAY. It is read so that one can.
+	 * NO PLAYER SKILL STATES IT TODAY, AND ONE NOW CAN. Issue #1140. The word
+	 * "read" used to do two jobs in this comment: the `Arc=` cell was parsed and
+	 * the value it produced was used by nothing, so a designer could write
+	 * `Arc=0.25`, watch it validate through `tools/generate_datatables.py`, and
+	 * get a flat projectile with no error anywhere. `UCataclysmProjectileSkill`
+	 * now hands it to `ACataclysmProjectile::LobFlightSecondsFor`, which is the
+	 * same conversion the Corrupted Sentinel's Brimstone Mortar and the
+	 * Gatekeeper's Soulfall use.
+	 *
+	 * ZERO MEANS FLAT AND EVERY ROW IS ZERO, so nothing in the game behaves
+	 * differently until a row states an arc.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float ArcHeightFraction = 0.0f;

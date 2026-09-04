@@ -330,6 +330,36 @@ public:
 	 */
 	static constexpr float LobGravityCmPerSecondSquared = 980.0f;
 
+	/**
+	 * How long a lob stays in the air to sag `ApexFraction` of its own length.
+	 *
+	 * @param ApexFraction how high the throw peaks, as a share of how far it
+	 *                     goes. A quarter is a 45 degree throw, which is what
+	 *                     both lobbing enemies state.
+	 * @param DistanceCm   how far it goes, measured ACROSS THE GROUND, because
+	 *                     that is what the fraction is a fraction of.
+	 * @return the flight time to hand to `Fire`, or zero when either input is at
+	 *         or below zero -- which `Fire` reads as "not a lob".
+	 *
+	 * A PARABOLA SAGS `g * t * t / 8` BELOW ITS OWN CHORD, so a sag of
+	 * `fraction * distance` is in the air for `sqrt(8 * fraction * distance / g)`.
+	 * This is that inversion.
+	 *
+	 * WHY A FRACTION IS STATED AND A TIME IS COMPUTED, AND NOT THE OTHER WAY
+	 * ROUND. Issue #474, on the Brute. A stated time decides the whole vertical
+	 * part of the trajectory by itself -- the apex is `g * t * t / 8`, and the
+	 * distance does not appear in it -- so a throw of three metres and one of
+	 * fifteen given the same time peak at the same height, and the short one goes
+	 * nearly straight up. A fraction cannot do that, because it is measured
+	 * against the distance.
+	 *
+	 * HERE RATHER THAN IN EACH CALLER, which is issue #1140. Two enemies did this
+	 * arithmetic in their own copies -- the Corrupted Sentinel's Brimstone Mortar
+	 * and the Gatekeeper's Soulfall -- while a player skill could state an arc in
+	 * its Shape Params that nothing read at all.
+	 */
+	static float LobFlightSecondsFor(float ApexFraction, float DistanceCm);
+
 	/** How many more enemies it may pass through. One that does not pierce is zero. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	int32 PiercesLeft = 0;

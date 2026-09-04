@@ -134,6 +134,23 @@ void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
 	PlaceholderBody->SetRelativeScale3D(FVector(Scale, Scale, Scale));
 }
 
+float ACataclysmProjectile::LobFlightSecondsFor(float ApexFraction,
+											   float DistanceCm)
+{
+	// EITHER ONE AT OR BELOW ZERO MEANS THIS IS NOT A LOB, and zero is what
+	// `Fire` reads as a flat shot. A skill that states no arc, and a throw with
+	// nowhere to go, both arrive here and both get the same answer.
+	const float ApexCm = ApexFraction * DistanceCm;
+	if (ApexCm <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// See the header: a parabola sags `g * t * t / 8` below its own chord, so
+	// this is that inverted.
+	return FMath::Sqrt(8.0f * ApexCm / LobGravityCmPerSecondSquared);
+}
+
 ACataclysmProjectile* ACataclysmProjectile::Fire(
 	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
