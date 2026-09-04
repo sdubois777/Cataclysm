@@ -1517,6 +1517,31 @@ def affixes(book) -> list[dict]:
         if kind in ("Stat", "Resistance", "Ailment") and not value:
             raise DataError(f"Affixes row {index}: {name} has no top value")
 
+        # A FLOOR MUST SIT BELOW ITS TOP AND ABOVE ZERO. A floor at or above the
+        # top would make every tier and every roll produce the same number, and
+        # the reroll and perfect crafting materials would have nothing to act
+        # on. A negative one would hand the player a penalty.
+        floor = _cell(raw, headers, "Floor")
+        if floor:
+            try:
+                floor_value = float(floor)
+            except ValueError as error:
+                raise DataError(
+                    f"Affixes row {index}: {name} has a floor of {floor!r}, "
+                    "which is not a number") from error
+            top_value = float(value) if value else 0.0
+            if floor_value <= 0.0:
+                raise DataError(
+                    f"Affixes row {index}: {name} has a floor of "
+                    f"{floor_value}, and a floor is the worst value a player "
+                    "can be handed, so it has to be above zero")
+            if floor_value >= top_value:
+                raise DataError(
+                    f"Affixes row {index}: {name} has a floor of "
+                    f"{floor_value} and a top of {top_value}. The floor has to "
+                    "be below the top, or every tier and every roll produce "
+                    "one number and the reroll material has nothing to do.")
+
         # THE WORD THIS AFFIX GIVES AN ITEM'S NAME, and only a suffix has one.
         # An item is called `<rarity> <base> of <word>`, so the first word is
         # the rarity: a prefix has nowhere in the name to appear, and a word on
@@ -1557,6 +1582,16 @@ def affixes(book) -> list[dict]:
             # Issue #1224.
             "Percent": _cell(raw, headers, "Percent").lower()
                        in ("yes", "true", "1"),
+            # THE WORST VALUE A PLAYER CAN BE HANDED, stated rather than
+            # derived. Issue #1230.
+            #
+            # ZERO MEANS NOTHING WAS STATED, and the game then derives the
+            # floor the way it always did, as the tier 1 fraction times the
+            # bottom of the roll band times an un-upgraded piece. That comes to
+            # a tenth of the top, and it is why the bottom of the ladder was
+            # worthless on the affixes whose top is itself small. An affix with
+            # no floor here is unchanged in every respect.
+            "Floor": float(floor) if floor else 0.0,
         })
 
     # TWO AFFIXES SHARING A WORD would make an item's name say less than it

@@ -93,6 +93,7 @@ AFFIX_NAME_WORD: dict[str, str] = {
     "Increased health regeneration": "Recovery",
     "Flat mana regeneration": "Replenishment",
     "Increased mana regeneration": "the Wellspring",
+    "Flat energy shield regeneration": "Reforming",
     "Increased energy shield regeneration": "the Barrier",
     "Flat life leech": "the Leech",
     "Flat mana leech": "Drawing",

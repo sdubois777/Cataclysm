@@ -690,6 +690,24 @@ struct FCataclysmAffixRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	float TopValue = 0.0f;
 
+	/** The worst value a player can be handed: tier 1, the bottom of the
+	 *  roll band, on an un-upgraded piece. Zero means none was stated.
+	 *
+	 *  DERIVED FROM THE TOP UNTIL 2026-09-04, as tier 1's share times the
+	 *  bottom of the band times an un-upgraded piece, which comes to
+	 *  exactly a tenth of the top for every affix in the game. On an affix
+	 *  whose top is itself small that made the bottom of the ladder
+	 *  worthless: flat evasion's worst roll was 0.40% evasion on a
+	 *  character who had none. Issue #1230.
+	 *
+	 *  ZERO LEAVES AN AFFIX EXACTLY AS IT WAS. UCataclysmItemValues::
+	 *  AffixValue derives the same tenth when none is stated, and the
+	 *  remap it applies is the identity at that value, so an affix with no
+	 *  floor here produces the number it always did.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	float Floor = 0.0f;
+
 	/** How many damage types a Resistance family covers: 1, 2 or all 8. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	int32 Breadth = 0;

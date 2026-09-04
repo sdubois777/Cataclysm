@@ -66,7 +66,7 @@ or if a sheet is added or removed without this table changing.
 | DoTs | 8 | `Name: Description`, then seven positional numbers, no heading row |
 | Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
-| Affixes | 85 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
+| Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
 | Minion Types | 5 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |

@@ -1199,10 +1199,18 @@ def test_the_brute_ability_table_matches_the_data(brute_section,
         assert_row_matches(brute_section, ability, "Brute")
 
 
-def test_the_slam_lands_exactly_on_the_stun_damage_threshold(brute_section):
+def test_the_slam_lands_just_under_the_stun_damage_threshold(brute_section):
     """The reason the slam does not stun, recomputed against the reference build
-    rather than quoted. An Elite Brute's ordinary hit is 10.0% of that
-    character's effective health and the threshold is 10%."""
+    rather than quoted. An Elite Brute's ordinary hit is 9.1% of that character's
+    effective health and the threshold is 10%.
+
+    IT WAS EXACTLY 10.0% UNTIL 2026-09-04, and the flat damage reduction affix
+    doubling for issue #1230 moved it. The reference build spends four affix
+    slots on that stat, so its damage reduction rose from 15.95 to 23.95 and it
+    survives eleven of these hits rather than ten. The conclusion this test
+    exists for -- that the slam does not stun -- is unchanged and now holds with
+    room rather than by a rounding error.
+    """
     from cataclysm_sim import damage as dmg
     from cataclysm_sim import enemy_stats as es
     from cataclysm_sim import reference_build as rb
@@ -1213,18 +1221,22 @@ def test_the_slam_lands_exactly_on_the_stun_damage_threshold(brute_section):
                      damage_type=enemy.damage_type),
         rb.defender(8))
     share = 100.0 / hits
-    assert share == pytest.approx(10.0, abs=0.5), (
+    assert share == pytest.approx(9.1, abs=0.5), (
         f"an Elite Brute's ordinary hit is now {share:.1f}% of the reference "
-        "build's effective health, not the 10% the design document states. "
-        "That figure is the whole reason the slam does not stun.")
-    assert "exactly 10% of the reference build" in brute_section, (
-        "the Brute subsection no longer states that its slam lands exactly on "
-        "the stun damage threshold. Issue #351.")
+        "build's effective health, not the 9.1% the design document states.")
+    assert share < 10.0, (
+        f"an Elite Brute's ordinary slam is now {share:.1f}% of the reference "
+        "build's effective health, which is at or above the 10% stun threshold. "
+        "The design document says the slam does not stun and only the stomp "
+        "does. Issue #351.")
+    assert "9.1% of the reference build" in brute_section, (
+        "the Brute subsection no longer states where its slam lands against the "
+        "stun damage threshold. Issue #351.")
 
 
 def test_the_stomp_clears_the_threshold_at_the_heavy_slot_percent(brute_section):
-    """250% of a hit that is 10% of the pool is 25%, which is two and a half
-    times the threshold. Both numbers are read out of the data."""
+    """250% of a hit that is 9.1% of the pool is 22.7%, well over twice the
+    threshold. Both numbers are read out of the data."""
     import csv
 
     slots = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
@@ -1237,8 +1249,8 @@ def test_the_stomp_clears_the_threshold_at_the_heavy_slot_percent(brute_section)
     percent = float(heavy["DamagePercent"])
     assert percent == pytest.approx(250.0), (
         f"the Heavy slot is now {percent}% in game/Data/SkillSlots.csv. The "
-        "Brute subsection says the stomp lands at 25% of the reference build's "
-        "effective health, which is that percent of a 10% hit.")
+        "Brute subsection says the stomp lands at 22.7% of the reference "
+        "build's effective health, which is that percent of a 9.1% hit.")
     assert f"the Heavy slot's {percent:.0f}%" in brute_section, (
         "the Brute subsection no longer states which slot percent the stomp "
         "uses.")

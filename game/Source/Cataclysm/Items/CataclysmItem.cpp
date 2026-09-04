@@ -98,7 +98,14 @@ void UCataclysmItemValues::TierBand(float TopValue, int32 Tier,
 	OutLow = OutHigh * (1.0f - RollBandFraction);
 }
 
-float UCataclysmItemValues::AffixValue(float TopValue, int32 Tier, float Roll,
+float UCataclysmItemValues::WorstMultiplier()
+{
+	return TierFraction(1) * (1.0f - RollBandFraction)
+		 / GearLevelMultiplier(MaxGearLevel);
+}
+
+float UCataclysmItemValues::AffixValue(float TopValue, float Floor,
+									   int32 Tier, float Roll,
 									   int32 GearLevel, bool bTwoHanded)
 {
 	float Low = 0.0f;
@@ -135,8 +142,42 @@ float UCataclysmItemValues::AffixValue(float TopValue, int32 Tier, float Roll,
 	// included 2.5. The endgame value is therefore unchanged by all of this;
 	// what moved is everything below it.
 	const float AtZero = Within / GearLevelMultiplier(MaxGearLevel);
-	return AtZero * GearLevelMultiplier(GearLevel)
-		 * (bTwoHanded ? TwoHandedMultiplier : 1.0f);
+	const float Unfloored = AtZero * GearLevelMultiplier(GearLevel);
+
+	// THE FLOOR IS ADDED AND THE LADDER RUNS ACROSS WHAT IS LEFT, rather
+	// than the tier ladder being squeezed to raise the bottom. Issue #1230.
+	//
+	// WHY NOT SQUEEZE THE TIER LADDER. Measured on 2026-09-04: a floor of a
+	// sixth of the top needs a tier ladder spanning 1.80, whose ratio
+	// between adjacent tiers is 1.1029, and
+	// Cataclysm.Item.BandsOverlapByExactlyOneTier then fails because a
+	// perfect roll two tiers down beats the worst roll here. The last floor
+	// that survives that route is about an eighth of the top, which is
+	// barely better than the tenth it already had.
+	//
+	// THIS MAP KEEPS THAT GUARD BECAUSE IT IS MONOTONE. It is an affine map
+	// from [TopValue * WorstMultiplier(), TopValue] onto [Floor, TopValue],
+	// so it preserves the order of every tier, roll and upgrade level
+	// combination, and every comparison the guard makes is unchanged.
+	//
+	// WHAT IT COSTS IS STEEPNESS, and only on the affixes that state a
+	// floor. A floor of a quarter of the top takes that affix's tier 1 to
+	// tier 7 ladder from 3.00 to 2.25 and its +0 to +10 ladder from 2.50 to
+	// 2.00. An affix with no floor keeps both in full.
+	const float Worst = TopValue * WorstMultiplier();
+	const float Span = TopValue - Worst;
+	if (Span <= 0.0f)
+	{
+		// A HYBRID ROW STATES NO VALUE OF ITS OWN. Its two halves are named
+		// in other columns and carry their own tops and floors.
+		return 0.0f;
+	}
+
+	const float Bottom = Floor > 0.0f ? Floor : Worst;
+	const float Value = Bottom
+					  + (TopValue - Bottom) * (Unfloored - Worst) / Span;
+
+	return Value * (bTwoHanded ? TwoHandedMultiplier : 1.0f);
 }
 
 float UCataclysmItemValues::ImplicitValue(float StatedValue, int32 GearLevel,
@@ -365,7 +406,7 @@ void UCataclysmItemModifiers::AccumulateInto(
 				Add(FName(*Part->Stat), PartBucket,
 					ECataclysmModifierSource::GearAffix,
 					UCataclysmItemValues::AffixValue(
-						Part->TopValue, Rolled.Tier, Rolled.Roll,
+						Part->TopValue, Part->Floor, Rolled.Tier, Rolled.Roll,
 						Item.GearLevel, bTwoHanded)
 						* UCataclysmItemValues::HybridFraction);
 			}
@@ -382,7 +423,8 @@ void UCataclysmItemModifiers::AccumulateInto(
 		}
 
 		const float Value = UCataclysmItemValues::AffixValue(
-			Affix->TopValue, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
+			Affix->TopValue, Affix->Floor, Rolled.Tier, Rolled.Roll,
+		Item.GearLevel, bTwoHanded);
 
 		if (Affix->AffixKind == TEXT("Resistance"))
 		{

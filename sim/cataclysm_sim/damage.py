@@ -79,12 +79,18 @@ ARMOR_REDUCTION_CAP = 75.0
 #: project's sources add and are applied once, which is Path of Exile's shape,
 #: so a cap is the matching answer rather than restructuring how they stack.
 #:
-#: WHAT IT DOES AND DOES NOT CHANGE. Gear and a class base reach 35.95% at the
+#: WHAT IT DOES AND DOES NOT CHANGE. Gear and a class base reach 63.95% at the
 #: absolute most: 14 pieces may carry the affix, one roll each under the affix
-#: group rule, at 2.0 a roll, plus the Ravager's 7.95 at level 100. So no build
-#: reachable from gear is touched, and the 15.9% the design publishes for a fully
-#: geared character is untouched -- which matters, because every enemy damage
-#: figure in the game was fitted against that character stopping 89.9% of a hit.
+#: group rule, at 4.0 a roll, plus the Ravager's 7.95 at level 100. So no build
+#: reachable from gear is touched by this cap, though the margin is much smaller
+#: than it was.
+#:
+#: IT WAS 35.95% AT 2.0 A ROLL UNTIL ISSUE #1230, which doubled the affix's top
+#: so that a floor worth having could be stated under it. The reference geared
+#: character spends four of its pieces on the stat, so it now holds 23.95 rather
+#: than 15.95 and stops 90.8% of a hit rather than 89.9%. Every enemy damage
+#: figure in the game was fitted against the older number, so they now overstate
+#: the threat by about one part in a hundred.
 #: What the cap binds is the Bulwark passive tree, which has twelve nodes
 #: granting this stat, and two enchantments, one of which grows with the number
 #: of active leech types and states no bound.

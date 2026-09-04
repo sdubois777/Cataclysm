@@ -982,7 +982,7 @@ bool FCataclysmTooltipHybridReadsBothHalves::RunTest(const FString& Parameters)
 	auto HalfInWords = [&Item](const FCataclysmAffixRow& Part)
 	{
 		return UCataclysmItemTooltip::NumberInWords(
-			UCataclysmItemValues::AffixValue(Part.TopValue,
+			UCataclysmItemValues::AffixValue(Part.TopValue, Part.Floor,
 											 Item.Affixes[0].Tier,
 											 Item.Affixes[0].Roll,
 											 Item.GearLevel,

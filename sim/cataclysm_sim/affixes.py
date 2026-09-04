@@ -530,6 +530,59 @@ def slots_available_to(allowed: frozenset[str]) -> int:
                for slot, count in GEAR_SLOTS.items() if slot in allowed)
 
 
+#: What the three ladders leave of an affix at their very bottom.
+#:
+#: Tier 1's share of the top, times the bottom of the roll band, times an
+#: un-upgraded piece against a fully upgraded one. It comes to 0.1, and that
+#: product is the whole of issue #1230: the worst roll of every affix in the
+#: game was exactly a tenth of its stated top, so on an affix whose top is
+#: itself small the bottom of the ladder was worthless. Flat evasion's worst
+#: roll was 0.40% evasion on a character who had none.
+#:
+#: COMPUTED FROM THE THREE CONSTANTS RATHER THAN WRITTEN OUT, so easing any of
+#: them moves this with it instead of leaving a fourth number to keep in step.
+WORST_MULTIPLIER = (TIER_FRACTIONS[AFFIX_TIERS[0]] * (1.0 - ROLL_BAND_FRACTION)
+                    / (1.0 + GEAR_LEVEL_FACTOR * MAX_GEAR_LEVEL))
+
+
+def with_floor(unfloored: float, top_value: float, floor: float) -> float:
+    """Move the bottom of an affix's range up to a stated floor.
+
+    An affine map from ``[top x WORST_MULTIPLIER, top]`` onto ``[floor, top]``.
+    The top does not move; only everything below it does.
+
+    WHY NOT SQUEEZE THE TIER LADDER INSTEAD, which is the obvious reading of
+    "run the ladder between the floor and the top". Measured on 2026-09-04: a
+    floor of a sixth of the top needs a tier ladder spanning 1.80, whose ratio
+    between adjacent tiers is 1.1029, and ``BandsOverlapByExactlyOneTier`` then
+    fails because a perfect roll two tiers down beats the worst roll here. The
+    last floor that survives that route is about an eighth of the top, barely
+    better than the tenth it already had.
+
+    THIS MAP KEEPS THAT GUARD BECAUSE IT IS MONOTONE. It preserves the order of
+    every tier, roll and upgrade level combination, so every comparison the
+    guard makes is unchanged.
+
+    WHAT IT COSTS IS STEEPNESS, and only on the affixes that state a floor. A
+    floor of a quarter of the top takes that affix's T1 to T7 ladder from 3.00
+    to 2.25 and its +0 to +10 ladder from 2.50 to 2.00. An affix with no floor
+    keeps both in full, which is the point of a number per affix rather than one
+    rule: only the affixes that need it pay for it.
+
+    A FLOOR OF ZERO MEANS NONE WAS STATED. The derived floor is then
+    ``top x WORST_MULTIPLIER`` and this map is the identity at exactly that
+    value, so an affix with no floor is unchanged in every respect. That is one
+    piece of arithmetic reaching the same answer rather than a special case.
+    """
+    worst = top_value * WORST_MULTIPLIER
+    span = top_value - worst
+    if span <= 0.0:
+        # A hybrid states no value of its own; its two halves carry theirs.
+        return 0.0
+    bottom = floor if floor > 0.0 else worst
+    return bottom + (top_value - bottom) * (unfloored - worst) / span
+
+
 def tier_band(top_value: float, tier: int) -> tuple[float, float]:
     """The lowest and highest an affix can roll at a tier.
 
@@ -549,7 +602,8 @@ def roll_within(low: float, high: float, roll: float) -> float:
 
 
 def affix_value(top_value: float, tier: int, roll: float = 1.0,
-                gear_level: int = MAX_GEAR_LEVEL) -> float:
+                gear_level: int = MAX_GEAR_LEVEL,
+                floor: float = 0.0) -> float:
     """One affix's value: its tier band, its roll, and the piece's upgrade level.
 
     Defaults to a fully upgraded piece, because the questions this module
@@ -594,7 +648,8 @@ def affix_value(top_value: float, tier: int, roll: float = 1.0,
     """
     low, high = tier_band(top_value, tier)
     at_zero = roll_within(low, high, roll) / gear_level_multiplier(MAX_GEAR_LEVEL)
-    return at_zero * gear_level_multiplier(gear_level)
+    return with_floor(at_zero * gear_level_multiplier(gear_level),
+                      top_value, floor)
 
 
 @dataclass(frozen=True)
@@ -611,6 +666,9 @@ class AffixFamily:
     #: Resistance is a suffix in every game surveyed, and it fits the rule: it
     #: says how much of a hit gets through rather than how big a number is.
     position: str = SUFFIX
+    #: The worst value a player can be handed. Zero derives it from the top,
+    #: which is what every affix did before issue #1230.
+    floor: float = 0.0
 
     def range_at(self, tier: int) -> tuple[float, float]:
         """The lowest and highest this affix can roll at a tier.
@@ -620,7 +678,7 @@ class AffixFamily:
         down by a fraction of that value, not of the gap to the tier below, which
         is what makes the roll worth caring about. See ROLL_BAND_FRACTION.
         """
-        return tier_band(self.top_value, tier)
+        return (self.value_at(tier, 0.0), self.value_at(tier, 1.0))
 
     def value_at(self, tier: int, roll: float = 1.0,
                  gear_level: int = MAX_GEAR_LEVEL) -> float:
@@ -632,7 +690,8 @@ class AffixFamily:
         questions this module answers -- how many slots to reach the resistance
         cap -- are about what a finished, crafted character can achieve.
         """
-        return affix_value(self.top_value, tier, roll, gear_level)
+        return affix_value(self.top_value, tier, roll, gear_level,
+                           self.floor)
 
     def average_at(self, tier: int) -> float:
         """The middle of the band. What an uncrafted drop is worth on average."""
@@ -670,9 +729,12 @@ class AffixFamily:
 # Doubling leaves the cost where it was -- about twelve affixes, which is
 # what reference_build.py already spends on it -- and doubles the number
 # printed on the item, which is what issue #1230 is about.
-SINGLE_RESISTANCE = AffixFamily("Single resistance", breadth=1, top_value=40.0)
-HYBRID_RESISTANCE = AffixFamily("Two resistances", breadth=2, top_value=28.0)
-ALL_RESISTANCE = AffixFamily("All resistances", breadth=8, top_value=12.0)
+SINGLE_RESISTANCE = AffixFamily("Single resistance", breadth=1,
+                                top_value=40.0, floor=10.0)
+HYBRID_RESISTANCE = AffixFamily("Two resistances", breadth=2,
+                                top_value=28.0, floor=7.0)
+ALL_RESISTANCE = AffixFamily("All resistances", breadth=8,
+                             top_value=12.0, floor=3.0)
 
 RESISTANCE_FAMILIES = (SINGLE_RESISTANCE, HYBRID_RESISTANCE, ALL_RESISTANCE)
 
@@ -703,6 +765,9 @@ class StatAffix:
     top_value: float
     allowed_slots: frozenset[str] = frozenset(GEAR_SLOTS)
     position: str = PREFIX
+    #: The worst value a player can be handed. Zero derives it from the top,
+    #: which is what every affix did before issue #1230.
+    floor: float = 0.0
 
     def __post_init__(self) -> None:
         if self.kind not in ("flat", "increased"):
@@ -729,7 +794,7 @@ class StatAffix:
         return slots_available_to(self.allowed_slots)
 
     def range_at(self, tier: int) -> tuple[float, float]:
-        return tier_band(self.top_value, tier)
+        return (self.value_at(tier, 0.0), self.value_at(tier, 1.0))
 
     def value_at(self, tier: int, roll: float = 1.0,
                  gear_level: int = MAX_GEAR_LEVEL,
@@ -740,7 +805,8 @@ class StatAffix:
         affix slots on a two-handed weapon against eight across two one-handed
         ones. It is only ever true for an affix rolled on a two-handed weapon.
         """
-        value = affix_value(self.top_value, tier, roll, gear_level)
+        value = affix_value(self.top_value, tier, roll, gear_level,
+                            self.floor)
         return value * (TWO_HANDED_MULTIPLIER if two_handed else 1.0)
 
     def added_value(self, base_before_increases: float, existing_increases: float,
@@ -979,7 +1045,7 @@ INCREASED_ARMOR = StatAffix("Increased armor", "armor", "increased", 12.0,
 #: has any, so gear supplies all of it. At 4 points a piece, fifteen slots reach
 #: the cap, which is a real investment rather than an incidental one.
 FLAT_EVASION = StatAffix("Flat evasion", "evasion", "flat", 4.0,
-                         EVASION_SLOTS, PREFIX)
+                         EVASION_SLOTS, PREFIX, floor=1.0)
 INCREASED_EVASION = StatAffix("Increased evasion", "evasion", "increased", 12.0,
                               EVASION_SLOTS, PREFIX)
 
@@ -994,7 +1060,7 @@ INCREASED_SPELL_DAMAGE = StatAffix("Increased spell damage", "spell_damage",
 FLAT_CLASS_RESOURCE = StatAffix("Flat maximum class resource", "class_resource",
                                 "flat", 7.0,
                                 frozenset({"Belt", "Ring", "Relic", "Necklace"}),
-                                PREFIX)
+                                PREFIX, floor=1.75)
 
 # -- Suffixes: how often, how fast, how much gets through -----------------
 
@@ -1004,14 +1070,28 @@ UTILITY_SLOTS = frozenset({"Boots", "Belt", "Ring", "Necklace", "Relic"})
 #: Against the class base: 15.85 health and 10.9 mana regeneration at level 100,
 #: and 6% of each. Energy shield regeneration is anchored on the Ritualist's 21.8.
 FLAT_HEALTH_REGEN = StatAffix("Flat health regeneration", "health_regen",
-                              "flat", 0.95, RECOVERY_SLOTS, SUFFIX)
+                              "flat", 8.0, RECOVERY_SLOTS, SUFFIX,
+                              floor=2.0)
 INCREASED_HEALTH_REGEN = StatAffix("Increased health regeneration",
                                    "health_regen", "increased", 12.0,
                                    RECOVERY_SLOTS, SUFFIX)
 FLAT_MANA_REGEN = StatAffix("Flat mana regeneration", "mana_regen", "flat",
-                            0.65, RECOVERY_SLOTS, SUFFIX)
+                            0.65, RECOVERY_SLOTS, SUFFIX, floor=0.2)
 INCREASED_MANA_REGEN = StatAffix("Increased mana regeneration", "mana_regen",
                                  "increased", 12.0, RECOVERY_SLOTS, SUFFIX)
+#: THE FLAT ONE DID NOT EXIST UNTIL 2026-09-04, and health and mana both had
+#: theirs. Energy shield had only the increased affix, so a class with no
+#: energy shield regeneration base -- which is every class but the Ritualist
+#: -- had nothing for that increase to multiply, and a shield built entirely
+#: from gear never came back at all. Issue #1237.
+#:
+#: ANCHORED ON THE FLAT MAXIMUM ENERGY SHIELD AFFIX rather than on a class
+#: base, because the classes that need this have no base. That affix grants
+#: 50 maximum energy shield at its top, and 10 a second refills 50 in five
+#: seconds, which is the figure Path of Exile uses for a full recharge.
+FLAT_ENERGY_SHIELD_REGEN = StatAffix(
+    "Flat energy shield regeneration", "energy_shield_regen", "flat",
+    10.0, SHIELD_SLOTS, SUFFIX, floor=2.5)
 INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
     "Increased energy shield regeneration", "energy_shield_regen", "increased",
     12.0, SHIELD_SLOTS, SUFFIX)
@@ -1021,8 +1101,8 @@ INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
 #:
 #: By convention: the Ravager's 3% is the only leech any class has, and leech
 #: compounds with every point of damage a character stacks, so it stays small.
-FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 0.5,
-                            OFFENSIVE_SLOTS, SUFFIX)
+FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 4.0,
+                            OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
 #: Mana and energy shield leech, added for issue #214. The design already relied
 #: on both: the Energy Leech class drains enemy mana to refill its own pool, and
@@ -1044,15 +1124,15 @@ FLAT_LIFE_LEECH = StatAffix("Flat life leech", "life_leech", "flat", 0.5,
 #:
 #: ON THE SAME SLOTS AS LIFE LEECH. Leech comes from hitting, so it belongs where
 #: a hit comes from, which is what OFFENSIVE_SLOTS is.
-FLAT_MANA_LEECH = StatAffix("Flat mana leech", "mana_leech", "flat", 0.5,
-                            OFFENSIVE_SLOTS, SUFFIX)
+FLAT_MANA_LEECH = StatAffix("Flat mana leech", "mana_leech", "flat", 4.0,
+                            OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
 #: Energy shield is leechable even though the Vampire class cannot use one. That
 #: is a restriction on one class rather than on the stat: the Ritualist is the
 #: class with an energy shield and it is the one this is for.
 FLAT_ENERGY_SHIELD_LEECH = StatAffix("Flat energy shield leech",
-                                     "energy_shield_leech", "flat", 0.5,
-                                     OFFENSIVE_SLOTS, SUFFIX)
+                                     "energy_shield_leech", "flat", 4.0,
+                                     OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
 #: The three together, so a rule about leech can be written once.
 LEECH_AFFIXES: tuple[StatAffix, ...] = (FLAT_LIFE_LEECH, FLAT_MANA_LEECH,
@@ -1067,13 +1147,14 @@ LEECH_PAYOUT_SECONDS = 3.0
 #: By convention. Block removes half a hit and needs no cap, so a full defensive
 #: investment reaching a high figure is legal by design rather than a mistake.
 FLAT_BLOCK_CHANCE = StatAffix("Flat block chance", "block_chance", "flat", 5.0,
-                              DEFENSIVE_SLOTS, SUFFIX)
+                              DEFENSIVE_SLOTS, SUFFIX, floor=1.25)
 
 #: By convention, and deliberately the smallest defensive affix in the pool.
 #: Damage reduction is a flat percentage off everything, with no curve and no
 #: cap of its own, so it is the one defensive stat that would run away.
 FLAT_DAMAGE_REDUCTION = StatAffix("Flat damage reduction", "damage_reduction",
-                                  "flat", 2.0, DEFENSIVE_SLOTS, SUFFIX)
+                                  "flat", 4.0, DEFENSIVE_SLOTS, SUFFIX,
+                                  floor=1.0)
 
 #: RETALIATION IS A PERCENTAGE OF THE BLOW SINCE ISSUE #1227, so this is
 #: percentage points and not flat damage. The Masochist class base is 15.85.
@@ -1084,19 +1165,20 @@ FLAT_DAMAGE_REDUCTION = StatAffix("Flat damage reduction", "damage_reduction",
 #: perfect one on all fourteen eligible pieces reaches 43.85 in total, which
 #: returns 7,489 of a difficulty tier 8 Boss's 17,075 blow before the Boss's
 #: own armour and resistance.
-FLAT_RETALIATION = StatAffix("Flat retaliation", "retaliation", "flat", 2.0,
-                             DEFENSIVE_SLOTS, SUFFIX)
+FLAT_RETALIATION = StatAffix("Flat retaliation", "retaliation", "flat", 4.0,
+                             DEFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
 #: By convention: at 5 points a piece, twenty slots reach immunity, which the
 #: design already allows -- a character at 100% cannot be stunned at all.
 FLAT_CROWD_CONTROL_RESISTANCE = StatAffix(
     "Flat crowd control resistance", "crowd_control_resistance", "flat", 5.0,
-    DEFENSIVE_SLOTS, SUFFIX)
+    DEFENSIVE_SLOTS, SUFFIX, floor=1.25)
 
 #: By convention. Critical strike chance has a hard cap of 100 and its base
 #: comes from the skill, so gear supplies the climb toward that cap.
 FLAT_CRIT_CHANCE = StatAffix("Flat critical strike chance", "crit_chance",
-                             "flat", 5.0, OFFENSIVE_SLOTS, SUFFIX)
+                             "flat", 5.0, OFFENSIVE_SLOTS, SUFFIX,
+                             floor=1.25)
 INCREASED_CRIT_CHANCE = StatAffix("Increased critical strike chance",
                                   "crit_chance", "increased", 25.0,
                                   OFFENSIVE_SLOTS, SUFFIX)
@@ -1229,7 +1311,7 @@ DOT_LEVER_AFFIXES: tuple[StatAffix, ...] = (INCREASED_DOT_DAMAGE,
 #: beyond it grants nothing, so a handful of these covers the hardest target in
 #: the vertical slice and more is wasted.
 FLAT_PENETRATION = StatAffix("Flat penetration", "penetration", "flat", 4.0,
-                             OFFENSIVE_SLOTS, SUFFIX)
+                             OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
 #: By convention, and deliberately small. Movement speed has a base of about 4
 #: metres per second, no cap, and affects everything a player does, so 8% is
@@ -1237,7 +1319,7 @@ FLAT_PENETRATION = StatAffix("Flat penetration", "penetration", "flat", 4.0,
 INCREASED_MOVEMENT_SPEED = StatAffix("Increased movement speed",
                                      "movement_speed", "increased", 8.0,
                                      frozenset({"Boots", "Belt", "Ring"}),
-                                     SUFFIX)
+                                     SUFFIX, floor=2.0)
 
 #: By convention. Cooldown reduction divides rather than subtracting, so no
 #: quantity of it reaches zero and it needs no cap.
@@ -1265,9 +1347,10 @@ COOLDOWN_REDUCTION = StatAffix("Flat cooldown reduction",
 #: By convention. Both affect what drops rather than what a character can do, so
 #: they compete with combat stats for the same slots, which is the trade.
 FLAT_MAGIC_FIND = StatAffix("Flat magic find", "magic_find", "flat", 10.0,
-                            UTILITY_SLOTS, SUFFIX)
+                            UTILITY_SLOTS, SUFFIX, floor=2.5)
 INCREASED_LOOT_QUANTITY = StatAffix("Increased loot quantity", "loot_quantity",
-                                    "increased", 8.0, UTILITY_SLOTS, SUFFIX)
+                                    "increased", 8.0, UTILITY_SLOTS, SUFFIX,
+                                    floor=2.0)
 
 
 # -- Suffixes: the eight primary attributes -------------------------------
@@ -1423,7 +1506,7 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     FLAT_CLASS_RESOURCE,
     FLAT_HEALTH_REGEN, INCREASED_HEALTH_REGEN,
     FLAT_MANA_REGEN, INCREASED_MANA_REGEN,
-    INCREASED_ENERGY_SHIELD_REGEN,
+    FLAT_ENERGY_SHIELD_REGEN, INCREASED_ENERGY_SHIELD_REGEN,
     FLAT_LIFE_LEECH, FLAT_MANA_LEECH, FLAT_ENERGY_SHIELD_LEECH,
     FLAT_BLOCK_CHANCE,
     FLAT_DAMAGE_REDUCTION,

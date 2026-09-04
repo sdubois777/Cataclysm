@@ -176,7 +176,12 @@ namespace CataclysmReferenceTest
 		{ TEXT("max_health"),         11023.00f },
 		{ TEXT("armor"),               7299.42f },
 		{ TEXT("block_chance"),          28.00f },
-		{ TEXT("damage_reduction"),      15.95f },
+		// 23.95 SINCE ISSUE #1230, and it was 15.95. The flat damage
+		// reduction affix states a top of 4 rather than 2, so the four slots
+		// this build spends on it are worth 16 rather than 8. That is the
+		// affix whose worst roll was 0.2 percentage points, which is what
+		// that issue was about; the top moved with the floor.
+		{ TEXT("damage_reduction"),      23.95f },
 		// 144 SINCE ISSUE #1229, and it was 72. The twelve all-resistance
 		// affixes this build spends are worth 12 each rather than 6. Note what
 		// that leaves: a tier 8 character needs 145 to sit at the 70 cap, so
@@ -311,7 +316,7 @@ bool FCataclysmReferenceBuildSurvivalTest::RunTest(const FString& Parameters)
 	constexpr float Health = 11023.0f;
 	constexpr float Armor = 7299.42f;
 	constexpr float BlockChance = 28.0f;
-	constexpr float DamageReduction = 15.95f;
+	constexpr float DamageReduction = 23.95f;
 	constexpr float Resistance = 144.0f;
 
 	// Armour against the tier 8 curve removes 53.3%, and resistance is capped at
@@ -334,28 +339,31 @@ bool FCataclysmReferenceBuildSurvivalTest::RunTest(const FString& Parameters)
 		* (1.0f - (BlockChance / 100.0f) * 0.5f)
 		* (1.0f - DamageReduction / 100.0f);
 
+	// 9.17%, AND IT WAS 10.1% UNTIL ISSUE #1230 doubled the flat damage
+	// reduction affix. This build spends four slots on that stat, so it now
+	// stops 90.8% of a hit rather than 89.9%.
 	TestTrue(FString::Printf(
-			TEXT("a hit lands for 10.1%% of itself, got %.2f%%"), Landing * 100.0f),
-		FMath::IsNearlyEqual(Landing * 100.0f, 10.1f, 0.2f));
+			TEXT("a hit lands for 9.17%% of itself, got %.2f%%"), Landing * 100.0f),
+		FMath::IsNearlyEqual(Landing * 100.0f, 9.17f, 0.2f));
 
 	// A Cataclysm Boss Gatekeeper at difficulty tier 8 hits for 65,497 raw.
-	// `sim/cataclysm_sim/reference_build.py` reports that landing for 6,635 and
-	// killing this character in 2 hits.
+	// `sim/cataclysm_sim/reference_build.py` reports that landing for 6,004 and
+	// killing this character in 2 hits. It landed for 6,635 until issue #1230.
 	constexpr float GatekeeperHit = 65497.0f;
 	const float Landed = GatekeeperHit * Landing;
 
 	TestTrue(FString::Printf(
-			TEXT("a Gatekeeper's 65,497 lands for about 6,635, got %.0f"), Landed),
-		FMath::IsNearlyEqual(Landed, 6635.0f, 150.0f));
+			TEXT("a Gatekeeper's 65,497 lands for about 6,004, got %.0f"), Landed),
+		FMath::IsNearlyEqual(Landed, 6004.0f, 150.0f));
 
 	const int32 HitsToKill = FMath::CeilToInt(Health / Landed);
 	TestEqual(TEXT("and two of them kill this character"), HitsToKill, 2);
 
-	// A Common Imp hits for 2,016 raw and takes 54 hits, which is what makes a
-	// pack rather than one enemy the threat.
+	// A Common Imp hits for 2,016 raw and takes 60 hits, which is what makes a
+	// pack rather than one enemy the threat. It was 54 until issue #1230.
 	constexpr float ImpHit = 2016.0f;
 	const int32 ImpHits = FMath::CeilToInt(Health / (ImpHit * Landing));
-	TestEqual(TEXT("a Common Imp needs 54 hits"), ImpHits, 54);
+	TestEqual(TEXT("a Common Imp needs 60 hits"), ImpHits, 60);
 
 	// No combination of layers reaches immunity. Checked rather than asserted,
 	// because it is the property the whole defensive model rests on.

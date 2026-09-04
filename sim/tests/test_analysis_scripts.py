@@ -113,10 +113,76 @@ def penetration_run():
                                   "analyse_margin_tolerance.py",
                                   "analyse_per_tier_rarity.py",
                                   "analyse_experience_curve.py",
-                                  "analyse_affix_spread.py"])
+                                  "analyse_affix_spread.py",
+                                  "analyse_affix_floors.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
+
+
+@pytest.fixture(scope="module")
+def affix_floor_run():
+    return run("analyse_affix_floors.py")
+
+
+def test_squeezing_the_tier_ladder_breaks_the_guard_past_an_eighth(
+        affix_floor_run):
+    """The measurement that decided the shape of issue #1230.
+
+    Raising the floor by squeezing the tier ladder is the obvious reading of
+    "run the ladder between the floor and the top", and it fails: a floor of a
+    sixth of the top needs a tier ladder spanning 1.80, whose adjacent-tier
+    ratio of 1.1029 lets a perfect roll two tiers down beat the worst roll here.
+    ``Cataclysm.Item.BandsOverlapByExactlyOneTier`` forbids that.
+
+    A FLOOR OF AN EIGHTH IS THE LAST ONE THAT SURVIVES that route, which is
+    barely better than the tenth every affix already had. That is why the floor
+    is added and the ladder runs across what is left instead.
+    """
+    _, ns = affix_floor_run
+    squeezed = ns["squeezed_tier_ladder"]
+    ratio = ns["adjacent_ratio"]
+    bound = ns["TWO_TIER_BOUND"]
+
+    assert ratio(squeezed(1.0 / 8)) ** 2 > bound, (
+        "a floor of an eighth of the top no longer survives squeezing the tier "
+        "ladder. One of the three ladder constants moved.")
+    assert ratio(squeezed(1.0 / 6)) ** 2 < bound, (
+        "a floor of a sixth of the top now survives squeezing the tier ladder, "
+        "which it did not on 2026-09-04. If that is deliberate, the shape "
+        "chosen for #1230 may no longer be the only one that works.")
+
+
+def test_the_shape_chosen_keeps_the_guard_at_every_floor(affix_floor_run):
+    """Adding the floor and rescaling is monotone, so it cannot break the guard.
+
+    Asserted at floors far past the point the squeezing route fails, because a
+    check that only tried the floors actually in use would not notice the
+    property being lost.
+    """
+    _, ns = affix_floor_run
+    holds = ns["guard_holds"]
+
+    for divisor in (10, 6, 5, 4, 3):
+        assert holds(100.0, 100.0 / divisor), (
+            f"a floor of a {divisor}th of the top now breaks "
+            "Cataclysm.Item.BandsOverlapByExactlyOneTier. The map from the "
+            "unfloored ladder to the floored one has stopped being monotone.")
+
+
+def test_every_stated_floor_is_the_worst_roll(affix_floor_run):
+    """What the script reports, checked against the affixes it read."""
+    from cataclysm_sim import affixes as af
+
+    _, ns = affix_floor_run
+    floored = ns["floored_affixes"]()
+    assert len(floored) == 20, (
+        f"{len(floored)} affixes state a floor, not the 20 approved on "
+        "2026-09-04. If one was added or removed, say so on #1230.")
+
+    for name, top, floor, _slots in floored:
+        worst = af.affix_value(top, af.AFFIX_TIERS[0], 0.0, 0, floor)
+        assert worst == pytest.approx(floor), name
 
 
 def test_every_analysis_script_is_covered_here():
@@ -1709,16 +1775,21 @@ def test_no_affix_can_only_ever_show_zero_any_more(affix_spread_run):
         f"its stated top value is too small to survive them.")
 
 
-def test_four_affixes_still_show_only_one_number(affix_spread_run):
-    """WHAT EASING THE LADDERS DID NOT FIX, kept visible on purpose.
+def test_one_affix_still_shows_only_one_number(affix_spread_run):
+    """WHAT A STATED FLOOR DID NOT FIX, kept visible on purpose.
 
-    These four have stated top values of 0.5, 0.5, 0.5 and 0.7, which is what
-    they give at tier 7 on fully upgraded gear. That is too small to be worth a
-    slot at the END of the game, let alone the start, so no change to either
-    ladder can rescue them -- they now show `0.1` rather than `0.0`, which is an
-    improvement and not a fix.
+    It was four before issue #1230 -- the three leeches and mana regeneration --
+    and all of them had stated top values of 0.5 to 0.7, so a tenth of that
+    could only ever print one number. The three leeches now state a top of 4.0
+    and a floor of 1.0 and have left this list.
 
-    That half is issue #858 and needs their stated values raised.
+    MANA REGENERATION IS THE ONE THAT STAYS, and that is a decision rather than
+    an oversight. Measured against the reference build's 436 mana, every one of
+    its 48 eligible affix slots filled comes to 7.2% of the pool per second,
+    against a class line of 2.5% to 6%, so the stat is already in scale and
+    raising its top would make one affix worth most of a class line. Only its
+    floor moved, from 0.065 to 0.2, so the worst roll prints `0.2` rather than
+    `0.1`. Its band at tier 1 is 0.200 to 0.230, which rounds to one number.
     """
     _, ns = affix_spread_run
 
@@ -1726,41 +1797,33 @@ def test_four_affixes_still_show_only_one_number(affix_spread_run):
         affix.name for affix in ns["every_measurable_affix"]()
         if len(ns["displayed_values"](affix)[0]) == 1)
 
-    assert one_number == [
-        "Flat energy shield leech",
-        "Flat life leech",
-        "Flat mana leech",
-        "Flat mana regeneration",
-    ], (
+    assert one_number == ["Flat mana regeneration"], (
         f"the affixes that can show only one number on an early drop have "
-        f"changed to {one_number}. If their stated values were raised, say so "
-        f"on #858 and update this list; if new ones appeared, that is a "
+        f"changed to {one_number}. If a stated top or floor moved, say so on "
+        f"#1230 and update this list; if new ones appeared, that is a "
         f"regression.")
 
 
-def test_the_squeezed_list_shrank_from_twelve_to_nine(affix_spread_run):
-    """What issue #1179 bought, measured rather than asserted.
+def test_the_squeezed_list_shrank_from_nine_to_one(affix_spread_run):
+    """What stating a floor per affix bought, measured rather than asserted.
 
-    Before the change, twelve affixes could show three different numbers or
-    fewer on an early drop. Nine can now, and the four that left are ones a
-    player notices: all resistances, block chance, critical strike chance and
-    crowd control resistance.
+    Nine affixes could show three different numbers or fewer on an early drop
+    after issue #1179 eased the two ladders. One can now. The eight that left
+    are the ones a player was handed a worthless number for: evasion,
+    penetration, damage reduction, retaliation, health regeneration and the
+    three leeches.
 
-    IT WAS EIGHT UNTIL ISSUE #1227, AND RETALIATION JOINED IT. That is not a
-    regression and it is not the ladders being steepened. Retaliation stopped
-    being a flat amount and became a share of the blow taken, so its stated
-    top value went from 9.5 to 2.0 -- percentage points rather than flat
-    damage. A tenth of 2.0 is 0.2, which cannot show three different numbers.
-    The affix is worth far more than it was; it simply reads as a smaller
-    figure now, and the bottom of its ladder is #1230's to settle along with
-    the other eight.
+    IT WAS TWELVE BEFORE #1179 AND NINE AFTER IT. That change eased the tier and
+    gear ladders, which lifted the whole curve; this one states a floor per
+    affix and moves seven stated tops, which lifts the bottom of the affixes
+    that were still worthless. The two are different work on the same fault.
 
     WRITTEN OUT RATHER THAN COUNTED, because the interesting failure is a
     DIFFERENT affix joining or leaving the list, which a count would hide.
 
     The denominator differs from the issue on purpose: the issue counted against
-    the 72 non-hybrid rows in `game/Data/Affixes.csv`, and this script measures
-    the 53 affixes the model carries.
+    the non-hybrid rows in `game/Data/Affixes.csv`, and this script measures the
+    affixes the model carries.
     """
     _, ns = affix_spread_run
 
@@ -1769,15 +1832,7 @@ def test_the_squeezed_list_shrank_from_twelve_to_nine(affix_spread_run):
         if len(ns["displayed_values"](affix)[0]) <= ns["FEW"])
 
     assert squeezed == [
-        "Flat damage reduction",
-        "Flat energy shield leech",
-        "Flat evasion",
-        "Flat health regeneration",
-        "Flat life leech",
-        "Flat mana leech",
         "Flat mana regeneration",
-        "Flat penetration",
-        "Flat retaliation",
     ], (
         f"the affixes that can show three numbers or fewer on an early drop "
         f"have changed to {squeezed}. Before #1179 there were twelve, and "

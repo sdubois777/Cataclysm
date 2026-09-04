@@ -1,86 +1,87 @@
-Name,AffixName,AffixKind,Position,Stat,ValueKind,TopValue,Breadth,Ailment,Gem,HybridPart1,HybridPart2,AllowedSlots,NameWord,Percent
-Stat_Flat_maximum_health,Flat maximum health,Stat,prefix,max_health,flat,120.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Stat_Increased_maximum_health,Increased maximum health,Stat,prefix,max_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Stat_Flat_maximum_mana,Flat maximum mana,Stat,prefix,max_mana,flat,38.0,0,,,,,"Belt, Chest, Head, Necklace, Relic, Ring",,False
-Stat_Increased_maximum_mana,Increased maximum mana,Stat,prefix,max_mana,increased,12.0,0,,,,,"Belt, Chest, Head, Necklace, Relic, Ring",,False
-Stat_Flat_maximum_energy_shield,Flat maximum energy shield,Stat,prefix,max_energy_shield,flat,50.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",,False
-Stat_Increased_maximum_energy_shield,Increased maximum energy shield,Stat,prefix,max_energy_shield,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",,False
-Stat_Flat_armor,Flat armor,Stat,prefix,armor,flat,250.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Stat_Increased_armor,Increased armor,Stat,prefix,armor,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Stat_Flat_evasion,Flat evasion,Stat,prefix,evasion,flat,4.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",,True
-Stat_Increased_evasion,Increased evasion,Stat,prefix,evasion,increased,12.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",,True
-Stat_Flat_damage,Flat damage,Stat,prefix,attack_damage,flat,22.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False
-Stat_Increased_damage,Increased damage,Stat,prefix,attack_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False
-Stat_Increased_spell_damage,Increased spell damage,Stat,prefix,spell_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False
-Stat_Flat_maximum_class_resource,Flat maximum class resource,Stat,prefix,class_resource,flat,7.0,0,,,,,"Belt, Necklace, Relic, Ring",,False
-Stat_Flat_health_regeneration,Flat health regeneration,Stat,suffix,health_regen,flat,0.95,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Mending,False
-Stat_Increased_health_regeneration,Increased health regeneration,Stat,suffix,health_regen,increased,12.0,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Recovery,False
-Stat_Flat_mana_regeneration,Flat mana regeneration,Stat,suffix,mana_regen,flat,0.65,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Replenishment,False
-Stat_Increased_mana_regeneration,Increased mana regeneration,Stat,suffix,mana_regen,increased,12.0,0,,,,,"Belt, Boots, Chest, Necklace, Ring",the Wellspring,False
-Stat_Increased_energy_shield_regeneration,Increased energy shield regeneration,Stat,suffix,energy_shield_regen,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",the Barrier,False
-Stat_Flat_life_leech,Flat life leech,Stat,suffix,life_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Leech,True
-Stat_Flat_block_chance,Flat block chance,Stat,suffix,block_chance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Shield,True
-Stat_Flat_damage_reduction,Flat damage reduction,Stat,suffix,damage_reduction,flat,2.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Aegis,True
-Stat_Flat_retaliation,Flat retaliation,Stat,suffix,retaliation,flat,2.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Reprisal,True
-Stat_Flat_crowd_control_resistance,Flat crowd control resistance,Stat,suffix,crowd_control_resistance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Steadfastness,True
-Stat_Flat_critical_strike_chance,Flat critical strike chance,Stat,suffix,crit_chance,flat,5.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Precision,True
-Stat_Increased_critical_strike_chance,Increased critical strike chance,Stat,suffix,crit_chance,increased,25.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Keen Edge,True
-Stat_Flat_critical_strike_multiplier,Flat critical strike multiplier,Stat,suffix,crit_multiplier,flat,20.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Brutality,True
-Stat_Increased_attack_speed,Increased attack speed,Stat,suffix,attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Alacrity,False
-Stat_Increased_area_of_effect,Increased area of effect,Stat,suffix,area_of_effect,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Reach,True
-Stat_Increased_damage_over_time_frequency,Increased damage over time frequency,Stat,suffix,dot_frequency,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Quickening,True
-Stat_Flat_penetration,Flat penetration,Stat,suffix,penetration,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Piercing,True
-Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_speed,increased,8.0,0,,,,,"Belt, Boots, Ring",Swiftness,False
-Stat_Flat_cooldown_reduction,Flat cooldown reduction,Stat,suffix,cooldown_reduction,flat,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste,True
-Stat_Flat_magic_find,Flat magic find,Stat,suffix,magic_find,flat,10.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Fortune,True
-Stat_Increased_loot_quantity,Increased loot quantity,Stat,suffix,loot_quantity,increased,8.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Plenty,True
-Resistance_Single_resistance,Single resistance,Resistance,suffix,,flat,40.0,1,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Warding,True
-Resistance_Two_resistances,Two resistances,Resistance,suffix,,flat,28.0,2,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Twin Wards,True
-Resistance_All_resistances,All resistances,Resistance,suffix,,flat,12.0,8,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",the Bulwark,True
-Ailment_Chance_to_bleed,Chance to bleed,Ailment,suffix,,,15.0,0,Bleed,Of Rending,,,"Necklace, Relic, Ring, Weapon",Rending,True
-Ailment_Chance_to_poison,Chance to poison,Ailment,suffix,,,25.0,0,Poison,Of The Viper,,,"Necklace, Relic, Ring, Weapon",Venom,True
-Ailment_Chance_to_disease,Chance to disease,Ailment,suffix,,,20.0,0,Disease,Of Rot,,,"Necklace, Relic, Ring, Weapon",Contagion,True
-Ailment_Chance_to_apply_void_splinter,Chance to apply void splinter,Ailment,suffix,,,15.0,0,Void Splinter,Of The Abyss,,,"Necklace, Relic, Ring, Weapon",the Void,True
-Ailment_Chance_to_necrose,Chance to necrose,Ailment,suffix,,,15.0,0,Necrosis,Of Wasting,,,"Necklace, Relic, Ring, Weapon",Rot,True
-Ailment_Chance_to_madden,Chance to madden,Ailment,suffix,,,15.0,0,Madness,Of Madness,,,"Necklace, Relic, Ring, Weapon",Madness,True
-Ailment_Chance_to_cripple,Chance to cripple,Ailment,suffix,,,15.0,0,Cripple,Of Maiming,,,"Necklace, Relic, Ring, Weapon",Lameness,True
-Ailment_Chance_to_weaken,Chance to weaken,Ailment,suffix,,,15.0,0,Weaken,Of Withering,,,"Necklace, Relic, Ring, Weapon",Enfeebling,True
-Ailment_Chance_to_shred,Chance to shred,Ailment,suffix,,,15.0,0,Shred,Of Shredding,,,"Necklace, Relic, Ring, Weapon",Sundering,True
-Hybrid_Health_and_armor,Health and armor,Hybrid,prefix,,,0.0,0,,,Flat maximum health,Flat armor,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Hybrid_Health_and_energy_shield,Health and energy shield,Hybrid,prefix,,,0.0,0,,,Flat maximum health,Flat maximum energy shield,"Chest, Head, Ring, Shoulders",,False
-Hybrid_Armor_and_evasion,Armor and evasion,Hybrid,prefix,,,0.0,0,,,Flat armor,Flat evasion,"Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Hybrid_Evasion_and_energy_shield,Evasion and energy shield,Hybrid,prefix,,,0.0,0,,,Flat evasion,Flat maximum energy shield,"Chest, Head, Ring, Shoulders",,False
-Hybrid_Mana_and_energy_shield,Mana and energy shield,Hybrid,prefix,,,0.0,0,,,Flat maximum mana,Flat maximum energy shield,"Chest, Head, Relic, Ring",,False
-Hybrid_Increased_health_and_armor,Increased health and armor,Hybrid,prefix,,,0.0,0,,,Increased maximum health,Increased armor,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Hybrid_Attack_speed_and_critical_strike_chance,Attack speed and critical strike chance,Hybrid,suffix,,,0.0,0,,,Increased attack speed,Increased critical strike chance,"Gloves, Necklace, Relic, Ring, Weapon",the Duelist,False
-Hybrid_Critical_strike_chance_and_multiplier,Critical strike chance and multiplier,Hybrid,suffix,,,0.0,0,,,Flat critical strike chance,Flat critical strike multiplier,"Gloves, Necklace, Relic, Ring, Weapon",the Assassin,False
-Hybrid_Health_and_mana_regeneration,Health and mana regeneration,Hybrid,suffix,,,0.0,0,,,Flat health regeneration,Flat mana regeneration,"Belt, Boots, Chest, Necklace, Ring",Renewal,False
-Hybrid_Penetration_and_critical_strike_multiplier,Penetration and critical strike multiplier,Hybrid,suffix,,,0.0,0,,,Flat penetration,Flat critical strike multiplier,"Gloves, Necklace, Relic, Ring, Weapon",the Executioner,False
-Hybrid_Block_chance_and_crowd_control_resistance,Block chance and crowd control resistance,Hybrid,suffix,,,0.0,0,,,Flat block chance,Flat crowd control resistance,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Sentinel,False
-Hybrid_Magic_find_and_loot_quantity,Magic find and loot quantity,Hybrid,suffix,,,0.0,0,,,Flat magic find,Increased loot quantity,"Belt, Boots, Necklace, Relic, Ring",the Magpie,False
-Ailment_Chance_to_burn,Chance to burn,Ailment,suffix,,,15.0,0,Burn,Of Embers,,,"Necklace, Relic, Ring, Weapon",Cinders,True
-Ailment_Chance_to_stun,Chance to stun,Ailment,suffix,,,15.0,0,Stun,,,,"Necklace, Relic, Ring, Weapon",Concussion,True
-Stat_Increased_agility,Increased agility,Stat,suffix,agility,increased,12.0,0,,,,,"Belt, Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",the Fox,False
-Stat_Increased_ferocity,Increased ferocity,Stat,suffix,ferocity,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Wolf,False
-Stat_Increased_constitution,Increased constitution,Stat,suffix,constitution,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Bear,False
-Stat_Increased_vitality,Increased vitality,Stat,suffix,vitality,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Necklace, Pants, Ring, Shoulders",the Ox,False
-Stat_Increased_mind,Increased mind,Stat,suffix,mind,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Necklace, Relic, Ring",the Sage,False
-Stat_Increased_spirit,Increased spirit,Stat,suffix,spirit,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",the Seer,False
-Stat_Increased_efficacy,Increased efficacy,Stat,suffix,efficacy,increased,12.0,0,,,,,"Belt, Boots, Gloves, Necklace, Relic, Ring, Weapon",the Adept,False
-Stat_Increased_luck,Increased luck,Stat,suffix,luck,increased,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",the Gambler,False
-Stat_Flat_mana_leech,Flat mana leech,Stat,suffix,mana_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Drawing,True
-Stat_Flat_energy_shield_leech,Flat energy shield leech,Stat,suffix,energy_shield_leech,flat,0.5,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Siphoning,True
-Stat_Increased_damage_against_War_enemies,Increased damage against War enemies,Stat,prefix,damage_vs_war,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Demonic_enemies,Increased damage against Demonic enemies,Stat,prefix,damage_vs_demonic,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Death_enemies,Increased damage against Death enemies,Stat,prefix,damage_vs_death,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Pestilence_enemies,Increased damage against Pestilence enemies,Stat,prefix,damage_vs_pestilence,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Famine_enemies,Increased damage against Famine enemies,Stat,prefix,damage_vs_famine,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Celestial_enemies,Increased damage against Celestial enemies,Stat,prefix,damage_vs_celestial,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Chaos_enemies,Increased damage against Chaos enemies,Stat,prefix,damage_vs_chaos,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_against_Void_enemies,Increased damage against Void enemies,Stat,prefix,damage_vs_void,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True
-Stat_Increased_damage_over_time,Increased damage over time,Stat,suffix,dot_damage,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Affliction,True
-Stat_Increased_damage_over_time_duration,Increased damage over time duration,Stat,suffix,dot_duration,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Lingering,True
-Stat_Increased_minion_damage,Increased minion damage,Stat,prefix,minion_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False
-Stat_Increased_minion_health,Increased minion health,Stat,prefix,minion_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False
-Stat_Increased_minion_attack_speed,Increased minion attack speed,Stat,suffix,minion_attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Master,False
-Hybrid_Minion_damage_and_minion_health,Minion damage and minion health,Hybrid,prefix,,,0.0,0,,,Increased minion damage,Increased minion health,Ring,,False
+Name,AffixName,AffixKind,Position,Stat,ValueKind,TopValue,Breadth,Ailment,Gem,HybridPart1,HybridPart2,AllowedSlots,NameWord,Percent,Floor
+Stat_Flat_maximum_health,Flat maximum health,Stat,prefix,max_health,flat,120.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Stat_Increased_maximum_health,Increased maximum health,Stat,prefix,max_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Stat_Flat_maximum_mana,Flat maximum mana,Stat,prefix,max_mana,flat,38.0,0,,,,,"Belt, Chest, Head, Necklace, Relic, Ring",,False,0.0
+Stat_Increased_maximum_mana,Increased maximum mana,Stat,prefix,max_mana,increased,12.0,0,,,,,"Belt, Chest, Head, Necklace, Relic, Ring",,False,0.0
+Stat_Flat_maximum_energy_shield,Flat maximum energy shield,Stat,prefix,max_energy_shield,flat,50.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",,False,0.0
+Stat_Increased_maximum_energy_shield,Increased maximum energy shield,Stat,prefix,max_energy_shield,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",,False,0.0
+Stat_Flat_armor,Flat armor,Stat,prefix,armor,flat,250.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Stat_Increased_armor,Increased armor,Stat,prefix,armor,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Stat_Flat_evasion,Flat evasion,Stat,prefix,evasion,flat,4.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",,True,1.0
+Stat_Increased_evasion,Increased evasion,Stat,prefix,evasion,increased,12.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",,True,0.0
+Stat_Flat_damage,Flat damage,Stat,prefix,attack_damage,flat,22.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False,0.0
+Stat_Increased_damage,Increased damage,Stat,prefix,attack_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False,0.0
+Stat_Increased_spell_damage,Increased spell damage,Stat,prefix,spell_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False,0.0
+Stat_Flat_maximum_class_resource,Flat maximum class resource,Stat,prefix,class_resource,flat,7.0,0,,,,,"Belt, Necklace, Relic, Ring",,False,1.75
+Stat_Flat_health_regeneration,Flat health regeneration,Stat,suffix,health_regen,flat,8.0,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Mending,False,2.0
+Stat_Increased_health_regeneration,Increased health regeneration,Stat,suffix,health_regen,increased,12.0,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Recovery,False,0.0
+Stat_Flat_mana_regeneration,Flat mana regeneration,Stat,suffix,mana_regen,flat,0.65,0,,,,,"Belt, Boots, Chest, Necklace, Ring",Replenishment,False,0.2
+Stat_Increased_mana_regeneration,Increased mana regeneration,Stat,suffix,mana_regen,increased,12.0,0,,,,,"Belt, Boots, Chest, Necklace, Ring",the Wellspring,False,0.0
+Stat_Increased_energy_shield_regeneration,Increased energy shield regeneration,Stat,suffix,energy_shield_regen,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",the Barrier,False,0.0
+Stat_Flat_life_leech,Flat life leech,Stat,suffix,life_leech,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Leech,True,1.0
+Stat_Flat_block_chance,Flat block chance,Stat,suffix,block_chance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Shield,True,1.25
+Stat_Flat_damage_reduction,Flat damage reduction,Stat,suffix,damage_reduction,flat,4.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Aegis,True,1.0
+Stat_Flat_retaliation,Flat retaliation,Stat,suffix,retaliation,flat,4.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Reprisal,True,1.0
+Stat_Flat_crowd_control_resistance,Flat crowd control resistance,Stat,suffix,crowd_control_resistance,flat,5.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",Steadfastness,True,1.25
+Stat_Flat_critical_strike_chance,Flat critical strike chance,Stat,suffix,crit_chance,flat,5.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Precision,True,1.25
+Stat_Increased_critical_strike_chance,Increased critical strike chance,Stat,suffix,crit_chance,increased,25.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Keen Edge,True,0.0
+Stat_Flat_critical_strike_multiplier,Flat critical strike multiplier,Stat,suffix,crit_multiplier,flat,20.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Brutality,True,0.0
+Stat_Increased_attack_speed,Increased attack speed,Stat,suffix,attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Alacrity,False,0.0
+Stat_Increased_area_of_effect,Increased area of effect,Stat,suffix,area_of_effect,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Reach,True,0.0
+Stat_Increased_damage_over_time_frequency,Increased damage over time frequency,Stat,suffix,dot_frequency,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Quickening,True,0.0
+Stat_Flat_penetration,Flat penetration,Stat,suffix,penetration,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Piercing,True,1.0
+Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_speed,increased,8.0,0,,,,,"Belt, Boots, Ring",Swiftness,False,2.0
+Stat_Flat_cooldown_reduction,Flat cooldown reduction,Stat,suffix,cooldown_reduction,flat,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste,True,0.0
+Stat_Flat_magic_find,Flat magic find,Stat,suffix,magic_find,flat,10.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Fortune,True,2.5
+Stat_Increased_loot_quantity,Increased loot quantity,Stat,suffix,loot_quantity,increased,8.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Plenty,True,2.0
+Resistance_Single_resistance,Single resistance,Resistance,suffix,,flat,40.0,1,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Warding,True,10.0
+Resistance_Two_resistances,Two resistances,Resistance,suffix,,flat,28.0,2,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Twin Wards,True,7.0
+Resistance_All_resistances,All resistances,Resistance,suffix,,flat,12.0,8,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",the Bulwark,True,3.0
+Ailment_Chance_to_bleed,Chance to bleed,Ailment,suffix,,,15.0,0,Bleed,Of Rending,,,"Necklace, Relic, Ring, Weapon",Rending,True,0.0
+Ailment_Chance_to_poison,Chance to poison,Ailment,suffix,,,25.0,0,Poison,Of The Viper,,,"Necklace, Relic, Ring, Weapon",Venom,True,0.0
+Ailment_Chance_to_disease,Chance to disease,Ailment,suffix,,,20.0,0,Disease,Of Rot,,,"Necklace, Relic, Ring, Weapon",Contagion,True,0.0
+Ailment_Chance_to_apply_void_splinter,Chance to apply void splinter,Ailment,suffix,,,15.0,0,Void Splinter,Of The Abyss,,,"Necklace, Relic, Ring, Weapon",the Void,True,0.0
+Ailment_Chance_to_necrose,Chance to necrose,Ailment,suffix,,,15.0,0,Necrosis,Of Wasting,,,"Necklace, Relic, Ring, Weapon",Rot,True,0.0
+Ailment_Chance_to_madden,Chance to madden,Ailment,suffix,,,15.0,0,Madness,Of Madness,,,"Necklace, Relic, Ring, Weapon",Madness,True,0.0
+Ailment_Chance_to_cripple,Chance to cripple,Ailment,suffix,,,15.0,0,Cripple,Of Maiming,,,"Necklace, Relic, Ring, Weapon",Lameness,True,0.0
+Ailment_Chance_to_weaken,Chance to weaken,Ailment,suffix,,,15.0,0,Weaken,Of Withering,,,"Necklace, Relic, Ring, Weapon",Enfeebling,True,0.0
+Ailment_Chance_to_shred,Chance to shred,Ailment,suffix,,,15.0,0,Shred,Of Shredding,,,"Necklace, Relic, Ring, Weapon",Sundering,True,0.0
+Hybrid_Health_and_armor,Health and armor,Hybrid,prefix,,,0.0,0,,,Flat maximum health,Flat armor,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Hybrid_Health_and_energy_shield,Health and energy shield,Hybrid,prefix,,,0.0,0,,,Flat maximum health,Flat maximum energy shield,"Chest, Head, Ring, Shoulders",,False,0.0
+Hybrid_Armor_and_evasion,Armor and evasion,Hybrid,prefix,,,0.0,0,,,Flat armor,Flat evasion,"Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Hybrid_Evasion_and_energy_shield,Evasion and energy shield,Hybrid,prefix,,,0.0,0,,,Flat evasion,Flat maximum energy shield,"Chest, Head, Ring, Shoulders",,False,0.0
+Hybrid_Mana_and_energy_shield,Mana and energy shield,Hybrid,prefix,,,0.0,0,,,Flat maximum mana,Flat maximum energy shield,"Chest, Head, Relic, Ring",,False,0.0
+Hybrid_Increased_health_and_armor,Increased health and armor,Hybrid,prefix,,,0.0,0,,,Increased maximum health,Increased armor,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Hybrid_Attack_speed_and_critical_strike_chance,Attack speed and critical strike chance,Hybrid,suffix,,,0.0,0,,,Increased attack speed,Increased critical strike chance,"Gloves, Necklace, Relic, Ring, Weapon",the Duelist,False,0.0
+Hybrid_Critical_strike_chance_and_multiplier,Critical strike chance and multiplier,Hybrid,suffix,,,0.0,0,,,Flat critical strike chance,Flat critical strike multiplier,"Gloves, Necklace, Relic, Ring, Weapon",the Assassin,False,0.0
+Hybrid_Health_and_mana_regeneration,Health and mana regeneration,Hybrid,suffix,,,0.0,0,,,Flat health regeneration,Flat mana regeneration,"Belt, Boots, Chest, Necklace, Ring",Renewal,False,0.0
+Hybrid_Penetration_and_critical_strike_multiplier,Penetration and critical strike multiplier,Hybrid,suffix,,,0.0,0,,,Flat penetration,Flat critical strike multiplier,"Gloves, Necklace, Relic, Ring, Weapon",the Executioner,False,0.0
+Hybrid_Block_chance_and_crowd_control_resistance,Block chance and crowd control resistance,Hybrid,suffix,,,0.0,0,,,Flat block chance,Flat crowd control resistance,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Sentinel,False,0.0
+Hybrid_Magic_find_and_loot_quantity,Magic find and loot quantity,Hybrid,suffix,,,0.0,0,,,Flat magic find,Increased loot quantity,"Belt, Boots, Necklace, Relic, Ring",the Magpie,False,0.0
+Ailment_Chance_to_burn,Chance to burn,Ailment,suffix,,,15.0,0,Burn,Of Embers,,,"Necklace, Relic, Ring, Weapon",Cinders,True,0.0
+Ailment_Chance_to_stun,Chance to stun,Ailment,suffix,,,15.0,0,Stun,,,,"Necklace, Relic, Ring, Weapon",Concussion,True,0.0
+Stat_Increased_agility,Increased agility,Stat,suffix,agility,increased,12.0,0,,,,,"Belt, Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",the Fox,False,0.0
+Stat_Increased_ferocity,Increased ferocity,Stat,suffix,ferocity,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Wolf,False,0.0
+Stat_Increased_constitution,Increased constitution,Stat,suffix,constitution,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Bear,False,0.0
+Stat_Increased_vitality,Increased vitality,Stat,suffix,vitality,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Necklace, Pants, Ring, Shoulders",the Ox,False,0.0
+Stat_Increased_mind,Increased mind,Stat,suffix,mind,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Necklace, Relic, Ring",the Sage,False,0.0
+Stat_Increased_spirit,Increased spirit,Stat,suffix,spirit,increased,12.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",the Seer,False,0.0
+Stat_Increased_efficacy,Increased efficacy,Stat,suffix,efficacy,increased,12.0,0,,,,,"Belt, Boots, Gloves, Necklace, Relic, Ring, Weapon",the Adept,False,0.0
+Stat_Increased_luck,Increased luck,Stat,suffix,luck,increased,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",the Gambler,False,0.0
+Stat_Flat_mana_leech,Flat mana leech,Stat,suffix,mana_leech,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Drawing,True,1.0
+Stat_Flat_energy_shield_leech,Flat energy shield leech,Stat,suffix,energy_shield_leech,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Siphoning,True,1.0
+Stat_Increased_damage_against_War_enemies,Increased damage against War enemies,Stat,prefix,damage_vs_war,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Demonic_enemies,Increased damage against Demonic enemies,Stat,prefix,damage_vs_demonic,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Death_enemies,Increased damage against Death enemies,Stat,prefix,damage_vs_death,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Pestilence_enemies,Increased damage against Pestilence enemies,Stat,prefix,damage_vs_pestilence,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Famine_enemies,Increased damage against Famine enemies,Stat,prefix,damage_vs_famine,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Celestial_enemies,Increased damage against Celestial enemies,Stat,prefix,damage_vs_celestial,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Chaos_enemies,Increased damage against Chaos enemies,Stat,prefix,damage_vs_chaos,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_against_Void_enemies,Increased damage against Void enemies,Stat,prefix,damage_vs_void,flat,400.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,True,0.0
+Stat_Increased_damage_over_time,Increased damage over time,Stat,suffix,dot_damage,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Affliction,True,0.0
+Stat_Increased_damage_over_time_duration,Increased damage over time duration,Stat,suffix,dot_duration,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Lingering,True,0.0
+Stat_Increased_minion_damage,Increased minion damage,Stat,prefix,minion_damage,increased,125.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",,False,0.0
+Stat_Increased_minion_health,Increased minion health,Stat,prefix,minion_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
+Stat_Increased_minion_attack_speed,Increased minion attack speed,Stat,suffix,minion_attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Master,False,0.0
+Hybrid_Minion_damage_and_minion_health,Minion damage and minion health,Hybrid,prefix,,,0.0,0,,,Increased minion damage,Increased minion health,Ring,,False,0.0
+Stat_Flat_energy_shield_regeneration,Flat energy shield regeneration,Stat,suffix,energy_shield_regen,flat,10.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",Reforming,False,2.5

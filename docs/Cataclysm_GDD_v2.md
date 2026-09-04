@@ -5336,11 +5336,15 @@ Section VI states them for a target, and a player is a target. The Brute is wher
 
   
 
-**Its ordinary slam lands at exactly 10% of the reference build's effective health, which is exactly the threshold.** An Elite Brute at difficulty tier 8 kills the reference character in 10 hits. A stun that sits precisely on its own threshold is a coin flip decided by rounding, so **the slam does not stun at all** and only the stomp does. That is the clearest evidence the threshold rule is doing work rather than being decoration: it lands on a real enemy, at the middle rarity, at the top tier.
+**Its ordinary slam lands at 9.1% of the reference build's effective health, just under the threshold.** An Elite Brute at difficulty tier 8 kills the reference character in 11 hits. So **the slam does not stun at all** and only the stomp does. That is the clearest evidence the threshold rule is doing work rather than being decoration: it lands on a real enemy, at the middle rarity, at the top tier.
 
   
 
-**The stomp is a Heavy-slot ability at the Heavy slot's 250%, which lands at 25% of the same pool.** Two and a half times the threshold, so it stuns through any reasonable amount of extra mitigation rather than only against the reference build.
+**It sat at exactly 10% until 2026-09-04**, one rounding error either side of stunning, and the flat damage reduction affix doubling for issue #1230 moved it. The reference build spends four affix slots on that stat, so its damage reduction rose from 15.95 to 23.95 and it now survives one more hit. The conclusion is unchanged and holds with more room than it did.
+
+  
+
+**The stomp is a Heavy-slot ability at the Heavy slot's 250%, which lands at 22.7% of the same pool.** Well over twice the threshold, so it stuns through any reasonable amount of extra mitigation rather than only against the reference build.
 
   
 
