@@ -663,9 +663,16 @@ class AffixFamily:
 #: Proposed families. Per-type value falls as breadth rises, which the project
 #: owner specified; total coverage rises, which is what stops the narrow family
 #: being strictly better.
-SINGLE_RESISTANCE = AffixFamily("Single resistance", breadth=1, top_value=20.0)
-HYBRID_RESISTANCE = AffixFamily("Two resistances", breadth=2, top_value=14.0)
-ALL_RESISTANCE = AffixFamily("All resistances", breadth=8, top_value=6.0)
+# DOUBLED ON 2026-09-04 FOR ISSUE #1229, when the difficulty tier started
+# taking resistance off a player. A tier 8 character needs 145 rather than
+# 70, and only 17 pieces can carry a resistance affix, so at the old values
+# reaching 145 with the all-resistances family would have taken 24 of them.
+# Doubling leaves the cost where it was -- about twelve affixes, which is
+# what reference_build.py already spends on it -- and doubles the number
+# printed on the item, which is what issue #1230 is about.
+SINGLE_RESISTANCE = AffixFamily("Single resistance", breadth=1, top_value=40.0)
+HYBRID_RESISTANCE = AffixFamily("Two resistances", breadth=2, top_value=28.0)
+ALL_RESISTANCE = AffixFamily("All resistances", breadth=8, top_value=12.0)
 
 RESISTANCE_FAMILIES = (SINGLE_RESISTANCE, HYBRID_RESISTANCE, ALL_RESISTANCE)
 
@@ -3149,7 +3156,11 @@ def slots_to_cap(family: AffixFamily, tier: int, active_cataclysms: int,
     more slots, which is the gap the Primal Spark and the Corrupted Mote exist
     to close.
     """
-    needed = RESISTANCE_CAP * max(1, active_cataclysms)
+    # THE TIER DECIDES HOW MUCH IS NEEDED PER TYPE, SINCE ISSUE #1229, and
+    # until then this parameter was passed and never read. A player needs the
+    # cap plus whatever the difficulty tier takes off, which is 70 at tiers 1
+    # to 3 and 145 at tier 8.
+    needed = damage.resistance_needed_to_cap(tier) * max(1, active_cataclysms)
     per_slot = family.useful_coverage(affix_tier, active_cataclysms, roll)
     if per_slot <= 0:
         return float("inf")

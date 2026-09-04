@@ -50,6 +50,9 @@
 #include "Items/CataclysmWeaponMeshes.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "Player/CataclysmGameMode.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
@@ -3182,4 +3185,73 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLeaveDungeon(
 
 			Ar.Logf(TEXT("Left dungeon %d. It is still standing and its timer is "
 						 "counting again."), Was);
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances(
+	TEXT("Cataclysm.ShowResistances"),
+	TEXT("Each of the eight resistances, the difficulty tier's penalty, and "
+		 "what is left after it. Nothing else in the game shows these."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			// WHY THIS EXISTS. Issue #1229 gives a player's resistance a penalty
+			// that grows with the difficulty tier, so the number a player is
+			// chasing moves. Before this command nothing in the game printed a
+			// resistance at all -- no screen shows one and Cataclysm.ShowAttributes
+			// lists the eight attributes rather than these -- so the penalty
+			// would have been a difficulty lever nobody could read.
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			const UAbilitySystemComponent* ASC =
+				Character ? Character->GetAbilitySystemComponent() : nullptr;
+			if (!ASC)
+			{
+				Ar.Log(TEXT("No player character."));
+				return;
+			}
+
+			const int32 Tier = ACataclysmGameMode::DifficultyTierIn(Character);
+			const float Penalty =
+				UCataclysmDamageCalculation::ResistancePenaltyFor(ASC);
+
+			Ar.Logf(TEXT("Difficulty tier %d takes %.0f resistance off every "
+						 "type. The cap is %.0f, so %.0f is what it takes to "
+						 "sit at it."),
+					Tier, Penalty,
+					UCataclysmDamageCalculation::ResistanceCap,
+					UCataclysmDamageCalculation::ResistanceCap + Penalty);
+
+			// THE GENERIC FIGURE APPLIES TO EVERY TYPE BY DEFINITION, so it is
+			// shown once rather than folded silently into all eight.
+			float Generic = 0.0f;
+			if (const UCataclysmAllResistanceAttributeSet* All =
+					ASC->GetSet<UCataclysmAllResistanceAttributeSet>())
+			{
+				Generic = All->GetAllResistance();
+			}
+			Ar.Logf(TEXT("All resistances %.1f, which every type below "
+						 "already includes."), Generic);
+
+			for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+			{
+				const FGameplayAttribute Slot =
+					UCataclysmDamageCalculation::ResistanceAttributeFor(Type);
+				const float Typed =
+					(Slot.IsValid() && ASC->HasAttributeSetForAttribute(Slot))
+						? ASC->GetNumericAttribute(Slot)
+						: 0.0f;
+
+				// WHAT A HIT WOULD ACTUALLY MEET, worked out the way
+				// UCataclysmDamageCalculation::Resolve works it out: the total
+				// less the penalty, then bounded. Printing the raw total alone
+				// would disagree with what the player takes.
+				const float Held = Generic + Typed;
+				const float Effective = UCataclysmDamageCalculation::EffectiveResistance(
+					Held - Penalty, /*Penetration=*/0.0f);
+
+				Ar.Logf(TEXT("  %-12s held %6.1f, after the penalty %6.1f, "
+							 "and a hit meets %6.1f"),
+						*Type.ToString(), Held, Held - Penalty, Effective);
+			}
 		}));

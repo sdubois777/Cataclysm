@@ -112,6 +112,49 @@ MORE_DAMAGE_REDUCTION_CAP = 99.0
 
 RESISTANCE_CAP = 70.0
 
+#: The first difficulty tier that takes resistance off a player.
+#:
+#: NOTHING BEFORE IT, SO THE EARLY GAME IS UNTOUCHED. A character at the
+#: first three tiers has almost no resistance gear and a penalty there would
+#: punish the one group least able to answer it.
+#:
+#: `UCataclysmDamageCalculation::FirstPenalisedDifficultyTier` is the same
+#: number in the engine. Issue #1229.
+FIRST_PENALISED_DIFFICULTY_TIER = 4
+
+#: How much resistance each penalised difficulty tier takes off a player.
+#:
+#: SO A TIER 8 CHARACTER NEEDS 145 RATHER THAN 70. Five penalised tiers,
+#: four through eight, at fifteen points each is seventy-five.
+#:
+#: WHY A PENALTY EXISTS. The cap never moved, so the number a player chased
+#: was the same at every tier -- and that fixed target is what forced every
+#: resistance affix to be small. Path of Exile 2 takes 10 points per act, 60
+#: in total, so a player needs 135 to sit at a 75 cap; this is that shape
+#: with the ramp moved later.
+#:
+#: `UCataclysmDamageCalculation::ResistancePenaltyPerTier` is the same
+#: number in the engine.
+RESISTANCE_PENALTY_PER_TIER = 15.0
+
+
+def resistance_penalty_at(difficulty_tier: int) -> float:
+    """How much resistance this difficulty tier takes off a player.
+
+    Zero below the first penalised tier, and never negative: a low tier takes
+    nothing off, it does not hand resistance out.
+
+    AN ENEMY IS NEVER PENALISED. Enemies carry their own resistance and a
+    penalty on both sides would cancel out.
+    """
+    penalised = difficulty_tier - FIRST_PENALISED_DIFFICULTY_TIER + 1
+    return max(0, penalised) * RESISTANCE_PENALTY_PER_TIER
+
+
+def resistance_needed_to_cap(difficulty_tier: int) -> float:
+    """What a player needs to sit at the cap at this difficulty tier."""
+    return RESISTANCE_CAP + resistance_penalty_at(difficulty_tier)
+
 #: How high the cap itself can be raised, and the reason there is a limit.
 #:
 #: The 70 above is where a resistance caps for a character who has done nothing

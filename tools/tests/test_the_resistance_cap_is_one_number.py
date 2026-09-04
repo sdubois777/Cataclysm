@@ -110,6 +110,9 @@ DOCUMENT_COPIES = [
     ("the enemy mitigation ceiling's note on what it leaves an armoured "
      "archetype, in section X",
      r"capped at \*\*56% resistance\*\* rather than the (\d+(?:\.\d+)?)%"),
+    ("the header of the difficulty tier penalty table, added for issue "
+     "#1229",
+     r"Resistance needed to sit at the (\d+(?:\.\d+)?)% cap"),
 ]
 
 

@@ -1501,6 +1501,43 @@ There are eight resistances, one per damage type. Each caps at 70%. Resistance i
 
   
 
+### **The difficulty tier takes resistance off the player**
+
+From difficulty tier 4 onward a player loses **15 resistance of every type per tier**. Nothing is taken at tiers 1, 2 and 3. It applies to the player and never to an enemy.
+
+  
+
+| Difficulty tier | Taken off | Resistance needed to sit at the 70% cap |
+| :-- | --: | --: |
+| 1 to 3 | 0 | 70 |
+| 4 | 15 | 85 |
+| 5 | 30 | 100 |
+| 6 | 45 | 115 |
+| 7 | 60 | 130 |
+| 8 | 75 | 145 |
+
+  
+
+**Why the number a player chases has to move.** The cap does not, so before this a player needed exactly 70 at every tier from the first to the last. A target that never moves is what forced every resistance affix to be small: the stat only ever needed filling once, so each affix had to be a small share of 70 or a handful of pieces reached the cap. The worst roll of the all-resistances affix was 0.60, which no player can feel. Moving the target is what buys the room for larger numbers.
+
+  
+
+**The three resistance affixes doubled on 2026-09-04 to match**, to 40 for one type, 28 for two and 12 for all eight. Seventeen pieces can carry one, and at the old values reaching 145 with the all-eight affix would have taken 24 of them. Doubling leaves the cost where it was, about twelve affixes, and doubles the number printed on the item.
+
+  
+
+**A character with no resistance goes negative, and that is the point.** The floor is −100, so at difficulty tier 8 one wearing none at all sits at −75 and takes 75% more of every damage type. That is what makes this a difficulty lever rather than a tax: it is the thing that stops a character walking into the last tier in the gear of the first.
+
+  
+
+**Where the shape comes from.** Path of Exile 2 takes 10 points per act, 60 in total, so a player needs 135 to sit at a 75% cap by the end of the campaign. This is that shape with the ramp starting later, because the early game is where a worthless affix already hurts most.
+
+  
+
+**Nothing in the game shows a player their resistance yet**, so the `Cataclysm.ShowResistances` console command prints each of the eight, the penalty, and what a hit actually meets. A character sheet is owed and is tracked separately.
+
+  
+
 ### **Overwhelm**
 
 There is no hard gate on difficulty. A player may enter any dungeon at any time. What stops a character walking into content far above them is Overwhelm: an enemy above the player's Power Score strips the player's mitigation in proportion to the gap.
