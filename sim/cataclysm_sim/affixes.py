@@ -1089,9 +1089,15 @@ INCREASED_MANA_REGEN = StatAffix("Increased mana regeneration", "mana_regen",
 #: base, because the classes that need this have no base. That affix grants
 #: 50 maximum energy shield at its top, and 10 a second refills 50 in five
 #: seconds, which is the figure Path of Exile uses for a full recharge.
+#: NO FLOOR OF ITS OWN, so it scales exactly as the flat maximum energy
+#: shield affix does at every tier, roll and upgrade level. That affix
+#: states none either, so both worst rolls are the derived tenth: 5.0
+#: shield and 1.0 a second, which is the same five seconds a perfect pair
+#: gives. A floor on one and not the other made the bottom of the ladder
+#: refill in two seconds instead.
 FLAT_ENERGY_SHIELD_REGEN = StatAffix(
     "Flat energy shield regeneration", "energy_shield_regen", "flat",
-    10.0, SHIELD_SLOTS, SUFFIX, floor=2.5)
+    10.0, SHIELD_SLOTS, SUFFIX)
 INCREASED_ENERGY_SHIELD_REGEN = StatAffix(
     "Increased energy shield regeneration", "energy_shield_regen", "increased",
     12.0, SHIELD_SLOTS, SUFFIX)
@@ -2058,13 +2064,17 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     # -- Head ------------------------------------------------------------
     ItemBase("Helm", "Head", (Implicit("armor", "flat", 200.0),)),
     ItemBase("Hood", "Head", (Implicit("evasion", "flat", 4.0),)),
-    ItemBase("Circlet", "Head", (Implicit("max_energy_shield", "flat", 55.0),)),
+    ItemBase("Circlet", "Head",
+             (Implicit("max_energy_shield", "flat", 55.0),
+              Implicit("energy_shield_regen", "flat", 11.0))),
     ItemBase("Visage", "Head", (Implicit("max_health", "flat", 70.0),
                                 Implicit("crowd_control_resistance", "flat", 4.0))),
     # -- Chest -----------------------------------------------------------
     ItemBase("Cuirass", "Chest", (Implicit("armor", "flat", 440.0),)),
     ItemBase("Jerkin", "Chest", (Implicit("evasion", "flat", 8.0),)),
-    ItemBase("Vestment", "Chest", (Implicit("max_energy_shield", "flat", 120.0),)),
+    ItemBase("Vestment", "Chest",
+             (Implicit("max_energy_shield", "flat", 120.0),
+              Implicit("energy_shield_regen", "flat", 24.0))),
     ItemBase("Hauberk", "Chest", (Implicit("max_health", "flat", 180.0),)),
     ItemBase("Carapace", "Chest", (Implicit("armor", "flat", 220.0),
                                    Implicit("max_health", "flat", 90.0))),
@@ -2083,7 +2093,9 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     ItemBase("Greaves", "Pants", (Implicit("armor", "flat", 250.0),)),
     ItemBase("Leggings", "Pants", (Implicit("evasion", "flat", 5.0),)),
     ItemBase("Kilt", "Pants", (Implicit("max_health", "flat", 130.0),)),
-    ItemBase("Trousers", "Pants", (Implicit("max_energy_shield", "flat", 65.0),)),
+    ItemBase("Trousers", "Pants",
+             (Implicit("max_energy_shield", "flat", 65.0),
+              Implicit("energy_shield_regen", "flat", 13.0))),
     # -- Boots -----------------------------------------------------------
     ItemBase("Sabatons", "Boots", (Implicit("armor", "flat", 145.0),
                                    Implicit("movement_speed", "increased", 5.0))),
@@ -2108,7 +2120,8 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     ItemBase("Pendant", "Necklace", (Implicit("crit_chance", "flat", 6.0),)),
     ItemBase("Torc", "Necklace", (Implicit("max_health", "flat", 95.0),)),
     ItemBase("Locket", "Necklace",
-             (Implicit("max_energy_shield", "flat", 55.0),)),
+             (Implicit("max_energy_shield", "flat", 55.0),
+              Implicit("energy_shield_regen", "flat", 11.0))),
     # -- Relic -----------------------------------------------------------
     ItemBase("Idol", "Relic", (Implicit("crit_multiplier", "flat", 28.0),)),
     ItemBase("Fetish", "Relic", (Implicit("area_of_effect", "increased", 10.0),)),

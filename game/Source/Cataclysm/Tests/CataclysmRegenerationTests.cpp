@@ -14,6 +14,8 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Player/CataclysmPlayerState.h"
 
@@ -307,6 +309,126 @@ bool FCataclysmRegenerationShieldObeysTheDelay::RunTest(const FString&)
 	UCataclysmRegeneration::ApplyStep(Player, 1.0f, 3.0f);
 	TestEqual(TEXT("at three seconds it begins"),
 		CataclysmRegenerationTest::Read(Player, Shield), 10.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRegenerationWornShieldComesBack,
+	"Cataclysm.Regeneration.AWornEnergyShieldRefillsInFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRegenerationWornShieldComesBack::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmRegenerationTest;
+
+	/**
+	 * THE TEST THE OTHER ONE COULD NOT BE. The shield delay test above writes
+	 * both the maximum energy shield and the rate by hand, saying so: "The
+	 * player has no energy shield by default, so give it one to have something
+	 * to refill." That proves the three second wait and cannot notice that no
+	 * character in the game had both a shield and a rate.
+	 *
+	 * They did not. Only the Ritualist had any energy shield regeneration, the
+	 * only gear source was an INCREASED affix which multiplies zero, and no item
+	 * base granted it. A Ravager wearing a Vestment held 120 maximum energy
+	 * shield and a refill rate of nothing, so the shield never came back at all.
+	 * Issue #1237.
+	 *
+	 * SO THIS WEARS A REAL ITEM AND WRITES NOTHING. Every number below is read
+	 * off the character after the equipment has been applied.
+	 */
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	if (!TestNotNull(TEXT("a player pawn"), Player))
+	{
+		return false;
+	}
+
+	UCataclysmEquipmentComponent* Equipment = Player->GetEquipment();
+	UAbilitySystemComponent* AbilitySystem = SystemOf(Player);
+	if (!TestNotNull(TEXT("an equipment component"), Equipment)
+		|| !TestNotNull(TEXT("an ability system"), AbilitySystem))
+	{
+		return false;
+	}
+
+	// A Vestment is the chest base whose implicit is an energy shield. The
+	// player's own class supplies none, which is the case that was broken.
+	FCataclysmItem Vestment;
+	Vestment.Base = FName(TEXT("Chest_Vestment"));
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	Equipment->Equip(Vestment, Removed, AlsoRemoved, Went);
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float Maximum =
+		Read(Player, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute());
+	const float Rate =
+		Read(Player, UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute());
+
+	if (!TestTrue(FString::Printf(
+			TEXT("wearing a Vestment gives a shield, got %.1f"), Maximum),
+		Maximum > 0.0f))
+	{
+		return false;
+	}
+	if (!TestTrue(FString::Printf(
+			TEXT("and a rate to refill it, got %.1f a second"), Rate),
+		Rate > 0.0f))
+	{
+		return false;
+	}
+
+	// FIVE SECONDS, AND THE RULE IS THAT IT DOES NOT DEPEND ON THE SIZE. Every
+	// source of maximum energy shield grants a fifth of what it gave, so this
+	// holds whatever the character is wearing and whichever class it is.
+	// tools/tests/test_an_energy_shield_refills_in_five_seconds.py holds the
+	// data side of the same rule.
+	TestTrue(FString::Printf(
+			TEXT("%.1f shield at %.1f a second refills in %.1f seconds"),
+			Maximum, Rate, Maximum / Rate),
+		FMath::IsNearlyEqual(Maximum / Rate, 5.0f, 0.01f));
+
+	// AND IT ACTUALLY COMES BACK, walked one step at a time rather than
+	// asserted from the two numbers above.
+	Write(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+
+	const float Step = UCataclysmRegeneration::StepSeconds;
+	const int32 StepsInFiveSeconds = FMath::RoundToInt(5.0f / Step);
+	for (int32 Taken = 0; Taken < StepsInFiveSeconds; ++Taken)
+	{
+		UCataclysmRegeneration::ApplyStep(Player, Step, LongSinceHurt);
+	}
+
+	const float Filled =
+		Read(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	TestTrue(FString::Printf(
+			TEXT("five seconds of steps fill the shield: %.1f of %.1f"),
+			Filled, Maximum),
+		FMath::IsNearlyEqual(Filled, Maximum, 0.5f));
+
+	// HALF THE STEPS FILL HALF OF IT, so the figure above is a rate and not a
+	// single write that happened to land on the maximum.
+	Write(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+	for (int32 Taken = 0; Taken < StepsInFiveSeconds / 2; ++Taken)
+	{
+		UCataclysmRegeneration::ApplyStep(Player, Step, LongSinceHurt);
+	}
+
+	const float Half =
+		Read(Player, UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	TestTrue(FString::Printf(
+			TEXT("and half the steps fill half of it: %.1f of %.1f"),
+			Half, Maximum),
+		FMath::IsNearlyEqual(Half, Maximum * 0.5f, 0.5f));
 
 	return true;
 }

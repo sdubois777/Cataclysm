@@ -23,7 +23,7 @@ Ritualist_max_mana,Ritualist,max_mana,90.0,12.0
 Ritualist_max_energy_shield,Ritualist,max_energy_shield,40.0,8.0
 Ritualist_class_resource,Ritualist,class_resource,150.0,0.0
 Ritualist_mana_regen,Ritualist,mana_regen,2.0,0.25
-Ritualist_energy_shield_regen,Ritualist,energy_shield_regen,2.0,0.2
+Ritualist_energy_shield_regen,Ritualist,energy_shield_regen,8.0,1.6
 Ritualist_area_of_effect,Ritualist,area_of_effect,110.0,0.0
 Ritualist_spell_damage,Ritualist,spell_damage,10.0,1.5
 Ritualist_movement_speed,Ritualist,movement_speed,3.5,0.0

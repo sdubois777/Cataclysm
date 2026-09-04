@@ -2,6 +2,122 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — An energy shield refills in five seconds, whatever built it
+
+### What was wrong
+
+The project owner, from a play test: "I believe the concept is you have x energy
+shield, and once it takes damage there should be a 3 second delay before it
+starts to recharge. This doesn't actually work in game right now."
+
+**The delay was built and correct.** `UCataclysmRegeneration::ShieldRefillDelaySeconds`
+is 3.0, a repeating quarter-second timer on every character calls
+`ApplyStep` with the seconds since it last took damage, and
+`UCataclysmVitalAttributeSet` restarts that clock on any hit that reached health,
+the shield or mana — so damage over time restarts it, which is the rule the
+design states.
+
+**The rate was the part nobody supplied.** A shield refills at the character's
+`energy_shield_regen` stat, and every source of that stat was missing:
+
+| Source | What it gave |
+| :-- | :-- |
+| The Ritualist class line | 2 at level 1, 21.8 at level 100 |
+| Every other class line | nothing |
+| `Stat_Increased_energy_shield_regeneration` | a percentage increase, so it multiplied zero |
+| Item base implicits | none granted it |
+
+So a Ravager or a Masochist wearing a Vestment held 120 maximum energy shield and
+a refill rate of zero: **the shield never came back at all.** The Ritualist's own
+took 38 seconds from empty at level 100.
+
+The automation test for the delay could not notice, and says why in its own
+comment: "The player has no energy shield by default, so give it one to have
+something to refill." It writes both numbers by hand.
+
+### What was rejected, and why the reason is worth keeping
+
+The project owner chose, from four options, "every class gets an energy shield
+regeneration base proportional to its maximum shield, and a flat energy shield
+regeneration affix is added", and asked for it to be verified before it was
+built. **Verifying it found a hole.**
+
+| Class | class maximum energy shield | a base at a fifth of it | refills a 415 shield in |
+| :-- | --: | --: | --: |
+| Ritualist | 832 | 166.4 | 3 seconds |
+| Ravager | 0 | 0.0 | **never** |
+| Masochist | 0 | 0.0 | **never** |
+| The default line | 0 | 0.0 | **never** |
+
+A class whose own maximum is zero gets a base of zero. The three classes that
+produced the report hold their whole shield from gear, and a class stat line is a
+base plus a per-level figure and cannot refer to another stat.
+
+### What was decided
+
+**Every source of maximum energy shield grants a fifth of what it gave as energy
+shield regeneration**, so a shield refills in five seconds however it was built
+and whatever class is wearing it.
+
+| Source | maximum energy shield | regeneration it now also grants |
+| :-- | --: | --: |
+| Circlet implicit | 55 | 11.0 |
+| Vestment implicit | 120 | 24.0 |
+| Trousers implicit | 65 | 13.0 |
+| Locket implicit | 55 | 11.0 |
+| Flat maximum energy shield affix | 50 at its top | 10.0, from the flat energy shield regeneration affix added the same day |
+| Ritualist class line | 40 plus 8 a level | 8 plus 1.6 a level, and it was 2 plus 0.2 |
+
+Whole characters, measured:
+
+| Character | shield | rate | refills in |
+| :-- | --: | --: | --: |
+| Ritualist, class line only | 832 | 166.4/s | 5.0s |
+| Ravager, the four implicits | 295 | 59.0/s | 5.0s |
+| Ravager, implicits and four flat shield affixes | 495 | 99.0/s | 5.0s |
+| Ritualist, class line and four flat shield affixes | 1,032 | 206.4/s | 5.0s |
+
+**Five seconds is Path of Exile's figure**, reached the same way: they recharge
+20% of maximum energy shield per second after their own delay.
+
+**This is arithmetically the same as refilling at a share of the maximum**, which
+was one of the four options. The difference is that it is authored as data rather
+than computed, so the increased energy shield regeneration affix, the Spirit
+attribute and any passive node that scales the stat all keep working on it.
+
+### Two things move the five seconds, and both are deliberate
+
+- **The increased energy shield regeneration affix shortens it**: 3.4 seconds on
+  four pieces, 2.0 on twelve.
+- **The increased maximum energy shield affix lengthens it**, because it raises
+  the pool and not the rate: 7.4 seconds on four pieces, 12.2 on twelve. A bigger
+  shield taking longer to come back is the trade for having it.
+
+The Spirit attribute does the same in miniature: it raises the shield by 2% a
+point and the regeneration by 1%, so a Spirit-heavy character's shield refills
+more slowly. That was already true and is not changed here.
+
+### The flat regeneration affix gave its floor back
+
+It was added earlier the same day with a top of 10 and a floor of 2.5. The flat
+maximum energy shield affix states no floor, so its own worst roll is the derived
+tenth of 50, which is 5.0. **Five shield and 2.5 a second refills in two seconds,
+not five.** Dropping the floor makes the two scale identically at every tier,
+roll and upgrade level: 5.0 shield and 1.0 a second at the worst, 50 and 10 at
+the best, five seconds at both ends and everywhere between.
+
+### What holds it
+
+`tools/tests/test_an_energy_shield_refills_in_five_seconds.py` reads both numbers
+out of the data and divides, for every item base, both affixes and every class
+line, and checks that the design document states the rate. Five ways of breaking
+the rule were each shown failing.
+
+`Cataclysm.Regeneration.AWornEnergyShieldRefillsInFiveSeconds` is the test the
+existing one could not be: it puts a real Vestment on a spawned character, writes
+nothing by hand, and walks the refill one quarter-second step at a time. It was
+shown failing by making the item pipeline apply only a base's first implicit.
+
 ## 2026-09-04 — A stated floor per affix, and seven tops moved to make room for one
 
 ### What was wrong
