@@ -1549,6 +1549,14 @@ def affixes(book) -> list[dict]:
             "HybridPart2": _cell(raw, headers, "Hybrid Part 2"),
             "AllowedSlots": allowed,
             "NameWord": name_word,
+            # WHETHER THE STAT IS MEASURED IN PERCENTAGE POINTS, which is a
+            # different question from Value Kind's "which bucket of the
+            # pipeline does this join". A flat addition to a stat that is
+            # itself a percentage is exactly the case that used to print no
+            # percent sign, so "+0.2 to life leech" did not say what it meant.
+            # Issue #1224.
+            "Percent": _cell(raw, headers, "Percent").lower()
+                       in ("yes", "true", "1"),
         })
 
     # TWO AFFIXES SHARING A WORD would make an item's name say less than it
@@ -4046,6 +4054,65 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_affix_percent_agrees(tables: dict[str, list[dict]]) -> list[str]:
+    """Two affixes granting one stat must agree on whether it is a percentage.
+
+    The Percent column is filled in per affix row and the fact it records
+    belongs to the STAT, so `Flat critical strike chance` and `Increased
+    critical strike chance` both name `crit_chance` and both have to say the
+    same thing about it. Without this check the column is a second answer that
+    can drift from itself, which is the failure this project has already had
+    with the power model.
+    """
+    affix_rows = tables.get("Affixes")
+    if not affix_rows:
+        return []
+
+    said: dict[str, tuple[str, bool]] = {}
+    problems = []
+    for row in affix_rows:
+        stat = row["Stat"]
+        if not stat:
+            continue
+        if stat in said:
+            first, answer = said[stat]
+            if answer != row["Percent"]:
+                problems.append(
+                    f"Affixes/{row['Name']}: says Percent is {row['Percent']} "
+                    f"for stat {stat!r}, and Affixes/{first} says "
+                    f"{answer}. One stat, one answer.")
+        else:
+            said[stat] = (row["Name"], row["Percent"])
+    return problems
+
+
+def validate_implicit_stats_have_an_affix(
+        tables: dict[str, list[dict]]) -> list[str]:
+    """Every stat an item base grants as an implicit must have an affix too.
+
+    The item tool tip reads whether a stat is a percentage off the affix table,
+    because that is the only table that records it. An implicit naming a stat
+    no affix grants would print with no percent sign and nothing would say so.
+    Cross-checking the two sheets keeps that impossible without a second list.
+    """
+    bases = tables.get("ItemBases")
+    affix_rows = tables.get("Affixes")
+    if not bases or not affix_rows:
+        return []
+
+    covered = {row["Stat"] for row in affix_rows if row["Stat"]}
+    problems = []
+    for base in bases:
+        for field in ("Implicit1Stat", "Implicit2Stat"):
+            stat = base.get(field) or ""
+            if stat and stat not in covered:
+                problems.append(
+                    f"ItemBases/{base['Name']}: {field} is {stat!r}, which no "
+                    "affix grants, so the tool tip cannot tell whether it is "
+                    "a percentage")
+    return problems
+
+
 def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     """A hybrid affix must name two affixes that exist.
 
@@ -4205,6 +4272,8 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
                 + validate_hybrid_parts(tables)
+                + validate_affix_percent_agrees(tables)
+                + validate_implicit_stats_have_an_affix(tables)
                 + validate_element_visuals(tables, declared_tags(book))
                 + validate_passive_effects(tables, known_tags(book)))
     if problems:

@@ -1242,7 +1242,15 @@ INCREASED_MOVEMENT_SPEED = StatAffix("Increased movement speed",
 #: By convention. Cooldown reduction divides rather than subtracting, so no
 #: quantity of it reaches zero and it needs no cap.
 #:
-#: FLAT AND NOT INCREASED, THOUGH IT READS AS "INCREASED". The stat holds the
+#: NAMED "FLAT COOLDOWN REDUCTION" AND NOT "INCREASED COOLDOWN REDUCTION" since
+#: 2026-09-04, the project owner's decision on issue #1223. The old name made
+#: the item tool tip read "+4.8 to Increased cooldown reduction", because the
+#: line is built from the affix's name and this one began with a word the
+#: sentence already supplies. "Flat" is the word every other flat row begins
+#: with and the one the tool tip strips, so it now reads "+4.8% to cooldown
+#: reduction" like the rest of them.
+#:
+#: FLAT AND NOT INCREASED, THOUGH IT ONCE READ AS "INCREASED". The stat holds the
 #: character's ACCUMULATED INCREASES -- the design's formula is
 #: ``base / ((1 + sum of increases) x more)`` -- so a source contributes
 #: percentage points INTO that sum rather than multiplying it. Recorded as
@@ -1250,9 +1258,9 @@ INCREASED_MOVEMENT_SPEED = StatAffix("Increased movement speed",
 #: cooldown reduction was zero for every character whatever they wore. Path of
 #: Exile, whose formula this design copied, adds every source into one bucket
 #: before the single division. See ``docs/DECISIONS.md``.
-INCREASED_COOLDOWN_REDUCTION = StatAffix("Increased cooldown reduction",
-                                         "cooldown_reduction", "flat",
-                                         12.0, UTILITY_SLOTS, SUFFIX)
+COOLDOWN_REDUCTION = StatAffix("Flat cooldown reduction",
+                               "cooldown_reduction", "flat",
+                               12.0, UTILITY_SLOTS, SUFFIX)
 
 #: By convention. Both affect what drops rather than what a character can do, so
 #: they compete with combat stats for the same slots, which is the trade.
@@ -1427,7 +1435,7 @@ AFFIX_POOL: tuple[StatAffix, ...] = (
     INCREASED_AREA_OF_EFFECT,
     FLAT_PENETRATION,
     INCREASED_MOVEMENT_SPEED,
-    INCREASED_COOLDOWN_REDUCTION,
+    COOLDOWN_REDUCTION,
     FLAT_MAGIC_FIND,
     INCREASED_LOOT_QUANTITY,
 ) + DOT_LEVER_AFFIXES + ATTRIBUTE_AFFIXES + DAMAGE_VS_AFFIXES
@@ -2021,7 +2029,7 @@ ITEM_BASES: tuple[ItemBase, ...] = (
     # -- Relic -----------------------------------------------------------
     ItemBase("Idol", "Relic", (Implicit("crit_multiplier", "flat", 28.0),)),
     ItemBase("Fetish", "Relic", (Implicit("area_of_effect", "increased", 10.0),)),
-    # Flat and not increased, for the reason INCREASED_COOLDOWN_REDUCTION
+    # Flat and not increased, for the reason COOLDOWN_REDUCTION
     # gives: the stat IS the accumulated increases, so a source adds to it.
     ItemBase("Reliquary", "Relic",
              (Implicit("cooldown_reduction", "flat", 10.0),)),

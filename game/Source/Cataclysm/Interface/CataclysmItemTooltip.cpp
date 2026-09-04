@@ -55,6 +55,37 @@ namespace
 		return Phrase;
 	}
 
+	/**
+	 * Whether a stat is measured in percentage points, read out of the
+	 * affix rows.
+	 *
+	 * THE AFFIX TABLE IS THE ONLY TABLE THAT RECORDS IT, so an implicit
+	 * asks the affixes about its own stat rather than carrying a second
+	 * answer of its own. `validate_implicit_stats_have_an_affix` in
+	 * tools/generate_datatables.py refuses a workbook where an implicit
+	 * names a stat no affix grants, so this lookup cannot come back
+	 * empty and quietly say "not a percentage". Issue #1224.
+	 */
+	bool TooltipStatIsPercent(const UDataTable* AffixTable, const FString& Stat)
+	{
+		if (!AffixTable || Stat.IsEmpty())
+		{
+			return false;
+		}
+
+		bool bPercent = false;
+		AffixTable->ForeachRow<FCataclysmAffixRow>(
+			TEXT("UCataclysmItemTooltip"),
+			[&Stat, &bPercent](const FName&, const FCataclysmAffixRow& Row)
+			{
+				if (Row.Stat.Equals(Stat, ESearchCase::IgnoreCase) && Row.Percent)
+				{
+					bPercent = true;
+				}
+			});
+		return bPercent;
+	}
+
 	/** The damage types a resistance affix rolled, as `Fire and Cold`. */
 	FString TooltipDamageTypeList(const TArray<FName>& Types)
 	{
@@ -94,8 +125,31 @@ namespace
 	{
 		if (Row.ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
 		{
-			return FString::Printf(TEXT("+%s to %s"),
+			// A FLAT ROW WHOSE NAME BEGINS "Increased" GRANTS AN INCREASE,
+			// and the two columns are not in conflict. ValueKind says the
+			// affix ADDS to the stat rather than scaling it; the stat itself
+			// is a bucket of increases, which is why its name says so.
+			// Putting such a row into "+N to X" printed "+160 to Increased
+			// damage against War enemies", a third sentence shape this
+			// project does not use. Issue #1223. The eight rows for damage
+			// against one Cataclysm are the only ones in this state, and
+			// Cataclysm.Tooltip.EveryAffixInTheDataReads is what holds that.
+			if (Row.AffixName.StartsWith(TEXT("Increased "),
+										 ESearchCase::IgnoreCase))
+			{
+				return FString::Printf(TEXT("%s%% increased %s"),
+					*UCataclysmItemTooltip::NumberInWords(Value),
+					*TooltipWithoutLeadingWord(Row.AffixName, TEXT("Increased")));
+			}
+
+			// THE PERCENT SIGN COMES FROM THE STAT, NOT FROM THE VALUE KIND.
+			// A flat addition to a stat that is itself measured in percentage
+			// points needs the sign as much as an increase does, and eleven
+			// rows printed without it -- "+0.2 to life leech" did not say
+			// whether that was 0.2 per cent or 0.2 health. Issue #1224.
+			return FString::Printf(TEXT("+%s%s to %s"),
 				*UCataclysmItemTooltip::NumberInWords(Value),
+				Row.Percent ? TEXT("%") : TEXT(""),
 				*TooltipWithoutLeadingWord(Row.AffixName, TEXT("Flat")));
 		}
 		if (Row.ValueKind.Equals(TEXT("increased"), ESearchCase::IgnoreCase))
@@ -165,7 +219,8 @@ FString UCataclysmItemTooltip::ImplicitLine(const FString& Stat,
 											const FString& Kind,
 											float StatedValue,
 											int32 GearLevel,
-											bool bTwoHanded)
+											bool bTwoHanded,
+											const UDataTable* AffixTable)
 {
 	// AN EMPTY STAT IS HOW A BASE SAYS IT HAS ONLY ONE IMPLICIT, not an error.
 	// Every armour base fills Implicit1 and leaves Implicit2 blank.
@@ -183,7 +238,16 @@ FString UCataclysmItemTooltip::ImplicitLine(const FString& Stat,
 		return FString::Printf(TEXT("%s%% increased %s"),
 							   *NumberInWords(Value), *Subject);
 	}
-	return FString::Printf(TEXT("+%s to %s"), *NumberInWords(Value), *Subject);
+
+	// AN IMPLICIT ON A PERCENTAGE STAT NEEDS THE SIGN TOO. A helmet's
+	// implicit evasion and an evasion affix on the same helmet sit two
+	// lines apart, so one of them printing "+4 to evasion" while the other
+	// printed "+1.2% to evasion" would read as two different stats.
+	// Issue #1224.
+	return FString::Printf(TEXT("+%s%s to %s"), *NumberInWords(Value),
+						   TooltipStatIsPercent(AffixTable, Stat) ? TEXT("%")
+																  : TEXT(""),
+						   *Subject);
 }
 
 FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
@@ -210,13 +274,18 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 		// is the same split UCataclysmItemModifiers::AccumulateInto relies on.
 		// A family covering all eight leaves the list empty, because there was
 		// no choice to make when it rolled.
+		//
+		// A RESISTANCE IS A PERCENTAGE, and `Damage *= 1 - Resist / 100` is
+		// where it is applied. The sign comes off the row like every other
+		// one so there is a single answer rather than a rule written twice.
+		const TCHAR* const ResistSign = Affix->Percent ? TEXT("%") : TEXT("");
 		if (Rolled.DamageTypes.Num() == 0)
 		{
-			return FString::Printf(TEXT("+%s to all resistances%s"),
-								   *NumberInWords(Value), *Tier);
+			return FString::Printf(TEXT("+%s%s to all resistances%s"),
+								   *NumberInWords(Value), ResistSign, *Tier);
 		}
-		return FString::Printf(TEXT("+%s to %s resistance%s%s"),
-							   *NumberInWords(Value),
+		return FString::Printf(TEXT("+%s%s to %s resistance%s%s"),
+							   *NumberInWords(Value), ResistSign,
 							   *TooltipDamageTypeList(Rolled.DamageTypes),
 							   Rolled.DamageTypes.Num() > 1 ? TEXT("s") : TEXT(""),
 							   *Tier);
@@ -287,8 +356,12 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 	// looked up reaches here too, which is a data fault rather than a shape.
 	if (!Affix->AffixName.IsEmpty())
 	{
-		return FString::Printf(TEXT("%s: %s%s"), *Affix->AffixName,
-							   *NumberInWords(Value), *Tier);
+		// AN AILMENT CHANCE IS A PERCENTAGE. It is capped at 100 and
+		// anything past that raises the effect's magnitude instead, so
+		// "Chance to bleed: 15" was a percentage printed as a bare number.
+		return FString::Printf(TEXT("%s: %s%s%s"), *Affix->AffixName,
+							   *NumberInWords(Value),
+							   Affix->Percent ? TEXT("%") : TEXT(""), *Tier);
 	}
 
 	return FString();
@@ -456,9 +529,11 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	{
 		for (const FString& Line : {
 				 ImplicitLine(Base->Implicit1Stat, Base->Implicit1Kind,
-							  Base->Implicit1Value, Item.GearLevel, bTwoHanded),
+							  Base->Implicit1Value, Item.GearLevel, bTwoHanded,
+							  AffixTable),
 				 ImplicitLine(Base->Implicit2Stat, Base->Implicit2Kind,
-							  Base->Implicit2Value, Item.GearLevel, bTwoHanded)})
+							  Base->Implicit2Value, Item.GearLevel, bTwoHanded,
+							  AffixTable)})
 		{
 			if (!Line.IsEmpty())
 			{

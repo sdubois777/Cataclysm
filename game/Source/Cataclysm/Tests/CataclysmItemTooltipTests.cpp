@@ -88,6 +88,100 @@ namespace CataclysmTooltipTest
 		return Item;
 	}
 
+	/**
+	 * Whether one phrase of a tool tip line states a value of zero.
+	 *
+	 * THE NUMBER IS READ RATHER THAN SEARCHED FOR. An earlier version of
+	 * this looked for the substring "0% increased", which is inside
+	 * "400% increased" as well, so the eight affixes for damage against
+	 * one Cataclysm failed the moment issue #1223 gave them the increased
+	 * sentence. Every phrase states its number first, after a leading "+"
+	 * or after the colon an ailment writes its own name before.
+	 *
+	 * ONE PHRASE AND NOT A WHOLE LINE, because a hybrid puts two on one
+	 * line joined by ", " and either half could be the zero.
+	 */
+	bool PhraseStatesZero(const FString& Phrase)
+	{
+		FString Rest = Phrase.TrimStartAndEnd();
+
+		int32 Colon = INDEX_NONE;
+		if (Rest.FindChar(TEXT(':'), Colon))
+		{
+			Rest = Rest.RightChop(Colon + 1).TrimStart();
+		}
+		Rest.RemoveFromStart(TEXT("+"));
+
+		int32 End = 0;
+		while (End < Rest.Len()
+			   && (FChar::IsDigit(Rest[End]) || Rest[End] == TEXT('.')))
+		{
+			++End;
+		}
+		if (End == 0)
+		{
+			// A phrase beginning with a word states no number of its own.
+			return false;
+		}
+		return FCString::Atof(*Rest.Left(End)) == 0.0f;
+	}
+
+	/**
+	 * Whether a line for this affix has to carry a percent sign.
+	 *
+	 * ASKED OF THE ROW RATHER THAN LISTED HERE, so an affix added to the
+	 * data later is covered without anybody editing this file. An
+	 * increase is always a percentage of something; a flat addition is
+	 * one only when the stat it adds to is measured in percentage points,
+	 * which is what the Percent column says. A hybrid grants two stats and
+	 * needs a sign if either half does.
+	 */
+	bool NeedsAPercentSign(const FCataclysmAffixRow& Row,
+						   const UDataTable* AffixTable)
+	{
+		if (Row.AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+		{
+			for (const FString& Part : { Row.HybridPart1, Row.HybridPart2 })
+			{
+				const FCataclysmAffixRow* Half =
+					UCataclysmItemModifiers::AffixNamed(AffixTable, Part);
+				if (Half && NeedsAPercentSign(*Half, AffixTable))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		return Row.Percent
+			|| Row.ValueKind.Equals(TEXT("increased"), ESearchCase::IgnoreCase);
+	}
+
+	/** Whether a line for this affix must carry NO percent sign.
+	 *
+	 * NOT THE OPPOSITE OF THE ABOVE FOR A HYBRID, whose two halves can
+	 * disagree: `Magic find and loot quantity` grants one percentage and
+	 * one increase, so its line must have a sign and may not be forbidden
+	 * one. Only a hybrid whose halves are both plain is checked.
+	 */
+	bool MustCarryNoPercentSign(const FCataclysmAffixRow& Row,
+								const UDataTable* AffixTable)
+	{
+		if (Row.AffixKind.Equals(TEXT("Hybrid"), ESearchCase::IgnoreCase))
+		{
+			for (const FString& Part : { Row.HybridPart1, Row.HybridPart2 })
+			{
+				const FCataclysmAffixRow* Half =
+					UCataclysmItemModifiers::AffixNamed(AffixTable, Part);
+				if (!Half || NeedsAPercentSign(*Half, AffixTable))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		return !NeedsAPercentSign(Row, AffixTable);
+	}
+
 	/** The one affix line a helm carrying one affix produces. */
 	FString OneAffixLine(const FCataclysmItem& Item)
 	{
@@ -305,6 +399,35 @@ bool FCataclysmTooltipEveryAffixReads::RunTest(const FString& Parameters)
 			AddError(FString::Printf(
 				TEXT("%s (kind %s, value kind '%s') reads as nothing."),
 				*Row.Key.ToString(), *Affix->AffixKind, *Affix->ValueKind));
+		}
+
+		// UNTIL ISSUE #1223 THIS CHECKED ONLY THAT THE LINE WAS NOT EMPTY,
+		// and nine rows read "+160 to Increased damage against War enemies"
+		// unnoticed. A line that still carries the affix name's own leading
+		// word has fallen through to the wrong sentence.
+		if (Line.Contains(TEXT(" to Increased"))
+			|| Line.Contains(TEXT(" to Flat")))
+		{
+			AddError(FString::Printf(
+				TEXT("%s reads '%s', which keeps a word the sentence already "
+					 "supplies."), *Row.Key.ToString(), *Line));
+		}
+
+		// AND UNTIL ISSUE #1224 ELEVEN LINES NAMED A PERCENTAGE STAT AND
+		// PRINTED NO SIGN, so "+0.2 to life leech" did not say whether that
+		// was 0.2 per cent or 0.2 health.
+		if (NeedsAPercentSign(*Affix, AffixTable) && !Line.Contains(TEXT("%")))
+		{
+			AddError(FString::Printf(
+				TEXT("%s grants a percentage and reads '%s', with no percent "
+					 "sign."), *Row.Key.ToString(), *Line));
+		}
+		if (MustCarryNoPercentSign(*Affix, AffixTable)
+			&& Line.Contains(TEXT("%")))
+		{
+			AddError(FString::Printf(
+				TEXT("%s grants no percentage and reads '%s', which claims "
+					 "one."), *Row.Key.ToString(), *Line));
 		}
 		++Checked;
 	}
@@ -532,10 +655,12 @@ bool FCataclysmTooltipImplicitFollowsUpgrade::RunTest(const FString& Parameters)
 	// which is exactly the problem this whole tool tip exists to solve.
 	const FString AtZero =
 		UCataclysmItemTooltip::ImplicitLine(TEXT("armor"), TEXT("flat"),
-											200.0f, 0, /*bTwoHanded=*/false);
+											200.0f, 0, /*bTwoHanded=*/false,
+											CataclysmTooltipTest::Affixes());
 	const FString AtTen =
 		UCataclysmItemTooltip::ImplicitLine(TEXT("armor"), TEXT("flat"),
-											200.0f, 10, /*bTwoHanded=*/false);
+											200.0f, 10, /*bTwoHanded=*/false,
+											CataclysmTooltipTest::Affixes());
 
 	TestTrue(TEXT("a +0 piece states an implicit"), !AtZero.IsEmpty());
 	TestTrue(FString::Printf(TEXT("and a +10 piece states a different one: "
@@ -545,7 +670,75 @@ bool FCataclysmTooltipImplicitFollowsUpgrade::RunTest(const FString& Parameters)
 	// AN EMPTY STAT IS HOW A BASE SAYS IT HAS ONLY ONE IMPLICIT.
 	TestTrue(TEXT("a base with no second implicit produces no second line"),
 		UCataclysmItemTooltip::ImplicitLine(FString(), TEXT("flat"), 5.0f, 0,
-											false).IsEmpty());
+											false,
+											CataclysmTooltipTest::Affixes()).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipImplicitStatesItsUnit,
+	"Cataclysm.Tooltip.AnImplicitSaysWhetherItIsAPercentage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipImplicitStatesItsUnit::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	// A HELM'S IMPLICIT EVASION AND AN EVASION AFFIX SIT TWO LINES APART.
+	// Evasion is rolled against a number from 0 to 100, so it is a
+	// percentage; armour is a rating fed to `100 x A / (A + K)`, so it is
+	// not. Issue #1224. Real stats rather than invented ones, so a stat
+	// leaving the data fails here.
+	const FString Evasion = UCataclysmItemTooltip::ImplicitLine(
+		TEXT("evasion"), TEXT("flat"), 4.0f, 0, /*bTwoHanded=*/false,
+		Affixes());
+	const FString Armour = UCataclysmItemTooltip::ImplicitLine(
+		TEXT("armor"), TEXT("flat"), 200.0f, 0, /*bTwoHanded=*/false,
+		Affixes());
+
+	TestTrue(FString::Printf(TEXT("implicit evasion says it is a "
+								  "percentage: '%s'"), *Evasion),
+		Evasion.Contains(TEXT("%")));
+	TestFalse(FString::Printf(TEXT("implicit armour does not: '%s'"),
+							  *Armour),
+		Armour.Contains(TEXT("%")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTooltipDamageAgainstReadsAsIncrease,
+	"Cataclysm.Tooltip.DamageAgainstACataclysmReadsAsAnIncrease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTooltipDamageAgainstReadsAsIncrease::RunTest(
+	const FString& Parameters)
+{
+	using namespace CataclysmTooltipTest;
+
+	// THE ROW IS FLAT AND THE SENTENCE IS AN INCREASE, which is the case
+	// issue #1223 reports. The affix adds a flat amount to a stat that is
+	// itself the increases bucket for damage against one Cataclysm, so
+	// "+160 to Increased damage against War enemies" was a third sentence
+	// shape the project does not use.
+	const FCataclysmItem Item =
+		HelmWith(TEXT("Stat_Increased_damage_against_War_enemies"));
+	const FString Line = OneAffixLine(Item);
+
+	TestTrue(FString::Printf(TEXT("it reads as an increase: '%s'"), *Line),
+		Line.Contains(TEXT("% increased damage against War enemies")));
+	TestFalse(FString::Printf(TEXT("and keeps no leading word: '%s'"), *Line),
+		Line.Contains(TEXT("to Increased")));
+
+	// AND THE ONE ROW RENAMED WITH IT. `Increased cooldown reduction` was
+	// the ninth line in that shape and is now `Cooldown reduction`, the
+	// project owner's decision of 2026-09-04, because the stat divides
+	// rather than subtracting and "increased" said the wrong thing about
+	// it either way.
+	const FString Cooldown =
+		OneAffixLine(HelmWith(TEXT("Stat_Flat_cooldown_reduction")));
+	TestTrue(FString::Printf(TEXT("cooldown reduction reads as a "
+								  "percentage: '%s'"), *Cooldown),
+		Cooldown.Contains(TEXT("% to cooldown reduction")));
 
 	return true;
 }
@@ -856,13 +1049,6 @@ bool FCataclysmTooltipNoAffixReadsZero::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// EVERY WAY A ZERO CAN BE WRITTEN, in the three shapes a line takes.
-	const TArray<FString> ReadsAsZero = {
-		TEXT("+0 to"), TEXT("+0.0 to"),
-		TEXT("0% increased"), TEXT("0.0% increased"),
-		TEXT(": 0 "), TEXT(": 0.0 "),
-	};
-
 	int32 Checked = 0;
 	for (const TPair<FName, uint8*>& Row : AffixTable->GetRowMap())
 	{
@@ -892,9 +1078,13 @@ bool FCataclysmTooltipNoAffixReadsZero::RunTest(const FString& Parameters)
 
 		const FString Line = OneAffixLine(Item);
 
-		for (const FString& Zero : ReadsAsZero)
+		// A HYBRID PUTS TWO PHRASES ON ONE LINE, and either can be the
+		// zero, so each is read separately.
+		TArray<FString> Phrases;
+		Line.ParseIntoArray(Phrases, TEXT(", "), /*CullEmpty=*/true);
+		for (const FString& Phrase : Phrases)
 		{
-			if (Line.Contains(Zero))
+			if (PhraseStatesZero(Phrase))
 			{
 				AddError(FString::Printf(
 					TEXT("%s (kind %s) reads as zero at tier %d on a +%d item: '%s'"),
