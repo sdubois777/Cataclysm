@@ -608,23 +608,16 @@ int32 ACataclysmGatekeeperCharacter::ImpsStillAlive()
 float ACataclysmGatekeeperCharacter::SoulfallFlightSecondsFor(
 	const FVector& LandsAt) const
 {
-	// A PARABOLA SAGS g * t * t / 8 BELOW ITS OWN CHORD, so a sag of
-	// `fraction * range` is in the air for `sqrt(8 * fraction * range / g)`.
-	// Inverting it here rather than stating a time is issue #474 on the Brute: a
-	// stated time fixes the whole vertical part of the trajectory whatever the
-	// distance, which made every short lob a near-vertical mortar.
+	// THE ARITHMETIC LIVES ON THE PROJECTILE SINCE ISSUE #1140, because three
+	// callers wanted it: this, the Corrupted Sentinel's Brimstone Mortar, and any
+	// player skill stating `Arc=` in its Shape Params. `LobFlightSecondsFor`
+	// carries the reasoning, including why a fraction is stated and a time
+	// computed rather than the other way round.
 	//
 	// MEASURED ACROSS THE GROUND, because that is what the fraction is of.
-	const float ApexCm = SoulfallApexFraction
-					   * static_cast<float>(FVector::Dist2D(GetActorLocation(),
-															LandsAt));
-	if (ApexCm <= 0.0f)
-	{
-		return 0.0f;
-	}
-
-	return FMath::Sqrt(
-		8.0f * ApexCm / ACataclysmProjectile::LobGravityCmPerSecondSquared);
+	return ACataclysmProjectile::LobFlightSecondsFor(
+		SoulfallApexFraction,
+		static_cast<float>(FVector::Dist2D(GetActorLocation(), LandsAt)));
 }
 
 void ACataclysmGatekeeperCharacter::UpdateLoopingAnimation()

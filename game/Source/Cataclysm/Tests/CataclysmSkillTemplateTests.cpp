@@ -12582,4 +12582,168 @@ bool FCataclysmSkillEvadedBlowLeavesNothingTest::RunTest(const FString& Paramete
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A skill that states how high it lobs
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillStatedArcLobsTest,
+	"Cataclysm.Skills.ASkillStatingAnArcLobsAndOneStatingNoneFliesFlat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Arc=0.25` in a Shape Params cell makes the shot lob. Issue #1140.
+ *
+ * WHAT WENT WRONG. The cell was PARSED and the value it produced was read by
+ * nothing. A designer could write `Arc=0.25`, watch it validate through
+ * `tools/generate_datatables.py`, and get a flat projectile with no error
+ * anywhere. The field's own comment said it was "read so that one can" state a
+ * lob, and the word "read" was doing two jobs.
+ *
+ * A FRACTION IS STATED AND A TIME IS COMPUTED, NOT THE OTHER WAY ROUND, and that
+ * is the part worth understanding rather than the plumbing. A stated flight time
+ * decides the whole vertical part of the trajectory by itself -- the apex is
+ * `g * t * t / 8` and the distance does not appear in it -- so a short throw and
+ * a long one given the same time peak at the same height, and the short one goes
+ * nearly straight up. That was issue #474 on the Brute. A fraction cannot do it,
+ * because it is measured against the distance thrown.
+ *
+ * THE TWO SHOTS DIFFER IN ONE CELL AND NOTHING ELSE. Same slot, same radius,
+ * same speed, same distance to the target. Without that, the second could lob
+ * because it was aimed further.
+ *
+ * A SECOND CASTER FOR THE SECOND SHOT, because activating a skill commits its
+ * cooldown and the same instance cannot be cast twice.
+ */
+bool FCataclysmSkillStatedArcLobsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// -------------------------------------------------------------------
+	// The arithmetic on its own, which is what the three callers share
+	// -------------------------------------------------------------------
+
+	// A QUARTER OF THE WAY UP ITS OWN LENGTH IS A 45 DEGREE THROW, which is what
+	// both lobbing enemies state and what the field's comment describes.
+	const float FourMetres = 4.0f * M;
+	const float Quarter = ACataclysmProjectile::LobFlightSecondsFor(
+		0.25f, FourMetres);
+	const float ExpectedSeconds = FMath::Sqrt(
+		8.0f * 0.25f * FourMetres
+		/ ACataclysmProjectile::LobGravityCmPerSecondSquared);
+	TestEqual(TEXT("a quarter-height lob over four metres has a flight time"),
+		Quarter, ExpectedSeconds, 0.001f);
+	TestTrue(TEXT("and it is a real length of time"), Quarter > 0.0f);
+
+	// BOTH WAYS OF SAYING "NOT A LOB" ANSWER ZERO, which is what `Fire` reads as
+	// a flat shot. Every one of the 403 skill rows states no arc today, so this
+	// is the branch all of them take.
+	TestEqual(TEXT("stating no arc is not a lob"),
+		ACataclysmProjectile::LobFlightSecondsFor(0.0f, FourMetres), 0.0f, 0.001f);
+	TestEqual(TEXT("and neither is a throw with nowhere to go"),
+		ACataclysmProjectile::LobFlightSecondsFor(0.25f, 0.0f), 0.0f, 0.001f);
+
+	// -------------------------------------------------------------------
+	// A skill stating no arc flies flat, which is the control
+	// -------------------------------------------------------------------
+
+	const auto TheOnlyProjectile = [&World]() -> ACataclysmProjectile*
+	{
+		ACataclysmProjectile* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmProjectile> It(World); It; ++It)
+		{
+			Found = *It;
+			++Count;
+		}
+		return Count == 1 ? Found : nullptr;
+	};
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(6 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Flat = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Range=6; Speed=1000"), TEXT("A shot stating no arc"));
+	if (!Flat)
+	{
+		AddError(TEXT("Could not grant the flat shot."));
+		return false;
+	}
+	TestEqual(TEXT("it states no arc"), Flat->Params.ArcHeightFraction, 0.0f);
+
+	TestTrue(TEXT("the flat shot goes off"), Activate(Caster, Flat));
+
+	ACataclysmProjectile* Straight = TheOnlyProjectile();
+	if (!TestNotNull(TEXT("exactly one projectile is in the air"), Straight))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it rises above the straight line by nothing"),
+		Straight->ApexHeightCm, 0.0f, 0.01f);
+
+	// OUT OF THE WORLD BEFORE THE SECOND SHOT, so the search below finds one
+	// projectile rather than two and cannot read the wrong one.
+	Straight->Destroy();
+
+	// -------------------------------------------------------------------
+	// The same skill with an arc stated lobs, and by the stated amount
+	// -------------------------------------------------------------------
+
+	FScopedFighter Lobber(World, FVector(0, 40 * M, 0));
+	FScopedFighter Distant(World, FVector(6 * M, 40 * M, 0));
+
+	UCataclysmProjectileSkill* Lobbed = GrantSkill<UCataclysmProjectileSkill>(
+		Lobber, ECataclysmAbilitySlot::Special,
+		TEXT("Radius=3; Range=6; Speed=1000; Arc=0.25"),
+		TEXT("A shot stating an arc"));
+	if (!Lobbed)
+	{
+		AddError(TEXT("Could not grant the lobbed shot."));
+		return false;
+	}
+	TestEqual(TEXT("the cell was parsed into the field"),
+		Lobbed->Params.ArcHeightFraction, 0.25f, 0.001f);
+
+	TestTrue(TEXT("the lobbed shot goes off"), Activate(Lobber, Lobbed));
+
+	ACataclysmProjectile* Arcing = TheOnlyProjectile();
+	if (!TestNotNull(TEXT("exactly one projectile is in the air"), Arcing))
+	{
+		return false;
+	}
+
+	// IT RISES, WHICH IS THE WHOLE DEFECT. Before this the same cell produced
+	// exactly the flat shot above.
+	//
+	// THE HEIGHT IS PINNED ON THE ARITHMETIC ABOVE RATHER THAN HERE, and that is
+	// deliberate. `UCataclysmProjectileSkill` aims with
+	// `AimedPointWithin(Params.RangeCm)` rather than at a target actor, so how
+	// far this shot actually goes is not something this test states -- and the
+	// projectile keeps its own length privately. Asserting a figure here would
+	// mean guessing that distance, which is how a test comes to pass for a
+	// reason nobody intended. What the three assertions at the top of this test
+	// pin exactly is the conversion all three callers share.
+	TestTrue(*FString::Printf(
+				 TEXT("the lobbed shot rises above the straight line: %.1f cm"),
+				 Arcing->ApexHeightCm),
+			 Arcing->ApexHeightCm > 1.0f);
+
+	// AND NO HIGHER THAN A QUARTER OF THE FURTHEST IT COULD POSSIBLY GO, which
+	// bounds it without needing to know how far it did go. A shot cannot fly
+	// past its own stated range, so a quarter of that range is the ceiling for a
+	// quarter-height lob. Without this the assertion above would accept any
+	// positive number, including one from a stated flight time rather than from
+	// the fraction.
+	TestTrue(*FString::Printf(
+				 TEXT("and no higher than a quarter of its %.0f cm range"),
+				 Lobbed->Params.RangeCm),
+			 Arcing->ApexHeightCm <= Lobbed->Params.RangeCm * 0.25f + 0.1f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

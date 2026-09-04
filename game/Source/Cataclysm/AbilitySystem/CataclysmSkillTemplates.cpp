@@ -968,11 +968,33 @@ void UCataclysmProjectileSkill::ActivateAbility(
 		// for the Masochist's Grand Tithe node. Reading the cost when the shot
 		// landed would credit the blow with whatever the character last paid.
 		// Issue #983.
+		// AND IT LOBS IF THE ROW SAYS SO. Issue #1140. `Arc=0.25` in a Shape
+		// Params cell says the shot peaks a quarter of the way up its own
+		// length, which is a 45 degree throw and is what both lobbing enemies
+		// state. Until this it was parsed, stored, and read by nothing: a
+		// designer could write it, watch it validate, and get a flat shot with no
+		// error anywhere.
+		//
+		// A FRACTION RATHER THAN A TIME, and `LobFlightSecondsFor` carries the
+		// reason: a stated time makes every short lob a near-vertical mortar,
+		// which is issue #474 on the Brute. The two enemies each did this
+		// conversion in their own copy and now share this one.
+		//
+		// MEASURED ACROSS THE GROUND, so a target on a ledge does not change how
+		// high the throw goes.
+		//
+		// ZERO FOR EVERY ROW THAT STATES NO ARC, which is all 403 of them today,
+		// and `Fire` reads zero as a flat shot. So nothing behaves differently
+		// until a row states one.
+		const float FlightSeconds = ACataclysmProjectile::LobFlightSecondsFor(
+			Params.ArcHeightFraction,
+			static_cast<float>(FVector::Dist2D(Origin, Destination)));
+
 		InFlight = ACataclysmProjectile::Fire(
 			Caster, Origin, Destination, ScaledRadiusCm(),
 			Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
 			GetDamagePercent(), SkillTags, Params.bBurns,
-			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
+			/*InBodyMesh=*/nullptr, FlightSeconds,
 			CritChancePercent, LastHealthCostPercentOfMaximum);
 
 		if (!InFlight)
