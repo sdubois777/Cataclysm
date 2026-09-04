@@ -835,7 +835,16 @@ TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
 	// COMMA SEPARATED, because Anathema writes `Effect=Shred, Madness` --
 	// "laying every curse you know on it". Read as one name, that row named an
 	// effect called "Shred, Madness" which no sheet has, and granted nothing.
-	const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+	// `Status.Stun` AND NOT `State.Stunned`, WHICH IS WHAT THIS COMPARED
+	// UNTIL ISSUE #1195. Both tags exist and they are different things:
+	// `Status.Stun` is the row generated from the Debuffs sheet, which is
+	// what a skill cell naming an effect resolves to, and `State.Stunned` is
+	// the tag that actually stops a character acting. Comparing one against
+	// the other meant this branch never ran, so the four rows writing
+	// `Effect=Stun` WERE granted a plain tag by the curse path -- harmless
+	// only because nothing reads `Status.Stun`.
+	const FGameplayTag StunStatus =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Stun"));
 
 	TArray<FString> Named;
 	Params.Effect.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
@@ -851,11 +860,15 @@ TArray<FGameplayTag> UCataclysmSkillTemplate::NamedEffectTags() const
 		// A STUN IS LEFT OUT, and letting one through would be a fault rather
 		// than a gap. `UCataclysmSkillEffects::ApplyStun` carries three rules the
 		// design states -- a damage threshold, five seconds of immunity after one
-		// lands, and bosses immune outright -- and granting `Status.Stunned` as a
-		// plain tag walks past all three. Four skills write `Effect=Stun` beside
-		// a `StunSeconds`, and that number is read by nothing, so those four do
-		// not stun today.
-		if (Stunned.IsValid() && Tag == Stunned)
+		// lands, and bosses immune outright -- and granting `Status.Stun` as a
+		// plain tag walks past all three.
+		//
+		// THE FOUR SKILLS THAT WRITE `Effect=Stun` BESIDE A `StunSeconds` ARE
+		// STUNNED BY `ApplyStunTo` INSTEAD, which is a rider on HitTargets and
+		// goes through ApplyStun with all three rules. Until issue #1195 that
+		// number was read by nothing and none of the four stunned at all; this
+		// line is what keeps them from ALSO being stunned by the wrong route.
+		if (StunStatus.IsValid() && Tag == StunStatus)
 		{
 			continue;
 		}
@@ -1687,6 +1700,23 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// burn above.
 		ApplyKnockbackTo(Self, Target);
 
+		// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
+		// nothing read it, so no player skill in the game stunned anything.
+		// They are spread over two shapes -- Shield Bash is a Strike and the
+		// other three are Movement -- which is the same argument the knockback
+		// above makes for sitting here.
+		//
+		// THE DAMAGE IS PASSED IN AND ALL FOUR ROWS IGNORE IT, because all
+		// four also write `Effect=Stun` and a skill that names stunning as its
+		// effect skips the damage threshold. `ApplyStun` still enforces the
+		// five second immunity window and the boss exemption on every one.
+		//
+		// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, which is issue
+		// #1156 and is not made worse here: a stated stun does not read it at
+		// all. Whether an evaded attack should stun is that issue's question,
+		// and it is the same question it already asks of the burn above.
+		ApplyStunTo(Self, Target, Dealt);
+
 		// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
 		// across the Spear, the Warhammer and the Whip state one of the five
 		// verbs, spread over three different shapes, so putting it in any one
@@ -1772,6 +1802,58 @@ void UCataclysmSkillTemplate::ApplyManaOnHit() const
 	AbilitySystem->ApplyModToAttribute(
 		UCataclysmVitalAttributeSet::GetManaAttribute(),
 		EGameplayModOp::Additive, Gained);
+}
+
+bool UCataclysmSkillTemplate::StatesStunAsItsEffect() const
+{
+	if (Params.Effect.IsEmpty())
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED AND TRIMMED, the same way NamedEffectTags reads it,
+	// because Anathema writes `Effect=Shred, Madness` and a row could name a
+	// stun beside something else.
+	// `Status.Stun`, THE ROW FROM THE DEBUFFS SHEET, and not `State.Stunned`,
+	// the tag that stops a character acting. A cell naming an effect resolves
+	// to the first; comparing against the second is the mistake that made the
+	// guard in NamedEffectTags above do nothing for as long as it existed.
+	const FGameplayTag StunStatus =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Stun"));
+	if (!StunStatus.IsValid())
+	{
+		return false;
+	}
+
+	TArray<FString> Named;
+	Params.Effect.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (UCataclysmSkillShapes::StatusTagFor(One.TrimStartAndEnd())
+			== StunStatus)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmSkillTemplate::ApplyStunTo(AActor* Self, AActor* Target,
+										 float DamageDealt) const
+{
+	// A ROW STATING NO DURATION STUNS NOTHING, which is every row but four,
+	// AND THAT IS NOT CHECKED HERE. `ApplyStun` opens with the same test, so
+	// an early return beside it is a check that cannot fail: breaking it
+	// changed no test result, which is how it was found. The zero passes
+	// through and is refused one call further down.
+	//
+	// THE RULE ITSELF LIVES IN UCataclysmSkillEffects, exactly as the
+	// knockback below does. This reads the duration out of the skill row and
+	// hands it over; the damage threshold, the immunity window and the boss
+	// exemption are all decided there, so a player skill and the Brute's
+	// stomp obey one set of rules rather than two.
+	UCataclysmSkillEffects::ApplyStun(Self, Target, Params.StunSeconds,
+									  DamageDealt, StatesStunAsItsEffect());
 }
 
 void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const

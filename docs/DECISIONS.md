@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — The four skills that state a stun duration now stun
+
+### What was wrong
+
+`StunSeconds` was declared on `FCataclysmSkillShapeParams`, parsed cleanly, and
+read by no code outside the parser and the tests. Four rows state one:
+
+| Weapon | Skill | Shape | Seconds |
+| :-- | :-- | :-- | --: |
+| Shield | Shield Bash | Strike | 1.5 |
+| Warhammer | Shockwave Leap | Movement | 1.0 |
+| Sword | Lunge | Movement | 0.75 |
+| Whip | Whip Swing | Movement | 0.75 |
+
+**None of them stunned anything, so no player skill in the game stunned at all.**
+`UCataclysmSkillEffects::ApplyStun` existed and worked; only the Brute's stomp
+called it, with a constant of its own.
+
+Issue #1195 lists the weapon for Lunge as the Spear. `game/Data/WeaponSkills.csv`
+says the Sword, and that is the row that carries `Mode=Charge`.
+
+### What was decided
+
+**A stun is a rider on `UCataclysmSkillTemplate::HitTargets`, beside the
+knockback.** That is the same argument issue #626 made for the knockback and it
+holds identically here: the four rows are spread over two shapes, so a stun
+written into one template would leave three of them unfixed.
+
+**A row that names stunning as its effect skips the damage threshold, and that is
+asked of the row rather than assumed.** The Stun row of the Status Effects sheet
+says it in those words: "A hit must take at least 10% of the target maximum
+health to stun, unless the skill states stunning as its effect." All four rows
+write `Effect=Stun` beside their `StunSeconds`, so all four are exempt.
+
+**The other two anti-stun-lock rules are untouched.** A stunned target cannot be
+stunned again for five seconds, and a boss cannot be stunned at all. Both live in
+`ApplyStun` and a player skill now obeys exactly the rules the Brute's stomp
+obeys rather than a second set.
+
+### A second fault found while doing it, which nothing had noticed
+
+`UCataclysmSkillTemplate::NamedEffectTags` carries a branch that keeps a stun off
+the plain-tag path, with a comment explaining why granting one there would walk
+past all three rules. **It compared two different tags and never ran.**
+
+`UCataclysmSkillShapes::StatusTagFor("Stun")` builds `Status.Stun`, the row
+generated from the Debuffs sheet, which is what a skill cell naming an effect
+resolves to. `UCataclysmSkillEffects::StunnedTag()` is `State.Stunned`, the tag
+that actually stops a character acting. Both exist in
+`game/Config/Tags/CataclysmTags.ini`. The branch compared the first against the
+second, so the four rows writing `Effect=Stun` **were** granted a plain tag by
+the curse path.
+
+It was harmless, and only by luck: nothing reads `Status.Stun`, so the tag sat
+there doing nothing.
+
+**And the test for that branch passed for the wrong reason.**
+`Cataclysm.Skills.AStunIsNotGrantedAsAPlainTagByTheCursePath` asked whether the
+target was stunned, which reads `State.Stunned`. The curse path grants
+`Status.Stun`. So the answer was no whether or not the branch worked. It now asks
+whether the plain tag was granted, which is the thing the branch is for, and also
+asserts the target IS stunned by the rider — so the two routes cannot be confused
+again.
+
+### A check that could not fail, removed
+
+`ApplyStunTo` opened with `if (Params.StunSeconds <= 0.0f) return;`, and
+`ApplyStun` opens with the same test. Breaking the first changed no test result,
+which is what a check that cannot fail looks like. It is gone and the reason is
+written where it was.
+
+### And a test that proved the wrong thing, rewritten
+
+`Cataclysm.Skills.ASkillStatingNoStunDurationStunsNothing` first used Searing
+Hook, a Strike stating a knockback and no stun. It passed, and hard-coding a 1.5
+second duration into the rider did not make it fail: Searing Hook also states no
+`Effect=Stun`, so its stun would have been undesigned and would have had to clear
+the 10% damage threshold, which one swing does not. It was proving the threshold
+rather than the duration.
+
+It now casts a cell naming stunning as its effect and stating no seconds, which
+is a combination no designed row has and the only one whose outcome turns on the
+duration alone. Breaking the duration read now fails it.
+
 ## 2026-09-04 — An energy shield refills in five seconds, whatever built it
 
 ### What was wrong
