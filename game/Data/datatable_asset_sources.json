@@ -5,7 +5,7 @@
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
       "rows": 86,
-      "csv_sha256": "ca24261af654c220cc79322baca89f920668631c603107e3345b230f42dda469"
+      "csv_sha256": "1e0770234d3187490b12264c23bc650b1a54a461b8fb8af4210b2f57e4664d72"
     },
     {
       "asset": "DT_AffixTiers",

@@ -912,9 +912,29 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 	const int32 Previous = TierVariable->GetInt();
 	ON_SCOPE_EXIT { TierVariable->Set(Previous, ECVF_SetByConsole); };
 
-	// THE BEST RARITY REACHED OVER SEVERAL KILLS, so the ceiling is actually met
-	// rather than merely allowed. A Cataclysm Boss drops twelve items a kill.
-	const auto BestRarityOverKills = [&](int32 Tier) -> int32
+	// THE MEAN RARITY OVER SEVERAL KILLS, AND IT WAS THE BEST UNTIL 2026-09-04.
+	// A Cataclysm Boss drops twelve items a kill, so eight kills is about a
+	// hundred drops and the mean of a hundred draws barely moves.
+	//
+	// WHY THE BEST WAS THE WRONG STATISTIC. The maximum of a small sample is the
+	// noisiest one there is, and this test read it from a fixed seed. Moving the
+	// movement speed affix to Boots for issue #1230 changed which affixes a Belt
+	// and a Ring can roll, which moved the draw, which made both tiers land on
+	// Masterful and this test fail -- with nothing wrong with the tier logic it
+	// exists to check.
+	//
+	// MEASURED RATHER THAN ASSERTED, with a temporary probe over six seeds and
+	// two kill counts:
+	//
+	//     tier 8 best over 8 kills   3, 5, 6, 5, 4, 5
+	//     tier 1 best over 8 kills   3, 4, 4, 4, 3, 2
+	//     tier 8 mean rarity         2.32 to 2.55
+	//     tier 1 mean rarity         0.68 to 0.95
+	//
+	// The means never overlap. The maxima overlap constantly, and at four of the
+	// six seeds the tier 1 maximum reached Legendary -- which the upper bound
+	// below forbids, so that half was passing by luck too.
+	const auto MeanRarityOverKills = [&](int32 Tier) -> float
 	{
 		TierVariable->Set(Tier, ECVF_SetByConsole);
 
@@ -936,7 +956,8 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream);
 		}
 
-		int32 Best = -1;
+		int32 Total = 0;
+		int32 Counted = 0;
 		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 		{
 			const ACataclysmDroppedItem* Drop = *It;
@@ -948,17 +969,19 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 			ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
 			if (UCataclysmItemModifiers::RarityOfItem(Drop->Item, Rarity))
 			{
-				Best = FMath::Max(Best, static_cast<int32>(Rarity));
+				Total += static_cast<int32>(Rarity);
+				++Counted;
 			}
 		}
-		return Best;
+		return Counted > 0 ? static_cast<float>(Total) / static_cast<float>(Counted)
+						   : -1.0f;
 	};
 
-	const int32 AtTierOne = BestRarityOverKills(1);
-	const int32 AtTierEight = BestRarityOverKills(8);
+	const float AtTierOne = MeanRarityOverKills(1);
+	const float AtTierEight = MeanRarityOverKills(8);
 
-	if (!TestTrue(TEXT("gear dropped at tier 1"), AtTierOne >= 0)
-		|| !TestTrue(TEXT("gear dropped at tier 8"), AtTierEight >= 0))
+	if (!TestTrue(TEXT("gear dropped at tier 1"), AtTierOne >= 0.0f)
+		|| !TestTrue(TEXT("gear dropped at tier 8"), AtTierEight >= 0.0f))
 	{
 		return false;
 	}
@@ -970,27 +993,33 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 	// above the tier divides a rarity down instead of forbidding it. See
 	// UCataclysmDropRoll::RarityPenaltyAboveTheTier.
 	//
-	// SO THIS IS AN UPPER BOUND OVER A SMALL SAMPLE RATHER THAN AN EQUALITY.
-	// A handful of tier 1 kills reaching Superb is possible at about one drop
-	// in 19 and would make an equality check fail at random; reaching Legendary
-	// is one in 1,497 and anything above that is far rarer still. Masterful is
-	// the bound because it leaves real room before the figures that matter.
+	// SO IT IS A BOUND ON THE AVERAGE RATHER THAN ON THE BEST SINGLE DROP. A
+	// tier 1 run really does turn up the odd Legendary -- four of the six seeds
+	// probed did -- and "overwhelmingly Quality or worse" is a statement about
+	// the whole pile, which is what a mean measures. Measured between 0.68 and
+	// 0.95 across those seeds, so Superb leaves twice the room.
 	//
 	// STATED RATHER THAN READ BACK FROM HighestUnpenalisedRarity, because a
 	// test that asks the code what it expects agrees with the code by
 	// construction and notices nothing.
 	TestTrue(*FString::Printf(
-		TEXT("a tier 1 kill drops nothing above Masterful, best was %d"),
+		TEXT("a tier 1 kill averages Quality or worse, mean rarity was %.2f"),
 		AtTierOne),
-		AtTierOne <= static_cast<int32>(ECataclysmRarity::Masterful));
+		AtTierOne < static_cast<float>(ECataclysmRarity::Superb));
 
 	// AND THE TIER ACTUALLY CHANGES WHAT DROPS, which is the half that fails if
 	// the tier stops being read at all. A comparison rather than a fixed rarity,
 	// so re-tuning the ladder does not break it.
+	//
+	// TWICE AS GOOD RATHER THAN MERELY BETTER. Measured, tier 8 averages 2.32 to
+	// 2.55 and tier 1 averages 0.68 to 0.95, so the real ratio is between 2.6
+	// and 3.7. A bare inequality would pass on a difference of one drop in a
+	// hundred, which is not what "the tier changes what drops" means.
 	TestTrue(*FString::Printf(
-		TEXT("a tier 8 kill drops better gear than a tier 1 kill, %d against %d"),
+		TEXT("a tier 8 kill averages more than twice a tier 1 kill, "
+			 "%.2f against %.2f"),
 		AtTierEight, AtTierOne),
-		AtTierEight > AtTierOne);
+		AtTierEight > AtTierOne * 2.0f);
 
 	return true;
 }

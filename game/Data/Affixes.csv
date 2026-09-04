@@ -30,7 +30,7 @@ Stat_Increased_attack_speed,Increased attack speed,Stat,suffix,attack_speed,incr
 Stat_Increased_area_of_effect,Increased area of effect,Stat,suffix,area_of_effect,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Reach,True,0.0
 Stat_Increased_damage_over_time_frequency,Increased damage over time frequency,Stat,suffix,dot_frequency,increased,52.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Quickening,True,0.0
 Stat_Flat_penetration,Flat penetration,Stat,suffix,penetration,flat,4.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",Piercing,True,1.0
-Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_speed,increased,8.0,0,,,,,"Belt, Boots, Ring",Swiftness,False,2.0
+Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_speed,increased,35.0,0,,,,,Boots,Swiftness,False,8.75
 Stat_Flat_cooldown_reduction,Flat cooldown reduction,Stat,suffix,cooldown_reduction,flat,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste,True,0.0
 Stat_Flat_magic_find,Flat magic find,Stat,suffix,magic_find,flat,10.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Fortune,True,2.5
 Stat_Increased_loot_quantity,Increased loot quantity,Stat,suffix,loot_quantity,increased,8.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Plenty,True,2.0
@@ -60,7 +60,7 @@ Hybrid_Block_chance_and_crowd_control_resistance,Block chance and crowd control 
 Hybrid_Magic_find_and_loot_quantity,Magic find and loot quantity,Hybrid,suffix,,,0.0,0,,,Flat magic find,Increased loot quantity,"Belt, Boots, Necklace, Relic, Ring",the Magpie,False,0.0
 Ailment_Chance_to_burn,Chance to burn,Ailment,suffix,,,15.0,0,Burn,Of Embers,,,"Necklace, Relic, Ring, Weapon",Cinders,True,0.0
 Ailment_Chance_to_stun,Chance to stun,Ailment,suffix,,,15.0,0,Stun,,,,"Necklace, Relic, Ring, Weapon",Concussion,True,0.0
-Stat_Increased_agility,Increased agility,Stat,suffix,agility,increased,12.0,0,,,,,"Belt, Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",the Fox,False,0.0
+Stat_Increased_agility,Increased agility,Stat,suffix,agility,increased,12.0,0,,,,,"Boots, Chest, Gloves, Head, Pants, Ring, Shoulders",the Fox,False,0.0
 Stat_Increased_ferocity,Increased ferocity,Stat,suffix,ferocity,increased,12.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Wolf,False,0.0
 Stat_Increased_constitution,Increased constitution,Stat,suffix,constitution,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",the Bear,False,0.0
 Stat_Increased_vitality,Increased vitality,Stat,suffix,vitality,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Necklace, Pants, Ring, Shoulders",the Ox,False,0.0

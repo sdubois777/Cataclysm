@@ -1319,13 +1319,33 @@ DOT_LEVER_AFFIXES: tuple[StatAffix, ...] = (INCREASED_DOT_DAMAGE,
 FLAT_PENETRATION = StatAffix("Flat penetration", "penetration", "flat", 4.0,
                              OFFENSIVE_SLOTS, SUFFIX, floor=1.0)
 
-#: By convention, and deliberately small. Movement speed has a base of about 4
-#: metres per second, no cap, and affects everything a player does, so 8% is
-#: half the ratio the other increases use.
+#: A BOOTS MODIFIER SINCE 2026-09-04, worth 35% at its top. It was 8% and
+#: rolled on Belt, Boots and Ring, which with eight ring slots is ten worn
+#: pieces. Issue #1230; the project owner approved it.
+#:
+#: PATH OF EXILE IS WHERE BOTH HALVES COME FROM. Movement speed there runs
+#: 10% at its lowest boots tier to 35% at its top, and it is essentially a
+#: boots modifier. The project owner's own words on 2026-09-03: "things like
+#: 30 or 40% movespeed affixes at t7 shouldn't be shunned".
+#:
+#: THE TOP AND THE SLOT LIST MOVED TOGETHER AND NEITHER WORKS ALONE. Ten
+#: pieces at 35% would be 350% increased movement speed, taking a 4 metre per
+#: second base to 18. One piece at 35% is a decision about a pair of boots.
+#:
+#: SO THE MOST A CHARACTER CAN GET FROM AFFIXES FELL, from 80% to 35%. That
+#: is the trade: the ceiling comes down and every individual pair of boots
+#: becomes worth reading. The Agility attribute still adds 2% a point and
+#: nine passive nodes still grant it, so a build wanting speed has other
+#: places to spend.
+#:
+#: NONE OF IT REACHES THE GAME YET. Nothing reads the `MovementSpeed`
+#: attribute into a character's `MaxWalkSpeed`, so no source of movement
+#: speed moves anybody. That is issue #1152, and it is why the Cripple curse
+#: slows nothing either.
 INCREASED_MOVEMENT_SPEED = StatAffix("Increased movement speed",
-                                     "movement_speed", "increased", 8.0,
-                                     frozenset({"Boots", "Belt", "Ring"}),
-                                     SUFFIX, floor=2.0)
+                                     "movement_speed", "increased", 35.0,
+                                     frozenset({"Boots"}),
+                                     SUFFIX, floor=8.75)
 
 #: By convention. Cooldown reduction divides rather than subtracting, so no
 #: quantity of it reaches zero and it needs no cap.
@@ -1385,7 +1405,12 @@ ATTRIBUTE_AFFIX_TOP_VALUE = 12.0
 #: offensive without needing a new rule: Ferocity drives critical strike and
 #: Efficacy drives area of effect, both of which already roll on a weapon, while
 #: Vitality drives health and Constitution drives armour, which do not.
-AGILITY_SLOTS = frozenset({"Belt", "Boots", "Chest", "Gloves", "Head", "Pants",
+#: BELT LEFT THIS LIST ON 2026-09-04, and it is derived rather than chosen so
+#: it left on its own. Agility drives movement speed and evasion; movement
+#: speed became a boots modifier for issue #1230 and stopped rolling on a
+#: Belt, and evasion never did. `test_an_attribute_affix_rolls_only_where_the_stats_it_drives_roll`
+#: is what noticed.
+AGILITY_SLOTS = frozenset({"Boots", "Chest", "Gloves", "Head", "Pants",
                            "Ring", "Shoulders"})
 CONSTITUTION_SLOTS = frozenset({"Belt", "Boots", "Chest", "Head", "Pants",
                                 "Ring", "Shoulders"})
