@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — Movement speed is a boots modifier worth 35%
+
+### What was decided
+
+**The increased movement speed affix goes from a top of 8% to 35%, and from
+rolling on Belt, Boots and Ring to rolling on Boots alone.** Its floor moves with
+its top, from 2.0 to 8.75, which is the quarter of the top every other floored
+affix states. The project owner approved it on 2026-09-04; it is the point issue
+#1230 left open.
+
+**The two halves do not work apart.** Ten worn pieces at 35% would be 350%
+increased movement speed, taking a 4 metre per second base to 18. One piece at
+35% is a decision about a pair of boots.
+
+| | top | floor | eligible pieces | most a character can carry |
+| :-- | --: | --: | --: | --: |
+| Before | 8% | 2.0 | 10 | 80%, a 4 m/s base at 7.2 |
+| After | 35% | 8.75 | 1 | 35%, a 4 m/s base at 5.4 |
+
+**Path of Exile is where both halves come from.** Movement speed there runs 10%
+at its lowest boots tier to 35% at its top, and it is essentially a boots
+modifier. The project owner, 2026-09-03: "things like 30 or 40% movespeed affixes
+at t7 shouldn't be shunned."
+
+**So the ceiling comes down and every pair of boots becomes worth reading**, which
+is the trade. The Agility attribute still adds 2% a point and nine passive nodes
+still grant it, so a build wanting speed has other places to spend.
+
+### A slot list that moved on its own
+
+**Belt left the Agility affix's slot list**, because those lists are derived
+rather than chosen: an attribute affix rolls wherever the stats that attribute
+drives already roll. Agility drives movement speed and evasion; movement speed
+stopped rolling on a Belt and evasion never did.
+`test_an_attribute_affix_rolls_only_where_the_stats_it_drives_roll` is what
+noticed, which is the derivation doing its job.
+
+### A test that was balancing on one draw
+
+`Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` failed, and the tier logic it
+checks was not at fault. It compared the **best** rarity over eight fixed-seed
+kills at difficulty tier 1 against the best at tier 8. Changing which affixes a
+Belt and a Ring can roll moved the draw, and both tiers landed on Masterful.
+
+Measured with a temporary probe over six seeds and two kill counts:
+
+| | tier 8 | tier 1 |
+| :-- | :-- | :-- |
+| best over 8 kills | 3, 5, 6, 5, 4, 5 | 3, 4, 4, 4, 3, 2 |
+| mean rarity | 2.32 to 2.55 | 0.68 to 0.95 |
+
+**The maximum of a small sample is the noisiest statistic there is.** Eight kills
+of a Cataclysm Boss is about a hundred drops, and the mean of a hundred draws
+barely moves while the maximum jumps by three rarities. The test now compares
+means, and asserts tier 8 averages more than twice tier 1 rather than merely more
+— the real ratio is between 2.6 and 3.7.
+
+**Its other assertion was passing by luck too.** It said a tier 1 kill drops
+nothing above Masterful, and at four of the six seeds probed a tier 1 run reached
+Legendary. "Overwhelmingly Quality or worse" is a statement about the whole pile,
+so it is now a bound on the average.
+
+The rewritten test was shown failing by making a drop read the constant 8 for the
+tier it is rolled at, which is the placeholder issue #868 removed and the exact
+fault this test exists for.
+
+### What none of this reaches yet
+
+**Nothing about movement speed applies to an enemy.** A player character follows
+the movement speed attribute — `ACataclysmPlayerCharacter::RefreshMovementSpeed`
+reads it and writes `MaxWalkSpeed`, hooked to the attribute's change delegate on
+both sides of the network, and
+`Cataclysm.Player.MovementSpeedFollowsTheAttribute` holds it. An enemy's speed
+comes from its own designed constant times the Commander multiplier and the
+attribute is not read, which is why the Cripple curse slows nothing. That is
+issue #1152, whose body and comment both state the broader claim that nothing at
+all reads the attribute; that is wrong about the player and right about enemies.
+
 ## 2026-09-04 — The four skills that state a stun duration now stun
 
 ### What was wrong
