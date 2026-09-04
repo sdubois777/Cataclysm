@@ -176,9 +176,14 @@ def test_every_stated_floor_is_the_worst_roll(affix_floor_run):
 
     _, ns = affix_floor_run
     floored = ns["floored_affixes"]()
-    assert len(floored) == 20, (
-        f"{len(floored)} affixes state a floor, not the 20 approved on "
-        "2026-09-04. If one was added or removed, say so on #1230.")
+    # 19 AND NOT THE 20 APPROVED ON 2026-09-04. The flat energy shield
+    # regeneration affix gave its floor back with issue #1237: it has to
+    # scale exactly as the flat maximum energy shield affix does, and that
+    # one states no floor, so a floor on this one alone made the pair
+    # refill in two seconds at the bottom of the ladder and five at the top.
+    assert len(floored) == 19, (
+        f"{len(floored)} affixes state a floor, not 19. If one was added "
+        "or removed, say so on #1230.")
 
     for name, top, floor, _slots in floored:
         worst = af.affix_value(top, af.AFFIX_TIERS[0], 0.0, 0, floor)

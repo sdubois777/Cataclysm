@@ -5,7 +5,7 @@
       "asset": "DT_Affixes",
       "csv": "Affixes.csv",
       "rows": 86,
-      "csv_sha256": "f420902e924d046af6d6f7e057aede7c5466221e454357498f4f3b7d60a6e612"
+      "csv_sha256": "ca24261af654c220cc79322baca89f920668631c603107e3345b230f42dda469"
     },
     {
       "asset": "DT_AffixTiers",
@@ -29,7 +29,7 @@
       "asset": "DT_ClassStats",
       "csv": "ClassStats.csv",
       "rows": 33,
-      "csv_sha256": "203b6894e8d49e515d26f8bac4fb54ce5822efd5394ce079f03dfc717cb9e61d"
+      "csv_sha256": "cebdb23de1799bab7cdc1c8b435b6a75ecb492b718634d7be185badd0d7332b1"
     },
     {
       "asset": "DT_CraftingMaterials",
@@ -101,7 +101,7 @@
       "asset": "DT_ItemBases",
       "csv": "ItemBases.csv",
       "rows": 55,
-      "csv_sha256": "ae74d2cdd4515a7d76cedfd035489b90c6bd63a3730daaa5ac5b0f65caa26d35"
+      "csv_sha256": "7019559c5970bdcb084f4798e6974df1abb4de61bc98edf09cfafe43f07f7342"
     },
     {
       "asset": "DT_ItemSockets",

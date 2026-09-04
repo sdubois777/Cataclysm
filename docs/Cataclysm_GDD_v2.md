@@ -1485,6 +1485,8 @@ Energy shield is a distinct defence with its own rules, not a second health bar.
 
   - **It does not absorb damage over time.** Bleed, poison, burn and the rest pass straight through it to health.
   - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
+  - **It refills at a fifth of its own maximum per second, so a full shield takes 5 seconds however large it is.** Every source of maximum energy shield grants that rate alongside it: the Vestment's 120 comes with 24 a second, the flat maximum energy shield affix's 50 with 10, and the Ritualist's class line with a fifth of its own. A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
+  - **Two things move that 5 seconds, both deliberately.** The increased energy shield regeneration affix shortens it, to 3.4 seconds on four pieces and 2.0 on twelve. The increased maximum energy shield affix lengthens it, because it raises the pool and not the rate: 7.4 seconds on four pieces and 12.2 on twelve. A bigger shield taking longer to come back is the trade for having it.
   - **Damage over time restarts that wait as well.** So damage over time both bypasses the shield and holds it empty, which is what makes it the answer to shield stacking rather than a stat check.
   - **Magic weapons strip 10% more of it** per hit than other sub-types.
   - Breaking the shield is a distinct event that other effects can trigger on.

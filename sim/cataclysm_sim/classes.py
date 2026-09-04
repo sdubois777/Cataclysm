@@ -114,7 +114,11 @@ RITUALIST = ClassDefinition(
         # owner's rule points at: give it to the ones that thematically warrant
         # it, such as casters.
         "max_energy_shield": Scaling(base=40.0, per_level=8.0),  # L100: 832
-        "energy_shield_regen": Scaling(base=2.0, per_level=0.20),
+        # A FIFTH OF THE SHIELD ABOVE, so it refills in five seconds at
+        # every level rather than in 38 at level 100. Issue #1237. It was
+        # 2.0 and 0.20 a level, which is a rate chosen on its own rather
+        # than against the pool it fills.
+        "energy_shield_regen": Scaling(base=8.0, per_level=1.60),
         # Slowest. It should not want to be where the fighting is.
         "movement_speed": Scaling(base=3.5),
         # Commands groups rather than single targets.

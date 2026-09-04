@@ -84,4 +84,4 @@ Stat_Increased_minion_damage,Increased minion damage,Stat,prefix,minion_damage,i
 Stat_Increased_minion_health,Increased minion health,Stat,prefix,minion_health,increased,12.0,0,,,,,"Belt, Boots, Chest, Head, Pants, Ring, Shoulders",,False,0.0
 Stat_Increased_minion_attack_speed,Increased minion attack speed,Stat,suffix,minion_attack_speed,increased,15.0,0,,,,,"Gloves, Necklace, Relic, Ring, Weapon",the Master,False,0.0
 Hybrid_Minion_damage_and_minion_health,Minion damage and minion health,Hybrid,prefix,,,0.0,0,,,Increased minion damage,Increased minion health,Ring,,False,0.0
-Stat_Flat_energy_shield_regeneration,Flat energy shield regeneration,Stat,suffix,energy_shield_regen,flat,10.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",Reforming,False,2.5
+Stat_Flat_energy_shield_regeneration,Flat energy shield regeneration,Stat,suffix,energy_shield_regen,flat,10.0,0,,,,,"Chest, Head, Relic, Ring, Shoulders",Reforming,False,0.0

@@ -1158,8 +1158,12 @@ def test_bases_in_one_slot_pull_in_different_directions():
     the same slot and different decisions, which is the whole point."""
     assert af.base_named("Cuirass").implicit_values().keys() == {"armor"}
     assert af.base_named("Jerkin").implicit_values().keys() == {"evasion"}
+    # THE VESTMENT ALSO GRANTS A RATE TO REFILL THAT SHIELD, since issue
+    # #1237. The shield is still what it pulls towards; the second implicit
+    # is a fifth of the first, so the shield refills in five seconds rather
+    # than never for a class with no energy shield regeneration of its own.
     assert af.base_named("Vestment").implicit_values().keys() == \
-        {"max_energy_shield"}
+        {"max_energy_shield", "energy_shield_regen"}
     assert af.base_named("Hauberk").implicit_values().keys() == {"max_health"}
 
 
