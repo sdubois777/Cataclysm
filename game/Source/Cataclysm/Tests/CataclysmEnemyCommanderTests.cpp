@@ -89,6 +89,23 @@ namespace CataclysmCommanderTest
 			Target, CommanderTag());
 	}
 
+	static FGameplayTag CrippleTag()
+	{
+		return UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	}
+
+	/** Puts Cripple on a creature the way the Of Maiming gem and the chance to
+	 *  cripple affix do: `ApplyNamedEffect`, which grants the tag for the row's
+	 *  own duration and keeps no magnitude. */
+	static bool Cripple(AActor* From, AActor* Target)
+	{
+		const float Seconds =
+			UCataclysmSkillEffects::NumbersForEffectTag(CrippleTag())
+				.DurationSeconds;
+		return UCataclysmSkillEffects::ApplyNamedEffect(
+			From, Target, CrippleTag(), Seconds);
+	}
+
 	template <typename T>
 	static T* Spawn(UWorld* World, const FVector& Where)
 	{
@@ -101,6 +118,193 @@ namespace CataclysmCommanderTest
 }
 
 // --------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------
+// Cripple, which could not reach anything until 2026-09-04. Issue #1152.
+// --------------------------------------------------------------------------
+
+/**
+ * The Cripple curse slows a creature's walking and its attacking.
+ *
+ * WHAT WENT WRONG. Its row in game/Data/StatusEffects.csv reads "Reduces the
+ * affected enemy's movement and attack speed by 30% for 4 seconds", and nothing
+ * in the project could change either. `CataclysmStatMovedByEffect` in
+ * CataclysmSkillEffects.cpp said so in terms: "Cripple's slow has no
+ * movement-speed debuff route". So the tag landed, lasted four seconds and did
+ * nothing at all.
+ *
+ * A PLAYER WAS NEVER THE PROBLEM. `ACataclysmPlayerCharacter::RefreshMovementSpeed`
+ * has followed the movement speed attribute since issue #959. An enemy's speed is
+ * its own designed figure times the Commander buff, and the attribute reached it
+ * nowhere.
+ *
+ * BOTH STATS, BECAUSE THE ROW NAMES BOTH. A slow that left the attack rate alone
+ * would be half a curse and would read as working.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmCrippleSlowsACreature,
+	"Cataclysm.Enemy.CrippleSlowsACreaturesWalkingAndItsAttacking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCrippleSlowsACreature::RunTest(const FString&)
+{
+	using namespace CataclysmCommanderTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmImpCharacter* Imp =
+		Spawn<ACataclysmImpCharacter>(World, FVector::ZeroVector);
+	// A SECOND IMP AND NOT A SUCCUBUS. A Succubus grants Commander to the
+	// allies around it, so spawning one to be the curser buffed the Imp by
+	// 20% and every figure below came out 1.2 times what it should be. The
+	// instigator only sets the effect context here, so anything will do.
+	ACataclysmImpCharacter* Curser =
+		Spawn<ACataclysmImpCharacter>(World, FVector(500.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an Imp"), Imp)
+		|| !TestNotNull(TEXT("something to curse it"), Curser))
+	{
+		return false;
+	}
+
+	const float DesignedInterval = Imp->DesignedSecondsBetweenAttacks();
+	const float DesignedWalk = Imp->DesignedWalkSpeedCmPerSecond;
+	if (DesignedInterval <= 0.0f || DesignedWalk <= 0.0f)
+	{
+		AddError(FString::Printf(
+			TEXT("the Imp's designed interval is %.4f and its designed walk "
+				 "speed is %.1f. Both must be above zero or this test would "
+				 "pass by comparing nothing."),
+			DesignedInterval, DesignedWalk));
+		return false;
+	}
+
+	// --- UNCURSED, WHICH IS THE CONTROL -----------------------------------
+
+	Imp->RefreshWalkSpeed();
+	TestEqual(TEXT("uncursed, its multiplier is exactly one"),
+		Imp->CrippleMultiplier(), 1.0f);
+	TestEqual(TEXT("and it walks at its designed speed"),
+		Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk);
+	TestEqual(TEXT("and attacks on its designed interval"),
+		Imp->SecondsBetweenAttacks(), DesignedInterval);
+
+	// --- CURSED ------------------------------------------------------------
+
+	if (!Cripple(Curser, Imp))
+	{
+		AddError(TEXT("Cripple could not be applied to the Imp"));
+		return false;
+	}
+	Imp->RefreshWalkSpeed();
+
+	// THE ROW'S OWN FIGURE RATHER THAN A LITERAL 30, so re-tuning the curse in
+	// the sheet does not break this test and cannot be re-tuned to nothing
+	// without the assertion below noticing.
+	const float Reduction =
+		UCataclysmSkillEffects::NumbersForEffectTag(CrippleTag()).Strength;
+	TestTrue(FString::Printf(
+			TEXT("the Cripple row states a reduction, got %.1f"), Reduction),
+		Reduction > 0.0f);
+
+	const float Expected = 1.0f - Reduction / 100.0f;
+
+	TestEqual(TEXT("cursed, its multiplier is the row's reduction"),
+		Imp->CrippleMultiplier(), Expected);
+
+	TestEqual(TEXT("it walks slower by exactly that"),
+		Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk * Expected);
+	TestTrue(FString::Printf(
+			TEXT("which is slower than it was designed with: %.1f against %.1f"),
+			Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk),
+		Imp->GetCharacterMovement()->MaxWalkSpeed < DesignedWalk);
+
+	// **DIVIDED, NOT MULTIPLIED.** The stored figure is seconds BETWEEN attacks
+	// and the curse is a reduction in SPEED, so less attack speed makes this
+	// number larger.
+	TestEqual(TEXT("and its attack interval is DIVIDED by the reduction, so it "
+				   "attacks less often rather than more"),
+		Imp->SecondsBetweenAttacks(), DesignedInterval / Expected);
+	TestTrue(FString::Printf(
+			TEXT("which is a longer interval than it was designed with: %.4f "
+				 "against %.4f"),
+			Imp->SecondsBetweenAttacks(), DesignedInterval),
+		Imp->SecondsBetweenAttacks() > DesignedInterval);
+
+	// --- AND IT LIFTS ------------------------------------------------------
+
+	UCataclysmSkillEffects::RemoveEffectsGranting(Imp, CrippleTag());
+	Imp->RefreshWalkSpeed();
+
+	TestEqual(TEXT("with the curse gone it walks at its designed speed again"),
+		Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk);
+	TestEqual(TEXT("and attacks on its designed interval again"),
+		Imp->SecondsBetweenAttacks(), DesignedInterval);
+
+	return true;
+}
+
+/**
+ * A creature that is inspired and cursed at once gets both, not the last one.
+ *
+ * WHY THIS IS WORTH ITS OWN TEST. Commander and Cripple move the same two stats
+ * in opposite directions, and the obvious mistake is for one to overwrite the
+ * other -- which would pass every single-effect test above. Both are read
+ * through `SpeedMultiplier`, and this is what says so.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmCommanderAndCrippleBothApply,
+	"Cataclysm.Enemy.ACreatureInspiredAndCrippledAtOnceGetsBoth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCommanderAndCrippleBothApply::RunTest(const FString&)
+{
+	using namespace CataclysmCommanderTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmImpCharacter* Imp =
+		Spawn<ACataclysmImpCharacter>(World, FVector::ZeroVector);
+	ACataclysmSuccubusCharacter* Other =
+		Spawn<ACataclysmSuccubusCharacter>(World, FVector(500.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a granter"), Other))
+	{
+		return false;
+	}
+
+	const float DesignedWalk = Imp->DesignedWalkSpeedCmPerSecond;
+	const float DesignedInterval = Imp->DesignedSecondsBetweenAttacks();
+
+	if (!Buff(Other, Imp) || !Cripple(Other, Imp))
+	{
+		AddError(TEXT("could not apply both Commander and Cripple"));
+		return false;
+	}
+	Imp->RefreshWalkSpeed();
+
+	const float Both = Imp->CommanderMultiplier() * Imp->CrippleMultiplier();
+
+	TestTrue(TEXT("Commander is above one"), Imp->CommanderMultiplier() > 1.0f);
+	TestTrue(TEXT("and Cripple is below one"), Imp->CrippleMultiplier() < 1.0f);
+
+	TestEqual(TEXT("the two multiply rather than one winning"),
+		Imp->SpeedMultiplier(), Both);
+	TestEqual(TEXT("its walk speed is the designed figure times both"),
+		Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk * Both);
+	TestEqual(TEXT("and its attack interval is the designed one divided by both"),
+		Imp->SecondsBetweenAttacks(), DesignedInterval / Both);
+
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmCommanderMakesACreatureFasterAndQuicker,
@@ -164,7 +368,7 @@ bool FCataclysmCommanderMakesACreatureFasterAndQuicker::RunTest(const FString&)
 
 	// --- UNBUFFED, WHICH IS THE CONTROL ----------------------------------
 
-	Imp->RefreshCommanderBuff();
+	Imp->RefreshWalkSpeed();
 
 	TestEqual(TEXT("unbuffed, it attacks on its designed interval"),
 		Imp->SecondsBetweenAttacks(), DesignedInterval);
@@ -182,7 +386,7 @@ bool FCataclysmCommanderMakesACreatureFasterAndQuicker::RunTest(const FString&)
 		AddError(TEXT("Commander could not be applied to the Imp"));
 		return false;
 	}
-	Imp->RefreshCommanderBuff();
+	Imp->RefreshWalkSpeed();
 
 	const float Expected = 1.0f + Enemy_t::CommanderIncreasePercent / 100.0f;
 
@@ -218,7 +422,7 @@ bool FCataclysmCommanderMakesACreatureFasterAndQuicker::RunTest(const FString&)
 	// application replaces the first. The aura refreshes every half second, so
 	// this is the case that runs constantly rather than an edge one.
 	Buff(Granter, Imp);
-	Imp->RefreshCommanderBuff();
+	Imp->RefreshWalkSpeed();
 
 	TestEqual(TEXT("granting it a second time changes nothing, because the "
 				   "effect is one stack refreshed rather than two added"),
@@ -227,7 +431,7 @@ bool FCataclysmCommanderMakesACreatureFasterAndQuicker::RunTest(const FString&)
 	// --- AND BACK AGAIN ---------------------------------------------------
 
 	Unbuff(Imp);
-	Imp->RefreshCommanderBuff();
+	Imp->RefreshWalkSpeed();
 
 	TestEqual(TEXT("with the buff gone it attacks on its designed interval "
 				   "again"),
@@ -322,7 +526,7 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 			AddError(FString::Printf(TEXT("could not buff %s"), Case.Name));
 			continue;
 		}
-		Case.Creature->RefreshCommanderBuff();
+		Case.Creature->RefreshWalkSpeed();
 
 		TestEqual(*FString::Printf(
 				TEXT("%s attacks more often while buffed"), Case.Name),
@@ -339,7 +543,7 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 			DesignedWalk * Expected);
 
 		Unbuff(Case.Creature);
-		Case.Creature->RefreshCommanderBuff();
+		Case.Creature->RefreshWalkSpeed();
 
 		TestEqual(*FString::Printf(
 				TEXT("and %s is back to its designed interval afterwards"),
@@ -352,7 +556,7 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 	if (ACataclysmEnemyCharacter* Sentinel = Cases[1].Creature)
 	{
 		Buff(Granter, Sentinel);
-		Sentinel->RefreshCommanderBuff();
+		Sentinel->RefreshWalkSpeed();
 
 		TestEqual(TEXT("**a buffed Corrupted Sentinel still cannot move**"),
 			Sentinel->GetCharacterMovement()->MaxWalkSpeed, 0.0f);

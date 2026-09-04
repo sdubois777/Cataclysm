@@ -242,11 +242,16 @@ def test_the_buff_divides_the_interval_rather_than_multiplying_it():
         "SecondsBetweenAttacks that returns something. Without it every "
         "creature can override the function the buff is applied in.")
 
+    # `SpeedMultiplier` AND NOT `CommanderMultiplier` SINCE 2026-09-04. It is
+    # the product of every effect on the creature's speed, and Cripple is the
+    # second one: the curse reduces movement AND attack speed by 30% and could
+    # reach neither before. Issue #1152. Dividing is unchanged and is still
+    # what this test is for.
     body = " ".join(match.group(1).split())
-    assert body == "DesignedSecondsBetweenAttacks() / CommanderMultiplier()", (
+    assert body == "DesignedSecondsBetweenAttacks() / SpeedMultiplier()", (
         f"SecondsBetweenAttacks returns {body!r}. It must DIVIDE the designed "
         f"interval by the multiplier: more attack speed means less time between "
-        f"attacks.")
+        f"attacks, and less attack speed means more.")
 
 
 def test_the_final_keyword_is_what_makes_it_a_compile_error():
@@ -316,7 +321,7 @@ def test_the_designed_walk_speed_is_read_off_the_movement_component():
 
     assert "DesignedWalkSpeedCmPerSecond = Movement->MaxWalkSpeed" in match.group(1), (
         "BeginPlay no longer records the designed walk speed off the movement "
-        "component. Without it RefreshCommanderBuff has nothing to scale and a "
+        "component. Without it RefreshWalkSpeed has nothing to scale and a "
         "buffed creature never speeds up.")
 
 
@@ -331,9 +336,12 @@ def test_the_walk_speed_is_refreshed_every_frame_so_it_cannot_stick():
     assert match is not None, (
         "CataclysmEnemyCharacter.cpp no longer defines Tick.")
 
-    assert "RefreshCommanderBuff();" in match.group(1), (
-        "Tick does not call RefreshCommanderBuff, so a creature whose buff "
-        "expired rather than being taken away keeps walking fast for ever.")
+    # NAMED FOR WHAT IT WRITES SINCE 2026-09-04, because it applies the
+    # Cripple curse as well as the Commander buff. Issue #1152.
+    assert "RefreshWalkSpeed();" in match.group(1), (
+        "Tick does not call RefreshWalkSpeed, so a creature whose buff or "
+        "curse expired rather than being taken away keeps the speed it had "
+        "for ever.")
 
 
 def test_the_multiplier_is_read_from_the_tag_rather_than_a_stored_flag():
