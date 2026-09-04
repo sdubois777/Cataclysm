@@ -15,6 +15,9 @@
 #include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "HAL/IConsoleManager.h"
+#include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -846,6 +849,290 @@ CATACLYSM_TEST(FCataclysmDamageTakenStepTest,
 	}
 
 	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The difficulty tier takes resistance off the player. Issue #1229.
+// --------------------------------------------------------------------------
+
+namespace CataclysmResistancePenaltyTest
+{
+	/** The console variable, so a test can set the tier and put it back. */
+	static IConsoleVariable* TierVariable()
+	{
+		return IConsoleManager::Get().FindConsoleVariable(
+			TEXT("Cataclysm.DifficultyTier"));
+	}
+}
+
+/**
+ * The penalty is nothing before difficulty tier 4 and one step per tier after.
+ *
+ * WHY A PENALTY EXISTS. The resistance cap is 70 and never moved, so a player
+ * needed exactly 70 at every tier from one to eight. That fixed target is what
+ * forced every resistance affix to be small, and the worst roll of the
+ * all-resistances affix was 0.60. Moving the target is what buys the room.
+ *
+ * PURE ARITHMETIC, SO NO WORLD IS BUILT. Whether it reaches a hit is the next
+ * test's subject; this one is only about the shape of the ramp.
+ */
+CATACLYSM_TEST(FCataclysmResistancePenaltyRampTest,
+	"Cataclysm.Damage.TheResistancePenaltyStartsAtTierFourAndSteps")
+{
+	using Damage = UCataclysmDamageCalculation;
+
+	// NOTHING BEFORE THE FIRST PENALISED TIER, which is what keeps the early
+	// game exactly as it was. A character at tiers 1 to 3 has almost no
+	// resistance gear and a penalty there would punish the one group least
+	// able to answer it.
+	for (int32 Tier = 1; Tier < Damage::FirstPenalisedDifficultyTier; ++Tier)
+	{
+		TestEqual(FString::Printf(
+			TEXT("difficulty tier %d takes nothing off"), Tier),
+			Damage::ResistancePenaltyAt(Tier), 0.0f, 0.001f);
+	}
+
+	// AND IT NEVER HANDS RESISTANCE OUT. The arithmetic subtracts before it
+	// floors, so an unfloored version answers a negative number here and
+	// nowhere else. Neither tier is reachable in play, which is why the
+	// floor could rot unnoticed without this.
+	TestEqual(TEXT("tier zero takes nothing off rather than adding"),
+		Damage::ResistancePenaltyAt(0), 0.0f, 0.001f);
+	TestEqual(TEXT("and neither does a negative tier"),
+		Damage::ResistancePenaltyAt(-5), 0.0f, 0.001f);
+
+	// ONE STEP PER TIER FROM THE FIRST PENALISED ONE, so tier 8 takes 75 and a
+	// player needs 145 to sit at the 70 cap.
+	for (int32 Tier = Damage::FirstPenalisedDifficultyTier; Tier <= 8; ++Tier)
+	{
+		const float Expected =
+			(Tier - Damage::FirstPenalisedDifficultyTier + 1)
+			* Damage::ResistancePenaltyPerTier;
+		TestEqual(FString::Printf(
+			TEXT("difficulty tier %d takes %.0f off"), Tier, Expected),
+			Damage::ResistancePenaltyAt(Tier), Expected, 0.001f);
+	}
+
+	// THE FIGURE THE DESIGN DOCUMENT'S TABLE STATES, written out rather than
+	// derived, so a change to either constant fails here by number as well as
+	// by shape.
+	TestEqual(TEXT("difficulty tier 8 takes exactly 75 off"),
+		Damage::ResistancePenaltyAt(8), 75.0f, 0.001f);
+
+	return true;
+}
+
+/**
+ * It reaches a player and never an enemy.
+ *
+ * WHY THE DISTINCTION IS LOAD-BEARING. An enemy carries its own resistance,
+ * and a penalty taken from both sides would cancel out and change nothing at
+ * all -- so a version that forgot the check would look like it worked.
+ */
+CATACLYSM_TEST(FCataclysmResistancePenaltyReachesThePlayerTest,
+	"Cataclysm.Damage.TheResistancePenaltyReachesAPlayerAndNotAnEnemy")
+{
+	using namespace CataclysmDamageTest;
+	using namespace CataclysmResistancePenaltyTest;
+
+	IConsoleVariable* Tier = TierVariable();
+	if (!TestNotNull(TEXT("the Cataclysm.DifficultyTier console variable"),
+					 Tier))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const int32 Was = Tier->GetInt();
+	ON_SCOPE_EXIT
+	{
+		// PUT BACK WHATEVER IT WAS, because the console variable is global and
+		// every other test in the run reads it through
+		// ACataclysmGameMode::DifficultyTierFor.
+		Tier->Set(Was, ECVF_SetByCode);
+		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	};
+
+	// AN ENEMY FIRST, so the player figure below is evidence of the rule
+	// rather than of the tier being set at all.
+	Tier->Set(8, ECVF_SetByCode);
+
+	AActor* Enemy = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* EnemyAbilities =
+		NewObject<UCataclysmAbilitySystemComponent>(Enemy);
+	EnemyAbilities->RegisterComponent();
+	EnemyAbilities->InitAbilityActorInfo(Enemy, Enemy);
+
+	TestEqual(TEXT("an enemy at difficulty tier 8 is penalised nothing"),
+		UCataclysmDamageCalculation::ResistancePenaltyFor(EnemyAbilities),
+		0.0f, 0.001f);
+
+	// A NULL DEFENDER TOO, which is the branch a caller with no ability system
+	// reaches rather than a fault.
+	TestEqual(TEXT("and nothing is penalised for no defender at all"),
+		UCataclysmDamageCalculation::ResistancePenaltyFor(nullptr),
+		0.0f, 0.001f);
+
+	// AND NOW A PLAYER, in the same world at the same tier.
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player character"), Player))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* PlayerAbilities =
+		NewObject<UCataclysmAbilitySystemComponent>(Player);
+	PlayerAbilities->RegisterComponent();
+	PlayerAbilities->InitAbilityActorInfo(Player, Player);
+
+	TestEqual(TEXT("a player at difficulty tier 8 is penalised 75"),
+		UCataclysmDamageCalculation::ResistancePenaltyFor(PlayerAbilities),
+		75.0f, 0.001f);
+
+	// AND THE TIER IS WHAT DECIDES IT, not the fact of being a player. Without
+	// this a penalty hard-coded to 75 would pass every line above.
+	Tier->Set(1, ECVF_SetByCode);
+	TestEqual(TEXT("the same player at difficulty tier 1 is penalised nothing"),
+		UCataclysmDamageCalculation::ResistancePenaltyFor(PlayerAbilities),
+		0.0f, 0.001f);
+
+	Tier->Set(5, ECVF_SetByCode);
+	TestEqual(TEXT("and 30 at difficulty tier 5"),
+		UCataclysmDamageCalculation::ResistancePenaltyFor(PlayerAbilities),
+		30.0f, 0.001f);
+
+	return true;
+}
+
+/**
+ * The penalty reaches a hit, and the difficulty tier decides how much.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM THE TWO ABOVE. Those call
+ * `ResistancePenaltyAt` and `ResistancePenaltyFor` directly, so neither would
+ * notice if the subtraction inside `ResistanceFor` were deleted. Between them
+ * they check a number; this checks that the number reaches a player.
+ *
+ * A PLAYER CHARACTER RATHER THAN THE SHARED FIXTURE, because the fixture
+ * spawns a bare actor and the penalty deliberately never touches one.
+ *
+ * NO CONSOLE VARIABLE AND NO GAME MODE. `Resolve` is given the difficulty
+ * tier and the penalty uses that one, which is the same tier the armour curve
+ * already uses.
+ */
+CATACLYSM_TEST(FCataclysmResistancePenaltyReachesAHitTest,
+	"Cataclysm.Damage.TheResistancePenaltyReachesAHitAndScalesWithTheTier")
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player character"), Player))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Abilities =
+		NewObject<UCataclysmAbilitySystemComponent>(Player);
+	Abilities->RegisterComponent();
+
+	UCataclysmVitalAttributeSet* Vitals =
+		NewObject<UCataclysmVitalAttributeSet>(Player);
+	UCataclysmCombatAttributeSet* Combat =
+		NewObject<UCataclysmCombatAttributeSet>(Player);
+	UCataclysmResistanceAttributeSet* Resistances =
+		NewObject<UCataclysmResistanceAttributeSet>(Player);
+	Abilities->AddAttributeSetSubobject(Vitals);
+	Abilities->AddAttributeSetSubobject(Combat);
+	Abilities->AddAttributeSetSubobject(Resistances);
+	Abilities->InitAbilityActorInfo(Player, Player);
+
+	// NOTHING IS SET HERE, AND THAT IS DELIBERATE. Every write to these
+	// attributes is made inside the lambda below, as a BASE value, because
+	// this character applies a class stat line and the aggregator recomputes
+	// each attribute from its base afterwards. Armour and damage reduction are
+	// left at the level 1 line s zero, so resistance is the only mitigation
+	// layer with anything to do.
+
+	const auto LandedAt = [&](int32 Tier) -> float
+	{
+		// FILLED AGAIN BEFORE EVERY BLOW, AND THAT IS NOT TIDINESS. What a
+		// hit REPORTS is capped at the health the target had, so a character
+		// with 100 left reports 100 whatever was thrown at it. This world has
+		// begun play, so the player character ran its own start-up and applied
+		// the level 1 class stat line, whose maximum health is exactly 100.
+		// Every figure below read 100 until this was added.
+		//
+		// AND THE BASE VALUE RATHER THAN THE ATTRIBUTE SET S SETTER. Writing
+		// the current value did not work: the class stat line is a set of
+		// modifiers, so the aggregator recomputes the attribute from its base
+		// and puts 100 straight back. The figures stayed at 100 through a
+		// whole build cycle before that was measured rather than assumed.
+		Abilities->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000'000.0f);
+		Abilities->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000'000.0f);
+
+		// SIXTY-FIVE OF ONE TYPE, SET THE SAME WAY AND FOR THE SAME REASON.
+		// The class stat line writes every resistance to zero, so the attribute
+		// set s own setter was overwritten here too. Chosen so the answer
+		// differs at every tier below: 65 at tier 1, 50 at tier 4, and -10 at
+		// tier 8, which is the character taking MORE than the blow was worth.
+		Abilities->SetNumericAttributeBase(
+			UCataclysmResistanceAttributeSet::GetWarResistanceAttribute(), 65.0f);
+
+		FCataclysmIncomingHit Incoming;
+		Incoming.Damage = 1'000.0f;
+		Incoming.DamageType = FName(TEXT("War"));
+		return UCataclysmDamageCalculation::Resolve(
+			Incoming, Abilities, Tier, /*EvasionRoll=*/100.0f,
+			/*BlockRoll=*/100.0f).DealtToHealth;
+	};
+
+	// TIER 1 TAKES NOTHING OFF, so this is the figure every test written before
+	// the penalty existed would have seen.
+	TestEqual(TEXT("at difficulty tier 1 a 1,000 blow lands for 350"),
+		LandedAt(1), 350.0f, 0.5f);
+
+	// TIER 4 IS THE FIRST PENALISED ONE. 65 less 15 is 50, so half the blow.
+	TestEqual(TEXT("at difficulty tier 4 the same blow lands for 500"),
+		LandedAt(4), 500.0f, 0.5f);
+
+	// AND AT TIER 8 THE CHARACTER IS UNDER ZERO AND TAKES MORE THAN THE BLOW.
+	// 65 less 75 is -10, so 110% of it. That is the whole point of the lever:
+	// gear that was enough at tier 1 is a liability at tier 8.
+	TestEqual(TEXT("at difficulty tier 8 it lands for 1,100, more than it was "
+				   "worth"), LandedAt(8), 1'100.0f, 0.5f);
+
+	// AND AN ENEMY IN THE SAME WORLD AT THE SAME TIER IS UNTOUCHED, which is
+	// what says the three figures above are the penalty and not the tier
+	// changing something else about a hit.
+	CataclysmDamageTest::FScopedDefender Enemy(World);
+	Enemy.Resistances->SetWarResistance(65.0f);
+
+	FCataclysmIncomingHit AtTheEnemy;
+	AtTheEnemy.Damage = 1'000.0f;
+	AtTheEnemy.DamageType = FName(TEXT("War"));
+	TestEqual(TEXT("an enemy with the same 65 resistance still stops 65% at "
+				   "difficulty tier 8"),
+		UCataclysmDamageCalculation::Resolve(
+			AtTheEnemy, Enemy.AbilitySystem, 8, /*EvasionRoll=*/100.0f,
+			/*BlockRoll=*/100.0f).DealtToHealth,
+		350.0f, 0.5f);
+
 	return true;
 }
 

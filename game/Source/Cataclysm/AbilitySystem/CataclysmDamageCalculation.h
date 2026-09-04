@@ -213,6 +213,23 @@ public:
 	static constexpr float ResistanceCap = 70.0f;
 
 	/**
+	 * The first difficulty tier that takes resistance off a player.
+	 *
+	 * NOTHING BEFORE IT, SO THE EARLY GAME IS UNTOUCHED. A character at the
+	 * first three tiers has almost no resistance gear, and a penalty there
+	 * would punish the one group least able to answer it.
+	 */
+	static constexpr int32 FirstPenalisedDifficultyTier = 4;
+
+	/**
+	 * How much resistance each penalised difficulty tier takes off a player.
+	 *
+	 * SO A TIER 8 CHARACTER NEEDS 145 RATHER THAN 70. Five penalised tiers,
+	 * four through eight, at fifteen points each is seventy-five.
+	 */
+	static constexpr float ResistancePenaltyPerTier = 15.0f;
+
+	/**
 	 * The most the flat damage reduction stat removes from a hit.
 	 *
 	 * IT WAS THE ONE LAYER WITH NOTHING HOLDING IT. Evasion has a soft cap and
@@ -644,6 +661,67 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float EffectiveResistance(float Resistance, float Penetration);
+
+	/**
+	 * How much resistance this difficulty tier takes off a player.
+	 *
+	 * WHY A PENALTY EXISTS AT ALL. Issue #1229. The cap is 70 and a player
+	 * needed exactly 70 at every tier from one to eight, so the number being
+	 * chased never moved. That fixed target is what forced every resistance
+	 * affix to be small: the stat only ever needed filling once, so each
+	 * affix had to be a small share of 70 or a handful of pieces reached the
+	 * cap. The worst roll of `All resistances` was 0.60, which a player
+	 * cannot feel.
+	 *
+	 * MOVING THE TARGET IS WHAT BUYS THE ROOM. A tier 8 character needs 145
+	 * to sit at the cap, so every source of resistance can be about twice as
+	 * large and still land in the same place.
+	 *
+	 * PATH OF EXILE 2'S SHAPE, WITH THE RAMP MOVED LATER. That game takes 10
+	 * points per act, 60 in total, so a player needs 135 to sit at a 75 cap.
+	 * This starts at difficulty tier 4 rather than the first, because the
+	 * early game is where a worthless affix already hurts most.
+	 *
+	 * @return zero below the first penalised tier, and never negative
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float ResistancePenaltyAt(int32 DifficultyTier);
+
+	/**
+	 * How much resistance the difficulty tier takes off this defender.
+	 *
+	 * A PLAYER ONLY, AND THAT IS THE WHOLE POINT. An enemy has its own
+	 * resistance, and a penalty that took from both would cancel out and
+	 * change nothing.
+	 *
+	 * ASKED OF THE WORLD RATHER THAN STORED ON THE CHARACTER. The difficulty
+	 * tier changes when a player enters a different dungeon, and the stat
+	 * line is recomputed when equipment changes rather than when that
+	 * happens -- so an attribute holding the penalty would carry the previous
+	 * dungeon's figure until the player happened to swap a ring.
+	 *
+	 * @return zero for an enemy, for a null defender, and for any defender
+	 *         whose world has no game mode to ask
+	 */
+	static float ResistancePenaltyFor(const UAbilitySystemComponent* Defender);
+
+	/**
+	 * The same, for a difficulty tier the caller already knows.
+	 *
+	 * WHAT THE HIT USES. `Resolve` is given the tier and already uses it for
+	 * the armour curve, so reading a second one out of the world inside the
+	 * same function would be a hidden dependency and a way for the two to
+	 * disagree about which dungeon is being played.
+	 *
+	 * IT IS ALSO WHAT MAKES THE PENALTY TESTABLE THROUGH A HIT. An automation
+	 * world has no game mode, so the form above always answers the lowest
+	 * tier there and a test could only ever reach it by setting a global
+	 * console variable.
+	 *
+	 * @return zero for an enemy and for a null defender
+	 */
+	static float ResistancePenaltyFor(const UAbilitySystemComponent* Defender,
+									  int32 DifficultyTier);
 
 	/**
 	 * Flat damage reduction as a percentage of damage removed, capped.

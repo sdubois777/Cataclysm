@@ -34,9 +34,9 @@ Stat_Increased_movement_speed,Increased movement speed,Stat,suffix,movement_spee
 Stat_Increased_cooldown_reduction,Increased cooldown reduction,Stat,suffix,cooldown_reduction,flat,12.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Haste
 Stat_Flat_magic_find,Flat magic find,Stat,suffix,magic_find,flat,10.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Fortune
 Stat_Increased_loot_quantity,Increased loot quantity,Stat,suffix,loot_quantity,increased,8.0,0,,,,,"Belt, Boots, Necklace, Relic, Ring",Plenty
-Resistance_Single_resistance,Single resistance,Resistance,suffix,,flat,20.0,1,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Warding
-Resistance_Two_resistances,Two resistances,Resistance,suffix,,flat,14.0,2,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Twin Wards
-Resistance_All_resistances,All resistances,Resistance,suffix,,flat,6.0,8,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",the Bulwark
+Resistance_Single_resistance,Single resistance,Resistance,suffix,,flat,40.0,1,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Warding
+Resistance_Two_resistances,Two resistances,Resistance,suffix,,flat,28.0,2,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",Twin Wards
+Resistance_All_resistances,All resistances,Resistance,suffix,,flat,12.0,8,,,,,"Belt, Boots, Chest, Gloves, Head, Necklace, Pants, Relic, Ring, Shoulders",the Bulwark
 Ailment_Chance_to_bleed,Chance to bleed,Ailment,suffix,,,15.0,0,Bleed,Of Rending,,,"Necklace, Relic, Ring, Weapon",Rending
 Ailment_Chance_to_poison,Chance to poison,Ailment,suffix,,,25.0,0,Poison,Of The Viper,,,"Necklace, Relic, Ring, Weapon",Venom
 Ailment_Chance_to_disease,Chance to disease,Ailment,suffix,,,20.0,0,Disease,Of Rot,,,"Necklace, Relic, Ring, Weapon",Contagion

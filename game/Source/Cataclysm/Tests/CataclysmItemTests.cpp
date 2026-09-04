@@ -503,10 +503,13 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 			Found != nullptr && Found->Num() == 1);
 		if (Found && Found->Num() == 1)
 		{
-			// 6% per resistance at tier 7 on +10 gear.
-			TestTrue(FString::Printf(TEXT("%s is 6 points, got %.2f"),
+			// 12% per resistance at tier 7 on +10 gear. It was 6 until issue
+			// #1229 doubled the three resistance affixes, because the
+			// difficulty tier now takes resistance off a player and a tier 8
+			// character needs 145 rather than 70 to sit at the cap.
+			TestTrue(FString::Printf(TEXT("%s is 12 points, got %.2f"),
 					 *Stat.ToString(), (*Found)[0].Value),
-				FMath::IsNearlyEqual((*Found)[0].Value, 6.0f, 0.05f));
+				FMath::IsNearlyEqual((*Found)[0].Value, 12.0f, 0.05f));
 		}
 	}
 
@@ -541,11 +544,13 @@ bool FCataclysmItemResistanceTest::RunTest(const FString& Parameters)
 		Demonic != nullptr && Demonic->Num() == 1);
 	if (Demonic && Demonic->Num() == 1)
 	{
-		// 20 points for a single resistance at tier 7 on +10 gear, against 6 for
-		// the family covering all eight. Concentration is worth more per type.
-		TestTrue(FString::Printf(TEXT("a single resistance is 20 points, got %.2f"),
+		// 40 points for a single resistance at tier 7 on +10 gear, against 12
+		// for the family covering all eight. Concentration is worth more per
+		// type, and the RATIO is what this line is really about: both doubled
+		// together for issue #1229, so it is unchanged at 3.33 to 1.
+		TestTrue(FString::Printf(TEXT("a single resistance is 40 points, got %.2f"),
 				 (*Demonic)[0].Value),
-			FMath::IsNearlyEqual((*Demonic)[0].Value, 20.0f, 0.05f));
+			FMath::IsNearlyEqual((*Demonic)[0].Value, 40.0f, 0.05f));
 	}
 
 	return true;

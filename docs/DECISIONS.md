@@ -2,6 +2,96 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — The difficulty tier takes resistance off the player, so resistance affixes can carry real numbers
+
+### What was wrong
+
+The resistance cap is 70 and it never moved, so a player needed exactly 70 at
+every difficulty tier from one to eight. **A target that never moves is what
+forced every resistance affix to be small**: the stat only ever needed filling
+once, so each affix had to be a small share of 70 or a handful of pieces
+reached the cap.
+
+The worst roll of the all-resistances affix was **0.60**, which no player can
+feel. That is the fault #1230 is about, and for resistance specifically it
+could not be fixed by raising the affix without a handful of pieces capping
+the stat outright.
+
+### What was decided
+
+The project owner proposed it on 2026-09-03: "for resistances, I think we
+should do something like Path of Exile does and subtract like 10% of what the
+player has per tier, gives us more bandwidth to increase those numbers." They
+chose the ramp on 2026-09-04 from four options.
+
+**From difficulty tier 4 onward a player loses 15 resistance of every type per
+tier.** Nothing at tiers 1, 2 and 3.
+
+| Difficulty tier | Taken off | Needed to sit at the 70 cap |
+| --: | --: | --: |
+| 1 to 3 | 0 | 70 |
+| 4 | 15 | 85 |
+| 6 | 45 | 115 |
+| 8 | 75 | 145 |
+
+**Why the ramp starts at tier 4 rather than the first.** Path of Exile 2 takes
+10 points per act from the start, 60 in total. Starting at the first tier here
+would punish the group least able to answer it, and the early game is already
+where a worthless affix hurts most — which is the whole reason this change
+exists.
+
+### The three resistance affixes doubled to match
+
+| Affix | Before | After |
+| :-- | --: | --: |
+| Single resistance | 20 | 40 |
+| Two resistances | 14 | 28 |
+| All resistances | 6 | 12 |
+
+**They had to.** Seventeen pieces can carry a resistance affix. At the old
+values, reaching 145 with the all-eight family would have taken 24 of them, so
+the penalty would have been unsurvivable rather than demanding.
+
+**Doubling leaves the cost where it was and doubles the number on the item.**
+Capping every resistance costs about twelve affixes before and after, which is
+what `sim/cataclysm_sim/reference_build.py` already spends on it.
+
+### A character with no resistance goes negative, and that is the point
+
+The floor is −100. At difficulty tier 8 a character wearing none at all sits
+at −75 and takes 75% more of every damage type. **That is what makes this a
+difficulty lever rather than a tax**: it is what stops a character walking into
+the last tier in the gear of the first.
+
+### Where it is applied, and why not on the character
+
+In `ResistanceFor` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp`, the one
+function that sums a defender's resistance.
+
+**Not baked into the resistance attributes**, which would have let any future
+character sheet agree by construction. The difficulty tier changes when a
+player enters a different dungeon, and the stat line is recomputed when
+equipment changes rather than when that happens — so the attribute would have
+carried the previous dungeon's penalty until the player happened to swap a
+ring.
+
+**A player only.** Enemies carry their own resistance and a penalty on both
+sides would cancel out and change nothing.
+
+### A console command, and a screen that is owed
+
+Nothing in the game showed a player their resistance: no screen, and
+`Cataclysm.ShowAttributes` lists the eight attributes rather than these. A
+difficulty lever whose purpose is to tell a player they need more resistance
+is useless if the number cannot be read, so this change adds
+`Cataclysm.ShowResistances`.
+
+**That is a stopgap and is recorded as one.** The project owner's standing
+rule is that a console command is not a system's user interface. #1233 tracks
+the character sheet.
+
+Issue #1229.
 ## 2026-09-03 — Retaliation is a share of the blow taken, not a flat amount
 
 ### What was wrong, measured

@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmGameMode.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagsManager.h"
 
@@ -87,7 +89,8 @@ namespace
 	 * before issue #486 an untyped hit found no slot to read, so every resistance
 	 * on either side did nothing at all.
 	 */
-	float ResistanceFor(const UAbilitySystemComponent* Defender, FName DamageType)
+	float ResistanceFor(const UAbilitySystemComponent* Defender,
+						FName DamageType, int32 DifficultyTier)
 	{
 		if (!Defender)
 		{
@@ -114,6 +117,16 @@ namespace
 		{
 			Total += Defender->GetNumericAttribute(Typed);
 		}
+
+		// AND THE DIFFICULTY TIER TAKES ITS SHARE, FOR A PLAYER ONLY. Issue
+		// #1229. Subtracted here rather than clamped, because
+		// `EffectiveResistance` below is what bounds the result and a
+		// penalised character IS meant to be able to go negative: at
+		// difficulty tier 8 one wearing no resistance at all sits at -75 and
+		// takes 75% more of every damage type. That is what makes the penalty
+		// a difficulty lever rather than a tax.
+		Total -= UCataclysmDamageCalculation::ResistancePenaltyFor(
+			Defender, DifficultyTier);
 
 		return Total;
 	}
@@ -295,6 +308,48 @@ float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 	return FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap);
 }
 
+float UCataclysmDamageCalculation::ResistancePenaltyAt(int32 DifficultyTier)
+{
+	// FLOORED AT ZERO RATHER THAN ALLOWED TO GO NEGATIVE. A tier below the
+	// first penalised one takes nothing off; it does not hand resistance out.
+	const int32 Penalised = DifficultyTier - FirstPenalisedDifficultyTier + 1;
+	return FMath::Max(0, Penalised) * ResistancePenaltyPerTier;
+}
+
+float UCataclysmDamageCalculation::ResistancePenaltyFor(
+	const UAbilitySystemComponent* Defender, int32 DifficultyTier)
+{
+	if (!Defender)
+	{
+		return 0.0f;
+	}
+
+	// THE AVATAR AND NOT THE OWNER. A player's ability system is owned by the
+	// player state, which is not in the world and is not the character. The
+	// same distinction is why retaliation and the hit effect both reach for
+	// the avatar; issues #562 and #565.
+	if (!Cast<const ACataclysmPlayerCharacter>(Defender->GetAvatarActor()))
+	{
+		// EVERY ENEMY IN THE GAME TAKES THIS BRANCH, which is the ordinary
+		// case rather than a fault.
+		return 0.0f;
+	}
+
+	return ResistancePenaltyAt(DifficultyTier);
+}
+
+float UCataclysmDamageCalculation::ResistancePenaltyFor(
+	const UAbilitySystemComponent* Defender)
+{
+	// ASKS THE WORLD, AND ONLY THE CONSOLE COMMAND NEEDS THAT.
+	// `Cataclysm.ShowResistances` is printing what the player has right now
+	// and has no hit to read a tier off. Every hit uses the form above,
+	// because `Resolve` already knows which tier it is resolving at.
+	const AActor* Avatar = Defender ? Defender->GetAvatarActor() : nullptr;
+	return ResistancePenaltyFor(
+		Defender, ACataclysmGameMode::DifficultyTierIn(Avatar));
+}
+
 float UCataclysmDamageCalculation::EffectiveDamageReduction(float Reduction)
 {
 	return FMath::Clamp(Reduction, 0.0f, DamageReductionCap);
@@ -442,7 +497,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 	// 4. Resistance, penetrated first and capped second.
 	const float Resist = EffectiveResistance(
-		ResistanceFor(Defender, Hit.DamageType), Hit.ResistancePenetration);
+		ResistanceFor(Defender, Hit.DamageType, Tier),
+		Hit.ResistancePenetration);
 	Damage *= 1.0f - Resist / 100.0f;
 
 	// 5. Flat damage reduction, capped. Until issue #644 this was the one step
