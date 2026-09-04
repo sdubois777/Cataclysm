@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Items/CataclysmItem.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Data/CataclysmDataRows.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Engine/DataTable.h"
@@ -134,20 +135,20 @@ bool FCataclysmItemCurvesTest::RunTest(const FString& Parameters)
 	// are still the tier 7 figures on a +10 piece, so nothing above the top of
 	// the curve moved.
 	TestTrue(TEXT("T7, perfect roll, +10 gives the stated top value of 120"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 1.0f, 10), 120.0f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10), 120.0f, 0.01f));
 	TestTrue(TEXT("T7, worst roll, +10 gives 90"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 0.0f, 10), 90.0f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 0.0f, 10), 90.0f, 0.01f));
 	TestTrue(TEXT("T7, perfect roll, +0 gives 48"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 1.0f, 0), 48.0f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 0), 48.0f, 0.01f));
 	TestTrue(TEXT("T4, middle roll, +5 gives 42.4352"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 4, 0.5f, 5), 42.4352f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 4, 0.5f, 5), 42.4352f, 0.01f));
 
 	// THE TWO LADDERS TOGETHER, which is the number issue #1179 is about. A
 	// tier 1 roll at its worst on an un-upgraded drop, against a tier 7 roll at
 	// its best on a finished one. It was 32.9x, which is what made a starting
 	// affix 3.04% of a finished one; it is now about 10x.
-	const float Fresh = FValues::AffixValue(120.0f, 1, 0.0f, 0);
-	const float Finished = FValues::AffixValue(120.0f, 7, 1.0f, FValues::MaxGearLevel);
+	const float Fresh = FValues::AffixValue(120.0f, /*Floor=*/0.0f, 1, 0.0f, 0);
+	const float Finished = FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, FValues::MaxGearLevel);
 	TestTrue(FString::Printf(
 			TEXT("the two ladders span %.2fx, which should be about 10"),
 			Finished / Fresh),
@@ -157,17 +158,17 @@ bool FCataclysmItemCurvesTest::RunTest(const FString& Parameters)
 	// two levers are the point, and removing the gear one put a hole in the late
 	// game where a character's affix tier has already capped at 7.
 	TestTrue(TEXT("the tier ladder still does something"),
-		FValues::AffixValue(120.0f, 7, 1.0f, 10)
-		> FValues::AffixValue(120.0f, 1, 1.0f, 10) * 2.0f);
+		FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10)
+		> FValues::AffixValue(120.0f, /*Floor=*/0.0f, 1, 1.0f, 10) * 2.0f);
 	TestTrue(TEXT("the gear level ladder still does something"),
-		FValues::AffixValue(120.0f, 7, 1.0f, 10)
-		> FValues::AffixValue(120.0f, 7, 1.0f, 0) * 2.0f);
+		FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 10)
+		> FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 1.0f, 0) * 2.0f);
 
 	// A roll outside the band is clamped rather than escaping it.
 	TestTrue(TEXT("a roll above 1 does not exceed the band"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, 5.0f, 10), 120.0f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, 5.0f, 10), 120.0f, 0.01f));
 	TestTrue(TEXT("a roll below 0 does not fall under the band"),
-		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, 7, -5.0f, 10), 90.0f, 0.01f));
+		FMath::IsNearlyEqual(FValues::AffixValue(120.0f, /*Floor=*/0.0f, 7, -5.0f, 10), 90.0f, 0.01f));
 
 	return true;
 }
@@ -188,8 +189,8 @@ bool FCataclysmItemBandOverlapTest::RunTest(const FString& Parameters)
 	const float Top = 120.0f;
 	for (int32 Tier = 3; Tier <= FValues::MaxAffixTier; ++Tier)
 	{
-		const float PerfectTwoBelow = FValues::AffixValue(Top, Tier - 2, 1.0f, 10);
-		const float WorstHere = FValues::AffixValue(Top, Tier, 0.0f, 10);
+		const float PerfectTwoBelow = FValues::AffixValue(Top, /*Floor=*/0.0f, Tier - 2, 1.0f, 10);
+		const float WorstHere = FValues::AffixValue(Top, /*Floor=*/0.0f, Tier, 0.0f, 10);
 		TestTrue(FString::Printf(
 				TEXT("a perfect T%d (%.2f) cannot beat the worst T%d (%.2f)"),
 				Tier - 2, PerfectTwoBelow, Tier, WorstHere),
@@ -201,8 +202,8 @@ bool FCataclysmItemBandOverlapTest::RunTest(const FString& Parameters)
 	bool bFoundOverlap = false;
 	for (int32 Tier = 2; Tier <= FValues::MaxAffixTier; ++Tier)
 	{
-		if (FValues::AffixValue(Top, Tier - 1, 1.0f, 10)
-			> FValues::AffixValue(Top, Tier, 0.0f, 10))
+		if (FValues::AffixValue(Top, /*Floor=*/0.0f, Tier - 1, 1.0f, 10)
+			> FValues::AffixValue(Top, /*Floor=*/0.0f, Tier, 0.0f, 10))
 		{
 			bFoundOverlap = true;
 			break;
@@ -210,6 +211,191 @@ bool FCataclysmItemBandOverlapTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("a perfect roll can beat the tier above somewhere"), bFoundOverlap);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A stated floor. Issue #1230.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemFloorIsTheWorstRoll,
+	"Cataclysm.Item.AStatedFloorIsTheWorstAPlayerCanBeHanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemFloorIsTheWorstRoll::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	// TIER 1, THE BOTTOM OF THE ROLL BAND, ON AN UN-UPGRADED PIECE. That is the
+	// worst combination the three ladders can produce, and a stated floor is
+	// the number a player sees there.
+	const float Top = 4.0f;
+	const float Floor = 1.0f;
+
+	TestTrue(FString::Printf(TEXT("the worst roll is the floor, not %.3f"),
+			FValues::AffixValue(Top, Floor, 1, 0.0f, 0)),
+		FMath::IsNearlyEqual(FValues::AffixValue(Top, Floor, 1, 0.0f, 0),
+							 Floor, 0.001f));
+
+	// AND THE TOP DOES NOT MOVE, which is the whole point of the shape chosen:
+	// no ceiling changes, only the bottom comes up.
+	TestTrue(TEXT("a perfect tier 7 roll on a +10 piece is still the top value"),
+		FMath::IsNearlyEqual(
+			FValues::AffixValue(Top, Floor, FValues::MaxAffixTier, 1.0f,
+								FValues::MaxGearLevel),
+			Top, 0.001f));
+
+	// A FLOOR OF ZERO MEANS NONE WAS STATED, and the affix is then exactly what
+	// it was before there were floors at all: a tenth of its top at the worst.
+	TestTrue(FString::Printf(
+			TEXT("with no floor the worst roll is a tenth of the top, not %.3f"),
+			FValues::AffixValue(Top, 0.0f, 1, 0.0f, 0)),
+		FMath::IsNearlyEqual(FValues::AffixValue(Top, 0.0f, 1, 0.0f, 0),
+							 Top * FValues::WorstMultiplier(), 0.001f));
+	TestTrue(TEXT("and that multiplier is a tenth"),
+		FMath::IsNearlyEqual(FValues::WorstMultiplier(), 0.1f, 0.0001f));
+
+	// STATING THE DERIVED FLOOR EXPLICITLY CHANGES NOTHING. The remap is the
+	// identity map at exactly that value, so this is one piece of arithmetic
+	// reaching the same answer rather than a branch that could rot.
+	for (int32 Tier = 1; Tier <= FValues::MaxAffixTier; ++Tier)
+	{
+		for (const float Roll : { 0.0f, 0.5f, 1.0f })
+		{
+			for (const int32 Level : { 0, 5, FValues::MaxGearLevel })
+			{
+				const float Unstated =
+					FValues::AffixValue(Top, 0.0f, Tier, Roll, Level);
+				const float Stated = FValues::AffixValue(
+					Top, Top * FValues::WorstMultiplier(), Tier, Roll, Level);
+				TestTrue(FString::Printf(
+						TEXT("T%d roll %.1f at +%d: %.4f against %.4f"),
+						Tier, Roll, Level, Unstated, Stated),
+					FMath::IsNearlyEqual(Unstated, Stated, 0.001f));
+			}
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemFloorKeepsTheOverlapBound,
+	"Cataclysm.Item.AStatedFloorKeepsTheOneTierOverlap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemFloorKeepsTheOverlapBound::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	// THE RISK THE WHOLE SHAPE WAS CHOSEN TO AVOID. Raising the floor by
+	// squeezing the tier ladder puts the tiers closer together, and a floor
+	// better than about an eighth of the top then lets a perfect roll two tiers
+	// down beat the worst roll here -- which
+	// Cataclysm.Item.BandsOverlapByExactlyOneTier forbids.
+	//
+	// ADDING THE FLOOR AND RUNNING THE LADDER ACROSS WHAT IS LEFT IS MONOTONE,
+	// so it cannot do that. This walks the same comparison that test makes, at
+	// floors far past the point the squeezing route fails.
+	const float Top = 4.0f;
+	for (const float Floor : { 0.0f, 0.5f, 1.0f, 2.0f, 3.0f })
+	{
+		for (int32 Tier = 3; Tier <= FValues::MaxAffixTier; ++Tier)
+		{
+			const float PerfectTwoBelow =
+				FValues::AffixValue(Top, Floor, Tier - 2, 1.0f, 10);
+			const float WorstHere =
+				FValues::AffixValue(Top, Floor, Tier, 0.0f, 10);
+			TestTrue(FString::Printf(
+					TEXT("floor %.1f: a perfect T%d (%.3f) cannot beat the "
+						 "worst T%d (%.3f)"),
+					Floor, Tier - 2, PerfectTwoBelow, Tier, WorstHere),
+				PerfectTwoBelow < WorstHere);
+		}
+
+		// And the one-tier overlap really is still there, so the reroll and
+		// perfect crafting materials keep having something to act on.
+		bool bFoundOverlap = false;
+		for (int32 Tier = 2; Tier <= FValues::MaxAffixTier; ++Tier)
+		{
+			if (FValues::AffixValue(Top, Floor, Tier - 1, 1.0f, 10)
+				> FValues::AffixValue(Top, Floor, Tier, 0.0f, 10))
+			{
+				bFoundOverlap = true;
+				break;
+			}
+		}
+		TestTrue(FString::Printf(
+				TEXT("floor %.1f: a perfect roll can still beat the tier above "
+					 "somewhere"), Floor),
+			bFoundOverlap);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemEveryFloorInTheDataHolds,
+	"Cataclysm.Item.EveryStatedFloorIsWhatAnAffixActuallyGives",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemEveryFloorInTheDataHolds::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	// AGAINST THE TABLE RATHER THAN AGAINST EXAMPLES, so an affix whose floor
+	// is added or moved later is covered without anybody editing this file.
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	if (!TestNotNull(TEXT("the affix table loaded"), AffixTable))
+	{
+		return false;
+	}
+
+	int32 Floored = 0;
+	for (const TPair<FName, uint8*>& Row : AffixTable->GetRowMap())
+	{
+		const FCataclysmAffixRow* Affix =
+			reinterpret_cast<const FCataclysmAffixRow*>(Row.Value);
+		if (!Affix || Affix->TopValue <= 0.0f)
+		{
+			// A hybrid states no value of its own; its halves carry theirs.
+			continue;
+		}
+
+		const float Worst = FValues::AffixValue(Affix->TopValue, Affix->Floor,
+											   1, 0.0f, 0);
+		const float Best = FValues::AffixValue(
+			Affix->TopValue, Affix->Floor, FValues::MaxAffixTier, 1.0f,
+			FValues::MaxGearLevel);
+
+		if (Affix->Floor > 0.0f)
+		{
+			++Floored;
+			if (!FMath::IsNearlyEqual(Worst, Affix->Floor, 0.001f))
+			{
+				AddError(FString::Printf(
+					TEXT("%s states a floor of %.3f and its worst roll is "
+						 "%.3f."), *Row.Key.ToString(), Affix->Floor, Worst));
+			}
+			if (Affix->Floor >= Affix->TopValue)
+			{
+				AddError(FString::Printf(
+					TEXT("%s states a floor of %.3f and a top of %.3f. A floor "
+						 "at or above the top makes every tier and every roll "
+						 "one number."),
+					*Row.Key.ToString(), Affix->Floor, Affix->TopValue));
+			}
+		}
+
+		if (!FMath::IsNearlyEqual(Best, Affix->TopValue, 0.001f))
+		{
+			AddError(FString::Printf(
+				TEXT("%s tops out at %.3f rather than its stated %.3f. No "
+					 "ceiling was supposed to move."),
+				*Row.Key.ToString(), Best, Affix->TopValue));
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("%d affixes state a floor."), Floored));
+	TestTrue(TEXT("some affix states a floor"), Floored > 0);
 	return true;
 }
 

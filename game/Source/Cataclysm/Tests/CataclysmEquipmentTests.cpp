@@ -1858,8 +1858,9 @@ bool FCataclysmCritChanceAffixesScaleTheSkillBase::RunTest(const FString& Parame
 	}
 
 	const float Increase = UCataclysmItemValues::AffixValue(
-		Row->TopValue, UCataclysmItemValues::MaxAffixTier, /*Roll=*/1.0f,
-		UCataclysmItemValues::MaxGearLevel, /*bTwoHanded=*/false);
+		Row->TopValue, Row->Floor, UCataclysmItemValues::MaxAffixTier,
+		/*Roll=*/1.0f, UCataclysmItemValues::MaxGearLevel,
+		/*bTwoHanded=*/false);
 
 	const float WithIncreased = AttributeWearing(
 		World, {Sword, Carrying(RingBase, IncreasedAffix, /*Breadth=*/0)}, Crit);

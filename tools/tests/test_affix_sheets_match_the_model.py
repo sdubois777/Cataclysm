@@ -280,7 +280,13 @@ class TestTheCountsThatAreAssertedInUnreal:
         # 2026-08-16, when the project owner settled that an affix does
         # grant a chance to stun and that Blunt's 10% is part of the same
         # pool.
-        assert len(affix_sheet) == 85 == model.total_pool_size()
+        # 86, not 85. Flat energy shield regeneration landed on 2026-09-04
+        # with issue #1237. Flat health regeneration and flat mana
+        # regeneration both existed and energy shield had only the increased
+        # affix, so a class with no energy shield regeneration base -- every
+        # class but the Ritualist -- had nothing for that increase to
+        # multiply, and a shield built entirely from gear never came back.
+        assert len(affix_sheet) == 86 == model.total_pool_size()
 
     def test_the_gem_count(self, model):
         """The Gems sheet count the Unreal test pins by hand.

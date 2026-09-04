@@ -136,7 +136,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 85, not 84. The chance to stun landed with issue #298 on 2026-08-16:
 	// an affix does grant a chance to stun, and a Blunt weapon's 10% is part
 	// of the same pool rather than a separate mechanic.
-	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                85)
+	// 86, not 85, since 2026-09-04: Flat energy shield regeneration. Issue
+	// #1237. Health and mana both had a flat regeneration affix and energy
+	// shield had only the increased one, so a class with no energy shield
+	// regeneration base had nothing for that increase to multiply.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                86)
 	// 7: one per affix tier, T1 to T7, holding how heavily each is weighted
 	// when a drop rolls an affix. Which tiers are REACHABLE is decided by the
 	// difficulty tier instead, so this count does not move with it.

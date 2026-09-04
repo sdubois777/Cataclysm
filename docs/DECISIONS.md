@@ -2,6 +2,152 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — A stated floor per affix, and seven tops moved to make room for one
+
+### What was wrong
+
+Every affix in the game shared one value curve, so **the worst roll a player
+could be handed was always exactly a tenth of the affix's stated top**. Three
+ladders multiply to produce it: the affix tier ladder at 3.00x, the roll band at
+1.33x, and the gear upgrade ladder at 2.50x.
+
+On an affix whose top is itself small, a tenth of it is worth nothing. Flat
+evasion's worst roll was 0.40% evasion on a character who had none. At difficulty
+tier 1 a drop can only roll affix tier 1 or 2 and nearly every drop is gear level
+0, so that worst end is most of what a new player sees.
+
+The project owner, 2026-09-03: "anything under 1% is basically worthless
+depending on what it is. I don't want to get a piece of equipment and see 0.7% on
+it." And on a proposed uniform floor of 1: "1% resistance might as well be
+nothing."
+
+### The measurement that decided the shape
+
+"State a floor and run the ladder between the two" reads most naturally as
+squeezing the tier ladder. **That does not work.**
+`Cataclysm.Item.BandsOverlapByExactlyOneTier` requires a perfect roll two tiers
+down to lose to the worst roll here, and a squeezed ladder breaks it:
+
+| floor | tier ladder it needs | tier to tier | the guard |
+| :-- | --: | --: | :-- |
+| top/10, as it was | 3.00x | 1.2009 | passes |
+| top/8 | 2.40x | 1.1571 | passes |
+| top/6 | 1.80x | 1.1029 | **fails** |
+| top/4 | 1.20x | 1.0309 | **fails** |
+
+So no floor better than about an eighth of the top is reachable that way, which
+is barely better than the tenth every affix already had.
+
+### What was decided
+
+**The floor is added and the existing ladder runs across what is left.** An
+affine map from the old range onto the new one. It is monotone, so it preserves
+the order of every tier, roll and upgrade level combination, and every comparison
+the guard makes is unchanged. It passes at every floor.
+
+What it costs is ladder steepness, **and only on the affixes that state a floor**:
+
+| floor | tier 1 to tier 7 | gear +0 to +10 |
+| :-- | --: | --: |
+| none stated | 3.00x | 2.50x |
+| a quarter of the top | 2.25x | 2.00x |
+
+An affix with no floor keeps both in full. That is the point of the project
+owner's choice of 2026-09-04 — "a number per affix, not one rule" — over a
+uniform rule: only the affixes that need it pay for it.
+
+### The floors
+
+Twelve affixes whose tops were right and whose bottoms were not:
+
+| Affix | top | worst was | floor now |
+| :-- | --: | --: | --: |
+| Single resistance | 40 | 4.00 | 10.0 |
+| Two resistances | 28 | 2.80 | 7.0 |
+| All resistances | 12 | 1.20 | 3.0 |
+| Flat magic find | 10 | 1.00 | 2.5 |
+| Increased movement speed | 8 | 0.80 | 2.0 |
+| Increased loot quantity | 8 | 0.80 | 2.0 |
+| Flat maximum class resource | 7 | 0.70 | 1.75 |
+| Flat critical strike chance | 5 | 0.50 | 1.25 |
+| Flat block chance | 5 | 0.50 | 1.25 |
+| Flat crowd control resistance | 5 | 0.50 | 1.25 |
+| Flat evasion | 4 | 0.40 | 1.0 |
+| Flat penetration | 4 | 0.40 | 1.0 |
+
+Seven where the top was itself too small for a quarter of it to be worth
+anything. This is issue #1226, on which the project owner ruled on 2026-09-04:
+"Any character that builds entirely into those stats is going to be pretty bad.
+No reason to not let them do it."
+
+| Affix | top was | top now | floor now | absolute maximum a character can carry |
+| :-- | --: | --: | --: | --: |
+| Flat damage reduction | 2.0 | 4.0 | 1.0 | 56 points, against a 75 cap |
+| Flat retaliation | 2.0 | 4.0 | 1.0 | 56% of the blow |
+| Flat life leech | 0.5 | 4.0 | 1.0 | 48% |
+| Flat mana leech | 0.5 | 4.0 | 1.0 | 48% |
+| Flat energy shield leech | 0.5 | 4.0 | 1.0 | 48% |
+| Flat health regeneration | 0.95 | 8.0 | 2.0 | see below |
+| Flat mana regeneration | 0.65 | 0.65 | 0.2 | unchanged |
+
+**Those maxima are per PIECE and not per affix slot.** The affix group rule
+allows one roll of a given stat and kind per piece, so twelve or fourteen worn
+pieces is the ceiling rather than the forty-eight or fifty-six affix slots those
+pieces hold. An earlier version of this analysis read the slot count as the
+maximum and overstated every one of them fourfold.
+
+### Health regeneration, which needed the top moved and not only the floor
+
+The project owner, 2026-09-04: "If you have 11k hp and your regen is 50 with full
+investment, that's a useless stat."
+
+Measured against `sim/cataclysm_sim/reference_build.py` at level 100, which holds
+11,023 health. Health regeneration has a flat affix and an increased affix and
+both may sit on the same piece:
+
+| | flat top 0.95, as it was | flat top 8.0, as it is |
+| :-- | --: | --: |
+| 4 pieces each way | 0.62% of the pool a second | 0.94% |
+| every piece each way | 1.09% | 2.96% |
+
+Path of Exile calls 1 to 2% of maximum life per second a modest regeneration
+build and 5 to 8% a heavy one, so a fully committed character now lands inside
+that band rather than below its bottom.
+
+**Mana regeneration is not the same case and its top does not move.** Against the
+same build's 436 mana it already reaches 9.96% of the pool a second on four
+pieces each way. Only its floor moved, from 0.065 to 0.2.
+
+### One affix did not exist and now does
+
+**Flat energy shield regeneration.** Health and mana each had a flat and an
+increased regeneration affix; energy shield had only the increased one, so a
+class with no energy shield regeneration base — every class but the Ritualist —
+had nothing for that increase to multiply, and a shield built entirely from gear
+never came back at all. Top 10, floor 2.5, on the same pieces as the increased
+one. Issue #1237 has the rest of that fault, which this does not finish.
+
+### What moved downstream, said plainly
+
+Raising the flat damage reduction affix from 2 to 4 made the reference geared
+character tougher, because it spends four of its pieces on that stat. Its damage
+reduction went from 15.95 to 23.95 and it now stops **90.8% of a hit rather than
+89.9%**.
+
+Three consequences, all recorded rather than papered over:
+
+- **An Elite Brute's ordinary slam** was exactly 10% of that character's
+  effective health, which is exactly the stun threshold, and is now 9.1%. The
+  conclusion the design document draws — the slam does not stun and only the
+  stomp does — is unchanged and now holds with room rather than by a rounding
+  error. The Brute subsection and `tools/tests/test_enemy_abilities.py` say the
+  new figures.
+- **Every enemy damage figure in the game was fitted against 89.9%**, so they now
+  overstate the threat by about one part in a hundred. That is small enough to
+  leave to the next balance pass rather than refitting here.
+- **`ENEMY_MITIGATION_CEILING` is 89%**, chosen to sit below what the player
+  stops. It still does, with more room than before.
+
 ## 2026-09-04 — Durable Modifications is a multiplicative damage reduction node
 
 ### The question

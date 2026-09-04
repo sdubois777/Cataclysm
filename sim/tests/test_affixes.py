@@ -226,11 +226,78 @@ def test_crafting_a_perfect_set_saves_several_slots_not_a_fraction_of_one():
 
 def test_a_minimum_roll_is_worth_three_quarters_of_a_perfect_one():
     """States the band width as a property rather than leaving it in a constant,
-    so a change to it is deliberate."""
-    for family in af.RESISTANCE_FAMILIES:
+    so a change to it is deliberate.
+
+    ON AN AFFIX WITH NO STATED FLOOR, which is what this asserted of every
+    affix until issue #1230. A floor lifts the bottom of the whole range
+    without moving the top, so it narrows every band; the test below says
+    what a floored one does instead.
+    """
+    unfloored = [a for a in af.AFFIX_POOL if not a.floor]
+    assert unfloored, "every affix now states a floor, so nothing is checked"
+    for affix in unfloored:
         for tier in af.AFFIX_TIERS:
-            low, high = family.range_at(tier)
-            assert low / high == pytest.approx(0.75)
+            low, high = affix.range_at(tier)
+            assert low / high == pytest.approx(1.0 - af.ROLL_BAND_FRACTION)
+
+
+def test_a_stated_floor_narrows_the_band_and_never_widens_it():
+    """What a floor does to a tier's range, said as a property.
+
+    The floor is added and the ladder runs across what is left, so the top
+    of every band is unchanged and the bottom comes up. A band that got
+    WIDER would mean the map was not monotone, and
+    ``BandsOverlapByExactlyOneTier`` rests on it being monotone.
+    """
+    floored = [a for a in af.AFFIX_POOL if a.floor]
+    assert floored, "no affix states a floor, so nothing is checked"
+    for affix in floored:
+        for tier in af.AFFIX_TIERS:
+            low, high = affix.range_at(tier)
+            assert low / high > 1.0 - af.ROLL_BAND_FRACTION
+            assert low < high
+
+
+def test_a_floor_is_the_worst_a_player_can_be_handed():
+    """Tier 1, the bottom of the band, on an un-upgraded piece."""
+    for affix in af.AFFIX_POOL:
+        if not affix.floor:
+            continue
+        assert affix.value_at(1, roll=0.0, gear_level=0) == pytest.approx(
+            affix.floor), affix.name
+    for family in af.RESISTANCE_FAMILIES:
+        if not family.floor:
+            continue
+        assert family.value_at(1, roll=0.0, gear_level=0) == pytest.approx(
+            family.floor), family.name
+
+
+def test_a_stated_floor_does_not_move_the_top():
+    """The whole point of the shape chosen for issue #1230: no ceiling moves."""
+    for affix in af.AFFIX_POOL:
+        assert affix.value_at(7, roll=1.0,
+                              gear_level=af.MAX_GEAR_LEVEL) == pytest.approx(
+            affix.top_value), affix.name
+    for family in af.RESISTANCE_FAMILIES:
+        assert family.value_at(7, roll=1.0,
+                               gear_level=af.MAX_GEAR_LEVEL) == pytest.approx(
+            family.top_value), family.name
+
+
+def test_an_affix_with_no_floor_is_unchanged_by_the_floor_arithmetic():
+    """A floor of zero derives the same tenth the three ladders always gave,
+    and the remap is the identity at exactly that value. So this is one piece
+    of arithmetic reaching the same answer rather than a branch that could rot.
+    """
+    for tier in af.AFFIX_TIERS:
+        for roll in (0.0, 0.5, 1.0):
+            for gear in (0, 5, af.MAX_GEAR_LEVEL):
+                low, high = af.tier_band(120.0, tier)
+                raw = (af.roll_within(low, high, roll)
+                       / af.gear_level_multiplier(af.MAX_GEAR_LEVEL)
+                       * af.gear_level_multiplier(gear))
+                assert af.affix_value(120.0, tier, roll, gear) == \
+                    pytest.approx(raw)
 
 
 def test_affix_value_rises_with_every_tier():
@@ -379,12 +446,22 @@ def test_an_unknown_affix_kind_is_rejected():
 
 def test_stat_affixes_use_the_same_curve_and_band_as_resistance_affixes():
     """One shared curve across the whole pool. A family computing its own would
-    drift the moment either constant changed."""
+    drift the moment either constant changed.
+
+    ASKED OF THE TWO CLASSES DIRECTLY SINCE ISSUE #1230, rather than of a
+    StatAffix against the raw band. Both now run their range through the same
+    floor arithmetic, so comparing one of them against the unfloored ladder
+    would only say that this particular affix states no floor.
+    """
     for affix in af.HEALTH_AFFIXES + af.DAMAGE_AFFIXES:
+        twin = af.AffixFamily(affix.name, breadth=1,
+                              top_value=affix.top_value, floor=affix.floor)
         for tier in af.AFFIX_TIERS:
-            assert affix.range_at(tier) == af.tier_band(affix.top_value, tier)
+            assert affix.range_at(tier) == pytest.approx(twin.range_at(tier))
             low, high = affix.range_at(tier)
-            assert low / high == pytest.approx(1.0 - af.ROLL_BAND_FRACTION)
+            if not affix.floor:
+                assert low / high == pytest.approx(
+                    1.0 - af.ROLL_BAND_FRACTION)
 
 
 def test_a_flat_affix_is_worth_more_when_the_character_has_more_increases():

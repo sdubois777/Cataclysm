@@ -263,7 +263,8 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 
 	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
 	const float Value = UCataclysmItemValues::AffixValue(
-		Affix->TopValue, Rolled.Tier, Rolled.Roll, Item.GearLevel, bTwoHanded);
+		Affix->TopValue, Affix->Floor, Rolled.Tier, Rolled.Roll,
+		Item.GearLevel, bTwoHanded);
 
 	const FString Tier = FString::Printf(TEXT(" (tier %d)"), Rolled.Tier);
 
@@ -317,8 +318,8 @@ FString UCataclysmItemTooltip::AffixLine(const FCataclysmRolledAffix& Rolled,
 			}
 
 			const float PartValue = UCataclysmItemValues::AffixValue(
-										Part->TopValue, Rolled.Tier, Rolled.Roll,
-										Item.GearLevel, bTwoHanded)
+										Part->TopValue, Part->Floor, Rolled.Tier,
+										Rolled.Roll, Item.GearLevel, bTwoHanded)
 								  * UCataclysmItemValues::HybridFraction;
 
 			const FString Phrase = TooltipStatPhrase(*Part, PartValue);

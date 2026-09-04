@@ -301,15 +301,40 @@ public:
 	static void TierBand(float TopValue, int32 Tier, float& OutLow, float& OutHigh);
 
 	/**
+	 * What the three ladders leave of an affix at their very bottom.
+	 *
+	 * Tier 1's share of the top, times the bottom of the roll band, times
+	 * an un-upgraded piece against a fully upgraded one. It comes to 0.1,
+	 * and that product is the whole of issue #1230: the worst roll of every
+	 * affix in the game was exactly a tenth of its stated top.
+	 *
+	 * COMPUTED FROM THE THREE CONSTANTS RATHER THAN WRITTEN OUT, so easing
+	 * any of them moves this with it instead of leaving a fourth number to
+	 * keep in step.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WorstMultiplier();
+
+	/**
 	 * One affix's value: its tier band, where in it the roll landed, the
 	 * piece's upgrade level, and whether the piece is a two-handed weapon.
 	 *
 	 * The stated top values are the +10 figures, so this divides by the +10
 	 * multiplier before applying the piece's own.
+	 *
+	 * THE LADDER RUNS FROM THE FLOOR TO THE TOP, since issue #1230. Without
+	 * a floor the three ladders multiply to 10, so the worst roll was always
+	 * a tenth of the top however small that top was.
+	 *
+	 * A FLOOR OF ZERO MEANS NONE WAS STATED and the affix is unchanged. The
+	 * derived floor is `TopValue * WorstMultiplier()`, and the remap below is
+	 * the identity map at exactly that value, so this is not a special case
+	 * that could rot -- it is the same arithmetic reaching the same answer.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
-	static float AffixValue(float TopValue, int32 Tier, float Roll,
-							int32 GearLevel, bool bTwoHanded = false);
+	static float AffixValue(float TopValue, float Floor, int32 Tier,
+							float Roll, int32 GearLevel,
+							bool bTwoHanded = false);
 
 	/** An implicit's value. It does not roll, so it has no tier and no band. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
