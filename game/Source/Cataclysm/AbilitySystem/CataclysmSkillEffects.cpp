@@ -758,7 +758,7 @@ FName UCataclysmSkillEffects::StatusEffectRowForTag(const FGameplayTag& EffectTa
 		return NAME_None;
 	}
 
-	// THE LAST SEGMENT ONLY. `Status.VoidSplinter` and `Keyword.DoT.VoidSplinter`
+	// THE LAST SEGMENT ONLY. `Status.DoT.VoidSplinter` and `Keyword.DoT.VoidSplinter`
 	// are the same effect under two branches, and the branch says which VOCABULARY
 	// the tag came from rather than which effect it is. See the header.
 	FString Whole = EffectTag.ToString();
@@ -1826,7 +1826,7 @@ namespace
 												  FName DamageType)
 	{
 		const FGameplayTag Shred = UGameplayTagsManager::Get().RequestGameplayTag(
-			FName(TEXT("Status.Shred")), /*ErrorIfNotFound=*/false);
+			FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
 		if (!Shred.IsValid() || EffectTag != Shred)
 		{
 			return FGameplayAttribute();
@@ -1954,18 +1954,23 @@ int32 UCataclysmSkillEffects::CopyDebuffsTo(
 		return 0;
 	}
 
-	// NAMED CURSES AND NOTHING ELSE, gathered here rather than asked of
-	// `UCataclysmDebuffs::TagsOnActor`. That function answers what sits under
-	// the debuff roots, and those are `Keyword.DoT` and `State.Stunned` only, so
-	// it finds none of the twenty-seven named effects from the Debuffs sheet --
-	// every one of which grants a `Status.*` tag. A test caught it: two copies
-	// were expected and none were applied. Issue #1145 carries whether those
-	// roots should widen, and doing it there changes what eleven Masochist nodes
-	// are paid, which is a balance decision rather than this change's to make.
+	// NAMED CURSES AND NOTHING ELSE, which this used to say and did not do.
+	// Issue #1145. It matched every tag beginning `Status.`, and until that issue
+	// that branch held the eighteen buffs as well as the twenty-seven curses --
+	// so an enemy carrying the Commander buff a Succubus grants its allies had
+	// that buff copied onto the two nearest enemies by a skill whose description
+	// says it spreads curses.
 	//
-	// A BURN IS NOT A CURSE FOR THIS PURPOSE and could not be spread anyway. Its
-	// tag is `Keyword.DoT.Burn`, outside this namespace, and its per-tick amount
-	// comes from the hit that caused it rather than travelling with the tag.
+	// `Status.Debuff.` NOW NAMES EXACTLY THE DEBUFFS SHEET, because the sheet an
+	// effect comes from is a segment of its tag. A buff is excluded by not being
+	// under that branch rather than by being listed somewhere.
+	//
+	// STILL GATHERED HERE RATHER THAN ASKED OF `UCataclysmDebuffs::TagsOnActor`,
+	// and the difference is deliberate. That function answers everything under
+	// the debuff roots, which includes `Keyword.DoT` and `State.Stunned`, and
+	// neither can be spread by copying a tag: a burn's per-tick amount comes from
+	// the hit that caused it rather than travelling with the tag, and a stun
+	// arrives with a `State.StunImmune` companion that is not copied here.
 	UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(From);
 	if (!Carrier)
 	{
@@ -1978,7 +1983,8 @@ int32 UCataclysmSkillEffects::CopyDebuffsTo(
 	FGameplayTagContainer Carried;
 	for (const FGameplayTag& One : Owned)
 	{
-		if (One.ToString().StartsWith(TEXT("Status."), ESearchCase::CaseSensitive))
+		if (One.ToString().StartsWith(TEXT("Status.Debuff."),
+									  ESearchCase::CaseSensitive))
 		{
 			Carried.AddTag(One);
 		}

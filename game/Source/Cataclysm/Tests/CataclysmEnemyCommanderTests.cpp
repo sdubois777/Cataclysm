@@ -326,7 +326,7 @@ bool FCataclysmCommanderMakesACreatureFasterAndQuicker::RunTest(const FString&)
 
 	if (!CommanderTag().IsValid())
 	{
-		AddError(TEXT("Status.Commander is not in the tag vocabulary, so "
+		AddError(TEXT("Status.Buff.Commander is not in the tag vocabulary, so "
 					  "nothing could be granted whatever the code did. See "
 					  "game/Config/Tags/CataclysmTags.ini."));
 		return false;
@@ -473,7 +473,7 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 
 	if (!CommanderTag().IsValid())
 	{
-		AddError(TEXT("Status.Commander is not in the tag vocabulary."));
+		AddError(TEXT("Status.Buff.Commander is not in the tag vocabulary."));
 		return false;
 	}
 

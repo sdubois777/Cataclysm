@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — A status effect's tag says whether it harms
+
+### The question
+
+`UCataclysmDebuffs::DebuffRootNames` decides what counts as a debuff by naming tag
+branches — a root counts itself and every child under it. It held two:
+`Keyword.DoT` and `State.Stunned`.
+
+**The twenty-seven named curses were counted by none of it.** Shred, Madness,
+Cripple, Weaken, Quarry and twenty-two others each grant a `Status.*` tag, so
+`UCataclysmDebuffs::CountOn` saw none of them, `TagsOn` listed none of them, and
+Wound Channeling — "you deal 1% increased damage per point to enemies carrying a
+debuff you also carry" — never matched on one. Issue #1145.
+
+**The obvious repair was refused by the shape of the vocabulary.** `Status.` was
+one flat branch holding all 53 named effects: 27 from the Debuffs sheet, 18 from
+the Buffs sheet, and 8 from the DoTs sheet. Divine Aegis and Cripple produced tags
+differing only in their last segment while one is a blessing and the other a
+curse. So adding `Status` as a root would have paid the Masochist nodes for
+carrying the Commander buff, which a Succubus grants to every allied creature
+within 8 metres.
+
+### How many nodes this is, measured rather than repeated
+
+Counted from `game/Data/PassiveEffects.csv` on 2026-09-04:
+
+| | Count |
+| :-- | --: |
+| Masochist nodes reading anything about debuffs | 14 |
+| Of those, nodes scaled by how many debuffs are carried | 7 |
+
+**Two figures already written down are wrong and were corrected in the same
+change.** Issue #1145 says eleven, and the 2026-08-26 entry below on what counts
+as a debuff says five; `CataclysmDebuffs.h`, `CataclysmDebuffs.cpp` and
+`CataclysmContagionTests.cpp` between them repeated both. Seven is what the sheet
+holds: `Masochist_basic_fc_b0`, `Masochist_basic_fl_a0`, `Masochist_capstone_25`,
+`Masochist_capstone_100`, `Masochist_capstone_200`, `Masochist_keystone_fl_kB`
+and `Masochist_keystone_fl_kC`.
+
+### The decision
+
+**The sheet a status effect comes from becomes a segment of its tag.**
+`tools/generate_gameplay_tags.py` now emits `Status.Buff.DivineAegis`,
+`Status.Debuff.Cripple` and `Status.DoT.Bleed` where it used to emit
+`Status.DivineAegis`, `Status.Cripple` and `Status.Bleed`.
+`UCataclysmDebuffs::DebuffRootNames` then names `Status.Debuff`, which takes all
+27 named curses and cannot take a buff.
+
+The project owner chose this on 2026-09-04, over two alternatives put alongside
+it:
+
+| Option | Why it was not chosen |
+| :-- | :-- |
+| List the 27 curses as roots by name | A curse added to the sheet counts as nothing until somebody remembers to list it. |
+| One `Status` root, minus the 18 buffs by name | A buff added to the sheet starts paying the Masochist until somebody remembers to exclude it. |
+
+**Both rejected options keep a list by hand, and a list kept by hand falls behind
+the sheet that fills it.** Splitting the branch is the only one of the three where
+the tag itself carries the answer, so neither list can exist to fall behind.
+
+### What it cost
+
+53 tags renamed, and 38 references to them in C++ across 19 files. Nothing in
+`docs/All_Things_Cataclysm.xlsx` and nothing in `game/Data/` names a status tag,
+so no design data changed.
+
+`UCataclysmSkillShapes::StatusTagFor` still takes only an effect's name, which is
+what a skill cell writes — `Effect=Cripple` says nothing about the kind. It finds
+the branch by asking the tag vocabulary for each of the three in turn, so the
+sheet stays the single place an effect's kind is decided and the function needs no
+data table. `tools/generate_gameplay_tags.py` refuses to emit one effect name
+under two branches, so at most one of the three can answer.
+
+### What was fixed alongside it, because the same prefix caused it
+
+`UCataclysmSkillEffects::CopyDebuffsTo` is what the Wand skill Malefice uses to
+copy "every curse it already carries onto the two nearest enemies". It gathered
+every tag beginning `Status.`, which was every buff as well. **An enemy carrying
+the Commander buff had that buff copied onto two more enemies by a skill whose
+description says it spreads curses.** It now matches `Status.Debuff.` and the buffs
+are excluded by not being under that branch.
+
+### What was deliberately left out
+
+**`Status.DoT` is not a debuff root.** The eight damage over time effects have a
+tag under both `Status.DoT` and `Keyword.DoT` — the branch says which vocabulary
+the tag came from rather than which effect it is — and everything that applies one
+to a character grants the `Keyword.DoT` one, which is already a root. Naming both
+would report a single burn as two debuffs.
+
+### Where the earlier genre reasoning stands
+
+The 2026-08-26 entry on what counts as a debuff argued for an explicit list rather
+than a rule inferring harm from a tag, citing that Path of Exile shows debuffs in
+a separate row from buffs, Last Epoch declares an enumerated set of ailments, and
+Diablo 4 names exactly eleven crowd control effects. **That still holds and this
+does not overturn it.** The list is still explicit and still short; what changed is
+that it is a list of three branches rather than one that would have had to name
+every effect, because the vocabulary now records the distinction those three games
+all draw.
+
+---
+
 ## 2026-09-04 — The Cripple curse slows an enemy
 
 ### What was wrong

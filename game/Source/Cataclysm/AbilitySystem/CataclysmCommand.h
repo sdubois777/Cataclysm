@@ -77,14 +77,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
 	static AActor* CommanderOf(const AActor* Follower);
 
-	/** The `Status.Quarry` tag, requested by name. Invalid if the sheet drops it. */
+	/** The `Status.Debuff.Quarry` tag, requested by name. Invalid if the sheet drops it. */
 	static FGameplayTag QuarryTag();
 
 	/**
 	 * What this creature should attack because its commander said so, or null.
 	 *
 	 * THE STAFF'S QUARRY: "everything you command breaks off and attacks it."
-	 * `Status.Quarry` was applied for twelve seconds and read by nothing, so the
+	 * `Status.Debuff.Quarry` was applied for twelve seconds and read by nothing, so the
 	 * mark landed, lasted, and ordered nobody anywhere.
 	 *
 	 * "BREAKS OFF" IS WHY THIS OVERRIDES RATHER THAN SUGGESTS. A creature already

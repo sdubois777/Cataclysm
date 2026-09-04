@@ -352,7 +352,7 @@ public:
 	 * The name of the effect it grants, from `game/Data/StatusEffects.csv`,
 	 * whose description is "All nearby allies gain 20% increased movement
 	 * speed and attack speed". `UCataclysmSkillShapes::StatusTagFor` turns
-	 * this into `Status.Commander`.
+	 * this into `Status.Buff.Commander`.
 	 *
 	 * **WHAT THE TAG DOES IS NOT THIS CLASS'S BUSINESS.** The Succubus grants
 	 * and removes it; `ACataclysmEnemyCharacter::CommanderMultiplier` is what

@@ -1086,7 +1086,14 @@ public:
 	 * tools/generate_gameplay_tags.py, so an effect the design lists has a tag
 	 * and one it does not, does not. Punctuation is dropped, because a tag
 	 * segment allows only letters, digits and underscores: "Void Splinter"
-	 * becomes Status.VoidSplinter.
+	 * becomes Status.DoT.VoidSplinter.
+	 *
+	 * THE SHEET AN EFFECT CAME FROM IS THE MIDDLE SEGMENT, so the tag says
+	 * whether the effect harms: Status.Buff.Commander, Status.Debuff.Cripple,
+	 * Status.DoT.Bleed. Issue #1145. This takes only a name and finds the branch
+	 * by asking the tag vocabulary for each of the three in turn, so a caller
+	 * writing Effect=Cripple in a skill cell does not have to know the kind and
+	 * the sheet stays the single place it is decided.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Shape")
 	static FGameplayTag StatusTagFor(const FString& EffectName);

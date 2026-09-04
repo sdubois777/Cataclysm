@@ -459,7 +459,7 @@ bool FCataclysmQuarryOrdersTheArmyTest::RunTest(const FString&)
 {
 	// THE STAFF'S QUARRY: "mark an enemy as your quarry for 12 seconds.
 	// Everything you command breaks off and attacks it." The mark landed and
-	// lasted, and `Status.Quarry` was read by nothing at all, so it ordered
+	// lasted, and `Status.Debuff.Quarry` was read by nothing at all, so it ordered
 	// nobody anywhere.
 	using namespace CataclysmCommandTest;
 

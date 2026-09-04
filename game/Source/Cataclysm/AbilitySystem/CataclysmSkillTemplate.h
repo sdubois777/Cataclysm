@@ -596,7 +596,7 @@ protected:
 	 * THE THREE ANTI-STUN-LOCK RULES ARE NOT HERE. A damage threshold, five
 	 * seconds of immunity after a stun lands, and bosses immune outright all
 	 * live in `UCataclysmSkillEffects::ApplyStun`, which is why
-	 * `NamedEffectTags` refuses to grant `Status.Stun` as a plain tag.
+	 * `NamedEffectTags` refuses to grant `Status.Debuff.Stun` as a plain tag.
 	 * This hands that function the duration and lets it decide.
 	 *
 	 * THE DAMAGE IS HANDED OVER EVEN THOUGH ALL FOUR ROWS SKIP THE

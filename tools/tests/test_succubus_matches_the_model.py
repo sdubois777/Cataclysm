@@ -395,11 +395,15 @@ def test_the_curse_names_an_effect_the_table_really_has():
         f"game/Data/StatusEffects.csv has no Debuff row called {named!r}, so "
         f"the curse names an effect nobody designed.")
 
+    # UNDER Status.Debuff AND NOT Status.Buff, which is a stronger check than it
+    # was before issue #1145 split the branch. The tag now carries the sheet the
+    # effect came from, so a curse that had drifted onto the Buffs sheet would
+    # fail here rather than quietly stop counting as a debuff.
     segment = "".join(c for c in named if c.isalnum())
-    assert f'Tag="Status.{segment}"' in source(TAGS_INI), (
-        f"game/Config/Tags/CataclysmTags.ini has no Status.{segment} tag, so "
-        f"UCataclysmSkillShapes::StatusTagFor returns an invalid tag and "
-        f"ApplyTagForDuration grants nothing at all.")
+    assert f'Tag="Status.Debuff.{segment}"' in source(TAGS_INI), (
+        f"game/Config/Tags/CataclysmTags.ini has no Status.Debuff.{segment} "
+        f"tag, so UCataclysmSkillShapes::StatusTagFor returns an invalid tag "
+        f"and ApplyTagForDuration grants nothing at all.")
 
 
 def test_the_curse_draws_no_marker_and_that_is_designed():
@@ -524,10 +528,14 @@ def test_the_aura_names_an_effect_the_table_really_has():
         f"game/Data/StatusEffects.csv has no Buff row called {named!r}, so the "
         f"aura names an effect nobody designed.")
 
+    # UNDER Status.Buff, for the reason the curse's own check gives. This is the
+    # buff half of that pair: the aura makes an ally better, and after issue
+    # #1145 the tag itself has to say so or the seven Masochist nodes paid per
+    # debuff carried would be paid for carrying it.
     segment = "".join(c for c in named if c.isalnum())
-    assert f'Tag="Status.{segment}"' in source(TAGS_INI), (
-        f"game/Config/Tags/CataclysmTags.ini has no Status.{segment} tag, so "
-        f"the aura grants nothing at all.")
+    assert f'Tag="Status.Buff.{segment}"' in source(TAGS_INI), (
+        f"game/Config/Tags/CataclysmTags.ini has no Status.Buff.{segment} tag, "
+        f"so the aura grants nothing at all.")
 
 
 def test_the_aura_is_renewed_faster_than_it_expires():

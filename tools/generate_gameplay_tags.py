@@ -106,7 +106,15 @@ def read_tags(workbook: pathlib.Path) -> list[tuple[str, str]]:
 #: a skill applying an effect whose tag nobody added grants nothing, has no
 #: duration a player can see, and reports no error. Generating them means adding
 #: an effect to the design adds its tag in the same edit.
-EFFECT_SHEETS = ("Buffs", "Debuffs", "DoTs")
+#:
+#: THE SHEET'S NAME BECOMES A SEGMENT OF THE TAG, SO THE TAG SAYS WHETHER IT
+#: HARMS. Issue #1145. Until 2026-09-04 all three sheets produced one flat
+#: branch: Divine Aegis and Cripple became tags differing only in their last
+#: segment, and one is a blessing while the other is a curse. Anything asking
+#: "is this a debuff?" therefore had to keep a list of names by hand, and a list
+#: kept by hand falls behind the sheet. The project owner chose splitting the
+#: branch over keeping such a list, on 2026-09-04.
+EFFECT_SHEETS = {"Buffs": "Buff", "Debuffs": "Debuff", "DoTs": "DoT"}
 
 #: The branch generated effect tags live under.
 STATUS_PREFIX = "Status"
@@ -127,7 +135,12 @@ def read_status_effect_tags(workbook: pathlib.Path) -> list[tuple[str, str]]:
 
     book = openpyxl.load_workbook(workbook, data_only=True, read_only=True)
     out: dict[str, str] = {}
-    for sheet in EFFECT_SHEETS:
+    # KEYED ON THE EFFECT'S NAME AND NOT ON ITS TAG, which matters now that the
+    # sheet decides the middle segment. An effect named on both the Buffs and
+    # the Debuffs sheet would otherwise produce two tags rather than being
+    # caught, and the whole point of the split is that one effect is one kind.
+    seen: dict[str, str] = {}
+    for sheet, kind in EFFECT_SHEETS.items():
         if sheet not in book.sheetnames:
             continue
         for row in book[sheet].iter_rows(values_only=True):
@@ -140,10 +153,13 @@ def read_status_effect_tags(workbook: pathlib.Path) -> list[tuple[str, str]]:
             segment = tag_segment(name)
             if not segment:
                 continue
-            tag = f"{STATUS_PREFIX}.{segment}"
             # First definition wins. A name in two sheets is a design problem
             # rather than two tags, and the tag sheet check below reports it.
-            out.setdefault(tag, f"The {name} status effect, from the {sheet} sheet.")
+            if segment in seen:
+                continue
+            seen[segment] = sheet
+            tag = f"{STATUS_PREFIX}.{kind}.{segment}"
+            out[tag] = f"The {name} status effect, from the {sheet} sheet."
     return sorted(out.items())
 
 

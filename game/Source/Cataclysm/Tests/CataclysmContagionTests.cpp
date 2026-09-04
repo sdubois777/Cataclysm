@@ -11,6 +11,9 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For turning an effect's name into its tag, which is what a skill cell writing
+// Effect=Cripple does. Issue #1145.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
@@ -209,13 +212,13 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionRowForTagTest,
 	using Effects = UCataclysmSkillEffects;
 
 	// THE BRANCH DOES NOT DECIDE THE EFFECT, WHICH IS THE POINT OF THE RULE.
-	// `Status.Bleed` and `Keyword.DoT.Bleed` are the same effect declared under
+	// `Status.DoT.Bleed` and `Keyword.DoT.Bleed` are the same effect declared under
 	// two vocabularies, and both have to find the one row.
 	TestEqual(TEXT("the damage over time branch finds the bleed row"),
 		Effects::StatusEffectRowForTag(Tag(TEXT("Keyword.DoT.Bleed"))),
 		FName(TEXT("DoT_Bleed")));
 	TestEqual(TEXT("and so does the status branch"),
-		Effects::StatusEffectRowForTag(Tag(TEXT("Status.Bleed"))),
+		Effects::StatusEffectRowForTag(Tag(TEXT("Status.DoT.Bleed"))),
 		FName(TEXT("DoT_Bleed")));
 
 	// A NAME OF TWO WORDS, which is what the reduction rule is really for. The
@@ -228,7 +231,7 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionRowForTagTest,
 	// A PURE DEBUFF, so the lookup is not quietly limited to the damage over
 	// time sheet.
 	TestEqual(TEXT("a debuff that is not damage over time is found too"),
-		Effects::StatusEffectRowForTag(Tag(TEXT("Status.Cripple"))),
+		Effects::StatusEffectRowForTag(Tag(TEXT("Status.Debuff.Cripple"))),
 		FName(TEXT("Debuff_Cripple")));
 
 	// AND THE ONE THAT DELIBERATELY FINDS NOTHING. A stunned character carries
@@ -1067,7 +1070,7 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionTwoDamageOverTimesTest,
 	// first, so one of these two was false and the count below was 1.
 	TestTrue(TEXT("the character is bleeding"), Suffering.Carries(Bleed));
 	TestTrue(TEXT("and burning"), Suffering.Carries(Burn));
-	TestEqual(TEXT("and carries two debuffs, which eleven nodes are paid for"),
+	TestEqual(TEXT("and carries two debuffs, which seven nodes are paid for"),
 		UCataclysmDebuffs::CountOn(Suffering.AbilitySystem), 2);
 
 	// AND THE SINGLE-STACK RULE STILL HOLDS WITHIN ONE EFFECT. A second bleed
@@ -1080,6 +1083,103 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionTwoDamageOverTimesTest,
 			/*DurationSeconds=*/10.0f, Bleed));
 	TestEqual(TEXT("and the character still carries exactly two"),
 		UCataclysmDebuffs::CountOn(Suffering.AbilitySystem), 2);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// A curse counts and a blessing does not
+// ---------------------------------------------------------------------------
+
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionCurseCountsBuffDoesNotTest,
+	"Cataclysm.Contagion.ANamedCurseCountsAsADebuffAndABuffDoesNot")
+{
+	using namespace CataclysmContagionTest;
+
+	// WHAT THIS GUARDS. Issue #1145. The twenty-seven named curses from the
+	// Debuffs sheet were counted by nothing: `UCataclysmDebuffs::DebuffRootNames`
+	// held `Keyword.DoT` and `State.Stunned` only, and every named curse grants a
+	// `Status.*` tag. So the seven Masochist passive nodes paid per debuff
+	// carried saw none of them, and Wound Channeling never matched on one.
+	//
+	// AND WHY THE ROOTS COULD NOT SIMPLY WIDEN TO `Status`. That branch used to
+	// hold the eighteen buffs as well, so taking it whole would have paid those
+	// same seven nodes for carrying the Commander buff. The tags were split by
+	// the sheet they come from instead, on the project owner's decision of
+	// 2026-09-04, so a curse and a blessing are told apart by the tag itself.
+	//
+	// BOTH HALVES IN ONE TEST ON PURPOSE. Either half alone passes for the wrong
+	// reason: a test that only checks the curse counts would pass if every
+	// `Status.*` tag counted, and a test that only checks the buff does not would
+	// pass if none of them did -- which is the state this issue describes.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ASKED FOR BY THE EFFECT'S NAME, THE WAY A SKILL CELL DOES, rather than
+	// spelled out as a tag here. `UCataclysmSkillShapes::StatusTagFor` is what
+	// turns `Effect=Cripple` in `game/Data/WeaponSkills.csv` into a tag, and it
+	// is the piece that has to find the right branch now that there are three.
+	// Writing the tags out by hand here would test the vocabulary and not the
+	// lookup.
+	const FGameplayTag Cripple =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	const FGameplayTag Commander =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+
+	if (!TestTrue(TEXT("the Cripple curse has a tag"), Cripple.IsValid())
+		|| !TestTrue(TEXT("and so does the Commander buff"), Commander.IsValid()))
+	{
+		return false;
+	}
+
+	// THE LOOKUP FOUND THE RIGHT BRANCH FOR EACH, which is the whole mechanism
+	// this rests on. A `StatusTagFor` that answered the same branch for both
+	// would make every assertion below agree with itself and mean nothing.
+	TestEqual(TEXT("Cripple is a curse and its tag says so"),
+			  Cripple.ToString(), FString(TEXT("Status.Debuff.Cripple")));
+	TestEqual(TEXT("Commander is a blessing and its tag says so"),
+			  Commander.ToString(), FString(TEXT("Status.Buff.Commander")));
+
+	FContagionCombatant Cursed(World);
+	FContagionCombatant Blessed(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+
+	TestEqual(TEXT("a character carrying nothing carries no debuff"),
+		UCataclysmDebuffs::CountOn(Cursed.AbilitySystem), 0);
+
+	Cursed.Catch(Cripple);
+	Blessed.Catch(Commander);
+
+	// BOTH REALLY ARE CARRYING WHAT THEY WERE GIVEN, so a count of zero below
+	// cannot be an effect that failed to apply.
+	if (!TestTrue(TEXT("the cursed character carries the Cripple tag"),
+				  Cursed.Carries(Cripple))
+		|| !TestTrue(TEXT("and the blessed one carries the Commander tag"),
+					 Blessed.Carries(Commander)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a named curse counts as one debuff"),
+		UCataclysmDebuffs::CountOn(Cursed.AbilitySystem), 1);
+	TestTrue(TEXT("and is listed by name"),
+		UCataclysmDebuffs::TagsOn(Cursed.AbilitySystem).HasTagExact(Cripple));
+
+	TestEqual(TEXT("a buff counts as no debuff at all"),
+		UCataclysmDebuffs::CountOn(Blessed.AbilitySystem), 0);
+	TestEqual(TEXT("and is listed as none"),
+		UCataclysmDebuffs::TagsOn(Blessed.AbilitySystem).Num(), 0);
+
+	// AND A CURSE IS COUNTED ONCE, NOT TWICE. `Status.Debuff` and `Keyword.DoT`
+	// are both roots, so an effect that somehow fell under both would be counted
+	// by each. That is why `Status.DoT` is deliberately not a root.
+	Cursed.Catch(Tag(TEXT("Keyword.DoT.Bleed")));
+	TestEqual(TEXT("a curse and a bleed together are two debuffs, not three"),
+		UCataclysmDebuffs::CountOn(Cursed.AbilitySystem), 2);
 
 	return true;
 }

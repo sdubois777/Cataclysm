@@ -78,7 +78,7 @@
  *   SwingOnce, Land, Pulse, SummonOne are public for exactly this reason -- so
  *   what one repetition DOES is covered and the scheduling of them is not.
  *
- *   The magnitude of a DEBUFF. Subjugate applies the Status.Madness tag, which
+ *   The magnitude of a DEBUFF. Subjugate applies the Status.Debuff.Madness tag, which
  *   is real and is covered, but a debuff that has a number to apply has no
  *   route to apply it. A self buff now does; see the buff tests at the end.
  *
@@ -6263,13 +6263,13 @@ bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
 	// FOUR REAL ROWS WRITE `Effect=Stun` -- Shield Bash, Shockwave Leap, Lunge
 	// and Whip Swing. `UCataclysmSkillEffects::ApplyStun` carries three rules the
 	// design states: a damage threshold, five seconds of immunity after one
-	// lands, and bosses immune outright. Granting `Status.Stun` as a plain
+	// lands, and bosses immune outright. Granting `Status.Debuff.Stun` as a plain
 	// tag through the curse path would walk past all three, so the curse path
 	// refuses it.
 	//
 	// THIS TEST PASSED FOR THE WRONG REASON UNTIL ISSUE #1195, and that is
 	// what it now asserts instead. It asked whether the target was STUNNED,
-	// which reads `State.Stunned`; the curse path grants `Status.Stun`, a
+	// which reads `State.Stunned`; the curse path grants `Status.Debuff.Stun`, a
 	// different tag that nothing reads. So the answer was no whether or not
 	// the guard worked, and the guard did not -- it compared the two tags
 	// against each other. It now asks whether the plain tag was granted,
@@ -6290,7 +6290,7 @@ bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
 
 	TestTrue(TEXT("It activates"), Activate(Caster, Bash));
 	TestTrue(TEXT("The enemy was hit"), Enemy.Health() < 100000.0f);
-	TestFalse(TEXT("The curse path granted it no plain Status.Stun tag"),
+	TestFalse(TEXT("The curse path granted it no plain Status.Debuff.Stun tag"),
 		Carries(Enemy, TEXT("Stun")));
 	TestTrue(TEXT("and it is stunned, by the rider that reads StunSeconds"),
 		UCataclysmSkillEffects::IsStunned(Enemy.Actor));

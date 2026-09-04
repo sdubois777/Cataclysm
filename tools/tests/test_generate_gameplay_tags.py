@@ -71,6 +71,96 @@ class TestReadingTags:
             gen.read_tags(path)
 
 
+def make_effect_workbook(path: pathlib.Path, buffs, debuffs, dots):
+    """A fixture workbook whose three effect sheets name the given effects.
+
+    The generator reads column A and takes everything before the first colon as
+    the effect's name, which is how the real sheets are written: a row reads
+    "Cripple: reduces movement speed" and the tag is built from "Cripple".
+    """
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = gen.TAGS_SHEET
+    sheet.append(["Tag Name", "Description"])
+    sheet.append(["Element.War", "War damage"])
+
+    for name, rows in (("Buffs", buffs), ("Debuffs", debuffs), ("DoTs", dots)):
+        made = book.create_sheet(name)
+        for effect in rows:
+            made.append([f"{effect}: what it does"])
+
+    book.save(path)
+    return path
+
+
+class TestStatusEffectBranches:
+    """The sheet an effect comes from is a segment of its tag. Issue #1145.
+
+    WHY THIS MATTERS AND IS NOT COSMETIC. `Status.` used to be one flat branch
+    holding the buffs, the debuffs and the damage over times together, so nothing
+    could tell Divine Aegis from Cripple by its tag. Seven Masochist passive
+    nodes are paid per debuff carried, and the only way to exclude the eighteen
+    buffs was a list of names kept by hand. The project owner chose splitting the
+    branch over keeping such a list, on 2026-09-04.
+    """
+
+    def test_each_sheet_gets_its_own_branch(self, tmp_path):
+        found = dict(gen.read_status_effect_tags(make_effect_workbook(
+            tmp_path / "effects.xlsx",
+            buffs=["Divine Aegis"], debuffs=["Cripple"], dots=["Void Splinter"])))
+
+        assert set(found) == {"Status.Buff.DivineAegis",
+                              "Status.Debuff.Cripple",
+                              "Status.DoT.VoidSplinter"}
+
+    def test_a_buff_never_lands_under_the_debuff_branch(self, tmp_path):
+        """The whole point, stated as its own assertion.
+
+        `UCataclysmDebuffs::DebuffRootNames` names `Status.Debuff`, and a root
+        counts itself and all its children, so a buff appearing under it would be
+        counted as a debuff by every reader of that class at once.
+        """
+        found = dict(gen.read_status_effect_tags(make_effect_workbook(
+            tmp_path / "effects.xlsx",
+            buffs=["Commander", "Divine Aegis", "Demonic Rage"],
+            debuffs=["Cripple"], dots=[])))
+
+        under_debuff = [t for t in found if t.startswith("Status.Debuff.")]
+        assert under_debuff == ["Status.Debuff.Cripple"], (
+            f"a buff was generated under the debuff branch: {under_debuff}")
+
+    def test_one_name_on_two_sheets_makes_one_tag_and_not_two(self, tmp_path):
+        """First sheet wins, which is what it did before the split too.
+
+        BEFORE THE SPLIT THIS FELL OUT OF THE TAG BEING THE KEY: both sheets
+        produced `Status.Plague` and the second was dropped. Now they would
+        produce `Status.Buff.Plague` and `Status.Debuff.Plague`, which are
+        different keys, so the generator has to dedupe on the effect's NAME
+        instead. Without that a design mistake becomes two tags for one effect
+        and the second is applied by nothing.
+        """
+        found = dict(gen.read_status_effect_tags(make_effect_workbook(
+            tmp_path / "effects.xlsx",
+            buffs=["Plague"], debuffs=["Plague"], dots=[])))
+
+        assert list(found) == ["Status.Buff.Plague"]
+
+    def test_the_real_sheets_put_every_effect_under_a_kind(self):
+        """No effect in the real design is left on the flat branch."""
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+
+        found = dict(gen.read_status_effect_tags(gen.WORKBOOK))
+        assert len(found) > 40, "the effect sheets lost a large number of rows"
+
+        kinds = set(gen.EFFECT_SHEETS.values())
+        flat = [tag for tag in found
+                if len(tag.split(".")) != 3 or tag.split(".")[1] not in kinds]
+        assert not flat, (
+            f"these status tags carry no kind segment, so nothing can tell "
+            f"whether they harm: {sorted(flat)}")
+
+
 class TestImpliedParents:
     def test_parents_are_implied(self):
         """Unreal creates parents automatically, so data may reference them."""

@@ -406,7 +406,7 @@ bool FCataclysmMaddenedEnemyTurnsOnItsOwnTest::RunTest(const FString&)
 	const FGameplayTag Madness = UCataclysmTeams::MadnessTag();
 	if (!Madness.IsValid())
 	{
-		AddError(TEXT("Status.Madness is not a gameplay tag. It is generated into "
+		AddError(TEXT("Status.Debuff.Madness is not a gameplay tag. It is generated into "
 					  "game/Config/Tags/CataclysmTags.ini from the Debuffs sheet of "
 					  "docs/All_Things_Cataclysm.xlsx by tools/generate_gameplay_tags.py."));
 		return false;

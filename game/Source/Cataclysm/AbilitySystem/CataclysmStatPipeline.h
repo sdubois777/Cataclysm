@@ -433,9 +433,12 @@ enum class ECataclysmStatScale : uint8
 	 * Multiplied by how many distinct debuffs the character is carrying.
 	 * Issue #962.
 	 *
-	 * Four Masochist nodes grow with it and all four write it the same way:
-	 * "for each unique debuff on you", and once "Every debuff on you". A step of
-	 * 1, so the count is the debuffs themselves.
+	 * Seven Masochist nodes grow with it and they write it the same way: "for
+	 * each unique debuff on you", and once "Every debuff on you". A step of 1,
+	 * so the count is the debuffs themselves. Counted from
+	 * `game/Data/PassiveEffects.csv` on 2026-09-04, where seven distinct nodes
+	 * carry `debuffs_carried` in their Scale column. This said four and issue
+	 * #1145 said eleven; neither matched the sheet.
 	 *
 	 * NOT A FOURTH STACK COUNT, THOUGH IT IS COUNTED THE SAME WAY. A stack is
 	 * granted by an event this project chose to remember and expires on a timer

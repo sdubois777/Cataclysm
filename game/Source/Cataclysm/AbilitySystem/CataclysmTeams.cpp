@@ -55,7 +55,7 @@ FGameplayTag UCataclysmTeams::MadnessTag()
 	// lists it, hiding exactly the disagreement that matters. The tag itself is
 	// generated into game/Config/Tags/CataclysmTags.ini from the Debuffs sheet.
 	return UGameplayTagsManager::Get().RequestGameplayTag(
-		FName(TEXT("Status.Madness")), /*ErrorIfNotFound=*/false);
+		FName(TEXT("Status.Debuff.Madness")), /*ErrorIfNotFound=*/false);
 }
 
 bool UCataclysmTeams::IsMaddened(const AActor* Actor)

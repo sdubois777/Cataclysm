@@ -60,7 +60,7 @@ const TCHAR* ACataclysmSuccubusCharacter::DeathAnimationNames
 // THE TWO EFFECT NAMES ARE THE ROWS OF game/Data/StatusEffects.csv, spelled as
 // that file spells them. UCataclysmSkillShapes::StatusTagFor drops every
 // character that is not a letter or a digit, so these become
-// `Status.WitheredTouch` and `Status.Commander`, both of which are in
+// `Status.Debuff.WitheredTouch` and `Status.Buff.Commander`, both of which are in
 // game/Config/Tags/CataclysmTags.ini.
 const TCHAR* ACataclysmSuccubusCharacter::WitherEffectName =
 	TEXT("Withered Touch");
@@ -453,7 +453,7 @@ int32 ACataclysmSuccubusCharacter::PulseDominion()
 		UCataclysmSkillShapes::StatusTagFor(DominionEffectName);
 	if (!Effect.IsValid())
 	{
-		// The tag vocabulary does not carry Status.Commander. Nothing can be
+		// The tag vocabulary does not carry Status.Buff.Commander. Nothing can be
 		// granted and nothing can be taken away, so say so once rather than
 		// failing silently sixty times a minute.
 		UE_LOG(LogCataclysm, Warning,
