@@ -116,6 +116,29 @@ public:
 	static int32 TimesAsked;
 
 	/**
+	 * What the last ask was given, recorded beside the counter above.
+	 *
+	 * A COUNTER CANNOT TELL A DRAWN ZONE FROM ONE ASKED FOR WITH EVERY NUMBER
+	 * ZEROED, and issue #1153 was exactly that: every patch of burning ground in
+	 * the game asked to be drawn with a radius of zero, a far end at the world
+	 * origin and no duration, because `ACataclysmGroundZone::SpawnAlong` set
+	 * those properties on the lines after `SpawnActor`, which runs `BeginPlay`
+	 * before it returns. `TimesAsked` went up every time and no test could see
+	 * anything wrong.
+	 *
+	 * FOR THE SAME REASON `TimesAsked` EXISTS. Under `-nullrhi` no Niagara
+	 * component is created, so what the caller asked for is the only thing left
+	 * to look at. Issue #559.
+	 *
+	 * `Cataclysm.Effects.AGroundZoneIsDrawnWithItsOwnSizeAndDuration` reads
+	 * these. They are for tests and nothing in the game reads them.
+	 */
+	static FVector LastStart;
+	static FVector LastFarEnd;
+	static float LastRadiusCm;
+	static float LastDuration;
+
+	/**
 	 * Draws a zone.
 	 *
 	 * @param WorldContextObject anything with a world. The zone itself, normally.

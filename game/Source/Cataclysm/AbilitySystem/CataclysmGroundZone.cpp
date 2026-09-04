@@ -51,14 +51,27 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 		return nullptr;
 	}
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = Owner;
-	SpawnParams.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ACataclysmGroundZone* Zone = World->SpawnActor<ACataclysmGroundZone>(
-		ACataclysmGroundZone::StaticClass(), Location, FRotator::ZeroRotator,
-		SpawnParams);
+	// SPAWNED IN TWO STEPS, AND A ONE-STEP SPAWN IS WRONG HERE IN A WAY THAT IS
+	// SILENT. Issue #1153. `UWorld::SpawnActor` runs `BeginPlay` before it
+	// returns, in any world that has already begun play -- which is every world
+	// the game runs in. So every property set on the lines after it was set too
+	// late for `BeginPlay` to see, and `BeginPlay` is where the zone asks to be
+	// drawn. Every patch of burning ground in the game was drawn with a radius of
+	// zero, a far end at the world origin and a duration of nothing. Twenty-two
+	// rows leave burning ground, so that was all of them.
+	//
+	// THE DAMAGE WAS NEVER AFFECTED, WHICH IS WHY IT LASTED. `Sweep` reads the
+	// radius, the far end and the damage when its timer fires, long after this
+	// function has returned, so standing in a patch always burned for the right
+	// amount over the right area. Only the drawing ran at `BeginPlay`.
+	//
+	// PROVEN ON A DIFFERENT ACTOR FIRST. `ACataclysmTerrain::Spawn` copied this
+	// pattern, its wall raised no geometry at all, and switching it to a deferred
+	// spawn fixed it. That comment records the same reasoning.
+	const FTransform Where(FRotator::ZeroRotator, Location);
+	ACataclysmGroundZone* Zone = World->SpawnActorDeferred<ACataclysmGroundZone>(
+		ACataclysmGroundZone::StaticClass(), Where, Owner, /*Instigator=*/nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Zone)
 	{
 		return nullptr;
@@ -68,12 +81,20 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	Zone->DamagePerTick = DamagePerTick;
 	Zone->bBurnsEveryone = bBurnsEveryone;
 
-	// Read back from the actor rather than trusting Start, because AlwaysSpawn
-	// still lets the engine adjust a spawn position, and the near end has to be
-	// the position the actor actually ended up at or the two ends disagree.
+	// Read back from the actor rather than trusting Start, so the near end is
+	// wherever the actor actually is and the two ends cannot disagree. A deferred
+	// spawn has not reached the point where a position would be adjusted, and
+	// `AlwaysSpawn` does no adjusting anyway, so this is exact rather than a
+	// guard now. It is written this way so this actor and `ACataclysmTerrain`
+	// read alike.
 	Zone->FarEnd = Zone->GetActorLocation() + (End - Start);
 
 	Zone->SetLifeSpan(Duration);
+
+	// AND NOW IT BEGINS PLAY, with everything above already set. This is the
+	// second half of the deferred spawn and the whole reason for it: `BeginPlay`
+	// asks to be drawn with the radius, the two ends and the remaining life span.
+	Zone->FinishSpawning(Where);
 
 	return Zone;
 }

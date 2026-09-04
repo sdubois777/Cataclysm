@@ -55,12 +55,13 @@ ACataclysmTether* ACataclysmTether::Bind(AActor* Caster,
 	// two ends were set would measure a line between two null pointers and
 	// destroy itself immediately.
 	//
-	// `ACataclysmGroundZone::SpawnAlong` HAS EXACTLY THIS FAULT AND STILL HAS IT.
-	// It sets its radius, its far end and its duration after `SpawnActor`
-	// returns, so every patch of burning ground in the game is drawn with a far
-	// end at the world origin and no size. That is issue #1153, and it is
-	// invisible there only because the damage runs on a timer that reads the
-	// fields later. Nothing here would be so lucky.
+	// `ACataclysmGroundZone::SpawnAlong` HAD EXACTLY THIS FAULT AND NO LONGER
+	// DOES. It set its radius, its far end and its duration after `SpawnActor`
+	// returned, so every patch of burning ground in the game was drawn with a far
+	// end at the world origin and no size. That was issue #1153, fixed by giving
+	// it the same two-step spawn this actor uses. It was invisible there only
+	// because the damage runs on a timer that reads the fields later, and nothing
+	// here would have been so lucky.
 	ACataclysmTether* Line = World->SpawnActorDeferred<ACataclysmTether>(
 		ACataclysmTether::StaticClass(),
 		FTransform(FRotator::ZeroRotator, Pair[0]->GetActorLocation()),
