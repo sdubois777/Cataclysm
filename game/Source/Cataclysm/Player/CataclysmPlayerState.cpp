@@ -109,6 +109,21 @@ bool ACataclysmPlayerState::ChooseAtCreation(const UDataTable* WeaponSkillTable,
 	}
 
 	CreationChoice = Asked;
+
+	// A CHANGED DAMAGE TYPE IS A CHANGED STAT LINE. Issue #1055. The damage type
+	// decides which passive trees apply at all -- points in a tree no equipped
+	// weapon reaches stay spent and grant nothing, which is the project owner's
+	// decision of 2026-08-25 -- and `UCataclysmEquipmentComponent::
+	// RefreshAttributes` reads `GetChosenDamageType()` to enforce it. Writing the
+	// choice without re-running the line leaves the old damage type's trees on
+	// the character's stats while the passive tree screen shows the new one's.
+	//
+	// IT LOOKED CORRECT BECAUSE CHANGING THE WEAPON HID IT.
+	// `ACataclysmPlayerCharacter::ApplyCreationChoice` puts the chosen weapon on,
+	// that broadcasts `EquipmentChanged`, and the refresh happened by accident.
+	// The one path with no accident to rely on is a choice that changed only the
+	// damage type, which `ApplyCreationChoice` returns early from by name.
+	RefreshCharacterStats();
 	return true;
 }
 
@@ -116,6 +131,15 @@ void ACataclysmPlayerState::SetCreationChoice(FName WeaponType, FName DamageType
 {
 	CreationChoice.WeaponType = WeaponType;
 	CreationChoice.DamageType = DamageType;
+
+	// THE SAME REASON, ON THE SAVE-RESTORE PATH. This runs before possession
+	// when a save is being loaded, in which case `RefreshCharacterStats` finds
+	// no possessed character and does nothing, and possession applies the whole
+	// line a moment later. It runs after possession when anything else writes a
+	// choice onto a standing character, and then it is the only thing that
+	// would. `SetPassiveAllocation` below carries the same pair of cases for
+	// issue #1054.
+	RefreshCharacterStats();
 }
 
 int32 ACataclysmPlayerState::GetCharacterLevel() const
