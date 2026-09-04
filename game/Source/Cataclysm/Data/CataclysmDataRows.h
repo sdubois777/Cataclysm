@@ -719,6 +719,24 @@ struct FCataclysmAffixRow : public FTableRowBase
 	 *  without a word, a prefix with one, and two affixes sharing a word. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
 	FString NameWord;
+
+	/** Whether the stat this grants is measured in percentage points.
+	 *
+	 *  A DIFFERENT QUESTION FROM ValueKind, which says which bucket of the
+	 *  pipeline the modifier joins. A flat addition to a stat that is itself a
+	 *  percentage is exactly the case that printed no percent sign, so
+	 *  "+0.2 to life leech" did not say whether that was 0.2 per cent or 0.2
+	 *  health. Issue #1224.
+	 *
+	 *  IT IS A FACT ABOUT THE STAT, NOT ABOUT THE AFFIX, and it is recorded per
+	 *  row because the affix table is the only table that lists the stats.
+	 *  `validate_affix_percent_agrees` in tools/generate_datatables.py refuses a
+	 *  workbook where two rows granting one stat disagree, so the repetition
+	 *  cannot drift. The item tool tip reads an IMPLICIT's answer out of these
+	 *  rows too, which `validate_implicit_stats_have_an_affix` keeps possible.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Affix")
+	bool Percent = false;
 };
 
 /**

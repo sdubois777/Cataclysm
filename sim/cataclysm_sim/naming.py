@@ -100,7 +100,7 @@ AFFIX_NAME_WORD: dict[str, str] = {
 
     # Moving
     "Increased movement speed": "Swiftness",
-    "Increased cooldown reduction": "Haste",
+    "Flat cooldown reduction": "Haste",
 
     # Attributes
     "Increased agility": "the Fox",

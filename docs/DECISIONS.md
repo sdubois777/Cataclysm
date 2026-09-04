@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — The item tool tip says which numbers are percentages, and one affix is renamed
+
+### What was wrong
+
+Two faults in the same function, `TooltipStatPhrase` in
+`game/Source/Cataclysm/Interface/CataclysmItemTooltip.cpp`. Both were measured
+by logging what the game printed rather than by reading the code.
+
+**Nine lines used a sentence shape the project does not have.** Issue #1223.
+
+```
++160 to Increased damage against War enemies
++4.8 to Increased cooldown reduction
+```
+
+**Eleven more named a percentage stat and printed no sign.** Issue #1224.
+
+```
++0.2 to life leech
++8 to War resistance
++2 to block chance
+```
+
+Both come from the same cause: the sentence was chosen from the `ValueKind`
+column alone. That column says which bucket of the stat pipeline a modifier
+joins, flat addition or increase, and that is a different question from what
+unit the stat is measured in. **A flat addition to a stat that is itself a
+percentage is exactly the case that had no sign.**
+
+### What was decided
+
+**The affix data records whether a stat is a percentage.** A `Percent` column on
+the Affixes sheet of `docs/All_Things_Cataclysm.xlsx`, filled in for every row,
+reaching the game through `game/Data/Affixes.csv` and `FCataclysmAffixRow`. A
+list in C++ was considered and rejected on #1224: it would be a second answer
+that could drift from the data, which is the failure this project has already
+had with the power model.
+
+The fact belongs to the **stat** rather than to the affix, and several stats have
+two affixes, so `validate_affix_percent_agrees` in
+`tools/generate_datatables.py` refuses a workbook where two rows granting one
+stat disagree.
+
+**An item base's implicit reads its answer from the same rows.** An implicit
+names a stat and a value and says nothing about the unit, so a helmet printed
+`+4 to evasion` two lines above an affix reading `+1.2% to evasion`.
+`validate_implicit_stats_have_an_affix` refuses an implicit naming a stat no
+affix grants, so that lookup cannot come back empty and quietly answer "not a
+percentage".
+
+**A flat row whose name begins "Increased" gets the increased sentence.** The
+eight affixes for damage against one Cataclysm are the only rows in that state.
+Their `ValueKind` is correct and stays `flat`: the affix adds a flat amount to
+an attribute that is itself the increases bucket for that damage.
+
+**`Increased cooldown reduction` is renamed `Flat cooldown reduction`.** The
+project owner chose this on 2026-09-04 from three options, wanting the line to
+read `+12% to cooldown reduction`. Two other options were rejected: reading it as
+an increase, which is ambiguous because the stat divides rather than subtracting
+— a cooldown is `base / (1 + this)`, so 12 makes a cooldown 10.7% shorter and not
+12% — and renaming it to Path of Exile's `increased cooldown recovery rate`,
+which is what the arithmetic does but is a larger rename. `Flat` is the word
+every other flat row begins with and the one the tool tip strips, so the line now
+reads like the rest of them.
+
+### What a player reads now
+
+Measured, not asserted: a temporary log line inside
+`Cataclysm.Tooltip.EveryAffixInTheDataReads`, the test that already builds a helm
+carrying every affix in turn, and removed again afterwards.
+
+```
++0.2% to life leech (tier 7)
++2% to block chance (tier 7)
++16% to War resistance (tier 7)
++4.8% to cooldown reduction (tier 7)
+160% increased damage against War enemies (tier 7)
+Chance to bleed: 6% (tier 7)
++100 to armor (tier 7)
++48 to maximum health (tier 7)
+```
+
+### What holds it
+
+`Cataclysm.Tooltip.EveryAffixInTheDataReads` walked all 85 rows and checked only
+that the line was not empty, which is why nine wrong lines survived for months.
+It now also refuses a line that keeps a word the sentence already supplies, one
+that grants a percentage without a sign, and one that claims a percentage it does
+not grant. Both new rules were shown failing with `prove_cpp_guard`, one break at
+a time.
+
+`Cataclysm.Tooltip.NoAffixInTheDataReadsAsZeroOnAFullyUpgradedItem` had a fault
+of its own that only this change could expose: it searched for the substring
+`0% increased`, which is inside `400% increased`. It now reads each phrase's
+number instead of searching for one.
+
 ## 2026-09-04 — The difficulty tier takes resistance off the player, so resistance affixes can carry real numbers
 
 ### What was wrong

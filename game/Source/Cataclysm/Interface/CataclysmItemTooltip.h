@@ -124,12 +124,19 @@ public:
 	 * with the piece's upgrade level, so a +5 helm states a bigger number than a
 	 * +0 one and the tool tip has to say the number this piece actually has.
 	 *
+	 * THE AFFIX TABLE IS PASSED IN BECAUSE IT IS THE ONLY TABLE THAT SAYS
+	 * WHETHER A STAT IS A PERCENTAGE. An implicit names a stat and a value
+	 * and nothing about the unit, so without it a helmet's implicit evasion
+	 * printed "+4 to evasion" two lines above an affix reading
+	 * "+1.2% to evasion". Issue #1224.
+	 *
 	 * @return an empty string when the stat name is empty, which is how a base
 	 *         with only one implicit says so
 	 */
 	static FString ImplicitLine(const FString& Stat, const FString& Kind,
 								float StatedValue, int32 GearLevel,
-								bool bTwoHanded);
+								bool bTwoHanded,
+								const UDataTable* AffixTable);
 
 	/**
 	 * The lines describing what a weapon is, and nothing for anything else.
