@@ -13,6 +13,9 @@
 // For the Fervour a cast itself grants. Issue #1051.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For what a blow resolved to, which is how a test can tell an evaded blow
+// from one armour stopped. Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
 // For the weapon Buried Fire leaves standing in the ground, and for the
@@ -12405,6 +12408,176 @@ bool FCataclysmChargeWithoutAShoveTest::RunTest(const FString&)
 		Rush->EnemiesHit > 0);
 	TestTrue(TEXT("and moved it nowhere, because its row states no shove"),
 		InTheWay.Actor->GetActorLocation().Equals(Stood, 1.0f));
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What an evaded blow leaves behind, which is nothing
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillEvadedBlowLeavesNothingTest,
+	"Cataclysm.Skills.AnEvadedBlowSetsNothingAlightAndOneArmourStoppedStillDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An evaded blow applies no ailment. One armour stopped does. Issue #1156.
+ *
+ * WHAT WENT WRONG. `UCataclysmSkillEffects::ApplyHit` returns the figure the
+ * attacker COMPUTED, not the figure that landed: evasion, block, armour,
+ * resistance and flat reduction are all applied afterwards, inside the
+ * defender's own `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. So a
+ * caller had no way at all to learn that a blow was evaded, and every rider a
+ * skill carries -- its burn, its stun, and the notification the Warhammer's
+ * Groundbreaker listens for -- was applied to a target the swing never touched.
+ *
+ * THE DECISION IT RESTS ON, made by the project owner on 2026-09-04: whether a
+ * blow LANDED and whether it HURT are different questions. Evasion answers the
+ * first, so it stops an ailment. Armour and resistance answer the second, so
+ * they do not. That is why both halves are here: a repair that gated the burn on
+ * the damage that got through would pass the first half and fail the second.
+ *
+ * THE TWO TARGETS DIFFER IN ONE ATTRIBUTE AND NOTHING ELSE. Same caster class,
+ * same skill parameters, same distance, same weapon damage. One carries evasion
+ * and no armour; the other carries armour and no evasion. Without that, the
+ * second half could pass because the second target was simply closer.
+ *
+ * A SECOND CASTER FOR THE SECOND HALF, because activating a skill commits its
+ * cooldown and the same instance cannot be cast twice.
+ */
+bool FCataclysmSkillEvadedBlowLeavesNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// NOTHING CRITICALLY STRIKES HERE, so the armour arithmetic at the end is
+	// exact. A critical strike multiplies the whole blow before any mitigation
+	// touches it, and at the default 5% chance one run in twenty would otherwise
+	// produce a different figure and a test that fails now and then.
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("the vocabulary still has a burn tag"), Burn.IsValid()))
+	{
+		return false;
+	}
+
+	// -------------------------------------------------------------------
+	// The figure the attacker gets back cannot answer the question
+	// -------------------------------------------------------------------
+
+	// THIS IS THE DEFECT STATED AS ARITHMETIC, and it is worth its own three
+	// lines. A blow that was evaded outright still comes back as a positive
+	// number, because that number is what was SENT. Anything reading it as "this
+	// landed" was wrong, and four places did.
+	{
+		FScopedFighter Striker(World, FVector(0, 50 * M, 0));
+		FScopedFighter Nimble(World, FVector(2 * M, 50 * M, 0));
+
+		// FAR ABOVE ANY ROLL RATHER THAN EXACTLY 100. The roll is
+		// `FMath::FRandRange(0, 100)` compared with `<`, so a roll of exactly
+		// 100 against evasion of exactly 100 would land. Evasion is deliberately
+		// not clamped to its 60% soft cap, which the combat attribute set says
+		// in as many words, so a large figure is legal here.
+		Nimble.Set(Combat::GetEvasionAttribute(), 500.0f);
+
+		FCataclysmDamageResult Resolved;
+		const float Sent = UCataclysmSkillEffects::ApplyHit(
+			Striker.Actor, Nimble.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery(), &Resolved);
+
+		TestTrue(TEXT("the blow was evaded"), Resolved.bEvaded);
+		TestEqual(TEXT("and nothing at all reached the target's health"),
+			Resolved.DealtToHealth, 0.0f, 0.01f);
+		TestTrue(*FString::Printf(
+					 TEXT("and yet the attacker is handed %.1f, which is what it "
+						  "sent rather than what landed"), Sent),
+				 Sent > 0.0f);
+	}
+
+	// -------------------------------------------------------------------
+	// A skill stating a burn, against a target that evades everything
+	// -------------------------------------------------------------------
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Nimble(World, FVector(2 * M, 0, 0));
+	Nimble.Set(Combat::GetEvasionAttribute(), 500.0f);
+
+	UCataclysmStrikeSkill* AtNimble = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"));
+	if (!AtNimble)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+	if (!TestTrue(TEXT("the skill states a burn"), AtNimble->Params.bBurns))
+	{
+		return false;
+	}
+
+	const float NimbleHealthBefore = Nimble.Health();
+	TestTrue(TEXT("the strike goes off"), Activate(Caster, AtNimble));
+
+	TestEqual(TEXT("the evading target took nothing"), Nimble.Health(),
+		NimbleHealthBefore, 0.01f);
+	TestFalse(TEXT("and was not set alight"),
+		UCataclysmSkillEffects::HasTag(Nimble.Actor, Burn));
+
+	// -------------------------------------------------------------------
+	// The same skill against a target that armour protects instead
+	// -------------------------------------------------------------------
+
+	FScopedFighter Second(World, FVector(0, 100 * M, 0));
+	FScopedFighter Armoured(World, FVector(2 * M, 100 * M, 0));
+	Armoured.Set(Combat::GetArmorAttribute(), 1000000.0f);
+
+	UCataclysmStrikeSkill* AtArmoured = GrantSkill<UCataclysmStrikeSkill>(
+		Second, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"));
+	if (!AtArmoured)
+	{
+		AddError(TEXT("Could not grant the second strike."));
+		return false;
+	}
+
+	const float ArmouredHealthBefore = Armoured.Health();
+	TestTrue(TEXT("the second strike goes off"), Activate(Second, AtArmoured));
+
+	// THE BLOW REACHED IT, WHICH IS THE CONTROL FOR THE HALF ABOVE. Without this
+	// the evading target's untouched health could equally mean the strike never
+	// reached either of them, and the first half would prove nothing about
+	// evasion.
+	const float ThroughArmour = ArmouredHealthBefore - Armoured.Health();
+	TestTrue(*FString::Printf(
+				 TEXT("the armoured target was reached, taking %.2f"),
+				 ThroughArmour),
+			 ThroughArmour > 0.0f);
+
+	// AND ARMOUR TOOK ITS WHOLE SHARE, WHICH IS THREE QUARTERS AND NOT ALL OF
+	// IT. `UCataclysmDamageCalculation::ArmorReductionCap` is 75 -- "Armor alone
+	// never removes more than this share of a hit" -- so a target carrying a
+	// million armour still takes a quarter of every blow and NO amount of armour
+	// stops one completely.
+	//
+	// THE FIRST VERSION OF THIS LINE ASSERTED THAT ALMOST NOTHING GOT THROUGH,
+	// and it failed: 62.50 of the 250 the Heavy slot sends, which is exactly the
+	// cap doing its job. Recorded here because the mistake is easy to repeat --
+	// "armour stopped it" is a sentence the design does not allow.
+	const float Sent = WeaponDamage * AtArmoured->GetDamagePercent() / 100.0f;
+	const float PastTheCap = Sent
+		* (1.0f - UCataclysmDamageCalculation::ArmorReductionCap / 100.0f);
+	TestEqual(*FString::Printf(
+				  TEXT("and armour took its capped share of the %.0f sent, "
+					   "leaving a quarter"), Sent),
+			  ThroughArmour, PastTheCap, 0.5f);
+
+	// THE HEADLINE OF THE SECOND HALF. Armour answers whether the blow hurt, and
+	// the design says that is not what decides an ailment.
+	TestTrue(TEXT("and it was set alight all the same"),
+		UCataclysmSkillEffects::HasTag(Armoured.Actor, Burn));
 
 	return true;
 }

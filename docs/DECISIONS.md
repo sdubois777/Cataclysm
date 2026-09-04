@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — An evaded blow applies no ailment; one armour stopped still does
+
+### The question
+
+`UCataclysmSkillEffects::ApplyHit` returns the figure the attacker COMPUTED.
+Evasion, block, armour, resistance and flat reduction are all applied afterwards,
+inside the defender's own
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. So the number a caller
+got back said what it SENT and nothing about what became of it, and a blow evaded
+outright came back positive. Issue #1156.
+
+Four riders read that number as though it meant "this landed": a skill's stated
+burn, a skill's stated stun, the notification the Warhammer's Groundbreaker
+listens for — "for 10 seconds every blow you land cracks the ground beneath what
+it hits" — and the same three riders on a thrown projectile, a buried weapon
+leaping to a new host, and a minion's swing.
+
+### The decision
+
+**Whether a blow LANDED and whether it HURT are different questions.** Evasion
+answers the first: an evaded blow never connected, so nothing it carries arrives.
+Armour, resistance and flat reduction answer the second: a blow stopped dead by
+armour still connected, so it still burns, still stuns and still cracks the
+ground.
+
+Chosen by the project owner on 2026-09-04, over two alternatives:
+
+| Option | Why it was not chosen |
+| :-- | :-- |
+| Everything that reduces damage gates the ailment | Makes armour and resistance defend against ailments as well as against damage, which is a large defensive buff nobody asked for and which the 2026-09-02 decision on #917 had just decided against. |
+| Leave it | Evasion does nothing against the burn half of every Demonic skill, and sixteen of them apply burn. |
+
+### Why this shape and not the other
+
+Path of Exile applies ailments on a hit LANDING rather than on it hurting, and
+#917 settled the second half of that on 2026-09-02: a skill that states an ailment
+applies it whether or not the blow hurt, and only an incidental ailment — from a
+gem, an affix or an enemy modifier — has to clear a damage threshold. This decides
+the first half with the same reasoning. The two together say: a stated ailment
+lands whenever the blow does, and the only thing that stops it is the blow not
+landing at all.
+
+### How it was built
+
+The defender's own component now records what each blow resolved to, and the two
+functions that send a blow report it back through an optional output parameter.
+`UCataclysmAbilitySystemComponent` carries the record and a counter, and the
+counter is what makes it safe to read: an instant gameplay effect executes inside
+`ApplyGameplayEffectToSelf`, so a caller reading straight afterwards sees its own
+blow — but only if the blow reached the attribute set at all. A counter that did
+not move means it did not, and the record belongs to some earlier blow.
+
+**The returned figure still means what was SENT, deliberately.** Every caller uses
+it to scale a rider, and a rider that shrank as the target's armour grew would be
+wrong. What none of them could do before was ask whether the blow landed.
+
+### What was deliberately not changed
+
+Knockback, forced movement and the mana a caster is paid on hit all still happen
+on an evaded blow. Knockback and forced movement are deliberately not gated on
+damage at all — a Support skill deals no damage by design and can still push — and
+whether they should be gated on LANDING is the same question this entry answers
+for ailments, asked of a different kind of rider. Nobody has been asked it. Issue
+#1247 carries it.
+
+A minion's explosion is not checked for evasion either, and that one is not a
+question: area damage never rolls evasion, so the check could never fire.
+
+### A design number worth recording, because a test asserted otherwise first
+
+**Armour alone never removes more than 75% of a hit.**
+`UCataclysmDamageCalculation::ArmorReductionCap` is 75 and says so. The first
+version of the test for this entry asserted that a target with a million armour
+would take almost nothing, and it failed: it took 62.50 of the 250 the Heavy slot
+sends, which is exactly a quarter. There is no amount of armour that stops a blow
+completely, so "armour stopped it" is not a state the game can reach.
+
+---
+
 ## 2026-09-04 — A status effect's tag says whether it harms
 
 ### The question

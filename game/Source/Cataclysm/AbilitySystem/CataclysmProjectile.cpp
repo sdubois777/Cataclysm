@@ -3,6 +3,9 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmProjectileEffect.h"
+// For what a blow resolved to, so a burn is refused on an evaded one.
+// Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -580,8 +583,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// this blow with whatever was last paid. Issue #983.
 	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
 
+	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Firer, Target, DamagePercent, SkillTags, Delivery);
+		Firer, Target, DamagePercent, SkillTags, Delivery, &Resolved);
 	if (Dealt > 0.0f)
 	{
 		++EnemiesHit;
@@ -593,7 +597,14 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		//
 		// THE COMMENT THAT STOOD HERE SAID A BURN IS A SHARE OF THE HIT. That
 		// stopped being true on 2026-08-24, when burn became a flat 25 a second.
-		if (bBurns)
+		//
+		// AN EVADED SHOT SETS NOTHING ALIGHT. Issue #1156, decided on
+		// 2026-09-04: evasion says the shot never connected. One armour stopped
+		// dead still burns, because armour answers whether it hurt rather than
+		// whether it landed. The `Dealt > 0.0f` test above cannot ask this --
+		// that figure is what was SENT and is positive for an evaded shot, which
+		// is also why EnemiesHit counts one here.
+		if (bBurns && !Resolved.bEvaded)
 		{
 			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,

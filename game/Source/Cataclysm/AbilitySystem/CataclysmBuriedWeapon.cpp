@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
+// For what a blow resolved to, so a burn is refused on an evaded one.
+// Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -76,9 +79,10 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// `FindEnemiesInSphere` answers first.
 	AActor* NextHost = Nearby[0];
 
+	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Credited, NextHost, Buried->DamagePercent, Buried->SkillTags,
-		FCataclysmHitDelivery());
+		FCataclysmHitDelivery(), &Resolved);
 
 	// A DESIGNED BURN, because `bBurns` was copied from the throwing row's own
 	// `Burn=1`. Issue #917: a skill that states an ailment applies it whether or
@@ -86,7 +90,13 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	//
 	// THE COMMENT THAT STOOD HERE SAID A BURN IS A SHARE OF THE HIT. That
 	// stopped being true on 2026-08-24, when burn became a flat 25 a second.
-	if (Buried->bBurns)
+	//
+	// AN EVADED BLOW SETS NOTHING ALIGHT. Issue #1156, decided on 2026-09-04:
+	// evasion says the blow never connected, so nothing it carries arrives. One
+	// armour stopped dead still burns, because armour answers whether the blow
+	// hurt rather than whether it landed. `Dealt` cannot be used to ask this --
+	// it is the figure that was SENT, and it is positive for an evaded blow.
+	if (Buried->bBurns && !Resolved.bEvaded)
 	{
 		UCataclysmSkillEffects::ApplyBurn(Credited, NextHost, Dealt,
 										  /*bScalesWithInstigator=*/true,

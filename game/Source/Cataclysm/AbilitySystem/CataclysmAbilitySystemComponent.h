@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+// For what a blow resolved to, which this component records for the caller that
+// applied it. Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmLeech.h"
 // For the kinds of stack this component keeps a count of. Issue #1002. The
 // header carries the enumerator and forward-declares this class, so including
@@ -627,6 +630,49 @@ public:
 		LeechPayments = MoveTemp(Payments);
 	}
 
+	/**
+	 * What the last blow aimed at this character resolved to.
+	 *
+	 * WHY THIS HAS TO BE RECORDED AT ALL. Issue #1156. The damage a caller hands
+	 * to `UCataclysmSkillEffects::ApplyDirectDamage` is written into the Damage
+	 * meta attribute, and evasion, block, armour, resistance and flat reduction
+	 * are all applied afterwards, inside this character's own
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. So the caller
+	 * knows what it SENT and had no way at all to learn what happened to it --
+	 * `ApplyHit` returned the figure it computed for any blow it managed to
+	 * apply, including one evaded outright.
+	 *
+	 * WHY ON THIS COMPONENT, which is the same argument the displacement count
+	 * above makes: it belongs to the TARGET, it is written by the target's own
+	 * attribute set, and every hittable thing has one of these because being hit
+	 * goes through `ApplyHit`, which requires one.
+	 *
+	 * THE STAMP IS WHAT MAKES IT SAFE TO READ. An instant gameplay effect
+	 * executes inside `ApplyGameplayEffectToSelf`, so a caller reading this
+	 * immediately afterwards sees its own blow -- but only if the blow reached
+	 * the attribute set at all. A caller compares the stamp before and after: if
+	 * it did not move, nothing was resolved and the record below belongs to some
+	 * earlier blow. Reading it without that comparison is how this would report
+	 * the previous hit's evasion as this one's.
+	 */
+	void RecordResolvedHit(const FCataclysmDamageResult& Outcome)
+	{
+		LastResolvedHit = Outcome;
+		++ResolvedHitStamp;
+	}
+
+	/** What the last resolved blow did. Meaningless unless the stamp moved. */
+	const FCataclysmDamageResult& GetLastResolvedHit() const
+	{
+		return LastResolvedHit;
+	}
+
+	/** How many blows this character has resolved. See `RecordResolvedHit`. */
+	uint32 GetResolvedHitStamp() const
+	{
+		return ResolvedHitStamp;
+	}
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
@@ -838,4 +884,15 @@ protected:
 	 */
 	int32 StackCounts[UCataclysmStacks::KindCount] = {};
 	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
+
+	/**
+	 * The last blow resolved against this character, and how many there have
+	 * been. See `RecordResolvedHit` for why both are needed and how to read them.
+	 *
+	 * NOT REPLICATED, because nothing outside the machine resolving the blow
+	 * reads it. It exists so that the caller which just applied a blow can learn
+	 * what became of it, one function call later on the same thread.
+	 */
+	FCataclysmDamageResult LastResolvedHit;
+	uint32 ResolvedHitStamp = 0;
 };

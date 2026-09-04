@@ -492,6 +492,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					/*EvasionRoll=*/-1.0f, /*BlockRoll=*/-1.0f,
 					CVarCritRoll.GetValueOnAnyThread());
 
+			// RECORDED ON THE CHARACTER, SO THE BLOW'S SENDER CAN LEARN WHAT
+			// BECAME OF IT. Issue #1156. Everything above this line happens
+			// inside the DEFENDER, after the attacker has already handed over a
+			// number and moved on, so without this the attacker knows only what
+			// it sent. `UCataclysmSkillEffects::ApplyHit` reads it back the
+			// instant `ApplyGameplayEffectToSelf` returns, which is inside this
+			// same call because the effect carrying the damage is Instant.
+			//
+			// HERE RATHER THAN BESIDE THE DRAWING BELOW, because this must
+			// happen for every resolved blow and the drawing refuses several
+			// kinds. An evaded blow draws no particle and is exactly the case
+			// the caller needs to hear about.
+			if (UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(
+						GetOwningAbilitySystemComponent()))
+			{
+				Cataclysm->RecordResolvedHit(Outcome);
+			}
+
 			// THE ENERGY SHIELD'S REFILL WAIT STARTS HERE. The design gives the
 			// shield a three second delay after the character last took damage,
 			// restarted by taking damage again inside that window, and says
