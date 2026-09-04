@@ -1642,9 +1642,29 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 				? Percent * (1.0f + Params.MoreDamageFromBehind / 100.0f)
 				: Percent;
 
+		// WHAT BECAME OF THE BLOW, WHICH THE RETURN VALUE CANNOT SAY. Issue
+		// #1156. `Dealt` is the figure this caster SENT; evasion, block, armour,
+		// resistance and flat reduction are all applied afterwards inside the
+		// target's own attribute set. `Resolved.bEvaded` is the only way to learn
+		// that the blow never connected.
+		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
-			Self, Target, PercentThisBlow, SkillTags, Delivery);
+			Self, Target, PercentThisBlow, SkillTags, Delivery, &Resolved);
 		Total += Dealt;
+
+		// AN EVADED BLOW LANDED ON NOTHING, SO IT LEAVES NOTHING BEHIND.
+		// Issue #1156, decided by the project owner on 2026-09-04: whether a
+		// blow LANDED and whether it HURT are different questions, evasion
+		// answers the first, and armour and resistance answer the second. So a
+		// blow stopped dead by armour still burns, stuns and cracks the ground,
+		// and a blow that was evaded does none of those.
+		//
+		// NOT THE SAME TEST AS `Dealt > 0`, AND SUBSTITUTING ONE FOR THE OTHER
+		// BREAKS SOMETHING EITHER WAY. `Dealt` is zero for a Support skill whose
+		// slot damage is zero by design, and issue #917 settled that such a skill
+		// still applies the ailment its row states -- three rows depend on it.
+		// `Dealt` is POSITIVE for an evaded blow, which is this issue.
+		const bool bLanded = !Resolved.bEvaded;
 
 		// A ROW THAT STATES `Burn=1` SETS ITS TARGET ALIGHT WHETHER OR NOT THE
 		// BLOW HURT. Issue #917, settled on 2026-09-02: a skill that states an
@@ -1658,7 +1678,9 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// therefore lights nothing, which was the defect rather than the design.
 		// Three rows had never worked because of it: the Greataxe's Burning
 		// Wrath, the Spear's Held Fast and the Wand's Hex of Cinders.
-		if (Params.bBurns)
+		//
+		// WHETHER IT HURT IS STILL NOT ASKED. Only whether it connected.
+		if (Params.bBurns && bLanded)
 		{
 			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,
@@ -1671,17 +1693,18 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// template, because "every blow you land" includes a projectile, an aura
 		// pulse and a leap, and this is the one place all of them pass through.
 		//
-		// ONLY WHEN SOMETHING WAS ACTUALLY DEALT, which is the same test the burn
-		// above makes and the same one `ApplyManaOnHit` makes below. A swing that
-		// was evaded, or that armour stopped completely, did not land -- so it
-		// cracks nothing.
+		// ONLY WHEN THE BLOW CONNECTED, and until issue #1156 this line said so
+		// and did not do it: it tested `Dealt > 0`, which is the figure the
+		// caster sent, so an evaded swing cracked the ground exactly as a landed
+		// one did. Armour stopping a blow completely still cracks it, which is
+		// the change from what this comment used to claim.
 		//
 		// IT IS ASKED OF THE CASTER'S OWN ABILITIES, so a skill notifies the buff
 		// running beside it rather than itself. Groundbreaker deals no damage of
 		// its own: the Support slot's damage percent is zero, so it never reaches
 		// this line through its own casting and only ever hears about other
 		// skills' blows.
-		if (Dealt > 0.0f)
+		if (Dealt > 0.0f && bLanded)
 		{
 			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
 		}
@@ -1711,11 +1734,21 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// effect skips the damage threshold. `ApplyStun` still enforces the
 		// five second immunity window and the boss exemption on every one.
 		//
-		// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, which is issue
-		// #1156 and is not made worse here: a stated stun does not read it at
-		// all. Whether an evaded attack should stun is that issue's question,
-		// and it is the same question it already asks of the burn above.
-		ApplyStunTo(Self, Target, Dealt);
+		// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, and a stated
+		// stun does not read it at all -- so the figure passed here decides
+		// nothing for the four designed rows and everything for an incidental
+		// stun, which still has to clear the damage threshold.
+		//
+		// AN EVADED BLOW STUNS NOTHING. Issue #1156, decided on 2026-09-04. This
+		// comment used to name that as the open question and the answer is the
+		// same one the burn above got: evasion says the blow never connected, so
+		// nothing it carries arrives either. A blow armour stopped dead still
+		// stuns, because armour answers whether it hurt rather than whether it
+		// landed.
+		if (bLanded)
+		{
+			ApplyStunTo(Self, Target, Dealt);
+		}
 
 		// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
 		// across the Spear, the Warhammer and the Whip state one of the five

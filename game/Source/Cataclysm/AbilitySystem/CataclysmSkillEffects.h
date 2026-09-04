@@ -12,6 +12,12 @@ class UDataTable;
 class UGameplayEffect;
 struct FGameplayEffectContextHandle;
 
+// What a blow resolved to on its target, reported back by `ApplyDirectDamage`
+// and `ApplyHit`. Issue #1156. Declared rather than included, because both take
+// it by pointer and `CataclysmDamageCalculation.h` includes this header's
+// neighbours -- a full include here is a cycle waiting to be written.
+struct FCataclysmDamageResult;
+
 /**
  * How a hit reached its target, which decides two steps of the mitigation order.
  *
@@ -413,12 +419,27 @@ public:
 	 *                   container means only unscoped and Scope.Global
 	 *                   modifiers apply, which is the right answer for a hit
 	 *                   that belongs to no skill.
-	 * @return the damage sent, before the defender's mitigation. Zero when
+	 * @param OutResolved  filled with what became of the blow: whether it was
+	 *                     evaded or blocked, and what reached armour, resistance,
+	 *                     the energy shield and health. Optional, and most
+	 *                     callers pass nothing. Issue #1156: the return value
+	 *                     below cannot answer any of that, because it is decided
+	 *                     before the defender is consulted.
+	 *
+	 * @return the damage SENT, before the defender's mitigation. Zero when
 	 *         either side is missing or the caster has no weapon damage.
+	 *
+	 *         **THIS IS NOT WHAT LANDED AND NEVER WAS.** Evasion, block, armour,
+	 *         resistance and flat reduction are applied afterwards, inside the
+	 *         defender's own `UCataclysmVitalAttributeSet::
+	 *         PostGameplayEffectExecute`. A caller asking whether the blow landed
+	 *         must read `OutResolved`, not this. The figure is still the right
+	 *         one to scale a rider by, which is what every caller uses it for.
 	 */
 	static float ApplyHit(AActor* Instigator, AActor* Target, float DamagePercent,
 						  const FGameplayTagContainer& SkillTags = FGameplayTagContainer(),
-						  const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery());
+						  const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery(),
+						  FCataclysmDamageResult* OutResolved = nullptr);
 
 	/**
 	 * What one hit of this size, from this caster, is worth after the caster's
@@ -463,9 +484,24 @@ public:
 	static bool ReduceHealthDirectly(AActor* Instigator, AActor* Target,
 									 float Amount);
 
+	/**
+	 * Send a blow at a target and, if asked, report what became of it.
+	 *
+	 * @param OutResolved  filled with what the defender's own attribute set made
+	 *                     of the blow -- evaded, blocked, what armour and
+	 *                     resistance took, what reached health. Left at its
+	 *                     defaults when the blow never reached the attribute set
+	 *                     at all, which a caller cannot tell apart from an
+	 *                     untouched hit and does not need to: both mean nothing
+	 *                     landed. Optional; every caller but `ApplyHit` ignores
+	 *                     it. Issue #1156.
+	 *
+	 * @return whether damage was SENT, which is not whether any of it landed.
+	 */
 	static bool ApplyDirectDamage(AActor* Instigator, AActor* Target, float Damage,
 								  const FCataclysmHitDelivery& Delivery =
-									  FCataclysmHitDelivery());
+									  FCataclysmHitDelivery(),
+								  FCataclysmDamageResult* OutResolved = nullptr);
 
 	/**
 	 * Set a target alight, for the duration and share the DoTs sheet states.

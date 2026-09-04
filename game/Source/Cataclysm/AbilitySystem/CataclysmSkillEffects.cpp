@@ -247,8 +247,19 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 									   float DamagePercent,
 									   const FGameplayTagContainer& SkillTags,
-									   const FCataclysmHitDelivery& Delivery)
+									   const FCataclysmHitDelivery& Delivery,
+									   FCataclysmDamageResult* OutResolved)
 {
+	// CLEARED FIRST, SO EVERY EARLY RETURN BELOW REPORTS "NOTHING LANDED"
+	// WITHOUT HAVING TO SAY SO. Issue #1156. There are five of them -- no
+	// damage percent, a missing ability system on either side, an untargetable
+	// target, and a caster with no weapon damage -- and a caller that read a
+	// stale result after one of those would be told about somebody else's blow.
+	if (OutResolved)
+	{
+		*OutResolved = FCataclysmDamageResult();
+	}
+
 	if (DamagePercent <= 0.0f)
 	{
 		// A Support skill's slot damage is zero by design -- the Skill Slots
@@ -413,7 +424,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags));
 	}
 
-	return ApplyDirectDamage(Instigator, Target, Damage, Arrived) ? Damage : 0.0f;
+	// THE FIGURE IS WHAT WAS SENT AND THE OUT PARAMETER IS WHAT BECAME OF IT.
+	// Issue #1156. Keeping the return value as the sent figure is deliberate:
+	// every caller uses it to scale a rider, and a rider scaled by what got
+	// through armour would shrink as the target's defences grew. What none of
+	// them could do before was ask whether the blow landed at all.
+	return ApplyDirectDamage(Instigator, Target, Damage, Arrived, OutResolved)
+		? Damage : 0.0f;
 }
 
 bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
@@ -455,7 +472,8 @@ bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
 
 bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
 											   float Damage,
-											   const FCataclysmHitDelivery& Delivery)
+											   const FCataclysmHitDelivery& Delivery,
+											   FCataclysmDamageResult* OutResolved)
 {
 	if (Damage <= 0.0f)
 	{
@@ -487,7 +505,26 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
+
+	// THE STAMP IS READ BEFORE AND AFTER, AND THAT IS THE WHOLE MECHANISM.
+	// Issue #1156. The effect above is Instant, so the defender's
+	// `PostGameplayEffectExecute` runs inside `ApplyTypedSpec` and records what
+	// the blow resolved to on the defender's own component. A stamp that did not
+	// move means the blow never reached the attribute set at all -- an immunity,
+	// a missing set, a refused spec -- and the record then belongs to some
+	// earlier blow, so it must not be reported as this one's.
+	UCataclysmAbilitySystemComponent* Resolver =
+		Cast<UCataclysmAbilitySystemComponent>(Defender);
+	const uint32 Before = Resolver ? Resolver->GetResolvedHitStamp() : 0;
+
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
+
+	if (OutResolved)
+	{
+		*OutResolved = (Resolver && Resolver->GetResolvedHitStamp() != Before)
+			? Resolver->GetLastResolvedHit()
+			: FCataclysmDamageResult();
+	}
 
 	return true;
 }

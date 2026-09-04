@@ -2,6 +2,9 @@
 
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For what a blow resolved to, so a burn is refused on an evaded one.
+// Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -308,9 +311,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// Damage comes from the SUMMONER's weapon, not the minion's own, which it
 	// has none of. So a Ritualist's imps get stronger as the Ritualist does,
 	// which is how every minion in the genre scales.
+	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
-		MinionDelivery(/*bIsArea=*/false));
+		MinionDelivery(/*bIsArea=*/false), &Resolved);
 
 	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
 	// same reason its blow takes no critical strike, no penetration, no weapon
@@ -320,7 +324,12 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// A DESIGNED BURN, because `bBurnsWhatItHits` comes from the minion's own
 	// row in the Minion Types sheet rather than from a chance on hit. Issue
 	// #917: a designed ailment applies whether or not the blow hurt.
-	if (bBurnsWhatItHits)
+	//
+	// AN EVADED SWING SETS NOTHING ALIGHT. Issue #1156, decided on 2026-09-04.
+	// This one blow is evadable -- it is a single strike rather than area
+	// damage, which the explosion below records -- so the test is worth making
+	// here and would be worth nothing there.
+	if (bBurnsWhatItHits && !Resolved.bEvaded)
 	{
 		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
@@ -345,6 +354,12 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 				Summoner, Target, DamagePercent, FGameplayTagContainer(),
 				MinionDelivery(/*bIsArea=*/true));
 			// Designed, for the reason the melee attack above records.
+			//
+			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area
+			// damage and `UCataclysmDamageCalculation::Resolve` does not roll
+			// evasion against area damage at all, so the test the melee attack
+			// above makes for issue #1156 could never fire here. A check that
+			// cannot fail is worse than no check, because it reads as one.
 			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
