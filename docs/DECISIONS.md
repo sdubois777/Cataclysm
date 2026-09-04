@@ -2,6 +2,46 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — Durable Modifications is a multiplicative damage reduction node
+
+### The question
+
+`Saboteur_basic_trunk_014`, Durable Modifications, reads "+3% damage reduction
+per point. At 4 points: This damage reduction is doubled while above 50% maximum
+Fervour." It grants damage reduction and did **not** say "(multiplicative)", so
+as written it joined the additive pool that the 75% cap binds.
+
+The design document had named it as one of the multiplicative nodes. Issue #1232
+corrected the document's count — it said twelve across two trees when the data
+held nine, all in Bulwark — and deliberately did not touch the node, because
+which of the two was wrong is a design question and not a transcription one.
+
+### What was decided
+
+The project owner, 2026-09-04: **it is meant to be multiplicative.** The node
+text now says so, in the same place and the same words the nine Bulwark nodes
+use.
+
+The design document's sentence becomes "Ten passive tree nodes grant damage
+reduction and say "(multiplicative)": nine in the Bulwark tree and one in the
+Saboteur tree."
+
+### What it changes in play today: nothing
+
+Durable Modifications has no rows in `game/Data/PassiveEffects.csv`, so it grants
+nothing at all at the moment. It is one of the prose-only nodes issue #939 is
+about. This settles what it should do when it is built, and the word is now in
+the text an implementer would read.
+
+### What holds it
+
+`tools/tests/test_the_multiplicative_node_count_matches_the_data.py` reads the
+counts out of `game/Data/PassiveNodes.csv` and compares them against the
+sentence in the design document, so neither can move without the other. That is
+the guard #1232 did not leave behind, which is why the same number went wrong
+twice. Both halves were shown failing with `prove_guard`: once with the document
+holding the old count, and once with the word taken back off the node.
+
 ## 2026-09-04 — The item tool tip says which numbers are percentages, and one affix is renamed
 
 ### What was wrong
