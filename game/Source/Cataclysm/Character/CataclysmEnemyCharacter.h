@@ -523,6 +523,47 @@ public:
 	float CommanderMultiplier() const;
 
 	/**
+	 * What Cripple multiplies, or 1.0 when this creature is not crippled.
+	 *
+	 * THE CURSE THAT COULD NOT REACH ANYTHING UNTIL 2026-09-04. Its row in
+	 * game/Data/StatusEffects.csv reads "Reduces the affected enemy's
+	 * movement and attack speed by 30% for 4 seconds", and nothing in the
+	 * project could change either. A player character follows the movement
+	 * speed attribute; an enemy's speed is its own designed figure and the
+	 * attribute reaches it nowhere. Issue #1152.
+	 *
+	 * THE SAME SHAPE AS Commander ABOVE, AND THAT IS THE POINT. Both are a
+	 * tag on the creature and a percentage in the data, both cover movement
+	 * speed and attack speed, and both are read here so a creature carrying
+	 * one of each is multiplied by both rather than by whichever was checked
+	 * last.
+	 *
+	 * THE REDUCTION IS THE ROW'S OWN Strength, read out of the Status Effects
+	 * sheet rather than written here, so re-tuning the curse needs no code.
+	 *
+	 * ITS StrengthCap OF 80 IS NOT REACHED AND IS NOT CHECKED. The row says a
+	 * magnitude raises the reduction to that cap and then extends the
+	 * duration instead, and no magnitude survives the path that applies this
+	 * curse: `UCataclysmSkillEffects::ApplyNamedEffect` grants the tag and
+	 * keeps no number, so every Cripple in the game is the designed 30%.
+	 * Issue #1144 is the column that would change that.
+	 */
+	float CrippleMultiplier() const;
+
+	/**
+	 * Everything acting on this creature's movement and attack speed at once.
+	 *
+	 * ONE FUNCTION SO THE TWO STATS CANNOT DISAGREE. Commander raises both
+	 * and Cripple lowers both, so a creature that is inspired and crippled
+	 * gets 1.2 x 0.7 either way rather than one stat seeing both and the
+	 * other seeing one.
+	 */
+	float SpeedMultiplier() const
+	{
+		return CommanderMultiplier() * CrippleMultiplier();
+	}
+
+	/**
 	 * Seconds between this creature's attacks BEFORE any buff.
 	 *
 	 * **THIS IS THE ONE A CREATURE OVERRIDES**, not `SecondsBetweenAttacks`
@@ -546,7 +587,10 @@ public:
 	 */
 	virtual float SecondsBetweenAttacks() const override final
 	{
-		return DesignedSecondsBetweenAttacks() / CommanderMultiplier();
+		// DIVIDED BY EVERYTHING AT ONCE. Commander's 1.2 shortens the
+		// interval and Cripple's 0.7 lengthens it, which is what a reduction
+		// in attack SPEED means for an INTERVAL.
+		return DesignedSecondsBetweenAttacks() / SpeedMultiplier();
 	}
 
 	/**
@@ -574,8 +618,13 @@ public:
 	 * lookup a frame is a hash lookup and a comparison.
 	 *
 	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD.
+	 *
+	 * NAMED FOR WHAT IT WRITES RATHER THAN FOR ONE OF ITS INPUTS, since
+	 * 2026-09-04. It was `RefreshCommanderBuff` and it now applies the
+	 * Cripple curse as well, so a name saying "commander" would send the
+	 * next reader looking in the wrong place. Issue #1152.
 	 */
-	void RefreshCommanderBuff();
+	void RefreshWalkSpeed();
 
 	// ----------------------------------------------------------------------
 	// Phases

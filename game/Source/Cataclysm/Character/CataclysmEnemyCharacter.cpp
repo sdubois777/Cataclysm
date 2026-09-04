@@ -412,7 +412,7 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	AdvanceCharge(DeltaSeconds);
-	RefreshCommanderBuff();
+	RefreshWalkSpeed();
 }
 
 void ACataclysmEnemyCharacter::HealthChanged()
@@ -559,7 +559,36 @@ float ACataclysmEnemyCharacter::CommanderMultiplier() const
 	return 1.0f + CommanderIncreasePercent / 100.0f;
 }
 
-void ACataclysmEnemyCharacter::RefreshCommanderBuff()
+float ACataclysmEnemyCharacter::CrippleMultiplier() const
+{
+	// THE TAG IS THE SINGLE SOURCE OF TRUTH, exactly as it is for Commander
+	// above. `UCataclysmSkillEffects::ApplyNamedEffect` grants it for the
+	// row's own duration and the ability system takes it away when that
+	// expires, so nothing here has to be told.
+	const FGameplayTag Cripple = UCataclysmSkillShapes::StatusTagFor(
+		TEXT("Cripple"));
+
+	if (!UCataclysmSkillEffects::HasTag(this, Cripple))
+	{
+		return 1.0f;
+	}
+
+	// THE ROW'S OWN FIGURE, so re-tuning the curse is a data change. Thirty
+	// per cent as the sheet stands.
+	const float Reduction = FMath::Clamp(
+		UCataclysmSkillEffects::NumbersForEffectTag(Cripple).Strength,
+		0.0f, 100.0f);
+
+	// A HUNDRED PER CENT WOULD BE A CREATURE THAT CANNOT MOVE AT ALL AND
+	// CANNOT ATTACK EVER, and the second half is the dangerous one: the
+	// attack interval DIVIDES by this, so a multiplier of zero is an
+	// interval of infinity. The clamp above bounds the reduction and this
+	// bounds what comes out of it, because a row edited to 100 should slow a
+	// creature to a crawl rather than produce a number nothing can divide.
+	return FMath::Max(1.0f - Reduction / 100.0f, KINDA_SMALL_NUMBER);
+}
+
+void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	if (!Movement)
@@ -574,7 +603,9 @@ void ACataclysmEnemyCharacter::RefreshCommanderBuff()
 		return;
 	}
 
-	const float Wanted = DesignedWalkSpeedCmPerSecond * CommanderMultiplier();
+	// MULTIPLIED BY EVERYTHING AT ONCE, so a creature that is both inspired
+	// and crippled gets both. See SpeedMultiplier.
+	const float Wanted = DesignedWalkSpeedCmPerSecond * SpeedMultiplier();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely

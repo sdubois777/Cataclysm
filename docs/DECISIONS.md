@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-04 — The Cripple curse slows an enemy
+
+### What was wrong
+
+The Cripple row of `game/Data/StatusEffects.csv` reads "Reduces the affected
+enemy's movement and attack speed by 30% for 4 seconds", and **nothing in the
+project could change either.** The tag landed, lasted four seconds and did
+nothing at all. `CataclysmStatMovedByEffect` in `CataclysmSkillEffects.cpp` said
+so in terms: "Cripple's slow has no movement-speed debuff route".
+
+Issue #1152. It is applied by the chance to cripple affix and the Of Maiming gem,
+so it is a curse a player carries on their gear.
+
+### One correction to that issue, which its body and its comment both state
+
+**"Nothing reads the movement speed attribute into `MaxWalkSpeed`" is wrong about
+a player character and right about an enemy.**
+`ACataclysmPlayerCharacter::RefreshMovementSpeed` reads the stat and
+`ApplyMovementSpeed` writes the movement component, hooked to the attribute's
+change delegate from `PossessedBy` on the server and `OnRep_PlayerState` on the
+owning client. It landed with issue #959 and three tests hold it, including
+`Cataclysm.Player.MovementSpeedFollowsTheAttribute`.
+
+An enemy's speed is its own designed figure captured at `BeginPlay`, times the
+Commander buff. That is the half that was missing.
+
+### What was decided
+
+**A Cripple multiplier beside the Commander one, and both read through a single
+`SpeedMultiplier`.** Commander raises movement speed and attack speed by 20%;
+Cripple lowers both by the row's own Strength. They are the same shape — a tag on
+the creature and a percentage in the data — so they are read the same way.
+
+| | walk speed | attack interval |
+| :-- | :-- | :-- |
+| Before | designed x Commander | designed / Commander |
+| After | designed x Commander x Cripple | designed / (Commander x Cripple) |
+
+**Dividing the interval is what a speed reduction means for an interval.**
+Commander's 1.2 shortens it and Cripple's 0.7 lengthens it, and one function
+means a creature carrying both gets both rather than whichever was read last.
+
+**`RefreshCommanderBuff` is renamed `RefreshWalkSpeed`**, because it applies the
+curse as well now and a name saying "commander" would send the next reader to the
+wrong place.
+
+**NOT ROUTED THROUGH THE MOVEMENT SPEED ATTRIBUTE**, which is what issue #1152
+recommends, and the reason is measured rather than a preference. Two things stop
+it: the attribute's base is 4 metres per second for every character while each
+creature has its own designed speed, so an enemy would have to read it as a ratio
+to a base it does not hold; and Cripple reduces attack speed as well, which is
+not the movement speed attribute at all. Routing it that way would fix half the
+curse and need the attribute rebased per creature. Nothing else wants an enemy's
+movement speed attribute today — an enemy wears no affixes.
+
+### What is not built, and it is the row's own second sentence
+
+"Magnitude raises the reduction to a cap of 80%, then extends the duration
+instead." **No magnitude survives the path that applies this curse.**
+`UCataclysmSkillEffects::ApplyNamedEffect` grants the tag and keeps no number, so
+every Cripple in the game is the designed 30% and the 80 cap is never approached.
+`FCataclysmStatusEffectNumbers` does not even expose the `StrengthCap` column.
+Issue #1144 is the column that would change that.
+
+### What holds it
+
+`Cataclysm.Enemy.CrippleSlowsACreaturesWalkingAndItsAttacking` curses an Imp and
+checks both stats against the row's own Strength rather than a literal 30, then
+lifts the curse and checks both come back.
+`Cataclysm.Enemy.ACreatureInspiredAndCrippledAtOnceGetsBoth` is the one that
+would catch either effect overwriting the other, which every single-effect test
+would pass.
+
+Both were shown failing twice: with the Cripple tag ignored, and with the walk
+speed reading only the Commander buff.
+
+**The first version of the first test was wrong and passed nothing.** It spawned
+a Succubus to be the curser, and a Succubus grants Commander to the allies around
+it, so the Imp was buffed by 20% and every figure came out 1.2 times what it
+should be. It uses a second Imp now.
+
 ## 2026-09-04 — Movement speed is a boots modifier worth 35%
 
 ### What was decided
