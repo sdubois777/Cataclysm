@@ -177,7 +177,11 @@ namespace CataclysmReferenceTest
 		{ TEXT("armor"),               7299.42f },
 		{ TEXT("block_chance"),          28.00f },
 		{ TEXT("damage_reduction"),      15.95f },
-		{ TEXT("resistance_demonic"),    72.00f },
+		// 144 SINCE ISSUE #1229, and it was 72. The twelve all-resistance
+		// affixes this build spends are worth 12 each rather than 6. Note what
+		// that leaves: a tier 8 character needs 145 to sit at the 70 cap, so
+		// this build is one point short of capping at the tier it is built for.
+		{ TEXT("resistance_demonic"),   144.00f },
 	};
 }
 
@@ -308,7 +312,7 @@ bool FCataclysmReferenceBuildSurvivalTest::RunTest(const FString& Parameters)
 	constexpr float Armor = 7299.42f;
 	constexpr float BlockChance = 28.0f;
 	constexpr float DamageReduction = 15.95f;
-	constexpr float Resistance = 72.0f;
+	constexpr float Resistance = 144.0f;
 
 	// Armour against the tier 8 curve removes 53.3%, and resistance is capped at
 	// 70% however far over it a character is.
