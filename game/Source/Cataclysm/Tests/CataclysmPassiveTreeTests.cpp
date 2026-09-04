@@ -37,6 +37,9 @@
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For the weapon skill table, which says which damage types a weapon type can
+// carry and so which creation choices are legal. Issue #1055.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 // For how long a lasting harmful effect on the character runs. Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -46,6 +49,9 @@
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
+// For the item base table, which says which weapon types a character may begin
+// holding. Issue #1055.
+#include "Items/CataclysmItem.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -6635,6 +6641,264 @@ bool FCataclysmPassivePossessionAppliesTheTreeTest::RunTest(const FString&)
 			  InvestedHealth, Invested, FMath::Max(Invested * 0.001f, 0.01f));
 	TestEqual(TEXT("as does the one with an empty tree, on its own"), BareHealth,
 			  Bare, FMath::Max(Bare * 0.001f, 0.01f));
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// A changed damage type reaching the character with nothing else touched
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDamageTypeChangeRefreshesTest,
+	"Cataclysm.Passives.ChangingOnlyTheDamageTypeReRunsTheStatLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A changed damage type has to reach the character by itself. Issue #1055.
+ *
+ * WHAT WENT WRONG. A character's damage type decides which passive trees apply
+ * to it at all: points in a tree no equipped weapon reaches stay spent and grant
+ * nothing, which is the project owner's decision of 2026-08-25.
+ * `UCataclysmEquipmentComponent::RefreshAttributes` enforces that by passing
+ * `GetChosenDamageType()` to `UCataclysmPassiveTree::AccumulateInto`. Nothing
+ * re-ran the stat line when the damage type changed, so a character that
+ * reopened the creation screen and changed only its damage type kept the old
+ * type's trees applied to its stats while the passive tree screen showed the new
+ * type's -- the screen and the character disagreed until something else happened
+ * to refresh.
+ *
+ * WHY CHANGING ONLY THE DAMAGE TYPE IS THE CASE THAT MATTERS. Changing the
+ * weapon type hides the defect. `ACataclysmPlayerCharacter::ApplyCreationChoice`
+ * puts the newly chosen weapon on, that broadcasts `EquipmentChanged`, and the
+ * refresh then happens by accident. `ApplyCreationChoice` returns early when the
+ * character already holds a weapon of the chosen type, and its own comment names
+ * the case: "a choice that only changed the damage type". So the weapon type is
+ * held at Greataxe throughout below and only the damage type moves.
+ *
+ * THIS TEST MUST NOT CALL `RefreshAttributes`, for the reason
+ * `SpendingAPointRaisesMaximumHealthWithNothingElseTouched` gives for issue
+ * #1054: that call is exactly the step the game was missing, so making it here
+ * would put the defect back out of reach. Nothing below touches equipment, an
+ * attribute point or a level either.
+ *
+ * BOTH WRITERS, BECAUSE THEY ARE TWO FUNCTIONS AND NOT ONE.
+ * `ACataclysmPlayerState::ChooseAtCreation` is what the creation screen and the
+ * `Cataclysm.ChooseAtCreation` console command call; `SetCreationChoice` is the
+ * save-restore path, which takes a record without judging it. A repair placed in
+ * only one of them fails one half or the other, so the first change below goes
+ * through one and the change back through the other.
+ *
+ * GREATAXE CARRIES BOTH DEMONIC AND WAR, which is what makes the pair legal in
+ * both directions -- the Demonic Greataxe rows and War's Annihilator are both in
+ * `game/Data/WeaponSkills.csv`. Demonic reaches the Masochist tree and War does
+ * not; War reaches Bulwark, Berserker and Saboteur.
+ *
+ * READ AS A SUM AND NOT AS A MULTIPLIER, for the reason `IncreasesOn` explains.
+ * Ten points worth 1% each add 10 to whatever sum the stat already carries.
+ */
+bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// THE MASOCHIST CLASS LINE, BECAUSE THE TREE BEING SWITCHED OFF IS THE
+	// MASOCHIST'S. Which class a character is decides which base every stat
+	// stands on, and an increase on a stat whose base is zero multiplies
+	// nothing. Issue #980.
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	// THE REAL TABLES, because the whole point is the end-to-end path.
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!TestNotNull(TEXT("the passive effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the weapon skill table loads"), Skills)
+		|| !TestNotNull(TEXT("the item base table loads"), Bases))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// WHAT THE SHEET SAYS PAIN TOLERANCE IS WORTH, READ OUT OF THE REAL TABLE.
+	// The root holds one point and opens Pain Tolerance, which grants increased
+	// maximum health and increased armour.
+	const FName Root(TEXT("Masochist_basic_spine_000"));
+	const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
+
+	float HealthPerPoint = 0.0f;
+	float ArmourPerPoint = 0.0f;
+	for (const FCataclysmPassiveEffectRow* Row :
+		 UCataclysmPassiveTree::EffectsFor(EffectTable, PainTolerance))
+	{
+		if (Row->Stat == TEXT("max_health"))
+		{
+			HealthPerPoint = Row->ValuePerPoint;
+		}
+		else if (Row->Stat == TEXT("armor"))
+		{
+			ArmourPerPoint = Row->ValuePerPoint;
+		}
+	}
+	if (!TestTrue(TEXT("Pain Tolerance grants increased maximum health"),
+				  HealthPerPoint > 0.0f)
+		|| !TestTrue(TEXT("and increased armour"), ArmourPerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	// -------------------------------------------------------------------
+	// Demonic, with points spent in a tree Demonic reaches
+	// -------------------------------------------------------------------
+
+	FString Reason;
+	if (!TestTrue(TEXT("a Greataxe carrying Demonic is taken"),
+				  State->ChooseAtCreation(Skills, Bases, FName(TEXT("Greataxe")),
+										  FName(TEXT("Demonic")), Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	const float HealthSumBare = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float ArmourSumBare = IncreasesOn(AbilitySystem, TEXT("armor"));
+	const float HealthBare =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float ArmourBare =
+		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
+
+	// A REAL STAT LINE UNDERNEATH, NOT THE PLACEHOLDER.
+	// `UCataclysmVitalAttributeSet`'s constructor writes 100, and a test that
+	// began from the placeholder would be measuring an unpossessed character.
+	if (!TestTrue(*FString::Printf(
+					  TEXT("maximum health is off the class line, not the "
+						   "placeholder 100: %.1f"), HealthBare),
+				  HealthBare > 100.0f)
+		|| !TestTrue(*FString::Printf(
+						 TEXT("and there is armour to increase: %.1f"),
+						 ArmourBare),
+					 ArmourBare > 0.0f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the Masochist root takes a point"),
+				  State->SpendPassivePoint(Root, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	const int32 Points = 10;
+	for (int32 Each = 0; Each < Points; ++Each)
+	{
+		if (!State->SpendPassivePoint(PainTolerance, Reason))
+		{
+			AddError(FString::Printf(
+				TEXT("point %d of %d into Pain Tolerance was refused: %s"),
+				Each + 1, Points, *Reason));
+			return false;
+		}
+	}
+
+	const float HealthSumSpent = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float ArmourSumSpent = IncreasesOn(AbilitySystem, TEXT("armor"));
+	const float HealthSpent =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+
+	// THE POINTS ARE WORTH SOMETHING BEFORE THE DAMAGE TYPE MOVES. Without this
+	// the assertions below would compare zero against zero and pass on nothing,
+	// which is the shape of a check that cannot fail.
+	TestEqual(TEXT("ten points raised the sum of increases on maximum health"),
+			  HealthSumSpent, HealthSumBare + HealthPerPoint * Points, 0.01f);
+	TestTrue(*FString::Printf(
+				 TEXT("and maximum health rose with it, from %.1f to %.1f"),
+				 HealthBare, HealthSpent),
+			 HealthSpent > HealthBare);
+
+	// THE SECOND STAT ON THE SAME NODE, so a repair that somehow reached only
+	// maximum health is caught by the armour assertions further down.
+	TestEqual(TEXT("and the sum of increases on armour rose by its own amount"),
+			  ArmourSumSpent, ArmourSumBare + ArmourPerPoint * Points, 0.01f);
+
+	// -------------------------------------------------------------------
+	// War, chosen through `ChooseAtCreation`, with the weapon type unchanged
+	// -------------------------------------------------------------------
+
+	if (!TestTrue(TEXT("the same Greataxe carrying War is taken"),
+				  State->ChooseAtCreation(Skills, Bases, FName(TEXT("Greataxe")),
+										  FName(TEXT("War")), Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+	TestEqual(TEXT("and the weapon type did not move"),
+			  State->GetChosenWeaponType(), FName(TEXT("Greataxe")));
+
+	// NOTHING ELSE IS TOUCHED FROM HERE. No equipment change, no attribute
+	// point, no level, and above all no call to `RefreshAttributes`.
+
+	const float HealthSumAsWar = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float ArmourSumAsWar = IncreasesOn(AbilitySystem, TEXT("armor"));
+	const float HealthAsWar =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	const float ArmourAsWar =
+		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
+
+	// THE HEADLINE: a tree War cannot reach stops being worth anything, and the
+	// character's own stats say so without anything else being touched.
+	TestEqual(TEXT("the Masochist tree's increases came off maximum health"),
+			  HealthSumAsWar, HealthSumBare, 0.01f);
+	TestEqual(TEXT("and off armour"), ArmourSumAsWar, ArmourSumBare, 0.01f);
+	TestEqual(TEXT("so maximum health is back where it started"), HealthAsWar,
+			  HealthBare, FMath::Max(HealthBare * 0.001f, 0.01f));
+	TestEqual(TEXT("and so is armour"), ArmourAsWar, ArmourBare,
+			  FMath::Max(ArmourBare * 0.001f, 0.01f));
+
+	// AND THE POINTS ARE STILL SPENT. Dormant is not refunded, which is the
+	// other half of the 2026-08-25 decision.
+	TestEqual(TEXT("the eleven points are still spent"),
+			  State->GetPassiveAllocation().Total(), Points + 1);
+	TestEqual(TEXT("including the ten in the tree that now grants nothing"),
+			  State->GetPassiveAllocation().PointsIn(PainTolerance), Points);
+
+	// -------------------------------------------------------------------
+	// And back to Demonic through `SetCreationChoice`, the other writer
+	// -------------------------------------------------------------------
+
+	// A LOADED RECORD RATHER THAN A CHOICE, which is the save-restore path and a
+	// separate function. A repair placed only in `ChooseAtCreation` fails here.
+	State->SetCreationChoice(FName(TEXT("Greataxe")), FName(TEXT("Demonic")));
+
+	const float HealthSumBack = IncreasesOn(AbilitySystem, TEXT("max_health"));
+	const float HealthBack =
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+
+	TestEqual(TEXT("loading Demonic back puts the tree's increases back on"),
+			  HealthSumBack, HealthSumSpent, 0.01f);
+	TestEqual(TEXT("and maximum health with them"), HealthBack, HealthSpent,
+			  FMath::Max(HealthSpent * 0.001f, 0.01f));
 
 	return true;
 }
