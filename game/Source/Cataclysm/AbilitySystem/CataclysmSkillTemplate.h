@@ -582,6 +582,44 @@ protected:
 	void ApplyKnockbackTo(AActor* Self, AActor* Target) const;
 
 	/**
+	 * Hold one target still for this skill's `StunSeconds`, if it states one.
+	 * Does nothing when it does not.
+	 *
+	 * A RIDER BESIDE THE KNOCKBACK ABOVE AND FOR THE SAME REASON. The four
+	 * rows that state a stun duration are spread over two shapes -- the
+	 * Shield's Shield Bash is a Strike, and the Warhammer's Shockwave Leap,
+	 * the Sword's Lunge and the Whip's Whip Swing are all Movement -- so
+	 * writing it into one template would mean writing it into two. Issue
+	 * #1195: the parameter was parsed, stored and read by nothing, so no
+	 * player skill in the game stunned anything.
+	 *
+	 * THE THREE ANTI-STUN-LOCK RULES ARE NOT HERE. A damage threshold, five
+	 * seconds of immunity after a stun lands, and bosses immune outright all
+	 * live in `UCataclysmSkillEffects::ApplyStun`, which is why
+	 * `NamedEffectTags` refuses to grant `Status.Stun` as a plain tag.
+	 * This hands that function the duration and lets it decide.
+	 *
+	 * THE DAMAGE IS HANDED OVER EVEN THOUGH ALL FOUR ROWS SKIP THE
+	 * THRESHOLD, because whether they skip it is asked of the row rather
+	 * than assumed. See StatesStunAsItsEffect below.
+	 */
+	void ApplyStunTo(AActor* Self, AActor* Target, float DamageDealt) const;
+
+	/**
+	 * Whether this skill names stunning as its effect, rather than merely
+	 * stating a duration.
+	 *
+	 * THIS IS WHAT EXEMPTS A SKILL FROM THE DAMAGE THRESHOLD, and the design
+	 * says so in those words. The Stun row of the Status Effects sheet: "A
+	 * hit must take at least 10% of the target maximum health to stun,
+	 * unless the skill states stunning as its effect." All four rows that
+	 * state a `StunSeconds` also write `Effect=Stun`, so all four are
+	 * exempt; asking the row rather than assuming it is what makes that
+	 * sentence true of the game rather than true by coincidence.
+	 */
+	bool StatesStunAsItsEffect() const;
+
+	/**
 	 * Do to one target whatever this skill's `ForcedMovement` names, if it names
 	 * anything. Does nothing when it does not.
 	 *

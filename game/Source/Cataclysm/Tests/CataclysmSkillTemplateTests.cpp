@@ -48,6 +48,8 @@
 #include "GameFramework/RootMotionSource.h"
 #include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
@@ -524,6 +526,210 @@ bool FCataclysmStrikeSingleTargetTest::RunTest(const FString&)
 		Moved.Size()), Moved.Size() > 3.5f * M);
 	TestTrue(TEXT("Away from the caster, not towards"), Moved.X > 0.0f);
 
+	return true;
+}
+
+/**
+ * The four skills that state a stun duration stun what they hit.
+ *
+ * WHAT WENT WRONG. Issue #1195: `StunSeconds` was declared, parsed and stored,
+ * and read by no code outside the parser and the tests. Four rows state one --
+ * the Shield's Shield Bash at 1.5 seconds, the Warhammer's Shockwave Leap at
+ * 1.0, the Sword's Lunge at 0.75 and the Whip's Whip Swing at 0.75 -- and none
+ * of them stunned anything. `UCataclysmSkillEffects::ApplyStun` existed and
+ * worked; only the Brute's stomp called it, with a constant of its own, so no
+ * player skill in the game stunned at all.
+ *
+ * BOTH SHAPES ARE TESTED, which is the point of the rider. Shield Bash is a
+ * Strike and Shockwave Leap is a Movement, so a stun written into one template
+ * would leave three of the four rows unfixed.
+ *
+ * THE CELLS ARE VERBATIM FROM THE WEAPON SKILLS SHEET, so a row losing its
+ * StunSeconds fails here rather than going quiet.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAStrikeThatStatesAStunStunsTest,
+	"Cataclysm.Skills.AStrikeStatingAStunHoldsWhatItHits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAStrikeThatStatesAStunStunsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Caught(World, FVector(1 * M, 0, 0));
+	FScopedFighter Clear(World, FVector(20 * M, 0, 0));
+
+	TestFalse(TEXT("Nothing is stunned before the swing"),
+		UCataclysmSkillEffects::IsStunned(Caught.Actor));
+
+	// Shield Bash's cell, verbatim from the Weapon Skills sheet.
+	UCataclysmStrikeSkill* Bash = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=2.5; Angle=60; MaxTargets=1; Effect=Stun; StunSeconds=1.5"),
+		TEXT("Shield Bash"));
+	if (!Bash)
+	{
+		AddError(TEXT("Could not grant the bash."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Bash));
+
+	TestTrue(TEXT("What it hit is stunned"),
+		UCataclysmSkillEffects::IsStunned(Caught.Actor));
+	TestFalse(TEXT("and what stood well clear of it is not"),
+		UCataclysmSkillEffects::IsStunned(Clear.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStunIsARiderTest,
+	"Cataclysm.Skills.AMovementSkillCanStunBecauseAStunIsARider",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStunIsARiderTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Standing where the leap lands, so it is inside the shockwave.
+	FScopedFighter Caught(World, FVector(10 * M, 0, 0));
+
+	// Shockwave Leap's cell, verbatim from the Weapon Skills sheet. The same
+	// cell Cataclysm.Skills.AMovementSkillCanKnockBackBecauseKnockbackIsARider
+	// uses, and it states both a knockback and a stun.
+	UCataclysmMovementSkill* Leap = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Leap; Range=9; Radius=5; Knockback=3; Effect=Stun; StunSeconds=1"),
+		TEXT("Shockwave Leap"));
+	if (!Leap)
+	{
+		AddError(TEXT("Could not grant the leap."));
+		return false;
+	}
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Leap));
+	TestTrue(TEXT("The enemy it landed among is stunned by a Movement skill"),
+		UCataclysmSkillEffects::IsStunned(Caught.Actor));
+
+	return true;
+}
+
+/**
+ * A skill that states no stun duration stuns nothing, however hard it hits.
+ *
+ * THE HALF THAT WOULD OTHERWISE GO UNNOTICED. A rider that stunned on every blow
+ * would pass the two tests above and be badly wrong: every skill in the game
+ * would hold its target still. This is what says the duration is read rather
+ * than assumed.
+ *
+ * THE CELL NAMES STUNNING AS ITS EFFECT AND STATES NO DURATION, which is a
+ * combination no designed row has. That is deliberate: it is the only cell
+ * whose outcome turns on the duration alone.
+ *
+ * A ROW STATING NEITHER WOULD PROVE LESS, and the first version of this test
+ * used one -- Searing Hook, a Strike stating a knockback and no stun. It
+ * passed, and hard-coding a 1.5 second duration into the rider did not make it
+ * fail, because a row that does not name stunning as its effect gets an
+ * UNDESIGNED stun and has to clear the 10%% damage threshold, which one swing
+ * does not. It was proving the threshold rather than the duration.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmASkillStatingNoStunStunsNothingTest,
+	"Cataclysm.Skills.ASkillStatingNoStunDurationStunsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmASkillStatingNoStunStunsNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Caught(World, FVector(1 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Effect=Stun"),
+		TEXT("A swing naming a stun and stating no seconds"));
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	const float Before = Caught.Health();
+	TestTrue(TEXT("It activates"), Activate(Caster, Swing));
+	TestTrue(TEXT("It hit, so the swing was not simply missed"),
+		Caught.Health() < Before);
+	TestFalse(TEXT("and what it hit is not stunned"),
+		UCataclysmSkillEffects::IsStunned(Caught.Actor));
+
+	return true;
+}
+
+/**
+ * Every row in the data that states a stun duration also names stunning as its
+ * effect, which is what exempts it from the damage threshold.
+ *
+ * THE DESIGN SAYS IT IN THOSE WORDS. The Stun row of the Status Effects sheet:
+ * "A hit must take at least 10% of the target maximum health to stun, unless the
+ * skill states stunning as its effect."
+ *
+ * SO A ROW STATING A DURATION AND NOT THE EFFECT WOULD BE A DIFFERENT THING --
+ * a stun that has to clear the threshold. None exists, and this is what would
+ * say so if one appeared, rather than it arriving silently as a stun that
+ * usually fails.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryStatedStunNamesTheEffectTest,
+	"Cataclysm.Skills.EveryRowStatingAStunDurationAlsoNamesStunningAsItsEffect",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryStatedStunNamesTheEffectTest::RunTest(const FString&)
+{
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!TestNotNull(TEXT("the weapon skill table loaded"), Skills))
+	{
+		return false;
+	}
+
+	int32 Stating = 0;
+	for (const TPair<FName, uint8*>& Row : Skills->GetRowMap())
+	{
+		const FCataclysmWeaponSkillRow* Skill =
+			reinterpret_cast<const FCataclysmWeaponSkillRow*>(Row.Value);
+		if (!Skill || Skill->Shape.IsEmpty())
+		{
+			continue;
+		}
+
+		const FCataclysmSkillShapeParams Params =
+			UCataclysmSkillShapes::ParseParams(Skill->ShapeParams);
+		if (Params.StunSeconds <= 0.0f)
+		{
+			continue;
+		}
+
+		++Stating;
+		if (!Params.Effect.Contains(TEXT("Stun"), ESearchCase::IgnoreCase))
+		{
+			AddError(FString::Printf(
+				TEXT("'%s' states StunSeconds=%.2f and does not name stunning "
+					 "as its effect, so its stun has to clear the 10%% damage "
+					 "threshold. If that is intended, say so on #1195."),
+				*Skill->SkillName, Params.StunSeconds));
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("%d rows state a stun duration."), Stating));
+	TestEqual(TEXT("four rows state a stun duration"), Stating, 4);
 	return true;
 }
 
@@ -6057,9 +6263,21 @@ bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
 	// FOUR REAL ROWS WRITE `Effect=Stun` -- Shield Bash, Shockwave Leap, Lunge
 	// and Whip Swing. `UCataclysmSkillEffects::ApplyStun` carries three rules the
 	// design states: a damage threshold, five seconds of immunity after one
-	// lands, and bosses immune outright. Granting `Status.Stunned` as a plain
+	// lands, and bosses immune outright. Granting `Status.Stun` as a plain
 	// tag through the curse path would walk past all three, so the curse path
 	// refuses it.
+	//
+	// THIS TEST PASSED FOR THE WRONG REASON UNTIL ISSUE #1195, and that is
+	// what it now asserts instead. It asked whether the target was STUNNED,
+	// which reads `State.Stunned`; the curse path grants `Status.Stun`, a
+	// different tag that nothing reads. So the answer was no whether or not
+	// the guard worked, and the guard did not -- it compared the two tags
+	// against each other. It now asks whether the plain tag was granted,
+	// which is the thing the guard is for.
+	//
+	// AND THE TARGET IS NOW STUNNED, by the rider on HitTargets rather than
+	// by the curse path. That is the whole of issue #1195 and it is asserted
+	// here so the two routes cannot be confused again.
 	UCataclysmStrikeSkill* Bash = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy,
 		TEXT("Radius=6; Angle=360; Effect=Stun; StunSeconds=1.5"),
@@ -6072,7 +6290,9 @@ bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
 
 	TestTrue(TEXT("It activates"), Activate(Caster, Bash));
 	TestTrue(TEXT("The enemy was hit"), Enemy.Health() < 100000.0f);
-	TestFalse(TEXT("And is not stunned by the curse path"),
+	TestFalse(TEXT("The curse path granted it no plain Status.Stun tag"),
+		Carries(Enemy, TEXT("Stun")));
+	TestTrue(TEXT("and it is stunned, by the rider that reads StunSeconds"),
 		UCataclysmSkillEffects::IsStunned(Enemy.Actor));
 
 	return true;
