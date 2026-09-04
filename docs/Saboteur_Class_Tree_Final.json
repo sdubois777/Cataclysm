@@ -1329,7 +1329,7 @@
       "data": {
         "kind": "basic",
         "name": "Durable Modifications",
-        "description": "+3% damage reduction per point. At 4 points: This damage reduction is doubled while above 50% maximum Fervour.",
+        "description": "+3% damage reduction per point (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
