@@ -5,6 +5,11 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "EngineUtils.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -37,6 +42,18 @@ const TCHAR* UCataclysmEnemyModifiers::HordeLeaderRow =
 	TEXT("Generic_Horde_Leader");
 const TCHAR* UCataclysmEnemyModifiers::PhasewalkerRow =
 	TEXT("Generic_Phasewalker");
+const TCHAR* UCataclysmEnemyModifiers::InfernalBrandRow =
+	TEXT("Demonic_Infernal_Brand");
+const TCHAR* UCataclysmEnemyModifiers::BeguilingRow =
+	TEXT("Demonic_Beguiling");
+const TCHAR* UCataclysmEnemyModifiers::InfernalSacrificeRow =
+	TEXT("Demonic_Infernal_Sacrifice");
+const TCHAR* UCataclysmEnemyModifiers::UnholySigilsRow =
+	TEXT("Demonic_Unholy_Sigils");
+const TCHAR* UCataclysmEnemyModifiers::SacrificialBondRow =
+	TEXT("Demonic_Sacrificial_Bond");
+const TCHAR* UCataclysmEnemyModifiers::InfernoChargeRow =
+	TEXT("Demonic_Inferno_Charge");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -469,6 +486,351 @@ float UCataclysmEnemyModifiers::CrowdControlResistancePercent(
 	}
 
 	return Percent;
+}
+
+float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy =
+		Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, InfernalBrandRow))
+	{
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* Branded =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Branded == nullptr)
+	{
+		return 0.0f;
+	}
+
+	// THE TAG AS WELL AS THE COUNT. The count is what explodes; the tag is what a
+	// player can see on themselves and what `Debuff_Infernal_Brand` in
+	// `game/Data/StatusEffects.csv` names. Without it the brand would be
+	// invisible until it went off.
+	const FGameplayTag Brand =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Infernal Brand"));
+	if (Brand.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Brand,
+			UCataclysmStacks::WindowSecondsFor(
+				ECataclysmStackKind::InfernalBrand));
+	}
+
+	if (!UCataclysmStacks::NoteInfernalBrand(Branded))
+	{
+		return 0.0f;
+	}
+
+	// FIVE TIMES THIS CREATURE'S OWN ATTACK DAMAGE, which the project owner
+	// chose: one hit's worth banked per stack. Read off the creature rather than
+	// written here, so a Herald's brand is a Herald's brand.
+	const UAbilitySystemComponent* Own =
+		UCataclysmTargeting::AbilitySystemOf(Attacker);
+	const float PerHit = Own
+		? Own->GetNumericAttribute(
+			  UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		: 0.0f;
+
+	const float Damage = PerHit * InfernalBrandExplosionHits;
+	if (Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// AN ORDINARY DIRECT BLOW. The damage TYPE is not a parameter here: it is
+	// read off the instigator when the hit resolves, which is what makes the
+	// explosion count as this creature's own element without saying so twice.
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage,
+											  FCataclysmHitDelivery());
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s's Infernal Brand reached five stacks on %s and dealt %.0f."),
+		   *Enemy->GetName(), *GetNameSafe(Target), Damage);
+
+	return Damage;
+}
+
+bool UCataclysmEnemyModifiers::CharmWhoeverStruck(AActor* Struck,
+												  AActor* Striker)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Struck);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, BeguilingRow))
+	{
+		return false;
+	}
+
+	if (Striker == nullptr || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return false;
+	}
+
+	// **THE COOLDOWN IS WHAT STOPS IT BEING PERMANENT.** The charm triggers on
+	// the creature TAKING damage, so without one a player attacking at any
+	// reasonable speed would re-apply it before it expired and never be out of
+	// it. The project owner added it on 2026-09-05; the row states none.
+	const UWorld* World = Enemy->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (Enemy->CharmLastAppliedAt >= 0.0f
+		&& Now - Enemy->CharmLastAppliedAt < BeguilingCooldownSeconds)
+	{
+		return false;
+	}
+
+	const FGameplayTag Charm =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Beguiling"));
+	if (!Charm.IsValid())
+	{
+		return false;
+	}
+
+	if (!UCataclysmSkillEffects::ApplyTagForDuration(Enemy, Striker, Charm,
+													BeguilingSeconds))
+	{
+		return false;
+	}
+
+	Enemy->CharmLastAppliedAt = Now;
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s beguiled %s for %.0f seconds."),
+		   *Enemy->GetName(), *GetNameSafe(Striker), BeguilingSeconds);
+
+	return true;
+}
+
+float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Enemy =
+		Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, SacrificialBondRow))
+	{
+		return 1.0f;
+	}
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 1.0f;
+	}
+
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), SacrificialBondReach);
+
+	// NOBODY TO SHARE WITH MEANS IT KEEPS ALL OF IT, which is what makes the
+	// modifier answerable: pull the creature away from its pack, or kill the
+	// pack first.
+	if (Allies.IsEmpty())
+	{
+		return 1.0f;
+	}
+
+	// DIVIDED EVENLY BETWEEN THE CREATURE AND ITS ALLIES, reading the row as
+	// written: one ally halves what it takes, three leave it a quarter.
+	return 1.0f / static_cast<float>(Allies.Num() + 1);
+}
+
+bool UCataclysmEnemyModifiers::IsProtectedBySigil(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Standing =
+		Cast<ACataclysmEnemyCharacter>(Character);
+	if (Standing == nullptr)
+	{
+		return false;
+	}
+
+	const UWorld* World = Standing->GetWorld();
+	if (World == nullptr)
+	{
+		return false;
+	}
+
+	// ASKED OF WHOEVER IS ABOUT TO DIE, by looking for a sigil-caster it is an
+	// ally of. That is the opposite of keeping a flag on the protected creature,
+	// and it is deliberate: a creature that walks out of the sigil is killable
+	// on the next blow with nothing to clear and nothing to expire.
+	for (TActorIterator<ACataclysmEnemyCharacter> It(
+			 const_cast<UWorld*>(World)); It; ++It)
+	{
+		const ACataclysmEnemyCharacter* Caster = *It;
+		if (Caster == nullptr || Caster == Standing)
+		{
+			continue;
+		}
+
+		if (!Carries(Caster->ModifierRows, UnholySigilsRow)
+			|| Caster->SigilSecondsLeft <= 0.0f)
+		{
+			continue;
+		}
+
+		if (Caster->GetTeamAttitudeTowards(*Standing) != ETeamAttitude::Friendly)
+		{
+			continue;
+		}
+
+		const float Away =
+			(Standing->GetActorLocation() - Caster->SigilCentre).Size();
+		if (Away <= SigilRadiusCm)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
+	{
+		return 0;
+	}
+
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return 0;
+	}
+
+	UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	int32 Acted = 0;
+
+	// A SIGIL THAT IS UP RUNS DOWN, whether or not this creature carries the
+	// modifier any more. Counted first so a sigil placed this step is not
+	// expired by the same step.
+	if (Enemy->SigilSecondsLeft > 0.0f)
+	{
+		Enemy->SigilSecondsLeft =
+			FMath::Max(0.0f, Enemy->SigilSecondsLeft - StepSeconds);
+	}
+
+	// -- Unholy Sigils --------------------------------------------------
+	if (Carries(Enemy->ModifierRows, UnholySigilsRow))
+	{
+		Enemy->SecondsSinceSigil += StepSeconds;
+		if (Enemy->SecondsSinceSigil >= SigilIntervalSeconds)
+		{
+			Enemy->SecondsSinceSigil = 0.0f;
+			Enemy->SigilSecondsLeft = SigilSeconds;
+
+			// WHERE IT STANDS WHEN IT CASTS, and it stays there. A sigil that
+			// followed the creature would be an aura, and the row calls it a
+			// sigil ON THE GROUND.
+			Enemy->SigilCentre = Enemy->GetActorLocation();
+			++Acted;
+
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("%s laid an Unholy Sigil lasting %.0f seconds."),
+				   *Enemy->GetName(), SigilSeconds);
+		}
+	}
+
+	// -- Infernal Sacrifice ---------------------------------------------
+	if (Carries(Enemy->ModifierRows, InfernalSacrificeRow))
+	{
+		Enemy->SecondsSinceSacrifice += StepSeconds;
+		if (Enemy->SecondsSinceSacrifice >= SacrificeIntervalSeconds)
+		{
+			Enemy->SecondsSinceSacrifice = 0.0f;
+
+			const TArray<AActor*> Allies =
+				UCataclysmTargeting::FindAlliesInSphere(
+					World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+			// ONE AT A TIME AND THE NEAREST, which `FindAlliesInSphere` returns
+			// first. A creature that ate its whole pack at once would replace
+			// the fight rather than change it.
+			for (AActor* Ally : Allies)
+			{
+				ACataclysmEnemyCharacter* Victim =
+					Cast<ACataclysmEnemyCharacter>(Ally);
+				if (Victim == nullptr
+					|| UCataclysmSkillEffects::IsDead(Victim))
+				{
+					continue;
+				}
+
+				Victim->HandleDeath();
+
+				UAbilitySystemComponent* Own =
+					UCataclysmTargeting::AbilitySystemOf(Enemy);
+				if (Own)
+				{
+					const float Max = Own->GetNumericAttribute(
+						UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+					const float Now = Own->GetNumericAttribute(
+						UCataclysmVitalAttributeSet::GetHealthAttribute());
+
+					Own->SetNumericAttributeBase(
+						UCataclysmVitalAttributeSet::GetHealthAttribute(),
+						FMath::Min(Max,
+								   Now + Max * SacrificeHealShareOfHealth));
+				}
+
+				// AND THE DAMAGE BUFF THE ROW PROMISES. Commander is the buff
+				// this game has for "nearby allies hit harder and move faster";
+				// granting it to the creature itself is the closest thing to a
+				// temporary damage buff without inventing a second one.
+				const FGameplayTag Buff =
+					UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+				if (Buff.IsValid())
+				{
+					UCataclysmSkillEffects::ApplyTagForDuration(
+						Enemy, Enemy, Buff, SacrificeBuffSeconds);
+				}
+
+				++Acted;
+
+				UE_LOG(LogCataclysm, Log,
+					   TEXT("%s sacrificed %s and healed."),
+					   *Enemy->GetName(), *Victim->GetName());
+				break;
+			}
+		}
+	}
+
+	// -- Inferno Charge -------------------------------------------------
+	if (Carries(Enemy->ModifierRows, InfernoChargeRow) && !Enemy->IsCharging())
+	{
+		Enemy->SecondsSinceInfernoCharge += StepSeconds;
+		if (Enemy->SecondsSinceInfernoCharge >= InfernoChargeIntervalSeconds)
+		{
+			const TArray<AActor*> Ahead =
+				UCataclysmTargeting::FindEnemiesInSphere(
+					World, Enemy, Enemy->GetActorLocation(),
+					/*RadiusCm=*/2000.0f, /*MaxTargets=*/1);
+
+			// NOTHING TO CHARGE MEANS THE TIMER KEEPS RUNNING, so the creature
+			// charges as soon as somebody comes into range rather than waiting
+			// another twelve seconds after they do.
+			if (!Ahead.IsEmpty() && Ahead[0])
+			{
+				Enemy->SecondsSinceInfernoCharge = 0.0f;
+
+				// THE CHARGE EVERY CREATURE ALREADY HAS. `BeginCharge` is on the
+				// base class and the Hellhound's own charge goes through it, so
+				// the lane, the damage, the shove and the telegraph are one
+				// implementation a player has already learned to read.
+				Enemy->BeginCharge(Ahead[0]->GetActorLocation(),
+								   InfernoChargeSpeedCmPerSecond,
+								   InfernoChargeHalfWidthCm,
+								   InfernoChargeDamagePercent);
+				++Acted;
+
+				UE_LOG(LogCataclysm, Log, TEXT("%s began an Inferno Charge."),
+					   *Enemy->GetName());
+			}
+		}
+	}
+
+	return Acted;
 }
 
 bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)

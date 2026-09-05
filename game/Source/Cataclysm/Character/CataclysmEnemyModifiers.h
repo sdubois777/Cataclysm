@@ -147,6 +147,12 @@ public:
 	static const TCHAR* PerfectAimRow;
 	static const TCHAR* HordeLeaderRow;
 	static const TCHAR* PhasewalkerRow;
+	static const TCHAR* InfernalBrandRow;
+	static const TCHAR* BeguilingRow;
+	static const TCHAR* InfernalSacrificeRow;
+	static const TCHAR* UnholySigilsRow;
+	static const TCHAR* SacrificialBondRow;
+	static const TCHAR* InfernoChargeRow;
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
@@ -235,6 +241,91 @@ public:
 	 */
 	static constexpr float PhasewalkerDistanceCm = 300.0f;
 	static constexpr float PhasewalkerIntervalSeconds = 4.0f;
+
+	/**
+	 * Infernal Brand: the explosion at five stacks, as a multiple of the
+	 * creature's own attack damage.
+	 *
+	 * THE ROW SAYS "a large amount of damage" AND NOTHING ELSE. The project
+	 * owner chose five times a hit on 2026-09-05: one hit's worth banked per
+	 * stack, which a player can reason about, and which scales with the
+	 * creature rather than needing a figure per difficulty tier.
+	 */
+	static constexpr float InfernalBrandExplosionHits = 5.0f;
+
+	/**
+	 * Beguiling: how long a charm lasts, and how long before another.
+	 *
+	 * TWO SECONDS IS THE ROW'S OWN FIGURE. **The ten second cooldown is not**;
+	 * the project owner added it on 2026-09-05 and it is what stops the
+	 * modifier being permanent. The charm triggers on the creature TAKING
+	 * damage, so without a cooldown a player attacking at any reasonable speed
+	 * would re-apply it before it expired and never get out of it.
+	 */
+	static constexpr float BeguilingSeconds = 2.0f;
+	static constexpr float BeguilingCooldownSeconds = 10.0f;
+
+	/**
+	 * Infernal Sacrifice: what killing one ally is worth, and how often.
+	 *
+	 * EVERY FIGURE IS A JUDGEMENT. The row says "Sacrifice nearby allies to
+	 * heal yourself and gain temporary damage buffs" and states no healing, no
+	 * damage and no interval.
+	 *
+	 * ONE ALLY AT A TIME RATHER THAN ALL OF THEM. A creature that ate its
+	 * whole pack at once would remove the fight the player was having and
+	 * replace it with a different one, with nothing to react to in between.
+	 * One every six seconds is a decision the player can answer by killing the
+	 * pack first or by killing this creature faster.
+	 */
+	static constexpr float SacrificeHealShareOfHealth = 0.25f;
+	static constexpr float SacrificeIntervalSeconds = 6.0f;
+	static constexpr float SacrificeBuffSeconds = 8.0f;
+
+	/**
+	 * Sacrificial Bond: what share of a hit the creature itself keeps.
+	 *
+	 * "All damage taken is redirected and divided among nearby allies", and
+	 * the row states no share. Divided EVENLY between the creature and its
+	 * allies, so one ally halves what it takes and three allies leave it a
+	 * quarter. That reads the sentence as written and makes the answer obvious
+	 * to a player: kill the pack, or pull this one away from it.
+	 */
+	static constexpr float SacrificialBondReach = 600.0f;
+
+	/**
+	 * Unholy Sigils: how big the sigil is, how long it lasts, and how often.
+	 *
+	 * "Create a large demonic sigil on the ground. Allies in this sigil cannot
+	 * be killed." LARGE is the only figure the row gives, so the sigil is
+	 * twice an aura's reach.
+	 *
+	 * IT LASTS AND THEN IT DOES NOT, which is what makes it answerable. A
+	 * permanent sigil would mean a pack that cannot be killed at all; eight
+	 * seconds every twenty means the player waits it out or kills the caster.
+	 */
+	static constexpr float SigilRadiusCm = 1200.0f;
+	static constexpr float SigilSeconds = 8.0f;
+	static constexpr float SigilIntervalSeconds = 20.0f;
+
+	/**
+	 * Inferno Charge: the charge itself.
+	 *
+	 * REUSES THE CHARGE EVERY CREATURE ALREADY HAS.
+	 * `ACataclysmEnemyCharacter::BeginCharge` is on the base class and takes a
+	 * point, a speed, a width, a damage share and a knockback. The Hellhound
+	 * is already "an aggressive charger leaving fire trails", so the project
+	 * owner chose on 2026-09-05 to reuse it rather than write a second charge
+	 * a player would have to learn to read separately.
+	 *
+	 * THE TWO SECOND CHANNEL IS THE ROW'S OWN FIGURE. The speed, the width and
+	 * the damage share are judgements.
+	 */
+	static constexpr float InfernoChannelSeconds = 2.0f;
+	static constexpr float InfernoChargeSpeedCmPerSecond = 1800.0f;
+	static constexpr float InfernoChargeHalfWidthCm = 90.0f;
+	static constexpr float InfernoChargeDamagePercent = 150.0f;
+	static constexpr float InfernoChargeIntervalSeconds = 12.0f;
 
 	/**
 	 * Keeps a phase step's direction off the modifier draw's stream.
@@ -343,6 +434,51 @@ public:
 	 * @return whether the creature moved
 	 */
 	static bool PhaseStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * One more Infernal Brand on whatever this creature just hit, exploding at
+	 * five.
+	 *
+	 * @return the damage the explosion dealt, or zero when it did not fire
+	 */
+	static float BrandOnHit(AActor* Attacker, AActor* Target);
+
+	/**
+	 * Charms whoever just damaged this creature, if it carries Beguiling and
+	 * the charm is off cooldown.
+	 *
+	 * @return whether a charm was applied
+	 */
+	static bool CharmWhoeverStruck(AActor* Struck, AActor* Striker);
+
+	/**
+	 * What share of a hit this creature keeps, after Sacrificial Bond has
+	 * divided it among its nearby allies.
+	 *
+	 * @return one when it does not carry the modifier or has nobody to share
+	 *         with, and one over the number sharing otherwise
+	 */
+	static float ShareOfDamageKept(AActor* Character);
+
+	/**
+	 * Whether this character is standing in a sigil that will not let it die.
+	 *
+	 * ASKED OF THE THING ABOUT TO DIE rather than kept as a flag on it, so a
+	 * creature that walks out of the sigil is killable on the next blow with
+	 * nothing to clear.
+	 */
+	static bool IsProtectedBySigil(const AActor* Character);
+
+	/**
+	 * One step of the modifiers that act on a timer of their own: Infernal
+	 * Sacrifice, Unholy Sigils and Inferno Charge.
+	 *
+	 * ON THE SAME PER-CHARACTER STEP THE AURAS AND PHASEWALKER USE, for the
+	 * reason every job on it gives: it already runs four times a second.
+	 *
+	 * @return how many of them acted this step
+	 */
+	static int32 TimedStep(AActor* Character, float StepSeconds);
 
 	/**
 	 * Whether enough time has passed for an aura to pulse again.

@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
@@ -257,6 +259,44 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmDamageCalculation::AreaDamageTag());
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
 				UCataclysmDamageCalculation::DamageOverTimeTag());
+
+			// AND WHETHER THE ATTACKER IS CHARMED BY THIS CREATURE. The Beguiling
+			// enemy modifier reads "Players cannot deal direct damage to you
+			// while charmed", so the blow arrives and does nothing.
+			//
+			// DIRECT DAMAGE ONLY, WHICH THE ROW SAYS. Area damage still lands,
+			// the same exception evasion already has, so a charmed player is
+			// not helpless -- they have an answer, and it is the answer this
+			// game already teaches.
+			//
+			// IT ASKS WHETHER THE DEFENDER CARRIES THE MODIFIER RATHER THAN
+			// WHICH CREATURE APPLIED THE CHARM, and that is a simplification
+			// worth stating: a player charmed by one Beguiling creature also
+			// deals no direct damage to a second one standing beside it. The
+			// alternative is remembering a source per debuff, which nothing in
+			// this project does yet.
+			if (!Hit.bIsArea)
+			{
+				const ACataclysmEnemyCharacter* Charmer =
+					Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+				const FGameplayTag Charm =
+					UCataclysmSkillShapes::StatusTagFor(TEXT("Beguiling"));
+
+				// THE CAUSER RATHER THAN `Attacker`, which is not in scope until
+				// further down this function.
+				const UAbilitySystemComponent* Swinging =
+					UCataclysmTargeting::AbilitySystemOf(
+						Data.EffectSpec.GetContext().GetEffectCauser());
+
+				if (Charmer && Charm.IsValid() && Swinging
+					&& UCataclysmEnemyModifiers::Carries(
+						Charmer->ModifierRows,
+						UCataclysmEnemyModifiers::BeguilingRow)
+					&& Swinging->HasMatchingGameplayTag(Charm))
+				{
+					Hit.Damage = 0.0f;
+				}
+			}
 
 			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
 			// Perfect Aim enemy modifier reads "Attacks cannot be dodged", and
@@ -871,6 +911,26 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// the chance of a stun half as long, which is a quarter, and "50
 			// crowd control resistance" would not mean anything a player could
 			// work out.
+			// AND TWO DEMONIC ENEMY MODIFIERS FIRE ON A HIT THAT LANDED. Issue
+			// #742. Infernal Brand marks whoever this creature hit; Beguiling
+			// charms whoever hit THIS creature. Both are here because this is the
+			// one place a resolved blow is known -- what was sent, what got
+			// through, and who both parties were.
+			//
+			// ONLY ON A BLOW THAT ACTUALLY HURT. A hit that was evaded or fully
+			// absorbed marks nobody and charms nobody, which is the rule
+			// docs/DECISIONS.md settled on 2026-09-05: an evaded attack applies
+			// nothing it was carrying.
+			if (Outcome.DealtToHealth > 0.0f)
+			{
+				AActor* Striker =
+					Data.EffectSpec.GetContext().GetEffectCauser();
+
+				UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
+				UCataclysmEnemyModifiers::CharmWhoeverStruck(GetOwningActor(),
+															 Striker);
+			}
+
 			if (Hit.bIsBlunt && Outcome.DealtToHealth > 0.0f)
 			{
 				const float Total = UCataclysmDamageCalculation::BluntStunChance;
