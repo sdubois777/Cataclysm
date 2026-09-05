@@ -898,19 +898,26 @@ def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
     triage policy, the same calibrated config this section receives:
 
         preset                        seeds 0-999   seeds 1000-1999   both
-        No tree                              46.3              45.7   46.0
-        Architect maxed (as designed)        53.8              52.5   53.1
+        No tree                              45.8              47.5   46.6
+        Architect maxed (as designed)        56.3              57.8   57.0
 
-    The Architect preset beats no tree by 7.1 points, replicated. At 150
-    campaigns that was invisible, and the no-tree cell happened to land 6
+    The Architect preset beats no tree by 10.4 points, replicated. At 150
+    campaigns that was invisible, and the no-tree cell happened to land 5.4
     points above its own long-run value, which closed the gap to nothing.
 
-    RE-MEASURED FOR ISSUE #1282, which added the Corrupted Stalker to
-    `modifiers.py` and took the pool a single Cataclysm draws from to 15. The
-    expected modifier score of a draw rose from 10.71 to 11.33, so dungeons are
-    slightly harder. Before that the same cells read 46.6 and 57.0, a gap of
-    10.4. The no-tree cell moved 0.6 points, inside tolerance; the Architect
-    cell moved 3.9 and is outside it.
+    THESE FIGURES MOVED AND CAME BACK, and the round trip is worth more than the
+    number. Issue #1282 added the Corrupted Stalker to `modifiers.py` AND to the
+    pool the draw reads, taking the pool a single Cataclysm draws from to 15 and
+    the expected modifier score of a draw from 10.71 to 11.33. Every campaign
+    was re-rolled and these cells read 46.0 and 53.1, a gap of 7.1. The project
+    owner then ruled the Corrupted Stalker is granted separately rather than
+    drawn, issue #1303 took it back out of the pool, and the cells returned to
+    46.6 and 57.0 -- EXACTLY, block by block, the same seeds giving the same
+    campaigns. The row is still in the table; it is no longer drawn.
+
+    That is the evidence that `modifiers.pool_for` is the only route by which a
+    modifier reaches a dungeon. A figure that moves and comes back tells you
+    where the control is; a figure that only moves does not.
 
     WHY THE ORDERINGS DID NOT CATCH IT. They carry a tolerance and they group
     ties honestly, but `rank_by_score` is given an `exclude` set holding every
@@ -972,7 +979,7 @@ def print_comparison_against_no_tree(comparison, trials: int,
           "50%. Reading a nil")
     print("  gap here as evidence that a branch does nothing is what "
           "produced issue #5, and")
-    print("  measured at 1,000 campaigns the gap it called zero is 7.1 "
+    print("  measured at 1,000 campaigns the gap it called zero is 10.4 "
           "points. See")
     print("  compare_against_no_tree.")
 

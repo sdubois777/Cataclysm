@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The Corrupted Stalker is granted separately and does not take a modifier slot
+
+**Affects:** `sim/cataclysm_sim/modifiers.py`. Applied. Issue
+[#1303](https://github.com/sdubois777/Cataclysm/issues/1303).
+
+### The ruling
+
+Asked whether the Corrupted Stalker competes for one of a dungeon's modifier
+slots or is granted on top of them, the project owner answered on 2026-09-05,
+verbatim: **"No — it should be granted separately"**.
+
+This overturns the reading recorded further down this file under "A Generic
+dungeon modifier is drawn from every pool, and it takes a slot", which is
+corrected there rather than deleted.
+
+### What changed
+
+`modifiers.pool_for` no longer adds the Generic modifiers to the pool a dungeon
+draws from. **A dungeon carries one modifier per difficulty tier and draws them
+from that pool, so anything in it competes for a slot by construction** — being
+in the pool and being granted separately are not compatible.
+
+**The row stays in the table.** The design has 117 dungeon modifiers and
+`sim/cataclysm_sim/modifiers.py` is a copy of the 117-row data file, compared by
+`tools/tests/test_dungeon_modifier_port.py`. What changed is that one of them is
+no longer drawn. Deleting the row would break that comparison and would
+misdescribe the design.
+
+### The figures returned exactly, which was checked rather than assumed
+
+Tier 1, triage policy, 1,000 campaigns per block over two disjoint blocks of
+seeds:
+
+| preset | before it was pooled | while pooled | now |
+|---|---:|---:|---:|
+| No tree | 46.6 | 46.0 | **46.6** |
+| Architect maxed (as designed) | 57.0 | 53.1 | **57.0** |
+
+Block by block as well as in total — 45.8 and 47.5, 56.3 and 57.8, the same seeds
+giving the same campaigns. **That is the evidence that `modifiers.pool_for` is
+the only route by which a modifier reaches a dungeon**, because restoring the
+pool restored the draw byte for byte. A figure that moves and comes back says
+where the control is; a figure that only moves does not.
+
+### Nothing grants it now, and that is deliberate
+
+Section VIII of `docs/Cataclysm_GDD_v2.md` says what the modifier does, where its
+character comes from, how it scales, what it drops, what happens offline, that its
+weight is 20 and that its Cataclysm Type is Generic. **It never says what causes
+it to appear.** Before the ruling that gap was invisible, because "drawn from the
+pool like every other modifier" filled it by default.
+
+Inventing a trigger would be inventing design, so none was invented. The gap is
+[#1308](https://github.com/sdubois777/Cataclysm/issues/1308).
+
+One sentence in that section looks like it settles the slot question and does
+not: "Offline, the slot is filled from the authored pool rather than left empty."
+That slot is the slot for the drawn **character**, not a modifier slot.
+
+**Whatever grants it must carry its weight.** The same section says "Each dungeon
+modifier carries a weight, and the sum of the weights on a dungeon is the
+Modifier Score", so a separately granted Corrupted Stalker still adds its 20 to
+the dungeon it lands on. Granted separately is not granted weightlessly.
+
+---
+
+
 ## 2026-09-05 — The empire tree comparison runs at two surge sizes, because that is the axis its ordering turns on
 
 **Affects:** `sim/experiments.py`, section 7. Applied. Issue
@@ -107,6 +174,22 @@ measured 2% is the punishment working as designed.
 | Earned: cleared 8 quest objectives, the enemy capital opened | 318 | 182 | 57% | about 126 |
 | Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
 
+372 of those 400 campaigns reached a decision; the rest ran out of days, which is
+why the two rows do not sum to 400.
+
+**Re-measure before quoting these figures.** They move when the pool the dungeon
+modifier draw reads from changes, because that shifts the random draw from the
+first dungeon onward. Measured on the 116-modifier pool the earned route was 57%;
+on the 117-modifier pool it was 54%.
+
+**The Last Stand does not move with it, and that is structural rather than a
+measurement.** Across three pools — 116 modifiers, 117, and 117 in the table with
+one not drawn — it went 54, 55, 54 campaigns, one win every time, 440, 439 and
+440 mean floors. The near-certainty of that loss comes from the floor count and
+the power multiplier, both of which scale with how badly the run has already gone
+rather than with what is inside the dungeon. **So the owner's ruling is not
+hostage to a modifier change.**
+
 ### Why the two are so far apart
 
 `Simulation._open_last_stand` in `sim/cataclysm_sim/engine.py` builds the dungeon
@@ -158,10 +241,19 @@ the figure at tier 8 is unknown. Nothing here depends on it: the ruling is that
 collapse should be near-fatal, not that it should be near-fatal by exactly this
 margin.
 
-## 2026-09-05 — A Generic dungeon modifier is drawn from every pool, and it takes a slot
+## 2026-09-05 — OVERTURNED: a Generic dungeon modifier is drawn from every pool, and it takes a slot
+
+> **THE READING BELOW WAS REJECTED BY THE PROJECT OWNER ON 2026-09-05.** The
+> Corrupted Stalker is granted separately and does **not** take a modifier slot.
+> See the entry at the top of this file. This one is kept rather than deleted so
+> the record shows what was tried and why it changed, and because everything in
+> it except the pooling reading still holds — the missing row, the drift guard,
+> and the measurement of what a pool change costs.
 
 **Affects:** `sim/cataclysm_sim/modifiers.py` and `sim/cataclysm_sim/engine.py`.
-Applied. Issue [#1282](https://github.com/sdubois777/Cataclysm/issues/1282).
+Applied, then partly reversed by
+[#1303](https://github.com/sdubois777/Cataclysm/issues/1303). Issue
+[#1282](https://github.com/sdubois777/Cataclysm/issues/1282).
 
 ### What was wrong
 
@@ -210,6 +302,10 @@ cells measured before the change:
 |---|---|---|---|---|
 | No tree | 46.6 | 46.0 | -0.6 | within 1.58 |
 | Architect maxed (as designed) | 57.0 | 53.1 | **-3.9** | outside 1.58 |
+
+**Both returned exactly when #1303 took the row back out of the pool**, block by
+block. The measurement of what a pool change costs stands; only the decision to
+make that change was overturned.
 
 **Issue #1282 says a modifier change moves no sweep number. That is wrong** — it
 changes the pool's size, so `random.sample` draws differently from the first
@@ -395,22 +491,22 @@ campaigns per cell over two disjoint blocks of seeds, difficulty tier 1, the
 
 | preset | seeds 0-999 | seeds 1000-1999 | both |
 |---|---|---|---|
-| No tree | 46.3 | 45.7 | 46.0 |
-| Architect maxed (as designed) | 53.8 | 52.5 | 53.1 |
+| No tree | 45.8 | 47.5 | 46.6 |
+| Architect maxed (as designed) | 56.3 | 57.8 | 57.0 |
 
-**The branch is 7.1 points ahead, replicated**, against a 1.58 point tolerance at
-2,000 campaigns. No node was added to it and none should be.
+**The branch is 10.4 points ahead, replicated**, against a 1.58 point tolerance
+at 2,000 campaigns. No node was added to it and none should be.
 
-**Re-measured 2026-09-05 under issue
-[#1282](https://github.com/sdubois777/Cataclysm/issues/1282).** That work added
-the Corrupted Stalker to `sim/cataclysm_sim/modifiers.py`, which had been one row
-behind `game/Data/DungeonModifiers.csv` since #504. It is a top-band modifier, so
-the pool a single Cataclysm draws from went to 15 entries and the expected
-modifier score of a draw rose from 10.71 to 11.33 — every dungeon is slightly
-harder. The table above is the figure on the corrected table; before it the same
-cells read 46.6 and 57.0, a gap of 10.4. The no-tree cell moved 0.6 points, inside
-tolerance; the Architect cell moved 3.9, outside it. **The conclusion is
-unchanged.**
+**These figures moved and came back, and the conclusion held throughout.** Issue
+[#1282](https://github.com/sdubois777/Cataclysm/issues/1282) put the Corrupted
+Stalker into the pool the dungeon modifier draw reads, taking the pool a single
+Cataclysm draws from to 15 entries and the expected modifier score of a draw from
+10.71 to 11.33. Every campaign was re-rolled and these cells read 46.0 and 53.1,
+a gap of 7.1. The project owner then ruled the modifier is granted separately
+rather than drawn, and
+[#1303](https://github.com/sdubois777/Cataclysm/issues/1303) took it back out;
+the cells returned to 46.6 and 57.0 exactly. **7.1 points or 10.4, the branch
+beats no tree by far more than the 1.58 point tolerance either way.**
 
 ### Why it works, which is the part worth keeping
 
@@ -423,6 +519,11 @@ two ways in, and over 400 campaigns at tier 1 they are not close:
 |---|---|---|---|---|
 | Earned: cleared the quest objectives, the capital opened | 318 | 182 | 57% | about 126 |
 | The Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
+
+372 of those 400 campaigns reached a decision; the rest ran out of days. The Last
+Stand figures are stable across three different modifier pools — see the Last
+Stand entry above — so this comparison does not depend on which modifiers are in
+the draw.
 
 So losing the empire is not a loss in the model; it hands the player a fight that
 is winnable in principle and almost never in practice. **A branch that prevents
@@ -463,7 +564,7 @@ ordering is conditional on them.
   as well as about one difficulty tier. Quoting it without both is quoting half of
   it.
 - **A nil gap in that table is not evidence of no difference.** The section now
-  says so in its own output; the gap it once read as zero is 7.1 points.
+  says so in its own output; the gap it once read as zero is 10.4 points.
 
 Pull requests [#1292](https://github.com/sdubois777/Cataclysm/pull/1292) and
 [#1294](https://github.com/sdubois777/Cataclysm/pull/1294).

@@ -179,21 +179,30 @@ def pool_for(active_types) -> list[tuple[str, float]]:
     THE RULE LIVES HERE AND NOT IN ITS CALLERS. Issue #1282 is a table that
     drifted from its source because there were two copies of it; there were also
     two copies of this rule, in `engine.Simulation.__init__` and in
-    `analyse_dungeons.pool_for`, and adding the Generic row would have fixed
-    neither. One rule, one place.
+    `analyse_dungeons.pool_for`. One rule, one place -- which is why issue #1303
+    was a one-function change.
 
-    A Generic modifier belongs to every Cataclysm rather than to one, so it goes
-    in ONCE however many are active. Twice would be worse than cosmetic:
-    `_make_dungeon` draws with `random.sample`, which treats equal values at
-    different positions as distinct, so a duplicated entry could fill two of a
-    dungeon's modifier slots with the same modifier.
+    GENERIC MODIFIERS ARE NOT IN THIS POOL, ON PURPOSE. The project owner ruled
+    on 2026-09-05 that the Corrupted Stalker, the only Generic dungeon modifier,
+    is "granted separately" and does not compete for one of a dungeon's modifier
+    slots. A dungeon carries one modifier per difficulty tier and draws them from
+    here, so anything in here competes for a slot by construction.
 
-    WHAT THIS DOES NOT SETTLE. Whether the Corrupted Stalker competes for one of
-    those slots or is granted on top of them. The 2026-08-14 decision that made
-    it Generic says that is unsettled and that "nothing depends on the answer
-    yet". Drawing it from the pool is the reading its own word "drawable" gives,
-    and it is now the first thing that does depend. Issue #1282 says so.
+    Issue #1282 put it in here, on the reading that "drawable by every
+    Cataclysm" meant "in every pool". That reading was recorded as a reading
+    rather than a decision, and issue #1303 is the owner rejecting it.
+
+    SO NOTHING IN THIS MODEL GRANTS IT AT ALL, and that is deliberate rather
+    than an oversight. Section VIII of `docs/Cataclysm_GDD_v2.md` describes what
+    the modifier does, where its character comes from, how it scales, what it
+    drops, what happens offline, its weight and its Cataclysm Type -- and never
+    says what causes it to appear. Inventing a trigger here would be inventing
+    design. Issue #1308 is the gap.
+
+    WHEN THAT RULE ARRIVES IT MUST CARRY THE WEIGHT WITH IT. The same section
+    says "Each dungeon modifier carries a weight, and the sum of the weights on
+    a dungeon is the Modifier Score", so a separately granted Corrupted Stalker
+    still adds its 20 to the dungeon it lands on. Granted separately is not
+    granted weightlessly.
     """
-    pool = [m for t in active_types for m in MODIFIERS.get(t, [])]
-    pool += MODIFIERS.get(GENERIC, [])
-    return pool
+    return [m for t in active_types for m in MODIFIERS.get(t, [])]
