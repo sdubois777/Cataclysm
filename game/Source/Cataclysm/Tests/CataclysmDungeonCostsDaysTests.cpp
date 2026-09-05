@@ -129,9 +129,11 @@ bool FCataclysmDungeonCostsDaysTest::RunTest(const FString& Parameters)
 				  Bound.Run->Day(), Before + 1);
 	}
 
-	// N FLOORS COST N DAYS. That is the rule the whole strategy layer rests on:
-	// depth and time are the same axis, so a dungeon cannot be made cheaper
-	// without also being made poorer.
+	// N FLOORS COST N DAYS AT THE STARTING RATE, which is what this run has: no
+	// city here bought the upgrade that shortens a walk, and no empire tree
+	// exists yet. A city that had bought one would make the same dungeon cost
+	// fewer days WITHOUT changing its floor count, its reward or its timer --
+	// that is `FCataclysmDungeon::WalkDays`, and it has its own tests.
 	TestEqual(FString::Printf(
 		TEXT("walking %d floors of a %d floor dungeon cost %d days"),
 		Descents + 1, Floors, Descents + 1),
@@ -437,9 +439,10 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every dungeon of the wave was cleared"), Cleared, WaveSize);
 	TestEqual(TEXT("and nothing is left standing"), Bound.Run->DungeonCount(), 0);
 
-	// AND THE DAY MOVED BY EXACTLY THE FLOORS WALKED. One floor costs one day,
-	// always: depth and time are the same axis, so a dungeon cannot be made
-	// cheaper without also being made poorer.
+	// AND THE DAY MOVED BY EXACTLY THE FLOORS WALKED, because nothing in this
+	// run has shortened a walk. One floor costs one day as a starting rate, not
+	// as an invariant; depth and reward are the same axis, depth and time are
+	// not once a player has invested.
 	TestEqual(FString::Printf(
 		TEXT("walking %d floors across %d dungeons cost %d days"),
 		FloorsWalked, Cleared, FloorsWalked),

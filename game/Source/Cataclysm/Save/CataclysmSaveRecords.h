@@ -518,8 +518,21 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FGuid RunId;
 
-	/** The current day. One dungeon floor costs exactly one day, so this is also
-	 *  the run's whole clock. */
+	/**
+	 * The current day of the run.
+	 *
+	 * A WHOLE NUMBER, AND NOT THE WHOLE CLOCK. It used to say it was, on the
+	 * grounds that one floor cost exactly one day so the day count and the
+	 * progress count were the same number. That is no longer true: a floor costs
+	 * one day only as a starting rate, and once a city upgrade or the empire
+	 * tree has shortened a walk, `UCataclysmDayClock::PartialDay` holds time
+	 * that has been spent and has not yet added up to a day.
+	 *
+	 * NOTHING SAVES THAT FRACTION, AND NOTHING WRITES THIS FIELD EITHER. See
+	 * `UCataclysmSaveWriter::WriteTheRunRecord`, which deliberately leaves this
+	 * alone. Both gaps are one piece of work and neither is a floor-cost
+	 * question.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 Day = 0;
 

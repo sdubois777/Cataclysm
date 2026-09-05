@@ -155,11 +155,22 @@ public:
 	// dungeon's depth, its kind, which city it is assaulting and what it takes
 	// when it resolves.
 	//
-	// AND THE DAY MOVES. One dungeon floor costs exactly one day, which
-	// `CLAUDE.md` lists among the rules that are easy to get wrong: depth and
-	// time are the same axis, so a dungeon cannot be made cheaper without also
-	// being made poorer. Walking down a floor is what spends that day, and until
-	// this nothing in the game spent one.
+	// AND THE DAY MOVES. One dungeon floor costs one day as a STARTING RATE, and
+	// walking down a floor is what spends it. Until this nothing in the game
+	// spent any.
+	//
+	// A STARTING RATE AND NOT AN INVARIANT. City upgrades and the empire tree
+	// lower the days a dungeon takes to walk while its floor count stays where
+	// it is, so a floor of an invested player's fifty floor dungeon can cost a
+	// fraction of a day. `FCataclysmDungeon::WalkDaysPerFloor` is the rate this
+	// actually charges, and `SpendFloorTimeInTheEmpire` below spends it.
+	//
+	// DEPTH AND REWARD ARE THE SAME AXIS. DEPTH AND TIME ARE NOT, once a player
+	// has invested in separating them. A dungeon made shallower is made poorer;
+	// a dungeon made quicker to walk is not. `CLAUDE.md` lists this among the
+	// rules that are easy to get wrong, and it was got wrong: an earlier version
+	// of this comment said depth and time were one axis, which is what
+	// `docs/DECISIONS.md` corrects under 2026-09-05.
 	//
 	// THE SETTINGS STILL WORK. A run bound to a dungeon overrides them; no
 	// binding means the settings, exactly as before. Pressing Play in `L_Dungeon`

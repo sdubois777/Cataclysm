@@ -634,10 +634,14 @@ bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 
 	++FloorsDescended;
 
-	// AND A FLOOR COSTS A DAY. That is the rule the whole strategy layer rests
-	// on, and until issue #1092 nothing in the game spent one: depth and time
-	// are the same axis, so a dungeon cannot be made cheaper without also being
-	// made poorer.
+	// AND A FLOOR COSTS TIME. One day as a starting rate, and less than that once
+	// a city upgrade or the empire tree has shortened the walk -- see
+	// `FCataclysmDungeon::WalkDaysPerFloor`, which is the rate this charges.
+	// Until issue #1092 nothing in the game spent any of it.
+	//
+	// WHAT DOES NOT MOVE WHEN THE WALK GETS SHORTER: the floor count, what the
+	// dungeon is worth, and when it bites. Depth and reward are the same axis;
+	// depth and time are not, once a player has invested in separating them.
 	//
 	// HERE AND NOT IN `GoToFloor`, because that is also how the first floor is
 	// built when play begins and how `Cataclysm.DungeonFloor` jumps to a floor to

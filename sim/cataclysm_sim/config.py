@@ -163,11 +163,26 @@ class TuningConfig:
     # THE FIVE UNKNOWNS
     # =====================================================================
 
-    # RESOLVED (was UNKNOWN #1) -- one floor costs one day. Always.
-    # This is a much stronger rule than a tunable rate: it makes depth and
-    # time the same axis, so a dungeon can never be made cheaper without also
-    # being made poorer. Every floor-count node in the Explorer branch is
-    # therefore also a time node, and vice versa.
+    # RESOLVED (was UNKNOWN #1) -- one floor costs one day as a STARTING RATE.
+    #
+    # THIS MODEL NEVER CHANGES IT, and that is a fact about the model rather
+    # than about the design. Nothing here has city upgrades or an empire tree,
+    # so there is nothing to lower the rate with and no sweep moves it.
+    # sim/README.md lists it among the rules fixed by design rather than swept
+    # for exactly that reason.
+    #
+    # IT IS NOT AN INVARIANT OF THE GAME. In the game, city upgrades and the
+    # empire tree lower the days a dungeon takes to walk WHILE ITS FLOOR COUNT
+    # STAYS WHERE IT IS, so an invested player runs a fifty floor dungeon in a
+    # couple of days and it is still fifty floors deep and still worth that.
+    # Depth and reward are the same axis; depth and time are not, once a player
+    # has invested. docs/DECISIONS.md carries the 2026-09-05 correction, and an
+    # earlier version of this comment stated the stronger rule as law.
+    #
+    # SO A FLOOR-COUNT NODE AND A WALK-TIME NODE ARE DIFFERENT UPGRADES. Here
+    # they cannot be told apart because only one of them exists; in the game the
+    # first gives up depth, reward and resolve time to buy speed and the second
+    # gives up nothing.
     days_per_floor: float = 1.0
     run_days_min: int = 1
     run_days_max: int = 400

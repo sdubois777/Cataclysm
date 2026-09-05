@@ -37,14 +37,20 @@ namespace CataclysmDayClockTest
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDayClockRunDaysTest,
-	"Cataclysm.DayClock.AFloorCostsExactlyOneDay",
+	"Cataclysm.DayClock.AFloorCostsADayAtTheStartingRate",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDayClockRunDaysTest::RunTest(const FString& Parameters)
 {
-	// THE RULE THE WHOLE EMPIRE LAYER RESTS ON. Depth and time are the same axis,
-	// so a dungeon can never be made cheaper without also being made poorer.
-	// `CLAUDE.md` lists it among the rules that are easy to get wrong.
+	// WHAT A DEPTH COSTS BEFORE ANYBODY HAS INVESTED. One day a floor is the
+	// starting rate, and `RunDaysFor` is the only place that figure lives; a real
+	// dungeon's shortened walk is `FCataclysmDungeon::WalkDays` and is not this
+	// class's business.
+	//
+	// THE TEST WAS NAMED `AFloorCostsExactlyOneDay` UNTIL 2026-09-05, and the
+	// name asserted something the project owner had overturned: that the rate
+	// could never change. Depth and reward are one axis; depth and time are not,
+	// once a player has invested. `docs/DECISIONS.md` carries the correction.
 	//
 	// HAND-WORKED FIGURES, NOT THE FORMULA WRITTEN OUT AGAIN. A test that
 	// computed `Floors * DaysPerFloor` and compared it with `RunDaysFor` would
