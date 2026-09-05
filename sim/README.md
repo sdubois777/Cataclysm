@@ -71,10 +71,31 @@ Pillar (1)
               └── Outpost (12)  3 steps
 ```
 
-A run is **lost** when some Outpost, its parent Bulwark, and that Bulwark's
-parent Sanctuary have all fallen. A run is **won** by clearing the quest
-objectives and then the Cataclysm dungeon. Hitting the day cap is a
-**stalemate**, and is treated as the worst outcome of the three.
+**Every campaign that ends at all ends inside a Cataclysm dungeon.**
+`engine.Simulation` sets `won` at exactly one place and `lost` at exactly
+one, both in `_finish_current` and both for a dungeon of type Cataclysm:
+clear it and the run is won, die in it and the run is lost. There is no
+other exit.
+
+There are two ways to get into one:
+
+- **Earned.** Clear the quest objectives and the enemy capital opens.
+- **The Last Stand.** Some Outpost, its parent Bulwark, and that Bulwark's
+  parent Sanctuary have all fallen, so the Cataclysm can reach the Pillar
+  and comes to the player, absorbing every dungeon still standing as extra
+  floors. **This is not itself a loss**, and the older wording here said it
+  was. It is a fight, and at tier 1 it is a fight the player wins about 2%
+  of the time over 400 campaigns, against about 58% for an earned one.
+  Issue #5 measured that; whether a near-unwinnable fight is the intended
+  shape is issue #1286.
+
+A campaign that reaches the day cap has done neither, so it has **no
+result** rather than a third outcome. The `stale%` column reads like one
+and is not one, and nothing in the model ranks it against winning or
+losing. Raising the cap resolves those campaigns, but dungeon power is
+keyed to elapsed days, so a longer run is also a harder one and the cap is
+not an independent variable. Issue #293, and
+`experiments.warn_about_unresolved_campaigns` carries the measurement.
 
 ## The metrics that matter
 
