@@ -170,34 +170,68 @@ class TestTheGenericColumn:
         from cataclysm_sim.config import TuningConfig
         assert GENERIC not in TuningConfig().CATACLYSM_ROSTER
 
-    def test_a_generic_modifier_is_in_the_pool_of_a_single_cataclysm(self):
-        """Adding the row to MODIFIERS alone would NOT have done this: both
-        pool builders read only the active Cataclysms. Issue #1282."""
-        pool = pool_for(("Demonic",))
-        for name, weight in MODIFIERS[GENERIC]:
-            assert (name, weight) in pool, (
-                f"{name} is a Generic modifier and a Demonic dungeon cannot "
-                "draw it")
+    def test_a_generic_modifier_is_never_drawable(self):
+        """THE RULING. The project owner said on 2026-09-05 that the Corrupted
+        Stalker is "granted separately" and does not compete for one of a
+        dungeon's modifier slots. A dungeon draws its modifiers from this pool,
+        so anything in it competes for a slot by construction.
 
-    def test_a_generic_modifier_is_in_the_pool_exactly_once(self):
-        """However many Cataclysms are active. `_make_dungeon` draws with
-        `random.sample`, which treats equal values at different positions as
-        distinct, so a duplicate could fill two of a dungeon's slots with the
-        same modifier."""
+        This check used to assert the opposite, under issue #1282, on the
+        reading that "drawable by every Cataclysm" meant "in every pool". Issue
+        #1303 is that reading being rejected.
+        """
         from cataclysm_sim.config import TuningConfig
         for count in (1, 2, 4, 8):
             pool = pool_for(TuningConfig().CATACLYSM_ROSTER[:count])
-            for entry in MODIFIERS[GENERIC]:
-                assert pool.count(entry) == 1, (
-                    f"{entry[0]} appears {pool.count(entry)} times in the pool "
-                    f"of {count} active Cataclysm(s)")
+            for name, weight in MODIFIERS[GENERIC]:
+                assert (name, weight) not in pool, (
+                    f"{name} is drawable with {count} Cataclysm(s) active, so "
+                    "it competes for a modifier slot. The owner ruled it is "
+                    "granted separately. Issue #1303.")
 
-    def test_the_pool_is_every_row_when_every_cataclysm_is_active(self, rows):
+    def test_the_pool_is_every_row_except_the_generic_ones(self, rows):
+        """Stated as a count so a row lost from either side is caught here as
+        well as by the triple comparison above."""
         from cataclysm_sim.config import TuningConfig
         pool = pool_for(TuningConfig().CATACLYSM_ROSTER)
-        assert len(pool) == len(rows), (
+        generic = len([r for r in rows if r["CataclysmType"] == GENERIC])
+        assert len(pool) == len(rows) - generic, (
             f"with all eight Cataclysms active the pool holds {len(pool)} "
-            f"modifiers and the data file holds {len(rows)} rows")
+            f"modifiers; the data file holds {len(rows)} rows of which "
+            f"{generic} are Generic, so the pool should hold "
+            f"{len(rows) - generic}")
+
+    def test_the_row_is_still_in_the_table_it_is_only_not_drawn(self, rows):
+        """The distinction that is easy to get wrong. The table still has 117
+        rows and the data file still has 117 rows; what changed is that one of
+        them is no longer DRAWN. Deleting the row instead would break the
+        comparison above and would misdescribe the design."""
+        assert MODIFIERS.get(GENERIC), (
+            "the Generic row was deleted from the model rather than left out "
+            "of the pool. The design has 117 dungeon modifiers. Issue #1303.")
+        assert sum(len(v) for v in MODIFIERS.values()) == len(rows)
+
+    def test_nothing_else_grants_it(self):
+        """Issue #1308. Taking it out of the pool leaves it granted by nothing,
+        which is deliberate: the design says what the modifier does and never
+        what causes it to appear, so a trigger here would be invented design.
+
+        This check exists so that when a grant rule IS built, whoever builds it
+        finds a test saying the gap was known rather than assuming an oversight.
+        `_make_dungeon` is the only place a dungeon is given modifiers.
+        """
+        source = (REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py").read_text(
+            encoding="utf-8")
+        body = source[source.index("def _make_dungeon"):]
+        body = body[:body.index("\n    def ")]
+        assert "pool_for" in body or "modifier_pool" in body, (
+            "_make_dungeon no longer draws its modifiers from the pool, so "
+            "this check cannot tell whether the Corrupted Stalker is granted.")
+        assert GENERIC not in body, (
+            "_make_dungeon now mentions the Generic Cataclysm type, so "
+            "something may grant the Corrupted Stalker after all. If a grant "
+            "rule was built, issue #1308 is done and this check should say "
+            "what the rule is instead of that there is none.")
 
 
 class TestNothingStatesTheWrongRowCount:

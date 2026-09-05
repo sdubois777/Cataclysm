@@ -294,7 +294,7 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
-**The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost. Measured in the simulation at difficulty tier 1 over 400 campaigns: the Last Stand was reached 54 times and won once, at around 440 floors, against a 57% win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead.
+**The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost. Measured in the simulation at difficulty tier 1 over 400 campaigns: the Last Stand was reached 54 times and won once, at around 440 floors, against a 57% win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead. That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time.
 
   
 
