@@ -1,0 +1,8 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-master-kit": {
+      "source": { "source": "github", "repo": "arch1904/claude-master-kit" }
+    }
+  },
+  "enabledPlugins": { "master-kit@claude-master-kit": true }
+}

@@ -268,6 +268,65 @@ cycle each:
 the evidence for a result was compromised, say so plainly and first. Do not
 report partial work as finished.
 
+## Running several sessions at once
+
+Several Claude sessions can work on this repository at the same time, each in its
+own git worktree. Almost everything parallelises. Unreal does not.
+
+**One Unreal build runs at a time on this machine, and the engine already
+enforces it.** `UnrealBuildTool.cs` line 446 builds its lock name from the
+location of the UnrealBuildTool assembly -- the engine install path, not the
+project path -- and `BuildMode.cs` line 51 asks for that lock. Every worktree
+uses the same engine, so every build takes the same lock. `tools/unreal_build.py`
+passes `-WaitMutex`, which makes a second build wait rather than fail. **A build
+that appears to hang for minutes is usually waiting for another session's build.
+Do not kill it.**
+
+**One session at a time may drive the editor, and nothing enforces that for
+you.** Opening the interactive editor, running `python tools/unreal_build.py
+tests`, and regenerating the DataTable assets all drive one editor on one
+machine. Claim it before you start and release it the moment you finish, not at
+the end of your session:
+
+```bash
+python tools/unreal_lock.py status
+python tools/unreal_lock.py acquire <a name for your session>
+python tools/unreal_lock.py release <a name for your session>
+```
+
+The lock file lives in the shared git directory, so every worktree sees the same
+one. `acquire` fails while somebody holds it. `steal` exists for a session that
+died and makes you name the holder you are displacing, so you cannot take it from
+someone still working by accident.
+
+**Rules that keep parallel sessions from breaking each other.**
+
+- **One branch, one writer.** Never push to, rebase, or update a branch another
+  session owns, even if invited to. Reading from another worktree is fine.
+- **Another session's report is a claim; git is the evidence.** Before believing
+  "that landed", check for the content itself, not the branch or pull request
+  state: `git ls-tree -r origin/development --name-only | grep <name>`. Work that
+  looks unmerged on a branch is often superseded by work that landed another way.
+- **Harvest before you close.** Unpushed commits, untracked files worth keeping,
+  findings not yet written into an issue. A session's knowledge dies with it.
+- **Delete your worktree when your branch merges.** Seventy-five abandoned
+  worktrees holding 18 GB is what skipping this looks like after a few weeks.
+- **Nothing may be recorded before the run that proves it.** No issue, document
+  or comment may assert an outcome ahead of its evidence.
+
+**What a worktree does not have.** `game/Content/Paragon*/` is gitignored
+(`.gitignore` line 83) and no Paragon file is in git, so the art exists only in
+the main checkout at `C:\Projects\Cataclysm`. A worktree never has it, which is
+why the fifteen tests described above report themselves as skipped there.
+
+**The `master-kit` plugin.** `.claude/settings.json` enables it for this project.
+It supplies the `consolidate` skill, which writes the handoff document a fresh
+session reads to pick work up, and `/master-check`, which sweeps every running
+session and ends in an explicit list of what needs a decision from the owner. The
+plugin also ships a rules file that forbids the `Co-Authored-By: Claude` commit
+trailer. **This project keeps the trailer**, which roughly half the existing
+history carries; this line is the project's decision and overrides the plugin's.
+
 ## Tracking work with GitHub issues
 
 Issues are the work log. The `gh` command line tool is authenticated; use it
