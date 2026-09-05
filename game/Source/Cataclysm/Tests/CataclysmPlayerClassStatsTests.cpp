@@ -243,6 +243,24 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("resistance_chaos"), TEXT("gear alone")},
 		{TEXT("resistance_void"), TEXT("gear alone")},
 
+		// Issue #1252. Armour penetration, added to `StatToAttribute` on
+		// 2026-09-05 while building the character sheet, which is what noticed
+		// it was the only one of the sheet's 46 stats with no entry there. No
+		// class line names it and none should: `docs/Cataclysm_GDD_v2.md` puts
+		// its sources on gear.
+		//
+		// A SEPARATE ENTRY RATHER THAN ONE MORE "gear alone", because that is
+		// not yet true and saying so would be a claim this project has been
+		// bitten by before. Nothing in `game/Data/` grants the stat at all: no
+		// affix in `Affixes.csv`, no implicit, no passive effect. The three
+		// sources the design intends are enchantments in
+		// `EnchantmentsPositive.csv` -- "Your skills ignore 10%-25% of enemy
+		// armor" and two others -- and no enchantment is modelled, which is
+		// issue #45. So every character sits at zero and the sheet's row says
+		// so.
+		{TEXT("armor_penetration"),
+		 TEXT("gear, once enchantments exist. Nothing grants it today")},
+
 		// Issues #50 and #897. The eight primary attributes are the points a
 		// particular character spent, which no class line can state: every
 		// class starts every attribute at nothing and the character decides.

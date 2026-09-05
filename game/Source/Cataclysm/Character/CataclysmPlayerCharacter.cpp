@@ -3255,3 +3255,28 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances
 						*Type.ToString(), Held, Held - Penalty, Effective);
 			}
 		}));
+
+// ---------------------------------------------------------------------------
+// The character sheet, issues #1233 and #50
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
+	TEXT("Cataclysm.CharacterSheet"),
+	TEXT("Open or close the character sheet: every stat the character has, and "
+		 "the eight attributes, which points can be spent into from it. It has "
+		 "no key of its own yet."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(
+					World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there "
+							"is nothing to open a screen on."));
+				return;
+			}
+
+			Controller->ToggleCharacterSheet();
+		}));
