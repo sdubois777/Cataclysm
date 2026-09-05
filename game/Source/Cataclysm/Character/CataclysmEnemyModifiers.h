@@ -140,6 +140,7 @@ public:
 	static const TCHAR* BloodthirstyRow;
 	static const TCHAR* ThornsOfGlassRow;
 	static const TCHAR* HellfireAuraRow;
+	static const TCHAR* UnyieldingRow;
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
@@ -156,6 +157,18 @@ public:
 
 	/** Bloodthirsty: "Heal for 10% of the damage dealt to the player". */
 	static constexpr float BloodthirstyLeechPercent = 10.0f;
+
+	/**
+	 * Unyielding: "Immunity to crowd control effects".
+	 *
+	 * A HUNDRED IS IMMUNE, which is what
+	 * `UCataclysmSkillEffects::AfterCrowdControlResistance` makes true: it
+	 * scales a stun's seconds and a shove's centimetres by the stat and
+	 * answers nothing at a hundred. Until 2026-09-05 the stat touched only
+	 * the chance of an incidental blunt stun, so setting it to a hundred
+	 * would have blocked almost nothing a player would notice.
+	 */
+	static constexpr float UnyieldingCrowdControlResistance = 100.0f;
 
 	/**
 	 * Thorns of Glass: "Reflects 50% of all damage taken back to the attacker."
@@ -217,6 +230,9 @@ public:
 
 	/** Retaliation the modifiers grant, as a percentage of damage taken. */
 	static float RetaliationPercent(const TArray<FName>& Rows);
+
+	/** Crowd control resistance the modifiers grant, as a percentage. */
+	static float CrowdControlResistancePercent(const TArray<FName>& Rows);
 
 	/**
 	 * Whether enough time has passed for an aura to pulse again.

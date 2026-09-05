@@ -22,6 +22,8 @@ const TCHAR* UCataclysmEnemyModifiers::ThornsOfGlassRow =
 	TEXT("Generic_Thorns_of_Glass");
 const TCHAR* UCataclysmEnemyModifiers::HellfireAuraRow =
 	TEXT("Demonic_Hellfire_Aura");
+const TCHAR* UCataclysmEnemyModifiers::UnyieldingRow =
+	TEXT("Generic_Unyielding");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -266,6 +268,19 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 	}
 
 	return Burned;
+}
+
+float UCataclysmEnemyModifiers::CrowdControlResistancePercent(
+	const TArray<FName>& Rows)
+{
+	float Percent = 0.0f;
+
+	if (Carries(Rows, UnyieldingRow))
+	{
+		Percent += UnyieldingCrowdControlResistance;
+	}
+
+	return Percent;
 }
 
 bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)

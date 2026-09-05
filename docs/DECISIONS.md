@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — Crowd control resistance shortens a stun and a shove, and at 100 stops them
+
+**Decided by the project owner on 2026-09-05.** Before it, the
+`CrowdControlResistance` attribute was read in exactly one place in the whole
+game: it reduced the CHANCE that a blunt weapon caused an incidental stun. It did
+nothing about the four skills that stun by design, nothing about a slow, and
+nothing about being shoved.
+
+**That made a character sheet stat worth almost nothing.** An affix grants it on
+seven gear slots, the Ravager starts at 5 and gains 0.15 a level, the Masochist
+starts at 10 and gains 0.2, and the Visage helmet carries it as an implicit.
+
+### It reduces how much, not whether
+
+A stun's seconds and a shove's centimetres are both scaled by it.
+`UCataclysmSkillEffects::AfterCrowdControlResistance` is the one place, and the
+stun path and the single body behind knockback, pull, drag and launch both go
+through it.
+
+**Reducing an amount is the only rule that can serve a DESIGNED stun**, which has
+no chance to reduce. Diablo IV's impairment reduction stat works this way,
+shortening a crowd control effect rather than rolling against it.
+
+**The old rule was removed rather than kept beside it.** Reducing the chance of
+an incidental stun as well would count the stat twice: a character at 50 would
+face half the chance of a stun half as long, which is a quarter, and "50 crowd
+control resistance" would not mean anything a player could work out.
+
+### At 100 nothing lands, and that contradicts a rule this design states elsewhere
+
+**This is the one place this game lets a stat reach immunity.** Every other
+unconditional mitigation layer is capped short of it on purpose -- armour at 75%,
+resistance at 70%, flat damage reduction at 75% -- and
+`UCataclysmDamageCalculation::DamageReductionCap` says so outright: "No
+combination of these layers reaches immunity. Each has either a cap or a curve
+that cannot reach zero damage."
+
+**The project owner was shown that conflict, with the figures a player can
+actually reach, and chose an uncapped stat anyway.** Recorded here so the next
+person finds a decision rather than an oversight, and so that capping it later is
+a change to a decision rather than a correction of a mistake.
+
+**Diablo IV makes the other choice**, and it is worth knowing which alternative
+was on the table: its impairment reduction stacks multiplicatively so it can
+never reach 100%, and immunity is a separate mechanic called Unstoppable rather
+than a number you stack into.
+
+### What it does not cover
+
+**Slows.** Cripple's magnitude reaches nothing in the game today, so there is no
+slow to shorten. Issue #1256 carries that, and this rule applies to it the day it
+does something.
+
+### The modifier it was built for
+
+**Unyielding**, a Generic enemy modifier reading "Immunity to crowd control
+effects", sets a creature's crowd control resistance to 100. It could not have
+been built before this: setting the stat to 100 would have reduced the chance of
+an incidental blunt stun and nothing else.
+
+### A note about the tests, because they failed twice first
+
+**Both failures were in the CONTROL half** -- the case that should land did not --
+and both were the test fixture rather than the rule. A stun could not be applied
+because `ApplyTagForDuration` reads an ability system off the INSTIGATOR as well
+as the target, and a shove moved nothing because an actor spawned with no root
+component cannot be moved by `AddActorWorldOffset`.
+
+**Without those control assertions all four tests would have passed while proving
+nothing.** A creature is not stunned when nothing can stun it either way.
+
 ## 2026-09-05 — A creature's modifiers are drawn by a spawner, not by the rarity setter
 
 **This corrects a fault shipped the same day**, in the change that gave five
