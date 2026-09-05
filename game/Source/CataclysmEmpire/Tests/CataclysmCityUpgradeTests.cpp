@@ -134,7 +134,7 @@ bool FCataclysmCityUpgradeFreeAndInstantTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeWhichAreBuiltTest,
-	"Cataclysm.CityUpgrade.ThirteenOfTheTwentyFourEffectsAreBuilt",
+	"Cataclysm.CityUpgrade.OnlyTheEffectsThatAreBuiltReportAsBuilt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
@@ -144,8 +144,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the enum names twenty-four effects"),
 			  UCataclysmCityUpgradeRules::AllEffects().Num(), 24);
 
-	// THE TEN ARCHITECT UPGRADES AND THREE OF THE FOUR EXPLORER ONES THAT SHAPE
-	// A DUNGEON. Listed rather than counted, so marking the wrong one built
+	// THE TEN ARCHITECT UPGRADES AND ALL FOUR EXPLORER ONES THAT SHAPE A
+	// DUNGEON. Listed rather than counted, so marking the wrong one built
 	// fails here instead of shipping an upgrade that silently does nothing.
 	const TArray<ECataclysmCityUpgradeEffect> Expected = {
 		ECataclysmCityUpgradeEffect::MaxDefence,
@@ -159,17 +159,22 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 		ECataclysmCityUpgradeEffect::RecoverPopulationEvery,
 		ECataclysmCityUpgradeEffect::RestoreDefenceOnClear,
 		ECataclysmCityUpgradeEffect::DungeonCap,
+		ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer,
 		ECataclysmCityUpgradeEffect::DungeonFloorsMore,
 		ECataclysmCityUpgradeEffect::DungeonFloorsFewer,
 	};
 
-	// AND THE FOURTH EXPLORER ONE IS DELIBERATELY NOT AMONG THEM. "Dungeons here
-	// take 4 less days to beat" is the time to walk the dungeon, and one floor
-	// costs exactly one day, so it is four fewer floors -- which
-	// `DungeonFloorsFewer` already does, and does five of. Issue #1266.
-	TestFalse(TEXT("the fourth Explorer upgrade is not built"),
-			  UCataclysmCityUpgradeRules::IsBuilt(
-				  ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer));
+	// THE TWO EXPLORER UPGRADES ABOUT SPEED ARE DIFFERENT UPGRADES, and this is
+	// where that is written down. `DungeonFloorsFewer` buys speed by giving up
+	// depth, reward and resolve time; `DungeonWalkDaysFewer` buys speed and gives
+	// up none of them, which is what lets an invested player run a fifty floor
+	// dungeon in two days. Both are built and neither replaces the other.
+	TestTrue(TEXT("fewer floors is built"),
+			 UCataclysmCityUpgradeRules::IsBuilt(
+				 ECataclysmCityUpgradeEffect::DungeonFloorsFewer));
+	TestTrue(TEXT("and so is fewer days to walk them"),
+			 UCataclysmCityUpgradeRules::IsBuilt(
+				 ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer));
 
 	for (const ECataclysmCityUpgradeEffect Effect :
 		 UCataclysmCityUpgradeRules::AllEffects())
@@ -183,8 +188,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 				  UCataclysmCityUpgradeRules::IsBuilt(Effect), bShouldBeBuilt);
 	}
 
-	TestEqual(TEXT("which is thirteen of the twenty-four"),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 13);
+	TestEqual(TEXT("which is fourteen of the twenty-four"),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 14);
 
 	// `None` IS NOT AN UPGRADE and must never be buildable, or a
 	// default-constructed struct would buy something.

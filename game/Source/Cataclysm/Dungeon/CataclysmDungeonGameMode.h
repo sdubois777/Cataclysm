@@ -553,14 +553,24 @@ private:
 	const struct FCataclysmDungeon* BoundDungeon() const;
 
 	/**
-	 * A day passes in the empire, if there is one.
+	 * One floor's worth of empire time passes, if there is an empire.
 	 *
 	 * ONE PLACE, so that what a floor costs is written down once. Nothing else
 	 * in the game moves the day except the console commands, and
 	 * `tools/tests/test_game_readme_is_true.py` is what holds that claim to
 	 * whatever `game/README.md` says.
+	 *
+	 * NOT ALWAYS A WHOLE DAY. A floor costs one day by default, and a city
+	 * upgrade can lower the rate for the dungeons that city receives WITHOUT
+	 * lowering their floor count -- a fifty floor dungeon may cost two days, so
+	 * one of its floors costs a twenty-fifth of a day.
+	 * `FCataclysmDungeon::WalkDaysPerFloor` is the rate and
+	 * `UCataclysmDayClock::SpendDays` is what turns fractions into whole days.
+	 *
+	 * A WHOLE DAY WHEN NO DUNGEON IS BOUND, which is what pressing Play gives
+	 * you: a sandbox descent has no empire dungeon to take a rate from.
 	 */
-	void SpendADayInTheEmpire();
+	void SpendFloorTimeInTheEmpire();
 
 	/** See `SetEmpireRunForTests`. Null in a running game, always. */
 	UPROPERTY(Transient)

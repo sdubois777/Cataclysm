@@ -32,8 +32,14 @@ came from an unstated default and nothing in the output mentioned it.
 
 ## Fixed rules (not swept)
 
-- **One floor costs one day.** Depth and time are the same axis, so a dungeon
-  can never be made cheaper without also being made poorer.
+- **One floor costs one day, as a starting rate.** `days_per_floor` is 1.0 and
+  this model never changes it, which is why it is listed here: no sweep moves it.
+  **It is not an invariant of the design.** In the game, city upgrades and the
+  empire upgrade tree lower the days a dungeon takes to walk while its floor
+  count stays where it is, so an invested player can run a fifty floor dungeon in
+  a couple of days. **Depth and reward are the same axis; depth and time are not,
+  once a player has invested.** This model has no upgrades, so here the two never
+  come apart.
 - **Resolve timers scale with depth**: `resolve_days = base + floors * ratio`.
   A flat timer table cannot coexist with the rule above — a 40-floor dungeon
   on a 30-day timer is unsavable no matter how well the player plays.

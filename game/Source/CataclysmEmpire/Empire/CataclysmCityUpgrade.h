@@ -21,12 +21,11 @@
  * decision made here, and if two rows ever share an effect they should share a
  * value.
  *
- * ELEVEN OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight.
+ * TEN OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight.
  * `UCataclysmCityUpgradeRules::IsBuilt` is the single place that says which, and
  * `UCataclysmEmpireRun::BuyCityUpgrade` refuses to spend a slot on one that does
- * nothing rather than letting a player waste it. Each is named below with what
- * it is waiting for: ten wait on a system that does not exist, and one waits on
- * a decision, because its sentence cannot be told apart from another upgrade's.
+ * nothing rather than letting a player waste it. Each is named below with the
+ * system it is waiting for.
  */
 UENUM(BlueprintType)
 enum class ECataclysmCityUpgradeEffect : uint8
@@ -72,7 +71,7 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	RestoreDefenceOnClear		= 10,
 
 	// ----------------------------------------------------------------------
-	// Explorer, the four that shape the dungeons a city receives. Three are
+	// Explorer, the four that shape the dungeons a city receives. All four are
 	// built, in `UCataclysmSurgeScheduler`.
 	// ----------------------------------------------------------------------
 
@@ -85,15 +84,22 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	DungeonCap					= 11,
 
 	/**
-	 * Flat. NOT BUILT, and it is a design question rather than missing work.
+	 * Flat. Dungeons here take that many fewer days to walk, minimum one day.
 	 *
-	 * "Dungeons here take 4 less days to beat" is the time to WALK the dungeon,
-	 * and one floor costs exactly one day. So four fewer days to beat is four
-	 * fewer floors -- which is what `DungeonFloorsFewer` already does, and it
-	 * does five. The two cannot be told apart mechanically and one is strictly
-	 * worse. Issue #1266.
+	 * THE FLOOR COUNT DOES NOT MOVE, AND THAT IS THE WHOLE POINT. One floor
+	 * costs one day to begin with, and this lowers the time without lowering the
+	 * depth: a fifty floor dungeon can be made to cost two days rather than
+	 * fifty. It is still fifty floors deep, still worth what fifty floors are
+	 * worth, and still bites on the same schedule.
+	 *
+	 * WHICH IS WHAT MAKES IT A DIFFERENT UPGRADE FROM `DungeonFloorsFewer`.
+	 * That one buys speed by giving up depth, reward and resolve time; this one
+	 * buys speed and gives up none of them. A player who wants a deep dungeon
+	 * they can actually afford to run takes this.
+	 *
+	 * `FCataclysmDungeon::WalkDays` is where it lands.
 	 */
-	DungeonResolveDaysFewer		= 12,
+	DungeonWalkDaysFewer		= 12,
 
 	/**
 	 * Flat. Dungeons here have that many more floors.

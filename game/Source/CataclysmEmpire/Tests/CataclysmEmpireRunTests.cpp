@@ -652,4 +652,83 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Spending part of a day
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunPartialDayTest,
+	"Cataclysm.EmpireRun.PartsOfADayAddUpToWholeDaysAndNoMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunPartialDayTest::RunTest(const FString& Parameters)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
+
+	const int32 Started = Run->Day();
+
+	// A FIFTY FLOOR DUNGEON COSTING TWO DAYS charges a twenty-fifth of a day a
+	// floor. That is the case the whole feature exists for: an invested player
+	// running a deep dungeon without paying its full time cost.
+	const float PerFloor = 2.0f / 50.0f;
+
+	// TWENTY-FOUR FLOORS IS UNDER A DAY, so no day passes at all.
+	for (int32 Floor = 0; Floor < 24; ++Floor)
+	{
+		TestEqual(*FString::Printf(TEXT("floor %d passes no whole day"), Floor),
+				  Run->SpendFloorTime(PerFloor).Num(), 0);
+	}
+
+	TestEqual(TEXT("after twenty-four floors the day has not moved"),
+			  Run->Day(), Started);
+
+	// THE TWENTY-FIFTH TIPS IT OVER, and the day that comes out is a real day:
+	// its report is the same shape as one from `AdvanceDay`.
+	const TArray<FCataclysmDayReport> Reports = Run->SpendFloorTime(PerFloor);
+
+	if (!TestEqual(TEXT("the twenty-fifth floor spends one whole day"),
+				   Reports.Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and the day moved by exactly one"), Run->Day(),
+			  Started + 1);
+	TestEqual(TEXT("the report is for that day"), Reports[0].Day, Started + 1);
+
+	// THE REST OF THE WALK COSTS THE SECOND DAY AND NOT A THIRD. Fifty floors at
+	// a twenty-fifth of a day is two days, and a walk that quietly cost three
+	// would be the upgrade failing to do what it says.
+	int32 MoreDays = 0;
+	for (int32 Floor = 25; Floor < 50; ++Floor)
+	{
+		MoreDays += Run->SpendFloorTime(PerFloor).Num();
+	}
+
+	TestEqual(TEXT("the whole fifty floor walk cost two days"), Run->Day(),
+			  Started + 2);
+	TestEqual(TEXT("one of which came from the second half"), MoreDays, 1);
+
+	// A FLOOR COSTING MORE THAN A DAY SPENDS ALL OF IT AT ONCE, rather than
+	// leaving the remainder to be paid by the next floor.
+	const int32 BeforeBigStep = Run->Day();
+
+	TestEqual(TEXT("a floor costing three days spends three"),
+			  Run->SpendFloorTime(3.0f).Num(), 3);
+	TestEqual(TEXT("and the day moved by three"), Run->Day(),
+			  BeforeBigStep + 3);
+
+	// NOTHING AND LESS THAN NOTHING PASS NO TIME. A caller with no rate should
+	// pass zero, and a negative number can only be a mistake; winding the clock
+	// back would give a player days they had already spent.
+	const int32 BeforeNothing = Run->Day();
+
+	TestEqual(TEXT("zero passes no time"), Run->SpendFloorTime(0.0f).Num(), 0);
+	TestEqual(TEXT("and neither does a negative"),
+			  Run->SpendFloorTime(-5.0f).Num(), 0);
+	TestEqual(TEXT("so the day did not move"), Run->Day(), BeforeNothing);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

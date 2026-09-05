@@ -213,6 +213,28 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	TArray<FCataclysmDayReport> AdvanceDays(int32 Days);
 
+	/**
+	 * One floor's worth of time passes, which is usually less than a day.
+	 *
+	 * WHY A FLOOR IS NOT ALWAYS A DAY. One floor costs one day to begin with,
+	 * and a city upgrade lowers that rate for the dungeons that city receives
+	 * **without lowering their floor count**. A fifty floor dungeon can be made
+	 * to cost two days rather than fifty: still fifty floors deep, still worth
+	 * what that is worth, still biting on the same schedule, and a quarter of a
+	 * month quicker to walk. `FCataclysmDungeon::WalkDaysPerFloor` is the rate.
+	 *
+	 * IT SPENDS WHOLE DAYS THROUGH `AdvanceDay` AND NOTHING ELSE, so a day that
+	 * accumulates out of twenty-five floors fires its surge, repairs its cities
+	 * and resolves its dungeons exactly as a day spent in one go would. The part
+	 * of a day left over is kept on `UCataclysmDayClock::PartialDay`.
+	 *
+	 * @param Days the floor's cost. Zero or less passes no time.
+	 * @return one report per whole day that passed, in order. **Usually empty**,
+	 *         which is the difference between this and `AdvanceDay`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDayReport> SpendFloorTime(float Days);
+
 	// ----------------------------------------------------------------------
 	// The dungeons standing on the map
 	// ----------------------------------------------------------------------

@@ -22,6 +22,21 @@ float FCataclysmDungeon::BiteScale() const
 	return Typical <= 0.0f ? 1.0f : Floors / Typical;
 }
 
+float FCataclysmDungeon::WalkDaysPerFloor() const
+{
+	const int32 Walked = FMath::Max(1, Floors);
+
+	// NOBODY SET IT, SO A FLOOR COSTS THE ORDINARY DAY. A dungeon built by hand
+	// in a test, or one from a save written before this field existed, behaves
+	// exactly as it did before.
+	if (WalkDays <= 0.0f)
+	{
+		return UCataclysmDayClock::DaysPerFloor;
+	}
+
+	return WalkDays / Walked;
+}
+
 // ---------------------------------------------------------------------------
 // Where a wave lands
 // ---------------------------------------------------------------------------
@@ -338,6 +353,23 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// A MINIMUM OF ONE, which is what "to a minimum of 1" in the sheet says and
 	// what a dungeon with no floors would otherwise be: unwalkable.
 	Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);
+
+	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP
+	// IT IS. One floor costs one day to begin with, so this starts at the floor
+	// count; "Dungeons here take 4 less days to beat" lowers it WITHOUT lowering
+	// the floor count, which is what lets an invested player make a fifty floor
+	// dungeon cost two days rather than fifty. The dungeon is still fifty floors
+	// deep, still worth what that is worth, and still bites on the schedule
+	// below.
+	//
+	// A MINIMUM OF ONE DAY, which the sheet states. A dungeon that cost no time
+	// at all would be free, and the empire layer's whole tension is that nothing
+	// is.
+	const float Quicker = City.UpgradeValueFor(
+		ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer);
+
+	Dungeon.WalkDays = FMath::Max(
+		1.0f, Dungeon.Floors * UCataclysmDayClock::DaysPerFloor - Quicker);
 
 	// THE TIMER COMES FROM THE DEPTH AND THEN VARIES. `ResolveDaysFor` is the
 	// day clock's, so a dungeon's timer and a dungeon's walk are set by the same
