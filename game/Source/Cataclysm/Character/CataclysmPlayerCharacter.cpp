@@ -25,6 +25,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmCharacterCreation.h"
+#include "Data/CataclysmCityUpgradeMapping.h"
 #include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -3074,6 +3075,134 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEmpire(
 			}
 
 			Ar.Log(*Run->Describe());
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
+	TEXT("Cataclysm.CityUpgrades"),
+	TEXT("List a city's upgrades and what it could still buy: "
+		 "Cataclysm.CityUpgrades <cityId>. Cataclysm.EmpireMap shows which "
+		 "city is which."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run =
+				UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run || !Run->Map)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin "
+							"starts one."));
+				return;
+			}
+
+			const int32 CityId = Args.Num() >= 1 ? FCString::Atoi(*Args[0]) : 0;
+
+			const FCataclysmCity* City = Run->Map->Find(CityId);
+			if (!City)
+			{
+				Ar.Logf(TEXT("There is no city %d. They are numbered 0 to 24."),
+						CityId);
+				return;
+			}
+
+			Ar.Logf(TEXT("%s: %d of %d upgrade slots filled."), *City->Name,
+					City->Upgrades.Num(), Run->Map->UpgradeSlots);
+
+			for (const FCataclysmCityUpgrade& Held : City->Upgrades)
+			{
+				Ar.Logf(TEXT("  has  %s (%s, %.2f)"), *Held.RowName.ToString(),
+						*UCataclysmCityUpgradeRules::EffectName(Held.Effect),
+						Held.Value);
+			}
+
+			// WHAT IT COULD BUY, AND WHAT IT COULD NOT, because fourteen of the
+			// twenty-four upgrades are waiting on a system that does not exist
+			// and a person reading this needs to see which.
+			for (const FName RowName : UCataclysmCityUpgradeMapping::AllRowNames())
+			{
+				const FCataclysmCityUpgrade Upgrade =
+					UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
+
+				if (City->HasUpgrade(RowName))
+				{
+					continue;
+				}
+
+				if (!UCataclysmCityUpgradeRules::IsBuilt(Upgrade.Effect))
+				{
+					Ar.Logf(TEXT("  --   %s (%s does nothing yet)"),
+							*RowName.ToString(),
+							*UCataclysmCityUpgradeRules::EffectName(
+								Upgrade.Effect));
+					continue;
+				}
+
+				Ar.Logf(TEXT("  buy  %s (%s, %.2f)"), *RowName.ToString(),
+						*UCataclysmCityUpgradeRules::EffectName(Upgrade.Effect),
+						Upgrade.Value);
+			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
+	TEXT("Cataclysm.BuyCityUpgrade"),
+	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
+		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names. It is "
+		 "free and immediate, because no city upgrade cost or build time is "
+		 "designed yet."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run =
+				UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run || !Run->Map)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin "
+							"starts one."));
+				return;
+			}
+
+			if (Args.Num() < 2)
+			{
+				Ar.Log(TEXT("Cataclysm.BuyCityUpgrade <cityId> <rowName>. "
+							"Cataclysm.CityUpgrades <cityId> lists what a city "
+							"can buy."));
+				return;
+			}
+
+			const int32 CityId = FCString::Atoi(*Args[0]);
+			const FName RowName(*Args[1]);
+
+			const FCataclysmCityUpgrade Upgrade =
+				UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
+
+			if (!Upgrade.IsValid())
+			{
+				// TOLD APART FROM A REFUSAL, because "there is no such row" and
+				// "that upgrade does nothing yet" are different problems and
+				// only one of them is a typing mistake.
+				Ar.Logf(TEXT("There is no upgrade called %s in "
+							 "game/Data/CityUpgrades.csv, or the mapping does "
+							 "not recognise it. Cataclysm.CityUpgrades %d "
+							 "lists the names."),
+						*RowName.ToString(), CityId);
+				return;
+			}
+
+			const ECataclysmCityUpgradeResult Result =
+				Run->BuyCityUpgrade(CityId, Upgrade);
+
+			Ar.Logf(TEXT("%s"),
+					*UCataclysmCityUpgradeRules::ResultText(Result));
+
+			if (Result == ECataclysmCityUpgradeResult::Bought)
+			{
+				const FCataclysmCity* City = Run->Map->Find(CityId);
+
+				Ar.Logf(TEXT("%s now has %d of %d slots filled. Defence %.0f of "
+							 "%.0f, %.0f of %.0f people."),
+						*City->Name, City->Upgrades.Num(),
+						Run->Map->UpgradeSlots, City->Defence, City->MaxDefence,
+						City->Population, City->MaxPopulation);
+			}
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
