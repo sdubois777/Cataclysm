@@ -237,6 +237,17 @@ def exp_policies(base: TuningConfig):
     return spread
 
 
+#: Difficulty treadmill rates section 2 sweeps. It hands section 7 whichever cell
+#: wins, so THIS is where section 7's escalation rate comes from -- not from
+#: `TuningConfig.dungeon_power_escalation_per_100_days`, whose default of 0.22 is
+#: only the starting point. Measured 2026-09-05, the sweep chose 0.10.
+#:
+#: Named rather than written inline because the day-cap warning used to quote the
+#: default as though the table had run at it, printing 22% and a 6.5x power
+#: multiplier beside a table produced at 10% and 3.5x. Issue #1290.
+FORGE_ESCALATION_RATES = (0.00, 0.10, 0.22, 0.35, 0.50)
+
+
 def exp_forge(base: TuningConfig):
     rule("2. THE FORGE -- is 'build the gear and let a city burn' a real choice?")
     print("  The forge only matters if power is scarce, and power is only scarce")
@@ -249,7 +260,7 @@ def exp_forge(base: TuningConfig):
           f"{'power':>8}{'cities':>8}")
     print("-" * 100)
     best = None
-    for esc in (0.00, 0.10, 0.22, 0.35, 0.50):
+    for esc in FORGE_ESCALATION_RATES:
         for days, frac in ((12, 0.04), (12, 0.08)):
             cfg = replace(base,
                           dungeon_power_escalation_per_100_days=esc,
@@ -659,7 +670,9 @@ UNRESOLVED_WARNING_PERCENT = 50.0
 
 
 def warn_about_unresolved_campaigns(names, stale: dict[str, float],
-                                    max_days: int) -> list[str]:
+                                    max_days: int,
+                                    escalation_per_100_days: float
+                                    ) -> list[str]:
     """Name any preset whose campaigns mostly ended with no result, and return
     those names.
 
@@ -720,9 +733,11 @@ def warn_about_unresolved_campaigns(names, stale: dict[str, float],
           "resolves them as")
     print("  losses, but it also raises dungeon power, which is keyed to "
           "elapsed days at")
-    print("  22% per 100 days, so a longer run is a harder run and the cap is "
-          "not an")
-    print("  independent variable. Issue #293.")
+    print(f"  {escalation_per_100_days:.0%} per 100 days, which is "
+          f"{1.0 + escalation_per_100_days * max_days / 100.0:.1f}x base power "
+          "by the cap, so a longer run is")
+    print("  a harder run and the cap is not an independent variable. "
+          "Issue #293.")
     return unresolved
 
 
@@ -732,6 +747,94 @@ def warn_about_unresolved_campaigns(names, stale: dict[str, float],
 #: renaming the preset cannot leave this pointing at a name that is gone.
 BASELINE_PRESET = TREE_NONE.name
 
+
+
+#: The fields section 7 does not choose, in the order they are printed. Each is
+#: (attribute on TuningConfig, label, how to format it). Read off the config the
+#: section was handed rather than written out, so the report cannot claim a
+#: setting it did not run under -- which is the defect issue #1290 records in the
+#: day-cap warning a few lines below this.
+INHERITED_SETTINGS = (
+    ("surge_mode", "how surges escalate", "{}"),
+    ("resolve_floor_ratio", "resolve timer days per floor", "{:.1f}"),
+    ("surge_interval_days", "days between surges", "{:.0f}"),
+    ("surge_dungeon_count", "dungeons per surge", "{:.0f}"),
+    ("dungeon_power_escalation_per_100_days",
+     "dungeon power added per 100 days", "{:.2f}"),
+    ("craft_days", "days per craft", "{:.0f}"),
+    ("craft_power_gain_frac", "tier width gained per craft", "{:.2f}"),
+)
+
+
+def inherited_settings(cfg: TuningConfig) -> list[tuple[str, str]]:
+    """(label, value) for every setting section 7 takes from another section.
+
+    Issue #1287. Sections 0 and 2 choose these by maximising `health`, which
+    scores a NO-TREE player against a 55% win rate and 45% triage target. Nothing
+    in that choice is aimed at the empire tree, and section 7 does not re-derive
+    them per tier or per preset -- so the preset ordering it prints is a
+    statement about one world, and the report never said which.
+
+    THE ORDERING IS NOT STABLE ACROSS THEM. Measured 2026-09-05 at tier 1, the
+    triage policy, 150 campaigns per cell, everything held at the config this
+    section receives except the surge size:
+
+        dungeons per surge   4     5     6     7
+        No tree win%        44    52    15    11
+        Architect win%      45    52    53    48
+        verdict vs no tree  tied  tied  BETTER  BETTER
+
+    Four surge sizes gave FOUR DIFFERENT ORDERINGS. At 4 no preset beat no tree;
+    at 5 one did; at 6 and 7 four of five did and the no-tree row fell to second
+    from last. `exp_calibrate` tries 5, 6 and 7 and picks 5, robustly -- its top
+    three cells all choose 5 and the best cell choosing 6 is 34 health points
+    behind -- so this is not a coin flip that a rerun would land differently.
+    It is a real dependency on a number chosen for an unrelated reason.
+
+    `TuningConfig.surge_dungeon_count` defaults to 4, which calibration never
+    tries. Anyone calling `exp_presets` with a raw `TuningConfig` -- which the
+    reproduction snippet on issue #293 does -- measures the count 4 column and
+    gets a different answer from the report's.
+
+    NO CONSTANT WAS CHANGED TO MAKE THIS STABLE, and none should be. The
+    dependency is a property of the model, not a defect in it: a defensive branch
+    is worth little when surges are small enough that an undefended empire
+    survives anyway, and worth a great deal when they are not. What was wrong is
+    that the report asserted a preset ordering without saying which world it held
+    in. Issue #5 is the cost of that.
+    """
+    out = []
+    for field, label, form in INHERITED_SETTINGS:
+        value = getattr(cfg, field)
+        # An enum formats as "SurgeMode.STATIC" otherwise, which names the
+        # Python type rather than the setting.
+        out.append((label, form.format(getattr(value, "value", value))))
+    return out
+
+
+def print_inherited_settings(cfg: TuningConfig) -> None:
+    """Print what section 7 inherited, and that its conclusions are conditional
+    on it. See `inherited_settings`."""
+    print("\n  SETTINGS THIS SECTION DID NOT CHOOSE, taken from sections 0 "
+          "and 2 and used")
+    print("  at every tier below. Issue #1287.")
+    for label, value in inherited_settings(cfg):
+        print(f"    {label:<38}{value:>8}")
+    print("\n  THE PRESET ORDERING IS CONDITIONAL ON THESE, and most sharply "
+          "on the surge")
+    print("  size. Measured at tier 1, 150 campaigns per cell, moving only "
+          "that number:")
+    print("    dungeons per surge     4     5     6     7")
+    print("    No tree win%          44    52    15    11")
+    print("    Architect win%        45    52    53    48")
+    print("  Four surge sizes gave four different orderings. At 4 no preset "
+          "beat no tree; at")
+    print("  6 and 7 four of five did and the no-tree row fell to second from "
+          "last. Sections")
+    print("  0 and 2 pick these by scoring a NO-TREE player against a 55% win "
+          "and 45% triage")
+    print("  target, which is not a question about the empire tree. See "
+          "inherited_settings.")
 
 def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
                             stale: dict[str, float], trials: int,
@@ -834,9 +937,11 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     """
     rule(f"7. EMPIRE TREE PRESETS -- head to head, at tier "
          f"{' and tier '.join(str(t) for t in tiers)}")
-    print("  Only the tier changes between these tables. The surge and forge")
-    print("  settings are the ones calibrated at tier "
-          f"{SWEEP_TIER} in sections 0 and 2.")
+    print("  Only the tier changes between these tables. Everything else is "
+          "held at the")
+    print(f"  values sections 0 and 2 calibrated at tier {SWEEP_TIER}, which "
+          "are named below.")
+    print_inherited_settings(base)
 
     wins: dict[int, dict[str, float]] = {}
     #: Win rate minus loss rate, in percentage points. THE METRIC THE ORDERING
@@ -885,7 +990,8 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
                   f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
         unresolved[tier] = warn_about_unresolved_campaigns(
-            wins[tier].keys(), stale[tier], base.max_days)
+            wins[tier].keys(), stale[tier], base.max_days,
+            base.dungeon_power_escalation_per_100_days)
         comparisons[tier] = compare_against_no_tree(
             wins[tier], losses[tier], stale[tier], trials)
         print_comparison_against_no_tree(

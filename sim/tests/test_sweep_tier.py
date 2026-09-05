@@ -943,7 +943,7 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         """A warning that always fires is not a warning. Ordinary tier 1 cells
         have stalemate rates around 20% and must not trip it."""
         flagged = experiments.warn_about_unresolved_campaigns(
-            ["a", "b"], {"a": 21.0, "b": 3.0}, 2500)
+            ["a", "b"], {"a": 21.0, "b": 3.0}, 2500, 0.10)
         assert flagged == []
         assert capsys.readouterr().out == "", (
             "the sweep warns about unresolved campaigns for a table where "
@@ -954,7 +954,8 @@ class TestTheSweepFlagsCampaignsWithNoResult:
                                                                        capsys):
         flagged = experiments.warn_about_unresolved_campaigns(
             ["fine", "truncated", "also truncated"],
-            {"fine": 12.0, "truncated": 100.0, "also truncated": 64.0}, 2500)
+            {"fine": 12.0, "truncated": 100.0, "also truncated": 64.0},
+            2500, 0.10)
         assert flagged == ["truncated", "also truncated"]
         printed = capsys.readouterr().out
         assert "truncated: 100% of campaigns ran out of days" in printed
@@ -966,7 +967,8 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         """Naming the cell is not enough. A reader looking at 0% win and 0%
         loss needs to be told those are not two measurements of a preset, they
         are the absence of any measurement."""
-        experiments.warn_about_unresolved_campaigns(["x"], {"x": 100.0}, 2500)
+        experiments.warn_about_unresolved_campaigns(
+            ["x"], {"x": 100.0}, 2500, 0.10)
         printed = capsys.readouterr().out
         assert "not" in printed and "comparable" in printed, (
             "the warning names the unresolved presets without saying their "
@@ -977,29 +979,64 @@ class TestTheSweepFlagsCampaignsWithNoResult:
                                                                        capsys):
         """The measurement issue #293 asked for was run on 2026-08-05 and its
         result is that the experiment cannot answer the question. Dungeon power
-        is keyed to ELAPSED DAYS at 22% per 100 days, so a run given more days
-        is given a harder game, and the day cap is not an independent variable.
+        is keyed to ELAPSED DAYS, so a run given more days is given a harder
+        game, and the day cap is not an independent variable.
 
         Without this sentence the obvious next step -- raise max_days -- looks
         like a fix. It is not, and it costs about eight times the sweep's
         runtime to find that out again."""
-        experiments.warn_about_unresolved_campaigns(["x"], {"x": 100.0}, 2500)
+        experiments.warn_about_unresolved_campaigns(
+            ["x"], {"x": 100.0}, 2500, 0.10)
         printed = capsys.readouterr().out
         assert "not an" in printed and "independent variable" in printed, (
             "the warning does not record that raising the day cap changes the "
             "difficulty as well as the length of the run. Issue #293.")
-        assert "22% per 100 days" in printed, (
+        assert "10% per 100 days" in printed, (
             "the warning states that dungeon power is keyed to elapsed days "
             "without the rate. The rate is what decides whether the confound "
-            "matters, and it is 0.22 per 100 days in config.py.")
+            "matters, and it must be the rate the caller ran at. Issue #1290.")
 
-    def test_the_stated_rate_matches_the_configured_one(self):
-        """The warning quotes 22% per 100 days. If the constant changes, the
-        sentence becomes false, and a false explanation is worse than none."""
-        assert TuningConfig().dungeon_power_escalation_per_100_days == 0.22, (
-            "dungeon_power_escalation_per_100_days is no longer 0.22, so the "
-            "unresolved-campaign warning in experiments.py quotes the wrong "
-            "rate. Update the printed sentence and this test together.")
+    def test_the_printed_rate_is_the_one_the_caller_ran_at(self, capsys):
+        """Whatever rate is handed in is the rate printed, and the multiplier
+        printed beside it is that rate carried to the day cap.
+
+        REPLACES a test that asserted `TuningConfig`'s default was still 0.22 so
+        that a hard-coded sentence stayed true. That guard could only catch the
+        default moving. It could not catch what actually happened -- the default
+        staying where it was while the section ran at a different rate chosen by
+        `exp_forge` -- so the warning printed 22% and 6.5x beside a table
+        produced at 10% and 3.5x. Issue #1290."""
+        for rate, stated, multiplier in (
+                (0.00, "0% per 100 days", "1.0x"),
+                (0.10, "10% per 100 days", "3.5x"),
+                (0.22, "22% per 100 days", "6.5x"),
+                (0.50, "50% per 100 days", "13.5x"),
+        ):
+            experiments.warn_about_unresolved_campaigns(
+                ["x"], {"x": 100.0}, 2500, rate)
+            printed = capsys.readouterr().out
+            assert stated in printed, (
+                f"the caller ran at {rate} per 100 days and the warning did "
+                f"not say so. Issue #1290.")
+            assert multiplier in printed, (
+                f"{rate} per 100 days is {multiplier} base power at a 2,500 "
+                f"day cap, and the warning did not say so. That multiplier is "
+                f"the number showing the confound is large. Issue #1290.")
+
+    def test_section_seven_need_not_run_at_the_config_default(self):
+        """Why the rate has to come from the caller rather than from config.py.
+
+        `exp_forge` sweeps `FORGE_ESCALATION_RATES` and hands section 7 whichever
+        cell wins, so the default is only the starting point. On 2026-09-05 the
+        sweep chose 0.10 against a default of 0.22. Issue #1290."""
+        default = TuningConfig().dungeon_power_escalation_per_100_days
+        assert default in experiments.FORGE_ESCALATION_RATES, (
+            "the forge sweep no longer includes the config default, so the "
+            "two can no longer even be compared.")
+        assert len(set(experiments.FORGE_ESCALATION_RATES)) > 1, (
+            "the forge sweep has only one escalation rate, so section 7 always "
+            "runs at it and the printed rate could safely be written out. If "
+            "that is now true, this test and the caller argument can go.")
 
     def test_the_threshold_is_a_majority_of_campaigns(self):
         """Below half, the resolved campaigns are still the larger sample and
@@ -1011,7 +1048,8 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         off-by-one here would silently drop the borderline cases the warning
         exists for."""
         assert experiments.warn_about_unresolved_campaigns(
-            ["x"], {"x": experiments.UNRESOLVED_WARNING_PERCENT}, 2500) == ["x"]
+            ["x"], {"x": experiments.UNRESOLVED_WARNING_PERCENT},
+            2500, 0.10) == ["x"]
         capsys.readouterr()
 
     def test_the_warning_reaches_the_printed_table(self, capsys):
