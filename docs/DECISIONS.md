@@ -14,12 +14,25 @@ measured 2% is the punishment working as designed.
 
 ### What was measured
 
-400 campaigns, `No tree` preset, `triage` policy, at difficulty tier 1:
+400 campaigns, `No tree` preset, `triage` policy, at difficulty tier 1, of which
+381 reached a decision and 19 ran out of days:
 
 | Route into a Cataclysm boss dungeon | Campaigns | Won | Win rate | Mean floors |
 | :-- | --: | --: | --: | --: |
-| Earned: cleared 8 quest objectives, the enemy capital opened | 318 | 182 | 57% | about 126 |
-| Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
+| Earned: cleared 8 quest objectives, the enemy capital opened | 326 | 176 | 54% | 126 |
+| Last Stand: a Sanctuary fell and it came to the Pillar | 55 | 1 | **2%** | **439** |
+
+**Re-measured on 2026-09-05 against the 117-row dungeon modifier table.** Issue
+#1286's figures, which this entry first carried, were taken before
+[#1301](https://github.com/sdubois777/Cataclysm/pull/1301) added the missing
+Corrupted Stalker row. That row changes the pool size and so the random draw from
+the first dungeon onward, which moved the earned route from 57% to 54%.
+
+**The Last Stand result did not move at all** -- 54 campaigns to 55, one win
+either way, 440 mean floors to 439. That is worth recording rather than just
+correcting: the near-certainty of the loss does not depend on which modifiers are
+in the pool, because it comes from the floor count and the power multiplier
+rather than from what is inside the dungeon.
 
 ### Why the two are so far apart
 
