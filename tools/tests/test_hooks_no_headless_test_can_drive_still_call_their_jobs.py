@@ -85,6 +85,11 @@ HOOKS = {
             "UCataclysmEnemyModifiers::PhaseStep":
                 "the short teleport a creature carrying the Phasewalker "
                 "enemy modifier makes every few seconds, issue #742",
+            "UCataclysmEnemyModifiers::TimedStep":
+                "the three Demonic enemy modifiers that act on a timer of "
+                "their own -- Infernal Sacrifice eating an ally, Unholy "
+                "Sigils laying a sigil, and Inferno Charge setting off, "
+                "issue #742",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",

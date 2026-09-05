@@ -226,6 +226,18 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// creature carrying both an aura and Phasewalker runs each at its own
 	// rate.
 	UCataclysmEnemyModifiers::PhaseStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND THE THREE DEMONIC MODIFIERS THAT ACT ON A TIMER OF THEIR OWN:
+	// Infernal Sacrifice eating an ally, Unholy Sigils laying a sigil, and
+	// Inferno Charge setting off. Issue #742.
+	//
+	// AN ELEVENTH JOB ON THIS STEP, for the reason every one above gives, and
+	// one call rather than three because all three are the same shape: a
+	// countdown on the creature and something that happens when it reaches
+	// zero. A creature carrying two of them runs each at its own rate.
+	//
+	// IT REFUSES A CORPSE ITSELF, the same as the four above.
+	UCataclysmEnemyModifiers::TimedStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

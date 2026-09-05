@@ -64,6 +64,22 @@ enum class ECataclysmStackKind : uint8
 	/** Granted by killing an enemy while holding enough of the class resource. */
 	Carnage				UMETA(DisplayName = "Carnage"),
 
+	/**
+	 * Granted to a PLAYER by a creature carrying the Infernal Brand enemy
+	 * modifier. At five it explodes and every stack is spent.
+	 *
+	 * THE FIRST KIND THAT IS A DEBUFF RATHER THAN A BUFF, and the first held
+	 * by the character it is bad for. Every kind above is something a
+	 * Masochist earns; this is something done to whoever is being hit. The
+	 * counting is identical, which is why it belongs here rather than in a
+	 * second mechanism.
+	 *
+	 * IT IS ALSO WHAT ISSUE #913 IS ABOUT. Ten enchantments and one passive
+	 * node describe multiple stacks of bleed or poison, and the game could not
+	 * express a stacking debuff at all before this.
+	 */
+	InfernalBrand		UMETA(DisplayName = "Infernal Brand"),
+
 	/** How many kinds there are. Not a kind. */
 	Count				UMETA(Hidden)
 };
@@ -203,6 +219,16 @@ public:
 	 * @return whether a stack was granted
 	 */
 	static bool NoteEnemyKilled(AActor* Killer);
+
+	/**
+	 * One more Infernal Brand on whatever was just hit.
+	 *
+	 * @return true when this stack was the fifth, so the caller should
+	 *         explode it. The stacks are spent here, so a caller that
+	 *         ignores the answer loses the explosion rather than repeating
+	 *         it.
+	 */
+	static bool NoteInfernalBrand(UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How many stacks of a kind this character is holding right now.

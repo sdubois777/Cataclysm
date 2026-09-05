@@ -21,6 +21,13 @@ float UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind Kind)
 	// "Killing an enemy ... grants a stack of Carnage for 8 SECONDS."
 	case ECataclysmStackKind::Carnage:			return 8.0f;
 
+	// EIGHT, WHICH IS A JUDGEMENT. The Infernal Brand row states no window at
+	// all -- only that it explodes at five stacks. Eight seconds means a
+	// creature that keeps hitting reaches the explosion and one the player
+	// disengages from loses it, which is what makes the modifier a reason to
+	// break off rather than a timer that always runs out.
+	case ECataclysmStackKind::InfernalBrand:	return 8.0f;
+
 	default:									break;
 	}
 
@@ -37,6 +44,11 @@ int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::SanguineMomentum:	return 5;	// "up to 5 stacks"
 	case ECataclysmStackKind::Bloodlust:		return 5;	// "up to 5 stacks"
 	case ECataclysmStackKind::Carnage:			return 10;	// "up to 10 stacks"
+
+	// FIVE, WHICH THE ROW DOES STATE: "When the brand reaches 5 stacks, it
+	// explodes". The cap and the trigger are the same number here, unlike
+	// every kind above, where the cap is where counting stops.
+	case ECataclysmStackKind::InfernalBrand:	return 5;
 	default:									break;
 	}
 
@@ -152,6 +164,36 @@ bool UCataclysmStacks::NoteHealthCostPaid(
 		ECataclysmStackKind::SanguineMomentum,
 		WindowSecondsFor(ECataclysmStackKind::SanguineMomentum),
 		CapFor(ECataclysmStackKind::SanguineMomentum));
+	return true;
+}
+
+bool UCataclysmStacks::NoteInfernalBrand(
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const ECataclysmStackKind Kind = ECataclysmStackKind::InfernalBrand;
+
+	AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+
+	if (Held(AbilitySystem, Kind) < CapFor(Kind))
+	{
+		return false;
+	}
+
+	// SPENT HERE RATHER THAN BY THE CALLER, which is what the header promises
+	// and what stops the explosion firing on every hit once the fifth stack
+	// has landed. The row says the explosion consumes all stacks.
+	//
+	// CLEARED BY GRANTING A STACK OF ZERO LENGTH, because that is the one way
+	// this mechanism has of forgetting: a window applied when the count is
+	// ASKED FOR rather than when it would expire means a count with no window
+	// left reads as nothing.
+	AbilitySystem->GrantStack(Kind, /*WindowSeconds=*/0.0f, /*Cap=*/0);
+
 	return true;
 }
 

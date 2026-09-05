@@ -542,6 +542,27 @@ public:
 	float SecondsSincePhase = 0.0f;
 
 	/**
+	 * The timers and the sigil the remaining Demonic modifiers keep.
+	 *
+	 * PUBLIC FOR THE REASON THE TWO ABOVE ARE: the rules that read them are
+	 * statics on `UCataclysmEnemyModifiers`, so the arithmetic can be tested
+	 * by passing numbers in rather than by building a fight.
+	 *
+	 * A SIGIL IS A POINT AND A COUNTDOWN RATHER THAN AN ACTOR, because it has
+	 * no art and nothing else in the game needs to find one. Whoever is about
+	 * to die asks whether a friendly caster's sigil covers it.
+	 *
+	 * THE CHARM STAMP IS NEGATIVE UNTIL THE FIRST ONE, so a creature can
+	 * charm immediately rather than waiting out a cooldown it never started.
+	 */
+	float SecondsSinceSacrifice = 0.0f;
+	float SecondsSinceSigil = 0.0f;
+	float SecondsSinceInfernoCharge = 0.0f;
+	float SigilSecondsLeft = 0.0f;
+	FVector SigilCentre = FVector::ZeroVector;
+	float CharmLastAppliedAt = -1.0f;
+
+	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
 	 *
 	 * CALLED LAST BY `ApplyStartingAttributes`, SO THEY WIN. Every write in that

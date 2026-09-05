@@ -7,6 +7,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -1024,6 +1025,310 @@ CATACLYSM_MODIFIER_TEST(FCataclysmHordeLeaderTest,
 	}
 	TestTrue(TEXT("and the ally is carrying it"),
 			 Buffed->HasMatchingGameplayTag(Commander));
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmDemonicModifierRowsTest,
+	"Cataclysm.EnemyModifiers.EveryDemonicModifierNowHasItsEffectBuilt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	const UDataTable* ModifierTable = Table();
+	if (!TestNotNull(TEXT("the enemy modifier table loads"), ModifierTable))
+	{
+		return false;
+	}
+
+	// ALL EIGHT DEMONIC MODIFIERS NOW HAVE AN EFFECT, and these are the row keys
+	// the effects are named against. A row renamed in the design workbook breaks
+	// the effect that reads it, and this is what says so before a play test does.
+	const TCHAR* Built[] = {
+		UCataclysmEnemyModifiers::HellfireAuraRow,
+		UCataclysmEnemyModifiers::AbyssalAuraRow,
+		UCataclysmEnemyModifiers::InfernalBrandRow,
+		UCataclysmEnemyModifiers::BeguilingRow,
+		UCataclysmEnemyModifiers::InfernalSacrificeRow,
+		UCataclysmEnemyModifiers::UnholySigilsRow,
+		UCataclysmEnemyModifiers::SacrificialBondRow,
+		UCataclysmEnemyModifiers::InfernoChargeRow,
+	};
+
+	const TArray<FName> Pool = UCataclysmEnemyModifiers::PoolFor(
+		ModifierTable, FName(TEXT("Demonic")));
+
+	for (const TCHAR* Key : Built)
+	{
+		const FName RowKey(Key);
+		TestNotNull(*FString::Printf(TEXT("%s is a row in the table"), Key),
+					UCataclysmEnemyModifiers::FindRow(ModifierTable, RowKey));
+		TestTrue(*FString::Printf(TEXT("%s is drawable by a Demonic creature"),
+								  Key), Pool.Contains(RowKey));
+	}
+
+	// EIGHT, WHICH IS EVERY DEMONIC MODIFIER THERE IS. If the workbook gains a
+	// ninth, this fails and whoever added it is told to build its effect or say
+	// why not.
+	int32 DemonicRows = 0;
+	for (const FName& Key : Pool)
+	{
+		const FCataclysmEnemyModifierRow* Row =
+			UCataclysmEnemyModifiers::FindRow(ModifierTable, Key);
+		if (Row && Row->CataclysmType.Equals(TEXT("Demonic"),
+											 ESearchCase::IgnoreCase))
+		{
+			++DemonicRows;
+		}
+	}
+
+	TestEqual(TEXT("every Demonic modifier has its effect built"), DemonicRows,
+			  static_cast<int32>(UE_ARRAY_COUNT(Built)));
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmSacrificialBondTest,
+	"Cataclysm.EnemyModifiers.SacrificialBondDividesAHitAmongTheAlliesPresent")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Bonded =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Bonded))
+	{
+		return false;
+	}
+	Bonded->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Bonded->SetHealth(500.0f);
+
+	// A CREATURE WITHOUT THE MODIFIER KEEPS ALL OF IT, whoever is standing by.
+	// Without this the checks below would pass against a rule that halved every
+	// hit in the game.
+	TestEqual(TEXT("a creature without the modifier keeps the whole hit"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 1.0f, 0.001f);
+
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+
+	// AND WITH NOBODY TO SHARE WITH IT STILL KEEPS ALL OF IT, which is what
+	// makes the modifier answerable: pull it away from its pack.
+	TestEqual(TEXT("with nobody nearby it still keeps the whole hit"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 1.0f, 0.001f);
+
+	ACataclysmEnemyCharacter* First =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(200.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("an ally"), First))
+	{
+		return false;
+	}
+	First->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	First->SetHealth(500.0f);
+
+	TestEqual(TEXT("one ally halves what it takes"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.5f, 0.001f);
+
+	ACataclysmEnemyCharacter* Second =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Third =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(400.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a second ally"), Second)
+		|| !TestNotNull(TEXT("a third ally"), Third))
+	{
+		return false;
+	}
+	Second->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Third->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Second->SetHealth(500.0f);
+	Third->SetHealth(500.0f);
+
+	TestEqual(TEXT("three allies leave it a quarter"),
+			  UCataclysmEnemyModifiers::ShareOfDamageKept(Bonded), 0.25f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmUnholySigilTest,
+	"Cataclysm.EnemyModifiers.AnUnholySigilProtectsAlliesStandingInIt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Caster =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Ally =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(200.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a caster"), Caster)
+		|| !TestNotNull(TEXT("an ally"), Ally))
+	{
+		return false;
+	}
+
+	Caster->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Ally->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Caster->SetHealth(500.0f);
+	Ally->SetHealth(500.0f);
+
+	// NOBODY IS PROTECTED BEFORE A SIGIL EXISTS, which is what says the check
+	// below is about the sigil rather than about standing near anybody.
+	TestFalse(TEXT("nobody is protected before a sigil is laid"),
+			  UCataclysmEnemyModifiers::IsProtectedBySigil(Ally));
+
+	Caster->ModifierRows.Add(FName(UCataclysmEnemyModifiers::UnholySigilsRow));
+
+	// TWENTY SECONDS AT A QUARTER OF A SECOND A STEP IS EIGHTY STEPS. Stepping
+	// fewer would prove only that nothing happens before the interval.
+	for (int32 Step = 0; Step < 80; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Caster, 0.25f);
+	}
+
+	TestTrue(TEXT("an ally standing in the sigil is protected"),
+			 UCataclysmEnemyModifiers::IsProtectedBySigil(Ally));
+
+	// AND WALKING OUT OF IT ENDS THE PROTECTION IMMEDIATELY, with nothing to
+	// clear and nothing to expire. That is why the question is asked of whoever
+	// is about to die rather than kept as a flag on them.
+	Ally->SetActorLocation(FVector(5000.0f, 0.0f, 0.0f));
+	TestFalse(TEXT("and stepping out of it ends the protection at once"),
+			  UCataclysmEnemyModifiers::IsProtectedBySigil(Ally));
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalSacrificeTest,
+	"Cataclysm.EnemyModifiers.InfernalSacrificeEatsOneAllyAndHeals")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Eater =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* First =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(200.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Second =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Eater)
+		|| !TestNotNull(TEXT("an ally"), First)
+		|| !TestNotNull(TEXT("a second ally"), Second))
+	{
+		return false;
+	}
+
+	for (ACataclysmEnemyCharacter* Each : {Eater, First, Second})
+	{
+		Each->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Each->SetHealth(500.0f);
+	}
+
+	// SIX SECONDS AT A QUARTER OF A SECOND A STEP IS TWENTY-FOUR STEPS.
+	for (int32 Step = 0; Step < 24; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Eater, 0.25f);
+	}
+
+	// WITHOUT THE MODIFIER NOBODY IS EATEN, however long it is stepped. This is
+	// the control: the check below would otherwise pass against a rule that
+	// killed an ally of every creature in the game.
+	TestFalse(TEXT("a creature without the modifier eats nobody"),
+			  UCataclysmSkillEffects::IsDead(First));
+	TestFalse(TEXT("nor the second ally"),
+			  UCataclysmSkillEffects::IsDead(Second));
+
+	Eater->ModifierRows.Add(
+		FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+	Eater->SecondsSinceSacrifice = 0.0f;
+
+	for (int32 Step = 0; Step < 24; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Eater, 0.25f);
+	}
+
+	// ONE AT A TIME, NOT THE WHOLE PACK. A creature that ate everything at once
+	// would replace the fight rather than change it.
+	const int32 Eaten =
+		(UCataclysmSkillEffects::IsDead(First) ? 1 : 0)
+		+ (UCataclysmSkillEffects::IsDead(Second) ? 1 : 0);
+
+	TestEqual(TEXT("exactly one ally is sacrificed in one interval"), Eaten, 1);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernoChargeTest,
+	"Cataclysm.EnemyModifiers.InfernoChargeSetsOffAtSomethingItCanReach")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Charger =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Charger))
+	{
+		return false;
+	}
+	Charger->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Charger->SetHealth(500.0f);
+
+	ACataclysmPlayerCharacter* Quarry = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("somebody to charge"), Quarry))
+	{
+		return false;
+	}
+	Quarry->SetActorLocation(FVector(900.0f, 0.0f, 0.0f));
+
+	// TWELVE SECONDS AT A QUARTER OF A SECOND A STEP IS FORTY-EIGHT STEPS.
+	// Without the modifier the creature never charges, which is the control.
+	for (int32 Step = 0; Step < 48; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Charger, 0.25f);
+	}
+
+	TestFalse(TEXT("a creature without the modifier does not charge"),
+			  Charger->IsCharging());
+
+	Charger->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernoChargeRow));
+	Charger->SecondsSinceInfernoCharge = 0.0f;
+
+	for (int32 Step = 0; Step < 48; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Charger, 0.25f);
+	}
+
+	TestTrue(TEXT("and one carrying it charges"), Charger->IsCharging());
 
 	return true;
 }

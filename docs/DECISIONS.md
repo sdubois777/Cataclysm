@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The remaining six Demonic enemy modifiers, and a debuff that stacks
+
+The last six of the eight Demonic modifiers, built in one change. Every one of
+them needed a rule or a number no data row states, and the project owner decided
+each on 2026-09-05.
+
+### A debuff can stack now, which issue #913 was about
+
+`ECataclysmStackKind` gains `InfernalBrand`. It is **the first kind that is a
+debuff rather than a buff**, and the first held by the character it is bad for:
+every kind above it is something a Masochist earns.
+
+The counting is identical to the three that existed, which is why it belongs in
+that mechanism rather than in a second one. Issue #913 records ten enchantments
+and one passive node describing multiple stacks of bleed or poison, none of which
+could be expressed before this.
+
+### Infernal Brand
+
+**Five times the creature's own attack damage at five stacks**, decided by the
+project owner. The row says only "a large amount of damage". One hit's worth
+banked per stack is a figure a player can reason about, and reading it off the
+creature means a Herald's brand is a Herald's brand without a number per
+difficulty tier.
+
+**Eight seconds is a judgement.** The row states no window at all. Eight seconds
+means a creature that keeps hitting reaches the explosion and one the player
+disengages from loses it, which is what makes it a reason to break off.
+
+### Beguiling
+
+**The ten second cooldown is the project owner's addition and it is what stops
+the modifier being permanent.** The charm triggers on the creature TAKING damage,
+so without one a player attacking at any reasonable speed would re-apply it
+before it expired and never be out of it. The row states no cooldown.
+
+**Direct damage only, which the row does say.** Area damage still lands, the same
+exception evasion already has, so a charmed player has an answer and it is the
+answer this game already teaches.
+
+**IT ASKS WHETHER THE CREATURE BEING HIT CARRIES BEGUILING, NOT WHICH CREATURE
+APPLIED THE CHARM.** So a player charmed by one Beguiling creature also deals no
+direct damage to a second one standing beside it. That is a simplification worth
+stating: remembering a source per debuff is not something this project does
+anywhere, and the alternative was building that first.
+
+**It needed a status effect that did not exist.** A Beguiling row was added to the
+Debuffs sheet of `docs/All_Things_Cataclysm.xlsx` with the two second duration
+the modifier states, and the gameplay tags regenerated.
+
+### Infernal Sacrifice
+
+**One ally every six seconds, healing a quarter of its own maximum health.** The
+row states no healing, no damage and no interval.
+
+**One at a time rather than all of them.** A creature that ate its whole pack at
+once would remove the fight the player was having and replace it with a different
+one, with nothing to react to in between. One every six seconds is a decision the
+player can answer by killing the pack first or by killing this creature faster.
+
+**The damage buff is Commander**, which is the buff this game has for "hits
+harder and moves faster", rather than inventing a second one meaning the same
+thing.
+
+### Unholy Sigils
+
+**Twelve metres, eight seconds, every twenty.** "Large" is the only figure the row
+gives, so the sigil is twice an aura's reach.
+
+**It lasts and then it does not, which is what makes it answerable.** A permanent
+sigil would mean a pack that cannot be killed at all; eight seconds in twenty
+means the player waits it out or kills the caster.
+
+**A sigil is a point and a countdown rather than an actor**, because it has no art
+and nothing else needs to find one. **Whoever is about to die asks whether a
+friendly caster's sigil covers it**, rather than the sigil marking everyone
+inside — so a creature that walks out is killable on the next blow, with nothing
+to clear and nothing to expire.
+
+### Sacrificial Bond
+
+**Divided evenly between the creature and its allies**, reading the row as
+written: one ally halves what it takes, three leave it a quarter.
+
+**Nobody nearby means it keeps all of it**, which is what makes the modifier
+answerable: pull it away from its pack, or kill the pack first.
+
+### Inferno Charge
+
+**It reuses the charge every creature already has.** The project owner chose that
+on 2026-09-05 over writing a second one. `ACataclysmEnemyCharacter::BeginCharge`
+is on the base class and the Hellhound's own charge goes through it, so the lane,
+the damage, the shove and the telegraph are one implementation a player has
+already learned to read.
+
+The Hellhound is already "an aggressive charger leaving fire trails", so a second
+charge would have been two similar attacks a player could not tell apart.
+
+**The two second channel is the row's own figure.** The speed, the width, the
+damage share and the twelve second interval are judgements.
+
+### Where the modifiers stand
+
+**All eight Demonic modifiers and all ten Generic ones now do something**, which
+is every modifier a Demonic creature can draw. The other 61 rows belong to
+Cataclysms this game has no creatures for yet.
+
 ## 2026-09-05 — The ten Generic enemy modifiers all do something, and Abyssal Aura works
 
 Six modifiers built in one change rather than one at a time. The project owner
