@@ -161,3 +161,32 @@ TArray<FName> UCataclysmCityUpgradeMapping::AllRowNames()
 
 	return Table ? Table->GetRowNames() : TArray<FName>();
 }
+
+namespace
+{
+	/** The table row, or null. Shared by the two readers below. */
+	const FCataclysmCityUpgradeRow* FindCityUpgradeRow(FName RowName)
+	{
+		const UDataTable* Table =
+			UCataclysmCityUpgradeMapping::LoadGeneratedTable();
+
+		return Table ? Table->FindRow<FCataclysmCityUpgradeRow>(
+						   RowName, TEXT("CityUpgradeRow"),
+						   /* bWarnIfMissing */ false)
+					 : nullptr;
+	}
+}
+
+FString UCataclysmCityUpgradeMapping::EffectTextFor(FName RowName)
+{
+	const FCataclysmCityUpgradeRow* Row = FindCityUpgradeRow(RowName);
+
+	return Row ? Row->Effect : FString();
+}
+
+FString UCataclysmCityUpgradeMapping::BranchFor(FName RowName)
+{
+	const FCataclysmCityUpgradeRow* Row = FindCityUpgradeRow(RowName);
+
+	return Row ? Row->Branch : FString();
+}

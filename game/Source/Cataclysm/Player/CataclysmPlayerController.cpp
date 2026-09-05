@@ -5,6 +5,7 @@
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
 #include "Interface/CataclysmCharacterSheetWidget.h"
+#include "Interface/CataclysmCityScreenWidget.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
@@ -754,6 +755,61 @@ void ACataclysmPlayerController::ToggleCharacterSheet()
 	// resistance rows.
 	CharacterSheetScreen->Refresh();
 	CharacterSheetScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::ToggleCityScreen(int32 CityId)
+{
+	if (!CityScreen)
+	{
+		UClass* ScreenClass = CityScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no city screen to open: %s could not be "
+						"loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *CityScreenClass.ToString());
+			return;
+		}
+
+		CityScreen = CreateWidget<UCataclysmCityScreenWidget>(this, ScreenClass);
+		if (!CityScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The city screen could not be created, so the command "
+						"that opens it does nothing."));
+			return;
+		}
+	}
+
+	// A SECOND CLICK ON THE SAME CITY CLOSES IT; A CLICK ON A DIFFERENT ONE
+	// SWITCHES. Clicking another city on the empire overview means "show me that
+	// one" and never "close this", which is the whole reason this takes a city
+	// where the other screens take nothing.
+	if (CityScreen->IsInViewport())
+	{
+		const bool bSameCity = CityScreen->ShownCityId() == CityId;
+
+		CityScreen->RemoveFromParent();
+
+		// THE SAME INPUT MODE AS CLOSING THE CHARACTER SHEET, and for the reason
+		// issue #1015 recorded: setting `FInputModeGameOnly` here would leave
+		// the player unable to move after closing the screen.
+		ApplyPlayingInputMode();
+
+		if (bSameCity)
+		{
+			return;
+		}
+	}
+
+	ApplyPlayingInputMode();
+
+	// `SetCity` REFRESHES, so nothing here needs to. Every figure on it can have
+	// moved since it was last closed: days passed, a dungeon landed, or the city
+	// fell.
+	CityScreen->SetCity(CityId);
+	CityScreen->AddToViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const

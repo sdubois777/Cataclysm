@@ -87,4 +87,23 @@ public:
 
 	/** Every row name in the generated table, in table order. */
 	static TArray<FName> AllRowNames();
+
+	/**
+	 * What the upgrade does, in the words the design workbook uses.
+	 *
+	 * READ FROM THE TABLE RATHER THAN WRITTEN HERE, so a screen shows the
+	 * sentence a designer wrote and this file never becomes a second place where
+	 * upgrades are described. Empty when the table is missing or holds no such
+	 * row.
+	 *
+	 * IT IS ALSO TIER 1'S RAW CELL. The sheet's `Tier 1` column is this
+	 * sentence; see `FCataclysmCityUpgradeRow::Effect`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString EffectTextFor(FName RowName);
+
+	/** Which branch the upgrade belongs to: Architect, Explorer, Treasurer or
+	 *  Artisan. Empty for the one whose branch is undecided. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString BranchFor(FName RowName);
 };

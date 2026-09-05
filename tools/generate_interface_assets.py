@@ -10,6 +10,8 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_PassiveTree         the passive class tree, issue #50
     WBP_EmpireMap           the empire overview, issue #1087
     WBP_CharacterSheet      the character sheet, issues #1233 and #50
+    WBP_CityScreen          one city: what it is worth, what is standing on it,
+                            and what it can build, issue #42
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -57,6 +59,8 @@ EMPIRE_PARENT = "CataclysmEmpireMapWidget"
 EMPIRE_ASSET = "WBP_EmpireMap"
 SHEET_PARENT = "CataclysmCharacterSheetWidget"
 SHEET_ASSET = "WBP_CharacterSheet"
+CITY_PARENT = "CataclysmCityScreenWidget"
+CITY_ASSET = "WBP_CityScreen"
 
 # --- the little colour there is ----------------------------------------------
 # THE SAME NEARLY-BLACK PANEL THE INVENTORY SCREEN USES, from
@@ -421,6 +425,65 @@ def make_character_sheet():
     log("created {}/{}".format(INTERFACE_DIR, SHEET_ASSET))
 
 
+def make_city_screen():
+    parent = parent_class(CITY_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CITY_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CITY_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CITY_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CITY_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "City", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    slots = add(blueprint, unreal.TextBlock, "SlotsLabel", "Body")
+    set_text(slots, "", size=18)
+
+    # ONE BUTTON PER UPGRADE THE CITY CAN BUY. A wrap box rather than a
+    # horizontal one, for the reason the character sheet's attribute list is
+    # one: how many buttons there are changes with what the city already has,
+    # and a horizontal box would squeeze them rather than starting a second row.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME. UCataclysmCityScreenWidget
+    # puts one copy of WBP_ChoiceButton in it per buyable upgrade, because which
+    # upgrades those are comes from game/Data/CityUpgrades.csv and from what the
+    # city has already spent rather than from this layout.
+    add(blueprint, unreal.WrapBox, "OfferBox", "Body")
+
+    # THE DUNGEONS STANDING ON THE CITY, WHAT IT HAS BOUGHT, AND THE FOURTEEN
+    # UPGRADES THAT DO NOTHING YET. A scroll box, because those three lists
+    # together do not fit a window at a readable size, and `fill_remaining_height`
+    # is what makes it stop at the space available.
+    detail = add(blueprint, unreal.ScrollBox, "DetailBox", "Body")
+    fill_remaining_height(detail)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CITY_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CITY_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -429,6 +492,7 @@ def main():
     make_passive_tree()
     make_empire_map()
     make_character_sheet()
+    make_city_screen()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

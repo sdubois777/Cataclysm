@@ -3389,6 +3389,30 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances
 // The character sheet, issues #1233 and #50
 // ---------------------------------------------------------------------------
 
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityScreen(
+	TEXT("Cataclysm.CityScreen"),
+	TEXT("Open or close one city's screen: Cataclysm.CityScreen <cityId>. What "
+		 "the city is worth, what is standing on it, and what it can build. "
+		 "Clicking a city on Cataclysm.EmpireMap opens the same screen. It has "
+		 "no key of its own."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(
+					World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there "
+							"is nothing to open a screen on."));
+				return;
+			}
+
+			const int32 CityId = Args.Num() >= 1 ? FCString::Atoi(*Args[0]) : 0;
+
+			Controller->ToggleCityScreen(CityId);
+		}));
+
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
 	TEXT("Cataclysm.CharacterSheet"),
 	TEXT("Open or close the character sheet: every stat the character has, and "
