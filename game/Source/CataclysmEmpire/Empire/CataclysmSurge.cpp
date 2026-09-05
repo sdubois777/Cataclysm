@@ -159,8 +159,34 @@ void UCataclysmSurgeScheduler::RecordSurge(int32 Day, bool bFromCityFall)
 // The wave
 // ---------------------------------------------------------------------------
 
+int32 UCataclysmSurgeScheduler::RoomLeftOn(
+	const FCataclysmCity& City, const TArray<int32>& DungeonsPerCity)
+{
+	// NO CAP MEANS NO LIMIT. A city that never bought the upgrade carries zero
+	// for the effect, and zero here is "no cap" rather than "no room" -- reading
+	// it the other way would stop every wave landing anywhere at all.
+	const float Cap =
+		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonCap);
+
+	if (Cap <= 0.0f)
+	{
+		return MAX_int32;
+	}
+
+	// AND NEITHER DOES A CALLER THAT DID NOT SAY. `UCataclysmEmpireRun` owns the
+	// dungeons; this class deliberately does not, and a test that rolls a wave
+	// straight off a map has none to count.
+	if (!DungeonsPerCity.IsValidIndex(City.CityId))
+	{
+		return MAX_int32;
+	}
+
+	return FMath::Max(0, FMath::RoundToInt(Cap) - DungeonsPerCity[City.CityId]);
+}
+
 TArray<int32> UCataclysmSurgeScheduler::PickTargets(
-	const UCataclysmEmpireMap& Map, int32 Count, FRandomStream& Stream) const
+	const UCataclysmEmpireMap& Map, int32 Count, FRandomStream& Stream,
+	const TArray<int32>& DungeonsPerCity) const
 {
 	TArray<int32> Landed;
 
@@ -182,6 +208,12 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 	TArray<int32> Candidates;
 	TArray<float> Weights;
 
+	// HOW MANY MORE EACH CANDIDATE WILL ACCEPT, counted down as the wave is
+	// built. A city with no dungeon cap carries `MAX_int32` and is never
+	// removed, which is what makes a run with no caps roll exactly what it
+	// rolled before this existed.
+	TArray<int32> Room;
+
 	float Total = 0.0f;
 	for (const int32 CityId : Exposed)
 	{
@@ -192,16 +224,24 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 			continue;
 		}
 
+		// A CITY ALREADY AT ITS CAP IS NOT A CANDIDATE AT ALL.
+		const int32 Left = RoomLeftOn(*City, DungeonsPerCity);
+		if (Left <= 0)
+		{
+			continue;
+		}
+
 		Candidates.Add(CityId);
 		Weights.Add(Weight);
+		Room.Add(Left);
 		Total += Weight;
 	}
 
 	if (Candidates.IsEmpty() || Total <= 0.0f)
 	{
-		// EVERY EXPOSED CITY IS WEIGHTED AT NOTHING. The only tier that is, is
-		// the Pillar, so this cannot happen on a built map; it is here because
-		// dividing by it would be worse than answering nothing.
+		// NOTHING LEFT TO LAND ON. Either every exposed city is weighted at
+		// nothing -- only the Pillar is, so that cannot happen on a built map --
+		// or every one of them has reached its dungeon cap, which can.
 		return Landed;
 	}
 
@@ -213,18 +253,48 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 		// which is how a wave concentrates rather than spreading evenly.
 		float Roll = Stream.FRand() * Total;
 
-		int32 Chosen = Candidates.Last();
+		int32 Chosen = Candidates.Num() - 1;
 		for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 		{
 			Roll -= Weights[Index];
 			if (Roll <= 0.0f)
 			{
-				Chosen = Candidates[Index];
+				Chosen = Index;
 				break;
 			}
 		}
 
-		Landed.Add(Chosen);
+		Landed.Add(Candidates[Chosen]);
+
+		// AND THAT CITY HAS ONE LESS ROOM. A city one short of its cap can be
+		// chosen twice in one wave, because the roll is with replacement, so
+		// counting down only when the wave is finished would let it go over.
+		//
+		// A CITY WITH NO CAP COUNTS DOWN FROM `MAX_int32` AND NEVER REACHES
+		// ZERO, so nothing below runs for a run that bought no caps and the
+		// draws stay identical to what they were.
+		if (--Room[Chosen] > 0)
+		{
+			continue;
+		}
+
+		// FULL, SO IT STOPS BEING A CANDIDATE AND THE WAVE LANDS ELSEWHERE.
+		// `Total` has to lose its weight with it or every later roll would be
+		// scaled against a total that includes a city it can no longer pick, and
+		// the walk would fall off the end onto whichever city happens to be last.
+		Total -= Weights[Chosen];
+
+		Candidates.RemoveAt(Chosen);
+		Weights.RemoveAt(Chosen);
+		Room.RemoveAt(Chosen);
+
+		if (Candidates.IsEmpty() || Total <= 0.0f)
+		{
+			// EVERY EXPOSED CITY IS FULL. The rest of the wave has nowhere to go
+			// and the wave is short, which is the honest answer rather than
+			// putting dungeons somewhere the design forbids.
+			break;
+		}
 	}
 
 	return Landed;
@@ -252,10 +322,34 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	Dungeon.Floors = FMath::Max(1, Stream.RandRange(Spec.LeastFloors,
 													Spec.MostFloors));
 
+	// AND THEN THE CITY'S OWN UPGRADES MOVE IT. Both are read and the difference
+	// applied once, so a city holding both ends up with the net change rather
+	// than with whichever happened to be checked second.
+	//
+	// AFTER THE ROLL AND NOT INSTEAD OF IT, so the depth a dungeon would have
+	// had is still drawn from the same range with the same draw. Rolling a
+	// different range would change every later roll in the run.
+	const int32 Deeper = FMath::RoundToInt(
+		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsMore));
+
+	const int32 Shallower = FMath::RoundToInt(
+		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsFewer));
+
+	// A MINIMUM OF ONE, which is what "to a minimum of 1" in the sheet says and
+	// what a dungeon with no floors would otherwise be: unwalkable.
+	Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);
+
 	// THE TIMER COMES FROM THE DEPTH AND THEN VARIES. `ResolveDaysFor` is the
 	// day clock's, so a dungeon's timer and a dungeon's walk are set by the same
 	// number; the jitter is what stops two dungeons of one depth coming due on
 	// the same day. See `ResolveJitter`.
+	//
+	// SO THE FLOOR UPGRADES MOVE THE TIMER TOO, and that is the point rather
+	// than a side effect. One floor costs exactly one day, which
+	// `docs/Cataclysm_GDD_v2.md` states and `CLAUDE.md` fixes: a deeper dungeon
+	// is slower to walk, worth more, and slower to bite, and a shallower one is
+	// quicker, poorer, and bites sooner. Adjusting the timer separately would
+	// break the one rule the whole strategy layer rests on.
 	const float Base = UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors);
 	const float Jitter = 1.0f + Stream.FRandRange(-ResolveJitter, ResolveJitter);
 
@@ -266,12 +360,12 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 
 TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
-	FRandomStream& Stream) const
+	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity) const
 {
 	TArray<FCataclysmDungeon> Wave;
 
 	const TArray<int32> Targets =
-		PickTargets(Map, DungeonsInNextSurge(), Stream);
+		PickTargets(Map, DungeonsInNextSurge(), Stream, DungeonsPerCity);
 
 	Wave.Reserve(Targets.Num());
 

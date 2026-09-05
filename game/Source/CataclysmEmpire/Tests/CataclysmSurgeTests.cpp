@@ -5,6 +5,8 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmCityUpgrade.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
 
 /**
@@ -677,6 +679,307 @@ bool FCataclysmSurgeBiteScaleTest::RunTest(const FString& Parameters)
 			 OnABulwark.BiteScale() > 1.0f);
 	TestTrue(TEXT("and shallow for a Sanctuary"),
 			 OnASanctuary.BiteScale() < 1.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a city's own upgrades do to the dungeons it receives
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSurgeTest
+{
+	/** Gives a city an upgrade, without going through a purchase. */
+	void Give(UCataclysmEmpireMap& Map, int32 CityId,
+			  ECataclysmCityUpgradeEffect Effect, float Value)
+	{
+		FCataclysmCityUpgrade Upgrade;
+		Upgrade.RowName = FName(*UCataclysmCityUpgradeRules::EffectName(Effect));
+		Upgrade.Effect = Effect;
+		Upgrade.Value = Value;
+
+		Map.AddUpgrade(CityId, Upgrade);
+	}
+
+	/** How many dungeons stand on each city, for `PickTargets`. */
+	TArray<int32> NoDungeonsAnywhere(const UCataclysmEmpireMap& Map)
+	{
+		TArray<int32> Counts;
+		Counts.AddZeroed(Map.Cities.Num());
+		return Counts;
+	}
+
+	/**
+	 * The first `Wanted` cities of one tier.
+	 *
+	 * FOUND RATHER THAN WRITTEN OUT. City identifiers are handed out in lattice
+	 * scan order, row by row, so the rim is not cities 0 to 11 and picking a
+	 * block of low identifiers gives a mixture of tiers. An earlier version of
+	 * the test below assumed cities 0 to 4 were all Outposts; city 2 is a
+	 * Bulwark.
+	 */
+	TArray<int32> CitiesAtTier(const UCataclysmEmpireMap& Map,
+							   ECataclysmCityTier Tier, int32 Wanted)
+	{
+		TArray<int32> Found;
+
+		for (const FCataclysmCity& City : Map.Cities)
+		{
+			if (City.Tier == Tier && Found.Num() < Wanted)
+			{
+				Found.Add(City.CityId);
+			}
+		}
+
+		return Found;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeFloorUpgradeTest,
+	"Cataclysm.Surge.AFloorUpgradeMovesTheDepthAndTheTimerTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeFloorUpgradeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// FIVE CITIES OF THE SAME TIER, so what differs between the dungeons rolled
+	// for them is the upgrade and not the city. Found rather than written out:
+	// city identifiers run in lattice scan order, so a block of low identifiers
+	// is a mixture of tiers.
+	const TArray<int32> Rim =
+		CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 5);
+
+	if (!TestEqual(TEXT("five Outposts were found to compare"), Rim.Num(), 5))
+	{
+		return false;
+	}
+
+	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonFloorsMore, 5.0f);
+	Give(*Map, Rim[2], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 5.0f);
+	Give(*Map, Rim[3], ECataclysmCityUpgradeEffect::DungeonFloorsMore, 5.0f);
+	Give(*Map, Rim[3], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 2.0f);
+
+	// FOUR STREAMS AT THE SAME SEED, so every one of the four dungeons is rolled
+	// from the same two draws and the only difference between them is the
+	// upgrade.
+	FRandomStream A(9001), B(9001), C(9001), D(9001);
+
+	const FCataclysmDungeon Plain =
+		Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, A);
+	const FCataclysmDungeon Deeper =
+		Scheduler->MakeDungeon(1, *Map->Find(Rim[1]), 1, B);
+	const FCataclysmDungeon Shallower =
+		Scheduler->MakeDungeon(2, *Map->Find(Rim[2]), 1, C);
+	const FCataclysmDungeon Both =
+		Scheduler->MakeDungeon(3, *Map->Find(Rim[3]), 1, D);
+
+	// THE CONTROL. If the plain dungeon were already near the floor of one,
+	// taking five off would be clamped and nothing below would mean anything.
+	if (!TestTrue(TEXT("the plain dungeon is deep enough to shorten"),
+				  Plain.Floors > 6))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("five more floors is five more floors"), Deeper.Floors,
+			  Plain.Floors + 5);
+	TestEqual(TEXT("five fewer is five fewer"), Shallower.Floors,
+			  Plain.Floors - 5);
+	TestEqual(TEXT("and holding both gives the difference"), Both.Floors,
+			  Plain.Floors + 3);
+
+	// AND THE TIMER FOLLOWED THE DEPTH. One floor costs exactly one day, so a
+	// deeper dungeon is slower to bite as well as slower to walk. Checked as a
+	// ratio, which also proves the jitter draw was the same for both: a
+	// different jitter would break the ratio even if the depth were right.
+	const float PlainBase = UCataclysmDayClock::ResolveDaysFor(Plain.Floors);
+	const float DeeperBase = UCataclysmDayClock::ResolveDaysFor(Deeper.Floors);
+
+	TestEqual(TEXT("the deeper dungeon's timer grew in step with its depth"),
+			  Deeper.ResolveDays / Plain.ResolveDays, DeeperBase / PlainBase,
+			  0.0001f);
+
+	TestTrue(TEXT("so a deeper dungeon takes longer to bite"),
+			 Deeper.ResolveDays > Plain.ResolveDays);
+	TestTrue(TEXT("and a shallower one bites sooner"),
+			 Shallower.ResolveDays < Plain.ResolveDays);
+
+	// A DUNGEON NEVER HAS FEWER THAN ONE FLOOR, which is what "to a minimum of 1"
+	// in the sheet says and what would otherwise be an unwalkable dungeon.
+	Give(*Map, Rim[4], ECataclysmCityUpgradeEffect::DungeonFloorsFewer, 500.0f);
+
+	FRandomStream E(9001);
+	const FCataclysmDungeon Floored =
+		Scheduler->MakeDungeon(4, *Map->Find(Rim[4]), 1, E);
+
+	TestEqual(TEXT("five hundred fewer floors still leaves one"),
+			  Floored.Floors, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeDungeonCapTest,
+	"Cataclysm.Surge.AFullCityStopsBeingATargetAndTheWaveLandsElsewhere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeDungeonCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// A CAP OF TWO ON CITY 0, WHICH ALREADY HOLDS TWO. It should never be picked
+	// again while it stays full.
+	Give(*Map, 0, ECataclysmCityUpgradeEffect::DungeonCap, 2.0f);
+
+	TArray<int32> Counts = NoDungeonsAnywhere(*Map);
+	Counts[0] = 2;
+
+	FRandomStream Stream(4242);
+	const TArray<int32> Landed = Scheduler->PickTargets(*Map, 40, Stream, Counts);
+
+	// THE WAVE IS STILL THE SIZE IT WAS ASKED FOR. A dungeon that cannot land on
+	// a full city lands on another rather than vanishing, which would let a
+	// capped city absorb wave slots harmlessly.
+	TestEqual(TEXT("all forty dungeons still landed"), Landed.Num(), 40);
+
+	TestFalse(TEXT("and none of them on the full city"), Landed.Contains(0));
+
+	// THE CONTROL. Without the cap the same forty rolls land on city 0 several
+	// times, so its absence above is the cap and not luck.
+	FRandomStream Same(4242);
+	const TArray<int32> Uncapped = Scheduler->PickTargets(*Map, 40, Same);
+
+	TestTrue(TEXT("without the cap that city is picked"), Uncapped.Contains(0));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeCapWithinOneWaveTest,
+	"Cataclysm.Surge.OneWaveCannotPushACityPastItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeCapWithinOneWaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// THE ROLL IS WITH REPLACEMENT, so a city one short of its cap can be chosen
+	// twice in one wave. Counting down only once the wave was finished would let
+	// it go over, and this is the case that catches that.
+	Give(*Map, 0, ECataclysmCityUpgradeEffect::DungeonCap, 3.0f);
+
+	TArray<int32> Counts = NoDungeonsAnywhere(*Map);
+	Counts[0] = 2;
+
+	FRandomStream Stream(77);
+	const TArray<int32> Landed = Scheduler->PickTargets(*Map, 60, Stream, Counts);
+
+	int32 OnTheCappedCity = 0;
+	for (const int32 CityId : Landed)
+	{
+		if (CityId == 0)
+		{
+			++OnTheCappedCity;
+		}
+	}
+
+	TestEqual(TEXT("exactly one more dungeon reaches the capped city"),
+			  OnTheCappedCity, 1);
+
+	TestEqual(TEXT("and the wave is still the size it was asked for"),
+			  Landed.Num(), 60);
+
+	// AND WHEN EVERY EXPOSED CITY IS FULL THE WAVE IS SHORT, which is the honest
+	// answer rather than putting dungeons where the design forbids.
+	//
+	// A FRESH MAP, NOT THE ONE ABOVE. Two upgrades with one effect ADD UP, which
+	// `FCataclysmCity::UpgradeValueFor` does on purpose, so giving the city that
+	// already has a cap of 3 another cap of 1 would give it a cap of 4 and leave
+	// it room rather than filling it. An earlier version of this test did
+	// exactly that and three dungeons landed on it.
+	UCataclysmEmpireMap* FullMap = MakeMap();
+	TArray<int32> FullCounts = NoDungeonsAnywhere(*FullMap);
+
+	for (const int32 CityId : FullMap->ExposedCities())
+	{
+		Give(*FullMap, CityId, ECataclysmCityUpgradeEffect::DungeonCap, 1.0f);
+		FullCounts[CityId] = 1;
+	}
+
+	FRandomStream Full(77);
+	const TArray<int32> Nowhere =
+		Scheduler->PickTargets(*FullMap, 5, Full, FullCounts);
+
+	TestEqual(TEXT("a wave with nowhere to land is empty"), Nowhere.Num(), 0);
+
+	// THE CONTROL. The same map with nothing counted still takes a full wave, so
+	// the emptiness above is the caps and not a broken map.
+	FRandomStream Unlimited(77);
+
+	TestEqual(TEXT("and the same map takes a full wave when nothing is counted"),
+			  Scheduler->PickTargets(*FullMap, 5, Unlimited).Num(), 5);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeCapChangesNothingTest,
+	"Cataclysm.Surge.CountingDungeonsChangesNoWaveWhenNoCityHasACap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeCapChangesNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// NO CITY HAS BOUGHT A CAP, and several already hold dungeons. The counts
+	// must then change nothing at all: a run that has nothing to do with this
+	// upgrade has to roll exactly what it rolled before the upgrade existed.
+	TArray<int32> Counts = NoDungeonsAnywhere(*Map);
+	Counts[0] = 9;
+	Counts[3] = 40;
+	Counts[7] = 1;
+
+	FRandomStream WithCounts(31337);
+	FRandomStream WithoutCounts(31337);
+
+	const TArray<int32> Told =
+		Scheduler->PickTargets(*Map, 50, WithCounts, Counts);
+	const TArray<int32> NotTold =
+		Scheduler->PickTargets(*Map, 50, WithoutCounts);
+
+	if (!TestEqual(TEXT("both waves are the same size"), Told.Num(),
+				   NotTold.Num()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and fifty dungeons landed"), Told.Num(), 50);
+
+	for (int32 Index = 0; Index < Told.Num(); ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("dungeon %d lands on the same city"),
+								   Index),
+				  Told[Index], NotTold[Index]);
+	}
+
+	// THE CONTROL. Two streams left at different states would make the
+	// comparison above meaningless, so the draw counts are checked to match.
+	TestEqual(TEXT("both streams took the same number of draws"),
+			  WithCounts.GetCurrentSeed(), WithoutCounts.GetCurrentSeed());
 
 	return true;
 }

@@ -2,6 +2,66 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — Three Explorer city upgrades, and one that cannot be told apart
+
+Three of the four Explorer city upgrades that shape the dungeons a city receives
+now work, taking city upgrades from ten of twenty-four to thirteen. The fourth is
+refused, and that is a design finding rather than unfinished work. Issue #1266.
+
+### The three that were built
+
+**Two move a dungeon's floor count as it is rolled**, in
+`UCataclysmSurgeScheduler::MakeDungeon`, which already receives the city. Both
+are read and the difference applied once, so a city holding both gets the net
+change. A minimum of one floor, which the sheet states.
+
+**The timer moves with the floor count and that is the point.** One floor costs
+exactly one day — `docs/Cataclysm_GDD_v2.md` states it and `CLAUDE.md` fixes it —
+and the resolve timer is `10 + Floors x 1.6`. So a deeper dungeon is slower to
+walk, worth more, and slower to bite; a shallower one is quicker, poorer, and
+bites sooner. Adjusting the timer separately would break the rule the whole
+strategy layer rests on.
+
+**The dungeon cap takes a full city out of the target list**, so the wave lands
+elsewhere. The alternative — dropping the dungeon after the roll — was rejected:
+"There can be no more than 15 dungeons on this city" says nothing about where the
+dungeon goes instead, and making it vanish would let a capped city absorb wave
+slots harmlessly, which is a far stronger upgrade than the sentence describes.
+
+**The cap is enforced while the wave is built, not only when candidates are
+chosen**, because the roll is with replacement: a city one short of its cap could
+otherwise be chosen twice in one wave and end over it.
+
+**The number of random draws is one per dungeon whatever the caps are**, so a run
+in which nothing bought a cap rolls exactly what it rolled before. Anything that
+took an extra draw would shift every later roll and change runs that have nothing
+to do with the upgrade.
+
+**The surge scheduler still does not own the dungeons.**
+`UCataclysmEmpireRun::FireSurge` counts them per city and passes the counts in.
+The parameter defaults to empty, which means no cap is applied, so a test that
+rolls a wave straight off a bare map still works.
+
+### The fourth cannot be told apart from another upgrade
+
+`Explorer_Dungeons_here_take_4_less_days_to_beat` says "Dungeons here take 4 less
+days to beat, to a minimum of 1". **Days to beat is the time to walk the dungeon,
+and one floor costs exactly one day, so four fewer days to beat is four fewer
+floors.** `Explorer_Dungeons_here_have_5_fewer_floors_to_a` already does that,
+and does five.
+
+The two are mechanically identical and one is strictly worse. There is no reading
+that separates them while the one-floor-one-day rule holds, and that rule is
+fixed by design rather than open. So the upgrade is recorded as not built and
+refused at purchase, rather than shipped as a weaker copy of its neighbour.
+**It needs a design decision, not code.** Issue #1266.
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`,
+`CataclysmEmpireRun.cpp` and `CataclysmCityUpgrade.cpp`. **No design number
+changed.**
+
+---
+
 ## 2026-09-05 — The city screen, and what it shows about unfinished work
 
 Clicking a city on the empire overview wrote "There is nothing to do at a city

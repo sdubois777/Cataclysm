@@ -204,13 +204,22 @@ by `git add` with no error and no warning. Guarded by
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.
   A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a
-  slot, and **ten of the 24 upgrades in `game/Data/CityUpgrades.csv` do
+  slot, and **thirteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
   something**: the ten Architect ones, which raise a city's maxima, restore its
   defence and population, resist what a dungeon takes, repair it on a schedule,
-  and disperse the dungeons standing on it. The other fourteen are refused at
-  purchase rather than sold, because each waits on a system that does not exist
-  — a dungeon sub-type roll, a dungeon that grants rewards, gold, or an upgrade
-  tier above one. `Cataclysm.CityUpgrades` lists what a city can buy and marks
+  and disperse the dungeons standing on it; and three Explorer ones that shape
+  the dungeons a city receives. Those three are applied by
+  `UCataclysmSurgeScheduler`: two move a dungeon's floor count as it is rolled,
+  and the third stops a city being a target once it holds its cap of dungeons,
+  so the wave lands elsewhere rather than the dungeon vanishing. **Because one
+  floor costs exactly one day, the two floor upgrades move the resolve timer
+  with the floor count** — a deeper dungeon is slower to walk, worth more, and
+  slower to bite. The other eleven are refused at purchase rather than sold,
+  because each waits on a system that does not exist — a dungeon sub-type roll,
+  a dungeon that grants rewards, gold, or an upgrade tier above one — or, in one
+  case, on a decision (issue
+  [#1266](https://github.com/sdubois777/Cataclysm/issues/1266)).
+  `Cataclysm.CityUpgrades` lists what a city can buy and marks
   the ones that do nothing yet; `Cataclysm.BuyCityUpgrade` spends the slot. It is
   free and immediate, because no cost and no build time is designed (issue
   [#1264](https://github.com/sdubois777/Cataclysm/issues/1264)).
@@ -225,9 +234,10 @@ by `git add` with no error and no warning. Guarded by
   **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
   the city is worth, the dungeons standing on it soonest to bite first, what it
   has already built, and one button per upgrade it can still buy; pressing one
-  spends a slot. The fourteen upgrades whose effect is not built are shown in a
+  spends a slot. The eleven upgrades whose effect is not built are shown in a
   section of their own with the reason beside each, rather than hidden, so the
-  game does not look as though it has ten city upgrades rather than twenty-four.
+  game does not look as though it has thirteen city upgrades rather than
+  twenty-four.
   `UCataclysmCityScreenLayout` decides every word, for the reason
   `UCataclysmEmpireMapLayout` exists. `Cataclysm.CityScreen <cityId>` opens the
   same screen without the map (issue
@@ -254,7 +264,7 @@ by `git add` with no error and no warning. Guarded by
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
   upgrade tree is still only the Python model in `sim/` (issue
-  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **14 of the 24 city
+  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **11 of the 24 city
   upgrades are refused** because their effect is not built (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in
   `sim/` still has no city upgrade system at all, so Heretic's two slots instead

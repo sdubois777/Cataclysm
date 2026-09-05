@@ -114,8 +114,24 @@ TArray<FCataclysmDayReport> UCataclysmEmpireRun::AdvanceDays(int32 Days)
 void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 									FCataclysmDayReport& OutReport)
 {
+	// HOW MANY DUNGEONS EACH CITY ALREADY HOLDS, because the surge scheduler
+	// needs it for the dungeon cap upgrade and does not own the dungeons. Passed
+	// in rather than reached for: `UCataclysmSurgeScheduler` is deliberately
+	// ignorant of this list, which is what keeps it able to roll a wave against
+	// a bare map in a test.
+	TArray<int32> DungeonsPerCity;
+	DungeonsPerCity.AddZeroed(Map->Cities.Num());
+
+	for (const FCataclysmDungeon& Standing : Dungeons)
+	{
+		if (DungeonsPerCity.IsValidIndex(Standing.CityId))
+		{
+			++DungeonsPerCity[Standing.CityId];
+		}
+	}
+
 	const TArray<FCataclysmDungeon> Wave =
-		Surges->RollWave(*Map, Today, NextDungeonId, Stream);
+		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity);
 
 	for (const FCataclysmDungeon& Dungeon : Wave)
 	{
