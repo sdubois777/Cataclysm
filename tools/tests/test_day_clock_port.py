@@ -66,9 +66,9 @@ def model():
 class TestWhatAFloorCosts:
     def test_a_floor_costs_the_same_number_of_days_in_both(
             self, clock_source, model):
-        """The rule the whole empire layer rests on: depth and time are the same
-        axis, so a dungeon cannot be made cheaper without also being made
-        poorer."""
+        """What a floor costs before anybody has invested. One day is the
+        starting rate on both sides, and neither side lowers it: the game's
+        reductions live on a city, and the model has no upgrades at all."""
         unreal = float(constant(clock_source, "DaysPerFloor", r"[0-9.]+f?")
                        .rstrip("f"))
         assert unreal == pytest.approx(model.days_per_floor), (

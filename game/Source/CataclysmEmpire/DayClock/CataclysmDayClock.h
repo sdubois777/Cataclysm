@@ -105,11 +105,31 @@ public:
 	/**
 	 * How many days one dungeon floor costs. `config.days_per_floor`.
 	 *
-	 * ONE, ALWAYS, AND IT IS A RULE RATHER THAN A TUNABLE. It makes depth and
-	 * time the same axis, so a dungeon can never be made cheaper without also
-	 * being made poorer. `CLAUDE.md` states it as a rule that is easy to get
-	 * wrong, and `sim/README.md` lists it among the ones fixed by design rather
-	 * than swept.
+	 * ONE, AS A STARTING RATE. It is what a floor costs before a player has
+	 * invested in anything, and it is the figure every other number here is
+	 * derived from.
+	 *
+	 * IT IS NOT AN INVARIANT, AND READING IT AS ONE HAS ALREADY COST THIS
+	 * PROJECT A MERGED PULL REQUEST. City upgrades and the empire upgrade tree
+	 * lower the days a dungeon takes to walk **while its floor count stays where
+	 * it is**, which is the point of those upgrades rather than a loophole in
+	 * them. A fifty floor dungeon an invested player runs in two days is still
+	 * fifty floors deep and still worth what that is worth.
+	 *
+	 * WHAT THIS CONSTANT DOES AND DOES NOT DECIDE. `RunDaysFor` below answers
+	 * what a depth costs at this rate and nothing lowers it here, because the
+	 * upgrades live on a city. `FCataclysmDungeon::WalkDays` is where a real
+	 * dungeon's shortened walk is held and `WalkDaysPerFloor` is the rate it
+	 * actually charges. `PartialDay` further down exists precisely because that
+	 * rate can be a fraction of a day.
+	 *
+	 * DEPTH AND REWARD ARE THE SAME AXIS. DEPTH AND TIME ARE NOT, once a player
+	 * has invested in separating them. `CLAUDE.md` states this at length and
+	 * `docs/DECISIONS.md` records the 2026-09-05 correction that established it.
+	 *
+	 * `sim/README.md` lists this among the rules the simulation fixes rather
+	 * than sweeps, which is a fact about the model and not about the design: the
+	 * model has no upgrades, so there is nothing there to lower the rate.
 	 */
 	static constexpr float DaysPerFloor = 1.0f;
 
