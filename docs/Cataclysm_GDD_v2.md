@@ -290,6 +290,18 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
+**Reaching the Last Stand is effectively the end of the run.** It is a fight the player can win in principle and almost never wins in practice, and that is intended rather than a balance problem to be solved. Letting the empire collapse is meant to be close to a loss.
+
+  
+
+**The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost. Measured in the simulation at difficulty tier 1 over 400 campaigns: the Last Stand was reached 54 times and won once, at around 440 floors, against a 57% win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead.
+
+  
+
+**So defending the empire is worth much more than an outcome table suggests.** Preventing a city loss is not merely avoiding damage; it is avoiding a near-certain loss of the run. The number of cities lost is close to a second loss counter.
+
+  
+
 ### **Ending a Run**
 
 **A run ending never costs the character.** There are four ways a run ends:

@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A near-unwinnable Last Stand is the intended design, and its four constants are not to be tuned
+
+[#1286](https://github.com/sdubois777/Cataclysm/issues/1286) measured the Last
+Stand — the fight the player gets when the Cataclysm reaches the Pillar — and
+found it is won about 2% of the time. It asked whether that is intended.
+
+The project owner's answer, verbatim: **"Yes — collapse should be near-fatal"**,
+described as: letting your empire fall is meant to be close to a loss, and the
+measured 2% is the punishment working as designed.
+
+### What was measured
+
+400 campaigns, `No tree` preset, `triage` policy, at difficulty tier 1:
+
+| Route into a Cataclysm boss dungeon | Campaigns | Won | Win rate | Mean floors |
+| :-- | --: | --: | --: | --: |
+| Earned: cleared 8 quest objectives, the enemy capital opened | 318 | 182 | 57% | about 126 |
+| Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
+
+### Why the two are so far apart
+
+`Simulation._open_last_stand` in `sim/cataclysm_sim/engine.py` builds the dungeon
+from a 100 to 150 floor base and then adds a flat 25 floors
+(`last_stand_floor_bonus`), five per dungeon still standing and absorbed
+(`last_stand_floors_per_absorbed`), and four per city already lost
+(`last_stand_floors_per_fallen_city`), then multiplies its power by
+`1 + 0.05` per city lost (`last_stand_power_per_fallen_city`).
+
+**Every one of those terms is large exactly when it fires**, because a player
+only reaches the Last Stand by having lost cities. The difficulty compounds with
+the ruin that produced it.
+
+### What this settles
+
+**The four constants stay where they are.** `last_stand_floor_bonus`,
+`last_stand_floors_per_absorbed`, `last_stand_floors_per_fallen_city` and
+`last_stand_power_per_fallen_city` in `sim/cataclysm_sim/config.py` are not to be
+tuned towards a fairer fight. The outcome is the design.
+
+**Anyone reading a 2% win rate cold will read it as a balance defect.** It is
+not. This entry exists so that reading is corrected before somebody acts on it,
+and `Simulation._open_last_stand` now says the same thing where the constants are
+applied.
+
+**The finding in [#5](https://github.com/sdubois777/Cataclysm/issues/5) is
+strengthened rather than merely confirmed.** Preventing a city loss is worth far
+more than an outcome table suggests, because it avoids a near-certain loss of the
+run rather than merely avoiding damage. The count of cities lost is close to a
+second loss counter. That is now a deliberate property rather than an accident.
+
+### What was corrected in the documents
+
+`sim/cataclysm_sim/engine.py` described the Last Stand as "Not an instant loss --
+a final dungeon that must be beaten". At a 2% win rate that misleads, and it is
+reworded.
+
+`docs/Cataclysm_GDD_v2.md` did **not** contain the false claim. Its Last Stand
+section described the mechanism accurately and said nothing about how hard the
+fight is. So the change there is an addition rather than a correction: the
+section now states that reaching the Last Stand is effectively the end of the
+run, why it is so lopsided, and what that means for the value of defending.
+
+### What is deliberately not decided here
+
+Whether the same 2% holds at difficulty tiers above 1. The measurement is tier 1
+only, and every term above scales with a run's ruin rather than with the tier, so
+the figure at tier 8 is unknown. Nothing here depends on it: the ruling is that
+collapse should be near-fatal, not that it should be near-fatal by exactly this
+margin.
+
 ## 2026-09-05 — A Generic dungeon modifier is drawn from every pool, and it takes a slot
 
 **Affects:** `sim/cataclysm_sim/modifiers.py` and `sim/cataclysm_sim/engine.py`.
