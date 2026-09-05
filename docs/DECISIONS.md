@@ -2,6 +2,52 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A city upgrade's tier 1 magnitude is published as a number
+
+**The problem.** The `City Upgrades` sheet has four columns — Type, Tier 1,
+Tier 2, Tier 3 — and its `Tier 1` cell is the effect SENTENCE, while Tier 2 and
+Tier 3 are bare numbers. So `game/Data/CityUpgrades.csv` published what tier 2
+would improve a figure to and never published what the figure starts at. An
+upgrade is bought at tier 1 first, so nothing could implement one. Issue #1262.
+
+**Decision.** `game/Data/CityUpgrades.csv` and `FCataclysmCityUpgradeRow` now
+carry `Tier1Kind`, `Tier1Value` and `Tier1IntervalDays`, read out of the effect
+sentence by `parse_tier_one` in `tools/generate_datatables.py`. The kinds are the
+same four the 2026-08-02 entry below defined for tiers 2 and 3, so a reader can
+treat all three tiers alike.
+
+**There is no `Tier1Raw`.** Tiers 2 and 3 carry a raw cell because their parsed
+values are lossy and the source cell is elsewhere. Tier 1's source cell is the
+`Effect` column in the same row, so a raw field would be the same sentence twice
+in all 24 rows.
+
+**A row with no tier ladder at all publishes no tier 1 value.** That is one row,
+the unbranched cleanse. Its sentence states two magnitudes and one of them is the
+word "half", and its only percentage — "lose 50% of their remaining defenses and
+population" — is what the upgrade COSTS rather than what it is worth. Publishing
+0.5 would have said its strength is 50%. The rule is keyed on both tier cells
+being empty rather than on that row, so a second tierless upgrade behaves the
+same way.
+
+**This is a heuristic on prose and is treated as one.** All 24 published values
+are pinned in `tools/tests/test_city_upgrade_tier_one.py`, so rewording a
+sentence in the workbook fails there rather than silently changing what an
+upgrade is worth. Two of the checks compare tier 1 against the tiers that were
+already published — its kind must match tier 2's, and the three values must be
+ordered across the three tiers — so a mis-read has to agree with data it did not
+produce. Three sentences are built to defeat a naive reader and each has a test
+of its own: the interval sentences state the interval before the magnitude, two
+rows end "to a minimum of 1" where that 1 is a floor rather than the strength,
+and the cleanse row above. **A real tier 1 value column in the sheet would still
+be better than reading English**, and would retire the heuristic.
+
+**Affects:** `game/Data/CityUpgrades.csv`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`, `DT_CityUpgrades`. Unblocks the
+city upgrade slots in issue #42. **It changes no design number**; it publishes
+numbers the sheet already stated in English.
+
+---
+
 ## 2026-09-05 — Correction: the stacking added today does not resolve issue #913
 
 **An entry below overstates what was built.** The entry titled "The remaining six

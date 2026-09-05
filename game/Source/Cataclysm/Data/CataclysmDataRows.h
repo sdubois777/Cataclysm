@@ -465,8 +465,38 @@ struct FCataclysmCityUpgradeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	bool IsOneTimeUse = false;
 
+	/**
+	 * What the upgrade does, in words. Also tier 1's raw cell.
+	 *
+	 * THE SOURCE SHEET'S `Tier 1` COLUMN IS THIS SENTENCE. Tiers 2 and 3 are
+	 * bare numbers in columns of their own, so they carry a Raw field; tier 1's
+	 * source is this, which is why there is no Tier1Raw to duplicate it.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade")
 	FString Effect;
+
+	/**
+	 * What the upgrade is worth when first bought, read out of Effect.
+	 *
+	 * WITHOUT THESE THREE, AN UPGRADE'S STARTING MAGNITUDE WAS UNREADABLE. The
+	 * sheet publishes what tier 2 and tier 3 improve a number to and never
+	 * published what the number starts at, because tier 1 was only ever an
+	 * English sentence. Issue #1262; parse_tier_one in
+	 * tools/generate_datatables.py does the reading.
+	 *
+	 * EMPTY ON A ROW WITH NO TIER LADDER AT ALL, which today is the one
+	 * unbranched upgrade. Its sentence states two magnitudes, one of them the
+	 * word "half", so no single number describes it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 1")
+	FString Tier1Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 1")
+	float Tier1Value = 0.0f;
+
+	/** Only meaningful when Tier1Kind is IntervalPercent. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 1")
+	float Tier1IntervalDays = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 2")
 	FString Tier2Raw;
