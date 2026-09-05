@@ -347,6 +347,19 @@ public:
 	 * EditInstanceOnly, LIKE RarityStep AND FOR ITS REASON. Which modifiers a
 	 * creature carries is the encounter's business. A list baked into the Brute
 	 * Blueprint would be a class-wide answer to a per-encounter question.
+	 *
+	 * **IT IS FILLED AUTOMATICALLY NOW.** `SetRarityStep` tops this list up to
+	 * the count the creature's rung carries, drawing from its own Cataclysm's
+	 * column and the Generic one. Issue #742. So a creature spawned by any
+	 * spawner arrives carrying the right number without anybody typing one, and
+	 * the field is left editable for the one thing a draw cannot do: put a
+	 * NAMED modifier on a creature, which is how a specific encounter is built
+	 * and how a test asks for one modifier in particular.
+	 *
+	 * ANYTHING TYPED IS KEPT AND THE DRAW TOPS UP AROUND IT, rather than being
+	 * replaced. Two typed onto a Herald leaves one to draw. More typed than the
+	 * rung carries are all kept, because deleting what somebody deliberately
+	 * asked for is worse than a creature carrying one modifier too many.
 	 */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TArray<FName> ModifierRows;
@@ -458,6 +471,46 @@ public:
 	 * typed inline so that nobody reads it as a designed number.
 	 */
 	static constexpr int32 DeathDrawSalt = 0x5EAD;
+
+	/**
+	 * Keeps the modifier draw off the drop and death streams.
+	 *
+	 * THE SAME REASON THE DEATH SALT ABOVE EXISTS. All three seed from this
+	 * creature's identity and the world clock, so without a salt each two draws
+	 * made in the same frame would run the same stream and the modifiers a
+	 * creature carried would be decided by the same numbers as the way it fell
+	 * over. The value itself means nothing.
+	 */
+	static constexpr int32 ModifierDrawSalt = 0x30D1;
+
+	/**
+	 * Tops `ModifierRows` up to the count this creature's rung carries.
+	 *
+	 * CALLED FROM `SetRarityStep`, WHICH IS THE ONLY PLACE A RUNG IS SET and is
+	 * already the place the stat block is re-applied for the same reason: a
+	 * spawner sets these on the lines after `SpawnActor` in whatever order suits
+	 * it, and the order must not matter.
+	 *
+	 * SAFE TO CALL TWICE, and it has to be, because a spawner may set the rung
+	 * more than once. It only ever adds up to the shortfall, so a second call
+	 * with the same rung adds nothing and a call raising the rung adds the
+	 * difference.
+	 */
+	void FillModifiersForRarity();
+
+	/**
+	 * The seed to draw modifiers from, for a test that needs the same draw
+	 * twice.
+	 *
+	 * WHY A SEAM AT ALL. The ordinary seed mixes this creature's identity with
+	 * the world clock, so a test cannot ask for a particular draw and cannot
+	 * repeat one. Zero means nothing was said and the ordinary seed is used.
+	 *
+	 * THE SAME TRAP THE RARITY ROLL HAS. Seeding from an object identity makes
+	 * a result depend on how many objects were made before it, so a test that
+	 * pins nothing can pass alone and fail in a full run.
+	 */
+	void SetModifierSeedForTests(int32 Seed) { ModifierSeedForTests = Seed; }
 
 	/**
 	 * The clip this creature actually died with, once it has.
@@ -1010,6 +1063,9 @@ private:
 
 	/** What one pass of the running charge is worth, as a percent. */
 	float ChargeDamagePercent = 0.0f;
+
+	/** See `SetModifierSeedForTests`. Zero means nothing was said. */
+	int32 ModifierSeedForTests = 0;
 
 	/** How far the running charge shoves what it hits, in centimetres. */
 	float ChargeKnockbackCm = 0.0f;
