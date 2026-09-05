@@ -38,6 +38,20 @@ both to add a field the record had gained:
   maximum health is set by the encounter rather than by its class, and
   without it a restored creature was clamped down to its class default.
 
+`Run_v1.json` was edited a third time on 2026-09-05, for issue #1299:
+
+- `PartialDay`, the time spent that has not yet added up to a whole day. It
+  would have been worth nothing before a dungeon's walk time was separated from
+  its floor count, because until then a floor always cost exactly one day and
+  the carry was zero at every floor boundary. **It holds 0.25 rather than 0 on
+  purpose**: zero is the field's default, so a fixture holding zero would pass
+  whether the field was read or not.
+
+  That a file MISSING the field still loads is covered by
+  `Cataclysm.SaveRecords.AFileWithoutThePartOfADayStillLoads`, which takes this
+  file and removes the line, because no committed fixture can be missing a field
+  its record writes -- `EveryFixtureHoldsEveryFieldItsRecordWrites` forbids it.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

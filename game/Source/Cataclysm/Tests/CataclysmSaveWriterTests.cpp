@@ -12,7 +12,12 @@
 #include "Kismet/GameplayStatics.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -661,6 +666,254 @@ bool FCataclysmSaveWriterTurnedOnByTheGameMode::RunTest(const FString&)
 		UGameplayStatics::DeleteGameInSlot(FirstRun, UserIndex);
 	}
 
+	World->DestroyWorld(false);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The empire's clock reaches the run record, issue #1299
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersTheClock,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheDayAndThePartOfADay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersTheClock::RunTest(const FString&)
+{
+	// THE ARITHMETIC ON ITS OWN, WITH NO WORLD. `RunClockFrom` takes a run
+	// rather than a world exactly so this can be written; the test below covers
+	// the writer finding the run.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	// A RUN THAT HAS NOT BEGUN HAS NO CLOCK, and must not zero a record that
+	// already held a day. That is the state a save written before a campaign
+	// starts is in.
+	Record->Day = 118;
+	Record->PartialDay = 0.5f;
+
+	TestFalse(TEXT("a run that has not begun reads nothing"),
+			  FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+
+	TestEqual(TEXT("and leaves the day it already held"), Record->Day, 118);
+	TestEqual(TEXT("and the part of a day too"), Record->PartialDay, 0.5f,
+			  0.0001f);
+
+	Run->Begin(1);
+
+	TestTrue(TEXT("a run that has begun reads"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+	TestEqual(TEXT("a fresh run is on day zero"), Record->Day, 0);
+	TestEqual(TEXT("with nothing carried"), Record->PartialDay, 0.0f, 0.0001f);
+
+	Run->AdvanceDays(7);
+
+	TestTrue(TEXT("reading it again"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+	TestEqual(TEXT("seven days later it is day seven"), Record->Day, 7);
+
+	// AND NOW THE HALF THAT WOULD OTHERWISE BE LOST. Three quarters of a day is
+	// spent, which is not enough to move the day, so a record keeping only `Day`
+	// would be identical to the one above and three quarters of a day of empire
+	// progress would vanish on every save.
+	const int32 DayBefore = Run->Day();
+	Run->SpendFloorTime(0.75f);
+
+	if (!TestEqual(TEXT("three quarters of a day does not move the day"),
+				   Run->Day(), DayBefore))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("reading a run mid-day"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+
+	TestEqual(TEXT("the day is unchanged"), Record->Day, DayBefore);
+	TestEqual(TEXT("and the part of a day is carried"), Record->PartialDay,
+			  0.75f, 0.0001f);
+
+	// THE CONTROL FOR THE WHOLE TEST. If the gather left `PartialDay` at
+	// whatever the record already held, every figure above would still pass.
+	// Setting it to something else and reading again proves it is written.
+	Record->PartialDay = 0.25f;
+	FCataclysmSaveGather::RunClockFrom(*Run, *Record);
+
+	TestEqual(TEXT("and it is written rather than left alone"),
+			  Record->PartialDay, 0.75f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheEmpiresDay,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheEmpiresDay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheEmpiresDay::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A GAME INSTANCE, BECAUSE THAT IS WHERE A RUN LIVES. A world built by
+	// `UWorld::CreateWorld` has none, which is why the writer finds no run in an
+	// ordinary test. Giving it one is what lets this cover the path a real
+	// session takes rather than only the arithmetic.
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	Run->AdvanceDays(23);
+	Run->SpendFloorTime(0.4f);
+
+	if (!TestEqual(TEXT("the run is on day 23"), Run->Day(), 23))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// READ THE WAY THIS PROJECT WRITES, WHICH IS JSON AND NOT UNREAL'S BINARY
+	// SAVE FORMAT. `UGameplayStatics::LoadGameFromSlot` reads a slot as binary
+	// and, given this project's JSON, walks off into nonsense -- it crashed the
+	// editor with "FName's 1023 max length exceeded. Got 151653754 characters"
+	// the first time this test was run. `FCataclysmSaveStorage::ReadFromSlot` is
+	// the reader that matches the writer.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before issue #1299 the day was never
+	// written at all, so this read back as zero however long the run had gone on.
+	TestEqual(TEXT("the saved record carries the empire's day"), Read->Day, 23);
+
+	TestEqual(TEXT("and the part of a day that had not yet added up to one"),
+			  Read->PartialDay, 0.4f, 0.0001f);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterKeepsTheDayWithNoRun,
+	"Cataclysm.SaveWriter.WithNoEmpireRunASaveKeepsTheDayItAlreadyHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterKeepsTheDayWithNoRun::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	// WHY THIS MATTERS. Pressing Play in a dungeon level to look at a floor is
+	// not a campaign, and a save written then must not stamp a zero over a day a
+	// loaded record already held, nor start a campaign in order to have a day to
+	// write. That was the one good half of the behaviour before issue #1299.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A GAME INSTANCE WITH NO RUN STARTED, which is a different state from no
+	// game instance at all and is the one a player looking at a floor is in.
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	if (!TestNull(TEXT("no run has been begun"), Instance->EmpireRun.Get()))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// READ THE WAY THIS PROJECT WRITES, WHICH IS JSON AND NOT UNREAL'S BINARY
+	// SAVE FORMAT. `UGameplayStatics::LoadGameFromSlot` reads a slot as binary
+	// and, given this project's JSON, walks off into nonsense -- it crashed the
+	// editor with "FName's 1023 max length exceeded. Got 151653754 characters"
+	// the first time this test was run. `FCataclysmSaveStorage::ReadFromSlot` is
+	// the reader that matches the writer.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A FRESH RECORD STARTS AT ZERO, so the figure alone proves little. What
+	// this pins is the line beside it: the writer did not begin a campaign in
+	// order to have a day to write. `EmpireRunFor` is asked not to.
+	TestEqual(TEXT("the day is left at what the record held"), Read->Day, 0);
+	TestNull(TEXT("and no campaign was started to save one"),
+			 Instance->EmpireRun.Get());
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
 	return true;
 }
