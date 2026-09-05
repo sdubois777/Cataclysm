@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — An evaded attack applies nothing it was carrying
+
+**This replaces the narrower rule recorded on 2026-09-04**, in the entry below
+titled "An evaded blow applies no ailment; one armour stopped still does". That
+entry is left in place because it is what was true when it was written, and its
+reasoning about armour is unchanged and still correct. What follows widens it.
+
+### The rule
+
+**If an attack is evaded, no on-hit effect applies, because the hit was
+unsuccessful.** The project owner stated it on 2026-09-05 and named debuffs,
+damage over time and leech directly.
+
+**Armour and resistance are still not the same question.** A blow armour stopped
+dead connected, so everything it carries still arrives. That half of the
+2026-09-04 entry stands: whether a blow LANDED and whether it HURT are different
+questions, and only the first decides what the blow delivers.
+
+### Evasion does not apply to area damage at all
+
+Asked and answered from the code rather than decided here.
+`UCataclysmDamageCalculation::Resolve` rolls evasion only when the hit is not area
+damage — "Evasion. Direct attacks only; area damage lands regardless" — and
+`Cataclysm.Damage.EvasionAvoidsDirectAttacksOnly` pins it: area damage lands in
+full against a target with 100% evasion. The comment beside the evasion cap
+records that this is why the cap can be soft.
+
+So none of what follows can apply to an area skill, and a check for evasion inside
+one would be a check that cannot fire.
+
+### What was already right
+
+| Effect | Why it already did nothing on an evaded blow |
+| :-- | :-- |
+| Life, mana and energy shield leech | `UCataclysmLeech::NoteHit` is paid a share of `DealtToHealth + AbsorbedByShield + AbsorbedByMana`, all zero when evaded. |
+| Retaliation dealt back by the defender | Runs inside the same condition. |
+| A stated burn, a stated stun, the ground-cracking notification the Warhammer's Groundbreaker listens for | Fixed on 2026-09-04 by the entry below. |
+
+### What was still arriving on a target that had dodged
+
+| Effect | What it did |
+| :-- | :-- |
+| A named curse the skill states — Shred, Madness, Cripple, Weaken and the other twenty-three | Applied in full. `UCataclysmStrikeSkill::SwingOnce` laid them on every target in reach, in a loop separate from the one that dealt the blows. |
+| A stated knockback | Shoved the target. |
+| A stated forced movement — haul, drag, pull | Moved the target. |
+| The mana a slot pays on hit | Paid the caster. Its own comment claimed "a swing that was evaded ... returns nothing", which was not true. |
+
+### How the distinction is made
+
+`UCataclysmSkillTemplate::BlowLandedOn` answers per target, backed by a list of
+what evaded that `HitTargets` fills and clears. It exists because `HitTargets`
+returns one summed figure for every target at once, and a caller acting per target
+afterwards has no other way to tell which of them the swing touched.
+
+**It answers TRUE for a target the skill never struck**, and that is the load
+bearing detail. A Support skill deals no damage by design, sends no blow, and so
+is never evaded — so its curse and its shove still land, exactly as before. Three
+rows depend on that: the Greataxe's Burning Wrath, the Spear's Held Fast and the
+Wand's Hex of Cinders. Issue #917 settled on 2026-09-02 that a skill stating an
+ailment applies it whether or not the blow hurt, and this does not walk that back.
+
+### Knockback and forced movement, which the rule did not name
+
+The owner's words were "debuffs and dots and leech". A shove is neither, and issue
+#1247 had been opened asking about it separately. **Both are included**, on the
+reading that a shove is something the blow carries and an unsuccessful hit
+delivers nothing. The comment beside the knockback previously justified not gating
+it on damage — "a Support skill deals no damage by design and can still push" —
+and that reasoning survives untouched, because the gate asks whether the blow
+connected rather than whether it hurt.
+
+### What this does not cover
+
+Nothing applies an ailment from an affix or a gem yet; issue #899 is the eleven
+affixes that would. When one exists it will be an on-hit effect and this rule will
+cover it.
+
+---
+
 ## 2026-09-04 — An evaded blow applies no ailment; one armour stopped still does
 
 ### The question

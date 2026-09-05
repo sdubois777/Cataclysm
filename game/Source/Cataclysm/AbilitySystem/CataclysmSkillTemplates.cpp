@@ -233,9 +233,25 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	// not also reduce the damage of the hit that applied it. The row reads
 	// "damn everything ... for 350% weapon damage, setting it alight and laying
 	// every curse", in that order.
+	//
+	// AND ONLY ON WHAT THE SWING TOUCHED. Issue #1156. The project owner's rule
+	// of 2026-09-05: an evaded attack applies nothing it carries, because the hit
+	// was unsuccessful. A named curse is the clearest case of it -- Shred,
+	// Madness, Cripple and Weaken are what the sentence promises rather than a
+	// side effect -- and until this they were laid on every target in reach
+	// whether the swing connected or not.
+	//
+	// `BlowLandedOn` RATHER THAN A DAMAGE FIGURE, because the two differ in both
+	// directions: a Support skill deals nothing by design and must still curse,
+	// and an evaded blow reports a positive figure. That function answers true
+	// for a target this skill never struck, which is what keeps the first of
+	// those working.
 	for (AActor* Target : Targets)
 	{
-		ApplyNamedEffectsTo(Target);
+		if (BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
 	}
 
 	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one

@@ -28,6 +28,9 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For turning an effect name into its tag, which is what a skill cell writing
+// Effect=Cripple does. Issue #1156.
+#include "AbilitySystem/CataclysmSkillShape.h"
 // For asking whether two actors are on the same side, which is what an aura's
 // ally half is about. Issue #1182.
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -12742,6 +12745,155 @@ bool FCataclysmSkillStatedArcLobsTest::RunTest(const FString& Parameters)
 				 TEXT("and no higher than a quarter of its %.0f cm range"),
 				 Lobbed->Params.RangeCm),
 			 Arcing->ApexHeightCm <= Lobbed->Params.RangeCm * 0.25f + 0.1f);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Everything an evaded blow was still carrying
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillEvadedBlowCarriesNothingTest,
+	"Cataclysm.Skills.AnEvadedBlowCursesNobodyShovesNobodyAndPaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An evaded blow applies nothing it was carrying. Issue #1156.
+ *
+ * THE RULE, from the project owner on 2026-09-05: if an attack is evaded then no
+ * on-hit effect applies, because the hit was unsuccessful. Debuffs, damage over
+ * time and leech were named directly. This test covers the three that were still
+ * arriving on a target that had dodged the swing.
+ *
+ * WHAT EACH ONE WAS DOING. A named curse -- Shred, Madness, Cripple, Weaken --
+ * was laid on every target in reach whether the swing connected or not, and the
+ * curse is what a skill's sentence promises rather than a side effect. A stated
+ * knockback shoved. The mana a slot pays on hit was paid, and the comment beside
+ * that line already claimed "a swing that was evaded returns nothing", which was
+ * not true.
+ *
+ * WHAT WAS ALREADY RIGHT AND IS NOT RETESTED HERE. Leech takes a share of what
+ * actually got through, and retaliation runs in the same branch, so both were
+ * already nothing on an evaded blow. The burn, the stun and the ground-cracking
+ * notification are covered by
+ * `AnEvadedBlowSetsNothingAlightAndOneArmourStoppedStillDoes`.
+ *
+ * EVASION DOES NOT APPLY TO AREA DAMAGE AT ALL, which is why this uses a Strike
+ * rather than an area shape. `UCataclysmDamageCalculation::Resolve` rolls evasion
+ * only for a direct hit, and `Cataclysm.Damage.EvasionAvoidsDirectAttacksOnly`
+ * pins it.
+ *
+ * THE BASIC SLOT, because it is the only one that pays mana on hit -- 6, with a
+ * mana cost of zero -- so the caster's mana moves by the payment alone with no
+ * cost to subtract. It also has no cooldown.
+ *
+ * THE SECOND HALF IS THE CONTROL. A target that armour stops dead takes the same
+ * swing and gets all three, which is what says the skill works and the geometry
+ * reaches: without it, three absences could all mean the swing missed the world.
+ */
+bool FCataclysmSkillEvadedBlowCarriesNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FGameplayTag Cripple =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple"));
+	if (!TestTrue(TEXT("the vocabulary has the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	const FString Carries =
+		TEXT("Radius=20; Angle=360; Knockback=4; EffectDuration=5; Effect=Cripple");
+
+	// -------------------------------------------------------------------
+	// A target that evades everything
+	// -------------------------------------------------------------------
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Nimble(World, FVector(2 * M, 0, 0));
+
+	// FAR ABOVE ANY ROLL. The roll is `FRandRange(0, 100)` compared with `<`, so
+	// evasion of exactly 100 would let a roll of exactly 100 through. Evasion is
+	// deliberately not clamped to its 60% soft cap.
+	Nimble.Set(Combat::GetEvasionAttribute(), 500.0f);
+
+	UCataclysmStrikeSkill* AtNimble = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::BasicAttack, Carries,
+		TEXT("A swing carrying a curse and a shove"));
+	if (!AtNimble)
+	{
+		AddError(TEXT("Could not grant the swing."));
+		return false;
+	}
+
+	// THE SLOT REALLY DOES PAY ON HIT, checked before the assertions that rest on
+	// it. A slot paying zero would make the mana half of this test compare zero
+	// against zero and pass on nothing.
+	const float PaidOnHit = AtNimble->GetManaOnHit();
+	if (!TestTrue(*FString::Printf(TEXT("the Basic slot pays mana on hit: %.1f"),
+								   PaidOnHit),
+				  PaidOnHit > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and costs nothing to use, so nothing is subtracted"),
+		AtNimble->GetManaCost(), 0.0f, 0.01f);
+
+	// SPENT DOWN FIRST, OR THE PAYMENT WOULD BE INVISIBLE. A fighter starts
+	// with a full mana pool and PreAttributeChange clamps mana to its maximum,
+	// so mana paid on hit to a full character changes nothing and both halves
+	// of this test would read the same.
+	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 500.0f);
+
+	const FVector NimbleStood = Nimble.Actor->GetActorLocation();
+	const float CasterManaBefore = Caster.Mana();
+
+	TestTrue(TEXT("the swing goes off"), Activate(Caster, AtNimble));
+
+	TestFalse(TEXT("the evading target carries no curse"),
+		UCataclysmSkillEffects::HasTag(Nimble.Actor, Cripple));
+	TestTrue(TEXT("and was not shoved"),
+		Nimble.Actor->GetActorLocation().Equals(NimbleStood, 1.0f));
+	TestEqual(TEXT("and the caster was paid no mana for it"),
+		Caster.Mana(), CasterManaBefore, 0.01f);
+
+	// -------------------------------------------------------------------
+	// A target that armour protects instead, which is the control
+	// -------------------------------------------------------------------
+
+	FScopedFighter Second(World, FVector(0, 100 * M, 0));
+	FScopedFighter Armoured(World, FVector(2 * M, 100 * M, 0));
+	Armoured.Set(Combat::GetArmorAttribute(), 1000000.0f);
+
+	UCataclysmStrikeSkill* AtArmoured = GrantSkill<UCataclysmStrikeSkill>(
+		Second, ECataclysmAbilitySlot::BasicAttack, Carries,
+		TEXT("The same swing at an armoured target"));
+	if (!AtArmoured)
+	{
+		AddError(TEXT("Could not grant the second swing."));
+		return false;
+	}
+
+	Second.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 500.0f);
+
+	const FVector ArmouredStood = Armoured.Actor->GetActorLocation();
+	const float SecondManaBefore = Second.Mana();
+
+	TestTrue(TEXT("the second swing goes off"), Activate(Second, AtArmoured));
+
+	// ALL THREE ARRIVE, because armour answers whether the blow HURT and the rule
+	// is about whether it LANDED.
+	TestTrue(TEXT("the armoured target is cursed"),
+		UCataclysmSkillEffects::HasTag(Armoured.Actor, Cripple));
+	TestFalse(TEXT("and was shoved"),
+		Armoured.Actor->GetActorLocation().Equals(ArmouredStood, 1.0f));
+	TestEqual(TEXT("and the caster was paid the slot's mana on hit"),
+		Second.Mana(), SecondManaBefore + PaidOnHit, 0.01f);
 
 	return true;
 }

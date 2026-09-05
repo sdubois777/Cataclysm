@@ -908,6 +908,15 @@ FName UCataclysmSkillTemplate::DamageTypeName() const
 	return UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags);
 }
 
+bool UCataclysmSkillTemplate::BlowLandedOn(const AActor* Target) const
+{
+	// ABSENT FROM THE EVADED LIST IS THE ANSWER, AND THAT ORDER IS THE POINT.
+	// See the header: a target this skill never sent a blow at is not in the
+	// list either, and answers "landed" -- which is what keeps a Support skill
+	// dealing no damage able to curse and to shove.
+	return !EvadedLastBlow.Contains(Target);
+}
+
 int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 												  float DurationScale)
 {
@@ -1606,6 +1615,17 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// loop. Empty for every skill that does not pin, which is all but four.
 	TArray<AActor*> Pinned;
 
+	// AND WHATEVER EVADED, FOR THE CALLER TO READ AFTERWARDS. Issue #1156. A
+	// Strike lays its named curses in its own loop after this function returns,
+	// so it needs to know which of the targets the swing actually touched.
+	// Emptied here rather than added to, so it describes this set of blows and
+	// not an older one.
+	EvadedLastBlow.Reset();
+
+	// WHETHER ANYTHING AT ALL CONNECTED, which is what the mana paid on hit
+	// reads at the end. A use that every target evaded pays the caster nothing.
+	bool bAnyLanded = false;
+
 	for (AActor* Target : Targets)
 	{
 		// WHICH SIDE THIS BLOW CAME FROM, ASKED BEFORE IT LANDS. Three Dagger
@@ -1665,6 +1685,16 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// still applies the ailment its row states -- three rows depend on it.
 		// `Dealt` is POSITIVE for an evaded blow, which is this issue.
 		const bool bLanded = !Resolved.bEvaded;
+		if (bLanded)
+		{
+			bAnyLanded = true;
+		}
+		else
+		{
+			// RECORDED FOR THE CALLER, which lays its named curses in a loop of
+			// its own after this function returns. See `BlowLandedOn`.
+			EvadedLastBlow.Add(Target);
+		}
 
 		// A ROW THAT STATES `Burn=1` SETS ITS TARGET ALIGHT WHETHER OR NOT THE
 		// BLOW HURT. Issue #917, settled on 2026-09-02: a skill that states an
@@ -1721,7 +1751,18 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// damage by design and can still push, which is what Forge Stance's
 		// opposite number would be. That is the difference between this and the
 		// burn above.
-		ApplyKnockbackTo(Self, Target);
+		//
+		// BUT NOT ON A BLOW THAT WAS EVADED. Issue #1156. The project owner's
+		// rule of 2026-09-05 is that an evaded attack applies nothing it carries,
+		// because the hit was unsuccessful, and a shove is something the blow
+		// carries. The two statements above still hold together: `bLanded` asks
+		// whether the blow CONNECTED, not whether it hurt, and a skill that sends
+		// no blow at all is never evaded -- so a Support skill dealing zero
+		// damage still pushes exactly as before.
+		if (bLanded)
+		{
+			ApplyKnockbackTo(Self, Target);
+		}
 
 		// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
 		// nothing read it, so no player skill in the game stunned anything.
@@ -1765,7 +1806,11 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// burn. The damage is handed over only because an undesigned knockdown
 		// would weigh it against the target's maximum health, and every row here
 		// states a designed one.
-		if (ApplyForcedMovementTo(Self, Target, Dealt))
+		//
+		// AND NOT ON A BLOW THAT WAS EVADED, for the reason the knockback above
+		// records. A haul, a drag or a pull is something the blow carries, and an
+		// evaded blow carries nothing to its target.
+		if (bLanded && ApplyForcedMovementTo(Self, Target, Dealt))
 		{
 			Pinned.Add(Target);
 		}
@@ -1797,10 +1842,20 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// mechanic is that it is "income for being in a fight rather than a filler
 	// action".
 	//
-	// ONLY WHEN SOMETHING WAS ACTUALLY DEALT, which is what "lands" means. A
-	// swing that was evaded, or that armour and resistance stopped completely,
-	// returns nothing.
-	if (Total > 0.0f)
+	// ONLY WHEN SOMETHING ACTUALLY CONNECTED, which is what "lands" means. This
+	// comment used to claim exactly that and the test beside it did not do it:
+	// `Total` is the sum of what was SENT, so a swing every target evaded
+	// returned mana to the caster. Issue #1156.
+	//
+	// AND A BLOW ARMOUR STOPPED DEAD STILL PAYS, which is the other half of the
+	// same correction. This comment used to say such a swing "returns nothing";
+	// it never did, and under the project owner's rule of 2026-09-05 it should
+	// not -- armour answers whether the blow hurt, and mana on hit asks whether
+	// it landed.
+	//
+	// `bAnyLanded` RATHER THAN A COUNT, because one connected blow out of five
+	// is a hit and the slot pays per use.
+	if (Total > 0.0f && bAnyLanded)
 	{
 		ApplyManaOnHit();
 	}

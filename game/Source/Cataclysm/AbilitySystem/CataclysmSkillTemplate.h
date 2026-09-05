@@ -150,6 +150,21 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float LastHealthCostPercentOfMaximum = -1.0f;
 
+	/**
+	 * The targets that evaded the last set of blows this skill sent.
+	 *
+	 * READ THROUGH `BlowLandedOn`, which is where the reasoning is. Kept as the
+	 * ones that evaded rather than the ones that were struck, so that a target
+	 * this skill never sent a blow at answers "landed" -- which is what keeps a
+	 * Support skill dealing no damage able to curse and to shove.
+	 *
+	 * WEAK POINTERS, because a blow can kill what it struck and the caller reads
+	 * this afterwards. A dead target compares equal to nothing and is simply not
+	 * found, which is the right answer: it is not still evading.
+	 */
+	UPROPERTY()
+	TArray<TWeakObjectPtr<const AActor>> EvadedLastBlow;
+
 	/** Which shape this class implements. Every subclass answers. */
 	virtual ECataclysmSkillShape Shape() const PURE_VIRTUAL(UCataclysmSkillTemplate::Shape, return ECataclysmSkillShape::None;);
 
@@ -549,6 +564,26 @@ protected:
 	 * impossible to evade. Issue #513.
 	 */
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
+
+	/**
+	 * Whether the last blow this skill sent at that target connected.
+	 *
+	 * WHY A CALLER NEEDS TO ASK. Issue #1156. Nothing an attack carries should
+	 * arrive on a target that evaded it, and `HitTargets` returns one summed
+	 * figure covering every target at once -- so a caller doing something per
+	 * target afterwards, which is how `UCataclysmStrikeSkill::SwingOnce` lays
+	 * its named curses, has no other way to tell which of them the swing
+	 * actually touched.
+	 *
+	 * FILLED AND CLEARED BY `HitTargets`, so it always describes the most recent
+	 * set of blows and never an older one.
+	 *
+	 * TRUE FOR A TARGET THAT WAS NEVER STRUCK AT ALL, which is deliberate and is
+	 * what keeps a Support skill working. A skill whose damage is zero by design
+	 * sends no blow, so nothing was evaded, so its curse and its shove still
+	 * land. Only an actual evasion answers false.
+	 */
+	bool BlowLandedOn(const AActor* Target) const;
 
 	/**
 	 * Returns this slot's mana on hit to the caster.
