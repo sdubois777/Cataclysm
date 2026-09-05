@@ -185,6 +185,13 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmEmpireRun.h",
         "CataclysmEmpireRun.cpp",
         "CataclysmEmpireRunTests.cpp",
+        # City upgrades, added 2026-09-05. The readme's empire bullet now
+        # describes them, which is what this test is really checking; the file
+        # names are how it notices something arrived that the bullet does not
+        # mention.
+        "CataclysmCityUpgrade.h",
+        "CataclysmCityUpgrade.cpp",
+        "CataclysmCityUpgradeTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

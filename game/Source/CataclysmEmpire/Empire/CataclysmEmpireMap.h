@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Empire/CataclysmCityUpgrade.h"
 #include "UObject/Object.h"
 #include "CataclysmEmpireMap.generated.h"
 
@@ -142,14 +143,36 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	bool bErased = false;
 
 	/**
-	 * How many upgrade slots have been filled.
+	 * What this city has bought, in the order it bought them.
 	 *
-	 * CARRIED AND READ BY NOTHING, exactly as `world.City.upgrades` is. There is
-	 * no city upgrade system in the game or in the simulation, which is why
-	 * Heretic's 2 slots instead of 3 cannot be measured -- issue #318.
+	 * IT USED TO BE A BARE COUNT that nothing read, exactly as
+	 * `world.City.upgrades` in the simulation still is. A count cannot say which
+	 * upgrades a city has, so it could not refuse a duplicate and no effect
+	 * could be applied from it.
+	 *
+	 * HOW MANY MAY BE HERE is `UCataclysmEmpireMap::UpgradeSlots`, three
+	 * normally and two on Heretic. `UCataclysmEmpireRun::BuyCityUpgrade` is the
+	 * only thing that should add to this, because several upgrades act on the
+	 * dungeons standing on a city and the map does not own those.
+	 *
+	 * A ONE-TIME UPGRADE STAYS IN THE LIST after it has fired. It has spent its
+	 * slot, and removing it would hand the slot back and let it be bought again.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
-	int32 Upgrades = 0;
+	TArray<FCataclysmCityUpgrade> Upgrades;
+
+	/** Whether this city has already bought that upgrade. */
+	bool HasUpgrade(FName RowName) const;
+
+	/**
+	 * The total value of every standing upgrade with that effect.
+	 *
+	 * A SUM RATHER THAN THE FIRST MATCH, because two upgrades with one effect
+	 * should add up. No two rows of the sheet share an effect today, so this
+	 * returns either zero or one upgrade's value in practice; summing is what it
+	 * should do if that ever changes.
+	 */
+	float UpgradeValueFor(ECataclysmCityUpgradeEffect Effect) const;
 
 	/**
 	 * How far out this city sits, which is also its distance from the Pillar.
@@ -222,7 +245,14 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
  *     the design's 20/40/60 floor minimums needs a dungeon runtime, issue #41.
  *   - **It does not fire the Last Stand.** It answers whether the Pillar is
  *     exposed, which is the condition; what happens next is issue #43.
- *   - **It has no city upgrades.** See `FCataclysmCity::Upgrades`.
+ *   - **It does not sell a city upgrade.** It holds what each city has bought
+ *     and applies the standing ones, but buying goes through
+ *     `UCataclysmEmpireRun::BuyCityUpgrade`, because several upgrades act on the
+ *     dungeons standing on a city and this does not own those.
+ *   - **The simulation still has no city upgrades at all.**
+ *     `sim/cataclysm_sim/world.py` carries a bare `upgrades: int` that nothing
+ *     sets or reads, so Heretic's two slots instead of three still cannot be
+ *     measured in a sweep. Issue #318, and this change does not close it.
  *   - **Nothing writes it to a save.** `UCataclysmRunSave` says the empire graph
  *     is deliberately absent because it "has no runtime shape yet". It has one
  *     now, and joining the two is separate work.
@@ -319,6 +349,18 @@ public:
 	/** Which city is the Pillar, or `INDEX_NONE` before `Build` runs. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 PillarId = INDEX_NONE;
+
+	/**
+	 * How many upgrades each city may hold. Three normally, two on Heretic.
+	 *
+	 * ONE NUMBER FOR THE WHOLE MAP rather than one per city, because the design
+	 * gives every city the same count and the only thing that changes it is the
+	 * lethality mode, which belongs to the run. `UCataclysmEmpireRun::Begin` sets
+	 * it from the rung it was given; a map built on its own keeps the ordinary
+	 * three, which is what a test that never mentions Heretic should see.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 UpgradeSlots = UCataclysmCityUpgradeRules::SlotsNormally;
 
 	/**
 	 * Lays out the 25 cities and links their lanes. Discards whatever was here
@@ -448,6 +490,11 @@ public:
 	 * any empire tree reduction. This takes the finished fraction because none
 	 * of those three exist here.
 	 *
+	 * WHAT THIS FOLDS IN ITSELF: the city's own two resistance upgrades. They
+	 * are applied here rather than by the caller because they belong to the city
+	 * and this is the only place a city loses anything, so a second caller
+	 * cannot forget them.
+	 *
 	 * @param DefenceFraction    share of maximum defence to take. Negative is
 	 *                           read as zero; nothing here heals a city.
 	 * @param PopulationFraction share of maximum population to take.
@@ -456,6 +503,39 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool Bite(int32 CityId, float DefenceFraction, float PopulationFraction);
+
+	// ----------------------------------------------------------------------
+	// City upgrades
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Records an upgrade on a city and applies what it does to the city itself.
+	 *
+	 * NOT THE PLACE TO BUY ONE. It makes none of the checks a purchase has to
+	 * make -- it does not look at the slot count, at whether the city has this
+	 * already, or at whether the effect is built.
+	 * `UCataclysmEmpireRun::BuyCityUpgrade` makes all of those and then calls
+	 * this. Buying lives there because several upgrades act on the dungeons
+	 * standing on a city, and this class does not own dungeons.
+	 *
+	 * WHICH EFFECTS ARE APPLIED HERE. The two that raise a maximum and the two
+	 * that restore, because all four change a city's numbers the moment they are
+	 * bought. The two resistances are applied in `Bite` instead, and everything
+	 * that involves a dungeon or a day is the run's.
+	 *
+	 * A RAISED MAXIMUM RAISES CURRENT DEFENCE BY THE SAME AMOUNT, so a city at
+	 * full defence stays at full defence and a damaged one stays short by the
+	 * same absolute figure. Without that, buying "increase max defence by 20%"
+	 * would make an untouched city read as 83% damaged.
+	 *
+	 * @return false only when there is no such city.
+	 */
+	bool AddUpgrade(int32 CityId, const FCataclysmCityUpgrade& Upgrade);
+
+	/** How many upgrade slots that city has left, or zero if it does not
+	 *  exist. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 FreeUpgradeSlots(int32 CityId) const;
 
 	/**
 	 * A city falls: its defence is gone and its lane opens.

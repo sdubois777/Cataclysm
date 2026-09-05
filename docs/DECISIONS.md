@@ -2,6 +2,97 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — City upgrades: free, immediate, and ten of the twenty-four built
+
+A city can now buy an upgrade. `game/Data/CityUpgrades.csv` had 24 rows that
+nothing read; ten of them now do something. The rest are refused rather than
+sold. Issue #42's upgrade slots.
+
+**Free and immediate, decided by the project owner.** The design has five empire
+tree nodes that only make sense if a city upgrade costs gold and takes days to
+build — Public Works, Rapid Renovation, Municipal Bonds, Global Credit and
+Reinvestment, all in `docs/Empire_Skill_Tree_Keystones.md` — and
+`docs/Cataclysm_GDD_v2.md` states the general rule that "every dungeon, craft,
+and upgrade costs days". **Neither number is written anywhere**, the City
+Upgrades sheet has no price column and no duration column, and no character,
+account or run in this game holds gold at all. So both are zero for now, to be
+revisited once gold drops exist. `UCataclysmCityUpgradeRules::GoldCost` and
+`BuildDays` are the two named constants, and `IsFreeAndInstant` is a guard: a
+purchase refuses outright if either is raised without the payment and the timer
+that would then be needed, rather than silently handing out a paid upgrade for
+nothing. Issue #1264.
+
+**An upgrade whose effect is not built is refused, not sold.** Fourteen of the 24
+are waiting on a system that does not exist: four need a dungeon sub-type roll
+(issue #41), five need a dungeon that grants rewards or gold (issues #41 and
+#1264), four shape a dungeon and belong with the surge scheduler (issue #1266),
+and one is gated on an upgrade tier nothing reaches (issue #1265). A slot spent
+on any of them would buy a player nothing.
+`UCataclysmCityUpgradeRules::IsBuilt` is the single place that knows which.
+
+**The empire layer names the effects; the game module maps rows onto them.**
+`CataclysmEmpire` must not depend on `Cataclysm`, so it cannot see
+`FCataclysmCityUpgradeRow`. It declares `ECataclysmCityUpgradeEffect` with one
+value per row, and `UCataclysmCityUpgradeMapping` in the game module joins the
+two by row name. The join is deliberately brittle: rewording a sentence in the
+workbook renames the row and fails a test, rather than quietly producing an
+upgrade that does nothing.
+
+### The judgement calls the sheet does not settle
+
+**A raised maximum raises the current figure by the same absolute amount.** A
+city at full defence that buys "increase max defense by 20%" stays at full
+defence, and a city short by 300 is still short by 300. Raising only the maximum
+would make an untouched city read as 83% damaged the moment a player improved it.
+
+**A restore is a share of the maximum, not of what is missing**, which is the
+convention `Bite` already uses from the other side. A city at 30% restored by 50%
+ends at 80%. It cannot overfill.
+
+**Removing a share of a city's dungeons takes the most urgent first.** "Remove
+25% of dungeons on this city" names no order. Soonest to resolve is the one a
+player spending a one-time upgrade would want gone. The count is rounded, so a
+quarter of four removes one and a quarter of one removes none.
+
+**A city repairs itself before the day's assaults land.** The two "every N days"
+upgrades fire early in the day rather than at its end. Both orders give the same
+figure on an ordinary day, because a repair and a bite commute; they differ on
+the one day that matters, where a city one bite from falling is saved by a repair
+that was already due.
+
+**Each interval upgrade carries its own next trigger day**, set when it is
+bought, so an upgrade bought on day 37 first fires on day 57 rather than on
+whichever coming day happens to divide by 20.
+
+**"When you clear a dungeon, the city's Defense restores by an ADDITIONAL 5%"
+grants the whole 5%.** There is no base restore for it to add to: neither
+`UCataclysmEmpireRun::ClearDungeon` nor `Simulation._clear` in the Python model
+gives a city anything back for a dungeon being beaten. Whether that base was
+meant to exist is issue #1267.
+
+**A dungeon absorbed by a city falling is not a dungeon cleared.**
+`ClearDungeon` is now the player's path and applies the restore above;
+`RemoveDungeon` is bookkeeping only, and a city that falls absorbs its dungeons
+through that. Without the split, a city holding that upgrade would be healed by
+the very dungeons that killed it, on the way down.
+
+**Buying lives on the run and the state lives on the map.** Three of the ten
+built effects need the dungeons standing on a city or the current day, and
+`UCataclysmEmpireMap` owns neither.
+
+**This does not close issue #318.** That is the same missing system in
+`sim/cataclysm_sim/world.py`, where a bare `upgrades: int` is still set and read
+by nothing, so Heretic's two slots instead of three still cannot be measured in a
+sweep.
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/`, and
+`game/Source/Cataclysm/Data/CataclysmCityUpgradeMapping.cpp`. Two console
+commands, `Cataclysm.CityUpgrades` and `Cataclysm.BuyCityUpgrade`, are how it is
+reached; **there is no city screen yet**, so clicking a city on the empire map
+still does nothing.
+
+---
+
 ## 2026-09-05 — A city upgrade's tier 1 magnitude is published as a number
 
 **The problem.** The `City Upgrades` sheet has four columns — Type, Tier 1,

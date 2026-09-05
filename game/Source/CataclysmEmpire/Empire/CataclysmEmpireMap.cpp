@@ -456,8 +456,27 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 		return false;
 	}
 
-	City->Defence -= City->MaxDefence * FMath::Max(0.0f, DefenceFraction);
-	City->Population -= City->MaxPopulation * FMath::Max(0.0f, PopulationFraction);
+	// THE CITY'S OWN RESISTANCES, IF IT BOUGHT THEM. "This city resists 25% of
+	// damage" takes a quarter off what a dungeon takes. Clamped at 1 so a stack
+	// of them can at worst make the city untouchable rather than heal it; no
+	// combination in the sheet reaches 1, and a resistance that healed would be
+	// a silent reversal of what the upgrade says.
+	const float DefenceResisted = FMath::Clamp(
+		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistDefenceLoss),
+		0.0f, 1.0f);
+
+	const float PopulationResisted = FMath::Clamp(
+		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistPopulationLoss),
+		0.0f, 1.0f);
+
+	const float DefenceTaken =
+		FMath::Max(0.0f, DefenceFraction) * (1.0f - DefenceResisted);
+
+	const float PopulationTaken =
+		FMath::Max(0.0f, PopulationFraction) * (1.0f - PopulationResisted);
+
+	City->Defence -= City->MaxDefence * DefenceTaken;
+	City->Population -= City->MaxPopulation * PopulationTaken;
 	City->Population = FMath::Max(0.0f, City->Population);
 
 	if (City->Defence <= 0.0f)
@@ -466,6 +485,103 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 	}
 
 	return false;
+}
+
+// ---------------------------------------------------------------------------
+// City upgrades
+// ---------------------------------------------------------------------------
+
+bool FCataclysmCity::HasUpgrade(FName RowName) const
+{
+	return Upgrades.ContainsByPredicate(
+		[RowName](const FCataclysmCityUpgrade& Held)
+		{
+			return Held.RowName == RowName;
+		});
+}
+
+float FCataclysmCity::UpgradeValueFor(
+	ECataclysmCityUpgradeEffect Effect) const
+{
+	float Total = 0.0f;
+
+	for (const FCataclysmCityUpgrade& Held : Upgrades)
+	{
+		if (Held.Effect == Effect)
+		{
+			Total += Held.Value;
+		}
+	}
+
+	return Total;
+}
+
+int32 UCataclysmEmpireMap::FreeUpgradeSlots(int32 CityId) const
+{
+	const FCataclysmCity* City = Find(CityId);
+	if (City == nullptr)
+	{
+		return 0;
+	}
+
+	return FMath::Max(0, UpgradeSlots - City->Upgrades.Num());
+}
+
+bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
+									 const FCataclysmCityUpgrade& Upgrade)
+{
+	FCataclysmCity* City = FindMutable(CityId);
+	if (City == nullptr)
+	{
+		return false;
+	}
+
+	City->Upgrades.Add(Upgrade);
+
+	switch (Upgrade.Effect)
+	{
+	case ECataclysmCityUpgradeEffect::MaxDefence:
+	{
+		// CURRENT DEFENCE RISES BY THE SAME ABSOLUTE AMOUNT. See the header: a
+		// full city has to stay full, and a damaged one has to stay short by
+		// what it was short by.
+		const float Added = City->MaxDefence * Upgrade.Value;
+		City->MaxDefence += Added;
+		City->Defence += Added;
+		break;
+	}
+
+	case ECataclysmCityUpgradeEffect::MaxPopulation:
+	{
+		const float Added = City->MaxPopulation * Upgrade.Value;
+		City->MaxPopulation += Added;
+		City->Population += Added;
+		break;
+	}
+
+	case ECataclysmCityUpgradeEffect::RestoreDefence:
+		// A ONE-TIME RESTORE, AND IT CANNOT OVERFILL. "Restore city's defenses
+		// by 50%" on a city at 80% leaves it at 100 rather than 130.
+		City->Defence = FMath::Min(City->MaxDefence,
+								   City->Defence
+									   + City->MaxDefence * Upgrade.Value);
+		break;
+
+	case ECataclysmCityUpgradeEffect::RestorePopulation:
+		City->Population = FMath::Min(City->MaxPopulation,
+									  City->Population
+										  + City->MaxPopulation * Upgrade.Value);
+		break;
+
+	default:
+		// EVERY OTHER EFFECT IS SOMEBODY ELSE'S. The two resistances are read in
+		// `Bite`, the two interval heals and the two dungeon effects are the
+		// run's, and the rest are not built. Doing nothing here is correct
+		// rather than a gap.
+		break;
+	}
+
+	return true;
 }
 
 bool UCataclysmEmpireMap::Fall(int32 CityId)

@@ -201,6 +201,20 @@ by `git add` with no error and no warning. Guarded by
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind.
 
+  `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
+  a city has — three, or two on Heretic — and which effects are built.
+  A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a
+  slot, and **ten of the 24 upgrades in `game/Data/CityUpgrades.csv` do
+  something**: the ten Architect ones, which raise a city's maxima, restore its
+  defence and population, resist what a dungeon takes, repair it on a schedule,
+  and disperse the dungeons standing on it. The other fourteen are refused at
+  purchase rather than sold, because each waits on a system that does not exist
+  — a dungeon sub-type roll, a dungeon that grants rewards, gold, or an upgrade
+  tier above one. `Cataclysm.CityUpgrades` lists what a city can buy and marks
+  the ones that do nothing yet; `Cataclysm.BuyCityUpgrade` spends the slot. It is
+  free and immediate, because no cost and no build time is designed (issue
+  [#1264](https://github.com/sdubois777/Cataclysm/issues/1264)).
+
   A run lives on `UCataclysmGameInstance`, which survives travelling between
   levels, and `UCataclysmEmpireMapWidget` draws it: the 25 cities in their
   diamond, each reading as sealed, exposed or fallen, with the day, the surge
@@ -228,9 +242,15 @@ by `git add` with no error and no warning. Guarded by
   become a retakeable Dungeon City (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
   not fire when the path to the Pillar opens (issue
-  [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and city upgrades
-  and the empire upgrade tree are still only the Python model in `sim/` (issue
-  [#42](https://github.com/sdubois777/Cataclysm/issues/42)). None of it is in a
+  [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
+  upgrade tree is still only the Python model in `sim/` (issue
+  [#25](https://github.com/sdubois777/Cataclysm/issues/25)). **A city upgrade can
+  only be bought from the console**, because there is no city screen, and 14 of
+  the 24 are refused because their effect is not built (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in
+  `sim/` still has no city upgrade system at all, so Heretic's two slots instead
+  of three cannot be measured in a sweep (issue
+  [#318](https://github.com/sdubois777/Cataclysm/issues/318)). None of it is in a
   save record: `UCataclysmRunSave` carries an `int32 Day` that nothing computes,
   so quitting the game loses the empire.
 

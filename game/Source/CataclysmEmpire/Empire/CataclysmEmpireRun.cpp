@@ -12,6 +12,11 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	Map = NewObject<UCataclysmEmpireMap>(this);
 	Map->Build();
 
+	// HERETIC GIVES A CITY TWO UPGRADE SLOTS INSTEAD OF THREE. The map cannot
+	// work that out for itself: the lethality rung belongs to the run, and a map
+	// built on its own keeps the ordinary three.
+	Map->UpgradeSlots = UCataclysmCityUpgradeRules::SlotsFor(LethalityRung);
+
 	Clock = NewObject<UCataclysmDayClock>(this);
 
 	Surges = NewObject<UCataclysmSurgeScheduler>(this);
@@ -65,6 +70,14 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	{
 		FireSurge(Today, /* bFromCityFall */ false, Report);
 	}
+
+	// A CITY REPAIRS ITSELF BEFORE THE DAY'S ASSAULTS LAND, not after. Both
+	// orders give the same figure on an ordinary day, because a heal and a bite
+	// commute. They differ on the one day that matters: a city one bite from
+	// falling is saved by a repair that was already due, rather than falling and
+	// then being healed while fallen. Repairing first is the reading a player
+	// would expect and the more forgiving of the two.
+	RunCityUpgradeIntervals(Today);
 
 	// EVERY TIMER MOVES, INCLUDING ONE THAT ARRIVED A MOMENT AGO. That is what
 	// the model does: a dungeon spawned today has a day taken off it today.
@@ -185,7 +198,13 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	for (const int32 DungeonId : Standing)
 	{
 		OutReport.Absorbed.Add(DungeonId);
-		ClearDungeon(DungeonId);
+
+		// `RemoveDungeon` AND NOT `ClearDungeon`. A dungeon absorbed by a city
+		// falling was not beaten by anybody, so it must not pay out what
+		// clearing one pays out. With the `RestoreDefenceOnClear` upgrade
+		// bought, using `ClearDungeon` here would have the city's own killers
+		// heal it on the way down.
+		RemoveDungeon(DungeonId);
 	}
 
 	// AND THE FALL IS ITSELF A SURGE. The design document says a city falling
@@ -227,6 +246,48 @@ TArray<int32> UCataclysmEmpireRun::DungeonsOn(int32 CityId) const
 
 bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 {
+	// WHICH CITY IT WAS ON, READ BEFORE IT IS REMOVED. `RemoveDungeon` takes the
+	// dungeon out of `Dungeons`, so afterwards there is nothing left to ask.
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	const int32 CityId = Dungeon ? Dungeon->CityId : INDEX_NONE;
+
+	if (!RemoveDungeon(DungeonId))
+	{
+		return false;
+	}
+
+	// AND THE CITY IS REPAIRED A LITTLE, IF IT BOUGHT THAT UPGRADE. The sheet
+	// says "When you clear a dungeon, the city's Defense restores by an
+	// ADDITIONAL 5%", and there is no base restore for it to be additional to:
+	// neither this class nor `Simulation._clear` in the Python model gives a
+	// city anything back for a dungeon being beaten. So the upgrade grants the
+	// whole 5% rather than an increment on something. Issue #1267 asks whether
+	// the base restore the word implies was meant to exist.
+	if (Map != nullptr && CityId != INDEX_NONE)
+	{
+		if (FCataclysmCity* City = Map->FindMutable(CityId))
+		{
+			const float Restored = City->UpgradeValueFor(
+				ECataclysmCityUpgradeEffect::RestoreDefenceOnClear);
+
+			// A FALLEN CITY IS NOT REPAIRED BY THIS. It has no defence to
+			// restore until it is retaken, and letting it climb off zero while
+			// still marked fallen would put the map in a state nothing else
+			// expects.
+			if (Restored > 0.0f && !City->bFallen)
+			{
+				City->Defence = FMath::Min(
+					City->MaxDefence,
+					City->Defence + City->MaxDefence * Restored);
+			}
+		}
+	}
+
+	return true;
+}
+
+bool UCataclysmEmpireRun::RemoveDungeon(int32 DungeonId)
+{
 	const int32 Removed = Dungeons.RemoveAll(
 		[DungeonId](const FCataclysmDungeon& Candidate)
 		{
@@ -256,6 +317,174 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	}
 
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// City upgrades
+// ---------------------------------------------------------------------------
+
+ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
+	int32 CityId, const FCataclysmCityUpgrade& Upgrade)
+{
+	if (Map == nullptr || Clock == nullptr)
+	{
+		return ECataclysmCityUpgradeResult::RunHasNotBegun;
+	}
+
+	if (!Upgrade.IsValid())
+	{
+		return ECataclysmCityUpgradeResult::NotAnUpgrade;
+	}
+
+	// THE GUARD ON THE TWO CONSTANTS. An upgrade is free and immediate because
+	// no cost and no build time is written anywhere and there is no gold. If
+	// somebody raises either without building what would then be needed, every
+	// purchase refuses instead of quietly handing out a paid upgrade for
+	// nothing. Issue #1264.
+	if (!UCataclysmCityUpgradeRules::IsFreeAndInstant())
+	{
+		return ECataclysmCityUpgradeResult::CannotPayYet;
+	}
+
+	if (!UCataclysmCityUpgradeRules::IsBuilt(Upgrade.Effect))
+	{
+		// REFUSED RATHER THAN SOLD. Fourteen of the 24 upgrades are waiting on a
+		// system that does not exist, and a slot spent on one of those would buy
+		// the player nothing at all.
+		return ECataclysmCityUpgradeResult::EffectNotBuiltYet;
+	}
+
+	const FCataclysmCity* City = Map->Find(CityId);
+	if (City == nullptr)
+	{
+		return ECataclysmCityUpgradeResult::NoSuchCity;
+	}
+
+	if (City->bFallen)
+	{
+		return ECataclysmCityUpgradeResult::CityHasFallen;
+	}
+
+	if (City->HasUpgrade(Upgrade.RowName))
+	{
+		return ECataclysmCityUpgradeResult::AlreadyBought;
+	}
+
+	if (Map->FreeUpgradeSlots(CityId) <= 0)
+	{
+		return ECataclysmCityUpgradeResult::NoSlotsLeft;
+	}
+
+	FCataclysmCityUpgrade Bought = Upgrade;
+	Bought.Tier = 1;
+
+	// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade bought on day 37
+	// with a 20 day interval first fires on day 57, rather than on whichever
+	// coming day happens to divide by 20. Zero for every effect that is not one
+	// of the two interval ones, and unread for them.
+	if (Bought.IntervalDays > 0.0f)
+	{
+		Bought.NextTriggerDay =
+			Clock->Day + FMath::Max(1, FMath::RoundToInt(Bought.IntervalDays));
+	}
+
+	// THE MAP RECORDS IT AND APPLIES WHAT BELONGS TO THE CITY: the two raised
+	// maxima and the two restores. Everything below here is what the map cannot
+	// do, because it involves dungeons.
+	Map->AddUpgrade(CityId, Bought);
+
+	if (Bought.Effect == ECataclysmCityUpgradeEffect::RemoveDungeons)
+	{
+		const TArray<int32> Standing = DungeonsOn(CityId);
+
+		// SOONEST TO RESOLVE FIRST, so a one-time upgrade a player spent a slot
+		// on clears the threat that was about to land rather than an arbitrary
+		// one. The sheet says only "Remove 25% of dungeons on this city" and
+		// names no order, so this is a judgement; `docs/DECISIONS.md` records
+		// it.
+		TArray<int32> ByUrgency = Standing;
+		ByUrgency.Sort(
+			[this](const int32 Left, const int32 Right)
+			{
+				return Clock->DaysUntilResolveFor(Left)
+					   < Clock->DaysUntilResolveFor(Right);
+			});
+
+		// ROUNDED RATHER THAN FLOORED. A quarter of two dungeons removes one; a
+		// quarter of one removes none, which is the honest answer for a
+		// proportional effect on a single dungeon.
+		const int32 ToRemove = FMath::Clamp(
+			FMath::RoundToInt(ByUrgency.Num() * Bought.Value),
+			0, ByUrgency.Num());
+
+		for (int32 Index = 0; Index < ToRemove; ++Index)
+		{
+			// `RemoveDungeon` AND NOT `ClearDungeon`. Nobody walked these; they
+			// were dispersed by building work, so they must not pay out what
+			// beating a dungeon pays out.
+			RemoveDungeon(ByUrgency[Index]);
+		}
+	}
+
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)
+{
+	if (Map == nullptr)
+	{
+		return;
+	}
+
+	for (FCataclysmCity& City : Map->Cities)
+	{
+		// A FALLEN CITY REPAIRS NOTHING. It has no defence and no population to
+		// recover until it is retaken, and letting either climb while the city
+		// is still marked fallen would put the map in a state nothing else
+		// expects.
+		if (City.bFallen)
+		{
+			continue;
+		}
+
+		for (FCataclysmCityUpgrade& Upgrade : City.Upgrades)
+		{
+			const bool bIsInterval =
+				Upgrade.Effect == ECataclysmCityUpgradeEffect::HealDefenceEvery
+				|| Upgrade.Effect
+					   == ECataclysmCityUpgradeEffect::RecoverPopulationEvery;
+
+			if (!bIsInterval || Upgrade.IntervalDays <= 0.0f)
+			{
+				continue;
+			}
+
+			if (Today < Upgrade.NextTriggerDay)
+			{
+				continue;
+			}
+
+			if (Upgrade.Effect == ECataclysmCityUpgradeEffect::HealDefenceEvery)
+			{
+				City.Defence = FMath::Min(
+					City.MaxDefence,
+					City.Defence + City.MaxDefence * Upgrade.Value);
+			}
+			else
+			{
+				City.Population = FMath::Min(
+					City.MaxPopulation,
+					City.Population + City.MaxPopulation * Upgrade.Value);
+			}
+
+			// THE NEXT ONE IS AN INTERVAL FROM TODAY, not from the day it was
+			// due. They are the same while days pass one at a time, and they
+			// differ if a caller ever skips days; counting from today cannot
+			// leave a trigger permanently in the past.
+			Upgrade.NextTriggerDay =
+				Today + FMath::Max(1, FMath::RoundToInt(Upgrade.IntervalDays));
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

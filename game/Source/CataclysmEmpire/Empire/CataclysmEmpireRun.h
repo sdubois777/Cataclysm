@@ -229,16 +229,53 @@ public:
 	int32 DungeonCount() const { return Dungeons.Num(); }
 
 	/**
-	 * A dungeon is cleared and leaves the map.
+	 * The PLAYER cleared a dungeon, and it leaves the map.
 	 *
-	 * NOTHING CALLS THIS YET. It is what a finished dungeon run will call, and
-	 * it is here because the alternative -- a caller reaching into `Dungeons`
-	 * and the clock's `Timers` separately -- is how the two lists come apart.
+	 * NO DUNGEON RUN CALLS THIS YET. It is what a finished dungeon run will
+	 * call, and it is here because the alternative -- a caller reaching into
+	 * `Dungeons` and the clock's `Timers` separately -- is how the two lists
+	 * come apart.
+	 *
+	 * IT IS NOT WHAT A CITY FALLING USES. A city that falls absorbs the dungeons
+	 * standing on it, and that goes through `RemoveDungeon` below instead. The
+	 * two are separate because clearing a dungeon can now restore a city's
+	 * defence, and a city that has just fallen must not be healed by the
+	 * dungeons that killed it.
 	 *
 	 * @return whether it was there to clear.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool ClearDungeon(int32 DungeonId);
+
+	// ----------------------------------------------------------------------
+	// City upgrades
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Spends one of a city's upgrade slots.
+	 *
+	 * WHY BUYING IS HERE AND THE STATE IS ON THE MAP. Three of the ten built
+	 * effects need something the map does not own: the dungeons standing on a
+	 * city, and the current day. This has both.
+	 *
+	 * WHAT IT REFUSES, each with its own reason so a screen can say which:
+	 * a run that has not begun, no such city, a fallen city, no slots left, an
+	 * upgrade the city already has, and an upgrade whose effect is not built.
+	 * See `ECataclysmCityUpgradeResult`.
+	 *
+	 * IT IS FREE AND IMMEDIATE. The design says a city upgrade costs gold and
+	 * takes days to build and neither number is written anywhere, so both are
+	 * zero. `UCataclysmCityUpgradeRules::GoldCost` and `BuildDays` are where
+	 * they will go, and this refuses outright if either is raised without the
+	 * payment and the timer being built. Issue #1264.
+	 *
+	 * @param Upgrade what to buy. `UCataclysmCityUpgradeMapping::Make` in the
+	 *                `Cataclysm` module builds one from a row of
+	 *                `game/Data/CityUpgrades.csv`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	ECataclysmCityUpgradeResult BuyCityUpgrade(
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade);
 
 	// ----------------------------------------------------------------------
 	// Seeing it
@@ -271,4 +308,23 @@ private:
 
 	/** A city fell: its dungeons are absorbed and its fall fires a surge. */
 	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * Takes a dungeon off the map and off the clock, and nothing else.
+	 *
+	 * THE HALF OF `ClearDungeon` THAT IS ONLY BOOKKEEPING. A city absorbing its
+	 * dungeons as it falls uses this, so it does not trigger what a player
+	 * clearing a dungeon triggers.
+	 */
+	bool RemoveDungeon(int32 DungeonId);
+
+	/**
+	 * Fires the two "every N days" city upgrades that are due today.
+	 *
+	 * EACH UPGRADE CARRIES ITS OWN NEXT TRIGGER DAY rather than the day being
+	 * divided by the interval, because an upgrade bought on day 37 should first
+	 * fire a full interval later and not on whichever day happens to divide
+	 * evenly.
+	 */
+	void RunCityUpgradeIntervals(int32 Today);
 };
