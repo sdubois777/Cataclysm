@@ -336,6 +336,38 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	float PercentOfCurrentHealth = 0.0f;
+
+	/**
+	 * Which character sheet stat this effect's `Strength` moves.
+	 *
+	 * WHY IT EXISTS. Issue #1144. `Strength` said 10, 25 or 30 and nothing
+	 * anywhere said what the number was OF. That pairing lived in C++ and
+	 * exactly one effect was in it; the issue said the second effect needing
+	 * one is the point at which it becomes a column, and Abyssal Aura -- which
+	 * cuts a player's Demonic and War resistances by 25% -- is that second
+	 * effect.
+	 *
+	 * A COMMA-SEPARATED LIST, because an effect may move more than one. Abyssal
+	 * Aura names two resistances. Names are the character sheet's own, matching
+	 * `sim/cataclysm_sim/character.py`: `resistance_demonic`, `armor`,
+	 * `movement_speed`.
+	 *
+	 * ONE VALUE IS NOT A STAT NAME. `resistance_of_source_element` means the
+	 * resistance matching whoever applied the effect, which is Shred's rule and
+	 * cannot be written as a fixed stat: a Shred from a Demonic skill cuts
+	 * Demonic resistance and one from a Death skill cuts Death resistance. An
+	 * untyped source cuts the generic All Resistance.
+	 *
+	 * EMPTY IS THE ORDINARY ANSWER, and it means one of two things: the effect
+	 * moves no stat at all, or its own code applies it. Cripple and Weaken are
+	 * the second case today and moving them onto this column is separate work.
+	 *
+	 * EVERY NAME IS CHECKED WHEN THE TABLE IS GENERATED, so a misspelling stops
+	 * `tools/generate_datatables.py` with the sheet and row rather than reaching
+	 * the game as an effect that quietly moves nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	FString MovesStat;
 };
 
 /**

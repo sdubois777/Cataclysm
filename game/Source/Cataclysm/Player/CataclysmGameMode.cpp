@@ -265,6 +265,7 @@ int32 ACataclysmGameMode::SpawnAbyssalWardens()
 		// anywhere called this outside the automation tests, so every
 		// creature in a play session was Common and dropped 0.16 items.
 		Warden->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Warden));
+		Warden->DrawModifiersForRarity();
 
 		AbyssalWardens.Add(Warden);
 		++Spawned;
@@ -352,6 +353,7 @@ int32 ACataclysmGameMode::SpawnHellhounds()
 		Hellhound->SetAttackDamage(HellhoundAttackDamage);
 		Hellhound->SetArmour(HellhoundArmour);
 		Hellhound->SetRarityStep(RarityStepFor(HellhoundRarityStep, Hellhound));
+		Hellhound->DrawModifiersForRarity();
 
 		Hellhounds.Add(Hellhound);
 		++Spawned;
@@ -450,6 +452,7 @@ int32 ACataclysmGameMode::SpawnImps()
 		// one in the roster with none. Calling SetArmour(0) would look like a
 		// figure somebody chose rather than one the design refuses to give.
 		Imp->SetRarityStep(RarityStepFor(ImpRarityStep, Imp));
+		Imp->DrawModifiersForRarity();
 
 		Imps.Add(Imp);
 		++Spawned;
@@ -541,6 +544,7 @@ int32 ACataclysmGameMode::SpawnCorruptedSentinels()
 		Sentinel->SetArmour(CorruptedSentinelArmour);
 		Sentinel->SetRarityStep(
 			RarityStepFor(CorruptedSentinelRarityStep, Sentinel));
+		Sentinel->DrawModifiersForRarity();
 
 		CorruptedSentinels.Add(Sentinel);
 		++Spawned;
@@ -630,6 +634,7 @@ int32 ACataclysmGameMode::SpawnSuccubi()
 		Succubus->SetAttackDamage(SuccubusAttackDamage);
 		Succubus->SetArmour(SuccubusArmour);
 		Succubus->SetRarityStep(RarityStepFor(SuccubusRarityStep, Succubus));
+		Succubus->DrawModifiersForRarity();
 
 		Succubi.Add(Succubus);
 		++Spawned;
@@ -733,6 +738,7 @@ int32 ACataclysmGameMode::SpawnGatekeepers()
 		Gatekeeper->SetArmour(GatekeeperArmour);
 		Gatekeeper->SetRarityStep(
 			RarityStepFor(GatekeeperRarityStep, Gatekeeper));
+		Gatekeeper->DrawModifiersForRarity();
 
 		Gatekeepers.Add(Gatekeeper);
 		++Spawned;
@@ -839,6 +845,7 @@ int32 ACataclysmGameMode::SpawnBrutes()
 
 		// See the note beside the Abyssal Warden's call.
 		Brute->SetRarityStep(RarityStepFor(BruteRarityStep, Brute));
+		Brute->DrawModifiersForRarity();
 
 		Brutes.Add(Brute);
 		++Spawned;
@@ -910,6 +917,7 @@ int32 ACataclysmGameMode::SpawnTrainingDummies()
 		Dummy->SetHealth(TrainingDummyHealth);
 		Dummy->SetAttackDamage(TrainingDummyAttackDamage);
 		Dummy->SetRarityStep(RarityStepFor(TrainingDummyRarityStep, Dummy));
+		Dummy->DrawModifiersForRarity();
 
 		TrainingDummies.Add(Dummy);
 		++Spawned;

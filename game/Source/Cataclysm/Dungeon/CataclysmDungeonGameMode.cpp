@@ -409,6 +409,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		// NO SetArmour CALL. See the header: this creature's designed armour
 		// share is exactly zero and it is the only one in the roster with none.
 		Enemy->SetRarityStep(RarityStepFor(ImpRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	case ECataclysmDungeonCreature::Hellhound:
@@ -416,6 +417,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetArmour(HellhoundArmour);
 		Enemy->SetAttackDamage(HellhoundAttackDamage);
 		Enemy->SetRarityStep(RarityStepFor(HellhoundRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	case ECataclysmDungeonCreature::Brute:
@@ -423,6 +425,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetArmour(BruteArmour);
 		Enemy->SetAttackDamage(BruteAttackDamage);
 		Enemy->SetRarityStep(RarityStepFor(BruteRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	case ECataclysmDungeonCreature::AbyssalWarden:
@@ -430,6 +433,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetArmour(AbyssalWardenArmour);
 		Enemy->SetAttackDamage(AbyssalWardenAttackDamage);
 		Enemy->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	case ECataclysmDungeonCreature::CorruptedSentinel:
@@ -437,6 +441,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetArmour(CorruptedSentinelArmour);
 		Enemy->SetAttackDamage(CorruptedSentinelAttackDamage);
 		Enemy->SetRarityStep(RarityStepFor(CorruptedSentinelRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	case ECataclysmDungeonCreature::Succubus:
@@ -444,6 +449,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetArmour(SuccubusArmour);
 		Enemy->SetAttackDamage(SuccubusAttackDamage);
 		Enemy->SetRarityStep(RarityStepFor(SuccubusRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
 		break;
 
 	default:

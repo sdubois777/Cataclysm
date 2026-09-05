@@ -904,6 +904,81 @@ STATUS_EFFECT_NUMBERS: tuple[tuple[int, str], ...] = (
     (7, "FlatDamagePerTick"),       # column H
 )
 
+#: Column I: which character sheet stat an effect's Strength moves.
+#:
+#: WHY IT EXISTS. Issue #1144. The Strength column says 10, 25 or 30 and nothing
+#: anywhere said what the number was OF. That pairing lived in C++, in
+#: `UCataclysmSkillEffects`, and exactly one effect was in it. The issue said
+#: the second effect needing one is the point at which this becomes a column,
+#: and Abyssal Aura -- which cuts a player's Demonic and War resistances by 25%
+#: -- is that second effect.
+#:
+#: A COMMA-SEPARATED LIST, because an effect may move more than one stat.
+#: Abyssal Aura names two resistances.
+#:
+#: EVERY NAME IS CHECKED HERE, which answers the objection recorded against
+#: naming a thing in data rather than giving it a column of its own: "a
+#: misspelled basis would silently read as one of the others and a number cannot
+#: be misspelled". A misspelling now stops the generator and names the row.
+#:
+#: EMPTY IS THE ORDINARY ANSWER. Most effects move no stat, and two that do --
+#: Cripple and Weaken -- are deliberately left empty because their own code
+#: applies them today. Moving those onto this column is separate work.
+STATUS_EFFECT_STAT_COLUMN = 8
+
+#: The one value in that column that is not a stat name.
+#:
+#: SHRED'S STAT DEPENDS ON WHOEVER APPLIED IT and so cannot be written down: a
+#: Shred from a Demonic skill cuts Demonic resistance and one from a Death skill
+#: cuts Death resistance. This token says "the resistance matching the source's
+#: own damage type", and an untyped source cuts the generic All Resistance,
+#: which is what the C++ has always done.
+STAT_OF_SOURCE_ELEMENT = "resistance_of_source_element"
+
+
+def sheet_stats():
+    """The 46 character sheet stat names, from the model that defines them.
+
+    LAZY, LIKE `enemy_stats` BELOW, so importing this module does not need the
+    simulation package on the path.
+    """
+    if str(SIM_ROOT) not in sys.path:
+        sys.path.insert(0, str(SIM_ROOT))
+    try:
+        from cataclysm_sim.character import ALL_STATS
+    except ImportError as error:
+        raise DataError(
+            f"could not import cataclysm_sim.character from {SIM_ROOT}, which "
+            f"is where the character sheet's stats are named: {error}") from error
+    return frozenset(ALL_STATS)
+
+
+def status_effect_stats(cell, index: int, sheet: str, known) -> str:
+    """Column I, checked name by name against the stats the game actually has.
+
+    Returns the cleaned list, or "" when the cell is empty. Raises naming the
+    row when a name is not one of them, because the whole point of a column over
+    a pairing buried in C++ is that a designer can write one and find out at
+    once whether it landed.
+    """
+    text = clean(cell)
+    if not text:
+        return ""
+
+    names = [part.strip() for part in text.split(",") if part.strip()]
+    for name in names:
+        if name == STAT_OF_SOURCE_ELEMENT:
+            continue
+        if name not in known:
+            raise DataError(
+                f"{sheet} row {index}: {name!r} in column I is not a stat this "
+                f"game has. Use one of the 46 character sheet stats, spelled as "
+                f"sim/cataclysm_sim/character.py spells them, or "
+                f"{STAT_OF_SOURCE_ELEMENT!r} for an effect whose stat depends on "
+                f"whoever applied it.")
+
+    return ", ".join(names)
+
 
 def status_effects(book) -> list[dict]:
     """Buffs, Debuffs and DoTs: "Name: Description", then seven optional numbers.
@@ -960,6 +1035,7 @@ def status_effects(book) -> list[dict]:
       the one effect whose scaling stops dead rather than rolling over, because
       its magnitude IS its duration and there is nothing to roll into.
     """
+    known = sheet_stats()
     out = []
     for sheet, kind in (("Buffs", "Buff"), ("Debuffs", "Debuff"), ("DoTs", "DoT")):
         for index, raw in enumerate(book[sheet].iter_rows(values_only=True), 1):
@@ -977,6 +1053,14 @@ def status_effects(book) -> list[dict]:
                 cell = raw[column] if len(raw) > column else None
                 row[field] = (number(cell, field, index)
                               if cell is not None else 0.0)
+
+            # COLUMN I, AFTER THE NUMBERS AND NOT AMONG THEM. It is a name
+            # rather than a figure, so it cannot go in STATUS_EFFECT_NUMBERS,
+            # whose every entry runs through `number`.
+            stat_cell = (raw[STATUS_EFFECT_STAT_COLUMN]
+                         if len(raw) > STATUS_EFFECT_STAT_COLUMN else None)
+            row["MovesStat"] = status_effect_stats(stat_cell, index, sheet,
+                                                   known)
             out.append(row)
     return unique(out, "Status Effects")
 

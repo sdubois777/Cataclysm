@@ -1030,15 +1030,6 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
 		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
 
-	// AND THE MODIFIERS THE RUNG CARRIES. Issue #742. Before this, no creature
-	// the game spawned carried a modifier at all unless somebody typed one in by
-	// hand, so the design's one-per-rung-above-Common rule had never run once.
-	//
-	// HERE RATHER THAN IN THE SPAWNERS, because there are fifteen calls to this
-	// setter across two game modes and every one of them would otherwise need
-	// the same three lines.
-	FillModifiersForRarity();
-
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
 	// spawner sets these on the lines after SpawnActor, in whatever order suits
@@ -1047,7 +1038,7 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	ApplyStartingAttributes();
 }
 
-void ACataclysmEnemyCharacter::FillModifiersForRarity()
+void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 {
 	const int32 Wanted =
 		UCataclysmEnemyModifiers::CountForRarityStep(RarityStep);

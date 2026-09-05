@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A creature's modifiers are drawn by a spawner, not by the rarity setter
+
+**This corrects a fault shipped the same day**, in the change that gave five
+enemy modifiers their effects. The draw was put inside
+`ACataclysmEnemyCharacter::SetRarityStep`, because all fourteen spawn sites
+already call that setter and it saved a line at each.
+
+**It made the Unreal test suite intermittently unreliable.** A draw is random, so
+any test that spawns two creatures, sets the same rung on both and compares them
+can fail depending on what each one drew.
+`Cataclysm.Enemy.RarityScalesWhicheverOrderTheSpawnerSetsItIn` -- which checks a
+creature ends up with the same health whichever order a spawner sets its values
+in -- failed with 633.16 against 949.74, a ratio of exactly 1.5, because one
+creature drew Titanic Resolve and the other did not.
+
+**It failed only sometimes, which is worse than failing always.** The run that
+accompanied the change passed all 1318 tests and that passing run was not
+evidence of much.
+
+### The rule
+
+**A setter sets. A spawner asks for a draw.** `SetRarityStep` now only sets the
+rung, and `DrawModifiersForRarity` is a separate call the fourteen spawn sites
+make afterwards. That is the same split the rarity itself already had:
+`ACataclysmGameMode::RarityStepFor` rolls a rung and the spawners call it, while
+the setter only records what it is given.
+
+**A creature spawned directly, by a test or placed in a level, therefore carries
+no modifiers unless something asks.** That is consistent with rarity, which such
+a creature also does not roll.
+
+`Cataclysm.EnemyModifiers.SettingARarityDoesNotDrawAnything` pins both halves:
+setting a rung draws nothing, and asking draws exactly the rung's count.
+
+### What it says about evidence
+
+**One green run of a suite containing a random draw is not evidence.** Continuous
+integration does not run the Unreal tests at all -- issue #20, still waiting on a
+self-hosted runner -- so a local run is the only check there is, and a single one
+is not enough when anything in the suite rolls dice.
+
+## 2026-09-05 — A status effect's strength says which stat it moves, in data
+
+**Decided by the project owner on 2026-09-05**, choosing the route issue #1144
+had already named. That issue recorded the gap: `game/Data/StatusEffects.csv`
+gave every effect a `Strength` column and no column saying what the strength was
+**of**. Shred's row states 10 and its description says that is 10 resistance;
+Cripple's states a slow and Weaken's a damage reduction. Nothing in the data
+connected a number to the stat it moved.
+
+The pairing lived in C++, in `UCataclysmSkillEffects`, and exactly one effect was
+in it. The issue said what should trigger fixing it: "The second effect that
+needs one is the point at which this should become a column rather than a second
+name written into C++." **Abyssal Aura was that second effect** -- a Demonic
+enemy modifier that cuts a player's Demonic and War resistances by 25%.
+
+### What the column is
+
+Column I of the Buffs, Debuffs and DoTs sheets of
+`docs/All_Things_Cataclysm.xlsx`, written out as `MovesStat`.
+
+**Names are the character sheet's own**, as `sim/cataclysm_sim/character.py`
+spells them: `resistance_demonic`, `armor`, `movement_speed`. **The vocabulary
+question #1144 worried about answered itself**: the game already had exactly one
+stat-name vocabulary, used by class stat lines, affixes and passive effects
+alike, so there was nothing to invent.
+
+**A comma separates several**, because an effect may move more than one. Abyssal
+Aura names two resistances, which no single-stat answer could have said.
+
+**One value is not a stat name.** `resistance_of_source_element` means the
+resistance matching whoever applied the effect. That is Shred's rule and cannot
+be written as a fixed stat: a Shred from a Demonic skill cuts Demonic resistance
+and one from a Death skill cuts Death resistance. An untyped source cuts the
+generic All Resistance.
+
+### Why a name in data is safe here, when the generator argued it was not
+
+`tools/generate_datatables.py` carries a note against exactly this shape:
+"SEPARATE COLUMNS RATHER THAN ONE COLUMN AND A STRING NAMING ITS BASIS, because a
+misspelled basis would silently read as one of the others and a number cannot be
+misspelled."
+
+**That is true of an unchecked name, so the name is checked.** The generator
+compares every entry against the 46 character sheet stats and refuses to write
+the table, naming the sheet and the row, when one does not match. A misspelling
+now stops the build instead of reaching the game as an effect that quietly moves
+nothing.
+
+### It went in column I, and that was forced
+
+The generator states that the column order of those three sheets **is** the
+schema and is append-only: "Inserting an entry anywhere but the end silently
+re-reads every column after it, and nothing would report an error -- a duration
+would arrive as a strength and both would be wrong." Columns G and H are empty on
+the Debuffs sheet and the new column still had to go after them.
+
+### Abyssal Aura had no numbers at all
+
+Its row stated "reduces the player's Demonic and War resistances by 25%" and
+every numeric cell was empty, so the effect applied nothing however it was
+reached. It now carries a strength of 25, from its own description, and a
+duration of 2 seconds.
+
+**The 2 seconds is a judgement and the description states none.** It is an aura
+effect and the aura pulses once a second, so a duration a little longer than the
+pulse keeps it up while a player stands inside and drops it shortly after they
+step out.
+
+### Two effects with a strength are deliberately not in the column
+
+Cripple's slow and Weaken's damage reduction are applied by their own code today.
+Naming them here would apply each of them twice, because the shared path
+subtracts the strength from every stat the column names. Moving them across means
+deleting what applies them now, which is a change to how two curses behave and
+wants its own testing. Issue #1256 carries it, and records that Cripple's
+magnitude reaches nothing today as a result.
+
 ## 2026-09-05 — Thorns of Glass reflects half a hit, and five enemy modifiers now do something
 
 ### Thorns of Glass changed, and the design workbook changed with it

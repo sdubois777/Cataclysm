@@ -7,6 +7,7 @@
 // what an untyped attacker cuts instead.
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "Character/CataclysmPlayerClassStats.h"
 // For a curse that passes to the nearest enemy when its holder dies.
 // The Wand's Anathema is the only thing that marks a creature that way.
 // For a weapon left in a creature that tears free when it dies. The Axe's
@@ -1845,35 +1846,90 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 namespace
 {
 	/**
-	 * Which attribute a named status effect moves, for a hit of this type.
-	 *
-	 * ONE EFFECT IS LISTED AND FOUR HAVE A STRENGTH. Shred is the only one with
-	 * a stat this project can reach: Cripple's slow has no movement-speed debuff
-	 * route, and Weaken's damage reduction is a defender attribute rather than
-	 * an attacker one. Issue #1144 carries turning this into a column on the
-	 * Status Effects sheet, which is what a second entry here should trigger
-	 * rather than a second name in C++.
-	 *
-	 * SHRED CUTS THE ATTACKER'S OWN ELEMENT. Anathema reads "Demonic resistance
-	 * cut by 40%" and carries `Element.Demonic`; a Shred applied by a Death
-	 * skill should cut Death resistance. An untyped attacker cuts the generic
-	 * All Resistance instead, which is the only slot that applies to everything.
+	 * The name in the data that is not a stat: the resistance matching whoever
+	 * applied the effect. Shred's rule, which no fixed stat can express.
 	 */
-	FGameplayAttribute CataclysmStatMovedByEffect(const FGameplayTag& EffectTag,
-												  FName DamageType)
+	const TCHAR* StatOfSourceElement = TEXT("resistance_of_source_element");
+
+	/**
+	 * Which attributes a named status effect moves, for a hit of this type.
+	 *
+	 * READ OUT OF THE DATA SINCE ISSUE #1144, and it used to be one effect's
+	 * name written here. That issue said so itself: "The second effect that
+	 * needs one is the point at which this should become a column rather than a
+	 * second name written into C++." Abyssal Aura was that second effect, so the
+	 * pairing is now the `MovesStat` column of the Status Effects sheet and this
+	 * resolves whatever it says.
+	 *
+	 * A LIST, BECAUSE AN EFFECT MAY MOVE MORE THAN ONE. Abyssal Aura cuts both
+	 * Demonic and War resistance, which no single-attribute answer could say.
+	 *
+	 * TWO EFFECTS WITH A STRENGTH ARE DELIBERATELY NOT IN THE COLUMN. Cripple's
+	 * slow and Weaken's damage reduction are applied by their own code today,
+	 * and moving them onto this path is separate work rather than a thing to do
+	 * in passing: doing it here would apply each of them twice.
+	 */
+	TArray<FGameplayAttribute> CataclysmStatsMovedByEffect(
+		const UDataTable* StatusEffectTable, const FGameplayTag& EffectTag,
+		FName DamageType)
 	{
-		const FGameplayTag Shred = UGameplayTagsManager::Get().RequestGameplayTag(
-			FName(TEXT("Status.Debuff.Shred")), /*ErrorIfNotFound=*/false);
-		if (!Shred.IsValid() || EffectTag != Shred)
+		TArray<FGameplayAttribute> Moved;
+
+		const FName Row =
+			UCataclysmSkillEffects::StatusEffectRowForTag(EffectTag);
+		if (Row.IsNone())
 		{
-			return FGameplayAttribute();
+			return Moved;
 		}
 
-		const FGameplayAttribute Typed =
-			UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
-		return Typed.IsValid()
-			? Typed
-			: UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute();
+		// THE TABLE IS PASSED IN RATHER THAN LOADED HERE, because the loader
+		// is private to UCataclysmSkillEffects and this is a free function.
+		const FCataclysmStatusEffectRow* Found = StatusEffectTable
+			? StatusEffectTable->FindRow<FCataclysmStatusEffectRow>(
+				  Row, TEXT("CataclysmStatsMovedByEffect"),
+				  /*bWarnIfMissing=*/false)
+			: nullptr;
+		if (Found == nullptr || Found->MovesStat.IsEmpty())
+		{
+			return Moved;
+		}
+
+		TArray<FString> Names;
+		Found->MovesStat.ParseIntoArray(Names, TEXT(","), /*CullEmpty=*/true);
+
+		const TMap<FString, FGameplayAttribute>& Map =
+			UCataclysmPlayerClassStats::StatToAttribute();
+
+		for (FString Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+
+			// THE ONE NAME THAT IS NOT A STAT. Shred cuts whatever the source's
+			// own element is, so no fixed stat can say it.
+			if (Name.Equals(StatOfSourceElement, ESearchCase::IgnoreCase))
+			{
+				const FGameplayAttribute Typed =
+					UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
+				Moved.Add(Typed.IsValid()
+					? Typed
+					: UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute());
+				continue;
+			}
+
+			// A NAME THE GAME DOES NOT KNOW IS DROPPED RATHER THAN GUESSED AT,
+			// and it cannot arrive here anyway: `tools/generate_datatables.py`
+			// checks every name in that column against the 46 character sheet
+			// stats and refuses to write the table otherwise.
+			if (const FGameplayAttribute* Attribute = Map.Find(Name))
+			{
+				if (Attribute->IsValid())
+				{
+					Moved.Add(*Attribute);
+				}
+			}
+		}
+
+		return Moved;
 	}
 }
 
@@ -1902,23 +1958,38 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		return false;
 	}
 
-	const FGameplayAttribute Stat =
-		CataclysmStatMovedByEffect(EffectTag, DamageType);
-	if (!Stat.IsValid())
+	const TArray<FGameplayAttribute> Stats = CataclysmStatsMovedByEffect(
+		LoadStatusEffectTable(), EffectTag, DamageType);
+	if (Stats.IsEmpty())
 	{
-		// THE TAG IS THE WHOLE EFFECT, which is true of every debuff but Shred.
-		// Madness is the one that matters: `UCataclysmTeams` reads the tag and
-		// makes the creature hostile to everything, so there is no number to
-		// apply and nothing is missing.
+		// THE TAG IS THE WHOLE EFFECT, which is true of most debuffs. Madness is
+		// the one that matters: `UCataclysmTeams` reads the tag and makes the
+		// creature hostile to everything, so there is no number to apply and
+		// nothing is missing.
 		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
 	}
 
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
-	if (!Source || !Defender || !Defender->HasAttributeSetForAttribute(Stat))
+	if (!Source || !Defender)
 	{
-		// A target with no resistance set at all still takes the tag, so a curse
-		// is never silently refused for want of a stat it does not carry.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	// ONLY THE STATS THIS TARGET ACTUALLY HAS. A target with no resistance set at
+	// all still takes the tag, so a curse is never silently refused for want of
+	// a stat it does not carry.
+	TArray<FGameplayAttribute> Held;
+	for (const FGameplayAttribute& Stat : Stats)
+	{
+		if (Defender->HasAttributeSetForAttribute(Stat))
+		{
+			Held.Add(Stat);
+		}
+	}
+
+	if (Held.IsEmpty())
+	{
 		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
 	}
 
@@ -1934,8 +2005,18 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states outright.
 	// The other half of that sentence -- the excess lengthening the effect
 	// instead of being discarded -- is not built, and #1144 carries it.
-	const float Current = Defender->GetNumericAttribute(Stat);
-	Size = FMath::Clamp(Size, 0.0f, FMath::Max(0.0f, Current));
+	//
+	// THE MOST ANY ONE OF THEM HAS, so an effect naming two stats is not held
+	// back to the smaller of them. Each modifier is clamped again below against
+	// the stat it moves, so a target with 40 Demonic and 0 War resistance loses
+	// 25 Demonic and nothing else rather than losing nothing at all.
+	float Most = 0.0f;
+	for (const FGameplayAttribute& Stat : Held)
+	{
+		Most = FMath::Max(Most, Defender->GetNumericAttribute(Stat));
+	}
+
+	Size = FMath::Clamp(Size, 0.0f, Most);
 	if (Size <= 0.0f)
 	{
 		// Nothing left to take. The tag still goes on, because carrying the
@@ -1961,12 +2042,39 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	// The single-stack rule below still holds: a second Shred refreshes the one
 	// effect rather than adding a second, so the reduction does not double from
 	// reapplication.
-	const int32 Index = Effect->Modifiers.Num();
-	Effect->Modifiers.SetNum(Index + 1);
-	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
-	Modifier.Attribute = Stat;
-	Modifier.ModifierOp = EGameplayModOp::Additive;
-	Modifier.ModifierMagnitude = FScalableFloat(-Size);
+	// ONE MODIFIER PER STAT THE EFFECT NAMES, all on the one effect, so they
+	// arrive together and expire together. Abyssal Aura's two resistances are
+	// one debuff a player reads once, not two that could fall off separately.
+	TArray<FString> Cut;
+	for (const FGameplayAttribute& Stat : Held)
+	{
+		// CLAMPED AGAIN PER STAT, so no single one is taken past zero. A target
+		// with 40 Demonic and 0 War resistance loses 25 Demonic and nothing off
+		// the War it does not have.
+		const float Current =
+			FMath::Max(0.0f, Defender->GetNumericAttribute(Stat));
+		const float Taken = FMath::Min(Size, Current);
+		if (Taken <= 0.0f)
+		{
+			continue;
+		}
+
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = Stat;
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(-Taken);
+
+		Cut.Add(FString::Printf(TEXT("%s by %.0f"), *Stat.GetName(), Taken));
+	}
+
+	if (Effect->Modifiers.IsEmpty())
+	{
+		// Every named stat was already at nothing. The tag still goes on, for
+		// the reason the branch above gives.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
 
 	MakeSingleStackTagged(Effect, EffectTag);
 
@@ -1975,9 +2083,9 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
 
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("%s applied %s to %s for %.1fs, cutting %s by %.0f."),
+		TEXT("%s applied %s to %s for %.1fs, cutting %s."),
 		*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
-		OnTarget, *Stat.GetName(), Size);
+		OnTarget, *FString::Join(Cut, TEXT(", ")));
 
 	return true;
 }

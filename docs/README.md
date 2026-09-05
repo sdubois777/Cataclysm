@@ -62,8 +62,8 @@ or if a sheet is added or removed without this table changing.
 | Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
 | Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance |
 | Buffs | 18 | one description per row, no heading row |
-| Debuffs | 27 | `Name: Description`, then seven positional numbers, no heading row |
-| DoTs | 8 | `Name: Description`, then seven positional numbers, no heading row |
+| Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
+| DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
 | Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
@@ -100,7 +100,7 @@ which group it is in:
 The **Tags** sheet is the intended source for the Unreal `GameplayTag` table, and
 is the only sanctioned place to add a gameplay tag.
 
-## The numeric columns on Buffs, Debuffs and DoTs
+## The columns on Buffs, Debuffs and DoTs
 
 Those three sheets have no heading row, so **this table is the only place that
 says what their columns mean.** `tools/generate_datatables.py` reads them
@@ -117,6 +117,33 @@ optional and an empty cell reads as zero.
 | F | `DurationCap` | where `DurationSeconds` stops rising |
 | G | `PercentOfCurrentHealth` | what one tick deals as a percent of the target's current health |
 | H | `FlatDamagePerTick` | what one tick deals as a plain amount |
+| I | `MovesStat` | which character sheet stat `Strength` moves, or empty |
+
+### Column I says what `Strength` is a strength OF
+
+Added on 2026-09-05 for issue #1144, which had recorded the gap: the
+`Strength` column said 10, 25 or 30 and nothing anywhere said what the
+number changed. That pairing lived in C++ and exactly one effect was in it.
+
+**Names are the character sheet's own**, as `sim/cataclysm_sim/character.py`
+spells them: `resistance_demonic`, `armor`, `movement_speed`. **A comma
+separates several**, because an effect may move more than one -- Abyssal Aura
+cuts both Demonic and War resistance.
+
+**One value is not a stat name.** `resistance_of_source_element` means the
+resistance matching whoever applied the effect, which is Shred's rule and
+cannot be written as a fixed stat: a Shred from a Demonic skill cuts Demonic
+resistance and one from a Death skill cuts Death resistance. An untyped
+source cuts the generic All Resistance.
+
+**Empty is the ordinary answer** and means one of two things: the effect
+moves no stat, or its own code applies it. Cripple and Weaken are the second
+case as of 2026-09-05; naming them here would apply each of them twice.
+
+**Every name is checked when the table is generated.** A misspelling stops
+`tools/generate_datatables.py` and names the sheet and row, which is what
+makes a name in data safe where the earlier note here worried it would not
+be.
 
 ### Three of them are alternative ways of saying the same thing
 

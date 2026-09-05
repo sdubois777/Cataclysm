@@ -496,7 +496,28 @@ public:
 	 * with the same rung adds nothing and a call raising the rung adds the
 	 * difference.
 	 */
-	void FillModifiersForRarity();
+	/**
+	 * Draws the modifiers this creature's rung carries, into `ModifierRows`.
+	 *
+	 * **CALLED BY A SPAWNER AND NOT BY `SetRarityStep`, AND THAT WAS A BUG
+	 * ONCE.** It was inside the setter until 2026-09-05, which was tidy and
+	 * wrong: a draw is random, so any test that spawned two creatures, set the
+	 * same rung on both and compared them could fail depending on what each
+	 * drew. `Cataclysm.Enemy.RarityScalesWhicheverOrderTheSpawnerSetsItIn` did
+	 * exactly that -- one creature drew Titanic Resolve and came out with half
+	 * again the health of the other -- and it failed only sometimes, which is
+	 * worse than failing always.
+	 *
+	 * SO IT IS THE SAME SHAPE AS THE RARITY ROLL ITSELF.
+	 * `ACataclysmGameMode::RarityStepFor` rolls a rung and the spawners call it;
+	 * `SetRarityStep` only sets what it is given. This is the modifier half of
+	 * that split.
+	 *
+	 * SAFE TO CALL TWICE. It only ever adds up to the shortfall, so a second
+	 * call at the same rung adds nothing and a call after the rung was raised
+	 * adds the difference.
+	 */
+	void DrawModifiersForRarity();
 
 	/**
 	 * How long since an aura modifier on this creature last pulsed, in seconds.
