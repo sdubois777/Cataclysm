@@ -289,7 +289,11 @@ def test_the_readme_documents_every_numeric_column(rows) -> None:
     if not README.is_file():
         pytest.skip("docs/README.md is not present")
     text = README.read_text(encoding="utf-8")
-    heading = "## The numeric columns on Buffs, Debuffs and DoTs"
+    # RENAMED ON 2026-09-05, when column I was added for issue #1144. It
+    # names a stat rather than holding a number, so "the numeric columns"
+    # stopped being true of the table as a whole. What this test checks is
+    # unchanged: every numeric column still has to be documented there.
+    heading = "## The columns on Buffs, Debuffs and DoTs"
     assert heading in text, (
         f"docs/README.md has no {heading!r} section. Those three sheets have no "
         f"heading row, so that section is the only statement of what their "

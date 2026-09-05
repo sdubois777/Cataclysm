@@ -497,6 +497,60 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierAuraPulseTest,
 	return true;
 }
 
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierSetterDoesNotDrawTest,
+	"Cataclysm.EnemyModifiers.SettingARarityDoesNotDrawAnything")
+{
+	// **THIS PINS A BUG THAT SHIPPED.** The draw was inside `SetRarityStep`
+	// until 2026-09-05, which was tidy and wrong: a draw is random, so any test
+	// that spawned two creatures, set the same rung on both and compared them
+	// could fail depending on what each drew.
+	// `Cataclysm.Enemy.RarityScalesWhicheverOrderTheSpawnerSetsItIn` did exactly
+	// that -- one creature drew Titanic Resolve and came out with half again the
+	// health of the other -- and it failed only sometimes, which is worse than
+	// failing always.
+	//
+	// SO SETTING A RUNG SETS A RUNG AND NOTHING ELSE, and a spawner asks for the
+	// draw separately. That is the same split the rarity itself has:
+	// `ACataclysmGameMode::RarityStepFor` rolls, `SetRarityStep` sets.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a creature in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Enemy))
+	{
+		return false;
+	}
+
+	// A HERALD, which carries three. If the setter drew, this is where they
+	// would arrive.
+	Enemy->SetRarityStep(3);
+
+	TestEqual(TEXT("setting a rung draws no modifiers"),
+			  Enemy->ModifierRows.Num(), 0);
+
+	// AND ASKING FOR THEM GIVES EXACTLY THE RUNG'S COUNT. Pinned so the draw is
+	// not merely absent from the setter but present where it belongs.
+	Enemy->SetModifierSeedForTests(20260905);
+	Enemy->DrawModifiersForRarity();
+
+	TestEqual(TEXT("and asking draws the three a Herald carries"),
+			  Enemy->ModifierRows.Num(), 3);
+
+	// ASKING TWICE ADDS NOTHING, because a spawner may set a rung more than
+	// once and the draw only ever makes up the shortfall.
+	Enemy->DrawModifiersForRarity();
+	TestEqual(TEXT("and asking again adds none"),
+			  Enemy->ModifierRows.Num(), 3);
+
+	return true;
+}
+
 CATACLYSM_MODIFIER_TEST(FCataclysmModifierReachesACreatureTest,
 	"Cataclysm.EnemyModifiers.ACreatureCarryingOneActuallyGetsTheStat")
 {
