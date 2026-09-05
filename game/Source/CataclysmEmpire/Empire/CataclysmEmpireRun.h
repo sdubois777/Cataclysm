@@ -46,6 +46,19 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Resolved;
 
+	/**
+	 * The cities a Siege took its daily share of today.
+	 *
+	 * A SIEGE BITES EVERY DAY AND NOT ONLY WHEN ITS TIMER RUNS OUT, which is
+	 * what makes it different from every other dungeon. A city appears here once
+	 * per Siege standing on it, and the design allows only one, so at most once.
+	 *
+	 * IT IS NOT THE SAME LIST AS `Resolved`. A Siege that also ran out of time
+	 * today bites twice: once here for the day, and once there for the timer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Besieged;
+
 	/** The cities that fell today. Usually empty. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Fallen;
@@ -96,14 +109,23 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *   1. The day advances.
  *   2. If a surge is due, a wave lands: dungeons are rolled onto exposed cities
  *      and their timers start.
- *   3. Every timer moves down one day. A dungeon that arrived today loses a day
+ *   3. Every city repairs whatever its upgrades repair on a schedule. Before
+ *      the day's assaults, not after -- see `AdvanceDay` for why.
+ *   4. Every timer moves down one day. A dungeon that arrived today loses a day
  *      immediately, which is what the model does.
- *   4. Any timer that reached zero resolves: its dungeon takes a share of its
+ *   5. Every Siege takes its daily share of the city it stands on, whether or
+ *      not anything resolved. It is the one dungeon that costs something every
+ *      day rather than only when its timer runs out.
+ *   6. Any timer that reached zero resolves: its dungeon takes a share of its
  *      host city's defence and population, and its own timer is set back to
  *      full.
- *   5. A city whose defence reached zero falls. Every dungeon standing on it is
+ *   7. A city whose defence reached zero falls. Every dungeon standing on it is
  *      absorbed, and its fall fires a surge of its own.
- *   6. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
+ *   8. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
+ *
+ * STEPS 3 AND 5 ARE NOT IN `Simulation.step`. The model has neither city
+ * upgrades nor sub-type behaviour, so its order is the order of what both have
+ * in common rather than of everything here.
  *
  * THE RUN IS DETERMINISTIC FROM ITS SEED. Everything random goes through one
  * `FRandomStream`, so the same seed gives the same run: the same waves on the
@@ -135,6 +157,68 @@ class CATACLYSMEMPIRE_API UCataclysmEmpireRun : public UObject
 	GENERATED_BODY()
 
 public:
+	// ----------------------------------------------------------------------
+	// What a Siege costs its host, every day
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The share of a city's maximum defence a Siege takes each day it stands.
+	 *
+	 * ONE PER CENT, WHICH THE DESIGN DOCUMENT STATES: "Deals 1% damage to city
+	 * defenses and population per day while active." A hundred days would empty
+	 * an untouched city on its own, and a Siege's timer runs out several times
+	 * inside that, so the two together are what make it the dungeon a player
+	 * cannot postpone.
+	 *
+	 * NOT PORTED FROM THE SIMULATION, BECAUSE THE SIMULATION DOES NOT MODEL IT.
+	 * `sim/cataclysm_sim/engine.py` gives a sub-type no behaviour beyond Cow
+	 * Level's doubled walk and Sacrificial's doubled modifiers. The design
+	 * document is the only source for this number and
+	 * `docs/DECISIONS.md` records that it is.
+	 */
+	static constexpr float SiegeDefenceBitePerDay = 0.01f;
+
+	/** The same share of the city's maximum population. See above. */
+	static constexpr float SiegePopulationBitePerDay = 0.01f;
+
+	/**
+	 * How much more damage a Siege deals for each day it has stood.
+	 *
+	 * THE DESIGN DOCUMENT SAYS "Increases in power by 10 points per day", and
+	 * the project owner settled on 2026-09-05 what its power is: "That's in
+	 * regards to the damage it does to the city/population". So this is ten
+	 * points of city defence and ten points of city population, added to the
+	 * day's damage for every day the Siege has already stood.
+	 *
+	 * POINTS AND NOT A SHARE, WHICH IS WHY SMALL CITIES SUFFER MOST. Ten points
+	 * is one per cent of an Outpost's thousand defence and half a per cent of a
+	 * Pillar's twenty thousand, so the growth bites hardest where the empire is
+	 * thinnest. An unattended Siege empties an Outpost's defence in 14 days, a
+	 * Bulwark's in 23, a Sanctuary's in 34 and the Pillar's in 47. Without the
+	 * growth every city would take exactly 100 days whatever its size, because
+	 * the flat part is a share of that city's own maximum.
+	 *
+	 * IT COUNTS FROM THE DAY THE SIEGE ARRIVED, so its first day deals the flat
+	 * share alone and each later day adds another ten points.
+	 * `FCataclysmDungeon::SpawnedDay` is the day it arrived.
+	 *
+	 * IT IS ADDED TO BOTH THE DEFENCE AND THE POPULATION DAMAGE, which is the
+	 * plain reading of a sentence whose subject is the damage it does and whose
+	 * previous sentence names both. That reading is recorded in
+	 * `docs/DECISIONS.md` as a reading rather than a ruling, because the owner's
+	 * answer settled what "power" means and not which of the two it grows.
+	 */
+	static constexpr float SiegeDamageGrowthPerDay = 10.0f;
+
+	/**
+	 * Whether a Siege stands on that city.
+	 *
+	 * WHAT IT IS FOR. A besieged city cannot buy an upgrade. See
+	 * `ECataclysmCityUpgradeResult::CityIsBesieged`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsBesieged(int32 CityId) const;
+
 	/** The 25 cities and their lanes. Null until `Begin` runs. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TObjectPtr<UCataclysmEmpireMap> Map;
@@ -343,6 +427,27 @@ private:
 	 * city may fall.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * Every Siege takes its daily share of the city it stands on.
+	 *
+	 * THE ONE DUNGEON THAT COSTS SOMETHING EVERY DAY. The design document:
+	 * "Deals 1% damage to city defenses and population per day while active."
+	 * Every other dungeon is free until its timer runs out, which is what makes
+	 * a Siege the one you cannot leave for later.
+	 *
+	 * A FRACTION OF THE CITY'S MAXIMUM, not of what it has left, and that is
+	 * what the sentence has to mean. A percentage of the remainder never reaches
+	 * zero, so a city could be besieged for ever and never fall; a percentage of
+	 * the maximum takes a hundred days to empty an untouched city, which is a
+	 * real threat on the empire's timescale. Every other city damage in this
+	 * layer is a fraction of the maximum for the same reason.
+	 *
+	 * IT GOES THROUGH `UCataclysmEmpireMap::Bite`, so a city that bought damage
+	 * resistance resists this too. The upgrade says it resists damage and does
+	 * not name a source.
+	 */
+	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
 
 	/** A city fell: its dungeons are absorbed and its fall fires a surge. */
 	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);

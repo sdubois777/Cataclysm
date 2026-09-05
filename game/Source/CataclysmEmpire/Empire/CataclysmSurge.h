@@ -389,6 +389,21 @@ public:
 	static float SpawnWeightFor(ECataclysmDungeonSubType SubType);
 
 	/**
+	 * What to call a sub-type when a person has to read it.
+	 *
+	 * WHY THIS EXISTS RATHER THAN ENUM REFLECTION. `UCataclysmEmpireMap::TierName`
+	 * beside it is a plain switch for the same reason: the spelling shown to a
+	 * person is a decision, and taking it from the identifier means renaming the
+	 * identifier silently changes what is on screen.
+	 *
+	 * `None` ANSWERS AN EMPTY STRING, not the word "None". A caller printing a
+	 * dungeon wants "dungeon 3 on Outpost (1,2)" for an ordinary one, not
+	 * "dungeon 3 (None) on ...", and most dungeons are ordinary.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString SubTypeName(ECataclysmDungeonSubType SubType);
+
+	/**
 	 * What Cow Level multiplies the walk by.
 	 *
 	 * THE DESIGN DOCUMENT: "Time to complete is doubled and cannot be reduced."
@@ -398,6 +413,23 @@ public:
 	 * reduced" says, and is why the multiplication is not simply applied last.
 	 */
 	static constexpr float CowLevelWalkMultiplier = 2.0f;
+
+	/**
+	 * How many Siege dungeons one city may hold at once.
+	 *
+	 * ONE, WHICH THE DESIGN DOCUMENT STATES: "Max 1 per city." A Siege takes a
+	 * share of its host every day it stands rather than only when its timer runs
+	 * out, so two of them on one city would take that share twice a day and no
+	 * city could survive the pair.
+	 *
+	 * A SECOND ONE BECOMES A DUNGEON WITH NO SUB-TYPE rather than being rolled
+	 * again. Rolling again would take a second draw from the stream, and every
+	 * later dungeon in the same wave would then depend on what this one first
+	 * rolled -- see `RollSubType`. Plain is also the honest answer: the design
+	 * says a city may not have two Sieges, not that it should get something else
+	 * instead.
+	 */
+	static constexpr int32 SiegesPerCity = 1;
 
 	/**
 	 * Rolls one sub-type, weighted.
@@ -578,12 +610,27 @@ public:
 	 * see what a wave would be without moving the schedule on, which is what the
 	 * tests do.
 	 *
+	 * IT ENFORCES THE ONE-SIEGE-PER-CITY RULE, and it is the only place that
+	 * can. `MakeDungeon` is deliberately ignorant of what already stands on a
+	 * city, and it is also called on its own by tests; the wave is the smallest
+	 * thing that can see both what was already there and what it is about to
+	 * add. A dungeon that rolls Siege for a city that already has one is made
+	 * plain instead. See `SiegesPerCity`.
+	 *
 	 * @param FirstDungeonId what to number the first dungeon; the rest follow
 	 *                       from it.
 	 * @param DungeonsPerCity passed through to `PickTargets`; see there.
+	 * @param SiegesPerCityNow how many Siege dungeons already stand on each
+	 *                       city, indexed by city identifier. Empty means the
+	 *                       caller does not know, and then no Siege is refused
+	 *                       -- `UCataclysmEmpireRun` owns the dungeons and this
+	 *                       class deliberately does not. Sieges this wave itself
+	 *                       creates are counted whether or not it is supplied,
+	 *                       so one wave can never land two on one city.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 		FRandomStream& Stream,
-		const TArray<int32>& DungeonsPerCity = TArray<int32>()) const;
+		const TArray<int32>& DungeonsPerCity = TArray<int32>(),
+		const TArray<int32>& SiegesPerCityNow = TArray<int32>()) const;
 };

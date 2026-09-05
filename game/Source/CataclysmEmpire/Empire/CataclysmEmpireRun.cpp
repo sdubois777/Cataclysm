@@ -85,6 +85,13 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 
 	Report.Resolved = Resolved;
 
+	// A SIEGE TAKES ITS SHARE BEFORE ANY TIMER IS ACTED ON, so the day's two
+	// kinds of assault land together and after the repairs above. A city felled
+	// here loses its dungeons with it, and `ResolveDungeon` below finds nothing
+	// to resolve for them, which is the right answer: a city cannot be bitten
+	// twice for falling once.
+	ApplySiegeDamage(Report);
+
 	for (const int32 DungeonId : Resolved)
 	{
 		ResolveDungeon(DungeonId, Report);
@@ -148,16 +155,31 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	TArray<int32> DungeonsPerCity;
 	DungeonsPerCity.AddZeroed(Map->Cities.Num());
 
+	// AND HOW MANY OF THEM ARE SIEGES, counted separately and for a different
+	// rule: the cap above is an upgrade a city may buy, this one is the design's
+	// "Max 1 per city" and applies to every city whether it bought anything or
+	// not. Passed in for the same reason -- the scheduler does not own the
+	// dungeons and must stay able to roll a wave against a bare map in a test.
+	TArray<int32> SiegesStanding;
+	SiegesStanding.AddZeroed(Map->Cities.Num());
+
 	for (const FCataclysmDungeon& Standing : Dungeons)
 	{
 		if (DungeonsPerCity.IsValidIndex(Standing.CityId))
 		{
 			++DungeonsPerCity[Standing.CityId];
 		}
+
+		if (Standing.SubType == ECataclysmDungeonSubType::Siege
+			&& SiegesStanding.IsValidIndex(Standing.CityId))
+		{
+			++SiegesStanding[Standing.CityId];
+		}
 	}
 
 	const TArray<FCataclysmDungeon> Wave =
-		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity);
+		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
+						 SiegesStanding);
 
 	for (const FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -224,6 +246,86 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	if (Map->Bite(CityId, Defence, Population))
 	{
 		CityFell(CityId, OutReport);
+	}
+}
+
+bool UCataclysmEmpireRun::IsBesieged(int32 CityId) const
+{
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege
+			&& Dungeon.CityId == CityId)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
+{
+	if (Map == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// THE CITIES AND THE DAYS COLLECTED BEFORE ANYTHING IS BITTEN, and not
+	// bitten as the list is walked. `Bite` can lead to `CityFell`, which removes
+	// dungeons from `Dungeons`, and walking that array while it is being emptied
+	// is how a crash gets written. `ResolveDungeon` beside this takes the same
+	// care for the same reason.
+	TArray<TPair<int32, int32>> Hosts;
+
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+		{
+			// NEVER NEGATIVE. A dungeon built by hand in a test may carry a
+			// spawn day later than the clock, and a negative age would heal the
+			// city rather than hurt it.
+			const int32 DaysStood =
+				FMath::Max(0, Clock->Day - Dungeon.SpawnedDay);
+
+			Hosts.Emplace(Dungeon.CityId, DaysStood);
+		}
+	}
+
+	for (const TPair<int32, int32>& Host : Hosts)
+	{
+		const int32 CityId = Host.Key;
+
+		// CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege in
+		// this same loop must not be bitten a second time, and a city whose
+		// dungeons were absorbed when it fell may no longer have the Siege that
+		// put it in this list.
+		const FCataclysmCity* City = Map->Find(CityId);
+		if (City == nullptr || City->bFallen)
+		{
+			continue;
+		}
+
+		// THE GROWTH IS IN POINTS AND `Bite` TAKES SHARES, so it is divided by
+		// the city's own maximum to become one. Ten points off an Outpost's
+		// thousand defence is a further one per cent; off the Pillar's twenty
+		// thousand it is a twentieth of that. See `SiegeDamageGrowthPerDay` for
+		// why that asymmetry is the point rather than a rounding of it.
+		const float Grown = SiegeDamageGrowthPerDay * Host.Value;
+
+		const float Defence =
+			SiegeDefenceBitePerDay
+			+ (City->MaxDefence > 0.0f ? Grown / City->MaxDefence : 0.0f);
+
+		const float Population =
+			SiegePopulationBitePerDay
+			+ (City->MaxPopulation > 0.0f ? Grown / City->MaxPopulation : 0.0f);
+
+		OutReport.Besieged.Add(CityId);
+
+		if (Map->Bite(CityId, Defence, Population))
+		{
+			CityFell(CityId, OutReport);
+		}
 	}
 }
 
@@ -407,6 +509,26 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::CityHasFallen;
 	}
 
+	// A BESIEGED CITY CANNOT BE IMPROVED. The design document says a Siege
+	// "Pauses city upgrades", and the project owner settled on 2026-09-05 that
+	// this means it stops any upgrade part way through being built and blocks
+	// buying new ones, while leaving the effects of upgrades the city already
+	// holds working.
+	//
+	// ONLY THE BLOCKING HALF IS HERE, AND THE OTHER HALF IS NOT MISSING SO MUCH
+	// AS IMPOSSIBLE. Nothing is ever part way through being built: `BuildDays`
+	// is zero and every purchase is instant, so there is no in-progress build to
+	// interrupt. Whoever gives an upgrade a build time under issue #1264 should
+	// stop it here as well. Raising `BuildDays` alone would trip
+	// `IsFreeAndInstant` above and refuse every purchase in the game.
+	//
+	// CHECKED BEFORE THE SLOT COUNT, so a player asking about a besieged city
+	// that is also full is told the thing they can actually act on.
+	if (IsBesieged(CityId))
+	{
+		return ECataclysmCityUpgradeResult::CityIsBesieged;
+	}
+
 	if (City->HasUpgrade(Upgrade.RowName))
 	{
 		return ECataclysmCityUpgradeResult::AlreadyBought;
@@ -585,10 +707,20 @@ FString UCataclysmEmpireRun::Describe() const
 		{
 			const FCataclysmCity* City = Map->Find(Dungeon.CityId);
 
+			// THE SUB-TYPE IS SAID OUT LOUD BECAUSE NOTHING ELSE SAYS IT. A
+			// Siege takes a share of its host every day and a Cow Level costs
+			// twice the days to walk, and until this line a person reading the
+			// run could not tell which dungeon was which. An ordinary dungeon
+			// adds nothing here, which is most of them.
+			const FString SubType =
+				UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
+
 			Lines.Add(FString::Printf(
-				TEXT("  dungeon %d on %s: %d floors, %.1f days until it "
+				TEXT("  dungeon %d%s on %s: %d floors, %.1f days until it "
 					 "resolves"),
 				Dungeon.DungeonId,
+				SubType.IsEmpty() ? TEXT("")
+								  : *FString::Printf(TEXT(" (%s)"), *SubType),
 				City ? *City->Name : TEXT("nowhere"),
 				Dungeon.Floors,
 				Clock->DaysUntilResolveFor(Dungeon.DungeonId)));

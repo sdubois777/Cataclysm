@@ -1452,4 +1452,198 @@ bool FCataclysmSurgeWaveSubTypesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSiegeCapTest,
+	"Cataclysm.Surge.AWaveWillNotPutASiegeOnACityThatHasOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSiegeCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// THE CONTROL FIRST. Told that no city holds a Siege, enough waves produce
+	// some. Without this the refusal below would pass on a run that simply never
+	// rolled one.
+	FRandomStream Free(31337);
+	int32 SiegesWhenAllowed = 0;
+	int32 Dungeons = 0;
+
+	for (int32 Wave = 0; Wave < 60; ++Wave)
+	{
+		for (const FCataclysmDungeon& Dungeon :
+			 Scheduler->RollWave(*Map, 1, Dungeons, Free))
+		{
+			++Dungeons;
+			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+			{
+				++SiegesWhenAllowed;
+			}
+		}
+	}
+
+	if (!TestTrue(TEXT("waves do produce Sieges when none is standing"),
+				  SiegesWhenAllowed > 0))
+	{
+		return false;
+	}
+
+	// AND NOW THE SAME ROLLS, told that every city already holds one. Same seed,
+	// same wave sizes, same targets, same draws -- the only difference is what
+	// the caller said was already there.
+	TArray<int32> AllBesieged;
+	AllBesieged.Init(UCataclysmSurgeScheduler::SiegesPerCity,
+					 Map->Cities.Num());
+
+	FRandomStream Barred(31337);
+	int32 SiegesWhenBarred = 0;
+	int32 BarredDungeons = 0;
+
+	for (int32 Wave = 0; Wave < 60; ++Wave)
+	{
+		for (const FCataclysmDungeon& Dungeon :
+			 Scheduler->RollWave(*Map, 1, BarredDungeons, Barred, TArray<int32>(),
+								 AllBesieged))
+		{
+			++BarredDungeons;
+			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+			{
+				++SiegesWhenBarred;
+			}
+		}
+	}
+
+	TestEqual(TEXT("and none at all when every city already has one"),
+			  SiegesWhenBarred, 0);
+
+	// THE WAVE SIZES DID NOT CHANGE, so the comparison above is between two
+	// runs of the same length. A refusal that dropped dungeons rather than
+	// making them plain would show up here.
+	TestEqual(TEXT("the same number of dungeons landed either way"),
+			  BarredDungeons, Dungeons);
+
+	// AND THE REFUSAL COST NO EXTRA DRAW. Both streams took the same number, so
+	// a city that bars a Siege does not shift what every later dungeon rolls.
+	TestEqual(TEXT("both streams took the same number of draws"),
+			  Barred.GetCurrentSeed(), Free.GetCurrentSeed());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSiegeOncePerWaveTest,
+	"Cataclysm.Surge.OneWaveNeverPutsTwoSiegesOnOneCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSiegeOncePerWaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	// WHY THIS IS A SEPARATE TEST. The caller passes in what was already
+	// standing, and a wave that landed two dungeons on one city could still put
+	// two Sieges there while honouring everything it was told. Targets are
+	// rolled with replacement, so two on one city is ordinary rather than rare.
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	FRandomStream Stream(24680);
+	int32 Dungeons = 0;
+	int32 WavesWithTwoOnOneCity = 0;
+
+	for (int32 Wave = 0; Wave < 400; ++Wave)
+	{
+		const TArray<FCataclysmDungeon> Landed =
+			Scheduler->RollWave(*Map, 1, Dungeons, Stream);
+
+		TMap<int32, int32> DungeonsOn;
+		TMap<int32, int32> SiegesOn;
+
+		for (const FCataclysmDungeon& Dungeon : Landed)
+		{
+			++Dungeons;
+			++DungeonsOn.FindOrAdd(Dungeon.CityId);
+
+			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+			{
+				++SiegesOn.FindOrAdd(Dungeon.CityId);
+			}
+		}
+
+		for (const TPair<int32, int32>& Pair : DungeonsOn)
+		{
+			if (Pair.Value > 1)
+			{
+				++WavesWithTwoOnOneCity;
+				break;
+			}
+		}
+
+		for (const TPair<int32, int32>& Pair : SiegesOn)
+		{
+			if (Pair.Value > UCataclysmSurgeScheduler::SiegesPerCity)
+			{
+				AddError(FString::Printf(
+					TEXT("wave %d put %d Sieges on city %d in one go"),
+					Wave, Pair.Value, Pair.Key));
+				return false;
+			}
+		}
+	}
+
+	// THE CONTROL. If no wave ever landed two dungeons on one city, the loop
+	// above never exercised the rule and proves nothing.
+	TestTrue(*FString::Printf(
+				 TEXT("waves that put two dungeons on one city were seen (%d of "
+					  "400)"), WavesWithTwoOnOneCity),
+			 WavesWithTwoOnOneCity > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSubTypeNameTest,
+	"Cataclysm.Surge.EverySubTypeHasAReadableNameAndPlainHasNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSubTypeNameTest::RunTest(const FString& Parameters)
+{
+	// `TestEqualSensitive` AND NOT `TestEqual`. The ordinary one compares two
+	// FStrings case-insensitively, so it would accept "siege" for "Siege" and
+	// say nothing about it.
+	//
+	// HAND-WRITTEN SPELLINGS, NOT THE IDENTIFIERS READ BACK. `CowLevel` is two
+	// words when a person reads it, and a test that derived the string from the
+	// enumerator would accept "CowLevel".
+	TestEqualSensitive(TEXT("Timed"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Timed), FString(TEXT("Timed")));
+
+	TestEqualSensitive(TEXT("Horde"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Horde), FString(TEXT("Horde")));
+
+	TestEqualSensitive(TEXT("Siege"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Siege), FString(TEXT("Siege")));
+
+	TestEqualSensitive(TEXT("Cow Level is two words"),
+		UCataclysmSurgeScheduler::SubTypeName(
+			ECataclysmDungeonSubType::CowLevel), FString(TEXT("Cow Level")));
+
+	TestEqualSensitive(TEXT("Elite"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Elite), FString(TEXT("Elite")));
+
+	TestEqualSensitive(TEXT("Volatile"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Volatile), FString(TEXT("Volatile")));
+
+	TestEqualSensitive(TEXT("Sacrificial"), UCataclysmSurgeScheduler::SubTypeName(
+		ECataclysmDungeonSubType::Sacrificial), FString(TEXT("Sacrificial")));
+
+	// AN ORDINARY DUNGEON SAYS NOTHING, which is what lets a caller print the
+	// name unconditionally without writing "(None)" beside most dungeons.
+	TestTrue(TEXT("and a dungeon with no sub-type has no name"),
+			 UCataclysmSurgeScheduler::SubTypeName(
+				 ECataclysmDungeonSubType::None).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

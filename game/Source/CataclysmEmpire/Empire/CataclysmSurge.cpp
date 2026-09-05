@@ -61,6 +61,21 @@ float UCataclysmSurgeScheduler::SpawnWeightFor(ECataclysmDungeonSubType SubType)
 	return 0.0f;
 }
 
+FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
+{
+	switch (SubType)
+	{
+	case ECataclysmDungeonSubType::Timed:		return TEXT("Timed");
+	case ECataclysmDungeonSubType::Horde:		return TEXT("Horde");
+	case ECataclysmDungeonSubType::Siege:		return TEXT("Siege");
+	case ECataclysmDungeonSubType::CowLevel:	return TEXT("Cow Level");
+	case ECataclysmDungeonSubType::Elite:		return TEXT("Elite");
+	case ECataclysmDungeonSubType::Volatile:	return TEXT("Volatile");
+	case ECataclysmDungeonSubType::Sacrificial:	return TEXT("Sacrificial");
+	default:									return FString();
+	}
+}
+
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 	FRandomStream& Stream)
 {
@@ -483,7 +498,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 
 TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
-	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity) const
+	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity,
+	const TArray<int32>& SiegesPerCityNow) const
 {
 	TArray<FCataclysmDungeon> Wave;
 
@@ -491,6 +507,12 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 		PickTargets(Map, DungeonsInNextSurge(), Stream, DungeonsPerCity);
 
 	Wave.Reserve(Targets.Num());
+
+	// COPIED SO THIS WAVE'S OWN SIEGES COUNT TOWARDS THE CAP. Two dungeons in
+	// one wave can land on the same city -- `PickTargets` rolls with replacement
+	// -- so counting only what was already standing would let a single wave put
+	// two Sieges on one city, which is the thing the cap forbids.
+	TArray<int32> Sieges = SiegesPerCityNow;
 
 	for (int32 Index = 0; Index < Targets.Num(); ++Index)
 	{
@@ -500,7 +522,34 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 			continue;
 		}
 
-		Wave.Add(MakeDungeon(FirstDungeonId + Index, *City, Day, Stream));
+		FCataclysmDungeon Dungeon =
+			MakeDungeon(FirstDungeonId + Index, *City, Day, Stream);
+
+		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+		{
+			// AN EMPTY LIST MEANS THE CALLER DID NOT SAY, and then nothing is
+			// refused on account of what was already standing. Sieges this wave
+			// made are still counted, because `Sieges` is grown to fit below.
+			if (!Sieges.IsValidIndex(Dungeon.CityId))
+			{
+				Sieges.SetNumZeroed(
+					FMath::Max(Sieges.Num(), Dungeon.CityId + 1));
+			}
+
+			if (Sieges[Dungeon.CityId] >= SiegesPerCity)
+			{
+				// PLAIN, AND NOT ROLLED AGAIN. See `SiegesPerCity`: a second
+				// draw here would make every later dungeon in this wave depend
+				// on what this one rolled first.
+				Dungeon.SubType = ECataclysmDungeonSubType::None;
+			}
+			else
+			{
+				++Sieges[Dungeon.CityId];
+			}
+		}
+
+		Wave.Add(Dungeon);
 	}
 
 	return Wave;
