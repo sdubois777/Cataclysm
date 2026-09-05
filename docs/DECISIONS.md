@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — Thorns of Glass reflects half a hit, and five enemy modifiers now do something
+
+### Thorns of Glass changed, and the design workbook changed with it
+
+**The project owner changed the modifier on 2026-09-05.** It read:
+
+> Reflects 100% of damage taken, but the enemy only has 1 HP. You have to use a
+> "chip damage" source or a DoT to kill it without killing yourself.
+
+It now reads:
+
+> Reflects 50% of all damage taken back to the attacker.
+
+**Changed in the Enemy Modifiers sheet of `docs/All_Things_Cataclysm.xlsx`,
+cell I12, which is where the row comes from**, then regenerated into
+`game/Data/EnemyModifiers.csv` by `tools/generate_datatables.py` and into
+`game/Content/Data/DT_EnemyModifiers.uasset` by
+`tools/generate_datatable_assets.py`. Editing the C++ alone would have left the
+game disagreeing with the design and with the description the hover panel prints.
+
+**It was the only modifier that overruled another one**, and it is not any more.
+A creature carrying both Thorns of Glass and Titanic Resolve used to have one
+point of health; it now has half again as much as its archetype gives it and
+reflects half of every hit. `UCataclysmEnemyModifiers::ForcedMaxHealth` was
+deleted with the old wording, because nothing in the game forces a creature's
+maximum health any longer.
+
+### Five modifiers now have their effect built
+
+These are the ones whose numbers their own row states, so none needed a decision.
+
+| Modifier | What its row says | Where the effect is |
+| :-- | :-- | :-- |
+| Titanic Resolve | 50% more health | Multiplies maximum health where that health is first written |
+| Overpowered | Always crits | Sets critical strike chance to 100 |
+| Bloodthirsty | Heal for 10% of damage dealt | Sets life leech to 10 |
+| Thorns of Glass | Reflects 50% of all damage taken | Sets retaliation to 50 |
+| Hellfire Aura | A burning aura damaging nearby players | Pulses once a second on the per-character step |
+
+**Seventy-four still do nothing, and that is the state of the work rather than a
+gap being hidden.** A creature carrying one of those behaves exactly as it did
+before, and the hover panel prints the name either way.
+
+### Where the attribute changes are applied, and why the order matters
+
+**Maximum health is applied where the health is first written**, not with the
+others at the end, because the energy shield further down the same function is
+computed as a share of maximum health. A creature whose health changed after
+that would carry a shield sized for health it has not got.
+
+**Everything else is applied last**, so a modifier wins. Every other write in
+that function sets a base from the archetype and the rarity, and a modifier is a
+change to that creature in particular; one written earlier would be overwritten
+on the next call, which happens every time a spawner sets anything.
+
+**The multiplier is applied to the freshly computed base and never to the
+attribute.** The stat block is re-applied on every setter call, so a multiplier
+against the current value would compound: 1.5, then 2.25, then 3.4.
+
+### An aura pulses once a second, six metres out
+
+**Six metres was decided by the project owner on 2026-09-05** and is the distance
+this game already uses for an aura: the Masochist's Beacon of Despair reaches
+enemies within 6 metres. One number for every aura means a player learns the
+distance once. No design document states a radius for an enemy aura.
+
+**One second is a judgement.** Hellfire Aura says it "deals constant fire damage"
+and states no interval. It applies Burn, which lasts 4 seconds, so a pulse every
+second keeps a player alight without re-applying a burn several times a second.
+The per-character step runs four times a second, so the interval is a gate on
+that step rather than a timer of its own -- the ninth job on that step, and the
+first that belongs to a creature rather than to a player's passive tree.
+
+**The burn is applied as designed rather than as incidental**, which is what
+`ApplyBurn`'s own parameter means: "true when the skill's own row states it
+burns". Hellfire Aura's row states it, and `DoT_Burn`'s row names this modifier
+as one of the two that apply it. An aura has no hit to measure a threshold
+against, and one that only caught a player who had just been hit hard would not
+be an aura.
+
 ## 2026-09-05 — A creature is given its modifiers, and which ones it may draw
 
 Made while building the enemy modifier draw, issue #742. Before it, no creature

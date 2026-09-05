@@ -499,6 +499,34 @@ public:
 	void FillModifiersForRarity();
 
 	/**
+	 * How long since an aura modifier on this creature last pulsed, in seconds.
+	 *
+	 * PUBLIC BECAUSE `UCataclysmEnemyModifiers::AuraStep` KEEPS IT, and that is
+	 * a static on a separate class for the reason every rule about modifiers is:
+	 * the arithmetic can then be tested by passing numbers in. The alternative
+	 * was making the helper a friend of this class to reach one float.
+	 *
+	 * NOT SAVED AND NOT REPLICATED. It is at most one second of drift in when a
+	 * burn is refreshed.
+	 */
+	float SecondsSinceAuraPulse = 0.0f;
+
+	/**
+	 * Writes the attribute changes this creature's modifiers ask for.
+	 *
+	 * CALLED LAST BY `ApplyStartingAttributes`, SO THEY WIN. Every write in that
+	 * function sets a base from the archetype and the rarity, and a modifier is
+	 * a change to this creature in particular. One written before the
+	 * archetype's own figure would be overwritten by it on the next call, which
+	 * happens every time a spawner sets anything.
+	 *
+	 * MAXIMUM HEALTH IS NOT DONE HERE and is the exception. It has to be applied
+	 * where the health is first written, because the energy shield is computed
+	 * as a share of it further down the same function.
+	 */
+	void ApplyModifierAttributes();
+
+	/**
 	 * The seed to draw modifiers from, for a test that needs the same draw
 	 * twice.
 	 *

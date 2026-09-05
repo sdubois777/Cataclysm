@@ -2,11 +2,26 @@
 
 #include "Character/CataclysmEnemyModifiers.h"
 
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
 
 const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
+
+const TCHAR* UCataclysmEnemyModifiers::TitanicResolveRow =
+	TEXT("Generic_Titanic_Resolve");
+const TCHAR* UCataclysmEnemyModifiers::OverpoweredRow =
+	TEXT("Generic_Overpowered");
+const TCHAR* UCataclysmEnemyModifiers::BloodthirstyRow =
+	TEXT("Generic_Bloodthirsty");
+const TCHAR* UCataclysmEnemyModifiers::ThornsOfGlassRow =
+	TEXT("Generic_Thorns_of_Glass");
+const TCHAR* UCataclysmEnemyModifiers::HellfireAuraRow =
+	TEXT("Demonic_Hellfire_Aura");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -126,4 +141,138 @@ const FCataclysmEnemyModifierRow* UCataclysmEnemyModifiers::FindRow(
 
 	return EnemyModifierTable->FindRow<FCataclysmEnemyModifierRow>(
 		Key, TEXT("UCataclysmEnemyModifiers::FindRow"), /*bWarnIfMissing=*/false);
+}
+
+// ---------------------------------------------------------------------------
+// What the carried modifiers do
+// ---------------------------------------------------------------------------
+
+bool UCataclysmEnemyModifiers::Carries(const TArray<FName>& Rows,
+									   const TCHAR* RowKey)
+{
+	return RowKey != nullptr && Rows.Contains(FName(RowKey));
+}
+
+float UCataclysmEnemyModifiers::MaxHealthMultiplier(const TArray<FName>& Rows)
+{
+	// ONE MODIFIER MOVES THIS TODAY. Written as a running multiplier rather
+	// than as a branch, so a second one that also scales health multiplies with
+	// it rather than replacing it.
+	float Multiplier = 1.0f;
+
+	if (Carries(Rows, TitanicResolveRow))
+	{
+		Multiplier *= TitanicResolveHealthMultiplier;
+	}
+
+	return Multiplier;
+}
+
+float UCataclysmEnemyModifiers::ForcedCritChance(const TArray<FName>& Rows)
+{
+	if (Carries(Rows, OverpoweredRow))
+	{
+		return OverpoweredCritChance;
+	}
+
+	return -1.0f;
+}
+
+float UCataclysmEnemyModifiers::LifeLeechPercent(const TArray<FName>& Rows)
+{
+	// A SUM, because two sources of leech should add rather than one winning.
+	float Percent = 0.0f;
+
+	if (Carries(Rows, BloodthirstyRow))
+	{
+		Percent += BloodthirstyLeechPercent;
+	}
+
+	return Percent;
+}
+
+float UCataclysmEnemyModifiers::RetaliationPercent(const TArray<FName>& Rows)
+{
+	float Percent = 0.0f;
+
+	if (Carries(Rows, ThornsOfGlassRow))
+	{
+		Percent += ThornsOfGlassRetaliationPercent;
+	}
+
+	return Percent;
+}
+
+int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
+	{
+		// THE PLAYER COMES THROUGH HERE EVERY STEP, because the step this hangs
+		// off is on the shared character base. So does every Common creature.
+		return 0;
+	}
+
+	if (!Carries(Enemy->ModifierRows, HellfireAuraRow))
+	{
+		return 0;
+	}
+
+	// A DEAD CREATURE BURNS NOBODY. The regeneration timer is cleared on death,
+	// but a step already in flight would otherwise land afterwards, which is the
+	// guard `ACataclysmSuccubusCharacter::PulseDominion` carries for the same
+	// reason.
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return 0;
+	}
+
+	Enemy->SecondsSinceAuraPulse += StepSeconds;
+	if (!AuraPulseIsDue(Enemy->SecondsSinceAuraPulse))
+	{
+		return 0;
+	}
+	Enemy->SecondsSinceAuraPulse = 0.0f;
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// EVERYTHING THIS CREATURE COUNTS AS AN ENEMY, which from a creature's point
+	// of view is the player. `FindEnemiesInSphere` is the same search every
+	// skill in the game uses, so a target that is out of reach of a swing is out
+	// of reach of this too.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+	int32 Burned = 0;
+	for (AActor* Target : Caught)
+	{
+		// THE BURN IS DESIGNED, which is what the parameter means: "true when
+		// the skill's own row states it burns". Hellfire Aura's row is "Emits a
+		// burning aura that deals constant fire damage to nearby players", and
+		// `DoT_Burn`'s own row names this modifier as one of the two that apply
+		// it. So there is no hit to measure a threshold against and none is
+		// wanted -- an aura that only caught a player who had just been hit hard
+		// would not be an aura.
+		if (UCataclysmSkillEffects::ApplyBurn(Enemy, Target, /*HitDamage=*/0.0f,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true))
+		{
+			++Burned;
+		}
+	}
+
+	return Burned;
+}
+
+bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)
+{
+	// AT OR PAST THE INTERVAL, not strictly past it. The per-character step runs
+	// at a fixed 0.25 seconds and the interval is a whole second, so the
+	// accumulated figure lands exactly on 1.0 rather than near it, and a strict
+	// comparison would make every pulse wait an extra step.
+	return SecondsSinceLastPulse >= AuraPulseIntervalSeconds;
 }

@@ -76,6 +76,11 @@ HOOKS = {
             "UCataclysmDebuffs::HoldStep":
                 "the debuffs on a character being held still rather than "
                 "counting down, issue #1070",
+            "UCataclysmEnemyModifiers::AuraStep":
+                "the burning aura a creature carrying the Hellfire Aura "
+                "enemy modifier lays on whoever stands within six metres, "
+                "issue #742. The first job here that belongs to a creature "
+                "rather than to a player's passive tree",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",

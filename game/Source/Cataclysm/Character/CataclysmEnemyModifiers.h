@@ -118,6 +118,132 @@ public:
 	static const FCataclysmEnemyModifierRow* FindRow(
 		const UDataTable* EnemyModifierTable, FName Key);
 
+	// ----------------------------------------------------------------------
+	// The modifiers whose effects are built
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The row keys of the modifiers that do something.
+	 *
+	 * NAMED CONSTANTS RATHER THAN STRINGS AT THE CALL SITE, so a row renamed in
+	 * the design workbook breaks in one place and is found by
+	 * `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable`
+	 * rather than by a creature quietly losing an effect.
+	 *
+	 * THIS LIST IS SHORT AND THAT IS THE STATE OF THE WORK, not an oversight.
+	 * There are 79 modifiers and these are the ones built so far. A creature
+	 * carrying any other name behaves exactly as it did before, and the hover
+	 * panel shows the name either way, which is what keeps the gap visible.
+	 */
+	static const TCHAR* TitanicResolveRow;
+	static const TCHAR* OverpoweredRow;
+	static const TCHAR* BloodthirstyRow;
+	static const TCHAR* ThornsOfGlassRow;
+	static const TCHAR* HellfireAuraRow;
+
+	/** Whether a creature carries a named modifier. */
+	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
+
+	// ----------------------------------------------------------------------
+	// The numbers, each traceable to its own row's description
+	// ----------------------------------------------------------------------
+
+	/** Titanic Resolve: "50% more health". */
+	static constexpr float TitanicResolveHealthMultiplier = 1.5f;
+
+	/** Overpowered: "Always crits". */
+	static constexpr float OverpoweredCritChance = 100.0f;
+
+	/** Bloodthirsty: "Heal for 10% of the damage dealt to the player". */
+	static constexpr float BloodthirstyLeechPercent = 10.0f;
+
+	/**
+	 * Thorns of Glass: "Reflects 50% of all damage taken back to the attacker."
+	 *
+	 * IT USED TO BE 100% AND ONE POINT OF HEALTH. The project owner changed it
+	 * on 2026-09-05, in the Enemy Modifiers sheet of
+	 * `docs/All_Things_Cataclysm.xlsx`, which is where the row comes from. The
+	 * old wording made the creature killable by anything that touched it and
+	 * made reflected damage the only thing about it; the new one is a
+	 * modifier a creature carries alongside its own health.
+	 *
+	 * SO IT CHANGES NO HEALTH AT ALL NOW, and `ForcedMaxHealth` went with it:
+	 * nothing in the game forces a creature's maximum health any more.
+	 */
+	static constexpr float ThornsOfGlassRetaliationPercent = 50.0f;
+
+	/**
+	 * How far an aura modifier reaches, in centimetres.
+	 *
+	 * SIX METRES, DECIDED BY THE PROJECT OWNER ON 2026-09-05, and it is the
+	 * number this game already uses for an aura: the Masochist's Beacon of
+	 * Despair applies its debuff to enemies within 6 metres. One number for
+	 * every aura means a player learns the distance once. No design document
+	 * states a radius for an enemy aura.
+	 */
+	static constexpr float AuraRadiusCm = 600.0f;
+
+	/**
+	 * How often an aura pulses, in seconds.
+	 *
+	 * ONE SECOND, WHICH IS A JUDGEMENT. Hellfire Aura says it "deals constant
+	 * fire damage" and states no interval. It applies Burn, which
+	 * `game/Data/StatusEffects.csv` gives a duration of 4 seconds, so a pulse
+	 * every second keeps a player standing in the aura alight without the aura
+	 * being a fresh burn several times a second. The per-character step runs
+	 * four times a second, so this is a gate on that rather than a timer.
+	 */
+	static constexpr float AuraPulseIntervalSeconds = 1.0f;
+
+	// ----------------------------------------------------------------------
+	// What the carried modifiers do to a creature's stats
+	// ----------------------------------------------------------------------
+
+	/**
+	 * What the modifiers multiply a creature's maximum health by.
+	 *
+	 * A MULTIPLIER APPLIED TO THE FRESHLY COMPUTED BASE, not to whatever the
+	 * attribute holds. `ACataclysmEnemyCharacter::ApplyStartingAttributes` runs
+	 * again every time a spawner sets anything, and a multiplier applied to the
+	 * current value would compound on every call.
+	 */
+	static float MaxHealthMultiplier(const TArray<FName>& Rows);
+
+	/** The critical strike chance the modifiers force, or negative for none. */
+	static float ForcedCritChance(const TArray<FName>& Rows);
+
+	/** Life leech the modifiers grant, as a percentage of damage dealt. */
+	static float LifeLeechPercent(const TArray<FName>& Rows);
+
+	/** Retaliation the modifiers grant, as a percentage of damage taken. */
+	static float RetaliationPercent(const TArray<FName>& Rows);
+
+	/**
+	 * Whether enough time has passed for an aura to pulse again.
+	 *
+	 * PURE, SO IT CAN BE CHECKED WITHOUT A WORLD. The pulse itself reaches out
+	 * and touches whoever is standing nearby, which no headless test can watch;
+	 * whether it is due is arithmetic and this is it.
+	 */
+	static bool AuraPulseIsDue(float SecondsSinceLastPulse);
+
+	/**
+	 * One step of every aura modifier a creature carries.
+	 *
+	 * A JOB ON THE PER-CHARACTER STEP RATHER THAN A TIMER OF ITS OWN, which is
+	 * the reason `UCataclysmContagion::AuraStep` gives for the Masochist's aura:
+	 * `ACataclysmCharacterBase::RegenerationStep` already runs four times a
+	 * second, and a timer per creature is one more thing to cancel when one
+	 * dies. This is the sixth job on that step.
+	 *
+	 * SAFE FOR ANYTHING THAT IS NOT AN ENEMY, and it has to be, because the step
+	 * it hangs off runs for the player as well. A player character, a creature
+	 * with no modifiers and a dead creature all return immediately.
+	 *
+	 * @return how many targets were touched. Zero when nothing was due
+	 */
+	static int32 AuraStep(AActor* Character, float StepSeconds);
+
 	/**
 	 * Whether a row belongs to a Cataclysm a creature of this one may draw.
 	 *

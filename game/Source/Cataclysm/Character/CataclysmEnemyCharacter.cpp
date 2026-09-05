@@ -1136,7 +1136,18 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	if (StartingMaxHealth > 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(MaxHealth))
 	{
-		const float ScaledHealth = StartingMaxHealth * HealthScale;
+		// THE MODIFIERS THIS CREATURE CARRIES MOVE THIS FIGURE, and they do it
+		// HERE rather than at the end of the function so that everything
+		// downstream reads the final number. The energy shield further down is
+		// a share of maximum health, so a creature whose health changed after
+		// that was computed would carry a shield sized for health it has not
+		// got.
+		//
+		// A MULTIPLIER ON THE FRESHLY COMPUTED BASE, NEVER ON THE ATTRIBUTE.
+		// This function runs again every time a spawner sets anything, so a
+		// multiplier applied to the current value would compound on every call.
+		const float ScaledHealth = StartingMaxHealth * HealthScale
+			* UCataclysmEnemyModifiers::MaxHealthMultiplier(ModifierRows);
 
 		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental. The vital
 		// attribute set clamps health to the maximum in PreAttributeChange, so
@@ -1265,6 +1276,55 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 		AbilitySystemComponent->SetNumericAttributeBase(MaxShield, Shield);
 		AbilitySystemComponent->SetNumericAttributeBase(
 			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Shield);
+	}
+
+	// AND WHAT ELSE THE MODIFIERS THIS CREATURE CARRIES CHANGE. Maximum health
+	// is done further up, where it has to be; these three do not feed anything
+	// else in this function, so they go last.
+	//
+	// LAST, SO THEY WIN. Every write above sets a base from the archetype and
+	// the rarity, and a modifier is a change to that creature specifically. A
+	// modifier written before the archetype's own figure would be overwritten by
+	// it on the next call, which happens every time a spawner sets anything.
+	ApplyModifierAttributes();
+}
+
+void ACataclysmEnemyCharacter::ApplyModifierAttributes()
+{
+	if (ModifierRows.IsEmpty())
+	{
+		// NOTHING TO DO IS THE COMMON CASE. Every Common creature is here, and
+		// Common is 60% of what spawns.
+		return;
+	}
+
+	// ALWAYS CRITS. Overpowered. An enemy's hits already read its own critical
+	// strike chance -- `UCataclysmVitalAttributeSet` copies it into the incoming
+	// hit -- so this is the whole of the modifier.
+	const float Crit = UCataclysmEnemyModifiers::ForcedCritChance(ModifierRows);
+	if (Crit >= 0.0f)
+	{
+		ApplyIfHeld(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), Crit);
+	}
+
+	// HEALS FOR A SHARE OF WHAT IT DEALS. Bloodthirsty. `UCataclysmLeech` pays
+	// this out over the three seconds after a hit for anything that has the
+	// stat, so an enemy needed nothing new for it.
+	const float Leech = UCataclysmEnemyModifiers::LifeLeechPercent(ModifierRows);
+	if (Leech > 0.0f)
+	{
+		ApplyIfHeld(UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), Leech);
+	}
+
+	// DEALS BACK HALF OF WHAT IT TAKES. Thorns of Glass. It touches no health:
+	// the project owner changed the modifier on 2026-09-05 from reflecting the
+	// whole hit on a one-health creature to reflecting half on an ordinary one.
+	const float Retaliation =
+		UCataclysmEnemyModifiers::RetaliationPercent(ModifierRows);
+	if (Retaliation > 0.0f)
+	{
+		ApplyIfHeld(UCataclysmCombatAttributeSet::GetRetaliationAttribute(),
+					Retaliation);
 	}
 }
 

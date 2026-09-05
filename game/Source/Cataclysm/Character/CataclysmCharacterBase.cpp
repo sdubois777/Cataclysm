@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -191,6 +192,27 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// ITS RETURN VALUE IS DROPPED. Zero is the answer for every character in the
 	// game without that capstone option, and it is returned for tests.
 	UCataclysmDebuffs::HoldStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
+	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
+	// first of them whose effect reaches out on its own. "Emits a burning aura
+	// that deals constant fire damage to nearby players."
+	//
+	// A NINTH JOB ON THIS STEP RATHER THAN A TIMER OF ITS OWN, for the reason
+	// every one above gives.
+	//
+	// THE PLAYER COMES THROUGH HERE TOO, because this step is on the shared
+	// character base, and the call answers zero for anything that is not a
+	// creature carrying an aura modifier. That is the same arrangement the two
+	// Masochist jobs above have in reverse: they answer zero for every creature.
+	//
+	// ITS INTERVAL IS KEPT ON THE CREATURE rather than on the ability system
+	// component, unlike the nova's and the Beacon's. Those two belong to a
+	// character's passive tree and there is one of each; a creature's aura
+	// belongs to the creature.
+	//
+	// IT REFUSES A CORPSE ITSELF, the same as the three above.
+	UCataclysmEnemyModifiers::AuraStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()
