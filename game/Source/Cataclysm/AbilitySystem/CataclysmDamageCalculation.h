@@ -61,6 +61,22 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	float ArmorPenetration = 0.0f;
 
 	/**
+	 * Whether this blow cannot be dodged at all.
+	 *
+	 * A PROPERTY OF THE BLOW AND NOT OF THE DEFENDER, which is what makes it
+	 * a flag here rather than a stat on either side. Evasion is rolled on
+	 * the target, so the only way an attacker can refuse it is for the blow
+	 * itself to say so.
+	 *
+	 * ITS ONE SOURCE IS THE PERFECT AIM ENEMY MODIFIER, whose row reads
+	 * "Attacks cannot be dodged". Added 2026-09-05.
+	 *
+	 * IT CANNOT MAKE AREA DAMAGE ANY MORE UNAVOIDABLE THAN IT ALREADY IS.
+	 * Evasion never applies to area damage, so this changes nothing there.
+	 */
+	bool bCannotBeEvaded = false;
+
+	/**
 	 * The attacker's chance to critically strike, 0-100.
 	 *
 	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration

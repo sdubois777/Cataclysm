@@ -6,13 +6,18 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -59,6 +64,28 @@ namespace CataclysmEnemyModifierTest
 			});
 
 		return Found;
+	}
+
+	/**
+	 * A player pawn with the player state its ability system lives on.
+	 *
+	 * A PAWN ALONE HAS NO ATTRIBUTES. This project puts a character's ability
+	 * system on the player state rather than on the pawn, because a pawn is
+	 * destroyed on death and the state is not, so a pawn spawned without one
+	 * carries nothing at all.
+	 */
+	ACataclysmPlayerCharacter* SpawnPlayerWithState(UWorld* World)
+	{
+		ACataclysmPlayerCharacter* Pawn =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+														 FRotator::ZeroRotator);
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		if (Pawn && State)
+		{
+			Pawn->SetPlayerState(State);
+			Pawn->OnRep_PlayerState();
+		}
+		return Pawn;
 	}
 }
 
@@ -645,6 +672,358 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierAuraStepIsSafeTest,
 	// and what a torn-down world can produce.
 	TestEqual(TEXT("a null actor touches nobody"),
 			  UCataclysmEnemyModifiers::AuraStep(nullptr, 0.25f), 0);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmAbyssalAuraTest,
+	"Cataclysm.EnemyModifiers.AbyssalAuraCutsTheResistanceOfWhoeverStandsNear")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// **THE MODIFIER THREE CHANGES EXISTED TO UNBLOCK.** Its row reads "Players
+	// within the aura's radius will have their Demonic resistance reduced by
+	// 25%", and until 2026-09-05 none of what it needed existed: nothing
+	// connected the number 25 to a resistance stat, its own data row had every
+	// numeric cell empty, and no creature pulsed an aura at all.
+	//
+	// IT CUTS TWO RESISTANCES, NOT ONE. `Debuff_Abyssal_Aura` names
+	// `resistance_demonic, resistance_war` in the MovesStat column added for
+	// issue #1144. That is why the pairing had to become data: no rule written
+	// in C++ for a single stat could have said it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+
+	// **A PLAYER AND NOT A CREATURE, AND THAT IS NOT A TEST CONVENIENCE.** A
+	// creature carries the single All Resistance attribute and NOT the eight
+	// typed slots. `ACataclysmEnemyCharacter::ApplyStartingAttributes` says why:
+	// player damage carries no type, so a creature resists everything equally
+	// and eight copies of one number would mean nothing. A creature therefore
+	// has no Demonic resistance to lose, and writing to that attribute on one
+	// raises an engine ensure. **This test found that by doing it.**
+	//
+	// IT IS ALSO THE REAL CASE, which the row states: "Players within the aura's
+	// radius".
+	ACataclysmPlayerCharacter* Victim = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("a creature with the aura"), Enemy)
+		|| !TestNotNull(TEXT("a player to stand in it"), Victim))
+	{
+		return false;
+	}
+
+	Victim->SetActorLocation(FVector(200.0f, 0.0f, 0.0f));
+
+	// THE TWO HAVE TO BE ON OPPOSING SIDES, because the aura reaches whatever
+	// the creature counts as an enemy. Two actors on one team stand in each
+	// other's auras and take nothing, which is correct and would make this test
+	// pass for the wrong reason.
+	Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Enemy->SetHealth(500.0f);
+
+	UAbilitySystemComponent* Standing = Victim->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the player has an ability system"), Standing))
+	{
+		return false;
+	}
+
+	// SOMETHING TO TAKE. The reduction is clamped to what the target actually
+	// has, so a target at zero resistance loses nothing and this would pass
+	// against a rule that did nothing at all.
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	const FGameplayAttribute War =
+		UCataclysmResistanceAttributeSet::GetWarResistanceAttribute();
+	Standing->SetNumericAttributeBase(Demonic, 60.0f);
+	Standing->SetNumericAttributeBase(War, 60.0f);
+
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::AbyssalAuraRow));
+
+	// ONE FULL SECOND OF STEPS, because the aura pulses once a second and the
+	// per-character step runs four times a second. Stepping once would prove
+	// only that nothing happens between pulses.
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		UCataclysmEnemyModifiers::AuraStep(Enemy, 0.25f);
+	}
+
+	TestEqual(TEXT("standing in the aura costs 25 Demonic resistance"),
+			  Standing->GetNumericAttribute(Demonic), 35.0f, 0.01f);
+
+	// AND WAR RESISTANCE TOO, which is the half no single-stat rule could have
+	// expressed. The row names both and the shared path reads the row.
+	TestEqual(TEXT("and 25 War resistance, because the row names both"),
+			  Standing->GetNumericAttribute(War), 35.0f, 0.01f);
+
+	// A CREATURE WITHOUT THE MODIFIER TAKES NOTHING OFF ANYBODY, which is what
+	// says the reduction above came from the modifier rather than from standing
+	// near any creature at all.
+	ACataclysmEnemyCharacter* Plain =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(800.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	ACataclysmPlayerCharacter* Bystander = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("a creature with no modifiers"), Plain)
+		|| !TestNotNull(TEXT("a player beside it"), Bystander))
+	{
+		return false;
+	}
+
+	Bystander->SetActorLocation(FVector(900.0f, 0.0f, 0.0f));
+	Plain->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Plain->SetHealth(500.0f);
+
+	UAbilitySystemComponent* Untouched = Bystander->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the bystander has an ability system"), Untouched))
+	{
+		return false;
+	}
+	Untouched->SetNumericAttributeBase(Demonic, 60.0f);
+
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		UCataclysmEnemyModifiers::AuraStep(Plain, 0.25f);
+	}
+
+	TestEqual(TEXT("standing near a creature without the aura costs nothing"),
+			  Untouched->GetNumericAttribute(Demonic), 60.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmGenericModifierStatsTest,
+	"Cataclysm.EnemyModifiers.TheRemainingGenericModifiersAnswerTheirOwnNumbers")
+{
+	const FName Relentless(UCataclysmEnemyModifiers::RelentlessRow);
+	const FName Shielder(UCataclysmEnemyModifiers::ShielderRow);
+	const FName PerfectAim(UCataclysmEnemyModifiers::PerfectAimRow);
+
+	// NOTHING CARRIED MEANS NOTHING GRANTED, which is 60% of what spawns.
+	const TArray<FName> None;
+	TestEqual(TEXT("no modifiers regenerate nothing"),
+			  UCataclysmEnemyModifiers::HealthRegenShareOfMaximum(None), 0.0f);
+	TestEqual(TEXT("no modifiers add no shield"),
+			  UCataclysmEnemyModifiers::EnergyShieldShareOfHealth(None), 0.0f);
+	TestFalse(TEXT("and ordinary attacks can be dodged"),
+			  UCataclysmEnemyModifiers::AttacksCannotBeDodged(None));
+
+	// RELENTLESS: a share of its own maximum health each second, not a flat
+	// figure. A creature's health grows about twentyfold across the difficulty
+	// tiers, so a flat number would be a real heal at tier 1 and nothing at 8.
+	TestEqual(TEXT("Relentless regenerates two per cent a second"),
+			  UCataclysmEnemyModifiers::HealthRegenShareOfMaximum({Relentless}),
+			  0.02f);
+
+	// SHIELDER: "an additional shield equal to 50% of maximum health".
+	TestEqual(TEXT("Shielder adds half its health as shield"),
+			  UCataclysmEnemyModifiers::EnergyShieldShareOfHealth({Shielder}),
+			  0.5f);
+
+	// PERFECT AIM: "Attacks cannot be dodged".
+	TestTrue(TEXT("Perfect Aim refuses evasion"),
+			 UCataclysmEnemyModifiers::AttacksCannotBeDodged({PerfectAim}));
+
+	// AND ONE MODIFIER DOES NOT ANSWER FOR ANOTHER, which a shared lookup could
+	// quietly do.
+	TestFalse(TEXT("Relentless does not refuse evasion"),
+			  UCataclysmEnemyModifiers::AttacksCannotBeDodged({Relentless}));
+	TestEqual(TEXT("and Shielder regenerates nothing"),
+			  UCataclysmEnemyModifiers::HealthRegenShareOfMaximum({Shielder}),
+			  0.0f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmGenericModifiersReachACreatureTest,
+	"Cataclysm.EnemyModifiers.RelentlessAndShielderReachTheCreaturesStats")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// THE ANSWERS ABOVE DO NOT SAY THE GAME EVER ASKS, which is the failure this
+	// project has shipped before. This spawns a real creature and reads the
+	// attributes back off it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Enemy))
+	{
+		return false;
+	}
+
+	Enemy->SetHealth(500.0f);
+
+	const UAbilitySystemComponent* ASC = Enemy->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the creature has an ability system"), ASC))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Regen =
+		UCataclysmVitalAttributeSet::GetHealthRegenAttribute();
+	const FGameplayAttribute MaxShield =
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	// **A CREATURE REGENERATES NOTHING BY DEFAULT, AND THAT IS A STATED
+	// POSITION.** `ApplyStartingAttributes` writes health regeneration to zero
+	// for every creature, with a comment saying a creature that should
+	// regenerate "would be expressed as an archetype property or a modifier".
+	// Without this control the check below would pass against a rule that simply
+	// left the attribute set's own placeholder of 1.0 alone.
+	TestEqual(TEXT("a creature regenerates nothing by default"),
+			  ASC->GetNumericAttribute(Regen), 0.0f, 0.01f);
+
+	const float Health = ASC->GetNumericAttribute(MaxHealth);
+	TestTrue(TEXT("and has health for the share to be a share of"), Health > 0.0f);
+
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::RelentlessRow));
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::ShielderRow));
+	Enemy->ApplyStartingAttributes();
+
+	TestEqual(TEXT("Relentless reaches the creature's health regeneration"),
+			  ASC->GetNumericAttribute(Regen), Health * 0.02f, 0.01f);
+
+	TestEqual(TEXT("and Shielder gives it half its health as shield"),
+			  ASC->GetNumericAttribute(MaxShield), Health * 0.5f, 0.01f);
+
+	// APPLYING THE STAT BLOCK AGAIN DOES NOT COMPOUND EITHER, which it would if
+	// they were applied to the attribute rather than to the freshly computed
+	// base. A spawner sets these on the lines after SpawnActor in whatever order
+	// suits it, so this really does run more than once.
+	Enemy->ApplyStartingAttributes();
+	TestEqual(TEXT("and applying it again does not compound the regeneration"),
+			  ASC->GetNumericAttribute(Regen), Health * 0.02f, 0.01f);
+	TestEqual(TEXT("nor the shield"),
+			  ASC->GetNumericAttribute(MaxShield), Health * 0.5f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmPhasewalkerTest,
+	"Cataclysm.EnemyModifiers.PhasewalkerMovesTheCreatureEveryFewSeconds")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Enemy))
+	{
+		return false;
+	}
+	Enemy->SetHealth(500.0f);
+
+	// A CREATURE WITHOUT THE MODIFIER NEVER PHASES, however long it is stepped.
+	// Without this the check below would pass against a rule that teleported
+	// every creature in the game.
+	for (int32 Step = 0; Step < 40; ++Step)
+	{
+		TestFalse(TEXT("a creature without Phasewalker does not teleport"),
+				  UCataclysmEnemyModifiers::PhaseStep(Enemy, 0.25f));
+	}
+
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::PhasewalkerRow));
+	Enemy->SecondsSincePhase = 0.0f;
+
+	// NOTHING BEFORE THE INTERVAL. Four seconds at a quarter second a step is
+	// sixteen steps, and the first fifteen must do nothing, or the modifier is a
+	// creature that never stands still.
+	for (int32 Step = 0; Step < 15; ++Step)
+	{
+		TestFalse(TEXT("nothing happens before the interval"),
+				  UCataclysmEnemyModifiers::PhaseStep(Enemy, 0.25f));
+	}
+
+	const FVector Before = Enemy->GetActorLocation();
+	TestTrue(TEXT("and on the sixteenth step it phases"),
+			 UCataclysmEnemyModifiers::PhaseStep(Enemy, 0.25f));
+
+	// MEASURED AS A DISTANCE MOVED rather than as the return value, because the
+	// return value would be true for a move of no length at all.
+	TestTrue(TEXT("and it actually moved"),
+			 (Enemy->GetActorLocation() - Before).Size() > 1.0f);
+
+	// AND IT DOES NOT PHASE AGAIN ON THE NEXT STEP, which is what the interval
+	// is for.
+	TestFalse(TEXT("and does not phase again immediately"),
+			  UCataclysmEnemyModifiers::PhaseStep(Enemy, 0.25f));
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmHordeLeaderTest,
+	"Cataclysm.EnemyModifiers.HordeLeaderRalliesItsAlliesWhenItDies")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Leader =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Ally =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(200.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a leader"), Leader)
+		|| !TestNotNull(TEXT("an ally"), Ally))
+	{
+		return false;
+	}
+
+	// THE TWO HAVE TO BE ON THE SAME SIDE, because the modifier buffs allies.
+	Leader->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Ally->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Leader->SetHealth(500.0f);
+	Ally->SetHealth(500.0f);
+
+	// A CREATURE WITHOUT THE MODIFIER RALLIES NOBODY, which is what says the
+	// result below came from the modifier rather than from any creature dying.
+	TestEqual(TEXT("a creature without Horde Leader rallies nobody"),
+			  UCataclysmEnemyModifiers::RallyAlliesOnDeath(Leader), 0);
+
+	Leader->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HordeLeaderRow));
+
+	TestEqual(TEXT("and one carrying it rallies the ally beside it"),
+			  UCataclysmEnemyModifiers::RallyAlliesOnDeath(Leader), 1);
+
+	// AND THE ALLY REALLY CARRIES THE BUFF, not merely a count that says so.
+	const FGameplayTag Commander =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	TestTrue(TEXT("the Commander tag is a real tag"), Commander.IsValid());
+
+	const UAbilitySystemComponent* Buffed = Ally->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the ally has an ability system"), Buffed))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the ally is carrying it"),
+			 Buffed->HasMatchingGameplayTag(Commander));
 
 	return true;
 }

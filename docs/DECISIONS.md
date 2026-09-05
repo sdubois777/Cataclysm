@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The ten Generic enemy modifiers all do something, and Abyssal Aura works
+
+Six modifiers built in one change rather than one at a time. The project owner
+asked for that on 2026-09-05: a build-and-test cycle costs about fourteen minutes
+and doing one per modifier was most of the time spent.
+
+### Abyssal Aura, which three earlier changes existed to unblock
+
+Its row reads "Players within the aura's radius will have their Demonic
+resistance reduced by 25%". It needed a rule connecting the number 25 to a
+resistance stat, numbers on its own row, and something that pulses an aura. None
+of the three existed that morning.
+
+**It cuts two resistances, not one.** Its prose names Demonic; its data row names
+Demonic and War, and the row is the effect while the description is prose about
+it. That is the case the `MovesStat` column was needed for -- no rule written in
+C++ for a single stat could have said it.
+
+**A creature loses nothing to it, and that is correct.** A creature carries the
+single All Resistance attribute and not the eight typed slots, because player
+damage carries no type. So against another creature the modifier applies its tag
+and takes no resistance, which matches its own wording: "Players within the
+aura's radius."
+
+### Two rows corrected rather than two delays built
+
+**The project owner chose on 2026-09-05 to use the game's own timings and correct
+the descriptions**, rather than build a delay for one modifier each.
+
+* **Relentless** said "unless damaged in the past 2 seconds". Health regeneration
+  in this game is continuous and has no such gate, unlike the energy shield. The
+  row now reads "Regenerates health over time, which no other creature does."
+* **Shielder** said its shield "regenerates if not damaged within 5 seconds".
+  `UCataclysmRegeneration::ShieldRefillDelaySeconds` is three, for everything in
+  the game. The row now says three.
+
+Both changed in the Enemy Modifiers sheet of `docs/All_Things_Cataclysm.xlsx` and
+regenerated, because editing the C++ alone would have left the game disagreeing
+with the description the hover panel prints.
+
+### Horde Leader needed no new buff
+
+Its row says nearby enemies "become enraged, increasing their attack speed and
+movement speed for 5 seconds". `Commander` already exists and already reads "All
+nearby allies gain 20% increased movement speed and attack speed", and the
+Succubus already grants it. A second buff meaning the same thing would have been
+two names for one effect.
+
+### Perfect Aim needed a new flag on a blow
+
+Its row reads "Attacks cannot be dodged". Evasion is rolled on the DEFENDER, so
+the only place an attacker can refuse it is on the blow it sends.
+`FCataclysmIncomingHit::bCannotBeEvaded` is that flag, set from the attacker's
+modifiers where the hit is built.
+
+**It is a flag rather than a stat on either side**, because it is a rule about
+the blow and not a number anybody has.
+
+### Two numbers are judgements, because no row states one
+
+* **Relentless regenerates 2% of maximum health a second.** A share rather than a
+  flat figure, because a creature's health grows about twentyfold across the
+  eight difficulty tiers and again with rarity, so any flat number is a real heal
+  at tier 1 and nothing at tier 8. Two per cent is fifty seconds from nothing to
+  full: slow enough never to win a fight the player is engaged in, fast enough
+  that disengaging is punished.
+* **Phasewalker teleports 3 metres every 4 seconds.** Far enough to break a melee
+  player's spacing, short enough that the creature is still the thing you were
+  fighting; often enough to be its character, rare enough not to make it
+  impossible to hit.
+
+Both are constants to tune against real play rather than argued figures.
+
+### Where the ten Generic modifiers stand
+
+All ten now do something. Six of the eight Demonic ones do not: Beguiling,
+Infernal Sacrifice, Unholy Sigils, Sacrificial Bond, Inferno Charge and Infernal
+Brand each need a system this game does not have, and each states a rule or a
+number that no row supplies.
+
 ## 2026-09-05 — Crowd control resistance shortens a stun and a shove, and at 100 stops them
 
 **Decided by the project owner on 2026-09-05.** Before it, the

@@ -422,7 +422,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 1. Evasion. Direct attacks only; area damage lands regardless.
-	if (!Hit.bIsArea && Combat)
+	//
+	// AND A BLOW MAY REFUSE TO BE DODGED. The Perfect Aim enemy modifier
+	// reads "Attacks cannot be dodged", and evasion is rolled here on the
+	// target, so the only place an attacker can refuse it is on the blow.
+	if (!Hit.bIsArea && !Hit.bCannotBeEvaded && Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);

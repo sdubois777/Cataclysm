@@ -141,6 +141,12 @@ public:
 	static const TCHAR* ThornsOfGlassRow;
 	static const TCHAR* HellfireAuraRow;
 	static const TCHAR* UnyieldingRow;
+	static const TCHAR* AbyssalAuraRow;
+	static const TCHAR* RelentlessRow;
+	static const TCHAR* ShielderRow;
+	static const TCHAR* PerfectAimRow;
+	static const TCHAR* HordeLeaderRow;
+	static const TCHAR* PhasewalkerRow;
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
@@ -169,6 +175,75 @@ public:
 	 * would have blocked almost nothing a player would notice.
 	 */
 	static constexpr float UnyieldingCrowdControlResistance = 100.0f;
+
+	/**
+	 * Relentless: "Regenerates health over time, which no other creature
+	 * does."
+	 *
+	 * A SHARE OF THE CREATURE'S OWN MAXIMUM HEALTH PER SECOND, not a flat
+	 * figure. A creature's health grows about twentyfold across the eight
+	 * difficulty tiers and again with its rarity, so any flat number would be
+	 * a real heal on a tier 1 Common and nothing at all on a tier 8 Herald.
+	 *
+	 * TWO PER CENT IS A JUDGEMENT. The row states no rate. Two per cent a
+	 * second is fifty seconds to heal from nothing to full, which is slow
+	 * enough that it never wins a fight the player is engaged in and fast
+	 * enough that disengaging and coming back is punished. It is a constant to
+	 * tune against real play rather than an argued figure.
+	 *
+	 * NO DELAY AFTER DAMAGE, which the row used to state and the game does not
+	 * have: health regeneration here is continuous, unlike the energy shield.
+	 * The project owner chose on 2026-09-05 to correct the row rather than
+	 * build a delay for one modifier.
+	 */
+	static constexpr float RelentlessHealthPerSecondShare = 0.02f;
+
+	/**
+	 * Shielder: "an additional shield equal to 50% of maximum health".
+	 *
+	 * ADDED TO WHATEVER SHIELD THE ARCHETYPE ALREADY GIVES, because five of
+	 * the seven designed creatures have a fraction of exactly zero and the two
+	 * that do not should keep theirs.
+	 *
+	 * IT RECHARGES ON THE GAME'S OWN THREE SECOND DELAY. The row said five,
+	 * and `UCataclysmRegeneration::ShieldRefillDelaySeconds` is three for
+	 * everything in the game. The project owner chose on 2026-09-05 to correct
+	 * the row rather than give one modifier a delay of its own.
+	 */
+	static constexpr float ShielderShareOfHealth = 0.5f;
+
+	/**
+	 * Horde Leader: "On death, all nearby enemies become enraged, increasing
+	 * their attack speed and movement speed for 5 seconds."
+	 *
+	 * IT GRANTS THE COMMANDER BUFF, WHICH ALREADY EXISTS AND ALREADY SAYS
+	 * THIS. `game/Data/StatusEffects.csv` describes Commander as "All nearby
+	 * allies gain 20% increased movement speed and attack speed", and the
+	 * Succubus already grants it. A second buff meaning the same thing would
+	 * be two names for one effect.
+	 */
+	static constexpr float HordeLeaderSeconds = 5.0f;
+
+	/**
+	 * Phasewalker: "Teleport short distances every few seconds."
+	 *
+	 * BOTH FIGURES ARE JUDGEMENTS. The row states neither a distance nor an
+	 * interval. Three metres is far enough to break a melee player's spacing
+	 * and short enough that the creature is still the thing you were fighting;
+	 * four seconds is often enough to be the creature's character and rare
+	 * enough not to make it impossible to hit.
+	 */
+	static constexpr float PhasewalkerDistanceCm = 300.0f;
+	static constexpr float PhasewalkerIntervalSeconds = 4.0f;
+
+	/**
+	 * Keeps a phase step's direction off the modifier draw's stream.
+	 *
+	 * BOTH SEED FROM THE CREATURE AND THE CLOCK, so without a salt a creature
+	 * phasing in the frame it was given its modifiers would draw its direction
+	 * from the same numbers. The value itself means nothing.
+	 */
+	static constexpr int32 PhaseDrawSalt = 0x9A5E;
 
 	/**
 	 * Thorns of Glass: "Reflects 50% of all damage taken back to the attacker."
@@ -233,6 +308,41 @@ public:
 
 	/** Crowd control resistance the modifiers grant, as a percentage. */
 	static float CrowdControlResistancePercent(const TArray<FName>& Rows);
+
+	/** Health regenerated per second, as a share of maximum health. */
+	static float HealthRegenShareOfMaximum(const TArray<FName>& Rows);
+
+	/** Extra energy shield the modifiers grant, as a share of maximum health. */
+	static float EnergyShieldShareOfHealth(const TArray<FName>& Rows);
+
+	/**
+	 * Whether this creature's attacks cannot be dodged. Perfect Aim.
+	 *
+	 * A QUESTION ABOUT THE ATTACKER AND NOT THE DEFENDER, which is what makes
+	 * it a flag rather than a stat. Evasion is rolled on the target, so the
+	 * only way an attacker can refuse it is for the blow to say so.
+	 */
+	static bool AttacksCannotBeDodged(const TArray<FName>& Rows);
+
+	/**
+	 * Buffs this creature's nearby allies, if it carries Horde Leader.
+	 *
+	 * CALLED WHEN THE CREATURE DIES, which is the only moment the modifier
+	 * describes. Safe for anything that is not a creature carrying it.
+	 *
+	 * @return how many allies were buffed
+	 */
+	static int32 RallyAlliesOnDeath(AActor* Character);
+
+	/**
+	 * One step of Phasewalker, moving the creature if it is due.
+	 *
+	 * ON THE SAME PER-CHARACTER STEP THE AURAS USE, for the reason every job
+	 * on it gives: it already runs four times a second.
+	 *
+	 * @return whether the creature moved
+	 */
+	static bool PhaseStep(AActor* Character, float StepSeconds);
 
 	/**
 	 * Whether enough time has passed for an aura to pulse again.

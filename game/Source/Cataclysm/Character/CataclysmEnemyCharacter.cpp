@@ -144,6 +144,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		return;
 	}
 
+	// AND A CREATURE CARRYING HORDE LEADER RALLIES WHAT IS LEFT OF ITS PACK.
+	// "On death, all nearby enemies become enraged, increasing their attack
+	// speed and movement speed for 5 seconds."
+	//
+	// AFTER THE MARK AND NOT BEFORE IT, so it cannot run twice, and so the
+	// dying creature is already dead when its allies are found -- which is
+	// what stops it rallying itself.
+	UCataclysmEnemyModifiers::RallyAlliesOnDeath(this);
+
 	// A CREATURE DYING IS ONE OF THE FIVE EVENTS SECTION 6 WRITES ON, and it
 	// is the one that fires most: it is what stops a player killing a boss,
 	// quitting, and coming back to find it alive again.
@@ -1262,7 +1271,15 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	{
 		const float Health = AbilitySystemComponent->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-		const float Shield = FMath::Max(0.0f, Health * EnergyShieldFraction);
+
+		// AND WHATEVER THE MODIFIERS ADD. Shielder grants half the creature's
+		// maximum health as shield. Added to the archetype's own fraction
+		// rather than replacing it, because five of the seven designed
+		// creatures have a fraction of zero and the two that do not should
+		// keep theirs.
+		const float Fraction = EnergyShieldFraction
+			+ UCataclysmEnemyModifiers::EnergyShieldShareOfHealth(ModifierRows);
+		const float Shield = FMath::Max(0.0f, Health * Fraction);
 
 		AbilitySystemComponent->SetNumericAttributeBase(MaxShield, Shield);
 		AbilitySystemComponent->SetNumericAttributeBase(
@@ -1330,6 +1347,25 @@ void ACataclysmEnemyCharacter::ApplyModifierAttributes()
 		ApplyIfHeld(
 			UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(),
 			CrowdControl);
+	}
+
+	// AND HEALS ITSELF OVER TIME. Relentless. `ApplyStartingAttributes`
+	// writes every creature's health regeneration to zero a few lines above,
+	// with a comment saying a creature that should regenerate "would be
+	// expressed as an archetype property or a modifier". This is that
+	// modifier, and it runs after the zero for exactly that reason.
+	//
+	// A SHARE OF ITS OWN MAXIMUM HEALTH, not a flat figure, because a
+	// creature's health grows about twentyfold across the difficulty tiers
+	// and again with rarity.
+	const float RegenShare =
+		UCataclysmEnemyModifiers::HealthRegenShareOfMaximum(ModifierRows);
+	if (RegenShare > 0.0f && AbilitySystemComponent)
+	{
+		const float Health = AbilitySystemComponent->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		ApplyIfHeld(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(),
+					Health * RegenShare);
 	}
 }
 
