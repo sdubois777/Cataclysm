@@ -12,6 +12,7 @@ class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmCharacterCreationWidget;
 class UCataclysmCharacterSheetWidget;
+class UCataclysmCityScreenWidget;
 class UCataclysmEmpireMapWidget;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
@@ -254,6 +255,24 @@ public:
 	 * reason the empire overview has none. Issues #1233 and #50.
 	 */
 	void ToggleCharacterSheet();
+
+	/**
+	 * Opens the city screen on one city, or closes it if it is already showing
+	 * that city.
+	 *
+	 * IT TAKES A CITY, WHICH THE OTHER FOUR SCREENS DO NOT. There is one
+	 * character sheet and one empire overview; there are 25 cities, and which
+	 * one is being looked at is the whole content of the screen.
+	 *
+	 * OPENING IT ON A DIFFERENT CITY WHILE IT IS ALREADY OPEN SWITCHES CITIES
+	 * rather than closing it. Clicking a second city on the empire overview
+	 * means "show me that one", never "close this".
+	 *
+	 * `Cataclysm.CityScreen` calls it, and so does clicking a city on the empire
+	 * overview. It has no key of its own, for the reason the empire overview has
+	 * none. Issue #42.
+	 */
+	void ToggleCityScreen(int32 CityId);
 
 	/**
 	 * Scale the passive tree view, or fit the whole tree when given nothing.
@@ -522,6 +541,22 @@ private:
 	/** The character sheet, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmCharacterSheetWidget> CharacterSheetScreen = nullptr;
+
+	/** Which Widget Blueprint one city's screen is. Soft, for the reason
+	 *  the character creator's is. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmCityScreenWidget> CityScreenClass =
+		TSoftClassPtr<UCataclysmCityScreenWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_CityScreen.WBP_CityScreen_C")));
+
+	/**
+	 * The city screen, once it has been opened at least once.
+	 *
+	 * ONE WIDGET FOR ALL 25 CITIES, told which one to show. A widget per city
+	 * would be 25 of them holding the same rows.
+	 */
+	UPROPERTY()
+	TObjectPtr<UCataclysmCityScreenWidget> CityScreen = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

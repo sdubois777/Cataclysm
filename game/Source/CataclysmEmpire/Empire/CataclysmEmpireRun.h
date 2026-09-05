@@ -277,6 +277,22 @@ public:
 	ECataclysmCityUpgradeResult BuyCityUpgrade(
 		int32 CityId, const FCataclysmCityUpgrade& Upgrade);
 
+	/**
+	 * What `BuyCityUpgrade` would answer, without buying anything.
+	 *
+	 * WHY IT IS SEPARATE. A screen has to grey out the upgrades a city cannot
+	 * buy and say why, and the only way for it to be right is to ask the same
+	 * question the purchase asks. A screen that decided for itself would be a
+	 * second opinion about a question already answered here, and the two would
+	 * drift the first time a rule changed.
+	 *
+	 * `BuyCityUpgrade` CALLS THIS AND REFUSES ON ANYTHING BUT `Bought`, so there
+	 * is one list of checks rather than two.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	ECataclysmCityUpgradeResult WouldBuyCityUpgrade(
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade) const;
+
 	// ----------------------------------------------------------------------
 	// Seeing it
 	// ----------------------------------------------------------------------

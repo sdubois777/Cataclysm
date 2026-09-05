@@ -323,8 +323,8 @@ bool UCataclysmEmpireRun::RemoveDungeon(int32 DungeonId)
 // City upgrades
 // ---------------------------------------------------------------------------
 
-ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
-	int32 CityId, const FCataclysmCityUpgrade& Upgrade)
+ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
+	int32 CityId, const FCataclysmCityUpgrade& Upgrade) const
 {
 	if (Map == nullptr || Clock == nullptr)
 	{
@@ -373,6 +373,23 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	if (Map->FreeUpgradeSlots(CityId) <= 0)
 	{
 		return ECataclysmCityUpgradeResult::NoSlotsLeft;
+	}
+
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
+	int32 CityId, const FCataclysmCityUpgrade& Upgrade)
+{
+	// EVERY CHECK IS ABOVE, IN ONE PLACE. The city screen greys out what a city
+	// cannot buy and says why, and it asks exactly this question rather than
+	// deciding for itself, so the screen and the purchase cannot drift apart.
+	const ECataclysmCityUpgradeResult Refusal =
+		WouldBuyCityUpgrade(CityId, Upgrade);
+
+	if (Refusal != ECataclysmCityUpgradeResult::Bought)
+	{
+		return Refusal;
 	}
 
 	FCataclysmCityUpgrade Bought = Upgrade;

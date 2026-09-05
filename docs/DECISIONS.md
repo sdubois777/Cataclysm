@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The city screen, and what it shows about unfinished work
+
+Clicking a city on the empire overview wrote "There is nothing to do at a city
+yet" into a text line. It now opens `UCataclysmCityScreenWidget`, which is the
+third screen built on the arrangement the 2026-08-24 entry chose: the layout in a
+Widget Blueprint, the logic in a C++ base class, and the words in a layout class
+of their own so a headless test can read them. Issue #42.
+
+**It shows the fourteen upgrades that do nothing, rather than hiding them.**
+Ten of the 24 city upgrades work and fourteen are refused because their effect is
+not built. Showing only the ten would make the game look as though it has ten
+city upgrades; showing all 24 as buttons would let a player press one that does
+nothing. So the ten that can be bought are buttons, and the fourteen are rows in
+a section headed by how many there are and the fact that they do nothing yet,
+each with the same refusal text a refused purchase gives.
+
+**The screen asks the run rather than deciding for itself.**
+`UCataclysmEmpireRun::WouldBuyCityUpgrade` is new and answers exactly what
+`BuyCityUpgrade` would, without buying. `BuyCityUpgrade` now calls it and refuses
+on anything but `Bought`, so there is one list of checks rather than two. A screen
+that decided which upgrades were available would be a second opinion about a
+question already answered, and the two would part company the first time a rule
+changed.
+
+**Clicking a second city switches rather than closing.**
+`ACataclysmPlayerController::ToggleCityScreen` takes a city, which the other four
+screens do not, because there are 25 cities and which one is being looked at is
+the whole content of the screen. Clicking the same city again closes it.
+
+**The empire overview asks the controller to open it** rather than owning a city
+screen of its own, because the controller owns every screen in this project and a
+second one would be another to keep in step.
+
+**What it does not do.** It shows no price and no build time, because a city
+upgrade is free and immediate and neither number is designed (issue #1264). It
+cannot sell an upgrade back: nothing in the design says a slot can be freed, and
+a one-time upgrade has already fired. It cannot enter a dungeon standing on the
+city, because there is no travel between the empire and a dungeon level
+(issue #48). It has no key of its own, for the reason the empire overview and the
+character sheet have none.
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.cpp`,
+`CataclysmCityScreenLayout.cpp`, `CataclysmEmpireMapWidget.cpp`,
+`CataclysmPlayerController.cpp`, and `tools/generate_interface_assets.py`, which
+writes the first version of `WBP_CityScreen`.
+
+---
+
 ## 2026-09-05 — City upgrades: free, immediate, and ten of the twenty-four built
 
 A city can now buy an upgrade. `game/Data/CityUpgrades.csv` had 24 rows that

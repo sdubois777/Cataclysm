@@ -8,6 +8,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayerController.h"
 
 namespace
 {
@@ -304,15 +305,6 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 
 void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 {
-	// NOTHING YET, AND SAYING SO IS BETTER THAN DOING NOTHING SILENTLY. There is
-	// no city screen to open, no upgrade to spend and no dungeon to enter; see
-	// the class comment. A player who clicks a city and gets no response at all
-	// would reasonably think the screen was broken.
-	if (DetailLabel == nullptr)
-	{
-		return;
-	}
-
 	const int32 CityId = CityForButton(Value);
 	const UCataclysmEmpireRun* Run = ShownRun();
 
@@ -321,20 +313,56 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 		return;
 	}
 
-	if (const FCataclysmCity* City = Run->Map->Find(CityId))
+	// WHICH CITY WAS CLICKED, RECORDED WHETHER OR NOT A SCREEN OPENS. A headless
+	// test has no player controller, so opening the screen is the one part of
+	// this that cannot be watched; recording the city is what lets a test check
+	// that a click on a particular box means a particular city.
+	ClickedCityId = CityId;
+
+	// THE DETAIL LINE STILL SAYS WHAT WAS CLICKED. The city screen covers the
+	// map while it is open, and closing it leaves the map reading as though
+	// nothing happened unless the line remembers.
+	if (DetailLabel != nullptr)
 	{
-		DetailLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("%s. There is nothing to do at a city yet."), *City->Name)));
+		if (const FCataclysmCity* City = Run->Map->Find(CityId))
+		{
+			DetailLabel->SetText(FText::FromString(*City->Name));
+		}
+	}
+
+	// AND THE CITY SCREEN OPENS ON IT. The player controller owns every screen
+	// in this project, so this asks rather than making one: a second city screen
+	// belonging to the map would be a second one to keep in step.
+	if (ACataclysmPlayerController* Controller =
+			Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+	{
+		Controller->ToggleCityScreen(CityId);
 	}
 }
 
 int32 UCataclysmEmpireMapWidget::CityForButton(FName Value) const
 {
-	for (int32 Index = 0; Index < CityButtons.Num(); ++Index)
+	// AGAINST THE MAP RATHER THAN AGAINST THE BOXES, and it is a fix rather than
+	// a tidy-up. Walking `CityButtons` needed the boxes to exist, and the
+	// automation test command passes `-nullrhi`: a widget with no Widget
+	// Blueprint has a null canvas, builds no boxes, and so resolved every click
+	// to nothing. That made the one part of a click that can go wrong silently
+	// -- sending a player to the wrong city -- impossible to test at all.
+	//
+	// THE MAP IS ALSO THE BETTER AUTHORITY. A city identifier means a city on
+	// the map, not a widget, and the two lists are the same 25 entries in a
+	// running game because `BuildCities` makes one box per city.
+	const UCataclysmEmpireRun* Run = ShownRun();
+	if (Run == nullptr || Run->Map == nullptr)
 	{
-		if (ButtonNameFor(Index) == Value)
+		return INDEX_NONE;
+	}
+
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (ButtonNameFor(City.CityId) == Value)
 		{
-			return Index;
+			return City.CityId;
 		}
 	}
 
@@ -374,6 +402,14 @@ FString UCataclysmEmpireMapWidget::SurgeText() const
 FString UCataclysmEmpireMapWidget::DetailText() const
 {
 	return DetailLabel ? DetailLabel->GetText().ToString() : FString();
+}
+
+void UCataclysmEmpireMapWidget::ClickCityForTests(int32 CityId)
+{
+	// THE NAME THE BUTTON WOULD CARRY, so this goes through the same lookup a
+	// real click does. Passing the identifier straight through would skip
+	// `CityForButton`, which is the part that can be wrong.
+	HandleCityClicked(ButtonNameFor(CityId));
 }
 
 FVector2D UCataclysmEmpireMapWidget::CanvasSize() const

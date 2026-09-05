@@ -33,11 +33,16 @@ class UTextBlock;
  * whether the result is legible is not, and **no test on this project can tell
  * anyone that**.
  *
+ * CLICKING A CITY OPENS ITS SCREEN. `UCataclysmCityScreenWidget` shows what the
+ * city is worth, what is standing on it and what it can build, and a player
+ * spends its upgrade slots there. This asks the player controller to open it,
+ * because the controller owns every screen in this project. Issue #42.
+ *
  * WHAT IT DOES NOT DO YET:
  *
- *   - **Clicking a city does nothing.** There is no city screen, no upgrade to
- *     spend and no dungeon to enter. Issue #42 lists the city screen; the
- *     dungeon runtime is issue #41.
+ *   - **A city cannot be entered from here.** Clicking one opens its screen; no
+ *     dungeon standing on it can be walked from either, because there is no
+ *     travel between the empire and a dungeon level. Issue #48.
  *   - **It does not advance the day.** Nothing in the game does except a console
  *     command. Walking a dungeon and spending days at the forge are what
  *     eventually will.
@@ -106,6 +111,18 @@ public:
 	FString SurgeText() const;
 	FString DetailText() const;
 
+	/** Which city was clicked last, or `INDEX_NONE` before any was. */
+	int32 LastClickedCityId() const { return ClickedCityId; }
+
+	/**
+	 * Clicks a city's box as though a player had.
+	 *
+	 * A TEST CANNOT CLICK. `-nullrhi` draws nothing and a box that is never
+	 * drawn is never pressed, so the handler is reachable by city. It is the
+	 * same handler the button calls, not a copy of it.
+	 */
+	void ClickCityForTests(int32 CityId);
+
 protected:
 	/**
 	 * Where the cities are drawn: one box per city, placed by lattice
@@ -169,6 +186,17 @@ private:
 
 	/** Which city a button stands for, or `INDEX_NONE`. */
 	int32 CityForButton(FName Value) const;
+
+	/**
+	 * Which city was clicked last, or `INDEX_NONE` before any was.
+	 *
+	 * RECORDED BECAUSE OPENING THE SCREEN CANNOT BE WATCHED. A headless test has
+	 * no player controller, so the part of a click that opens the city screen
+	 * does nothing there. This is what lets a test check that clicking a
+	 * particular box means a particular city, which is the half of the click
+	 * that can go wrong silently.
+	 */
+	int32 ClickedCityId = INDEX_NONE;
 
 	/** One box per city, in city identifier order. */
 	UPROPERTY(Transient)

@@ -222,6 +222,17 @@ by `git add` with no error and no warning. Guarded by
   [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
   `Cataclysm.EmpireMap` opens it.
 
+  **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
+  the city is worth, the dungeons standing on it soonest to bite first, what it
+  has already built, and one button per upgrade it can still buy; pressing one
+  spends a slot. The fourteen upgrades whose effect is not built are shown in a
+  section of their own with the reason beside each, rather than hidden, so the
+  game does not look as though it has ten city upgrades rather than twenty-four.
+  `UCataclysmCityScreenLayout` decides every word, for the reason
+  `UCataclysmEmpireMapLayout` exists. `Cataclysm.CityScreen <cityId>` opens the
+  same screen without the map (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)).
+
   Walking a dungeon spends the empire's days. `Cataclysm.EnterDungeon` starts
   one of the dungeons standing on the map: its own timer stops while the player
   is inside it, every other one keeps counting, each floor descended costs one
@@ -234,8 +245,7 @@ by `git add` with no error and no warning. Guarded by
   [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
   the empire and a dungeon level, so entering one is a console command typed
   while already standing in `L_Dungeon`, and clearing one leaves the player
-  standing on the floor they beat. Clicking a city on the map does nothing,
-  because there is no city screen to open. **Only walking a dungeon and the
+  standing on the floor they beat. **Only walking a dungeon and the
   console commands move the day**: dying costs 5, 10 or 15 days in the design and
   costs none here, though `UCataclysmDayClock::DeathDayCostFor` answers how many,
   and there is no forge to spend the twelve a craft takes. A fallen city does not
@@ -244,9 +254,8 @@ by `git add` with no error and no warning. Guarded by
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
   upgrade tree is still only the Python model in `sim/` (issue
-  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **A city upgrade can
-  only be bought from the console**, because there is no city screen, and 14 of
-  the 24 are refused because their effect is not built (issue
+  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **14 of the 24 city
+  upgrades are refused** because their effect is not built (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in
   `sim/` still has no city upgrade system at all, so Heretic's two slots instead
   of three cannot be measured in a sweep (issue
