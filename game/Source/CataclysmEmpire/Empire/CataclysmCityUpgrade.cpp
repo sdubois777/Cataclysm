@@ -74,9 +74,20 @@ TArray<ECataclysmCityUpgradeEffect> UCataclysmCityUpgradeRules::AllEffects()
 {
 	TArray<ECataclysmCityUpgradeEffect> Effects;
 
-	// ONE PER ROW OF THE SHEET, and `None` is not one of them. The count is
-	// pinned by `Cataclysm.CityUpgrade.EveryRowOfTheSheetHasAnEffect`, so a
-	// value added here without a row, or a row added without a value, fails.
+	// ONE PER ROW OF THE SHEET, and `None` is not one of them.
+	//
+	// TWO TESTS HOLD THE COUNT AT TWENTY-FOUR FROM OPPOSITE SIDES.
+	// `Cataclysm.CityUpgrade.TenOfTheTwentyFourEffectsAreBuilt` checks this list
+	// has 24 entries, and
+	// `Cataclysm.CityUpgrade.EveryRowOfTheTableMapsToAnEffect` checks the
+	// DataTable has 24 rows and that each maps to a distinct effect. So a row
+	// added without a value, or a value added without a row, fails one of them.
+	//
+	// THE BOUND IS WRITTEN OUT RATHER THAN READ FROM THE REFLECTED ENUM. A
+	// twenty-fifth value added here without a row would go unchecked by the
+	// first test, which compares against this same literal -- but it cannot
+	// reach a player, because an upgrade only enters the game through a table
+	// row and a twenty-fifth row fails the second test loudly.
 	for (int32 Value = 1; Value <= 24; ++Value)
 	{
 		Effects.Add(static_cast<ECataclysmCityUpgradeEffect>(Value));
