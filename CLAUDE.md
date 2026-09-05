@@ -94,10 +94,22 @@ the design changes. They began as exports from a Google Drive folder, but as of
 back to Drive. Treat the Drive originals as historical. A design decision is not
 real until it is in `docs/`.
 
-**One dungeon floor costs exactly one day.** Depth and time are the same axis, so
-a dungeon cannot be made cheaper without also being made poorer. Resolve timers
-scale with depth for the same reason. `sim/README.md` lists the rules that are
-fixed by design rather than swept.
+**One dungeon floor costs one day to begin with, and investment lowers that
+rate.** The starting relationship is one floor, one day, which is why a floor is
+a substantial space rather than a single room. **It is a starting rate and not an
+invariant.** City upgrades and the empire upgrade tree lower the days a dungeon
+takes to walk *while its floor count stays where it is*. That is the point of
+those upgrades rather than a loophole in them: an invested player can run a fifty
+floor dungeon in a couple of days, and it is still fifty floors deep, still worth
+what that is worth, and still biting on the same schedule.
+
+**Depth and reward are the same axis. Depth and time are not, once a player has
+invested in separating them.** A dungeon made shallower is made poorer; a dungeon
+made quicker to walk is not. Resolve timers scale with depth and never with the
+walk time, for that reason. `FCataclysmDungeon::Floors` is the depth and
+`FCataclysmDungeon::WalkDays` is the walk cost, and they are separate fields on
+purpose. `sim/README.md` lists the rules that are fixed by design rather than
+swept.
 
 **The simulation has no runtime dependencies and should keep none.** It is pure
 standard library Python. `sim/requirements-dev.txt` is for testing and linting

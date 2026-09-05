@@ -169,3 +169,22 @@ TArray<int32> UCataclysmDayClock::AdvanceDays(int32 Days)
 
 	return Resolved;
 }
+
+bool UCataclysmDayClock::TakeAWholeDay(float Days)
+{
+	// NOTHING, RATHER THAN WINDING THE CLOCK BACK. A caller with no rate to
+	// spend should pass zero; a negative number can only be a mistake, and
+	// letting it subtract would give a player back days already spent.
+	if (Days > 0.0f)
+	{
+		PartialDay += Days;
+	}
+
+	if (PartialDay < 1.0f)
+	{
+		return false;
+	}
+
+	PartialDay -= 1.0f;
+	return true;
+}

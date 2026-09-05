@@ -48,7 +48,7 @@ namespace
 			{ TEXT("Explorer_There_can_be_no_more_than_15_dungeons_on"),
 			  ECataclysmCityUpgradeEffect::DungeonCap },
 			{ TEXT("Explorer_Dungeons_here_take_4_less_days_to_beat"),
-			  ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer },
+			  ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer },
 			{ TEXT("Explorer_Dungeons_here_have_5_more_floors"),
 			  ECataclysmCityUpgradeEffect::DungeonFloorsMore },
 			{ TEXT("Explorer_Dungeons_here_have_5_fewer_floors_to_a"),

@@ -126,6 +126,37 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float ResolveDays = 0.0f;
 
+	/**
+	 * How many days walking the whole dungeon costs.
+	 *
+	 * SEPARATE FROM THE FLOOR COUNT, AND THAT IS THE WHOLE POINT. One floor
+	 * costs one day to begin with, so this starts equal to `Floors`. City
+	 * upgrades and the empire tree lower it **while the floor count stays where
+	 * it is**, which is what lets a player who has invested make a fifty floor
+	 * dungeon cost two days rather than fifty. The dungeon is still fifty floors
+	 * deep, still worth what fifty floors are worth, and still bites on the same
+	 * schedule; only the time to walk it moved.
+	 *
+	 * ZERO MEANS NOBODY SET IT, and then a floor costs the ordinary one day. A
+	 * dungeon built by hand in a test, or one from before this field existed,
+	 * behaves exactly as it did.
+	 *
+	 * NEVER BELOW ONE once it is set, which is what "to a minimum of 1" in the
+	 * City Upgrades sheet says. A dungeon that cost no time at all would be free,
+	 * and the empire layer's whole tension is that nothing is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDays = 0.0f;
+
+	/**
+	 * What one floor of this dungeon costs, in days.
+	 *
+	 * THE WHOLE WALK DIVIDED BY THE FLOORS. A fifty floor dungeon costing two
+	 * days charges a twenty-fifth of a day per floor, and
+	 * `UCataclysmDayClock::SpendDays` is what turns those into whole days.
+	 */
+	float WalkDaysPerFloor() const;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float DefenceBite = 0.0f;
 

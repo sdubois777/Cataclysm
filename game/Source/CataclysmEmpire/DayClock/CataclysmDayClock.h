@@ -242,6 +242,25 @@ public:
 	int32 Day = 0;
 
 	/**
+	 * Time spent that has not yet added up to a whole day.
+	 *
+	 * WHY A DAY CAN BE SPENT IN PIECES. A floor costs one day by default and
+	 * upgrades can lower that rate, so a fifty floor dungeon a player has
+	 * invested in may cost two days rather than fifty. Walking one of its floors
+	 * then costs a twenty-fifth of a day, and there has to be somewhere to keep
+	 * the part of a day that has been spent but has not yet turned into one.
+	 *
+	 * ALWAYS BETWEEN 0 AND 1. `SpendDays` advances a whole day for each whole
+	 * day that accumulates, so this never reaches one.
+	 *
+	 * THE DAY ITSELF IS STILL A WHOLE NUMBER. Nothing else in the empire layer
+	 * has to know about fractions: surges, timers and city falls all happen on
+	 * `Day`, exactly as before.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PartialDay = 0.0f;
+
+	/**
 	 * Which dungeon the player is standing in, or `INDEX_NONE`.
 	 *
 	 * IT IS THE ONE TIMER THAT DOES NOT MOVE. See `bTimerTicksWhileRunning`.
@@ -328,4 +347,29 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	TArray<int32> AdvanceDays(int32 Days);
+
+	/**
+	 * Adds part of a day to the carry, and says whether a whole day came out.
+	 *
+	 * WHY THIS EXISTS. A floor costs one day by default, and a city upgrade can
+	 * lower that rate while the floor count stays where it is -- a fifty floor
+	 * dungeon a player has invested in may cost two days rather than fifty. A
+	 * floor of that dungeon then costs a twenty-fifth of a day, and something has
+	 * to hold the part of a day spent so far.
+	 *
+	 * IT DOES NOT ADVANCE THE DAY, AND THAT IS DELIBERATE. `AdvanceDay` here
+	 * moves this clock's timers and nothing else; the day loop that fires surges,
+	 * repairs cities and resolves dungeons is `UCataclysmEmpireRun::AdvanceDay`,
+	 * and only the run can drive it. Advancing from inside this class would move
+	 * the timers while skipping everything else a day does.
+	 * `UCataclysmEmpireRun::SpendFloorTime` is the caller.
+	 *
+	 * @param Days how much time to add. Zero or less adds nothing, which is what
+	 *             a caller with no rate should pass rather than a negative number
+	 *             that would wind the clock back.
+	 * @return whether a whole day came out of the carry, which the caller should
+	 *         then spend. Call again to find out whether another did.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool TakeAWholeDay(float Days);
 };

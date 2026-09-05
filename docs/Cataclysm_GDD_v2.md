@@ -3643,7 +3643,9 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
 
 ## **What a Floor Is**
 
-A floor is **one level of the dungeon**: a single connected space with one entrance and one stairwell down, themed by the dungeon's Cataclysm and by its type and sub-type. A floor should take an efficient player between two and five minutes, including finding the stairs. One floor costs exactly one day of empire time, which is why a floor is a substantial space rather than a single room.
+A floor is **one level of the dungeon**: a single connected space with one entrance and one stairwell down, themed by the dungeon's Cataclysm and by its type and sub-type. A floor should take an efficient player between two and five minutes, including finding the stairs. One floor costs one day of empire time to begin with, which is why a floor is a substantial space rather than a single room.
+
+**That is a starting rate and not an invariant.** A dungeon's time-to-clear is its own property beside its floor count, and city upgrades and the empire upgrade tree lower it while the floor count stays where it is. An invested player can run a fifty floor dungeon in a couple of days; it is still fifty floors deep, still worth what fifty floors are worth, and its resolve timer is unchanged, because that scales with depth and never with the time to walk it. **Making a dungeon shallower makes it poorer. Making it quicker to walk does not** — which is what makes the two upgrades that do those things different choices rather than one written twice.
 
   
 
@@ -6592,7 +6594,7 @@ Three states, following where the player is rather than what they are doing.
 | :-- | :-- |
 | The capital | The only place that is not under threat. Sparse and low, but not dread — this is where the player plans |
 | The empire map | Time passing and pressure building. Tied to the day clock, so it tightens as a surge approaches |
-| A dungeon | Dread, and it gets worse with depth. One floor is one day, so descending and running out of time are the same movement |
+| A dungeon | Dread, and it gets worse with depth. A floor costs a day until a player has invested in lowering that rate, so early on descending and running out of time are the same movement |
 
   
 

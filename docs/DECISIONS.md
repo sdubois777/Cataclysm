@@ -2,6 +2,51 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — Correction: a floor costing a day is a starting rate, not a rule
+
+**The entry below is wrong and so was the code it describes.** It says the two
+Explorer upgrades about speed cannot be told apart and that one of them should
+not be built. The project owner corrected that on 2026-09-05.
+
+**Floor count and time to beat are separate quantities.** One floor costing one
+day is where a run starts. City upgrades and the empire upgrade tree lower the
+days a dungeon takes to walk **while its floor count stays where it is**. In the
+owner's words, with that investment "you could have a 50 floor dungeon that only
+takes you a couple days in world time to beat".
+
+So the two upgrades own different situations, which is exactly what makes both
+worth a slot:
+
+| Upgrade | What it buys | What it gives up |
+|---|---|---|
+| `Explorer_Dungeons_here_have_5_fewer_floors_to_a` | Speed | Depth, reward, and resolve time — a shallower dungeon bites sooner |
+| `Explorer_Dungeons_here_take_4_less_days_to_beat` | Speed | Nothing |
+
+**Where I went wrong.** I read "One floor costs exactly one day of empire time"
+in `docs/Cataclysm_GDD_v2.md` as an invariant. It is the default. The same
+document lists a dungeon's properties twice as "a time-to-clear estimate, a
+resolve timer, floor count, modifiers" — time-to-clear is its own field beside
+the floor count and always was.
+
+**Applied 2026-09-05.** `FCataclysmDungeon::WalkDays` is how many days walking a
+dungeon costs, separate from `Floors`. `UCataclysmDayClock::PartialDay` holds
+time spent that has not yet added up to a whole day, and
+`UCataclysmEmpireRun::SpendFloorTime` spends whole days through `AdvanceDay` as
+they accumulate — so a day that came out of twenty-five floors fires its surge,
+repairs its cities and resolves its dungeons exactly as a day spent in one go
+would. The effect was renamed `DungeonWalkDaysFewer`; its old name said resolve
+days, which is not what it changes.
+
+**Three documents stated the old rule as absolute and are reworded**: `CLAUDE.md`,
+`sim/README.md`, and `docs/Cataclysm_GDD_v2.md` in two places. Resolve timers
+still scale with depth and never with the walk time.
+
+**The simulation is unchanged.** `config.days_per_floor` stays 1.0 and no sweep
+moves it; the model has no upgrades, so depth and time never come apart there.
+`tools/tests/test_day_clock_port.py` compares that constant and still passes.
+
+---
+
 ## 2026-09-05 — Three Explorer city upgrades, and one that cannot be told apart
 
 Three of the four Explorer city upgrades that shape the dungeons a city receives

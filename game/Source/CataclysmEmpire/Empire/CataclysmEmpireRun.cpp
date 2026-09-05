@@ -107,6 +107,32 @@ TArray<FCataclysmDayReport> UCataclysmEmpireRun::AdvanceDays(int32 Days)
 	return Reports;
 }
 
+TArray<FCataclysmDayReport> UCataclysmEmpireRun::SpendFloorTime(float Days)
+{
+	TArray<FCataclysmDayReport> Reports;
+
+	if (Clock == nullptr)
+	{
+		return Reports;
+	}
+
+	// THE CLOCK HOLDS THE PART OF A DAY AND THIS SPENDS THE WHOLE ONES. Every
+	// whole day goes through `AdvanceDay` below, so a day that accumulated out
+	// of twenty-five floors fires its surge, repairs its cities and resolves its
+	// dungeons exactly as a day spent in one go would.
+	while (Clock->TakeAWholeDay(Days))
+	{
+		Reports.Add(AdvanceDay());
+
+		// THE COST IS ADDED ONCE. Asking again with zero drains whatever is left
+		// in the carry -- a floor costing three days would otherwise leave two
+		// of them unspent until the next floor.
+		Days = 0.0f;
+	}
+
+	return Reports;
+}
+
 // ---------------------------------------------------------------------------
 // A surge
 // ---------------------------------------------------------------------------

@@ -33,28 +33,20 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::RecoverPopulationEvery:
 	case ECataclysmCityUpgradeEffect::RestoreDefenceOnClear:
 
-	// AND THE THREE EXPLORER UPGRADES THAT SHAPE THE DUNGEONS A CITY RECEIVES.
-	// The surge scheduler applies all three: two move the floor count as a
-	// dungeon is rolled, and the cap takes a full city out of the target list so
-	// the wave lands elsewhere.
+	// AND THE FOUR EXPLORER UPGRADES THAT SHAPE THE DUNGEONS A CITY RECEIVES.
+	// The surge scheduler applies all four as a dungeon is rolled: two move the
+	// floor count, one lowers the days walking it costs WITHOUT moving the floor
+	// count, and the cap takes a full city out of the target list so the wave
+	// lands elsewhere.
 	case ECataclysmCityUpgradeEffect::DungeonCap:
+	case ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsMore:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsFewer:
 		return true;
 
-	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST, or on a
-	// decision. Listed rather than defaulted, so adding a value to the enum
-	// without deciding this is a compiler warning rather than a silent
-	// "not built".
-	case ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer:
-		// NOT BUILT BECAUSE IT CANNOT BE TOLD APART FROM `DungeonFloorsFewer`.
-		// "Dungeons here take 4 less days to beat" is time to walk the dungeon,
-		// and one floor costs exactly one day -- `docs/Cataclysm_GDD_v2.md`
-		// states it and `CLAUDE.md` fixes it -- so four fewer days to beat IS
-		// four fewer floors. `Explorer_Dungeons_here_have_5_fewer_floors_to_a`
-		// already does that, and does five. Building this would add a second
-		// upgrade that does the same thing and less of it. Issue #1266.
-		return false;
+	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST. Listed rather
+	// than defaulted, so adding a value to the enum without deciding this is a
+	// compiler warning rather than a silent "not built".
 
 	case ECataclysmCityUpgradeEffect::SubTypeChanceHorde:
 	case ECataclysmCityUpgradeEffect::SubTypeChanceElite:
@@ -89,8 +81,8 @@ TArray<ECataclysmCityUpgradeEffect> UCataclysmCityUpgradeRules::AllEffects()
 	// ONE PER ROW OF THE SHEET, and `None` is not one of them.
 	//
 	// TWO TESTS HOLD THE COUNT AT TWENTY-FOUR FROM OPPOSITE SIDES.
-	// `Cataclysm.CityUpgrade.TenOfTheTwentyFourEffectsAreBuilt` checks this list
-	// has 24 entries, and
+	// `Cataclysm.CityUpgrade.OnlyTheEffectsThatAreBuiltReportAsBuilt` checks
+	// this list has 24 entries, and
 	// `Cataclysm.CityUpgrade.EveryRowOfTheTableMapsToAnEffect` checks the
 	// DataTable has 24 rows and that each maps to a distinct effect. So a row
 	// added without a value, or a value added without a row, fails one of them.
@@ -139,7 +131,7 @@ FString UCataclysmCityUpgradeRules::EffectName(
 	case ECataclysmCityUpgradeEffect::RecoverPopulationEvery:	return TEXT("RecoverPopulationEvery");
 	case ECataclysmCityUpgradeEffect::RestoreDefenceOnClear:	return TEXT("RestoreDefenceOnClear");
 	case ECataclysmCityUpgradeEffect::DungeonCap:				return TEXT("DungeonCap");
-	case ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer:	return TEXT("DungeonResolveDaysFewer");
+	case ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer:	return TEXT("DungeonWalkDaysFewer");
 	case ECataclysmCityUpgradeEffect::DungeonFloorsMore:		return TEXT("DungeonFloorsMore");
 	case ECataclysmCityUpgradeEffect::DungeonFloorsFewer:		return TEXT("DungeonFloorsFewer");
 	case ECataclysmCityUpgradeEffect::SubTypeChanceHorde:		return TEXT("SubTypeChanceHorde");

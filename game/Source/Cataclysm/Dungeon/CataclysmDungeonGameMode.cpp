@@ -643,7 +643,7 @@ bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 	// built when play begins and how `Cataclysm.DungeonFloor` jumps to a floor to
 	// look at it. Neither is a floor the player walked down to. The day for floor
 	// 1 is spent by `EnterEmpireDungeon`.
-	SpendADayInTheEmpire();
+	SpendFloorTimeInTheEmpire();
 
 	return true;
 }
@@ -698,12 +698,30 @@ bool ACataclysmDungeonGameMode::IsOnTheLastFloor() const
 	return Floors > 0 && ChooseFloorNumber() >= Floors;
 }
 
-void ACataclysmDungeonGameMode::SpendADayInTheEmpire()
+void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 {
-	if (UCataclysmEmpireRun* Run = EmpireRun())
+	UCataclysmEmpireRun* Run = EmpireRun();
+	if (Run == nullptr)
+	{
+		return;
+	}
+
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+
+	// A WHOLE DAY WHEN NOTHING IS BOUND. Pressing Play puts the player on a
+	// generated floor with no empire dungeon behind it, and there is then no
+	// rate to read; a floor costs the ordinary day.
+	if (Dungeon == nullptr || Run->Clock == nullptr)
 	{
 		Run->AdvanceDay();
+		return;
 	}
+
+	// OTHERWISE THE DUNGEON'S OWN RATE, which is one day a floor unless a city
+	// upgrade lowered it. `SpendDays` advances a whole day for each whole day
+	// that accumulates, so timers move and dungeons resolve exactly as they
+	// would have.
+	Run->SpendFloorTime(Dungeon->WalkDaysPerFloor());
 }
 
 bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
@@ -751,7 +769,7 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 
 	// FLOOR 1 IS A FLOOR, AND A FLOOR COSTS A DAY. Walking N floors costs N
 	// days: one for arriving and one for each descent.
-	SpendADayInTheEmpire();
+	SpendFloorTimeInTheEmpire();
 
 	return true;
 }

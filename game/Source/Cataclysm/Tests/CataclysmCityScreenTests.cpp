@@ -17,7 +17,7 @@
  * WHAT THEY CANNOT CHECK, AND IT IS THE THING THAT MATTERS MOST. The automation
  * test command in `tools/unreal_build.py` passes `-nullrhi`, so nothing is drawn
  * and no test here can say whether the screen is legible, whether a player can
- * find the upgrade they came for, or whether eleven greyed rows read as
+ * find the upgrade they came for, or whether ten greyed rows read as
  * unfinished work rather than as a broken screen. **Somebody has to look.**
  *
  * WHICH IS WHY MOST OF THEM ARE ABOUT `UCataclysmCityScreenLayout` RATHER THAN
@@ -293,7 +293,7 @@ bool FCataclysmCityScreenDungeonsTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenOffersTest,
-	"Cataclysm.CityScreen.AllTwentyFourAreShownAndTenCanBeBought",
+	"Cataclysm.CityScreen.EveryUpgradeIsShownAndOnlyTheBuiltOnesCanBeBought",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
@@ -312,16 +312,16 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THIRTEEN, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
+	// FOURTEEN, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
 	// as written out, so the two cannot part company and neither can drift
 	// unnoticed.
 	TestEqual(TEXT("a fresh city can buy every built upgrade"),
 			  CountBuyable(List),
 			  UCataclysmCityUpgradeRules::BuiltEffectCount());
 
-	TestEqual(TEXT("which is thirteen"), CountBuyable(List), 13);
+	TestEqual(TEXT("which is fourteen"), CountBuyable(List), 14);
 
-	// AND THE OTHER ELEVEN SAY WHY NOT, in the same words the console command
+	// AND THE OTHER TEN SAY WHY NOT, in the same words the console command
 	// and a refused purchase use.
 	int32 NotBuilt = 0;
 
@@ -344,9 +344,9 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 					  ECataclysmCityUpgradeResult::EffectNotBuiltYet));
 	}
 
-	TestEqual(TEXT("eleven do nothing yet"), NotBuilt, 11);
+	TestEqual(TEXT("ten do nothing yet"), NotBuilt, 10);
 
-	// THIRTEEN AND ELEVEN ARE ALL TWENTY-FOUR. Without this a count could drift
+	// FOURTEEN AND TEN ARE ALL TWENTY-FOUR. Without this a count could drift
 	// in both directions at once and neither figure above would notice.
 	TestEqual(TEXT("and the two counts are the whole sheet"),
 			  CountBuyable(List) + NotBuilt, 24);
@@ -363,9 +363,9 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 	// AND THE HEADING OVER THE UNBUILT ONES COUNTS THEM AND SAYS WHY THEY ARE
 	// THERE, because a block of greyed rows with no explanation reads as a
 	// broken screen.
-	const FString Heading = UCataclysmCityScreenLayout::NotBuiltHeading(11);
+	const FString Heading = UCataclysmCityScreenLayout::NotBuiltHeading(10);
 
-	TestTrue(TEXT("the heading counts them"), Heading.Contains(TEXT("11")));
+	TestTrue(TEXT("the heading counts them"), Heading.Contains(TEXT("10")));
 	TestTrue(TEXT("and says they do nothing yet"),
 			 Heading.Contains(TEXT("do nothing yet")));
 
@@ -411,7 +411,7 @@ bool FCataclysmCityScreenHeldTest::RunTest(const FString& Parameters)
 	// AND IT IS NOT OFFERED A SECOND TIME.
 	const TArray<FCataclysmCityUpgradeOffer> After = Offers(Run, 0);
 
-	TestEqual(TEXT("one fewer can be bought"), CountBuyable(After), 12);
+	TestEqual(TEXT("one fewer can be bought"), CountBuyable(After), 13);
 
 	for (const FCataclysmCityUpgradeOffer& Offer : After)
 	{
@@ -486,8 +486,8 @@ bool FCataclysmCityScreenFullTest::RunTest(const FString& Parameters)
 					  ECataclysmCityUpgradeResult::NoSlotsLeft));
 	}
 
-	TestEqual(TEXT("the ten built upgrades it did not buy say so"), SaidFull,
-			  10);
+	TestEqual(TEXT("the eleven built upgrades it did not buy say so"), SaidFull,
+			  11);
 
 	return true;
 }

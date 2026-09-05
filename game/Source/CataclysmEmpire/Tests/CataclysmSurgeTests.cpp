@@ -823,6 +823,93 @@ bool FCataclysmSurgeFloorUpgradeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeWalkDaysTest,
+	"Cataclysm.Surge.AQuickerDungeonKeepsItsFloorsItsRewardAndItsTimer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeWalkDaysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const TArray<int32> Rim =
+		CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 2);
+
+	if (!TestEqual(TEXT("two Outposts were found to compare"), Rim.Num(), 2))
+	{
+		return false;
+	}
+
+	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer, 4.0f);
+
+	FRandomStream A(5150), B(5150);
+
+	const FCataclysmDungeon Plain =
+		Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, A);
+	const FCataclysmDungeon Quicker =
+		Scheduler->MakeDungeon(1, *Map->Find(Rim[1]), 1, B);
+
+	if (!TestTrue(TEXT("the plain dungeon is deep enough to shorten"),
+				  Plain.Floors > 6))
+	{
+		return false;
+	}
+
+	// THIS IS THE WHOLE POINT OF THE UPGRADE. It buys time and gives up nothing:
+	// the dungeon is the same depth, so it is worth the same and it bites on the
+	// same schedule. `DungeonFloorsFewer` beside it buys the same speed by giving
+	// up all three, which is what makes them different upgrades rather than one
+	// upgrade written twice.
+	TestEqual(TEXT("the floor count did not move"), Quicker.Floors,
+			  Plain.Floors);
+
+	TestEqual(TEXT("so the resolve timer did not move either"),
+			  Quicker.ResolveDays, Plain.ResolveDays, 0.0001f);
+
+	TestEqual(TEXT("and its bite is unchanged"), Quicker.BiteScale(),
+			  Plain.BiteScale(), 0.0001f);
+
+	// WHAT DID MOVE IS THE TIME TO WALK IT.
+	TestEqual(TEXT("a plain dungeon costs one day a floor"), Plain.WalkDays,
+			  Plain.Floors * UCataclysmDayClock::DaysPerFloor, 0.0001f);
+
+	TestEqual(TEXT("and the upgraded one costs four days fewer"),
+			  Quicker.WalkDays, Plain.WalkDays - 4.0f, 0.0001f);
+
+	TestTrue(TEXT("so each of its floors costs less than a day"),
+			 Quicker.WalkDaysPerFloor() < Plain.WalkDaysPerFloor());
+
+	// A DUNGEON NEVER COSTS LESS THAN A DAY IN TOTAL, which the sheet states.
+	// One that cost nothing would be free, and the empire layer's whole tension
+	// is that nothing is.
+	Give(*Map, Rim[0], ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer,
+		 500.0f);
+
+	FRandomStream C(5150);
+	const FCataclysmDungeon Floored =
+		Scheduler->MakeDungeon(2, *Map->Find(Rim[0]), 1, C);
+
+	TestEqual(TEXT("five hundred days off still leaves one"), Floored.WalkDays,
+			  1.0f, 0.0001f);
+	TestEqual(TEXT("and it is still as deep as it was"), Floored.Floors,
+			  Plain.Floors);
+
+	// A DUNGEON NOBODY SET A WALK COST ON COSTS THE ORDINARY DAY A FLOOR, which
+	// is what a hand-built dungeon in a test and a save from before this field
+	// existed both are.
+	FCataclysmDungeon ByHand;
+	ByHand.Floors = 12;
+
+	TestEqual(TEXT("an unset walk cost is one day a floor"),
+			  ByHand.WalkDaysPerFloor(), UCataclysmDayClock::DaysPerFloor,
+			  0.0001f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeDungeonCapTest,
 	"Cataclysm.Surge.AFullCityStopsBeingATargetAndTheWaveLandsElsewhere",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
