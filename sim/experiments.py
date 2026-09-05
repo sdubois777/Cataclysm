@@ -56,6 +56,38 @@ SWEEP_TIER = 1
 PRESET_TIERS = (1, 8)
 
 
+#: The second surge size the preset comparison runs at, beside the one sections 0
+#: and 2 calibrated. Issue #1297; the project owner chose to add one on
+#: 2026-09-05 rather than to leave the section on one surge size or to give up a
+#: difficulty tier for it.
+#:
+#: WHY THE ORDERING NEEDS A SECOND SURGE SIZE AT ALL. It moves more with this
+#: number than with the tier. Measured 2026-09-05 at 150 campaigns per cell with
+#: everything else held at what this section receives, the ordering differs from
+#: the calibrated 5 at EVERY other value tried, at both tiers:
+#:
+#:      dungeons per surge          4     5     6     7
+#:      tier 1, no tree win%       43    43    20    13
+#:      tier 1, presets beating it  1     3     4     4
+#:      tier 8, presets beating it  1     1     2     3
+#:
+#: WHY 7 AND NOT 6 OR 4. Three reasons, in order of weight.
+#:
+#:   1. It is the far end of the range `exp_calibrate` sweeps, which is 5, 6, 7.
+#:      That mirrors PRESET_TIERS taking both ends of the tier range for the same
+#:      reason: a scaling problem shows at the ends.
+#:   2. It separates the presets most -- 4 beat the no-tree row at tier 1 and 3
+#:      at tier 8, against 3 and 1 at the calibrated 5.
+#:   3. It is the CHEAPEST of the three. A tier 8 block gets faster as the surge
+#:      grows, because campaigns end sooner: 112 seconds at 4 against 74 at 7.
+#:
+#: 4 IS THE `TuningConfig` DEFAULT AND WAS REJECTED. `exp_calibrate` never tries
+#: it, so it describes a world this report would not choose; it is also the
+#: slowest of the three and leaves two presets unrankable at tier 8 rather than
+#: one, which narrows the ordering it is supposed to widen.
+PRESET_SECOND_SURGE_SIZE = 7
+
+
 def cataclysm_power_key(cfg: TuningConfig) -> list[str]:
     """The lines describing what the power column should be compared against.
 
@@ -749,6 +781,11 @@ BASELINE_PRESET = TREE_NONE.name
 
 
 
+#: NOT `surge_dungeon_count`. Issue #1297 made it the section's second axis
+#: beside the difficulty tier, so the section chooses it rather than inheriting
+#: it, and each block names the size it ran at in its own heading. Listing it
+#: here would say it was the same in every table below, which it is not.
+#:
 #: The fields section 7 does not choose, in the order they are printed. Each is
 #: (attribute on TuningConfig, label, how to format it). Read off the config the
 #: section was handed rather than written out, so the report cannot claim a
@@ -758,7 +795,6 @@ INHERITED_SETTINGS = (
     ("surge_mode", "how surges escalate", "{}"),
     ("resolve_floor_ratio", "resolve timer days per floor", "{:.1f}"),
     ("surge_interval_days", "days between surges", "{:.0f}"),
-    ("surge_dungeon_count", "dungeons per surge", "{:.0f}"),
     ("dungeon_power_escalation_per_100_days",
      "dungeon power added per 100 days", "{:.2f}"),
     ("craft_days", "days per craft", "{:.0f}"),
@@ -816,25 +852,30 @@ def print_inherited_settings(cfg: TuningConfig) -> None:
     """Print what section 7 inherited, and that its conclusions are conditional
     on it. See `inherited_settings`."""
     print("\n  SETTINGS THIS SECTION DID NOT CHOOSE, taken from sections 0 "
-          "and 2 and used")
-    print("  at every tier below. Issue #1287.")
+          "and 2 and held")
+    print("  the same in every table below. Issue #1287.")
     for label, value in inherited_settings(cfg):
         print(f"    {label:<38}{value:>8}")
-    print("\n  THE PRESET ORDERING IS CONDITIONAL ON THESE, and most sharply "
-          "on the surge")
-    print("  size. Measured at tier 1, 150 campaigns per cell, moving only "
-          "that number:")
-    print("    dungeons per surge     4     5     6     7")
-    print("    No tree win%          44    52    15    11")
-    print("    Architect win%        45    52    53    48")
-    print("  Four surge sizes gave four different orderings. At 4 no preset "
-          "beat no tree; at")
-    print("  6 and 7 four of five did and the no-tree row fell to second from "
-          "last. Sections")
-    print("  0 and 2 pick these by scoring a NO-TREE player against a 55% win "
-          "and 45% triage")
-    print("  target, which is not a question about the empire tree. See "
-          "inherited_settings.")
+    print("\n  THE PRESET ORDERING IS CONDITIONAL ON THESE. Sections 0 and 2 "
+          "pick them by")
+    print("  scoring a NO-TREE player against a 55% win rate and 45% triage "
+          "target, which is")
+    print("  not a question about the empire tree, and they are not re-derived "
+          "per tier or")
+    print("  per preset. See inherited_settings.")
+    print("\n  THE SURGE SIZE USED TO BE ON THAT LIST AND IS NOW SWEPT, "
+          "because the ordering")
+    print("  moves more with it than with the tier. Measured 2026-09-05 at 150 "
+          "campaigns per")
+    print("  cell, moving only that number:")
+    print("    dungeons per surge            4     5     6     7")
+    print("    tier 1, no tree win%         43    43    20    13")
+    print("    tier 1, presets beating it    1     3     4     4")
+    print("    tier 8, presets beating it    1     1     2     3")
+    print("  The ordering differed from the calibrated 5 at every other value, "
+          "at both tiers,")
+    print("  so the section runs a second size rather than warning about it. "
+          "Issue #1297.")
 
 def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
                             stale: dict[str, float], trials: int,
@@ -936,20 +977,15 @@ def print_comparison_against_no_tree(comparison, trials: int,
     print("  compare_against_no_tree.")
 
 
-def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
-    """The preset comparison, run once per tier. Returns the win rates it printed.
+def preset_tables(base: TuningConfig, tiers, trials: int):
+    """Every table and ordering for ONE surge size. Issue #1297.
 
-    Returned as {tier: {preset name: win rate}} so a caller can compare the
-    orderings rather than a person having to read two tables side by side.
+    Split out of `exp_presets` so the section can run the whole block once
+    per surge size the way it already runs it once per difficulty tier.
+    Prints as it goes and returns what it measured, so the caller can
+    compare one surge size's orderings against another's without a person
+    reading two tables side by side.
     """
-    rule(f"7. EMPIRE TREE PRESETS -- head to head, at tier "
-         f"{' and tier '.join(str(t) for t in tiers)}")
-    print("  Only the tier changes between these tables. Everything else is "
-          "held at the")
-    print(f"  values sections 0 and 2 calibrated at tier {SWEEP_TIER}, which "
-          "are named below.")
-    print_inherited_settings(base)
-
     wins: dict[int, dict[str, float]] = {}
     #: Win rate minus loss rate, in percentage points. THE METRIC THE ORDERING
     #: USES since issue #294, because win rate collapses towards zero above tier
@@ -1207,7 +1243,146 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
             print("\n  The ordering DIFFERS between tiers, so the tier 1")
             print("  conclusions on issues #4 and #5 do not generalise. That is a")
             print("  finding in its own right. Issue #281.")
-    return wins
+    return {
+        "wins": wins,
+        "losses": losses,
+        "margins": margins,
+        "stale": stale,
+        "unresolved": unresolved,
+        "comparisons": comparisons,
+    }
+
+
+def compare_surge_sizes(measured, tiers, trials: int) -> None:
+    """Whether the preset ordering survives a change of surge size.
+
+    Issue #1297. The section runs the whole tier block once per surge size; this
+    says whether the two agree, which is the question that made a second size
+    worth its runtime. It is the surge-size twin of the "ordering is THE SAME at
+    every tier" line `preset_tables` prints.
+
+    A preset left out of an ordering at one size is left out at both, for the
+    reason issue #294 gives about tiers: two orderings over different sets of
+    presets are not the same measurement and cannot be compared.
+    """
+    sizes = list(measured)
+    if len(sizes) < 2:
+        return
+
+    print(f"\n{'=' * 100}")
+    print("  DOES THE ORDERING SURVIVE A CHANGE OF SURGE SIZE? Issue #1297.")
+    print(f"{'=' * 100}")
+    print("  This is the question the second block above is paid for. The "
+          "surge size is chosen")
+    print("  by section 0, scoring a NO-TREE player against a win rate and "
+          "triage target, which")
+    print("  is not a question about the empire tree -- so an ordering that "
+          "only holds at the")
+    print("  size section 0 happened to pick is not a finding about the tree. "
+          "Issue #1287.")
+
+    #: Left out everywhere if it failed to resolve anywhere, at any size or
+    #: tier. Issue #294's rule, applied across both axes.
+    excluded: dict[str, list[int]] = {}
+    for size in sizes:
+        for tier in tiers:
+            for name in measured[size]["unresolved"].get(tier, []):
+                excluded.setdefault(name, []).append(tier)
+    if excluded:
+        print("\n  LEFT OUT OF EVERY ORDERING BELOW, no result at some size "
+              "and tier:")
+        for name in sorted(excluded):
+            print(f"    {name}")
+
+    tolerance = margin_noise(trials)
+    orders: dict[tuple[int, int], tuple] = {}
+    for size in sizes:
+        for tier in tiers:
+            data = measured[size]
+            order = rank_by_score(
+                data["margins"][tier], tolerance, exclude=excluded,
+                pair_tolerance=pair_tolerance_from(
+                    data["wins"][tier], data["losses"][tier], trials))
+            orders[(size, tier)] = tuple(tuple(g) for g in order)
+
+    for tier in tiers:
+        print(f"\n  TIER {tier}")
+        for size in sizes:
+            order = orders[(size, tier)]
+            print(f"    {size} per surge: "
+                  + (" > ".join(" = ".join(group) for group in order)
+                     if order else "NO PRESET RANKED"))
+        distinct = {orders[(size, tier)] for size in sizes}
+        if len(distinct) == 1:
+            print("    SAME at both surge sizes.")
+        else:
+            print("    DIFFERS between surge sizes, so an ordering read off "
+                  "one of them is a")
+            print("    statement about that surge size and not about the "
+                  "empire tree.")
+
+    agree = [tier for tier in tiers
+             if len({orders[(size, tier)] for size in sizes}) == 1]
+    print()
+    if len(agree) == len(tiers):
+        print("  The ordering holds at every surge size measured, at every "
+              "tier, so it is a")
+        print("  statement about the empire tree rather than about the surge "
+              "settings.")
+    elif not agree:
+        print("  The ordering holds at NO tier once the surge size moves. "
+              "Nothing in the tables")
+        print("  above orders the presets independently of a number section 0 "
+              "chose for an")
+        print("  unrelated reason. Issues #1287 and #1297.")
+    else:
+        print("  The ordering holds at tier "
+              + ", ".join(str(t) for t in agree)
+              + " and not at the others, so it generalises at some")
+        print("  tiers and not at all of them.")
+
+
+def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150,
+                surge_sizes=None):
+    """The preset comparison, run once per surge size and once per tier.
+
+    Returns {tier: {preset name: win rate}} FOR THE CALIBRATED SURGE SIZE,
+    which is what it returned before issue #1297 added the second one. The
+    other block is printed and compared but not returned; a caller wanting
+    it should call `preset_tables` directly.
+    """
+    sizes = tuple(surge_sizes) if surge_sizes is not None else (
+        base.surge_dungeon_count, PRESET_SECOND_SURGE_SIZE)
+    #: Duplicates would print the same block twice and compare it with
+    #: itself, which reads as agreement. Order is kept: the calibrated size
+    #: is first and is the one returned.
+    sizes = tuple(dict.fromkeys(sizes))
+
+    rule(f"7. EMPIRE TREE PRESETS -- head to head, at tier "
+         f"{' and tier '.join(str(t) for t in tiers)}"
+         f" and at {' and '.join(str(s) for s in sizes)} dungeons per surge")
+    print("  Everything else is held at the values sections 0 and 2 "
+          "calibrated at tier "
+          f"{SWEEP_TIER},")
+    print("  which are named below. The tier and the surge size are the "
+          "two axes this section")
+    print("  sweeps; neither is inherited. Issues #281 and #1297.")
+    print_inherited_settings(base)
+
+    measured = {}
+    for size in sizes:
+        print(f"\n{'=' * 100}")
+        print(f"  {size} DUNGEONS PER SURGE"
+              + ("   <- the value sections 0 and 2 calibrated"
+                 if size == base.surge_dungeon_count else ""))
+        print(f"{'=' * 100}")
+        measured[size] = preset_tables(
+            replace(base, surge_dungeon_count=size), tiers, trials)
+
+    compare_surge_sizes(measured, tiers, trials)
+    return measured[sizes[0]]["wins"]
+
+
 
 
 def exp_escalation(base: TuningConfig, mode: SurgeMode):

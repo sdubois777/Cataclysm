@@ -46,6 +46,28 @@ SOURCE = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
 TREE = ast.parse(SOURCE)
 
 
+def function_node(name: str) -> ast.FunctionDef:
+    """One top-level function of experiments.py, by name.
+
+    Source checks used to slice from `def <name>` to the END of the file, so
+    anything defined below could satisfy them. Issue #1297 moved section 7's
+    per-tier body into `preset_tables` and added `compare_surge_sizes` after it,
+    which made that looseness visible.
+    """
+    for node in ast.walk(TREE):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(
+        f"experiments.py has no function called {name!r} any more. If it was "
+        "renamed, follow it here rather than deleting the check.")
+
+
+def function_source(name: str) -> str:
+    """The text of one function, and nothing after it."""
+    node = function_node(name)
+    return "\n".join(SOURCE.splitlines()[node.lineno - 1:node.end_lineno])
+
+
 def unwrapped(text: str) -> str:
     """Collapse whitespace, so a match survives the line the sentence wraps on."""
     return " ".join(text.split())
@@ -735,7 +757,7 @@ class TestTheOrderingUsesWinMinusLoss:
         """
         presets = next(node for node in ast.walk(TREE)
                        if isinstance(node, ast.FunctionDef)
-                       and node.name == "exp_presets")
+                       and node.name == "preset_tables")
         ranked_margins = [
             node for node in ast.walk(presets)
             if isinstance(node, ast.Call)
@@ -744,12 +766,15 @@ class TestTheOrderingUsesWinMinusLoss:
             and isinstance(node.args[0], ast.Subscript)
             and getattr(node.args[0].value, "id", None) == "margins"]
         assert ranked_margins, (
-            "exp_presets no longer ranks the margins with rank_by_score. "
-            "Issue #294.")
+            "preset_tables no longer ranks the margins with rank_by_score. "
+            "Issue #294. The per-tier ordering moved out of exp_presets into "
+            "preset_tables under issue #1297, when the section began running "
+            "the whole block once per surge size.")
         with_pair = [call for call in ranked_margins
                      if any(kw.arg == "pair_tolerance" for kw in call.keywords)]
         assert with_pair, (
-            "exp_presets ranks the margins without passing pair_tolerance, so "
+            "preset_tables ranks the margins without passing pair_tolerance, "
+            "so "
             "the ordering is back on the worst-case cap and issue #328 has "
             "been undone. The cap is about four times wider than the high "
             "difficulty tiers need.")
@@ -760,15 +785,35 @@ class TestTheOrderingUsesWinMinusLoss:
 
     def test_the_ordering_is_built_from_the_margins(self):
         """A source check, because the printed order alone cannot tell which
-        dict it came from when the two metrics happen to agree."""
-        source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
-        body = source[source.index("def exp_presets"):]
+        dict it came from when the two metrics happen to agree.
+
+        BOUNDED TO ONE FUNCTION. It used to slice from `def exp_presets` to the
+        end of the file, so anything below could have satisfied it. The per-tier
+        ordering moved into `preset_tables` under issue #1297.
+        """
+        body = function_source("preset_tables")
         assert "rank_by_score(margins[tier], tolerance" in body, (
-            "exp_presets no longer ranks on the margins. Issue #294.")
+            "preset_tables no longer ranks on the margins. Issue #294.")
         assert "tolerance = margin_noise(trials)" in body, (
-            "exp_presets no longer uses the margin's own tolerance. Using "
+            "preset_tables no longer uses the margin's own tolerance. Using "
             "win_rate_noise on a margin reports half the right figure. "
             "Issue #294.")
+
+    def test_the_surge_size_comparison_uses_the_per_pair_tolerance_too(self):
+        """Issue #1297 added a SECOND place that orders the presets, comparing
+        one surge size's ordering against another's. It is held to the same rule
+        as the per-tier one: the worst-case cap is about four times wider than
+        the high difficulty tiers need. Issue #328."""
+        ranked = [node for node in ast.walk(function_node("compare_surge_sizes"))
+                  if isinstance(node, ast.Call)
+                  and getattr(node.func, "id", None) == "rank_by_score"]
+        assert ranked, (
+            "compare_surge_sizes no longer orders the presets, so it cannot "
+            "say whether the ordering survives a change of surge size.")
+        assert all(any(kw.arg == "pair_tolerance" for kw in call.keywords)
+                   for call in ranked), (
+            "compare_surge_sizes orders the presets under the worst-case cap "
+            "alone. Issue #328.")
 
     def test_the_win_rate_ordering_is_kept_as_a_second_opinion(self, capsys):
         """Not deleted. It is the metric the issue was opened about, and
@@ -1150,8 +1195,7 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         all the tiers it compares, and this checks the source says so rather
         than filtering per tier.
         """
-        source = pathlib.Path(experiments.__file__).read_text(encoding="utf-8")
-        body = source[source.index("def exp_presets"):]
+        body = function_source("preset_tables")
         assert "no_result_at" in body
         assert "exclude=no_result_at" in body, (
             "exp_presets no longer passes its unresolved presets to "

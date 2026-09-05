@@ -2,6 +2,92 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The empire tree comparison runs at two surge sizes, because that is the axis its ordering turns on
+
+**Affects:** `sim/experiments.py`, section 7. Applied. Issue
+[#1297](https://github.com/sdubois777/Cataclysm/issues/1297).
+
+### The decision
+
+Put to the project owner as three options — leave it, add a second surge size, or
+give up the second difficulty tier to pay for one. The owner's answer, verbatim:
+**"Add a second surge size"**.
+
+So both difficulty tiers are kept and a second surge size is added beside them.
+Tier 8 stays; it exists because
+[#281](https://github.com/sdubois777/Cataclysm/issues/281) and
+[#293](https://github.com/sdubois777/Cataclysm/issues/293) turned on it.
+
+### Why the ordering needed it
+
+The preset ordering moves more with the number of dungeons a surge spawns than
+with the difficulty tier, and that number is chosen by section 0 for a reason
+that has nothing to do with the empire tree — it maximises a score over a
+**no-tree** player's win rate, stalemate rate, triage pressure and idle share.
+Measured 2026-09-05 at 150 campaigns per cell, moving only that number:
+
+| dungeons per surge | 4 | 5 | 6 | 7 |
+| :-- | --: | --: | --: | --: |
+| tier 1, no tree win rate | 43% | 43% | 20% | 13% |
+| tier 1, presets beating no tree | 1 | 3 | 4 | 4 |
+| tier 8, presets beating no tree | 1 | 1 | 2 | 3 |
+
+**The ordering differed from the calibrated 5 at every other value tried, at both
+tiers.** By comparison the two difficulty tiers give two orderings. So the axis
+already covered separated the presets less than the one that was not.
+
+### Which second value, and why 7
+
+Not decided by the owner; chosen on the evidence and recorded here.
+
+1. **It is the far end of the range `exp_calibrate` sweeps**, which is 5, 6 and 7.
+   That mirrors the reason `PRESET_TIERS` takes both ends of the tier range: a
+   scaling problem shows at the ends.
+2. **It separates the presets most** — four beat the no-tree row at tier 1 and
+   three at tier 8, against three and one at the calibrated 5.
+3. **It is the cheapest of the three.** A tier 8 block gets faster as the surge
+   grows, because campaigns end sooner: 112 seconds at 4 against 74 at 7.
+
+**4 was rejected** although it is `TuningConfig`'s default: `exp_calibrate` never
+tries it, so it describes a world this report would not choose, it is the slowest
+of the three, and it leaves two presets unrankable at tier 8 rather than one,
+which narrows the ordering it is meant to widen.
+
+### What it costs, measured rather than estimated
+
+The issue estimated roughly four minutes. Measured on 2026-09-05, section 7 as
+the report runs it — both tiers, 150 campaigns per cell, six presets:
+
+| | time | campaigns |
+| :-- | --: | --: |
+| one surge size | 118.7s | 1,800 |
+| two surge sizes | 225.0s | 3,600 |
+| **added** | **106.3s** | **1,800** |
+
+**1.8 minutes, not four.**
+
+[#693](https://github.com/sdubois777/Cataclysm/issues/693) asks for the sweep's
+total campaign count to be checked. This change alters that total, so #693 should
+be counted after it rather than before. **#693 is not an effort to shorten the
+sweep** and does not conflict with this; it was described that way once during the
+discussion that produced #1297 and that description was wrong.
+
+### What changed in the report
+
+The surge size **stops being a setting section 7 inherits and becomes its second
+axis**, beside the difficulty tier. It is out of the block headed "settings this
+section did not choose", which would otherwise say it was the same in every table
+below, and each block names the size it ran at in its own heading instead. A block
+that did not say which world it described would reintroduce
+[#1287](https://github.com/sdubois777/Cataclysm/issues/1287).
+
+A new comparison at the end says whether the ordering survives the change of
+surge size, tier by tier. **Measured at the report's own sample size it does
+not**, at either tier — which is the finding the second block is paid for.
+
+---
+
+
 ## 2026-09-05 — A near-unwinnable Last Stand is the intended design, and its four constants are not to be tuned
 
 [#1286](https://github.com/sdubois777/Cataclysm/issues/1286) measured the Last

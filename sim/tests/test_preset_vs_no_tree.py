@@ -235,9 +235,14 @@ class TestCompareAgainstNoTree:
 class TestSectionSevenPrintsIt:
     """The output, at a sample size that checks shape and not numbers."""
 
-    def test_the_comparison_is_printed_for_each_tier(self):
+    def test_the_comparison_is_printed_for_each_tier_and_surge_size(self):
+        """Issue #1297 gave the section a second surge size, so the comparison
+        is printed once per tier per surge size. Derived rather than written
+        out: a fixed 2 would have quietly stopped covering half the tables."""
         out = run_presets(tiers=(1, 8), trials=2)
-        assert out.count("AGAINST THE 'No tree' ROW") == 2
+        blocks = out.count("DUNGEONS PER SURGE")
+        assert blocks == 2, f"expected two surge blocks, found {blocks}"
+        assert out.count("AGAINST THE 'No tree' ROW") == 2 * blocks
 
     def test_it_warns_that_a_nil_gap_is_not_a_nil_difference(self):
         """The sentence that would have stopped issue #5 being written."""
