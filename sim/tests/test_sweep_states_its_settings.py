@@ -13,9 +13,9 @@ THE ORDERING IS NOT STABLE ACROSS THEM, and the surge size is where it moves
 most. Measured 2026-09-05 at 150 campaigns per cell, moving only that number:
 
     dungeons per surge            4     5     6     7
-    tier 1, no tree win%         43    43    20    13
-    tier 1, presets beating it    1     3     4     4
-    tier 8, presets beating it    1     1     2     3
+    tier 1, no tree win%         44    52    15    11
+    tier 1, presets beating it    0     1     4     4
+    tier 8, presets beating it    1     1     2     2
 
 The ordering differed from the calibrated 5 at every other value, at both tiers.
 `TuningConfig.surge_dungeon_count` defaults to 4, which `exp_calibrate` never
