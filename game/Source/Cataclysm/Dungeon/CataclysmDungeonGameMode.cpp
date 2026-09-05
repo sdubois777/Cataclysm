@@ -751,6 +751,13 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	TotalFloors = FMath::Max(1, Dungeon->Floors);
 	DungeonType = Dungeon->Type;
 
+	// AND WHAT IT DOES DIFFERENTLY. `UCataclysmEnemyScore` reads this back off
+	// the game mode and adds the sub-type's weight to every creature on the
+	// floor, so a Sacrificial dungeon's enemies really are worth more than a
+	// plain one's. Until the surge scheduler rolled a sub-type this was left at
+	// whatever the settings said, which in a real run was always `None`.
+	DungeonSubType = Dungeon->SubType;
+
 	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
 	// is whatever the last dungeon left behind, and entering a shallower one
 	// while standing deep in a deeper one makes `IsOnTheLastFloor` true straight

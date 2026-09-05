@@ -455,4 +455,149 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// What the dungeon carries into the run
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonCarriesItsSubTypeTest,
+	"Cataclysm.DungeonMode.WalkingADungeonCarriesItsSubTypeIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonCarriesItsSubTypeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonCostsDaysTest;
+
+	// A SEED WHOSE FIRST DUNGEON IS A COW LEVEL, found by looking rather than
+	// hoped for. Cow Level is 4 in 100, so most seeds are not one, and a run is
+	// built here without a world because that is much cheaper than building one
+	// per seed.
+	int32 CowSeed = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= 500 && CowSeed == INDEX_NONE; ++Seed)
+	{
+		UCataclysmEmpireRun* Trial = NewObject<UCataclysmEmpireRun>();
+		Trial->Begin(Seed);
+		Trial->AdvanceDay();
+
+		if (Trial->DungeonCount() > 0 &&
+			Trial->Dungeons[0].SubType == ECataclysmDungeonSubType::CowLevel)
+		{
+			CowSeed = Seed;
+		}
+	}
+
+	if (!TestTrue(TEXT("a seed whose first dungeon is a Cow Level was found"),
+				  CowSeed != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FBound Bound = Make(CowSeed);
+	if (!TestNotNull(TEXT("a test world was created"), Bound.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Bound.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Bound.Mode)
+		|| !TestTrue(TEXT("and the first surge put dungeons on the map"),
+					 Bound.Run->DungeonCount() > 0))
+	{
+		return false;
+	}
+
+	const FCataclysmDungeon& Dungeon = Bound.Run->Dungeons[0];
+	const int32 Floors = Dungeon.Floors;
+	const int32 DayBefore = Bound.Run->Day();
+
+	// THE CONTROL. The game mode starts every run with no sub-type, so a test
+	// that only looked at the end could pass with nothing having been copied at
+	// all.
+	if (!TestEqual(TEXT("the game mode starts with no sub-type"),
+				   static_cast<uint8>(Bound.Mode->RunDungeonSubType()),
+				   static_cast<uint8>(ECataclysmDungeonSubType::None)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the dungeon is entered"),
+				  Bound.Mode->EnterEmpireDungeon(Dungeon.DungeonId)))
+	{
+		return false;
+	}
+
+	// WHAT THIS IS REALLY FOR. `UCataclysmEnemyScore::ScoreThisFloor` reads the
+	// sub-type back off the game mode and adds its weight to every creature on
+	// the floor. Before the surge scheduler rolled one, every dungeon in a real
+	// run scored as though it had none.
+	TestEqual(TEXT("the game mode is walking a Cow Level"),
+			  static_cast<uint8>(Bound.Mode->RunDungeonSubType()),
+			  static_cast<uint8>(ECataclysmDungeonSubType::CowLevel));
+
+	// AND ITS FLOORS COST TWO DAYS EACH, all the way down, which is the one
+	// sub-type rule the empire layer carries out. Arriving on floor 1 is one
+	// floor and each descent is another, so walking the whole thing costs twice
+	// the days its depth would otherwise cost.
+	//
+	// STOPPING ON THE LAST FLOOR RATHER THAN DESCENDING PAST IT, because
+	// `GoDownOneFloor` on the last floor clears the dungeon instead of moving,
+	// and a cleared dungeon leaves the day clock.
+	for (int32 Floor = 2; Floor <= Floors; ++Floor)
+	{
+		Bound.Mode->GoDownOneFloor();
+	}
+
+	TestEqual(TEXT("walking the whole Cow Level cost two days a floor"),
+			  Bound.Run->Day() - DayBefore, Floors * 2);
+
+	// THE CONTROL FOR THE DAYS. A dungeon that is not a Cow Level, walked the
+	// same way in the same kind of run, costs one day a floor. Without this the
+	// figure above would pass if every dungeon cost two days a floor.
+	int32 PlainSeed = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= 500 && PlainSeed == INDEX_NONE; ++Seed)
+	{
+		UCataclysmEmpireRun* Trial = NewObject<UCataclysmEmpireRun>();
+		Trial->Begin(Seed);
+		Trial->AdvanceDay();
+
+		if (Trial->DungeonCount() > 0 &&
+			Trial->Dungeons[0].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			PlainSeed = Seed;
+		}
+	}
+
+	if (!TestTrue(TEXT("a seed whose first dungeon is not a Cow Level was found"),
+				  PlainSeed != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FBound Plain = Make(PlainSeed);
+	if (!TestNotNull(TEXT("a second test world was created"), Plain.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Plain.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 PlainFloors = Plain.Run->Dungeons[0].Floors;
+	const int32 PlainDayBefore = Plain.Run->Day();
+
+	if (!TestTrue(TEXT("the plain dungeon is entered"),
+				  Plain.Mode->EnterEmpireDungeon(
+					  Plain.Run->Dungeons[0].DungeonId)))
+	{
+		return false;
+	}
+
+	for (int32 Floor = 2; Floor <= PlainFloors; ++Floor)
+	{
+		Plain.Mode->GoDownOneFloor();
+	}
+
+	TestEqual(TEXT("and a dungeon that is not a Cow Level costs one a floor"),
+			  Plain.Run->Day() - PlainDayBefore, PlainFloors);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
