@@ -523,6 +523,40 @@ def margin_noise_between(win_a: float, loss_a: float,
     return 100.0 * math.sqrt(variance / max(1, trials))
 
 
+def win_rate_noise_between(win_a: float, loss_a: float,
+                           win_b: float, loss_b: float,
+                           trials: int) -> float:
+    """The WIN RATE tolerance for one pair of cells, from the rates they got.
+
+    Stands to `win_rate_noise` exactly as `margin_noise_between` stands to
+    `margin_noise`: the same derivation without the worst-case substitution, so
+    it separates that pair rather than the hardest possible pair.
+
+    Issue #5. Section 7 prints a win rate for every preset at every tier, and
+    until now attached a tolerance to none of them individually -- only to the
+    orderings, which leave presets out. Two rates printed side by side read as a
+    comparison whether or not one is offered, and a reader who makes that
+    comparison has no way to know what the sample can resolve.
+
+    A cell's win rate is a binomial proportion, so its variance is p(1 - p) and
+    the difference of two independent cells needs the sum. The loss rate is
+    taken only so `smoothed_rates` can pull p off the 0% and 100% boundaries
+    over the same three outcomes the margin path uses; it does not otherwise
+    enter the result.
+
+    IT IS BOUNDED BY `win_rate_noise`. Both p(1 - p) terms are largest at
+    p = 0.5, where the sum is 0.5 and this returns 100 * sqrt(0.5 / trials),
+    which is exactly `win_rate_noise(trials)`. So it can only ever be tighter
+    than the bound, never looser, and `sim/tests/test_preset_vs_no_tree.py`
+    checks that over a grid of rates.
+    """
+    win_a, _ = smoothed_rates(win_a, loss_a, trials)
+    win_b, _ = smoothed_rates(win_b, loss_b, trials)
+    p_a, p_b = win_a / 100.0, win_b / 100.0
+    variance = p_a * (1.0 - p_a) + p_b * (1.0 - p_b)
+    return 100.0 * math.sqrt(variance / max(1, trials))
+
+
 def pair_tolerance_from(win: dict[str, float], loss: dict[str, float],
                         trials: int):
     """A `rank_by_score` pair tolerance built from one tier's measured rates.
@@ -692,6 +726,106 @@ def warn_about_unresolved_campaigns(names, stale: dict[str, float],
     return unresolved
 
 
+#: The preset every other preset is measured against. A preset earns the points
+#: it costs only if it beats allocating none, so this row is the baseline for
+#: the whole table. Taken from the preset object rather than written out, so
+#: renaming the preset cannot leave this pointing at a name that is gone.
+BASELINE_PRESET = TREE_NONE.name
+
+
+def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
+                            stale: dict[str, float], trials: int,
+                            baseline: str = BASELINE_PRESET):
+    """Every preset's win rate against the no-tree row, with a pair tolerance.
+
+    Returns {preset name: (gap in points, tolerance in points, verdict)}, where
+    verdict is "BETTER", "WORSE", "cannot be told apart", or "no result" for a
+    preset whose campaigns mostly ran out of days at this tier and so has no win
+    rate worth comparing. The baseline itself is not in the result.
+
+    WHY THIS EXISTS. Issue #5, which reported that maxing the Architect quadrant
+    "produces the same win rate as allocating no passive points at all", quoting
+    52% against 52% from this section at 150 campaigns per cell.
+
+    BOTH FIGURES WERE RIGHT AND THE CONCLUSION WAS NOT. `win_rate_noise(150)` is
+    5.77 points, so a nil gap at that sample size is not a measurement of
+    equality -- it is the sample failing to resolve whatever the gap is. Re-run
+    at 1,000 campaigns per cell over two disjoint blocks of seeds, tier 1,
+    triage policy, the same calibrated config this section receives:
+
+        preset                        seeds 0-999   seeds 1000-1999   both
+        No tree                              45.8              47.5   46.6
+        Architect maxed (as designed)        56.3              57.8   57.0
+
+    The Architect preset beats no tree by 10.4 points, replicated. At 150
+    campaigns that was invisible, and the no-tree cell happened to land 5.4
+    points above its own long-run value, which closed the gap to nothing.
+
+    WHY THE ORDERINGS DID NOT CATCH IT. They carry a tolerance and they group
+    ties honestly, but `rank_by_score` is given an `exclude` set holding every
+    preset that failed to resolve at ANY tier, so that the orderings compare the
+    same presets at each one -- issue #294. The Architect preset has no result in
+    94% of its tier 8 campaigns, so it is excluded at tier 8 AND at tier 1, where
+    it resolved in 91% of them. It therefore appears in no ordering at any tier,
+    while its win rate is still printed in the table above, next to the no-tree
+    row, where a reader will compare the two. This function is that comparison,
+    made for every preset the table prints rather than only the ranked ones.
+    """
+    out: dict[str, tuple[float, float, str]] = {}
+    for name in wins:
+        if name == baseline:
+            continue
+        if stale.get(name, 0.0) >= UNRESOLVED_WARNING_PERCENT:
+            out[name] = (0.0, 0.0, "no result")
+            continue
+        gap = wins[name] - wins[baseline]
+        tolerance = win_rate_noise_between(
+            wins[name], losses[name],
+            wins[baseline], losses[baseline], trials)
+        if abs(gap) <= tolerance:
+            verdict = "cannot be told apart"
+        else:
+            verdict = "BETTER" if gap > 0 else "WORSE"
+        out[name] = (gap, tolerance, verdict)
+    return out
+
+
+def print_comparison_against_no_tree(comparison, trials: int,
+                                     stale: dict[str, float],
+                                     baseline: str = BASELINE_PRESET) -> None:
+    """Print what `compare_against_no_tree` measured, worst gap last."""
+    print(f"\n  AGAINST THE {baseline!r} ROW, on win rate, at this tier. "
+          "Issue #5.")
+    print("  A preset is worth its points only if it beats allocating none, so "
+          "this is the")
+    print("  comparison issues #4 and #5 are both about. The report used to "
+          "print these two")
+    print("  win rates side by side in the table above and attach a tolerance "
+          "to neither.")
+    order = sorted(comparison.items(), key=lambda kv: -kv[1][0])
+    for name, (gap, tolerance, verdict) in order:
+        if verdict == "no result":
+            print(f"    {name:<42}no result in "
+                  f"{stale.get(name, 0.0):.0f}% of campaigns at this tier, "
+                  "so no win rate to compare")
+            continue
+        print(f"    {name:<42}{gap:>+7.1f} points, needs {tolerance:>4.1f} "
+              f" {verdict}")
+    print("\n  'CANNOT BE TOLD APART' IS NOT 'NO DIFFERENCE'. It means this "
+          "sample cannot")
+    print("  resolve the gap. The smallest gap this section can "
+          "resolve at all is")
+    print(f"  {win_rate_noise(trials):.1f} points, at {trials} campaigns per cell, and a per-pair "
+          "tolerance is")
+    print("  tighter than that only where a cell's rate sits away from "
+          "50%. Reading a nil")
+    print("  gap here as evidence that a branch does nothing is what "
+          "produced issue #5, and")
+    print("  measured at 1,000 campaigns the gap it called zero is 10.4 "
+          "points. See")
+    print("  compare_against_no_tree.")
+
+
 def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     """The preset comparison, run once per tier. Returns the win rates it printed.
 
@@ -723,6 +857,10 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
     #: Presets whose campaigns mostly ran out of days, per tier. These are kept
     #: out of the ranking below rather than placed in it. Issue #294.
     unresolved: dict[int, list[str]] = {}
+    #: Each preset's win rate against the no-tree row, per tier, with the
+    #: tolerance for that pair. Issue #5. Returned so a caller can check the
+    #: comparison rather than read it out of the printed report.
+    comparisons: dict[int, dict[str, tuple[float, float, str]]] = {}
     for tier in tiers:
         ceiling = scoring.tier_bounds(tier)[1]
         print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}, "
@@ -748,6 +886,10 @@ def exp_presets(base: TuningConfig, tiers=PRESET_TIERS, trials: int = 150):
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
         unresolved[tier] = warn_about_unresolved_campaigns(
             wins[tier].keys(), stale[tier], base.max_days)
+        comparisons[tier] = compare_against_no_tree(
+            wins[tier], losses[tier], stale[tier], trials)
+        print_comparison_against_no_tree(
+            comparisons[tier], trials, stale[tier])
 
     if len(tiers) > 1:
         tolerance = margin_noise(trials)
