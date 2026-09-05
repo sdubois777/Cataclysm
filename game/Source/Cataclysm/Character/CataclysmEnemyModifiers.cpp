@@ -3,6 +3,7 @@
 #include "Character/CataclysmEnemyModifiers.h"
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -24,6 +25,18 @@ const TCHAR* UCataclysmEnemyModifiers::HellfireAuraRow =
 	TEXT("Demonic_Hellfire_Aura");
 const TCHAR* UCataclysmEnemyModifiers::UnyieldingRow =
 	TEXT("Generic_Unyielding");
+const TCHAR* UCataclysmEnemyModifiers::AbyssalAuraRow =
+	TEXT("Demonic_Abyssal_Aura");
+const TCHAR* UCataclysmEnemyModifiers::RelentlessRow =
+	TEXT("Generic_Relentless");
+const TCHAR* UCataclysmEnemyModifiers::ShielderRow =
+	TEXT("Generic_Shielder");
+const TCHAR* UCataclysmEnemyModifiers::PerfectAimRow =
+	TEXT("Generic_Perfect_Aim");
+const TCHAR* UCataclysmEnemyModifiers::HordeLeaderRow =
+	TEXT("Generic_Horde_Leader");
+const TCHAR* UCataclysmEnemyModifiers::PhasewalkerRow =
+	TEXT("Generic_Phasewalker");
 
 const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
 {
@@ -205,6 +218,135 @@ float UCataclysmEnemyModifiers::RetaliationPercent(const TArray<FName>& Rows)
 	return Percent;
 }
 
+float UCataclysmEnemyModifiers::HealthRegenShareOfMaximum(
+	const TArray<FName>& Rows)
+{
+	// A SUM, so a second modifier that also heals adds rather than replacing.
+	float Share = 0.0f;
+
+	if (Carries(Rows, RelentlessRow))
+	{
+		Share += RelentlessHealthPerSecondShare;
+	}
+
+	return Share;
+}
+
+float UCataclysmEnemyModifiers::EnergyShieldShareOfHealth(
+	const TArray<FName>& Rows)
+{
+	float Share = 0.0f;
+
+	if (Carries(Rows, ShielderRow))
+	{
+		Share += ShielderShareOfHealth;
+	}
+
+	return Share;
+}
+
+bool UCataclysmEnemyModifiers::AttacksCannotBeDodged(const TArray<FName>& Rows)
+{
+	return Carries(Rows, PerfectAimRow);
+}
+
+int32 UCataclysmEnemyModifiers::RallyAlliesOnDeath(AActor* Character)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, HordeLeaderRow))
+	{
+		return 0;
+	}
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// THE COMMANDER BUFF, WHICH ALREADY EXISTS AND ALREADY SAYS THIS. Its own
+	// row reads "All nearby allies gain 20% increased movement speed and attack
+	// speed", which is what Horde Leader describes, and the Succubus already
+	// grants it. A second buff meaning the same thing would be two names for one
+	// effect.
+	const FGameplayTag Buff =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	if (!Buff.IsValid())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Horde Leader cannot rally: there is no Status.Buff.Commander "
+				 "tag. See game/Config/Tags/CataclysmTags.ini."));
+		return 0;
+	}
+
+	// ALLIES AND NOT ENEMIES. `FindAlliesInSphere` excludes the creature itself,
+	// which is what is wanted here: a dead creature is not its own ally and the
+	// modifier is about what its death does for the rest of the pack.
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+	int32 Rallied = 0;
+	for (AActor* Ally : Allies)
+	{
+		if (UCataclysmSkillEffects::ApplyTagForDuration(Enemy, Ally, Buff,
+													   HordeLeaderSeconds))
+		{
+			++Rallied;
+		}
+	}
+
+	if (Rallied > 0)
+	{
+		UE_LOG(LogCataclysm, Log,
+			TEXT("%s died carrying Horde Leader and rallied %d all%s."),
+			*Enemy->GetName(), Rallied, Rallied == 1 ? TEXT("y") : TEXT("ies"));
+	}
+
+	return Rallied;
+}
+
+bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, PhasewalkerRow))
+	{
+		return false;
+	}
+
+	// A DEAD CREATURE DOES NOT TELEPORT, the same guard the aura step carries
+	// and for the same reason: a step already in flight would otherwise land
+	// after the creature died.
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return false;
+	}
+
+	Enemy->SecondsSincePhase += StepSeconds;
+	if (Enemy->SecondsSincePhase < PhasewalkerIntervalSeconds)
+	{
+		return false;
+	}
+	Enemy->SecondsSincePhase = 0.0f;
+
+	// A SEEDED DRAW RATHER THAN FRandRange, so two creatures phasing on the same
+	// step do not both go the same way. The same shape the modifier draw uses.
+	const UWorld* World = Enemy->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	FRandomStream Stream(Enemy->GetUniqueID()
+		^ static_cast<int32>(Now * 1000.0f) ^ PhaseDrawSalt);
+
+	const float Angle = Stream.FRandRange(0.0f, 360.0f);
+	const FVector Step(FMath::Cos(FMath::DegreesToRadians(Angle)),
+					   FMath::Sin(FMath::DegreesToRadians(Angle)), 0.0f);
+
+	// SWEPT, so it cannot phase into a wall. A blocked teleport moves it as far
+	// as it can go, which reads as the creature reappearing against the wall
+	// rather than inside it.
+	Enemy->AddActorWorldOffset(Step * PhasewalkerDistanceCm, /*bSweep=*/true);
+
+	return true;
+}
+
 int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 {
 	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
@@ -215,7 +357,10 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		return 0;
 	}
 
-	if (!Carries(Enemy->ModifierRows, HellfireAuraRow))
+	const bool bBurns = Carries(Enemy->ModifierRows, HellfireAuraRow);
+	const bool bStripsResistance =
+		Carries(Enemy->ModifierRows, AbyssalAuraRow);
+	if (!bBurns && !bStripsResistance)
 	{
 		return 0;
 	}
@@ -249,9 +394,25 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 		World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
 
-	int32 Burned = 0;
+	// THE ABYSSAL AURA'S DEBUFF AND HOW LONG IT LASTS, read from its own row
+	// rather than written here. `Debuff_Abyssal_Aura` in
+	// `game/Data/StatusEffects.csv` carries a strength of 25, a duration of 2
+	// seconds, and the two resistances it cuts. Every one of those was empty
+	// until 2026-09-05, so the effect applied nothing however it was reached.
+	FGameplayTag AbyssalTag;
+	float AbyssalSeconds = 0.0f;
+	if (bStripsResistance)
+	{
+		AbyssalTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Abyssal Aura"));
+		AbyssalSeconds =
+			UCataclysmSkillEffects::NumbersForEffectTag(AbyssalTag).DurationSeconds;
+	}
+
+	int32 Touched = 0;
 	for (AActor* Target : Caught)
 	{
+		bool bAnythingLanded = false;
+
 		// THE BURN IS DESIGNED, which is what the parameter means: "true when
 		// the skill's own row states it burns". Hellfire Aura's row is "Emits a
 		// burning aura that deals constant fire damage to nearby players", and
@@ -259,15 +420,42 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		// it. So there is no hit to measure a threshold against and none is
 		// wanted -- an aura that only caught a player who had just been hit hard
 		// would not be an aura.
-		if (UCataclysmSkillEffects::ApplyBurn(Enemy, Target, /*HitDamage=*/0.0f,
-											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true))
+		if (bBurns
+			&& UCataclysmSkillEffects::ApplyBurn(Enemy, Target, /*HitDamage=*/0.0f,
+												 /*bScalesWithInstigator=*/true,
+												 /*bBurnIsDesigned=*/true))
 		{
-			++Burned;
+			bAnythingLanded = true;
+		}
+
+		// AND THE RESISTANCE CUT, THROUGH THE SHARED NAMED-EFFECT PATH. That
+		// path reads which stats to move out of the row's own `MovesStat`
+		// column, added for issue #1144, and this is the effect that made the
+		// column necessary: it cuts TWO resistances, which no rule written in
+		// C++ for one stat could have said.
+		//
+		// NO MAGNITUDE PASSED, so the row's own strength of 25 is used. The
+		// modifier states no figure of its own beyond what the debuff says.
+		//
+		// RE-APPLIED EVERY PULSE AND THAT IS THE POINT. The effect is a single
+		// stack, so a second application refreshes the one that is there rather
+		// than adding a second. A player standing in the aura keeps it; one who
+		// walks out loses it when its two seconds run out.
+		if (bStripsResistance && AbyssalSeconds > 0.0f
+			&& UCataclysmSkillEffects::ApplyNamedEffect(
+				Enemy, Target, AbyssalTag, AbyssalSeconds, /*Magnitude=*/0.0f,
+				Enemy->DamageType))
+		{
+			bAnythingLanded = true;
+		}
+
+		if (bAnythingLanded)
+		{
+			++Touched;
 		}
 	}
 
-	return Burned;
+	return Touched;
 }
 
 float UCataclysmEnemyModifiers::CrowdControlResistancePercent(

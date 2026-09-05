@@ -213,6 +213,19 @@ void ACataclysmCharacterBase::RegenerationStep()
 	//
 	// IT REFUSES A CORPSE ITSELF, the same as the three above.
 	UCataclysmEnemyModifiers::AuraStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND A CREATURE CARRYING PHASEWALKER TELEPORTS SHORT DISTANCES. "Teleport
+	// short distances every few seconds."
+	//
+	// A TENTH JOB ON THIS STEP, for the reason every one above gives, and it
+	// answers false for anything that is not a creature carrying the
+	// modifier -- which is the player, every Common creature, and every other
+	// creature above Common that drew something else.
+	//
+	// ITS OWN INTERVAL RATHER THAN THE AURA'S, kept on the creature. A
+	// creature carrying both an aura and Phasewalker runs each at its own
+	// rate.
+	UCataclysmEnemyModifiers::PhaseStep(this, UCataclysmRegeneration::StepSeconds);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

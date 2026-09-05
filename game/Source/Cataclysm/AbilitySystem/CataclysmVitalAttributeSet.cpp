@@ -8,6 +8,8 @@
 // For a debuff on this character spreading to what stands near it. Issue #1058.
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
@@ -255,6 +257,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmDamageCalculation::AreaDamageTag());
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
 				UCataclysmDamageCalculation::DamageOverTimeTag());
+
+			// AND WHETHER THE ATTACKER'S MODIFIERS SAY IT CANNOT BE DODGED. The
+			// Perfect Aim enemy modifier reads "Attacks cannot be dodged", and
+			// evasion is rolled on the DEFENDER, so the only way an attacker can
+			// refuse it is to say so on the blow it sends.
+			//
+			// A CAST TO THE CREATURE CLASS, like the boss-immunity check in
+			// `UCataclysmSkillEffects::ApplyStun`. A modifier is a property of a
+			// creature rather than an attribute, because it is a rule about the
+			// blow rather than a number on either side.
+			if (const ACataclysmEnemyCharacter* Striker =
+					Cast<ACataclysmEnemyCharacter>(
+						Data.EffectSpec.GetContext().GetEffectCauser()))
+			{
+				Hit.bCannotBeEvaded =
+					UCataclysmEnemyModifiers::AttacksCannotBeDodged(
+						Striker->ModifierRows);
+			}
 
 			// AND WHETHER IT WAS STRUCK IN MELEE. Issue #1032. Read here beside
 			// the other two because it comes from the same place: a tag the

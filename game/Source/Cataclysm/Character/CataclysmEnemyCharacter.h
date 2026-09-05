@@ -533,6 +533,15 @@ public:
 	float SecondsSinceAuraPulse = 0.0f;
 
 	/**
+	 * How long since a creature carrying Phasewalker last teleported.
+	 *
+	 * PUBLIC FOR THE REASON `SecondsSinceAuraPulse` ABOVE IS: the rule that
+	 * reads it is a static on `UCataclysmEnemyModifiers`, so that the
+	 * arithmetic can be tested by passing numbers in.
+	 */
+	float SecondsSincePhase = 0.0f;
+
+	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
 	 *
 	 * CALLED LAST BY `ApplyStartingAttributes`, SO THEY WIN. Every write in that

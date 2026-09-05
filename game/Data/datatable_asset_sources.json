@@ -77,7 +77,7 @@
       "asset": "DT_EnemyModifiers",
       "csv": "EnemyModifiers.csv",
       "rows": 79,
-      "csv_sha256": "89b649c726afd4ecb3693bdf24abdd585d65de445b99b722c16ec4c0b4262143"
+      "csv_sha256": "820bf4f6c3bc99d785fcfd5ed9b04ed5d9089598533f95fbed2abad2b9f38eaa"
     },
     {
       "asset": "DT_EnemyRarities",

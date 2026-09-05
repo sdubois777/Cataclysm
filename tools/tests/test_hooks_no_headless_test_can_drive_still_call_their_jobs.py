@@ -79,8 +79,12 @@ HOOKS = {
             "UCataclysmEnemyModifiers::AuraStep":
                 "the burning aura a creature carrying the Hellfire Aura "
                 "enemy modifier lays on whoever stands within six metres, "
-                "issue #742. The first job here that belongs to a creature "
-                "rather than to a player's passive tree",
+                "and the resistance the Abyssal Aura one cuts, issue #742. "
+                "The first job here that belongs to a creature rather than "
+                "to a player's passive tree",
+            "UCataclysmEnemyModifiers::PhaseStep":
+                "the short teleport a creature carrying the Phasewalker "
+                "enemy modifier makes every few seconds, issue #742",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",
@@ -101,6 +105,9 @@ HOOKS = {
             "UCataclysmContagion::SpreadOnDeath":
                 "this creature's debuffs passing to whatever stands by its "
                 "body, issue #1060",
+            "UCataclysmEnemyModifiers::RallyAlliesOnDeath":
+                "a creature carrying the Horde Leader enemy modifier buffing "
+                "the rest of its pack as it dies, issue #742",
             "UCataclysmSkillTemplate::NoteKill":
                 "telling the killer's running skills that it killed something, "
                 "which is what feeds the Axe's Butcher's Heat, issue #37",

@@ -70,8 +70,8 @@ Void_Corrupted,Void,Corrupted,The enemy is slowly corrupting the ground around t
 Void_Event_Horizon,Void,Event Horizon,"When this enemy dies, it leaves a small black hole that lasts 5 seconds. It doesn't deal damage, but it sucks in all nearby loot and gold, destroying it if you don't pick it up fast enough."
 Generic_Unyielding,Generic,Unyielding,Immunity to crowd control effects
 Generic_Bloodthirsty,Generic,Bloodthirsty,Heal for 10% of the damage dealt to the player.
-Generic_Relentless,Generic,Relentless,Regenerate health over time unless damaged in the past 2 seconds.
-Generic_Shielder,Generic,Shielder,"Spawn with an additional shield equal to 50% of maximum health, which regenerates if not damaged within 5 seconds."
+Generic_Relentless,Generic,Relentless,"Regenerates health over time, which no other creature does."
+Generic_Shielder,Generic,Shielder,"Spawn with an additional shield equal to 50% of maximum health, which recharges three seconds after it was last damaged."
 Generic_Horde_Leader,Generic,Horde Leader,"On death, all nearby enemies become enraged, increasing their attack speed and movement speed for 5 seconds."
 Generic_Phasewalker,Generic,Phasewalker,Teleport short distances every few seconds.
 Generic_Titanic_Resolve,Generic,Titanic Resolve,50% more health.

@@ -91,10 +91,26 @@ def test_the_shield_is_a_fraction_of_health_rather_than_a_stored_figure() -> Non
     from the same two inputs. A second absolute number stored beside the health
     could disagree with it."""
     source = ENEMY_SOURCE.read_text(encoding="utf-8")
-    assert re.search(r"Health\s*\*\s*EnergyShieldFraction", source), (
+    # THE FRACTION IS A LOCAL SINCE 2026-09-05, because the Shielder enemy
+    # modifier adds half the creature's health to whatever its archetype
+    # gives. So the expression is `Health * Fraction` where `Fraction` is the
+    # archetype's own plus the modifiers'. What this test is about is
+    # unchanged: the shield is still computed FROM the health rather than
+    # stored as an absolute figure that could disagree with it.
+    assert re.search(r"Health\s*\*\s*(EnergyShieldFraction|Fraction)",
+                     source), (
         "ApplyStartingAttributes no longer computes the shield as the health "
         "times the fraction. If it now stores an absolute figure, that figure "
         "can disagree with the health beside it.")
+
+    # AND THE FRACTION IS STILL BUILT FROM THE ARCHETYPE'S OWN FIELD, which
+    # is what stops the looser pattern above passing against a local holding
+    # an absolute figure under the same name.
+    assert re.search(r"Fraction\s*=\s*EnergyShieldFraction", source), (
+        "ApplyStartingAttributes no longer builds the shield fraction from "
+        "the archetype's own EnergyShieldFraction. The creature's designed "
+        "share has to be in it, or five of the seven vertical slice enemies "
+        "silently gain a shield they were designed without.")
 
 
 # --------------------------------------------------------------------------
