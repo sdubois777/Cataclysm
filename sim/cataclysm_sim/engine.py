@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
-from .modifiers import MODIFIERS
+from .modifiers import pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
@@ -122,10 +122,11 @@ class Simulation:
         self.dying = False
         self.days_remaining = 0
 
-        # Active Cataclysms pool their modifiers together.
+        # Active Cataclysms pool their modifiers together, plus the Generic
+        # ones, which every Cataclysm can draw. `modifiers.pool_for` owns that
+        # rule so this and `analyse_dungeons.py` cannot disagree about it.
         self.active_types = cfg.CATACLYSM_ROSTER[:max(1, cfg.active_cataclysms)]
-        self.modifier_pool = [m for t in self.active_types
-                              for m in MODIFIERS.get(t, [])]
+        self.modifier_pool = pool_for(self.active_types)
 
         self.tier_min, self.tier_max = scoring.tier_bounds(cfg.tier)
         self.tier_width = self.tier_max - self.tier_min

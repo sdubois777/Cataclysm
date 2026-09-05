@@ -12,11 +12,13 @@ of seeds, difficulty tier 1, the `triage` policy, the same calibrated config
 section 7 receives:
 
     preset                          seeds 0-999   seeds 1000-1999   both
-    No tree                                45.8              47.5   46.6
-    Architect maxed (as designed)          56.3              57.8   57.0
+    No tree                                46.3              45.7   46.0
+    Architect maxed (as designed)          53.8              52.5   53.1
 
-The branch is 10.4 points ahead, replicated, against a 1.58 point tolerance at
-2,000 campaigns.
+The branch is 7.1 points ahead, replicated, against a 1.58 point tolerance at
+2,000 campaigns. Re-measured for issue #1282, which added a top-band modifier to
+`sim/cataclysm_sim/modifiers.py` and made every dungeon slightly harder; before
+that the same cells read 46.6 and 57.0, a gap of 10.4.
 
 The report could not have shown that. Its orderings do carry a tolerance, but
 `rank_by_score` is given an `exclude` set holding every preset that failed to
@@ -165,12 +167,12 @@ class TestCompareAgainstNoTree:
     def test_a_gap_either_side_of_the_tolerance_reads_differently(self):
         """What 150 campaigns can and cannot do, stated as a test.
 
-        NOT that the true 10.4 point gap is unresolvable at 150 campaigns -- it
+        NOT that the true 7.1 point gap is unresolvable at 150 campaigns -- it
         is resolvable, at about 5.7 points for this pair. What happened in issue
-        #5 is that the section OBSERVED a nil gap when the truth is 10.4, which
-        is an unlucky draw of roughly 1.8 standard errors, and the issue read
+        #5 is that the section OBSERVED a nil gap when the truth is 7.1, which
+        is an unlucky draw of roughly 1.2 standard errors, and the issue read
         that observation as equality. A nil observation carries no information
-        about a 10.4 truth, which is why the verdict has to say so rather than
+        about a 7.1 truth, which is why the verdict has to say so rather than
         leave two equal-looking numbers side by side.
         """
         name = "Architect maxed (as designed)"

@@ -82,7 +82,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonTimer
  *     today. Taking the bite out of a city's defence and population needs an
  *     empire graph, which is issue #42.
  *   - **It does not create dungeons.** Surges do that and there are none.
- *   - **It knows nothing of the 116 dungeon modifiers**, which change how hard
+ *   - **It knows nothing of the 117 dungeon modifiers**, which change how hard
  *     a dungeon is to fight rather than how long it takes.
  *   - **It does not carry the three sub-types that change the time model.**
  *     Timed and Siege both need city state. Cow Level doubles the run length and

@@ -16,7 +16,7 @@ import random
 import statistics
 
 from cataclysm_sim import combat, scoring
-from cataclysm_sim.modifiers import MODIFIERS
+from cataclysm_sim import modifiers
 
 PER_FLOOR_RISK = 0.010
 BOSS_MULT = 6.0
@@ -32,8 +32,13 @@ def hdr(t):
 
 
 def pool_for(tier: int) -> list[tuple[str, float]]:
-    """Active Cataclysms pool their modifiers. Tier N has N active."""
-    return [m for t in ROSTER[:tier] for m in MODIFIERS.get(t, [])]
+    """Active Cataclysms pool their modifiers. Tier N has N active.
+
+    Defers to `cataclysm_sim.modifiers.pool_for` for what a pool contains, so
+    this script and the day loop cannot disagree about whether the Generic
+    modifiers are in it. They are. Issue #1282.
+    """
+    return modifiers.pool_for(ROSTER[:tier])
 
 
 def player_at(tier: int, frac: float) -> float:
