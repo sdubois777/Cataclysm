@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A Generic dungeon modifier is drawn from every pool, and it takes a slot
+
+**Affects:** `sim/cataclysm_sim/modifiers.py` and `sim/cataclysm_sim/engine.py`.
+Applied. Issue [#1282](https://github.com/sdubois777/Cataclysm/issues/1282).
+
+### What was wrong
+
+`sim/cataclysm_sim/modifiers.py` is a hand-maintained copy of
+`game/Data/DungeonModifiers.csv`. It held **116 rows against the data file's
+117** from the day [#504](https://github.com/sdubois777/Cataclysm/issues/504)
+added the Corrupted Stalker, and nothing in the repository compared the two. The
+missing row was the only one with a Cataclysm Type of `Generic`.
+
+### What "Generic" now means in the model
+
+The 2026-08-14 entry below, "The Corrupted Stalker is a Generic dungeon modifier
+at weight 20", records the owner choosing **weight 20** and **"applies to all
+eight Cataclysms"**, and that `Generic` is the existing word for that. It also
+says what it did not settle:
+
+> **Whether the Corrupted Stalker competes for one of a dungeon's modifier slots
+> or is granted separately.** [...] nothing states whether it takes a slot.
+> Nothing depends on the answer yet.
+
+**Something depends on it now.** A dungeon in the model draws its modifiers from
+a pool, so putting the row in the pool is the same act as making it compete for a
+slot. **The reading applied is that it is in every pool and is drawn like any
+other modifier**, which is what "drawable by every Cataclysm" says. Granting it on
+top of the slots would need a mechanism nothing describes.
+
+**This is a reading of a recorded decision, not a new one**, and it is cheap to
+reverse: `modifiers.pool_for` is the only place that decides it. If the project
+owner wants the Corrupted Stalker granted on top of a dungeon's slots rather than
+competing for one, that is where it changes.
+
+**A Generic modifier goes into the pool once**, however many Cataclysms are
+active. `Simulation._make_dungeon` draws with `random.sample`, which treats equal
+values at different positions as distinct, so adding it once per active Cataclysm
+would let one modifier fill two of a dungeon's slots.
+
+### What it moved, measured
+
+Adding the row takes the pool a single Cataclysm draws from to 15 entries. The
+Corrupted Stalker is in the top weight band, so the expected modifier score of one
+draw rises from **10.71 to 11.33** and every dungeon is slightly harder. Tier 1,
+triage policy, 2,000 campaigns over two disjoint blocks of seeds, against the same
+cells measured before the change:
+
+| preset | before | after | change | tolerance |
+|---|---|---|---|---|
+| No tree | 46.6 | 46.0 | -0.6 | within 1.58 |
+| Architect maxed (as designed) | 57.0 | 53.1 | **-3.9** | outside 1.58 |
+
+**Issue #1282 says a modifier change moves no sweep number. That is wrong** — it
+changes the pool's size, so `random.sample` draws differently from the first
+dungeon onward. The entry below on the Architect branch is restated with the
+figures above; its conclusion is unchanged, the gap going from 10.4 points to 7.1.
+
+### The guard
+
+`tools/tests/test_dungeon_modifier_port.py` compares every
+`(CataclysmType, ModifierName, Weight)` triple in both directions and fails when
+either side gains, loses, renames or reweighs a row. It is the fifth of its kind,
+beside `sim/verify_scoring_port.py`, `test_day_clock_port.py`,
+`test_surge_port.py` and `test_empire_map_port.py`. Apostrophes are compared as
+written, because normalising them would hide a rename that changed only that
+character.
+
+### Not settled here
+
+**What the `Weight` column means.** The model reads it as a danger score;
+`game/Source/Cataclysm/Data/CataclysmDataRows.h` calls it "Selection weight.
+Higher is more common." Nothing was changed to match either reading, and the
+comparison above holds whichever it is. Issue
+[#1298](https://github.com/sdubois777/Cataclysm/issues/1298).
+
+---
 ## 2026-09-05 — A Siege takes 1% of a city's MAXIMUM per day, not of what is left
 
 Building the Siege dungeon sub-type for issue
@@ -162,11 +239,22 @@ campaigns per cell over two disjoint blocks of seeds, difficulty tier 1, the
 
 | preset | seeds 0-999 | seeds 1000-1999 | both |
 |---|---|---|---|
-| No tree | 45.8 | 47.5 | 46.6 |
-| Architect maxed (as designed) | 56.3 | 57.8 | 57.0 |
+| No tree | 46.3 | 45.7 | 46.0 |
+| Architect maxed (as designed) | 53.8 | 52.5 | 53.1 |
 
-**The branch is 10.4 points ahead, replicated**, against a 1.58 point tolerance at
+**The branch is 7.1 points ahead, replicated**, against a 1.58 point tolerance at
 2,000 campaigns. No node was added to it and none should be.
+
+**Re-measured 2026-09-05 under issue
+[#1282](https://github.com/sdubois777/Cataclysm/issues/1282).** That work added
+the Corrupted Stalker to `sim/cataclysm_sim/modifiers.py`, which had been one row
+behind `game/Data/DungeonModifiers.csv` since #504. It is a top-band modifier, so
+the pool a single Cataclysm draws from went to 15 entries and the expected
+modifier score of a draw rose from 10.71 to 11.33 — every dungeon is slightly
+harder. The table above is the figure on the corrected table; before it the same
+cells read 46.6 and 57.0, a gap of 10.4. The no-tree cell moved 0.6 points, inside
+tolerance; the Architect cell moved 3.9, outside it. **The conclusion is
+unchanged.**
 
 ### Why it works, which is the part worth keeping
 
@@ -219,7 +307,7 @@ ordering is conditional on them.
   as well as about one difficulty tier. Quoting it without both is quoting half of
   it.
 - **A nil gap in that table is not evidence of no difference.** The section now
-  says so in its own output; the gap it once read as zero is 10.4 points.
+  says so in its own output; the gap it once read as zero is 7.1 points.
 
 Pull requests [#1292](https://github.com/sdubois777/Cataclysm/pull/1292) and
 [#1294](https://github.com/sdubois777/Cataclysm/pull/1294).
