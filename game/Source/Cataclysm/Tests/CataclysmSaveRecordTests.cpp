@@ -688,6 +688,20 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 	}
 
 	TestEqual(TEXT("the day"), Read->Day, 118);
+
+	// AND THE PART OF A DAY THE FIXTURE CARRIES. Issue #1299 added `PartialDay`
+	// and this file gained it under the exception documented in
+	// `game/Tests/SaveFixtures/README.md`: nothing has ever loaded a save, so no
+	// file this fixture describes exists on anybody's disk and it may be edited
+	// to match a field its record gained.
+	//
+	// A QUARTER RATHER THAN ZERO, DELIBERATELY. Zero is the field's default, so a
+	// fixture holding zero would pass whether the field was read or not. That the
+	// value is absent from a file at all is covered separately, by
+	// `AFileWithoutThePartOfADayStillLoads` below.
+	TestEqual(TEXT("and the part of a day it carries"),
+		Read->PartialDay, 0.25f, 0.0001f);
+
 	TestTrue(TEXT("somebody is on a floor"), Read->Floor.IsOccupied());
 	TestEqual(TEXT("which floor"), Read->Floor.Floor, 6);
 	TestEqual(TEXT("which dungeon"), Read->Floor.Dungeon, FName(TEXT("Hell_On_Earth")));
@@ -718,6 +732,93 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 		Read->Floor.Characters[0].EnergyShield, 25.0f);
 
 	TestEqual(TEXT("an item left on the floor"), Read->Floor.GroundItems.Num(), 1);
+
+	return true;
+}
+
+/**
+ * A file that predates a field still loads, and the field takes its default.
+ *
+ * WHAT THIS IS THE TEST FOR. Issue #1299 added `UCataclysmRunSave::PartialDay`
+ * WITHOUT bumping the schema version, on the strength of
+ * `docs/Save_System_Design.md` section 5: "Adding a field with a sensible default
+ * is not a version bump -- `UPROPERTY(SaveGame)` already handles a missing field
+ * by leaving the default." That is a claim about what the engine does, and this
+ * is what makes it a tested claim rather than an asserted one.
+ *
+ * IT BUILDS THE OLD SHAPE RATHER THAN READING A COMMITTED FILE, and it has to.
+ * `Run_v1.json` gained the field under the exception in
+ * `game/Tests/SaveFixtures/README.md`, and
+ * `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires
+ * every fixture to hold every field its record writes -- so no committed fixture
+ * can be missing one. Taking the fixture and removing the line is the only way
+ * to have a file in the shape a player's disk would hold.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRunFileWithoutThePartOfADay,
+	"Cataclysm.SaveRecords.AFileWithoutThePartOfADayStillLoads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	// THE CONTROL. If the line were not there, removing it would do nothing and
+	// the assertion below would pass for the wrong reason.
+	const FString Line = TEXT("\t\"PartialDay\": 0.25,\r\n");
+	const FString Alternate = TEXT("\t\"PartialDay\": 0.25,\n");
+
+	FString Older = Text;
+	if (Older.Contains(Line))
+	{
+		Older = Older.Replace(*Line, TEXT(""));
+	}
+	else if (Older.Contains(Alternate))
+	{
+		Older = Older.Replace(*Alternate, TEXT(""));
+	}
+	else
+	{
+		AddError(TEXT("Run_v1.json no longer carries a PartialDay line to "
+					  "remove, so this test would prove nothing. If the field "
+					  "was renamed, rename it here."));
+		return false;
+	}
+
+	if (!TestFalse(TEXT("the older shape really is missing the field"),
+				   Older.Contains(TEXT("PartialDay"))))
+	{
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Older, UCataclysmRunSave::StaticClass(),
+										GetTransientPackage(), Result, Message));
+
+	// IT LOADS AT ALL, which is the half a player would notice. A missing field
+	// that refused the file would lose the whole save rather than one number.
+	if (!TestNotNull(TEXT("a file without the field still loads"), Read))
+	{
+		AddError(FString::Printf(TEXT("it was refused: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	TestEqual(TEXT("and the missing field takes its default"),
+		Read->PartialDay, 0.0f, 0.0001f);
+
+	// AND NOTHING ELSE WAS LOST WITH IT. A load that quietly dropped the rest of
+	// the record would also satisfy the two lines above.
+	TestEqual(TEXT("the day still reads"), Read->Day, 118);
+	TestTrue(TEXT("and somebody is still on a floor"), Read->Floor.IsOccupied());
+	TestEqual(TEXT("on the floor the file names"), Read->Floor.Floor, 6);
 
 	return true;
 }

@@ -528,13 +528,42 @@ public:
 	 * tree has shortened a walk, `UCataclysmDayClock::PartialDay` holds time
 	 * that has been spent and has not yet added up to a day.
 	 *
-	 * NOTHING SAVES THAT FRACTION, AND NOTHING WRITES THIS FIELD EITHER. See
-	 * `UCataclysmSaveWriter::WriteTheRunRecord`, which deliberately leaves this
-	 * alone. Both gaps are one piece of work and neither is a floor-cost
-	 * question.
+	 * WRITTEN FROM `UCataclysmEmpireRun::Day` by
+	 * `UCataclysmSaveWriter::WriteTheRunRecord`, and only when there is a run to
+	 * read. A save written with no empire run going leaves whatever was here
+	 * alone rather than writing a zero, so a record loaded from disk and then
+	 * refreshed does not lose the day it already held.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 Day = 0;
+
+	/**
+	 * Time spent that has not yet added up to a whole day, from
+	 * `UCataclysmDayClock::PartialDay`. Always at least 0 and below 1.
+	 *
+	 * WHY THE DAY ALONE IS NOT ENOUGH. A city upgrade can lower the days a
+	 * dungeon takes to walk while its floor count stays where it is, so a fifty
+	 * floor dungeon may cost two days and each of its floors a twenty-fifth of a
+	 * day. The carry is then almost never zero at the moment a save is written,
+	 * and dropping it loses up to just under a whole day of empire progress on
+	 * every save -- or grants one, depending on which way a later rounding
+	 * falls. That is drift nobody would attribute to the save system.
+	 *
+	 * IT WOULD HAVE BEEN WORTH NOTHING BEFORE ISSUE #1266. While a floor always
+	 * cost exactly one day the carry was zero at every floor boundary, so a save
+	 * could not catch it holding anything. Separating a dungeon's walk time from
+	 * its floor count is what made it real.
+	 *
+	 * ZERO IS THE HONEST DEFAULT, and it is what a save written before this
+	 * field existed reads back as -- which is also what it meant at the time, for
+	 * the reason above. **Adding a field with a sensible default is not a schema
+	 * version bump**: `docs/Save_System_Design.md` section 5 says so, because a
+	 * `UPROPERTY(SaveGame)` field missing from a file simply keeps its default.
+	 * So `SchemaVersionNow` stays at 1 and no migration step is needed, and
+	 * `Run_v1.json` still loads.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	float PartialDay = 0.0f;
 
 	/** The character records taking part: one in solo play, up to four in
 	 *  co-operative play. */

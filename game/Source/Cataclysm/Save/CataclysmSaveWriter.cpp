@@ -7,7 +7,9 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -165,11 +167,26 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	LastRun->Characters = { CharacterId };
 	LastRun->Floor = FCataclysmSaveGather::FloorFrom(*World, Dungeon, Floor, CharacterId);
 
-	// THE DAY IS NOT SET, and it is the one field of the run record that has a
-	// real source somewhere else: the empire layer's day clock, which is the
-	// `CataclysmEmpire` module and is a build file with nothing in it. Issue
-	// #42. Leaving it alone rather than writing a zero means a record loaded
-	// from disk and refreshed keeps whatever day it had.
+	// AND THE EMPIRE'S CLOCK, WHEN THERE IS A RUN TO READ IT FROM. Both halves:
+	// the whole days and the time spent that has not yet added up to one. A save
+	// that kept only the first loses up to just under a day of empire progress
+	// every time it is written, which became possible when a dungeon's walk time
+	// was separated from its floor count. Issue #1299.
+	//
+	// THIS COMMENT USED TO SAY THE DAY WAS NOT SET, BECAUSE THE EMPIRE MODULE
+	// WAS "a build file with nothing in it". That was true when it was written
+	// and stopped being true when `UCataclysmDayClock` landed. The source it
+	// said did not exist is `UCataclysmEmpireRun::Day`.
+	//
+	// NOT STARTING A RUN TO SAVE ONE. `EmpireRunFor` is asked not to begin a
+	// campaign, so a save written while nobody is playing one leaves these
+	// fields alone rather than writing a zero over what the record already held.
+	// That was the one good half of the old behaviour and it is kept.
+	if (const UCataclysmEmpireRun* Run =
+			UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false))
+	{
+		FCataclysmSaveGather::RunClockFrom(*Run, *LastRun);
+	}
 
 	return Write(LastRun, RunSlotName(), Trigger);
 }

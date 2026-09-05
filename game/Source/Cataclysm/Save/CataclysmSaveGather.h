@@ -8,6 +8,7 @@
 class ACataclysmDroppedItem;
 class ACataclysmEnemyCharacter;
 class ACataclysmPlayerCharacter;
+class UCataclysmEmpireRun;
 class UCataclysmInventoryComponent;
 class UWorld;
 
@@ -77,6 +78,28 @@ public:
 	 */
 	static FCataclysmSavedFloor FloorFrom(const UWorld& World, FName Dungeon,
 										  int32 Floor, const FGuid& SoloCharacterId);
+
+	/**
+	 * The empire's clock, out of a run and into a run record.
+	 *
+	 * BOTH HALVES OF THE CLOCK OR NEITHER. `Day` is the whole days and
+	 * `PartialDay` is the time spent that has not yet added up to one. A save
+	 * that kept only the first loses up to just under a day of empire progress
+	 * every time it is written, and that only became possible when a dungeon's
+	 * walk time was separated from its floor count. See
+	 * `UCataclysmRunSave::PartialDay`.
+	 *
+	 * IT TAKES A RUN RATHER THAN A WORLD, and that is what makes it testable. A
+	 * world only holds a run through the game instance, and a world built by
+	 * `UWorld::CreateWorld` for a test has none, so a function that went looking
+	 * would do nothing in every test that called it and say nothing about it.
+	 * `UCataclysmSaveWriter::WriteTheRunRecord` is what does the looking.
+	 *
+	 * @return whether anything was read. False when the run has no clock, which
+	 *         is a run `Begin` has not been called on.
+	 */
+	static bool RunClockFrom(const UCataclysmEmpireRun& Run,
+							 UCataclysmRunSave& Record);
 
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,

@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -200,6 +202,24 @@ void FCataclysmSaveGather::CarriedSlotsFrom(
 	// is part of what a player arranged. Copying only the filled ones would
 	// shuffle everything up against the left edge on the next load.
 	OutSlots = Inventory.GetSlots();
+}
+
+bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
+									   UCataclysmRunSave& Record)
+{
+	// A RUN THAT HAS NOT BEGUN HAS NO CLOCK. `Begin` is what makes one, so a
+	// freshly constructed run answers false and the record keeps whatever it
+	// already held rather than being zeroed by a run that knows nothing.
+	const UCataclysmDayClock* Clock = Run.Clock;
+	if (Clock == nullptr)
+	{
+		return false;
+	}
+
+	Record.Day = Clock->Day;
+	Record.PartialDay = Clock->PartialDay;
+
+	return true;
 }
 
 bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Character,
