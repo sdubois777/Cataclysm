@@ -9,18 +9,25 @@ difficulty treadmill rate and the craft numbers. Neither is asking a question
 about the empire tree. Section 7 used to say only that the settings were
 "calibrated at tier 1 in sections 0 and 2" and never say what they were.
 
-THE ORDERING IS NOT STABLE ACROSS THEM. Measured 2026-09-05 at tier 1, the triage
-policy, 150 campaigns per cell, moving only the surge size:
+THE ORDERING IS NOT STABLE ACROSS THEM, and the surge size is where it moves
+most. Measured 2026-09-05 at 150 campaigns per cell, moving only that number:
 
-    dungeons per surge   4     5     6     7
-    No tree win%        44    52    15    11
-    Architect win%      45    52    53    48
-    verdict vs no tree  tied  tied  BETTER  BETTER
+    dungeons per surge            4     5     6     7
+    tier 1, no tree win%         43    43    20    13
+    tier 1, presets beating it    1     3     4     4
+    tier 8, presets beating it    1     1     2     3
 
-Four surge sizes gave four different orderings. `TuningConfig.surge_dungeon_count`
-defaults to 4, which `exp_calibrate` never tries, so anyone calling `exp_presets`
-with a raw config measures a different world from the report's and gets a
-different answer with nothing to explain why.
+The ordering differed from the calibrated 5 at every other value, at both tiers.
+`TuningConfig.surge_dungeon_count` defaults to 4, which `exp_calibrate` never
+tries -- it sweeps 5, 6 and 7 -- so anyone calling `exp_presets` with a raw config
+measures a different world from the report's.
+
+SO THE SURGE SIZE IS NO LONGER ON THE INHERITED LIST. Issue #1297: the project
+owner chose to add a second surge size rather than leave the section on one, so
+it became the section's second axis beside the difficulty tier and each block
+names the size it ran at. The checks below hold BOTH halves of that -- that it is
+not reported as fixed, and that no block is printed without saying which size
+produced it. Dropping it from the list without the second half would undo #1287.
 
 AND ISSUE #1290, which is the same defect one step further on: the day-cap
 warning printed a hard-coded "22% per 100 days" and a 6.5x power multiplier
@@ -111,8 +118,6 @@ class TestTheReportedSettingsAreReadOffTheConfig:
                 f"{label!r} is an attribute name rather than a description")
 
     @pytest.mark.parametrize("field,value,expected", [
-        ("surge_dungeon_count", 4, "4"),
-        ("surge_dungeon_count", 7, "7"),
         ("dungeon_power_escalation_per_100_days", 0.22, "0.22"),
         ("dungeon_power_escalation_per_100_days", 0.50, "0.50"),
         ("resolve_floor_ratio", 1.2, "1.2"),
@@ -154,6 +159,11 @@ class TestTheReportedSettingsCoverWhatTheOtherSectionsSet:
         # exp_presets loops over `tiers` and prints the tier in each table's own
         # heading, so it chooses this rather than inheriting it.
         "tier",
+        # Issue #1297 made this the section's SECOND axis beside the tier. It
+        # loops over the surge sizes and names each in its own block heading, so
+        # it chooses this too. Listing it as inherited would say it was the same
+        # in every table below, which it is not.
+        "surge_dungeon_count",
     }
 
     def test_every_exemption_is_a_field_those_sections_actually_set(self):
@@ -187,11 +197,51 @@ class TestTheReportedSettingsCoverWhatTheOtherSectionsSet:
             f"{sorted(reported - chosen)} is reported as inherited from "
             "sections 0 and 2, and neither section sets it.")
 
-    def test_the_surge_size_is_among_them(self):
-        """Named on its own because it is the field issue #1287 is about, and
-        the one the ordering moves most sharply with."""
-        assert "surge_dungeon_count" in {
-            f for f, _, _ in experiments.INHERITED_SETTINGS}
+    def test_the_surge_size_is_an_axis_rather_than_an_inherited_setting(self):
+        """It was on the inherited list until issue #1297 made the section run
+        at two surge sizes. A setting printed under "held the same in every
+        table below" that is not the same in every table below is worse than
+        one that is not printed at all."""
+        assert "surge_dungeon_count" not in {
+            f for f, _, _ in experiments.INHERITED_SETTINGS}, (
+            "the surge size is reported as inherited while the section sweeps "
+            "it, so the settings block claims it is fixed when it is not. "
+            "Issue #1297.")
+
+    def test_dropping_it_from_the_list_did_not_lose_it(self):
+        """The half that makes the removal safe. Issue #1287 exists because the
+        section printed an ordering without saying which surge size produced it,
+        so every block must still name its own."""
+        from cataclysm_sim.config import TuningConfig
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER,
+                       **CALIBRATED)
+        sizes = (base.surge_dungeon_count,
+                 experiments.PRESET_SECOND_SURGE_SIZE)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            experiments.exp_presets(base, tiers=(1,), trials=2)
+        out = buffer.getvalue()
+        for size in sizes:
+            assert f"{size} DUNGEONS PER SURGE" in out, (
+                f"no block says it ran at {size} dungeons per surge")
+
+    def test_the_two_surge_sizes_are_different(self):
+        """If sections 0 and 2 ever calibrate to the second value the section
+        would print the same block twice and compare it with itself, which reads
+        as agreement. `exp_presets` de-duplicates; this says so out loud."""
+        from cataclysm_sim.config import TuningConfig
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER,
+                       **CALIBRATED)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            experiments.exp_presets(
+                base, tiers=(1,), trials=2,
+                surge_sizes=(base.surge_dungeon_count,
+                             base.surge_dungeon_count))
+        out = buffer.getvalue()
+        assert out.count("DUNGEONS PER SURGE") == 1, (
+            "the same surge size was given twice and the section printed two "
+            "blocks for it, so it would compare a block with itself")
 
 
 class TestSectionSevenPrintsThem:
@@ -212,11 +262,25 @@ class TestSectionSevenPrintsThem:
         reader with more numbers and the same wrong conclusion."""
         out = presets_output(tiers=(1,), trials=2)
         assert "CONDITIONAL" in out
-        assert "four different orderings" in out
+        assert "not re-derived" in out
 
-    def test_it_names_the_surge_size_as_the_sharpest_of_them(self):
+    def test_it_says_why_the_surge_size_left_the_list(self):
+        """Removing a setting from a block headed "held the same in every table
+        below" is only honest if the reader is told where it went. Issue
+        #1297."""
         out = presets_output(tiers=(1,), trials=2)
+        assert "USED TO BE ON THAT LIST AND IS NOW SWEPT" in out
         assert "dungeons per surge" in out
+
+    def test_each_block_heading_names_its_surge_size(self):
+        """Issue #1297. A second block that does not say which world it
+        describes reintroduces exactly what #1287 was about."""
+        out = presets_output(tiers=(1,), trials=2)
+        assert out.count("DUNGEONS PER SURGE") == 2, (
+            "the section did not print one headed block per surge size")
+        assert "the value sections 0 and 2 calibrated" in out, (
+            "neither block says which of the two the report's own settings "
+            "describe")
 
     def test_the_block_is_printed_once_rather_than_per_tier(self):
         """These do not change between tiers -- that is what makes the tables
