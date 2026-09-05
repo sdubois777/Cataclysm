@@ -320,12 +320,21 @@ the main checkout at `C:\Projects\Cataclysm`. A worktree never has it, which is
 why the fifteen tests described above report themselves as skipped there.
 
 **The `master-kit` plugin.** `.claude/settings.json` enables it for this project.
-It supplies the `consolidate` skill, which writes the handoff document a fresh
-session reads to pick work up, and `/master-check`, which sweeps every running
-session and ends in an explicit list of what needs a decision from the owner. The
-plugin also ships a rules file that forbids the `Co-Authored-By: Claude` commit
-trailer. **This project keeps the trailer**, which roughly half the existing
-history carries; this line is the project's decision and overrides the plugin's.
+**Its skills and commands are namespaced, and the prefix is part of the name.** A
+bare `master-session` or `/master-check` does not resolve; a session that tries
+one reports the skill is not installed, which is wrong. The four names are:
+
+| Name | What it does |
+|---|---|
+| `master-kit:master-session` | The doctrine a session coordinating several others runs under |
+| `master-kit:consolidate` | Writes the handoff document a fresh session reads to pick work up |
+| `/master-kit:master-check` | Sweeps every running session and lists what needs a decision from the owner |
+| `/master-kit:master-handoff` | Writes a seed prompt for a replacement coordinating session |
+
+The plugin also ships a rules file that forbids the `Co-Authored-By: Claude`
+commit trailer. **This project keeps the trailer**, which roughly half the
+existing history carries; this line is the project's decision and overrides the
+plugin's.
 
 ## Tracking work with GitHub issues
 
