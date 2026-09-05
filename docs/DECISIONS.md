@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A Siege takes 1% of a city's MAXIMUM per day, not of what is left
+
+Building the Siege dungeon sub-type for issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). The design document has
+exactly one sentence about it, `docs/Cataclysm_GDD_v2.md` line 3732:
+
+> Siege | Deals 1% damage to city defenses and population per day while active.
+> Increases in power by 10 points per day. Pauses city upgrades. Max 1 per city.
+
+Nothing else in any document mentions the sub-type. The word "pause" appears
+exactly once in the whole design document, in that line. The empire tree's
+"Siege Resistance" node is a naming coincidence: its own description says
+"damage taken by cities from dungeon resolutions", so it is about resolve damage
+generally and not about this sub-type.
+
+**The simulation does not model it.** `sim/cataclysm_sim/engine.py` gives a
+sub-type no behaviour at all beyond Cow Level's doubled walk and Sacrificial's
+doubled modifier count. So unlike the day clock, the empire map and the surge
+scheduler, there is no reference implementation to port and no port test to
+write. The design document is the only source, which is why this entry exists.
+
+### The decision: 1% of the maximum
+
+"1% damage to city defenses and population per day" is a percentage of the
+city's **maximum** defence and **maximum** population, not of what it currently
+has.
+
+**Two reasons, and neither is a preference.**
+
+A percentage of the remainder never reaches zero. A city besieged for ever would
+fall to about 37% of its defence after a hundred days and keep approaching zero
+without arriving, so a Siege could never actually take a city on its own. The
+sentence says it deals damage; a reading under which it cannot ever finish the
+job is not a reading of that sentence.
+
+And every other city damage in this layer is already a fraction of the maximum.
+`UCataclysmEmpireMap::Bite` is the one function that damages a city and its two
+parameters are fractions of `MaxDefence` and `MaxPopulation`. A Siege that meant
+something different by "1%" than every dungeon resolution does would be one word
+carrying two meanings.
+
+**What it works out to.** A hundred days empties an untouched city, and a Siege's
+own resolve timer runs out several times inside that, so the two together are
+what make it the dungeon a player cannot postpone.
+
+**It passes through the city's damage resistances**, because it goes through
+`Bite` and that is where they are applied. The resistance upgrades say the city
+resists damage and do not name a source.
+
+### Where the daily damage lands in the day
+
+After the scheduled city repairs and before any dungeon resolves. The day loop
+already states why repairs come first — a city one bite from falling is saved by
+a repair that was already due — and a Siege's daily damage is one of the day's
+assaults, so it belongs with the other one rather than between the repairs and
+the timers.
+
+### The one-Siege-per-city rule
+
+"Max 1 per city" is enforced when a wave is rolled. A dungeon that rolls Siege
+for a city that already has one **becomes a dungeon with no sub-type** rather
+than being rolled again.
+
+**Rolling again would cost a second draw from the random stream**, and every
+dungeon in a wave is rolled from one stream in sequence, so the depth of every
+later dungeon in that wave would depend on what this one first rolled. Making it
+plain is also the honest reading: the design says a city may not have two
+Sieges, not that it should be given something else instead.
+
+The rule counts Sieges the wave itself is creating as well as those already
+standing, because targets are rolled with replacement and one wave can land two
+dungeons on one city.
+
+### What "increases in power by 10 points per day" means
+
+Raised with the project owner on 2026-09-05 because the empire layer has no
+concept of power or score at all, and the only thing in the project that measures
+a dungeon in points is the Enemy Score model, which lives in the `Cataclysm`
+module that `CataclysmEmpire` must not depend on.
+
+The owner's answer, verbatim: **"That's in regards to the damage it does to the
+city/population"**.
+
+So a Siege's power is its damage, and the ten points are ten points of city
+defence and city population. **This removes the module dependency entirely** —
+no enemy score is involved and the units are ones the empire layer already owns.
+
+**What it works out to.** The flat share is a percentage of a city's own maximum,
+so on its own it takes the same 100 days to empty any city whatever its size. Ten
+points is not a share, so it bites hardest where the empire is thinnest:
+
+| City | Maximum defence | Flat share per day | Days to empty, flat only | Days to empty, with the growth |
+| :-- | --: | --: | --: | --: |
+| Outpost | 1,000 | 10 | 100 | 14 |
+| Bulwark | 3,000 | 30 | 100 | 23 |
+| Sanctuary | 8,000 | 80 | 100 | 34 |
+| Pillar | 20,000 | 200 | 100 | 47 |
+
+A frontier Outpost left to an unattended Siege is gone in a fortnight, and the
+capital would take seven weeks. That is the shape the design wants: the frontier
+falls first.
+
+**Two details the answer did not settle, and what was done about them.** The
+owner's answer says what the power is. It does not say which of the two kinds of
+damage grows, nor from which day. Both are read here from the sentence rather
+than ruled on, and both are recorded as readings so they are cheap to correct:
+
+- **It grows both the defence damage and the population damage.** The sentence
+  whose subject is "its power" follows a sentence that names both, so the plain
+  reading is that the damage it does — all of it — grows.
+- **It counts from the day the Siege arrived.** "Increases by 10 per day" means
+  that after one day it has increased by ten, so a Siege's first day deals the
+  flat share alone.
+
+### What "pauses city upgrades" means
+
+Raised with the owner on the same day, because a city upgrade in this project
+does one of several unrelated things and only some of them can be paused at all.
+
+The owner's answer, verbatim: **"Stops any currently building upgrades and blocks
+buying new ones"**.
+
+So it does **not** suspend the effects of upgrades a city already holds. A
+besieged city keeps its raised maximum defence, its damage resistances and its
+dungeon-shaping upgrades; it simply cannot add to them. That also avoids a
+reading that would have cut a city's maximum defence the instant a Siege
+appeared, which can fell a city outright and contradicts "1% per day".
+
+**Only the blocking half is built, and the other half is not missing so much as
+impossible today.** `UCataclysmCityUpgradeRules::BuildDays` is zero and
+`IsFreeAndInstant` requires it to stay zero, so every purchase is instant and
+nothing is ever part way through being built. There is no in-progress build for a
+Siege to interrupt. Raising `BuildDays` to manufacture one would trip that same
+guard and refuse every purchase in the game. Whoever gives an upgrade a build
+time under issue
+[#1264](https://github.com/sdubois777/Cataclysm/issues/1264) should stop it for a
+besieged city at the same time; there is a comment at the blocking code saying
+so.
+
+`ECataclysmCityUpgradeResult::CityIsBesieged` is what a refused purchase answers.
+
 ## 2026-09-05 — The Architect empire tree branch gets nothing added, and a defensive branch is worth what the surges make it worth
 
 **Issue [#5](https://github.com/sdubois777/Cataclysm/issues/5) asked a design

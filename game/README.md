@@ -194,12 +194,25 @@ by `git add` with no error and no warning. Guarded by
   it brings, which cities they land on and how deep each one is (issue
   [#1083](https://github.com/sdubois777/Cataclysm/issues/1083)).
   `UCataclysmEmpireRun` owns those three and advances a day: a wave lands, timers
-  move, a dungeon that runs out takes a share of its host city, a city whose
-  defence reaches zero falls, and its fall opens the lane behind it (issue
+  move, every Siege takes its daily share, a dungeon that runs out takes a share
+  of its host city, a city whose defence reaches zero falls, and its fall opens
+  the lane behind it (issue
   [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind.
+
+  **Two of the eight dungeon sub-types do something, and the other six do not.**
+  Every dungeon a surge creates rolls one from the design's weights, and the
+  dungeon the player walks carries it into the creature-scoring model. A Cow
+  Level costs twice the days to walk and the walk-shortening city upgrade does
+  not apply to it; a Siege takes 1% of its host city's maximum defence and
+  maximum population every day it stands, and a city may hold only one. Timed,
+  Horde, Elite, Volatile and Sacrificial are rolled and named and change nothing
+  yet, and two further parts of the Siege — what "increases in power by 10 points
+  per day" means and what "pauses city upgrades" means — are undecided rather
+  than unbuilt. Issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.

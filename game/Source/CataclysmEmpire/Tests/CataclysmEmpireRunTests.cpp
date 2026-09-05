@@ -202,6 +202,7 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Run = MakeRun();
 
 	int32 BitesChecked = 0;
+	int32 BesiegedBitesChecked = 0;
 
 	// TWO HUNDRED DAYS, WATCHING EVERY RESOLVE. Which dungeon resolves on which
 	// day depends on the roll; what must hold whatever the roll was is that the
@@ -253,6 +254,27 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 			const float Lost = Before[Pair.Key] - City->Defence;
 			const float Share = City->MaxDefence * Pair.Value;
 
+			// A BESIEGED CITY LOSES MORE THAN THE RESOLVE, AND THAT IS CORRECT.
+			// A Siege takes its own share of its host every day whether or not
+			// anything resolved, so on a day that also carries a resolve the
+			// city loses both. This test is about what a RESOLVE takes, so a
+			// besieged city is checked for the weaker property instead: it lost
+			// at least the resolve's share, and strictly more than it. How much
+			// more is pinned by the Siege's own tests further down this file,
+			// and writing that arithmetic out again here would only duplicate
+			// the code under test.
+			if (Report.Besieged.Contains(Pair.Key))
+			{
+				TestTrue(FString::Printf(
+					TEXT("on day %d, besieged %s lost %.2f defence, more than "
+						 "the %.2f its resolves alone would take"),
+					Report.Day, *City->Name, Lost, Share),
+					Lost > Share);
+
+				++BesiegedBitesChecked;
+				continue;
+			}
+
 			TestEqual(FString::Printf(
 				TEXT("on day %d, %s lost %.2f defence, which is its dungeons' "
 					 "share of its maximum"),
@@ -269,6 +291,16 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(
 		TEXT("%d bites were checked over two hundred days"), BitesChecked),
 		BitesChecked > 5);
+
+	// THE SECOND CONTROL, ADDED WITH THE SIEGE. If every resolve in two hundred
+	// days happened to land on a besieged city, the exact check above would have
+	// been skipped every time and the count above would be the thing that
+	// noticed. This says plainly how the two hundred days split, so a future
+	// change that quietly moved every resolve into the besieged branch shows up
+	// as a number rather than as silence.
+	AddInfo(FString::Printf(
+		TEXT("%d resolves on unbesieged cities, %d on besieged ones"),
+		BitesChecked, BesiegedBitesChecked));
 
 	return true;
 }
@@ -727,6 +759,557 @@ bool FCataclysmEmpireRunPartialDayTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and neither does a negative"),
 			  Run->SpendFloorTime(-5.0f).Num(), 0);
 	TestEqual(TEXT("so the day did not move"), Run->Day(), BeforeNothing);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A Siege costs its host something every day
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeBitesDailyTest,
+	"Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// A SEED WHOSE FIRST WAVE CONTAINS A SIEGE, found by looking. Siege is 10 in
+	// 100 and a wave is four dungeons, so most seeds have one, but not all.
+	int32 SiegeSeed = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= 200 && SiegeSeed == INDEX_NONE; ++Seed)
+	{
+		UCataclysmEmpireRun* Trial = MakeRun(Seed);
+		Trial->AdvanceDay();
+
+		for (const FCataclysmDungeon& Dungeon : Trial->Dungeons)
+		{
+			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+			{
+				SiegeSeed = Seed;
+				break;
+			}
+		}
+	}
+
+	if (!TestTrue(TEXT("a seed whose first wave holds a Siege was found"),
+				  SiegeSeed != INDEX_NONE))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = MakeRun(SiegeSeed);
+	Run->AdvanceDay();
+
+	// WHICH CITIES ARE BESIEGED, AND WHICH HOLD ONLY ORDINARY DUNGEONS. The
+	// second list is the control: without it, a bite applied to every city with
+	// any dungeon on it would pass every figure below.
+	TSet<int32> Besieged;
+	TSet<int32> Ordinary;
+
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+		{
+			Besieged.Add(Dungeon.CityId);
+		}
+		else
+		{
+			Ordinary.Add(Dungeon.CityId);
+		}
+	}
+
+	Ordinary = Ordinary.Difference(Besieged);
+
+	if (!TestTrue(TEXT("at least one city is besieged"), Besieged.Num() > 0))
+	{
+		return false;
+	}
+
+	// A DAY WITH NO RESOLVES IN IT, so the only thing that can move a city's
+	// defence is the Siege. Resolve timers are at least ten days plus the depth,
+	// so the day after the first wave is safely clear of them.
+	TMap<int32, float> DefenceBefore;
+	TMap<int32, float> PopulationBefore;
+	TMap<int32, float> MaxDefence;
+	TMap<int32, float> MaxPopulation;
+
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		DefenceBefore.Add(City.CityId, City.Defence);
+		PopulationBefore.Add(City.CityId, City.Population);
+		MaxDefence.Add(City.CityId, City.MaxDefence);
+		MaxPopulation.Add(City.CityId, City.MaxPopulation);
+	}
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	if (!TestEqual(TEXT("no dungeon resolved on the day measured"),
+				   Report.Resolved.Num(), 0))
+	{
+		return false;
+	}
+
+	// THE FIGURE THE DESIGN DOCUMENT STATES: one per cent of the city's maximum
+	// per day, plus ten points for every day the Siege has already stood. The
+	// day measured is the day after the wave landed, so exactly one day's growth
+	// is in it. Written out from the constants rather than as 0.01 and 10, so a
+	// change to either fails this rather than silently passing.
+	const float Grown = UCataclysmEmpireRun::SiegeDamageGrowthPerDay * 1.0f;
+
+	for (const int32 CityId : Besieged)
+	{
+		const FCataclysmCity* City = Run->Map->Find(CityId);
+		if (!TestNotNull(TEXT("the besieged city is still on the map"), City))
+		{
+			continue;
+		}
+
+		TestEqual(*FString::Printf(
+					  TEXT("city %d lost 1%% of its maximum defence plus a "
+						   "day's growth"), CityId),
+				  DefenceBefore[CityId] - City->Defence,
+				  MaxDefence[CityId]
+					  * UCataclysmEmpireRun::SiegeDefenceBitePerDay + Grown,
+				  0.01f);
+
+		TestEqual(*FString::Printf(
+					  TEXT("city %d lost 1%% of its maximum population plus a "
+						   "day's growth"), CityId),
+				  PopulationBefore[CityId] - City->Population,
+				  MaxPopulation[CityId]
+					  * UCataclysmEmpireRun::SiegePopulationBitePerDay + Grown,
+				  0.01f);
+
+		TestTrue(*FString::Printf(TEXT("and the day's report names city %d"),
+								  CityId),
+				 Report.Besieged.Contains(CityId));
+	}
+
+	// THE CONTROL. A city carrying only ordinary dungeons loses nothing at all
+	// on a day when nothing resolves. Every other dungeon is free until its
+	// timer runs out, and that is what makes a Siege the one you cannot leave.
+	for (const int32 CityId : Ordinary)
+	{
+		const FCataclysmCity* City = Run->Map->Find(CityId);
+		if (City == nullptr)
+		{
+			continue;
+		}
+
+		TestEqual(*FString::Printf(
+					  TEXT("city %d holds only ordinary dungeons and lost no "
+						   "defence"), CityId),
+				  City->Defence, DefenceBefore[CityId], 0.0001f);
+
+		TestFalse(*FString::Printf(
+					  TEXT("so the report does not name city %d"), CityId),
+				  Report.Besieged.Contains(CityId));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeAloneFellsACityTest,
+	"Cataclysm.EmpireRun.ASiegesFlatShareIsOfTheMaximumAndNotTheRemainder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunSiegeAloneFellsACityTest::RunTest(
+	const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// WHY THIS TEST AND NOT ONLY THE ONE ABOVE. One per cent of what a city HAS
+	// LEFT would never reach zero, and a test measuring a single day cannot tell
+	// the two readings apart -- the first day's bite is the same either way.
+	// This is the test that can: a hundred bites of one per cent of the maximum
+	// empty a city, and a hundred bites of one per cent of the remainder leave
+	// it at about 37% of where it started.
+	UCataclysmEmpireRun* Run = MakeRun(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	FCataclysmCity* City = nullptr;
+	for (FCataclysmCity& Candidate : Map->Cities)
+	{
+		if (Candidate.Tier == ECataclysmCityTier::Outpost)
+		{
+			City = &Candidate;
+			break;
+		}
+	}
+
+	if (!TestNotNull(TEXT("an Outpost was found"), City))
+	{
+		return false;
+	}
+
+	const int32 CityId = City->CityId;
+	const float StartingDefence = City->Defence;
+
+	// BITTEN DIRECTLY, ONE DAY AT A TIME, rather than by standing a dungeon on
+	// it and advancing a hundred days. Advancing days would fire surges, land
+	// more dungeons and resolve timers, and the figure at the end would be the
+	// sum of all of it rather than the Siege's own arithmetic.
+	int32 DaysToEmpty = 0;
+	for (int32 Day = 1; Day <= 200; ++Day)
+	{
+		const bool bFell = Map->Bite(
+			CityId, UCataclysmEmpireRun::SiegeDefenceBitePerDay,
+			UCataclysmEmpireRun::SiegePopulationBitePerDay);
+
+		if (bFell)
+		{
+			DaysToEmpty = Day;
+			break;
+		}
+	}
+
+	// A RANGE AND NOT AN EXACT DAY, because a hundred subtractions of one per
+	// cent of the maximum need not land exactly on zero in floating point, and a
+	// test that demanded day 100 would be testing the rounding rather than the
+	// rule. What discriminates the two readings is that it ENDS: one per cent of
+	// the remainder would leave the city at about 37% after a hundred days and
+	// above zero for ever, so any finite answer here rules that reading out.
+	TestTrue(*FString::Printf(
+				 TEXT("a Siege alone empties an untouched city, and did so on "
+					  "day %d"), DaysToEmpty),
+			 DaysToEmpty >= 100 && DaysToEmpty <= 101);
+
+	TestTrue(TEXT("the city really did start full"),
+			 StartingDefence > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunOneSiegePerCityTest,
+	"Cataclysm.EmpireRun.ACityNeverHoldsTwoSieges",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunOneSiegePerCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// MANY RUNS, EACH WALKED FOR A LONG TIME. A single run rarely puts two
+	// dungeons of any kind on one city early on; the rule only comes under
+	// pressure once waves have been landing for a while, and the dungeon cap is
+	// what stops it being impossible.
+	int32 CitiesSeenWithASiege = 0;
+
+	for (int32 Seed = 1; Seed <= 8; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+
+		for (int32 Day = 0; Day < 500; ++Day)
+		{
+			Run->AdvanceDay();
+
+			TMap<int32, int32> SiegesOn;
+
+			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+				{
+					++SiegesOn.FindOrAdd(Dungeon.CityId);
+				}
+			}
+
+			for (const TPair<int32, int32>& Pair : SiegesOn)
+			{
+				++CitiesSeenWithASiege;
+
+				if (Pair.Value > UCataclysmSurgeScheduler::SiegesPerCity)
+				{
+					AddError(FString::Printf(
+						TEXT("seed %d day %d: city %d holds %d Sieges, and the "
+							 "design allows %d"),
+						Seed, Day, Pair.Key, Pair.Value,
+						UCataclysmSurgeScheduler::SiegesPerCity));
+					return false;
+				}
+			}
+		}
+	}
+
+	// THE CONTROL. If no city ever held a Siege at all, the loop above would
+	// have found no violation and proved nothing.
+	TestTrue(TEXT("cities carrying a Siege were actually seen"),
+			 CitiesSeenWithASiege > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeGrowsTest,
+	"Cataclysm.EmpireRun.ASiegeHurtsMoreEachDayItIsLeftStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	// BUILT BY HAND RATHER THAN ROLLED. A run walked for many days would also be
+	// taking resolve bites, landing new waves and losing cities, and the figure
+	// at the end would be the sum of all of it. This stands one Siege on one
+	// city and moves the clock, so the only thing that can change the damage is
+	// the day count.
+	UCataclysmEmpireRun* Run = MakeRun(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	// THE PILLAR, WHICH IS THE DEEPEST POCKET ON THE MAP. Twenty thousand
+	// defence takes 47 days of a growing Siege to empty, which leaves room to
+	// measure several days without the city falling part way through.
+	int32 CityId = INDEX_NONE;
+	float MaxDefence = 0.0f;
+
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Pillar)
+		{
+			CityId = City.CityId;
+			MaxDefence = City.MaxDefence;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("the Pillar was found"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// EVERY OTHER DUNGEON REMOVED, so nothing else can bite anything. The wave
+	// that lands on day one is not wanted here.
+	Run->AdvanceDay();
+
+	while (Run->DungeonCount() > 0)
+	{
+		Run->ClearDungeon(Run->Dungeons[0].DungeonId);
+	}
+
+	// ONE SIEGE, STANDING FROM TODAY. Its resolve timer is set far enough out
+	// that it cannot run out during the days measured, so the only damage the
+	// city takes is the daily one.
+	FCataclysmDungeon Siege;
+	Siege.DungeonId = 9000;
+	Siege.SubType = ECataclysmDungeonSubType::Siege;
+	Siege.CityId = CityId;
+	Siege.Floors = 10;
+	Siege.SpawnedDay = Run->Day();
+	Siege.ResolveDays = 10000.0f;
+
+	Run->Dungeons.Add(Siege);
+	Run->Clock->AddDungeon(Siege.DungeonId, Siege.Floors);
+	Run->Clock->SetResolveDays(Siege.DungeonId, Siege.ResolveDays);
+
+	// FIVE DAYS, EACH MEASURED ON ITS OWN. The first day after it arrived is one
+	// day's growth, and each later day is one more.
+	TArray<float> Taken;
+
+	for (int32 Step = 0; Step < 5; ++Step)
+	{
+		const FCataclysmCity* Before = Map->Find(CityId);
+		const float DefenceBefore = Before ? Before->Defence : 0.0f;
+
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		if (!TestTrue(TEXT("nothing resolved on the day measured"),
+					  Report.Resolved.IsEmpty()))
+		{
+			return false;
+		}
+
+		const FCataclysmCity* After = Map->Find(CityId);
+		Taken.Add(DefenceBefore - (After ? After->Defence : 0.0f));
+	}
+
+	// TEN, WRITTEN OUT, BECAUSE THE DESIGN DOCUMENT SAYS TEN. Every other
+	// assertion in this test compares against
+	// `UCataclysmEmpireRun::SiegeDamageGrowthPerDay`, and a test whose expected
+	// value is read out of the same constant the code reads cannot notice that
+	// the constant is wrong: setting it to zero would make this test expect no
+	// growth, find no growth, and pass.
+	//
+	// FOUND BY BREAKING IT. A `prove_cpp_guard` run on 2026-09-05 set that
+	// constant to zero and all fifteen tests in this file still passed. This
+	// line and the strict comparison below are what that run was missing.
+	TestEqual(TEXT("the design's ten points a day"),
+			  UCataclysmEmpireRun::SiegeDamageGrowthPerDay, 10.0f, 0.0001f);
+
+	// EACH DAY TAKES EXACTLY TEN MORE POINTS THAN THE ONE BEFORE IT. Checked as
+	// the difference between consecutive days rather than against an absolute
+	// figure, so it does not depend on which day the Siege happened to arrive.
+	for (int32 Step = 1; Step < Taken.Num(); ++Step)
+	{
+		// STRICTLY MORE, CHECKED SEPARATELY FROM HOW MUCH MORE. This one holds
+		// whatever the constant is set to, so it fails for a Siege that stopped
+		// growing even if somebody changed the number the line above pins.
+		TestTrue(*FString::Printf(
+					 TEXT("day %d took strictly more than day %d (%.1f against "
+						  "%.1f)"),
+					 Step + 1, Step, Taken[Step], Taken[Step - 1]),
+				 Taken[Step] > Taken[Step - 1]);
+
+		TestEqual(*FString::Printf(
+					  TEXT("day %d took ten more points of defence than day %d "
+						   "(%.1f against %.1f)"),
+					  Step + 1, Step, Taken[Step], Taken[Step - 1]),
+				  Taken[Step] - Taken[Step - 1],
+				  UCataclysmEmpireRun::SiegeDamageGrowthPerDay, 0.01f);
+	}
+
+	// AND THE FIRST OF THEM IS THE FLAT SHARE PLUS ONE DAY'S GROWTH, which is
+	// what pins where the counting starts. A Siege that grew from the day before
+	// it arrived would take ten points more on every one of these days and the
+	// differences above would not notice.
+	TestEqual(TEXT("the first day after it arrived is the flat share plus one "
+				   "day's growth"),
+			  Taken[0],
+			  MaxDefence * UCataclysmEmpireRun::SiegeDefenceBitePerDay
+				  + UCataclysmEmpireRun::SiegeDamageGrowthPerDay,
+			  0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunBesiegedCityCannotBuyTest,
+	"Cataclysm.EmpireRun.ABesiegedCityCannotBuyAnUpgradeButKeepsTheOnesItHas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunBesiegedCityCannotBuyTest::RunTest(
+	const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	int32 CityId = INDEX_NONE;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost)
+		{
+			CityId = City.CityId;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("an Outpost was found"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FCataclysmCityUpgrade Upgrade;
+	Upgrade.RowName = FName(TEXT("Architect_This_city_has_25_more_defense"));
+	Upgrade.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+	Upgrade.Value = 0.25f;
+
+	// THE CONTROL FIRST. With no Siege standing, this city can buy it. Without
+	// this the refusal below could be any of eight other reasons.
+	if (!TestEqual(TEXT("an unbesieged city can buy the upgrade"),
+				   static_cast<uint8>(
+					   Run->WouldBuyCityUpgrade(CityId, Upgrade)),
+				   static_cast<uint8>(ECataclysmCityUpgradeResult::Bought)))
+	{
+		return false;
+	}
+
+	// AND IT REALLY BOUGHT IT, so there is an existing upgrade to check keeps
+	// working while the city is besieged.
+	FCataclysmCityUpgrade Bought;
+	Bought.RowName = FName(TEXT("Architect_This_city_repairs_5_defense_every_7_d"));
+	Bought.Effect = ECataclysmCityUpgradeEffect::ResistDefenceLoss;
+	Bought.Value = 0.25f;
+
+	TestEqual(TEXT("and a second one goes through as well"),
+			  static_cast<uint8>(Run->BuyCityUpgrade(CityId, Bought)),
+			  static_cast<uint8>(ECataclysmCityUpgradeResult::Bought));
+
+	const FCataclysmCity* City = Map->Find(CityId);
+	if (!TestNotNull(TEXT("the city is still there"), City))
+	{
+		return false;
+	}
+
+	const float ResistedBefore =
+		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistDefenceLoss);
+
+	TestTrue(TEXT("the bought resistance is doing something"),
+			 ResistedBefore > 0.0f);
+
+	// NOW A SIEGE STANDS ON IT.
+	FCataclysmDungeon Siege;
+	Siege.DungeonId = 9100;
+	Siege.SubType = ECataclysmDungeonSubType::Siege;
+	Siege.CityId = CityId;
+	Siege.Floors = 10;
+	Siege.SpawnedDay = Run->Day();
+	Siege.ResolveDays = 10000.0f;
+
+	Run->Dungeons.Add(Siege);
+
+	TestTrue(TEXT("the city reports itself besieged"), Run->IsBesieged(CityId));
+
+	TestEqual(TEXT("and it can no longer buy an upgrade"),
+			  static_cast<uint8>(Run->WouldBuyCityUpgrade(CityId, Upgrade)),
+			  static_cast<uint8>(
+				  ECataclysmCityUpgradeResult::CityIsBesieged));
+
+	TestEqual(TEXT("nor actually buy one"),
+			  static_cast<uint8>(Run->BuyCityUpgrade(CityId, Upgrade)),
+			  static_cast<uint8>(
+				  ECataclysmCityUpgradeResult::CityIsBesieged));
+
+	// WHAT IT ALREADY BOUGHT STILL WORKS, which is the half of the design's
+	// "pauses city upgrades" that a Siege does NOT do. The owner's answer stops
+	// buying and stops building; it does not switch off what a city already has.
+	const FCataclysmCity* Besieged = Map->Find(CityId);
+	if (!TestNotNull(TEXT("the besieged city is still there"), Besieged))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the resistance it bought before the Siege still applies"),
+			  Besieged->UpgradeValueFor(
+				  ECataclysmCityUpgradeEffect::ResistDefenceLoss),
+			  ResistedBefore, 0.0001f);
+
+	// AND ANOTHER CITY IS UNAFFECTED. The refusal is about this city, not about
+	// there being a Siege anywhere on the map.
+	int32 OtherId = INDEX_NONE;
+	for (const FCataclysmCity& Other : Map->Cities)
+	{
+		if (Other.CityId != CityId
+			&& Other.Tier == ECataclysmCityTier::Outpost)
+		{
+			OtherId = Other.CityId;
+			break;
+		}
+	}
+
+	if (TestTrue(TEXT("a second Outpost was found"), OtherId != INDEX_NONE))
+	{
+		TestFalse(TEXT("the other city is not besieged"),
+				  Run->IsBesieged(OtherId));
+
+		TestEqual(TEXT("and it can still buy"),
+				  static_cast<uint8>(
+					  Run->WouldBuyCityUpgrade(OtherId, Upgrade)),
+				  static_cast<uint8>(ECataclysmCityUpgradeResult::Bought));
+	}
 
 	return true;
 }

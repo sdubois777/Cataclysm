@@ -218,6 +218,25 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 * for nothing. See `IsFreeAndInstant`.
 	 */
 	CannotPayYet			= 8,
+
+	/**
+	 * A Siege stands on that city, and a besieged city may not be improved.
+	 *
+	 * THE DESIGN DOCUMENT: a Siege "Pauses city upgrades." The project owner
+	 * settled what that means on 2026-09-05: it stops any upgrade that is part
+	 * way through being built and blocks buying new ones, and it leaves the
+	 * effects of upgrades the city already holds working. So a besieged city
+	 * keeps its raised maximum defence and its damage resistances; it simply
+	 * cannot add to them until the Siege is gone.
+	 *
+	 * ONLY THE BLOCKING HALF EXISTS, AND THAT IS NOT AN OVERSIGHT. Nothing is
+	 * ever part way through being built, because `BuildDays` is zero and every
+	 * purchase is instant -- see `IsFreeAndInstant`. There is no in-progress
+	 * build for a Siege to interrupt until issue #1264 gives an upgrade a build
+	 * time, and raising `BuildDays` to create one would trip that same guard and
+	 * refuse every purchase in the game.
+	 */
+	CityIsBesieged			= 9,
 };
 
 /**
