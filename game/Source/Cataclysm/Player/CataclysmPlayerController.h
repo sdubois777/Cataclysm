@@ -11,6 +11,7 @@ class ACataclysmDroppedItem;
 class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
 class UCataclysmCharacterCreationWidget;
+class UCataclysmCharacterSheetWidget;
 class UCataclysmEmpireMapWidget;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
@@ -244,6 +245,15 @@ public:
 	 * binding to them is a separate change from building a screen. Issue #1087.
 	 */
 	void ToggleEmpireMap();
+
+	/**
+	 * Opens and closes the character sheet.
+	 *
+	 * THE SAME SHAPE AS THE THREE ABOVE, and public for the same reason:
+	 * `Cataclysm.CharacterSheet` calls it. It has no key of its own yet, for the
+	 * reason the empire overview has none. Issues #1233 and #50.
+	 */
+	void ToggleCharacterSheet();
 
 	/**
 	 * Scale the passive tree view, or fit the whole tree when given nothing.
@@ -501,6 +511,17 @@ private:
 	/** The empire overview, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmEmpireMapWidget> EmpireMapScreen = nullptr;
+
+	/** Which Widget Blueprint the character sheet is. Soft, for the reason
+	 *  the character creator's is. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmCharacterSheetWidget> CharacterSheetScreenClass =
+		TSoftClassPtr<UCataclysmCharacterSheetWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_CharacterSheet.WBP_CharacterSheet_C")));
+
+	/** The character sheet, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmCharacterSheetWidget> CharacterSheetScreen = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;

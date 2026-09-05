@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The character sheet shows the model's 46 stats, in the model's groups
+
+Made while building the character sheet, issues #1233 and #50. Nothing in the
+game showed a player a single stat before it: not health, not armour, not
+resistance, and not the difficulty tier's resistance penalty, whose entire
+purpose is to tell a player they need more resistance.
+
+### Which stats are on it was not decided here
+
+**It was already settled twice, and a third opinion would only produce drift.**
+
+- `STAT_GROUPS` in `sim/cataclysm_sim/character.py` divides this project's
+  character sheet into five groups holding 46 stats, and its own comment says the
+  grouping follows the way `game/Config/Tags/CataclysmTags.ini` groups its
+  `Stat.*` tags.
+- The automation test `Cataclysm.Attributes.CharacterSheetIsComplete` reaches the
+  same 46 by an entirely different route: it counts the six attribute sets and
+  subtracts the attributes deliberately kept off the sheet. Sixteen attributes
+  carry a comment saying in as many words that they are not on it.
+
+So `UCataclysmCharacterSheetLayout` reads that list and adds nothing.
+`tools/tests/test_the_character_sheet_shows_the_model_stats.py` compares the
+screen's five lists against the model's, membership and order, and fails if they
+ever disagree. Three deliberate breaks were run against it and all three were
+caught.
+
+**The rule for what stays off, quoted from the existing test:** a stat is off the
+character sheet when no affix grants it, nothing scales it, it has no baseline of
+its own, and one passive node is its only source.
+
+### Retaliation is shown under Defence, not under Recovery
+
+Issue #1233 groups retaliation with the recovery stats. The design document does
+not: the stat table in `docs/Cataclysm_GDD_v2.md` lists "Armor, Evasion, Block
+Chance, Damage Reduction, Retaliation, Crowd Control Resistance, and the eight
+Resistances" together as Defence, and `STAT_GROUPS` agrees. The design's own
+grouping wins.
+
+### Two things the design asks of the sheet are not on it, and both are filed
+
+**Worn Residue.** The design says it "is shown on the character sheet at all
+times". It is not one of the 46 and correctly so -- it is a sum over equipped
+items rather than a stat with a baseline, affixes and scaling of its own -- but
+nothing in the game computes that sum, so there is no figure to show. Issue
+#1251.
+
+**Armour penetration reads zero for every character.** The row is on the sheet
+because the design lists it among the 46, and nothing in `game/Data/` grants the
+stat. Building the sheet also found that
+`UCataclysmPlayerClassStats::StatToAttribute` had no entry for it at all, so no
+class line, affix or passive effect could have written the attribute even if one
+had named it. That one line was fixed in the same change; issue #1252 carries the
+rest.
+
+### Two rows show something other than the attribute behind them
+
+Both would be wrong if the number were copied straight out, and both were checked
+before being written.
+
+**A resistance row shows three figures rather than one**, which is what issue
+#1233 asks for: what the character holds, what the difficulty tier's penalty
+takes off, and what a hit actually meets after the 70 cap. A character holding 55
+at difficulty tier 8 meets a hit at -20. Showing only the 55 would tell them they
+were nearly at the cap while every hit landed in full. The held figure adds the
+generic All Resistance attribute to the typed one, exactly as
+`Cataclysm.ShowResistances` does, because All Resistance applies to every type by
+definition.
+
+**Cooldown reduction shows the displayed percentage and not the stored sum.** The
+attribute holds the accumulated sum of cooldown increases, not a percentage: a
+skill's cooldown is its base divided by one plus that sum. A sum of 1.0 halves
+every cooldown, which is a 50% reduction. Printing the attribute would read "1%"
+and multiplying it by a hundred would read "100%", which is a cooldown of zero
+and a state the game cannot reach.
+
+### The Fab asset recorded on issue #1233 was assessed and is not the answer
+
+The project owner's library link on that issue resolves to **Hyper Attribute
+Manager v4**. Its page returns HTTP 403 to an automated fetch and was read
+through a browser on 2026-09-04. It is an attribute MODEL, not a screen: it
+stores and replicates attributes, applies decay, clamping and modifiers, and runs
+a data-table-driven state effect manager. It describes no character sheet or stat
+display anywhere. That is the layer this project already has, built deeper, on
+Unreal's Gameplay Ability System. Adopting it would mean replacing the foundation
+the damage calculation depends on rather than adding a screen to it.
+
+**A different bought asset could still supply the look.** The screen is a C++
+base class joined to a Widget Blueprint by `BindWidget`, so a stat-sheet layout
+could replace how `WBP_CharacterSheet` is drawn without touching the C++ that
+decides what it says.
+
+### The screen spends attribute points as well as showing them
+
+Until this screen, `Cataclysm.SpendAttributePoint` was the only way to spend an
+attribute point in this game, so a player who levelled up could not act on it
+without opening the console. The screen calls
+`ACataclysmPlayerState::SpendAttributePoints`, which refuses rather than clamps,
+and shows the refusal reason that call returns rather than inventing one.
+
+**It cannot take a point back.** Respeccing is the Trainer's job in the capital,
+which does not exist. Issue #48.
+
 ## 2026-09-05 — An evaded attack applies nothing it was carrying
 
 **This replaces the narrower rule recorded on 2026-09-04**, in the entry below

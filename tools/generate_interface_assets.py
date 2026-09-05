@@ -9,6 +9,7 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_CharacterCreation   the character creator, issue #50
     WBP_PassiveTree         the passive class tree, issue #50
     WBP_EmpireMap           the empire overview, issue #1087
+    WBP_CharacterSheet      the character sheet, issues #1233 and #50
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -54,6 +55,8 @@ PASSIVE_PARENT = "CataclysmPassiveTreeWidget"
 PASSIVE_ASSET = "WBP_PassiveTree"
 EMPIRE_PARENT = "CataclysmEmpireMapWidget"
 EMPIRE_ASSET = "WBP_EmpireMap"
+SHEET_PARENT = "CataclysmCharacterSheetWidget"
+SHEET_ASSET = "WBP_CharacterSheet"
 
 # --- the little colour there is ----------------------------------------------
 # THE SAME NEARLY-BLACK PANEL THE INVENTORY SCREEN USES, from
@@ -355,6 +358,69 @@ def make_empire_map():
     log("created {}/{}".format(INTERFACE_DIR, EMPIRE_ASSET))
 
 
+def make_character_sheet():
+    parent = parent_class(SHEET_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, SHEET_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, SHEET_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, SHEET_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(SHEET_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Character", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    points = add(blueprint, unreal.TextBlock, "PointsLabel", "Body")
+    set_text(points, "", size=18)
+
+    # THE EIGHT ATTRIBUTES. A wrap box rather than a horizontal one, for the
+    # reason the character creator's weapon list is one: eight buttons carrying
+    # a name and a count do not reliably fit one line, and a horizontal box
+    # would squeeze them rather than starting a second row.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmCharacterSheetWidget puts one copy of WBP_ChoiceButton in it per
+    # attribute, because the eight names come from
+    # FCataclysmAttributePoints::Names rather than from this layout.
+    add(blueprint, unreal.WrapBox, "AttributeBox", "Body")
+
+    # WHERE THE 46 STATS AND THEIR FIVE HEADINGS GO. A scroll box, because 51
+    # lines do not fit a window at a readable size, and `fill_remaining_height`
+    # is what makes it stop at the space available rather than being 51 rows
+    # tall.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME, one text block per row. The
+    # C++ decides the words; UCataclysmCharacterSheetLayout decides which stats
+    # and in which order.
+    stats = add(blueprint, unreal.ScrollBox, "StatBox", "Body")
+    fill_remaining_height(stats)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            SHEET_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, SHEET_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -362,6 +428,7 @@ def main():
     make_character_creation()
     make_passive_tree()
     make_empire_map()
+    make_character_sheet()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

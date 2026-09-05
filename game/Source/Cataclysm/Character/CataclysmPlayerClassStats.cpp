@@ -539,6 +539,25 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// Penetration cuts into a defender's resistance, and is read at
 			// CataclysmVitalAttributeSet.cpp where the hit is resolved.
 			{TEXT("penetration"), Combat::GetPenetrationAttribute()},
+
+			// AND ARMOUR PENETRATION CUTS INTO ITS ARMOUR, which is a second
+			// stat and not the same one. Added on 2026-09-05 while building the
+			// character sheet, which is what noticed it was missing: the sheet
+			// looks every one of its 46 stats up in this map, and this was the
+			// only one with no entry.
+			//
+			// THE ATTRIBUTE WAS READ AND NEVER WRITTEN. Issue #520 added
+			// `UCataclysmCombatAttributeSet::ArmorPenetration` so that
+			// `FCataclysmIncomingHit::ArmorPenetration` would have a source, and
+			// `CataclysmVitalAttributeSet.cpp` does read it into the hit -- but
+			// `ApplyTo` loops over THIS map, so a stat missing from it is
+			// dropped before it can reach the attribute. Nothing in
+			// `game/Data/` names the stat yet, so no behaviour changes today and
+			// what changes is that it now can. Issue #1252 carries the rest:
+			// the three enchantments that are meant to grant it are blocked on
+			// enchantments existing at all, which is issue #45.
+			{TEXT("armor_penetration"), Combat::GetArmorPenetrationAttribute()},
+
 			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},
 
 			// THE EIGHT CONDITIONAL DAMAGE STATS, one per damage type. Issue

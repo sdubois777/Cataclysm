@@ -4,6 +4,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmCharacterCreationWidget.h"
+#include "Interface/CataclysmCharacterSheetWidget.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
@@ -706,6 +707,53 @@ void ACataclysmPlayerController::ToggleEmpireMap()
 	// closed, and the widget is kept rather than rebuilt.
 	EmpireMapScreen->Refresh();
 	EmpireMapScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::ToggleCharacterSheet()
+{
+	if (!CharacterSheetScreen)
+	{
+		UClass* ScreenClass = CharacterSheetScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no character sheet to open: %s could not be "
+						"loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *CharacterSheetScreenClass.ToString());
+			return;
+		}
+
+		CharacterSheetScreen =
+			CreateWidget<UCataclysmCharacterSheetWidget>(this, ScreenClass);
+		if (!CharacterSheetScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The character sheet could not be created, so the "
+						"command that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (CharacterSheetScreen->IsInViewport())
+	{
+		CharacterSheetScreen->RemoveFromParent();
+
+		// THE SAME INPUT MODE AS CLOSING THE PASSIVE TREE, and for the reason
+		// issue #1015 recorded: setting `FInputModeGameOnly` here would leave
+		// the player unable to move after closing the screen.
+		ApplyPlayingInputMode();
+		return;
+	}
+
+	ApplyPlayingInputMode();
+
+	// REFRESHED ON EVERY OPENING. Every figure on it can have moved since it was
+	// last closed: a level gained, a piece of gear equipped, or a different
+	// dungeon entered and so a different difficulty tier under the armour and
+	// resistance rows.
+	CharacterSheetScreen->Refresh();
+	CharacterSheetScreen->AddToViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
