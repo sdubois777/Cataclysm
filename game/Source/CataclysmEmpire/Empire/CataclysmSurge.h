@@ -89,9 +89,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
  * "SUPPLIED RATHER THAN GENERATED, because the thing that creates dungeons is
  * the surge system and it does not exist". This is that thing.
  *
- * WHAT IS NOT ON IT YET: the 116 dungeon modifiers, the eight sub-types
- * (Timed, Horde, Elite, Volatile, Siege, Sacrificial, Cow Level and none), and
- * which Cataclysm sent it. All three are issue #41 and issue #53.
+ * WHAT IS NOT ON IT YET: the 117 dungeon modifiers in
+ * `game/Data/DungeonModifiers.csv`, and which Cataclysm sent it. Both are issue
+ * #41 and issue #53. The sub-type IS on it now; see `SubType` below.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSMEMPIRE_API FCataclysmDungeon
@@ -104,6 +104,28 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmDungeonType Type = ECataclysmDungeonType::Basic;
 
+	/**
+	 * What this dungeon does differently, rolled when it spawned.
+	 *
+	 * `None` IS THE COMMON ANSWER and a real one: it carries a third of the
+	 * spawn weight, more than any single sub-type. See
+	 * `UCataclysmSurgeScheduler::RollSubType`.
+	 *
+	 * ONE OF THE SEVEN CHANGES THE CLOCK AND THE REST DO NOT. Cow Level doubles
+	 * `WalkDays` and the doubling cannot be reduced, which is the only sub-type
+	 * rule the empire layer can carry out today. The other six describe what
+	 * happens inside a dungeon -- waves, per-floor bosses, a time limit, changing
+	 * modifiers -- or need systems that are not built. `UCataclysmEmpireRun` acts
+	 * on none of them.
+	 *
+	 * WHAT DOES READ IT. `ACataclysmDungeonGameMode::EnterEmpireDungeon` copies
+	 * it onto the game mode, so `UCataclysmEnemyScore` scores the creatures on a
+	 * floor with the sub-type weight the design gives it. Before this field
+	 * existed that weight was always the one for `None`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None;
+
 	/** Which city it is assaulting. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
@@ -115,9 +137,12 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	/**
 	 * How many floors deep it is.
 	 *
-	 * IT DECIDES BOTH HALVES OF THE TRADE. One floor costs one day, so this is
-	 * how long walking it takes; its resolve timer is set from it as well, so a
-	 * deeper dungeon is both slower to clear and slower to bite.
+	 * IT DECIDES WHAT THE DUNGEON IS WORTH AND WHEN IT BITES. Its resolve timer
+	 * is set from this, so a deeper dungeon is worth more and is slower to bite.
+	 *
+	 * IT IS NOT THE WALK COST, THOUGH IT STARTS EQUAL TO IT. One floor costs one
+	 * day as a starting rate and `WalkDays` below is where that lands, so a city
+	 * upgrade can make the walk shorter while this stays where it is.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Floors = 1;
@@ -215,7 +240,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     records what it would mean for the lane rule.
  *   - **Quest dungeons.** 12% of a wave in the simulation, and they relocate
  *     rather than resolving. Issue #51.
- *   - **The 116 dungeon modifiers and the eight sub-types.** Issue #41.
+ *   - **The 117 dungeon modifiers.** Issue #41.
+ *   - **What six of the seven sub-types do.** One of them is here: Cow Level
+ *     doubles the walk. The other six describe what happens inside a dungeon,
+ *     or need systems that are not built. Issue #41.
  *   - **The empire upgrade tree**, which adds days to the gap. Issue #38.
  */
 UCLASS(BlueprintType)
@@ -316,6 +344,76 @@ public:
 	 * the thing that makes dungeons.
 	 */
 	static constexpr float ResolveJitter = 0.15f;
+
+	// ----------------------------------------------------------------------
+	// What a dungeon does differently
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How often each sub-type is rolled. `config.SUBTYPE_SPAWN_WEIGHTS`.
+	 *
+	 * THEY ADD UP TO 100, so each one reads as a percentage, but nothing depends
+	 * on that: `RollSubType` divides by whatever the total is. Changing one
+	 * weight without rebalancing the rest changes that sub-type's share and
+	 * dilutes every other, which is the behaviour you want from a weight.
+	 *
+	 * NO SUB-TYPE AT ALL IS THE COMMONEST OUTCOME, at 34 against the largest
+	 * single sub-type's 12. A dungeon that does something unusual should be worth
+	 * noticing, and it is not if most of them do.
+	 *
+	 * COW LEVEL IS THE RAREST AT 4, which is what its reward deserves: the design
+	 * document gives it "ridiculous amounts of loot" for double the walk.
+	 *
+	 * THESE ARE A COPY AND THE SIMULATION IS THE ORIGINAL, the same arrangement
+	 * every other constant in this file is in.
+	 * `tools/tests/test_dungeon_subtype_port.py` reads all eight back out of this
+	 * header and fails if either side moves.
+	 */
+	static constexpr float SpawnWeightNone			= 34.0f;
+	static constexpr float SpawnWeightTimed			= 12.0f;
+	static constexpr float SpawnWeightHorde			= 12.0f;
+	static constexpr float SpawnWeightSiege			= 10.0f;
+	static constexpr float SpawnWeightCowLevel		= 4.0f;
+	static constexpr float SpawnWeightElite			= 10.0f;
+	static constexpr float SpawnWeightVolatile		= 10.0f;
+	static constexpr float SpawnWeightSacrificial	= 8.0f;
+
+	/**
+	 * How often the given sub-type is rolled.
+	 *
+	 * @return its weight, or 0 for a value that is not one of the eight. A
+	 *         weight of zero means never chosen, which is the right answer for a
+	 *         sub-type this build does not know about.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static float SpawnWeightFor(ECataclysmDungeonSubType SubType);
+
+	/**
+	 * What Cow Level multiplies the walk by.
+	 *
+	 * THE DESIGN DOCUMENT: "Time to complete is doubled and cannot be reduced."
+	 * Both halves are rules. `MakeDungeon` applies this to the depth's own walk
+	 * cost rather than to the reduced one, so a city that bought
+	 * `DungeonWalkDaysFewer` gets no discount here -- which is what "cannot be
+	 * reduced" says, and is why the multiplication is not simply applied last.
+	 */
+	static constexpr float CowLevelWalkMultiplier = 2.0f;
+
+	/**
+	 * Rolls one sub-type, weighted.
+	 *
+	 * ONE DRAW FROM THE STREAM, ALWAYS, whatever it returns. See the note on
+	 * `PickTargets` about draw counts: a roll that sometimes took two would make
+	 * every later dungeon in the same wave depend on what this one rolled.
+	 *
+	 * IT WALKS THE ENUM IN ITS DECLARED ORDER, WHICH IS NOT THE MODEL'S ORDER.
+	 * `config.SUBTYPE_SPAWN_WEIGHTS` lists them commonest first and
+	 * `ECataclysmDungeonSubType` lists them in the order the design document
+	 * does. The two therefore pick different sub-types from the same random
+	 * fraction, and both give the same distribution. The port test compares the
+	 * weights by name for that reason, and not a sequence of rolls.
+	 */
+	static ECataclysmDungeonSubType RollSubType(FRandomStream& Stream);
 
 	/**
 	 * The floor range and the bites for one kind of dungeon on one tier of city.
@@ -460,10 +558,15 @@ public:
 	 * One dungeon, rolled for a city.
 	 *
 	 * THE CITY'S OWN UPGRADES SHAPE IT. Two of them change the floor count, and
-	 * because one floor costs exactly one day the timer follows from the floor
-	 * count rather than being adjusted separately: a deeper dungeon is slower to
-	 * walk, worth more, and slower to bite, and a shallower one is the reverse.
-	 * That trade is fixed by design and must not be worked around.
+	 * the timer follows from the floor count rather than being adjusted
+	 * separately: a deeper dungeon is worth more and slower to bite, and a
+	 * shallower one is poorer and bites sooner. Depth and reward are the same
+	 * axis and that trade must not be worked around.
+	 *
+	 * DEPTH AND TIME ARE A DIFFERENT MATTER. A third upgrade lowers `WalkDays`
+	 * alone, leaving the floor count, the reward and the timer where they are.
+	 * A fifty floor dungeon that costs two days to walk is still fifty floors
+	 * deep and still bites on the same schedule.
 	 */
 	FCataclysmDungeon MakeDungeon(int32 DungeonId, const FCataclysmCity& City,
 								  int32 Day, FRandomStream& Stream) const;

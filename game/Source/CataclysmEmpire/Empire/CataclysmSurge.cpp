@@ -38,6 +38,76 @@ float FCataclysmDungeon::WalkDaysPerFloor() const
 }
 
 // ---------------------------------------------------------------------------
+// What a dungeon does differently
+// ---------------------------------------------------------------------------
+
+float UCataclysmSurgeScheduler::SpawnWeightFor(ECataclysmDungeonSubType SubType)
+{
+	// LISTED RATHER THAN DEFAULTED. Adding a sub-type to the enum without giving
+	// it a weight is then a compiler warning, and not a value that silently never
+	// spawns.
+	switch (SubType)
+	{
+	case ECataclysmDungeonSubType::None:			return SpawnWeightNone;
+	case ECataclysmDungeonSubType::Timed:			return SpawnWeightTimed;
+	case ECataclysmDungeonSubType::Horde:			return SpawnWeightHorde;
+	case ECataclysmDungeonSubType::Siege:			return SpawnWeightSiege;
+	case ECataclysmDungeonSubType::CowLevel:		return SpawnWeightCowLevel;
+	case ECataclysmDungeonSubType::Elite:			return SpawnWeightElite;
+	case ECataclysmDungeonSubType::Volatile:		return SpawnWeightVolatile;
+	case ECataclysmDungeonSubType::Sacrificial:		return SpawnWeightSacrificial;
+	}
+
+	return 0.0f;
+}
+
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
+	FRandomStream& Stream)
+{
+	// THE ENUM IN ITS DECLARED ORDER. Every value from `None` up to and including
+	// `Sacrificial`, which is the last one. Walking the enum rather than a
+	// hand-written list means a sub-type added to it is rolled as soon as
+	// `SpawnWeightFor` gives it a weight.
+	const uint8 Last = static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+
+	float Total = 0.0f;
+	for (uint8 Value = 0; Value <= Last; ++Value)
+	{
+		Total += SpawnWeightFor(static_cast<ECataclysmDungeonSubType>(Value));
+	}
+
+	// EVERY WEIGHT ZERO WOULD DIVIDE BY NOTHING. It cannot happen with the
+	// constants above and it is one line to be safe about; a dungeon with no
+	// sub-type is the right answer when nothing can be chosen.
+	if (Total <= 0.0f)
+	{
+		return ECataclysmDungeonSubType::None;
+	}
+
+	// ONE DRAW, WHATEVER IT RETURNS. See the header.
+	float Point = Stream.FRand() * Total;
+
+	for (uint8 Value = 0; Value <= Last; ++Value)
+	{
+		const ECataclysmDungeonSubType Candidate =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		Point -= SpawnWeightFor(Candidate);
+
+		if (Point < 0.0f)
+		{
+			return Candidate;
+		}
+	}
+
+	// ONLY REACHED IF `FRand` RETURNED EXACTLY 1.0, which its own documentation
+	// says it does not. The last weighted sub-type is the honest answer if it
+	// ever does, rather than `None`, which would quietly make the commonest
+	// outcome commoner still.
+	return static_cast<ECataclysmDungeonSubType>(Last);
+}
+
+// ---------------------------------------------------------------------------
 // Where a wave lands
 // ---------------------------------------------------------------------------
 
@@ -354,6 +424,11 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// what a dungeon with no floors would otherwise be: unwalkable.
 	Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);
 
+	// AND WHAT IT DOES DIFFERENTLY. Rolled after the depth so the depth is drawn
+	// from the same place in the stream it always was, and before the walk cost
+	// because Cow Level decides what that cost is.
+	Dungeon.SubType = RollSubType(Stream);
+
 	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP
 	// IT IS. One floor costs one day to begin with, so this starts at the floor
 	// count; "Dungeons here take 4 less days to beat" lowers it WITHOUT lowering
@@ -368,20 +443,36 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	const float Quicker = City.UpgradeValueFor(
 		ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer);
 
-	Dungeon.WalkDays = FMath::Max(
-		1.0f, Dungeon.Floors * UCataclysmDayClock::DaysPerFloor - Quicker);
+	// EXCEPT ON A COW LEVEL, WHERE THE UPGRADE IS NOT READ AT ALL. "Time to
+	// complete is doubled and cannot be reduced" is two rules, and doubling the
+	// already-reduced figure would honour only the first: a city that bought the
+	// walk-days upgrade would still get its four days off, halved. So the
+	// doubling is applied to what the depth alone costs.
+	//
+	// IT IS STILL THE SLOWEST DUNGEON THERE IS, which is the trade the design
+	// document sets against "ridiculous amounts of loot".
+	Dungeon.WalkDays =
+		(Dungeon.SubType == ECataclysmDungeonSubType::CowLevel)
+			? FMath::Max(1.0f, Dungeon.Floors * UCataclysmDayClock::DaysPerFloor)
+				  * CowLevelWalkMultiplier
+			: FMath::Max(
+				  1.0f,
+				  Dungeon.Floors * UCataclysmDayClock::DaysPerFloor - Quicker);
 
 	// THE TIMER COMES FROM THE DEPTH AND THEN VARIES. `ResolveDaysFor` is the
-	// day clock's, so a dungeon's timer and a dungeon's walk are set by the same
-	// number; the jitter is what stops two dungeons of one depth coming due on
-	// the same day. See `ResolveJitter`.
+	// day clock's; the jitter is what stops two dungeons of one depth coming due
+	// on the same day. See `ResolveJitter`.
 	//
 	// SO THE FLOOR UPGRADES MOVE THE TIMER TOO, and that is the point rather
-	// than a side effect. One floor costs exactly one day, which
-	// `docs/Cataclysm_GDD_v2.md` states and `CLAUDE.md` fixes: a deeper dungeon
-	// is slower to walk, worth more, and slower to bite, and a shallower one is
-	// quicker, poorer, and bites sooner. Adjusting the timer separately would
-	// break the one rule the whole strategy layer rests on.
+	// than a side effect. Depth and reward are the same axis, which `CLAUDE.md`
+	// states: a deeper dungeon is worth more and slower to bite, and a shallower
+	// one is poorer and bites sooner. Adjusting the timer separately would break
+	// the trade the whole strategy layer rests on.
+	//
+	// THE WALK COST ABOVE IS NOT AN INPUT HERE, AND MUST NOT BECOME ONE. Depth
+	// and time come apart as soon as a player invests, so a dungeon made quicker
+	// to walk keeps the timer its depth earned. A Cow Level takes twice as long
+	// to walk and bites on exactly the same day it would have.
 	const float Base = UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors);
 	const float Jitter = 1.0f + Stream.FRandRange(-ResolveJitter, ResolveJitter);
 

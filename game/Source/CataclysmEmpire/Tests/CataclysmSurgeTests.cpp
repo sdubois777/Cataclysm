@@ -793,10 +793,10 @@ bool FCataclysmSurgeFloorUpgradeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and holding both gives the difference"), Both.Floors,
 			  Plain.Floors + 3);
 
-	// AND THE TIMER FOLLOWED THE DEPTH. One floor costs exactly one day, so a
-	// deeper dungeon is slower to bite as well as slower to walk. Checked as a
-	// ratio, which also proves the jitter draw was the same for both: a
-	// different jitter would break the ratio even if the depth were right.
+	// AND THE TIMER FOLLOWED THE DEPTH. Depth and reward are the same axis, so a
+	// deeper dungeon is worth more and slower to bite. Checked as a ratio, which
+	// also proves the jitter draw was the same for both: a different jitter would
+	// break the ratio even if the depth were right.
 	const float PlainBase = UCataclysmDayClock::ResolveDaysFor(Plain.Floors);
 	const float DeeperBase = UCataclysmDayClock::ResolveDaysFor(Deeper.Floors);
 
@@ -854,6 +854,17 @@ bool FCataclysmSurgeWalkDaysTest::RunTest(const FString& Parameters)
 
 	if (!TestTrue(TEXT("the plain dungeon is deep enough to shorten"),
 				  Plain.Floors > 6))
+	{
+		return false;
+	}
+
+	// THE OTHER CONTROL. A Cow Level's walk is doubled and cannot be reduced, so
+	// this seed rolling one would make both dungeons cost the same and every
+	// figure below meaningless. Both are rolled from the same seed and so get the
+	// same sub-type; checking one is checking both. If this ever fails, change
+	// the seed rather than the assertions -- the doubling has its own test.
+	if (!TestTrue(TEXT("the seed did not roll a Cow Level, whose walk is fixed"),
+				  Plain.SubType != ECataclysmDungeonSubType::CowLevel))
 	{
 		return false;
 	}
@@ -1067,6 +1078,376 @@ bool FCataclysmSurgeCapChangesNothingTest::RunTest(const FString& Parameters)
 	// comparison above meaningless, so the draw counts are checked to match.
 	TestEqual(TEXT("both streams took the same number of draws"),
 			  WithCounts.GetCurrentSeed(), WithoutCounts.GetCurrentSeed());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a dungeon does differently
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSubTypeWeightsTest,
+	"Cataclysm.Surge.EverySubTypeCarriesTheWeightTheDesignGivesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
+{
+	// HAND-WORKED FIGURES, NOT THE CONSTANTS WRITTEN OUT AGAIN. A test that
+	// compared `SpawnWeightFor(Timed)` with `SpawnWeightTimed` would pass
+	// whatever either was. These are the eight numbers in
+	// `config.SUBTYPE_SPAWN_WEIGHTS`.
+	TestEqual(TEXT("no sub-type at all is weighted 34"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::None), 34.0f, 0.0001f);
+
+	TestEqual(TEXT("Timed is 12"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Timed), 12.0f, 0.0001f);
+
+	TestEqual(TEXT("Horde is 12"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Horde), 12.0f, 0.0001f);
+
+	TestEqual(TEXT("Siege is 10"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Siege), 10.0f, 0.0001f);
+
+	TestEqual(TEXT("Cow Level is 4"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::CowLevel), 4.0f, 0.0001f);
+
+	TestEqual(TEXT("Elite is 10"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Elite), 10.0f, 0.0001f);
+
+	TestEqual(TEXT("Volatile is 10"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Volatile), 10.0f, 0.0001f);
+
+	TestEqual(TEXT("Sacrificial is 8"),
+			  UCataclysmSurgeScheduler::SpawnWeightFor(
+				  ECataclysmDungeonSubType::Sacrificial), 8.0f, 0.0001f);
+
+	// AND NOTHING IS LEFT WITHOUT ONE. Summing what the enum holds rather than
+	// the eight literals above means a sub-type added to the enum and forgotten
+	// makes this fail, instead of quietly never spawning.
+	float Total = 0.0f;
+	for (uint8 Value = 0;
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		TestTrue(*FString::Printf(
+					 TEXT("sub-type %d has a weight above zero"), Value),
+				 UCataclysmSurgeScheduler::SpawnWeightFor(SubType) > 0.0f);
+
+		Total += UCataclysmSurgeScheduler::SpawnWeightFor(SubType);
+	}
+
+	TestEqual(TEXT("and the eight of them add up to 100"), Total, 100.0f,
+			  0.0001f);
+
+	// A DUNGEON THAT DOES SOMETHING UNUSUAL SHOULD BE WORTH NOTICING. Plain is
+	// the commonest outcome by a wide margin, and Cow Level the rarest, which is
+	// what "ridiculous amounts of loot" has to be paid for with.
+	TestTrue(TEXT("plain is commoner than any single sub-type"),
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::None) >
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::Timed));
+
+	TestTrue(TEXT("and Cow Level is the rarest of them"),
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::CowLevel) <
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::Sacrificial));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSubTypeRollTest,
+	"Cataclysm.Surge.RollingManySubTypesGivesTheDesignedSpread",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSubTypeRollTest::RunTest(const FString& Parameters)
+{
+	// ENOUGH ROLLS THAT THE RAREST ONE IS NOT A COINCIDENCE. Cow Level is 4 in
+	// 100, so 20,000 rolls should give about 800 of them; a tolerance of two
+	// percentage points is far wider than the spread at this many rolls and far
+	// narrower than any weight being wrong.
+	constexpr int32 Rolls = 20000;
+	constexpr float Tolerance = 2.0f;
+
+	FRandomStream Stream(20260905);
+
+	TMap<ECataclysmDungeonSubType, int32> Counts;
+
+	for (int32 Roll = 0; Roll < Rolls; ++Roll)
+	{
+		++Counts.FindOrAdd(UCataclysmSurgeScheduler::RollSubType(Stream));
+	}
+
+	for (uint8 Value = 0;
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		const int32 Seen = Counts.FindRef(SubType);
+		const float Share = 100.0f * Seen / Rolls;
+		const float Wanted = UCataclysmSurgeScheduler::SpawnWeightFor(SubType);
+
+		// EVERY ONE OF THEM ACTUALLY CAME UP. A weighted roll that never returns
+		// one of its options is the failure this is really looking for, and a
+		// share of zero would not be caught by the tolerance alone if the weight
+		// were also zero.
+		TestTrue(*FString::Printf(TEXT("sub-type %d was rolled at all"), Value),
+				 Seen > 0);
+
+		TestEqual(*FString::Printf(
+					  TEXT("sub-type %d came up %.1f%% of the time, wanted %.1f%%"),
+					  Value, Share, Wanted),
+				  Share, Wanted, Tolerance);
+	}
+
+	// AND THE SPREAD IS NOT MERELY CLOSE TO THE WEIGHTS, IT IS ORDERED BY THEM.
+	// Eight shares all within two points of 12.5 would pass the check above and
+	// mean the weights were being ignored.
+	TestTrue(TEXT("plain came up more often than Timed"),
+			 Counts.FindRef(ECataclysmDungeonSubType::None) >
+			 Counts.FindRef(ECataclysmDungeonSubType::Timed));
+
+	TestTrue(TEXT("Timed more often than Sacrificial"),
+			 Counts.FindRef(ECataclysmDungeonSubType::Timed) >
+			 Counts.FindRef(ECataclysmDungeonSubType::Sacrificial));
+
+	TestTrue(TEXT("and Sacrificial more often than Cow Level"),
+			 Counts.FindRef(ECataclysmDungeonSubType::Sacrificial) >
+			 Counts.FindRef(ECataclysmDungeonSubType::CowLevel));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSubTypeOneDrawTest,
+	"Cataclysm.Surge.RollingASubTypeCostsExactlyOneDraw",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSubTypeOneDrawTest::RunTest(const FString& Parameters)
+{
+	// WHY THIS MATTERS AT ALL. Every dungeon in a wave is rolled from one
+	// stream, one after another. A sub-type roll that sometimes took two draws
+	// would make the depth of the second dungeon in a wave depend on what the
+	// first one rolled, so a change to these weights would silently move every
+	// other number in the run. `PickTargets` above makes the same promise for the
+	// same reason.
+	for (const int32 Seed : { 1, 7, 99, 5150, 20260905 })
+	{
+		FRandomStream Rolled(Seed);
+		FRandomStream Drawn(Seed);
+
+		UCataclysmSurgeScheduler::RollSubType(Rolled);
+		Drawn.FRand();
+
+		TestEqual(*FString::Printf(
+					  TEXT("at seed %d the roll left the stream one draw on"),
+					  Seed),
+				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeCowLevelWalkTest,
+	"Cataclysm.Surge.ACowLevelTakesTwiceAsLongAndCannotBeHurried",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeCowLevelWalkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	const TArray<int32> Rim =
+		CitiesAtTier(*Map, ECataclysmCityTier::Outpost, 2);
+
+	if (!TestEqual(TEXT("two Outposts were found to compare"), Rim.Num(), 2))
+	{
+		return false;
+	}
+
+	// ONE OF THEM BOUGHT THE UPGRADE THAT SHORTENS A WALK. On an ordinary
+	// dungeon it takes four days off. On this one it must take nothing off at
+	// all, which is the half of the rule that is easy to lose.
+	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer, 4.0f);
+
+	// A SEED THAT ROLLS A COW LEVEL, FOUND BY LOOKING. Cow Level is 4 in 100, so
+	// most seeds do not, and a test that just hoped would be a test of the seed.
+	int32 CowSeed = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= 5000 && CowSeed == INDEX_NONE; ++Seed)
+	{
+		FRandomStream Trial(Seed);
+		const FCataclysmDungeon Candidate =
+			Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, Trial);
+
+		if (Candidate.SubType == ECataclysmDungeonSubType::CowLevel)
+		{
+			CowSeed = Seed;
+		}
+	}
+
+	if (!TestTrue(TEXT("a seed rolling a Cow Level was found"),
+				  CowSeed != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FRandomStream A(CowSeed), B(CowSeed);
+
+	const FCataclysmDungeon Plain =
+		Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, A);
+	const FCataclysmDungeon Hurried =
+		Scheduler->MakeDungeon(1, *Map->Find(Rim[1]), 1, B);
+
+	if (!TestEqual(TEXT("both are Cow Levels"),
+				   static_cast<uint8>(Plain.SubType),
+				   static_cast<uint8>(ECataclysmDungeonSubType::CowLevel)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and the upgraded city rolled one too"),
+			  static_cast<uint8>(Hurried.SubType),
+			  static_cast<uint8>(ECataclysmDungeonSubType::CowLevel));
+
+	// TIME TO COMPLETE IS DOUBLED.
+	TestEqual(TEXT("a Cow Level costs two days a floor"), Plain.WalkDays,
+			  Plain.Floors * UCataclysmDayClock::DaysPerFloor * 2.0f, 0.0001f);
+
+	TestEqual(TEXT("so each of its floors costs two days"),
+			  Plain.WalkDaysPerFloor(), 2.0f, 0.0001f);
+
+	// AND CANNOT BE REDUCED. The upgrade is worth four days on any other dungeon
+	// this city receives, and nothing here.
+	TestEqual(TEXT("four days off a Cow Level is no days off a Cow Level"),
+			  Hurried.WalkDays, Plain.WalkDays, 0.0001f);
+
+	// WHAT THE DOUBLING DOES NOT TOUCH. Depth and time come apart, so the reward
+	// and the timer are the ones the depth earned. A Cow Level bites on exactly
+	// the day it would have bitten as a plain dungeon.
+	TestEqual(TEXT("its floor count is untouched"), Hurried.Floors,
+			  Plain.Floors);
+
+	// ITS TIMER IS THE ONE ITS DEPTH EARNED, jitter and all, and the doubling is
+	// nowhere in it. Compared against the depth's own figure rather than against
+	// the other dungeon, so a doubling that leaked into the timer would show up
+	// as a ratio of about two rather than one.
+	const float Earned = UCataclysmDayClock::ResolveDaysFor(Plain.Floors);
+
+	TestTrue(TEXT("the timer is within the jitter of what its depth gives"),
+			 FMath::Abs(Plain.ResolveDays / Earned - 1.0f) <=
+				 UCataclysmSurgeScheduler::ResolveJitter + 0.0001f);
+
+	TestEqual(TEXT("and the upgraded city's Cow Level has the same timer"),
+			  Hurried.ResolveDays, Plain.ResolveDays, 0.0001f);
+
+	// THE CONTROL FOR THE WHOLE TEST. If the upgrade did nothing to any dungeon,
+	// every figure above would pass while proving nothing about Cow Level. So
+	// the same upgrade on the same city is shown to work on a dungeon that is
+	// not one.
+	int32 PlainSeed = INDEX_NONE;
+	for (int32 Seed = 1; Seed <= 5000 && PlainSeed == INDEX_NONE; ++Seed)
+	{
+		FRandomStream Trial(Seed);
+		const FCataclysmDungeon Candidate =
+			Scheduler->MakeDungeon(0, *Map->Find(Rim[0]), 1, Trial);
+
+		if (Candidate.SubType != ECataclysmDungeonSubType::CowLevel &&
+			Candidate.Floors > 6)
+		{
+			PlainSeed = Seed;
+		}
+	}
+
+	if (!TestTrue(TEXT("a seed rolling something else was found"),
+				  PlainSeed != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FRandomStream C(PlainSeed), D(PlainSeed);
+
+	const FCataclysmDungeon Ordinary =
+		Scheduler->MakeDungeon(2, *Map->Find(Rim[0]), 1, C);
+	const FCataclysmDungeon Shortened =
+		Scheduler->MakeDungeon(3, *Map->Find(Rim[1]), 1, D);
+
+	TestEqual(TEXT("the same upgrade takes four days off a dungeon that is not "
+				   "a Cow Level"),
+			  Shortened.WalkDays, Ordinary.WalkDays - 4.0f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeWaveSubTypesTest,
+	"Cataclysm.Surge.AWaveRollsASubTypePerDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeWaveSubTypesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler =
+		MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// A WAVE ROLLED THE ORDINARY WAY, not one dungeon at a time, so this covers
+	// the path the day loop actually takes.
+	FRandomStream Stream(4242);
+	Scheduler->SurgeIndex = 0;
+
+	TSet<ECataclysmDungeonSubType> Seen;
+	int32 Dungeons = 0;
+
+	for (int32 Wave = 0; Wave < 60; ++Wave)
+	{
+		for (const FCataclysmDungeon& Dungeon :
+			 Scheduler->RollWave(*Map, 1, Dungeons, Stream))
+		{
+			Seen.Add(Dungeon.SubType);
+			++Dungeons;
+
+			// A COW LEVEL IN A REAL WAVE COSTS DOUBLE, wherever it was rolled.
+			if (Dungeon.SubType == ECataclysmDungeonSubType::CowLevel)
+			{
+				TestEqual(TEXT("a Cow Level in a wave costs two days a floor"),
+						  Dungeon.WalkDaysPerFloor(), 2.0f, 0.0001f);
+			}
+			else
+			{
+				TestEqual(TEXT("and anything else costs the ordinary one"),
+						  Dungeon.WalkDaysPerFloor(),
+						  UCataclysmDayClock::DaysPerFloor, 0.0001f);
+			}
+		}
+	}
+
+	if (!TestTrue(TEXT("the waves brought enough dungeons to see a spread"),
+				  Dungeons >= 200))
+	{
+		return false;
+	}
+
+	// EVERY SUB-TYPE REACHES A REAL WAVE. `RollWave` calling `MakeDungeon` is
+	// what puts a sub-type on a dungeon the day loop will actually see, and a
+	// wave that only ever produced plain dungeons would pass every other test in
+	// this file.
+	TestEqual(TEXT("all eight sub-types turned up across the waves"),
+			  Seen.Num(), 8);
 
 	return true;
 }
