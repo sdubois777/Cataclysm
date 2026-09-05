@@ -21,11 +21,12 @@
  * decision made here, and if two rows ever share an effect they should share a
  * value.
  *
- * FOURTEEN OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight.
+ * ELEVEN OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight.
  * `UCataclysmCityUpgradeRules::IsBuilt` is the single place that says which, and
  * `UCataclysmEmpireRun::BuyCityUpgrade` refuses to spend a slot on one that does
  * nothing rather than letting a player waste it. Each is named below with what
- * it is waiting for.
+ * it is waiting for: ten wait on a system that does not exist, and one waits on
+ * a decision, because its sentence cannot be told apart from another upgrade's.
  */
 UENUM(BlueprintType)
 enum class ECataclysmCityUpgradeEffect : uint8
@@ -71,21 +72,40 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	RestoreDefenceOnClear		= 10,
 
 	// ----------------------------------------------------------------------
-	// Explorer. Four shape the dungeons a city receives and are NOT BUILT.
-	// Nothing about them is hard; they belong with the surge scheduler and are
-	// kept out of this change so it stays one thing. Issue #1266.
+	// Explorer, the four that shape the dungeons a city receives. Three are
+	// built, in `UCataclysmSurgeScheduler`.
 	// ----------------------------------------------------------------------
 
-	/** Flat. No more than this many dungeons may stand on this city. */
+	/**
+	 * Flat. No more than this many dungeons may stand on this city.
+	 *
+	 * A FULL CITY STOPS BEING A TARGET AND THE WAVE LANDS ELSEWHERE, rather than
+	 * the dungeon vanishing. See `UCataclysmSurgeScheduler::PickTargets`.
+	 */
 	DungeonCap					= 11,
 
-	/** Flat. Dungeons here resolve in that many fewer days, minimum one. */
+	/**
+	 * Flat. NOT BUILT, and it is a design question rather than missing work.
+	 *
+	 * "Dungeons here take 4 less days to beat" is the time to WALK the dungeon,
+	 * and one floor costs exactly one day. So four fewer days to beat is four
+	 * fewer floors -- which is what `DungeonFloorsFewer` already does, and it
+	 * does five. The two cannot be told apart mechanically and one is strictly
+	 * worse. Issue #1266.
+	 */
 	DungeonResolveDaysFewer		= 12,
 
-	/** Flat. Dungeons here have that many more floors. */
+	/**
+	 * Flat. Dungeons here have that many more floors.
+	 *
+	 * SLOWER TO WALK, WORTH MORE, AND SLOWER TO BITE, because the resolve timer
+	 * is derived from the floor count. That is the trade rather than a side
+	 * effect.
+	 */
 	DungeonFloorsMore			= 13,
 
-	/** Flat. Dungeons here have that many fewer floors, minimum one. */
+	/** Flat. Dungeons here have that many fewer floors, minimum one. Quicker to
+	 *  walk, worth less, and bites sooner, for the same reason. */
 	DungeonFloorsFewer			= 14,
 
 	// ----------------------------------------------------------------------

@@ -32,16 +32,28 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::HealDefenceEvery:
 	case ECataclysmCityUpgradeEffect::RecoverPopulationEvery:
 	case ECataclysmCityUpgradeEffect::RestoreDefenceOnClear:
-		return true;
 
-	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST. Listed rather
-	// than defaulted, so adding a value to the enum without deciding this is a
-	// compiler warning rather than a silent "not built".
+	// AND THE THREE EXPLORER UPGRADES THAT SHAPE THE DUNGEONS A CITY RECEIVES.
+	// The surge scheduler applies all three: two move the floor count as a
+	// dungeon is rolled, and the cap takes a full city out of the target list so
+	// the wave lands elsewhere.
 	case ECataclysmCityUpgradeEffect::DungeonCap:
-	case ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsMore:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsFewer:
-		// Issue #1266. They belong with the surge scheduler.
+		return true;
+
+	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST, or on a
+	// decision. Listed rather than defaulted, so adding a value to the enum
+	// without deciding this is a compiler warning rather than a silent
+	// "not built".
+	case ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer:
+		// NOT BUILT BECAUSE IT CANNOT BE TOLD APART FROM `DungeonFloorsFewer`.
+		// "Dungeons here take 4 less days to beat" is time to walk the dungeon,
+		// and one floor costs exactly one day -- `docs/Cataclysm_GDD_v2.md`
+		// states it and `CLAUDE.md` fixes it -- so four fewer days to beat IS
+		// four fewer floors. `Explorer_Dungeons_here_have_5_fewer_floors_to_a`
+		// already does that, and does five. Building this would add a second
+		// upgrade that does the same thing and less of it. Issue #1266.
 		return false;
 
 	case ECataclysmCityUpgradeEffect::SubTypeChanceHorde:

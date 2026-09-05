@@ -134,7 +134,7 @@ bool FCataclysmCityUpgradeFreeAndInstantTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeWhichAreBuiltTest,
-	"Cataclysm.CityUpgrade.TenOfTheTwentyFourEffectsAreBuilt",
+	"Cataclysm.CityUpgrade.ThirteenOfTheTwentyFourEffectsAreBuilt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
@@ -144,9 +144,9 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the enum names twenty-four effects"),
 			  UCataclysmCityUpgradeRules::AllEffects().Num(), 24);
 
-	// THE TEN ARCHITECT UPGRADES AND NOTHING ELSE. Listed rather than counted,
-	// so marking the wrong one built fails here instead of shipping an upgrade
-	// that silently does nothing.
+	// THE TEN ARCHITECT UPGRADES AND THREE OF THE FOUR EXPLORER ONES THAT SHAPE
+	// A DUNGEON. Listed rather than counted, so marking the wrong one built
+	// fails here instead of shipping an upgrade that silently does nothing.
 	const TArray<ECataclysmCityUpgradeEffect> Expected = {
 		ECataclysmCityUpgradeEffect::MaxDefence,
 		ECataclysmCityUpgradeEffect::MaxPopulation,
@@ -158,7 +158,18 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 		ECataclysmCityUpgradeEffect::HealDefenceEvery,
 		ECataclysmCityUpgradeEffect::RecoverPopulationEvery,
 		ECataclysmCityUpgradeEffect::RestoreDefenceOnClear,
+		ECataclysmCityUpgradeEffect::DungeonCap,
+		ECataclysmCityUpgradeEffect::DungeonFloorsMore,
+		ECataclysmCityUpgradeEffect::DungeonFloorsFewer,
 	};
+
+	// AND THE FOURTH EXPLORER ONE IS DELIBERATELY NOT AMONG THEM. "Dungeons here
+	// take 4 less days to beat" is the time to walk the dungeon, and one floor
+	// costs exactly one day, so it is four fewer floors -- which
+	// `DungeonFloorsFewer` already does, and does five of. Issue #1266.
+	TestFalse(TEXT("the fourth Explorer upgrade is not built"),
+			  UCataclysmCityUpgradeRules::IsBuilt(
+				  ECataclysmCityUpgradeEffect::DungeonResolveDaysFewer));
 
 	for (const ECataclysmCityUpgradeEffect Effect :
 		 UCataclysmCityUpgradeRules::AllEffects())
@@ -172,8 +183,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 				  UCataclysmCityUpgradeRules::IsBuilt(Effect), bShouldBeBuilt);
 	}
 
-	TestEqual(TEXT("which is ten of the twenty-four"),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 10);
+	TestEqual(TEXT("which is thirteen of the twenty-four"),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 13);
 
 	// `None` IS NOT AN UPGRADE and must never be buildable, or a
 	// default-constructed struct would buy something.
@@ -216,11 +227,14 @@ bool FCataclysmCityUpgradeRefusalsTest::RunTest(const FString& Parameters)
 			  Run->BuyCityUpgrade(99, Resist),
 			  ECataclysmCityUpgradeResult::NoSuchCity);
 
-	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Fourteen of the
-	// twenty-four are waiting on a system that does not exist, and a slot spent
-	// on one would buy the player nothing at all.
+	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Eleven of the
+	// twenty-four are waiting on a system that does not exist or on a decision,
+	// and a slot spent on one would buy the player nothing at all.
+	//
+	// GOLD, BECAUSE NOTHING IN THIS GAME HOLDS ANY. This used to name the
+	// dungeon cap, which was not built when this test was written and is now.
 	const FCataclysmCityUpgrade NotBuilt =
-		Make(ECataclysmCityUpgradeEffect::DungeonCap, 15.0f, TEXT("Cap"));
+		Make(ECataclysmCityUpgradeEffect::DungeonGold, 0.25f, TEXT("Gold"));
 
 	TestEqual(TEXT("an effect that is not built is refused"),
 			  Run->BuyCityUpgrade(0, NotBuilt),

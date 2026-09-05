@@ -386,14 +386,54 @@ public:
 	 * That is what the simulation does and it is what lets a wave concentrate:
 	 * a city can hold several dungeons, and one that does is in real trouble.
 	 *
+	 * A CITY THAT HAS BOUGHT THE DUNGEON CAP STOPS BEING A TARGET once it holds
+	 * that many, and the wave lands somewhere else rather than getting smaller.
+	 * "There can be no more than 15 dungeons on this city" says nothing about
+	 * where the dungeon goes instead; making it vanish would let a capped city
+	 * absorb wave slots harmlessly, which is a far stronger upgrade than the
+	 * sentence describes.
+	 *
+	 * THE CAP IS ENFORCED WHILE THE WAVE IS BUILT, not only when the candidates
+	 * are chosen, because the roll is with replacement: a city one short of its
+	 * cap could otherwise be chosen twice in one wave and end up over it.
+	 *
+	 * THE NUMBER OF RANDOM DRAWS IS ONE PER DUNGEON WHATEVER THE CAPS ARE, so a
+	 * run in which nothing bought a cap rolls exactly what it rolled before this
+	 * existed. Anything that took an extra draw would shift every later roll and
+	 * change runs that have nothing to do with the upgrade.
+	 *
+	 * @param DungeonsPerCity how many dungeons already stand on each city,
+	 *                        indexed by city identifier. Empty means the caller
+	 *                        does not know, and then no cap is applied --
+	 *                        `UCataclysmEmpireRun` owns the dungeons and this
+	 *                        class deliberately does not.
 	 * @return one city identifier per dungeon, in the order they were rolled.
 	 *         Empty when nothing is exposed, which cannot happen on a built map
-	 *         because the rim always is.
+	 *         because the rim always is. SHORTER THAN `Count` only when every
+	 *         exposed city has reached its cap.
 	 */
-	TArray<int32> PickTargets(const UCataclysmEmpireMap& Map, int32 Count,
-							  FRandomStream& Stream) const;
+	TArray<int32> PickTargets(
+		const UCataclysmEmpireMap& Map, int32 Count, FRandomStream& Stream,
+		const TArray<int32>& DungeonsPerCity = TArray<int32>()) const;
 
-	/** One dungeon, rolled for a city. */
+	/**
+	 * How many more dungeons a city will accept before its cap is reached.
+	 *
+	 * A LARGE NUMBER WHEN IT HAS NO CAP, rather than a flag, so the caller can
+	 * count down without asking twice whether a cap exists.
+	 */
+	static int32 RoomLeftOn(const FCataclysmCity& City,
+							const TArray<int32>& DungeonsPerCity);
+
+	/**
+	 * One dungeon, rolled for a city.
+	 *
+	 * THE CITY'S OWN UPGRADES SHAPE IT. Two of them change the floor count, and
+	 * because one floor costs exactly one day the timer follows from the floor
+	 * count rather than being adjusted separately: a deeper dungeon is slower to
+	 * walk, worth more, and slower to bite, and a shallower one is the reverse.
+	 * That trade is fixed by design and must not be worked around.
+	 */
 	FCataclysmDungeon MakeDungeon(int32 DungeonId, const FCataclysmCity& City,
 								  int32 Day, FRandomStream& Stream) const;
 
@@ -406,8 +446,10 @@ public:
 	 *
 	 * @param FirstDungeonId what to number the first dungeon; the rest follow
 	 *                       from it.
+	 * @param DungeonsPerCity passed through to `PickTargets`; see there.
 	 */
-	TArray<FCataclysmDungeon> RollWave(const UCataclysmEmpireMap& Map, int32 Day,
-									   int32 FirstDungeonId,
-									   FRandomStream& Stream) const;
+	TArray<FCataclysmDungeon> RollWave(
+		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
+		FRandomStream& Stream,
+		const TArray<int32>& DungeonsPerCity = TArray<int32>()) const;
 };
