@@ -2,6 +2,39 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — Correction: the stacking added today does not resolve issue #913
+
+**An entry below overstates what was built.** The entry titled "The remaining six
+Demonic enemy modifiers, and a debuff that stacks" says that
+`ECataclysmStackKind::InfernalBrand` unblocks issue #913. It does not, and the
+pull request description and commit message that landed it say the same wrong
+thing.
+
+**Issue #913 is about what the PLAYER applies to an ENEMY.** Its rule, quoted from
+`docs/Cataclysm_GDD_v2.md`, is "An enemy carries at most one stack of any effect
+the player applies", and ten enchantments plus the Bulwark's Open Wounds node
+contradict it.
+
+**Infernal Brand is the opposite direction**, and issue #913 lists that direction
+in its own "What is NOT a contradiction" section as already consistent with the
+design — naming Toxic Bond, an enemy modifier "which applies a poison stack to the
+player on being hit". Infernal Brand is exactly that: a creature applying a
+stacking debuff to a player.
+
+**What is actually new** is that a debuff on the player can stack at all;
+`InfernalBrand` is the first stack kind that is a debuff rather than something a
+Masochist earns. The engine could already count stacks, and has since those nodes
+were built.
+
+**Issue #913 still needs its design decision**: keep one stack and rewrite the
+four enchantments whose whole effect is a stack count, or allow player-applied
+stacks on an enemy and change the rule. Nothing built on 2026-09-05 makes that
+choice for anybody. The correction is also recorded as a comment on the issue.
+
+**Recorded as its own entry rather than by editing the entry below**, because a
+dated entry is what was true when it was written and rewriting one hides that the
+mistake was made.
+
 ## 2026-09-05 — The remaining six Demonic enemy modifiers, and a debuff that stacks
 
 The last six of the eight Demonic modifiers, built in one change. Every one of
