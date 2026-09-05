@@ -244,7 +244,7 @@ by `git add` with no error and no warning. Guarded by
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
   upgrade tree is still only the Python model in `sim/` (issue
-  [#25](https://github.com/sdubois777/Cataclysm/issues/25)). **A city upgrade can
+  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **A city upgrade can
   only be bought from the console**, because there is no city screen, and 14 of
   the 24 are refused because their effect is not built (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in

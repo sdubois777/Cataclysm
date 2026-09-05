@@ -42,9 +42,19 @@ class ACataclysmEnemyCharacter;
  * floor, puts its creatures on it, moves the marker to its exit and stands the
  * player at its entrance. `FloorNumber` is no longer only a setting.
  *
- * WHAT IT DOES NOT DO YET. There is no bottom to the dungeon, so the stairs go
- * down for ever: a dungeon with a floor count and a boss on its last floor is
- * issue #41's side of the join, and nothing here holds one.
+ * A DUNGEON FROM THE EMPIRE MAP HAS A BOTTOM, and reaching it beats the dungeon:
+ * `IsOnTheLastFloor` compares the floor being walked against the floor count the
+ * empire dungeon carries, and `ClearEmpireDungeon` takes it off the map and off
+ * the day clock, so its host city stops being bitten by it. Issue #1092.
+ *
+ * A DUNGEON THAT IS NOT BOUND TO ONE STILL DESCENDS FOR EVER. That is what
+ * pressing Play gives you, and `IsOnTheLastFloor` says so plainly: no floor
+ * count means no bottom. It is the sandbox's behaviour rather than an oversight.
+ *
+ * WHAT IT DOES NOT DO YET. There is no boss on the last floor -- that is issue
+ * #41's side of the join -- and beating a dungeon moves the player nowhere,
+ * because there is nowhere to go: the capital hub is issue #48. A player who
+ * reaches the bottom is left standing on the floor they beat.
  */
 UCLASS(Config = Game)
 class CATACLYSM_API ACataclysmDungeonGameMode : public ACataclysmGameMode
