@@ -1203,8 +1203,81 @@ def parse_tier(value, effect: str, field: str, row: int) -> tuple[str, float, fl
     return ("Percent" if "%" in effect else "Flat"), amount, 0.0
 
 
+#: "Every 20 days this city's defenses heal 5%." THE INTERVAL COMES FIRST AND THE
+#: MAGNITUDE SECOND, so taking the first number in the sentence gives 20 where
+#: 0.05 is wanted. Matched before every other shape for that reason. Non-greedy
+#: in the middle so the nearest percentage wins rather than a later one.
+TIER_ONE_INTERVAL = re.compile(
+    r"every\s+(\d+(?:\.\d+)?)\s+days?\b.*?(\d+(?:\.\d+)?)\s*%", re.IGNORECASE)
+
+#: "Dungeons here provide 2x more experience". No space before the x, which is
+#: the notation the tier 2 and tier 3 cells use as well.
+TIER_ONE_MULTIPLIER = re.compile(r"(\d+(?:\.\d+)?)x\b", re.IGNORECASE)
+
+#: "Increase max defense by 20%".
+TIER_ONE_PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+#: "Dungeons here have 5 more floors." THE FIRST NUMBER, because two rows end
+#: with "to a minimum of 1" and that 1 is a floor under the effect rather than
+#: the effect's own magnitude.
+TIER_ONE_FLAT = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def parse_tier_one(effect: str, row: int) -> tuple[str, float, float]:
+    """Read a city upgrade's tier 1 magnitude out of its effect sentence.
+
+    THE SHEET HAS NO TIER 1 VALUE COLUMN. Its four columns are Type, Tier 1,
+    Tier 2 and Tier 3, and the `Tier 1` cell is the effect sentence itself --
+    "Increase max defense by 20%" -- while tiers 2 and 3 are bare numbers beside
+    it. So the magnitude an upgrade STARTS at was only ever written in English,
+    and no code could read it. Issue #1262.
+
+    The kinds are `parse_tier`'s kinds and mean the same things, so a reader can
+    treat all three tiers alike:
+
+      "Every 20 days ... heal 5%."      IntervalPercent  interval 20, value 0.05
+      "provide 2x more experience"      Multiplier       value 2
+      "Increase max defense by 20%"     Percent          value 0.20
+      "have 5 more floors."             Flat             value 5
+
+    THE ORDER OF THE FOUR TESTS IS THE WHOLE FUNCTION. Every later shape also
+    matches the sentences the earlier ones catch: an interval sentence contains a
+    percentage, and every sentence of any kind contains a bare number. Reordering
+    them silently produces a wrong number rather than an error.
+
+    This is a heuristic on prose, exactly as `parse_tier`'s Percent-or-Flat
+    decision is, and it is why a real tier 1 value column in the sheet would be
+    better. Every parsed value is pinned in
+    `tools/tests/test_city_upgrade_tier_one.py`, so a sentence reworded in the
+    workbook fails there rather than shipping a changed number.
+    """
+    text = clean(effect)
+    if not text:
+        return "", 0.0, 0.0
+
+    match = TIER_ONE_INTERVAL.search(text)
+    if match:
+        return ("IntervalPercent", float(match.group(2)) / 100.0,
+                float(match.group(1)))
+
+    match = TIER_ONE_MULTIPLIER.search(text)
+    if match:
+        return "Multiplier", float(match.group(1)), 0.0
+
+    match = TIER_ONE_PERCENT.search(text)
+    if match:
+        return "Percent", float(match.group(1)) / 100.0, 0.0
+
+    match = TIER_ONE_FLAT.search(text)
+    if match:
+        return "Flat", float(match.group(1)), 0.0
+
+    raise DataError(f"City Upgrades row {row}: Tier 1 is {text!r}, which states "
+                    f"no magnitude at all, so there is no number to publish")
+
+
 def city_upgrades(book) -> list[dict]:
-    """City upgrades and their tier 2 and tier 3 scaling.
+    """City upgrades and what each is worth at tiers 1, 2 and 3.
 
     A trailing asterisk on the branch name marks a ONE-TIME USE upgrade: it fires
     once and is spent, rather than being a standing improvement. The asterisk is
@@ -1214,6 +1287,12 @@ def city_upgrades(book) -> list[dict]:
     One row has no branch. It is also one-time use, has no tiers, and is a last
     resort rather than a city improvement. Which branch it belongs to has not
     been decided, so Branch is left empty and BranchUndecided marks it.
+
+    TIER 1 IS READ OUT OF THE EFFECT SENTENCE, because the sheet's `Tier 1`
+    column IS that sentence. See `parse_tier_one` and issue #1262. Until that was
+    added, a reader could see what tier 2 would improve a number to and not what
+    the number started at, which is enough to block a city upgrade system
+    entirely.
     """
     out = []
     for index, raw in enumerate(book["City Upgrades"].iter_rows(values_only=True), 1):
@@ -1226,23 +1305,45 @@ def city_upgrades(book) -> list[dict]:
         one_time = branch.endswith("*") or not branch
         branch = branch.rstrip("*").strip()
 
+        tier2_cell = clean(raw[2]) if len(raw) > 2 else ""
+        tier3_cell = clean(raw[3]) if len(raw) > 3 else ""
+
         t2_kind, t2_value, t2_interval = parse_tier(
-            raw[2] if len(raw) > 2 else "", effect, "Tier 2", index)
+            tier2_cell, effect, "Tier 2", index)
         t3_kind, t3_value, t3_interval = parse_tier(
-            raw[3] if len(raw) > 3 else "", effect, "Tier 3", index)
+            tier3_cell, effect, "Tier 3", index)
+
+        # A ROW WITH NO TIER LADDER AT ALL PUBLISHES NO TIER 1 VALUE EITHER.
+        # That is one row, the unbranched one, and its sentence is the reason:
+        # it cleanses half the dungeons from every city and costs 50% of their
+        # defences and population, so it states two magnitudes and one of them is
+        # the word "half". Publishing the 50% would say the upgrade's strength is
+        # 50% when 50% is what it costs. Keyed on the empty tier cells rather
+        # than on the row, so a second tierless upgrade behaves the same way.
+        if tier2_cell or tier3_cell:
+            t1_kind, t1_value, t1_interval = parse_tier_one(effect, index)
+        else:
+            t1_kind, t1_value, t1_interval = "", 0.0, 0.0
 
         out.append({"Name": row_name(branch or "Unbranched", effect[:40]),
                     "Branch": branch,
                     "BranchUndecided": "True" if not branch else "False",
                     "IsOneTimeUse": "True" if one_time else "False",
                     "Effect": effect,
+                    # THE EFFECT SENTENCE IS TIER 1'S RAW CELL. The other two
+                    # tiers carry a Raw field because their parsed values are
+                    # lossy; tier 1's source is the Effect column right here, so
+                    # a Tier1Raw would be the same sentence twice in every row.
+                    "Tier1Kind": t1_kind,
+                    "Tier1Value": t1_value,
+                    "Tier1IntervalDays": t1_interval,
                     # The raw cell is kept alongside the parsed values so nothing
                     # is lost if the inference above is ever wrong.
-                    "Tier2Raw": clean(raw[2]) if len(raw) > 2 else "",
+                    "Tier2Raw": tier2_cell,
                     "Tier2Kind": t2_kind,
                     "Tier2Value": t2_value,
                     "Tier2IntervalDays": t2_interval,
-                    "Tier3Raw": clean(raw[3]) if len(raw) > 3 else "",
+                    "Tier3Raw": tier3_cell,
                     "Tier3Kind": t3_kind,
                     "Tier3Value": t3_value,
                     "Tier3IntervalDays": t3_interval})
