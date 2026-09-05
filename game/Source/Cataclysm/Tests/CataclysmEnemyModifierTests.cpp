@@ -4,10 +4,16 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
+#include "Tests/CataclysmTestWorld.h"
 
 /**
  * Tests for which modifiers a creature is given, issue #742.
@@ -347,6 +353,244 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierRowsExistTest,
 		TestTrue(*FString::Printf(TEXT("%s is drawable by a Demonic creature"),
 								  Key), Pool.Contains(RowKey));
 	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What the carried modifiers do
+// ---------------------------------------------------------------------------
+
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierEffectsExistTest,
+	"Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	const UDataTable* ModifierTable = Table();
+	if (!TestNotNull(TEXT("the enemy modifier table loads"), ModifierTable))
+	{
+		return false;
+	}
+
+	// A ROW RENAMED IN THE DESIGN WORKBOOK WOULD OTHERWISE MAKE AN EFFECT STOP
+	// HAPPENING SILENTLY. The constants are the only place these keys are
+	// written, and a creature that drew a renamed row would carry a name whose
+	// effect never fires with nothing saying so.
+	const TCHAR* Built[] = {
+		UCataclysmEnemyModifiers::TitanicResolveRow,
+		UCataclysmEnemyModifiers::OverpoweredRow,
+		UCataclysmEnemyModifiers::BloodthirstyRow,
+		UCataclysmEnemyModifiers::ThornsOfGlassRow,
+		UCataclysmEnemyModifiers::HellfireAuraRow,
+	};
+
+	for (const TCHAR* Key : Built)
+	{
+		TestNotNull(*FString::Printf(
+						TEXT("%s, which has an effect, is a row in the table"),
+						Key),
+					UCataclysmEnemyModifiers::FindRow(ModifierTable, FName(Key)));
+	}
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierStatEffectsTest,
+	"Cataclysm.EnemyModifiers.TheStatChangingModifiersAnswerTheirOwnNumbers")
+{
+	const FName Titanic(UCataclysmEnemyModifiers::TitanicResolveRow);
+	const FName Overpowered(UCataclysmEnemyModifiers::OverpoweredRow);
+	const FName Bloodthirsty(UCataclysmEnemyModifiers::BloodthirstyRow);
+	const FName Thorns(UCataclysmEnemyModifiers::ThornsOfGlassRow);
+	const FName Hellfire(UCataclysmEnemyModifiers::HellfireAuraRow);
+
+	// A CREATURE WITH NO MODIFIERS IS UNTOUCHED, which is 60% of what spawns.
+	// Every answer here has to be the identity for the stat it moves.
+	const TArray<FName> None;
+	TestEqual(TEXT("no modifiers leave health alone"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier(None), 1.0f);
+	TestTrue(TEXT("no modifiers force no critical strike chance"),
+			 UCataclysmEnemyModifiers::ForcedCritChance(None) < 0.0f);
+	TestEqual(TEXT("no modifiers grant no leech"),
+			  UCataclysmEnemyModifiers::LifeLeechPercent(None), 0.0f);
+	TestEqual(TEXT("no modifiers grant no retaliation"),
+			  UCataclysmEnemyModifiers::RetaliationPercent(None), 0.0f);
+
+	// A MODIFIER THAT HAS NO EFFECT BUILT CHANGES NOTHING, which is most of the
+	// 79 and is the honest state of the work. Beguiling is one of them.
+	const TArray<FName> Unbuilt = { FName(TEXT("Demonic_Beguiling")) };
+	TestEqual(TEXT("a modifier with no effect built leaves health alone"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier(Unbuilt), 1.0f);
+
+	// TITANIC RESOLVE: "50% more health".
+	TestEqual(TEXT("Titanic Resolve multiplies health by one and a half"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Titanic}), 1.5f);
+
+	// OVERPOWERED: "Always crits".
+	TestEqual(TEXT("Overpowered forces a hundred percent critical chance"),
+			  UCataclysmEnemyModifiers::ForcedCritChance({Overpowered}), 100.0f);
+
+	// BLOODTHIRSTY: "Heal for 10% of the damage dealt to the player".
+	TestEqual(TEXT("Bloodthirsty grants ten percent life leech"),
+			  UCataclysmEnemyModifiers::LifeLeechPercent({Bloodthirsty}), 10.0f);
+
+	// THORNS OF GLASS: "Reflects 50% of all damage taken back to the attacker."
+	//
+	// IT USED TO REFLECT THE WHOLE HIT AND LEAVE THE CREATURE ON ONE HEALTH.
+	// The project owner changed it on 2026-09-05 in the design workbook, so this
+	// checks the new figure and that it leaves health alone -- which is what it
+	// stopped doing, and is the half a stale test would miss.
+	TestEqual(TEXT("Thorns of Glass reflects half the hit"),
+			  UCataclysmEnemyModifiers::RetaliationPercent({Thorns}), 50.0f);
+	TestEqual(TEXT("and does not touch the creature's health"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Thorns}), 1.0f);
+
+	// A CREATURE CARRYING BOTH GETS BOTH, which is what it means for Thorns of
+	// Glass to no longer decide the health. It was the one modifier that
+	// overruled another and it does not any more.
+	const TArray<FName> Both = { Thorns, Titanic };
+	TestEqual(TEXT("Titanic Resolve still multiplies health beside Thorns of Glass"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier(Both), 1.5f);
+	TestEqual(TEXT("and Thorns of Glass still reflects half"),
+			  UCataclysmEnemyModifiers::RetaliationPercent(Both), 50.0f);
+
+	// AN AURA MODIFIER CHANGES NO STAT. Hellfire Aura reaches out on the
+	// per-character step instead, and a stat answer here would mean two things
+	// were happening.
+	TestEqual(TEXT("Hellfire Aura changes no stat"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Hellfire}), 1.0f);
+	TestEqual(TEXT("and grants no leech"),
+			  UCataclysmEnemyModifiers::LifeLeechPercent({Hellfire}), 0.0f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierAuraPulseTest,
+	"Cataclysm.EnemyModifiers.AnAuraPulsesOnceASecondNotOnEveryStep")
+{
+	// THE PER-CHARACTER STEP RUNS FOUR TIMES A SECOND, so an aura that fired on
+	// every step would refresh a four second burn four times a second. The gate
+	// is what makes the interval a decision rather than an accident of how often
+	// the step happens.
+	TestFalse(TEXT("nothing is due at the start"),
+			  UCataclysmEnemyModifiers::AuraPulseIsDue(0.0f));
+	TestFalse(TEXT("nor after one step"),
+			  UCataclysmEnemyModifiers::AuraPulseIsDue(0.25f));
+	TestFalse(TEXT("nor after three"),
+			  UCataclysmEnemyModifiers::AuraPulseIsDue(0.75f));
+
+	// AT THE INTERVAL, NOT PAST IT. The step is a fixed 0.25 seconds and the
+	// interval is a whole second, so the accumulated figure lands exactly on
+	// 1.0. A strict comparison would make every pulse wait an extra step, which
+	// would turn a one second aura into a one and a quarter second one.
+	TestTrue(TEXT("but it is due on the fourth step, exactly"),
+			 UCataclysmEnemyModifiers::AuraPulseIsDue(1.0f));
+	TestTrue(TEXT("and after it"),
+			 UCataclysmEnemyModifiers::AuraPulseIsDue(2.5f));
+
+	// SIX METRES, AS THE PROJECT OWNER DECIDED, and the same distance the
+	// Masochist's own aura reaches. Stated in centimetres because everything in
+	// Unreal is.
+	TestEqual(TEXT("an aura reaches six metres"),
+			  UCataclysmEnemyModifiers::AuraRadiusCm, 600.0f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierReachesACreatureTest,
+	"Cataclysm.EnemyModifiers.ACreatureCarryingOneActuallyGetsTheStat")
+{
+	// **THIS IS THE TEST THAT MATTERS AND THE OTHERS ARE NOT SUBSTITUTES.**
+	// Everything above checks what a list of modifier names ANSWERS. None of it
+	// says the game ever asks. That failure has happened on this project before:
+	// every passive tree test called the refresh by hand, so 988 tests proved
+	// the pipeline and none proved the game ran it.
+	//
+	// So this spawns a real creature, gives it a modifier the way a draw would,
+	// and reads the attribute back off its ability system.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a creature in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Enemy))
+	{
+		return false;
+	}
+
+	Enemy->SetHealth(500.0f);
+
+	const UAbilitySystemComponent* ASC = Enemy->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the creature has an ability system"), ASC))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Crit =
+		UCataclysmCombatAttributeSet::GetCritChanceAttribute();
+
+	// WITHOUT A MODIFIER, THE ARCHETYPE'S OWN FIGURE STANDS. Read first so the
+	// comparison below is against what this creature actually had rather than
+	// against a number typed here.
+	const float PlainHealth = ASC->GetNumericAttribute(MaxHealth);
+	TestTrue(TEXT("a creature with no modifiers has its own health"),
+			 PlainHealth > 0.0f);
+
+	// TITANIC RESOLVE: "50% more health". Given the way a draw gives it, then
+	// the stat block re-applied the way every spawner re-applies it.
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::TitanicResolveRow));
+	Enemy->ApplyStartingAttributes();
+
+	TestEqual(TEXT("Titanic Resolve reaches the creature's health"),
+			  ASC->GetNumericAttribute(MaxHealth), PlainHealth * 1.5f, 0.01f);
+
+	// AND IT DOES NOT COMPOUND. `ApplyStartingAttributes` runs again every time
+	// a spawner sets anything, and a multiplier applied to the attribute rather
+	// than to the freshly computed base would make the creature 2.25 times as
+	// tough on the second call and 3.4 on the third.
+	Enemy->ApplyStartingAttributes();
+	TestEqual(TEXT("and applying the stat block again does not compound it"),
+			  ASC->GetNumericAttribute(MaxHealth), PlainHealth * 1.5f, 0.01f);
+
+	// OVERPOWERED: "Always crits".
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::OverpoweredRow));
+	Enemy->ApplyStartingAttributes();
+
+	TestEqual(TEXT("Overpowered reaches the creature's critical strike chance"),
+			  ASC->GetNumericAttribute(Crit), 100.0f, 0.01f);
+
+	// THORNS OF GLASS REFLECTS HALF AND LEAVES THE HEALTH ALONE. The creature is
+	// still carrying Titanic Resolve, so the health check is what proves this
+	// modifier no longer overrules another one -- which it did until the project
+	// owner changed it on 2026-09-05.
+	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::ThornsOfGlassRow));
+	Enemy->ApplyStartingAttributes();
+
+	TestEqual(TEXT("Thorns of Glass reflects half the hit"),
+			  ASC->GetNumericAttribute(
+				  UCataclysmCombatAttributeSet::GetRetaliationAttribute()),
+			  50.0f, 0.01f);
+	TestEqual(TEXT("and leaves Titanic Resolve's health untouched"),
+			  ASC->GetNumericAttribute(MaxHealth), PlainHealth * 1.5f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmModifierAuraStepIsSafeTest,
+	"Cataclysm.EnemyModifiers.TheAuraStepRefusesAnythingThatIsNotACreature")
+{
+	// THE PLAYER GOES THROUGH THIS EVERY STEP, because it hangs off the step on
+	// the shared character base. So does a null, which is what a test passes
+	// and what a torn-down world can produce.
+	TestEqual(TEXT("a null actor touches nobody"),
+			  UCataclysmEnemyModifiers::AuraStep(nullptr, 0.25f), 0);
 
 	return true;
 }
