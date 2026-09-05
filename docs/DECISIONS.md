@@ -2,6 +2,89 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The Architect empire tree branch gets nothing added, and a defensive branch is worth what the surges make it worth
+
+**Issue [#5](https://github.com/sdubois777/Cataclysm/issues/5) asked a design
+question and the answer is that nothing should change.** It reported that maxing
+the Architect quadrant of the Empire Development Tree produced the same win rate
+as allocating no passive points at all, 52% against 52%, and asked whether the
+branch should grant something that advances the win condition or whether the
+stalemate condition was mis-modelled.
+
+**Neither. The branch already advances the win condition.** Both figures in the
+issue were right and reproduced exactly. The conclusion drawn from them was not.
+`sim/experiments.py` section 7 runs 150 campaigns per cell and its own
+`win_rate_noise(150)` is 5.77 percentage points, so a nil gap there is the sample
+failing to resolve the gap rather than a measurement of equality. Re-run at 1,000
+campaigns per cell over two disjoint blocks of seeds, difficulty tier 1, the
+`triage` policy:
+
+| preset | seeds 0-999 | seeds 1000-1999 | both |
+|---|---|---|---|
+| No tree | 45.8 | 47.5 | 46.6 |
+| Architect maxed (as designed) | 56.3 | 57.8 | 57.0 |
+
+**The branch is 10.4 points ahead, replicated**, against a 1.58 point tolerance at
+2,000 campaigns. No node was added to it and none should be.
+
+### Why it works, which is the part worth keeping
+
+Every campaign that ends at all ends inside a Cataclysm dungeon.
+`sim/cataclysm_sim/engine.py` sets `won` at exactly one place and `lost` at
+exactly one, both in `_finish_current` and both for that dungeon type. There are
+two ways in, and over 400 campaigns at tier 1 they are not close:
+
+| route | fights | won | win rate | mean floors |
+|---|---|---|---|---|
+| Earned: cleared the quest objectives, the capital opened | 318 | 182 | 57% | about 126 |
+| The Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
+
+So losing the empire is not a loss in the model; it hands the player a fight that
+is winnable in principle and almost never in practice. **A branch that prevents
+city losses is not avoiding damage, it is avoiding a near-certain loss.** The
+project owner confirmed on 2026-09-05 that this is intended -- collapse should be
+near-fatal -- which is recorded separately under issue
+[#1286](https://github.com/sdubois777/Cataclysm/issues/1286) along with the
+wording corrections that decision requires.
+
+### A defensive branch is worth what the surges make it worth
+
+Issue [#1287](https://github.com/sdubois777/Cataclysm/issues/1287). Holding
+everything else at the settings the sweep calibrates and moving only the number of
+dungeons a surge spawns, at tier 1 over 150 campaigns per cell:
+
+| dungeons per surge | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|
+| No tree win% | 44 | 52 | 15 | 11 |
+| Architect maxed win% | 45 | 52 | 53 | 48 |
+| Architect against no tree | tied | tied | **better** | **better** |
+
+Four surge sizes gave four different preset orderings. **This is a property of the
+design and not a defect to be tuned away**: a branch that protects cities is worth
+little when surges are small enough that an undefended empire survives anyway, and
+a great deal when they are not. **No tuning constant was changed** and none should
+be changed to make the ordering stable.
+
+What was wrong is that the report asserted an ordering without saying which world
+it held in. Section 7 now names every setting it takes from earlier sections,
+read off the config it was handed rather than written out, and states that the
+ordering is conditional on them.
+
+### What this constrains
+
+- **Do not add an offensive node to the Architect quadrant on the strength of
+  issue #5.** The premise was a measurement artefact.
+- **A win rate from section 7 is a statement about one surge size**, currently 5,
+  as well as about one difficulty tier. Quoting it without both is quoting half of
+  it.
+- **A nil gap in that table is not evidence of no difference.** The section now
+  says so in its own output; the gap it once read as zero is 10.4 points.
+
+Pull requests [#1292](https://github.com/sdubois777/Cataclysm/pull/1292) and
+[#1294](https://github.com/sdubois777/Cataclysm/pull/1294).
+
+---
+
 ## 2026-09-05 — Correction: a floor costing a day is a starting rate, not a rule
 
 **The entry below is wrong and so was the code it describes.** It says the two

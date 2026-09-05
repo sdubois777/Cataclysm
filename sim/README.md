@@ -85,7 +85,7 @@ There are two ways to get into one:
   and comes to the player, absorbing every dungeon still standing as extra
   floors. **This is not itself a loss**, and the older wording here said it
   was. It is a fight, and at tier 1 it is a fight the player wins about 2%
-  of the time over 400 campaigns, against about 58% for an earned one.
+  of the time over 400 campaigns, against about 57% for an earned one.
   Issue #5 measured that; whether a near-unwinnable fight is the intended
   shape is issue #1286.
 
