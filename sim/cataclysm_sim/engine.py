@@ -481,7 +481,25 @@ class Simulation:
         self.current = None
 
     def _open_last_stand(self) -> None:
-        """The Cataclysm assaults the Pillar, absorbing everything still standing."""
+        """The Cataclysm assaults the Pillar, absorbing everything still standing.
+
+        NEAR-FATAL BY DESIGN, AND THE 2% WIN RATE IS NOT A BUG. Letting the
+        empire collapse is meant to be close to a loss; the project owner
+        settled that on 2026-09-05 and `docs/DECISIONS.md` records it. Measured
+        over 400 campaigns at tier 1: 54 Last Stands, 1 won, averaging about 440
+        floors, against about 126 floors and a 57% win rate for a Cataclysm
+        dungeon opened by clearing quest objectives instead. Issue #1286.
+
+        WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
+        run has already gone, and a player only ever reaches this by having lost
+        cities: a flat bonus, five floors for each dungeon still standing when
+        the map is swallowed, four more per city already lost, and a power
+        multiplier that also scales with the cities lost.
+
+        THE FOUR CONSTANTS ARE NOT TO BE TUNED TOWARDS A FAIRER FIGHT. That is
+        the outcome the design wants, and anyone reading the 2% cold will read
+        it as broken. It is not.
+        """
         cfg = self.cfg
         if self.last_stand is not None:
             return
@@ -535,7 +553,10 @@ class Simulation:
                 self._resolve(d)
 
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
-        # the player. Not an instant loss -- a final dungeon that must be beaten.
+        # the player. In practice this is the end of the run. The fight is
+        # winnable in principle and almost never in practice -- measured at 2%
+        # over 400 campaigns at tier 1, against 57% for a Cataclysm dungeon the
+        # player opened by clearing quest objectives. See `_open_last_stand`.
         self.min_d2d = min(self.min_d2d, self.empire.distance_to_defeat())
         if self.empire.pillar_exposed():
             self._open_last_stand()
