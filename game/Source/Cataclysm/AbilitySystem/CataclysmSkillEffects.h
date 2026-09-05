@@ -1036,6 +1036,43 @@ public:
 						  float DurationSeconds, float DamageDealt,
 						  bool bStunIsDesigned);
 
+	/**
+	 * What a crowd control effect is worth against this target, after its
+	 * crowd control resistance.
+	 *
+	 * WHY IT EXISTS. Until 2026-09-05 the `CrowdControlResistance` attribute was
+	 * read in exactly one place: it reduced the CHANCE that a blunt weapon
+	 * caused an incidental stun. It did nothing about the four skills that stun
+	 * by design, nothing about a slow, and nothing about a shove. So a stat on
+	 * the character sheet -- granted by an affix on seven gear slots, by two
+	 * class lines and by a helmet implicit -- was worth almost nothing.
+	 *
+	 * IT REDUCES HOW MUCH, NOT WHETHER. A stun's seconds and a shove's
+	 * centimetres are both scaled by it. Diablo IV's impairment reduction stat
+	 * works this way, shortening a crowd control effect rather than rolling
+	 * against it, and reducing an amount is the only rule that can serve a
+	 * DESIGNED stun, which has no chance to reduce.
+	 *
+	 * **AT 100 NOTHING LANDS, AND THIS IS THE ONE PLACE THIS GAME LETS A STAT
+	 * REACH IMMUNITY.** Every other unconditional mitigation layer is capped
+	 * short of it on purpose -- armour at 75%, resistance at 70%, flat damage
+	 * reduction at 75% -- and `UCataclysmDamageCalculation::DamageReductionCap`
+	 * states the rule outright: "No combination of these layers reaches
+	 * immunity." **The project owner was shown that this contradicts it, with
+	 * the figures a player can actually reach, and chose an uncapped stat anyway
+	 * on 2026-09-05.** `docs/DECISIONS.md` records it, so the next person finds
+	 * a decision rather than a contradiction. Diablo IV makes the other choice
+	 * and keeps immunity as a separate mechanic.
+	 *
+	 * @param Amount  seconds, or centimetres, or whatever the effect is measured
+	 *                in. Zero or less answers zero
+	 * @return what is left, or zero when the target resists it entirely. A
+	 *         target with no such attribute gets the amount back unchanged,
+	 *         which is every creature nothing has given one to
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static float AfterCrowdControlResistance(const AActor* Target, float Amount);
+
 	/** Whether this actor is stunned right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStunned(const AActor* Actor);

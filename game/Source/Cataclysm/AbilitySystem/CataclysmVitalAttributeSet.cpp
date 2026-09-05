@@ -840,22 +840,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// would interrupt a well defended character constantly, which is
 			// half of what the rule exists to stop.
 			//
-			// CROWD CONTROL RESISTANCE REDUCES THE TOTAL, NOT THE CAPPED CHANCE,
-			// so it bites into the overflow as well and is worth something
-			// against a heavy stun build rather than nothing.
+			// CROWD CONTROL RESISTANCE NO LONGER TOUCHES THE CHANCE, since
+			// 2026-09-05. It used to reduce this total, and that was the ONLY
+			// thing the stat did anywhere in the game. It now shortens the stun
+			// itself, inside `UCataclysmSkillEffects::ApplyStun`, which is the
+			// only rule that can also serve the four skills that stun by design.
+			//
+			// ONE RULE AND NOT BOTH, deliberately. Reducing the chance here as
+			// well would count the stat twice: a character at 50 would take half
+			// the chance of a stun half as long, which is a quarter, and "50
+			// crowd control resistance" would not mean anything a player could
+			// work out.
 			if (Hit.bIsBlunt && Outcome.DealtToHealth > 0.0f)
 			{
-				float Total = UCataclysmDamageCalculation::BluntStunChance;
-				if (const UCataclysmCombatAttributeSet* Defence =
-						GetOwningAbilitySystemComponent()
-							? GetOwningAbilitySystemComponent()
-								  ->GetSet<UCataclysmCombatAttributeSet>()
-							: nullptr)
-				{
-					const float Resisted = FMath::Clamp(
-						Defence->GetCrowdControlResistance(), 0.0f, 100.0f);
-					Total *= 1.0f - Resisted / 100.0f;
-				}
+				const float Total = UCataclysmDamageCalculation::BluntStunChance;
 
 				float Chance = 0.0f;
 				float Seconds = 0.0f;

@@ -1295,6 +1295,25 @@ namespace
 			return false;
 		}
 
+		// AND THE TARGET'S CROWD CONTROL RESISTANCE SHORTENS THE MOVE, at 100
+		// stopping it entirely. Since 2026-09-05; before it the stat did
+		// nothing about being shoved at all.
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS ABOVE, for the reason the
+		// immunity check gives: a knockback, a pull, a drag and a launch are
+		// one body with four directions and this is that body.
+		//
+		// BEFORE THE DIMINISHING-RETURNS SHARE, so a fully resisted shove does
+		// not spend the target's window, which is what the immunity check
+		// above is placed early for.
+		const float Reach = UCataclysmSkillEffects::AfterCrowdControlResistance(
+			Target, Offset.Size());
+		if (Reach <= 0.0f)
+		{
+			return false;
+		}
+		const FVector Resisted = Offset.GetSafeNormal() * Reach;
+
 		float Share = 1.0f;
 		if (UCataclysmAbilitySystemComponent* TargetAbilities =
 				Cast<UCataclysmAbilitySystemComponent>(
@@ -1303,7 +1322,7 @@ namespace
 			Share = TargetAbilities->TakeNextDisplacementShare();
 		}
 
-		Target->AddActorWorldOffset(Offset * Share, /*bSweep=*/true);
+		Target->AddActorWorldOffset(Resisted * Share, /*bSweep=*/true);
 
 		// AND A SWING DRAWN BACK IS LOST, IF ITS ROW SAYS A STAGGER LOSES IT.
 		// The Greatsword's Backswing: "being staggered loses the swing
@@ -1507,10 +1526,61 @@ bool UCataclysmSkillEffects::ClearDead(AActor* Actor)
 	return true;
 }
 
+float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
+																  float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UAbilitySystemComponent* Defender =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Defender)
+	{
+		return Amount;
+	}
+
+	const UCataclysmCombatAttributeSet* Combat =
+		Defender->GetSet<UCataclysmCombatAttributeSet>();
+	if (!Combat)
+	{
+		// NO SUCH ATTRIBUTE MEANS NO RESISTANCE, not zero effect. A target that
+		// does not carry the stat takes the whole of it.
+		return Amount;
+	}
+
+	// FLOORED AT ZERO AND NOT CAPPED ABOVE, which is the decision recorded in
+	// the header. A negative value would lengthen a stun rather than shorten
+	// one, and nothing in the design says a stat below zero does that.
+	const float Resisted = FMath::Max(0.0f, Combat->GetCrowdControlResistance());
+	if (Resisted >= 100.0f)
+	{
+		return 0.0f;
+	}
+
+	return Amount * (1.0f - Resisted / 100.0f);
+}
+
 bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 									   float DurationSeconds, float DamageDealt,
 									   bool bStunIsDesigned)
 {
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// RULE ZERO SINCE 2026-09-05: THE TARGET'S CROWD CONTROL RESISTANCE
+	// SHORTENS IT, AND AT 100 IT DOES NOT LAND AT ALL. Before this the stat
+	// touched only the CHANCE of an incidental blunt stun, so the four skills
+	// that stun by design ignored it completely.
+	//
+	// FIRST, AND BEFORE THE DESIGNED-STUN EXEMPTION BELOW. A designed stun
+	// skips the damage threshold because an attack built to stun should not
+	// fail to when it lands; it does not skip the target's own resistance,
+	// any more than a designed blow skips armour.
+	DurationSeconds = AfterCrowdControlResistance(Target, DurationSeconds);
 	if (DurationSeconds <= 0.0f)
 	{
 		return false;
