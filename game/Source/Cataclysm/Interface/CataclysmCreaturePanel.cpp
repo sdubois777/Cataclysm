@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmCombatOverlay.h"
@@ -108,18 +109,13 @@ const UDataTable* UCataclysmCreaturePanel::LoadEnemyArchetypeTable()
 
 const UDataTable* UCataclysmCreaturePanel::LoadEnemyModifierTable()
 {
-	const UDataTable* Table = LoadObject<UDataTable>(
-		nullptr, TEXT("/Game/Data/DT_EnemyModifiers.DT_EnemyModifiers"));
-	if (!Table)
-	{
-		UE_LOG(LogCataclysm, Error,
-			TEXT("Could not load DT_EnemyModifiers. It is produced by "
-				 "tools/generate_datatable_assets.py from "
-				 "game/Data/EnemyModifiers.csv, which "
-				 "tools/generate_datatables.py produces from the design "
-				 "workbook."));
-	}
-	return Table;
+	// ONE LOADER, AND IT LIVES WITH THE RULES ABOUT THESE ROWS RATHER THAN WITH
+	// THE SCREEN THAT PRINTS THEM. `UCataclysmEnemyModifiers` decides which
+	// modifiers a creature may draw and how many, so loading the table it draws
+	// from belongs beside that. This name stays because `CataclysmHUD.cpp` calls
+	// it, and because a second copy of the same LoadObject and the same error
+	// message is how the two would come to name different assets.
+	return UCataclysmEnemyModifiers::LoadEnemyModifierTable();
 }
 
 FString UCataclysmCreaturePanel::ArchetypeNameForRow(

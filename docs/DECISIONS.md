@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — A creature is given its modifiers, and which ones it may draw
+
+Made while building the enemy modifier draw, issue #742. Before it, no creature
+the game spawned carried a modifier unless somebody typed one in by hand, so the
+design's one-per-rung-above-Common rule had never run once.
+
+### The pool was not an open question, and the issue said it was
+
+Issue #742 states: "It does not say **which** modifiers a creature may draw from,
+and that is the open design question this issue carries."
+
+**The design document does say.** `docs/Cataclysm_GDD_v2.md` states it in the
+enemy ability section, while explaining why an innate ability must not duplicate
+a modifier: an enemy carries one modifier per rarity above Common, "drawn from
+its own Cataclysm's column and the Generic one". The same passage leans on that
+rule twice more — "A modifier belonging to a different Cataclysm is not a clash,
+because that enemy can never roll it", and Withered Touch is cleared for the
+Succubus because it "is in neither the Demonic nor the Generic column".
+
+So a Demonic creature draws from 18 rows: the 8 Demonic ones and the 10 Generic
+ones. No genre research and no owner decision were needed for it. **The archetype
+does not narrow it further** — #742 asks whether a ranged caster may roll a
+melee-shaped modifier, and nothing in the design says it may not, so it may.
+
+### The count is the rarity step
+
+The design's table gives 0, 1, 2, 3, 4, 5 modifiers for Common, Elite, Legendary,
+Herald, Boss and Cataclysm Boss. `game/Data/EnemyRarities.csv` numbers those same
+six rungs 0 to 5. The two ladders are one ladder, so no second table is needed and
+`UCataclysmEnemyModifiers::CountForRarityStep` is a floor at zero. The test writes
+all six figures out by hand against the design rather than deriving them from the
+step, so that the two would disagree if the ladder ever moved.
+
+**The genre puts the same shape at a lower ceiling.** Diablo II gives a random
+boss 1 property on Normal, 2 on Nightmare and 3 on Hell; Path of Exile gives a
+magic monster one affix and a rare monster three, one of which may be an aura.
+Both raise the count with the rung and both stop at three. This design goes to
+five at Cataclysm Boss, which is its own decision and is left alone here.
+
+### No duplicates
+
+**Decided by the project owner on 2026-09-05**, and it is a judgement rather than
+something read off another game: neither Diablo II's nor Path of Exile's public
+documentation states a rule either way. The reasoning is that three copies of
+Hellfire Aura read to a player as one aura that hurts more, which teaches them
+nothing about what the creature is doing, and the hover panel would print the
+same line three times.
+
+### A creature is filled automatically, and anything typed is kept
+
+**Also decided by the project owner on 2026-09-05.** A creature should arrive
+carrying the number of modifiers its rung carries without anybody typing one.
+`ACataclysmEnemyCharacter::SetRarityStep` tops the list up, which is the one place
+a rung is set and already the place the stat block is re-applied, so all fifteen
+spawn sites across the two game modes get it without a line each.
+
+**Anything typed is kept and the draw fills in around it.** Two typed onto a
+Herald leaves one to draw. More typed than the rung carries are all kept, because
+deleting what somebody deliberately asked for is worse than a creature carrying
+one modifier too many. That is what leaves a way to put a NAMED modifier on a
+creature, which a draw cannot do and which is how a specific encounter is built
+and how a test asks for one modifier in particular.
+
+### The pool is sorted before anything is drawn from it
+
+Load bearing rather than tidy. A `UDataTable` is a map, so walking one has no
+guaranteed order, and an unsorted pool would hand the same seed a different
+modifier on a different run.
+`UCataclysmEnemyRarity::SpawnableSteps` carries the same note and sorts for the
+same reason. A guard proof removed the sort and confirmed a test notices.
+
+### What this does not do
+
+**It draws names. Whether a modifier does anything is a separate question and
+mostly the answer is still no.** The effects are being built after this, and a
+creature carrying a name whose effect does not exist behaves exactly as it did
+before. The hover panel shows what the creature is supposed to be doing either
+way, which is what makes the gap visible rather than silent.
+
 ## 2026-09-05 — The character sheet shows the model's 46 stats, in the model's groups
 
 Made while building the character sheet, issues #1233 and #50. Nothing in the

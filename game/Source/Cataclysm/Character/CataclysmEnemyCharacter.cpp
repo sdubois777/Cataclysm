@@ -23,6 +23,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmEnemyDeath.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
@@ -1029,12 +1030,76 @@ void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)
 	SetActorScale3D(FVector(UCataclysmEnemyRarity::BodyScaleForStep(
 		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep)));
 
+	// AND THE MODIFIERS THE RUNG CARRIES. Issue #742. Before this, no creature
+	// the game spawned carried a modifier at all unless somebody typed one in by
+	// hand, so the design's one-per-rung-above-Common rule had never run once.
+	//
+	// HERE RATHER THAN IN THE SPAWNERS, because there are fifteen calls to this
+	// setter across two game modes and every one of them would otherwise need
+	// the same three lines.
+	FillModifiersForRarity();
+
 	// RE-APPLIED, BECAUSE THE RARITY IS PART OF THE STAT BLOCK SINCE ISSUE #848.
 	// Every other setter here re-applies for the reason SetHealth states: a
 	// spawner sets these on the lines after SpawnActor, in whatever order suits
 	// it, and the order must not matter. This one did not, because rarity used
 	// to change nothing about the creature -- only what its corpse dropped.
 	ApplyStartingAttributes();
+}
+
+void ACataclysmEnemyCharacter::FillModifiersForRarity()
+{
+	const int32 Wanted =
+		UCataclysmEnemyModifiers::CountForRarityStep(RarityStep);
+	const int32 Shortfall = Wanted - ModifierRows.Num();
+	if (Shortfall <= 0)
+	{
+		// ALREADY HAS ENOUGH, OR MORE THAN ENOUGH. More than enough is a
+		// creature somebody typed a list onto; the header says why those are
+		// kept rather than trimmed back to the rung's count.
+		return;
+	}
+
+	// A STREAM PER CREATURE, SEEDED FROM ITS OWN IDENTITY AND THE CLOCK, and
+	// salted so it is not the stream the drops or the death animation are drawn
+	// from. The same shape the drop roll uses and for the reason it gives:
+	// creatures made in the same frame must not all come out the same.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	FRandomStream Stream(ModifierSeedForTests != 0
+		? ModifierSeedForTests
+		: (GetUniqueID() ^ static_cast<int32>(Now * 1000.0f)
+		   ^ ModifierDrawSalt));
+
+	const TArray<FName> Drawn = UCataclysmEnemyModifiers::Draw(
+		UCataclysmEnemyModifiers::LoadEnemyModifierTable(), DamageType,
+		Shortfall, Stream, ModifierRows);
+
+	ModifierRows.Append(Drawn);
+
+	if (Drawn.IsEmpty())
+	{
+		return;
+	}
+
+	// SAID OUT LOUD, FOR THE REASON THE RARITY LINE IN ACataclysmGameMode IS. A
+	// modifier has no name plate and no colour; the hover panel shows it and
+	// only while the cursor is on the creature. Without this line the only
+	// evidence the draw happened is to find the creature and point at it.
+	//
+	// Log rather than Verbose, deliberately: it is one line per creature above
+	// Common, and it is what a play test is read against.
+	TArray<FString> Names;
+	for (const FName& Key : Drawn)
+	{
+		Names.Add(Key.ToString());
+	}
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s (%s, rarity step %d) drew %d modifier%s: %s"),
+		   *GetName(), *DamageType.ToString(), RarityStep, Drawn.Num(),
+		   Drawn.Num() == 1 ? TEXT("") : TEXT("s"),
+		   *FString::Join(Names, TEXT(", ")));
 }
 
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
