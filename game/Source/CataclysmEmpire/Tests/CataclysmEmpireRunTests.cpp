@@ -416,10 +416,28 @@ bool FCataclysmEmpireRunFallTest::RunTest(const FString& Parameters)
 				}
 			}
 
-			// AND EVERY DUNGEON THAT WAS ON IT IS GONE WITH IT.
-			TestEqual(FString::Printf(
-				TEXT("nothing is left standing on %s"), *City->Name),
-				Run->DungeonsOn(CityId).Num(), 0);
+			// AND EVERY DUNGEON THAT WAS ON IT IS GONE, REPLACED BY THE ONE
+			// THE CITY BECAME. Until issue #1324 this asserted that nothing at
+			// all was left standing, which was true while a fall only removed
+			// dungeons. A fallen city is now a Dungeon City standing on itself,
+			// so the count is one rather than zero -- and it is checked to BE
+			// that dungeon rather than merely counted, because a count of one
+			// would also pass if an absorbed dungeon had been left behind.
+			const TArray<int32> Standing = Run->DungeonsOn(CityId);
+
+			if (TestEqual(FString::Printf(
+					TEXT("only the dungeon %s became stands on it"),
+					*City->Name),
+					Standing.Num(), 1))
+			{
+				const FCataclysmDungeon* Left = Run->FindDungeon(Standing[0]);
+				if (TestNotNull(TEXT("and it is on the map"), Left))
+				{
+					TestEqual(FString::Printf(
+						TEXT("and %s became a Fallen City"), *City->Name),
+						Left->Type, ECataclysmDungeonType::FallenCity);
+				}
+			}
 
 			if (const TArray<int32>* WasStanding = StandingOn.Find(CityId))
 			{
@@ -1310,6 +1328,208 @@ bool FCataclysmEmpireRunBesiegedCityCannotBuyTest::RunTest(
 					  Run->WouldBuyCityUpgrade(OtherId, Upgrade)),
 				  static_cast<uint8>(ECataclysmCityUpgradeResult::Bought));
 	}
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What a city becomes when it falls
+// ---------------------------------------------------------------------------
+
+/**
+ * Issue #1324 slice 2. A city that falls becomes a dungeon standing on itself.
+ *
+ * WHY IT DRIVES A REAL RUN RATHER THAN BUILDING THE STATE BY HAND. The
+ * interesting quantity is how many dungeons the city was carrying when it fell,
+ * and that is produced by surges landing over many days. A hand-built city with
+ * three dungeons pushed onto it would test the maker, which
+ * `Cataclysm.Surge.AFallenCityIsAsDeepAsTheSiegeThatTookIt` already does; this
+ * tests that the run wires it up.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallenCityTest,
+	"Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	int32 FallsChecked = 0;
+
+	for (int32 Days = 0; Days < 600 && FallsChecked < 3; ++Days)
+	{
+		// HOW MANY WERE STANDING, READ BEFORE THE DAY. The fall absorbs them,
+		// so afterwards the only record is the report.
+		TMap<int32, int32> StandingOn;
+		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			++StandingOn.FindOrAdd(Dungeon.CityId);
+		}
+
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		for (const int32 CityId : Report.Fallen)
+		{
+			const FCataclysmCity* City = Run->Map->Find(CityId);
+			if (City == nullptr)
+			{
+				continue;
+			}
+
+			++FallsChecked;
+
+			const int32 WasCarrying = StandingOn.FindRef(CityId);
+
+			const TArray<int32> Standing = Run->DungeonsOn(CityId);
+			if (!TestEqual(TEXT("one dungeon stands on it"), Standing.Num(), 1))
+			{
+				return false;
+			}
+
+			const FCataclysmDungeon* Left = Run->FindDungeon(Standing[0]);
+			if (!TestNotNull(TEXT("and it is on the map"), Left))
+			{
+				return false;
+			}
+
+			TestEqual(TEXT("it is a Fallen City"), Left->Type,
+					  ECataclysmDungeonType::FallenCity);
+
+			// AS DEEP AS THE SIEGE THAT TOOK THE CITY, OR THE TIER'S MINIMUM.
+			// The design's rule, and the minimum is the spec's shallow end.
+			const FCataclysmDungeonSpec Spec =
+				UCataclysmSurgeScheduler::SpecFor(
+					ECataclysmDungeonType::FallenCity, City->Tier);
+
+			TestEqual(FString::Printf(
+				TEXT("%s fell carrying %d, so its dungeon is %d deep"),
+				*City->Name, WasCarrying,
+				FMath::Max(WasCarrying, Spec.LeastFloors)),
+				Left->Floors, FMath::Max(WasCarrying, Spec.LeastFloors));
+
+			// ONE BOSS PER DUNGEON THAT WAS STANDING. The design's one stated
+			// exception to a boss on the final floor and nowhere else.
+			TestEqual(TEXT("and one boss per dungeon that was standing"),
+					  Left->Bosses, WasCarrying);
+
+			// AND IT TAKES NOTHING MORE FROM THE CITY, EVER.
+			TestEqual(TEXT("it takes no defence"), Left->DefenceBite, 0.0f);
+			TestEqual(TEXT("and no population"), Left->PopulationBite, 0.0f);
+
+			// ITS TIMER IS PAST THE END OF ANY RUN, so it never appears in a
+			// day report as having resolved.
+			TestTrue(FString::Printf(
+				TEXT("its timer is %.0f days, past any run"), Left->ResolveDays),
+				Left->ResolveDays >= 999.0f);
+
+			// AND THE TWO LISTS AGREE. Adding a dungeon without its timer is
+			// the corruption `DungeonsAgreeWithTimers` exists to catch.
+			FString Why;
+			TestTrue(TEXT("the dungeons and the timers still agree"),
+					 UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+						 Run->Dungeons, Run->Clock->Timers, Why));
+		}
+	}
+
+	TestTrue(FString::Printf(TEXT("%d cities fell to check"), FallsChecked),
+			 FallsChecked > 0);
+
+	return true;
+}
+
+/**
+ * Issue #1324 slice 2. Beating the dungeon a city became takes the city back.
+ *
+ * UNTIL THIS, `UCataclysmEmpireMap::Retake` HAD NO CALLER AT ALL. Retaking a
+ * city was implemented and unreachable: nothing in the game could restore one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunRetakeTest,
+	"Cataclysm.EmpireRun.ClearingAFallenCityTakesTheCityBackAtHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunRetakeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+
+	int32 Retaken = 0;
+
+	for (int32 Days = 0; Days < 600 && Retaken < 2; ++Days)
+	{
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		for (const int32 CityId : Report.Fallen)
+		{
+			const FCataclysmCity* Before = Run->Map->Find(CityId);
+			if (Before == nullptr || !Before->bFallen)
+			{
+				continue;
+			}
+
+			const TArray<int32> Standing = Run->DungeonsOn(CityId);
+			if (Standing.Num() != 1)
+			{
+				continue;
+			}
+
+			const float MaxDefence = Before->MaxDefence;
+			const float MaxPopulation = Before->MaxPopulation;
+
+			if (!TestTrue(TEXT("clearing it succeeds"),
+						  Run->ClearDungeon(Standing[0])))
+			{
+				return false;
+			}
+
+			++Retaken;
+
+			const FCataclysmCity* After = Run->Map->Find(CityId);
+			if (!TestNotNull(TEXT("the city is still there"), After))
+			{
+				return false;
+			}
+
+			TestFalse(TEXT("it has been retaken"), After->bFallen);
+
+			// HALF ITS MAXIMUM, NOT ALL OF IT. Decided by the project owner on
+			// 2026-09-06, verbatim "Half its maximum, upgrades intact, can fall
+			// again". `docs/Cataclysm_GDD_v2.md` section VIII now says so; before
+			// issue #1324 the figure was inferable only from the Tier 4 keystone
+			// that improves on it.
+			//
+			// AT LEAST HALF RATHER THAN EXACTLY HALF, because a city that bought
+			// `RestoreDefenceOnClear` is repaired again by the same clear, on
+			// top of the half. Asserting equality would fail for that city only,
+			// which is a flake nobody would attribute to an upgrade.
+			TestTrue(FString::Printf(
+				TEXT("%s came back with %.0f of %.0f defence"),
+				*After->Name, After->Defence, MaxDefence),
+				After->Defence >= MaxDefence * 0.5f - 0.01f);
+
+			TestEqual(FString::Printf(
+				TEXT("%s came back with half its people"), *After->Name),
+				After->Population, MaxPopulation * 0.5f, 0.01f);
+
+			TestTrue(TEXT("and it is not restored to full"),
+					 After->Defence < MaxDefence);
+
+			// THE DUNGEON IS GONE WITH IT.
+			TestEqual(TEXT("nothing stands on it any more"),
+					  Run->DungeonsOn(CityId).Num(), 0);
+
+			// AND IT CAN FALL AGAIN. The owner's answer says so in as many
+			// words, and it follows from the flag being cleared rather than the
+			// city being marked safe.
+			TestTrue(TEXT("it is alive again"), After->IsAlive());
+		}
+	}
+
+	TestTrue(FString::Printf(TEXT("%d cities were retaken"), Retaken),
+			 Retaken > 0);
 
 	return true;
 }

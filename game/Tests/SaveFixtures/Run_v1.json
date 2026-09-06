@@ -21,6 +21,7 @@
 			"Floors": 12,
 			"ResolveDays": 33.5,
 			"WalkDays": 12.0,
+			"Bosses": 4,
 			"DefenceBite": 0.125,
 			"PopulationBite": 0.0625,
 			"SpawnedDay": 96

@@ -577,6 +577,53 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 	return Landed;
 }
 
+FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
+	int32 DungeonId, const FCataclysmCity& City, int32 Day,
+	int32 DungeonsAbsorbed)
+{
+	const FCataclysmDungeonSpec Spec =
+		SpecFor(ECataclysmDungeonType::FallenCity, City.Tier);
+
+	FCataclysmDungeon Dungeon;
+	Dungeon.DungeonId = DungeonId;
+	Dungeon.Type = ECataclysmDungeonType::FallenCity;
+	Dungeon.CityId = City.CityId;
+	Dungeon.CityTier = City.Tier;
+	Dungeon.SpawnedDay = Day;
+
+	// AT LEAST ONE, THOUGH IT SHOULD NEVER HAVE TO BE. A city falls because a
+	// dungeon standing on it resolved, and that dungeon is absorbed along with
+	// the rest, so the count is one or more by the time this is called. A
+	// bossless, zero-floor dungeon would be worse than a floor of one.
+	const int32 Absorbed = FMath::Max(1, DungeonsAbsorbed);
+
+	// THE FLOOR IS THE SPEC'S SHALLOW END, which is the design's 20/40/60. A
+	// city that fell carrying more dungeons than that is deeper than the
+	// minimum; a quiet one is exactly it.
+	Dungeon.Floors = FMath::Max(Absorbed, Spec.LeastFloors);
+
+	// ONE BOSS PER DUNGEON THAT WAS STANDING, which is the same count and not
+	// the same number as the floors: a city that fell holding three dungeons is
+	// a twenty floor dungeon with three bosses in it.
+	Dungeon.Bosses = Absorbed;
+
+	// IT NEVER RESOLVES, so its timer is set past the end of any run rather
+	// than derived from its depth.
+	Dungeon.ResolveDays = FallenCityResolveDays;
+
+	// AND IT TAKES NOTHING. `SpecFor` answers zero for both, and copying them
+	// rather than writing zeroes here means a change to the spec cannot leave
+	// this behind.
+	Dungeon.DefenceBite = Spec.DefenceBite;
+	Dungeon.PopulationBite = Spec.PopulationBite;
+
+	// NO SUB-TYPE. A Fallen City is what a city became rather than something a
+	// surge rolled, and the sub-types are what a surge rolls.
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+
+	return Dungeon;
+}
+
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
 	FRandomStream& Stream, bool bSiegeAllowed) const
@@ -587,6 +634,11 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	FCataclysmDungeon Dungeon;
 	Dungeon.DungeonId = DungeonId;
 	Dungeon.Type = ECataclysmDungeonType::Basic;
+
+	// ONE BOSS, ON THE FINAL FLOOR. The design's universal rule, and set here
+	// rather than left to the field's default so that a wave-rolled dungeon and
+	// a Fallen City are visibly answering the same question differently.
+	Dungeon.Bosses = 1;
 	Dungeon.CityId = City.CityId;
 	Dungeon.CityTier = City.Tier;
 	Dungeon.SpawnedDay = Day;

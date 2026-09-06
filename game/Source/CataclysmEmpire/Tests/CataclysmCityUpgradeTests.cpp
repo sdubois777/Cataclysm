@@ -610,8 +610,34 @@ bool FCataclysmCityUpgradeClearRestoreTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("its defence is nothing at all"),
 			  Run->Map->Find(Second)->Defence, 0.0f, 0.001f);
-	TestEqual(TEXT("and every dungeon on it was absorbed"),
-			  Run->DungeonsOn(Second).Num(), 0);
+	// AND EVERY DUNGEON ON IT WAS ABSORBED, checked by name rather than by a
+	// count. Until issue #1324 a fallen city had nothing standing on it and a
+	// count of zero said everything; it now has exactly one, the Fallen City
+	// dungeon it became, so the three that were absorbed are named instead.
+	for (const int32 Absorbed : { 901, 902, 903 })
+	{
+		TestNull(FString::Printf(TEXT("dungeon %d was absorbed"), Absorbed),
+				 Run->FindDungeon(Absorbed));
+	}
+
+	const TArray<int32> Standing = Run->DungeonsOn(Second);
+	if (TestEqual(TEXT("and only what the city became stands there"),
+				  Standing.Num(), 1))
+	{
+		const FCataclysmDungeon* Left = Run->FindDungeon(Standing[0]);
+		if (TestNotNull(TEXT("and it is on the map"), Left))
+		{
+			TestEqual(TEXT("and it is the Fallen City"), Left->Type,
+					  ECataclysmDungeonType::FallenCity);
+		}
+	}
+
+	// AND IT DID NOT REPAIR THE CITY EITHER. The city bought
+	// `RestoreDefenceOnClear` and its defence is still nothing, which is the
+	// whole point of this test and is unaffected by the dungeon now left
+	// standing: a fall goes through `RemoveDungeon`, which pays nothing.
+	TestEqual(TEXT("and the city it killed was not healed by it"),
+			  Run->Map->Find(Second)->Defence, 0.0f, 0.001f);
 
 	return true;
 }

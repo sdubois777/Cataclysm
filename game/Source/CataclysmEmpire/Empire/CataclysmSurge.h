@@ -179,6 +179,29 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	float WalkDays = 0.0f;
 
 	/**
+	 * How many bosses it holds.
+	 *
+	 * ONE FOR EVERY DUNGEON BUT A FALLEN CITY, which is the design's universal
+	 * rule: "Every dungeon has a boss on the final floor",
+	 * `docs/Cataclysm_GDD_v2.md` section VIII.
+	 *
+	 * A FALLEN CITY IS THE STATED EXCEPTION AND NOT A VIOLATION OF THAT RULE.
+	 * It carries one boss per dungeon that was standing on the city when it
+	 * fell, which is the same count its floors are taken from, so losing a
+	 * heavily besieged city is visibly worse than losing a quiet one. The final
+	 * floor still carries one of them. Decided by the project owner on
+	 * 2026-09-06, verbatim "One per dungeon that was standing when it fell",
+	 * against the alternatives of a flat number and a share of the floors;
+	 * issue #1324 records the question and the answer.
+	 *
+	 * WHERE THEY ACTUALLY STAND IS NOT DECIDED HERE. This is the strategy
+	 * layer's count. Placing them on floors is the dungeon runtime's work,
+	 * issue #41, and nothing reads this yet.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 Bosses = 1;
+
+	/**
 	 * What one floor of this dungeon costs, in days.
 	 *
 	 * THE WHOLE WALK DIVIDED BY THE FLOORS. A fifty floor dungeon costing two
@@ -540,6 +563,52 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FCataclysmDungeonSpec SpecFor(ECataclysmDungeonType Type,
 										 ECataclysmCityTier Tier);
+
+	/**
+	 * How long a Fallen City dungeon's timer runs. `config.DUNGEON_SPECS`.
+	 *
+	 * LONG ENOUGH THAT IT NEVER FIRES, which is what the model means by the
+	 * `(999, 999)` on every Fallen City row: the dungeon has no consequence to
+	 * apply, so a timer is meaningless for it. `UCataclysmEmpireRun::
+	 * ResolveDungeon` already returns without biting when the city has fallen,
+	 * so this is the second of two reasons it does nothing rather than the only
+	 * one -- but without it the dungeon would appear in every day report's
+	 * resolved list for the rest of the run.
+	 */
+	static constexpr float FallenCityResolveDays = 999.0f;
+
+	/**
+	 * The dungeon a city becomes when it falls.
+	 *
+	 * NOT ROLLED, UNLIKE EVERY OTHER DUNGEON. A wave rolls a depth out of the
+	 * spec's range; this one is determined by what the city was carrying.
+	 * `docs/Cataclysm_GDD_v2.md` section VIII: "Floor count equals the number of
+	 * dungeons that were in the city when it fell (minimum 20/40/60 for
+	 * Outpost/Bulwark/Sanctuary)". Those three minimums are exactly the shallow
+	 * end of the Fallen City rows in `SpecFor`, so the floor is read from there
+	 * rather than written twice.
+	 *
+	 * SO THE SPEC'S DEEP END IS UNUSED FOR THIS KIND, and deliberately: a
+	 * besieged city can exceed it and a quiet one never reaches the shallow end.
+	 *
+	 * THE MODEL ROLLS THE RANGE INSTEAD, AND IS WRONG. `Simulation._make_dungeon`
+	 * draws uniformly from the spec for every kind, so how heavily a city was
+	 * besieged changes nothing about the dungeon it leaves. That is issue #1341,
+	 * and it is the model's defect rather than this one's -- do not "correct"
+	 * this to match it. `tools/tests/test_surge_port.py` holds the divergence
+	 * deliberately so that the two disagreeing does not read as drift.
+	 *
+	 * IT TAKES NOTHING FROM THE CITY EVER AGAIN. The city has already fallen and
+	 * there is nothing left to bite.
+	 *
+	 * @param DungeonsAbsorbed how many dungeons stood on the city when it fell.
+	 *        Sets both the floor count and the boss count. At least one in
+	 *        practice, because a city falls when a dungeon standing on it
+	 *        resolves, and that dungeon is absorbed with the rest.
+	 */
+	static FCataclysmDungeon MakeFallenCityDungeon(
+		int32 DungeonId, const FCataclysmCity& City, int32 Day,
+		int32 DungeonsAbsorbed);
 
 	// ----------------------------------------------------------------------
 	// The schedule

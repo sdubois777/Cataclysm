@@ -398,10 +398,8 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 {
 	OutReport.Fallen.Add(CityId);
 
-	// EVERY DUNGEON STANDING ON IT IS ABSORBED. In the design they become the
-	// Dungeon City the fallen city turns into, and how many were there sets its
-	// floor count. Nothing builds that yet, so they are removed and counted.
-	// Issue #41.
+	// EVERY DUNGEON STANDING ON IT IS ABSORBED INTO THE ONE THE CITY BECOMES,
+	// and how many there were sets both its depth and how many bosses it holds.
 	const TArray<int32> Standing = DungeonsOn(CityId);
 
 	for (const int32 DungeonId : Standing)
@@ -416,6 +414,12 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 		RemoveDungeon(DungeonId);
 	}
 
+	// AND THE CITY ITSELF BECOMES A DUNGEON. `docs/Cataclysm_GDD_v2.md` section
+	// VIII: a fallen city "becomes a Dungeon City -- a staging ground with more
+	// floors and multiple boss fights", and it "must be retaken to restore it".
+	// `ClearDungeon` is where retaking happens.
+	AddFallenCityDungeon(CityId, Standing.Num(), OutReport);
+
 	// AND THE FALL IS ITSELF A SURGE. The design document says a city falling
 	// triggers one; `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation` is
 	// what makes it also speed the rest of the run up.
@@ -423,6 +427,45 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	{
 		FireSurge(OutReport.Day, /* bFromCityFall */ true, OutReport);
 	}
+}
+
+void UCataclysmEmpireRun::AddFallenCityDungeon(
+	int32 CityId, int32 DungeonsAbsorbed, FCataclysmDayReport& OutReport)
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	if (City == nullptr)
+	{
+		return;
+	}
+
+	// AN ERASED CITY LEAVES NOTHING TO RETAKE. The Void erases rather than
+	// takes, and `UCataclysmEmpireMap::Retake` refuses an erased city, so a
+	// dungeon standing on one could be cleared for ever without restoring it.
+	// `Simulation._fall` skips it for the same reason.
+	if (City->bErased)
+	{
+		return;
+	}
+
+	const FCataclysmDungeon Dungeon =
+		UCataclysmSurgeScheduler::MakeFallenCityDungeon(
+			NextDungeonId, *City, OutReport.Day, DungeonsAbsorbed);
+
+	// THE SAME TWO STEPS A LANDED DUNGEON TAKES, in the same order. The
+	// dungeons and the clock's timers are parallel lists kept in step by this
+	// object and nothing else, so adding to one without the other is the
+	// corruption `DungeonsAgreeWithTimers` exists to catch.
+	if (Clock == nullptr || !Clock->AddDungeon(Dungeon.DungeonId, Dungeon.Floors))
+	{
+		return;
+	}
+
+	Clock->SetResolveDays(Dungeon.DungeonId, Dungeon.ResolveDays);
+
+	Dungeons.Add(Dungeon);
+	OutReport.Spawned.Add(Dungeon.DungeonId);
+
+	NextDungeonId = FMath::Max(NextDungeonId, Dungeon.DungeonId + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -455,14 +498,31 @@ TArray<int32> UCataclysmEmpireRun::DungeonsOn(int32 CityId) const
 
 bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 {
-	// WHICH CITY IT WAS ON, READ BEFORE IT IS REMOVED. `RemoveDungeon` takes the
-	// dungeon out of `Dungeons`, so afterwards there is nothing left to ask.
+	// WHICH CITY IT WAS ON AND WHAT KIND IT WAS, READ BEFORE IT IS REMOVED.
+	// `RemoveDungeon` takes the dungeon out of `Dungeons`, so afterwards there
+	// is nothing left to ask.
 	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
 	const int32 CityId = Dungeon ? Dungeon->CityId : INDEX_NONE;
+	const bool bWasFallenCity =
+		Dungeon != nullptr && Dungeon->Type == ECataclysmDungeonType::FallenCity;
 
 	if (!RemoveDungeon(DungeonId))
 	{
 		return false;
+	}
+
+	// BEATING A FALLEN CITY IS HOW A CITY COMES BACK. `docs/Cataclysm_GDD_v2.md`
+	// section VIII: a Dungeon City "must be retaken to restore it".
+	// `UCataclysmEmpireMap::Retake` is what half-restores it, and until this it
+	// had no caller at all -- retaking was implemented and unreachable.
+	//
+	// BEFORE THE REPAIR UPGRADE BELOW AND NOT AFTER. `Retake` sets the city's
+	// defence to half its maximum outright, so an upgrade applied first would be
+	// overwritten; applied second it adds to the half, which is what a city that
+	// bought it should get.
+	if (bWasFallenCity && Map != nullptr && CityId != INDEX_NONE)
+	{
+		Map->Retake(CityId);
 	}
 
 	// AND THE CITY IS REPAIRED A LITTLE, IF IT BOUGHT THAT UPGRADE. The sheet

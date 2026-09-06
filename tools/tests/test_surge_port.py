@@ -465,6 +465,96 @@ class TestWhatADungeonIs:
                 "See issue #1324 for the slice that is meant to.")
 
 
+class TestWhatAFallenCityIs:
+    """A city that falls becomes a dungeon standing on itself.
+
+    Slice 2 of issue #1324. The retaken city's half-restore is compared in
+    `test_empire_map_port.py`, which owns `UCataclysmEmpireMap::RetakenFraction`;
+    what is here is the dungeon the fall leaves behind.
+    """
+
+    def test_it_never_resolves_in_either(self, surge_header, model):
+        """Its timer is set past the end of any run, in both.
+
+        A Fallen City has no consequence left to apply -- the city it stands on
+        has already fallen -- so a timer is meaningless for it. The model says so
+        with `(999, 999)` on every Fallen City row.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        unreal = number(surge_header, "FallenCityResolveDays")
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
+            assert spec.resolve_days[0] == pytest.approx(unreal), (
+                f"{tier}: the model gives a Fallen City "
+                f"{spec.resolve_days[0]} days, the game gives {unreal}")
+
+    def test_it_takes_nothing_from_the_city_in_either(self, model):
+        """Both bites are zero at every tier. The city has already fallen."""
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
+            assert spec.defense_bite == 0.0, tier
+            assert spec.population_bite == 0.0, tier
+
+    def test_the_games_depth_is_the_siege_that_took_the_city(self):
+        """The game derives the depth; it does not roll it.
+
+        `docs/Cataclysm_GDD_v2.md` section VIII: "Floor count equals the number
+        of dungeons that were in the city when it fell (minimum 20/40/60 for
+        Outpost/Bulwark/Sanctuary)". The spec's shallow ends ARE those minimums,
+        so the game reads the floor from there rather than writing it twice.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("MakeFallenCityDungeon(", 1)[1].split("\n}", 1)[0]
+
+        assert "FMath::Max(Absorbed, Spec.LeastFloors)" in made, (
+            "MakeFallenCityDungeon no longer takes the deeper of the absorbed "
+            "count and the tier's minimum, which is the design's rule")
+
+        assert "Stream" not in made, (
+            "MakeFallenCityDungeon draws on a random stream. A Fallen City's "
+            "depth is determined by what the city was carrying, not rolled")
+
+    def test_the_model_still_rolls_that_depth_and_that_is_issue_1341(self, model):
+        """THIS TEST ASSERTS A DIVERGENCE ON PURPOSE, so that the two halves
+        disagreeing does not read as the drift this file exists to catch.
+
+        `Simulation._make_dungeon` draws uniformly from the spec range for every
+        kind, so a city besieged by six dungeons leaves the same distribution of
+        Fallen City as one besieged by one. The design says otherwise and the
+        design is authoritative here, so the MODEL is what is wrong. Issue #1341.
+
+        The owner ruled the same way on the same class of conflict on 2026-09-06,
+        about a Quest dungeon's adjacency: verbatim "Adjacent, and fix the
+        simulation".
+
+        **When #1341 is fixed this test should fail**, and be replaced by one
+        comparing the two rules rather than recording that they differ.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        made = inspect.getsource(Simulation._make_dungeon)
+
+        assert "self.rng.randint(lo, hi)" in made, (
+            "Simulation._make_dungeon no longer rolls its floor count. If #1341 "
+            "has been fixed, replace this test with one that compares the "
+            "game's rule against the model's rather than recording that they "
+            "differ")
+
+        fall = inspect.getsource(Simulation._fall)
+
+        assert "absorbed" in fall and "len(absorbed)" not in fall, (
+            "Simulation._fall now appears to use how many dungeons it absorbed. "
+            "If #1341 has been fixed, this test needs replacing; see above")
+
+
 class TestTheEscalationModes:
     def test_the_enum_names_the_same_four_modes(self, surge_header):
         from cataclysm_sim.config import SurgeMode
