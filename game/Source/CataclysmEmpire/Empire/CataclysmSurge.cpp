@@ -249,45 +249,117 @@ float UCataclysmSurgeScheduler::TargetWeightFor(ECataclysmCityTier Tier)
 FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 	ECataclysmDungeonType Type, ECataclysmCityTier Tier)
 {
-	if (Type != ECataclysmDungeonType::Basic)
-	{
-		// NOTHING BUILDS THE OTHER THREE, so there is nothing honest to answer.
-		// A spec of one floor and no bite is what `IsBuilt` reads as false, and
-		// it is deliberately useless rather than a plausible-looking guess that
-		// a caller could take for a designed number.
-		return FCataclysmDungeonSpec();
-	}
-
 	FCataclysmDungeonSpec Spec;
 
-	switch (Tier)
+	switch (Type)
 	{
-	case ECataclysmCityTier::Bulwark:
-		Spec.LeastFloors = 15;
-		Spec.MostFloors = 25;
-		Spec.DefenceBite = 0.09f;
-		Spec.PopulationBite = 0.05f;
+	case ECataclysmDungeonType::Basic:
+		switch (Tier)
+		{
+		case ECataclysmCityTier::Bulwark:
+			Spec.LeastFloors = 15;
+			Spec.MostFloors = 25;
+			Spec.DefenceBite = 0.09f;
+			Spec.PopulationBite = 0.05f;
+			break;
+
+		case ECataclysmCityTier::Sanctuary:
+			Spec.LeastFloors = 25;
+			Spec.MostFloors = 40;
+			Spec.DefenceBite = 0.08f;
+			Spec.PopulationBite = 0.04f;
+			break;
+
+		case ECataclysmCityTier::Pillar:
+			Spec.LeastFloors = 40;
+			Spec.MostFloors = 60;
+			Spec.DefenceBite = 0.06f;
+			Spec.PopulationBite = 0.03f;
+			break;
+
+		default:
+			Spec.LeastFloors = 8;
+			Spec.MostFloors = 15;
+			Spec.DefenceBite = 0.10f;
+			Spec.PopulationBite = 0.05f;
+			break;
+		}
 		break;
 
-	case ECataclysmCityTier::Sanctuary:
-		Spec.LeastFloors = 25;
-		Spec.MostFloors = 40;
-		Spec.DefenceBite = 0.08f;
-		Spec.PopulationBite = 0.04f;
+	case ECataclysmDungeonType::Quest:
+		// THE ZERO BITES ARE THE DESIGN AND NOT A MISSING NUMBER. A Quest
+		// dungeon "does not resolve -- refreshes and may move to adjacent
+		// city", so it never applies a consequence to the city it sits on.
+		// `Simulation._resolve` returns before touching defence or population
+		// for one, and every Quest row in `config.DUNGEON_SPECS` is 0.0/0.0.
+		switch (Tier)
+		{
+		case ECataclysmCityTier::Bulwark:
+			Spec.LeastFloors = 30;
+			Spec.MostFloors = 45;
+			break;
+
+		case ECataclysmCityTier::Sanctuary:
+			Spec.LeastFloors = 30;
+			Spec.MostFloors = 50;
+			break;
+
+		case ECataclysmCityTier::Pillar:
+			Spec.LeastFloors = 50;
+			Spec.MostFloors = 70;
+			break;
+
+		default:
+			Spec.LeastFloors = 20;
+			Spec.MostFloors = 30;
+			break;
+		}
 		break;
 
-	case ECataclysmCityTier::Pillar:
-		Spec.LeastFloors = 40;
-		Spec.MostFloors = 60;
-		Spec.DefenceBite = 0.06f;
-		Spec.PopulationBite = 0.03f;
+	case ECataclysmDungeonType::FallenCity:
+		// DEEPER THAN A BASIC DUNGEON ON THE SAME CITY, ROUGHLY TWO AND A HALF
+		// TIMES. The design's minimums are "20/40/60 for
+		// Outpost/Bulwark/Sanctuary" and these ranges start exactly there.
+		//
+		// AND IT BITES NOTHING, because the city it stands on has already
+		// fallen. `Dungeon.resolves` in the model says so: "Fallen City and
+		// Cataclysm dungeons have already done their damage."
+		switch (Tier)
+		{
+		case ECataclysmCityTier::Bulwark:
+			Spec.LeastFloors = 40;
+			Spec.MostFloors = 60;
+			break;
+
+		case ECataclysmCityTier::Sanctuary:
+			Spec.LeastFloors = 60;
+			Spec.MostFloors = 85;
+			break;
+
+		case ECataclysmCityTier::Pillar:
+			Spec.LeastFloors = 80;
+			Spec.MostFloors = 120;
+			break;
+
+		default:
+			Spec.LeastFloors = 20;
+			Spec.MostFloors = 35;
+			break;
+		}
 		break;
 
-	default:
-		Spec.LeastFloors = 8;
-		Spec.MostFloors = 15;
-		Spec.DefenceBite = 0.10f;
-		Spec.PopulationBite = 0.05f;
+	case ECataclysmDungeonType::Cataclysm:
+		// AT THE PILLAR AND NOWHERE ELSE, AND EVERY OTHER TIER IS LEFT UNBUILT
+		// DELIBERATELY. `config.DUNGEON_SPECS` holds exactly one Cataclysm row,
+		// `(CATACLYSM, PILLAR)`, and `TuningConfig.spec` is a bare dictionary
+		// lookup -- so asking the model for a Cataclysm on an Outpost raises
+		// rather than answering. A spec whose `IsBuilt` is false is the same
+		// answer here, where a lookup cannot raise.
+		if (Tier == ECataclysmCityTier::Pillar)
+		{
+			Spec.LeastFloors = 100;
+			Spec.MostFloors = 150;
+		}
 		break;
 	}
 

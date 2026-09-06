@@ -224,38 +224,198 @@ class TestWhatADungeonIs:
             f"at a jitter of {jitter} an 8-floor dungeon can outlast a 15-floor "
             "one on the same Outpost")
 
+    # Every (dungeon kind, city tier) pair the model holds, written out by hand
+    # rather than read from either side. Two copies of a number are two numbers;
+    # this is deliberately a THIRD, so that the model and the C++ drifting
+    # together still fails.
+    #
+    # THE THREE NON-BASIC KINDS ALL BITE NOTHING and that is the design rather
+    # than a gap: a Quest dungeon never resolves, and a Fallen City and a
+    # Cataclysm stand on a city whose damage is already done.
+    #
+    # THE CATACLYSM HAS ONE ROW. `config.DUNGEON_SPECS` holds it only for the
+    # Pillar and `TuningConfig.spec` raises when asked for another, so there are
+    # thirteen pairs and not sixteen.
     SPECS = {
-        "Outpost": (8, 15, 0.10, 0.05),
-        "Bulwark": (15, 25, 0.09, 0.05),
-        "Sanctuary": (25, 40, 0.08, 0.04),
-        "Pillar": (40, 60, 0.06, 0.03),
+        ("Basic", "Outpost"):        (8, 15, 0.10, 0.05),
+        ("Basic", "Bulwark"):        (15, 25, 0.09, 0.05),
+        ("Basic", "Sanctuary"):      (25, 40, 0.08, 0.04),
+        ("Basic", "Pillar"):         (40, 60, 0.06, 0.03),
+
+        ("Quest", "Outpost"):        (20, 30, 0.0, 0.0),
+        ("Quest", "Bulwark"):        (30, 45, 0.0, 0.0),
+        ("Quest", "Sanctuary"):      (30, 50, 0.0, 0.0),
+        ("Quest", "Pillar"):         (50, 70, 0.0, 0.0),
+
+        ("FallenCity", "Outpost"):   (20, 35, 0.0, 0.0),
+        ("FallenCity", "Bulwark"):   (40, 60, 0.0, 0.0),
+        ("FallenCity", "Sanctuary"): (60, 85, 0.0, 0.0),
+        ("FallenCity", "Pillar"):    (80, 120, 0.0, 0.0),
+
+        ("Cataclysm", "Pillar"):     (100, 150, 0.0, 0.0),
     }
 
-    def test_every_basic_dungeon_spec_matches(self, model):
-        """The Unreal side writes these into a switch rather than a table, so
-        this compares the four the switch names against the model's."""
-        from cataclysm_sim.config import CityTier, DungeonType
+    @staticmethod
+    def unreal_specs() -> dict:
+        """`SpecFor` in `CataclysmSurge.cpp`, read back as a table.
 
+        WHY THIS PARSES RATHER THAN SEARCHES FOR SUBSTRINGS. The earlier version
+        of this test asked whether `LeastFloors = 15;` appeared anywhere in the
+        file. That was already loose with four rows and is useless with thirteen:
+        `LeastFloors = 20;` is correct for a Quest on an Outpost and for a Fallen
+        City on an Outpost, so a search cannot tell a right pairing from a wrong
+        one, and swapping two rows would pass. This reads which block each number
+        is actually in.
+
+        `default:` IS THE OUTPOST. The C++ writes the Outpost as the default arm
+        of each tier switch rather than naming it, which is the file's existing
+        style. The Cataclysm has no tier switch at all -- one `if` on the Pillar
+        -- so it is read separately.
+        """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
 
-        for tier_name, (least, most, defence, population) in self.SPECS.items():
-            spec = model.spec(DungeonType.BASIC, CityTier(tier_name))
+        body = source.split("UCataclysmSurgeScheduler::SpecFor(", 1)[1]
+        body = body.split("return Spec;", 1)[0]
+
+        found = {}
+        kinds = re.split(r"case ECataclysmDungeonType::(\w+):", body)
+
+        # re.split leaves the text before the first match at index 0, then
+        # alternates name, block, name, block.
+        for index in range(1, len(kinds), 2):
+            kind = kinds[index]
+            block = kinds[index + 1]
+
+            tiers = re.split(r"case ECataclysmCityTier::(\w+):|(default):",
+                             block)
+
+            if len(tiers) > 1:
+                for spot in range(1, len(tiers), 3):
+                    named, fallback = tiers[spot], tiers[spot + 1]
+                    tier = "Outpost" if fallback else named
+                    numbers = TestWhatADungeonIs._numbers_in(tiers[spot + 2])
+                    if numbers is not None:
+                        found[(kind, tier)] = numbers
+                continue
+
+            # NO TIER SWITCH, SO ONE ARM GUARDED BY AN `if`. That is the
+            # Cataclysm, which exists on one tier only.
+            #
+            # THE TIER IS READ FROM THE CODE RATHER THAN ASSUMED TO BE THE
+            # PILLAR. An earlier version of this parser recorded the Pillar
+            # whenever it saw one mentioned, which made
+            # `test_the_game_builds_no_cataclysm_below_the_pillar` incapable of
+            # failing: it could never record a lesser tier, so it asserted
+            # something the parser had already made impossible.
+            named = re.search(r"Tier == ECataclysmCityTier::(\w+)", block)
+            numbers = TestWhatADungeonIs._numbers_in(block)
+            if named and numbers is not None:
+                found[(kind, named.group(1))] = numbers
+
+        return found
+
+    @staticmethod
+    def _numbers_in(block: str):
+        """The four spec numbers in one arm, or None if it sets no floors.
+
+        A BITE THAT IS NOT WRITTEN IS ZERO, because `FCataclysmDungeonSpec`
+        declares both bites `0.0f` and the three new kinds leave them alone.
+        Reading an absent line as zero is what the struct actually does; reading
+        it as missing would report every new row as broken.
+        """
+        def one(name: str, fallback):
+            hit = re.search(r"Spec\." + name + r"\s*=\s*([0-9.]+)f?;", block)
+            return type(fallback)(hit.group(1)) if hit else fallback
+
+        if not re.search(r"Spec\.LeastFloors", block):
+            return None
+
+        return (one("LeastFloors", 0), one("MostFloors", 0),
+                one("DefenceBite", 0.0), one("PopulationBite", 0.0))
+
+    def test_the_model_holds_the_thirteen_specs_this_test_expects(self, model):
+        """The model against the hand-written table above."""
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for (kind, tier_name), (least, most, defence, pop) in self.SPECS.items():
+            spec = model.spec(DungeonType(kind), CityTier(tier_name))
 
             assert spec.floors == (least, most), (
-                f"{tier_name}: this test expects {(least, most)} floors, the "
-                f"model has {spec.floors}")
-            assert spec.defense_bite == pytest.approx(defence)
-            assert spec.population_bite == pytest.approx(population)
+                f"{kind} on {tier_name}: this test expects {(least, most)} "
+                f"floors, the model has {spec.floors}")
+            assert spec.defense_bite == pytest.approx(defence), (
+                f"{kind} on {tier_name}: defence bite")
+            assert spec.population_bite == pytest.approx(pop), (
+                f"{kind} on {tier_name}: population bite")
 
-            # And the C++ carries the same four numbers for that tier.
-            for value in (f"LeastFloors = {least};",
-                          f"MostFloors = {most};",
-                          f"DefenceBite = {defence:.2f}f;",
-                          f"PopulationBite = {population:.2f}f;"):
-                assert value in source, (
-                    f"{tier_name}: CataclysmSurge.cpp does not contain "
-                    f"{value!r}")
+    def test_the_model_holds_no_other_spec(self, model):
+        """Thirteen and not sixteen. A Cataclysm exists only at the Pillar, and
+        a fourteenth row appearing in the model without appearing here would
+        otherwise go unnoticed by every check in this file."""
+        held = {(kind.value, tier.value) for kind, tier in model.DUNGEON_SPECS}
+
+        assert held == set(self.SPECS), (
+            f"the model holds {sorted(held - set(self.SPECS))} that this test "
+            f"does not, and lacks {sorted(set(self.SPECS) - held)}")
+
+    def test_every_dungeon_spec_matches_in_the_game(self):
+        """The C++ switch against the same hand-written table.
+
+        WHAT THIS CATCHES THAT THE MODEL TEST DOES NOT. `SpecFor` is a switch
+        written by hand and the model is a dictionary. Nothing but this compares
+        them, and until issue #1324 nothing compared any kind but `Basic` -- so
+        the game answering only for Basic while the model answered for all four
+        went unreported for as long as both existed.
+        """
+        found = self.unreal_specs()
+
+        assert found == self.SPECS, (
+            "CataclysmSurge.cpp and this test disagree.\n"
+            f"  only in the C++: {sorted(set(found) - set(self.SPECS))}\n"
+            f"  only in this test: {sorted(set(self.SPECS) - set(found))}\n"
+            + "\n".join(
+                f"  {pair}: the C++ has {found[pair]}, this test expects "
+                f"{self.SPECS[pair]}"
+                for pair in sorted(set(found) & set(self.SPECS))
+                if found[pair] != self.SPECS[pair]))
+
+    def test_the_game_builds_no_cataclysm_below_the_pillar(self):
+        """The model raises when asked for one, so the C++ must not answer.
+
+        A plausible-looking floor range for a Cataclysm on an Outpost would be
+        an invented number, and this repository has been bitten by those.
+        """
+        found = self.unreal_specs()
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary"):
+            assert ("Cataclysm", tier) not in found, (
+                f"CataclysmSurge.cpp answers a Cataclysm spec on a {tier}, "
+                "which the model has no row for")
+
+    def test_nothing_creates_a_dungeon_that_is_not_basic_yet(self):
+        """Slice 1 of #1324 answers what a dungeon WOULD be; it builds none.
+
+        This is the guard on the scope of that change. `MakeDungeon` is the only
+        thing that puts a dungeon on the map, and it still sets `Basic`. When the
+        work that creates the other kinds lands, this test is the one that should
+        fail and be rewritten -- deliberately, rather than the scope drifting.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        made = made.split("return Dungeon;", 1)[0]
+
+        assert "Dungeon.Type = ECataclysmDungeonType::Basic;" in made, (
+            "MakeDungeon no longer sets Basic. If dungeon kinds are now rolled, "
+            "this test has done its job and should be replaced by one that "
+            "checks the roll.")
+
+        for kind in ("Quest", "FallenCity", "Cataclysm"):
+            assert f"ECataclysmDungeonType::{kind}" not in made, (
+                f"MakeDungeon mentions {kind}, so something may now create one. "
+                "See issue #1324 for the slice that is meant to.")
 
 
 class TestTheEscalationModes:

@@ -499,20 +499,88 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a Sanctuary loses a smaller share per bite than an Outpost"),
 			 Sanctuary.DefenceBite < Outpost.DefenceBite);
 
-	// ONLY BASIC DUNGEONS ARE BUILT.
+	// ALL FOUR KINDS HAVE A SPEC NOW. Until issue #1324 the other three
+	// answered a spec `IsBuilt` read as false, on the grounds that nothing
+	// built them. Nothing builds them still -- `MakeDungeon` sets `Basic` on
+	// every dungeon a surge lands -- but the numbers they would use are the
+	// model's and have been settled all along, and the work that creates them
+	// needs them answered first.
 	TestTrue(TEXT("a basic dungeon has a spec"), Outpost.IsBuilt());
-	TestFalse(TEXT("a quest dungeon does not"),
-			  UCataclysmSurgeScheduler::SpecFor(
-				  ECataclysmDungeonType::Quest,
-				  ECataclysmCityTier::Outpost).IsBuilt());
-	TestFalse(TEXT("nor a fallen city"),
-			  UCataclysmSurgeScheduler::SpecFor(
-				  ECataclysmDungeonType::FallenCity,
-				  ECataclysmCityTier::Bulwark).IsBuilt());
-	TestFalse(TEXT("nor the Cataclysm boss dungeon"),
-			  UCataclysmSurgeScheduler::SpecFor(
-				  ECataclysmDungeonType::Cataclysm,
-				  ECataclysmCityTier::Pillar).IsBuilt());
+	TestTrue(TEXT("so does a quest dungeon"),
+			 UCataclysmSurgeScheduler::SpecFor(
+				 ECataclysmDungeonType::Quest,
+				 ECataclysmCityTier::Outpost).IsBuilt());
+	TestTrue(TEXT("and a fallen city"),
+			 UCataclysmSurgeScheduler::SpecFor(
+				 ECataclysmDungeonType::FallenCity,
+				 ECataclysmCityTier::Bulwark).IsBuilt());
+	TestTrue(TEXT("and the Cataclysm boss dungeon"),
+			 UCataclysmSurgeScheduler::SpecFor(
+				 ECataclysmDungeonType::Cataclysm,
+				 ECataclysmCityTier::Pillar).IsBuilt());
+
+	// AND THE CATACLYSM STILL HAS NO SPEC ANYWHERE BUT THE PILLAR. The model
+	// holds one Cataclysm row and `TuningConfig.spec` raises when asked for
+	// another, so answering a plausible number for an Outpost would be
+	// inventing one. All three lesser tiers are checked, not just one.
+	for (const ECataclysmCityTier Lesser : { ECataclysmCityTier::Outpost,
+											 ECataclysmCityTier::Bulwark,
+											 ECataclysmCityTier::Sanctuary })
+	{
+		TestFalse(TEXT("no Cataclysm dungeon below the Pillar"),
+				  UCataclysmSurgeScheduler::SpecFor(
+					  ECataclysmDungeonType::Cataclysm, Lesser).IsBuilt());
+	}
+
+	// EVERY NEW KIND BITES NOTHING, asserted rather than assumed. A Quest
+	// dungeon never resolves; a Fallen City and a Cataclysm stand on a city
+	// whose damage is already done. A non-zero here would mean a city taking
+	// damage from a dungeon the design says takes none.
+	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Quest,
+											  ECataclysmDungeonType::FallenCity,
+											  ECataclysmDungeonType::Cataclysm })
+	{
+		const FCataclysmDungeonSpec Bites =
+			UCataclysmSurgeScheduler::SpecFor(Kind, ECataclysmCityTier::Pillar);
+
+		TestEqual(TEXT("it takes no defence"), Bites.DefenceBite, 0.0f);
+		TestEqual(TEXT("and no population"), Bites.PopulationBite, 0.0f);
+	}
+
+	// AND A DEEPER KIND IS DEEPER ON THE SAME CITY. The three ladders never
+	// cross: on any one tier a Fallen City is deeper than a Quest, which is
+	// deeper than a Basic, at both ends of the range. Checked on every tier
+	// rather than on one, because the ranges OVERLAP -- a Sanctuary Basic is
+	// 25 to 40 and a Sanctuary Quest is 30 to 50 -- so the stronger claim that
+	// one range starts where another ends is false and must not be asserted.
+	for (const ECataclysmCityTier Tier : { ECataclysmCityTier::Outpost,
+										   ECataclysmCityTier::Bulwark,
+										   ECataclysmCityTier::Sanctuary,
+										   ECataclysmCityTier::Pillar })
+	{
+		const FCataclysmDungeonSpec Basic = UCataclysmSurgeScheduler::SpecFor(
+			ECataclysmDungeonType::Basic, Tier);
+		const FCataclysmDungeonSpec Quest = UCataclysmSurgeScheduler::SpecFor(
+			ECataclysmDungeonType::Quest, Tier);
+		const FCataclysmDungeonSpec Fallen = UCataclysmSurgeScheduler::SpecFor(
+			ECataclysmDungeonType::FallenCity, Tier);
+
+		TestTrue(TEXT("a quest dungeon is deeper than a basic one, both ends"),
+				 Quest.LeastFloors > Basic.LeastFloors
+				 && Quest.MostFloors > Basic.MostFloors);
+
+		// AT LEAST AS DEEP AT THE SHALLOW END AND STRICTLY DEEPER AT THE DEEP
+		// END. On an Outpost both start at 20, so the shallow end is not
+		// strictly greater and asserting that it is would fail.
+		TestTrue(TEXT("and a fallen city is deeper again"),
+				 Fallen.LeastFloors >= Quest.LeastFloors
+				 && Fallen.MostFloors > Quest.MostFloors);
+
+		TestTrue(TEXT("and every range runs shallow to deep"),
+				 Basic.LeastFloors <= Basic.MostFloors
+				 && Quest.LeastFloors <= Quest.MostFloors
+				 && Fallen.LeastFloors <= Fallen.MostFloors);
+	}
 
 	// AND A ROLLED DUNGEON STAYS INSIDE ITS RANGE. Two hundred rolls on each of
 	// three tiers, checking both that nothing escapes and that the range is
