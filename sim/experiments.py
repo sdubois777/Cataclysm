@@ -2,8 +2,11 @@
 
     python experiments.py
 
-Ground rules now fixed by design rather than swept:
-  * One dungeon floor costs exactly one day.
+Ground rules now fixed rather than swept:
+  * One dungeon floor costs one day. Fixed by this model rather than by the
+    design: `days_per_floor` is 1.0 and no sweep moves it. In the game that is
+    a starting rate, and city upgrades and the empire tree lower it while the
+    floor count stays where it is. `sim/README.md` has the long version.
   * The dungeon you are inside has its timer PAUSED. Everything else ticks.
   * A city falling triggers a surge.
   * Days are also spent at the forge, which defends nothing.

@@ -140,8 +140,11 @@ class EmpireTree:
     run_days_flat: float = 0.0      # total flat days removed (the current design)
     run_days_mult: float = 1.0      # multiplicative scalar
 
-    # Floors added/removed. Because one floor costs one day, this changes run
-    # time AND reward together -- you cannot buy speed without paying loot.
+    # Floors added/removed. This model charges one day a floor, so this lever
+    # changes run time AND reward together: it cannot buy speed without paying
+    # loot. `run_days_flat` above is the lever that can, and
+    # TREE_EXPLORER_VIA_FLOORS exists to contrast the two. In the game a city
+    # upgrade shortens the walk without touching the floor count at all.
     floor_delta: float = 0.0
 
     # --- city survivability ----------------------------------------------
@@ -217,9 +220,10 @@ class TuningConfig:
     city_fall_advances_escalation: bool = True
 
     # UNKNOWN #3 -- resolve timers.
-    # Now that one floor costs one day, a flat timer table cannot work: a
-    # 40-floor dungeon with a 30-day timer is unsavable no matter how well the
-    # player plays. The timer has to scale with depth alongside the run time.
+    # A flat timer table cannot work at one day a floor: a 40-floor dungeon
+    # with a 30-day timer is unsavable no matter how well the player plays.
+    # The timer scales with depth, and with depth only -- in the game a
+    # shortened walk does not move it.
     #
     #     resolve_days = resolve_base_days + floors * resolve_floor_ratio
     #
@@ -263,9 +267,9 @@ class TuningConfig:
     # =====================================================================
     # Power and the forge
     # =====================================================================
-    # Time and floors are separate currencies. A floor costs a day, but a day
-    # can also be spent at the forge instead -- and the forge does not defend
-    # anything. That is the decision the whole game is built on: make the item
+    # Time and floors are separate currencies. A floor costs a day to begin
+    # with, but a day can also be spent at the forge instead -- and the forge
+    # does not defend anything. That is the decision the whole game is built on: make the item
     # and let a city burn, or keep slogging with the gear you have.
 
     # Which difficulty tier this run is played at. Sets the whole power scale

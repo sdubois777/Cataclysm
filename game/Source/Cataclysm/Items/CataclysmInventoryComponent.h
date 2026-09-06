@@ -16,8 +16,8 @@
  * The decision of 2026-08-05 in `docs/DECISIONS.md` gives the reasoning: Diablo
  * IV fixes its inventory at 33 and states why, Path of Exile's grid never grows,
  * and a scaling source would weaken a pressure this design created on purpose --
- * a dungeon floor costs a day, so how much can be carried is part of how deep it
- * is worth going. **48 is a tuning value; that it does not change is the rule.**
+ * a dungeon floor costs a day to begin with, so how much can be carried is part
+ * of how deep it is worth going. **48 is a tuning value; that it does not change is the rule.**
  *
  * SO ADDING AN ITEM CAN FAIL, AND THAT IS THE INTERESTING BRANCH. The decision
  * of 2026-08-14 settled what a full inventory means: there is no way out of a

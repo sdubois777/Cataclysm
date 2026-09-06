@@ -199,9 +199,11 @@ public:
 	 *      player rather than marching on the city, so entering is a guaranteed
 	 *      save rather than a gamble -- and what it costs is every other timer
 	 *      advancing while you are down there.
-	 *   3. Spends a day, because the player is now standing on floor 1 and a
-	 *      floor costs a day. Walking N floors costs N days: one for arriving
-	 *      and one for each descent.
+	 *   3. Spends a floor's worth of time, because the player is now standing
+	 *      on floor 1. A floor costs a day to begin with, so walking N floors
+	 *      costs N days at that starting rate -- one for arriving and one for
+	 *      each descent -- and less once a city upgrade has lowered the
+	 *      dungeon's `WalkDaysPerFloor`.
 	 *
 	 * @return whether a dungeon of that number is standing on the map
 	 */

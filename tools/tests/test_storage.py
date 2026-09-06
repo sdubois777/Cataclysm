@@ -569,11 +569,13 @@ def test_the_inventory_rule_says_why_rather_than_only_what(storage):
     assert "Why nothing increases it" in storage, (
         "the Storage section fixes the inventory without saying why. Issue "
         "#308.")
-    assert "a dungeon floor costs a day" in storage, (
+    assert "a dungeon floor costs a day to begin with" in storage, (
         "the reason given does not connect to the pressure this design already "
-        "has. A dungeon floor costs a day, so a dungeon is a long way from "
-        "anywhere to put things down, and that is what makes carrying capacity "
-        "a real constraint here. Issue #308.")
+        "has. A dungeon floor costs a day to begin with, so a dungeon is a long "
+        "way from anywhere to put things down, and that is what makes carrying "
+        "capacity a real constraint here. The qualifier is load-bearing: a city "
+        "upgrade can shorten the walk, and the sentence has to say the day is a "
+        "starting rate rather than a law. Issues #308 and #1322.")
 
 
 def test_it_says_why_the_number_is_not_diablo_fours(storage):

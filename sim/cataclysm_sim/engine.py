@@ -159,8 +159,9 @@ class Simulation:
         lo, hi = spec.floors
         floors = max(1, int(round(self.rng.randint(lo, hi) * floors_mult)))
 
-        # Floor deltas from the tree change depth, and because one floor costs
-        # one day they change run time and reward at the same time.
+        # Floor deltas from the tree change depth, and because this model charges
+        # one day a floor they change run time and reward at the same time. The
+        # game can separate the two; this model cannot.
         floors = max(1, int(round(floors + cfg.tree.floor_delta)))
 
         # Subtype and modifiers. One modifier per tier; Sacrificial starts with
