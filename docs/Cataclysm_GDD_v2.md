@@ -258,6 +258,36 @@ Each run begins with a randomly selected Cataclysm. Every time a Cataclysm is de
 
   
 
+**The order the Cataclysms are added in is randomised for each new character.**
+Every time a player starts a new character, the order in which Cataclysms are
+added per tier is drawn again. There is no Cataclysm that is always first and
+none that is always last: **Void is not necessarily the last one added**, and
+neither is any other. Settled with the project owner on 2026-09-06.
+
+  
+
+**Why it is randomised: variety, and so that the opening cannot be solved.** A
+fixed order would have one best first Cataclysm, one best second, and a
+speed-running route that a player learns once and then repeats for every
+character afterwards. Drawing the order per character means some Cataclysms are
+hard to start with, some combine early into a genuinely difficult run, and a
+character may draw a cakewalk for its first four tiers. Which of those a player
+gets is part of what makes a character worth starting.
+
+  
+
+**What the rule does not fix.** It says the order is drawn per character and no
+more. It does not say whether every ordering is equally likely, nor whether any
+pairing is constrained — the reasoning above allows a hard combination early
+rather than requiring one. It also does not say whether the drawn order is held
+for the character's whole life, which is the plain reading of "every time a
+player starts a new character", or drawn again for each run, which is what the
+paragraph above about a run beginning with a randomly selected Cataclysm would
+suggest; the two have not been reconciled. `docs/DECISIONS.md` lists the parts
+that are undecided, and issue #1338 carries them.
+
+  
+
 **The active Cataclysm determines the player's damage type.** Loot is biased toward weapons tuned to the Cataclysm being fought, and because weapon damage type determines both the available skills and the available class trees, this is what shapes the build a run produces. Fighting the Demonic Cataclysm means mostly Demonic weapons drop, which unlocks the Demonic classes.
 
   
@@ -3982,6 +4012,29 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.
 
+**The population the empire keeps alive scales what a defeated dungeon is
+worth.** Keeping cities alive means the population in them survives, and the
+more population a player maintains, the more empire upgrade points a dungeon
+defeat awards. Losing cities therefore costs more than the cities: it slows the
+tree down for every run afterwards. Stated by the project owner on 2026-09-06
+and recorded in `docs/DECISIONS.md`.
+
+**That is what defending the empire buys, and it is paid between runs rather
+than inside one.** A run is still won by defeating the Cataclysm boss dungeon
+and still ends when the capital falls, and neither of those is changed by this
+rule. What the surviving population buys is how fast the permanent tree fills,
+which is spent on the next run and every run after it. A measurement that covers
+a single campaign cannot see that reward at all, so a defensive investment
+looking worthless within one run is not evidence that it is worthless.
+
+**What the rule does not fix.** The direction is settled and the shape is not.
+It does not say whether the bonus follows population as a fraction of the
+empire's maximum or as an absolute count, whether it applies per dungeon
+defeated or once at the end of a run, whether a fallen city contributes nothing
+or contributes whatever population survived it, or whether the bonus has a floor
+or a ceiling. Those are tuning values and are not fixed here. Issue #1348
+carries them.
+
 **The empire upgrade tree belongs to the account, not to the character.** Every
 character on the account shares one tree with every other character in the same
 lethality mode. Making another character in a mode already being played costs
@@ -5999,6 +6052,12 @@ every character arrives at.
 ## **Roguelike Meta Progression**
 
 Empire upgrade points are earned by defeating dungeons and persist through all runs including failures. The empire upgrade tree provides permanent bonuses to city defenses, dungeon parameters, and empire management. This system ensures every run — even a failed one — makes the next attempt slightly stronger, rewarding persistence without making early runs trivial.
+
+**How many points a dungeon defeat is worth depends on how much population is
+still alive**, so a run that holds its cities feeds the tree faster than one
+that lets them fall. That is the between-run reward for defending the empire.
+The Empire-Wide Upgrades section states the rule in full and says which parts of
+its shape are not yet fixed.
 
 **The tree persists across characters as well as across runs, within one
 lethality mode.** It belongs to the account, so a new character inherits it —

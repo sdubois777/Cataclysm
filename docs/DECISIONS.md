@@ -2,6 +2,157 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — Population kept alive scales empire progression
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Empire-Wide Upgrades and Roguelike
+Meta Progression sections. Applied to the design document only. Issue
+[#1348](https://github.com/sdubois777/Cataclysm/issues/1348).
+
+### The ruling
+
+The project owner stated it on 2026-09-06, verbatim:
+
+> Keeping cities alive means your population survives which acts as a bonus to
+> the experience you gain towards your empire passive tree. That's probably
+> documented somewhere. But basically, the more population you maintain, the
+> more experience you get for your empire whenever you defeat a dungeon. I'm not
+> sure if there should be anything more than that.
+
+It was not documented anywhere. Asked whether it was real or a misrecollection,
+given nobody could find it, the owner answered: **"It is real — write it into
+the design"**.
+
+### What the design said before
+
+The Empire-Wide Upgrades section said that players accumulate empire upgrade
+points by defeating dungeons, and nothing scaled that by population. The only
+mention of population nearby ran the opposite way: empire upgrades provide
+bonuses *to* population.
+
+### Why it matters more than a missing sentence
+
+Every measurement this project makes covers a single campaign. The ceiling
+measurement on issue [#1327](https://github.com/sdubois777/Cataclysm/issues/1327)
+found that beyond about 8x survivability, further defensive investment does not
+change whether a run is won — only how much empire is left standing — and that
+was read as "keeping cities is not connected to the win condition".
+
+**With this rule the connection exists; it is just not inside a single run.** The
+payoff for defending is realised across runs, in how fast the permanent tree
+fills. So the saturation result is not wrong, it is answering a narrower question
+than it appeared to answer, and the defensive branch may be buying progression
+speed rather than nothing.
+
+### WHAT THIS DOES NOT SETTLE, and none of it may be invented
+
+The statement gives a direction, not a shape. Five things are open and belong to
+the project owner. `CLAUDE.md` requires the genre to be researched and the
+sources named before any formula is proposed, and that research has not been
+done:
+
+1. **Whether the bonus follows population as a fraction of the empire's maximum
+   or as an absolute count.** These diverge badly once empire upgrades raise
+   maximum population, because the first is capped at parity and the second is
+   not.
+2. **Whether it applies per dungeon defeated or once at the end of a run.** The
+   owner's words say "whenever you defeat a dungeon", which reads as per dungeon,
+   but that makes the bonus depend on the order cities fall in during a run.
+3. **Whether a fallen city contributes nothing, or contributes whatever
+   population survived it.** A fallen city is not necessarily an empty one.
+4. **Whether the bonus has a floor or a ceiling.** With no floor, a wiped-out
+   empire earns nothing from the dungeons it still clears, which would make a bad
+   run feed the tree not at all — and the tree's whole promise is that no run is
+   wasted.
+5. **Whether "experience" is a second quantity that converts into empire upgrade
+   points, or another word for the points themselves.** The design has one
+   currency, the empire upgrade point; the owner's words say experience. The
+   document has been written as the minimal reading — population scales the
+   points — and this entry records that a reading was chosen.
+
+### The owner's own words leave a sixth question open
+
+They end "I'm not sure if there should be anything more than that." So whether
+keeping cities should **also** advance the win condition within a run is
+untouched by this, and this entry does not answer it.
+
+### What the simulation does, corrected
+
+Issue #1348 as filed says the model "has no concept of empire progression at
+all". **That is wrong, and it was checked.** `sim/cataclysm_sim/config.py` line
+281 holds `empire_points_per_dungeon`, a per-dungeon-type dictionary; the
+comment above it calls it UNKNOWN #5 and says it is "Not consumed by the strategy
+sim; recorded so the meta-progression curve can be fitted from the same runs".
+`sim/cataclysm_sim/engine.py` line 588 accumulates it on every dungeon defeat and
+line 842 reports it on the campaign result.
+
+So the model already counts empire points; **what it does not do is scale them by
+surviving population**, and `engine.py` line 588 is the single line that would
+take the factor. Nothing here changes it, because whether a between-run reward
+belongs in a single-campaign model is a real question rather than a formality,
+and it cannot be answered before the shape above is settled.
+
+## 2026-09-06 — The order the Cataclysms are added in is randomised per character
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Game Start section. Applied to the
+design document only. Issue
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338).
+
+### The ruling
+
+The project owner stated it on 2026-09-06, verbatim:
+
+> Void isn't necessarily "the last cataclysm added". Every time a player starts a
+> new character, the order in which cataclysms are added per tier is randomized.
+> This is to provide variety, as well as prevent the meta speed running strats
+> from being solved too quickly. Some cataclysms are hard to start with, some
+> combine early to make some really difficult runs, sometimes you might just get
+> a cakewalk for the first 4 tiers. Who knows.
+
+### Why it needed writing down at all
+
+It was nowhere in `docs/`. `CLAUDE.md` says a design decision is not real until
+it is in `docs/`, so until this entry it was not one. The document said only that
+"each run begins with a randomly selected Cataclysm" and that each defeat adds
+one more, which leaves the order the additions arrive in unstated, and a reader
+who wanted an order had nothing to read but the simulation's fixed list.
+
+### WHAT THIS DOES NOT SETTLE, and none of it may be invented
+
+The statement is a rule about variety, not a distribution. Four things are left
+open and are for the project owner rather than for a session to choose:
+
+1. **Whether every ordering is equally likely**, or whether the draw is weighted.
+2. **Whether the first Cataclysm is drawn uniformly from all eight.** Some are
+   much harder to start against than others — the measurement on issue #1338
+   found a 13.6 point spread in win rate between single active Cataclysms at
+   difficulty tier 1 — so a uniform first draw is a real difficulty spread
+   between characters rather than a cosmetic one.
+3. **Whether any pairing is constrained.** "Some combine early to make some
+   really difficult runs" reads as a consequence the owner is happy to allow
+   rather than a rule to enforce, but it can be read either way, and the
+   difference is whether the generator needs a constraint at all.
+4. **Whether the drawn order is held for the character's whole life or drawn
+   again per run.** "Every time a player starts a new character" is the plain
+   reading and says once, at character creation. The existing sentence "each run
+   begins with a randomly selected Cataclysm" reads the other way. The two have
+   not been reconciled, and the Ending a Run section — a failed run replays the
+   same tier — makes it a question with consequences rather than a wording tidy.
+
+### The code half of #1338 is deliberately untouched
+
+`sim/cataclysm_sim/config.py` line 319 holds `CATACLYSM_ROSTER` as a fixed tuple
+beginning with Demonic; line 431 defaults `active_cataclysms` to 1 and nothing
+derives it from the difficulty tier; `sim/cataclysm_sim/engine.py` line 138 takes
+the first N of that tuple. So every campaign the model has ever run has faced the
+same Cataclysms in the same order, and the comment above the roster describes
+tier-driven behaviour the code does not have.
+
+**None of that is changed here**, because what the model should do is a separate
+decision from what the game does: a model that randomises measures the average a
+player meets, and a model with a fixed order measures one case precisely. Both
+are defensible for a balance tool and the choice should be recorded rather than
+inherited. Issue #1338 carries it.
+
 ## 2026-09-06 — The Siege sub-type is modelled, and keeps percentage damage on purpose
 
 **Affects:** `sim/cataclysm_sim/config.py`, `engine.py`,
