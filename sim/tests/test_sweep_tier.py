@@ -1210,15 +1210,29 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         preset may be dropped -- otherwise the section would quietly rank fewer
         presets than the table shows on every run.
 
-        Eight campaigns per cell, not the four the neighbouring tests use. The
+        **SIXTEEN CAMPAIGNS PER CELL, AND THE COUNT IS THE FRAGILE PART.** The
         campaigns are seeded from 0 upwards so this is reproducible rather than
-        flaky, but four is too few to estimate a rate that has to come in under
-        50%: at tier 2, Explorer via floors (-25 floors) leaves two of four
-        campaigns unresolved and trips the threshold exactly. At eight the
-        worst cell across tiers 1 and 2 is 38%. Eight costs about 2.8 seconds.
+        flaky, but the threshold is 50% and one cell sits close to it, so a
+        small sample can land on the wrong side of a line the true rate is
+        nowhere near.
+
+        Four was too few: at tier 2, Explorer via floors (-25 floors) left two
+        of four unresolved, which is exactly 50%. Eight was enough until issue
+        #1315 gave the Cataclysm boss a floor for every ordinary dungeon
+        cleared, which lengthens campaigns. Measured over 60 campaigns, the
+        worst cell -- "Proposed budget (x0.85 time, x0.55 dmg)" at tier 2 --
+        went from **30% to 37%** of campaigns running out of days. Neither is
+        over the threshold. But at eight campaigns the estimate landed on 4 of
+        8, and the check is `>=`, so the test failed on its sample size rather
+        than on what it names.
+
+        Sixteen passes and costs about 13 seconds against 7 for eight, measured
+        on 2026-09-06. **If it fails again, measure the underlying rate over 60
+        campaigns before raising this number**: a genuine move past 50% is a
+        finding about the game, and raising the count would hide it.
         """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 2), trials=8)
+        experiments.exp_presets(base, tiers=(1, 2), trials=16)
         printed = capsys.readouterr().out
         assert "LEFT OUT OF THE ORDER" not in printed, (
             "the preset section drops presets from the ranking on an ordinary "

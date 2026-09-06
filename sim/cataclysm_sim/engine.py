@@ -86,6 +86,11 @@ class RunResult:
     deaths: int
     min_distance_to_defeat: int   # closest the Cataclysm ever came (3 = untouched)
     last_stand: bool              # did the Cataclysm reach the Pillar?
+    # THE EARNED BOSS ONLY, never the Last Stand: the two are built by different
+    # rules and the owner ruled on 2026-09-06 that the Last Stand takes none of
+    # the earned growth. Whether a Last Stand happened is `last_stand` above.
+    cataclysm_floors: int         # how deep it was, 0 if it never opened
+    cataclysm_floors_earned: int  # of those, how many came from clearing
     final_population_frac: float
     idle_days: int                  # days with nothing worth doing
     decision_days: int              # free days facing 2+ urgent dungeons
@@ -113,6 +118,11 @@ class Simulation:
 
         self.day = 0
         self.last_stand: Dungeon | None = None
+        #: The Cataclysm dungeon opened by meeting the quest objectives, kept
+        #: because clearing it removes it from everywhere else. A run can hold
+        #: this AND a Last Stand: the Cataclysm can still reach the Pillar after
+        #: the objectives were met.
+        self.cataclysm: Dungeon | None = None
         self.next_surge_day = 0.0
         self.surge_index = 0        # how many surges have happened
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
@@ -140,6 +150,12 @@ class Simulation:
         # tallies
         self.objectives = 0
         self.cleared = 0
+        #: Ordinary dungeons cleared, which is what deepens the earned boss.
+        #: NOT `cleared`, which counts every kind. See
+        #: `cataclysm_floors_per_dungeon_cleared`.
+        self.basic_cleared = 0
+        #: Floors the earned boss gained from `basic_cleared` when it opened.
+        self.cataclysm_floors_earned = 0
         self.resolved = 0
         self.floors_cleared = 0     # loot proxy: reward scales with depth
         self.empire_points = 0.0
@@ -195,8 +211,7 @@ class Simulation:
             city_tier=city.tier,
             floors=floors,
             # Cow Level: "time to complete is doubled and cannot be reduced".
-            run_days=(self.run_days_for(floors) if subtype != "Cow Level"
-                      else max(1, int(math.ceil(floors * cfg.days_per_floor)) * 2)),
+            run_days=self._walk_days(floors, subtype),
             resolve_max=int(resolve),
             resolve_in=float(resolve),
             defense_bite=spec.defense_bite,
@@ -210,6 +225,25 @@ class Simulation:
         self._next_did += 1
         self.dungeons[d.did] = d
         return d
+
+    def _walk_days(self, floors: int, subtype: str) -> int:
+        """How many days walking a dungeon of this depth and sub-type costs.
+
+        WHY THIS IS NOT SIMPLY `run_days_for`. A Cow Level's time "is doubled
+        and cannot be reduced", which is two rules: the doubling, and that the
+        tree's reduction does not apply. `run_days_for` applies the reduction,
+        so a Cow Level must not go through it.
+
+        WHAT IT IS FOR is the callers that change a dungeon's depth AFTER
+        `_make_dungeon` built it and have to work the days out again.
+        `_open_last_stand` does the same thing with a bare `run_days_for` and
+        therefore drops the doubling for a Cow Level Last Stand; that is issue
+        [#1333] and is deliberately not fixed here, because the owner ruled the
+        last stand's construction is to be left alone.
+        """
+        if subtype == "Cow Level":
+            return max(1, int(math.ceil(floors * self.cfg.days_per_floor)) * 2)
+        return self.run_days_for(floors)
 
     def run_days_for(self, floors: int) -> int:
         """UNKNOWN #1, and the single most consequential formula in the game.
@@ -467,6 +501,12 @@ class Simulation:
         self.materials += d.floors * cfg.material_per_floor
         self.empire_points += self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
 
+        # ONLY ORDINARY DUNGEONS DEEPEN THE BOSS. `cleared` above counts every
+        # kind and is the wrong number for this; see
+        # `cataclysm_floors_per_dungeon_cleared`.
+        if d.dtype is DungeonType.BASIC:
+            self.basic_cleared += 1
+
         city = self.empire.cities[d.city_id]
         if d.dtype is DungeonType.FALLEN_CITY and city.fallen:
             self._retake(city)
@@ -525,12 +565,38 @@ class Simulation:
         self.last_stand = d
 
     def _maybe_open_cataclysm(self) -> None:
-        """Once the quest objectives are met, the enemy capital opens."""
-        if self.objectives < self.cfg.quest_objectives_required:
+        """Once the quest objectives are met, the enemy capital opens.
+
+        IT IS AS DEEP AS THE WORK THE PLAYER CHOSE TO DO. The design document
+        says "every dungeon defeated adds one floor to the Cataclysm boss
+        dungeon", and until issue #1315 nothing added any: a campaign that
+        cleared thirty dungeons met the same boss as one that cleared five.
+
+        ONLY ORDINARY DUNGEONS COUNT, so beelining the objectives gives a
+        smaller boss than clearing the map. See
+        `cataclysm_floors_per_dungeon_cleared` for the ruling and the reasons.
+
+        THIS IS NOT WHERE THE LAST STAND IS BUILT. `_open_last_stand` has its
+        own bonuses and takes none of this; the two are deliberately separate.
+        """
+        cfg = self.cfg
+        if self.objectives < cfg.quest_objectives_required:
             return
         if any(x.dtype is DungeonType.CATACLYSM for x in self.dungeons.values()):
             return
-        self._make_dungeon(DungeonType.CATACLYSM, self.empire.cities[self.empire.pillar_id])
+
+        d = self._make_dungeon(DungeonType.CATACLYSM,
+                               self.empire.cities[self.empire.pillar_id])
+
+        d.floors += self.basic_cleared * cfg.cataclysm_floors_per_dungeon_cleared
+        d.run_days = self._walk_days(d.floors, d.subtype)
+
+        #: HOW MANY OF ITS FLOORS WERE EARNED, recorded now rather than worked
+        #: out at the end: more ordinary dungeons can be cleared after the boss
+        #: opens, and they do not deepen a dungeon that already exists.
+        self.cataclysm_floors_earned = (
+            self.basic_cleared * cfg.cataclysm_floors_per_dungeon_cleared)
+        self.cataclysm = d
 
     # -- main loop -------------------------------------------------------
 
@@ -617,6 +683,7 @@ class Simulation:
         for c in self.empire.fallen_cities():
             lost_by_tier[c.tier] += 1
 
+
         return RunResult(
             survived_days=self.day,
             won=self.won,
@@ -639,6 +706,9 @@ class Simulation:
             deaths=self.deaths,
             min_distance_to_defeat=self.min_d2d,
             last_stand=self.last_stand is not None,
+            cataclysm_floors=(0 if self.cataclysm is None
+                              else self.cataclysm.floors),
+            cataclysm_floors_earned=self.cataclysm_floors_earned,
             final_population_frac=(self.empire.total_population()
                                    / max(1.0, self.empire.max_population())),
             idle_days=self.idle_days,

@@ -14,8 +14,8 @@ import dataclasses
 import pytest
 
 from cataclysm_sim import policies
-from cataclysm_sim.config import EmpireTree, SurgeMode, TuningConfig
-from cataclysm_sim.engine import Simulation
+from cataclysm_sim.config import CityTier, EmpireTree, SurgeMode, TuningConfig
+from cataclysm_sim.engine import DungeonType, Simulation
 
 
 def run(cfg=None, policy=None, seed=0):
@@ -142,3 +142,231 @@ class TestSurgeModes:
             return wins / 40
 
         assert win_rate(8) <= win_rate(1) + 0.05
+class TestTheBossGrowsWithOrdinaryDungeonsCleared:
+    """The Cataclysm boss dungeon gains a floor per ordinary dungeon cleared.
+
+    THE DESIGN DOCUMENT: "Every dungeon defeated adds one floor to the
+    Cataclysm boss dungeon." Nothing added any until issue #1315, so a campaign
+    that cleared thirty dungeons met the same boss as one that cleared five.
+
+    ONLY ORDINARY DUNGEONS COUNT, which the owner settled on 2026-09-06. Half
+    the rule is about what does NOT count, so half these tests are about that:
+    a Quest dungeon is the win condition itself and retaking a fallen city is
+    recovery, so neither deepens the fight.
+    """
+
+    def _safe(self, **overrides):
+        """A config where clearing a dungeon cannot kill you.
+
+        `_finish_current` rolls for death before it counts anything, so a test
+        that wants to count clears has to stop the roll landing. This zeroes the
+        per-floor risk rather than choosing seeds that happen to survive.
+        """
+        return dataclasses.replace(TuningConfig(), per_floor_risk=0.0,
+                                   boss_risk_multiplier=0.0, **overrides)
+
+    def _clear(self, sim, dtype, city_id=None):
+        """Clear one dungeon of the given kind, through the ordinary path."""
+        city = (sim.empire.cities[city_id] if city_id is not None
+                else sim.empire.cities[sim.empire.pillar_id])
+        d = sim._make_dungeon(dtype, city)
+        sim.current = d
+        sim._finish_current()
+        return d
+
+    def test_the_boss_is_deeper_than_its_roll_when_dungeons_were_cleared(self):
+        cfg = self._safe()
+        spec = cfg.spec(DungeonType.CATACLYSM, CityTier.PILLAR)
+        deepest_roll = spec.floors[1]
+
+        sim = Simulation(cfg, seed=4)
+        sim.basic_cleared = 40
+        sim.objectives = cfg.quest_objectives_required
+        sim._maybe_open_cataclysm()
+
+        assert sim.cataclysm is not None
+        assert sim.cataclysm.floors > deepest_roll, (
+            "the boss is no deeper than the deepest it could roll, so the "
+            "forty dungeons cleared added nothing")
+
+    def test_it_is_one_floor_for_each_ordinary_dungeon(self):
+        """The exact figure, not merely that it grew.
+
+        Two runs at the same seed roll the same boss, so the difference between
+        them is the growth and nothing else.
+        """
+        cfg = self._safe()
+
+        def depth(cleared):
+            sim = Simulation(cfg, seed=11)
+            sim.basic_cleared = cleared
+            sim.objectives = cfg.quest_objectives_required
+            sim._maybe_open_cataclysm()
+            return sim.cataclysm.floors
+
+        assert depth(30) - depth(0) == 30
+        assert depth(7) - depth(0) == 7
+
+    def test_the_constant_is_what_decides_how_much(self):
+        """Turning it off reproduces the game as it was before #1315."""
+        def depth(per_dungeon):
+            cfg = self._safe(cataclysm_floors_per_dungeon_cleared=per_dungeon)
+            sim = Simulation(cfg, seed=11)
+            sim.basic_cleared = 20
+            sim.objectives = cfg.quest_objectives_required
+            sim._maybe_open_cataclysm()
+            return sim.cataclysm.floors
+
+        assert depth(1) - depth(0) == 20
+        assert depth(3) - depth(0) == 60
+
+    def test_clearing_quest_and_fallen_city_dungeons_does_not_deepen_it(self):
+        """**The half of the rule that is about what does not count.**
+
+        The owner ruled that a Quest dungeon is the win condition itself and
+        that retaking a fallen city is recovery rather than progress, so neither
+        makes the final fight harder. A test that only checked ordinary dungeons
+        deepen the boss would pass on an implementation that counted everything.
+
+        IT CLEARS THEM THROUGH `_finish_current`, the path a real campaign
+        takes, rather than setting the counter by hand -- otherwise it would be
+        testing the counter rather than what moves it.
+        """
+        cfg = self._safe()
+        sim = Simulation(cfg, seed=5)
+
+        rim = next(c for c in sim.empire.cities.values()
+                   if c.tier is CityTier.OUTPOST)
+
+        for _ in range(4):
+            self._clear(sim, DungeonType.QUEST, rim.cid)
+        for _ in range(3):
+            self._clear(sim, DungeonType.FALLEN_CITY, rim.cid)
+
+        # THE CONTROL. Those clears did happen and were counted as clears; it is
+        # only the boss's growth they must not touch.
+        assert sim.cleared == 7
+        assert sim.objectives == 4
+
+        assert sim.basic_cleared == 0, (
+            "Quest or Fallen City clears moved the counter that deepens the "
+            "boss; the owner ruled only ordinary dungeons count")
+
+        sim.objectives = cfg.quest_objectives_required
+        sim._maybe_open_cataclysm()
+
+        # AGAINST THE ROLL'S OWN RANGE, NOT AGAINST ANOTHER RUN. Two sims that
+        # built different numbers of dungeons have drawn different numbers of
+        # times, so their bosses roll to different depths -- 108 against 139 in
+        # the first version of this test, which had nothing to do with growth.
+        # The range a boss can roll to is fixed, so being inside it is a
+        # statement about growth alone.
+        spec = cfg.spec(DungeonType.CATACLYSM, CityTier.PILLAR)
+
+        assert sim.cataclysm_floors_earned == 0
+        assert sim.cataclysm.floors <= spec.floors[1], (
+            f"the boss is {sim.cataclysm.floors} floors, past the "
+            f"{spec.floors[1]} it can roll to, so clearing Quest and Fallen "
+            "City dungeons deepened it")
+
+        # AND THE SAME MEASUREMENT SHOWS ORDINARY DUNGEONS DO. Without this the
+        # check above would pass on an implementation that grew nothing at all.
+        grown = Simulation(cfg, seed=5)
+        for _ in range(60):
+            self._clear(grown, DungeonType.BASIC, rim.cid)
+        grown.objectives = cfg.quest_objectives_required
+        grown._maybe_open_cataclysm()
+
+        assert grown.cataclysm.floors > spec.floors[1]
+
+    def test_clearing_ordinary_dungeons_through_the_same_path_does_deepen_it(self):
+        """The positive half, taken the same way, so the two are comparable."""
+        cfg = self._safe()
+        sim = Simulation(cfg, seed=5)
+
+        rim = next(c for c in sim.empire.cities.values()
+                   if c.tier is CityTier.OUTPOST)
+
+        for _ in range(6):
+            self._clear(sim, DungeonType.BASIC, rim.cid)
+
+        assert sim.basic_cleared == 6
+
+    def test_the_last_stand_takes_none_of_the_growth(self):
+        """The owner: "No -- the last stand replaces it".
+
+        That fight is won 1 time in 54 by deliberate design and is built from
+        its own bonuses. Adding earned growth on top would have made a chosen
+        number worse by accident.
+        """
+        cfg = self._safe()
+
+        def depth(cleared):
+            sim = Simulation(cfg, seed=9)
+            sim.basic_cleared = cleared
+            sim._open_last_stand()
+            return sim.last_stand.floors
+
+        assert depth(50) == depth(0), (
+            "the last stand grew with dungeons cleared; it takes its own "
+            "bonuses only")
+
+    def test_the_walk_gets_longer_with_the_extra_floors(self):
+        """Depth and time are the same axis at the starting rate, so a deeper
+        boss is a longer commitment. A grown boss whose walk was still worked
+        out from its rolled depth would be free floors."""
+        cfg = self._safe()
+
+        def walk(cleared):
+            sim = Simulation(cfg, seed=11)
+            sim.basic_cleared = cleared
+            sim.objectives = cfg.quest_objectives_required
+            sim._maybe_open_cataclysm()
+            return sim.cataclysm.run_days, sim.cataclysm.floors
+
+        short_days, short_floors = walk(0)
+        long_days, long_floors = walk(40)
+
+        assert long_floors == short_floors + 40
+        assert long_days > short_days
+
+    def test_a_cow_level_boss_keeps_its_doubled_walk_after_growing(self):
+        """"Time to complete is doubled and cannot be reduced" is two rules, and
+        recomputing the days after adding floors is where they get dropped.
+        `_open_last_stand` does drop them -- that is issue #1333 -- so this is
+        the check that the earned boss does not.
+        """
+        cfg = self._safe()
+
+        for seed in range(400):
+            sim = Simulation(cfg, seed=seed)
+            sim.basic_cleared = 25
+            sim.objectives = cfg.quest_objectives_required
+            sim._maybe_open_cataclysm()
+            boss = sim.cataclysm
+            if boss.subtype != "Cow Level":
+                continue
+
+            assert boss.run_days == 2 * boss.floors, (
+                f"a Cow Level boss of {boss.floors} floors walks in "
+                f"{boss.run_days} days, not the doubled {2 * boss.floors}")
+            assert boss.run_days > sim.run_days_for(boss.floors)
+            return
+
+        pytest.fail("no seed in 400 produced a Cow Level boss, so this test "
+                    "checked nothing. Cow Level is 7 in 100 of sub-types.")
+
+    def test_the_result_reports_the_boss_it_earned(self):
+        """The report has to carry it or nothing can measure what this changed.
+
+        A run that never opens one reports zero rather than omitting the field,
+        so a mean over campaigns has to decide what to do with those rather than
+        silently skipping them.
+        """
+        cfg = self._safe()
+        result = Simulation(cfg, seed=2).run(policies.triage)
+
+        assert result.cataclysm_floors >= 0
+        assert result.cataclysm_floors_earned >= 0
+        if result.cataclysm_floors == 0:
+            assert result.cataclysm_floors_earned == 0

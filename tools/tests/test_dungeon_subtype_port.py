@@ -276,22 +276,40 @@ class TestWhatACowLevelCosts:
         `run_days_for` is where the empire tree's reduction is applied, and the
         Cow Level branch does not call it -- which is what "cannot be reduced"
         means. Unreal skips the city upgrade in the same place and for the same
-        reason."""
+        reason.
+
+        IT READS `Simulation._walk_days`, WHICH USED TO BE WRITTEN OUT INLINE.
+        Issue #1315 moved it into a named helper because the earned Cataclysm
+        dungeon changes its own depth after it is built and has to work the days
+        out again; the rule did not change, only where it lives.
+        """
         source = (REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py").read_text(
             encoding="utf-8")
 
-        branch = re.search(
-            r"run_days=\(self\.run_days_for\(floors\) if subtype != "
-            r"[\"']Cow Level[\"']\s*\n\s*else ([^)]*\)[^,]*),", source)
+        helper = re.search(
+            r"def _walk_days\(self, floors: int, subtype: str\) -> int:"
+            r"(.*?)(?=\n    def )", source, re.DOTALL)
 
-        assert branch, ("sim/cataclysm_sim/engine.py no longer chooses a Cow "
-                        "Level's run days separately from run_days_for; the "
-                        "port in UCataclysmSurgeScheduler::MakeDungeon still "
-                        "does")
+        assert helper, ("sim/cataclysm_sim/engine.py no longer has "
+                        "Simulation._walk_days, which is where a Cow Level's "
+                        "walk is chosen separately from run_days_for; the port "
+                        "in UCataclysmSurgeScheduler::MakeDungeon still makes "
+                        "that choice")
+
+        body = helper.group(1)
+        branch = re.search(r"if subtype == [\"']Cow Level[\"']:(.*?)\n        "
+                           r"return", body, re.DOTALL)
+
+        assert branch, ("Simulation._walk_days no longer treats a Cow Level "
+                        "differently from anything else")
 
         assert "run_days_for" not in branch.group(1), (
             "the model now runs a Cow Level's walk through run_days_for, which "
             "applies the tree's reduction; Unreal still skips the city upgrade")
+
+        assert "self._walk_days(floors, subtype)" in source, (
+            "Simulation._make_dungeon no longer routes through _walk_days, so "
+            "an ordinary Cow Level may not be getting the rule at all")
 def spawn_table_in(document: str) -> dict[str, float]:
     """The design's spawn table, as names against numbers.
 

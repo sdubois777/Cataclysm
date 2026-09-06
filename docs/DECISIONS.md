@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — Only ordinary dungeons deepen the Cataclysm boss, and the Last Stand takes none of it
+
+**Affects:** `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py`,
+`docs/Cataclysm_GDD_v2.md`. Applied. Issue
+[#1315](https://github.com/sdubois777/Cataclysm/issues/1315).
+
+The design document has always said "every dungeon defeated adds one floor to the
+Cataclysm boss dungeon" and **nothing ever added one**. A campaign that cleared
+thirty dungeons met the same boss as one that cleared five. The owner decided on
+2026-09-05 to build it as designed and left two questions open; both were answered
+on 2026-09-06.
+
+### 1. Only ordinary dungeons count
+
+**The owner's answer, verbatim: "Only ordinary dungeons count (Recommended)".**
+
+Clearing a Basic dungeon adds a floor. A Quest dungeon does not, because it is
+the win condition itself. Retaking a fallen Dungeon City does not, because that
+is recovery rather than progress. The Cataclysm dungeon itself obviously does
+not.
+
+**The consequence is deliberate: pursuing the win condition never makes the final
+fight harder.** A player who beelines the objectives meets a smaller boss than one
+who cleared the map, and the boss's size is a measure of the optional work the
+player chose to do.
+
+**THE OBVIOUS IMPLEMENTATION IS WRONG AND THE ISSUE SUGGESTED IT.** The issue said
+`Simulation.cleared` "already counts dungeons cleared, so the rule is a one-line
+addition". That counter is incremented for every dungeon before its type is looked
+at, so it includes Quest and Fallen City clears. Using it would have counted
+exactly the things the ruling excludes. `Simulation.basic_cleared` is a separate
+counter for that reason.
+
+### 2. It does not stack with the Last Stand
+
+**The owner's answer, verbatim: "No — the last stand replaces it (Recommended)".**
+
+When the Cataclysm reaches the Pillar the fight is built from its own bonuses
+alone: a flat 25 floors, five per absorbed dungeon, four per fallen city, and a
+power multiplier that scales with cities lost. The earned growth is not added.
+
+**Why this mattered rather than being a detail.** The Last Stand is won 1 time in
+54, a figure measured across three different modifier pools that did not move, and
+the owner ruled on 2026-09-05 that a collapse should be near-fatal. Stacking
+earned growth on top would have made a number somebody chose on purpose worse by
+accident.
+
+### What it moves, measured
+
+2,000 campaigns a condition, split into two disjoint blocks of 1,000 seeds and
+reported separately. **The two blocks agree on every figure below**, which is the
+point of running two: a single block gives one number with no way to tell a real
+move from a lucky one.
+
+| Play policy | Win % before | Win % after | Boss floors before | Boss floors after |
+| :-- | --: | --: | --: | --: |
+| triage | 36.8 / 33.3 | 24.4 / 25.3 | 125.2 / 124.2 | 173.7 / 172.1 |
+| nearest deadline | 34.0 / 32.7 | 23.5 / 23.7 | 125.8 / 126.3 | 177.6 / 178.0 |
+| lane aware | 32.0 / 31.3 | 21.8 / 22.1 | 123.9 / 125.3 | 175.1 / 176.1 |
+
+**The win rate falls by about 10 percentage points on every policy.** That is far
+clear of any noise floor and is the headline: the endgame is materially harder.
+
+**The boss gains about 50 floors on a base of about 125**, a 40% deeper fight. The
+issue predicted 20 to 40 floors, so the real figure is above what it expected.
+
+**Campaigns run about 35 days longer**, because those floors have to be walked.
+
+**Whether the boss opens at all is untouched** — 82.0% before and 82.0% after on
+the first block, 79.0% and 79.0% on the second, identical to the tenth. The growth
+happens after the objectives open it, so it cannot change how often that happens,
+and the identical figures are the evidence.
+
+**The Last Stand rate barely moves and moves upward** — 3.6% to 4.2% and 2.3% to
+3.3% under triage, unchanged at a tenth of a percent under the other two. Longer
+campaigns give the Cataclysm slightly more time to reach the Pillar. It is not the
+earned growth reaching that fight; that was checked separately by a test.
+
+### One test needed a bigger sample, and the reason is worth recording
+
+`sim/tests/test_sweep_tier.py` asserts that no empire-tree preset is dropped from
+the sweep's ranking for having too many unresolved campaigns, with the threshold
+at 50%. Deeper bosses make campaigns longer, so more of them hit the 2,500 day
+cap.
+
+**Measured over 60 campaigns, the worst cell — "Proposed budget (x0.85 time, x0.55
+dmg)" at tier 2 — went from 30% to 37%.** Neither is over the threshold. But that
+test ran only eight campaigns, and eight landed on exactly 4, which is 50%, and
+the check is `>=`. So it failed on its sample size rather than on what it names.
+It takes sixteen now, and its docstring carries the measured rate and says to
+re-measure over 60 before raising the number again — a genuine move past 50% is a
+finding about the game, and a larger sample would hide it.
+
+### A defect found while building this and deliberately not fixed
+
+A Cow Level Last Stand loses its doubled walk time: `_open_last_stand` adds its
+floor bonuses and recomputes the days with a bare `run_days_for`, which knows
+nothing about sub-types. Measured at 145 days for 145 floors where 290 is correct.
+That is issue [#1333](https://github.com/sdubois777/Cataclysm/issues/1333), left
+alone because the owner scoped this work as leaving the Last Stand's construction
+untouched. The earned boss uses a new helper, `Simulation._walk_days`, which keeps
+both halves of the rule.
+
 ## 2026-09-06 — Every dungeon a surge creates has a sub-type; the no-sub-type outcome is removed
 
 **Affects:** `sim/cataclysm_sim/config.py`,

@@ -3649,7 +3649,8 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
   - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
-  - Every dungeon defeated adds one floor to the Cataclysm boss dungeon.
+  - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06.
+  - **The Last Stand takes none of that growth.** When the Cataclysm reaches the capital the fight is built from its own bonuses alone — see the Last Stand section — because adding earned growth on top would punish a player twice for the same run. That fight is won once in 54 by deliberate design and the figure was chosen on purpose. Settled the same day.
 
   
 
@@ -3729,7 +3730,7 @@ This makes a surviving player's escape worth something to the whole party, and i
 | Basic | Standard dungeon. Most common type. |
 | Quest | Does not resolve — refreshes and may move to adjacent city. Required to challenge the Cataclysm. |
 | Fallen City | Captured player city. Must be retaken to restore it. Higher floor count and multiple bosses. |
-| Cataclysm | The final boss dungeon for the current run tier. Grows by one floor with every dungeon the player defeats. |
+| Cataclysm | The final boss dungeon for the current run tier. Grows by one floor for every **ordinary** dungeon the player defeats; Quest dungeons and retaken Dungeon Cities do not count, and the Last Stand takes none of the growth. |
 
   
 
