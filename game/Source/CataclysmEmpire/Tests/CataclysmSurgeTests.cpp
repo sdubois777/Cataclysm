@@ -2268,4 +2268,354 @@ bool FCataclysmSurgeFallenCityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Quest dungeons -- issue #1324 slice 3
+// ---------------------------------------------------------------------------
+
+/**
+ * A rolled kind is `Basic` or `Quest`, at the stated share, and never anything
+ * else.
+ *
+ * THE SHARE IS CHECKED AGAINST THE CONSTANT AND NOT AGAINST A WRITTEN-DOWN
+ * PERCENTAGE, because `QuestChance` is a port of the model's number and issue
+ * #1357 is expected to replace it with a rule keyed on which Cataclysm is
+ * running. A test naming 12% would fail on the day that lands and say nothing
+ * useful; this one keeps measuring whatever the constant says.
+ *
+ * THE TOLERANCE IS WORKED OUT RATHER THAN GUESSED. Twenty thousand draws of a
+ * 12-in-100 event have a standard deviation of about 0.23 percentage points, so
+ * a band of two points is more than eight deviations wide. It fails on a rate
+ * that is actually wrong and not on an unlucky seed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestChanceTest,
+	"Cataclysm.Surge.ARolledKindIsBasicOrQuestAtTheStatedChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestChanceTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 Draws = 20000;
+
+	FRandomStream Stream(20260906);
+
+	TMap<ECataclysmDungeonType, int32> Rolled;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		++Rolled.FindOrAdd(UCataclysmSurgeScheduler::RollKind(Stream));
+	}
+
+	const int32 Quests = Rolled.FindRef(ECataclysmDungeonType::Quest);
+	const int32 Basics = Rolled.FindRef(ECataclysmDungeonType::Basic);
+
+	AddInfo(FString::Printf(
+		TEXT("%d draws: %d Quest (%.2f%%), %d Basic, %d kinds seen"),
+		Draws, Quests, 100.0f * Quests / Draws, Basics, Rolled.Num()));
+
+	// NOTHING BUT THOSE TWO. A Fallen City is what a city became rather than
+	// something a surge rolled, and nothing builds a Cataclysm until slice 6.
+	TestEqual(TEXT("only two kinds are ever rolled"), Rolled.Num(), 2);
+	TestEqual(TEXT("and every draw was one of them"), Quests + Basics, Draws);
+
+	const float Wanted = UCataclysmSurgeScheduler::QuestChance;
+	const float Seen = static_cast<float>(Quests) / Draws;
+
+	TestTrue(FString::Printf(
+		TEXT("%.2f%% of draws were Quest, against the stated %.2f%%"),
+		100.0f * Seen, 100.0f * Wanted),
+		FMath::Abs(Seen - Wanted) < 0.02f);
+
+	// AND BOTH ACTUALLY HAPPEN. A constant of zero or one would satisfy the
+	// band above only by moving it, but a test that never saw one of the two
+	// kinds would still read as a pass if the band were ever widened.
+	TestTrue(TEXT("Quest dungeons are rolled at all"), Quests > 0);
+	TestTrue(TEXT("and so are Basic ones"), Basics > 0);
+
+	return true;
+}
+
+/**
+ * A Quest dungeon is built to the Quest row of the spec, and its timer is flat.
+ *
+ * WHAT IT SHARES WITH A BASIC DUNGEON IS AS MUCH THE POINT AS WHAT IT DOES NOT.
+ * One boss on the final floor, a rolled sub-type, and a walk of a day a floor
+ * are all the ordinary rules; only the floor range and the timer differ.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestDungeonTest,
+	"Cataclysm.Surge.AQuestDungeonIsBuiltToItsOwnSpecWithAFlatTimer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmSurgeScheduler* Scheduler = MakeScheduler(ECataclysmSurgeMode::Static);
+	UCataclysmEmpireMap* Map = MakeMap();
+	FRandomStream Stream(777);
+
+	const ECataclysmCityTier Tiers[] = {
+		ECataclysmCityTier::Outpost,
+		ECataclysmCityTier::Bulwark,
+		ECataclysmCityTier::Sanctuary,
+	};
+
+	for (const ECataclysmCityTier Tier : Tiers)
+	{
+		const FCataclysmCity* City = Map->Cities.FindByPredicate(
+			[Tier](const FCataclysmCity& Candidate)
+			{
+				return Candidate.Tier == Tier;
+			});
+
+		if (!TestNotNull(TEXT("a city of that tier exists"), City))
+		{
+			return false;
+		}
+
+		const FCataclysmDungeonSpec Quest =
+			UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Quest, Tier);
+
+		const FCataclysmDungeonSpec Basic =
+			UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, Tier);
+
+		// A QUEST DUNGEON IS THE DEEPER OF THE TWO AT BOTH ENDS, at every tier,
+		// which is what the depth check below is really reading.
+		//
+		// **DEPTH ALONE CANNOT TELL THE KINDS APART EVERYWHERE, AND THIS TEST
+		// WAS WRITTEN AS THOUGH IT COULD.** The first version of it asserted
+		// that a Quest dungeon starts deeper than a Basic one ENDS, and that is
+		// false at a Sanctuary: Quest is 30 to 50 there and Basic is 25 to 40,
+		// so the two overlap between 30 and 40. The claim holds at an Outpost
+		// (20-30 against 8-15) and a Bulwark (30-45 against 15-25) and nowhere
+		// else. That is why the assertions inside the loop read the KIND and the
+		// TIMER as well as the depth: at a Sanctuary the depth is not on its own
+		// evidence of anything.
+		if (!TestTrue(FString::Printf(
+				TEXT("a %s Quest dungeon is deeper at both ends than a Basic "
+					 "one (%d-%d against %d-%d)"),
+				*UCataclysmEmpireMap::TierName(Tier), Quest.LeastFloors,
+				Quest.MostFloors, Basic.LeastFloors, Basic.MostFloors),
+				Quest.LeastFloors > Basic.LeastFloors
+				&& Quest.MostFloors > Basic.MostFloors))
+		{
+			return false;
+		}
+
+		TSet<int32> Depths;
+
+		for (int32 Roll = 0; Roll < 200; ++Roll)
+		{
+			const FCataclysmDungeon Made = Scheduler->MakeDungeon(
+				Roll, *City, 3, Stream, /* bSiegeAllowed */ true,
+				ECataclysmDungeonType::Quest);
+
+			Depths.Add(Made.Floors);
+
+			TestEqual(TEXT("it is a Quest dungeon"), Made.Type,
+					  ECataclysmDungeonType::Quest);
+
+			TestTrue(FString::Printf(
+				TEXT("a %s Quest dungeon of %d floors is inside %d to %d"),
+				*UCataclysmEmpireMap::TierName(Tier), Made.Floors,
+				Quest.LeastFloors, Quest.MostFloors),
+				Made.Floors >= Quest.LeastFloors
+				&& Made.Floors <= Quest.MostFloors);
+
+			// A FLAT TIMER, NOT ONE DRAWN FROM ITS DEPTH. It is a relocation
+			// clock rather than a bite schedule; see `QuestResolveDays`.
+			TestEqual(TEXT("its timer is the flat relocation clock"),
+					  Made.ResolveDays,
+					  UCataclysmSurgeScheduler::QuestResolveDays);
+
+			// AND IT TAKES NOTHING WHEN THAT CLOCK RUNS OUT.
+			TestEqual(TEXT("it takes no defence"), Made.DefenceDamage, 0.0f);
+			TestEqual(TEXT("and no population"), Made.PopulationDamage, 0.0f);
+			TestFalse(TEXT("so it is not a kind that detonates"),
+					  Made.Resolves());
+
+			// THE ORDINARY RULES STILL APPLY. One boss on the final floor is
+			// the design's universal rule and a Quest dungeon is not the stated
+			// exception; a Fallen City is.
+			TestEqual(TEXT("and it holds the one boss every dungeon holds"),
+					  Made.Bosses, 1);
+
+			TestTrue(TEXT("and costs days to walk"), Made.WalkDays >= 1.0f);
+		}
+
+		TestTrue(FString::Printf(
+			TEXT("%s Quest dungeons vary in depth: %d different ones in 200 "
+				 "rolls"), *UCataclysmEmpireMap::TierName(Tier), Depths.Num()),
+			Depths.Num() > 1);
+	}
+
+	// A BASIC DUNGEON IS UNCHANGED BY ALL OF THIS, checked here rather than left
+	// to the older tests, because the kind became a parameter of the same
+	// function and a mistake in the default would make every dungeon a Quest.
+	{
+		const FCataclysmCity* Outpost = Map->Find(0);
+		if (!TestNotNull(TEXT("Outpost 0 exists"), Outpost))
+		{
+			return false;
+		}
+
+		const FCataclysmDungeon Made =
+			Scheduler->MakeDungeon(1, *Outpost, 3, Stream);
+
+		TestEqual(TEXT("asked for nothing in particular, it is Basic"),
+				  Made.Type, ECataclysmDungeonType::Basic);
+		TestTrue(TEXT("and it is a kind that detonates"), Made.Resolves());
+		TestTrue(TEXT("and its timer came from its depth"),
+				 Made.ResolveDays
+					 != UCataclysmSurgeScheduler::QuestResolveDays);
+	}
+
+	return true;
+}
+
+/**
+ * A CAMPAIGN ACTUALLY PUTS QUEST DUNGEONS ON THE MAP.
+ *
+ * WHY THIS IS SEPARATE FROM THE TWO ABOVE. One of them calls `RollKind` and the
+ * other calls `MakeDungeon` with a kind handed to it; neither would notice if
+ * `RollWave` never asked for one, which is exactly the gap that let slice 1's
+ * `SpecFor` answer for four kinds while nothing created any of them. This drives
+ * `UCataclysmEmpireRun` from `Begin` and reads what is standing on the map, so
+ * the whole path from a surge firing to a dungeon existing is covered.
+ *
+ * IT COUNTS DUNGEONS AS THEY ARRIVE rather than censusing the board at the end,
+ * for the reason `Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`
+ * gives above: a city falling absorbs everything standing on it, so a census
+ * under-counts whatever was on the cities that died.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeQuestCampaignTest,
+	"Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
+{
+	constexpr int32 Campaigns = 20;
+	constexpr int32 MostDays = 600;
+
+	int32 Quests = 0;
+	int32 Rolled = 0;
+	int32 Days = 0;
+	int32 CampaignsWithOne = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		TSet<int32> Counted;
+		int32 Here = 0;
+
+		auto RecordWhatIsNew = [&](const UCataclysmEmpireRun& Live)
+		{
+			for (const FCataclysmDungeon& Dungeon : Live.Dungeons)
+			{
+				// A FALLEN CITY IS NOT A DUNGEON A SURGE ROLLED, so counting it
+				// would dilute the share this test is measuring with dungeons
+				// the roll never saw. Issue #1324 slice 2 is what creates them.
+				if (Dungeon.Type == ECataclysmDungeonType::FallenCity)
+				{
+					continue;
+				}
+
+				bool bAlready = false;
+				Counted.Add(Dungeon.DungeonId, &bAlready);
+				if (bAlready)
+				{
+					continue;
+				}
+
+				++Rolled;
+
+				// NOTHING BUT THE TWO KINDS A SURGE ROLLS EVER REACHES THE MAP.
+				if (Dungeon.Type != ECataclysmDungeonType::Basic
+					&& Dungeon.Type != ECataclysmDungeonType::Quest)
+				{
+					AddError(FString::Printf(
+						TEXT("a surge landed dungeon %d of kind %d, which is "
+							 "neither Basic nor Quest"),
+						Dungeon.DungeonId,
+						static_cast<int32>(Dungeon.Type)));
+					continue;
+				}
+
+				if (Dungeon.Type == ECataclysmDungeonType::Quest)
+				{
+					++Quests;
+					++Here;
+
+					// AND IT ARRIVED WITH ITS OWN SPEC, not a Basic one's. The
+					// wave is what builds it, so this is where a wave passing
+					// the wrong kind through to `MakeDungeon` would show.
+					const FCataclysmDungeonSpec Spec =
+						UCataclysmSurgeScheduler::SpecFor(
+							ECataclysmDungeonType::Quest, Dungeon.CityTier);
+
+					TestTrue(FString::Printf(
+						TEXT("landed Quest dungeon %d is %d floors, inside %d "
+							 "to %d"), Dungeon.DungeonId, Dungeon.Floors,
+						Spec.LeastFloors, Spec.MostFloors),
+						Dungeon.Floors >= Spec.LeastFloors
+						&& Dungeon.Floors <= Spec.MostFloors);
+				}
+			}
+		};
+
+		// THE FIRST WAVE FIRES AT RUN START, so the board is read before any day
+		// passes as well as after each one.
+		RecordWhatIsNew(*Run);
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			Run->AdvanceDay();
+			++Advanced;
+			RecordWhatIsNew(*Run);
+		}
+
+		Days += Advanced;
+		CampaignsWithOne += Here > 0 ? 1 : 0;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns, %d days in all, %d dungeons rolled: %d were Quest "
+			 "(%.1f%%), and %d of %d campaigns saw at least one"),
+		Campaigns, Days, Rolled, Quests,
+		Rolled > 0 ? 100.0f * Quests / Rolled : 0.0f, CampaignsWithOne,
+		Campaigns));
+
+	// THE SAMPLE HAS TO BE BIG ENOUGH FOR THE SHARE TO MEAN ANYTHING. A handful
+	// of dungeons would satisfy the band below whatever the roll did.
+	if (!TestTrue(FString::Printf(
+			TEXT("%d dungeons is enough to measure a 12-in-100 share"), Rolled),
+			Rolled >= 500))
+	{
+		return false;
+	}
+
+	// THE ONE THING THIS EXISTS TO PROVE.
+	TestTrue(TEXT("a campaign actually lands Quest dungeons"), Quests > 0);
+
+	// AND AT ROUGHLY THE RATE THE CONSTANT SAYS, so that a wave that landed one
+	// Quest dungeon by accident would not pass. The band is wide because a
+	// campaign's dungeon count is not fixed; the point is the order of
+	// magnitude, and the exact share is measured by
+	// `Cataclysm.Surge.ARolledKindIsBasicOrQuestAtTheStatedChance` above.
+	const float Wanted = UCataclysmSurgeScheduler::QuestChance;
+	const float Seen = static_cast<float>(Quests) / Rolled;
+
+	TestTrue(FString::Printf(
+		TEXT("%.1f%% of dungeons landed were Quest, against the stated %.1f%%"),
+		100.0f * Seen, 100.0f * Wanted),
+		Seen > Wanted * 0.5f && Seen < Wanted * 1.5f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
