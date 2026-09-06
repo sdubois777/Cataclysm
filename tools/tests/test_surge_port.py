@@ -1268,6 +1268,237 @@ class TestWhatAQuestDungeonIs:
             "above prove nothing")
 
 
+class TestWhatClearingADungeonCounts:
+    """Both halves keep the same three tallies, and raise them in the same place.
+
+    Slice 5 of issue #1324. `UCataclysmEmpireRun` gained `DungeonsCleared`,
+    `BasicDungeonsCleared` and `QuestObjectives`; the model has held `cleared`,
+    `basic_cleared` and `objectives` since before the game had any of them.
+
+    **WHY A SOURCE-LEVEL CHECK RATHER THAN A COMPARISON OF TWO NUMBERS.** The
+    two implementations cannot be run against each other -- the model has a
+    player and the empire module deliberately does not -- so what can be kept in
+    step is which event raises which tally. Three Unreal campaign tests under
+    `Cataclysm.EmpireRun` prove the game's behaviour and the model's own tests
+    prove its; this is the guard that catches somebody changing one side's RULE
+    while looking only at that side.
+
+    THE COMMENTS ARE STRIPPED FIRST. Both files explain these tallies in
+    comments that name the other side's fields, and a bare substring search
+    would match the explanation. That has already gone wrong once on this issue,
+    on `City.Perimeter`.
+    """
+
+    @staticmethod
+    def code_only(text: str, marker: str) -> str:
+        return "\n".join(line.split(marker, 1)[0] for line in text.splitlines())
+
+    @staticmethod
+    def cleared_in_the_game() -> str:
+        """`UCataclysmEmpireRun::ClearDungeon`, without its comments."""
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        body = run.split("UCataclysmEmpireRun::ClearDungeon(", 1)[1]
+        return TestWhatClearingADungeonCounts.code_only(
+            body.split("\n}\n", 1)[0], "//")
+
+    @staticmethod
+    def removed_in_the_game() -> str:
+        """`UCataclysmEmpireRun::RemoveDungeon`, without its comments."""
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        body = run.split("UCataclysmEmpireRun::RemoveDungeon(", 1)[1]
+        return TestWhatClearingADungeonCounts.code_only(
+            body.split("\n}\n", 1)[0], "//")
+
+    @staticmethod
+    def cleared_in_the_model() -> str:
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        return TestWhatClearingADungeonCounts.code_only(
+            inspect.getsource(Simulation._finish_current), "#")
+
+    def test_both_count_every_kind_of_dungeon_the_player_beat(self):
+        """The plain total, which is what an end-of-run summary reports."""
+        assert "self.cleared += 1" in self.cleared_in_the_model(), (
+            "Simulation._finish_current no longer counts a dungeon cleared")
+
+        assert "++DungeonsCleared;" in self.cleared_in_the_game(), (
+            "UCataclysmEmpireRun::ClearDungeon no longer counts a dungeon "
+            "cleared. It is the port of Simulation.cleared; see issue #1324 "
+            "slice 5")
+
+    def test_both_keep_the_ordinary_count_separate_from_the_total(self):
+        """**THE ONE THE CATACLYSM BOSS DUNGEON'S DEPTH READS.**
+
+        `docs/Cataclysm_GDD_v2.md` section VIII: "Every **ordinary** dungeon
+        defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons
+        and retaken Dungeon Cities do not". Settled with the project owner on
+        2026-09-06.
+
+        So a build that grew the boss from the plain total would make pursuing
+        the win condition raise the difficulty of the fight it unlocks, which is
+        the exact thing that sentence exists to forbid. Issue #1315 is the
+        growth and it is not built yet; the counter it will read is.
+        """
+        model = self.cleared_in_the_model()
+
+        assert "self.basic_cleared += 1" in model, (
+            "Simulation no longer keeps basic_cleared, which is what "
+            "cataclysm_floors_per_dungeon_cleared multiplies")
+
+        assert "if d.dtype is DungeonType.BASIC:" in model, (
+            "Simulation._finish_current no longer guards basic_cleared on the "
+            "dungeon being an ordinary one")
+
+        game = self.cleared_in_the_game()
+
+        assert "++BasicDungeonsCleared;" in game, (
+            "UCataclysmEmpireRun::ClearDungeon no longer counts ordinary "
+            "dungeons separately, so nothing holds the number the Cataclysm "
+            "boss dungeon's depth is meant to come from. Issues #1324 and "
+            "#1315")
+
+        assert "Kind == ECataclysmDungeonType::Basic" in game, (
+            "ClearDungeon no longer guards BasicDungeonsCleared on the kind "
+            "being Basic, so a Quest dungeon or a retaken Fallen City would "
+            "deepen the boss")
+
+    def test_both_count_one_objective_per_quest_dungeon_and_no_other_kind(self):
+        """The project owner ruled on 2026-09-06, verbatim "Yes -- one dungeon,
+        one objective", and `docs/Cataclysm_GDD_v2.md` section XI states it."""
+        model = self.cleared_in_the_model()
+
+        assert "self.objectives += 1" in model, (
+            "Simulation._finish_current no longer earns an objective")
+
+        assert "if d.dtype is DungeonType.QUEST:" in model, (
+            "Simulation._finish_current no longer guards the objective on the "
+            "dungeon being a Quest one")
+
+        game = self.cleared_in_the_game()
+
+        assert "++QuestObjectives;" in game, (
+            "UCataclysmEmpireRun::ClearDungeon no longer earns a quest "
+            "objective. Issue #1324 slice 5")
+
+        assert "Kind == ECataclysmDungeonType::Quest" in game, (
+            "ClearDungeon no longer guards QuestObjectives on the kind being "
+            "Quest, so any dungeon beaten would count towards the win")
+
+        # AND NO OTHER KIND IS TREATED AS PROGRESS. `Cataclysm` has no meaning
+        # in this function at all, and `FallenCity` has exactly one -- retaking
+        # the city, which slice 2 added and which is not a tally.
+        assert "ECataclysmDungeonType::Cataclysm" not in game, (
+            "ClearDungeon now mentions the Cataclysm boss dungeon. Beating it "
+            "is the win condition, which is slice 6, and it is neither an "
+            "ordinary clear nor a quest objective")
+
+        fallen_uses = game.count("ECataclysmDungeonType::FallenCity")
+
+        assert fallen_uses == 1, (
+            f"ClearDungeon names FallenCity {fallen_uses} times. It should "
+            "name it once, to decide whether beating it retakes the city. "
+            "docs/Cataclysm_GDD_v2.md section VIII: a retaken Dungeon City is "
+            "not an ordinary dungeon defeated and does not deepen the boss, "
+            "and it is not a quest objective either")
+
+        assert "bWasFallenCity" in game, (
+            "ClearDungeon no longer retakes the city when a Fallen City "
+            "dungeon is beaten, which slice 2 of issue #1324 built")
+
+    def test_neither_counts_a_dungeon_a_falling_city_absorbed(self):
+        """**NOBODY WALKED IT.**
+
+        A city that falls takes every dungeon standing on it into the Fallen
+        City dungeon it becomes. Counting those would pay a player for losing a
+        city and, for a Quest dungeon, hand them an objective for watching one
+        be destroyed. The game keeps the two paths in separate functions for
+        exactly this reason and the model pops the dictionary directly.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        fall = self.code_only(inspect.getsource(Simulation._fall), "#")
+
+        for tally in ("self.cleared", "self.basic_cleared", "self.objectives"):
+            assert f"{tally} +=" not in fall, (
+                f"Simulation._fall raises {tally}. A dungeon absorbed by a "
+                "falling city was not beaten by anybody")
+
+        removed = self.removed_in_the_game()
+
+        for tally in ("DungeonsCleared", "BasicDungeonsCleared",
+                      "QuestObjectives"):
+            assert f"++{tally}" not in removed, (
+                f"UCataclysmEmpireRun::RemoveDungeon raises {tally}. That is "
+                "the path a falling city uses to absorb the dungeons standing "
+                "on it, and it is separate from ClearDungeon so that it counts "
+                "nothing. Issue #1324 slice 5")
+
+    def test_the_game_counts_a_detonation_and_the_model_counts_something_else(
+            self):
+        """**A DELIBERATE DIVERGENCE, RECORDED SO IT IS NOT MISTAKEN FOR DRIFT.**
+
+        `UCataclysmEmpireRun::DungeonsDetonated` is raised where the city is
+        damaged. `Simulation.resolved` is raised ABOVE the model's own guard, so
+        a Fallen City dungeon's timer running out counts there and takes
+        nothing -- measured at 15 of 4,051 over thirty campaigns, and
+        `RunResult.dungeons_resolved` documents itself as "times a dungeon
+        detonated undefeated", which it therefore is not. That is issue #1373.
+
+        THIS TEST EXISTS TO FAIL WHEN #1373 IS FIXED, which is the point: at
+        that moment the two become the same number, this divergence stops being
+        real, and the comments in both files that describe it become wrong.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        resolve = self.code_only(inspect.getsource(Simulation._resolve), "#")
+
+        before, _, after = resolve.partition("self.resolved += 1")
+
+        assert after, (
+            "Simulation._resolve no longer raises self.resolved at all")
+
+        assert "if not d.resolves or city.fallen:" in after, (
+            "Simulation._resolve now raises self.resolved AFTER the guard that "
+            "decides whether the city pays anything, which is what issue #1373 "
+            "asked for. The game's DungeonsDetonated and the model's resolved "
+            "are now the same number: delete this test, and correct the "
+            "comments in CataclysmEmpireRun.h and CataclysmEmpireRun.cpp and "
+            "the docs/DECISIONS.md entry of 2026-09-06 that all say they "
+            "differ")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        resolved = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolved = self.code_only(resolved.split("\n}\n", 1)[0], "//")
+
+        counted, _, rest = resolved.partition("++DungeonsDetonated;")
+
+        assert rest, (
+            "UCataclysmEmpireRun::ResolveDungeon no longer counts a "
+            "detonation. Issue #1324 slice 5")
+
+        # EVERY EARLY RETURN COMES FIRST. The kind that does not detonate and
+        # the host that has already fallen both return above this line, so the
+        # count cannot be reached by a timer that costs the empire nothing.
+        assert "return;" in counted, (
+            "the DungeonsDetonated count has moved above the returns that let "
+            "a timer run out without costing anything, so it now counts timers "
+            "rather than damage")
+
+        assert "return;" not in rest, (
+            "there is now a return between the DungeonsDetonated count and the "
+            "damage below it, so a resolve can be counted without the city "
+            "paying for it")
+
+
 class TestTheEscalationModes:
     def test_the_enum_names_the_same_four_modes(self, surge_header):
         from cataclysm_sim.config import SurgeMode

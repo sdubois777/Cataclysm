@@ -46,9 +46,15 @@ enum class ECataclysmDungeonType : uint8
  *
  * IT MOVED WITH `ECataclysmDungeonType` AND FOR THE SAME REASON, and the two
  * are kept together because a dungeon's kind and its sub-type are one fact split
- * in two. Nothing in the empire layer rolls a sub-type yet;
- * `config.SUBTYPE_SPAWN_WEIGHTS` in the simulation is what will, and that is
- * issue #41.
+ * in two. The empire layer rolls one for every dungeon a surge lands:
+ * `UCataclysmSurgeScheduler::RollSubType` is the draw and the `SpawnWeight*`
+ * constants beside it are the weights, ported from
+ * `config.SUBTYPE_SPAWN_WEIGHTS` in the simulation. Issue #1289.
+ *
+ * THIS COMMENT SAID NOTHING ROLLED ONE UNTIL 2026-09-06 and pointed at issue
+ * #41 as the work that would. That stopped being true when #1289 merged and
+ * nothing noticed, because no test reads a comment. Issue #1324's reconnaissance
+ * found it.
  */
 UENUM(BlueprintType)
 enum class ECataclysmDungeonSubType : uint8
