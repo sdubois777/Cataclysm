@@ -84,7 +84,7 @@ def siege_daily_damage(sim, d, city) -> float:
 
     ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
     `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-06 over
-    10,000 campaigns at the settings `siege_urgency` names below, the 106,148
+    10,000 campaigns at the settings `siege_urgency` names below, the 105,997
     Sieges that reached the map were 78% Basic, 11% Quest, 10% Fallen City and
     1% Cataclysm, about 10.6 a campaign. That is why the callers below apply
     this in all three scoring branches instead of only the ordinary one.
@@ -155,21 +155,29 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
     and static surges of five dungeons every 120 days, the median walk is 13
-    days to an Outpost, 22 to a Bulwark, 35 to a Sanctuary and 123 to the
+    days to an Outpost, 22 to a Bulwark, 34 to a Sanctuary and 123 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 12 / 17 / 20 days. Measured on 2026-09-06 over 10,000
-    campaigns and 1,489,125 dungeons, each recorded at the moment it was made;
+    sizes, the slack is 12 / 17 / 21 days. Measured on 2026-09-06 over 10,000
+    campaigns and 1,488,436 dungeons, each recorded at the moment it was made;
     issue #1364.
 
     QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
     THEM FORWARD. The walk lengths are nearly uniform where the median sits --
-    45.0% of Outpost dungeons walk in 12 days or fewer and 50.2% in 13 or fewer
+    45.2% of Outpost dungeons walk in 12 days or fewer and 50.5% in 13 or fewer
     -- so the median is a coin flip between two adjacent days, and a block of
     200 campaigns lands on either side of it at random. That is how this file
     came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
     same code: neither was reproducible, and neither was wrong by much.
     `tests/test_the_siege_prose_in_policies_is_true.py` re-measures all four and
     allows a day either way.
+
+    IT MOVED WHILE THIS PARAGRAPH WAS BEING WRITTEN, WHICH IS THE ARGUMENT FOR
+    THE GUARD. Issue #1369 put the Cow Level spawn weight back to 7 from the 7.6
+    the Siege rescale of issue #1349 had lifted it to, and a Cow Level walks in
+    twice the days. The Sanctuary median fell from 35 to 34 between the first
+    draft of this paragraph and the second, and the guard failed in continuous
+    integration rather than a reader finding it a month later. Re-measured on
+    `e8b33c2`.
 
     THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
     balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.

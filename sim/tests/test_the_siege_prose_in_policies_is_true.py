@@ -52,6 +52,19 @@ in the same direction. Nothing here can separate that from sampling noise,
 because nothing can -- see the paragraph above on what a median over a flat
 distribution is worth. The docstring in `policies.py` says so in the prose
 rather than pretending otherwise.
+
+THAT IS MEASURED AND NOT ASSUMED. Putting the Cow Level weight back to the 7.6
+this file was first written against -- the very change whose reverse failed in
+continuous integration -- leaves all fourteen of these passing. It should. The
+share of Outpost dungeons walking in 13 days or fewer moves from 50.5% to 50.2%
+between the two weights, which is a third of a percentage point: the
+distribution barely moves and the reported integer flips because the median sat
+on a boundary. **A guard that failed on that would be reporting the boundary and
+not the game.** What broke in continuous integration was the asymmetry, not the
+tolerance -- the figure then stated, 35, sat on the far side of the boundary
+from what a 200-campaign block gives, so the gap was two days in one direction
+and none in the other. Quoting what the large sample gives puts the block within
+a day either way, which is what the tolerance is for.
 """
 
 from __future__ import annotations
@@ -79,7 +92,8 @@ TIERS = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY,
 #:
 #: FIVE DUNGEONS A SURGE IS THE BALANCE REPORT'S SETTING AND NOT
 #: `TuningConfig.surge_dungeon_count`, which is 4. At four the Sanctuary median
-#: is 37 rather than 35, so quoting a walk without its surge size says nothing.
+#: is 37 rather than 34, measured over 1,000 campaigns at each, so quoting a
+#: walk without its surge size says nothing.
 REPORT_SETTINGS = dict(
     tier=1,
     surge_mode=SurgeMode.STATIC,
@@ -93,8 +107,9 @@ REPORT_SETTINGS = dict(
 
 #: Campaigns the re-measurement runs. Chosen from evidence rather than taste:
 #: over ten disjoint blocks of this size the median never strayed more than one
-#: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary.
-#: Ten blocks of 120 put a Sanctuary two days out, which is why it is not 120.
+#: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary,
+#: re-run at the Cow Level weight of 7.0 that #1369 landed. Ten blocks of 120
+#: put a Sanctuary two days out, which is why it is not 120.
 CAMPAIGNS = 200
 
 #: How far a measured median may sit from the stated one. See the module
@@ -104,8 +119,10 @@ WALK_TOLERANCE_DAYS = 1
 #: The Pillar's own median is noisier -- 200 campaigns produce only about 230
 #: dungeons there against 16,000 on an Outpost -- and it is not the figure the
 #: Pillar claim rests on. `TestAPillarSiegeCanNeverBeAnswered` carries that,
-#: exactly and without campaigns.
-PILLAR_TOLERANCE_DAYS = 3
+#: exactly and without campaigns. Ten blocks of 200 spread it over 120 to
+#: 126.5 against a 10,000-campaign answer of 123, so four is what was measured
+#: rather than what was convenient.
+PILLAR_TOLERANCE_DAYS = 4
 
 
 def report_config() -> TuningConfig:
@@ -330,7 +347,7 @@ class TestTheMedianWalkTheProseStates:
             "The docstring's claim that the median is a coin flip between two "
             "adjacent days rests on that being near half.")
         says(DOC_URGENCY,
-             "45.0% of Outpost dungeons walk in 12 days or fewer and 50.2% in "
+             "45.2% of Outpost dungeons walk in 12 days or fewer and 50.5% in "
              "13 or fewer",
              "Those are the shares from the 10,000-campaign measurement.")
 
