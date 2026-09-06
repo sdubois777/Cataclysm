@@ -530,13 +530,23 @@ class TestWhatAFallenCityIs:
                 f"{spec.resolve_days[0]} days, the game gives {unreal}")
 
     def test_it_takes_nothing_from_the_city_in_either(self, model):
-        """Both bites are zero at every tier. The city has already fallen."""
+        """It destroys nothing at any tier. The city has already fallen.
+
+        ZERO IS ZERO IN EITHER UNIT, which is why this test did not have to
+        change its meaning when issue #1327 turned the model's damage from a
+        fraction of the city's maximum into a number of points. It changed its
+        FIELD NAMES only. The game still holds fractions, and
+        `test_every_dungeon_spec_matches_in_the_game` above is what converts
+        between the two by multiplying the game's fraction by the tier's own
+        maximum. A Fallen City needs no conversion, because it destroys nothing
+        under either unit.
+        """
         from cataclysm_sim.config import CityTier, DungeonType
 
         for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
             spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
-            assert spec.defense_bite == 0.0, tier
-            assert spec.population_bite == 0.0, tier
+            assert spec.defense_damage == 0.0, tier
+            assert spec.population_damage == 0.0, tier
 
     def test_the_games_depth_is_the_siege_that_took_the_city(self):
         """The game derives the depth; it does not roll it.
