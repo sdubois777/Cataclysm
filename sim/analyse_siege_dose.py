@@ -87,12 +87,28 @@ from cataclysm_sim.engine import Simulation
 #: costs twice this, and both blocks are printed separately -- pooling two blocks
 #: once changed an answer on this project from "not moved" to "moved".
 #:
-#: 5 is a compromise, exactly as `analyse_lethality_modes.py` documents for its
+#: 3 is a compromise, exactly as `analyse_lethality_modes.py` documents for its
 #: own 25: `sim/tests/test_analysis_scripts.py` runs every analysis script, and
-#: this one sweeps fourteen doses over two blocks where that one sweeps five
-#: rows once. At 5 it costs about 4 seconds, which is the same order as that
-#: script; at 12 it costs 11 and would be the largest single cost in the fast
-#: suite. **AT THE DEFAULT THE PRINTED SHARES ARE NOISE AND THE OUTPUT SAYS SO.**
+#: this one sweeps eighteen doses over two blocks where that one sweeps five rows
+#: once. **THE FILE RUNS IT TWICE** -- once for the parametrised "it runs at all"
+#: test and once for the fixture the checks share -- so the number here is paid
+#: twice. Measured 2026-09-06 on this machine:
+#:
+#:     TRIALS      3       4       5      12
+#:     one run  3.95s   5.25s   6.29s   11.2s
+#:
+#: `sim/tests/test_analysis_scripts.py` takes 10.1 seconds without this section,
+#: 23.3 with it at 3, and 27.7 at 5. **So the section costs 13.2 seconds and only
+#: 7.9 of those are the two script runs**; the rest is the checks that run
+#: campaigns of their own, and dropping TRIALS further buys little. That is still
+#: the largest single cost in this file -- `analyse_lethality_modes.py` costs
+#: about 8.8 -- and it is deliberate: five of the checks below are the only thing
+#: standing between a wrong dose-response curve and a design decision made on it.
+#:
+#: **NOTHING IN THE CHECKS DEPENDS ON THE SIZE**: not one of them asserts a
+#: campaign share, for the reason on the next line.
+#:
+#: **AT THE DEFAULT THE PRINTED SHARES ARE NOISE AND THE OUTPUT SAYS SO.**
 #: The curves put to the owner on issue #1349 were taken at 1,000, which is
 #: 2,000 campaigns a dose and 34,000 campaigns in all. That is tens of minutes,
 #: and much longer on a machine you are also working on -- the run that produced
@@ -104,7 +120,7 @@ from cataclysm_sim.engine import Simulation
 #: variable rather than a command line flag because
 #: `sim/tests/test_analysis_scripts.py` executes this file with `runpy.run_path`,
 #: which leaves `sys.argv` pointing at pytest's own arguments.
-TRIALS = int(os.environ.get("CATACLYSM_SIEGE_DOSE_TRIALS", "5"))
+TRIALS = int(os.environ.get("CATACLYSM_SIEGE_DOSE_TRIALS", "3"))
 
 #: The two blocks. Disjoint by construction at any `TRIALS`, and block A starts
 #: at seed 0 so a run at 1,000 reproduces the block the baseline on issue #1349
