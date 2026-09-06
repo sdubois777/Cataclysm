@@ -5999,7 +5999,7 @@ Player cities become aggressive and begin attacking each other. Conquered cities
 
 ## **Pestilence**
 
-A spreading plague infects cities via expanding Plague Zones. Each city has a Contamination Meter that drains population daily. Fallen cities become plague zones and spread infection. Players must defeat quest dungeons to progress toward a vaccine and stem the tide.
+A spreading plague infects cities via expanding Plague Zones. Each city has a Contamination Meter that drains population daily. Fallen cities become plague zones and spread infection. Players must defeat 5 quest dungeons to progress toward a vaccine and stem the tide.
 
   
 
@@ -6023,7 +6023,28 @@ Chaotic Resolutions mean dungeons can have completely unpredictable outcomes whe
 
 ## **The Void**
 
-Void dungeons accumulate void stacks on cities. When stacks reach a threshold, the city is permanently erased from the game world and cannot be reclaimed. Players must deploy void countermeasures, complete Sealing Rituals, and ultimately defeat the Void Nexus.
+Void dungeons accumulate void stacks on cities. When stacks reach a threshold, the city is permanently erased from the game world and cannot be reclaimed. Players must deploy void countermeasures, complete 5 Sealing Rituals, and ultimately defeat the Void Nexus.
+
+  
+
+## **How many objectives each Cataclysm asks for**
+
+One cleared quest dungeon is one objective. The seals, seeds, essences, cores and rituals named above are flavour for one mechanic: clear a quest dungeon, gain one objective, and the enemy capital opens when the count is met. **The count differs per Cataclysm and that is deliberate.**
+
+| Cataclysm | Objectives | Stated above as |
+| :-- | --: | :-- |
+| Demonic | 10 | seal 10 Rifts |
+| Death | 5 | collect 5 Seeds of Undeath |
+| War | 10 | collect 10 Essences of War |
+| Pestilence | 5 | defeat 5 quest dungeons |
+| Famine | 5 | defeat 5 quest dungeons |
+| Celestial | 10 | seal 10 gates |
+| Chaos | 8 | reactivate 8 Pillars of Order |
+| The Void | 5 | complete 5 Sealing Rituals |
+
+**Pestilence and The Void are the two this section left without a number**, and the project owner supplied both on 2026-09-06. Pestilence asks for 5 because Famine asks for 5 and the two share the property that the penalty worsens the longer quest dungeons stand -- the plague drains population daily and fallen cities spread it. The Void asks for 5 because a Void-erased city is permanently removed and cannot be reclaimed, which is the only unrecoverable loss in the game, and a short campaign limits how much of the map is destroyed for good.
+
+**What this does not fix.** How often a Quest dungeon spawns is a separate rule, and the owner ruled it should depend on the Cataclysm rather than being one number. That rule is not derived here.
 
   
 

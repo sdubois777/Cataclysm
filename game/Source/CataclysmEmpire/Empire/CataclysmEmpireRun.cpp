@@ -229,23 +229,21 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	{
 		// IT REFRESHES RATHER THAN DETONATING, and the clock has already
 		// refreshed it -- see `UCataclysmDayClock::AdvanceDay`, which sets every
-		// timer that ran out back to full. So the whole of this rule is doing
-		// nothing to the city.
+		// timer that ran out back to full. So nothing here is taken from the
+		// city.
 		//
 		// A QUEST DUNGEON IS THE ONE THIS IS ABOUT IN PLAY.
 		// `docs/Cataclysm_GDD_v2.md` section VIII: it "does not resolve --
 		// refreshes and may move to adjacent city". The timer is a relocation
 		// clock and it is MEANT to run out; what must not happen is the city
-		// paying for it. Issue #1324 slice 3. **Nothing moves yet**: the move is
-		// slice 4, and the dungeon appears in this day's
-		// `FCataclysmDayReport::Resolved` when its timer fires, which is the
-		// event that slice will hang the move on.
+		// paying for it. Issue #1324 slice 3, and the move below is slice 4.
 		//
 		// A FALLEN CITY AND A CATACLYSM REACH THIS TOO, and would have been
 		// stopped by the fallen-city check below in any case -- a Fallen City
 		// stands on a city that has by definition fallen. This is the first of
 		// the two reasons rather than the only one, and it is the one that
 		// states the design instead of relying on a coincidence.
+		RelocateQuestDungeon(DungeonId, OutReport);
 		return;
 	}
 
@@ -275,6 +273,82 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	{
 		CityFell(CityId, OutReport);
 	}
+}
+
+void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
+											   FCataclysmDayReport& OutReport)
+{
+	if (Map == nullptr)
+	{
+		return;
+	}
+
+	// LOOKED UP MUTABLY AND ONLY HERE. `ResolveDungeon` holds its dungeon by
+	// const pointer on purpose, so that the one function able to move a dungeon
+	// is this one and a reader can find it by name.
+	FCataclysmDungeon* Dungeon = Dungeons.FindByPredicate(
+		[DungeonId](const FCataclysmDungeon& Candidate)
+		{
+			return Candidate.DungeonId == DungeonId;
+		});
+
+	if (Dungeon == nullptr)
+	{
+		return;
+	}
+
+	// ONLY A QUEST DUNGEON MOVES. A Fallen City and a Cataclysm also answer
+	// false to `Resolves`, and both reach the caller above, but neither
+	// wanders: a Fallen City IS its city, and the Cataclysm boss dungeon's one
+	// move is the Last Stand, issue #43. Checking the kind here rather than at
+	// the call site keeps the rule beside the thing it is a rule about.
+	if (Dungeon->Type != ECataclysmDungeonType::Quest)
+	{
+		return;
+	}
+
+	const FCataclysmCity* From = Map->Find(Dungeon->CityId);
+	if (From == nullptr || From->bFallen)
+	{
+		// ITS CITY FELL UNDERNEATH IT. In practice the dungeon is already gone
+		// -- `CityFell` absorbs everything standing on the city -- so this is
+		// belt and braces rather than a case seen in play. A dungeon standing
+		// on a ruin has no territory to drift through.
+		return;
+	}
+
+	const int32 MovingTo =
+		UCataclysmSurgeScheduler::PickRelocation(*Map, *From, Stream);
+
+	if (MovingTo == INDEX_NONE)
+	{
+		// NOWHERE ADJACENT TO GO, SO IT STAYS, and it is deliberately NOT
+		// recorded in `Relocated`. The design says a Quest dungeon "MAY move";
+		// this is the case that makes that word true.
+		return;
+	}
+
+	const FCataclysmCity* To = Map->Find(MovingTo);
+	if (To == nullptr)
+	{
+		return;
+	}
+
+	Dungeon->CityId = MovingTo;
+
+	// AND ITS TIER MOVES WITH IT, which is what `Simulation._resolve` does:
+	// `d.city_tier = new_city.tier`.
+	//
+	// THE DEPTH DOES NOT. `CityTier` is what the depth WAS rolled from and is
+	// read afterwards by `BiteScale`, which divides the floor count by the
+	// midpoint of the spec for this kind on this tier. So a Quest dungeon that
+	// drifts inward onto a bigger city reads as shallower for its
+	// surroundings, and one that drifts outward reads as deeper. That follows
+	// the model exactly; the design says nothing about it, and it costs a Quest
+	// dungeon nothing today because a Quest dungeon never bites.
+	Dungeon->CityTier = To->Tier;
+
+	OutReport.Relocated.Add(DungeonId);
 }
 
 bool UCataclysmEmpireRun::DungeonsAgreeWithTimers(

@@ -111,8 +111,15 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 *
 	 * RIM OUTPOSTS ONLY, AND THEY CARRY NO LANE. They are the curved edges in
 	 * the design sketch and they exist for adjacency effects -- a passive that
-	 * reads "and its neighbours" -- rather than for exposure. Nothing reads them
-	 * yet.
+	 * reads "and its neighbours" -- rather than for exposure. `IsExposed` reads
+	 * `Outward` and never this, which is why.
+	 *
+	 * WHAT DOES READ THEM. `UCataclysmSurgeScheduler::AdjacentCities`, since
+	 * issue #1324 slice 4: a Quest dungeon whose timer runs out moves to an
+	 * adjacent city, and two rim Outposts joined by one of these are adjacent.
+	 * That is a reading of a design that never defines adjacency, and the class
+	 * comment below states adjacency the other way -- see `docs/DECISIONS.md`,
+	 * 2026-09-06, which records the disagreement and what it is worth.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Perimeter;
@@ -237,11 +244,20 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
  * rather than a separate decision. Changing the radius would change all four
  * together.
  *
- * LANES. Adjacency is orthogonal: `(R+-1, C)` and `(R, C+-1)`. Every orthogonal
- * step changes the ring by one, so a cell's neighbours are strictly the cells
- * one step further out and one step further in. That is what makes the frontier
+ * LANES. A lane is orthogonal: `(R+-1, C)` and `(R, C+-1)`. Every orthogonal
+ * step changes the ring by one, so a cell's lanes run strictly to the cells one
+ * step further out and one step further in. That is what makes the frontier
  * rule exact: a cell is attackable once ANY of the cells shielding it from
  * outside has fallen, and retaking that cell seals the lane again.
+ *
+ * A LANE IS NOT THE WHOLE OF ADJACENCY, AND THIS PARAGRAPH USED TO SAY IT WAS.
+ * It read "Adjacency is orthogonal ... a cell's neighbours are strictly the
+ * cells one step further out and one step further in", which contradicted
+ * `FCataclysmCity::Perimeter` two hundred lines above -- the rim's curved
+ * edges, joining rim Outposts to each other, which that field's own comment
+ * says exist for adjacency effects. Nothing read them when both were written,
+ * so nothing had to choose. `UCataclysmSurgeScheduler::AdjacentCities` chose,
+ * in favour of counting them, and `docs/DECISIONS.md` records why.
  *
  * THE CONSTANTS ARE A COPY AND THE SIMULATION IS THE ORIGINAL, the same
  * arrangement `UCataclysmDayClock` is in and for the same reason.

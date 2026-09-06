@@ -41,10 +41,11 @@ enum class ECataclysmSurgeMode : uint8
 //   - **Quest** refreshes instead of resolving, and clearing one is one
 //     objective towards challenging the Cataclysm. A surge rolls one in place
 //     of a Basic; see `RollKind` and `QuestChance`. Issue #1324 slice 3.
-//     **It does not relocate yet**: the design says it "may move to adjacent
-//     city" and that is slice 4, so today it refreshes where it stands. Issue
-//     #51 is the Hell on Earth quest mechanic for the Demonic Cataclysm
-//     specifically, which is a different thing from this kind.
+//     **And it relocates**: when its timer runs out it moves to an adjacent
+//     exposed city, or stays put when there is not one. `PickRelocation`
+//     chooses and `UCataclysmEmpireRun::ResolveDungeon` moves it. Issue #1324
+//     slice 4. Issue #51 is the Hell on Earth quest mechanic for the Demonic
+//     Cataclysm specifically, which is a different thing from this kind.
 //   - **FallenCity** is what a city that has fallen becomes.
 //     `MakeFallenCityDungeon` builds it and `UCataclysmEmpireRun::CityFell`
 //     is the only caller. Issue #1324 slice 2.
@@ -274,9 +275,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * detonate. The kind is what the design speaks about, so the kind is what
 	 * this reads.
 	 *
-	 * IT DOES NOT MEAN THE TIMER NEVER FIRES. A Quest dungeon's timer is a
-	 * relocation clock and is MEANT to run out -- see `QuestResolveDays`. What
-	 * this answers is whether anything is taken from the city when it does.
+	 * IT DOES NOT MEAN THE TIMER NEVER FIRES, AND IT DOES NOT MEAN NOTHING
+	 * HAPPENS. A Quest dungeon's timer is a relocation clock and is MEANT to run
+	 * out -- see `QuestResolveDays`. What this answers is whether anything is
+	 * taken from the CITY when it does; the dungeon itself refreshes and moves
+	 * to an adjacent city. Issue #1324 slice 4.
 	 */
 	bool Resolves() const { return Type == ECataclysmDungeonType::Basic; }
 };
@@ -316,11 +319,6 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
  *     records what it would mean for the lane rule.
- *   - **A Quest dungeon MOVING.** Rolling one and refreshing it rather than
- *     letting it detonate are both here now, issue #1324 slice 3. The design
- *     says it "may move to adjacent city" and the project owner ruled on
- *     2026-09-06, verbatim "Adjacent, and fix the simulation", that adjacency
- *     is right and the model's move-anywhere is the defect. Moving is slice 4.
  *   - **The 117 dungeon modifiers.** Issue #41.
  *   - **What six of the seven sub-types do.** One of them is here: Cow Level
  *     doubles the walk. The other six describe what happens inside a dungeon,
@@ -723,10 +721,11 @@ public:
 	 * how long the player has before the objective moves, and the design gives
 	 * that no relationship to depth at all.
 	 *
-	 * NOTHING MOVES YET. Until slice 4 of issue #1324 the timer running out
-	 * refreshes the dungeon where it stands. It appears in the day's
-	 * `FCataclysmDayReport::Resolved` when it does, which is the event slice 4
-	 * hangs the move on.
+	 * AND IT IS WHAT THE MOVE HANGS ON. The timer running out puts the dungeon
+	 * in the day's `FCataclysmDayReport::Resolved`, and
+	 * `UCataclysmEmpireRun::ResolveDungeon` relocates it there -- to an
+	 * adjacent exposed city, or nowhere when it has no such neighbour. See
+	 * `PickRelocation`. Issue #1324 slice 4.
 	 */
 	static constexpr float QuestResolveDays = 25.0f;
 
@@ -978,6 +977,78 @@ public:
 	 * came out.
 	 */
 	static ECataclysmDungeonType RollKind(FRandomStream& Stream);
+
+	/**
+	 * Every city the map links one city to, whichever way the link runs.
+	 *
+	 * THREE KINDS OF LINK AND ALL THREE COUNT: `Outward`, `Inward` and, on the
+	 * rim only, `Perimeter`. The first two are the orthogonal lanes; the third
+	 * joins rim Outposts along the curved edge of the diamond, carries no lane
+	 * and takes no part in exposure.
+	 *
+	 * **THE PERIMETER LINKS ARE INCLUDED, AND THAT IS A READING RATHER THAN A
+	 * RULE.** The design never defines adjacency and `UCataclysmEmpireMap`
+	 * states it twice in ways that do not agree: its class comment says
+	 * "Adjacency is orthogonal ... a cell's neighbours are strictly the cells
+	 * one step further out and one step further in", while
+	 * `FCataclysmCity::Perimeter` says those links "exist for adjacency effects
+	 * -- a passive that reads 'and its neighbours'". The first is inside the
+	 * section about LANES and is answering which cities shield which, which is
+	 * an exposure question; this is an adjacency question, so the second was
+	 * taken. `docs/DECISIONS.md` records the choice, the disagreement and what
+	 * it is worth: a Quest dungeon has somewhere to go 69.1% of the time
+	 * without the perimeter and 79.5% with it, over 926 quest timers in 30
+	 * simulated campaigns.
+	 *
+	 * IT ASKS NOTHING ABOUT THE CITIES IT NAMES. Whether they are exposed,
+	 * fallen or the Pillar is `PickRelocation`'s business, so that a caller
+	 * wanting plain adjacency -- a passive reading "and its neighbours" -- is
+	 * not handed a list already filtered for somebody else's rule.
+	 */
+	static TArray<int32> AdjacentCities(const FCataclysmCity& City);
+
+	/**
+	 * Where a Quest dungeon standing on a city moves to when its timer runs
+	 * out, or `INDEX_NONE` to stay where it is.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not
+	 * resolve -- refreshes and **may move to adjacent city**". The project
+	 * owner ruled on 2026-09-06, verbatim "Adjacent, and fix the simulation",
+	 * that adjacency is right and that the model moving it anywhere on the map
+	 * was the defect. Issue #1324 slice 4.
+	 *
+	 * THE SAME FILTER A SURGE USES, NARROWED TO NEIGHBOURS. A dungeon may only
+	 * stand where a surge could have put one, so a sealed city is no more a
+	 * relocation target than it is a spawn target and the Pillar is excluded
+	 * for the same reason `UCataclysmEmpireMap::ExposedCities` excludes it. A
+	 * fallen city is not exposed, so a Quest dungeon never moves onto the
+	 * Fallen City dungeon standing on one.
+	 *
+	 * **"MAY MOVE" IS SATISFIED BY THE MAP AND NOT BY A DIE ROLL, WHICH IS A
+	 * READING.** This moves the dungeon whenever an adjacent exposed city
+	 * exists and answers `INDEX_NONE` when none does, which happens for real:
+	 * about one quest timer in five fires with nowhere adjacent to go. The
+	 * owner was offered a chance-based variant and did not take it, but neither
+	 * did they say movement is certain, so this is not settled -- see
+	 * `docs/DECISIONS.md`. Adding a chance later needs one constant and no new
+	 * structure.
+	 *
+	 * IT DECIDES, IT DOES NOT ACT, like everything else on this class.
+	 * `UCataclysmEmpireRun::ResolveDungeon` is what actually moves the dungeon,
+	 * because this class does not own the dungeons standing on the map.
+	 *
+	 * ONE DRAW WHEN THERE IS A CHOICE AND NONE WHEN THERE IS NOT, which is what
+	 * `Simulation._resolve` does -- `self.rng.choice(targets)` is guarded by
+	 * `if targets`. A draw taken on the empty case would put the two streams
+	 * permanently out of step.
+	 *
+	 * @param From the city the dungeon is standing on now. Its own identifier
+	 *             is never among its neighbours, so this never answers "stay"
+	 *             by naming the city it is already on.
+	 */
+	static int32 PickRelocation(const UCataclysmEmpireMap& Map,
+								const FCataclysmCity& From,
+								FRandomStream& Stream);
 
 	/**
 	 * The whole wave: picks the targets and rolls a dungeon for each.

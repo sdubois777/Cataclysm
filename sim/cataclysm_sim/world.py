@@ -170,6 +170,43 @@ class Empire:
                 if self.is_exposed(c)
                 and not (exclude_pillar and c.cid == self.pillar_id)]
 
+    def neighbours(self, c: City) -> list[int]:
+        """Every city the map links this one to, whichever way the link runs.
+
+        THREE KINDS OF LINK AND ALL THREE COUNT. `outward` and `inward` are the
+        orthogonal lanes, and `perimeter` joins rim Outposts along the edge of
+        the diamond. The perimeter links carry no lane and take no part in
+        exposure, which is why `is_exposed` reads only `outward`; they exist
+        for adjacency effects, and this is one.
+
+        THAT IS A READING AND IT IS RECORDED IN `docs/DECISIONS.md`. The design
+        never defines adjacency. Taking the orthogonal links alone would leave a
+        Quest dungeon somewhere to go 69.1% of the time against 79.5% with the
+        perimeter, measured over 926 quest timers in 30 campaigns, and would
+        make the curved edges of the design's own sketch mean nothing.
+        """
+        return list(c.outward) + list(c.inward) + list(c.perimeter)
+
+    def adjacent_exposed_cities(self, c: City,
+                                exclude_pillar: bool = True) -> list[City]:
+        """Where a dungeon standing on `c` could move to.
+
+        THE SAME FILTER AS `exposed_cities`, NARROWED TO NEIGHBOURS. A dungeon
+        may only stand where a surge could have put one, so a sealed city is no
+        more a relocation target than it is a spawn target, and the Pillar is
+        left out for the same reason it is left out there.
+
+        WHY THIS EXISTS. `Simulation._resolve` moved a quest dungeon to a
+        uniformly random exposed city ANYWHERE, which the design contradicts:
+        `docs/Cataclysm_GDD_v2.md` section VIII says a Quest dungeon "does not
+        resolve -- refreshes and may move to adjacent city". Asked which was
+        intended the project owner answered on 2026-09-06, verbatim "Adjacent,
+        and fix the simulation". Issue #1324 slice 4.
+        """
+        return [self.cities[k] for k in self.neighbours(c)
+                if self.is_exposed(self.cities[k])
+                and not (exclude_pillar and k == self.pillar_id)]
+
     def pillar_exposed(self) -> bool:
         """A Sanctuary has fallen -- the Cataclysm can reach the Pillar."""
         return self.is_exposed(self.cities[self.pillar_id])

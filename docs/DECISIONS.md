@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — A Quest dungeon moves to an ADJACENT city, and the simulation was wrong
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section VIII, the Dungeon Types table.
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`,
+`sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/world.py`. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 4.
+
+### The ruling
+
+The design says a Quest dungeon “does not resolve — refreshes and may move to
+adjacent city”, and the simulation moved it to a uniformly random exposed city
+anywhere on the map. Asked which was intended, the owner answered, verbatim:
+**“Adjacent, and fix the simulation”**.
+
+So the design document is right and the model was the defect. `Simulation._resolve`
+drew from `Empire.exposed_cities()`, which filters for exposure and nothing else;
+it now draws from `Empire.adjacent_exposed_cities()`. The game implements the same
+rule in `UCataclysmSurgeScheduler::PickRelocation`.
+
+### What “adjacent” was taken to mean, and why that was a choice
+
+**Every city the map links this one to: the neighbours one ring out, the
+neighbours one ring in, and — on the rim only — the perimeter links along the
+edge.** The design never defines adjacency, so this was read off the map, and the
+map states it twice in ways that do not agree. `UCataclysmEmpireMap`’s class
+comment says “Adjacency is orthogonal… a cell’s neighbours are strictly the cells
+one step further out and one step further in”, which excludes the perimeter;
+`FCataclysmCity::Perimeter`’s own comment says those links “exist for adjacency
+effects — a passive that reads ‘and its neighbours’ — rather than for exposure”,
+which is exactly this rule.
+
+The second reading was taken, for three reasons. The first comment is inside the
+section about **lanes**, and it is defining which cities shield which — an
+exposure question, not a “is this city next to that one” question. The perimeter
+links are drawn as the curved edges of the diamond in the design sketch, so two
+rim Outposts joined by one are visibly adjacent. And the owner’s stated reason for
+choosing adjacency was that “a quest dungeon drifts through territory rather than
+teleporting”, which the rim links serve.
+
+**Measured over 30 campaigns, 926 quest timers firing:** a Quest dungeon has
+somewhere to go 69.1% of the time under the orthogonal-only reading and 79.5% of
+the time with the perimeter included; the perimeter is the only route open in
+10.4% of cases. The mean number of candidate cities is 0.99, 1.29, and 9.15 under
+the move-anywhere rule that was replaced. **So this decision is worth about ten
+percentage points of relocation frequency**, and it is recorded rather than left
+implicit for that reason.
+
+### What this leaves open
+
+**Whether a Quest dungeon that has somewhere to go always goes.** The design says
+“**may** move”. The owner was offered a chance-based variant and did not take it,
+but neither did they say movement is certain. What is built moves it whenever an
+adjacent exposed city exists and leaves it standing when none does, so “may” is
+satisfied by the map rather than by a die roll — which is a reading, not a ruling.
+Adding a chance later needs one number and no new structure.
+
+**Whether a relocated dungeon keeps its depth, its timer and its sub-type.** It
+keeps all three today, in both implementations. The design says nothing about it.
+
+### The balance figures this moves
+
+Every figure this project holds was measured with a Quest dungeon relocating to
+anywhere on the map. A dungeon’s position decides which cities it threatens, so
+the sweeps in `sim/experiments.py` have not been re-run against the new rule and
+the numbers in this file and in the design document predate it.
+
+## 2026-09-06 — Pestilence asks for 5 quest objectives and The Void for 5
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` section XI. Issues
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324) and
+[#1357](https://github.com/sdubois777/Cataclysm/issues/1357).
+
+### The ruling
+
+The design gives a quest objective count for six of the eight Cataclysms and none
+for Pestilence or The Void. Asked whether the varying counts were intentional, the
+owner answered, verbatim: **“Keep the per-Cataclysm numbers; I will supply the two
+missing”**, and then supplied them — **Pestilence: “5”**, and **The Void: “go
+ahead with 5”**.
+
+| Cataclysm | Objectives | Source |
+| :-- | --: | :-- |
+| Demonic | 10 | design document, “seal 10 Rifts” |
+| Death | 5 | design document, “5 Seeds of Undeath” |
+| War | 10 | design document, “10 Essences of War” |
+| Pestilence | **5** | **owner, 2026-09-06** |
+| Famine | 5 | design document, “defeat 5 quest dungeons” |
+| Celestial | 10 | design document, “seal 10 gates” |
+| Chaos | 8 | design document, “8 Pillars of Order” |
+| The Void | **5** | **owner, 2026-09-06** |
+
+One cleared quest dungeon is one objective. The owner ruled that separately the
+same day, verbatim **“Yes — one dungeon, one objective”**, so the seals, seeds,
+essences, cores and rituals the sections name are flavour for one mechanic.
+
+### The reasoning, so nobody re-opens it
+
+Neither number is derivable from anything, so the argument is recorded rather than
+the number alone.
+
+**Pestilence at 5** matches Famine, which is also 5 and shares the property that
+the penalty worsens the longer quest dungeons stand — the plague drains population
+daily and fallen cities spread it.
+
+**The Void at 5** applies the same reasoning. A Void-erased city is *permanently*
+removed and cannot be reclaimed, which is the only unrecoverable loss in the game;
+every other loss is recoverable, a captured city included, which the owner ruled
+the same day comes back at half strength with its upgrades intact. A short
+campaign limits how much is permanently destroyed.
+
+**One argument was offered and the owner rejected it.** The Void was said to
+warrant a higher count as “the last Cataclysm added”. There is no last one: the
+order Cataclysms are added per tier is randomised for each new character, which is
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338) and is recorded in
+this file separately.
+
+### What this leaves open
+
+**How often a Quest dungeon spawns.** The owner ruled that rate “should depend on
+the Cataclysm”, which makes it a rule to derive rather than a number to pick, and
+these eight counts are its input. It is not derived here, and it is blocked on
+something structural besides: the empire layer has no notion of which Cataclysm is
+running. Issue [#1357](https://github.com/sdubois777/Cataclysm/issues/1357).
+
+**The simulation still requires a flat 8** — `config.quest_objectives_required`,
+whose own comment admits it is the midpoint of the stated numbers rather than a
+ruling. Every balance figure this project holds was measured at 8 for every
+Cataclysm, and the model cannot express a per-Cataclysm count today.
+
 ## 2026-09-06 — The population multiplier's shape: base points × living over maximum, per dungeon, no floor
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Empire-Wide Upgrades section.

@@ -878,11 +878,16 @@ class TestWhatAFallenCityIs:
 
 
 class TestWhatAQuestDungeonIs:
-    """A surge rolls one instead of a Basic, and it refreshes instead of biting.
+    """A surge rolls one instead of a Basic, it refreshes instead of biting,
+    and its timer running out moves it to an adjacent city.
 
-    Slice 3 of issue #1324. Relocation is slice 4 and is deliberately not here;
-    `test_neither_moves_a_quest_dungeon_yet` below is what records that, so the
-    absence reads as scope rather than as an oversight.
+    Slices 3 and 4 of issue #1324. Slice 3 shipped with a
+    `test_neither_moves_a_quest_dungeon_yet` recording relocation as scope; the
+    three tests at the end of this class replace it, and the reason they are
+    three rather than one is that "adjacent" is a decision the design does not
+    make -- so what the two halves agree on has to be checked in three places:
+    that they both move it, what they both count as adjacent, and what they both
+    do when there is nowhere to go.
     """
 
     def test_the_chance_a_surge_rolls_one_matches(self, surge_header, model):
@@ -1024,20 +1029,23 @@ class TestWhatAQuestDungeonIs:
             "must take the same number of draws off the stream as a Basic one, "
             "or which kinds came out earlier changes every later roll")
 
-    def test_neither_moves_a_quest_dungeon_yet(self, model):
-        """Relocation is slice 4 of issue #1324, and this records that.
+    def test_both_move_it_to_an_adjacent_city_and_neither_moves_it_anywhere(
+            self, model):
+        """Slice 4 of issue #1324, and the rule both halves must now share.
 
-        THIS TEST ASSERTS AN ABSENCE ON PURPOSE, so that the game not moving a
-        Quest dungeon reads as scope rather than as the drift this file exists to
-        catch. **When slice 4 lands it should fail** and be replaced by one
-        comparing the two rules.
+        THIS REPLACES `test_neither_moves_a_quest_dungeon_yet`, which asserted
+        the absence of the move on purpose while it was still scope. It said so
+        in its own docstring -- "when slice 4 lands it should fail" -- and it
+        did.
 
-        AND THE MODEL'S RULE IS ITSELF A DEFECT, which is why nothing was copied
-        from it. `Simulation._resolve` moves a Quest dungeon to a uniformly
-        random exposed city anywhere on the map. The design says "may move to
-        ADJACENT city" and the project owner ruled on 2026-09-06, verbatim
-        "Adjacent, and fix the simulation". So the model is what is wrong, and
-        the game must not be brought into step with it.
+        **THE MODEL WAS THE DEFECT AND THE GAME WAS NEVER BROUGHT INTO STEP WITH
+        IT.** `Simulation._resolve` moved a Quest dungeon to a uniformly random
+        exposed city anywhere on the map, through `Empire.exposed_cities()`,
+        which filters for exposure and nothing else. The design says "may move
+        to ADJACENT city" and the project owner ruled on 2026-09-06, verbatim
+        "Adjacent, and fix the simulation". So this checks BOTH halves ask for
+        neighbours, and that the model's old call is gone rather than sitting
+        beside the new one.
         """
         import inspect
 
@@ -1050,28 +1058,153 @@ class TestWhatAQuestDungeonIs:
 
         resolve = inspect.getsource(Simulation._resolve)
 
-        assert "self.empire.exposed_cities()" in resolve, (
-            "Simulation._resolve no longer moves a quest dungeon to any exposed "
-            "city. If adjacency has been implemented, replace this test with "
-            "one comparing the model's rule against the game's")
+        assert "self.empire.adjacent_exposed_cities(city)" in resolve, (
+            "Simulation._resolve no longer moves a quest dungeon to an adjacent "
+            "city. The owner ruled on 2026-09-06, verbatim \"Adjacent, and fix "
+            "the simulation\"; issue #1324 slice 4")
 
-        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
-                      / "Empire" / "CataclysmEmpireRun.cpp")
+        # THE OLD CALL HAS TO BE GONE, not merely joined by the new one. A
+        # `_resolve` that fell back to `exposed_cities()` when no neighbour was
+        # exposed would pass the assertion above and still teleport.
+        assert "self.empire.exposed_cities()" not in resolve, (
+            "Simulation._resolve still reaches for every exposed city on the "
+            "map. Whatever it does with the result, the move-anywhere rule the "
+            "owner called a defect is back in the function")
 
-        body = source.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
-        body = body.split("\n}", 1)[0]
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
 
-        # THE POINTER IS CONST, so nothing here can move a dungeon even by
-        # accident. A first attempt at this asserted that the word "CityId ="
-        # did not appear, which was wrong in the loose direction: the function
-        # already reads `const int32 CityId = Dungeon->CityId;` and the test
-        # failed the moment it was written. Const-ness is the structural fact.
+        moved = run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)
+        assert len(moved) == 2, (
+            "UCataclysmEmpireRun::RelocateQuestDungeon is gone. It is the "
+            "game's half of the relocation rule and the only thing in that "
+            "class that moves a dungeon; issue #1324 slice 4")
+
+        body = moved[1].split("\n}\n", 1)[0]
+
+        assert "UCataclysmSurgeScheduler::PickRelocation" in body, (
+            "RelocateQuestDungeon no longer asks the scheduler where to move "
+            "to. `PickRelocation` is where the adjacency rule lives, and a "
+            "second copy of it here is how the two would drift")
+
+        # THE BITING PATH IS STILL UNABLE TO MOVE ANYTHING. The const pointer in
+        # `ResolveDungeon` was the structural fact the replaced test rested on,
+        # and it still holds: the mutable lookup is in `RelocateQuestDungeon`
+        # alone. A first attempt at the replaced test asserted that "CityId ="
+        # did not appear anywhere in `ResolveDungeon`, which was wrong in the
+        # loose direction -- it already reads `const int32 CityId =
+        # Dungeon->CityId;`.
+        resolving = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolving = resolving.split("\n}\n", 1)[0]
+
         assert "const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);" \
-            in body, (
+            in resolving, (
                 "UCataclysmEmpireRun::ResolveDungeon no longer holds the "
-                "dungeon by const pointer, so it is now able to move one. That "
-                "is slice 4 of issue #1324 and this test needs replacing "
-                "rather than deleting")
+                "dungeon by const pointer. Moving a dungeon belongs in "
+                "RelocateQuestDungeon, and keeping the biting path unable to "
+                "move one is what says so structurally rather than by comment")
+
+    def test_the_two_adjacency_rules_name_the_same_three_kinds_of_link(self):
+        """What "adjacent" means, in both halves, read out of the source.
+
+        THE DESIGN NEVER DEFINES IT, so this is a decision rather than a port,
+        and it is recorded in `docs/DECISIONS.md`. Both halves take every link
+        the map has: the neighbours one ring out, the neighbours one ring in,
+        and the rim's perimeter links. `test_quest_objective_counts_are_stated.py`
+        guards the decision entry itself.
+
+        WHY THE PERIMETER IS THE ONE WORTH CHECKING. Dropping it is the change
+        somebody would make while tidying, because `UCataclysmEmpireMap`'s own
+        class comment used to say adjacency was strictly orthogonal. It costs
+        about ten percentage points of relocation frequency -- 79.5% of quest
+        timers having somewhere to go against 69.1% -- and nothing else in
+        either codebase would notice.
+
+        **THE COMMENTS ARE STRIPPED BEFORE ANYTHING IS SEARCHED FOR, AND THE
+        FIRST VERSION OF THIS TEST DID NOT DO THAT.** It looked for the bare
+        string `City.Perimeter` anywhere in the function. Proving it fired meant
+        commenting the append out -- the obvious surgical break -- and the
+        string was still there, in the comment, so the test passed against a
+        game that had stopped counting the perimeter. It was a guard that could
+        not fail. Both halves now match the whole statement with its comments
+        removed.
+        """
+        import inspect
+
+        from cataclysm_sim.world import Empire
+
+        def code_only(text: str, marker: str) -> str:
+            """The lines of `text` with everything after `marker` removed."""
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        neighbours = code_only(inspect.getsource(Empire.neighbours), "#")
+
+        for link in ("list(c.outward)", "list(c.inward)", "list(c.perimeter)"):
+            assert link in neighbours, (
+                f"Empire.neighbours no longer counts {link}. All three links "
+                "are adjacency in this project; see docs/DECISIONS.md, "
+                "2026-09-06")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        adjacent = surge.split(
+            "UCataclysmSurgeScheduler::AdjacentCities(", 1)[1]
+        adjacent = code_only(adjacent.split("\n}\n", 1)[0], "//")
+
+        for link in ("City.Outward", "City.Inward", "City.Perimeter"):
+            statement = f"Neighbours.Append({link});"
+            assert statement in adjacent, (
+                f"UCataclysmSurgeScheduler::AdjacentCities no longer counts "
+                f"{link}, so the game and the model disagree about which "
+                "cities are adjacent")
+
+    def test_both_leave_it_where_it_stands_when_no_neighbour_is_exposed(self):
+        """The design says a Quest dungeon "MAY move", and this is where the
+        "may" comes from: no die roll, just a dungeon with nowhere to go.
+
+        AND NEITHER HALF MAY TAKE A DRAW ON THAT PATH. The model's
+        `self.rng.choice` sits behind `if targets`, and the game's
+        `PickRelocation` returns before `Stream.RandRange`. A draw on the empty
+        case would put the two streams permanently out of step, which is the
+        same rule `MakeDungeon` follows for the resolve jitter.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        choice = resolve.split("adjacent_exposed_cities(city)", 1)[1]
+        choice = choice.split("return", 1)[0]
+
+        assert "if targets:" in choice, (
+            "Simulation._resolve no longer guards its relocation draw on there "
+            "being a target. An unguarded draw both crashes on the empty list "
+            "and, if made safe some other way, takes a number off the stream on "
+            "a day the game would not")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = surge.split(
+            "UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+        picked = picked.split("\n}\n", 1)[0]
+
+        empty, drawn = picked.split("return INDEX_NONE;", 1)
+
+        assert "Targets.Num() == 0" in empty, (
+            "UCataclysmSurgeScheduler::PickRelocation no longer answers "
+            "INDEX_NONE for a dungeon with no exposed neighbour. That is the "
+            "design's \"may move\", and without it the function has to invent "
+            "somewhere to send it")
+
+        assert "Stream." not in empty and "Stream." in drawn, (
+            "PickRelocation now touches the stream before it knows whether it "
+            "has anywhere to send the dungeon. The model takes no draw on that "
+            "path, so the two runs would diverge from the first quest timer "
+            "that fires with nowhere to go")
 
 
 class TestTheEscalationModes:

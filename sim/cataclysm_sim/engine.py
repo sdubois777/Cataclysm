@@ -573,10 +573,31 @@ class Simulation:
         city = self.empire.cities[d.city_id]
 
         # A quest dungeon does not detonate; it picks up and moves.
+        #
+        # TO AN ADJACENT CITY, AND ONLY AN ADJACENT ONE. This used to draw from
+        # `exposed_cities()` -- anywhere on the map -- which contradicts the
+        # design: section VIII says a Quest dungeon "does not resolve --
+        # refreshes and may move to ADJACENT city". Asked which was intended the
+        # project owner answered on 2026-09-06, verbatim "Adjacent, and fix the
+        # simulation", so this was the defect rather than the document. Issue
+        # #1324 slice 4, and `UCataclysmSurgeScheduler::PickRelocation` is the
+        # game's half of the same rule.
+        #
+        # IT STAYS PUT WHEN THERE IS NOWHERE ADJACENT TO GO, which is now a real
+        # outcome rather than an unreachable branch: under the old rule some
+        # exposed city always existed, and under this one a dungeon deep in
+        # sealed territory can be hemmed in. That is what makes the design's
+        # "MAY move" true without a die roll -- see `docs/DECISIONS.md`, which
+        # records that reading as a reading.
+        #
+        # EVERY FIGURE MEASURED BEFORE THIS MOVES. A dungeon's position decides
+        # which cities it threatens, and the draw below now happens on a
+        # different number of days and over a different list, so the whole
+        # stream diverges from the day the first quest timer fires.
         if d.dtype is DungeonType.QUEST:
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
-                targets = self.empire.exposed_cities()
+                targets = self.empire.adjacent_exposed_cities(city)
                 if targets:
                     new_city = self.rng.choice(targets)
                     d.city_id = new_city.cid
