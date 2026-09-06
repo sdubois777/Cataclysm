@@ -83,69 +83,118 @@ class TestTheLeverScalesWhatItSays:
         assert city.defense_frac == pytest.approx(1.0)
 
 
-class TestTheTwoLeversAreNotInterchangeable:
-    """The reason issue #1288 refused to fold this into `city_damage_mult`.
+def until_it_falls(tree: EmpireTree, tier: CityTier = CityTier.SANCTUARY):
+    """Resolve one typical Basic dungeon on a city until it falls.
 
-    If halving the damage and doubling the health were the same thing, the fold
-    would have been right. These say where they part company.
+    DRIVES `Simulation._resolve` ITSELF, and that is not fussiness. The version
+    of this file written before issue #1327 copied `max_defense * bite * scale *
+    mult` into the test body. When the model stopped using that expression the
+    copy went on returning 13 and the test went on passing, measuring a formula
+    nothing ran any more.
+
+    Returns `(resolves, defence pool, share of the population destroyed)`.
+    """
+    cfg = replace(TuningConfig(), tier=1).with_tree(tree)
+    sim = Simulation(cfg, seed=0)
+    city = next(c for c in sim.empire.cities.values() if c.tier is tier)
+    d = sim._make_dungeon(DungeonType.BASIC, city)
+
+    # PINNED TO THE MIDPOINT so the depth scale is exactly 1.0. Otherwise the
+    # count measures which depth the seed happened to roll.
+    lo, hi = cfg.spec(DungeonType.BASIC, tier).floors
+    d.floors = (lo + hi) // 2
+
+    started_with = city.population
+    resolves = 0
+    while not city.fallen and resolves < 10_000:
+        sim._resolve(d)
+        resolves += 1
+    return resolves, city.max_defense, 1.0 - city.population / started_with
+
+
+class TestTheLeverChangesHowLongACityLasts:
+    """WHAT #1319 ASKED FOR AND #1327 UNBLOCKED. These are the tests that
+    failed until the damage stopped being a fraction of the pool it came out
+    of, and they are the reason the fix cannot be mistaken for a no-op."""
+
+    def test_a_city_with_no_tree_falls_in_thirteen(self):
+        """The control. This number is unchanged by issue #1327, and it is what
+        makes the rows below a comparison rather than a rescale."""
+        assert until_it_falls(EmpireTree(name="none"))[0] == 13
+
+    @pytest.mark.parametrize("mult, expected", [(2.0, 26), (4.0, 51),
+                                                (5.9, 75), (100.0, 1270)])
+    def test_raising_city_health_raises_how_long_a_city_lasts(
+            self, mult, expected):
+        """PROPORTIONAL, WHICH IS THE WHOLE POINT. A 5.9x Sanctuary takes 75
+        resolves against 13. Before #1327 every one of these was 13."""
+        resolves, pool, _ = until_it_falls(
+            EmpireTree(name="t", city_health_mult=mult))
+        assert resolves == expected
+        assert pool == pytest.approx(8_000 * mult)
+        assert resolves > 13, (
+            "city health bought nothing, so the damage is a fraction of the "
+            "pool again and issue #1327 has regressed")
+
+
+class TestTheTwoLeversAreStillNotOneLever:
+    """Issue #1288 refused to fold this into `city_damage_mult`. THE REASON IT
+    GAVE HAS BEEN OVERTAKEN AND THE CONCLUSION HAS NOT.
+
+    Under the fraction, halving the damage and doubling the pool differed
+    because doubling the pool doubled the bite too. Under flat damage they do
+    NOT differ that way: both exactly double how long the city stands, and the
+    first test below says so rather than hiding it.
+
+    They part company on two other things, and both are situations rather than
+    numbers -- which is the test this project applies to any two levers that
+    look alike.
     """
 
-    def bite(self, tree: EmpireTree, times: int) -> float:
-        """Defence left on a Sanctuary after `times` identical bites."""
-        cfg = replace(TuningConfig(), tier=1).with_tree(tree)
-        sim = Simulation(cfg, seed=0)
-        city = next(c for c in sim.empire.cities.values()
-                    if c.tier is CityTier.SANCTUARY)
-        for _ in range(times):
-            city.defense -= (city.max_defense * 0.08 * 1.0
-                             * cfg.tree.city_damage_mult)
-        return city.defense
+    def test_for_how_long_a_city_stands_they_are_now_interchangeable(self):
+        """SAID PLAINLY BECAUSE IT IS THE UNCOMFORTABLE HALF. Anyone re-reading
+        #1288 should find this rather than discover it."""
+        halved = until_it_falls(EmpireTree(name="d", city_damage_mult=0.5))
+        doubled = until_it_falls(EmpireTree(name="h", city_health_mult=2.0))
+        assert halved[0] == doubled[0] == 26
 
-    def test_they_do_not_even_agree_on_the_first_bite(self):
-        """WRITTEN THE OTHER WAY ROUND FIRST, and the failure is the finding.
+    def test_but_only_damage_reduction_saves_the_PEOPLE(self):
+        """THE SITUATION EACH ONE OWNS. `city_health_mult` scales defence and
+        deliberately not population, so a city with the health nodes and no
+        damage reduction stands twice as long and is emptied of people doing
+        it. Halving the damage halves what the population loses too.
 
-        I asserted the two levers leave the same share of the pool standing after
-        one bite, on the reasoning that halving the damage and doubling the pool
-        are the same thing at full health. They are not. Halving the multiplier
-        halves the share removed; doubling `max_defense` doubles the pool AND the
-        bite, so the share removed is unchanged. Issue #1327.
+        This is new with flat damage. While the damage was a fraction, both
+        pools drained at the same relative rate whatever the pool sizes.
         """
-        halved = EmpireTree(name="halved", city_damage_mult=0.5)
-        doubled = EmpireTree(name="doubled", city_health_mult=2.0)
-        left_halved = (self.bite(halved, 1)
-                       / a_city(halved, CityTier.SANCTUARY).max_defense)
-        left_doubled = (self.bite(doubled, 1)
-                        / a_city(doubled, CityTier.SANCTUARY).max_defense)
-        assert left_halved == pytest.approx(0.96), "8% bite, halved"
-        assert left_doubled == pytest.approx(0.92), "8% bite, pool doubled"
-        assert left_halved != pytest.approx(left_doubled)
+        _, _, halved_lost = until_it_falls(
+            EmpireTree(name="d", city_damage_mult=0.5))
+        _, _, doubled_lost = until_it_falls(
+            EmpireTree(name="h", city_health_mult=2.0))
+        assert halved_lost == pytest.approx(0.512, abs=0.01)
+        assert doubled_lost == pytest.approx(1.0), (
+            "a city that survives twice as long takes twice as many hits on a "
+            "population pool the health nodes do not raise")
 
-    def test_they_disagree_on_how_much_damage_that_bite_did(self):
-        """The absolute bite is a fraction of `max_defense`. Doubling the pool
-        doubles the bite; halving the multiplier does not."""
-        halved = self.bite(EmpireTree(name="halved", city_damage_mult=0.5), 1)
-        doubled = self.bite(EmpireTree(name="doubled", city_health_mult=2.0), 1)
+    def test_and_only_city_health_helps_a_city_that_already_fell(self):
+        """`_retake` restores a fraction of `max_defense`, so a larger pool
+        means a larger restore. Damage reduction does nothing for a city that
+        has already fallen."""
         base = TuningConfig().TIER_STATS[CityTier.SANCTUARY].max_defense
-        assert base - halved == pytest.approx(base * 0.08 * 0.5)
-        assert (base * 2.0) - doubled == pytest.approx(base * 2.0 * 0.08)
-        assert (base - halved) != pytest.approx((base * 2.0) - doubled)
-
-    def test_retaking_a_city_restores_a_fraction_of_the_raised_pool(self):
-        """`_retake` gives back half of `max_defense`. A larger pool means a
-        larger restore; damage reduction does nothing for a fallen city."""
-        cfg = replace(TuningConfig(), tier=1).with_tree(
-            EmpireTree(name="t", city_health_mult=3.0))
-        sim = Simulation(cfg, seed=0)
-        city = next(c for c in sim.empire.cities.values()
-                    if c.tier is CityTier.SANCTUARY)
-        base = TuningConfig().TIER_STATS[CityTier.SANCTUARY].max_defense
-        city.defense = 0.0
-        city.fallen = True
-        sim._retake(city)
-        assert city.defense == pytest.approx(base * 3.0 * 0.5)
-        assert city.defense > base, (
-            "a retaken city with the health nodes comes back stronger than an "
-            "untouched city without them, which is the point of the lever")
+        back = {}
+        for label, tree in (("damage", EmpireTree(name="d", city_damage_mult=0.5)),
+                            ("health", EmpireTree(name="h", city_health_mult=2.0))):
+            cfg = replace(TuningConfig(), tier=1).with_tree(tree)
+            sim = Simulation(cfg, seed=0)
+            city = next(c for c in sim.empire.cities.values()
+                        if c.tier is CityTier.SANCTUARY)
+            city.defense = 0.0
+            city.fallen = True
+            sim._retake(city)
+            back[label] = city.defense
+        assert back["damage"] == pytest.approx(base * 0.5)
+        assert back["health"] == pytest.approx(base * 2.0 * 0.5)
+        assert back["health"] == pytest.approx(2.0 * back["damage"])
 
 
 class TestTheArchitectPresetCarriesIt:
@@ -181,78 +230,73 @@ class TestTheArchitectPresetCarriesIt:
         assert "city hp" in TREE_ARCHITECT_AS_DESIGNED.describe()
 
 
-class TestWhetherItChangesAnything:
-    """THE LEVER IS CURRENTLY INERT AND THESE SAY SO. Issue #1327.
+class TestTheDamageDoesNotGrowWithThePool:
+    """THE MECHANISM THAT MAKES THE LEVER WORK, asserted directly rather than
+    through a campaign. Issue #1327.
 
-    A dungeon bite is a fraction of the city's own `max_defense`, so raising
-    that raises the bite by the same factor and the share removed per bite is
-    unchanged. The lever built here is what issue #1319 specified and it
-    cannot work until the project owner settles what a bite is a fraction of.
-
-    THESE TESTS ARE EXPECTED TO FAIL WHEN THAT LANDS, and that is the point of
-    them: they pin the current behaviour so the change that fixes it cannot be
-    mistaken for a change that did nothing.
+    A campaign outcome cannot settle this at any sample this suite can afford.
+    The class these replaced learned that the expensive way: a behaviour test
+    written specifically to catch a field nothing reads compared 40 campaigns
+    at 1x against 6x, asserted the sturdier empire lost fewer cities, and
+    PASSED on a change that provably did nothing, because floating-point jitter
+    at two magnitudes ordered the comparison by chance.
     """
 
-    def bites_to_fall(self, mult: float) -> int:
-        """How many identical bites a Sanctuary survives. THE MECHANISM, and it
-        is arithmetic rather than a statistic."""
+    def test_the_spec_holds_points_and_not_a_fraction(self):
+        """A fraction would be a number below one. If these ever become
+        fractions again, everything else in this file goes quiet rather than
+        failing loudly, so the shape is asserted on its own."""
+        cfg = TuningConfig()
+        for tier in CityTier:
+            spec = cfg.spec(DungeonType.BASIC, tier)
+            assert spec.defense_damage > 1.0, (
+                f"{tier.value} takes {spec.defense_damage} defence damage, "
+                "which is a fraction rather than a number of points")
+            assert spec.population_damage > 1.0
+
+    def one_resolve(self, mult: float) -> float:
+        """Defence points a single typical resolve removes from a Bulwark.
+
+        A BULWARK BECAUSE ITS FLOOR RANGE HAS A WHOLE MIDPOINT. 15 to 25 gives
+        a typical depth of exactly 20, so the depth scale is exactly 1.0 and
+        the number below is the spec's own. A Sanctuary's 25 to 40 has a
+        midpoint of 32.5, which no integer floor count can sit on.
+        """
         cfg = replace(TuningConfig(), tier=1).with_tree(
             EmpireTree(name="t", city_health_mult=mult))
-        city = a_city(cfg.tree, CityTier.SANCTUARY)
-        bite = city.max_defense * 0.08 * 1.0 * cfg.tree.city_damage_mult
-        left, count = city.max_defense, 0
-        while left > 0:
-            left -= bite
-            count += 1
-        return count
+        sim = Simulation(cfg, seed=0)
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.BULWARK)
+        d = sim._make_dungeon(DungeonType.BASIC, city)
+        lo, hi = cfg.spec(DungeonType.BASIC, CityTier.BULWARK).floors
+        d.floors = (lo + hi) // 2
+        assert d.floors * 2 == lo + hi, "the Bulwark midpoint stopped being whole"
+
+        before = city.defense
+        sim._resolve(d)
+        return before - city.defense
 
     @pytest.mark.parametrize("mult", [1.0, 2.0, 5.9, 100.0])
-    def test_city_health_does_not_change_how_many_bites_a_city_survives(
-            self, mult):
-        """Issue #1327, measured. Thirteen at every multiplier, including a
-        hundredfold one."""
-        assert self.bites_to_fall(mult) == self.bites_to_fall(1.0) == 13
+    def test_raising_the_pool_does_not_raise_the_damage(self, mult):
+        """The exact thing that was wrong. One resolve against a city with a
+        hundred times the defence removes the same number of points as one
+        against an untouched city."""
+        assert self.one_resolve(mult) == pytest.approx(
+            TuningConfig().spec(DungeonType.BASIC,
+                                CityTier.BULWARK).defense_damage)
+        assert self.one_resolve(mult) == pytest.approx(self.one_resolve(1.0))
 
-    def test_a_campaign_comparison_is_too_noisy_to_prove_this_either_way(self):
-        """WHY THERE IS NO CAMPAIGN TEST HERE, and it is not an omission.
-
-        This class replaced one that compared cities lost over 40 campaigns at
-        1x against 6x and asserted the sturdier empire lost fewer. IT PASSED, on
-        a change proved above to do nothing, because floating-point jitter at two
-        magnitudes ordered the comparison by chance. Its docstring said it
-        existed to catch a field that nothing reads.
-
-        Over 300 campaigns the outcome is bit-identical at 2x and moves by less
-        than noise at 100x. A campaign outcome cannot resolve this at any sample
-        this suite can afford, so the mechanism is asserted instead.
-        """
+    def test_a_campaign_notices(self):
+        """The behaviour check that the earlier version of this file could not
+        make. Doubling city health changes campaigns now; it did not before."""
         cfg = replace(TuningConfig(), tier=1)
-        inert = EmpireTree(name="inert", city_health_mult=2.0)
         base = [Simulation(cfg.with_tree(EmpireTree(name="base")),
                            seed=i).run(policies.triage).cities_lost
                 for i in range(40)]
-        raised = [Simulation(cfg.with_tree(inert),
-                             seed=i).run(policies.triage).cities_lost
-                  for i in range(40)]
-        assert base == raised, (
-            "doubling city health changed a campaign, so either issue #1327 has "
-            "been fixed -- in which case this class needs rewriting -- or the "
-            "bite is no longer a fraction of max_defense.")
-
-    def test_a_dungeon_bite_still_scales_with_the_raised_pool(self):
-        """The bite is a fraction of `max_defense`, so it grows with the lever.
-        A test that only counted cities lost would pass if the pool were raised
-        and the bite left at its old absolute size, which is the fold this
-        deliberately is not."""
-        cfg = replace(TuningConfig(), tier=1).with_tree(
-            EmpireTree(name="t", city_health_mult=5.0))
-        sim = Simulation(cfg, seed=0)
-        city = next(c for c in sim.empire.cities.values()
-                    if c.tier is CityTier.SANCTUARY)
-        spec = cfg.spec(DungeonType.BASIC, CityTier.SANCTUARY)
-        before = city.defense
-        city.defense -= city.max_defense * spec.defense_bite
-        base = TuningConfig().TIER_STATS[CityTier.SANCTUARY].max_defense
-        assert before - city.defense == pytest.approx(
-            base * 5.0 * spec.defense_bite)
+        raised = [Simulation(cfg.with_tree(
+            EmpireTree(name="raised", city_health_mult=6.0)),
+            seed=i).run(policies.triage).cities_lost
+            for i in range(40)]
+        assert sum(raised) < sum(base), (
+            f"six times the city health lost {sum(raised)} cities against "
+            f"{sum(base)} without it, so the lever is not reaching the day loop")

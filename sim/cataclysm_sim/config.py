@@ -119,10 +119,23 @@ class DungeonSpec:
     """Floor and timer ranges for one (DungeonType, CityTier) pair."""
     floors: tuple[int, int]
     resolve_days: tuple[int, int]
-    # Fraction of the host city's MAX defense/population destroyed each time
-    # this dungeon resolves undefeated, before scaling by relative floor count.
-    defense_bite: float
-    population_bite: float
+
+    #: Defence POINTS and PEOPLE destroyed each time this dungeon resolves
+    #: undefeated, before scaling by relative floor count.
+    #:
+    #: ABSOLUTE, NOT A FRACTION OF THE CITY, and issue #1327 is why. These were
+    #: fractions of the host city's own maximum, which meant the maximum divided
+    #: out of "how many resolves does this city survive": a Pillar holding twenty
+    #: times an Outpost's defence lasted 17 resolves against 10, and every
+    #: upgrade in the game that raises a city's health was worth nothing. The
+    #: project owner ruled on 2026-09-05, verbatim: "damage to cities shouldn't
+    #: be a % of their hp. Instead, dungeons should have damage ranges that
+    #: aren't % based, but should be flat damage numbers."
+    #:
+    #: The same shape is still in the game, at
+    #: `UCataclysmEmpireMap::Bite`. Issue #1331 tracks porting this across.
+    defense_damage: float
+    population_damage: float
 
 
 @dataclass
@@ -424,16 +437,27 @@ class TuningConfig:
 
     # Floor ranges follow the stated intent: randomised within a range that
     # depends on both dungeon type and the tier of the host city.
+    #
+    # THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS. Issue #1327. Each
+    # one here is the fraction it replaced multiplied by that tier's base
+    # maximum, so this table reproduces the old arithmetic exactly for a city at
+    # its base size, and the change of shape can be measured on its own before
+    # any number is chosen:
+    #
+    #   Outpost    10% of 1,000 =   100 defence,  5% of   5,000 =   250 people
+    #   Bulwark     9% of 3,000 =   270 defence,  5% of  20,000 = 1,000 people
+    #   Sanctuary   8% of 8,000 =   640 defence,  4% of  60,000 = 2,400 people
+    #   Pillar      6% of 20,000 = 1,200 defence, 3% of 150,000 = 4,500 people
     DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
         default_factory=lambda: {
             (DungeonType.BASIC, CityTier.OUTPOST):
-                DungeonSpec((8, 15),   (10, 20), 0.10, 0.05),
+                DungeonSpec((8, 15),   (10, 20), 100.0, 250.0),
             (DungeonType.BASIC, CityTier.BULWARK):
-                DungeonSpec((15, 25),  (14, 26), 0.09, 0.05),
+                DungeonSpec((15, 25),  (14, 26), 270.0, 1_000.0),
             (DungeonType.BASIC, CityTier.SANCTUARY):
-                DungeonSpec((25, 40),  (20, 34), 0.08, 0.04),
+                DungeonSpec((25, 40),  (20, 34), 640.0, 2_400.0),
             (DungeonType.BASIC, CityTier.PILLAR):
-                DungeonSpec((40, 60),  (30, 50), 0.06, 0.03),
+                DungeonSpec((40, 60),  (30, 50), 1_200.0, 4_500.0),
 
             # Quest dungeons never resolve (GDD VIII) -- they refresh and may
             # move. Bites are zero; the timer is a relocation clock.

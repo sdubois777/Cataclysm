@@ -45,8 +45,8 @@ class Dungeon:
     run_days: int
     resolve_max: int
     resolve_in: float
-    defense_bite: float
-    population_bite: float
+    defense_damage: float
+    population_damage: float
     spawned_day: int
     subtype: str = "None"
     modifier_names: tuple[str, ...] = ()
@@ -214,8 +214,8 @@ class Simulation:
             run_days=self._walk_days(floors, subtype),
             resolve_max=int(resolve),
             resolve_in=float(resolve),
-            defense_bite=spec.defense_bite,
-            population_bite=spec.population_bite,
+            defense_damage=spec.defense_damage,
+            population_damage=spec.population_damage,
             spawned_day=self.day,
             subtype=subtype,
             modifier_names=tuple(n for n, _ in picked),
@@ -421,8 +421,12 @@ class Simulation:
         typical = (lo + hi) / 2.0
         scale = d.floors / typical
 
-        city.defense -= city.max_defense * d.defense_bite * scale * cfg.tree.city_damage_mult
-        city.population -= city.max_population * d.population_bite * scale * cfg.tree.city_damage_mult
+        # ABSOLUTE POINTS. `city.max_defense` is deliberately absent: while the
+        # damage was a fraction of it, it divided out of how many resolves the
+        # city survived and every city-health upgrade in the design was worth
+        # nothing. Issue #1327.
+        city.defense -= d.defense_damage * scale * cfg.tree.city_damage_mult
+        city.population -= d.population_damage * scale * cfg.tree.city_damage_mult
         city.population = max(0.0, city.population)
 
         if city.defense <= 0:
