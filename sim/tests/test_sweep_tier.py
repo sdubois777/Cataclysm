@@ -1256,10 +1256,39 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         landed on 4 of 8 and the check is `>=`, so the test failed on its
         sample size rather than on what it names.
 
-        Sixteen passes and costs about 13 seconds against 7 for eight, measured
-        on 2026-09-06. **If it fails again, measure the underlying rate over 60
-        campaigns before raising this number**: a genuine move past 50% is a
-        finding about the game, and raising the count would hide it.
+        **AND SIXTEEN LASTED ONE DAY.** Issue #1324's move chance -- the owner's
+        "a chance each time", built at 0.5 -- adds a draw to every quest timer,
+        so every later draw in a campaign shifts. The
+        "Proposed budget (x0.85 time, x0.55 dmg)" cell at **tier 1** went from 6
+        of 16 to exactly 8 of 16, and the check is `>=`.
+
+        **THE UNDERLYING RATE DID NOT MOVE, AND IT WAS MEASURED BEFORE THE COUNT
+        WAS RAISED**, which is what the paragraph below used to demand and now
+        records:
+
+        | campaigns | on `development` | with the move chance |
+        | --: | --: | --: |
+        | 8 | 50.0% | 62.5% |
+        | 16 | 37.5% | **50.0%** |
+        | 32 | 34.4% | 34.4% |
+        | 60 | 31.7% | 31.7% |
+        | 120 | 34.2% | 35.0% |
+
+        Identical at 32 and 60 and within a point at 120. **Thirty-two is where
+        the estimate meets the 120-campaign figure**, which is the reason for
+        that number rather than the next one up: at 24 the same cell reads 41.7%
+        and is still sampling rather than measuring. It costs about 38 seconds
+        against 13 for sixteen, measured on 2026-09-06.
+
+        **IF IT FAILS AGAIN, MEASURE THE UNDERLYING RATE OVER 60 CAMPAIGNS
+        BEFORE RAISING THIS NUMBER**: a genuine move past 50% is a finding about
+        the game, and raising the count would hide it. **And consider not
+        raising it at all.** This is the third raise, each after a change that
+        had nothing to do with what the test names, and the reason is structural
+        rather than bad luck -- a printed artefact gated on a noisy rate crossing
+        a fixed threshold, with the nearest cell's true rate at about 34%. Issue
+        [#1385](https://github.com/sdubois777/Cataclysm/issues/1385) carries
+        that, with three cheaper shapes for the check.
 
         THE UNDERLYING RATES ARE NOT A TEST PROBLEM. A maxed Architect empire
         reaches the day cap without winning or losing in 13% of campaigns at
@@ -1267,7 +1296,7 @@ class TestTheSweepFlagsCampaignsWithNoResult:
         and is not caused by this file.
         """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1, 2), trials=16)
+        experiments.exp_presets(base, tiers=(1, 2), trials=32)
         printed = capsys.readouterr().out
         assert "LEFT OUT OF THE ORDER" not in printed, (
             "the preset section drops presets from the ranking on an ordinary "

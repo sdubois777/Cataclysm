@@ -3840,6 +3840,34 @@ and is not the Pillar. When no neighbour qualifies it stays where it is.
 
   
 
+**"May" is a coin as well as a map.** A Quest dungeon that has somewhere to go
+takes it **half the time**. The other half it stays where it stands and its timer
+refreshes again. The draw is fresh on every timer, so a dungeon that has stayed
+twice is neither more nor less likely to move on the third.
+
+  
+
+**Half the coin is not half the timers, and a reader needs both numbers.** About
+a quarter of quest timers fire with nowhere adjacent to go whatever the coin
+says, so a Quest dungeon in play actually moves on roughly **37% of its timers**
+rather than 50%. Roughly one move in three timers: visible without being
+constant. The share with somewhere to go was measured at **73.7% to 75.8%** over
+10,000 simulated campaigns at difficulty tier 1 with no empire tree, the triage
+policy, and static surges of five dungeons every 120 days.
+
+  
+
+**A Quest dungeon carrying a Siege will not move onto a city that already has
+one.** "Max 1 per city", in the Dungeon Sub-Types table below, governs where a
+Siege may **stand** and not only where one may be created — two Sieges on a city
+would take its daily share twice through a route the design describes nowhere. A
+besieged city is therefore not among the destinations offered; the dungeon takes
+one of its other neighbours instead, and stays where it is when none of them is
+free. **Nothing else is refused a besieged city.** The cap counts Sieges, not
+dungeons, so a Quest dungeon carrying any other sub-type walks in freely.
+
+  
+
 **A dungeon that moves is the same dungeon.** It keeps its **floor count**, its
 **resolve timer** and its **sub-type**. Nothing about it is rerolled by the move;
 only which city it is standing on changes. A player who has scouted a 44-floor
