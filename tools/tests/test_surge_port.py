@@ -689,9 +689,15 @@ class TestWhatASiegeCostsItsHost:
     #: population per day while active. Increases in power by 10 points per
     #: day."
     #:
-    #: THE ROW AND NOT A LINE NUMBER, DELIBERATELY. Five places in this
-    #: repository cite that sentence as "line 3744" and the document has moved
-    #: since; it is line 3801 as of 2026-09-06. Issue #1355.
+    #: THE ROW AND NOT A LINE NUMBER, DELIBERATELY. Eight places in this
+    #: repository cited that sentence by line number -- seven as "line 3744"
+    #: and one as "line 3732" -- and the document had grown past both. Issue
+    #: #1355 replaced every one of them with this row citation, and
+    #: `tools/tests/test_the_siege_row_is_cited_by_name.py` holds them there.
+    #:
+    #: THE NUMBER WENT STALE TWICE IN ONE DAY, which is the whole argument.
+    #: #1355 was filed naming 3801 as the correct line; by the time it was
+    #: fixed, later edits had carried the row to 3839.
     BITES = {
         "SiegeDefenceBitePerDay": ("siege_defence_bite_per_day", 0.01),
         "SiegePopulationBitePerDay": ("siege_population_bite_per_day", 0.01),

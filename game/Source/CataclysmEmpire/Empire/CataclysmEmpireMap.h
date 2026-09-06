@@ -541,8 +541,9 @@ public:
 	 * The project owner ruled on 2026-09-05, verbatim: "Keep it as a deliberate
 	 * exception (Recommended)" -- a siege does not care how thick your walls
 	 * are, which makes it the one threat city-health investment does not protect
-	 * against. `docs/Cataclysm_GDD_v2.md` line 3744 and `docs/DECISIONS.md` both
-	 * carry it. `UCataclysmEmpireRun::ApplySiegeDamage` is where that share is
+	 * against. The Siege row of the sub-type table in
+	 * `docs/Cataclysm_GDD_v2.md` and `docs/DECISIONS.md` both carry it.
+	 * `UCataclysmEmpireRun::ApplySiegeDamage` is where that share is
 	 * taken; it multiplies by the city's maximum itself, because a Siege's
 	 * damage is a share PLUS a growth in points and only one of the two fits
 	 * through here.
