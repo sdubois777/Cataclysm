@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The Siege sub-type is modelled, and keeps percentage damage on purpose
+
+**Affects:** `sim/cataclysm_sim/config.py`, `engine.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`. Applied. Issue
+[#1329](https://github.com/sdubois777/Cataclysm/issues/1329).
+
+### The ruling
+
+Asked whether the Siege sub-type should be added to the model as part of the
+flat-damage work, the project owner answered on 2026-09-06, verbatim: **"Yes —
+add it as part of this work (Recommended)"**. They were told it costs time, that
+it is a real addition rather than a port, and that every empire figure moves
+again when it lands.
+
+### Why it could not be deferred
+
+Two earlier rulings made it load-bearing. The Siege keeps percentage damage as a
+deliberate exception, so city health does not protect against it. The combined
+defensive ceiling was then sent to measurement rather than chosen. **A
+measurement of how safe a fully invested empire is that leaves out the one
+threat which bypasses the investment overstates that safety by construction.**
+Siege is about 13 in every 100 dungeons that reach the map.
+
+### THE PERCENTAGE IS DELIBERATE AND WILL LOOK LIKE AN OVERSIGHT
+
+Everything else in this work moved from a share of a city's maximum to flat
+points, on 2026-09-06 in the entry above. **The Siege did not.** The owner ruled
+on 2026-09-05, verbatim: "Keep it as a deliberate exception (Recommended)", on
+the reasoning put to them that **a siege does not care how thick your walls
+are** — which gives the sub-type a situation of its own rather than only a
+number of its own. The cost was stated and accepted: a fully invested city is
+still helpless against a siege.
+
+So a reader who finds a percentage sitting in freshly-flattened code has not
+found something that was missed. `TuningConfig.siege_defence_bite_per_day`
+carries the same warning, and
+`sim/tests/test_siege_subtype.py::TestTheDeliberateException` asserts the
+property rather than only explaining it: with the growth removed, a Sanctuary at
+1x, 5.9x and 100x city health falls in exactly 100 days in every case.
+
+### Where the rules came from, and which direction the port ran
+
+**For once the game is the reference and the model is the follower**, which is
+the reverse of this project's usual direction and is written down because it
+will confuse someone later. There was no model code to copy.
+
+| Rule | Source | Modelled? |
+| :-- | :-- | :-- |
+| 1% of maximum defence and population per day it stands | `docs/Cataclysm_GDD_v2.md` line 3744 | yes |
+| damage grows by 10 points per day it has stood | same line, and the owner on 2026-09-05 settling that its "power" means "the damage it does to the city/population" | yes |
+| max 1 per city | same line | yes |
+| pauses city upgrades | same line | **no — see below** |
+
+`CataclysmEmpireRun.h` previously carried a comment saying the behaviour was
+"NOT PORTED FROM THE SIMULATION, BECAUSE THE SIMULATION DOES NOT MODEL IT". That
+explained an absence which no longer exists, and has been replaced.
+
+### The rule that is not modelled
+
+**"Pauses city upgrades" has no subject in the model.** There is no city upgrade
+system to pause: `LethalityRules.city_upgrade_slots` is set and read by nothing,
+which issue [#318](https://github.com/sdubois777/Cataclysm/issues/318) already
+records. `test_there_is_still_no_city_upgrade_system_to_pause` fails if one is
+added, so the omission stays known rather than silent.
+
+### A reading rather than a ruling
+
+**The empire tree's damage reduction still applies to a Siege.** The owner's
+exception is that city *health* does not protect against one; reducing the
+damage is a different claim from thickening the wall. Recorded as a reading, in
+the code and here, so it can be overturned cheaply — the same way
+`SiegeDamageGrowthPerDay` records its own reading of which pool the growth
+applies to.
+
+### How the port was checked
+
+The C++ rolls Siege at 15 in 100 dungeons and lands **12.7** in 100 on the map,
+measured over twenty campaigns by the session that built the sub-type odds. The
+difference is the one-per-city cap: a refused roll is redistributed across the
+other six sub-types.
+
+**The model now lands 13.1 in 100 over twenty campaigns.** Had the share stayed
+at 15, the cap would be present but never reached.
+
+### Two things the test suite found rather than a person
+
+- `sim/analyse_lethality_modes.py` claimed that more dungeons means a larger
+  **share** of them resolving undefeated, and printed two **absolute counts** as
+  its evidence. That worked only while the two rows ran for similar lengths.
+  With Siege damage the empire falls sooner, campaigns run 1,152 days against
+  1,887, and the counts now point the other way while the share still rises —
+  86% against 80%. The script prints the share it claims, and says what the
+  counts do and do not settle.
+- `sim/tests/test_sweep_tier.py` estimated an unresolved-campaign rate from
+  eight campaigns against a 50% threshold, when the true rate for the Architect
+  preset at difficulty tier 2 is about 35%. Raised to sixteen. The underlying
+  behaviour — 97% of Architect campaigns at difficulty tier 4 end without
+  winning or losing — is issue
+  [#1336](https://github.com/sdubois777/Cataclysm/issues/1336) and is present on
+  `development`.
+
 ## 2026-09-06 — City damage is a number of points, not a share of the city's own maximum
 
 **Affects:** `sim/cataclysm_sim/config.py`, `engine.py`, `policies.py`. Applied.
