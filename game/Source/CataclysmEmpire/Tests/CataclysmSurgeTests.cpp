@@ -7,6 +7,7 @@
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 
 /**
@@ -1094,45 +1095,48 @@ bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
 {
 	// HAND-WORKED FIGURES, NOT THE CONSTANTS WRITTEN OUT AGAIN. A test that
 	// compared `SpawnWeightFor(Timed)` with `SpawnWeightTimed` would pass
-	// whatever either was. These are the eight numbers in
+	// whatever either was. These are the numbers in
 	// `config.SUBTYPE_SPAWN_WEIGHTS`.
-	TestEqual(TEXT("no sub-type at all is weighted 34"),
+	TestEqual(TEXT("Timed is 18"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::None), 34.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Timed), 18.0f, 0.0001f);
 
-	TestEqual(TEXT("Timed is 12"),
+	TestEqual(TEXT("Horde is 18"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Timed), 12.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Horde), 18.0f, 0.0001f);
 
-	TestEqual(TEXT("Horde is 12"),
+	TestEqual(TEXT("Siege is 15"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Horde), 12.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Siege), 15.0f, 0.0001f);
 
-	TestEqual(TEXT("Siege is 10"),
+	TestEqual(TEXT("Cow Level is 7"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Siege), 10.0f, 0.0001f);
+				  ECataclysmDungeonSubType::CowLevel), 7.0f, 0.0001f);
 
-	TestEqual(TEXT("Cow Level is 4"),
+	TestEqual(TEXT("Elite is 15"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::CowLevel), 4.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Elite), 15.0f, 0.0001f);
 
-	TestEqual(TEXT("Elite is 10"),
+	TestEqual(TEXT("Volatile is 15"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Elite), 10.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Volatile), 15.0f, 0.0001f);
 
-	TestEqual(TEXT("Volatile is 10"),
+	TestEqual(TEXT("Sacrificial is 12"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Volatile), 10.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Sacrificial), 12.0f, 0.0001f);
 
-	TestEqual(TEXT("Sacrificial is 8"),
+	// **AND NO SUB-TYPE AT ALL IS WEIGHTED NOTHING**, which is the change the
+	// owner made on 2026-09-05: every dungeon a surge produces has a sub-type.
+	// It used to be weighted 34, the commonest outcome of the eight.
+	TestEqual(TEXT("no sub-type at all is weighted nothing"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Sacrificial), 8.0f, 0.0001f);
+				  ECataclysmDungeonSubType::None), 0.0f, 0.0001f);
 
-	// AND NOTHING IS LEFT WITHOUT ONE. Summing what the enum holds rather than
-	// the eight literals above means a sub-type added to the enum and forgotten
+	// AND NOTHING ELSE IS LEFT WITHOUT ONE. Summing what the enum holds rather
+	// than the literals above means a sub-type added to the enum and forgotten
 	// makes this fail, instead of quietly never spawning.
 	float Total = 0.0f;
-	for (uint8 Value = 0;
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
 		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
 		 ++Value)
 	{
@@ -1146,23 +1150,21 @@ bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
 		Total += UCataclysmSurgeScheduler::SpawnWeightFor(SubType);
 	}
 
-	TestEqual(TEXT("and the eight of them add up to 100"), Total, 100.0f,
-			  0.0001f);
+	TestEqual(TEXT("and they add up to 100"), Total, 100.0f, 0.0001f);
 
-	// A DUNGEON THAT DOES SOMETHING UNUSUAL SHOULD BE WORTH NOTICING. Plain is
-	// the commonest outcome by a wide margin, and Cow Level the rarest, which is
-	// what "ridiculous amounts of loot" has to be paid for with.
-	TestTrue(TEXT("plain is commoner than any single sub-type"),
-			 UCataclysmSurgeScheduler::SpawnWeightFor(
-				 ECataclysmDungeonSubType::None) >
-			 UCataclysmSurgeScheduler::SpawnWeightFor(
-				 ECataclysmDungeonSubType::Timed));
-
-	TestTrue(TEXT("and Cow Level is the rarest of them"),
+	// COW LEVEL IS THE RAREST, which is what "ridiculous amounts of loot" has to
+	// be paid for with, and Timed the commonest.
+	TestTrue(TEXT("Cow Level is rarer than Sacrificial"),
 			 UCataclysmSurgeScheduler::SpawnWeightFor(
 				 ECataclysmDungeonSubType::CowLevel) <
 			 UCataclysmSurgeScheduler::SpawnWeightFor(
 				 ECataclysmDungeonSubType::Sacrificial));
+
+	TestTrue(TEXT("and Sacrificial rarer than Timed"),
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::Sacrificial) <
+			 UCataclysmSurgeScheduler::SpawnWeightFor(
+				 ECataclysmDungeonSubType::Timed));
 
 	return true;
 }
@@ -1173,8 +1175,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSubTypeRollTest,
 
 bool FCataclysmSurgeSubTypeRollTest::RunTest(const FString& Parameters)
 {
-	// ENOUGH ROLLS THAT THE RAREST ONE IS NOT A COINCIDENCE. Cow Level is 4 in
-	// 100, so 20,000 rolls should give about 800 of them; a tolerance of two
+	// ENOUGH ROLLS THAT THE RAREST ONE IS NOT A COINCIDENCE. Cow Level is 7 in
+	// 100, so 20,000 rolls should give about 1,400 of them; a tolerance of two
 	// percentage points is far wider than the spread at this many rolls and far
 	// narrower than any weight being wrong.
 	constexpr int32 Rolls = 20000;
@@ -1189,7 +1191,7 @@ bool FCataclysmSurgeSubTypeRollTest::RunTest(const FString& Parameters)
 		++Counts.FindOrAdd(UCataclysmSurgeScheduler::RollSubType(Stream));
 	}
 
-	for (uint8 Value = 0;
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
 		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
 		 ++Value)
 	{
@@ -1213,13 +1215,17 @@ bool FCataclysmSurgeSubTypeRollTest::RunTest(const FString& Parameters)
 				  Share, Wanted, Tolerance);
 	}
 
-	// AND THE SPREAD IS NOT MERELY CLOSE TO THE WEIGHTS, IT IS ORDERED BY THEM.
-	// Eight shares all within two points of 12.5 would pass the check above and
-	// mean the weights were being ignored.
-	TestTrue(TEXT("plain came up more often than Timed"),
-			 Counts.FindRef(ECataclysmDungeonSubType::None) >
-			 Counts.FindRef(ECataclysmDungeonSubType::Timed));
+	// **NO SUB-TYPE AT ALL NEVER CAME UP, NOT EVEN ONCE IN TWENTY THOUSAND.**
+	// This is the whole of the owner's 2026-09-05 ruling stated as a
+	// measurement, and it is the assertion that would catch a roll that walked
+	// the enum from zero again. It used to be the commonest outcome of the
+	// eight, at 34 in 100.
+	TestEqual(TEXT("no dungeon came out without a sub-type"),
+			  Counts.FindRef(ECataclysmDungeonSubType::None), 0);
 
+	// AND THE SPREAD IS NOT MERELY CLOSE TO THE WEIGHTS, IT IS ORDERED BY THEM.
+	// Seven shares all within two points of 14.3 would pass the check above and
+	// mean the weights were being ignored.
 	TestTrue(TEXT("Timed more often than Sacrificial"),
 			 Counts.FindRef(ECataclysmDungeonSubType::Timed) >
 			 Counts.FindRef(ECataclysmDungeonSubType::Sacrificial));
@@ -1257,6 +1263,61 @@ bool FCataclysmSurgeSubTypeOneDrawTest::RunTest(const FString& Parameters)
 				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
 	}
 
+	// **AND WHEN A SIEGE IS REFUSED, WHICH IS THE HARD HALF.** A refused Siege
+	// is spread across the other six, and the obvious way to do that is to roll
+	// again -- which is exactly what the promise above forbids. It re-reads the
+	// draw it already made instead.
+	//
+	// **SEEDS CHOSEN BY WHAT THEY DRAW, NOT FIXED.** The five above are fixed
+	// and none of them draws a Siege, so barring one leaves the ordinary path
+	// and says nothing about the re-read. A guard proof that replaced the
+	// re-read with `Stream.FRand()` was NOT caught by this test until the seeds
+	// were picked this way; one other test caught it, and one test is not the
+	// guard this is supposed to be.
+	TArray<int32> SeedsThatDrawASiege;
+	for (int32 Seed = 1;
+		 Seed <= 1000 && SeedsThatDrawASiege.Num() < 5;
+		 ++Seed)
+	{
+		FRandomStream Trial(Seed);
+		if (UCataclysmSurgeScheduler::RollSubType(Trial)
+			== ECataclysmDungeonSubType::Siege)
+		{
+			SeedsThatDrawASiege.Add(Seed);
+		}
+	}
+
+	// THE CONTROL. Without seeds that reach the refusal, every check below is
+	// the loop above written a second time.
+	if (!TestEqual(TEXT("seeds whose draw lands on Siege were found"),
+				   SeedsThatDrawASiege.Num(), 5))
+	{
+		return false;
+	}
+
+	for (const int32 Seed : SeedsThatDrawASiege)
+	{
+		FRandomStream Rolled(Seed);
+		FRandomStream Drawn(Seed);
+
+		const ECataclysmDungeonSubType Got =
+			UCataclysmSurgeScheduler::RollSubType(Rolled,
+												  /*bSiegeAllowed=*/false);
+		Drawn.FRand();
+
+		// THE REFUSAL REALLY HAPPENED AT THIS SEED, which is what makes the
+		// draw count below a statement about the re-read.
+		TestNotEqual(*FString::Printf(
+						 TEXT("at seed %d the Siege was refused"), Seed),
+					 static_cast<uint8>(Got),
+					 static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+
+		TestEqual(*FString::Printf(
+					  TEXT("and at seed %d it still cost exactly one draw"),
+					  Seed),
+				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
+	}
+
 	return true;
 }
 
@@ -1285,7 +1346,7 @@ bool FCataclysmSurgeCowLevelWalkTest::RunTest(const FString& Parameters)
 	// all, which is the half of the rule that is easy to lose.
 	Give(*Map, Rim[1], ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer, 4.0f);
 
-	// A SEED THAT ROLLS A COW LEVEL, FOUND BY LOOKING. Cow Level is 4 in 100, so
+	// A SEED THAT ROLLS A COW LEVEL, FOUND BY LOOKING. Cow Level is 7 in 100, so
 	// most seeds do not, and a test that just hoped would be a test of the seed.
 	int32 CowSeed = INDEX_NONE;
 	for (int32 Seed = 1; Seed <= 5000 && CowSeed == INDEX_NONE; ++Seed)
@@ -1410,6 +1471,10 @@ bool FCataclysmSurgeWaveSubTypesTest::RunTest(const FString& Parameters)
 	FRandomStream Stream(4242);
 	Scheduler->SurgeIndex = 0;
 
+	// A SECOND STREAM FOR THE SECOND PASS BELOW, seeded differently so the two
+	// passes are not the same waves counted twice.
+	FRandomStream Check(31337);
+
 	TSet<ECataclysmDungeonSubType> Seen;
 	int32 Dungeons = 0;
 
@@ -1444,10 +1509,54 @@ bool FCataclysmSurgeWaveSubTypesTest::RunTest(const FString& Parameters)
 
 	// EVERY SUB-TYPE REACHES A REAL WAVE. `RollWave` calling `MakeDungeon` is
 	// what puts a sub-type on a dungeon the day loop will actually see, and a
-	// wave that only ever produced plain dungeons would pass every other test in
-	// this file.
-	TestEqual(TEXT("all eight sub-types turned up across the waves"),
-			  Seen.Num(), 8);
+	// wave that only ever produced one kind would pass every other test in this
+	// file.
+	//
+	// WALKED FROM THE ENUM RATHER THAN COUNTED. A count would say the right
+	// number turned up without saying which, so a sub-type that never spawns
+	// while another spawns twice would pass.
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		TestTrue(*FString::Printf(
+					 TEXT("sub-type %d turned up in a wave"), Value),
+				 Seen.Contains(SubType));
+	}
+
+	// **AND NOT ONE DUNGEON CAME OUT WITHOUT A SUB-TYPE.** That is the owner's
+	// ruling of 2026-09-05 measured on the path the day loop takes rather than
+	// on `RollSubType` alone.
+	//
+	// IT REALLY IS NONE, WHICH IT WAS NOT BEFORE 2026-09-06. A Siege refused by
+	// the one-per-city cap used to be made plain, which left 1.6% of dungeons
+	// carrying nothing; refusals are now spread across the other six sub-types.
+	// A second pass is run here because a refusal needs a wave that lands two
+	// dungeons on one city and rolls Siege for both, which the first 60 waves
+	// happen not to do at every seed.
+	int32 Plain = 0;
+	int32 Rolled = 0;
+	for (int32 Wave = 0; Wave < 60; ++Wave)
+	{
+		for (const FCataclysmDungeon& Dungeon :
+			 Scheduler->RollWave(*Map, 1, 10000 + Wave * 100, Check))
+		{
+			++Rolled;
+			if (Dungeon.SubType == ECataclysmDungeonSubType::None)
+			{
+				++Plain;
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d dungeons rolled across 60 further waves"), Rolled));
+
+	TestEqual(TEXT("no dungeon in any wave came out without a sub-type"),
+			  Plain, 0);
 
 	return true;
 }
@@ -1469,7 +1578,9 @@ bool FCataclysmSurgeSiegeCapTest::RunTest(const FString& Parameters)
 	// rolled one.
 	FRandomStream Free(31337);
 	int32 SiegesWhenAllowed = 0;
+	int32 PlainWhenAllowed = 0;
 	int32 Dungeons = 0;
+	TMap<ECataclysmDungeonSubType, int32> FreeCounts;
 
 	for (int32 Wave = 0; Wave < 60; ++Wave)
 	{
@@ -1477,9 +1588,14 @@ bool FCataclysmSurgeSiegeCapTest::RunTest(const FString& Parameters)
 			 Scheduler->RollWave(*Map, 1, Dungeons, Free))
 		{
 			++Dungeons;
+			++FreeCounts.FindOrAdd(Dungeon.SubType);
 			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 			{
 				++SiegesWhenAllowed;
+			}
+			if (Dungeon.SubType == ECataclysmDungeonSubType::None)
+			{
+				++PlainWhenAllowed;
 			}
 		}
 	}
@@ -1499,7 +1615,9 @@ bool FCataclysmSurgeSiegeCapTest::RunTest(const FString& Parameters)
 
 	FRandomStream Barred(31337);
 	int32 SiegesWhenBarred = 0;
+	int32 PlainWhenBarred = 0;
 	int32 BarredDungeons = 0;
+	TMap<ECataclysmDungeonSubType, int32> BarredCounts;
 
 	for (int32 Wave = 0; Wave < 60; ++Wave)
 	{
@@ -1508,15 +1626,83 @@ bool FCataclysmSurgeSiegeCapTest::RunTest(const FString& Parameters)
 								 AllBesieged))
 		{
 			++BarredDungeons;
+			++BarredCounts.FindOrAdd(Dungeon.SubType);
 			if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 			{
 				++SiegesWhenBarred;
+			}
+			if (Dungeon.SubType == ECataclysmDungeonSubType::None)
+			{
+				++PlainWhenBarred;
 			}
 		}
 	}
 
 	TestEqual(TEXT("and none at all when every city already has one"),
 			  SiegesWhenBarred, 0);
+
+	// **AND NOTHING CAME OUT PLAIN, IN EITHER RUN.** A refused Siege used to be
+	// made a dungeon with no sub-type; since 2026-09-06 it is spread across the
+	// other six instead, so the plain column is empty however many are refused.
+	TestEqual(TEXT("nothing came out plain when every Siege was barred"),
+			  PlainWhenBarred, 0);
+	TestEqual(TEXT("nor when none was"), PlainWhenAllowed, 0);
+
+	// **THE REFUSED SIEGES WENT TO THE OTHER SIX, AND TO NOTHING ELSE.** Both
+	// runs draw the same numbers in the same order, so every dungeon whose draw
+	// did not land on Siege comes out identical in the two. Each of the other
+	// six can therefore only gain, and what they gain between them is exactly
+	// the Sieges the unbarred run landed.
+	int32 Gained = 0;
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		if (SubType == ECataclysmDungeonSubType::Siege)
+		{
+			continue;
+		}
+
+		const int32 WhenAllowed = FreeCounts.FindRef(SubType);
+		const int32 WhenBarred = BarredCounts.FindRef(SubType);
+
+		TestTrue(*FString::Printf(
+					 TEXT("sub-type %d did not lose ground when Sieges were "
+						  "barred: %d against %d"), Value, WhenBarred,
+					 WhenAllowed),
+				 WhenBarred >= WhenAllowed);
+
+		Gained += WhenBarred - WhenAllowed;
+	}
+
+	TestEqual(TEXT("and between them they took every refused Siege"),
+			  Gained, SiegesWhenAllowed);
+
+	// AND THE SPREAD REACHED MORE THAN ONE OF THEM, which is what "spread it
+	// across the others" means. A rule that sent every refusal to one sub-type
+	// would satisfy every line above.
+	int32 SharedBy = 0;
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		if (SubType != ECataclysmDungeonSubType::Siege
+			&& BarredCounts.FindRef(SubType) > FreeCounts.FindRef(SubType))
+		{
+			++SharedBy;
+		}
+	}
+
+	TestTrue(*FString::Printf(
+				 TEXT("%d different sub-types took a share of the refusals"),
+				 SharedBy),
+			 SharedBy > 1);
 
 	// THE WAVE SIZES DID NOT CHANGE, so the comparison above is between two
 	// runs of the same length. A refusal that dropped dungeons rather than
@@ -1645,5 +1831,226 @@ bool FCataclysmSurgeSubTypeNameTest::RunTest(const FString& Parameters)
 
 	return true;
 }
+
+/**
+ * No dungeon a campaign produces comes out without a sub-type.
+ *
+ * WHAT THE OWNER RULED, MEASURED ON WHOLE CAMPAIGNS. Every dungeon a surge makes
+ * has a sub-type as of 2026-09-05, and the one-per-city Siege cap was the single
+ * exception until 2026-09-06: a Siege rolled for a city that already held one
+ * became a plain dungeon. **This test measured that exception at 1.6% of all
+ * dungeons made**, which is why the owner was asked what should happen instead
+ * and answered "Spread it across the others". A refused Siege is now spread
+ * across the other six sub-types in proportion to their weights, so the answer
+ * here is none at all.
+ *
+ * IT ASSERTS ZERO RATHER THAN A SMALL SHARE, deliberately. A test that still
+ * allowed 1.6% would pass whether the redistribution worked or not, which is the
+ * whole reason this one is worth keeping rather than deleting.
+ *
+ * WHY A CAMPAIGN AND NOT A LOOP OF ROLLS. The refusal only happens when a Siege
+ * is rolled for a city that already has one, which needs cities that accumulate
+ * Sieges over time. `ARefusedSiegeIsSpreadAcrossTheOthersInProportion` covers
+ * the roll on its own; this covers the path the day loop takes.
+ *
+ * **IT COUNTS EVERY DUNGEON THE CAMPAIGN MADE, NOT WHAT IS LEFT STANDING**, and
+ * the difference is not small. A city that falls absorbs every dungeon on it,
+ * and a Siege takes 1% of its host city's defence and population every day it
+ * stands -- so a Siege destroys the city it is standing on and is then removed
+ * with it. Counting the board at the end of a 600 day campaign found 14 dungeons
+ * standing and NOT ONE Siege among them, from a distribution that rolls Siege 15
+ * times in 100. A census of the board is a census of the sub-types that do not
+ * kill their host.
+ *
+ * SO IT RECORDS EACH DUNGEON AS IT ARRIVES, by watching for identifiers it has
+ * not seen. They are handed out in order and never reused, so a dungeon that
+ * appears and is later absorbed is still counted once.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgePlainIsAnExceptionTest,
+	"Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
+{
+	// TWENTY CAMPAIGNS RATHER THAN ONE. A single 600 day campaign makes about a
+	// hundred dungeons, measured, which is too few to compare a 7-in-100
+	// sub-type against an exception that arises a few times in a hundred.
+	// Pooling also stops the answer being a fact about one seed.
+	constexpr int32 Campaigns = 20;
+	constexpr int32 MostDays = 600;
+
+	TMap<ECataclysmDungeonSubType, int32> Made;
+	int32 Total = 0;
+	int32 Days = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		Run->Begin(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		TSet<int32> Counted;
+
+		auto RecordWhatIsNew = [&Made, &Counted, &Total](
+								   const UCataclysmEmpireRun& Live)
+		{
+			for (const FCataclysmDungeon& Dungeon : Live.Dungeons)
+			{
+				bool bAlready = false;
+				Counted.Add(Dungeon.DungeonId, &bAlready);
+				if (!bAlready)
+				{
+					++Made.FindOrAdd(Dungeon.SubType);
+					++Total;
+				}
+			}
+		};
+
+		// THE FIRST WAVE FIRES AT RUN START, so the board is read before any day
+		// passes as well as after each one.
+		RecordWhatIsNew(*Run);
+
+		// AS FAR AS THE EMPIRE SURVIVES, up to a limit. A fixed number of days
+		// would be a guess: once the frontier is gone no wave lands anywhere and
+		// the sample stops growing, so each run stops while there is still one.
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			Run->AdvanceDay();
+			++Advanced;
+			RecordWhatIsNew(*Run);
+		}
+
+		Days += Advanced;
+	}
+
+	const int32 Plain = Made.FindRef(ECataclysmDungeonSubType::None);
+	const int32 Cows = Made.FindRef(ECataclysmDungeonSubType::CowLevel);
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns, %d days in all, %d dungeons made: %d with no "
+			 "sub-type (%.1f%%), %d Cow Levels, %d Sieges"),
+		Campaigns, Days, Total, Plain,
+		Total > 0 ? 100.0f * Plain / Total : 0.0f, Cows,
+		Made.FindRef(ECataclysmDungeonSubType::Siege)));
+
+	// THE SAMPLE IS BIG ENOUGH FOR THE COMPARISON TO MEAN SOMETHING. A handful
+	// of dungeons would satisfy the comparison below whatever the roll did.
+	if (!TestTrue(TEXT("enough dungeons were made to compare"), Total >= 1000))
+	{
+		return false;
+	}
+
+	// EVERY SUB-TYPE WAS MADE AT LEAST ONCE, so a zero on either side of the
+	// comparison below is a real zero rather than a sample that never got there.
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		TestTrue(*FString::Printf(TEXT("sub-type %d was made at least once"),
+								  Value),
+				 Made.FindRef(SubType) > 0);
+	}
+
+	// **NONE AT ALL.** It was 31 of 1,925 before refused Sieges were spread
+	// across the other six.
+	TestEqual(TEXT("no dungeon came out without a sub-type"), Plain, 0);
+
+	// AND COW LEVELS DID TURN UP, so the count above is a real zero from a
+	// sample that reached the rarer sub-types rather than one that made
+	// nothing.
+	TestTrue(TEXT("Cow Levels were made"), Cows > 0);
+
+	return true;
+}
+
+/**
+ * A refused Siege is spread across the other six in proportion to their weights.
+ *
+ * THE OWNER'S RULING OF 2026-09-06, verbatim: "Spread it across the others".
+ * This is the roll on its own; `NoDungeonACampaignMakesComesOutWithoutASubType`
+ * is the same rule on the path the day loop takes.
+ *
+ * **WHAT MAKES THIS HARD IS THE DRAW COUNT, NOT THE SPREAD.** Rolling again
+ * would be easy and is forbidden: every dungeon in a wave is rolled from one
+ * stream in sequence, so a second draw here would change the depth of every
+ * later dungeon in the wave. `RollSubType` re-reads the draw it already made
+ * into the weight space the other six occupy, and
+ * `RollingASubTypeCostsExactlyOneDraw` is what holds it to that.
+ *
+ * SO THIS CHECKS THE RE-READ IS EXACT rather than merely non-Siege. Any rule
+ * that avoided Siege would pass a test that only asked for that -- always
+ * answering Timed, for instance. Each of the six should take its own weight out
+ * of the 85 that remain.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRefusedSiegeSpreadTest,
+	"Cataclysm.Surge.ARefusedSiegeIsSpreadAcrossTheOthersInProportion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRefusedSiegeSpreadTest::RunTest(const FString& Parameters)
+{
+	// ENOUGH ROLLS THAT THE RAREST SHARE IS NOT A COINCIDENCE. Cow Level takes
+	// 7 of the 85 left, which is 8.2%, so 40,000 rolls give about 3,300 of them.
+	constexpr int32 Rolls = 40000;
+	constexpr float Tolerance = 1.0f;
+
+	FRandomStream Stream(20260906);
+	TMap<ECataclysmDungeonSubType, int32> Counts;
+
+	for (int32 Roll = 0; Roll < Rolls; ++Roll)
+	{
+		++Counts.FindOrAdd(
+			UCataclysmSurgeScheduler::RollSubType(Stream,
+												  /*bSiegeAllowed=*/false));
+	}
+
+	TestEqual(TEXT("not one Siege was returned"),
+			  Counts.FindRef(ECataclysmDungeonSubType::Siege), 0);
+	TestEqual(TEXT("and not one dungeon without a sub-type"),
+			  Counts.FindRef(ECataclysmDungeonSubType::None), 0);
+
+	// THE LINE THE OTHER SIX OCCUPY, worked out here rather than read from the
+	// code, so a change to the totals shows up as a disagreement.
+	const float Left = 100.0f - 15.0f;
+
+	const TPair<ECataclysmDungeonSubType, float> Expected[] = {
+		{ ECataclysmDungeonSubType::Timed,		 18.0f },
+		{ ECataclysmDungeonSubType::Horde,		 18.0f },
+		{ ECataclysmDungeonSubType::CowLevel,	  7.0f },
+		{ ECataclysmDungeonSubType::Elite,		 15.0f },
+		{ ECataclysmDungeonSubType::Volatile,	 15.0f },
+		{ ECataclysmDungeonSubType::Sacrificial, 12.0f },
+	};
+
+	int32 Seen = 0;
+	for (const TPair<ECataclysmDungeonSubType, float>& Pair : Expected)
+	{
+		const int32 Got = Counts.FindRef(Pair.Key);
+		Seen += Got;
+
+		const float Share = 100.0f * Got / Rolls;
+		const float Wanted = 100.0f * Pair.Value / Left;
+
+		TestEqual(*FString::Printf(
+					  TEXT("sub-type %d took %.2f%% of the refusals, wanted "
+						   "%.2f%%"),
+					  static_cast<int32>(Pair.Key), Share, Wanted),
+				  Share, Wanted, Tolerance);
+	}
+
+	// AND EVERY ROLL LANDED ON ONE OF THE SIX. A rule that answered something
+	// outside the list would leave a gap the shares above could not show.
+	TestEqual(TEXT("every roll landed on one of the six"), Seen, Rolls);
+
+	return true;
+}
+
 
 #endif // WITH_AUTOMATION_TESTS

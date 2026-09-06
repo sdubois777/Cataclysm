@@ -283,10 +283,15 @@ class TuningConfig:
     modifiers_per_tier: int = 1
     sacrificial_modifier_multiplier: int = 2
 
-    # Spawn distribution over dungeon subtypes.
+    # Spawn distribution over dungeon subtypes. Every dungeon gets one: there
+    # is deliberately no "None" entry here, because the owner ruled on
+    # 2026-09-05 that every dungeon should have a sub-type. See
+    # `scoring.SUBTYPE_WEIGHTS`, which is a DIFFERENT quantity -- how much
+    # harder each sub-type makes a dungeon -- and which keeps its "None" entry,
+    # because a dungeon entered outside a surge still has no sub-type.
     SUBTYPE_SPAWN_WEIGHTS: dict[str, float] = field(default_factory=lambda: {
-        "None": 34.0, "Timed": 12.0, "Horde": 12.0, "Elite": 10.0,
-        "Volatile": 10.0, "Siege": 10.0, "Sacrificial": 8.0, "Cow Level": 4.0,
+        "Timed": 18.0, "Horde": 18.0, "Elite": 15.0,
+        "Volatile": 15.0, "Siege": 15.0, "Sacrificial": 12.0, "Cow Level": 7.0,
     })
 
     # Overwhelm -- see combat.py.

@@ -4812,7 +4812,7 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 
 
-### **Dungeon Type Weights**
+### **Dungeon Type Difficulty Weights**
 
 | Dungeon Type | Weight |
 | :-: | :-: |
@@ -4823,7 +4823,7 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 
 
-### **Subtype Weights**
+### **Subtype Difficulty Weights**
 
 | Subtype | Weight |
 | :-: | :-: |
@@ -4839,6 +4839,44 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 
 **Timed carries no weight, deliberately.** A time limit is a constraint on the player rather than on the enemies, so it changes nothing about what an encounter is worth.
+
+
+
+**This table is not how often a subtype appears.** It is how much harder one makes a dungeon. How often each is rolled is a separate table with separate numbers, immediately below, and the two are near-inverses of each other: Sacrificial is the hardest and among the rarer, Timed adds no difficulty at all and is the commonest. Both headings say which quantity they are for that reason.
+
+
+
+### **Subtype Spawn Weights — how often each one is rolled**
+
+| Subtype | Spawn weight |
+| :-: | :-: |
+| Timed | 18 |
+| Horde | 18 |
+| Siege | 15 |
+| Elite | 15 |
+| Volatile | 15 |
+| Sacrificial | 12 |
+| Cow Level | 7 |
+
+
+
+**Every dungeon a surge creates has a subtype.** There is no “none” outcome and no row for one. Until 2026-09-05 there was, and it was the commonest at 34 in 100; the seven that remain were rescaled to take up that share while keeping their order.
+
+
+
+**They add up to 100, so each reads as a percentage**, but nothing depends on that. Both the game and the model divide by whatever the total is, so a weight changed on its own changes that subtype's share and dilutes every other.
+
+
+
+**A Cow Level is the rarest at 7 in 100**, which is what “ridiculous amounts of loot” is paid for with. It was 4 in 100 while a third of dungeons were plain.
+
+
+
+**A dungeon can still have no subtype; nothing a surge creates has one.** A dungeon entered outside the empire has none, which is what the difficulty table's “None” row is for.
+
+
+
+**A Siege rolled for a city that already holds one is spread across the other six**, in proportion to their weights, rather than being rolled again or left plain. Rolling again would change the depth of every later dungeon in that wave, so the draw already made is re-read into the 85 points the other six occupy. Measured over twenty campaigns and 10,914 days: no dungeon at all comes out without a subtype.
 
 
 

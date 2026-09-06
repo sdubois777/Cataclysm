@@ -1485,10 +1485,16 @@ bool FCataclysmSaveWriterScheduleRollsTheSameWave::RunTest(const FString&)
 	// SO IT STOPS WHILE THERE IS STILL A FRONTIER, and says how far it got.
 	//
 	// A FRONTIER OF SEVERAL CITIES AND NOT MERELY ONE. Run until only one city
-	// is left -- 258 days, measured -- and every dungeon in the wave lands on
-	// that one city, so comparing which city each landed on cannot fail whatever
-	// the stream does. Several cities give the target roll something to choose
-	// between, and the wave below is checked to have used more than one.
+	// is left and every dungeon in the wave lands on that one city, so
+	// comparing which city each landed on cannot fail whatever the stream does.
+	// Several cities give the target roll something to choose between, and the
+	// wave below is checked to have used more than one.
+	//
+	// **HOW FAR IT GETS IS A MEASUREMENT AND IT MOVES.** It reported 231 days
+	// before the dungeon sub-type distribution changed and 211 after, because
+	// Siege rose from 10 in 100 to 15 and a Siege destroys the city it stands
+	// on. The line below prints whatever it is now rather than this comment
+	// being the record of it.
 	constexpr int32 MostDays = 400;
 	constexpr int32 FewestCitiesWorthComparing = 5;
 

@@ -104,11 +104,21 @@ class TestEveryTableMatchesTheModel:
                           for k, v in model.RARITY_WEIGHTS.items()}
 
     def test_the_dungeon_type_weights(self, section, model):
-        stated = table_after(section, "### **Dungeon Type Weights**")
+        stated = table_after(section,
+                             "### **Dungeon Type Difficulty Weights**")
         assert stated == {k: float(v) for k, v in model.TYPE_WEIGHTS.items()}
 
-    def test_the_subtype_weights(self, section, model):
-        stated = table_after(section, "### **Subtype Weights**")
+    def test_the_subtype_difficulty_weights(self, section, model):
+        """The heading says "difficulty" as of issue #1293.
+
+        There is now a second subtype table in the same document giving how
+        OFTEN each one is rolled, which is a different quantity with different
+        numbers. `tools/tests/test_dungeon_subtype_port.py` guards that one.
+        Reading the wrong table would compare spawn frequencies against
+        difficulty weights and fail with a confusing message, so both headings
+        name their quantity.
+        """
+        stated = table_after(section, "### **Subtype Difficulty Weights**")
         assert stated == {k: float(v) for k, v in model.SUBTYPE_WEIGHTS.items()}
 
     def test_the_floor_scaling_bases(self, section, model):
