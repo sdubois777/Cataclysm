@@ -42,11 +42,13 @@ enum class ECataclysmSurgeMode : uint8
 //   - **Quest** refreshes instead of resolving, and clearing one is one
 //     objective towards challenging the Cataclysm. A surge rolls one in place
 //     of a Basic; see `RollKind` and `QuestChance`. Issue #1324 slice 3.
-//     **And it relocates**: when its timer runs out it moves to an adjacent
-//     exposed city, or stays put when there is not one. `PickRelocation`
-//     chooses and `UCataclysmEmpireRun::ResolveDungeon` moves it. Issue #1324
-//     slice 4. Issue #51 is the Hell on Earth quest mechanic for the Demonic
-//     Cataclysm specifically, which is a different thing from this kind.
+//     **And it may relocate**: when its timer runs out it moves to an adjacent
+//     exposed city with a chance of `QuestMoveChance`, and stays when the coin
+//     says no or when there is nowhere to go. `PickRelocation` chooses where
+//     and `UCataclysmEmpireRun::RelocateQuestDungeon` flips the coin and moves
+//     it. Issue #1324 slice 4. Issue #51 is the Hell on Earth quest mechanic
+//     for the Demonic Cataclysm specifically, which is a different thing from
+//     this kind.
 //   - **FallenCity** is what a city that has fallen becomes.
 //     `MakeFallenCityDungeon` builds it and `UCataclysmEmpireRun::CityFell`
 //     is the only caller. Issue #1324 slice 2.
@@ -828,6 +830,48 @@ public:
 	static constexpr float QuestResolveDays = 25.0f;
 
 	/**
+	 * The chance a Quest dungeon with somewhere adjacent to go actually goes.
+	 * `config.quest_move_chance`.
+	 *
+	 * **THE DESIGN'S "MAY" IS A DIE ROLL AND NOT ONLY THE MAP.** Slice 4 of
+	 * issue #1324 read "may move to adjacent city" as satisfied by adjacency:
+	 * the dungeon moved whenever an exposed neighbour existed and stayed only
+	 * when hemmed in. The project owner ruled otherwise on 2026-09-06, verbatim
+	 * "A chance each time", and then chose the number, verbatim: **"0.5"**.
+	 *
+	 * **BALANCE DID NOT CHOOSE IT.** `sim/analyse_quest_move_chance.py` measured
+	 * 0, 0.25, 0.5, 0.75 and 1.0 over 10,000 campaigns in two disjoint seed
+	 * blocks and every response variable was flat -- the whole ladder spans 2.4
+	 * points of the earned win route in one block against a 2.7-point gap
+	 * between the two blocks measuring the same thing, and paired seed by seed
+	 * the largest split is p = 0.08. The number came from the ruling. The curve
+	 * is recorded on issue #1324 and must not be re-derived to justify it.
+	 *
+	 * **HALF THE COIN IS NOT HALF THE TIMERS.** About a quarter of quest timers
+	 * fire with nowhere adjacent to go whatever the coin says, so a Quest dungeon
+	 * actually moves on roughly 38% of its timers. `docs/Cataclysm_GDD_v2.md`
+	 * section VIII states both numbers with the conditions and the sample,
+	 * because a reader given only one of them is surprised by the other. The
+	 * figure recorded with the ruling was 37% and described the game before the
+	 * active Cataclysm count was tied to the difficulty tier; re-measured over
+	 * four disjoint blocks of 1,000 campaigns it is 38.2%, and the coin itself
+	 * is unchanged at a measured take-up of 49.8%.
+	 *
+	 * WHERE IT IS DRAWN, AND WHY NOT HERE. `PickRelocation` answers WHERE a
+	 * dungeon would go and `UCataclysmEmpireRun::RelocateQuestDungeon` decides
+	 * whether it goes, in that order: the target first and the coin second. Both
+	 * draws are taken whenever there is somewhere to go and neither when there is
+	 * not, which is what `Simulation._resolve` does. A coin drawn first, or drawn
+	 * on the empty case, would put the two streams permanently out of step.
+	 *
+	 * IT IS A PORT AND `config.quest_move_chance` IS THE ORIGINAL, the same
+	 * arrangement every other constant in this file is in.
+	 * `tools/tests/test_surge_port.py` reads it back out of this header and
+	 * fails if either side moves.
+	 */
+	static constexpr float QuestMoveChance = 0.5f;
+
+	/**
 	 * The chance a surge lands a Quest dungeon rather than a Basic one.
 	 * `config.quest_dungeon_chance`.
 	 *
@@ -1122,18 +1166,43 @@ public:
 	 * fallen city is not exposed, so a Quest dungeon never moves onto the
 	 * Fallen City dungeon standing on one.
 	 *
-	 * **"MAY MOVE" IS SATISFIED BY THE MAP AND NOT BY A DIE ROLL, WHICH IS A
-	 * READING.** This moves the dungeon whenever an adjacent exposed city
-	 * exists and answers `INDEX_NONE` when none does, which happens for real:
-	 * about one quest timer in five fires with nowhere adjacent to go. The
-	 * owner was offered a chance-based variant and did not take it, but neither
-	 * did they say movement is certain, so this is not settled -- see
-	 * `docs/DECISIONS.md`. Adding a chance later needs one constant and no new
-	 * structure.
+	 * **THIS ANSWERS WHERE, NOT WHETHER.** "May move" is a die roll as well as a
+	 * map: the project owner ruled on 2026-09-06, verbatim "A chance each time",
+	 * and chose 0.5. The coin is `QuestMoveChance` and it is flipped by
+	 * `UCataclysmEmpireRun::RelocateQuestDungeon` AFTER this has answered, so
+	 * that a quest timer with somewhere to go costs the stream the same two
+	 * numbers whether the dungeon moves or stays. This function is unchanged by
+	 * that ruling and deliberately so -- a `PickRelocation` that sometimes
+	 * answered `INDEX_NONE` for a city it had targets for would make "nowhere to
+	 * go" and "decided not to" indistinguishable to every caller, and
+	 * `Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity` checks
+	 * every refusal against the map for exactly that reason.
+	 *
+	 * `INDEX_NONE` therefore still means one thing: nothing adjacent qualified.
+	 * It happens for real -- about one quest timer in four, before the coin is
+	 * even reached. Measured at 22.5% to 24.8% by block over four disjoint
+	 * blocks of 1,000 campaigns of the model at the balance report's settings.
+	 *
+	 * **AND A DUNGEON CARRYING A SIEGE MAY NOT BE SENT TO A CITY THAT ALREADY
+	 * HAS ONE.** The design's Siege row says "Max 1 per city"; `RollSubType`
+	 * enforced it when a dungeon was created and nothing enforced it when one
+	 * moved, so a Quest dungeon that had rolled Siege could walk onto a besieged
+	 * city and the city would then take the daily bite twice. The owner ruled on
+	 * 2026-09-06, verbatim "Check the limit on arrival too". Issue #1371.
+	 *
+	 * IT REFUSES THE DESTINATION AND NOT THE MOVE, which is the shape
+	 * `RollSubType` already uses on the spawn half of the same rule: a refused
+	 * Siege there is spread across the other sub-types rather than dropped, and
+	 * a refused city here leaves the remaining neighbours on the table. A
+	 * dungeon whose every neighbour is besieged gets `INDEX_NONE` and stays,
+	 * which is what the owner named as the other outcome.
 	 *
 	 * IT DECIDES, IT DOES NOT ACT, like everything else on this class.
 	 * `UCataclysmEmpireRun::ResolveDungeon` is what actually moves the dungeon,
-	 * because this class does not own the dungeons standing on the map.
+	 * because this class does not own the dungeons standing on the map. That is
+	 * also why the Siege count is PASSED IN rather than reached for, exactly as
+	 * `RollWave` takes `SiegesPerCityNow`: the scheduler must stay able to
+	 * answer against a bare map in a test.
 	 *
 	 * ONE DRAW WHEN THERE IS A CHOICE AND NONE WHEN THERE IS NOT, which is what
 	 * `Simulation._resolve` does -- `self.rng.choice(targets)` is guarded by
@@ -1143,10 +1212,22 @@ public:
 	 * @param From the city the dungeon is standing on now. Its own identifier
 	 *             is never among its neighbours, so this never answers "stay"
 	 *             by naming the city it is already on.
+	 * @param bCarriesSiege whether the dungeon being moved has the Siege
+	 *                      sub-type. False for every other dungeon, and then no
+	 *                      destination is refused on account of a Siege: the cap
+	 *                      is "max 1 Siege per city" and not "one dungeon per
+	 *                      besieged city".
+	 * @param SiegesPerCityNow how many Siege dungeons already stand on each
+	 *                         city, indexed by city identifier. An empty array
+	 *                         means the caller did not say, and then nothing is
+	 *                         refused -- the same convention `RollWave` uses.
 	 */
-	static int32 PickRelocation(const UCataclysmEmpireMap& Map,
-								const FCataclysmCity& From,
-								FRandomStream& Stream);
+	static int32 PickRelocation(
+		const UCataclysmEmpireMap& Map,
+		const FCataclysmCity& From,
+		FRandomStream& Stream,
+		bool bCarriesSiege = false,
+		const TArray<int32>& SiegesPerCityNow = TArray<int32>());
 
 	/**
 	 * The whole wave: picks the targets and rolls a dungeon for each.

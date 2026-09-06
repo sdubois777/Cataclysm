@@ -27,12 +27,23 @@ argument for the decision. A later edit that keeps the rule and drops the number
 leaves the next reader with a rule and no reason, which is how a rule gets
 "tidied" back out.
 
-WHAT IS NOT CHECKED HERE. That anything implements a CHANCE of staying. Nothing
-does. The owner ruled on 2026-09-06, verbatim "A chance each time", gave no
-number, and `sim/analyse_quest_move_chance.py` is the dose-response curve that
-exists to get one. Until it is answered the document deliberately says only
-"may", and this file asserts that the document does not promise a probability it
-cannot state.
+**AND TWO MORE RULINGS OF THE SAME DAY HAVE SINCE BEEN ADDED**, both of which
+changed behaviour after this file was first written:
+
+- **"A chance each time"**, answered with **"0.5"** once the curve was measured.
+  `TestTheDocumentStatesTheMoveChance` checks the chance, that the draw is fresh
+  each time, **and** the 38% of timers it works out to in play -- because a
+  quarter of quest timers have nowhere adjacent to go regardless and a reader
+  given only one of those two numbers is surprised by the other. Issue #1324.
+- **"Check the limit on arrival too".** A relocating Quest dungeon carrying a
+  Siege refuses a city that already has one. `TestTheDocumentStatesTheSiegeArrival
+  Rule` checks the rule, that the dungeon is redirected rather than stopped, and
+  that nothing else is refused a besieged city. Issue #1371.
+
+**THIS FILE USED TO ASSERT THE OPPOSITE OF THE FIRST OF THOSE**, in
+`test_it_does_not_promise_a_probability_it_cannot_state`: that the document
+stated no percentage, because none had been decided. That guard was right when it
+was written and is inverted rather than deleted now the ruling exists.
 
 THE IMPLEMENTATIONS are checked against each other by
 `tools/tests/test_surge_port.py`, and against real campaigns by
@@ -232,30 +243,158 @@ class TestTheDocumentSaysWhatARelocatedDungeonKeeps:
             "the design no longer says that a Quest dungeon with nowhere to go "
             "stays put")
 
-    def test_it_does_not_promise_a_probability_it_cannot_state(self, document):
-        """**WHAT IS DELIBERATELY ABSENT.** The owner ruled on 2026-09-06,
-        verbatim "A chance each time", and gave no number. `CLAUDE.md` forbids
-        inventing one, `sim/analyse_quest_move_chance.py` is the measurement
-        that exists to get one, and nothing implements a chance yet.
-
-        A document that stated a percentage here would be stating a decision
-        nobody made, and a document that said "always moves" would contradict
-        the ruling. It says "may", which is true of what is built and does not
-        foreclose the ruling.
-        """
+    def test_it_still_says_a_quest_dungeon_may_move(self, document):
+        """The word the whole rule hangs off. A document that promised it
+        always moves would contradict the owner's "a chance each time"."""
         assert "**may move to an adjacent city**" in document, (
             "the design no longer says a Quest dungeon MAY move. The owner "
             "ruled on 2026-09-06, verbatim \"A chance each time\"; a document "
             "that promises it always moves contradicts that ruling")
 
-        for invented in ("chance to move", "% chance of moving",
-                         "always moves to an adjacent"):
-            assert invented not in document, (
-                f"the design states {invented!r}. The owner ruled \"A chance "
-                "each time\" and gave no number; see "
-                "sim/analyse_quest_move_chance.py, which is the curve that "
-                "exists to get one. Nothing may be recorded before the run "
-                "that proves it")
+
+class TestTheDocumentStatesTheMoveChance:
+    """**THE OWNER RULED THE MECHANIC AND THEN THE NUMBER**, both on 2026-09-06:
+    verbatim *"A chance each time"*, and then verbatim *"0.5"*. Issue
+    [#1324](https://github.com/sdubois777/Cataclysm/issues/1324).
+
+    **THIS CLASS REPLACES `test_it_does_not_promise_a_probability_it_cannot_
+    state`**, which asserted the document stated no percentage *because none had
+    been decided*. Its own docstring said the document "does not foreclose the
+    ruling"; the ruling has since arrived, so the guard is inverted rather than
+    deleted.
+
+    **BOTH NUMBERS ARE CHECKED AND THAT IS THE POINT OF THE CLASS.** "A chance
+    of 0.5" and "moves on 38% of its timers" are both true, because about a
+    quarter of quest timers fire with nowhere adjacent to go whatever the coin
+    says. A document stating only one of them surprises the reader with the
+    other, which is what the owner asked to be avoided in as many words.
+    """
+
+    def test_it_states_the_chance(self, document):
+        assert "takes it **half the time**" in document, (
+            "the design no longer states how likely a Quest dungeon with "
+            "somewhere to go is to move. The owner ruled on 2026-09-06, "
+            "verbatim \"A chance each time\", and chose 0.5; see "
+            "config.quest_move_chance and "
+            "UCataclysmSurgeScheduler::QuestMoveChance. Issue #1324")
+
+    def test_it_says_the_draw_is_fresh_every_time(self, document):
+        """"A chance each time" is the ruling's own wording, and a reader who
+        took it for a pity timer -- more likely after each stay -- would have a
+        different game in mind. Neither implementation has any memory of it."""
+        assert "The draw is fresh on every timer" in document, (
+            "the design no longer says the move chance is drawn fresh on every "
+            "timer. Nothing in either implementation remembers a previous "
+            "stay, so a document implying otherwise promises a mechanic that "
+            "does not exist")
+
+    def test_it_states_the_consequence_in_timers_as_well(self, document):
+        """**THE HALF A READER WOULD OTHERWISE BE SURPRISED BY.** The owner
+        asked for it by name: "'a chance of 0.5' and 'moves 37% of the time'
+        are both true and a reader will otherwise be surprised by one of
+        them".
+
+        **THE NUMBER IS 38 AND NOT THE 37 THE RULING RECORDED**, and that is a
+        change in the game rather than a correction to the ruling. The 37% was
+        measured before the active Cataclysm count was tied to the difficulty
+        tier and before the Cataclysm dungeon opened at half of them; both
+        shorten a campaign, and a shorter campaign spends proportionally more
+        of itself in territory a Quest dungeon can still move through.
+        Re-measured on the shipped code over four disjoint blocks of 1,000
+        campaigns it is 38.2% overall, 37.6% to 38.7% by block. The coin is
+        untouched: take-up over the timers that had a choice is 49.8%.
+        """
+        assert "38% of its timers" in document, (
+            "the design states the coin without stating what it works out to "
+            "in play. About a quarter of quest timers have nowhere adjacent to "
+            "go regardless, so a Quest dungeon moves on roughly 38% of its "
+            "timers rather than 50%. Both numbers are true and the owner asked "
+            "for both to be stated")
+
+    def test_it_states_the_conditions_the_figure_was_measured_at(self, document):
+        """A campaign figure without its conditions is not a figure, and this
+        project has paid for that. The share of timers with somewhere to go was
+        measured at the balance report's settings and not at the model's
+        defaults, where it is higher.
+
+        **AND THE RANGE IS FOUR BLOCKS RATHER THAN TWO**, because two disjoint
+        blocks give one difference and not a spread. The document says so in as
+        many words.
+        """
+        assert "75.2% to 77.5%" in document, (
+            "the design no longer states the measured share of quest timers "
+            "that had somewhere adjacent to go, which is where the 38% comes "
+            "from. Without it the 38% is an assertion rather than a result")
+
+        assert "four disjoint blocks of" in document, (
+            "the design states a measured range without saying how many "
+            "disjoint seed blocks it spans. Two blocks give a difference and "
+            "not a spread, and this project has read one as the other")
+
+        assert "static surges of five dungeons every 120 days" in document, (
+            "the design states a measured share without the conditions it was "
+            "measured under. Surge size, difficulty tier and policy all move "
+            "it, and the same run at the model's defaults gives a different "
+            "number")
+
+
+class TestTheDocumentStatesTheSiegeArrivalRule:
+    """**THE OWNER RULED, VERBATIM: "Check the limit on arrival too".** Issue
+    [#1371](https://github.com/sdubois777/Cataclysm/issues/1371).
+
+    The Siege row says "Max 1 per city". Both implementations enforced that when
+    a dungeon was created and neither enforced it when one moved, so a Quest
+    dungeon that had rolled Siege could walk onto a besieged city.
+
+    **THE NARROWNESS IS GUARDED TOO.** The cap counts Sieges and not dungeons,
+    and a document that said a besieged city refuses every dungeon would
+    describe a much larger rule than the one ruled -- and one neither
+    implementation obeys.
+    """
+
+    def test_it_says_a_wandering_siege_refuses_a_besieged_city(self, document):
+        assert ("A Quest dungeon carrying a Siege will not move onto a city "
+                "that already has one") in document, (
+            "the design no longer says that a relocating Siege refuses a city "
+            "that already has one. The owner ruled it on 2026-09-06, verbatim "
+            "\"Check the limit on arrival too\"; issue #1371")
+
+    def test_it_says_the_cap_is_about_standing_and_not_only_creation(
+            self, document):
+        """The sentence that makes the Sub-Types table's "Max 1 per city" mean
+        the same thing everywhere rather than only at spawn. Without it the two
+        readings are both defensible, which is the state that produced the
+        hole."""
+        assert "governs where a\nSiege may **stand**".replace("\n", " ") \
+            in document, (
+            "the design no longer says that \"Max 1 per city\" is about where a "
+            "Siege may stand rather than only where one may be created. That "
+            "sentence is the whole difference between the rule the owner chose "
+            "and the one they rejected")
+
+    def test_it_says_the_dungeon_is_redirected_rather_than_stopped(
+            self, document):
+        assert "takes\none of its other neighbours instead".replace("\n", " ") \
+            in document, (
+            "the design no longer says that a refused Siege takes another "
+            "neighbour. The owner ruled it must \"pick another adjacent city\"; "
+            "a rule that merely cancelled the move is a different one")
+
+        assert "stays where it is when none of them is\nfree".replace(
+            "\n", " ") in document, (
+            "the design no longer says what happens when every neighbour is "
+            "besieged. The owner named that outcome: \"or stay where it is if "
+            "there is none\"")
+
+    def test_it_says_nothing_else_is_refused(self, document):
+        """**THE NARROW READING, STATED.** A check written against the
+        destination rather than against what the mover carries would stop every
+        dungeon entering a besieged city. Both implementations have a control
+        test for exactly this, and the document has to agree with them."""
+        assert "**Nothing else is refused a besieged city.**" in document, (
+            "the design no longer says that only a Siege is refused a besieged "
+            "city. The cap counts Sieges, not dungeons; without this sentence "
+            "the rule reads as a general blockade")
 
 
 class TestTheDecisionsLogCarriesBothRulings:
@@ -273,22 +412,65 @@ class TestTheDecisionsLogCarriesBothRulings:
             f"docs/DECISIONS.md no longer records the owner's ruling of "
             f"2026-09-06, verbatim “{ruling}”. Issue #1324")
 
-    def test_the_unbuilt_ruling_is_recorded_as_unbuilt(self, decisions):
-        """**NOTHING MAY BE RECORDED BEFORE THE RUN THAT PROVES IT.** "A chance
-        each time" is ruled and not built. A log that recorded it beside the two
-        that were built would read as three landed decisions."""
-        assert "ruled and **not built**" in decisions, (
-            "docs/DECISIONS.md no longer says that the move chance is ruled "
-            "but not built. It is the one of the three rulings of 2026-09-06 "
-            "that shipped no behaviour, and a reader has no way to tell them "
-            "apart otherwise")
+    @pytest.mark.parametrize("ruling", [
+        "0.5",
+        "Check the limit on arrival too",
+    ])
+    def test_the_later_rulings_of_the_same_day_are_recorded_too(
+            self, decisions, ruling):
+        """The two the owner gave after the curve and after issue #1371 was
+        opened. Both changed behaviour, so both belong in the log beside the
+        three above."""
+        assert ruling in decisions, (
+            f"docs/DECISIONS.md no longer records the owner's ruling of "
+            f"2026-09-06, verbatim “{ruling}”. Issues #1324 and #1371")
 
-        # MATCHED WITHOUT CASE, because this log's emphasis style is a whole
-        # sentence in capitals and the sentence carrying this one is emphasised.
-        # A case-sensitive search here failed against the text it was written
-        # for, which is a guard failing for a reason that has nothing to do with
-        # what it guards.
-        assert "nothing implements a chance of staying" in decisions.lower(), (
-            "docs/DECISIONS.md no longer says that nothing implements a chance "
-            "of staying. \"A chance each time\" was ruled on 2026-09-06 and no "
-            "number was given; see sim/analyse_quest_move_chance.py")
+    def test_the_superseded_not_built_entry_says_it_was_superseded(
+            self, decisions):
+        """**THIS TEST USED TO ASSERT THE OPPOSITE**, and it said so: it
+        required the log to record the move chance as "ruled and **not built**",
+        because nothing implemented it. It is built now, and the paragraph that
+        said otherwise is the one thing on this page that would be actively
+        wrong if it were left alone.
+
+        **THE PARAGRAPH IS KEPT RATHER THAN DELETED.** It is the record of a day
+        on which the ruling really was unbuilt, which is worth having; what it
+        must not do is read as current. So the guard checks that the sentence
+        marking it superseded is there, not that the old wording is gone.
+        """
+        assert "kept as the record of it" in decisions.lower(), (
+            "docs/DECISIONS.md still records the move chance as ruled and not "
+            "built with nothing saying that has changed. It was ruled 0.5 on "
+            "2026-09-06 and is built in both implementations; a reader taking "
+            "that paragraph as current would believe the game always moves a "
+            "Quest dungeon that can move")
+
+    def test_the_measurement_keeps_its_conditions(self, decisions):
+        """**A SIM CAMPAIGN FIGURE WITHOUT ITS CONDITIONS IS NOT A FIGURE**, and
+        the curve behind 0.5 is the sort that gets quoted onward. Surge size
+        alone moves it: the run used 5 dungeons a surge and the model's own
+        default is 4."""
+        for condition in ("static surges every 120 days for **5**",
+                          "10,000 campaigns in all"):
+            assert condition in decisions, (
+                f"docs/DECISIONS.md no longer states {condition!r} beside the "
+                "move-chance curve. Every figure in that table depends on it, "
+                "and a figure quoted without its conditions is not a figure")
+
+    def test_it_says_balance_did_not_choose_the_number(self, decisions):
+        """**THE MOST MISREADABLE THING ON THE PAGE.** A table of doses beside a
+        chosen dose reads as a measurement that picked a winner. It did not:
+        every response was flat and the number came from the ruling. A later
+        session that believed otherwise would re-derive the curve to defend it,
+        which issue #1324 asks in as many words that nobody does.
+        """
+        assert "No dose is significant" in decisions, (
+            "docs/DECISIONS.md no longer says that no dose was significant. "
+            "Without it the table reads as balance having chosen 0.5, and the "
+            "next session to touch the constant will look for a measurement "
+            "that does not exist")
+
+        assert "p = 0.08" in decisions, (
+            "docs/DECISIONS.md no longer states the p-value behind \"no dose "
+            "is significant\". The claim is the whole reason the number is a "
+            "feel decision rather than a measured one")

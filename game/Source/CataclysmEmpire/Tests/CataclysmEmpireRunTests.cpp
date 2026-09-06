@@ -2001,17 +2001,19 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
  * actually changed; and the destination is checked against the adjacency of the
  * city it left, read off the map rather than recomputed here.
  *
- * **A DUNGEON THAT STAYED IS NOT A FAILURE AND THE COUNT IS REPORTED.** A Quest
- * dungeon whose neighbours are all sealed or fallen has nowhere adjacent to go.
- * Both outcomes are asserted to have happened, because a run that only ever
- * moved them would never exercise the empty case and a run that never moved one
- * would prove nothing at all.
+ * **A DUNGEON THAT STAYED IS NOT A FAILURE AND THERE ARE NOW TWO REASONS FOR
+ * IT.** It was hemmed in -- every neighbour sealed, fallen, the Pillar, or
+ * already besieged if it carries a Siege itself -- or it had somewhere to go and
+ * the coin said no. The project owner ruled the coin on 2026-09-06, verbatim "A
+ * chance each time", and then chose the number, verbatim "0.5";
+ * `UCataclysmSurgeScheduler::QuestMoveChance` carries it. Issue #1324.
  *
- * THAT IS NOT THE WHOLE OF THE DESIGN'S "MAY", AND THIS COMMENT USED TO SAY IT
- * WAS. The owner ruled on 2026-09-06, verbatim "A chance each time" -- a Quest
- * dungeon must sometimes stay even when it could move. No number was given,
- * `sim/analyse_quest_move_chance.py` is the curve that exists to get one, and
- * nothing here implements a chance yet. Issue #1324.
+ * **ALL THREE OUTCOMES ARE ASSERTED TO HAVE HAPPENED**, and the take-up rate is
+ * checked against the constant over the timers that had a choice. A run that
+ * only ever moved them would never exercise the empty case; a run that never
+ * moved one would prove nothing at all; and a run where every stay was a hemmed
+ * in dungeon would pass unchanged against a build with no chance in it, which is
+ * the state this test was in until 2026-09-06.
  *
  * **AND WHAT IT CARRIES WITH IT IS CHECKED, NOT ONLY WHERE IT GOES.** The owner
  * ruled in the same breath, verbatim "Keeps everything, fix the size": the floor
@@ -2037,6 +2039,16 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	int32 AlongTheRim = 0;
 	int32 AbsorbedByAFall = 0;
 	int32 MovedThenAbsorbed = 0;
+
+	// **THE TWO REASONS A QUEST DUNGEON STAYS, COUNTED APART.** It was hemmed
+	// in -- every neighbour sealed, fallen, the Pillar, or already besieged if
+	// it carries a Siege -- or it had somewhere to go and the coin said no. The
+	// project owner ruled the coin on 2026-09-06, verbatim "A chance each time",
+	// and chose 0.5. Before that ruling the second of these was IMPOSSIBLE and
+	// this test raised an error for it; both are now asserted to happen, because
+	// a sample showing only one leaves half the rule untested.
+	int32 StayedHemmedIn = 0;
+	int32 Declined = 0;
 
 	// MOVES THAT LANDED ON A CITY OF A DIFFERENT TIER. The control on the
 	// "kept the tier its depth was rolled from" assertion: between two cities
@@ -2203,10 +2215,17 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 							 "relocated list"), DungeonId),
 						Report.Relocated.Contains(DungeonId));
 
-					// AND IT STAYED BECAUSE IT HAD TO. Every neighbour was
-					// sealed, fallen or the Pillar. Without this the whole test
-					// would be satisfied by a `RelocateQuestDungeon` that never
-					// did anything.
+					// AND WHY IT STAYED, WHICH IS NOW TWO ANSWERS RATHER THAN
+					// ONE. Every neighbour sealed, fallen, the Pillar or --
+					// for a dungeon carrying a Siege -- already besieged; or a
+					// legal neighbour and a coin that said no. **THIS BLOCK
+					// USED TO RAISE AN ERROR FOR THE SECOND ONE**, because
+					// before the owner's ruling of 2026-09-06, verbatim "A
+					// chance each time", it could not happen. It counts them
+					// apart instead, and the checks after the loop refuse to
+					// pass unless BOTH occurred -- so the whole test is still
+					// not satisfied by a `RelocateQuestDungeon` that never did
+					// anything, which was this block's original job.
 					//
 					// **READ AT THE END OF THE DAY, WHILE THE DECISION WAS MADE
 					// PART WAY THROUGH IT.** That is the same in-day ordering
@@ -2234,6 +2253,7 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 					// inside a day. The assertion was too strong before that and
 					// passed on the seed it was written against.
 					const FCataclysmCity* Host = Run->Map->Find(From);
+					bool bHadSomewhereToGo = false;
 
 					if (Host != nullptr)
 					{
@@ -2242,6 +2262,23 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 						{
 							if (Neighbour == Run->Map->PillarId
 								|| !Run->Map->IsExposed(Neighbour))
+							{
+								continue;
+							}
+
+							// AND A BESIEGED ONE IS NOT A TARGET FOR A DUNGEON
+							// CARRYING A SIEGE. The owner ruled it on
+							// 2026-09-06, verbatim "Check the limit on arrival
+							// too"; issue #1371. Counting such a neighbour as
+							// somewhere to go would report the refusal as a
+							// coin failure and hide the rule under the chance.
+							//
+							// READ AT THE END OF THE DAY, like everything else
+							// in this block, and a Siege standing now stood
+							// then: nothing in `AdvanceDay` creates one.
+							if (Still->SubType
+									== ECataclysmDungeonSubType::Siege
+								&& Run->IsBesieged(Neighbour))
 							{
 								continue;
 							}
@@ -2268,13 +2305,19 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 								continue;
 							}
 
-							AddError(FString::Printf(
-								TEXT("quest dungeon %d stayed on %s while its "
-									 "neighbour %d was open to it, and nothing "
-									 "that shields %d fell today, so it was "
-									 "open when PickRelocation looked"),
-								DungeonId, *Host->Name, Neighbour, Neighbour));
+							// IT WAS OPEN WHEN `PickRelocation` LOOKED, so the
+							// dungeon had a legal destination and declined it.
+							bHadSomewhereToGo = true;
 						}
+					}
+
+					if (bHadSomewhereToGo)
+					{
+						++Declined;
+					}
+					else
+					{
+						++StayedHemmedIn;
 					}
 
 					continue;
@@ -2399,15 +2442,16 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	}
 
 	AddInfo(FString::Printf(
-		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d had nowhere "
-			 "adjacent to go, %d of the moves were along the rim's perimeter, "
+		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d stayed -- %d "
+			 "with nowhere adjacent to go and %d declining a move they could "
+			 "have taken. %d of the moves were along the rim's perimeter, "
 			 "%d of the moves crossed a tier boundary, and %d were absorbed by "
 			 "a city falling underneath them, %d of those having moved onto it "
 			 "earlier the same day. %d neighbours were open by nightfall "
 			 "having been sealed when the dungeon declined to move, opened by "
 			 "the same day's falls"),
-		Campaigns, TimersFired, Moves, StayedPut, AlongTheRim,
-		CrossedATierBoundary, AbsorbedByAFall, MovedThenAbsorbed,
+		Campaigns, TimersFired, Moves, StayedPut, StayedHemmedIn, Declined,
+		AlongTheRim, CrossedATierBoundary, AbsorbedByAFall, MovedThenAbsorbed,
 		OpenedByTheDaysOwnFalls));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
@@ -2419,7 +2463,41 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	// empty case, which is exactly the state the old move-anywhere rule was in:
 	// some exposed city always existed.
 	TestTrue(TEXT("and some had nowhere adjacent to go and stayed"),
-			 StayedPut > 0);
+			 StayedHemmedIn > 0);
+
+	// **AND THE OTHER HALF OF THE "MAY", WHICH IS THE RULING.** Before
+	// 2026-09-06 this was zero by construction and the loop above raised an
+	// error for it. The owner ruled, verbatim "A chance each time", and chose
+	// 0.5; `UCataclysmSurgeScheduler::QuestMoveChance` carries the number.
+	TestTrue(TEXT("and some declined a move they could have taken, which is "
+				  "the owner's \"a chance each time\""),
+			 Declined > 0);
+
+	// **THE RATE ITSELF, AND THE BAND IS COMPUTED RATHER THAN CHOSEN.** Take-up
+	// is a binomial proportion over the timers that had a choice, so its
+	// standard deviation is sqrt(p(1-p)/n) and four of those either side is the
+	// band. Writing it this way is what stops the tolerance being widened until
+	// whatever the code does passes; it still fails by tens of standard
+	// deviations at the two settings that matter, because a chance of 0 gives a
+	// take-up of 0% and a chance of 1 gives 100%.
+	const int32 Chose = Moves + Declined;
+
+	if (TestTrue(TEXT("enough quest timers had a choice to measure the rate"),
+				 Chose > 200))
+	{
+		const float Wanted = UCataclysmSurgeScheduler::QuestMoveChance;
+		const float Spread =
+			4.0f * FMath::Sqrt(Wanted * (1.0f - Wanted) / Chose);
+		const float Rate = static_cast<float>(Moves) / Chose;
+
+		TestTrue(FString::Printf(
+			TEXT("a quest dungeon with somewhere to go took it %.1f%% of the "
+				 "time over %d timers, against the configured %.0f%% and a "
+				 "four-sigma band of %.1f%% to %.1f%%"),
+			100.0f * Rate, Chose, 100.0f * Wanted,
+			100.0f * (Wanted - Spread), 100.0f * (Wanted + Spread)),
+			FMath::Abs(Rate - Wanted) <= Spread);
+	}
 
 	// AND THE PERIMETER LINKS ARE ACTUALLY BEING USED. If this were zero the
 	// adjacency decision recorded in docs/DECISIONS.md would be doing nothing
@@ -3009,6 +3087,352 @@ bool FCataclysmEmpireRunDescribesProgressTest::RunTest(const FString& Parameters
 			  AfterAClear.Contains(
 				  *FString::Printf(TEXT("dungeon %d "), QuestId),
 				  ESearchCase::CaseSensitive));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A relocating Siege and the one-per-city cap -- issue #1371
+// ---------------------------------------------------------------------------
+
+namespace CataclysmEmpireRunTest
+{
+	/**
+	 * A run with the opening surge cleared away and nothing standing.
+	 *
+	 * WHY A DAY IS SPENT RATHER THAN THE SCHEDULE BEING REACHED INTO. "A surge
+	 * is triggered at run start", so day 1 lands a wave whatever else is done.
+	 * Spending the day and then emptying both lists leaves the map intact -- no
+	 * city falls in one day -- and the next surge 120 days off, which is far
+	 * beyond anything below.
+	 */
+	UCataclysmEmpireRun* MakeEmptyRun(int32 Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+		Run->AdvanceDay();
+		Run->Dungeons.Empty();
+		Run->Clock->Timers.Empty();
+		return Run;
+	}
+
+	/** Puts a dungeon on a city with a timer, exactly as a surge would. */
+	void PlaceDungeon(UCataclysmEmpireRun& Run, int32 DungeonId,
+					  ECataclysmDungeonType Type,
+					  ECataclysmDungeonSubType SubType,
+					  const FCataclysmCity& City, float ResolveDays)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.Type = Type;
+		Dungeon.SubType = SubType;
+		Dungeon.CityId = City.CityId;
+		Dungeon.CityTier = City.Tier;
+		Dungeon.Floors = 20;
+		Dungeon.ResolveDays = ResolveDays;
+		Dungeon.SpawnedDay = Run.Day();
+
+		Run.Dungeons.Add(Dungeon);
+
+		// THE CLOCK IS WHAT MAKES THE TIMER FIRE, and `AdvanceDay` reads the
+		// clock rather than the dungeon. A dungeon added to one and not the
+		// other never resolves, which would make every test below vacuous.
+		Run.Clock->AddDungeon(DungeonId, Dungeon.Floors);
+		Run.Clock->SetResolveDays(DungeonId, ResolveDays);
+	}
+
+	/** A rim Outpost with exactly two perimeter links, and those two links.
+	 *
+	 * ON AN INTACT MAP A RIM OUTPOST'S EXPOSED NEIGHBOURS ARE ITS PERIMETER
+	 * LINKS AND NOTHING ELSE: it has no cities further out, and the ring inside
+	 * it is sealed precisely because the rim still stands. So a scenario built
+	 * on one has a known target set of exactly two cities, and a dungeon that
+	 * ends up anywhere else is a defect rather than an option nobody thought
+	 * about.
+	 */
+	bool FindRimPair(const UCataclysmEmpireRun& Run, int32& OutHome,
+					 int32& OutFirst, int32& OutSecond)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.Ring() == 3 && City.Perimeter.Num() == 2)
+			{
+				OutHome = City.CityId;
+				OutFirst = City.Perimeter[0];
+				OutSecond = City.Perimeter[1];
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+/**
+ * A Quest dungeon carrying a Siege refuses a city that already has one.
+ *
+ * **THE OWNER'S RULING OF 2026-09-06, VERBATIM: "Check the limit on arrival
+ * too".** Issue #1371. The design's Siege row says "Max 1 per city".
+ * `UCataclysmSurgeScheduler::RollSubType` enforced that when a dungeon was
+ * created and nothing enforced it when one moved, so a Quest dungeon that had
+ * rolled Siege could walk onto a besieged city and the city would take the daily
+ * bite twice. Two alternatives were offered and rejected: letting two Sieges
+ * share a city, and barring a Quest dungeon from carrying a Siege at all.
+ *
+ * **THE SITUATION IS BUILT BY HAND, AND THAT IS THE WHOLE POINT OF THIS TEST.**
+ * Issue #1371 measured it over 40 campaigns of the model: **2** Siege-carrying
+ * Quest dungeons moved and **0** landings would have broken the cap. So a test
+ * that ran campaigns and found no violation would pass, unchanged, against a
+ * build with no check in it -- it would be reporting the rarity of the situation
+ * and calling it a rule. Everything below places the dungeons itself.
+ *
+ * WHAT EACH PART DOES.
+ *
+ *   1. `Redirected` -- a besieged neighbour and a free one. The only legal
+ *      answer is the free one, and it has to actually be reached: refusing the
+ *      move altogether would satisfy "it did not land on the besieged city"
+ *      while breaking the owner's "pick another adjacent city".
+ *   2. `Stayed` -- the same scenario when the coin says no. Counted rather than
+ *      forbidden, because `QuestMoveChance` is 0.5 and about half of these do
+ *      exactly that; both are asserted to happen so neither can be the whole
+ *      sample.
+ *   3. Every neighbour besieged -- the owner's other outcome, "or stay where it
+ *      is if there is none". Asserted on every seed, not as a rate.
+ *   4. **A dungeon carrying no Siege is not refused.** The control that keeps
+ *      the rule narrow: the cap is "max 1 Siege per city", not "one dungeon per
+ *      besieged city", and a check written against the destination alone would
+ *      pass part 1 and fail this.
+ *   5. **The besieged city is a legal target when nothing carries a Siege.**
+ *      The control that makes the refusal mean something: if that city were
+ *      sealed or not adjacent, the ordinary filter would already exclude it and
+ *      parts 1 to 3 would pass with no Siege rule present at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeArrivalTest,
+	"Cataclysm.EmpireRun.ARelocatingSiegeRefusesACityThatAlreadyHasOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunSiegeArrivalTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	constexpr int32 Seeds = 60;
+	constexpr int32 Wanderer = 9000;
+	constexpr int32 Sitting = 9001;
+	constexpr int32 SecondSitting = 9002;
+
+	// LONG ENOUGH THAT THE SITTING SIEGE NEVER RESOLVES while the wandering
+	// dungeon's one-day timer does. A Siege whose own timer fired would move
+	// nothing -- a Basic dungeon bites -- but it would take draws off the
+	// stream and muddle what the run did.
+	constexpr float Never = 900.0f;
+
+	int32 Redirected = 0;
+	int32 Stayed = 0;
+	int32 LandedOnTheBesiegedCity = 0;
+	int32 PlainDungeonReachedTheBesiegedCity = 0;
+
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		// -- 1 and 2: one neighbour besieged, one free ----------------------
+		{
+			UCataclysmEmpireRun* Run = MakeEmptyRun(Seed);
+
+			int32 Home = INDEX_NONE;
+			int32 Blocked = INDEX_NONE;
+			int32 Free = INDEX_NONE;
+
+			if (!TestTrue(TEXT("the map has a rim Outpost with two perimeter "
+							   "links"),
+						  FindRimPair(*Run, Home, Blocked, Free)))
+			{
+				return false;
+			}
+
+			PlaceDungeon(*Run, Sitting, ECataclysmDungeonType::Basic,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(Blocked), Never);
+			PlaceDungeon(*Run, Wanderer, ECataclysmDungeonType::Quest,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(Home), 1.0f);
+
+			// THE CONTROL, AND IT IS CHECKED BEFORE THE DAY RATHER THAN
+			// ASSUMED. `PickRelocation` asked with no Siege information offers
+			// both neighbours; if it did not, the refusal below would be the
+			// ordinary adjacency filter doing the work and this test would
+			// prove nothing about issue #1371.
+			{
+				FRandomStream Probe(Seed);
+				TSet<int32> Offered;
+				for (int32 Draw = 0; Draw < 40; ++Draw)
+				{
+					Offered.Add(UCataclysmSurgeScheduler::PickRelocation(
+						*Run->Map, *Run->Map->Find(Home), Probe));
+				}
+
+				TestTrue(TEXT("the besieged city is an ordinary legal target "
+							  "when nothing carries a Siege"),
+						 Offered.Contains(Blocked));
+				TestTrue(TEXT("and so is the free one"),
+						 Offered.Contains(Free));
+			}
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+
+			if (!TestTrue(TEXT("the wandering dungeon's timer ran out"),
+						  Report.Resolved.Contains(Wanderer)))
+			{
+				return false;
+			}
+
+			const FCataclysmDungeon* Moved = Run->FindDungeon(Wanderer);
+
+			if (!TestNotNull(TEXT("and it is still standing"), Moved))
+			{
+				return false;
+			}
+
+			if (Moved->CityId == Blocked)
+			{
+				++LandedOnTheBesiegedCity;
+
+				AddError(FString::Printf(
+					TEXT("seed %d: a Quest dungeon carrying a Siege moved onto "
+						 "%s, which already holds one. The owner ruled on "
+						 "2026-09-06, verbatim \"Check the limit on arrival "
+						 "too\"; issue #1371"),
+					Seed, *Run->Map->Find(Blocked)->Name));
+			}
+			else if (Moved->CityId == Free)
+			{
+				++Redirected;
+			}
+			else if (Moved->CityId == Home)
+			{
+				++Stayed;
+			}
+			else
+			{
+				AddError(FString::Printf(
+					TEXT("seed %d: the dungeon reached city %d, which is "
+						 "neither of its two rim neighbours nor the city it "
+						 "stood on"),
+					Seed, Moved->CityId));
+			}
+
+			// AND THE CAP HELD ON EVERY CITY, read off the run rather than
+			// inferred from where this one dungeon went.
+			for (const FCataclysmCity& City : Run->Map->Cities)
+			{
+				int32 Sieges = 0;
+				for (const FCataclysmDungeon& Standing : Run->Dungeons)
+				{
+					if (Standing.SubType == ECataclysmDungeonSubType::Siege
+						&& Standing.CityId == City.CityId)
+					{
+						++Sieges;
+					}
+				}
+
+				TestTrue(FString::Printf(
+					TEXT("%s holds no more than %d Siege"), *City.Name,
+					UCataclysmSurgeScheduler::SiegesPerCity),
+					Sieges <= UCataclysmSurgeScheduler::SiegesPerCity);
+			}
+		}
+
+		// -- 3: every neighbour besieged, so it stays ------------------------
+		{
+			UCataclysmEmpireRun* Run = MakeEmptyRun(Seed);
+
+			int32 Home = INDEX_NONE;
+			int32 First = INDEX_NONE;
+			int32 Second = INDEX_NONE;
+			FindRimPair(*Run, Home, First, Second);
+
+			PlaceDungeon(*Run, Sitting, ECataclysmDungeonType::Basic,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(First), Never);
+			PlaceDungeon(*Run, SecondSitting, ECataclysmDungeonType::Basic,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(Second), Never);
+			PlaceDungeon(*Run, Wanderer, ECataclysmDungeonType::Quest,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(Home), 1.0f);
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+			const FCataclysmDungeon* Moved = Run->FindDungeon(Wanderer);
+
+			if (Moved != nullptr)
+			{
+				TestEqual(FString::Printf(
+					TEXT("seed %d: every neighbour is besieged, so the dungeon "
+						 "stays where it is"), Seed),
+					Moved->CityId, Home);
+
+				TestFalse(FString::Printf(
+					TEXT("seed %d: and it is not in the day's relocated list"),
+					Seed),
+					Report.Relocated.Contains(Wanderer));
+			}
+		}
+
+		// -- 4: a dungeon carrying no Siege is not refused -------------------
+		{
+			UCataclysmEmpireRun* Run = MakeEmptyRun(Seed);
+
+			int32 Home = INDEX_NONE;
+			int32 Blocked = INDEX_NONE;
+			int32 Free = INDEX_NONE;
+			FindRimPair(*Run, Home, Blocked, Free);
+
+			PlaceDungeon(*Run, Sitting, ECataclysmDungeonType::Basic,
+						 ECataclysmDungeonSubType::Siege,
+						 *Run->Map->Find(Blocked), Never);
+			PlaceDungeon(*Run, Wanderer, ECataclysmDungeonType::Quest,
+						 ECataclysmDungeonSubType::Horde,
+						 *Run->Map->Find(Home), 1.0f);
+
+			Run->AdvanceDay();
+
+			const FCataclysmDungeon* Moved = Run->FindDungeon(Wanderer);
+
+			if (Moved != nullptr && Moved->CityId == Blocked)
+			{
+				++PlainDungeonReachedTheBesiegedCity;
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d seeds: a Siege-carrying Quest dungeon was redirected to the "
+			 "free neighbour %d times, stayed %d times because the coin said "
+			 "no, and landed on the besieged city %d times. A Horde-carrying "
+			 "one reached the besieged city %d times"),
+		Seeds, Redirected, Stayed, LandedOnTheBesiegedCity,
+		PlainDungeonReachedTheBesiegedCity));
+
+	// **THE RULE.** One counter-example is a failure; this is not a rate.
+	TestEqual(TEXT("no Siege-carrying dungeon ever landed on a besieged city"),
+			  LandedOnTheBesiegedCity, 0);
+
+	// **AND IT WAS REDIRECTED RATHER THAN STOPPED.** The owner ruled it must
+	// "pick another adjacent city"; a check that simply cancelled the move
+	// would pass the assertion above and fail the ruling.
+	TestTrue(TEXT("and it reached the free neighbour instead, at least once"),
+			 Redirected > 0);
+
+	// BOTH OUTCOMES OF THE COIN OCCURRED, so neither half of the sample is the
+	// whole of it. `QuestMoveChance` is 0.5 and these are 60 independent seeds.
+	TestTrue(TEXT("and some of the seeds declined the move, which is the "
+				  "chance rather than the cap"),
+			 Stayed > 0);
+
+	// **THE CONTROL THAT KEEPS THE RULE NARROW.** Without this, a
+	// `PickRelocation` that refused every besieged city to every dungeon would
+	// pass everything above -- and that is a different, much larger rule than
+	// the one the owner ruled.
+	TestTrue(TEXT("a dungeon carrying no Siege still reached the besieged "
+				  "city"),
+			 PlainDungeonReachedTheBesiegedCity > 0);
 
 	return true;
 }

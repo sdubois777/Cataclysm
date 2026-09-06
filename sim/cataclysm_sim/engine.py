@@ -609,12 +609,36 @@ class Simulation:
         #
         # THAT IS NOT THE WHOLE OF THE DESIGN'S "MAY", AND THIS FILE USED TO SAY
         # IT WAS. The project owner ruled on 2026-09-06, verbatim "A chance each
-        # time": a Quest dungeon sometimes stays even when it could move. The
-        # owner named no number, `CLAUDE.md` forbids inventing one, and
-        # `sim/analyse_quest_move_chance.py` is the dose-response curve that
-        # exists to get one. Until it is answered this moves whenever it can,
-        # which is the old reading and is now known to be incomplete rather than
-        # believed to be right. Issue #1324.
+        # time": a Quest dungeon sometimes stays even when it could move. Asked
+        # for the number after the curve was measured they answered, verbatim
+        # "0.5". `cfg.quest_move_chance` carries it and the reasoning.
+        #
+        # THE TARGET IS DRAWN FIRST AND THE COIN SECOND, AND THE ORDER IS PART
+        # OF THE PORT. Both draws happen whenever there is somewhere to go, so a
+        # quest timer costs the stream the same two numbers whether the dungeon
+        # moves or stays. `UCataclysmEmpireRun::RelocateQuestDungeon` takes them
+        # in the same order for the same reason: the halves must consume
+        # identical streams, and it is also the order
+        # `sim/analyse_quest_move_chance.py` measured the curve with, so the
+        # recorded figures describe what is built here.
+        #
+        # AND NEITHER IS DRAWN WHEN THERE IS NOWHERE TO GO, which preserves the
+        # rule that predates the chance: no draw is taken on the empty case, or
+        # the two streams would part company on the first hemmed-in dungeon.
+        #
+        # A DUNGEON CARRYING A SIEGE MAY NOT LAND ON A CITY THAT ALREADY HAS
+        # ONE. "Max 1 per city" was enforced by `_roll_subtype` at spawn and by
+        # nothing on this path, so a Quest dungeon that rolled Siege could walk
+        # onto a besieged city and the city would then take the daily bite
+        # twice. The owner ruled on 2026-09-06, verbatim "Check the limit on
+        # arrival too". Issue #1371.
+        #
+        # IT REFUSES THE DESTINATION RATHER THAN THE MOVE, which is the shape
+        # `_roll_subtype` already uses on the other half of the same rule: a
+        # refused Siege there is redistributed rather than dropped, and a
+        # refused destination here leaves the other neighbours on the table. A
+        # dungeon whose every neighbour is besieged stays, which is the same
+        # outcome as having nowhere to go and costs no draw either.
         #
         # ONLY `city_id` MOVES; `city_tier` IS NOT THE HOST'S TIER. It is the
         # tier the dungeon's DEPTH WAS ROLLED FROM, and `_resolve` reads it
@@ -642,8 +666,14 @@ class Simulation:
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
                 targets = self.empire.adjacent_exposed_cities(city)
+                if d.subtype == "Siege":
+                    targets = [t for t in targets
+                               if self.sieges_on(t.cid)
+                               < cfg.siege_max_per_city]
                 if targets:
-                    d.city_id = self.rng.choice(targets).cid
+                    target = self.rng.choice(targets)
+                    if self.rng.random() < cfg.quest_move_chance:
+                        d.city_id = target.cid
             return
 
         d.times_resolved += 1

@@ -459,14 +459,79 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 		return;
 	}
 
-	const int32 MovingTo =
-		UCataclysmSurgeScheduler::PickRelocation(*Map, *From, Stream);
+	// **WHAT A DUNGEON CARRYING A SIEGE MAY NOT WALK ONTO.** The design's Siege
+	// row says "Max 1 per city". `UCataclysmSurgeScheduler::RollSubType`
+	// enforced that when a dungeon was created and nothing enforced it when one
+	// moved, so a Quest dungeon that had rolled Siege could land on a besieged
+	// city and the city would take the daily bite twice. The project owner ruled
+	// on 2026-09-06, verbatim "Check the limit on arrival too". Issue #1371.
+	//
+	// COUNTED HERE AND PASSED IN, exactly as `FireSurge` does for the spawn half
+	// of the same rule. `UCataclysmSurgeScheduler` does not own the dungeons and
+	// must stay able to answer against a bare map in a test.
+	//
+	// **THE MOVING DUNGEON IS IN THIS COUNT AND IT DOES NOT MATTER.** It is
+	// standing on `From`, and a city is never among its own neighbours, so its
+	// own Siege can never be the one that refuses it a destination.
+	//
+	// ONLY BUILT WHEN IT IS NEEDED. Every other dungeon walks past a besieged
+	// city freely -- the cap is "max 1 Siege per city", not "one dungeon per
+	// besieged city" -- so an empty array is passed for them, which is the
+	// "caller did not say" convention `RollWave` uses.
+	const bool bCarriesSiege =
+		Dungeon->SubType == ECataclysmDungeonSubType::Siege;
+
+	TArray<int32> SiegesStanding;
+
+	if (bCarriesSiege)
+	{
+		SiegesStanding.AddZeroed(Map->Cities.Num());
+
+		for (const FCataclysmDungeon& Standing : Dungeons)
+		{
+			if (Standing.SubType == ECataclysmDungeonSubType::Siege
+				&& SiegesStanding.IsValidIndex(Standing.CityId))
+			{
+				++SiegesStanding[Standing.CityId];
+			}
+		}
+	}
+
+	const int32 MovingTo = UCataclysmSurgeScheduler::PickRelocation(
+		*Map, *From, Stream, bCarriesSiege, SiegesStanding);
 
 	if (MovingTo == INDEX_NONE)
 	{
 		// NOWHERE ADJACENT TO GO, SO IT STAYS, and it is deliberately NOT
-		// recorded in `Relocated`. The design says a Quest dungeon "MAY move";
-		// this is the case that makes that word true.
+		// recorded in `Relocated`. Every neighbour was sealed, fallen, the
+		// Pillar, or -- for a dungeon carrying a Siege -- already besieged.
+		//
+		// NO COIN IS FLIPPED ON THIS PATH, and that is the port rather than an
+		// optimisation. `Simulation._resolve` guards both of its draws behind
+		// `if targets`, so a hemmed-in quest timer costs neither stream a
+		// number; flipping here would put the two out of step for the rest of
+		// the run on the first one.
+		return;
+	}
+
+	// **AND NOW THE COIN.** The design says a Quest dungeon "MAY move to
+	// adjacent city", and the project owner ruled on 2026-09-06 that the "may"
+	// is a die roll and not only the map -- verbatim "A chance each time" --
+	// then chose the number, verbatim "0.5". `QuestMoveChance` carries it and
+	// the reasoning, including why balance did not choose it.
+	//
+	// **AFTER THE TARGET AND NOT BEFORE IT.** `Simulation._resolve` draws the
+	// target first and flips second, so both numbers come off the stream
+	// whenever there is somewhere to go and the two implementations consume
+	// identical streams. Flipping first would save a draw on the days the
+	// dungeon stays and cost the port its parity.
+	//
+	// IT STAYS EXACTLY AS THOUGH IT HAD NOWHERE TO GO -- not recorded in
+	// `Relocated`, nothing else touched. A caller cannot tell the two apart and
+	// does not need to; `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`
+	// separates them by asking the map.
+	if (Stream.FRand() >= UCataclysmSurgeScheduler::QuestMoveChance)
+	{
 		return;
 	}
 
