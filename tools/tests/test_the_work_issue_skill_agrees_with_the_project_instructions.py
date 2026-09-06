@@ -17,9 +17,22 @@ every session following the skill got wrong:
   leaves a file's modification time and size unchanged makes the run read a stale
   compiled copy.
 
+Issues #1278 and #1279 then found two gaps rather than contradictions, and each
+left a session doing something `CLAUDE.md` forbids:
+
+- the file gave no Unreal guidance at all, though 94 of the 186 open issues were
+  labelled `unreal` on 2026-09-05. Step 4 is titled "Test it thoroughly" and
+  offered only `pytest` and `ruff`, neither of which compiles a line of C++, so a
+  session could follow it to the letter on a C++ issue and open a pull request
+  having never built what it changed;
+- it never said to delete the branch when the pull request merged. Issue #1276
+  measured the result on 2026-09-05: 92 of 95 local branches already merged and
+  never deleted. That issue carries the clean-up; this file holds the
+  instruction that let it happen.
+
 WHAT THIS DOES NOT GUARD. Whether the rest of the skill's prose is good advice,
-and whether the two counts quoted in it are still current. Those still need
-reading. This checks the claims that can be checked mechanically.
+and whether the counts quoted in it are still current. Those still need reading.
+This checks the claims that can be checked mechanically.
 """
 
 from __future__ import annotations
@@ -161,3 +174,124 @@ def test_the_skill_points_at_the_guard_proving_helpers() -> None:
         assert (REPO_ROOT / helper).is_file(), (
             f"{SKILL.name} points at `{helper}`, which does not exist."
         )
+
+
+def test_the_skill_gives_the_unreal_build_and_test_commands() -> None:
+    """A session working a C++ issue is told how to compile and test it.
+
+    THIS IS ONE THAT FOUND SOMETHING, issue #1278. The skill named
+    `tools/unreal_build.py` once, as the helper that proves a C++ guard, and
+    nowhere told a session to build or to run the automation tests at all. Step 4
+    offered `pytest` and `ruff` and nothing else, and neither compiles any C++.
+
+    Asserting on the whole command rather than on the file name is the point: the
+    file name was already there and a guard that checked only for it would have
+    passed against the version this issue was written about.
+    """
+    text = skill_text()
+
+    for command in ("python tools/unreal_build.py build",
+                    "python tools/unreal_build.py tests"):
+        assert command in text, (
+            f"{SKILL.name} does not give `{command}`. `pytest` compiles no C++ "
+            "and runs no automation test, so a session that follows the skill "
+            "literally on a change under `game/` never builds what it changed."
+        )
+
+    assert (REPO_ROOT / "tools" / "unreal_build.py").is_file(), (
+        f"{SKILL.name} gives commands that run `tools/unreal_build.py`, which "
+        "does not exist."
+    )
+
+
+def test_the_skill_says_to_claim_the_editor_before_driving_it() -> None:
+    """The editor lock is named, with both halves of it.
+
+    `CLAUDE.md` says one session at a time may drive the editor and that nothing
+    enforces it. The interactive editor, the automation tests and the DataTable
+    regeneration all drive one editor on one machine, so two sessions following a
+    skill that never mentions the lock will drive it at once.
+
+    `release` is checked as well as `acquire` because a session that takes the
+    lock and never gives it back blocks every other session until it exits.
+    """
+    text = skill_text()
+
+    for command in ("python tools/unreal_lock.py acquire",
+                    "python tools/unreal_lock.py release"):
+        assert command in text, (
+            f"{SKILL.name} does not give `{command}`. Nothing enforces one "
+            "session at a time on the editor, so the skill has to say to claim "
+            "it before driving it and release it the moment the work is done."
+        )
+
+    assert (REPO_ROOT / "tools" / "unreal_lock.py").is_file(), (
+        f"{SKILL.name} gives commands that run `tools/unreal_lock.py`, which "
+        "does not exist."
+    )
+
+
+def test_the_skill_says_to_regenerate_the_datatable_assets() -> None:
+    """Changing a CSV under `game/Data/` is not enough on its own.
+
+    The automation tests load the generated DataTable asset rather than the CSV,
+    so a suite that passes over a stale asset has tested the previous data and
+    says so nowhere.
+    """
+    text = skill_text()
+
+    runner = "python tools/run_editor_python.py tools/generate_datatable_assets.py"
+    assert runner in text, (
+        f"{SKILL.name} does not give `{runner}`. The Unreal tests read the "
+        "generated DataTable asset and not the CSV, so a change under "
+        "`game/Data/` that is never regenerated is a change the tests cannot "
+        "see."
+    )
+
+    assert "`game/Data/`" in text, (
+        f"{SKILL.name} gives the regeneration command without naming "
+        "`game/Data/`, so nothing says when to run it."
+    )
+
+    for script in ("tools/run_editor_python.py",
+                   "tools/generate_datatable_assets.py"):
+        assert (REPO_ROOT / script).is_file(), (
+            f"{SKILL.name} points at `{script}`, which does not exist."
+        )
+
+
+def test_the_skill_says_to_delete_the_branch_when_the_pull_request_merges() -> None:
+    """Both halves of the deletion are given, and with the right flag.
+
+    THIS IS THE OTHER ONE THAT FOUND SOMETHING, issue #1279. The skill ended
+    after closing the issue and never mentioned the branch again. Issue #1276
+    measured what that costs: 92 of 95 local branches already merged and never
+    deleted, on 2026-09-05.
+
+    `-D` rather than `-d` is checked because the flag is the trap. A squash merge
+    leaves the branch commit outside `development`'s history, so `git branch -d`
+    refuses, and that refusal reads like "not merged yet" to a session that was
+    not told to expect it.
+
+    `CLAUDE.md` is checked alongside, so this starts failing if the project's
+    rule ever changes rather than quietly guarding a rule that no longer holds.
+    """
+    instructions = INSTRUCTIONS.read_text(encoding="utf-8")
+    assert "git branch -D" in instructions, (
+        "CLAUDE.md no longer says to delete a merged branch with `git branch "
+        "-D`. If the project's rule has changed, this test and the work-issue "
+        "skill both need re-reading."
+    )
+
+    text = skill_text()
+
+    assert "git branch -D" in text, (
+        f"{SKILL.name} does not name `git branch -D`. CLAUDE.md requires the "
+        "branch be deleted as part of merging, not in a later cleanup pass, and "
+        "`git branch -d` refuses a squash-merged branch."
+    )
+
+    assert "git push origin --delete" in text, (
+        f"{SKILL.name} deletes the local branch but not the one on GitHub. "
+        "CLAUDE.md says to delete it in both places as part of merging."
+    )
