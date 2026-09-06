@@ -440,13 +440,22 @@ class TestWhatADungeonIs:
                 f"CataclysmSurge.cpp answers a Cataclysm spec on a {tier}, "
                 "which the model has no row for")
 
-    def test_nothing_creates_a_dungeon_that_is_not_basic_yet(self):
-        """Slice 1 of #1324 answers what a dungeon WOULD be; it builds none.
+    def test_a_surge_still_lands_only_basic_dungeons(self):
+        """A wave a surge rolls is `Basic` and nothing else, still.
 
-        This is the guard on the scope of that change. `MakeDungeon` is the only
-        thing that puts a dungeon on the map, and it still sets `Basic`. When the
-        work that creates the other kinds lands, this test is the one that should
-        fail and be rewritten -- deliberately, rather than the scope drifting.
+        THIS TEST WAS RENAMED, AND THE OLD NAME IS WHY. Slice 1 of #1324 called
+        it `test_nothing_creates_a_dungeon_that_is_not_basic_yet`, and its
+        docstring said `MakeDungeon` "is the only thing that puts a dungeon on
+        the map". Slice 2 made both false: a city that falls becomes a Fallen
+        City dungeon, built by `MakeFallenCityDungeon` and added by
+        `UCataclysmEmpireRun::CityFell`. The test kept passing, because it only
+        ever read `MakeDungeon` -- so its NAME claimed something broader than
+        what it checked, which is worse than a failure. It now says what it
+        checks.
+
+        WHAT IT STILL GUARDS. Slices 3 to 6 are the ones that make a surge roll a
+        kind. When one lands, this test should fail and be rewritten
+        deliberately, rather than the scope drifting.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
@@ -455,14 +464,44 @@ class TestWhatADungeonIs:
         made = made.split("return Dungeon;", 1)[0]
 
         assert "Dungeon.Type = ECataclysmDungeonType::Basic;" in made, (
-            "MakeDungeon no longer sets Basic. If dungeon kinds are now rolled, "
+            "MakeDungeon no longer sets Basic. If a surge now rolls a kind, "
             "this test has done its job and should be replaced by one that "
             "checks the roll.")
 
         for kind in ("Quest", "FallenCity", "Cataclysm"):
             assert f"ECataclysmDungeonType::{kind}" not in made, (
-                f"MakeDungeon mentions {kind}, so something may now create one. "
+                f"MakeDungeon mentions {kind}, so a surge may now land one. "
                 "See issue #1324 for the slice that is meant to.")
+
+    def test_only_a_city_falling_creates_a_dungeon_a_surge_did_not(self):
+        """One route puts a dungeon on the map that no surge rolled, and one only.
+
+        Slice 2 of #1324 added `MakeFallenCityDungeon`. This is the guard that a
+        third route does not appear without being noticed: the two makers on
+        `UCataclysmSurgeScheduler` are the whole of how a dungeon comes to exist.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        makers = re.findall(r"UCataclysmSurgeScheduler::(Make\w*Dungeon)\(",
+                            source)
+
+        assert sorted(set(makers)) == ["MakeDungeon", "MakeFallenCityDungeon"], (
+            f"the makers of a dungeon are now {sorted(set(makers))}. A new one "
+            "means a new way for a dungeon to exist; see issue #1324")
+
+        # AND THE FALLEN CITY ONE IS THE ONLY THING THAT NAMES A KIND A SURGE
+        # DOES NOT ROLL.
+        fallen = source.split("MakeFallenCityDungeon(\n", 1)[1]
+        fallen = fallen.split("\n}", 1)[0]
+
+        assert "ECataclysmDungeonType::FallenCity" in fallen, (
+            "MakeFallenCityDungeon no longer makes a Fallen City")
+
+        for kind in ("Quest", "Cataclysm"):
+            assert f"ECataclysmDungeonType::{kind}" not in fallen, (
+                f"MakeFallenCityDungeon mentions {kind}; it should build one "
+                "kind only")
 
 
 class TestWhatAFallenCityIs:
