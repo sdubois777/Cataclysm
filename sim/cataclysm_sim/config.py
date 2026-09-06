@@ -336,6 +336,52 @@ class TuningConfig:
         "Volatile": 15.0, "Siege": 15.0, "Sacrificial": 12.0, "Cow Level": 7.0,
     })
 
+    # --- the Siege sub-type ----------------------------------------------
+    #
+    # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S
+    # MAXIMUM, AND IT IS DELIBERATE. Issue #1327 turned every other city damage
+    # number into points, because a share of the maximum divided out of how long
+    # a city survived and made every city-health upgrade worthless. The project
+    # owner was asked whether the Siege should follow and answered on
+    # 2026-09-05, verbatim: "Keep it as a deliberate exception (Recommended)".
+    #
+    # THE REASON, AS IT WAS PUT TO THEM: a siege does not care how thick your
+    # walls are. It makes the Siege the one threat that city-health investment
+    # does not protect against, which gives the sub-type a situation of its own
+    # rather than only a number of its own. The cost -- that a fully invested
+    # city is still helpless against a siege -- was stated and accepted.
+    #
+    # SO A READER WHO FINDS A PERCENTAGE HERE HAS NOT FOUND AN OVERSIGHT.
+    # `docs/DECISIONS.md` carries the same warning for the same reason.
+    #
+    # WHERE THESE NUMBERS COME FROM. `docs/Cataclysm_GDD_v2.md` line 3744:
+    # "Deals 1% damage to city defenses and population per day while active.
+    # Increases in power by 10 points per day. Pauses city upgrades. Max 1 per
+    # city." The game reads it the same way in
+    # `CataclysmEmpireRun.h`; this model follows the game rather than the other
+    # way round, which is the reverse of this project's usual direction.
+    siege_defence_bite_per_day: float = 0.01
+    siege_population_bite_per_day: float = 0.01
+
+    # "Increases in power by 10 points per day", where the owner settled on
+    # 2026-09-05 that its power is "the damage it does to the city/population".
+    #
+    # POINTS AND NOT A SHARE, so the growth bites hardest where the empire is
+    # thinnest -- ten points is 1% of an Outpost's defence and 0.05% of the
+    # Pillar's. It is also the half of a Siege that city health DOES protect
+    # against, because a bigger pool absorbs the same points for longer.
+    siege_damage_growth_per_day: float = 10.0
+
+    #: "Max 1 per city". A refused roll is redistributed across the other
+    #: sub-types, which is what makes the Siege share of dungeons that reach
+    #: the map lower than its share of dungeons rolled.
+    siege_max_per_city: int = 1
+
+    # NOT MODELLED: "Pauses city upgrades." The model has no city upgrades to
+    # pause. `LethalityRules.city_upgrade_slots` exists and nothing reads it,
+    # which issue #318 already records. Stated here so the omission is a known
+    # gap rather than a silent one.
+
     # Overwhelm -- see combat.py.
     overwhelm_rate: float = 0.25
     overwhelm_cap: float = 0.50

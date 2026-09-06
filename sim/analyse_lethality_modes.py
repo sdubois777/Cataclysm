@@ -104,6 +104,18 @@ def run_config(cfg: TuningConfig) -> dict:
         # that decides whether more dungeons means more points or only more
         # damage, so it is printed beside the fill rate rather than inferred.
         "resolved": mean([r.dungeons_resolved for r in results]),
+        # THE SHARE, WHICH IS THE QUANTITY THE PARAGRAPH BELOW ACTUALLY CLAIMS.
+        # It used to print the two absolute counts instead, which supported the
+        # claim only while campaigns in the two rows ran for similar lengths.
+        # Once issue #1329 added Siege damage they do not: more dungeons means
+        # more Sieges, the empire falls sooner, and a campaign that ends sooner
+        # has fewer dungeons resolve in total while a LARGER share of them do.
+        # Computed per campaign and then averaged, for the same reason `rate`
+        # is.
+        "share_undefeated": 100.0 * mean(
+            [r.dungeons_resolved / max(1, r.dungeons_resolved
+                                       + r.dungeons_cleared)
+             for r in results]),
         "deaths": mean([r.deaths for r in results]),
     }
 
@@ -205,9 +217,15 @@ def main() -> None:
               "dungeons")
         print("  against an unchanged day budget means a larger share of them "
               "resolve")
-        print(f"  undefeated -- {surges_only['resolved']:.0f} against "
-              f"{standard['resolved']:.0f} -- and a dungeon nobody cleared "
-              f"pays nothing.")
+        print(f"  undefeated -- {surges_only['share_undefeated']:.0f}% against "
+              f"{standard['share_undefeated']:.0f}% -- and a dungeon nobody "
+              f"cleared pays nothing.")
+        print(f"  The two absolute counts, {surges_only['resolved']:.0f} "
+              f"against {standard['resolved']:.0f}, do not settle it on their "
+              "own:")
+        print(f"  that row's campaigns run {surges_only['days']:.0f} days "
+              f"against {standard['days']:.0f}, so there is less")
+        print("  time for anything to happen in at all.")
     else:
         print("  THE FILL RATE RISES BY AT LEAST AS MUCH AS THE DUNGEON COUNT "
               "DOES, so the")

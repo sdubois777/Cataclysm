@@ -263,9 +263,18 @@ def test_the_extra_dungeons_do_not_buy_proportionally_more_points(
         f"dungeon count rises by {multiplier:.2f}x, so extra dungeons DO buy "
         f"proportionally more empire points. That reverses the answer issue "
         f"#289 was given and the paragraph the script prints under its table.")
-    assert rows["surges only"]["resolved"] > rows["standard"]["resolved"], (
-        "more dungeons no longer means more of them resolving undefeated, "
-        "which is the mechanism the script gives for the finding above.")
+    # THE SHARE, NOT THE COUNT, and the distinction is load-bearing. This
+    # asserted the two absolute counts until issue #1329 added Siege damage to
+    # the model. More dungeons then meant more Sieges, the empire fell sooner,
+    # and the shorter campaign had FEWER dungeons resolve in total -- 124
+    # against 129 -- while a LARGER share of them did, 86% against 80%. The
+    # script's sentence claims a share and was printing counts, so it was the
+    # evidence that was wrong rather than the claim.
+    assert (rows["surges only"]["share_undefeated"]
+            > rows["standard"]["share_undefeated"]), (
+        "more dungeons no longer means a larger SHARE of them resolving "
+        "undefeated, which is the mechanism the script gives for the finding "
+        "above.")
 
 
 def test_it_says_which_half_of_the_question_it_cannot_answer(lethality_run):

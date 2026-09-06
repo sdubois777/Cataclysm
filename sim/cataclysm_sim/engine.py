@@ -182,7 +182,7 @@ class Simulation:
 
         # Subtype and modifiers. One modifier per tier; Sacrificial starts with
         # double, which is exactly what makes it a gamble worth taking.
-        subtype = self._roll_subtype(dtype)
+        subtype = self._roll_subtype(dtype, city)
         n_mods = cfg.modifiers_per_tier * cfg.tier
         if subtype == "Sacrificial":
             n_mods *= cfg.sacrificial_modifier_multiplier
@@ -295,10 +295,33 @@ class Simulation:
             cap=cfg.overwhelm_cap,
         )
 
-    def _roll_subtype(self, dtype: DungeonType) -> str:
+    def sieges_on(self, city_id: int) -> int:
+        """How many Siege dungeons are standing on this city."""
+        return sum(1 for d in self.dungeons.values()
+                   if d.subtype == "Siege" and d.city_id == city_id)
+
+    def _roll_subtype(self, dtype: DungeonType, city: City) -> str:
+        """One sub-type, respecting "Max 1 per city" for the Siege.
+
+        A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
+        still gets a sub-type -- every dungeon has one since issue #1293. That
+        is what makes the Siege share of dungeons REACHING THE MAP lower than
+        its share of dungeons ROLLED: 15 in 100 rolled, and about 12.7 in 100
+        arriving, measured over twenty campaigns of the C++ implementation.
+        Issue #1329.
+        """
         w = self.cfg.SUBTYPE_SPAWN_WEIGHTS
         names = list(w)
-        return self.rng.choices(names, weights=[w[n] for n in names], k=1)[0]
+        picked = self.rng.choices(names, weights=[w[n] for n in names], k=1)[0]
+
+        if picked != "Siege":
+            return picked
+        if self.sieges_on(city.cid) < self.cfg.siege_max_per_city:
+            return picked
+
+        others = [n for n in names if n != "Siege"]
+        return self.rng.choices(
+            others, weights=[w[n] for n in others], k=1)[0]
 
     def can_craft(self) -> bool:
         return self.materials >= self.cfg.craft_material_cost
@@ -436,6 +459,57 @@ class Simulation:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
+
+    def _apply_siege_damage(self) -> None:
+        """Every standing Siege takes its daily share of the city it sits on.
+
+        A SIEGE BITES EVERY DAY AND NOT ONLY WHEN ITS TIMER RUNS OUT. That is
+        what makes it the dungeon a player cannot postpone, and it is the whole
+        reason the sub-type is worth modelling: it is the one threat the empire
+        tree's city-health nodes do not protect against. See
+        `TuningConfig.siege_defence_bite_per_day` for why a share survives here
+        when issue #1327 turned every other city damage into points.
+
+        THE HOSTS ARE COLLECTED BEFORE ANYTHING IS BITTEN. `_fall` removes
+        dungeons from `self.dungeons`, and walking that dictionary while it is
+        being emptied is how a crash gets written. The C++ beside this takes
+        the same care for the same reason.
+        """
+        cfg = self.cfg
+        hosts: list[tuple[int, int]] = []
+        for d in self.dungeons.values():
+            if d.subtype != "Siege":
+                continue
+            # NEVER NEGATIVE. A dungeon built by hand in a test may carry a
+            # spawn day later than the clock, and a negative age would heal
+            # the city rather than hurt it.
+            hosts.append((d.city_id, max(0, self.day - d.spawned_day)))
+
+        for city_id, days_stood in hosts:
+            city = self.empire.cities.get(city_id)
+            # CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege
+            # in this same loop must not be bitten a second time.
+            if city is None or city.fallen:
+                continue
+
+            grown = cfg.siege_damage_growth_per_day * days_stood
+
+            # THE EMPIRE TREE'S DAMAGE REDUCTION STILL APPLIES. This is a
+            # READING rather than a ruling: the owner's exception is that city
+            # HEALTH does not protect against a siege -- "a siege does not care
+            # how thick your walls are" -- and says nothing about the eleven
+            # damage-reduction nodes. Reducing the damage is a different claim
+            # from thickening the wall. Recorded in `docs/DECISIONS.md` as a
+            # reading so it can be overturned cheaply.
+            city.defense -= (city.max_defense * cfg.siege_defence_bite_per_day
+                             + grown) * cfg.tree.city_damage_mult
+            city.population -= (
+                city.max_population * cfg.siege_population_bite_per_day
+                + grown) * cfg.tree.city_damage_mult
+            city.population = max(0.0, city.population)
+
+            if city.defense <= 0:
+                self._fall(city)
 
     def _fall(self, city: City) -> None:
         cfg = self.cfg
@@ -610,6 +684,11 @@ class Simulation:
 
         if self.day >= self.next_surge_day:
             self.trigger_surge()
+
+        # A SIEGE TAKES ITS SHARE BEFORE ANY TIMER IS ACTED ON, which is the
+        # order `UCataclysmEmpireRun::AdvanceDay` uses. A Siege that arrived
+        # today deals the flat share alone; each later day adds its growth.
+        self._apply_siege_damage()
 
         # Timers tick. Whether the dungeon the player is currently inside also
         # ticks is a rules question with real design weight -- see config.

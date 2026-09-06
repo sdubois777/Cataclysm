@@ -170,11 +170,14 @@ public:
 	 * inside that, so the two together are what make it the dungeon a player
 	 * cannot postpone.
 	 *
-	 * NOT PORTED FROM THE SIMULATION, BECAUSE THE SIMULATION DOES NOT MODEL IT.
-	 * `sim/cataclysm_sim/engine.py` gives a sub-type no behaviour beyond Cow
-	 * Level's doubled walk and Sacrificial's doubled modifiers. The design
-	 * document is the only source for this number and
-	 * `docs/DECISIONS.md` records that it is.
+	 * THIS WAS WRITTEN FIRST AND THE MODEL FOLLOWED IT, which is the reverse of
+	 * this project's usual direction. The design document was the only source for
+	 * the number when this was built, because the simulation gave a sub-type no
+	 * behaviour at all. That changed on 2026-09-06: the project owner ruled that
+	 * the Siege be added to the model, and `sim/cataclysm_sim/engine.py` now
+	 * carries `_apply_siege_damage` with `TuningConfig.siege_defence_bite_per_day`
+	 * beside it. Issue #1329. The two must now be kept in step like every other
+	 * ported number.
 	 */
 	static constexpr float SiegeDefenceBitePerDay = 0.01f;
 
