@@ -14,6 +14,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSavePartition.h"
@@ -1424,5 +1425,387 @@ bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
 	World->DestroyWorld(false);
 	return true;
 }
+
+/**
+ * A restored schedule rolls the wave the live run would have rolled.
+ *
+ * **THIS IS THE TEST THE WHOLE SLICE EXISTS FOR, AND IT COMPARES THE NEXT WAVE
+ * RATHER THAN THE SEED ON PURPOSE.** `FRandomStream` is half savable: the
+ * engine's reflected declaration marks the seed a run STARTED from with
+ * `SaveGame` and the position it has reached without it. So a save that embedded
+ * the stream would write a plausible number, read the same plausible number back,
+ * and satisfy any test that compared saved seeds -- while giving the restored run
+ * a different future from the one it was saved with. Rolling a wave from the
+ * restored state and comparing it against the wave the live run actually rolls is
+ * the only comparison that can tell those two apart.
+ *
+ * IT ROLLS BOTH WAVES AGAINST THE LIVE RUN'S MAP, deliberately. Which cities a
+ * wave lands on depends on which are still standing, and after four hundred days
+ * that is nothing like a fresh empire -- so rolling the second wave against a
+ * fresh map would compare two things at once and fail for the wrong reason. The
+ * map is saved by the previous slice and covered by its own tests; what is on
+ * trial here is the schedule and the stream.
+ *
+ * IT BUILDS THE RESTORED SCHEDULER BY HAND because there is nothing else to use.
+ * Applying a record to a run is the next slice and does not exist yet. So this
+ * proves the record HOLDS ENOUGH to reproduce the future; it does not prove any
+ * restore is correct, and cannot until there is one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterScheduleRollsTheSameWave,
+	"Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterScheduleRollsTheSameWave::RunTest(const FString&)
+{
+	// BOTH ESCALATIONS AND THE HARSHEST LETHALITY, so that every schedule field
+	// this record carries actually changes what a wave is. Under `Static` at
+	// rung 0 the surge index moves nothing, and a record that dropped it would
+	// pass.
+	constexpr int32 StartingSeed = 4242;
+
+	UCataclysmEmpireRun* Live = NewObject<UCataclysmEmpireRun>();
+	Live->Begin(StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
+
+	if (!TestNotNull(TEXT("the run has a scheduler"), Live->Surges.Get())
+		|| !TestNotNull(TEXT("and a map"), Live->Map.Get()))
+	{
+		return false;
+	}
+
+	// AS DEEP INTO THE RUN AS THE EMPIRE SURVIVES, WHICH IS NOT A FIXED NUMBER
+	// OF DAYS. It has to be deep: on day 0 the position the stream has reached
+	// and the seed it started from are the same number, so a save that rewound
+	// the stream would be indistinguishable from one that did not. But under
+	// both escalations at the harshest lethality, with nobody clearing anything,
+	// the frontier is gone well before four hundred days -- and a wave rolled
+	// onto an empire with no city left to attack comes back EMPTY, which would
+	// make every comparison below pass without comparing anything. A fixed
+	// number of days was tried first and did exactly that.
+	//
+	// SO IT STOPS WHILE THERE IS STILL A FRONTIER, and says how far it got.
+	//
+	// A FRONTIER OF SEVERAL CITIES AND NOT MERELY ONE. Run until only one city
+	// is left -- 258 days, measured -- and every dungeon in the wave lands on
+	// that one city, so comparing which city each landed on cannot fail whatever
+	// the stream does. Several cities give the target roll something to choose
+	// between, and the wave below is checked to have used more than one.
+	constexpr int32 MostDays = 400;
+	constexpr int32 FewestCitiesWorthComparing = 5;
+
+	int32 Advanced = 0;
+	while (Advanced < MostDays
+		   && Live->Map->ExposedCities().Num() >= FewestCitiesWorthComparing)
+	{
+		Live->AdvanceDay();
+		++Advanced;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("advanced %d days: %d cities still on the frontier, %d surges "
+			 "escalated, %d waves landed"),
+		Advanced, Live->Map->ExposedCities().Num(), Live->Surges->SurgeIndex,
+		Live->Surges->SurgesFired));
+
+	if (!TestTrue(TEXT("the empire still has a frontier to put a dungeon on"),
+				  Live->Map->ExposedCities().Num() > 0))
+	{
+		return false;
+	}
+
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	if (!TestTrue(TEXT("the schedule is read"),
+				  FCataclysmSaveGather::SurgeScheduleFrom(*Live, *Record)))
+	{
+		return false;
+	}
+
+	// THE CONTROL FOR EVERYTHING BELOW. If the stream had not moved, restoring
+	// the starting seed would look right and this test would prove nothing.
+	if (!TestNotEqual(TEXT("the stream has moved away from where it started"),
+					  Record->RandomStreamSeed, StartingSeed))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the escalation mode is carried"),
+			  static_cast<uint8>(Record->SurgeMode),
+			  static_cast<uint8>(Live->Surges->Mode));
+	TestEqual(TEXT("the lethality rung is carried"), Record->SurgeLethalityRung,
+			  Live->Surges->LethalityRung);
+	TestEqual(TEXT("the surge index is carried"), Record->SurgeIndex,
+			  Live->Surges->SurgeIndex);
+	TestEqual(TEXT("and how many waves have landed"), Record->SurgesFired,
+			  Live->Surges->SurgesFired);
+	TestEqual(TEXT("and when the next one is due"), Record->NextSurgeDay,
+			  Live->Surges->NextSurgeDay, 0.0001f);
+
+	// AND THE SURGE INDEX IS NOT ITS DEFAULT, or the comparison below could not
+	// tell a carried one from a forgotten one.
+	if (!TestTrue(TEXT("surges have fired, so the index means something"),
+				  Record->SurgeIndex > 0))
+	{
+		return false;
+	}
+
+	// THE WAVE THE LIVE RUN ROLLS, from its own stream. Taken from the genuine
+	// article rather than from a copy of the saved number, so that what follows
+	// compares the record against the run and not the record against itself.
+	const int32 FirstDungeonId = 5000;
+	const TArray<FCataclysmDungeon> FromLive = Live->Surges->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, Live->Stream);
+
+	if (!TestTrue(TEXT("the wave is not empty, or nothing is being compared"),
+				  FromLive.Num() > 0))
+	{
+		// WHICH OF THE TWO REASONS IT WAS. Either there is no city left to
+		// attack, or there are cities and the schedule asked for no dungeons;
+		// the fix is different for each and the count alone does not say.
+		AddError(FString::Printf(
+			TEXT("day %d, %d cities on the frontier, %d dungeons due in the "
+				 "next surge"),
+			Live->Day(), Live->Map->ExposedCities().Num(),
+			Live->Surges->DungeonsInNextSurge()));
+		return false;
+	}
+
+	// AND IT LANDED ON MORE THAN ONE CITY, so that comparing which city each
+	// dungeon assaults is a comparison rather than a formality.
+	TSet<int32> CitiesHit;
+	for (const FCataclysmDungeon& Dungeon : FromLive)
+	{
+		CitiesHit.Add(Dungeon.CityId);
+	}
+
+	if (!TestTrue(TEXT("the wave landed on more than one city"),
+				  CitiesHit.Num() > 1))
+	{
+		AddError(FString::Printf(TEXT("%d dungeons, all on city %d"),
+								 FromLive.Num(), FromLive[0].CityId));
+		return false;
+	}
+
+	// AND NOW THE SAME QUESTION PUT TO THE RECORD ALONE.
+	UCataclysmSurgeScheduler* Restored = NewObject<UCataclysmSurgeScheduler>();
+	Restored->Mode = Record->SurgeMode;
+	Restored->LethalityRung = Record->SurgeLethalityRung;
+	Restored->SurgeIndex = Record->SurgeIndex;
+	Restored->SurgesFired = Record->SurgesFired;
+	Restored->NextSurgeDay = Record->NextSurgeDay;
+
+	FRandomStream RestoredStream;
+	RestoredStream.Initialize(Record->RandomStreamSeed);
+
+	const TArray<FCataclysmDungeon> FromRestored = Restored->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, RestoredStream);
+
+	if (!TestEqual(TEXT("the restored schedule rolls a wave of the same size"),
+				   FromRestored.Num(), FromLive.Num()))
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < FromLive.Num(); ++Index)
+	{
+		const FCataclysmDungeon& Was = FromLive[Index];
+		const FCataclysmDungeon& Now = FromRestored[Index];
+
+		TestEqual(*FString::Printf(TEXT("dungeon %d assaults the same city"),
+								   Index),
+				  Now.CityId, Was.CityId);
+		TestEqual(*FString::Printf(TEXT("dungeon %d is the same depth"), Index),
+				  Now.Floors, Was.Floors);
+		TestEqual(*FString::Printf(TEXT("dungeon %d does the same thing "
+									   "differently"), Index),
+				  static_cast<uint8>(Now.SubType),
+				  static_cast<uint8>(Was.SubType));
+		TestEqual(*FString::Printf(TEXT("dungeon %d costs the same walk"),
+								   Index),
+				  Now.WalkDays, Was.WalkDays, 0.001f);
+	}
+
+	// THE CONTROL THAT MAKES ALL OF THAT MEAN SOMETHING: the stream rewound to
+	// the seed the run started from -- which is exactly what saving
+	// `FRandomStream` directly would restore -- rolls a DIFFERENT wave. Without
+	// this the loop above would pass if every wave were the same for any seed.
+	FRandomStream Rewound;
+	Rewound.Initialize(StartingSeed);
+
+	const TArray<FCataclysmDungeon> FromRewound = Restored->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, Rewound);
+
+	bool bRewoundDiffers = FromRewound.Num() != FromLive.Num();
+	for (int32 Index = 0; !bRewoundDiffers && Index < FromLive.Num(); ++Index)
+	{
+		bRewoundDiffers = FromRewound[Index].CityId != FromLive[Index].CityId
+						  || FromRewound[Index].Floors != FromLive[Index].Floors
+						  || FromRewound[Index].SubType
+								 != FromLive[Index].SubType;
+	}
+
+	TestTrue(TEXT("a stream rewound to the starting seed rolls a different "
+				  "wave, so the comparison above is not vacuous"),
+			 bRewoundDiffers);
+
+	// AND A SECOND CONTROL, FOR THE OTHER HALF OF THE RECORD. A schedule
+	// restored with the right stream but a forgotten surge index brings a wave of
+	// a different size, because escalation counts that index. So the five plain
+	// numbers are load-bearing too, and not merely along for the ride with the
+	// seed.
+	UCataclysmSurgeScheduler* Forgetful = NewObject<UCataclysmSurgeScheduler>();
+	Forgetful->Mode = Record->SurgeMode;
+	Forgetful->LethalityRung = Record->SurgeLethalityRung;
+	Forgetful->SurgesFired = Record->SurgesFired;
+	Forgetful->NextSurgeDay = Record->NextSurgeDay;
+	// AND `SurgeIndex` LEFT AT ITS DEFAULT, which is the whole point.
+
+	FRandomStream ForgetfulStream;
+	ForgetfulStream.Initialize(Record->RandomStreamSeed);
+
+	const TArray<FCataclysmDungeon> FromForgetful = Forgetful->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, ForgetfulStream);
+
+	TestNotEqual(TEXT("a schedule that forgot how far it had escalated rolls a "
+					  "wave of a different size"),
+				 FromForgetful.Num(), FromLive.Num());
+
+	return true;
+}
+
+/**
+ * The schedule and the stream position reach the file, through the writer.
+ *
+ * SEPARATE FROM THE TEST ABOVE, AND NOT THE SAME QUESTION. That one asks whether
+ * the record holds enough; this asks whether the writer puts it there and whether
+ * it survives being written as JSON and read back. A gather that was never called
+ * would satisfy the first and fail this.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheSchedule,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheSurgeSchedule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheSchedule::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	constexpr int32 StartingSeed = 4242;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	// NOT THE DEFAULT MODE OR THE DEFAULT RUNG, so that a writer which never
+	// asked for the schedule would leave the record's defaults in place and be
+	// caught, rather than writing the right answer by accident.
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(
+		StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
+
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	Run->AdvanceDays(400);
+
+	// THE TWO SURGE COUNTS HOLD THE SAME NUMBER IN A LIVE RUN, so one is moved
+	// by hand. `SurgeIndex` counts what escalation reads and `SurgesFired`
+	// counts waves landed, and today a city falling advances both -- 22 and 22,
+	// measured over a run like this one. Two integer fields holding the same
+	// number round-trip perfectly with their VALUES SWAPPED, so a gather that
+	// put one in the other's field would pass every check below and every check
+	// anything else could make by playing the game. Separating them is the only
+	// way to have the two assertions further down mean two different things.
+	//
+	// IF `bCityFallAdvancesEscalation` EVER BECOMES FALSE the two will differ on
+	// their own and this line can go.
+	Run->Surges->SurgesFired += 3;
+
+	const int32 LiveSeed = Run->Stream.GetCurrentSeed();
+	const int32 LiveIndex = Run->Surges->SurgeIndex;
+	const int32 LiveFired = Run->Surges->SurgesFired;
+	const float LiveDue = Run->Surges->NextSurgeDay;
+
+	if (!TestTrue(TEXT("surges have fired, so these are not all defaults"),
+				  LiveIndex > 0 && LiveFired > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// AND THE TIE REALLY IS BROKEN, or the two assertions below are one
+	// assertion written twice.
+	if (!TestNotEqual(TEXT("the two surge counts are different numbers"),
+					  LiveIndex, LiveFired))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		AddError(FString::Printf(TEXT("it was refused: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	TestEqual(TEXT("the escalation mode survives the file"),
+			  static_cast<uint8>(Read->SurgeMode),
+			  static_cast<uint8>(ECataclysmSurgeMode::Both));
+	TestEqual(TEXT("the lethality rung survives"), Read->SurgeLethalityRung, 2);
+	TestEqual(TEXT("how far escalation had got"), Read->SurgeIndex, LiveIndex);
+	TestEqual(TEXT("how many waves had landed"), Read->SurgesFired, LiveFired);
+	TestEqual(TEXT("and when the next one was due"), Read->NextSurgeDay, LiveDue,
+			  0.001f);
+
+	// THE FIELD THIS SLICE WAS DIFFICULT FOR. A save that embedded the stream
+	// would read back the seed the run started from, which is a plausible number
+	// in the right field -- the failure that looks exactly like success.
+	TestEqual(TEXT("the stream's position survives the file"),
+			  Read->RandomStreamSeed, LiveSeed);
+	TestNotEqual(TEXT("and it is the position reached, not the seed started "
+					  "from"),
+				 Read->RandomStreamSeed, StartingSeed);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
 
 #endif // WITH_AUTOMATION_TESTS

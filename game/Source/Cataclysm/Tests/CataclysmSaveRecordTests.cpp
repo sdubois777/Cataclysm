@@ -9,6 +9,7 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecord.h"
+#include "Empire/CataclysmSurge.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Serialization/JsonSerializer.h"
@@ -822,5 +823,187 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 
 	return true;
 }
+
+/**
+ * The committed run file's surge schedule reads into the fields it names.
+ *
+ * NOT THE SAME QUESTION AS THE COMPLETENESS CHECK, and this is the record where
+ * the difference bites hardest. That test loads a fixture, writes it back out and
+ * compares -- so it catches a field the fixture has forgotten, but two integer
+ * fields whose values were swapped agree with themselves perfectly and pass it.
+ * `SurgeIndex` and `SurgesFired` are two integers side by side that mean
+ * different things, and reading them back one at a time is the only thing that
+ * would notice.
+ *
+ * SO THE FIXTURE HOLDS 7 AND 9 RATHER THAN THE SAME NUMBER TWICE, and every one
+ * of the six values differs from its field's default. See
+ * `game/Tests/SaveFixtures/README.md`.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRunFixtureKeepsTheSchedule,
+	"Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheSurgeSchedule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Text, UCataclysmRunSave::StaticClass(),
+										GetTransientPackage(), Result, Message));
+
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Run_v1.json would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	// THE ENUM BY NAME, WHICH IS HOW THE FILE SPELLS IT. A mode read as its
+	// default would be `Static`, and the file says `Both`.
+	TestEqual(TEXT("the escalation the run is played under"),
+			  static_cast<uint8>(Read->SurgeMode),
+			  static_cast<uint8>(ECataclysmSurgeMode::Both));
+
+	TestEqual(TEXT("the lethality rung"), Read->SurgeLethalityRung, 2);
+
+	// TWO COUNTS THAT ARE NOT THE SAME NUMBER, on purpose. Swap them and one of
+	// these two lines fails; make them equal and neither could.
+	TestEqual(TEXT("how far escalation has got"), Read->SurgeIndex, 7);
+	TestEqual(TEXT("how many waves have landed"), Read->SurgesFired, 9);
+
+	TestEqual(TEXT("which day the next wave is due on"), Read->NextSurgeDay,
+			  122.5f, 0.0001f);
+
+	// AND WHERE THE RUN'S CHANCE HAD GOT TO. A position in a sequence rather
+	// than a seed somebody chose; see `UCataclysmRunSave::RandomStreamSeed`.
+	TestEqual(TEXT("where the run's chance had got to"),
+			  Read->RandomStreamSeed, 1743984213);
+
+	return true;
+}
+
+
+/**
+ * A save written before the surge schedule existed still loads.
+ *
+ * THE SAME CLAIM `AFileWithoutThePartOfADayStillLoads` MAKES, PUT TO A DIFFERENT
+ * KIND OF FIELD. That test covers one float. `SurgeMode` is an enum, and an enum
+ * property missing from the JSON is a different path through the reader from a
+ * missing number -- a reader that refused it, or that left the property
+ * uninitialised rather than at its declared default, would satisfy that test and
+ * fail this one.
+ *
+ * IT BUILDS THE OLD SHAPE RATHER THAN READING A COMMITTED FILE, and it has to:
+ * `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires
+ * every fixture to hold every field its record writes, so no committed file can
+ * be missing one.
+ *
+ * WHAT IT IS EVIDENCE FOR is the reason issue #1307 added six fields at schema
+ * version 1 with no migration step. `docs/Save_System_Design.md` section 5 says
+ * "adding a field with a sensible default is not a version bump", which is a
+ * claim about what the engine does; this is what makes it a tested claim.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRunFileWithoutTheSchedule,
+	"Cataclysm.SaveRecords.AFileWithoutTheSurgeScheduleStillLoads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v1.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	// EACH LINE EXACTLY AS THE FILE SPELLS IT, so that a renamed field fails
+	// here with a message saying so rather than quietly removing nothing and
+	// leaving the assertions below to pass for the wrong reason.
+	const TArray<TPair<FString, FString>> Lines = {
+		{ TEXT("SurgeMode"), TEXT("\"Both\"") },
+		{ TEXT("SurgeLethalityRung"), TEXT("2") },
+		{ TEXT("SurgeIndex"), TEXT("7") },
+		{ TEXT("SurgesFired"), TEXT("9") },
+		{ TEXT("NextSurgeDay"), TEXT("122.5") },
+		{ TEXT("RandomStreamSeed"), TEXT("1743984213") },
+	};
+
+	FString Older = Text;
+	for (const TPair<FString, FString>& Field : Lines)
+	{
+		const FString Line = FString::Printf(TEXT("\t\"%s\": %s,"), *Field.Key,
+											 *Field.Value);
+
+		bool bRemoved = false;
+		for (const TCHAR* Ending : { TEXT("\r\n"), TEXT("\n") })
+		{
+			const FString Whole = Line + Ending;
+			if (Older.Contains(Whole))
+			{
+				Older = Older.Replace(*Whole, TEXT(""));
+				bRemoved = true;
+				break;
+			}
+		}
+
+		if (!bRemoved)
+		{
+			AddError(FString::Printf(
+				TEXT("Run_v1.json no longer carries the line `%s`, so this test "
+					 "would prove nothing. If the field was renamed or its value "
+					 "changed, change it here too."), *Line));
+			return false;
+		}
+
+		if (!TestFalse(*FString::Printf(TEXT("%s really is gone"), *Field.Key),
+					   Older.Contains(Field.Key)))
+		{
+			return false;
+		}
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Older, UCataclysmRunSave::StaticClass(),
+										GetTransientPackage(), Result, Message));
+
+	// IT LOADS AT ALL, which is the half a player would notice. A missing field
+	// that refused the file would lose the whole save rather than six numbers.
+	if (!TestNotNull(TEXT("a file without the schedule still loads"), Read))
+	{
+		AddError(FString::Printf(TEXT("it was refused: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	TestEqual(TEXT("the missing mode takes its default"),
+			  static_cast<uint8>(Read->SurgeMode),
+			  static_cast<uint8>(ECataclysmSurgeMode::Static));
+	TestEqual(TEXT("the missing lethality rung"), Read->SurgeLethalityRung, 0);
+	TestEqual(TEXT("the missing surge index"), Read->SurgeIndex, 0);
+	TestEqual(TEXT("the missing wave count"), Read->SurgesFired, 0);
+	TestEqual(TEXT("the missing due day"), Read->NextSurgeDay, 0.0f, 0.0001f);
+	TestEqual(TEXT("and the missing stream position"), Read->RandomStreamSeed, 0);
+
+	// AND NOTHING ELSE WENT WITH THEM. A load that quietly dropped the rest of
+	// the record would also satisfy every line above.
+	TestEqual(TEXT("the day still reads"), Read->Day, 118);
+	TestEqual(TEXT("the cities still read"), Read->Cities.Num(), 2);
+	TestEqual(TEXT("the dungeons still read"), Read->Dungeons.Num(), 1);
+	TestTrue(TEXT("and somebody is still on a floor"), Read->Floor.IsOccupied());
+
+	return true;
+}
+
 
 #endif // WITH_AUTOMATION_TESTS

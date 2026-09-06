@@ -5,6 +5,12 @@
 	"PartialDay": 0.25,
 	"CityUpgradeSlots": 3,
 	"CurrentDungeonId": 3,
+	"SurgeMode": "Both",
+	"SurgeLethalityRung": 2,
+	"SurgeIndex": 7,
+	"SurgesFired": 9,
+	"NextSurgeDay": 122.5,
+	"RandomStreamSeed": 1743984213,
 	"Dungeons": [
 		{
 			"DungeonId": 3,

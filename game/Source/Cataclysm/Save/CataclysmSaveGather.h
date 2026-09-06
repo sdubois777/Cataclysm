@@ -146,6 +146,22 @@ public:
 	static bool DungeonsFrom(const UCataclysmEmpireRun& Run,
 							 UCataclysmRunSave& Record, FString& OutWhy);
 
+	/**
+	 * When the next wave is due, and where the run's chance had got to.
+	 *
+	 * THE STREAM'S POSITION IS TAKEN FROM `GetCurrentSeed` RATHER THAN BY
+	 * SAVING THE STREAM. See `UCataclysmRunSave::RandomStreamSeed` for why
+	 * saving the stream itself would silently rewind it.
+	 *
+	 * IT TAKES A RUN RATHER THAN A WORLD, for the reason `RunClockFrom` gives.
+	 *
+	 * @return whether anything was read. False when the run has no scheduler,
+	 *         which is a run `Begin` has not been called on, and then the record
+	 *         keeps whatever it already held.
+	 */
+	static bool SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
+								  UCataclysmRunSave& Record);
+
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);
