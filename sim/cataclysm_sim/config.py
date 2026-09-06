@@ -346,6 +346,34 @@ class TuningConfig:
         "Volatile": 15.0, "Siege": 15.0, "Sacrificial": 12.0, "Cow Level": 7.0,
     })
 
+    # WHICH SUB-TYPES A KIND OF DUNGEON MAY NOT ROLL. **THERE IS EXACTLY ONE
+    # ENTRY AND THAT IS THE WHOLE RULE.** The project owner ruled on 2026-09-06,
+    # verbatim: "Last stand is a cataclysm dungeon and should not be allowed to
+    # roll as a cow level sub type." Asked how far to take it, they answered
+    # "Only the one you ruled".
+    #
+    # SO THE OTHER 27 PAIRS STAY LEGAL AND NOTHING MAY BE INFERRED FROM THIS ONE
+    # ABOUT ANY OF THEM. Whether a Quest dungeon should be able to roll a Siege
+    # that never resolves, or a Fallen City a Sacrificial, is unstated by
+    # omission rather than decided; issue #1333 raises it and #1342 asks the
+    # related question about a Fallen City carrying a sub-type at all. A reader
+    # adding a second row here is making a design decision, not a code one.
+    #
+    # A REFUSED SUB-TYPE IS REDISTRIBUTED ACROSS THE REST IN PROPORTION rather
+    # than dropped, which is what `Simulation._roll_subtype` does with it: every
+    # dungeon has a sub-type since issue #1293, so refusing one cannot mean
+    # having none. It costs no extra draw either -- the roll is taken from the
+    # shortened list, so the stream is left exactly where a full roll leaves it.
+    #
+    # THE GAME HOLDS THE SAME RULE in
+    # `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and
+    # `BarredSubTypeOn`; `tools/tests/test_dungeon_subtype_port.py` compares the
+    # two and fails if either side moves.
+    SUBTYPES_FORBIDDEN_ON: dict[DungeonType, tuple[str, ...]] = field(
+        default_factory=lambda: {
+            DungeonType.CATACLYSM: ("Cow Level",),
+        })
+
     # --- the Siege sub-type ----------------------------------------------
     #
     # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S

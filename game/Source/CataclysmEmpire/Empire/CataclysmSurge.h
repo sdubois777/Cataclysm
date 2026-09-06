@@ -528,15 +528,65 @@ public:
 	static constexpr int32 SiegesPerCity = 1;
 
 	/**
-	 * The total weight of every sub-type that can be rolled, leaving one out.
+	 * The one sub-type a Cataclysm dungeon may not roll.
+	 *
+	 * **THE PROJECT OWNER RULED IT ON 2026-09-06, verbatim: "Last stand is a
+	 * cataclysm dungeon and should not be allowed to roll as a cow level sub
+	 * type."** Asked how far to take it they answered "Only the one you ruled".
+	 * Issue #1333.
+	 *
+	 * WHY A COW LEVEL CATACLYSM WAS THE PROBLEM. Its time "is doubled and cannot
+	 * be reduced", and the model's Last Stand adds floor bonuses after the
+	 * dungeon is built and worked the walk out again without the sub-type, so
+	 * the doubling was lost. Offered the repair, the owner removed the situation
+	 * rather than fixing the symptom.
+	 *
+	 * **THIS IS THE ONLY ILLEGAL PAIR OF THE 28 AND NOTHING MAY BE INFERRED FROM
+	 * IT.** Whether a Quest dungeon may carry a Siege that never resolves, or a
+	 * Fallen City a Sacrificial, is unstated by omission rather than decided.
+	 * Adding a second exclusion is a design decision for the owner, not a code
+	 * one; issue #1333 raises the general question and #1342 asks whether a
+	 * Fallen City should carry a sub-type at all.
+	 *
+	 * IT IS A COPY AND `config.SUBTYPES_FORBIDDEN_ON` IS THE ORIGINAL, the same
+	 * arrangement every other constant in this file is in.
+	 * `tools/tests/test_dungeon_subtype_port.py` reads it back out of this
+	 * header and fails if either side moves.
+	 */
+	static constexpr ECataclysmDungeonSubType CataclysmForbiddenSubType =
+		ECataclysmDungeonSubType::CowLevel;
+
+	/**
+	 * Which sub-type this kind of dungeon may not roll, or `None` for a kind
+	 * that may roll all seven.
+	 *
+	 * THREE OF THE FOUR KINDS ANSWER `None`, which is the whole rule: only a
+	 * Cataclysm is constrained, and only against Cow Level. See
+	 * `CataclysmForbiddenSubType`.
+	 *
+	 * `None` IS THE RIGHT WAY TO SAY "NOTHING IS BARRED" HERE and not a missing
+	 * answer, because `None` is not in the distribution at all --
+	 * `TotalSpawnWeight` and `SubTypeAtPoint` already take it as the exclusion
+	 * that excludes nothing, and this feeds straight into both.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static ECataclysmDungeonSubType BarredSubTypeOn(ECataclysmDungeonType Type);
+
+	/**
+	 * The total weight of every sub-type that can be rolled, leaving out up to
+	 * two of them.
 	 *
 	 * @param Excluded which to leave out of the total. `None` is not in the
 	 *                 distribution at all, so passing it excludes nothing, which
 	 *                 is why it is the default.
+	 * @param AlsoExcluded a second one to leave out, for the case where a Siege
+	 *                 is refused on a dungeon whose kind already bars something.
+	 *                 Passing the same value twice excludes it once.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static float TotalSpawnWeight(
-		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None);
+		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None,
+		ECataclysmDungeonSubType AlsoExcluded = ECataclysmDungeonSubType::None);
 
 	/**
 	 * The total weight of every sub-type declared before this one.
@@ -544,34 +594,47 @@ public:
 	 * WHERE A SUB-TYPE'S BAND STARTS on the weighted line `SubTypeAtPoint`
 	 * walks. `RollSubType` needs it to work out where in Siege's own band a
 	 * draw landed.
+	 *
+	 * @param Excluded a sub-type left off that line, so the bands after it start
+	 *                 earlier by its weight. It matters when a dungeon's kind
+	 *                 bars a sub-type declared BEFORE the one being asked about;
+	 *                 with today's enum order Cow Level comes after Siege, so
+	 *                 the only live exclusion changes nothing here. Passing it
+	 *                 anyway is what keeps that a fact about the order rather
+	 *                 than a dependency on it.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	static float SpawnWeightBelow(ECataclysmDungeonSubType SubType);
+	static float SpawnWeightBelow(
+		ECataclysmDungeonSubType SubType,
+		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None);
 
 	/**
 	 * Which sub-type a point on the weighted line lands on.
 	 *
-	 * THE LINE RUNS FROM 0 TO `TotalSpawnWeight(Excluded)`, with each sub-type
-	 * occupying a stretch as wide as its weight, in the enum's declared order.
-	 * A point outside that range answers the last sub-type on the line rather
-	 * than `None`: a caller asking which of these options a number picks should
-	 * get one of them.
+	 * THE LINE RUNS FROM 0 TO `TotalSpawnWeight(Excluded, AlsoExcluded)`, with
+	 * each sub-type occupying a stretch as wide as its weight, in the enum's
+	 * declared order. A point outside that range answers the last sub-type on
+	 * the line rather than `None`: a caller asking which of these options a
+	 * number picks should get one of them.
 	 *
 	 * @param Excluded a sub-type to leave off the line entirely, closing the gap
 	 *                 rather than leaving a hole in it.
+	 * @param AlsoExcluded a second one to leave off, for a refused Siege on a
+	 *                 dungeon whose kind already bars something.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static ECataclysmDungeonSubType SubTypeAtPoint(
 		float Point,
-		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None);
+		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None,
+		ECataclysmDungeonSubType AlsoExcluded = ECataclysmDungeonSubType::None);
 
 	/**
 	 * Rolls one sub-type, weighted.
 	 *
-	 * ONE DRAW FROM THE STREAM, ALWAYS, whatever it returns and whether or not a
-	 * Siege is allowed. See the note on `PickTargets` about draw counts: a roll
-	 * that sometimes took two would make every later dungeon in the same wave
-	 * depend on what this one rolled.
+	 * ONE DRAW FROM THE STREAM, ALWAYS, whatever it returns, whether or not a
+	 * Siege is allowed and whatever kind of dungeon is asking. See the note on
+	 * `PickTargets` about draw counts: a roll that sometimes took two would make
+	 * every later dungeon in the same wave depend on what this one rolled.
 	 *
 	 * IT WALKS THE ENUM IN ITS DECLARED ORDER, WHICH IS NOT THE MODEL'S ORDER.
 	 * `config.SUBTYPE_SPAWN_WEIGHTS` lists them commonest first and
@@ -587,9 +650,19 @@ public:
 	 *                      proportion to their weights. See `SiegesPerCity` for
 	 *                      the ruling and the implementation for why re-reading
 	 *                      is exact.
+	 * @param Type what kind of dungeon is being rolled for. **A CATACLYSM MAY
+	 *                      NOT BE A COW LEVEL** and everything else may be
+	 *                      anything; see `BarredSubTypeOn`. The bar is applied
+	 *                      by shortening the line the single draw is read
+	 *                      against, so the barred sub-type's weight is spread
+	 *                      over the rest in proportion and no second draw is
+	 *                      taken. The default is `Basic`, which bars nothing and
+	 *                      leaves every existing caller's stream untouched.
 	 */
-	static ECataclysmDungeonSubType RollSubType(FRandomStream& Stream,
-												bool bSiegeAllowed = true);
+	static ECataclysmDungeonSubType RollSubType(
+		FRandomStream& Stream,
+		bool bSiegeAllowed = true,
+		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic);
 
 	/**
 	 * The floor range and the bites for one kind of dungeon on one tier of city.

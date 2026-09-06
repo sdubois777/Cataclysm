@@ -310,6 +310,145 @@ class TestWhatACowLevelCosts:
         assert "self._walk_days(floors, subtype)" in source, (
             "Simulation._make_dungeon no longer routes through _walk_days, so "
             "an ordinary Cow Level may not be getting the rule at all")
+
+
+class TestWhichSubTypesAKindOfDungeonMayNotRoll:
+    """**ONE PAIR OF THE 28 IS ILLEGAL AND BOTH SIDES HAVE TO AGREE WHICH.**
+
+    The project owner ruled on 2026-09-06, verbatim: *"Last stand is a cataclysm
+    dungeon and should not be allowed to roll as a cow level sub type."* Asked
+    how far to take it they answered *"Only the one you ruled"*. Issue #1333.
+
+    THE MODEL IS THE ORIGINAL AND THE GAME IS THE COPY, the same direction as
+    the weights above. `config.SUBTYPES_FORBIDDEN_ON` holds the rule;
+    `UCataclysmSurgeScheduler::CataclysmForbiddenSubType` and `BarredSubTypeOn`
+    hold it in the game.
+
+    WHAT THIS CANNOT SEE, and why the Unreal test exists beside it. A constant
+    both sides agree on says nothing about whether either side reads it.
+    `Cataclysm.Surge.ACataclysmDungeonNeverRollsACowLevel` rolls the C++
+    implementation many times and checks what comes out;
+    `sim/tests/test_cataclysm_cannot_be_a_cow_level.py` does the same for the
+    model. All three are needed.
+    """
+
+    def forbidden_in_the_game(self, surge_source) -> dict[str, tuple[str, ...]]:
+        """The game's rule, as dungeon-type name against sub-type names."""
+        barred = constant(surge_source, "CataclysmForbiddenSubType",
+                          r"ECataclysmDungeonSubType::\w+", SURGE_HEADER.name)
+        return {"Cataclysm": (barred.split("::")[1],)}
+
+    def test_the_game_bars_the_same_pair_the_model_does(self, surge_source,
+                                                        model):
+        game = self.forbidden_in_the_game(surge_source)
+
+        wanted = {dtype.name.title().replace("_", ""):
+                  tuple(NAMES[n] for n in names)
+                  for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()}
+
+        assert game == wanted, (
+            f"the game bars {game} and the model bars {wanted}; "
+            "config.SUBTYPES_FORBIDDEN_ON is the original and "
+            "UCataclysmSurgeScheduler::CataclysmForbiddenSubType is the copy")
+
+    def test_the_model_bars_exactly_one_pair(self, model):
+        """"Only the one you ruled". Twenty-seven pairs stay legal, and a
+        session adding a second row is making a design decision the owner has
+        not made."""
+        pairs = [(dtype, name)
+                 for dtype, names in model.SUBTYPES_FORBIDDEN_ON.items()
+                 for name in names]
+
+        assert len(pairs) == 1, (
+            f"the model now bars {pairs}. The ruling of 2026-09-06 named one "
+            "pair and explicitly declined to name any others")
+
+        dtype, name = pairs[0]
+        assert dtype.name == "CATACLYSM"
+        assert name == "Cow Level"
+
+    def test_the_game_constrains_only_the_cataclysm(self):
+        """`BarredSubTypeOn` answers `None` for the other three kinds.
+
+        READ OUT OF THE SWITCH ITSELF, because the constant above says which
+        sub-type is barred and not which dungeon it is barred on. A second
+        `case` here would be the same unmade design decision as a second row in
+        the model.
+        """
+        source = (SURGE_HEADER.parent / "CataclysmSurge.cpp").read_text(
+            encoding="utf-8")
+
+        body = re.search(
+            r"ECataclysmDungeonSubType UCataclysmSurgeScheduler::"
+            r"BarredSubTypeOn\((.*?)\n\}\n", source, re.DOTALL)
+
+        assert body, ("UCataclysmSurgeScheduler::BarredSubTypeOn is gone from "
+                      "CataclysmSurge.cpp, so nothing in the game applies the "
+                      "ruling of 2026-09-06")
+
+        cases = re.findall(r"case\s+ECataclysmDungeonType::(\w+)\s*:",
+                           body.group(1))
+
+        assert cases == ["Cataclysm"], (
+            f"BarredSubTypeOn now names {cases}. The owner barred one pair and "
+            "said nothing about any other dungeon type")
+
+        assert "default:" in body.group(1), (
+            "BarredSubTypeOn no longer answers for the kinds it does not name, "
+            "so a dungeon type added to the enum would fall through")
+
+    def test_the_roll_actually_applies_the_bar(self):
+        """The wiring, which the constant cannot show.
+
+        `RollSubType` has to hand the barred sub-type to BOTH `TotalSpawnWeight`
+        and `SubTypeAtPoint`. Passing it to only the first would shorten the
+        line the draw is scaled against while still walking the full one, which
+        skews every share instead of removing one option -- and would not
+        change what the constant says.
+        """
+        source = (SURGE_HEADER.parent / "CataclysmSurge.cpp").read_text(
+            encoding="utf-8")
+
+        roll = re.search(
+            r"ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType"
+            r"\((.*?)\n\}\n", source, re.DOTALL)
+
+        assert roll, "UCataclysmSurgeScheduler::RollSubType is gone"
+
+        body = roll.group(1)
+
+        assert "BarredSubTypeOn(Type)" in body, (
+            "RollSubType no longer asks what this kind of dungeon may not roll")
+        assert "TotalSpawnWeight(Barred)" in body, (
+            "RollSubType scales its draw against the full line again, so the "
+            "barred sub-type's weight is dropped rather than redistributed")
+        assert "SubTypeAtPoint(Point, Barred)" in body, (
+            "RollSubType walks the full line again, so the barred sub-type can "
+            "still be chosen")
+
+    def test_the_model_lets_the_last_stand_recompute_with_the_sub_type(self):
+        """The defect the ruling removed, held closed on the model's side.
+
+        Issue #1333: `_open_last_stand` recomputed the walk after adding floor
+        bonuses using a bare `run_days_for`, which knows nothing about
+        sub-types, so a Cow Level Last Stand lost its doubling. The ruling makes
+        that unreachable; routing the call through `_walk_days` makes it wrong
+        even if it ever became reachable again.
+        """
+        source = (REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py").read_text(
+            encoding="utf-8")
+
+        stand = re.search(r"def _open_last_stand\(self\) -> None:"
+                          r"(.*?)(?=\n    def )", source, re.DOTALL)
+
+        assert stand, "Simulation._open_last_stand is gone"
+
+        assert "d.run_days = self._walk_days(d.floors, d.subtype)" in \
+            stand.group(1), (
+                "Simulation._open_last_stand works its walk out without the "
+                "sub-type again, which is the shape issue #1333 was about")
+
+
 def spawn_table_in(document: str) -> dict[str, float]:
     """The design's spawn table, as names against numbers.
 

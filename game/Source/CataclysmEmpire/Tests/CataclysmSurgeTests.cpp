@@ -1419,6 +1419,248 @@ bool FCataclysmSurgeSubTypeOneDrawTest::RunTest(const FString& Parameters)
 				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
 	}
 
+	// **AND WHEN THE DUNGEON'S KIND BARS A SUB-TYPE, which is the third path.**
+	// A Cataclysm may not be a Cow Level -- issue #1333 -- and the bar is
+	// applied by shortening the line the draw is read against rather than by
+	// refusing afterwards, precisely so that it costs nothing extra. Rolling
+	// again for a barred sub-type would be the obvious implementation and would
+	// break the promise this test exists for.
+	for (const int32 Seed : { 1, 7, 99, 5150, 20260906 })
+	{
+		FRandomStream Rolled(Seed);
+		FRandomStream Drawn(Seed);
+
+		UCataclysmSurgeScheduler::RollSubType(
+			Rolled, /*bSiegeAllowed=*/true,
+			ECataclysmDungeonType::Cataclysm);
+		Drawn.FRand();
+
+		TestEqual(*FString::Printf(
+					  TEXT("at seed %d a Cataclysm's roll cost one draw"),
+					  Seed),
+				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
+	}
+
+	// **BOTH REFUSALS AT ONCE, which is the only path that stacks them.** A
+	// Cataclysm on a city that already holds a Siege has one sub-type off the
+	// line before the draw and another refused after it, and the re-read has to
+	// map onto the five that are left. Seeds chosen by what they draw, for the
+	// same reason as above.
+	TArray<int32> SeedsThatDrawASiegeOnACataclysm;
+	for (int32 Seed = 1;
+		 Seed <= 1000 && SeedsThatDrawASiegeOnACataclysm.Num() < 5;
+		 ++Seed)
+	{
+		FRandomStream Trial(Seed);
+		if (UCataclysmSurgeScheduler::RollSubType(
+				Trial, /*bSiegeAllowed=*/true,
+				ECataclysmDungeonType::Cataclysm)
+			== ECataclysmDungeonSubType::Siege)
+		{
+			SeedsThatDrawASiegeOnACataclysm.Add(Seed);
+		}
+	}
+
+	// THE CONTROL, again. Without seeds that reach both refusals the checks
+	// below are the loop above written a third time.
+	if (!TestEqual(TEXT("seeds whose Cataclysm draw lands on Siege were found"),
+				   SeedsThatDrawASiegeOnACataclysm.Num(), 5))
+	{
+		return false;
+	}
+
+	for (const int32 Seed : SeedsThatDrawASiegeOnACataclysm)
+	{
+		FRandomStream Rolled(Seed);
+		FRandomStream Drawn(Seed);
+
+		const ECataclysmDungeonSubType Got =
+			UCataclysmSurgeScheduler::RollSubType(
+				Rolled, /*bSiegeAllowed=*/false,
+				ECataclysmDungeonType::Cataclysm);
+		Drawn.FRand();
+
+		TestNotEqual(*FString::Printf(
+						 TEXT("at seed %d the Cataclysm's Siege was refused"),
+						 Seed),
+					 static_cast<uint8>(Got),
+					 static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+
+		// AND IT DID NOT LAND ON THE OTHER BARRED ONE. The re-read maps onto a
+		// line the Cow Level is off as well; mapping onto the six the ordinary
+		// refusal uses would put it back in play exactly where the ruling says
+		// it must not be.
+		TestNotEqual(*FString::Printf(
+						 TEXT("nor did it become a Cow Level at seed %d"),
+						 Seed),
+					 static_cast<uint8>(Got),
+					 static_cast<uint8>(ECataclysmDungeonSubType::CowLevel));
+
+		TestEqual(*FString::Printf(
+					  TEXT("and at seed %d both refusals cost one draw"), Seed),
+				  Rolled.GetCurrentSeed(), Drawn.GetCurrentSeed());
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeCataclysmNoCowLevelTest,
+	"Cataclysm.Surge.ACataclysmDungeonNeverRollsACowLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
+{
+	// **THE RULING.** The project owner, 2026-09-06, verbatim: "Last stand is a
+	// cataclysm dungeon and should not be allowed to roll as a cow level sub
+	// type." Asked how far to take it they answered "Only the one you ruled".
+	// Issue #1333.
+	//
+	// WHY. A Cow Level's time "is doubled and cannot be reduced", and the
+	// model's Last Stand adds floor bonuses after the dungeon is built and
+	// worked its walk out again without the sub-type, losing the doubling.
+	// Offered the repair, the owner removed the situation instead.
+	//
+	// ENOUGH ROLLS THAT AN ABSENCE IS A RULE. Cow Level is 7 in 100, so twenty
+	// thousand rolls would carry about 1,400 of them.
+	constexpr int32 Rolls = 20000;
+
+	{
+		FRandomStream Stream(20260906);
+		TMap<ECataclysmDungeonSubType, int32> Counts;
+
+		for (int32 Roll = 0; Roll < Rolls; ++Roll)
+		{
+			++Counts.FindOrAdd(UCataclysmSurgeScheduler::RollSubType(
+				Stream, /*bSiegeAllowed=*/true,
+				ECataclysmDungeonType::Cataclysm));
+		}
+
+		TestEqual(TEXT("no Cataclysm dungeon rolled a Cow Level"),
+				  Counts.FindRef(ECataclysmDungeonSubType::CowLevel), 0);
+
+		// AND IT STILL GOT A SUB-TYPE. Every dungeon has one since the owner's
+		// ruling of 2026-09-05; a barred roll is redistributed, never dropped.
+		TestEqual(TEXT("nor did one come out with no sub-type at all"),
+				  Counts.FindRef(ECataclysmDungeonSubType::None), 0);
+
+		// **THE SEVENTH SUB-TYPE'S WEIGHT IS SPREAD OVER THE OTHER SIX IN
+		// PROPORTION, not dropped.** Dropping it would leave the six at their
+		// old shares of 100 and 7 rolls in every 100 with nothing to return.
+		const float Total = UCataclysmSurgeScheduler::TotalSpawnWeight(
+			ECataclysmDungeonSubType::CowLevel);
+
+		TestEqual(TEXT("the shortened line is 93 points wide"), Total, 93.0f,
+				  0.0001f);
+
+		for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+			 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+			 ++Value)
+		{
+			const ECataclysmDungeonSubType SubType =
+				static_cast<ECataclysmDungeonSubType>(Value);
+
+			if (SubType == ECataclysmDungeonSubType::CowLevel)
+			{
+				continue;
+			}
+
+			const float Share = 100.0f * Counts.FindRef(SubType) / Rolls;
+			const float Wanted =
+				100.0f * UCataclysmSurgeScheduler::SpawnWeightFor(SubType)
+				/ Total;
+
+			TestTrue(*FString::Printf(
+						 TEXT("sub-type %d was rolled at all"), Value),
+					 Counts.FindRef(SubType) > 0);
+
+			TestEqual(*FString::Printf(
+						  TEXT("sub-type %d took %.2f%% of a Cataclysm's rolls, "
+							   "wanted %.2f%%"),
+						  Value, Share, Wanted),
+					  Share, Wanted, 2.0f);
+
+			// AND EVERY SHARE IS ABOVE WHAT IT HAS ON THE FULL LINE, which is
+			// the difference between spreading the seven points and dropping
+			// them. The gap is smallest for Sacrificial at 12.90% against
+			// 12.00%, so the tolerance above cannot hide it.
+			TestTrue(*FString::Printf(
+						 TEXT("sub-type %d gained from the redistribution"),
+						 Value),
+					 Wanted > UCataclysmSurgeScheduler::SpawnWeightFor(SubType));
+		}
+	}
+
+	// **THE CONTROL, AND WITHOUT IT NONE OF THE ABOVE MEANS ANYTHING.** A
+	// `RollSubType` that had lost Cow Level from its weights entirely, or a
+	// `SpawnWeightFor` returning zero for it, would satisfy every check above
+	// and would be a different bug. The same stream, the same count of rolls,
+	// asked for an ordinary dungeon.
+	{
+		FRandomStream Stream(20260906);
+		int32 CowLevels = 0;
+
+		for (int32 Roll = 0; Roll < Rolls; ++Roll)
+		{
+			if (UCataclysmSurgeScheduler::RollSubType(
+					Stream, /*bSiegeAllowed=*/true,
+					ECataclysmDungeonType::Basic)
+				== ECataclysmDungeonSubType::CowLevel)
+			{
+				++CowLevels;
+			}
+		}
+
+		TestTrue(TEXT("an ordinary dungeon still rolls Cow Levels"),
+				 CowLevels > 0);
+	}
+
+	// **ONLY THE ONE PAIR THE OWNER RULED.** Twenty-seven of the twenty-eight
+	// stay legal, and this is where that is held: a session barring a second
+	// pair by inference has to break a test that quotes the scope back.
+	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Basic,
+											  ECataclysmDungeonType::Quest,
+											  ECataclysmDungeonType::FallenCity })
+	{
+		FRandomStream Stream(5150);
+		TSet<ECataclysmDungeonSubType> Seen;
+
+		for (int32 Roll = 0; Roll < Rolls; ++Roll)
+		{
+			Seen.Add(UCataclysmSurgeScheduler::RollSubType(
+				Stream, /*bSiegeAllowed=*/true, Kind));
+		}
+
+		for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+			 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+			 ++Value)
+		{
+			TestTrue(*FString::Printf(
+						 TEXT("dungeon kind %d can still roll sub-type %d"),
+						 static_cast<uint8>(Kind), Value),
+					 Seen.Contains(
+						 static_cast<ECataclysmDungeonSubType>(Value)));
+		}
+	}
+
+	// AND THE RULE ITSELF, ASKED DIRECTLY. `BarredSubTypeOn` is what the roll
+	// consults, and `None` is how it says "nothing is barred".
+	TestEqual(TEXT("a Cataclysm is barred from Cow Level"),
+			  static_cast<uint8>(UCataclysmSurgeScheduler::BarredSubTypeOn(
+				  ECataclysmDungeonType::Cataclysm)),
+			  static_cast<uint8>(ECataclysmDungeonSubType::CowLevel));
+
+	for (const ECataclysmDungeonType Kind : { ECataclysmDungeonType::Basic,
+											  ECataclysmDungeonType::Quest,
+											  ECataclysmDungeonType::FallenCity })
+	{
+		TestEqual(*FString::Printf(
+					  TEXT("dungeon kind %d is barred from nothing"),
+					  static_cast<uint8>(Kind)),
+				  static_cast<uint8>(
+					  UCataclysmSurgeScheduler::BarredSubTypeOn(Kind)),
+				  static_cast<uint8>(ECataclysmDungeonSubType::None));
+	}
+
 	return true;
 }
 

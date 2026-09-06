@@ -330,31 +330,43 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         assert long_floors == short_floors + 40
         assert long_days > short_days
 
-    def test_a_cow_level_boss_keeps_its_doubled_walk_after_growing(self):
-        """"Time to complete is doubled and cannot be reduced" is two rules, and
-        recomputing the days after adding floors is where they get dropped.
-        `_open_last_stand` does drop them -- that is issue #1333 -- so this is
-        the check that the earned boss does not.
+    def test_the_earned_boss_recomputes_its_walk_through_the_subtype_helper(self):
+        """It has to go through `_walk_days` rather than `run_days_for`.
+
+        **THIS TEST USED TO BE ABOUT A COW LEVEL BOSS AND CANNOT BE ANY MORE.**
+        It searched 400 seeds for an earned Cataclysm dungeon that rolled Cow
+        Level and checked its doubled walk survived the growth. The owner ruled
+        on 2026-09-06 that a Cataclysm dungeon may not roll Cow Level at all --
+        issue #1333 -- so that search now finds nothing and the old test would
+        have failed on its own control, which is the honest outcome and not the
+        one to leave in place. `test_cataclysm_cannot_be_a_cow_level.py` holds
+        the rule that replaced it.
+
+        WHAT IS LEFT IS STILL WORTH CHECKING. The reason the boss goes through
+        `_walk_days` is that a caller which changes a dungeon's depth after it
+        is built has to work the days out again, and doing that with a bare
+        `run_days_for` is what dropped the doubling in the first place. The
+        helper is the guard against a future dungeon kind that CAN be a Cow
+        Level and CAN grow; a boss wired straight to `run_days_for` would lose
+        it again silently.
         """
         cfg = self._safe()
+        sim = Simulation(cfg, seed=11)
+        sim.basic_cleared = 25
+        sim.objectives = cfg.quest_objectives_required
+        sim._maybe_open_cataclysm()
+        boss = sim.cataclysm
 
-        for seed in range(400):
-            sim = Simulation(cfg, seed=seed)
-            sim.basic_cleared = 25
-            sim.objectives = cfg.quest_objectives_required
-            sim._maybe_open_cataclysm()
-            boss = sim.cataclysm
-            if boss.subtype != "Cow Level":
-                continue
+        # THE CONTROL. The growth really happened, so the days below were
+        # recomputed rather than left at what the roll built.
+        assert boss.floors > 25
+        assert boss.run_days == sim._walk_days(boss.floors, boss.subtype)
 
-            assert boss.run_days == 2 * boss.floors, (
-                f"a Cow Level boss of {boss.floors} floors walks in "
-                f"{boss.run_days} days, not the doubled {2 * boss.floors}")
-            assert boss.run_days > sim.run_days_for(boss.floors)
-            return
-
-        pytest.fail("no seed in 400 produced a Cow Level boss, so this test "
-                    "checked nothing. Cow Level is 7 in 100 of sub-types.")
+        # AND THE HELPER STILL CARRIES BOTH HALVES OF THE COW LEVEL RULE, asked
+        # directly, because no Cataclysm dungeon can reach that branch any more.
+        assert sim._walk_days(50, "Cow Level") == 100
+        assert (sim._walk_days(50, "Cow Level")
+                > sim._walk_days(50, "Timed"))
 
     def test_the_result_reports_the_boss_it_earned(self):
         """The report has to carry it or nothing can measure what this changed.

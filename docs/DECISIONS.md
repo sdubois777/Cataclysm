@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — A Cataclysm dungeon cannot roll the Cow Level sub-type
+
+**Affects:** `sim/cataclysm_sim/config.py` and `sim/cataclysm_sim/engine.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`,
+`tools/tests/test_dungeon_subtype_port.py`,
+`sim/tests/test_cataclysm_cannot_be_a_cow_level.py` and the surge automation
+tests. Applied. Issue
+[#1333](https://github.com/sdubois777/Cataclysm/issues/1333).
+
+### The ruling
+
+Issue #1333 reported that a Cow Level Last Stand loses its doubled walk time.
+`Simulation._open_last_stand` adds the Last Stand's floor bonuses after the
+dungeon is built and worked the days out again with a bare `run_days_for`, which
+knows nothing about sub-types — 145 days for 145 floors where 290 is correct. The
+design document states two rules for a Cow Level: *"Time to complete is doubled
+and cannot be reduced."* A Cow Level Last Stand honoured neither. About 7 in 100
+of them were affected.
+
+The owner was offered three options — repair it, repair it after measuring the
+cost, or record it as intended — and gave a fourth, verbatim:
+
+> Last stand is a cataclysm dungeon and should not be allowed to roll as a cow
+> level sub type.
+
+**So the defect is not repaired, it is made impossible.** A Cataclysm dungeon
+cannot be a Cow Level, and the walk-time question therefore never arises.
+
+### The scope, which was asked separately and answered narrowly
+
+Which sub-types are legal on which dungeon types was otherwise unstated: seven
+sub-types on four kinds is 28 pairs, and the answer was "all of them" by omission
+rather than by decision. `Simulation._roll_subtype` took the dungeon type as an
+argument and never read it, which is what let a Cataclysm come out a Cow Level.
+
+Asked whether to implement only this ruling, to name the full legality matrix, or
+to settle it together with
+[#1342](https://github.com/sdubois777/Cataclysm/issues/1342), the owner answered:
+
+> Only the one you ruled.
+
+**One pair of the 28 is illegal. The other 27 stay legal, and nothing here may be
+read as a statement about any of them.** Some are questionable on the same
+reasoning — a Siege on a Quest dungeon that never resolves, a Sacrificial Fallen
+City — and that is a question for the owner, not an inference for a later session.
+`config.SUBTYPES_FORBIDDEN_ON` holds exactly one entry and two tests fail if a
+second appears.
+
+### How the refusal is done, and why not by rolling again
+
+**The barred sub-type is redistributed across the other six in proportion to
+their weights, not dropped.** Every dungeon has a sub-type since
+[#1293](https://github.com/sdubois777/Cataclysm/issues/1293), so a refusal cannot
+mean having none. Cow Level's 7 points go to the rest: on a Cataclysm the line is
+93 points wide and Timed takes 19.35% rather than 18%.
+
+**And it costs no second draw.** A wave rolls every dungeon from one stream, so a
+roll whose cost depended on the dungeon's kind would make each dungeon's depth
+depend on what the one before it drew.
+`Cataclysm.Surge.RollingASubTypeCostsExactlyOneDraw` guards that. Both sides take
+the barred sub-type off the line *before* the draw rather than refusing after it,
+which is exactly proportional and costs nothing:
+
+- the model draws from a shortened list — `random.choices` takes one `random()`
+  whatever the list length;
+- the game scales its single `FRand` against `TotalSpawnWeight(Barred)` and walks
+  the same shortened line.
+
+This is a different mechanism from the refused Siege, which cannot know it is
+refused until after the draw and so re-reads the draw it already made. The two
+give the same kind of answer. **When both fire at once** — a Cataclysm on a city
+that already holds a Siege — the re-read maps onto the five sub-types that are
+left, and an automation test picks seeds by outcome to reach that path.
+
+### Nothing builds a Cataclysm dungeon in the game yet
+
+`UCataclysmSurgeScheduler::MakeDungeon` still lands only Basic and Quest
+dungeons, and `MakeFallenCityDungeon` is the only other builder. The rule is in
+`RollSubType` and wired to `MakeDungeon` anyway, so that it applies the day
+something does build one rather than waiting to be remembered. `MakeDungeon`
+passing its kind through changes no draw today, because neither kind bars
+anything.
+
+### What it moves, measured
+
+**It does not measurably change the Last Stand.** 2,000 campaigns in two disjoint
+blocks of 1,000 seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120
+days ×5 (`surge_dungeon_count` = 5, not the default of 4, which `experiments.py`
+records as rejected), resolve ratio 2.0, escalation 0.10 per 100 days, craft 12
+days +4%, with the Siege damage settings live — the same seeds on both sides, so
+the comparison is paired:
+
+| | Without the rule | With the rule |
+| :-- | --: | --: |
+| Last Stand reached, share of campaigns | 96.3% | 96.3% |
+| Last Stands entered | 1,838 | 1,836 |
+| Won, per Last Stand **reached** (1,926) | 1 in 28.8 (67 wins) | **1 in 26.4 (73 wins)** |
+| Won, per Last Stand **entered** | 1 in 27.4 | 1 in 25.2 |
+| Mean floors | 407 | 407 |
+| Last Stands that were Cow Levels | 115 | **0** |
+| Earned Cataclysm opens, share of campaigns | 8.0% | 8.1% |
+| Earned Cataclysm won | 46.2% | 41.6% |
+
+**Six wins on a base of 67 is inside the noise**, against a standard deviation of
+about eight on that count. The honest reading is that the ruling did not
+measurably change how hard this fight is — not that it made it easier. The
+control is the last row but one: 115 Cow Level Last Stands became 0, so the two
+columns really are different things and the nil result is a result.
+
+**These figures are not comparable with the ones recorded for #1286 and #1345.**
+Those were 99.1% reached and about 1 in 19; commit `b196cd9` has since made the
+active Cataclysms a draw from the campaign seed with their count tied to the
+tier, so a seeded campaign no longer replays a figure measured before it.
+
+### What is left of the original defect
+
+`Simulation._open_last_stand` now recomputes its walk through
+`Simulation._walk_days`, which knows the sub-type, instead of the bare
+`run_days_for`. **That changes nothing today** — the two agree for every dungeon
+that can reach the line — and it is the point: the call that stays right if a
+dungeon kind is ever added that both can be a Cow Level and can change its own
+depth. A port test fails if it goes back.
+
+### What this does NOT decide
+
+- Any other dungeon-type and sub-type pair. Explicitly.
+- Whether a Fallen City should carry a sub-type at all —
+  [#1342](https://github.com/sdubois777/Cataclysm/issues/1342), still open.
+- Whether the Last Stand's difficulty is right. The four constants behind it are
+  not to be tuned towards a fairer fight; the owner ruled on 2026-09-05 that a
+  collapse should be near-fatal, and this changed neither the ruling nor,
+  measurably, the number under it.
+
 ## 2026-09-06 — The Cataclysm draw is per character and a failed run replays the same ones
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Game Start and Ending a Run
@@ -885,7 +1018,16 @@ It takes sixteen now, and its docstring carries the measured rate and says to
 re-measure over 60 before raising the number again — a genuine move past 50% is a
 finding about the game, and a larger sample would hide it.
 
-### A defect found while building this and deliberately not fixed
+### A defect found while building this and deliberately not fixed here
+
+> [!IMPORTANT]
+> **SETTLED ON 2026-09-06 AND NO LONGER OPEN.** The owner removed the situation
+> rather than repairing the symptom: a Cataclysm dungeon may not roll Cow Level
+> at all, so a Cow Level Last Stand cannot exist. See
+> **[2026-09-06 — A Cataclysm dungeon cannot roll the Cow Level sub-type](#2026-09-06--a-cataclysm-dungeon-cannot-roll-the-cow-level-sub-type)**
+> at the top of this file. The paragraph below is left as written because it is a
+> true account of what was found while building #1315; it is **not** the current
+> position.
 
 A Cow Level Last Stand loses its doubled walk time: `_open_last_stand` adds its
 floor bonuses and recomputes the days with a bare `run_days_for`, which knows
