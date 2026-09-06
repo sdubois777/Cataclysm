@@ -184,20 +184,40 @@ result = break_and_run(
                             "DEFAULT_SKILL_CRIT_CHANCE = 0.0")},
     ["python", "-m", "pytest", "sim/tests", "-q"],
 )
-print(result.summary)   # the last line pytest printed
-assert result.failed    # the guard noticed
+print(result.summary)            # the last line pytest printed
+assert result.named_failures     # these tests noticed
 ```
 
-That prints the name of the test that noticed:
+**Assert on `named_failures`, not on `failed`.** `failed` says only that the
+command exited non-zero, and a break that stops a module importing does that
+without running a single test -- so a worthless guard reported as proven. Issue
+#1314. `named_failures` is the tests that reached their assertions and failed,
+which is what a guard proof means. `result.crashed` tells the two apart if you
+want the fuller story, and `result.summary` says "NO MEASUREMENT" rather than
+leaving a bare False to be read as a guard that did not fire.
+
+`named_failures` gives every test that noticed. Run verbatim, that break trips
+five:
 
 ```
-FAILED sim/tests/test_character.py::test_the_default_critical_strike_chance_is_a_default_not_a_floor
+sim/tests/test_character.py::test_the_default_critical_strike_chance_is_a_default_not_a_floor
+sim/tests/test_dot_levers.py::test_efficacy_is_worth_more_to_damage_over_time_than_ferocity_is_to_a_hit
+sim/tests/test_player_damage.py::test_criticals_raise_the_average_above_the_non_critical_hit
+sim/tests/test_player_damage.py::test_the_reference_character_gains_about_a_sixth_from_criticals
+sim/tests/test_player_damage.py::test_the_target_comparison_deliberately_uses_the_non_critical_hit
 ```
+
+**`summary` is one line and shows the LAST of them**, so quoting it alone names a
+test that may have little to do with the guard you meant to prove. This block
+used to show a single `FAILED` line and call it "the name of the test that
+noticed"; the break trips five and `summary` prints a different one from the one
+shown. Print `named_failures` when you report a proof.
 
 Make the edit surgical. A blanket `text.replace("5.0", "0.0")` changes every
 occurrence, and a module that then fails to import gives a collection error
-instead of the failing test name, which says nothing about whether the guard
-works.
+instead of the failing test name. That is now caught rather than misread --
+`result.crashed` is True and `summary` says "NO MEASUREMENT" -- but the break
+still proves nothing, so make it narrow enough that the module still imports.
 
 It clears every `__pycache__` first, runs with bytecode writing off so the run
 cannot poison the next case, and restores every file in a `finally` so a crash
@@ -223,9 +243,15 @@ result = prove_cpp_guard(
                             "GetWorld(), Firer, Current, Current, BodyRadiusCm);")},
     test_prefix="Cataclysm.Skills",
 )
-print(result.summary)   # which tests failed, read from the log
-assert result.failed    # the guard noticed
+print(result.summary)            # which tests failed, read from the log
+assert result.named_failures     # these tests noticed
 ```
+
+**The same rule, for the opposite reason.** A crashed Unreal run reports no
+failures at all, so `failed` used to read as a guard that did not notice --
+issue #1313, the mirror of the Python one. `result.crashed` is True when the run
+never said how many tests it performed, and `summary` says so rather than
+printing a count of zero that reads like a verdict.
 
 It breaks the files, builds, refuses to go on unless the build actually compiled
 them, runs the automation tests, restores the files with a modification time
