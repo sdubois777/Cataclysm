@@ -184,6 +184,39 @@ class TestTheDeliberateException:
         assert reduced > plain
 
 
+class TestItMatchesTheGamesOwnStatedFigures:
+    """THE STRONGEST CHECK AVAILABLE ON AN ADDITION THAT HAD NO REFERENCE CODE.
+
+    `CataclysmEmpireRun.h` does not only give the constants; it states what they
+    produce: "An unattended Siege empties an Outpost's defence in 14 days, a
+    Bulwark's in 23, a Sanctuary's in 34 and the Pillar's in 47." Those four
+    numbers were written from the C++ implementation, so reproducing them is a
+    check on the whole arithmetic -- the share, the growth, the order of the two
+    and the day the growth starts counting from -- rather than on four
+    constants copied across.
+
+    The figures come out of `5*D*D + 5*D >= max_defence` for an Outpost, which
+    is the flat 1% share plus ten points for each day already stood.
+    """
+
+    @pytest.mark.parametrize("tier, days", [
+        (CityTier.OUTPOST, 14), (CityTier.BULWARK, 23),
+        (CityTier.SANCTUARY, 34), (CityTier.PILLAR, 47)])
+    def test_an_unattended_siege_empties_a_city_in_the_stated_days(
+            self, tier, days):
+        sim = sim_for()
+        d, city = a_siege(sim, tier=tier, stood_for=0)
+        n = 0
+        while city.defense > 0 and n < 10_000:
+            sim._apply_siege_damage()
+            sim.day += 1
+            n += 1
+        assert n == days, (
+            f"a Siege empties a {tier.value} in {n} days; "
+            f"game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h says "
+            f"{days}. The two implementations have diverged.")
+
+
 class TestOnePerCity:
     """`docs/Cataclysm_GDD_v2.md` line 3744: "Max 1 per city.\""""
 
