@@ -254,7 +254,27 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
 ### **Game Start**
 
-Each run begins with a randomly selected Cataclysm. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital.
+**A character's first Cataclysm is selected when the character is created, and it stays selected.** A new character begins against one randomly selected Cataclysm — the selection is made once, at character creation, not afresh at the start of each run. Every time a Cataclysm is defeated, the next run adds one more — so the player will eventually face all eight simultaneously. The run ends when the player defeats the Cataclysm boss dungeon or loses the capital.
+
+  
+
+**A failed run replays the same tier against the same Cataclysms.** Failing takes
+one of two forms and both count: losing in the Cataclysm boss dungeon, or losing
+the Last Stand. Either way the player restarts that run, and the Cataclysms they
+face are unchanged. A character at difficulty tier 3 facing Demonic, War and
+Death who fails restarts against Demonic, War and Death. Nothing is re-drawn,
+because the draw belongs to the character rather than to the attempt. Settled
+with the project owner on 2026-09-06. What else a failed run costs, and what it
+does not, is set out under Ending a Run later in this section.
+
+  
+
+**So the variety is between characters and the consistency is within one
+character's attempts.** Those are the two halves of the same rule and they do not
+compete: a player who fails can retry the same opponents and learn them, and a
+player who starts a new character gets a different problem. A design where the
+draw changed on every attempt would be a different game — retrying would be a
+fresh problem each time rather than a second attempt at the same one.
 
   
 
@@ -279,12 +299,16 @@ gets is part of what makes a character worth starting.
 **What the rule does not fix.** It says the order is drawn per character and no
 more. It does not say whether every ordering is equally likely, nor whether any
 pairing is constrained — the reasoning above allows a hard combination early
-rather than requiring one. It also does not say whether the drawn order is held
-for the character's whole life, which is the plain reading of "every time a
-player starts a new character", or drawn again for each run, which is what the
-paragraph above about a run beginning with a randomly selected Cataclysm would
-suggest; the two have not been reconciled. `docs/DECISIONS.md` lists the parts
-that are undecided, and issue #1338 carries them.
+rather than requiring one. `docs/DECISIONS.md` lists the parts that are
+undecided, and issue #1338 carries them.
+
+  
+
+**One question it left open has since been answered.** Whether the drawn order
+was held for the character's whole life or drawn again for each run was
+unreconciled when this rule was written down; the project owner settled it the
+same day, in favour of holding it, which is the first two paragraphs of this
+section.
 
   
 
@@ -352,6 +376,10 @@ That lopsidedness does not depend on which dungeon modifiers are in the draw: me
 
   
 
+**Every figure in this subsection was measured against one Cataclysm, and it was always Demonic.** The simulation set the active Cataclysms to the first N of a fixed list and never varied N with the difficulty tier, so a tier 1 measurement was a Demonic measurement. That was corrected on 2026-09-06 under issue #1338 — the count now follows the tier and which ones are drawn follows the character — and these figures **have not been re-measured since**. They are the last measured values and nothing has replaced them. Which Cataclysm is active moves the win rate by 13.6 points at tier 1, so the size of the correction is not assumed to be small. Note also that Demonic is the one Cataclysm that ignores the frontier, and the Last Stand is reached by a chain of frontier cities falling.
+
+  
+
 **So defending the empire is worth much more than an outcome table suggests.** Preventing a city loss is not merely avoiding damage; it is avoiding a near-certain loss of the run. The number of cities lost is close to a second loss counter.
 
   
@@ -371,8 +399,18 @@ the player deleting it, which is described under Deleting a Character below.
 **What a failed run costs is the run: the empire and the tier.** The empire map,
 the cities, the days elapsed and the progress made toward the active Cataclysms
 are all lost, and the next run replays the same tier — the same number of
-simultaneous Cataclysms — rather than adding one. Only defeating the boss dungeon
-adds a Cataclysm to the next run.
+simultaneous Cataclysms, **and the same ones** — rather than adding one. Only
+defeating the boss dungeon adds a Cataclysm to the next run.
+
+  
+
+**The same tier means the same Cataclysms, by name and not only by count.** The
+project owner settled that on 2026-09-06: a character at difficulty tier 3
+facing Demonic, War and Death, who fails, restarts against Demonic, War and
+Death. The order a character adds Cataclysms in is drawn once when the character
+is created, described under Game Start in this section, so a replay has nothing
+left to draw. This paragraph is the consequence of that rule and not a second
+rule.
 
   
 

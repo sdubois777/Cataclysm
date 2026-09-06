@@ -22,13 +22,54 @@ Power Score and the tier below — multiplies every weighted term of the Enemy
 Score formula. It runs 385, 498, 625, 717, 853, 979, 1063, 1207 across the eight
 tiers, so the relation between player power and enemy power is not the same at
 both ends. Measured: the empire tree preset ordering in section 7 is not the same
-at tier 1 as at tier 8.
+at tier 1 as at tier 8. **STALE — that comparison was made when both tiers ran
+against one fixed Cataclysm, so it compared two power scales rather than two
+tiers. See the next section.**
 
 The tier is `SWEEP_TIER` in `experiments.py`, and the preset section's tiers are
 `PRESET_TIERS`. Sweeping all eight tiers would take about two and a half hours,
 which is why only section 7 pays for a second one. This was issue
 [#281](https://github.com/sdubois777/Cataclysm/issues/281); before it, the tier
 came from an unstated default and nothing in the output mentioned it.
+
+## Which Cataclysms a campaign faces, and what that makes stale
+
+**How many is the difficulty tier: tier N faces N of the eight. Which ones is
+drawn per character.** `TuningConfig.active_cataclysm_count` and
+`engine.cataclysm_order_for` own those two rules. Issue
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338).
+
+**The seed is the character.** The order is drawn from a generator keyed only on
+the campaign seed, so the same seed always meets the same Cataclysms — which is
+the design's rule that a failed run replays the same tier against the same ones —
+and the same seed one tier higher meets those plus one, which is one character
+climbing. Different seeds are different characters, so a sweep cell averages over
+the draws a population of players would meet.
+
+**EVERY CAMPAIGN FIGURE ON RECORD BELOW TIER 8 IS STALE, INCLUDING THE ONES IN
+THIS FILE.** Until #1338 the count was a flat 1 whatever the tier, and the set
+was the first N of a fixed tuple, so every campaign the model ever ran faced
+Demonic and nothing else. Demonic is the only one of the eight that ignores the
+frontier, so every lane-based and frontier-pressure figure was measured against
+the one Cataclysm that does not respect lanes. Measured on #1338 at 250 campaigns
+per cell, tier 1, the `triage` policy, at surge size 4 — the raw `TuningConfig`
+default, not the calibrated 5 this report uses: which Cataclysm is active swings
+the win rate by 13.6 points, against the 4.5 points `win_rate_noise` allows at
+that sample size, and it flips the ordering between empire tree branches.
+
+**Tier 8 is unaffected, but say it precisely.** All eight are active there under
+either scheme, so the modifier pool is the same 116 entries for every seed and
+the mix of attack patterns is identical — measured, not assumed. What the draw
+still changes at tier 8 is the ORDER the eight sit in, and `_surge` picks a
+Cataclysm by index, so one seeded campaign will not replay identically. The
+distribution a tier 8 cell samples from has not moved; the particular sample has.
+
+**Specifically stale in this file**: every Last Stand figure in the map section
+below, and the claim that the preset ordering differs between tier 1 and tier 8.
+Both are marked where they appear. Re-measuring them is issue
+[#1358](https://github.com/sdubois777/Cataclysm/issues/1358), which also lists
+what was **not** checked — nobody has swept `docs/DECISIONS.md` for the older
+campaign figures.
 
 ## Fixed rules (not swept)
 
@@ -91,6 +132,13 @@ There are two ways to get into one:
   disjoint seed blocks. Issue #5 measured the original; whether a
   near-unwinnable fight is the intended shape is issue #1286, and the
   owner ruled that it is.
+
+  **STALE: every figure in this bullet and the two below it was measured at
+  tier 1 against Demonic as the only active Cataclysm**, which is what the
+  model did until issue #1338. They are kept because they are the last
+  measured values and nothing has replaced them, not because they still
+  describe what the model does. The copies of them in
+  `docs/Cataclysm_GDD_v2.md` carry the same warning.
 
   **Those figures replace 2% and 57%, and the fight is now about twice as
   common** -- 27.7% of campaigns against 13.5%. Two thirds of that rise is

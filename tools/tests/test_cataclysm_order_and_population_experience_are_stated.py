@@ -8,6 +8,9 @@ that, and the pull request that adds this file wrote both into
 
 - **The order the Cataclysms are added in is randomised for each new
   character**, so Void is not necessarily the last one added. Issue #1338.
+- **The draw is per character and it is held, so a failed run replays the same
+  tier against the same Cataclysms.** The owner ruled that later the same day,
+  after this file's first version recorded the question as open. Issue #1338.
 - **The population the empire keeps alive scales what a defeated dungeon is
   worth** in empire upgrade points. Issue #1348.
 
@@ -22,17 +25,29 @@ away.
 
 WHAT IS DELIBERATELY ALSO CHECKED: that each rule still says what it does NOT
 fix. Neither statement is a formula. #1338 does not say whether every ordering
-is equally likely or whether the order is drawn once per character or once per
-run; #1348 does not say whether the bonus is a fraction or an absolute count,
-per dungeon or per run, floored or capped. `CLAUDE.md` requires the genre to be
-researched and the sources named before any formula is proposed, and that
-research has not been done. If the "what the rule does not fix" paragraphs are
-deleted without those questions being answered, the document starts reading as
-a complete specification of something that was never specified, which is worse
-than the silence it replaced.
+is equally likely or whether any pairing is constrained; #1348 does not say
+whether the bonus is a fraction or an absolute count, per dungeon or per run,
+floored or capped. `CLAUDE.md` requires the genre to be researched and the
+sources named before any formula is proposed, and that research has not been
+done. If the "what the rule does not fix" paragraphs are deleted without those
+questions being answered, the document starts reading as a complete
+specification of something that was never specified, which is worse than the
+silence it replaced.
 
-WHAT IS NOT CHECKED HERE. That anything implements either rule. Nothing does
-yet, in the game or in the simulation, and both halves are open on their issues.
+ONE OF THOSE OPEN QUESTIONS WAS ANSWERED, and the tests for it are the third
+class below. When this file was first written the document said both "each run
+begins with a randomly selected Cataclysm" and that the order is drawn "every
+time a player starts a new character", and a character plays many runs. The
+owner settled it later the same day in favour of the per-character reading, and
+went further: a failed run replays the same tier against the same Cataclysms.
+The first sentence was reworded and the Ending a Run section, which promised
+only the same NUMBER of simultaneous Cataclysms, now promises the same ones.
+
+WHAT IS NOT CHECKED HERE. That the GAME implements any of this; nothing does
+yet, and #1348's half is unimplemented everywhere. The simulation's half of
+#1338 did land, and it is guarded by
+`sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` rather than
+here -- this file is about the document.
 """
 
 from __future__ import annotations
@@ -105,9 +120,9 @@ class TestTheCataclysmOrderIsRandomisedPerCharacter:
                 in document), (
             "the design no longer says what the randomisation rule leaves "
             "unfixed. Nothing states whether every ordering is equally likely, "
-            "or whether the order is drawn once per character or once per run. "
-            "Deleting that paragraph turns an unfinished rule into one that "
-            "looks finished. Issue #1338.")
+            "or whether any pairing is constrained. Deleting that paragraph "
+            "turns an unfinished rule into one that looks finished. "
+            "Issue #1338.")
 
     def test_the_decisions_log_carries_the_owners_words(self, decisions):
         assert ("Every time a player starts a new character, the order in which "
@@ -115,6 +130,106 @@ class TestTheCataclysmOrderIsRandomisedPerCharacter:
             "docs/DECISIONS.md no longer quotes the project owner's statement "
             "of 2026-09-06. The verbatim wording is the evidence that the rule "
             "was decided rather than inferred. Issue #1338.")
+
+
+class TestTheDrawIsHeldAndAFailedRunReplaysTheSameCataclysms:
+    """Issue #1338, the owner's second ruling of 2026-09-06.
+
+    THE SENTENCE THIS REPLACED IS WHY THIS CLASS EXISTS. Game Start read "Each
+    run begins with a randomly selected Cataclysm", which describes a fresh
+    draw at the start of every run. Under the ruling that is wrong, and it is
+    wrong in a way that is invisible unless something checks: a reader meeting
+    it takes the whole rule to be per-run, and a per-run game is a different
+    game -- retrying a failed run would be a fresh problem each time rather
+    than a second attempt at the same one.
+    """
+
+    def test_the_design_says_the_selection_is_made_at_character_creation(
+            self, document):
+        assert ("A character's first Cataclysm is selected when the character "
+                "is created, and it stays selected.") in document, (
+            "docs/Cataclysm_GDD_v2.md no longer says the Cataclysm is selected "
+            "at character creation and held. That is the correction the owner "
+            "ruled on 2026-09-06; the sentence it replaced said each RUN begins "
+            "with a randomly selected Cataclysm. Issue #1338.")
+
+    def test_the_old_per_run_sentence_is_gone(self, document):
+        """The specific wording the ruling made wrong. Adding the new rule
+        while leaving the old sentence in place would leave the section saying
+        both, which is the state the ruling was called for to end."""
+        assert "Each run begins with a randomly selected Cataclysm" not in document, (
+            "docs/Cataclysm_GDD_v2.md still contains 'Each run begins with a "
+            "randomly selected Cataclysm'. The owner ruled on 2026-09-06 that "
+            "the draw is made once per character and held, so that sentence "
+            "describes a game the design no longer specifies. Issue #1338.")
+
+    def test_the_design_states_the_failed_run_replay_rule(self, document):
+        assert ("A failed run replays the same tier against the same "
+                "Cataclysms.") in document, (
+            "docs/Cataclysm_GDD_v2.md no longer states that a failed run "
+            "replays the same tier against the same Cataclysms. Issue #1338.")
+
+    def test_it_names_both_ways_of_failing(self, document):
+        """The owner named both, and a rule that names one reads as though the
+        other is excluded."""
+        assert ("losing in the Cataclysm boss dungeon, or losing the Last "
+                "Stand") in document, (
+            "the design states the failed-run replay rule without saying what "
+            "failing is. The owner named two forms on 2026-09-06 -- losing in "
+            "the Cataclysm boss dungeon and losing the Last Stand -- and both "
+            "count. Issue #1338.")
+
+    def test_it_keeps_the_owners_worked_example(self, document):
+        """The clearest statement of the rule the owner gave, and the one a
+        reader can check their understanding against."""
+        assert "restarts against Demonic, War and Death" in document, (
+            "the design no longer carries the owner's worked example: a "
+            "character at difficulty tier 3 facing Demonic, War and Death who "
+            "fails restarts against those same three. Issue #1338.")
+
+    def test_the_ending_a_run_section_promises_the_same_ones_not_just_as_many(
+            self, document):
+        """The section already said a failed run replays "the same tier -- the
+        same number of simultaneous Cataclysms". The COUNT was never the
+        question. Leaving it at that would have left the document promising a
+        weaker rule than the one that was decided, in the section a reader goes
+        to for what a failure costs."""
+        assert ("The same tier means the same Cataclysms, by name and not only "
+                "by count.") in document, (
+            "the Ending a Run section states the replay rule in terms of the "
+            "number of simultaneous Cataclysms without saying they are the "
+            "same ones. The count was never in doubt; the identity is what the "
+            "owner ruled on 2026-09-06. Issue #1338.")
+
+    def test_it_says_the_two_halves_of_the_rule_do_not_compete(self, document):
+        """Randomising for variety and holding the draw for a replay read as
+        opposites unless the document says why they are not."""
+        assert ("the variety is between characters and the consistency is "
+                "within one character's attempts") in document, (
+            "the design states both halves of the rule -- the order is "
+            "randomised per character, and a failed run faces the same ones -- "
+            "without saying how they fit together. Issue #1338.")
+
+    def test_the_decisions_log_carries_the_owners_words(self, decisions):
+        assert ("if a player fails a run, meaning either they fail the "
+                "cataclysm dungeon or the last stand, they restart that run"
+                ) in decisions, (
+            "docs/DECISIONS.md no longer quotes the project owner's ruling of "
+            "2026-09-06 on when the draw happens. The verbatim wording is the "
+            "evidence that the rule was decided rather than inferred, and this "
+            "one was answered outside the options that were offered. "
+            "Issue #1338.")
+
+    def test_the_log_no_longer_lists_the_answered_question_as_open(
+            self, decisions):
+        """The earlier entry listed four things the rule left open and this was
+        the fourth. An entry that still calls a settled question open is worse
+        than one that never raised it: the next reader takes it for work to do.
+        """
+        assert ("The two have not been reconciled" not in decisions), (
+            "docs/DECISIONS.md still says the per-character and per-run "
+            "readings have not been reconciled. The owner reconciled them on "
+            "2026-09-06. Issue #1338.")
 
 
 class TestPopulationKeptAliveScalesEmpireProgression:

@@ -2,6 +2,138 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The Cataclysm draw is per character and a failed run replays the same ones
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Game Start and Ending a Run
+sections. `sim/cataclysm_sim/config.py` and `sim/cataclysm_sim/engine.py`. Issue
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338).
+
+### The ruling
+
+The design carried two statements about when the draw happens and they were not
+the same rule. Game Start said "Each run begins with a randomly selected
+Cataclysm"; the paragraphs written down earlier the same day said the order is
+drawn "every time a player starts a new character". A character plays many runs,
+so the two disagree, and the entry below recorded that as open. Put to the
+project owner, who answered outside the options offered, verbatim:
+
+> Yes, if a player fails a run, meaning either they fail the cataclysm dungeon or
+> the last stand, they restart that run. So if they are on t3 with
+> demonic/war/death they restart with those same cataclysms.
+
+**The draw is per character and it is held.** The set of active Cataclysms
+belongs to the character and to the tier it has reached, not to the attempt.
+
+**A failed run replays the same tier against the same Cataclysms.** Failing has
+two forms and the owner named both — losing in the Cataclysm boss dungeon, or
+losing the Last Stand. Either way the player restarts that run against the same
+Cataclysms.
+
+### Why this is not a wording tidy
+
+A player who fails can retry the same opponents and learn them. That is now a
+property of the design. It sits beside the reason the order is randomised at all
+— variety between characters, and preventing a solved opening — without
+competing with it: **the variety is between characters and the consistency is
+within one character's attempts.**
+
+### What was wrong in the document, in two places rather than one
+
+The sentence the ruling names, in Game Start, described a fresh draw at the start
+of every run and is replaced.
+
+**The Ending a Run section was also incomplete, which the ruling did not
+mention.** It already said a failed run "replays the same tier — the same number
+of simultaneous Cataclysms — rather than adding one", from the owner's ruling of
+2026-08-05 on issue
+[#315](https://github.com/sdubois777/Cataclysm/issues/315). The count was never
+the question; the identity was, and that section is where a reader goes to find
+out what a failure costs. It now says the same ones, by name.
+
+### The simulation half, decided at the same time
+
+The owner ruled earlier on 2026-09-06 to tie the active Cataclysm count to the
+difficulty tier and randomise which ones are drawn, rejecting both a fixed order
+and leaving it alone. That is now built, and this ruling is what decided how.
+
+**A CAMPAIGN IN THE SIMULATION IS ONE RUN BY ONE CHARACTER.** That was never
+stated because it never mattered; it decides everything here. `engine.Simulation`
+plays a single `cfg.tier`, ends the first time a Cataclysm dungeon is cleared or
+lost in, and never loops — and the design agrees, under Roguelike Meta
+Progression: "A run is played at a fixed tier, so a player does not move up the
+tiers inside a run; they finish a campaign and start the next one higher."
+
+**So the seed is the character**, and every part of the ruling follows from that
+one choice rather than needing separate code:
+
+- Replaying a failed run is re-running the seed, and the same seed draws the same
+  order, so the replay meets the same Cataclysms.
+- The same seed at tier N+1 draws the same order, so its active set is the tier N
+  set plus one. That is one character climbing rather than two unrelated worlds.
+- Different seeds are different characters, so averaging over campaigns measures
+  what a population of players meets instead of what one fixed world does.
+
+The draw comes from a generator keyed only on the seed, not from the campaign's
+own generator. Taking it from the main stream would make a change to the active
+count silently re-roll the whole run, and would break the pairing that sweeps
+depend on.
+
+**UNIFORM OVER ORDERINGS IS THE MODEL'S ASSUMPTION AND NOT A DECISION.** The
+ruling says the order is drawn per character and no more. Whether every ordering
+is equally likely and whether any pairing is constrained are still open, below.
+A uniform shuffle is the assumption that adds nothing the owner did not say, and
+it is not evidence about what the game will do.
+
+### The sweeps did NOT get noisier, which the decision expected them to
+
+The owner's decision said the existing 4.5 point win-rate floor "was measured
+under a fixed draw and does not carry over", and that whoever built this should
+measure the new one first. Measured, it has not moved.
+
+Conditions first, because they limit what the figure answers: **16 disjoint
+blocks of 250 campaigns per cell — 4,000 campaigns per condition — at difficulty
+tier 1, the `triage` policy, no empire tree against the Architect preset, at
+surge size 5, which is the calibrated value the balance report uses, and again at
+the raw `TuningConfig` default of 4, which `exp_calibrate` never tries and which
+`sim/experiments.py` records as rejected.**
+
+| floor | surge 5, old | surge 5, new | surge 4, old | surge 4, new |
+| :-- | --: | --: | --: | --: |
+| paired — two cells on the same seeds | 2.9 | **3.0** | 2.2 | **2.3** |
+| unpaired — two cells on different seeds | 1.7 | **1.7** | 1.9 | **2.7** |
+
+**The paired floor is the one sweeps use**, because every cell in
+`experiments.py` runs over the same block of seeds, and it does not move at
+either surge size. The reason is the seeding: the draw is keyed on the seed
+alone, so two cells face the same characters and the draw cancels in the
+difference. Only the unpaired floor rises, and only at the surge size that was
+rejected.
+
+**The 4.5 points the decision quotes is not a measurement.** It is
+`experiments.win_rate_noise(250)`, which is
+`100 x sqrt(2) x sqrt(0.25 / trials)` — a worst-case binomial bound evaluated at
+a 50% win rate, and a function of the sample size and nothing else. It is 4.5 at
+250 campaigns whatever the model does, so it could not have carried over or
+failed to. The empirical floors above are far tighter because the real win rates
+here are 6% to 29% rather than 50%.
+
+### What this costs, and it is not small
+
+**Every campaign figure this project holds below difficulty tier 8 was measured
+against one fixed Cataclysm, and it was always Demonic** — the only one of the
+eight that ignores the frontier. Those figures now describe a world the model no
+longer plays. Top-tier figures are unaffected in distribution, because all eight
+are active there under either scheme — verified, the modifier pool is the same
+116 entries for every seed — though the draw still permutes the order, so a
+particular seeded tier 8 campaign will not replay identically.
+
+`sim/README.md` marks the ones known to be affected. Issue
+[#1358](https://github.com/sdubois777/Cataclysm/issues/1358) carries the
+re-measurement, and records what was deliberately **not** checked: the older
+entries in this log were left alone, because a decision log is a record of what
+was decided on what evidence at the time, and nobody has swept them for which
+figures in them are campaign figures below tier 8.
+
 ## 2026-09-06 — Population kept alive scales empire progression
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Empire-Wide Upgrades and Roguelike
@@ -116,10 +248,16 @@ it is in `docs/`, so until this entry it was not one. The document said only tha
 one more, which leaves the order the additions arrive in unstated, and a reader
 who wanted an order had nothing to read but the simulation's fixed list.
 
+**That quoted sentence is no longer in the design.** The owner's second ruling of
+2026-09-06, in the entry above, replaced it: the selection is made at character
+creation and held. It is quoted here as what the document said before this entry,
+not as something a reader will still find.
+
 ### WHAT THIS DOES NOT SETTLE, and none of it may be invented
 
-The statement is a rule about variety, not a distribution. Four things are left
-open and are for the project owner rather than for a session to choose:
+The statement is a rule about variety, not a distribution. Four things were left
+open and are for the project owner rather than for a session to choose. **The
+fourth has since been answered and is struck through; three are still open:**
 
 1. **Whether every ordering is equally likely**, or whether the draw is weighted.
 2. **Whether the first Cataclysm is drawn uniformly from all eight.** Some are
@@ -131,12 +269,11 @@ open and are for the project owner rather than for a session to choose:
    really difficult runs" reads as a consequence the owner is happy to allow
    rather than a rule to enforce, but it can be read either way, and the
    difference is whether the generator needs a constraint at all.
-4. **Whether the drawn order is held for the character's whole life or drawn
-   again per run.** "Every time a player starts a new character" is the plain
-   reading and says once, at character creation. The existing sentence "each run
-   begins with a randomly selected Cataclysm" reads the other way. The two have
-   not been reconciled, and the Ending a Run section — a failed run replays the
-   same tier — makes it a question with consequences rather than a wording tidy.
+4. ~~**Whether the drawn order is held for the character's whole life or drawn
+   again per run.**~~ **ANSWERED the same day** — the owner ruled it is held,
+   and that a failed run replays the same Cataclysms. See "The Cataclysm draw is
+   per character and a failed run replays the same ones" above. The remaining
+   three are still open.
 
 ### The code half of #1338 is deliberately untouched
 
