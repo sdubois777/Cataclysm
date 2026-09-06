@@ -258,6 +258,36 @@ Each run begins with a randomly selected Cataclysm. Every time a Cataclysm is de
 
   
 
+**The order the Cataclysms are added in is randomised for each new character.**
+Every time a player starts a new character, the order in which Cataclysms are
+added per tier is drawn again. There is no Cataclysm that is always first and
+none that is always last: **Void is not necessarily the last one added**, and
+neither is any other. Settled with the project owner on 2026-09-06.
+
+  
+
+**Why it is randomised: variety, and so that the opening cannot be solved.** A
+fixed order would have one best first Cataclysm, one best second, and a
+speed-running route that a player learns once and then repeats for every
+character afterwards. Drawing the order per character means some Cataclysms are
+hard to start with, some combine early into a genuinely difficult run, and a
+character may draw a cakewalk for its first four tiers. Which of those a player
+gets is part of what makes a character worth starting.
+
+  
+
+**What the rule does not fix.** It says the order is drawn per character and no
+more. It does not say whether every ordering is equally likely, nor whether any
+pairing is constrained — the reasoning above allows a hard combination early
+rather than requiring one. It also does not say whether the drawn order is held
+for the character's whole life, which is the plain reading of "every time a
+player starts a new character", or drawn again for each run, which is what the
+paragraph above about a run beginning with a randomly selected Cataclysm would
+suggest; the two have not been reconciled. `docs/DECISIONS.md` lists the parts
+that are undecided, and issue #1338 carries them.
+
+  
+
 **The active Cataclysm determines the player's damage type.** Loot is biased toward weapons tuned to the Cataclysm being fought, and because weapon damage type determines both the available skills and the available class trees, this is what shapes the build a run produces. Fighting the Demonic Cataclysm means mostly Demonic weapons drop, which unlocks the Demonic classes.
 
   

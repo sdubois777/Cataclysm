@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The order the Cataclysms are added in is randomised per character
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Game Start section. Applied to the
+design document only. Issue
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338).
+
+### The ruling
+
+The project owner stated it on 2026-09-06, verbatim:
+
+> Void isn't necessarily "the last cataclysm added". Every time a player starts a
+> new character, the order in which cataclysms are added per tier is randomized.
+> This is to provide variety, as well as prevent the meta speed running strats
+> from being solved too quickly. Some cataclysms are hard to start with, some
+> combine early to make some really difficult runs, sometimes you might just get
+> a cakewalk for the first 4 tiers. Who knows.
+
+### Why it needed writing down at all
+
+It was nowhere in `docs/`. `CLAUDE.md` says a design decision is not real until
+it is in `docs/`, so until this entry it was not one. The document said only that
+"each run begins with a randomly selected Cataclysm" and that each defeat adds
+one more, which leaves the order the additions arrive in unstated, and a reader
+who wanted an order had nothing to read but the simulation's fixed list.
+
+### WHAT THIS DOES NOT SETTLE, and none of it may be invented
+
+The statement is a rule about variety, not a distribution. Four things are left
+open and are for the project owner rather than for a session to choose:
+
+1. **Whether every ordering is equally likely**, or whether the draw is weighted.
+2. **Whether the first Cataclysm is drawn uniformly from all eight.** Some are
+   much harder to start against than others — the measurement on issue #1338
+   found a 13.6 point spread in win rate between single active Cataclysms at
+   difficulty tier 1 — so a uniform first draw is a real difficulty spread
+   between characters rather than a cosmetic one.
+3. **Whether any pairing is constrained.** "Some combine early to make some
+   really difficult runs" reads as a consequence the owner is happy to allow
+   rather than a rule to enforce, but it can be read either way, and the
+   difference is whether the generator needs a constraint at all.
+4. **Whether the drawn order is held for the character's whole life or drawn
+   again per run.** "Every time a player starts a new character" is the plain
+   reading and says once, at character creation. The existing sentence "each run
+   begins with a randomly selected Cataclysm" reads the other way. The two have
+   not been reconciled, and the Ending a Run section — a failed run replays the
+   same tier — makes it a question with consequences rather than a wording tidy.
+
+### The code half of #1338 is deliberately untouched
+
+`sim/cataclysm_sim/config.py` line 319 holds `CATACLYSM_ROSTER` as a fixed tuple
+beginning with Demonic; line 431 defaults `active_cataclysms` to 1 and nothing
+derives it from the difficulty tier; `sim/cataclysm_sim/engine.py` line 138 takes
+the first N of that tuple. So every campaign the model has ever run has faced the
+same Cataclysms in the same order, and the comment above the roster describes
+tier-driven behaviour the code does not have.
+
+**None of that is changed here**, because what the model should do is a separate
+decision from what the game does: a model that randomises measures the average a
+player meets, and a model with a fixed order measures one case precisely. Both
+are defensible for a balance tool and the choice should be recorded rather than
+inherited. Issue #1338 carries it.
+
 ## 2026-09-06 — The Siege sub-type is modelled, and keeps percentage damage on purpose
 
 **Affects:** `sim/cataclysm_sim/config.py`, `engine.py`,
