@@ -460,36 +460,48 @@ public:
 	 * weight without rebalancing the rest changes that sub-type's share and
 	 * dilutes every other, which is the behaviour you want from a weight.
 	 *
-	 * COW LEVEL IS THE RAREST AT 7.6, which is what its reward deserves: the
+	 * COW LEVEL IS THE RAREST AT 7, which is what its reward deserves: the
 	 * design document gives it "ridiculous amounts of loot" for double the walk.
-	 * It was 4 in 100 while a third of dungeons were plain, so its share rose
-	 * along with everything else when that third was redistributed.
+	 * It was 4 in 100 while a third of dungeons were plain, and #1293 set it to
+	 * 7 when that third was redistributed.
 	 *
 	 * SIEGE IS 7.5 AND NOT 15 SINCE 2026-09-06. The owner ruled on issue #1349,
 	 * verbatim, "Halve the rate and cut the growth", after the dose-response
 	 * curves in `sim/analyse_siege_dose.py` showed a Siege at 15 in 100 taking
 	 * the earned Cataclysm dungeon from 84% of campaigns to 8%. The 7.5 it gave
-	 * up went to the other six IN PROPORTION, so the table still totals 100 and
-	 * a Siege is still the third commonest thing a surge makes.
+	 * up went to the other sub-types, so the table still totals 100 and a Siege
+	 * is still the second rarest thing a surge makes.
 	 * `UCataclysmEmpireRun::SiegeDamageGrowthPerDay` carries the other half of
 	 * that ruling, 10 points a day down to 2.5.
 	 *
-	 * THE SIX ARE ROUNDED TO ONE DECIMAL rather than rescaled exactly, which is
+	 * AND THE COW LEVEL DID NOT RIDE UP WITH IT. Sharing the 7.5 across all six
+	 * carried the Cow Level to 7.617647, above the Siege, which made the Siege
+	 * the rarest sub-type in the game and reversed the order the paragraph
+	 * above gives a reason for. Nobody chose that; it fell out of the
+	 * arithmetic. On issue #1369 the owner delegated the answer with one
+	 * constraint, verbatim -- "Your call, but the cow level should be pretty
+	 * rare" -- and the Cow Level was put back to the 7 that #1293 decided. THE
+	 * SIEGE'S 7.5 IS UNTOUCHED: that is the owner's own ruling.
+	 *
+	 * THE FIVE ARE ROUNDED TO ONE DECIMAL rather than rescaled exactly, which is
 	 * the form the owner chose for this same table on 2026-09-05: "clean round
-	 * numbers" over an exact proportional rescale. They sum to exactly 92.5.
+	 * numbers" over an exact proportional rescale. Siege 7.5 and Cow Level 7.0
+	 * leave 85.5 for the other five, whose old shares total 78, so the scale is
+	 * 85.5 / 78 = 1.096154 and Sacrificial takes the rounding remainder. The six
+	 * that are not the Siege still sum to exactly 92.5.
 	 *
 	 * THESE ARE A COPY AND THE SIMULATION IS THE ORIGINAL, the same arrangement
 	 * every other constant in this file is in.
 	 * `tools/tests/test_dungeon_subtype_port.py` reads each one back out of this
 	 * header and fails if either side moves.
 	 */
-	static constexpr float SpawnWeightTimed			= 19.6f;
-	static constexpr float SpawnWeightHorde			= 19.6f;
+	static constexpr float SpawnWeightTimed			= 19.7f;
+	static constexpr float SpawnWeightHorde			= 19.7f;
 	static constexpr float SpawnWeightSiege			=  7.5f;
-	static constexpr float SpawnWeightCowLevel		=  7.6f;
-	static constexpr float SpawnWeightElite			= 16.3f;
-	static constexpr float SpawnWeightVolatile		= 16.3f;
-	static constexpr float SpawnWeightSacrificial	= 13.1f;
+	static constexpr float SpawnWeightCowLevel		=  7.0f;
+	static constexpr float SpawnWeightElite			= 16.4f;
+	static constexpr float SpawnWeightVolatile		= 16.4f;
+	static constexpr float SpawnWeightSacrificial	= 13.3f;
 
 	/**
 	 * How often the given sub-type is rolled.

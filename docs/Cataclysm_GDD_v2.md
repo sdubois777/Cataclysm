@@ -5051,21 +5051,23 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 | Subtype | Spawn weight |
 | :-: | :-: |
-| Timed | 19.6 |
-| Horde | 19.6 |
-| Elite | 16.3 |
-| Volatile | 16.3 |
-| Sacrificial | 13.1 |
-| Cow Level | 7.6 |
+| Timed | 19.7 |
+| Horde | 19.7 |
+| Elite | 16.4 |
+| Volatile | 16.4 |
+| Sacrificial | 13.3 |
 | Siege | 7.5 |
+| Cow Level | 7 |
 
 
 
 **Every dungeon a surge creates has a subtype.** There is no “none” outcome and no row for one. Until 2026-09-05 there was, and it was the commonest at 34 in 100; the seven that remain were rescaled to take up that share while keeping their order.
 
-**The Siege was halved from 15 to 7.5 on 2026-09-06**, and the other six took the 7.5 it gave up in proportion, so the table still totals 100. The project owner ruled it on [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) — verbatim, “Halve the rate and cut the growth” — after 34,000 simulated campaigns showed a Siege at 15 in 100 taking the earned Cataclysm dungeon, the route this document treats as the ordinary way to win, from 84% of campaigns down to 8%. The other half of that ruling is in the Siege row of the sub-type table above: its growth went from 10 points a day to 2.5. **The 1% daily share of a city’s maximum was left exactly where it was**, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are.
+**The Siege was halved from 15 to 7.5 on 2026-09-06**, and the slack it gave up went to the others, so the table still totals 100. The project owner ruled it on [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) — verbatim, “Halve the rate and cut the growth” — after 34,000 simulated campaigns showed a Siege at 15 in 100 taking the earned Cataclysm dungeon, the route this document treats as the ordinary way to win, from 84% of campaigns down to 8%. The other half of that ruling is in the Siege row of the sub-type table above: its growth went from 10 points a day to 2.5. **The 1% daily share of a city’s maximum was left exactly where it was**, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are.
 
-**That makes the Siege the rarest subtype in the game, narrowly below the Cow Level**, which is a reversal of the order every earlier version of this table had and is a consequence of the ruling rather than a choice made alongside it. No proportional rescale avoids it: the Cow Level’s exact share is 7.62 against the Siege’s 7.5. Whether the Cow Level should stay the rarer of the two is [issue #1369](https://github.com/sdubois777/Cataclysm/issues/1369).
+**The Cow Level did not rise with the others; it is still 7.** Sharing the Siege’s slack across all six carried it to 7.617647, above the Siege, which made the Siege the rarest subtype in the game and reversed the order every earlier version of this table had. Nobody chose that — it fell out of the arithmetic. On [issue #1369](https://github.com/sdubois777/Cataclysm/issues/1369) the project owner delegated the answer with one constraint, verbatim — “Your call, but the cow level should be pretty rare” — and the Cow Level was held at the 7 that 2026-09-05’s rescale gave it, with only the five that are neither the Siege nor the Cow Level taking the slack. **The Siege’s 7.5 is untouched.** So a Siege is the second rarest subtype and a Cow Level is still the rarest.
+
+**The five were rounded to one decimal rather than rescaled exactly**, which is the form the owner chose for this same table on 2026-09-05. Siege 7.5 and Cow Level 7 leave 85.5 for the other five, whose earlier shares total 78, so the scale factor is 85.5 ÷ 78 = 1.096154: Timed and Horde 19.73, Elite and Volatile 16.44, Sacrificial 13.15. Sacrificial carries the rounding remainder at 13.3 so that the seven total exactly 100.
 
 
 

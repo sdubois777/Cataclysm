@@ -1198,36 +1198,44 @@ bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
 	// compared `SpawnWeightFor(Timed)` with `SpawnWeightTimed` would pass
 	// whatever either was. These are the numbers in
 	// `config.SUBTYPE_SPAWN_WEIGHTS`.
-	TestEqual(TEXT("Timed is 19.6"),
+	TestEqual(TEXT("Timed is 19.7"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Timed), 19.6f, 0.0001f);
+				  ECataclysmDungeonSubType::Timed), 19.7f, 0.0001f);
 
-	TestEqual(TEXT("Horde is 19.6"),
+	TestEqual(TEXT("Horde is 19.7"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Horde), 19.6f, 0.0001f);
+				  ECataclysmDungeonSubType::Horde), 19.7f, 0.0001f);
 
 	// SEVEN AND A HALF SINCE 2026-09-06, HALVED FROM 15 ON ISSUE #1349. The
-	// other six took the 7.5 it gave up in proportion, which is why none of
-	// them is a round number any more.
+	// slack it gave up went to the others, which is why none of them is a round
+	// number any more.
 	TestEqual(TEXT("Siege is 7.5"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
 				  ECataclysmDungeonSubType::Siege), 7.5f, 0.0001f);
 
-	TestEqual(TEXT("Cow Level is 7.6"),
+	// AND THE COW LEVEL IS BACK AT THE 7 ISSUE #1293 DECIDED. Sharing the
+	// Siege's slack across all six had carried it to 7.6, above the Siege,
+	// which made the Siege the rarest sub-type in the game as arithmetic rather
+	// than by anyone's choice. Issue #1369: the owner delegated it with one
+	// constraint, "Your call, but the cow level should be pretty rare".
+	TestEqual(TEXT("Cow Level is 7"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::CowLevel), 7.6f, 0.0001f);
+				  ECataclysmDungeonSubType::CowLevel), 7.0f, 0.0001f);
 
-	TestEqual(TEXT("Elite is 16.3"),
+	TestEqual(TEXT("Elite is 16.4"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Elite), 16.3f, 0.0001f);
+				  ECataclysmDungeonSubType::Elite), 16.4f, 0.0001f);
 
-	TestEqual(TEXT("Volatile is 16.3"),
+	TestEqual(TEXT("Volatile is 16.4"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Volatile), 16.3f, 0.0001f);
+				  ECataclysmDungeonSubType::Volatile), 16.4f, 0.0001f);
 
-	TestEqual(TEXT("Sacrificial is 13.1"),
+	// SACRIFICIAL CARRIES THE ROUNDING REMAINDER, which is why it is 13.3 and
+	// not the 13.15 an exact rescale of its 12 would give: the seven have to
+	// total exactly 100.
+	TestEqual(TEXT("Sacrificial is 13.3"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Sacrificial), 13.1f, 0.0001f);
+				  ECataclysmDungeonSubType::Sacrificial), 13.3f, 0.0001f);
 
 	// **AND NO SUB-TYPE AT ALL IS WEIGHTED NOTHING**, which is the change the
 	// owner made on 2026-09-05: every dungeon a surge produces has a sub-type.
@@ -1258,11 +1266,34 @@ bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
 
 	// COW LEVEL IS THE RAREST, which is what "ridiculous amounts of loot" has to
 	// be paid for with, and Timed the commonest.
-	TestTrue(TEXT("Cow Level is rarer than Sacrificial"),
-			 UCataclysmSurgeScheduler::SpawnWeightFor(
-				 ECataclysmDungeonSubType::CowLevel) <
-			 UCataclysmSurgeScheduler::SpawnWeightFor(
-				 ECataclysmDungeonSubType::Sacrificial));
+	//
+	// AGAINST EVERY OTHER SUB-TYPE AND NOT MERELY AGAINST SACRIFICIAL. Until
+	// issue #1369 this compared the Cow Level with Sacrificial alone, so it went
+	// on passing through the whole period when the Cow Level was 7.6 and the
+	// Siege 7.5 -- the one stretch where the sentence above it was false. A
+	// three-rung ladder cannot see a reversal at the bottom of the table, and
+	// this is what it costs to write one.
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
+	{
+		const ECataclysmDungeonSubType SubType =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		if (SubType == ECataclysmDungeonSubType::CowLevel)
+		{
+			continue;
+		}
+
+		// STRICTLY RARER, NOT MERELY NOT-COMMONER. A tie would leave the design
+		// sentence above half true and is the shape #1369 was raised about.
+		TestTrue(*FString::Printf(
+					 TEXT("Cow Level is strictly rarer than sub-type %d"),
+					 Value),
+				 UCataclysmSurgeScheduler::SpawnWeightFor(
+					 ECataclysmDungeonSubType::CowLevel) <
+				 UCataclysmSurgeScheduler::SpawnWeightFor(SubType));
+	}
 
 	TestTrue(TEXT("and Sacrificial rarer than Timed"),
 			 UCataclysmSurgeScheduler::SpawnWeightFor(
@@ -1548,15 +1579,16 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 
 		// **THE SEVENTH SUB-TYPE'S WEIGHT IS SPREAD OVER THE OTHER SIX IN
 		// PROPORTION, not dropped.** Dropping it would leave the six at their
-		// old shares of 100 and 7.6 rolls in every 100 with nothing to return.
+		// old shares of 100 and 7 rolls in every 100 with nothing to return.
 		//
-		// IT WAS 93 UNTIL 2026-09-06. The owner halved the Siege weight on issue
-		// #1349 and the other six took what it gave up, which carried the Cow
-		// Level from 7 to 7.6 and left 92.4 behind when it is barred.
+		// IT WAS 92.4 FOR ONE DAY. Halving the Siege weight on issue #1349 gave
+		// the other six the slack in proportion, which carried the Cow Level
+		// from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that #1293
+		// decided, so the shortened line is 93 again.
 		const float Total = UCataclysmSurgeScheduler::TotalSpawnWeight(
 			ECataclysmDungeonSubType::CowLevel);
 
-		TestEqual(TEXT("the shortened line is 92.4 points wide"), Total, 92.4f,
+		TestEqual(TEXT("the shortened line is 93 points wide"), Total, 93.0f,
 				  0.0001f);
 
 		for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
@@ -2388,12 +2420,12 @@ bool FCataclysmSurgeRefusedSiegeSpreadTest::RunTest(const FString& Parameters)
 	const float Left = 100.0f - 7.5f;
 
 	const TPair<ECataclysmDungeonSubType, float> Expected[] = {
-		{ ECataclysmDungeonSubType::Timed,		 19.6f },
-		{ ECataclysmDungeonSubType::Horde,		 19.6f },
-		{ ECataclysmDungeonSubType::CowLevel,	  7.6f },
-		{ ECataclysmDungeonSubType::Elite,		 16.3f },
-		{ ECataclysmDungeonSubType::Volatile,	 16.3f },
-		{ ECataclysmDungeonSubType::Sacrificial, 13.1f },
+		{ ECataclysmDungeonSubType::Timed,		 19.7f },
+		{ ECataclysmDungeonSubType::Horde,		 19.7f },
+		{ ECataclysmDungeonSubType::CowLevel,	  7.0f },
+		{ ECataclysmDungeonSubType::Elite,		 16.4f },
+		{ ECataclysmDungeonSubType::Volatile,	 16.4f },
+		{ ECataclysmDungeonSubType::Sacrificial, 13.3f },
 	};
 
 	int32 Seen = 0;

@@ -2,6 +2,140 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The Cow Level stays at 7 and only the five take the Siege's slack, so a Cow Level is the rarest thing again
+
+**Affects:** `sim/cataclysm_sim/config.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`,
+`game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`,
+`tools/tests/test_dungeon_subtype_port.py`,
+`sim/tests/test_cataclysm_cannot_be_a_cow_level.py`, `sim/README.md` and the
+Subtype Spawn Weights table in `docs/Cataclysm_GDD_v2.md`. Issue
+[#1369](https://github.com/sdubois777/Cataclysm/issues/1369). This closes the
+question the entry
+[2026-09-06 — Halve the Siege's rate and cut its growth](#2026-09-06--halve-the-sieges-rate-and-cut-its-growth-so-the-earned-win-route-survives)
+left open, and supersedes two of its sections.
+
+### The owner delegated it, with one constraint
+
+Shown the reversed order and three options, the project owner answered,
+verbatim: **“Your call, but the cow level should be pretty rare”**. So the shape
+of the answer was a judgement to be made here; the constraint was not.
+
+| Sub-type | Before 2026-09-06 | After #1349 | **Now** |
+| :-- | --: | --: | --: |
+| Timed | 18 | 19.6 | **19.7** |
+| Horde | 18 | 19.6 | **19.7** |
+| Elite | 15 | 16.3 | **16.4** |
+| Volatile | 15 | 16.3 | **16.4** |
+| Sacrificial | 12 | 13.1 | **13.3** |
+| Siege | 15 | **7.5** | **7.5 — untouched** |
+| Cow Level | 7 | 7.6 | **7** |
+| Total | 100 | 100.0 | **100.0** |
+
+### The Cow Level did not become commoner by decision; it drifted
+
+The owner ruled the Siege from 15 to 7.5 and said the rest take up the slack in
+proportion so the table still totals 100. Applied literally that raises every
+other sub-type including the Cow Level: `7 × (100 − 7.5) / (100 − 15) =
+7.617647`, which rounds to 7.6 and lands just **above** the Siege's 7.5.
+
+**Nobody chose to make a Cow Level commoner.** It rose as arithmetic, and it made
+the Siege the rarest sub-type in the game — reversing an order the repository
+gives a design reason for, since a Cow Level is rare **because** the design gives
+it “ridiculous amounts of loot”. Nothing ties the Siege's rarity to a reward; it
+was halved because it was ending campaigns.
+
+**So this restores a decided number rather than inventing one.** The 7 is what
+[#1293](https://github.com/sdubois777/Cataclysm/issues/1293) set when this table
+was rescaled to total 100, which matters because `CLAUDE.md` forbids inventing a
+constant on the spot. Holding the Cow Level there and giving its 0.6 to the five
+that are not the Siege honours both halves of the instruction: a Cow Level is as
+rare as it has always been, and the Siege stops being the rarest thing in the
+game.
+
+**The Siege's 7.5 is not touched.** That is the owner's own ruling of 2026-09-06
+under [#1349](https://github.com/sdubois777/Cataclysm/issues/1349).
+
+### The arithmetic, so it can be checked
+
+Siege 7.5 and Cow Level 7 leave **85.5** for the other five. Their pre-existing
+shares — Timed 18, Horde 18, Elite 15, Volatile 15, Sacrificial 12 — total 78, so
+the scale factor is `85.5 / 78 = 1.096154`:
+
+- Timed and Horde: `18 × 1.096154 = 19.73` → **19.7**
+- Elite and Volatile: `15 × 1.096154 = 16.44` → **16.4**
+- Sacrificial: `12 × 1.096154 = 13.15` → **13.3**, taking the rounding remainder
+  so the seven total exactly 100.0
+
+One-decimal rounding is used because the owner chose “clean round numbers” for
+this same table on 2026-09-05. The six that are not the Siege still sum to
+exactly 92.5, so the Siege refusal rule's shortened line is unchanged; the
+shortened line when a **Cow Level** is barred goes back from 92.4 to 93.
+
+### The figures the owner ruled on did not move, and that was measured
+
+The Siege weight is unchanged, so the campaign figures #1349 was decided on
+should not move. **That was a prediction and it was checked rather than
+asserted.** `sim/analyse_siege_dose.py`'s `today` row, at difficulty tier 1, the
+`No tree` preset, the `triage` policy, static surges every 120 days for **5**
+dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days
+for +4% of tier width:
+
+| Blocks A / B, 1,000 seeds each | Recorded on #1349 | Reproduced before this change | **After** |
+| :-- | --: | --: | --: |
+| Earned Cataclysm dungeon opens | 51.2% / 48.9% | 51.2% / 48.9% | **50.4% / 48.3%** |
+| Cities lost, of 25 | 16.43 / 16.11 | 16.43 / 16.11 | **16.48 / 16.23** |
+| Sieges created per campaign | 10.58 / 10.54 | 10.58 / 10.54 | **10.50 / 10.72** |
+
+**The before column reproduces the recorded figures exactly**, which is what
+makes the after column readable at all.
+
+**AND 0.04 IS NOT THE RESOLUTION OF THE SIEGE FIGURE.** Read against the recorded
+gap between blocks A and B, Sieges per campaign appears to have moved by more
+than the noise. That gap is one realised difference between two block means, not
+an estimate of anything, and it happens to be unusually small. Measured properly
+— **six** disjoint blocks of 1,000 seeds under each table, 12,000 campaigns —
+the block-to-block standard deviation is **0.105** under the old table and
+**0.125** under the new one, and the means are **10.633** against **10.677**:
+
+| Figure | Old mean (sd) | New mean (sd) | Move | Move in block sd |
+| :-- | --: | --: | --: | --: |
+| Earned Cataclysm dungeon opens | 50.22% (1.14) | 50.02% (1.55) | −0.20 | 0.15 |
+| Cities lost, of 25 | 16.347 (0.160) | 16.335 (0.235) | −0.012 | 0.06 |
+| Sieges created per campaign | 10.633 (0.105) | 10.677 (0.125) | +0.044 | 0.39 |
+
+**Every figure moves by well under half a block standard deviation.** Some
+movement was expected whatever the size: changing any weight changes which
+sub-type a given uniform draw lands on, so the campaigns diverge outright rather
+than shifting slightly.
+
+### The ordering guard is back at full strength, and a second one was found broken
+
+`tools/tests/test_dungeon_subtype_port.py::TestTheSpawnWeights::test_cow_level_is_the_rarest_and_the_two_commonest_are_level`
+was **re-scoped rather than deleted** when the reversal appeared, to hold the Cow
+Level as the rarest of the six the ruling did not touch. The order holds again,
+so it asserts the Cow Level against **every** sub-type once more. The
+"exactly one sub-type wide" assertion added alongside it is kept and strengthened
+rather than dropped: `min` is satisfied by a tie, so it now asserts that nothing
+is **as rare as** a Cow Level, which is the shape #1369 called “probably not what
+anyone intended”.
+
+**AND THE C++ HALF OF THAT GUARD HAD NEVER FIRED.**
+`Cataclysm.Surge.EverySubTypeCarriesTheWeightTheDesignGivesIt` carried the same
+sentence — "COW LEVEL IS THE RAREST" — but checked it as a two-rung ladder, Cow
+Level against **Sacrificial** and Sacrificial against Timed. It therefore passed
+undisturbed through the entire period when the sentence above it was false. It
+now compares the Cow Level with every other sub-type, and strictly. Broken by
+putting the Siege at 6.5, it names the Siege:
+
+```
+Expected 'Cow Level is strictly rarer than sub-type 3' to be true.
+34 tests performed, 33 succeeded, 1 failed:
+EverySubTypeCarriesTheWeightTheDesignGivesIt
+```
+
+The old ladder would have reported nothing at all for that break.
+
 ## 2026-09-06 — What a Quest dungeon's move means: the rim counts, the dungeon keeps everything, and moving is a chance
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` sections VIII and IX,
@@ -186,6 +320,14 @@ of 123.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 
+> **THE COW LEVEL ROW BELOW WAS SUPERSEDED THE SAME DAY.** Sharing the slack
+> across all six carried the Cow Level to 7.6 and put it above the Siege, which
+> nobody chose; the entry at the top of this file for
+> [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) puts it back to 7
+> and gives the 0.6 to the five that are neither the Siege nor the Cow Level.
+> **The Siege's 7.5 in this table is untouched and still current.** This section
+> is kept rather than corrected so the record shows what the rescale did.
+
 | Sub-type | Was | Now |
 | :-- | --: | --: |
 | Timed | 18 | 19.6 |
@@ -205,6 +347,13 @@ and 7.617647; the rounded values sit within 0.05 of a point of those, and the
 Siege’s own share is 7.5 either way.
 
 ### A consequence the owner was not asked about: the Siege is now the rarest
+
+> **RESOLVED, AND NO LONGER TRUE.** The owner was asked and delegated the answer
+> with one constraint; the Cow Level went back to 7 and the Siege is the second
+> rarest sub-type again. See the entry at the top of this file for
+> [#1369](https://github.com/sdubois777/Cataclysm/issues/1369). The last two
+> sentences below, describing what the port test then held, are also superseded:
+> the ordering assertion is back at full strength.
 
 At 7.5 against the Cow Level’s 7.6, **the Siege is the rarest sub-type in the
 game**, reversing an order the repository gives a design reason for — a Cow Level

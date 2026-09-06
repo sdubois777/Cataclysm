@@ -178,40 +178,43 @@ class TestTheSpawnWeights:
         Level is the rarest thing a surge produces, because the design document
         gives it "ridiculous amounts of loot".
 
-        **EXCEPT THE SIEGE, SINCE 2026-09-06, AND THAT IS A CONSEQUENCE OF A
-        RULING RATHER THAN A WEAKENED GUARD.** The owner halved the Siege weight
-        to 7.5 on issue #1349 because a Siege at 15 in 100 was ending campaigns;
-        the other six absorbed what it gave up, which carried the Cow Level to
-        7.6 and put it above the Siege. No rounding avoids that -- an exact
-        proportional rescale puts the Cow Level at 7.617647. The Cow Level's
-        rarity argument is about its loot and says nothing about the Siege, so
-        this holds it against the six the ruling did not touch and records the
-        exception. Whether the order should be restored is issue #1369.
+        **THE SIEGE WAS AN EXCEPTION FOR ONE DAY AND IS NOT ONE NOW.** Halving
+        the Siege weight to 7.5 on issue #1349 handed its slack to all six of
+        the others in proportion, which carried the Cow Level to 7.617647 --
+        above the Siege, so the Siege briefly became the rarest sub-type in the
+        game. That fell out of the arithmetic rather than being chosen, and this
+        assertion was re-scoped to the six the ruling did not touch while the
+        question was open. On issue #1369 the owner delegated the answer with
+        one constraint, verbatim: "Your call, but the cow level should be pretty
+        rare". The Cow Level went back to the 7 that #1293 decided, the Siege's
+        7.5 was left exactly where the owner set it, and so THE ASSERTION IS
+        BACK AT FULL STRENGTH: the Cow Level against every other sub-type.
         """
         unreal = {cpp: weight(surge_source, cpp) for cpp in NAMES.values()}
-        untouched = {k: v for k, v in unreal.items() if k != "Siege"}
 
-        assert unreal["CowLevel"] == min(untouched.values()), (
-            "Cow Level is no longer the rarest of the sub-types the ruling of "
-            f"2026-09-06 did not move: {unreal}")
+        assert unreal["CowLevel"] == min(unreal.values()), (
+            f"Cow Level is no longer the rarest: {unreal}")
 
         assert unreal["Timed"] == unreal["Horde"] == max(unreal.values()), (
             "Timed and Horde are no longer the joint commonest sub-types")
 
-        model_untouched = {k: v for k, v in model.SUBTYPE_SPAWN_WEIGHTS.items()
-                           if k != "Siege"}
         assert (model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]
-                == min(model_untouched.values()))
+                == min(model.SUBTYPE_SPAWN_WEIGHTS.values()))
 
-        # AND THE EXCEPTION IS EXACTLY ONE SUB-TYPE WIDE. Without this the two
-        # assertions above would pass for a table where three things had sunk
-        # below the Cow Level, which is a different distribution from the one
-        # the owner ruled on.
-        below = [name for name, value in model.SUBTYPE_SPAWN_WEIGHTS.items()
-                 if value < model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]]
-        assert below == ["Siege"], (
-            f"{below} are rarer than a Cow Level. The owner's ruling of "
-            "2026-09-06 put the Siege there and nothing else; see issue #1369")
+        # AND STRICTLY RARER, WITH NOTHING LEVEL WITH IT. `min` is satisfied by
+        # a tie, so on its own it would pass for a table where the Siege had
+        # been brought down to meet the Cow Level -- which is the shape #1369
+        # said was "probably not what anyone intended", a tenth of a point being
+        # no designed margin. This is the assertion that was re-scoped rather
+        # than deleted while that was open; it is stated the strong way now.
+        at_or_below = [name for name, value
+                       in model.SUBTYPE_SPAWN_WEIGHTS.items()
+                       if name != "Cow Level"
+                       and value <= model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]]
+        assert at_or_below == [], (
+            f"{at_or_below} are as rare as a Cow Level or rarer. A Cow Level is "
+            "the rarest thing a surge produces and the margin is a design "
+            "decision, not a rounding artefact; see issue #1369")
 
 
 class TestTheEnumTheRollWalks:

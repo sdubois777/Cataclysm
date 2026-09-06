@@ -160,11 +160,22 @@ There are two ways to get into one:
   campaigns in two disjoint blocks of 1,000 seeds, at tier 1, `No tree`,
   `triage`, STATIC surges every 120 days x5, resolve ratio 2.0, escalation
   0.10 per 100 days, craft 12 days +4%, Siege damage live and the policies
-  able to see one -- **the earned Cataclysm dungeon opens in 51.2% and 48.9%
-  of campaigns, the Last Stand is reached in 55.7% and 56.7%, and the empire
-  loses 16.4 and 16.1 cities of 25.** An unattended Siege now empties a city
+  able to see one -- **the earned Cataclysm dungeon opens in 50.4% and 48.3%
+  of campaigns, the Last Stand is reached in 55.7% and 57.0%, and the empire
+  loses 16.5 and 16.2 cities of 25.** An unattended Siege now empties a city
   in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47. **The
   99.1% and 2.4% above describe the game that ruling moved away from.**
+
+  **THOSE THREE WERE 51.2/48.9, 55.7/56.7 AND 16.4/16.1 UNTIL #1369**, which
+  held the Cow Level at 7 instead of letting it drift up to 7.6 with the rest.
+  The Siege weight is untouched by that change and the figures did not really
+  move: over six disjoint blocks of 1,000 seeds a side rather than two, the
+  earned route went 50.22% to 50.02%, cities lost 16.347 to 16.335 and Sieges
+  created per campaign 10.633 to 10.677 -- **all under half of the 1.14 /
+  0.16 / 0.11 block-to-block standard deviation**. `docs/DECISIONS.md` has the
+  table. **THE GAP BETWEEN TWO BLOCKS IS NOT THE NOISE FLOOR**: the recorded
+  Siege gap of 0.04 is one realised difference and is a quarter of the spread
+  six blocks actually show.
 
   **RE-MEASURED AFTER #1338 AND #1333, WHICH IS WHAT REPLACES THE STALE
   FIGURES ABOVE.** 2,000 campaigns in two disjoint blocks of 1,000 seeds, at
