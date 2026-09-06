@@ -438,9 +438,13 @@ class TuningConfig:
     # Siege has stood, so this number buys days back far more slowly than it
     # looks: halving it to 5 takes an Outpost only from 14 days to 19, while
     # quartering it reaches 25. That is why the ruling cut it to a quarter
-    # rather than halving it, and why the damage scale is a poor lever on its
-    # own -- issue #1349 measured halving all three constants as saving no
-    # cities at all, 21.0 lost of 25 before and after.
+    # rather than halving it, and why the damage scale was a poor lever on its
+    # own AT THE OLD NUMBERS: halving all three constants there saved no cities
+    # at all, 21.0 lost of 25 before and after. It is a better lever from here,
+    # because the flat 1% share now carries relatively more of the damage --
+    # re-measured after this change, halving all three gives 14.2 cities lost
+    # against 16.3. Neither figure is a reason to move it; both are recorded so
+    # the next reader does not carry the old one forward as a law.
     siege_damage_growth_per_day: float = 2.5
 
     #: "Max 1 per city". A refused roll is redistributed across the other
