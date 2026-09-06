@@ -6,6 +6,24 @@ purpose and they are read by the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSaveMigrationTests.cpp` and
 `CataclysmSaveRecordTests.cpp`.
 
+## Every number in a fixture must survive a 32-bit float exactly
+
+`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` loads a
+fixture, writes it back out, and compares the two **exactly**. There is no
+tolerance. So a value like `0.05`, which cannot be represented exactly as a
+32-bit float, comes back as a slightly different decimal and the test fails.
+
+**The failure message reads as nonsense when this happens**, because it prints
+both sides to six decimal places:
+
+> `Run_v1.json` and the record it loads into disagree at
+> the record.Cities[0].Upgrades[0].Value is 0.050000 on one side and 0.050000 on
+> the other.
+
+Use values that are exact in binary — `0.25`, `0.5`, `0.125`, whole numbers — or
+check a new value round-trips before committing it. This cost a build cycle on
+2026-09-05.
+
 ## Why the fixtures are the test
 
 `docs/Save_System_Design.md` section 5 says why the obvious version of this test
@@ -51,6 +69,23 @@ both to add a field the record had gained:
   `Cataclysm.SaveRecords.AFileWithoutThePartOfADayStillLoads`, which takes this
   file and removes the line, because no committed fixture can be missing a field
   its record writes -- `EveryFixtureHoldsEveryFieldItsRecordWrites` forbids it.
+
+`Run_v1.json` was edited a fourth time on 2026-09-05, for issue #1307:
+
+- `Cities` and `CityUpgradeSlots`, because the empire's 25 cities were not
+  written to a save at all.
+
+  **It holds two cities rather than 25, on purpose.** The guard below checks that
+  every FIELD survives a round trip, not every element, so two entries exercise
+  all nine saved city fields and all seven upgrade fields. Twenty-three more
+  identical entries would add two hundred lines nobody reads and no coverage.
+  One city is intact with a repeating upgrade, the other is fallen and doomed
+  with a one-time upgrade, so every flag and both kinds of upgrade appear.
+
+  **Only the mutable half of a city is here.** A city's name, tier, position and
+  its three adjacency lists are not saved, because
+  `UCataclysmEmpireMap::Build` recomputes all of them identically. See
+  `FCataclysmCity` for the split.
 
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:

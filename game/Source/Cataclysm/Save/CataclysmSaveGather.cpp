@@ -222,6 +222,24 @@ bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
 	return true;
 }
 
+bool FCataclysmSaveGather::CitiesFrom(const UCataclysmEmpireRun& Run,
+									 UCataclysmRunSave& Record)
+{
+	// A RUN THAT HAS NOT BEGUN HAS NO MAP. `Begin` is what builds one, so a
+	// freshly constructed run answers false and the record keeps whatever it
+	// already held rather than being emptied by a run that knows nothing.
+	const UCataclysmEmpireMap* Map = Run.Map;
+	if (Map == nullptr)
+	{
+		return false;
+	}
+
+	Record.Cities = Map->Cities;
+	Record.CityUpgradeSlots = Map->UpgradeSlots;
+
+	return true;
+}
+
 bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Character,
 										 UCataclysmCharacterSave& Record)
 {

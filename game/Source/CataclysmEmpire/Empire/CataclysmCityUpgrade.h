@@ -258,10 +258,10 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * else. The effect below is what the empire layer acts on, so this module
 	 * never has to know what any particular row is called.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FName RowName;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmCityUpgradeEffect Effect = ECataclysmCityUpgradeEffect::None;
 
 	/**
@@ -271,12 +271,12 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * CSV stores it and converting on the way in would put two conventions in
 	 * one system.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float Value = 0.0f;
 
 	/** Days between triggers. Only meaningful for the two "every N days"
 	 *  effects; zero for every other. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float IntervalDays = 0.0f;
 
 	/**
@@ -288,7 +288,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * `ECataclysmCityUpgradeEffect::CleanseEveryCity` is refused: it is gated on
 	 * tier 3 and tier 3 is unreachable.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Tier = 1;
 
 	/**
@@ -298,7 +298,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * the branch name, and the 2026-08-02 decision says they fire once and are
 	 * spent. Nothing in the design says the slot comes back, so it does not.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bOneTimeUse = false;
 
 	/**
@@ -308,7 +308,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * interval, so the first trigger is a full interval away rather than
 	 * immediate. Zero for every other effect, and unread for them.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 NextTriggerDay = 0;
 
 	bool IsValid() const

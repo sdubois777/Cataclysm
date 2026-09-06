@@ -6,6 +6,7 @@
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmLethality.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSavePartition.h"
@@ -564,6 +565,47 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	float PartialDay = 0.0f;
+
+	/**
+	 * The empire's 25 cities, as they stood.
+	 *
+	 * ONLY THE MUTABLE HALF OF EACH ONE IS IN HERE, because only fields marked
+	 * `SaveGame` are written and `FCataclysmCity` marks exactly the ones a run
+	 * can change. Its name, tier, position and its three adjacency lists are not
+	 * saved: `UCataclysmEmpireMap::Build` recomputes all of them identically, so
+	 * restoring is a rebuild and then an overlay. See that struct for the split.
+	 *
+	 * EMPTY MEANS NO EMPIRE WAS SAVED, not an empire of no cities. A save
+	 * written with no campaign running leaves this alone rather than emptying
+	 * it, the same rule `Day` follows.
+	 *
+	 * WHAT IS STILL NOT HERE. The dungeons standing on the map and their resolve
+	 * timers, and the surge schedule with the run's random stream. Those are the
+	 * other two slices of issue
+	 * [#1307](https://github.com/sdubois777/Cataclysm/issues/1307) and each
+	 * carries a trap that wants its own change.
+	 *
+	 * AND NOTHING READS ANY OF IT BACK YET. Nothing in the running game loads a
+	 * save at all -- issue #753 -- so this is what a restore will need rather
+	 * than something a player can already feel.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCity> Cities;
+
+	/**
+	 * How many upgrade slots each city has. Three, or two on Heretic.
+	 *
+	 * SAVED BESIDE THE CITIES BECAUSE IT GOVERNS THEM, and because the thing it
+	 * is derived from -- the run's lethality mode -- lives on the surge
+	 * scheduler, which is a later slice. Restoring the cities without it would
+	 * let a Heretic empire buy a third upgrade.
+	 *
+	 * ZERO MEANS NOTHING WROTE IT, which is what a save from before this field
+	 * existed reads back as, and a restore should take the ordinary three rather
+	 * than none.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CityUpgradeSlots = 0;
 
 	/** The character records taking part: one in solo play, up to four in
 	 *  co-operative play. */

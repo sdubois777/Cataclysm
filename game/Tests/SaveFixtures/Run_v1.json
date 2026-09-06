@@ -3,6 +3,51 @@
 	"RunId": "1D3F5A7B9C0E2468ACE013579BDF2468",
 	"Day": 118,
 	"PartialDay": 0.25,
+	"CityUpgradeSlots": 3,
+	"Cities": [
+		{
+			"CityId": 0,
+			"MaxDefence": 25000.0,
+			"MaxPopulation": 150000.0,
+			"Defence": 25000.0,
+			"Population": 148500.0,
+			"bFallen": false,
+			"bDoomed": false,
+			"bErased": false,
+			"Upgrades": [
+				{
+					"RowName": "Architect_This_city_repairs_5_defense_every_7_d",
+					"Effect": "HealDefenceEvery",
+					"Value": 0.25,
+					"IntervalDays": 7.0,
+					"Tier": 1,
+					"bOneTimeUse": false,
+					"NextTriggerDay": 122
+				}
+			]
+		},
+		{
+			"CityId": 7,
+			"MaxDefence": 1000.0,
+			"MaxPopulation": 5000.0,
+			"Defence": 0.0,
+			"Population": 1250.0,
+			"bFallen": true,
+			"bDoomed": true,
+			"bErased": false,
+			"Upgrades": [
+				{
+					"RowName": "Architect_Restore_citys_defenses_by_50",
+					"Effect": "RestoreDefence",
+					"Value": 0.5,
+					"IntervalDays": 0.0,
+					"Tier": 1,
+					"bOneTimeUse": true,
+					"NextTriggerDay": 0
+				}
+			]
+		}
+	],
 	"Characters": [
 		"5C0B1A4E5B7F4D2E9A3C6F81D24E7B03"
 	],

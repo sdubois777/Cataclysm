@@ -43,6 +43,20 @@ enum class ECataclysmCityTier : uint8
  * WHAT IT IS NOT: a place with buildings, a level, or anything the player walks
  * around. It is the strategy layer's record of a settlement -- where it sits,
  * what shields it, how much punishment it has left, and whether it still stands.
+ *
+ * ONLY THE MUTABLE HALF IS SAVED, AND THE SPLIT IS DELIBERATE. A save writes
+ * only fields marked `SaveGame`, and the ones marked here are the ones a run can
+ * change: the two maxima, which an upgrade raises; the current defence and
+ * population; the three flags; and the upgrades bought. `CityId` is marked as
+ * well, so a restore can check the record lines up with the map it is applied to
+ * rather than trusting the order.
+ *
+ * THE NAME, TIER, POSITION AND THE THREE ADJACENCY LISTS ARE NOT SAVED, AND
+ * MUST NOT BE. `UCataclysmEmpireMap::Build` recomputes every one of them
+ * identically from the lattice, so a save would be storing 96 integers and four
+ * other fields that can never legitimately differ from what a rebuild produces
+ * -- and a file that did differ would be describing an empire this build cannot
+ * make. Restoring is `Build` and then overlay. Issue #1307.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSMEMPIRE_API FCataclysmCity
@@ -57,7 +71,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * coordinates. That is deliberate: it makes a figure worked out in the
 	 * simulation directly comparable with one worked out here.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
 
 	/**
@@ -103,17 +117,17 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Perimeter;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float MaxDefence = 0.0f;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float MaxPopulation = 0.0f;
 
 	/** What defence is left. A city falls when this reaches zero. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float Defence = 0.0f;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float Population = 0.0f;
 
 	/**
@@ -124,7 +138,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * builds the Dungeon City is not here; that is a separate piece of the
 	 * strategy layer.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bFallen = false;
 
 	/**
@@ -135,11 +149,11 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * erased city and a reader will look for the field the simulation has. The
 	 * Void is one of the seven Cataclysms that do not exist; that is issue #53.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bDoomed = false;
 
 	/** Fallen and gone for good. Only an erased city is ever both. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bErased = false;
 
 	/**
@@ -158,7 +172,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * A ONE-TIME UPGRADE STAYS IN THE LIST after it has fired. It has spent its
 	 * slot, and removing it would hand the slot back and let it be bought again.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<FCataclysmCityUpgrade> Upgrades;
 
 	/** Whether this city has already bought that upgrade. */

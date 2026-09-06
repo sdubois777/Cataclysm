@@ -101,6 +101,25 @@ public:
 	static bool RunClockFrom(const UCataclysmEmpireRun& Run,
 							 UCataclysmRunSave& Record);
 
+	/**
+	 * The empire's cities, out of a run and into a run record.
+	 *
+	 * IT COPIES THE WHOLE CITY AND LETS THE SAVE MARKERS DECIDE what survives.
+	 * `FCataclysmCity` marks only its mutable half, so the name, tier, position
+	 * and the three adjacency lists fall away when the record is written and a
+	 * restore rebuilds them. Filtering here as well would be a second copy of
+	 * that decision, in a place nobody would look for it.
+	 *
+	 * IT TAKES A RUN RATHER THAN A WORLD, for the reason `RunClockFrom` above
+	 * gives.
+	 *
+	 * @return whether anything was read. False when the run has no map, which is
+	 *         a run `Begin` has not been called on, and then the record keeps
+	 *         whatever cities it already held rather than being emptied.
+	 */
+	static bool CitiesFrom(const UCataclysmEmpireRun& Run,
+						   UCataclysmRunSave& Record);
+
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);
