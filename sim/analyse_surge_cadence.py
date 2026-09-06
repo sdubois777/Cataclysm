@@ -1,13 +1,13 @@
 """How many dungeons per surge, and how many days between, keeps an invested
 player busy -- issue [#1090].
 
-WHY THIS EXISTS. The project owner asked, in their own words: "if dungeons on
-the outer layer are between 5-10 floors, the next layer dungeons are between
-15-25 floors, and the next layer dungeons are between 30-50 floors, how many
+WHY THIS EXISTS. The project owner asked, in their own words: "how do we keep a
+player who is fully invested into the explorer tree engaged? ... how many
 dungeons per surge and how many days between to keep a player invested into the
 explorer tree engaged? When I was originally thinking about this, I envisioned
 spawning somewhere around 20 dungeons per surge and it would be interesting to
-see the actual numbers run."
+see the actual numbers run." They then said of what ships: "4 dungeons every 120
+days is incredibly low, and boring either way. So we need to up those numbers."
 
 So the response variable is **how much of a campaign a maxed-Explorer player
 spends with nothing to do**, and the two levers are `surge_dungeon_count` and
@@ -16,10 +16,28 @@ copy of the config for the length of one batch, exactly as
 `analyse_siege_dose.py` does, and the recommendation lives on the issue where
 the owner can rule on it.
 
+**`surge_count_max` SILENTLY CAPS THE COUNT AXIS AT 14, AND THIS FILE LIFTS IT.**
+`Simulation.surge_count` applies `min(n, surge_count_max)` to the base count and
+not only to the escalation growth it reads as, and `surge_count_max` is 14
+(`MostDungeonsPerSurge` on the game side). So a knob of 20, 30 or 40 spawns
+exactly what a knob of 14 spawns:
+
+    knob    4    5   10   14   20   30   40
+    fires   4    5   10   14   14   14   14
+
+Measured by calling `surge_count()` directly; `test_analysis_scripts.py` holds
+that table. A sweep that did not lift the cap would print three identical rows
+and would never once measure the number in the owner's question.
+`base_config` therefore raises `surge_count_max` to the knob whenever the knob is
+higher, which is the only way the axis means what its label says.
+**SHIPPING ANY COUNT ABOVE 14 THEREFORE COSTS TWO CONSTANTS AND NOT ONE**, in
+both the simulation and `CataclysmSurge.h`. That is a real cost of any
+recommendation above 14 and it is stated on the issue.
+
 THE OWNER'S FLOOR RANGES ARE NOT THE SHIPPED ONES, and the difference is not
-cosmetic. The question describes three layers at 5-10, 15-25 and 30-50 floors.
-`TuningConfig.DUNGEON_SPECS` ships four city tiers, and only the middle one
-matches:
+cosmetic. An earlier form of the question described three layers at 5-10, 15-25
+and 30-50 floors. `TuningConfig.DUNGEON_SPECS` ships four city tiers, and only
+the middle one matches:
 
     layer in the question   shipped tier   shipped Basic floors
     5-10                    Outpost        8-15
@@ -33,7 +51,10 @@ three of the four tiers is a design question and not one this file can settle.
 what the model and the game both implement. `section_1_walk_days` prints both.
 
 WHAT "IDLE" MEANS HERE, BECAUSE IT IS A JUDGEMENT AND A DIFFERENT ONE GIVES A
-DIFFERENT NUMBER. Three readings are printed side by side:
+DIFFERENT NUMBER. An idle day is a free day on which the policy chose nothing:
+nothing standing that the player would enter, **and no craft available either**,
+because `triage` spends materials at the forge before it will sit still. Four
+readings are printed side by side:
 
   * **idle share of the campaign** -- `idle_days / survived_days`. THE HEADLINE,
     because the owner's question is about a player's time and not about their
@@ -42,19 +63,18 @@ DIFFERENT NUMBER. Three readings are printed side by side:
   * **idle share of free days** -- `idle_days / free_days`, which is what
     `experiments.summarise` calls `idle%` and what issues [#4] and [#1090] were
     written against. It is always the larger number, because a free day is the
-    only kind of day that can be idle. Quoting one where the other is meant
-    turns 66% into 93%.
+    only kind of day that can be idle. **Quoting one where the other is meant
+    changes the figure by tens of points**, so every number here names its
+    denominator.
+  * **the share of the campaign spent inside a dungeon** -- the positive reading
+    of the same question, and the one that says how much of a campaign is the
+    game the player came for.
   * **the split** -- of those idle days, how many had **no dungeon standing at
-    all** against how many had dungeons the player could not survive. The first
-    is a content-supply problem and the second is a power problem, and the
-    cadence only fixes the first.
-
-**MEASURED, THE SPLIT IS ENTIRELY THE FIRST**: at every cell in this file the
-"nothing survivable" and "declined everything" counts are zero, so the three
-readings above are the only ones that differ and "nothing available to enter"
-and "the player did nothing" are the same set of days. That is a result rather
-than an assumption, which is why the columns are printed even though they are
-zero -- a cadence that made them non-zero would change what the headline means.
+    all** against how many had dungeons the player could not survive, against
+    how many the policy simply declined. The first is a content-supply problem
+    and the second is a power problem, and the cadence only fixes the first.
+    Which it is, is measured rather than assumed; the run prints the three
+    columns and `main` says which way they came out.
 
 THE DAY LEDGER CLOSES, AND A TEST CHECKS IT. `_Ledger` classifies every day of
 every campaign as walking, at the forge, dead, or free, and
@@ -77,28 +97,81 @@ the balance report uses. THE DIFFICULTY TIER AND THE EMPIRE TREE ARE AXES here
 rather than constants, because the whole question is about an invested player and
 half of it is what the answer costs an uninvested one.
 
-**`surge_dungeon_count` IS NOT THE NUMBER OF DUNGEONS A SURGE SPAWNS.**
-`Simulation.trigger_surge` spawns `round(surge_dungeon_count * volume)` where
+**THE EXPLORER BRANCH IS HELD AT ITS SHIPPED SHAPE, `run_days_flat = 70.0`.**
+Issue [#1383] proposes replacing that flat reduction, because 70 flat days
+collapse every surge-spawned dungeon to the one-day floor and floor count stops
+affecting pace at all -- `section_1_walk_days` prints the table that shows it.
+**The two questions interact and this file answers only one of them.** Every
+Explorer figure here describes a player who clears any Basic dungeon in one day
+whatever its depth. If #1383 lands, the walk cost of a wave changes and this
+grid has to be re-run.
+
+**`surge_dungeon_count` IS STILL NOT THE NUMBER OF DUNGEONS A SURGE SPAWNS**,
+even with the cap lifted. `Simulation.trigger_surge` spawns
+`round(surge_count() * volume)` where
 `volume = (sum of the active Cataclysms' count_mult) ** cataclysm_volume_exponent`
 -- so the difficulty tier, which sets how many Cataclysms are active, multiplies
 the count. At tier 1 one Cataclysm is active and the realised count is within one
 of the knob; at tier 8 all eight are and the multiplier is about 4.4.
 `section_2_realised_size` prints the whole table, and **every grid row carries the
 realised mean it actually ran at** rather than only the knob it was set from.
+
+RUNNING IT. The default is a smoke test that proves the code path and nothing
+else; every share it prints is one campaign. The real grid is 5 core-hours, so
+it fans out across processes:
+
+    CATACLYSM_SURGE_CADENCE_TRIALS=1000 CATACLYSM_SURGE_CADENCE_JOBS=12 \
+        python -u sim/analyse_surge_cadence.py
+
+`sim/tests/test_analysis_scripts.py` asserts the fanned-out grid is identical to
+the single-process one, because a measurement that changes when it is split is
+not a measurement.
 """
 
 from __future__ import annotations
 
+import concurrent.futures
+import json
 import math
 import os
 import statistics
+import subprocess
+import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 from cataclysm_sim import policies
 from cataclysm_sim.config import (TREE_EXPLORER_AS_DESIGNED, TREE_NONE, CityTier,
                                   DungeonType, SurgeMode, TuningConfig)
 from cataclysm_sim.engine import Simulation, active_cataclysms_for
 from cataclysm_sim.patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
+
+
+def _env_ints(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
+    """A comma-separated integer axis from the environment, or the default."""
+    raw = os.environ.get(name, "").strip()
+    return default if not raw else tuple(int(part) for part in raw.split(","))
+
+
+def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
+    """One sweep axis: whatever the environment says, else the full axis, else
+    -- for a smoke run nobody asked to widen -- only its two ends.
+
+    WHY THE SMOKE RUN IS NARROWED AT ALL. `sim/tests/test_analysis_scripts.py`
+    executes this file, so its default cost is paid by continuous integration on
+    every pull request. The full 24-cell grid is 192 campaigns and thirteen
+    seconds of a suite that runs in about three minutes, and at one campaign a
+    cell it measures nothing -- the run says so itself. The two ends are kept
+    rather than the middle because they are the extremes the code has to
+    survive: the smallest wave at the longest gap, and the largest wave at the
+    shortest, which is also the cell where `surge_count_max` had to be lifted.
+    Setting the axis explicitly, or raising `CATACLYSM_SURGE_CADENCE_TRIALS`
+    past the smoke threshold, restores the whole thing.
+    """
+    if os.environ.get(name, "").strip() or not smoke:
+        return _env_ints(name, full)
+    return (full[0], full[-1]) if len(full) > 1 else full
+
 
 #: Campaigns per seed block. TWO DISJOINT BLOCKS RUN AT EVERY CELL and both are
 #: printed, so a cell costs twice this.
@@ -107,14 +180,18 @@ from cataclysm_sim.patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 #: four worlds, which is 192 batches -- eight times what `analyse_siege_dose.py`
 #: sweeps -- so the same default of 3 would cost a minute of the fast suite.
 #: `sim/tests/test_analysis_scripts.py` runs this file, and none of its checks
-#: depends on the size: they check the day ledger, the arithmetic tables and the
-#: noise-floor identity, not a campaign share.
+#: depends on the size: they check the day ledger, the arithmetic tables, the
+#: noise-floor identity and the fan-out, not a campaign share.
 #:
 #: Set `CATACLYSM_SURGE_CADENCE_TRIALS=1000` for 2,000 campaigns a cell, which is
 #: the size the figures on issue [#1090] were taken at. That is 192,000 campaigns
-#: and hours of wall clock, so run it in the background and narrow it with
-#: `CATACLYSM_SURGE_CADENCE_WORLDS` (see `WORLDS`) to spread it over several jobs.
+#: and about five core-hours, so raise `CATACLYSM_SURGE_CADENCE_JOBS` with it.
 TRIALS = int(os.environ.get("CATACLYSM_SURGE_CADENCE_TRIALS", "1"))
+
+#: Below this many campaigns a block, every share printed is noise and the run
+#: says so. It is also what narrows the default sweep axes; see `_axis`.
+SMOKE_BELOW = 250
+SMOKE = TRIALS < SMOKE_BELOW
 
 #: Disjoint by construction at any `TRIALS`, and block A starts at seed 0.
 BLOCKS = (("A", 0), ("B", TRIALS))
@@ -127,23 +204,26 @@ NOISE_BLOCKS = 6
 #: `UCataclysmSurgeScheduler` both ship, 5 is what `experiments.exp_calibrate`
 #: chooses and the balance report runs at, and 20 is the number in the owner's
 #: question. 10 brackets the two, and 30 and 40 are there to show where it breaks
-#: rather than because anyone proposes them.
-COUNTS = (4, 5, 10, 20, 30, 40)
+#: rather than because anyone proposes them. EVERY VALUE ABOVE 14 NEEDS THE CAP
+#: LIFTED; see the module docstring.
+COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS", (4, 5, 10, 20, 30, 40), SMOKE)
 
-#: The interval axis, in days between surges. 120 ships; 30 is the shortest gap
-#: `surge_interval_min` would ever allow an escalating run to reach.
-INTERVALS = (30, 60, 90, 120)
+#: The interval axis, in days between surges. 120 ships; 30 is close to the
+#: shortest gap `surge_interval_min` (25) would ever allow an escalating run to
+#: reach, so it is the floor of what the game's own arithmetic considers sane.
+INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 
 #: `(label, tree, difficulty tier)`. The four worlds every cell is measured in.
 #:
 #: TIER 4 IS THE SECOND TIER AND HERE IS WHY. The tier is the number of active
 #: Cataclysms, so it multiplies the realised surge size: at tier 4 the shipped
 #: knob of 4 already spawns about 11 dungeons a surge, which puts the owner's 20
-#: inside the grid at a knob of 7 or 8 rather than off the end of it. Tier 8
-#: multiplies by 4.4 and would have made the knob axis meaningless -- a knob of
-#: 40 there is 176 dungeons in one wave -- and a no-tree player is already at the
-#: floor at every cell, so it could say nothing about what the answer costs an
-#: uninvested player.
+#: inside the grid at a knob of 7 or 8 rather than off the end of it. It is also
+#: the midpoint of the eight-tier ladder, so it says whether a cadence chosen at
+#: tier 1 survives being multiplied. Tier 8 multiplies by 4.4 and would have made
+#: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
+#: and a no-tree player is already at the floor at every cell there, so it could
+#: say nothing about what the answer costs an uninvested player.
 WORLDS = (
     ("no tree, tier 1", TREE_NONE, 1),
     ("Explorer, tier 1", TREE_EXPLORER_AS_DESIGNED, 1),
@@ -155,11 +235,21 @@ WORLDS = (
 #: can be split across background jobs. `CATACLYSM_SURGE_CADENCE_WORLDS=1,3` runs
 #: the two Explorer worlds. Empty means all four.
 _pick = os.environ.get("CATACLYSM_SURGE_CADENCE_WORLDS", "").strip()
-SELECTED = (WORLDS if not _pick
-            else tuple(WORLDS[int(i)] for i in _pick.split(",")))
+SELECTED_INDICES = (tuple(range(len(WORLDS))) if not _pick
+                    else tuple(int(i) for i in _pick.split(",")))
+SELECTED = tuple(WORLDS[i] for i in SELECTED_INDICES)
 
-#: The layers the owner's question describes, against the tiers this model ships.
-#: See the module docstring: only the middle one matches.
+#: How many worker processes the grid fans out across. 1 runs it in this process.
+#: The grid is about five core-hours at `TRIALS=1000`, so this is what makes it
+#: re-runnable rather than merely runnable.
+JOBS = int(os.environ.get("CATACLYSM_SURGE_CADENCE_JOBS", "1"))
+
+#: Set on a worker process by `_run_cell_out_of_process`. A worker measures one
+#: cell, prints it as JSON and exits without printing a report.
+WORKER_CELL = os.environ.get("CATACLYSM_SURGE_CADENCE_CELL", "").strip()
+
+#: The layers an earlier form of the owner's question described, against the
+#: tiers this model ships. See the module docstring: only the middle one matches.
 OWNER_LAYERS = ((5, 10), (15, 25), (30, 50))
 
 CITY_TIERS = (CityTier.OUTPOST, CityTier.BULWARK,
@@ -168,7 +258,14 @@ CITY_TIERS = (CityTier.OUTPOST, CityTier.BULWARK,
 
 def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
                 tree=TREE_NONE) -> TuningConfig:
-    """The settings every row runs under. See the module docstring."""
+    """The settings every row runs under. See the module docstring.
+
+    THE `surge_count_max` LINE IS NOT HOUSEKEEPING. `Simulation.surge_count`
+    caps the base count at it, so without this line every knob above 14 is a
+    knob of 14 and the top half of the count axis measures nothing. It is raised
+    only when the knob asks for more, so the shipped cap still applies at every
+    cell that does not exceed it.
+    """
     return replace(
         TuningConfig(),
         tier=tier,
@@ -176,6 +273,7 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
         resolve_floor_ratio=2.0,
         surge_interval_days=float(interval),
         surge_dungeon_count=count,
+        surge_count_max=max(count, TuningConfig().surge_count_max),
         dungeon_power_escalation_per_100_days=0.10,
         craft_days=12,
         craft_power_gain_frac=0.04,
@@ -186,6 +284,31 @@ def base_config(tier: int = 1, count: int = 4, interval: float = 120.0,
 #: this file cannot claim the wrong baseline after somebody moves the constant.
 SHIPPED_COUNT = TuningConfig().surge_dungeon_count
 SHIPPED_INTERVAL = TuningConfig().surge_interval_days
+SHIPPED_COUNT_CAP = TuningConfig().surge_count_max
+def surge_count_for(tier: int, count: int, cap: int | None = None) -> int:
+    """What `Simulation.surge_count` returns for this knob, at this cap.
+
+    THE WHOLE POINT OF THIS FILE'S CAP FIX IS IN ONE LINE OF THAT METHOD, so it
+    is asked rather than reimplemented: `min(n, surge_count_max)` is applied to
+    the base count and not only to the escalation growth. `cap` of None means
+    the cap `base_config` uses, which is the knob itself; pass
+    `SHIPPED_COUNT_CAP` to ask what the shipped game would do instead.
+
+    CALLED UNBOUND, ON A STAND-IN CARRYING THE TWO ATTRIBUTES IT READS.
+    `surge_count` reads `self.cfg` and `self.surge_index` and nothing else, and
+    building a real `Simulation` builds a whole empire graph -- 96 of them, for
+    a table of 96 integers, cost four seconds of the fast test suite. This keeps
+    the answer coming from the engine's own method rather than a copy of it,
+    which is the property that matters: a change to that line still moves this
+    table. `sim/tests/test_analysis_scripts.py` checks this against a real
+    `Simulation` at every knob, so the stand-in cannot quietly stop matching.
+    """
+    cfg = base_config(tier=tier, count=count)
+    if cap is not None:
+        cfg = replace(cfg, surge_count_max=cap)
+    return Simulation.surge_count(SimpleNamespace(cfg=cfg, surge_index=0))
+
+
 #: Cities in the empire, and how many of them can actually fall. The Pillar's
 #: fall is the end of the run rather than a lost city, so "cities lost" is out of
 #: the second number.
@@ -199,9 +322,12 @@ class _Ledger(Simulation):
     FOUR KINDS, AND THEY ARE EXHAUSTIVE: dead, at the forge, walking a dungeon,
     or free to choose. `Simulation.step` branches on exactly these flags in
     exactly this order, and nothing between the top of `step` and that branch
-    changes any of them -- `_fall` and `_open_last_stand` both skip
-    `self.current` on purpose. So reading them at the top of `step` classifies
-    the day the step is about to spend.
+    changes any of them: every write to `self.current`, `self.dying` and
+    `self.crafting` in `engine.py` is either in `__init__`, in `_finish_craft`,
+    in `_finish_current`, or in the player-action section of `step` itself --
+    all of which are downstream of the read below. `_resolve`, `_fall`,
+    `_open_last_stand`, `_apply_siege_damage` and `trigger_surge` write none of
+    the three.
 
     `sim/tests/test_analysis_scripts.py` asserts the four sum to
     `survived_days`, which is the check that would catch a fifth branch being
@@ -389,8 +515,9 @@ def section_1_walk_days() -> dict:
     for i, tier in enumerate(CITY_TIERS):
         asked = (f"{OWNER_LAYERS[i][0]}-{OWNER_LAYERS[i][1]}"
                  if i < len(OWNER_LAYERS) else "(none)")
-        mark = "   <- the only match" if tuple(OWNER_LAYERS[i:i + 1]) and i < len(
-            OWNER_LAYERS) and OWNER_LAYERS[i] == shipped[i] else ""
+        mark = ("   <- the only match"
+                if i < len(OWNER_LAYERS) and OWNER_LAYERS[i] == shipped[i]
+                else "")
         print(f"    {asked:<24}{tier.value:<14}"
               f"{f'{shipped[i][0]}-{shipped[i][1]}':<22}{mark}")
     print("\n  Every figure in this file is measured against the SHIPPED table, "
@@ -422,7 +549,14 @@ def section_1_walk_days() -> dict:
 def realised_size_table(seeds: int = 400) -> dict:
     """Mean realised dungeons per surge, by difficulty tier and knob setting.
 
-    `Simulation.trigger_surge` spawns `round(surge_dungeon_count * volume)`, and
+    TWO NUMBERS PER CELL AND THE DIFFERENCE BETWEEN THEM IS THE POINT.
+    `uncapped` is what the knob would spawn if `surge_count_max` did not exist;
+    `shipped_cap` is what it spawns under the cap this repository ships. They
+    part company above a knob of 14, and a sweep that only printed the first
+    would be describing a game nobody can play. `lifted` is what this file
+    actually measures, which is the first, because `base_config` raises the cap.
+
+    `Simulation.trigger_surge` spawns `round(surge_count() * volume)`, and
     `volume` depends on WHICH Cataclysms the character drew as well as how many,
     so this averages the volume over `seeds` characters rather than quoting one.
     """
@@ -435,8 +569,12 @@ def realised_size_table(seeds: int = 400) -> dict:
                      for t in active_cataclysms_for(cfg, seed)]
             volumes.append(sum(mults) ** cfg.cataclysm_volume_exponent)
         volume = statistics.fmean(volumes)
-        out[tier] = {"volume": volume,
-                     "counts": {c: round(c * volume) for c in COUNTS}}
+        capped, lifted = {}, {}
+        for c in COUNTS:
+            capped[c] = round(surge_count_for(tier, c, SHIPPED_COUNT_CAP)
+                              * volume)
+            lifted[c] = round(surge_count_for(tier, c) * volume)
+        out[tier] = {"volume": volume, "shipped_cap": capped, "lifted": lifted}
     return out
 
 
@@ -446,23 +584,43 @@ def section_2_realised_size() -> dict:
     print("2. THE KNOB IS NOT THE NUMBER OF DUNGEONS. Exact arithmetic, no "
           "campaigns.")
     print("=" * 118)
-    print("\n  A surge spawns round(surge_dungeon_count * volume), where volume "
-          "is the sum of the")
+    print("\n  A surge spawns round(surge_count() * volume), where volume is "
+          "the sum of the")
     print("  ACTIVE Cataclysms' count_mult raised to cataclysm_volume_exponent "
           f"({base_config().cataclysm_volume_exponent:g}).")
     print("  The difficulty tier IS the number active, so the tier multiplies "
           "the wave. Averaged")
     print("  over 400 characters, because which Cataclysms are drawn moves it "
           "as well as how many.")
+    print("\n  FIRST, THE CAP. surge_count() applies min(n, surge_count_max) "
+          "to the BASE count, and")
+    print(f"  surge_count_max ships at {SHIPPED_COUNT_CAP} "
+          f"(MostDungeonsPerSurge in CataclysmSurge.h). So under what ships:")
+    probe = {c: surge_count_for(1, c, SHIPPED_COUNT_CAP) for c in COUNTS}
+    print(f"\n    {'knob':>8}" + "".join(f"{c:>7}" for c in COUNTS))
+    print(f"    {'fires':>8}" + "".join(f"{probe[c]:>7}" for c in COUNTS))
+    print("\n  THIS FILE LIFTS THE CAP to the knob, so the axis means what its "
+          "label says. Shipping")
+    print("  any count above that therefore costs TWO constants, in the "
+          "simulation and in C++.")
+
+    print("\n  Realised dungeons a surge spawns, WITH THE CAP LIFTED (what "
+          "every cell below ran at):")
     print(f"\n    {'tier':>5}{'volume':>9}"
           + "".join(f"{f'knob {c}':>10}" for c in COUNTS))
     for tier, cell in table.items():
-        mark = ""
-        if cell["counts"][SHIPPED_COUNT] >= 18:
-            mark = "   <- the shipped knob of 4 already spawns ~20 here"
         print(f"    {tier:>5}{cell['volume']:>9.2f}"
-              + "".join(f"{cell['counts'][c]:>10}" for c in COUNTS)
-              + (mark if tier == 8 else ""))
+              + "".join(f"{cell['lifted'][c]:>10}" for c in COUNTS))
+    print(f"\n  The same table UNDER THE SHIPPED CAP OF {SHIPPED_COUNT_CAP}, "
+          "which is what the game does today:")
+    print(f"\n    {'tier':>5}{'volume':>9}"
+          + "".join(f"{f'knob {c}':>10}" for c in COUNTS))
+    for tier, cell in table.items():
+        mark = ("   <- the shipped knob of 4 already spawns ~20 here"
+                if tier == max(table) else "")
+        print(f"    {tier:>5}{cell['volume']:>9.2f}"
+              + "".join(f"{cell['shipped_cap'][c]:>10}" for c in COUNTS)
+              + mark)
     return table
 
 
@@ -470,14 +628,14 @@ def section_2_realised_size() -> dict:
 # Section 3 -- the idle measurement at the shipped cadence.
 # ---------------------------------------------------------------------------
 
-def section_3_idle_today() -> dict:
+def section_3_idle_today(measured: dict[str, dict]) -> dict:
     print(f"\n{'=' * 118}")
     print(f"3. THE IDLE MEASUREMENT AT WHAT SHIPS -- {SHIPPED_COUNT} dungeons "
           f"every {SHIPPED_INTERVAL:.0f} days, static.")
     print("=" * 118)
     print("\n  Three readings of the same campaigns. They are not "
           "interchangeable; see the module")
-    print("  docstring. idle%% is the share of ALL days; idle/free%% is the "
+    print("  docstring. idle% is the share of ALL days; idle/free% is the "
           "share of the days the")
     print("  player was choosing at all, which is what issues #4 and #1090 "
           "quote.")
@@ -485,12 +643,12 @@ def section_3_idle_today() -> dict:
           f"{'noSafe%':>8} {'declined%':>10} {'inDgn%':>7} {'forge%':>7} "
           f"{'idle/free%':>11} {'+-':>5} {'days':>6}")
     out = {}
-    for label, tree, tier in SELECTED:
-        cfg = base_config(tier=tier, count=SHIPPED_COUNT,
-                          interval=SHIPPED_INTERVAL, tree=tree)
+    for world_index in SELECTED_INDICES:
+        label = WORLDS[world_index][0]
         out[label] = {}
         for block, seed0 in BLOCKS:
-            s = measure(cfg, seed0)
+            s = measured[_cell_key(world_index, SHIPPED_COUNT,
+                                   int(SHIPPED_INTERVAL), seed0)]
             out[label][block] = s
             print(f"{label:<20} {block:>3} {s['idle%']:>7.1f} "
                   f"{s['idle%se']:>5.1f} {s['empty%']:>7.1f} "
@@ -505,12 +663,115 @@ def section_3_idle_today() -> dict:
 # Section 4 -- the grid.
 # ---------------------------------------------------------------------------
 
-def section_4_grid() -> dict:
+def _cell_key(world_index: int, count: int, interval: int, seed0: int) -> str:
+    """One batch of campaigns, named by everything that decides what it is.
+
+    THE SEED GOES IN THE NAME RATHER THAN A BLOCK LETTER so that sections 3, 4
+    and 5 all name their work the same way and can be measured in one pass. It
+    also makes the duplicates collapse: section 3's cell IS the grid's
+    (4, 120) cell in the same world, and naming them identically means it is
+    measured once rather than twice.
+    """
+    return f"{world_index},{count},{interval},{seed0}"
+
+
+def _measure_named_cell(key: str) -> dict:
+    """Measure the one cell `key` names. Both sides of the fan-out use this, so
+    a worker cannot drift from the in-process path."""
+    world_index, count, interval, seed0 = (int(part) for part in key.split(","))
+    _, tree, tier = WORLDS[world_index]
+    cfg = base_config(tier=tier, count=count, interval=interval, tree=tree)
+    return measure(cfg, seed0)
+
+
+def _run_cell_out_of_process(key: str) -> tuple[str, dict]:
+    """Re-invoke this file as a worker for one cell and read back its JSON.
+
+    SUBPROCESS RATHER THAN A PROCESS POOL, because this file is executed by
+    `runpy.run_path` in the fast suite and has no import name a pool could
+    pickle a function against, and because it calls `main()` at module level --
+    a spawning pool would re-run the whole report in every child.
+    `CATACLYSM_SURGE_CADENCE_CELL` is what stops that: a worker measures its
+    cell, prints one JSON line and returns.
+    """
+    env = dict(os.environ)
+    env["CATACLYSM_SURGE_CADENCE_CELL"] = key
+    env["CATACLYSM_SURGE_CADENCE_TRIALS"] = str(TRIALS)
+    env["CATACLYSM_SURGE_CADENCE_JOBS"] = "1"
+    env["PYTHONPATH"] = os.pathsep.join(
+        [os.path.dirname(os.path.abspath(__file__)),
+         env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+    done = subprocess.run([sys.executable, os.path.abspath(__file__)],
+                          env=env, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise RuntimeError(f"cell {key} failed ({done.returncode}):\n"
+                           f"{done.stdout}\n{done.stderr}")
+    return key, json.loads(done.stdout.strip().splitlines()[-1])
+
+
+def grid_cells() -> list[str]:
+    """Every cell the grid asks for, as keys."""
+    return [_cell_key(i, count, interval, seed0)
+            for i in SELECTED_INDICES
+            for count in COUNTS
+            for interval in INTERVALS
+            for _, seed0 in BLOCKS]
+
+
+def shipped_cadence_cells() -> list[str]:
+    """Section 3's cells: what ships, in every selected world, both blocks."""
+    return [_cell_key(i, SHIPPED_COUNT, int(SHIPPED_INTERVAL), seed0)
+            for i in SELECTED_INDICES
+            for _, seed0 in BLOCKS]
+
+
+def noise_floor_cells() -> list[str]:
+    """Section 5's cells: `NOISE_BLOCKS` disjoint blocks at one world."""
+    return [_cell_key(SELECTED_INDICES[0], SHIPPED_COUNT,
+                      int(SHIPPED_INTERVAL), b * TRIALS)
+            for b in range(NOISE_BLOCKS)]
+
+
+def all_cells() -> list[str]:
+    """Every batch the whole report needs, deduplicated, in a stable order.
+
+    ONE PASS FOR THE WHOLE REPORT. Sections 3 and 5 used to be measured in this
+    process while only the grid fanned out, which left about a fifth of the run
+    serial and made the fan-out much less useful than it looks. They name their
+    work the same way the grid does, so they go through the same pass -- and
+    where they name the same batch, it is measured once.
+    """
+    seen, out = set(), []
+    for key in grid_cells() + shipped_cadence_cells() + noise_floor_cells():
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def measure_cells(keys: list[str], jobs: int = 1) -> dict[str, dict]:
+    """Measure every named cell, in this process or across `jobs` of them.
+
+    THE TWO PATHS MUST AGREE, and `sim/tests/test_analysis_scripts.py` asserts
+    they do. Every campaign is seeded from its own cell, so nothing here depends
+    on the order the cells were measured in.
+    """
+    if jobs <= 1:
+        return {key: _measure_named_cell(key) for key in keys}
+    out: dict[str, dict] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        for key, cell in pool.map(_run_cell_out_of_process, keys):
+            out[key] = cell
+    return {key: out[key] for key in keys}
+
+
+def section_4_grid(measured: dict[str, dict]) -> dict:
     print(f"\n{'=' * 118}")
-    print("4. THE GRID -- dungeons per surge against days between, in four "
-          "worlds.")
+    print("4. THE GRID -- dungeons per surge against days between, in "
+          f"{len(SELECTED)} worlds.")
     print("=" * 118)
-    print("\n  knob        surge_dungeon_count, the lever that exists")
+    print("\n  knob        surge_dungeon_count, the lever that exists (with "
+          "surge_count_max raised to match)")
     print("  gap         surge_interval_days")
     print("  /surge      dungeons a surge ACTUALLY spawned, mean over the "
           "campaigns in the cell")
@@ -533,17 +794,23 @@ def section_4_grid() -> dict:
           f"that can fall ({TOTAL_CITIES} in the empire)")
     print("  triage%     free days facing 2+ dungeons about to detonate -- the "
           "empire layer's own health metric")
+    if JOBS > 1:
+        print(f"\n  Fanned out across {JOBS} worker processes. Every campaign "
+              "is seeded from its own")
+        print("  cell and block, so the grid does not depend on the order the "
+              "cells were measured in.")
 
     out = {}
-    for label, tree, tier in SELECTED:
+    for world_index in SELECTED_INDICES:
+        label = WORLDS[world_index][0]
         print(f"\n  --- {label} " + "-" * (110 - len(label)))
         print(HEADER)
         out[label] = {}
         for count in COUNTS:
             for interval in INTERVALS:
-                cfg = base_config(tier=tier, count=count, interval=interval,
-                                  tree=tree)
-                cell = {block: measure(cfg, seed0) for block, seed0 in BLOCKS}
+                cell = {block: measured[_cell_key(world_index, count,
+                                                  interval, seed0)]
+                        for block, seed0 in BLOCKS}
                 out[label][(count, interval)] = cell
                 for block, _ in BLOCKS:
                     print(row(count, interval, block, cell[block]))
@@ -554,7 +821,7 @@ def section_4_grid() -> dict:
 # Section 5 -- the noise floor, done properly.
 # ---------------------------------------------------------------------------
 
-def section_5_noise_floor() -> dict:
+def section_5_noise_floor(measured: dict[str, dict]) -> dict:
     """Six disjoint blocks at one cell, against the analytic standard error.
 
     ISSUE [#1379] IS WHAT THIS SECTION IS FOR. Two blocks give one difference.
@@ -563,9 +830,7 @@ def section_5_noise_floor() -> dict:
     is the campaign-to-campaign standard deviation over the root of the block
     size. This section prints both and they should agree.
     """
-    label, tree, tier = SELECTED[0]
-    cfg = base_config(tier=tier, count=SHIPPED_COUNT,
-                      interval=SHIPPED_INTERVAL, tree=tree)
+    label = WORLDS[SELECTED_INDICES[0]][0]
     print(f"\n{'=' * 118}")
     print("5. THE NOISE FLOOR, MEASURED RATHER THAN GUESSED FROM TWO BLOCKS. "
           "Issue #1379.")
@@ -575,9 +840,9 @@ def section_5_noise_floor() -> dict:
     print(f"\n    {'block':>7}{'seeds from':>12}{'idle%':>9}"
           f"{'analytic +-':>13}")
     means, ses = [], []
-    for b in range(NOISE_BLOCKS):
+    for b, key in enumerate(noise_floor_cells()):
         seed0 = b * TRIALS
-        s = measure(cfg, seed0)
+        s = measured[key]
         means.append(s["idle%"])
         ses.append(s["idle%se"])
         print(f"    {chr(ord('A') + b):>7}{seed0:>12}{s['idle%']:>9.2f}"
@@ -613,6 +878,11 @@ def settings_lines() -> list[str]:
         f"  days per craft                  {cfg.craft_days}",
         f"  tier width gained per craft     {cfg.craft_power_gain_frac:.2f}",
         f"  lethality mode                  {cfg.lethality_mode.value}",
+        "  Explorer branch                  held at run_days_flat="
+        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g} (issue #1383 proposes "
+        "replacing it)",
+        f"  surge_count_max                 raised to the knob (ships at "
+        f"{SHIPPED_COUNT_CAP})",
         f"  campaigns per block             {TRIALS}",
         f"  seed blocks                     A from {BLOCKS[0][1]}, "
         f"B from {BLOCKS[1][1]} (disjoint)",
@@ -624,6 +894,12 @@ def settings_lines() -> list[str]:
 
 
 def main() -> None:
+    # A worker process. One cell, one JSON line, no report. See
+    # `_run_cell_out_of_process`.
+    if WORKER_CELL:
+        print(json.dumps(_measure_named_cell(WORKER_CELL)))
+        return
+
     print("=" * 118)
     print("SURGE CADENCE AGAINST AN INVESTED PLAYER'S IDLE TIME -- issue #1090")
     print("=" * 118)
@@ -631,19 +907,30 @@ def main() -> None:
           "carries them or it is not a figure.")
     for line in settings_lines():
         print(line)
-    if TRIALS < 250:
+    if SMOKE:
         print(f"\n  *** {TRIALS} CAMPAIGNS A BLOCK IS A SMOKE TEST AND EVERY "
               "SHARE BELOW IS NOISE. ***")
         print("  Set CATACLYSM_SURGE_CADENCE_TRIALS=1000 for the size the "
               "figures on issue #1090 were taken at,")
-        print("  and CATACLYSM_SURGE_CADENCE_WORLDS to split it over several "
-              "background jobs.")
+        print("  and CATACLYSM_SURGE_CADENCE_JOBS to fan the grid out across "
+              "processes.")
 
     walk = section_1_walk_days()
     realised = section_2_realised_size()
-    today = section_3_idle_today()
-    grid = section_4_grid()
-    noise = section_5_noise_floor()
+
+    # ONE MEASUREMENT PASS FOR SECTIONS 3, 4 AND 5. See `all_cells`: they all
+    # name their batches the same way, so a batch two of them want is run once,
+    # and the whole report -- not only the grid -- gets the fan-out.
+    keys = all_cells()
+    print(f"\nMeasuring {len(keys)} batches of {TRIALS} campaigns"
+          + (f" across {JOBS} worker processes." if JOBS > 1
+             else " in this process.")
+          + f" {len(keys) * TRIALS} campaigns in all.")
+    measured = measure_cells(keys, JOBS)
+
+    today = section_3_idle_today(measured)
+    grid = section_4_grid(measured)
+    noise = section_5_noise_floor(measured)
 
     print(f"\n{'=' * 118}")
     print("WHAT THE RUN SAYS")
@@ -674,13 +961,16 @@ def main() -> None:
           "statement about the")
     print("   content a SURGE produces, which is the content this question is "
           "about.")
+    print("   THIS IS WHAT ISSUE #1383 PROPOSES CHANGING, and it is held fixed "
+          "here. Every")
+    print("   Explorer figure below describes the player this table describes.")
 
     print("\n2. THE DIFFICULTY TIER IS ALREADY A DUNGEONS-PER-SURGE LEVER, AND "
           "A LARGER ONE.")
-    for tier in (1, 4, 8):
+    for tier in sorted({1, 4, max(realised)}):
         print(f"   tier {tier}: volume {realised[tier]['volume']:.2f}, so the "
               f"shipped knob of {SHIPPED_COUNT} spawns "
-              f"{realised[tier]['counts'][SHIPPED_COUNT]} dungeons a surge")
+              f"{realised[tier]['shipped_cap'][SHIPPED_COUNT]} dungeons a surge")
     print("   The number in the question -- about 20 a surge -- is what the "
           "SHIPPED knob already")
     print("   produces in the back half of the tier ladder. Raising the knob "
@@ -694,13 +984,34 @@ def main() -> None:
               f"of the campaign   ({a['idleFree%']:>5.1f}% / "
               f"{b['idleFree%']:>5.1f}% of free days)   "
               f"in a dungeon {a['walk%']:>5.1f}% / {b['walk%']:>5.1f}%")
-    zero_split = all(
-        cell[bl]["noSafe%"] == 0.0 and cell[bl]["declined%"] == 0.0
-        for cell in today.values() for bl in ("A", "B"))
-    print("   EVERY IDLE DAY WAS AN EMPTY MAP" if zero_split else
-          "   SOME IDLE DAYS WERE A POWER BLOCK RATHER THAN AN EMPTY MAP")
-    print("   -- 'nothing available to enter' and 'the player did nothing' "
-          "are the same days here.")
+    # HOW MUCH OF THE IDLE TIME IS A POWER PROBLEM RATHER THAN A SUPPLY ONE.
+    # Reported as the largest share seen anywhere rather than as "all zero":
+    # these are means over a thousand campaigns, so a single campaign spending
+    # one day blocked on power makes an exact test for zero fail while the
+    # figure itself rounds to 0.0 in every printed column. Saying "some idle
+    # days were a power block" off the back of that would be true and
+    # worthless. The number is what says whether it matters.
+    def worst(cells, field):
+        return max(c[bl][field] for c in cells for bl in ("A", "B"))
+
+    everywhere = list(today.values()) + [c for w in grid.values()
+                                         for c in w.values()]
+    worst_no_safe = worst(everywhere, "noSafe%")
+    worst_declined = worst(everywhere, "declined%")
+    print(f"   THE LARGEST POWER BLOCK ANYWHERE IN THIS RUN IS "
+          f"{worst_no_safe:.3f}% of a campaign, and the largest")
+    print(f"   share the policy simply declined is {worst_declined:.3f}%, "
+          f"across {len(everywhere)} cells.")
+    if max(worst_no_safe, worst_declined) < 0.05:
+        print("   Both round to zero in every column printed above, so "
+              "'nothing available to enter'")
+        print("   and 'the player did nothing' are the same days here, and "
+              "the cadence is the whole")
+        print("   of what makes an idle day.")
+    else:
+        print("   That is large enough to read in the columns above, so part "
+              "of the idle time is a")
+        print("   power problem that no surge cadence fixes.")
 
     print("\n4. THE GRID'S HEADLINE COLUMN, idle share of the campaign, worse "
           "block of the two:")

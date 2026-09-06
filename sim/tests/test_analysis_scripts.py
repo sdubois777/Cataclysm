@@ -117,7 +117,8 @@ def penetration_run():
                                   "analyse_affix_floors.py",
                                   "analyse_siege_dose.py",
                                   "analyse_quest_move_chance.py",
-                                  "analyse_explorer_shape.py"])
+                                  "analyse_explorer_shape.py",
+                                  "analyse_surge_cadence.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -2273,3 +2274,319 @@ def test_the_script_does_not_recommend_a_constant(siege_dose_run):
     printed, _ = siege_dose_run
     assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
     assert "no constant changes" in printed
+
+
+# --------------------------------------------------------------------------
+# analyse_surge_cadence.py -- issue #1090
+#
+# WHAT THIS SECTION IS FOR. The script sweeps dungeons-per-surge against
+# days-between and reports how much of a campaign an invested player spends
+# with nothing to do. Three things about it can go wrong quietly, and the
+# checks below are one per thing.
+#
+# 1. THE COUNT AXIS CAN STOP MEANING ANYTHING. `Simulation.surge_count` applies
+#    `min(n, surge_count_max)` to the BASE count and not only to the escalation
+#    growth, and `surge_count_max` is 14. The first version of this script did
+#    not lift it, so its knobs of 20, 30 and 40 all measured a knob of 14 and
+#    three of its six rows were the same row. Nothing in the output said so.
+# 2. THE DAY LEDGER CAN STOP ADDING UP. `_Ledger` classifies every day as
+#    walking, at the forge, dead, or free by reading three flags at the top of
+#    `Simulation.step`. A fifth branch in the day loop, or a write to one of
+#    those flags earlier in the step, would make the classification silently
+#    disagree with the branch actually taken.
+# 3. THE FAN-OUT CAN STOP MATCHING. The grid is about five core-hours, so it is
+#    measured across worker processes. A measurement that changes when it is
+#    split is not a measurement.
+#
+# The script's own campaign shares are NOT checked here. At its default sample
+# they are one campaign each and mean nothing, which the run says itself; the
+# figures on issue #1090 were taken at a thousand a block.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def cadence_run():
+    """About 3.4 seconds -- the second most expensive script in this file.
+
+    Its default narrows the sweep axes to their two ends for exactly this
+    reason; see `_axis` in the script. The full 24-cell grid is 192 campaigns
+    and thirteen seconds, and at one campaign a cell it measures nothing.
+    """
+    return run("analyse_surge_cadence.py")
+
+
+def test_the_count_axis_is_not_silently_capped_at_fourteen(cadence_run):
+    """THE DEFECT THIS SCRIPT WAS REWRITTEN TO FIX, held in place.
+
+    `sim/cataclysm_sim/config.py` sets `surge_count_max = 14` and
+    `Simulation.surge_count` applies it to the base count. The owner's question
+    is about roughly 20 dungeons a surge, so a sweep that does not lift the cap
+    cannot answer it -- and does not fail, or warn, or print anything different.
+    It just measures 14 three times.
+
+    Both halves are asserted: that the shipped cap really would flatten the
+    axis, so this is a live hazard rather than a historical one, and that
+    `base_config` lifts it so the knob is realised.
+    """
+    _, ns = cadence_run
+    surge_count_for = ns["surge_count_for"]
+    shipped_cap = ns["SHIPPED_COUNT_CAP"]
+
+    assert shipped_cap == 14, (
+        f"surge_count_max is now {shipped_cap}, not 14. The figures on issue "
+        "#1090 were measured against a cap of 14 and say so; if this moved "
+        "deliberately, the grid needs re-running.")
+
+    # Under what ships, everything above the cap is the cap.
+    assert surge_count_for(1, 10, shipped_cap) == 10
+    assert surge_count_for(1, 20, shipped_cap) == 14
+    assert surge_count_for(1, 40, shipped_cap) == 14
+
+    # Under what this script measures, the knob is the knob.
+    for knob in (4, 5, 10, 20, 30, 40):
+        assert surge_count_for(1, knob) == knob, (
+            f"a knob of {knob} fires {surge_count_for(1, knob)} dungeons. "
+            "base_config has stopped raising surge_count_max, so every count "
+            "above 14 in the grid is secretly a count of 14.")
+
+
+def test_the_cap_that_ships_is_the_one_the_game_ships(cadence_run):
+    """The simulation's `surge_count_max` and the C++ `MostDungeonsPerSurge`
+    are the same number, and the script's output names the C++ one. If they
+    ever part company the script would be describing a cap the game does not
+    have. `tools/tests/test_surge_port.py` is what holds the two together; this
+    only checks that the script quotes the right side of it."""
+    printed, ns = cadence_run
+    assert f"surge_count_max ships at {ns['SHIPPED_COUNT_CAP']}" in printed
+    assert "MostDungeonsPerSurge in CataclysmSurge.h" in printed
+
+
+def test_the_unbound_surge_count_matches_a_real_simulation(cadence_run):
+    """`surge_count_for` calls `Simulation.surge_count` on a stand-in carrying
+    the two attributes that method reads, because building 96 real empires for
+    a table of 96 integers cost four seconds of this suite.
+
+    THAT IS ONLY SAFE WHILE THE STAND-IN IS ENOUGH. If `surge_count` grows a
+    read of anything else on the simulation, the stand-in raises
+    `AttributeError` or -- worse -- the two answers quietly part. This asks a
+    real `Simulation` the same question at every knob on the axis.
+    """
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = cadence_run
+    for knob in (4, 5, 10, 20, 30, 40):
+        real = Simulation(ns["base_config"](tier=1, count=knob), seed=0)
+        assert ns["surge_count_for"](1, knob) == real.surge_count(), (
+            f"the stand-in and a real Simulation disagree at knob {knob}")
+
+
+def test_the_day_ledger_accounts_for_every_day(cadence_run):
+    """Walking, at the forge, dead, or free -- and nothing else.
+
+    This is the check that would notice a fifth branch being added to
+    `Simulation.step`, or one of the three flags being written earlier in the
+    step than the ledger reads them. Either would make the idle share -- the
+    headline of the whole file -- quietly wrong, because `empty%`, `noSafe%`
+    and `walk%` are all shares of `survived_days`.
+
+    Run across several worlds and cadences, because a branch that only fires in
+    a busy campaign would not show up in a quiet one.
+    """
+    _, ns = cadence_run
+    ledger_policy, Ledger = ns["ledger_policy"], ns["_Ledger"]
+    from cataclysm_sim import policies as pol
+
+    policy = ledger_policy(pol.ALL["triage"])
+    for world_index in range(len(ns["WORLDS"])):
+        _, tree, tier = ns["WORLDS"][world_index]
+        for count, interval in ((4, 120), (40, 30)):
+            cfg = ns["base_config"](tier=tier, count=count, interval=interval,
+                                    tree=tree)
+            sim = Ledger(cfg, seed=world_index)
+            result = sim.run(policy)
+            total = (sim.walk_days + sim.forge_days + sim.dead_days
+                     + sim.free_days)
+            assert total == result.survived_days, (
+                f"world {world_index}, {count} every {interval}d: the ledger "
+                f"accounts for {total} days of a {result.survived_days}-day "
+                "campaign. Simulation.step has a branch _Ledger does not know "
+                "about.")
+
+
+def test_the_three_kinds_of_idle_day_account_for_every_idle_day(cadence_run):
+    """`empty_board_days + no_safe_days + declined_days == idle_days`.
+
+    The split is what separates "the cadence is too slow" from "the player is
+    underpowered", and only the first is a question about surge cadence. If the
+    three stopped summing, the script would be attributing idle days to a cause
+    without covering all of them.
+    """
+    _, ns = cadence_run
+    from cataclysm_sim import policies as pol
+
+    policy = ns["ledger_policy"](pol.ALL["triage"])
+    for world_index in range(len(ns["WORLDS"])):
+        _, tree, tier = ns["WORLDS"][world_index]
+        cfg = ns["base_config"](tier=tier, count=4, interval=120, tree=tree)
+        sim = ns["_Ledger"](cfg, seed=world_index)
+        result = sim.run(policy)
+        split = sim.empty_board_days + sim.no_safe_days + sim.declined_days
+        assert split == result.idle_days, (
+            f"world {world_index}: {split} classified idle days against "
+            f"{result.idle_days} counted by the engine.")
+
+
+def test_instrumenting_a_campaign_does_not_change_it(cadence_run):
+    """A MEASUREMENT THAT MOVES WHAT IT MEASURES IS NOT ONE.
+
+    `_Ledger` counts days and `ledger_policy` inspects the board before letting
+    the real policy answer. Neither may draw a random number, or every campaign
+    after the first draw would diverge from the campaign a plain `Simulation`
+    would have run -- and it would still look plausible, because the shape of
+    the output would not change at all.
+
+    `Simulation.death_chance` is pure, which is what makes the wrapper safe;
+    this asserts the consequence rather than the reason.
+    """
+    from cataclysm_sim import policies as pol
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = cadence_run
+    triage = pol.ALL["triage"]
+    for world_index in range(len(ns["WORLDS"])):
+        _, tree, tier = ns["WORLDS"][world_index]
+        for count, interval in ((4, 120), (40, 30)):
+            cfg = ns["base_config"](tier=tier, count=count, interval=interval,
+                                    tree=tree)
+            for seed in (0, 1):
+                plain = Simulation(cfg, seed=seed).run(triage)
+                counted = ns["_Ledger"](cfg, seed=seed).run(
+                    ns["ledger_policy"](triage))
+                assert counted == plain, (
+                    f"world {world_index}, {count} every {interval}d, seed "
+                    f"{seed}: the instrumented campaign is not the campaign a "
+                    "bare Simulation runs. Something in _Ledger or "
+                    "ledger_policy draws from the random number generator.")
+
+
+def test_the_fan_out_measures_what_this_process_measures(cadence_run):
+    """The grid is about five core-hours, so it is measured across worker
+    processes. This runs two cells both ways and demands they agree exactly.
+
+    IT IS NOT A TEST OF DETERMINISM FOR ITS OWN SAKE. A worker is a fresh
+    interpreter reading its own environment, so a cell whose settings came from
+    a module-level constant rather than from its own key would come back
+    measured under the worker's defaults instead -- silently, and only for the
+    fanned-out run, which is the only run anyone quotes.
+    """
+    _, ns = cadence_run
+    keys = [ns["_cell_key"](1, 4, 120, 0), ns["_cell_key"](3, 40, 30, 0)]
+    here = ns["measure_cells"](keys, 1)
+    split = ns["measure_cells"](keys, 2)
+    assert set(here) == set(split)
+    for key in here:
+        assert set(here[key]) == set(split[key])
+        for field, value in here[key].items():
+            other = split[key][field]
+            # A one-campaign cell has no spread, so its standard error is a
+            # NaN -- which is never equal to itself. Comparing the dicts
+            # directly would fail here for a reason that has nothing to do
+            # with the fan-out.
+            if isinstance(value, float) and math.isnan(value):
+                assert math.isnan(other), (
+                    f"{key}.{field} is NaN in this process and {other} in a "
+                    "worker")
+                continue
+            assert value == other, (
+                f"{key}.{field} is {value} in this process and {other} in a "
+                "worker. Something in the cell is being read from the "
+                "worker's environment rather than from the cell it was asked "
+                "for.")
+
+
+def test_every_section_measures_each_batch_once(cadence_run):
+    """Sections 3, 4 and 5 name their batches the same way, so the batch two of
+    them want is measured once. What ships -- 4 every 120 days -- is section
+    3's whole table and also a cell of the grid; measuring it twice would have
+    been about eight thousand redundant campaigns at the size the issue quotes.
+    """
+    _, ns = cadence_run
+    keys = ns["all_cells"]()
+    assert len(keys) == len(set(keys)), "all_cells returned a duplicate"
+    listed = (ns["grid_cells"]() + ns["shipped_cadence_cells"]()
+              + ns["noise_floor_cells"]())
+    assert set(keys) == set(listed)
+    assert len(keys) < len(listed), (
+        "no batch is shared between the three sections any more, so either the "
+        "axes no longer contain what ships or the key format changed.")
+
+
+def test_the_noise_floor_uses_six_disjoint_blocks(cadence_run):
+    """ISSUE #1379, WHICH IS THE MEASUREMENT LESSON THIS FILE EXISTS UNDER.
+
+    A gap between two seed blocks is one difference and not a spread; six
+    blocks gave a standard deviation of 0.105 where two blocks differed by
+    0.04. The script reports the spread over six blocks AND the analytic
+    standard error of one block, and says in its own output that the A-to-B gap
+    is not a noise floor. The blocks have to actually be disjoint for any of
+    that to mean anything.
+    """
+    printed, ns = cadence_run
+    trials = ns["TRIALS"]
+    seeds = [int(key.split(",")[3]) for key in ns["noise_floor_cells"]()]
+    assert len(seeds) == ns["NOISE_BLOCKS"] >= 6
+    assert seeds == sorted(seeds) and len(set(seeds)) == len(seeds)
+    for earlier, later in zip(seeds, seeds[1:], strict=False):
+        assert later - earlier >= trials, (
+            f"blocks starting at {earlier} and {later} overlap at "
+            f"{trials} campaigns each.")
+    assert "which is NOT a spread" in printed
+    assert "issue #1379 records going wrong" in printed
+
+
+def test_the_settings_block_states_every_condition(cadence_run):
+    """A FIGURE WITHOUT ITS CONDITIONS IS NOT A FIGURE, and this project has
+    retracted balance numbers for exactly that. The two that get lost are the
+    ones that are not obvious from the axes: that the Explorer branch is held
+    at the flat 70 days issue #1383 proposes replacing, and that
+    `surge_count_max` was raised so the count axis means what it says.
+    """
+    printed, ns = cadence_run
+    for expected in ("policy                          triage",
+                     "surge mode                      static",
+                     "resolve timer days per floor    2.0",
+                     "dungeon power per 100 days      0.10",
+                     "days per craft                  12",
+                     "tier width gained per craft     0.04",
+                     f"campaigns per block             {ns['TRIALS']}"):
+        assert expected in printed, (
+            f"the settings block no longer states: {expected}")
+    assert "run_days_flat=70" in printed, (
+        "the settings block no longer says which Explorer shape it held fixed. "
+        "Issue #1383 proposes replacing that number, so a grid measured "
+        "against it has to say so.")
+    assert "raised to the knob" in printed, (
+        "the settings block no longer says surge_count_max was lifted.")
+
+
+def test_a_smoke_sized_cadence_run_says_its_shares_are_noise(cadence_run):
+    """The same guard on reading that `analyse_siege_dose.py` carries. At the
+    default sample every share is one campaign, and a table of them is exactly
+    the kind of output that gets quoted."""
+    printed, ns = cadence_run
+    if ns["TRIALS"] < ns["SMOKE_BELOW"]:
+        assert "IS A SMOKE TEST AND EVERY SHARE BELOW IS NOISE" in printed
+        assert "CATACLYSM_SURGE_CADENCE_TRIALS=1000" in printed
+        assert ns["COUNTS"] == (4, 40) and ns["INTERVALS"] == (30, 120), (
+            "the smoke run no longer narrows to the ends of the axes, so it "
+            "costs the fast suite the full thirteen seconds.")
+    else:
+        assert "SMOKE TEST" not in printed
+
+
+def test_the_cadence_script_does_not_recommend_a_constant(cadence_run):
+    """No constant changes on the strength of a sweep alone on this project.
+    The script prints the grid; issue #1090 carries the single recommendation
+    the owner rules on."""
+    printed, _ = cadence_run
+    assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
+    assert "no constant changes" in printed.lower()
