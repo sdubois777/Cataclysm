@@ -106,7 +106,14 @@ CRAFT = _Craft()
 class Dungeon:
     did: int
     dtype: DungeonType
+    #: Which city it stands on. A Quest dungeon's changes when it relocates.
     city_id: int
+    #: THE TIER ITS DEPTH WAS ROLLED FROM, WHICH IS NOT "THE HOST'S TIER". It
+    #: is set once, at creation, from the city the surge put it on, and it does
+    #: NOT move when a Quest dungeon relocates -- `floors` does not move either,
+    #: and `_resolve` divides one by the other. See `_resolve` for the defect
+    #: that came of assigning the new host's tier here, and the owner's ruling
+    #: of 2026-09-06, "Keeps everything, fix the size". Issue #1324.
     city_tier: CityTier
     floors: int
     run_days: int
@@ -591,9 +598,34 @@ class Simulation:
         # IT STAYS PUT WHEN THERE IS NOWHERE ADJACENT TO GO, which is now a real
         # outcome rather than an unreachable branch: under the old rule some
         # exposed city always existed, and under this one a dungeon deep in
-        # sealed territory can be hemmed in. That is what makes the design's
-        # "MAY move" true without a die roll -- see `docs/DECISIONS.md`, which
-        # records that reading as a reading.
+        # sealed territory can be hemmed in.
+        #
+        # THAT IS NOT THE WHOLE OF THE DESIGN'S "MAY", AND THIS FILE USED TO SAY
+        # IT WAS. The project owner ruled on 2026-09-06, verbatim "A chance each
+        # time": a Quest dungeon sometimes stays even when it could move. The
+        # owner named no number, `CLAUDE.md` forbids inventing one, and
+        # `sim/analyse_quest_move_chance.py` is the dose-response curve that
+        # exists to get one. Until it is answered this moves whenever it can,
+        # which is the old reading and is now known to be incomplete rather than
+        # believed to be right. Issue #1324.
+        #
+        # ONLY `city_id` MOVES; `city_tier` IS NOT THE HOST'S TIER. It is the
+        # tier the dungeon's DEPTH WAS ROLLED FROM, and `_resolve` reads it
+        # below to find the specification row that says what a typical dungeon
+        # of this kind on that tier is, so that `floors / typical` scales the
+        # bite. This used to assign `new_city.tier` here while leaving `floors`
+        # alone, which made the two halves of that division come from different
+        # rows: a dungeon that drifted inward onto a bigger city read as
+        # shallower than it is and one that drifted outward read as deeper.
+        #
+        # IT COST NOTHING AND NOTHING WOULD HAVE FAILED WHEN IT DID. A Quest
+        # dungeon returns above without ever reaching the scale, so the wrong
+        # row was never read; it would have become a live wrong number the
+        # moment any non-Basic kind was given city damage, silently. The project
+        # owner ruled on 2026-09-06, verbatim "Keeps everything, fix the size".
+        # `FCataclysmDungeon::CityTier` carries the same rule and the same
+        # comment, and `TestWhatARelocatedDungeonKeeps` in
+        # `sim/tests/test_quest_relocation_is_adjacent.py` is what now fails.
         #
         # EVERY FIGURE MEASURED BEFORE THIS MOVES. A dungeon's position decides
         # which cities it threatens, and the draw below now happens on a
@@ -604,9 +636,7 @@ class Simulation:
             if cfg.quest_relocates:
                 targets = self.empire.adjacent_exposed_cities(city)
                 if targets:
-                    new_city = self.rng.choice(targets)
-                    d.city_id = new_city.cid
-                    d.city_tier = new_city.tier
+                    d.city_id = self.rng.choice(targets).cid
             return
 
         d.times_resolved += 1

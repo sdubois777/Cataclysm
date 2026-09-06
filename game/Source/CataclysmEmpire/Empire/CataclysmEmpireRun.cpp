@@ -334,19 +334,33 @@ void UCataclysmEmpireRun::RelocateQuestDungeon(int32 DungeonId,
 		return;
 	}
 
+	// ONLY `CityId` MOVES, AND THAT IS THE WHOLE OF THE MOVE. The project owner
+	// ruled on 2026-09-06, verbatim "Keeps everything, fix the size": a
+	// relocated Quest dungeon keeps its floor count, its resolve timer and its
+	// sub-type, and `docs/Cataclysm_GDD_v2.md` section VIII now states all
+	// three. None of them is touched here, which is what says so.
 	Dungeon->CityId = MovingTo;
 
-	// AND ITS TIER MOVES WITH IT, which is what `Simulation._resolve` does:
-	// `d.city_tier = new_city.tier`.
+	// AND `CityTier` DOES NOT MOVE WITH IT, WHICH IS THE OTHER HALF OF THAT
+	// RULING. This line used to read `Dungeon->CityTier = To->Tier;`.
 	//
-	// THE DEPTH DOES NOT. `CityTier` is what the depth WAS rolled from and is
-	// read afterwards by `BiteScale`, which divides the floor count by the
-	// midpoint of the spec for this kind on this tier. So a Quest dungeon that
-	// drifts inward onto a bigger city reads as shallower for its
-	// surroundings, and one that drifts outward reads as deeper. That follows
-	// the model exactly; the design says nothing about it, and it costs a Quest
-	// dungeon nothing today because a Quest dungeon never bites.
-	Dungeon->CityTier = To->Tier;
+	// `CityTier` IS NOT "THE HOST'S TIER". Its own comment says what it is --
+	// "that city's tier when the dungeon spawned, which set its depth" -- and
+	// `BiteScale` is the only thing in the game that reads it: it divides
+	// `Floors` by the midpoint of `SpecFor(Type, CityTier)`. Both halves of
+	// that division have to come from the SAME specification row. Moving the
+	// tier while leaving `Floors` alone made them come from different rows, so
+	// a Quest dungeon that drifted inward onto a bigger city read as shallower
+	// than it is and one that drifted outward read as deeper.
+	//
+	// IT COST NOTHING AND NOTHING WOULD HAVE FAILED WHEN IT DID. `SpecFor`
+	// gives a Quest dungeon zero city damage and `Resolves` answers false for
+	// it, so `BiteScale` is never reached for the one kind that can move. It
+	// would have become a live wrong number, silently, the moment any non-Basic
+	// kind was given city damage. `Simulation._resolve` carries the same fix and
+	// the same reasoning, and
+	// `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity` is what now fails
+	// if either line comes back.
 
 	OutReport.Relocated.Add(DungeonId);
 }

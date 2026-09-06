@@ -155,7 +155,23 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
 
-	/** That city's tier when the dungeon spawned, which set its depth. */
+	/**
+	 * That city's tier when the dungeon spawned, which set its depth.
+	 *
+	 * **IT IS NOT "THE TIER OF THE CITY THIS DUNGEON IS STANDING ON", AND A
+	 * QUEST DUNGEON IS WHERE THE TWO COME APART.** It is set once, by
+	 * `MakeDungeon` and `MakeFallenCityDungeon`, and `RelocateQuestDungeon`
+	 * deliberately leaves it alone when it moves a dungeon: read the host's tier
+	 * off the map with `Map->Find(CityId)->Tier` instead.
+	 *
+	 * WHY IT MUST NOT MOVE. `BiteScale` is the only thing that reads it, and it
+	 * divides `Floors` by the midpoint of `SpecFor(Type, CityTier)`. Both halves
+	 * of that division have to name the same specification row, and `Floors`
+	 * does not move. `RelocateQuestDungeon` used to assign the new host's tier
+	 * here, which made a relocated dungeon read as shallower or deeper than it
+	 * is; the project owner ruled on 2026-09-06, verbatim "Keeps everything, fix
+	 * the size". Issue #1324.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmCityTier CityTier = ECataclysmCityTier::Outpost;
 

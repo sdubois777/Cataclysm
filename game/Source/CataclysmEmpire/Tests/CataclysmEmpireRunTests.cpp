@@ -1971,10 +1971,23 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
  * city it left, read off the map rather than recomputed here.
  *
  * **A DUNGEON THAT STAYED IS NOT A FAILURE AND THE COUNT IS REPORTED.** A Quest
- * dungeon whose neighbours are all sealed or fallen has nowhere adjacent to go,
- * which is where the design's "may" comes from. Both outcomes are asserted to
- * have happened, because a run that only ever moved them would never exercise
- * the empty case and a run that never moved one would prove nothing at all.
+ * dungeon whose neighbours are all sealed or fallen has nowhere adjacent to go.
+ * Both outcomes are asserted to have happened, because a run that only ever
+ * moved them would never exercise the empty case and a run that never moved one
+ * would prove nothing at all.
+ *
+ * THAT IS NOT THE WHOLE OF THE DESIGN'S "MAY", AND THIS COMMENT USED TO SAY IT
+ * WAS. The owner ruled on 2026-09-06, verbatim "A chance each time" -- a Quest
+ * dungeon must sometimes stay even when it could move. No number was given,
+ * `sim/analyse_quest_move_chance.py` is the curve that exists to get one, and
+ * nothing here implements a chance yet. Issue #1324.
+ *
+ * **AND WHAT IT CARRIES WITH IT IS CHECKED, NOT ONLY WHERE IT GOES.** The owner
+ * ruled in the same breath, verbatim "Keeps everything, fix the size": the floor
+ * count, the resolve timer and the sub-type survive a move, and `CityTier` --
+ * which is the tier the DEPTH was rolled from and not the host's tier -- does
+ * not move either. That last one is a fix; this test asserted its opposite until
+ * 2026-09-06. `CrossedATierBoundary` is the control that keeps it meaningful.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestMovesTest,
 	"Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity",
@@ -1993,6 +2006,11 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	int32 AlongTheRim = 0;
 	int32 AbsorbedByAFall = 0;
 	int32 MovedThenAbsorbed = 0;
+
+	// MOVES THAT LANDED ON A CITY OF A DIFFERENT TIER. The control on the
+	// "kept the tier its depth was rolled from" assertion: between two cities
+	// of one tier that assertion holds under either rule.
+	int32 CrossedATierBoundary = 0;
 
 	// HOW OFTEN THE STAYED-PUT CHECK HAD TO EXEMPT A NEIGHBOUR because the
 	// day's own falls opened it after the decision was taken. Counted so the
@@ -2014,12 +2032,21 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 		{
 			// WHERE EVERY QUEST DUNGEON STOOD THIS MORNING. Read before the
 			// day, because the whole measurement is a comparison against it.
+			//
+			// AND WHAT IT LOOKED LIKE, kept whole rather than field by field.
+			// The project owner ruled on 2026-09-06, verbatim "Keeps
+			// everything, fix the size", so the claim being checked is about
+			// the dungeon and not about one property of it; a copy taken here
+			// lets a later field be added to the comparison without another
+			// map. See `WhatMovedThatShouldNotHave` below.
 			TMap<int32, int32> StoodOn;
+			TMap<int32, FCataclysmDungeon> WasLike;
 			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 			{
 				if (Dungeon.Type == ECataclysmDungeonType::Quest)
 				{
 					StoodOn.Add(Dungeon.DungeonId, Dungeon.CityId);
+					WasLike.Add(Dungeon.DungeonId, Dungeon);
 				}
 			}
 
@@ -2255,16 +2282,76 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 						Run->Map->IsExposed(Arrived->CityId)
 							|| Arrived->bFallen);
 
-					// AND ITS TIER MOVED WITH IT, which is what
-					// `Simulation._resolve` does: `d.city_tier =
-					// new_city.tier`. A dungeon carrying the tier of a city it
-					// no longer stands on would make `BiteScale` read the wrong
-					// spec row.
+					// **AND IT KEPT EVERYTHING ELSE.** The owner ruled on
+					// 2026-09-06, verbatim "Keeps everything, fix the size":
+					// floor count, resolve timer and sub-type all survive the
+					// move, and `docs/Cataclysm_GDD_v2.md` section VIII now
+					// states it. Checked here rather than trusted, because
+					// nothing else would notice a move that quietly rerolled
+					// the depth.
+					const FCataclysmDungeon& Before = WasLike[DungeonId];
+
 					TestEqual(FString::Printf(
-						TEXT("quest dungeon %d carries the tier of the city it "
-							 "moved to"), DungeonId),
+						TEXT("quest dungeon %d kept its floor count"),
+						DungeonId), Still->Floors, Before.Floors);
+
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d kept its resolve timer"),
+						DungeonId), Still->ResolveDays, Before.ResolveDays);
+
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d kept its sub-type"), DungeonId),
+						static_cast<int32>(Still->SubType),
+						static_cast<int32>(Before.SubType));
+
+					// **AND `CityTier` DID NOT MOVE WITH IT.** THIS ASSERTION
+					// USED TO BE ITS OWN OPPOSITE: it read "quest dungeon %d
+					// carries the tier of the city it moved to", comparing
+					// `Still->CityTier` against `Arrived->Tier`, which is the
+					// defect the owner's "fix the size" names.
+					//
+					// `CityTier` is the tier the DEPTH was rolled from -- its
+					// own comment on `FCataclysmDungeon` says so -- and
+					// `BiteScale` divides `Floors` by the midpoint of
+					// `SpecFor(Type, CityTier)`. `Floors` does not move, so
+					// moving the tier made the two halves of that division name
+					// different specification rows.
+					//
+					// IT IS UNREACHABLE TODAY AND THAT IS WHY IT NEEDS A TEST.
+					// A Quest dungeon has zero city damage and answers false to
+					// `Resolves`, so nothing ever calls `BiteScale` on one. The
+					// wrong number would have appeared, silently and with no
+					// test failing, on the day any non-Basic kind was given
+					// city damage. `TestWhatARelocatedDungeonKeeps` in
+					// `sim/tests/test_quest_relocation_is_adjacent.py` is the
+					// model's half of this.
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d kept the tier its depth was "
+							 "rolled from"), DungeonId),
 						static_cast<int32>(Still->CityTier),
-						static_cast<int32>(Arrived->Tier));
+						static_cast<int32>(Before.CityTier));
+
+					// SO ITS BITE SCALE IS UNCHANGED BY THE MOVE, which is the
+					// consequence that matters and the only one a reader of
+					// `BiteScale` would look for. Asserted separately because
+					// the two fields agreeing is the mechanism and this is the
+					// outcome; a future third input to the scale would break
+					// this and not the assertions above.
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d bites at the same scale after "
+							 "moving"), DungeonId),
+						Still->BiteScale(), Before.BiteScale());
+
+					// **THE CONTROL ON ALL FIVE.** A move between two cities of
+					// the SAME tier satisfies every assertion above whichever
+					// rule is in force, so a run whose moves never crossed a
+					// tier boundary would prove nothing at all. This counts the
+					// ones that did and the check below refuses to pass on
+					// zero.
+					if (Arrived->Tier != Left->Tier)
+					{
+						++CrossedATierBoundary;
+					}
 
 					if (Left->Perimeter.Contains(Still->CityId))
 					{
@@ -2306,6 +2393,14 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	// in play, and the whole argument for it would be untested.
 	TestTrue(TEXT("and some moves were along the rim's perimeter links"),
 			 AlongTheRim > 0);
+
+	// **AND SOME MOVE CROSSED A TIER BOUNDARY.** Without this the assertion
+	// that a relocated dungeon keeps the tier its depth was rolled from is
+	// satisfied by every move being between two Outposts, and it would pass
+	// unchanged against the defect it exists to catch.
+	TestTrue(TEXT("and some moves crossed a tier boundary, so the tier check "
+				  "is not vacuous"),
+			 CrossedATierBoundary > 0);
 
 	return true;
 }

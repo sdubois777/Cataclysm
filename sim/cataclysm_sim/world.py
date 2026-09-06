@@ -21,16 +21,24 @@ are a property of the geometry, not a separate design decision.
                       V   C   V
                           V
 
-LANES. Adjacency is orthogonal in lattice space: (r+-1, c) and (r, c+-1). Every
-orthogonal step changes the ring by one, so the neighbours of a cell are
-strictly the cells one step further out and one step further in. That is what
-makes the frontier rule exact: a cell is attackable once ANY of the cells
-shielding it from outside has fallen, and retaking that cell seals the lane
-again.
+LANES. A lane is orthogonal in lattice space: (r+-1, c) and (r, c+-1). Every
+orthogonal step changes the ring by one, so a cell's lanes run strictly to the
+cells one step further out and one step further in. That is what makes the
+frontier rule exact: a cell is attackable once ANY of the cells shielding it
+from outside has fallen, and retaking that cell seals the lane again.
 
 Outposts on the rim are also linked to their neighbours along the perimeter
 (the curved edges in the design sketch). Those are same-ring links, so they
 carry no lanes inward -- they exist for adjacency effects, not for exposure.
+
+A LANE IS NOT THE WHOLE OF ADJACENCY, AND THIS DOCSTRING USED TO SAY IT WAS. It
+read "Adjacency is orthogonal in lattice space ... the neighbours of a cell are
+strictly the cells one step further out and one step further in", which is the
+sentence the perimeter paragraph above contradicts and which `neighbours` does
+not implement. `UCataclysmEmpireMap`'s class comment was corrected on 2026-09-06
+and this copy was missed; `docs/Cataclysm_GDD_v2.md` section IX said the same
+thing and now defines adjacency to include the perimeter, which is what the
+project owner ruled, verbatim "Include the perimeter links". Issue #1324.
 """
 
 from __future__ import annotations
