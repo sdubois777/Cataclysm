@@ -1118,9 +1118,30 @@ class TestTheSweepFlagsCampaignsWithNoResult:
     def test_no_warning_appears_when_the_cells_resolve(self, capsys):
         """The other half. At the real day cap and tier 1 the presets resolve,
         so the warning must stay silent -- otherwise it would appear on every
-        table and stop meaning anything."""
+        table and stop meaning anything.
+
+        WHY `trials` IS 25 AND NOT 4. It was 4, and issue #1338 made it fail:
+        one preset had 2 campaigns of 4 with no result, which is exactly the
+        50% threshold. FOUR CAMPAIGNS CANNOT DISTINGUISH THE TWO CASES THIS
+        TEST EXISTS TO SEPARATE. Measured at 300 campaigns per cell, tier 1,
+        `triage`, surge size 4, the true unresolved rate across the six presets
+        runs 2.0% to 26.0% -- the highest of them less than half the threshold.
+        At 4 campaigns a cell at 26% trips the threshold better than one time
+        in four, so the old sample passed by luck both before this change and
+        after the sub-type work that raised the rates in the first place.
+
+        The rate did rise with #1338, and the rise is real rather than noise:
+        the same measurement under the old fixed Demonic draw runs 0.0% to
+        24.7%. Drawing the Cataclysm per character brings in Celestial, which
+        sends few and deep dungeons, so more campaigns reach the day cap having
+        neither won nor lost. It is nowhere near the threshold either way.
+
+        25 campaigns costs about 9 seconds against about 1.5. That buys a test
+        that measures something: at a true rate of 26% a cell needs 13 of 25 to
+        trip, which is 2.7 standard errors out.
+        """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
-        experiments.exp_presets(base, tiers=(1,), trials=4)
+        experiments.exp_presets(base, tiers=(1,), trials=25)
         printed = capsys.readouterr().out
         assert "NO RESULT for most campaigns" not in printed, (
             "the unresolved-campaign warning fires on an ordinary tier 1 "

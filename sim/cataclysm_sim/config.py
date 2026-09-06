@@ -313,9 +313,19 @@ class TuningConfig:
     # Which difficulty tier this run is played at. Sets the whole power scale
     # via scoring.PLAYER_MAX_SCORES.
     tier: int = 1
+    # THE EIGHT CATACLYSMS. THIS IS A SET, NOT AN ORDER. Until issue #1338 the
+    # engine took the first N entries of this tuple, so every campaign the model
+    # ever ran faced Demonic, then Demonic and Death, and so on. The project
+    # owner ruled on 2026-09-06 that the order is drawn per character, so
+    # `engine.cataclysm_order_for` draws an order over this tuple and the
+    # position of a name here means nothing.
+    #
     # Moving up a tier adds a Cataclysm, and dungeons then draw from the
     # combined modifier pool of every ACTIVE Cataclysm. Two active types means
     # ~26 modifiers to roll from, which is what stops deep tiers running dry.
+    # `active_cataclysm_count` is what implements the first half of that
+    # sentence; before #1338 nothing did, and this comment described behaviour
+    # the code did not have.
     CATACLYSM_ROSTER: tuple[str, ...] = ("Demonic", "Death", "War", "Pestilence",
                                          "Famine", "Celestial", "Chaos", "Void")
 
@@ -427,8 +437,17 @@ class TuningConfig:
     # Policies refuse dungeons riskier than this.
     death_risk_tolerance: float = 0.35
 
-    # Number of simultaneous Cataclysms this run.
-    active_cataclysms: int = 1
+    # Number of simultaneous Cataclysms this run. `None` means DERIVE IT FROM
+    # THE DIFFICULTY TIER, which is what the design says and what this defaults
+    # to: tier 1 faces one, tier 8 faces all eight.
+    #
+    # It defaulted to a flat 1 until issue #1338, with nothing anywhere deriving
+    # it from the tier, so every figure the preset sweep ever produced -- at
+    # every tier -- ran against a single Cataclysm. Read
+    # `active_cataclysm_count` rather than this field; an integer here is an
+    # override for a sweep that wants to vary the count on its own axis, which
+    # `experiments.exp_surge_modes` does.
+    active_cataclysms: int | None = None
 
     # The win condition. Every Cataclysm quest mechanic in GDD XI reduces to
     # "clear N quest dungeons, then the enemy capital opens": 10 Rifts, 5 Seeds
@@ -547,6 +566,26 @@ class TuningConfig:
 
     def spec(self, dtype: DungeonType, tier: CityTier) -> DungeonSpec:
         return self.DUNGEON_SPECS[(dtype, tier)]
+
+    def active_cataclysm_count(self) -> int:
+        """How many Cataclysms are active at once in this campaign.
+
+        THE DIFFICULTY TIER IS THE COUNT. `docs/Cataclysm_GDD_v2.md`, Game
+        Start: a character faces one Cataclysm at first and every boss defeated
+        adds one more, "so the player will eventually face all eight
+        simultaneously". The tier is how many have been added, so tier N faces
+        N. `sim/analyse_dungeons.py` has assumed exactly that since it was
+        written; the engine was the one place that did not.
+
+        `active_cataclysms` overrides it when it is set, for a sweep that wants
+        the count as its own axis independent of the power scale.
+
+        Clamped to at least 1 and at most the roster: `scoring` falls back to a
+        tier width for anything outside 1..8, so a config can carry a tier this
+        table has no ninth Cataclysm for.
+        """
+        count = self.tier if self.active_cataclysms is None else self.active_cataclysms
+        return max(1, min(len(self.CATACLYSM_ROSTER), count))
 
     def with_tree(self, tree: EmpireTree) -> "TuningConfig":
         return replace(self, tree=tree)

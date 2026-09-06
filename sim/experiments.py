@@ -164,6 +164,16 @@ def header_lines() -> list[str]:
         f"A result from this report is a tier {SWEEP_TIER} result unless its own "
         "heading says so. Issue #281.",
         "",
+        f"ACTIVE CATACLYSMS {replace(TuningConfig(), tier=SWEEP_TIER).active_cataclysm_count()} "
+        f"of 8, which is the tier. WHICH ones is drawn per campaign, from the",
+        "seed, so a cell averages over the characters a player would meet rather "
+        "than describing",
+        "one fixed world. Until issue #1338 the count was 1 at every tier and "
+        "the set was always",
+        "Demonic, so every figure this report produced before then was a "
+        "one-Cataclysm figure",
+        "whatever its heading said.",
+        "",
         "Column key:",
         "  win%       cleared 8 objectives, then the Cataclysm dungeon",
         "  stale%     neither won nor lost -- hit the day cap",

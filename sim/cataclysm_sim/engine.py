@@ -26,6 +26,73 @@ SCORING_TYPE = {
 }
 
 
+def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
+    """The order this campaign's character adds Cataclysms in, all eight of them.
+
+    A CAMPAIGN IN THIS MODEL IS ONE RUN BY ONE CHARACTER, and that is what
+    decides how this is seeded. `Simulation` plays a single run at a single
+    `cfg.tier`: it ends the first time a Cataclysm dungeon is cleared or lost
+    in, it never advances a tier, and nothing loops. The character it belongs
+    to is implicit -- it drew this order when it was created, climbed to
+    `cfg.tier`, and so faces the first `cfg.tier` entries.
+
+    THE SEED IS THE CHARACTER. That one line is what makes the model obey the
+    project owner's ruling of 2026-09-06 -- "if they are on t3 with
+    demonic/war/death they restart with those same cataclysms" -- rather than
+    merely not contradicting it:
+
+    - Replaying a failed run is re-running the same seed, and the same seed
+      draws the same order, so the replay meets the same Cataclysms. The design
+      calls that a property of the character; here it is a property of the
+      seed, and they are the same thing.
+    - The same seed at tier N+1 draws the same order, so its active set is the
+      tier N set plus one. That is one character climbing, not two unrelated
+      worlds.
+    - Different seeds are different characters, which is why averaging over
+      campaigns now measures what a population of players meets rather than
+      what one fixed world does.
+
+    IT IS DRAWN FROM ITS OWN GENERATOR, not from `Simulation.rng`. Two reasons,
+    and the second matters more. Taking these draws from the main stream would
+    shift every later draw in the campaign, so a config change that altered the
+    count would silently re-roll the whole run. And sweeps compare cells over a
+    shared block of seeds; a private generator keyed only on the seed means two
+    cells that differ in policy or empire tree still face the same 250
+    characters, so the draw is common to both and cancels in the difference.
+
+    THAT IS WHY THE NOISE FLOOR DOES NOT MOVE, and it was measured rather than
+    argued. Issue #1338's decision expected sweeps to get noisier. Over 16
+    disjoint blocks of 250 campaigns per cell -- 4,000 campaigns per condition
+    -- at difficulty tier 1, the `triage` policy, no tree against the Architect
+    preset, the floor for a difference between two cells sharing a seed block is
+    3.0 points under this draw against 2.9 under the old fixed one at surge size
+    5, the calibrated value the balance report uses, and 2.3 against 2.2 at the
+    raw default of 4. Unpaired -- two cells on different seeds -- it is 1.7
+    against 1.7 at surge 5 and 2.7 against 1.9 at surge 4. So only the unpaired
+    floor moves, only at the surge size `exp_calibrate` rejected.
+
+    `random.Random` seeds from a string via SHA-512, so this is stable across
+    processes and Python versions in a way `hash()` is not.
+
+    UNIFORM OVER ORDERINGS IS THIS MODEL'S ASSUMPTION AND NOT A DESIGN
+    DECISION. The owner's ruling says the order is drawn per character and no
+    more. Whether every ordering is equally likely, and whether any pairing is
+    constrained, are both explicitly open -- `docs/DECISIONS.md` lists them and
+    issue #1338 carries them. A uniform shuffle is the assumption that adds
+    nothing the owner did not say; it is not evidence about what the game will
+    do, and this docstring is where that is recorded so a later reader does not
+    mistake the shuffle for a decision.
+    """
+    order = list(cfg.CATACLYSM_ROSTER)
+    random.Random(f"cataclysm-order:{seed}").shuffle(order)
+    return tuple(order)
+
+
+def active_cataclysms_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
+    """The Cataclysms active in this campaign: the first N of its draw."""
+    return cataclysm_order_for(cfg, seed)[:cfg.active_cataclysm_count()]
+
+
 class _Craft:
     """Sentinel action: spend days at the forge instead of in a dungeon."""
     def __repr__(self):
@@ -135,7 +202,15 @@ class Simulation:
         # Active Cataclysms pool their modifiers together, plus the Generic
         # ones, which every Cataclysm can draw. `modifiers.pool_for` owns that
         # rule so this and `analyse_dungeons.py` cannot disagree about it.
-        self.active_types = cfg.CATACLYSM_ROSTER[:max(1, cfg.active_cataclysms)]
+        #
+        # HOW MANY comes from the difficulty tier and WHICH ONES from this
+        # campaign's character. Both were fixed before issue #1338: the count
+        # was 1 whatever the tier, and the set was always the first N of a
+        # tuple beginning with Demonic -- the one Cataclysm of the eight that
+        # ignores the frontier, so every lane-based figure this model has ever
+        # produced was measured against the one that does not respect lanes.
+        # `cataclysm_order_for` explains why the seed is the character.
+        self.active_types = active_cataclysms_for(cfg, seed)
         self.modifier_pool = pool_for(self.active_types)
 
         self.tier_min, self.tier_max = scoring.tier_bounds(cfg.tier)
