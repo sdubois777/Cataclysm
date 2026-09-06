@@ -245,14 +245,33 @@ to be discovered:
 
 ### Still open
 
-- **The ladder.** What the per-tier damage numbers should be is being measured,
-  not argued. The first flat values are today's, which is a control and not a
-  recommendation.
+### The per-tier damage numbers are left exactly as they were, and that is a result
+
+Four candidate ladders were measured rather than argued: today's numbers, a soft
+rim, a hard core, and an even ladder between them, at 300 campaigns per cell.
+
+**Before Siege damage existed the choice mattered a great deal** — an untreed
+empire at difficulty tier 1 lost between 2.27 and 11.05 of its 25 cities
+depending on which ladder was used.
+
+**With the Siege modelled it stops mattering.** The same four ladders give win
+rates of 8.0%, 7.0%, 7.0% and 6.7%, all inside the 4.1 point noise floor of one
+another, and cities lost of 17.65, 19.89, 19.20 and 19.66. The Siege takes 1% of
+a city's maximum every day it stands plus ten points for each day it has already
+stood; an ordinary dungeon resolving on the same Outpost takes about 3.6 points
+a day. The per-resolve numbers are no longer what decides anything.
+
+**So no number is changed.** Every flat value is the fraction it replaced
+multiplied by that tier's base maximum. Changing them on this evidence would be
+changing them for no measured reason, and the content of this work is the change
+of shape — which makes every city-health upgrade in the design mean something —
+not a re-tune.
 - **A city can now be emptied of people and still stand.** Nothing falls on
   population reaching zero, and under the fraction that could not happen. Raised
   on #1327 and not decided here.
 - **The bias table** — which Cataclysm damages defence and which damages
   population — is proposed on #1327 and waits on the dungeon sub-type spawn odds.
+
 ## 2026-09-06 — Only ordinary dungeons deepen the Cataclysm boss, and the Last Stand takes none of it
 
 **Affects:** `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py`,
