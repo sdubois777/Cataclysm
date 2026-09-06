@@ -88,6 +88,54 @@ cd sim && python verify_scoring_port.py
 
 - Fix bugs you find in the thing you just built, in this change, as you go.
 
+### If the change touched `game/`
+
+`pytest` compiles no C++ and runs no automation test, so a green Python suite
+says nothing about a change under `game/`. `CLAUDE.md` has the build commands
+under "Commands" and the parallel-session rules under "Running several sessions
+at once". These are the parts of it that cost a cycle each when missed.
+
+**Claim the editor before you drive it, and release it the moment you finish**,
+not at the end of your session. The interactive editor, the automation tests and
+the DataTable regeneration all drive one editor on this machine, and nothing
+enforces one session at a time.
+
+```bash
+python tools/unreal_lock.py acquire <a name for your session>
+python tools/unreal_build.py build     # compile the editor target
+python tools/unreal_build.py tests     # compile, then run the automation tests
+python tools/unreal_lock.py release <a name for your session>
+```
+
+- **Close the interactive editor before building.** Live Coding holds the
+  binaries and the build refuses to start. Close it, build, reopen it.
+- **A build that looks hung for minutes is usually waiting, not stuck.** One
+  build runs at a time on this machine and the engine enforces it;
+  `tools/unreal_build.py` passes `-WaitMutex`, so a second build waits rather
+  than failing. Do not kill it.
+- **After changing a file under `game/Data/`, rebuild and then run
+  `python tools/run_editor_python.py tools/generate_datatable_assets.py`.** The
+  automation tests load the generated DataTable asset rather than the CSV, so a
+  green suite over a stale asset has tested the previous data.
+- **Copy `game/Saved/Logs/Cataclysm.log` somewhere named first** if it holds a
+  playtest you care about. The run replaces it and pushes the old one out to a
+  timestamped backup among the others in that directory.
+- **`Result: Succeeded` is not evidence that anything was compiled**, and the
+  automation command writes nothing useful to standard output. Read what
+  `python tools/unreal_build.py tests` prints: how many tests were performed,
+  and the line after the counts naming any that checked half of what they are
+  named for.
+- **Fifteen tests report themselves as skipped in a git worktree, and that is
+  expected.** The Paragon art is gitignored and exists only in the main
+  checkout.
+
+Testing a widget has one trap of its own. The automation command passes
+`-nullrhi` and runs with no editor, so a test can construct a widget class but
+cannot give it a Blueprint: every `BindWidget` pointer is null and the widget has
+no children at all. A lookup that searches the widget tree for a name finds
+nothing and returns an answer that reads as legitimate. Put the lookup on the
+data instead.
+
 ## 5. File issues for everything else you found
 
 For each finding that is real but out of scope:
@@ -114,13 +162,30 @@ request merges into the repository's *default* branch, which here is `main`;
 these merge into `development`, so the keyword does nothing and the issue is left
 open. Step 7 is what closes it. List any new issues you filed.
 
-## 7. Confirm, close the issue, and report
+## 7. Merge, delete the branch, close the issue, and report
 
 Wait for continuous integration:
 
 ```bash
 gh pr checks --watch
 ```
+
+Merge, and delete the branch as part of merging — not later, not in a cleanup
+pass:
+
+```bash
+gh pr merge <N> --squash
+git checkout development && git pull --ff-only
+git branch -D <branch>
+git push origin --delete <branch>
+```
+
+`git branch -d` refuses a squash-merged branch, because the squash leaves the
+original commit outside `development`'s history. That refusal does not mean the
+work is unmerged; use `-D`. If you worked in a git worktree, remove it too, with
+`git worktree remove <path>`. Skipping these is what issue #1276 measured on
+2026-09-05: 92 of 95 local branches already merged and never deleted. `CLAUDE.md`
+records seventy-five abandoned worktrees holding 18 GB for the other half.
 
 Once the pull request has merged, close the issue by hand. Nothing closes it for
 you:
