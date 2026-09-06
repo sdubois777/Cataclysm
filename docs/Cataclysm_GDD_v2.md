@@ -314,6 +314,10 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 
 
+**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on — which is what the simulation does now that the Siege is modelled — the Last Stand is reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives is reached in **2.4%**. **The route this document treats as the ordinary way to win has almost stopped happening.** That is isolated to the Siege's daily damage and to nothing else. Whether a Siege should be that decisive is a design question that has not been put to the project owner.
+
+
+
 That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time. That check was made before the figures above and has not been repeated on them.
 
   

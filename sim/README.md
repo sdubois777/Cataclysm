@@ -97,6 +97,14 @@ There are two ways to get into one:
   the dungeon sub-type distribution and the boss growing with dungeons
   cleared; the rest is not attributed, which is issue #1343.
 
+  **THOSE ARE MEASURED WITH THE SIEGE'S CITY DAMAGE ZEROED**, because that
+  is the only way to compare with the older figures. With it on, which is
+  what the model does today after issue #1345, the Last Stand is reached in
+  **99.1%** of campaigns and the earned Cataclysm dungeon opens in **2.4%**.
+  The route the design treats as the ordinary win condition has almost
+  stopped happening. Whether a Siege should be that decisive has not been
+  put to the project owner.
+
 A campaign that reaches the day cap has done neither, so it has **no
 result** rather than a third outcome. The `stale%` column reads like one
 and is not one, and nothing in the model ranks it against winning or

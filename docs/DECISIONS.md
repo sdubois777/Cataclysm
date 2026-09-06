@@ -423,6 +423,38 @@ candidate over 400 campaigns a condition in two blocks:
 
 **The change in the win rate is not attributed at all.**
 
+### And then it moved again, much further, before this could land
+
+**#1345 taught the model what a Siege does to a city, and that took the Last
+Stand from 26% of campaigns to 99%.** It landed between this measurement being
+made and the correction being merged, which is why every figure above is stated
+with the Siege's city damage zeroed: that is the only way to compare with what
+#1286 recorded.
+
+| At #1286's settings | Siege damage off | Siege damage on, which is today |
+| :-- | --: | --: |
+| Last Stand reached | 27.7% of campaigns | **99.1%** |
+| Won, per Last Stand reached | 1 in 84 | 1 in 19 |
+| Earned Cataclysm dungeon opened | 74.7% of campaigns | **2.4%** |
+| Mean Last Stand floors | 438 | 386 |
+
+**It is isolated to the Siege and to nothing else in #1345.** Zeroing
+`siege_defence_bite_per_day`, `siege_population_bite_per_day` and
+`siege_damage_growth_per_day` gives 25.8% and 26.0% across two blocks, against
+the 26.2% and 26.2% measured before #1345 landed.
+
+**The arithmetic supports it, so this is not a defect in that work.** A Siege
+takes 1% of a city's maximum defence a day plus a growing flat amount, which
+empties an untouched city in about a hundred days. Siege is 15 in 100 of
+sub-types, and a campaign of about 1,600 days makes roughly ten of them. The
+model is faithfully expressing a rule that was measured on single cities and
+never measured across a campaign.
+
+**The route the design calls the ordinary win condition now happens in one
+campaign in forty.** Whether a Siege should be that decisive is a design question
+and **has not been put to the owner.** It is the largest open question the empire
+layer has.
+
 ### The ruling this corrects a number under is unaffected
 
 The owner ruled on 2026-09-05 that a collapse should be near-fatal, having been

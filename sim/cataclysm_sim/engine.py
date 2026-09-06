@@ -644,6 +644,26 @@ class Simulation:
         near-fatal. Both figures moved in the direction that satisfies it, so
         nothing here reopens the decision -- only the numbers under it.
 
+        **AND THEN #1345 MOVED THEM AGAIN, MUCH FURTHER.** Teaching the model
+        what a Siege does to a city took the Last Stand from 26% of campaigns to
+        **99%**, measured the same way. The figures above are with the three
+        Siege damage settings zeroed, which is the only way to compare with what
+        #1286 recorded; with them on, current behaviour is:
+
+          - Last Stand reached in **99.1%** of campaigns.
+          - Won about **1 in 19** of those reached -- easier, because it is now
+            met with the empire in better shape and at fewer floors, 386 against
+            438.
+          - **The earned Cataclysm dungeon opens in 2.4% of campaigns**, against
+            74.7%. The route the design treats as the ordinary win condition has
+            almost stopped happening.
+
+        THAT IS ATTRIBUTED AND ISOLATED. Zeroing `siege_defence_bite_per_day`,
+        `siege_population_bite_per_day` and `siege_damage_growth_per_day`
+        reproduces 25.8% and 26.0% against the 26.2% measured before #1345, so
+        nothing else in it is responsible. **Whether a Siege should be that
+        decisive is a design question and has not been put to the owner.**
+
         WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
         run has already gone, and a player only ever reaches this by having lost
         cities: a flat bonus, five floors for each dungeon still standing when
