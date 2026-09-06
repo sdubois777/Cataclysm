@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The campaign figures on record are refreshed, and stale ones are marked rather than rewritten
+
+**Affects:** the Last Stand subsection of `docs/Cataclysm_GDD_v2.md`,
+`sim/README.md`, `sim/cataclysm_sim/engine.py`, and seven annotations in this
+file. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358). Figures and prose only — no behaviour changed and
+no constant moved.
+
+### The conditions, stated once, because a figure without them is not a figure
+
+Every figure below is **6,000 campaigns in six disjoint blocks of 1,000 seeds**,
+measured on `e8b33c2`, at **difficulty tier 1**, the **`No tree`** preset, the
+**`triage`** policy, **static** surges every 120 days for **5** dungeons — not
+the `TuningConfig` default of 4, which `sim/experiments.py` records as rejected —
+resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4% of
+a tier width, with the Siege's city damage live and the play strategies able to
+see one. The instrument is `sim/analyse_siege_dose.py`'s own `measure`, called at
+the shipped configuration only rather than across its eighteen doses.
+
+| Figure | Value | Block sd | Count |
+| :-- | --: | --: | :-- |
+| Last Stand reached | **56.4%** | 0.78 | 3,384 of 6,000 |
+| Cleared, per Last Stand reached | **1 in 34.5** | 0.89 pts | 98 of 3,384 |
+| Earned Cataclysm dungeon opens | **50.0%** | 1.55 | 3,001 of 6,000 |
+| Earned dungeon won | **38.3%** | 1.59 | 1,150 of 3,001 |
+| Campaign won at all | **20.8%** | 1.16 | 1,248 of 6,000 |
+| Cities lost, of 25 | **16.34** | 0.24 | |
+| Sieges created per campaign | **10.68** | 0.13 | counted at creation |
+
+**Six blocks and not two, deliberately.** Two blocks give one realised
+difference and no estimate of a spread at all.
+
+**The instrument was checked against the record before anything was rewritten.**
+Blocks A and B reproduce the [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) entry below exactly — earned
+50.400 / 48.300, cities 16.475 / 16.226, Sieges 10.498 / 10.724 — and the
+six-block means reproduce its 50.02 / 16.335 / 10.677 with the same standard
+deviations of 1.55 / 0.235 / 0.125. That is what makes the four new rows
+readable.
+
+**The clear rate is the one figure here that is not firm**, and it says so
+wherever it appears: its block standard deviation is a third of the figure
+itself, the six blocks run 1 in 23 to 1 in 62 on 9 to 25 wins apiece, and the
+pooled 95% interval is 1 in 28 to 1 in 42. Read it as about one in thirty-five
+and nothing narrower.
+
+### The convention chosen for this file: mark, do not restate
+
+**This file records what was decided on what evidence at the time, so no
+recorded figure is altered or deleted.** An older entry keeps its figures
+exactly as they were and a blockquote is inserted beside them saying they are
+superseded, what replaced them, and whether the ruling above them survives. That
+is the form the [#1286](https://github.com/sdubois777/Cataclysm/issues/1286) entry already used on 2026-09-06 and the form
+the [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) entry used for its own superseded sections; this follows it
+rather than inventing a second one. **The change to this file is insert-only**:
+`git diff` on it shows added lines and no removed one.
+
+`sim/README.md`, `docs/Cataclysm_GDD_v2.md` and the comments inside `sim/` are
+the opposite case — they describe how the model behaves now, so their figures are
+replaced. The superseded ones are kept there too, but as **a dated ladder in one
+table** rather than as a pile of corrections read newest-last. That pile is how
+`sim/README.md` came to end its Last Stand bullet on a paragraph headed "WHICH IS
+WHAT REPLACES THE STALE FIGURES ABOVE" carrying figures the owner's Siege ruling
+had already overtaken, and how `docs/Cataclysm_GDD_v2.md` came to state
+"these figures have not been re-measured since" after two re-measurements.
+
+### The gap between two seed blocks is not a noise floor, and this is the second entry to say so
+
+The [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) entry below measured it once, for one figure. The general
+case: across the six blocks here **the gap between blocks A and B runs from 0.67
+to 1.81 times the block-to-block standard deviation** depending on which figure
+is read, and under the sub-type table #1369 replaced it came in at 0.38 for
+Sieges per campaign. It is one draw from a distribution and it can land anywhere.
+
+**Three recorded conclusions rest on a floor of that kind and are annotated
+rather than reversed.**
+
+- The [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) entry's "every figure lands inside the gap between the
+  two blocks, **which is the resolution this sample has**". The predictions did
+  land close and that part stands; the clause about resolution does not.
+- `sim/analyse_quest_move_chance.py` computes exactly that threshold in
+  `spread()` and prints a categorical conclusion from it. **That is issue
+  [#1379](https://github.com/sdubois777/Cataclysm/issues/1379), still open. Nothing from that script has been written into
+  this file or into the design document**, so the error is confined to the
+  script.
+- The per-tier city damage entry's "inside the 4.1 point noise floor", and
+  `sim/README.md`'s "the 4.5 points `win_rate_noise` allows". **Neither is a
+  measurement.** Both are `experiments.win_rate_noise(n)`, a worst-case binomial
+  bound at a 50% win rate and a function of the sample size alone — 4.5 at 250
+  campaigns and 4.1 at 300, whatever the model does. The [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) sweep
+  entry below already said this of the 4.5; `sim/README.md` had not caught up and
+  now has.
+
+### What was NOT re-measured, named rather than left to be discovered
+
+- **The empire tree preset ordering in section 7 of `sim/experiments.py`**, tier
+  1 against tier 8. Still stale and still marked in `sim/README.md`. It is also
+  under-powered: 150 campaigns a cell gives `win_rate_noise(150)` = 5.77 points,
+  so re-running it as it stands would produce another figure that cannot carry
+  the claim. Costed at 1.8 minutes of the report's twenty.
+- **The Last Stand win rate per Last Stand *entered*.** The instrument records
+  reached and cleared, not entered. The reached denominator is the one
+  [#1286](https://github.com/sdubois777/Cataclysm/issues/1286)'s ruling rests on and is the one now stated everywhere.
+- **The population multiplier distribution** further down this file — 0.447 mean
+  and 0.090 worst at tier 1. Measured on `b196cd9`, before the Siege ruling took
+  cities lost from about 21 of 25 to 16.34, and the multiplier is a function of
+  exactly that quantity. Annotated in place.
+- **The four per-tier city damage ladders.** Measured at the old Siege and
+  annotated in place.
+- **The 84% → 8% earned-route figure** the [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) ruling was argued
+  from, quoted in the Subtype Spawn Weights section of
+  `docs/Cataclysm_GDD_v2.md`. It describes a configuration that no longer exists,
+  which is what the sentence around it says, and re-measuring it would mean
+  re-running the 34,000-campaign sweep that produced it.
+- **Anything at difficulty tier 8.** All eight Cataclysms are active there under
+  either scheme, so [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) did not move that distribution; nothing
+  here checked whether the Siege ruling did.
+
+### One thing found while sweeping and not fixed here
+
+`docs/Cataclysm_GDD_v2.md`'s Damage Against a Target's Type section opens its
+worked example with "A run starts with one Cataclysm active and adds one each
+time a Cataclysm is defeated." **That is not how a run works**: the count is the
+difficulty tier and it grows *between* runs, which the same document states twice
+elsewhere, and defeating the Cataclysm boss dungeon ends the run. The arithmetic
+around it is over constants and is unaffected. Raised as
+[#1382](https://github.com/sdubois777/Cataclysm/issues/1382) rather than fixed
+here, because it is a rule statement rather than a campaign figure.
+
+### The research gap on the population multiplier is closed
+
+`CLAUDE.md` requires four reference games to be researched before a formula is
+proposed, and the population-multiplier entry below records that only Path of
+Exile was covered because a search budget ran out. **That gap has been filled**
+and the entry now carries the whole account, its sourcing caveat — most of it is
+community wikis rather than developers — and the finding that the trigger for
+reopening the recommendation was searched for and not found. Issue
+[#1348](https://github.com/sdubois777/Cataclysm/issues/1348) has the full comment. **Nothing in it overturns the owner's
+ruling; it supports it.**
+
 ## 2026-09-06 — What the game counts when a dungeon is beaten, and the one number it refuses to invent
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and
@@ -413,6 +551,23 @@ is on a tree that has since gained the Quest dungeon relocation of
 [#1368](https://github.com/sdubois777/Cataclysm/issues/1368), and the small
 rounding of the six other weights described below. Neither moved it.
 
+> **THE THREE MEASURED FIGURES ABOVE MOVED THE SAME DAY**, when
+> [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) held the Cow Level at 7 and gave the Siege's slack to the
+> five sub-types that are neither. On `e8b33c2` the earned Cataclysm dungeon
+> opens in **50.4% / 48.3%**, cities lost is **16.48 / 16.23** and Sieges
+> created per campaign **10.50 / 10.72**. The entry at the top of this file has
+> that table and the six-block spread behind it. **The Siege's own 7.5 is
+> untouched**, and so is this entry's ruling.
+>
+> **AND "EVERY FIGURE LANDS INSIDE THE GAP BETWEEN THE TWO BLOCKS" IS NOT A
+> STATEMENT ABOUT RESOLUTION.** A two-block gap is one realised difference, not
+> an estimate of a spread. Measured over six disjoint blocks of 1,000 seeds on
+> `e8b33c2`, the A-to-B gap runs from 0.67 to 1.81 times the block-to-block
+> standard deviation depending on which figure is read, and under the sub-type
+> table this entry shipped it came in at 0.38 for Sieges per campaign. The
+> predictions above did land close and that part stands; the sentence that says
+> how close is the part that does not. Issue [#1379](https://github.com/sdubois777/Cataclysm/issues/1379).
+
 ### An unattended Siege now takes 25 / 39 / 55 / 70 days
 
 Recomputed from the new growth rather than chosen: a city falls on the first day
@@ -722,6 +877,17 @@ not 0.51**, and at tier 8 with surge size 8 some runs earn nothing from the
 multiplier at all. The structural floor is roughly a fifth of what the ruling was
 told it was.
 
+> **THOSE FIVE ROWS WERE MEASURED ON `b196cd9` AND THE MODEL HAS MOVED SINCE.**
+> `b196cd9` predates the owner's Siege ruling on [#1349](https://github.com/sdubois777/Cataclysm/issues/1349), which took
+> mean cities lost at tier 1 from about 21 of 25 to **16.34**, and predates the
+> rescale on [#1369](https://github.com/sdubois777/Cataclysm/issues/1369). The population multiplier is a function of
+> exactly that quantity, so the rows above are expected to have moved and
+> **have not been re-measured**. What rests on the *comparison* between the rows
+> — per defeat far kinder than end of run, and a structural floor far below the
+> 51% the ruling was told — survives, because both rows move the same way. What
+> rests on their *levels* does not. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) swept for this and
+> did not re-measure it.
+
 **What that does and does not change.** It does not change what was built: the
 owner ruled the shape and the shape is implemented, floorless, exactly as ruled.
 It does change the *argument*, which was "a clamp would be guarding a case the
@@ -755,6 +921,16 @@ through a run. Nothing in the thirty-odd titles checked does that continuously,
 so such a finding would be the strongest available counter-evidence and the shape
 should be revisited against it.
 
+**THAT FINDING WAS LOOKED FOR AND DID NOT APPEAR.** The research below covers
+Last Epoch's Monolith of Fate, Torchlight Infinite's Twinightmare, Diablo 3's
+Greater Rifts and Diablo 4's Infernal Hordes and Helltide, and **none of them
+makes a permanent reward a continuous function of a resource preserved through a
+run.** Each is a gate, a fraction lost on failure, or a flat completion award.
+The nearest thing to the shape is Diablo 4's Kurast Undercity Attunement Rank,
+and that multiplies a run's own payout rather than permanent progression. **So
+the trigger for reopening this recommendation has now been searched for
+explicitly and was not found.**
+
 Three closer analogues were substituted, each verified by direct quotation:
 
 - **Bad North** pays its entire meta-currency per surviving settlement — "the
@@ -784,6 +960,85 @@ supports neither clamping nor a continuous multiplier, and the multiplier is the
 owner's call rather than a researched shape. The full source list, with which
 items were verified first-party and which were not, is in the research comment on
 issue [#1348](https://github.com/sdubois777/Cataclysm/issues/1348).
+
+**THE GAP WAS FILLED LATER THE SAME DAY, AND IT SUPPORTS THE RULING.** The
+session assigned to the other three games returned after the paragraphs above
+were written and reported on issue [#1348](https://github.com/sdubois777/Cataclysm/issues/1348). It covers **Path of Exile
+1 and 2, Last Epoch, Diablo 3 and 4, and Torchlight Infinite** — the four games
+`CLAUDE.md` names, across six titles. **Nothing in it overturns the owner's
+ruling.**
+
+**Read the sourcing caveat before quoting any of it.** Most of it comes from
+**community wikis rather than developers**: `poewiki.net`, `poe2wiki.net` (which
+describes itself as a work in progress), `lastepoch.fandom.com` (branded
+"Official" but Fandom-maintained), `diablo.fandom.com`, `tlidb.com`, plus
+`maxroll.gg` and `icy-veins.com`. **Two sets of quotations are first-party**:
+Blizzard's Season 4 and Season 5 news posts for Diablo 4, and Grinding Gear
+Games patch notes quoted verbatim inside `poewiki.net`'s version-history tables.
+Several numbers could not be sourced at all and were listed rather than guessed;
+the most important is that **the Path of Exile 2 exchange rate for converting
+leftover Sacred Water into reward keys is published nowhere**.
+
+**One claim made in support of the shape was wrong.** The research was briefed
+on the belief that Path of Exile's Sanctum scales its reward by how much Resolve
+is left. **It does not, in either game.** Resolve and Honour are pass-fail gates
+and never multipliers; what Sanctum does is *defer* rewards, and the resource
+converted into reward at the end is the run's soft currency rather than the
+health bar. The paragraph above already reads Sanctum as a cliff rather than a
+curve, so nothing in this entry rested on the wrong version.
+
+**On the no-floor question the genre is split, and one studio changed its own
+mind.**
+
+| Game and mechanic | Floor on failure |
+| :-- | :-- |
+| Path of Exile 1, Ultimatum | **Zero.** Failing forfeits all accumulated rewards in that instance. |
+| Path of Exile 2, Trial of Chaos | **Split.** The Trialmaster's accumulated rewards are lost, "though other dropped items will be retained". |
+| Path of Exile 1, Blight | **Partial.** Chests "remain once spawned even if the pump is destroyed and the Blight encounter is failed". |
+| Last Epoch, Monolith of Fate | **Partial.** The kill-proportional chest survives; the node reward is granted only "if completed on the first attempt". |
+| Diablo 3, Greater Rifts | **Partial.** On a timeout the rift can still be completed, but grants no gem upgrades. |
+| Diablo 4, Infernal Hordes | **Zero**, at terminal failure only. Blizzard: "Though you don't lose any Burning Aether on death", running out of revives ends the run with no Spoils of Hell. |
+| Diablo 4, Helltide | **Half.** Dying loses half the Aberrant Cinders held. |
+| Torchlight Infinite, Twinightmare | **Fractional and compounding.** Defeat loses a randomly chosen sixth of the Dream Bubbles held, rounded down. |
+
+**Path of Exile 1's Ultimatum was a hard zero, and Path of Exile 2's Trial of
+Chaos is the same studio rebuilding the same mechanic and splitting the pot.**
+That is the strongest single data point on the question and it points *away*
+from all-or-nothing.
+
+**It does not reach this design, and the reason is the timing half of the
+decision above.** The owner's ruling, verbatim, is "You get the experience for
+clearing a dungeon immediately after clearing it." The award is banked at each
+clear, so there is no accumulated pot to forfeit and nothing for a floor to
+protect. **The genre uses that shape too, and the research found it twice.**
+Path of Exile 2's Trial of the Sekhemas locks Sacred Water and rewards in "upon
+successful completion of a room", explicitly contrasted with Path of Exile 1's
+Sanctum; and Path of Exile 1's Heist lets a thief walk out mid-run to bank what
+they are carrying — "You do not need to complete the Heist in order to remove
+the Contraband mark". So the ruling and the genre agree, which is another reason
+the coupling above is the most important line in this entry.
+
+**The closest published analogue to the multiplier itself is Diablo 4's Kurast
+Undercity Attunement Rank**: a rank built up during a run, where "the higher
+your Attunement Rank upon defeating the boss, the more valuable the rewards will
+be". That is a preserved-state multiplier on a payout, which is what surviving
+population now does here. Whether that rank survives a death could not be
+established, and was listed as unanswered rather than assumed.
+
+**WHAT THE RESEARCH COULD NOT SETTLE IS THE QUESTION THAT WAS ACTUALLY ASKED.**
+No developer in any of the six games explains *why* they chose all-or-nothing
+over a partial floor. Grinding Gear Games states consequences in patch notes and
+rebalanced Sanctum's rewards for being "mismatched" without giving a reason;
+Blizzard's campfire chats were searched and contain only functional recaps. **So
+the zero-versus-floor choice remains a judgement rather than something read off
+another game**, which is how `CLAUDE.md` requires such a thing to be labelled.
+
+**One idea recorded as an observation and not a proposal.** Path of Exile 2
+derives its run resource from the character: "Your starting and maximum Honour
+are the sum of your maximum Life, Energy Shield and Runic Ward." The reporting
+session's judgement was that this is why its version reads as fairer than Path
+of Exile 1's flat 300 Resolve — the same content becomes a different problem per
+build with no bespoke tuning. Not proposed for anything here.
 
 ### What this is worth, and every figure needs its conditions
 
@@ -1591,6 +1846,26 @@ a city's maximum every day it stands plus ten points for each day it has already
 stood; an ordinary dungeon resolving on the same Outpost takes about 3.6 points
 a day. The per-resolve numbers are no longer what decides anything.
 
+> **THAT WAS MEASURED WITH THE SIEGE AT SPAWN WEIGHT 15 AND A GROWTH OF 10
+> POINTS A DAY, AND BOTH WERE CUT THE SAME DAY.** The owner ruled on
+> [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) — verbatim "Halve the rate and cut the growth" — taking the
+> weight to 7.5 and the growth to **2.5**, so the sentence above describing a
+> Siege as "plus ten points for each day it has already stood" is the old
+> constant. Mean cities lost at tier 1 is now **16.34** of 25 against the 17.65
+> to 19.66 recorded here, and the earned route went from about 8% of campaigns
+> to **50.0%**. **The four ladders have NOT been re-compared under the new
+> Siege**, so the conclusion that the choice between them stops mattering is
+> untested on the shipped configuration. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) swept for this
+> and did not re-measure it. **No number changed either way**, which is what
+> this section decided.
+>
+> **"Inside the 4.1 point noise floor" is a bound, not a measured floor.** It is
+> `experiments.win_rate_noise(300)`, which is `100 x sqrt(2) x sqrt(0.25 /
+> trials)` — a worst-case binomial value at a 50% win rate and a function of the
+> sample size alone. At win rates of 6.7% to 8.0% the real resolution is much
+> tighter, so the four ladders may well be distinguishable at this sample; the
+> bound cannot say they are not. See the entry at the top of this file.
+
 **So no number is changed.** Every flat value is the fraction it replaced
 multiplied by that tier's base maximum. Changing them on this evidence would be
 changing them for no measured reason, and the content of this work is the change
@@ -1670,6 +1945,25 @@ count. Placing them on floors is the dungeon runtime's work, issue
 count yet.
 
 ## 2026-09-06 — The Last Stand happens twice as often and is harder to win than the figures on record
+
+> **EVERY CAMPAIGN FIGURE IN THIS ENTRY IS SUPERSEDED. IT IS KEPT BECAUSE IT
+> IS THE RECORD OF WHAT WAS DECIDED ON WHAT EVIDENCE.** All of it was measured
+> against Demonic as the only active Cataclysm, which is what the model did
+> until [#1338](https://github.com/sdubois777/Cataclysm/issues/1338), and the two Siege columns further down were then
+> overtaken by the owner's ruling on [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) and the rescale on
+> [#1369](https://github.com/sdubois777/Cataclysm/issues/1369). Re-measured on `e8b33c2` over 6,000 campaigns in six
+> disjoint blocks of 1,000 seeds at the settings this entry names: the Last
+> Stand is reached in **56.4%** of campaigns and cleared **1 in 34.5** of those
+> reached, the earned Cataclysm dungeon opens in **50.0%** and is won
+> **38.3%**, and cities lost is **16.34** of 25. `sim/README.md` and
+> `docs/Cataclysm_GDD_v2.md` carry the whole ladder as one table. Issue
+> [#1358](https://github.com/sdubois777/Cataclysm/issues/1358). **The ruling is still unaffected**, which this entry's own
+> last section says and every re-measurement since has agreed with.
+>
+> **One sentence below is also overtaken.** "Whether a Siege should be that
+> decisive is a design question and **has not been put to the owner**." It was
+> put to them the same day and they ruled on it — [#1349](https://github.com/sdubois777/Cataclysm/issues/1349), verbatim
+> "Halve the rate and cut the growth".
 
 **Affects:** `sim/cataclysm_sim/engine.py`, `sim/README.md`,
 `docs/Cataclysm_GDD_v2.md`, and the text of
@@ -2484,6 +2778,8 @@ measured 2% is the punishment working as designed.
 | Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
 
 > **These figures are what was measured on 2026-09-05 and are no longer current.** Re-measured on 2026-09-06 over 10,000 campaigns at the same settings: the Last Stand is reached in 27.7% of campaigns and won about 1 time in 84 of those, and the earned route is won 40.4% of the time. The entry at the top of this file has the detail. **The ruling below is unaffected** — both figures moved in the direction that satisfies it.
+>
+> **AND THE 2026-09-06 FIGURES IN THE LINE ABOVE ARE THEMSELVES NO LONGER CURRENT.** Those were measured against Demonic as the only active Cataclysm — [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) — and with the Siege's city damage switched off. Re-measured on `e8b33c2` over 6,000 campaigns in six disjoint blocks of 1,000 seeds: the Last Stand is reached in **56.4%** of campaigns and cleared **1 in 34.5** of those reached, and the earned Cataclysm dungeon opens in **50.0%** and is won **38.3%**. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358). **The ruling below is still unaffected** — the fight is met in most campaigns and cleared in about one in thirty-five of them, which is what "near-fatal" asked for.
 
 372 of those 400 campaigns reached a decision; the rest ran out of days, which is
 why the two rows do not sum to 400.
@@ -2860,6 +3156,8 @@ two ways in, and over 400 campaigns at tier 1 they are not close:
 | The Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
 
 > **No longer current.** Re-measured on 2026-09-06: 27.7% of campaigns reach a Last Stand and about 1 in 84 of those are won, against 40.4% for the earned route. See the entry at the top of this file.
+>
+> **AND THOSE TWO ARE NOT CURRENT EITHER.** They were measured against Demonic as the only active Cataclysm and with the Siege's city damage switched off. Re-measured on `e8b33c2` over 6,000 campaigns in six disjoint blocks of 1,000 seeds at the same settings: the Last Stand is reached in **56.4%** of campaigns and cleared **1 in 34.5** of those reached, and the earned route opens in **50.0%** and is won **38.3%**. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) and the entry at the top of this file. **The comparison this section draws is unaffected** — the two routes are still nothing like close.
 
 372 of those 400 campaigns reached a decision; the rest ran out of days. The Last
 Stand figures are stable across three different modifier pools — see the Last

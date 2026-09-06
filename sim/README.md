@@ -22,9 +22,13 @@ Power Score and the tier below — multiplies every weighted term of the Enemy
 Score formula. It runs 385, 498, 625, 717, 853, 979, 1063, 1207 across the eight
 tiers, so the relation between player power and enemy power is not the same at
 both ends. Measured: the empire tree preset ordering in section 7 is not the same
-at tier 1 as at tier 8. **STALE — that comparison was made when both tiers ran
-against one fixed Cataclysm, so it compared two power scales rather than two
-tiers. See the next section.**
+at tier 1 as at tier 8. **STALE, AND UNDER-POWERED, AND STILL NOT RE-MEASURED.**
+That comparison was made when both tiers ran against one fixed Cataclysm, so it
+compared two power scales rather than two tiers; and section 7 runs 150
+campaigns per cell, where `experiments.win_rate_noise(150)` is 5.77 points, so
+it cannot resolve a small ordering change either way. Re-running it is 1.8
+minutes of the report's 20; nobody has done it since #1338. See the next
+section.
 
 The tier is `SWEEP_TIER` in `experiments.py`, and the preset section's tiers are
 `PRESET_TIERS`. Sweeping all eight tiers would take about two and a half hours,
@@ -46,16 +50,26 @@ and the same seed one tier higher meets those plus one, which is one character
 climbing. Different seeds are different characters, so a sweep cell averages over
 the draws a population of players would meet.
 
-**EVERY CAMPAIGN FIGURE ON RECORD BELOW TIER 8 IS STALE, INCLUDING THE ONES IN
-THIS FILE.** Until #1338 the count was a flat 1 whatever the tier, and the set
-was the first N of a fixed tuple, so every campaign the model ever ran faced
-Demonic and nothing else. Demonic is the only one of the eight that ignores the
-frontier, so every lane-based and frontier-pressure figure was measured against
-the one Cataclysm that does not respect lanes. Measured on #1338 at 250 campaigns
-per cell, tier 1, the `triage` policy, at surge size 4 — the raw `TuningConfig`
+**EVERY CAMPAIGN FIGURE MEASURED BELOW TIER 8 BEFORE 2026-09-06 IS STALE.**
+Until #1338 the count was a flat 1 whatever the tier, and the set was the first
+N of a fixed tuple, so every campaign the model ever ran faced Demonic and
+nothing else. Demonic is the only one of the eight that ignores the frontier, so
+every lane-based and frontier-pressure figure was measured against the one
+Cataclysm that does not respect lanes. Measured on #1338 at 250 campaigns per
+cell, tier 1, the `triage` policy, at surge size 4 -- the raw `TuningConfig`
 default, not the calibrated 5 this report uses: which Cataclysm is active swings
-the win rate by 13.6 points, against the 4.5 points `win_rate_noise` allows at
-that sample size, and it flips the ordering between empire tree branches.
+the win rate by 13.6 points and flips the ordering between empire tree branches.
+
+**THAT 13.6 IS NOT COMPARED AGAINST A MEASURED FLOOR, AND IT USED TO SAY IT
+WAS.** This file quoted "4.5 points" beside it. That figure is
+`experiments.win_rate_noise(250)`, which is `100 x sqrt(2) x sqrt(0.25 /
+trials)` -- a worst-case binomial bound at a 50% win rate, a function of the
+sample size and of nothing else. It is 4.5 at 250 campaigns whatever the model
+does, so it cannot confirm or deny anything about a change. The empirically
+measured floors are far tighter, because the real win rates here are 6% to 29%
+rather than 50%; `docs/DECISIONS.md` records them at 16 disjoint blocks of 250.
+13.6 points clears both, so the finding stands -- it is the reasoning that was
+wrong.
 
 **Tier 8 is unaffected, but say it precisely.** All eight are active there under
 either scheme, so the modifier pool is the same 116 entries for every seed and
@@ -64,12 +78,15 @@ still changes at tier 8 is the ORDER the eight sit in, and `_surge` picks a
 Cataclysm by index, so one seeded campaign will not replay identically. The
 distribution a tier 8 cell samples from has not moved; the particular sample has.
 
-**Specifically stale in this file**: every Last Stand figure in the map section
-below, and the claim that the preset ordering differs between tier 1 and tier 8.
-Both are marked where they appear. Re-measuring them is issue
-[#1358](https://github.com/sdubois777/Cataclysm/issues/1358), which also lists
-what was **not** checked — nobody has swept `docs/DECISIONS.md` for the older
-campaign figures.
+**What is still stale in this file**: the claim that the preset ordering in
+section 7 differs between tier 1 and tier 8. The Last Stand figures in the map
+section below **have** been re-measured on `e8b33c2` and carry their conditions
+and the history they replace. Issue
+[#1358](https://github.com/sdubois777/Cataclysm/issues/1358) is where both were
+tracked; it also asked for a sweep of `docs/DECISIONS.md`, which has now been
+done -- the older entries there are annotated where their figures are
+load-bearing rather than rewritten, because that file records what was decided
+on what evidence at the time.
 
 ## Fixed rules (not swept)
 
@@ -125,78 +142,77 @@ There are two ways to get into one:
   parent Sanctuary have all fallen, so the Cataclysm can reach the Pillar
   and comes to the player, absorbing every dungeon still standing as extra
   floors. **This is not itself a loss**, and the older wording here said it
-  was. It is a fight, and at tier 1 it is a fight the player wins about
-  **1 time in 84 per Last Stand reached** -- 1 in 70 if you count only the
-  ones actually entered, which is a quarter fewer -- against about **40%**
-  for an earned one. Measured 2026-09-06 over 10,000 campaigns in two
-  disjoint seed blocks. Issue #5 measured the original; whether a
-  near-unwinnable fight is the intended shape is issue #1286, and the
-  owner ruled that it is.
+  was. It is a fight, and it is very nearly always lost. Issue #5 measured
+  the original; whether a near-unwinnable fight is the intended shape is
+  issue #1286, and the owner ruled that it is.
 
-  **STALE: every figure in this bullet and the two below it was measured at
-  tier 1 against Demonic as the only active Cataclysm**, which is what the
-  model did until issue #1338. They are kept because they are the last
-  measured values and nothing has replaced them, not because they still
-  describe what the model does. The copies of them in
-  `docs/Cataclysm_GDD_v2.md` carry the same warning.
+  **MEASURED 2026-09-06 OVER 6,000 CAMPAIGNS** in six disjoint blocks of
+  1,000 seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days
+  x5 (`surge_dungeon_count` = 5, not the `TuningConfig` default of 4),
+  resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days +4%,
+  with the Siege damage live and the policies able to see one. This is the
+  re-measurement issue #1358 asked for, on `e8b33c2`:
 
-  **Those figures replace 2% and 57%, and the fight is now about twice as
-  common** -- 27.7% of campaigns against 13.5%. Two thirds of that rise is
-  the dungeon sub-type distribution and the boss growing with dungeons
-  cleared; the rest is not attributed, which is issue #1343.
+  | | Value | Block sd | Count |
+  |---|---:|---:|---|
+  | Last Stand reached | **56.4%** | 0.78 | 3,384 of 6,000 |
+  | Cleared, per Last Stand reached | **1 in 34.5** | 0.89 pts | 98 of 3,384 |
+  | Earned Cataclysm dungeon opens | **50.0%** | 1.55 | 3,001 of 6,000 |
+  | Earned dungeon won | **38.3%** | 1.59 | 1,150 of 3,001 |
+  | Campaign won at all | **20.8%** | 1.16 | 1,248 of 6,000 |
+  | Cities lost, of 25 | **16.34** | 0.24 | |
+  | Sieges created per campaign | **10.68** | 0.13 | counted at creation |
 
-  **THOSE ARE MEASURED WITH THE SIEGE'S CITY DAMAGE ZEROED**, because that
-  is the only way to compare with the older figures. With it on, and at the
-  Siege settings of the day, the Last Stand was reached in **99.1%** of
-  campaigns and the earned Cataclysm dungeon opened in **2.4%**: the route
-  the design treats as the ordinary win condition had almost stopped
-  happening.
+  **THE CLEAR RATE IS THE ONE TO DISTRUST.** Its block standard deviation is
+  a third of the figure itself: the six blocks run 1 in 23 to 1 in 62 on 9
+  to 25 wins apiece, and the pooled 95% interval is 1 in 28 to 1 in 42. Read
+  it as "about one in thirty-five" and nothing narrower. Everything else in
+  that table is firm.
 
-  **THE OWNER RULED AGAINST THAT ON 2026-09-06, ISSUE #1349**, verbatim
-  "Halve the rate and cut the growth". The Siege spawn weight went 15 to 7.5
-  and `siege_damage_growth_per_day` 10 to 2.5; the two 1% shares of a city's
-  maximum were left alone. **Re-measured on the shipped configuration** with
-  `sim/analyse_siege_dose.py` at `CATACLYSM_SIEGE_DOSE_TRIALS=1000` -- 2,000
-  campaigns in two disjoint blocks of 1,000 seeds, at tier 1, `No tree`,
-  `triage`, STATIC surges every 120 days x5, resolve ratio 2.0, escalation
-  0.10 per 100 days, craft 12 days +4%, Siege damage live and the policies
-  able to see one -- **the earned Cataclysm dungeon opens in 50.4% and 48.3%
-  of campaigns, the Last Stand is reached in 55.7% and 57.0%, and the empire
-  loses 16.5 and 16.2 cities of 25.** An unattended Siege now empties a city
-  in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47. **The
-  99.1% and 2.4% above describe the game that ruling moved away from.**
+  **THE GAP BETWEEN TWO BLOCKS IS NOT THE NOISE FLOOR.** Two blocks give one
+  realised difference, not an estimate of a spread. Measured on these six:
+  the A-to-B gap runs from **0.67 times** the six-block standard deviation
+  (the clear rate) to **1.81 times** it (Sieges per campaign), and under the
+  sub-type table #1369 replaced it came in at 0.38. It is one draw and it
+  can land anywhere. Anything justified by clearing a two-block gap is
+  justified by nothing; that is issue #1379, and
+  `sim/analyse_quest_move_chance.py` still computes a threshold that way and
+  prints a categorical conclusion from it.
 
-  **THOSE THREE WERE 51.2/48.9, 55.7/56.7 AND 16.4/16.1 UNTIL #1369**, which
-  held the Cow Level at 7 instead of letting it drift up to 7.6 with the rest.
-  The Siege weight is untouched by that change and the figures did not really
-  move: over six disjoint blocks of 1,000 seeds a side rather than two, the
-  earned route went 50.22% to 50.02%, cities lost 16.347 to 16.335 and Sieges
-  created per campaign 10.633 to 10.677 -- **all under half of the 1.14 /
-  0.16 / 0.11 block-to-block standard deviation**. `docs/DECISIONS.md` has the
-  table. **THE GAP BETWEEN TWO BLOCKS IS NOT THE NOISE FLOOR**: the recorded
-  Siege gap of 0.04 is one realised difference and is a quarter of the spread
-  six blocks actually show.
+  **WHAT THOSE FIGURES REPLACE, AND WHY EACH ONE MOVED.** Every row is tier
+  1 at the settings above; only what the row itself names differs. They are
+  kept because each was the evidence a decision was made on.
+  `docs/Cataclysm_GDD_v2.md` carries the same table and `docs/DECISIONS.md`
+  the entry behind each row.
 
-  **RE-MEASURED AFTER #1338 AND #1333, WHICH IS WHAT REPLACES THE STALE
-  FIGURES ABOVE.** 2,000 campaigns in two disjoint blocks of 1,000 seeds, at
-  tier 1, `No tree`, `triage`, STATIC surges every 120 days ×5
-  (`surge_dungeon_count` = 5, not the default of 4), resolve ratio 2.0,
-  escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
-  live**: the Last Stand is reached in **96.3%** of campaigns and won **1 in
-  26.4** of those reached -- 73 wins in 1,926, or 1 in 25.2 of the 1,836
-  entered -- at a mean 407 floors, and the earned Cataclysm dungeon opens in
-  **8.1%** of campaigns and is won **41.6%** of the time. Those are not
-  comparable with the 99.1% above: commit `b196cd9` now draws the active
-  Cataclysms from the campaign seed with their count tied to the tier, so a
-  seeded campaign does not replay a figure measured before it.
+  | Measured | LS reached | Cleared per LS reached | Earned opens | Earned won |
+  |---|---:|---:|---:|---:|
+  | 2026-09-05, #1286, 400 campaigns | 13.5% | 1 in 54 | -- | 57% |
+  | 2026-09-06, 10,000 campaigns, Siege damage OFF | 27.7% | 1 in 84 | 74.7% | 40.4% |
+  | the same, Siege damage ON at weight 15, growth 10 | 99.1% | 1 in 19 | 2.4% | -- |
+  | after #1338 and #1333, Siege still 15 and 10 | 96.3% | 1 in 26.4 | 8.1% | 41.6% |
+  | after #1349, before #1369 | 55.7 / 56.7% | 1 in 34.8 / 31.5 | 51.2 / 48.9% | -- |
+  | **today, six blocks of 1,000** | **56.4%** | **1 in 34.5** | **50.0%** | **38.3%** |
+
+  **The first three rows were measured against Demonic and nothing else**,
+  which is what the model did until #1338; the section above says why that
+  matters. **The two largest moves are both the Siege, in opposite
+  directions**: modelling what one does to a city (#1345) took the earned
+  route from 74.7% of campaigns to 2.4%, and the owner's ruling on #1349 --
+  verbatim "Halve the rate and cut the growth", spawn weight 15 to 7.5 and
+  `siege_damage_growth_per_day` 10 to 2.5, the two 1% shares of a city's
+  maximum left alone -- put it back to about half. An unattended Siege now
+  empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34
+  / 47.
 
   **Barring a Cataclysm dungeon from rolling Cow Level did not measurably
-  move any of that.** The same 2,000 seeds without the rule give 1 in 28.8
-  reached, 67 wins against 73, and the same 96.3% and 407 floors -- six wins
-  on a base of 67, against a standard deviation of about eight. 115 of those
-  Last Stands were Cow Levels before the rule and none after, so the two
-  conditions really are different and the nil result is a result. Issue
-  #1333, and `docs/DECISIONS.md` carries the ruling.
+  move any of it.** The same 2,000 seeds without the rule gave 1 in 28.8
+  reached against 1 in 26.4, 67 wins against 73, and the same 96.3% and 407
+  floors -- six wins on a base of 67, against a standard deviation of about
+  eight. 115 of those Last Stands were Cow Levels before the rule and none
+  after, so the two conditions really are different and the nil result is a
+  result. Issue #1333, and `docs/DECISIONS.md` carries the ruling. That
+  comparison has not been repeated since #1349 moved everything under it.
 
 A campaign that reaches the day cap has done neither, so it has **no
 result** rather than a third outcome. The `stale%` column reads like one
@@ -222,7 +238,7 @@ cataclysm_sim/
   config.py     every tunable number; the five UNKNOWNs are tagged
   world.py      the empire graph
   engine.py     the day loop
-  policies.py   five ways to play, from careless to optimal
+  policies.py   seven ways to play, from careless to optimal
 experiments.py  the sweeps and the report
 ```
 

@@ -925,19 +925,33 @@ class Simulation:
         Issue #1349, 2026-09-06, verbatim "Halve the rate and cut the growth":
         the Siege spawn weight went 15 to 7.5 and `siege_damage_growth_per_day`
         10 to 2.5, with the two 1% shares of a city's maximum left alone.
-        Re-measured with `sim/analyse_siege_dose.py` on the shipped
-        configuration, 2,000 campaigns in two disjoint blocks of 1,000 seeds at
-        the settings named above:
+        Re-measured on 2026-09-06 for issue #1358, on `e8b33c2`, over 6,000
+        campaigns in six disjoint blocks of 1,000 seeds at the settings named
+        above -- six blocks and not two, because two blocks give one realised
+        difference and no estimate of a spread at all:
 
-          - **The earned Cataclysm dungeon opens in 51.2% and 48.9% of
-            campaigns**, against the 8.1% immediately before it.
-          - Last Stand reached in **55.7% and 56.7%**, against 96.3%.
-          - Cleared, per Last Stand reached, **1 in 34.8 and 1 in 31.5**.
-          - Cities lost, of 25: **16.43 and 16.11**, against 21.0.
+          - **The earned Cataclysm dungeon opens in 50.0% of campaigns**,
+            3,001 of 6,000, against the 8.1% immediately before the ruling,
+            and is won **38.3%** of the time, 1,150 of 3,001.
+          - Last Stand **reached in 56.4%**, 3,384 of 6,000, against 96.3%.
+          - Cleared, per Last Stand reached, **1 in 34.5** -- 98 of 3,384.
+          - Cities lost, of 25: **16.34**, against 21.0.
+          - A campaign is won at all **20.8%** of the time.
+
+        Block standard deviations across the six: 1.55 on the earned share,
+        1.59 on its win rate, 0.78 on the Last Stand share, 0.24 of a city on
+        cities lost -- and **0.89 points on the clear rate, a third of the
+        figure itself**. The six blocks run 1 in 23 to 1 in 62 there, pooled
+        95% interval 1 in 28 to 1 in 42, so read it as about one in
+        thirty-five and nothing narrower.
+
+        **DO NOT USE A TWO-BLOCK GAP AS A NOISE FLOOR.** On these six the
+        A-to-B gap ran from 0.67 to 1.81 times the real block-to-block
+        standard deviation depending on which figure was read. Issue #1379.
 
         **So the ordinary way to win is the ordinary outcome again**, which is
-        what the ruling was for. Every figure above it on this docstring
-        describes a game with a Siege twice as common and four times as fast.
+        what the ruling was for. Every figure above this block describes a game
+        with a Siege twice as common and four times as fast.
 
         **THE SAME 2,000 SEEDS WITH THE RULE UNDONE give 1 in 28.8 reached, 67
         wins in 1,926, and the same 96.3% and 407 floors.** So barring one
@@ -1058,8 +1072,9 @@ class Simulation:
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
         # the player. In practice this is the end of the run. The fight is
         # winnable in principle and almost never in practice -- measured on
-        # 2026-09-06 at about 1 in 84 per Last Stand REACHED, against 40.4% for
-        # a Cataclysm dungeon the player opened by clearing quest objectives.
+        # 2026-09-06 at about 1 in 34.5 per Last Stand REACHED, against 38.3%
+        # for a Cataclysm dungeon the player opened by clearing quest
+        # objectives.
         # See `_open_last_stand`, which carries the denominators and what moved
         # them.
         self.min_d2d = min(self.min_d2d, self.empire.distance_to_defeat())

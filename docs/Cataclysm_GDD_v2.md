@@ -352,33 +352,30 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 
 
-**Measured in the simulation on 2026-09-06, over 10,000 campaigns in two disjoint seed blocks at difficulty tier 1**: the Last Stand was reached in **27.7%** of campaigns and won **about 1 time in 84 of those reached** — 33 wins in 2,768 — at around 440 floors, against a **40.4%** win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead.
+**Measured in the simulation on 2026-09-06 over 6,000 campaigns**, in six disjoint blocks of 1,000 seeds, at difficulty tier 1, the `No tree` preset, the `triage` policy, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4% of a tier width, with the Siege's city damage live and the play strategies able to see one: **the Last Stand is reached in 56.4% of campaigns and cleared 1 time in 34.5 of those reached** — 98 of 3,384 — against a **38.3%** win rate for the Cataclysm boss dungeon the player opened by clearing quest objectives, which itself opens in **50.0%** of campaigns. A campaign is won at all 20.8% of the time. **Every simulation figure in this document carries those conditions**, because a figure taken at another tier, policy or surge size is not comparable with one taken here.
 
+**How firmly each of those is resolved, and one of them is not firm.** Across the six blocks the standard deviation is 1.5 points on the earned share, 1.6 on its win rate, 0.8 on the Last Stand share and 0.24 of a city on cities lost — and **0.9 points on the Last Stand clear rate, which is a third of the figure itself**. The six blocks span 1 in 23 to 1 in 62 on 9 to 25 wins apiece, and the pooled 95% interval is 1 in 28 to 1 in 42. Read the clear rate as "about one in thirty-five" and nothing narrower. **The gap between two blocks is not a noise floor**: it is one realised difference rather than an estimate of a spread, and on this model it has come in at a quarter of what six blocks actually show.
 
+**The denominator matters and is stated on purpose.** The rate above is per Last Stand *reached*. Counted per Last Stand *entered* it is higher, because some Last Stands are never entered — the campaign runs out of days first. The two denominators give different answers, so a figure quoted without one cannot be compared with anything. The owner's ruling of 2026-09-05 rests on the reached denominator, so that is the one this section states. **The entered denominator has not been re-measured on the current model**; when both were last taken together it was 1 in 70 against 1 in 84 reached.
 
-**The denominator matters and is stated on purpose.** Counted per Last Stand *entered* rather than reached, the rate is 1 in 70, because about a quarter of Last Stands are never entered — the campaign runs out of days first. The two denominators give different answers, so a figure quoted without one cannot be compared with anything.
+**The owner's ruling that a collapse should be near-fatal is unaffected**, and has survived every re-measurement below. The fight is met in most campaigns and cleared in about one in thirty-five of them.
 
+**What this section carried before, and why each figure moved.** Every row is difficulty tier 1 at the settings named above; only what the row's own note names differs. They are kept rather than deleted because each was the evidence a decision was made on at the time, and because a reader meeting one of them elsewhere needs to be able to place it.
 
+| Measured | Last Stand reached | Cleared, per Last Stand reached | Earned dungeon opens | Earned dungeon won |
+| :-- | --: | --: | --: | --: |
+| 2026-09-05, [#1286](https://github.com/sdubois777/Cataclysm/issues/1286), 400 campaigns | 13.5% | 1 in 54 | not stated | 57% |
+| 2026-09-06, re-measured over 10,000 campaigns, **Siege city damage off** | 27.7% | 1 in 84 | 74.7% | 40.4% |
+| the same campaigns, **Siege damage on** at spawn weight 15 and growth 10 | 99.1% | 1 in 19 | 2.4% | not stated |
+| 2026-09-06, after [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) and [#1333](https://github.com/sdubois777/Cataclysm/issues/1333), Siege still 15 and 10 | 96.3% | 1 in 26.4 | 8.1% | 41.6% |
+| 2026-09-06, after [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) halved the Siege, before [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) | 55.7% / 56.7% | 1 in 34.8 / 1 in 31.5 | 51.2% / 48.9% | not stated |
+| **2026-09-06, today, six blocks of 1,000** | **56.4%** | **1 in 34.5** | **50.0%** | **38.3%** |
 
-**These replace the figures this section carried until 2026-09-06**: 54 Last Stands in 400 campaigns, 1 won, and 57% for the earned fight. Both the frequency and the difficulty moved, and both moved the same way. Of the rise in frequency, the dungeon sub-type distribution accounts for about 6.6 percentage points and the boss growing with every ordinary dungeon cleared for about 2.4; **the remaining 4.5 points are not attributable to any known change** and are being tracked separately. The change in the win rate is not attributed at all.
+**The first three rows were measured against one Cataclysm, and it was always Demonic.** The simulation set the active Cataclysms to the first N of a fixed list and never varied N with the difficulty tier, so a tier 1 measurement was a Demonic measurement — and Demonic is the one of the eight that ignores the frontier, while the Last Stand is reached by a chain of frontier cities falling. [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) corrected that on 2026-09-06: the count now follows the tier and which ones are drawn follows the character. Which Cataclysm is active moves the win rate by 13.6 points at tier 1, so the size of the correction was not assumed to be small.
 
+**The two largest moves are both the Siege, in opposite directions.** Teaching the model what a Siege does to a city took the earned route — the way this document says a run is ordinarily won — from 74.7% of campaigns to 2.4%, and left the Last Stand happening in nearly all of them. The project owner ruled against that on [#1349](https://github.com/sdubois777/Cataclysm/issues/1349), verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are. An unattended Siege now empties a city in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47, and the ordinary way to win is the ordinary outcome again.
 
-
-**The owner's ruling that a collapse should be near-fatal is unaffected.** Both numbers moved in the direction that satisfies it.
-
-
-
-**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on, and at the Siege settings of the day, the Last Stand was reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives in **2.4%** — the route this document treats as the ordinary way to win had almost stopped happening, isolated to the Siege's daily damage and to nothing else.
-
-**That was put to the project owner as [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) and they ruled against it on 2026-09-06**, verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was. **Measured on the shipped configuration** — 2,000 campaigns in two disjoint blocks of 1,000 seeds, difficulty tier 1, `No tree`, `triage`, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4%, with the Siege damage live and the play strategies able to see one — **the earned Cataclysm dungeon now opens in 51.2% and 48.9% of campaigns, the Last Stand is reached in 55.7% and 56.7%, and the empire loses 16.4 and 16.1 of its 25 cities.** The ordinary way to win is the ordinary outcome again, and the two 99.1% and 2.4% figures above describe the game that ruling moved away from.
-
-
-
-That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time. That check was made before the figures above and has not been repeated on them.
-
-  
-
-**Every figure in this subsection was measured against one Cataclysm, and it was always Demonic.** The simulation set the active Cataclysms to the first N of a fixed list and never varied N with the difficulty tier, so a tier 1 measurement was a Demonic measurement. That was corrected on 2026-09-06 under issue #1338 — the count now follows the tier and which ones are drawn follows the character — and these figures **have not been re-measured since**. They are the last measured values and nothing has replaced them. Which Cataclysm is active moves the win rate by 13.6 points at tier 1, so the size of the correction is not assumed to be small. Note also that Demonic is the one Cataclysm that ignores the frontier, and the Last Stand is reached by a chain of frontier cities falling.
+That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time. That check was made before every figure in the table above and has not been repeated on any of them.
 
   
 
