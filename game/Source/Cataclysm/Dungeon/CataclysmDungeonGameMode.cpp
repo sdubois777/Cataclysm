@@ -778,8 +778,10 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 		Run->Clock->EnterDungeon(DungeonId);
 	}
 
-	// FLOOR 1 IS A FLOOR, AND A FLOOR COSTS A DAY. Walking N floors costs N
-	// days: one for arriving and one for each descent.
+	// FLOOR 1 IS A FLOOR, AND A FLOOR COSTS A DAY TO BEGIN WITH. Walking N
+	// floors costs N days at that starting rate: one for arriving and one for
+	// each descent. `SpendFloorTimeInTheEmpire` charges the dungeon's own
+	// `WalkDaysPerFloor`, which a city upgrade can have lowered.
 	SpendFloorTimeInTheEmpire();
 
 	return true;

@@ -4133,9 +4133,9 @@ grants slots. A character carries the same 48 on its first dungeon and its last.
 why: "To avoid interrupting gameplay with pockets of inventory management, we're
 not planning to bring back different-sized items." Path of Exile and Last Epoch
 also never grow the carried inventory. A scaling source would also weaken a
-pressure this design created on purpose — a dungeon floor costs a day, so a
-dungeon is a long way from anywhere to put things down, and how much can be
-carried is part of how deep it is worth going.
+pressure this design created on purpose — a dungeon floor costs a day to begin
+with, so a dungeon is a long way from anywhere to put things down, and how much
+can be carried is part of how deep it is worth going.
 
 **48 rather than Diablo IV's 33** because that game's dungeons are minutes long
 with a free town portal at the end of them, and here a dungeon is many floors at

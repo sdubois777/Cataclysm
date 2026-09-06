@@ -136,7 +136,8 @@ bool FCataclysmDungeonCostsDaysTest::RunTest(const FString& Parameters)
 	const int32 DayBefore = Bound.Run->Day();
 
 	// ENTERING IS A FLOOR. The player is standing on floor 1 and a floor costs a
-	// day, which is what makes walking N floors cost N days.
+	// day to begin with, which is what makes walking N floors cost N days in an
+	// uninvested run like this one.
 	if (!TestTrue(TEXT("the dungeon is entered"),
 				  Bound.Mode->EnterEmpireDungeon(DungeonId)))
 	{

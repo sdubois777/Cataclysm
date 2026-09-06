@@ -209,7 +209,8 @@ def test_the_empire_layer_claim_is_still_true() -> None:
 #: Where the day is allowed to be advanced from, and why each one is allowed.
 #:
 #: The empire layer itself, obviously, and its own tests. The dungeon runtime,
-#: because walking down a floor costs a day and that is the point of issue #1092.
+#: because walking down a floor costs a day to begin with and that is the point
+#: of issue #1092.
 #: The tests that drive either. And the file the console commands live in, where
 #: `Cataclysm.EmpireAdvance` is -- an odd home for them, but it is where every
 #: other console command in this project already is.

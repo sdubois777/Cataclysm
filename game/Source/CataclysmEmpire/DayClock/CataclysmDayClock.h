@@ -33,9 +33,13 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonTimer
 	/**
 	 * How many floors deep it is.
 	 *
-	 * IT DECIDES BOTH HALVES OF THE TRADE. One floor costs one day, so this is
-	 * how long walking the dungeon takes; and the resolve timer is set from it
-	 * too, so a deeper dungeon is both slower to clear and slower to bite.
+	 * IT DECIDES WHAT THE DUNGEON IS WORTH AND WHEN IT BITES. The resolve timer
+	 * is set from this, so a deeper dungeon is worth more and is slower to bite.
+	 *
+	 * IT IS NOT THE WALK COST, THOUGH IT STARTS EQUAL TO IT. One floor costs one
+	 * day as a starting rate, and `FCataclysmDungeon::WalkDays` is where a real
+	 * dungeon's shortened walk is held, so a city upgrade can make the walk
+	 * shorter while this stays where it is.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Floors = 1;
@@ -178,9 +182,10 @@ public:
 	 *
 	 * `ResolveBaseDays + Floors * ResolveFloorRatio`.
 	 *
-	 * IT SCALES WITH DEPTH BECAUSE THE RUN DOES. A flat timer cannot work once
-	 * one floor costs one day: a 40-floor dungeon with a 30-day timer is
-	 * unsavable however well the player plays.
+	 * IT SCALES WITH DEPTH, AND WITH DEPTH ONLY. A flat timer cannot work at the
+	 * starting rate of one day a floor: a 40-floor dungeon with a 30-day timer
+	 * is unsavable however well the player plays. A shortened walk does not move
+	 * this, which is what lets an invested player beat the timer.
 	 *
 	 * THE MODEL'S PER-DUNGEON JITTER IS NOT PORTED. `config.resolve_jitter`
 	 * varies a real dungeon's timer by plus or minus 15%, rolled once when the
