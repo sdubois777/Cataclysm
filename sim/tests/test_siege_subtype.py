@@ -174,10 +174,17 @@ class TestTheDeliberateException:
             f"{sturdy} days against {plain}: the growth is no longer in points")
 
     def test_damage_reduction_still_works_against_a_siege(self):
-        """A READING, NOT A RULING, and recorded as one in `docs/DECISIONS.md`.
-        The owner's exception is that city HEALTH does not protect against a
-        siege. Reducing the damage is a different claim from thickening the
-        wall, so the eleven damage-reduction nodes still apply."""
+        """THE OWNER'S RULING, 2026-09-06, verbatim: "Yes — damage reduction
+        still applies (Recommended)".
+
+        Written first as a reading and put to them as a confirm-or-overturn
+        against two alternatives -- that a siege ignores both defensive lines,
+        and that reduction applies at a reduced rate. Neither was taken.
+
+        The distinction that carried it: a siege ignores how much a city can
+        ABSORB and is still blunted by what REDUCES damage. Thickening a wall
+        and softening a blow are different claims.
+        """
         plain = self.days_to_empty(EmpireTree(name="none"))
         reduced = self.days_to_empty(
             EmpireTree(name="d", city_damage_mult=0.5))

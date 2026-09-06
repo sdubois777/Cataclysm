@@ -494,13 +494,21 @@ class Simulation:
 
             grown = cfg.siege_damage_growth_per_day * days_stood
 
-            # THE EMPIRE TREE'S DAMAGE REDUCTION STILL APPLIES. This is a
-            # READING rather than a ruling: the owner's exception is that city
-            # HEALTH does not protect against a siege -- "a siege does not care
-            # how thick your walls are" -- and says nothing about the eleven
-            # damage-reduction nodes. Reducing the damage is a different claim
-            # from thickening the wall. Recorded in `docs/DECISIONS.md` as a
-            # reading so it can be overturned cheaply.
+            # THE EMPIRE TREE'S DAMAGE REDUCTION STILL APPLIES, AND THAT IS
+            # A RULING RATHER THAN A READING. It was written here as a reading:
+            # the owner's exception is that city HEALTH does not protect
+            # against a siege -- "a siege does not care how thick your walls
+            # are" -- and reducing the damage is a different claim from
+            # thickening the wall. Put to the owner as a confirm-or-overturn
+            # against two alternatives, that a siege ignores both defensive
+            # lines and that reduction applies at a reduced rate. They answered
+            # on 2026-09-06, verbatim: "Yes — damage reduction still applies
+            # (Recommended)".
+            #
+            # SO A SIEGE IGNORES HOW MUCH A CITY CAN ABSORB AND IS STILL
+            # BLUNTED BY WHAT REDUCES DAMAGE. Both defensive lines stay
+            # meaningful, which is also why the combined defensive ceiling
+            # still has two things to multiply. Issue #1329.
             city.defense -= (city.max_defense * cfg.siege_defence_bite_per_day
                              + grown) * cfg.tree.city_damage_mult
             city.population -= (

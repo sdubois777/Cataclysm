@@ -67,14 +67,20 @@ which issue [#318](https://github.com/sdubois777/Cataclysm/issues/318) already
 records. `test_there_is_still_no_city_upgrade_system_to_pause` fails if one is
 added, so the omission stays known rather than silent.
 
-### A reading rather than a ruling
+### The empire tree's damage reduction still applies to a Siege
 
-**The empire tree's damage reduction still applies to a Siege.** The owner's
-exception is that city *health* does not protect against one; reducing the
-damage is a different claim from thickening the wall. Recorded as a reading, in
-the code and here, so it can be overturned cheaply — the same way
-`SiegeDamageGrowthPerDay` records its own reading of which pool the growth
-applies to.
+**A ruling, not a reading.** It was written first as a reading — the owner's
+exception is that city *health* does not protect against a siege, and reducing
+the damage is a different claim from thickening the wall — and then put to them
+as a confirm-or-overturn against two alternatives: that a siege ignores both
+defensive lines, and that reduction applies at a reduced rate.
+
+Owner, 2026-09-06, verbatim: **"Yes — damage reduction still applies
+(Recommended)"**. Neither alternative was taken.
+
+**A siege ignores how much a city can ABSORB and is still blunted by what
+REDUCES damage.** Both defensive lines stay meaningful, which is also why the
+combined defensive ceiling still has two things to multiply rather than one.
 
 ### How the port was checked
 
