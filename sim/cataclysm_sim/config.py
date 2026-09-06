@@ -150,6 +150,30 @@ class EmpireTree:
     # --- city survivability ----------------------------------------------
     city_damage_mult: float = 1.0   # product of every damage-reduction node
 
+    #: How much damage a city can absorb, as a multiple of its tier's base.
+    #: The sum of every city-health increase in the tree, because increases are
+    #: summed into one bucket in this project rather than multiplied.
+    #:
+    #: A SEPARATE LEVER FROM `city_damage_mult` AND NOT INTERCHANGEABLE WITH IT,
+    #: which is why issue #1288 refused to fold the two together and issue #1319
+    #: built this instead. Halving the damage and doubling the health look the
+    #: same on a full-health city and diverge immediately afterwards:
+    #:
+    #:   * `engine._resolve` takes a bite of `max_defense * bite * mult`, so
+    #:     raising `max_defense` raises the absolute size of every bite as well
+    #:     as the pool it comes out of. The two do not cancel for a city that
+    #:     has already taken damage.
+    #:   * `engine._retake` restores a fraction of `max_defense`, so a larger
+    #:     pool means a larger restore. Damage reduction does nothing for a city
+    #:     that has already fallen.
+    #:
+    #: IT SCALES DEFENCE AND NOT POPULATION. Four of the seven nodes say
+    #: "Defense" or "Max Health" and not population, and `Imperial Decree`
+    #: explicitly trades "-10% to population" for its +20% health, so the tree
+    #: treats the two apart. `world.build_empire` applies it to `max_defense`
+    #: only.
+    city_health_mult: float = 1.0
+
     # --- timers -----------------------------------------------------------
     resolve_bonus_days: float = 0.0
     surge_bonus_days: float = 0.0
@@ -157,6 +181,7 @@ class EmpireTree:
     def describe(self) -> str:
         return (f"{self.name}: run -{self.run_days_flat:g}d x{self.run_days_mult:.2f}, "
                 f"floors {self.floor_delta:+g}, city dmg x{self.city_damage_mult:.3f}, "
+                f"city hp x{self.city_health_mult:.2f}, "
                 f"resolve +{self.resolve_bonus_days:g}d, surge +{self.surge_bonus_days:g}d")
 
 
@@ -516,9 +541,36 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
 # #1319 is the gap. The previous value of 0.023 carried an untraceable 0.25
 # factor that may have been an attempt to fold that axis in here; folding two
 # axes into one number is what made it untraceable.
+# The city-health nodes, for the SAME scenario as the multiplier above -- a
+# Sanctuary next to the Pillar. Issue #1319. Summed as increases, which is this
+# project's convention for an increase.
+#
+#   Masonry Techniques    +150%   +10% per point x15, Bulwarks and Sanctuaries
+#   Reinforced Walls      +120%   +8% per point x15, all cities
+#   Monument Building     +100%   +10% per point x10, Sanctuaries
+#   Beacon of Hope         +50%   within 2 rings of the Pillar; a Sanctuary is
+#                                 in ring 1
+#   Foundation             +50%   +5% per point x10, unrestricted
+#   Imperial Decree        +20%   also -10% population, which is not modelled
+#                          ----
+#                          5.90x
+#
+# `Fortified Gates` is EXCLUDED and is the reason this number is not 6.54. It
+# grants +8% per point across 8 points, but only "for Outposts", and this
+# scenario is a Sanctuary. A first count of these nodes matched descriptions for
+# a percentage without reading the tier they apply to and produced 6.54; the
+# same class of mistake as the untraceable factor issue #1288 removed.
+#
+# ONE NUMBER WHERE THE TREE HAS PER-TIER RULES. Three of these six apply only to
+# some tiers, and this lever multiplies every tier alike, so an Outpost is
+# credited with Masonry, Monument Building and Beacon of Hope that it does not
+# get, and is not credited with Fortified Gates that it does. `city_damage_mult`
+# already makes the same simplification for the same reason. Making both levers
+# per-tier is a larger change and is not part of #1319.
 TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
     name="Architect maxed (as designed)",
     city_damage_mult=0.0766,
+    city_health_mult=5.90,
     resolve_bonus_days=13.0,
 )
 
