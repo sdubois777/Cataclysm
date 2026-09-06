@@ -796,11 +796,11 @@ def section_five(pooled: dict, table: dict, facts: dict) -> None:
     print("  still be worth something -- while leaving floor count a reason to "
           "choose one dungeon over")
     print("  another, and it must not make the untreed run harder than it is "
-          "today. The untreed row is")
-    print("  unaffected by every candidate: none of them touches "
-          "`run_days_min` for a player with no tree,")
-    print("  and a player with no tree has `run_days_flat` 0 and "
-          "`run_days_mult` 1.00 whatever the branch says.")
+          "today. Every candidate that")
+    print("  changes only the tree leaves the untreed row exactly where it is, "
+          "because a player with no tree")
+    print("  has `run_days_flat` 0 and `run_days_mult` 1.00 whatever the "
+          "branch's nodes say.")
     print()
     print("  THE ONE EXCEPTION, AND IT IS THE ONLY CANDIDATE THAT COSTS THE "
           "UNINVESTED PLAYER ANYTHING: raising")
