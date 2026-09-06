@@ -42,6 +42,20 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 * A DUNGEON THAT RESOLVES DOES NOT GO AWAY. Its timer is set back to full
 	 * and it bites the same city again the next time it runs out, which is what
 	 * lets an ignored city actually die.
+	 *
+	 * **A DUNGEON IN THIS LIST DID NOT NECESSARILY BITE ANYTHING.** It is the
+	 * list of timers that ran out, and since issue #1324 slice 3 not every
+	 * timer running out costs the host city something.
+	 * `FCataclysmDungeon::Resolves` is what says which do: a Quest dungeon
+	 * refreshes instead of detonating, and a Fallen City and a Cataclysm stand
+	 * on a city whose damage is already done. A caller counting how often the
+	 * empire was hurt must filter on that rather than on the length of this
+	 * list. Nothing does yet -- a run-wide count of dungeons that detonated is
+	 * slice 5 of that issue.
+	 *
+	 * A QUEST DUNGEON'S TIMER IS A RELOCATION CLOCK AND APPEARS HERE ON PURPOSE.
+	 * The design has it "refresh and may move to adjacent city"; the move is
+	 * slice 4 and this is the event it will hang on.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Resolved;
@@ -462,10 +476,16 @@ private:
 	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
 
 	/**
-	 * A dungeon's timer ran out: it takes a NUMBER OF POINTS off its host city,
-	 * and the city may fall.
+	 * A dungeon's timer ran out: if it is a kind that detonates it takes a
+	 * NUMBER OF POINTS off its host city, and the city may fall.
 	 *
 	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
+	 *
+	 * NOT EVERY KIND DETONATES. `FCataclysmDungeon::Resolves` is the rule and
+	 * this returns without touching the city when it answers false -- a Quest
+	 * dungeon refreshes instead, which is issue #1324 slice 3. The clock has
+	 * already put the timer back to full by the time this is called, so
+	 * refreshing is doing nothing.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 

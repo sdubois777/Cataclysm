@@ -225,6 +225,30 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 		return;
 	}
 
+	if (!Dungeon->Resolves())
+	{
+		// IT REFRESHES RATHER THAN DETONATING, and the clock has already
+		// refreshed it -- see `UCataclysmDayClock::AdvanceDay`, which sets every
+		// timer that ran out back to full. So the whole of this rule is doing
+		// nothing to the city.
+		//
+		// A QUEST DUNGEON IS THE ONE THIS IS ABOUT IN PLAY.
+		// `docs/Cataclysm_GDD_v2.md` section VIII: it "does not resolve --
+		// refreshes and may move to adjacent city". The timer is a relocation
+		// clock and it is MEANT to run out; what must not happen is the city
+		// paying for it. Issue #1324 slice 3. **Nothing moves yet**: the move is
+		// slice 4, and the dungeon appears in this day's
+		// `FCataclysmDayReport::Resolved` when its timer fires, which is the
+		// event that slice will hang the move on.
+		//
+		// A FALLEN CITY AND A CATACLYSM REACH THIS TOO, and would have been
+		// stopped by the fallen-city check below in any case -- a Fallen City
+		// stands on a city that has by definition fallen. This is the first of
+		// the two reasons rather than the only one, and it is the one that
+		// states the design instead of relying on a coincidence.
+		return;
+	}
+
 	const int32 CityId = Dungeon->CityId;
 
 	const FCataclysmCity* City = Map->Find(CityId);

@@ -34,19 +34,23 @@ enum class ECataclysmSurgeMode : uint8
 };
 
 // `ECataclysmDungeonType` IS IN `Empire/CataclysmDungeonKind.h`, included
-// above. `SpecFor` ANSWERS FOR ALL FOUR KINDS, but only one is ever CREATED:
+// above. `SpecFor` ANSWERS FOR ALL FOUR KINDS, and THREE OF THE FOUR ARE NOW
+// CREATED:
 //
-//   - **Basic** is what a surge spawns, and the only kind anything builds.
-//     `MakeDungeon` sets it on every dungeon that lands.
-//   - **Quest** relocates instead of resolving. Nothing creates one; issue
-//     #1324. Issue #51 is the Hell on Earth quest mechanic for the Demonic
-//     Cataclysm specifically, which is a different thing from this kind.
-//   - **FallenCity** is what a city that has fallen becomes. Nothing creates
-//     one; issue #1324. `UCataclysmEmpireMap` already records a city as fallen,
-//     so the trigger exists and the dungeon does not.
-//   - **Cataclysm** is the boss dungeon. Nothing creates one; issue #1324.
-//     Issue #43 moves it to the Pillar for the Last Stand and issue #1315 grows
-//     it per dungeon defeated, and both assume it exists first.
+//   - **Basic** is the common thing a surge spawns. `MakeDungeon` builds it.
+//   - **Quest** refreshes instead of resolving, and clearing one is one
+//     objective towards challenging the Cataclysm. A surge rolls one in place
+//     of a Basic; see `RollKind` and `QuestChance`. Issue #1324 slice 3.
+//     **It does not relocate yet**: the design says it "may move to adjacent
+//     city" and that is slice 4, so today it refreshes where it stands. Issue
+//     #51 is the Hell on Earth quest mechanic for the Demonic Cataclysm
+//     specifically, which is a different thing from this kind.
+//   - **FallenCity** is what a city that has fallen becomes.
+//     `MakeFallenCityDungeon` builds it and `UCataclysmEmpireRun::CityFell`
+//     is the only caller. Issue #1324 slice 2.
+//   - **Cataclysm** is the boss dungeon. NOTHING CREATES ONE; issue #1324
+//     slice 6. Issue #43 moves it to the Pillar for the Last Stand and issue
+//     #1315 grows it per dungeon defeated, and both assume it exists first.
 
 /**
  * How deep a dungeon of one kind on one tier of city is, and what it takes when
@@ -252,6 +256,29 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * event -- a dungeon biting a city -- rather than the old fraction.
 	 */
 	float BiteScale() const;
+
+	/**
+	 * Whether this dungeon's timer running out costs its host city anything.
+	 *
+	 * A PORT OF `Dungeon.resolves` IN `sim/cataclysm_sim/engine.py`, and the
+	 * model's own words for why the other three answer false: "Quest dungeons
+	 * refresh instead of resolving; Fallen City and Cataclysm dungeons have
+	 * already done their damage."
+	 *
+	 * WHY THIS EXISTS RATHER THAN A CHECK THAT THE DAMAGE IS ZERO. All three
+	 * kinds carry zero damage in `SpecFor` today, so reading the numbers would
+	 * give the same answer -- but it would give it for the wrong reason. Issue
+	 * #1327 turned city damage into flat points and asked, as this issue's own
+	 * ninth design question, whether the three non-Basic kinds should deal any;
+	 * if the answer is yes, a zero check silently starts letting a Quest dungeon
+	 * detonate. The kind is what the design speaks about, so the kind is what
+	 * this reads.
+	 *
+	 * IT DOES NOT MEAN THE TIMER NEVER FIRES. A Quest dungeon's timer is a
+	 * relocation clock and is MEANT to run out -- see `QuestResolveDays`. What
+	 * this answers is whether anything is taken from the city when it does.
+	 */
+	bool Resolves() const { return Type == ECataclysmDungeonType::Basic; }
 };
 
 /**
@@ -289,8 +316,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
  *     records what it would mean for the lane rule.
- *   - **Quest dungeons.** 12% of a wave in the simulation, and they relocate
- *     rather than resolving. Issue #51.
+ *   - **A Quest dungeon MOVING.** Rolling one and refreshing it rather than
+ *     letting it detonate are both here now, issue #1324 slice 3. The design
+ *     says it "may move to adjacent city" and the project owner ruled on
+ *     2026-09-06, verbatim "Adjacent, and fix the simulation", that adjacency
+ *     is right and the model's move-anywhere is the defect. Moving is slice 4.
  *   - **The 117 dungeon modifiers.** Issue #41.
  *   - **What six of the seven sub-types do.** One of them is here: Cow Level
  *     doubles the walk. The other six describe what happens inside a dungeon,
@@ -601,6 +631,63 @@ public:
 	static constexpr float FallenCityResolveDays = 999.0f;
 
 	/**
+	 * How long a Quest dungeon's timer runs. `config.DUNGEON_SPECS`.
+	 *
+	 * IT IS A RELOCATION CLOCK AND NOT A BITE SCHEDULE, which is why it is a
+	 * flat number rather than derived from the depth. `docs/Cataclysm_GDD_v2.md`
+	 * section VIII: a Quest dungeon "does not resolve -- refreshes and may move
+	 * to adjacent city". The model says the same with a `(25, 40)` on every
+	 * Quest row of `DUNGEON_SPECS` and by reading `spec.resolve_days[0]` for
+	 * every kind but `Basic` in `Simulation._make_dungeon`; all four tiers give
+	 * 25, so one constant covers them and `test_surge_port.py` checks all four
+	 * against it.
+	 *
+	 * THIS IS NOT THE "RESOLVE TIMERS SCALE WITH DEPTH" RULE BEING BROKEN.
+	 * `CLAUDE.md` states that rule about a dungeon whose timer running out
+	 * takes something from a city: a deeper one is worth more and slower to
+	 * bite. A Quest dungeon takes nothing whenever its timer runs out, so there
+	 * is no bite for its depth to be traded against. What the timer decides is
+	 * how long the player has before the objective moves, and the design gives
+	 * that no relationship to depth at all.
+	 *
+	 * NOTHING MOVES YET. Until slice 4 of issue #1324 the timer running out
+	 * refreshes the dungeon where it stands. It appears in the day's
+	 * `FCataclysmDayReport::Resolved` when it does, which is the event slice 4
+	 * hangs the move on.
+	 */
+	static constexpr float QuestResolveDays = 25.0f;
+
+	/**
+	 * The chance a surge lands a Quest dungeon rather than a Basic one.
+	 * `config.quest_dungeon_chance`.
+	 *
+	 * **THIS NUMBER IS THE MODEL'S AND IS KNOWN TO BE SUPERSEDED. READ THIS
+	 * BEFORE TREATING IT AS THE DESIGN.** Asked on issue #1324 what a Quest
+	 * dungeon's spawn chance should be, the project owner answered on
+	 * 2026-09-06, verbatim: "It should depend on the Cataclysm". So the settled
+	 * design is a RULE keyed on which Cataclysm sent the wave -- one asking for
+	 * ten objectives should offer them more often than one asking for five --
+	 * and not a single figure.
+	 *
+	 * WHY THE RULE IS NOT HERE. **The empire layer has no notion of which
+	 * Cataclysm is running.** There is no Cataclysm enum in this module, no
+	 * active-Cataclysm list on the scheduler, and no field on
+	 * `FCataclysmDungeon` saying which one sent it; the "WHAT IS NOT PORTED"
+	 * list above names the other seven Cataclysms as issue #53. A rule keyed on
+	 * the Cataclysm would therefore have exactly one reachable value, which is
+	 * the same argument issue #1324 itself made against writing a per-kind city
+	 * damage table before anything created the kinds. The type has to exist
+	 * before the rule that reads it can be verified, so this slice creates the
+	 * type and issue #1357 owns the rule.
+	 *
+	 * SO WHY 12 IN 100 AND NOT SOMETHING ELSE. It is what the model has used
+	 * for every balance figure this project holds, and keeping the two in step
+	 * is what this whole class is for. It is a PORT and not a choice; nothing
+	 * here picked it, and `test_surge_port.py` fails if the two drift.
+	 */
+	static constexpr float QuestChance = 0.12f;
+
+	/**
 	 * The dungeon a city becomes when it falls.
 	 *
 	 * NOT ROLLED, UNLIKE EVERY OTHER DUNGEON. A wave rolls a depth out of the
@@ -772,14 +859,52 @@ public:
 	 * A fifty floor dungeon that costs two days to walk is still fifty floors
 	 * deep and still bites on the same schedule.
 	 *
+	 * WHAT A QUEST DUNGEON DOES DIFFERENTLY, and it is less than it looks. Its
+	 * floors come from the Quest row of `SpecFor` rather than the Basic one, and
+	 * its timer is the flat `QuestResolveDays` rather than a jittered figure
+	 * from its depth. Everything else is the same code: the city's floor
+	 * upgrades still move it, it still rolls a sub-type, its walk still costs a
+	 * day a floor less whatever the city bought, and it still carries the
+	 * design's one boss on the final floor. Nothing about a Quest dungeon says
+	 * otherwise, and giving it its own maker would have been two copies of the
+	 * shared rules.
+	 *
 	 * @param bSiegeAllowed whether this city may take a Siege. Passed straight
 	 *                      to `RollSubType`; see there. It defaults to allowing
 	 *                      one because only `RollWave` knows what is already
 	 *                      standing, and this is called on its own by tests.
+	 * @param Type          which kind to build. `RollKind` is what decides it
+	 *                      for a wave; it defaults to `Basic` because most
+	 *                      dungeons are and because the tests that call this on
+	 *                      its own predate there being a choice. **A surge
+	 *                      rolls `Basic` or `Quest` and nothing else**, so
+	 *                      anything else asked for here is built as a `Basic`
+	 *                      rather than as a half-made Fallen City -- see the
+	 *                      implementation. `MakeFallenCityDungeon` is how a
+	 *                      Fallen City is built and nothing builds a Cataclysm.
 	 */
-	FCataclysmDungeon MakeDungeon(int32 DungeonId, const FCataclysmCity& City,
-								  int32 Day, FRandomStream& Stream,
-								  bool bSiegeAllowed = true) const;
+	FCataclysmDungeon MakeDungeon(
+		int32 DungeonId, const FCataclysmCity& City, int32 Day,
+		FRandomStream& Stream, bool bSiegeAllowed = true,
+		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic) const;
+
+	/**
+	 * Which kind of dungeon the next one a surge lands is.
+	 *
+	 * A PORT OF THE TWO LINES IN `Simulation.trigger_surge` THAT READ
+	 * `quest_dungeon_chance`, and it is deliberately a function of nothing but
+	 * the stream so that a test can measure the share it produces without
+	 * building a map.
+	 *
+	 * IT ANSWERS `Basic` OR `Quest` AND NOTHING ELSE. A Fallen City is not
+	 * rolled -- it is what a city that fell became -- and nothing creates a
+	 * Cataclysm yet; issue #1324 slice 6.
+	 *
+	 * ONE DRAW, ALWAYS. It takes exactly one number off the stream whichever
+	 * answer it gives, so the rolls that follow it do not depend on which kind
+	 * came out.
+	 */
+	static ECataclysmDungeonType RollKind(FRandomStream& Stream);
 
 	/**
 	 * The whole wave: picks the targets and rolls a dungeon for each.

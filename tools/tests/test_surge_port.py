@@ -561,38 +561,54 @@ class TestWhatADungeonIs:
                 f"CataclysmSurge.cpp answers a Cataclysm spec on a {tier}, "
                 "which the model has no row for")
 
-    def test_a_surge_still_lands_only_basic_dungeons(self):
-        """A wave a surge rolls is `Basic` and nothing else, still.
+    def test_a_surge_lands_a_basic_or_a_quest_and_nothing_else(self):
+        """A wave a surge rolls is `Basic` or `Quest`. Never the other two.
 
-        THIS TEST WAS RENAMED, AND THE OLD NAME IS WHY. Slice 1 of #1324 called
-        it `test_nothing_creates_a_dungeon_that_is_not_basic_yet`, and its
-        docstring said `MakeDungeon` "is the only thing that puts a dungeon on
-        the map". Slice 2 made both false: a city that falls becomes a Fallen
-        City dungeon, built by `MakeFallenCityDungeon` and added by
-        `UCataclysmEmpireRun::CityFell`. The test kept passing, because it only
-        ever read `MakeDungeon` -- so its NAME claimed something broader than
-        what it checked, which is worse than a failure. It now says what it
-        checks.
+        THIS TEST HAS BEEN RENAMED TWICE AND BOTH RENAMES ARE THE POINT.
 
-        WHAT IT STILL GUARDS. Slices 3 to 6 are the ones that make a surge roll a
-        kind. When one lands, this test should fail and be rewritten
-        deliberately, rather than the scope drifting.
+        Slice 1 of #1324 called it `test_nothing_creates_a_dungeon_that_is_not_basic_yet`,
+        and its docstring said `MakeDungeon` "is the only thing that puts a
+        dungeon on the map". Slice 2 made both claims false -- a city that falls
+        becomes a Fallen City dungeon -- and the test kept passing, because it
+        only ever read `MakeDungeon`. Slice 2 renamed it to
+        `test_a_surge_still_lands_only_basic_dungeons`, which said what it
+        actually checked.
+
+        Slice 3 has now made THAT name false: a surge rolls a Quest dungeon
+        `QuestChance` of the time. So the name changes again rather than the
+        assertion being loosened while the name stays, which is the failure mode
+        the epic named as worse than a failing test.
+
+        WHAT IT STILL GUARDS, and it is a real thing rather than a formality.
+        Slices 4 to 6 remain. A Fallen City must keep coming from
+        `MakeFallenCityDungeon` and nowhere else, and NOTHING may build a
+        Cataclysm until slice 6 does it deliberately -- that dungeon is the win
+        condition and issues #43 and #1315 also reach for it, so a third route to
+        it appearing by accident is exactly what this stops.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
 
+        rolled = source.split("UCataclysmSurgeScheduler::RollKind(", 1)[1]
+        rolled = rolled.split("\n}", 1)[0]
+
+        assert "ECataclysmDungeonType::Quest" in rolled, (
+            "RollKind no longer answers Quest, so a surge lands none. Issue "
+            "#1324 slice 3 is what made it")
+
+        assert "ECataclysmDungeonType::Basic" in rolled, (
+            "RollKind no longer answers Basic, so every dungeon a surge lands "
+            "is a Quest")
+
         made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
         made = made.split("return Dungeon;", 1)[0]
 
-        assert "Dungeon.Type = ECataclysmDungeonType::Basic;" in made, (
-            "MakeDungeon no longer sets Basic. If a surge now rolls a kind, "
-            "this test has done its job and should be replaced by one that "
-            "checks the roll.")
-
-        for kind in ("Quest", "FallenCity", "Cataclysm"):
-            assert f"ECataclysmDungeonType::{kind}" not in made, (
-                f"MakeDungeon mentions {kind}, so a surge may now land one. "
-                "See issue #1324 for the slice that is meant to.")
+        for kind in ("FallenCity", "Cataclysm"):
+            for where, body in (("RollKind", rolled), ("MakeDungeon", made)):
+                assert f"ECataclysmDungeonType::{kind}" not in body, (
+                    f"{where} mentions {kind}, so a surge may now land one. A "
+                    "Fallen City comes from MakeFallenCityDungeon and nothing "
+                    "builds a Cataclysm; see issue #1324")
 
     def test_only_a_city_falling_creates_a_dungeon_a_surge_did_not(self):
         """One route puts a dungeon on the map that no surge rolled, and one only.
@@ -853,6 +869,203 @@ class TestWhatAFallenCityIs:
         assert "absorbed" in fall and "len(absorbed)" not in fall, (
             "Simulation._fall now appears to use how many dungeons it absorbed. "
             "If #1341 has been fixed, this test needs replacing; see above")
+
+
+class TestWhatAQuestDungeonIs:
+    """A surge rolls one instead of a Basic, and it refreshes instead of biting.
+
+    Slice 3 of issue #1324. Relocation is slice 4 and is deliberately not here;
+    `test_neither_moves_a_quest_dungeon_yet` below is what records that, so the
+    absence reads as scope rather than as an oversight.
+    """
+
+    def test_the_chance_a_surge_rolls_one_matches(self, surge_header, model):
+        """`QuestChance` against `config.quest_dungeon_chance`.
+
+        **THIS NUMBER IS KNOWN TO BE SUPERSEDED AND THIS TEST IS STILL THE RIGHT
+        ONE.** The project owner ruled on 2026-09-06, verbatim "It should depend
+        on the Cataclysm", so the settled design is a rule keyed on which
+        Cataclysm sent the wave rather than a single figure. The game cannot
+        express that yet -- its empire layer has no Cataclysm identity at all --
+        and issue #1357 owns getting there.
+
+        Until it does, both halves hold the same flat number and the job of this
+        file is to make sure they hold the SAME one. A drift here would mean the
+        game rolling Quest dungeons at a rate no balance figure was measured at.
+        """
+        unreal = number(surge_header, "QuestChance")
+
+        assert model.quest_dungeon_chance == pytest.approx(unreal), (
+            f"the model rolls a Quest dungeon {model.quest_dungeon_chance:.0%} "
+            f"of the time and the game {unreal:.0%}")
+
+    def test_its_timer_is_the_models_relocation_clock_at_every_tier(
+            self, surge_header, model):
+        """One flat figure in the game against four rows in the model.
+
+        The model reads `spec.resolve_days[0]` for every kind but `Basic`
+        (`Simulation._make_dungeon`), and all four Quest rows give the same
+        number, so the game holds one constant. **All four are checked and not
+        just one**: if a tier's row ever diverges, the game holding a single
+        constant stops being right and this is what says so.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        unreal = number(surge_header, "QuestResolveDays")
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.QUEST, CityTier(tier))
+            assert spec.resolve_days[0] == pytest.approx(unreal), (
+                f"{tier}: the model gives a Quest dungeon "
+                f"{spec.resolve_days[0]} days, the game gives {unreal}")
+
+    def test_it_takes_nothing_from_the_city_in_either(self, model):
+        """It destroys nothing at any tier, in either half.
+
+        ZERO IS ZERO IN EITHER UNIT, so this survived issue #1327 turning the
+        model's damage from a fraction of the city's maximum into a number of
+        points, exactly as the Fallen City version of it did.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.QUEST, CityTier(tier))
+            assert spec.defense_damage == 0.0, tier
+            assert spec.population_damage == 0.0, tier
+
+    def test_neither_lets_one_bite_its_host_when_the_timer_runs_out(self):
+        """Both halves refuse on the KIND, not on the damage being zero.
+
+        WHY THAT DISTINCTION IS WORTH A TEST. All four Quest rows carry zero
+        damage today, so a check of the numbers would give the same answer for
+        the wrong reason. Issue #1327 made city damage flat points and asked, as
+        issue #1324's own ninth design question, whether the three non-Basic
+        kinds should deal any at all. If that is ever answered yes, a
+        zero-valued check silently starts letting a Quest dungeon detonate. The
+        design speaks about the kind, so both halves read the kind.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Dungeon, Simulation
+
+        resolves = inspect.getsource(Dungeon.resolves.fget)
+
+        assert "DungeonType.BASIC" in resolves, (
+            "Simulation's Dungeon.resolves no longer answers on the kind. If "
+            "the model now decides by reading the damage, the game's "
+            "FCataclysmDungeon::Resolves has to change with it")
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        assert "d.dtype is DungeonType.QUEST" in resolve, (
+            "Simulation._resolve no longer singles a Quest dungeon out before "
+            "it detonates")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                   / "CataclysmEmpireRun.cpp")
+
+        body = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        body = body.split("\n}", 1)[0]
+
+        assert "if (!Dungeon->Resolves())" in body, (
+            "UCataclysmEmpireRun::ResolveDungeon no longer asks whether the "
+            "dungeon is a kind that detonates, so a Quest dungeon now bites "
+            "the city it is standing on. Issue #1324 slice 3")
+
+        header = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.h")
+
+        assert ("bool Resolves() const { return Type == "
+                "ECataclysmDungeonType::Basic; }") in header, (
+            "FCataclysmDungeon::Resolves is no longer 'Basic and nothing "
+            "else', which is what Dungeon.resolves in the model says")
+
+    def test_the_game_does_not_roll_its_timer_from_its_depth(self):
+        """A Quest dungeon's timer is flat; a Basic one's comes from its floors.
+
+        THE DEPTH RULE IS NOT BEING BROKEN HERE AND THE DISTINCTION MATTERS.
+        `CLAUDE.md` requires a resolve timer to scale with depth, because a
+        deeper dungeon is worth more and should be slower to bite. A Quest
+        dungeon has no bite for its depth to be traded against, and its timer is
+        how long the player has before the objective moves -- which the design
+        relates to nothing.
+
+        **THE JITTER DRAW STILL HAPPENS EITHER WAY.** That is not decoration: a
+        Quest dungeon that took fewer numbers off the stream would change every
+        later roll in the run depending on which kinds came out earlier.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        made = made.split("return Dungeon;", 1)[0]
+
+        assert "Dungeon.ResolveDays = (Kind == ECataclysmDungeonType::Quest)" \
+            in made, (
+                "MakeDungeon no longer gives a Quest dungeon a different timer "
+                "from a Basic one's")
+
+        assert "? QuestResolveDays" in made, (
+            "MakeDungeon no longer uses QuestResolveDays for a Quest dungeon's "
+            "timer")
+
+        # THE DRAW IS OUTSIDE THE BRANCH, so both kinds cost the stream the same.
+        jitter = made.split("const float Jitter", 1)[1]
+        jitter = jitter.split("Dungeon.ResolveDays", 1)[0]
+
+        assert "Kind ==" not in jitter and "Type ==" not in jitter, (
+            "the resolve jitter is now drawn conditionally. A Quest dungeon "
+            "must take the same number of draws off the stream as a Basic one, "
+            "or which kinds came out earlier changes every later roll")
+
+    def test_neither_moves_a_quest_dungeon_yet(self, model):
+        """Relocation is slice 4 of issue #1324, and this records that.
+
+        THIS TEST ASSERTS AN ABSENCE ON PURPOSE, so that the game not moving a
+        Quest dungeon reads as scope rather than as the drift this file exists to
+        catch. **When slice 4 lands it should fail** and be replaced by one
+        comparing the two rules.
+
+        AND THE MODEL'S RULE IS ITSELF A DEFECT, which is why nothing was copied
+        from it. `Simulation._resolve` moves a Quest dungeon to a uniformly
+        random exposed city anywhere on the map. The design says "may move to
+        ADJACENT city" and the project owner ruled on 2026-09-06, verbatim
+        "Adjacent, and fix the simulation". So the model is what is wrong, and
+        the game must not be brought into step with it.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        assert model.quest_relocates is True, (
+            "the model has stopped relocating quest dungeons. That is not the "
+            "fix issue #1324 asked for -- the owner ruled the move should be to "
+            "an ADJACENT city, not that it should stop")
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        assert "self.empire.exposed_cities()" in resolve, (
+            "Simulation._resolve no longer moves a quest dungeon to any exposed "
+            "city. If adjacency has been implemented, replace this test with "
+            "one comparing the model's rule against the game's")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+
+        body = source.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        body = body.split("\n}", 1)[0]
+
+        # THE POINTER IS CONST, so nothing here can move a dungeon even by
+        # accident. A first attempt at this asserted that the word "CityId ="
+        # did not appear, which was wrong in the loose direction: the function
+        # already reads `const int32 CityId = Dungeon->CityId;` and the test
+        # failed the moment it was written. Const-ness is the structural fact.
+        assert "const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);" \
+            in body, (
+                "UCataclysmEmpireRun::ResolveDungeon no longer holds the "
+                "dungeon by const pointer, so it is now able to move one. That "
+                "is slice 4 of issue #1324 and this test needs replacing "
+                "rather than deleting")
 
 
 class TestTheEscalationModes:

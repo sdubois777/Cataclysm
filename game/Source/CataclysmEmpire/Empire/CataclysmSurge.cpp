@@ -639,20 +639,43 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	return Dungeon;
 }
 
+ECataclysmDungeonType UCataclysmSurgeScheduler::RollKind(FRandomStream& Stream)
+{
+	// STRICTLY LESS THAN, which is what `self.rng.random() < quest_dungeon_chance`
+	// is in `Simulation.trigger_surge`. `FRandomStream::FRand` draws from [0, 1)
+	// exactly as `random.random` does, so a chance of zero can never come out
+	// true and a chance of one always does.
+	return Stream.FRand() < QuestChance
+		? ECataclysmDungeonType::Quest
+		: ECataclysmDungeonType::Basic;
+}
+
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
-	FRandomStream& Stream, bool bSiegeAllowed) const
+	FRandomStream& Stream, bool bSiegeAllowed, ECataclysmDungeonType Type) const
 {
-	const FCataclysmDungeonSpec Spec =
-		SpecFor(ECataclysmDungeonType::Basic, City.Tier);
+	// A SURGE ROLLS TWO KINDS AND `RollKind` IS WHERE THAT IS DECIDED. A Fallen
+	// City is built by `MakeFallenCityDungeon` from what the city was carrying,
+	// and nothing builds a Cataclysm yet -- so neither reaches here. Asked for
+	// one anyway, this builds a Basic rather than a dungeon carrying a Fallen
+	// City's floors and a Quest's timer, which is a shape nothing in the design
+	// describes.
+	const ECataclysmDungeonType Kind =
+		(Type == ECataclysmDungeonType::Quest)
+			? ECataclysmDungeonType::Quest
+			: ECataclysmDungeonType::Basic;
+
+	const FCataclysmDungeonSpec Spec = SpecFor(Kind, City.Tier);
 
 	FCataclysmDungeon Dungeon;
 	Dungeon.DungeonId = DungeonId;
-	Dungeon.Type = ECataclysmDungeonType::Basic;
+	Dungeon.Type = Kind;
 
 	// ONE BOSS, ON THE FINAL FLOOR. The design's universal rule, and set here
 	// rather than left to the field's default so that a wave-rolled dungeon and
-	// a Fallen City are visibly answering the same question differently.
+	// a Fallen City are visibly answering the same question differently. A Quest
+	// dungeon is not the exception a Fallen City is: the design names only a
+	// Dungeon City as having "multiple boss fights".
 	Dungeon.Bosses = 1;
 	Dungeon.CityId = City.CityId;
 	Dungeon.CityTier = City.Tier;
@@ -735,7 +758,22 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	const float Base = UCataclysmDayClock::ResolveDaysFor(Dungeon.Floors);
 	const float Jitter = 1.0f + Stream.FRandRange(-ResolveJitter, ResolveJitter);
 
-	Dungeon.ResolveDays = Base * Jitter;
+	// EXCEPT FOR A QUEST DUNGEON, WHOSE TIMER IS NOT A BITE SCHEDULE. It takes
+	// nothing from its host whenever it runs out, so there is no bite for its
+	// depth to be traded against; what the timer decides is how long the player
+	// has before the objective moves. `QuestResolveDays` is the flat figure the
+	// model gives on every Quest row, and the paragraph there is the argument
+	// for why this is not the depth rule above being broken.
+	//
+	// THE DRAWS HAPPEN EITHER WAY, AND THAT IS DELIBERATE. `Base` and `Jitter`
+	// are computed above rather than inside the branch so that a Quest dungeon
+	// takes exactly as many numbers off the stream as a Basic one. Skipping the
+	// jitter draw for a Quest would make every later roll in the run depend on
+	// which kinds came out earlier, and nothing about a Quest dungeon should
+	// change what the dungeon after it looks like.
+	Dungeon.ResolveDays = (Kind == ECataclysmDungeonType::Quest)
+		? QuestResolveDays
+		: Base * Jitter;
 
 	return Dungeon;
 }
@@ -778,8 +816,21 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 			!Sieges.IsValidIndex(City->CityId)
 			|| Sieges[City->CityId] < SiegesPerCity;
 
+		// WHICH KIND, BEFORE ANYTHING ABOUT THE DUNGEON IS DRAWN. A Quest
+		// dungeon's floors come from a different row of `SpecFor`, so the kind
+		// has to be settled before the depth is rolled rather than corrected
+		// after. `Simulation.trigger_surge` decides it in the same place and for
+		// the same reason, one line before it calls `_make_dungeon`.
+		//
+		// THE CITY DOES NOT AFFECT IT. Every exposed city is as likely to
+		// receive a Quest dungeon as any other; the design gives no rule saying
+		// otherwise and the model reads only the chance. What the city DOES
+		// affect is how deep it is, through the tier's Quest row.
+		const ECataclysmDungeonType Kind = RollKind(Stream);
+
 		FCataclysmDungeon Dungeon = MakeDungeon(FirstDungeonId + Index, *City,
-												Day, Stream, bSiegeAllowed);
+												Day, Stream, bSiegeAllowed,
+												Kind);
 
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{

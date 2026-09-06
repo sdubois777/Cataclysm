@@ -1699,4 +1699,233 @@ bool FCataclysmEmpireRunRetakeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Quest dungeons -- issue #1324 slice 3
+// ---------------------------------------------------------------------------
+
+/**
+ * A Quest dungeon's timer runs out and its host city pays nothing.
+ *
+ * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not resolve --
+ * refreshes and may move to adjacent city". So the timer running out is a real
+ * event -- it appears in the day's report and it is what slice 4 will hang the
+ * move on -- and the city must be untouched by it.
+ *
+ * IT DRIVES REAL CAMPAIGNS RATHER THAN BUILDING A DUNGEON BY HAND, because the
+ * thing that could go wrong is `UCataclysmEmpireRun::ResolveDungeon` biting on a
+ * kind it should not, and that is reached only through the day loop. A
+ * hand-built dungeon inserted into the run's arrays would also have to be
+ * inserted into the clock's, which is the corruption `DungeonsAgreeWithTimers`
+ * exists to catch.
+ *
+ * THE CITY IS WATCHED ACROSS THE ONE DAY THE TIMER FIRES, not from the start of
+ * the run. Other dungeons stand on the same city and bite it on their own
+ * schedules, and a Siege bites it every day, so comparing the city's defence
+ * against what it was fifty days ago would prove nothing. What is measured is
+ * the day a Quest dungeon appears in `Report.Resolved` while nothing else that
+ * could have hurt that city did.
+ *
+ * **WHAT THIS GUARDS IS AN OUTCOME WITH A SPARE, AND PROVING IT FIRES TOOK TWO
+ * BREAKS RATHER THAN ONE.** Two independent things make a Quest dungeon
+ * harmless today: `FCataclysmDungeon::Resolves` answers false for one, and every
+ * Quest row of `SpecFor` carries zero damage. Break either alone and the other
+ * still holds the line, so a single-edit `prove_cpp_guard` run reports this test
+ * as noticing nothing -- which would read as a worthless guard when it is
+ * actually a guarded outcome with a redundancy. Removing both together --
+ * `Resolves` made to answer true for a Quest, and `MakeDungeon` made to read the
+ * Basic row of the spec -- is what makes the claim false, and this test is the
+ * only one of the nineteen under `Cataclysm.EmpireRun` that fails when it is.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestRefreshTest,
+	"Cataclysm.EmpireRun.AQuestDungeonRefreshesInsteadOfBitingItsCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	constexpr int32 Campaigns = 20;
+	constexpr int32 MostDays = 600;
+
+	int32 QuestsSeen = 0;
+	int32 TimersChecked = 0;
+	int32 CleanDaysChecked = 0;
+	int32 AbsorbedByAFall = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		// EVERY QUEST DUNGEON THAT ARRIVED, counted once by identifier. A census
+		// of the board at the end would miss the ones absorbed by a city
+		// falling, and identifiers are handed out in order and never reused.
+		TSet<int32> QuestsHere;
+
+		auto CountQuests = [&QuestsHere](const UCataclysmEmpireRun& Live)
+		{
+			for (const FCataclysmDungeon& Dungeon : Live.Dungeons)
+			{
+				if (Dungeon.Type == ECataclysmDungeonType::Quest)
+				{
+					QuestsHere.Add(Dungeon.DungeonId);
+				}
+			}
+		};
+
+		// THE FIRST WAVE FIRES AT RUN START, before any day has passed.
+		CountQuests(*Run);
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			// READ BEFORE THE DAY. A city that falls today is gone from the
+			// comparison afterwards, and a dungeon absorbed with it is gone
+			// from `Dungeons`.
+			TMap<int32, float> DefenceWas;
+			TMap<int32, float> PopulationWas;
+			for (const FCataclysmCity& City : Run->Map->Cities)
+			{
+				DefenceWas.Add(City.CityId, City.Defence);
+				PopulationWas.Add(City.CityId, City.Population);
+			}
+
+			// WHICH CITIES COULD BE HURT BY SOMETHING THAT IS NOT A QUEST. Every
+			// city carrying a dungeon that detonates, or a Siege, is excluded
+			// below; what is left is a city whose only assailant today was the
+			// Quest dungeon whose timer fired.
+			TMap<int32, ECataclysmDungeonType> KindOf;
+			TMap<int32, int32> CityOf;
+			TSet<int32> CitiesWithABiter;
+			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				KindOf.Add(Dungeon.DungeonId, Dungeon.Type);
+				CityOf.Add(Dungeon.DungeonId, Dungeon.CityId);
+
+				if (Dungeon.Resolves()
+					|| Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+				{
+					CitiesWithABiter.Add(Dungeon.CityId);
+				}
+			}
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+			++Advanced;
+
+			for (const int32 DungeonId : Report.Resolved)
+			{
+				if (KindOf.FindRef(DungeonId)
+					!= ECataclysmDungeonType::Quest)
+				{
+					continue;
+				}
+
+				++TimersChecked;
+
+				// ITS TIMER IS FULL AGAIN. The clock refreshes every timer that
+				// runs out, and this is the half of "refreshes" the design names
+				// -- so a Quest dungeon comes due again rather than going quiet.
+				const FCataclysmDungeon* Still = Run->FindDungeon(DungeonId);
+
+				if (Still == nullptr)
+				{
+					// UNLESS ITS CITY FELL UNDERNEATH IT TODAY, which is real
+					// behaviour rather than an exception carved out to make this
+					// pass. A city that falls absorbs everything standing on it
+					// into the Fallen City dungeon it becomes, and a Quest
+					// dungeon is not exempt: a day can resolve a Basic dungeon
+					// that fells the city and then reach the Quest dungeon
+					// standing beside it, by which time it is gone.
+					//
+					// MEASURED: 5 of 832 timers over twenty campaigns. The first
+					// run of this test asserted the dungeon was always still
+					// there and failed on exactly those five, which is how this
+					// case was found.
+					++AbsorbedByAFall;
+
+					TestTrue(FString::Printf(
+						TEXT("quest dungeon %d is gone, so its city fell and "
+							 "absorbed it"), DungeonId),
+						Report.Absorbed.Contains(DungeonId));
+
+					continue;
+				}
+
+				const FCataclysmDungeonTimer* Timer =
+					Run->Clock->FindTimer(DungeonId);
+
+				if (TestNotNull(TEXT("and it still has a timer"), Timer))
+				{
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d refreshed to its full %.1f "
+							 "days"), DungeonId, Timer->ResolveDays),
+						Timer->DaysUntilResolve, Timer->ResolveDays, 0.001f);
+				}
+
+				// AND IT IS STILL ON THE CITY IT WAS ON THIS MORNING.
+				// Relocation is slice 4 of issue #1324; until then the refresh
+				// leaves it where it stands. **This should fail when slice 4
+				// lands**, and be replaced rather than deleted.
+				TestEqual(FString::Printf(
+					TEXT("quest dungeon %d did not move when its timer ran "
+						 "out"), DungeonId),
+					Still->CityId, CityOf.FindRef(DungeonId));
+
+				const int32 CityId = Still->CityId;
+
+				if (CitiesWithABiter.Contains(CityId)
+					|| Report.Fallen.Contains(CityId))
+				{
+					// SOMETHING ELSE COULD HAVE HURT THIS CITY TODAY, so it
+					// says nothing about the quest dungeon. Skipped rather than
+					// asserted loosely.
+					continue;
+				}
+
+				const FCataclysmCity* City = Run->Map->Find(CityId);
+				if (City == nullptr)
+				{
+					continue;
+				}
+
+				++CleanDaysChecked;
+
+				TestEqual(FString::Printf(
+					TEXT("%s lost no defence to the quest dungeon standing on "
+						 "it"), *City->Name),
+					City->Defence, DefenceWas.FindRef(CityId), 0.001f);
+
+				TestEqual(FString::Printf(
+					TEXT("%s lost nobody to it either"), *City->Name),
+					City->Population, PopulationWas.FindRef(CityId), 0.001f);
+			}
+
+			CountQuests(*Run);
+		}
+
+		QuestsSeen += QuestsHere.Num();
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns: %d quest dungeons arrived, %d of their timers ran "
+			 "out, %d of those on a day nothing else could have hurt the city, "
+			 "and %d were absorbed by the city falling underneath them"),
+		Campaigns, QuestsSeen, TimersChecked, CleanDaysChecked,
+		AbsorbedByAFall));
+
+	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED. A run that never
+	// landed a quest dungeon, or never let one of their timers run out, would
+	// pass every assertion above by never reaching one.
+	TestTrue(TEXT("quest dungeons arrived at all"), QuestsSeen > 0);
+	TestTrue(TEXT("and their timers actually ran out"), TimersChecked > 0);
+	TestTrue(TEXT("and some did so on a day nothing else hurt the city"),
+			 CleanDaysChecked > 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
