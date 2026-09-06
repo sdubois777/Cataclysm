@@ -170,23 +170,39 @@ class TestTheMultiplierReachesTheSurge:
         assert self.surge_count(surge_dungeon_count=1,
                                 surge_dungeon_multiplier=0.1) == 1
 
+    def dungeons_met_per_day(self, cfg, seeds) -> float:
+        """Dungeons met per DAY SURVIVED, which is the rate this mode changes.
+
+        THE DENOMINATOR IS THE POINT. A bare total over a fixed number of
+        campaigns is confounded: Heretic's extra dungeons kill the empire
+        sooner -- 804 days a campaign against 1055, measured over 60 campaigns
+        on 2026-09-06 -- and a shorter campaign meets fewer dungeons however
+        thick they arrive. The two effects pull opposite ways and the survival
+        one is the larger, so the total can fall while the rate rises.
+
+        This test used to compare the totals over twelve campaigns. It passed
+        at twelve and FAILED at sixty on the same code, which is a sample size
+        deciding a question rather than an effect. Issue #1340 found it.
+        """
+        met = days = 0
+        for i in seeds:
+            r = Simulation(cfg, seed=i).run(policies.triage)
+            met += r.dungeons_resolved + r.dungeons_cleared
+            days += r.survived_days
+        return met / max(1, days)
+
     def test_heretic_actually_faces_more_dungeons_over_a_campaign(self):
         """The unit test above checks one call. This checks the effect survives
         a whole campaign, which is what the analysis script measures."""
         base = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
         seeds = range(12)
-        standard = sum(Simulation(base, seed=i).run(policies.triage).dungeons_resolved
-                       + Simulation(base, seed=i).run(policies.triage).dungeons_cleared
-                       for i in seeds)
-        heretic_cfg = replace(base, surge_dungeon_multiplier=1.25)
-        heretic = sum(
-            Simulation(heretic_cfg, seed=i).run(policies.triage).dungeons_resolved
-            + Simulation(heretic_cfg, seed=i).run(policies.triage).dungeons_cleared
-            for i in seeds)
+        standard = self.dungeons_met_per_day(base, seeds)
+        heretic = self.dungeons_met_per_day(
+            replace(base, surge_dungeon_multiplier=1.25), seeds)
         assert heretic > standard, (
-            f"over {len(seeds)} campaigns Heretic met {heretic} dungeons and "
-            f"Standard {standard}. The 25% extra dungeons are not reaching the "
-            f"campaign. Issue #289.")
+            f"over {len(seeds)} campaigns Heretic met {heretic:.4f} dungeons a "
+            f"day and Standard {standard:.4f}. The 25% extra dungeons are not "
+            f"reaching the campaign. Issue #289.")
 
 
 class TestTheUnmodelledHalfIsStillUnmodelled:
