@@ -493,11 +493,44 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and a Pillar dungeon is 40 to 60"), Pillar.LeastFloors, 40);
 	TestEqual(TEXT("at most"), Pillar.MostFloors, 60);
 
-	// A BIGGER CITY TAKES A SMALLER SHARE OF ITSELF FROM EACH BITE, and that is
-	// not a typing error: a Sanctuary has eight times an Outpost's defence and
-	// loses 8% of it rather than 10%, so it takes far longer to kill.
-	TestTrue(TEXT("a Sanctuary loses a smaller share per bite than an Outpost"),
-			 Sanctuary.DefenceBite < Outpost.DefenceBite);
+	// THE DAMAGE IS POINTS, AND THE FOUR NUMBERS ARE WRITTEN OUT. Issue #1331.
+	// Each is the fraction it replaced multiplied by that tier's base maximum:
+	// 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000. Written here as
+	// literals rather than as that product, because a test that recomputed the
+	// product would agree with the code by construction.
+	TestEqual(TEXT("an Outpost dungeon takes 100 defence points"),
+			  Outpost.DefenceDamage, 100.0f);
+	TestEqual(TEXT("and 250 people"), Outpost.PopulationDamage, 250.0f);
+	TestEqual(TEXT("a Bulwark dungeon takes 270"), Bulwark.DefenceDamage, 270.0f);
+	TestEqual(TEXT("and 1,000 people"), Bulwark.PopulationDamage, 1000.0f);
+	TestEqual(TEXT("a Sanctuary dungeon takes 640"), Sanctuary.DefenceDamage,
+			  640.0f);
+	TestEqual(TEXT("and 2,400 people"), Sanctuary.PopulationDamage, 2400.0f);
+	TestEqual(TEXT("and a Pillar dungeon takes 1,200"), Pillar.DefenceDamage,
+			  1200.0f);
+	TestEqual(TEXT("and 4,500 people"), Pillar.PopulationDamage, 4500.0f);
+
+	// A BIGGER CITY TAKES MORE POINTS AND A SMALLER SHARE OF ITSELF, and both
+	// halves are asserted because each on its own would be satisfied by the
+	// wrong table. Before issue #1331 the first half was false -- a Sanctuary
+	// carried 0.08 against an Outpost's 0.10 -- so a test written against the
+	// old field would now fail rather than silently reverse.
+	TestTrue(TEXT("a Sanctuary dungeon takes more points than an Outpost one"),
+			 Sanctuary.DefenceDamage > Outpost.DefenceDamage);
+
+	const float OutpostShare =
+		Outpost.DefenceDamage
+		/ UCataclysmEmpireMap::MaxDefenceFor(ECataclysmCityTier::Outpost);
+
+	const float SanctuaryShare =
+		Sanctuary.DefenceDamage
+		/ UCataclysmEmpireMap::MaxDefenceFor(ECataclysmCityTier::Sanctuary);
+
+	TestTrue(*FString::Printf(
+				 TEXT("a Sanctuary loses %.1f%% of itself per resolve and an "
+					  "Outpost %.1f%%"),
+				 SanctuaryShare * 100.0f, OutpostShare * 100.0f),
+			 SanctuaryShare < OutpostShare);
 
 	// ALL FOUR KINDS HAVE A SPEC NOW. Until issue #1324 the other three
 	// answered a spec `IsBuilt` read as false, on the grounds that nothing
@@ -543,8 +576,8 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 		const FCataclysmDungeonSpec Bites =
 			UCataclysmSurgeScheduler::SpecFor(Kind, ECataclysmCityTier::Pillar);
 
-		TestEqual(TEXT("it takes no defence"), Bites.DefenceBite, 0.0f);
-		TestEqual(TEXT("and no population"), Bites.PopulationBite, 0.0f);
+		TestEqual(TEXT("it takes no defence"), Bites.DefenceDamage, 0.0f);
+		TestEqual(TEXT("and no population"), Bites.PopulationDamage, 0.0f);
 	}
 
 	// AND A DEEPER KIND IS DEEPER ON THE SAME CITY. The three ladders never
@@ -2169,8 +2202,8 @@ bool FCataclysmSurgeFallenCityTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("on the city that fell"), Made.CityId, 4);
 		TestEqual(TEXT("a quiet Outpost floors at twenty"), Made.Floors, 20);
 		TestEqual(TEXT("and holds one boss"), Made.Bosses, 1);
-		TestEqual(TEXT("it takes no defence"), Made.DefenceBite, 0.0f);
-		TestEqual(TEXT("and no population"), Made.PopulationBite, 0.0f);
+		TestEqual(TEXT("it takes no defence"), Made.DefenceDamage, 0.0f);
+		TestEqual(TEXT("and no population"), Made.PopulationDamage, 0.0f);
 		TestEqual(TEXT("and never resolves"), Made.ResolveDays,
 				  UCataclysmSurgeScheduler::FallenCityResolveDays);
 		TestEqual(TEXT("and has no sub-type"), Made.SubType,

@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmSurge.h"
 
 /**
  * Tests for the empire map, issue #1081.
@@ -650,6 +651,236 @@ bool FCataclysmEmpireMapBiteTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Outpost 0 is retaken"), Map->Retake(0));
 	TestEqual(TEXT("with half its defence"), Map->Find(0)->Defence, 500.0f);
 	TestEqual(TEXT("and half its people"), Map->Find(0)->Population, 2500.0f);
+
+	return true;
+}
+
+/**
+ * Damage is a number of points, and the city's ceiling is not a factor in it.
+ *
+ * THE PROPERTY ISSUE #1331 EXISTS FOR, ASSERTED AS A PROPERTY RATHER THAN AS A
+ * NUMBER. `Damage` taking a fixed 100 points off an Outpost is not by itself
+ * evidence of anything -- the old code would also have removed 100 points if it
+ * had been handed 0.1. What discriminates the two is what happens when the
+ * city's maximum MOVES: points do not follow it, a share does.
+ *
+ * BOTH DIRECTIONS ARE CHECKED. A city whose ceiling was raised loses the same
+ * points, and the same call through `Bite` loses proportionally more. Without
+ * the second half this would pass on an implementation that had quietly stopped
+ * taking damage at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapDamageIsPointsTest,
+	"Cataclysm.EmpireMap.DamageIsPointsAndTheCitysCeilingIsNotAFactorInIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapDamageIsPointsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireMapTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	// TWO OUTPOSTS OF THE SAME TIER, so the comparison is of the ceiling and not
+	// of the cities. Both start at 1,000 defence and 5,000 people.
+	const FCataclysmCity* Plain = Map->Find(0);
+	const FCataclysmCity* Raised = Map->Find(1);
+
+	if (!TestNotNull(TEXT("Outpost 0 exists"), Plain)
+		|| !TestNotNull(TEXT("Outpost 1 exists"), Raised))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("the two cities are the same tier"),
+				   static_cast<int32>(Plain->Tier),
+				   static_cast<int32>(Raised->Tier)))
+	{
+		return false;
+	}
+
+	// THE UPGRADE THE GAME SHIPS: `Architect_Increase_max_defense_by_20`, at the
+	// value `game/Data/CityUpgrades.csv` gives it.
+	FCataclysmCityUpgrade Bigger;
+	Bigger.RowName = FName(TEXT("Architect_Increase_max_defense_by_20"));
+	Bigger.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+	Bigger.Value = 0.2f;
+
+	FCataclysmCityUpgrade MorePeople;
+	MorePeople.RowName = FName(TEXT("Architect_Increase_max_population_by_20"));
+	MorePeople.Effect = ECataclysmCityUpgradeEffect::MaxPopulation;
+	MorePeople.Value = 0.2f;
+
+	TestTrue(TEXT("Outpost 1 buys the bigger ceiling"), Map->AddUpgrade(1, Bigger));
+	TestTrue(TEXT("and the bigger population"),
+			 Map->AddUpgrade(1, MorePeople));
+
+	TestEqual(TEXT("its ceiling really did move"), Raised->MaxDefence, 1200.0f,
+			  0.01f);
+	TestEqual(TEXT("and it is still full"), Raised->Defence, 1200.0f, 0.01f);
+
+	// A HUNDRED POINTS EACH, which is what a basic dungeon on an Outpost takes.
+	TestFalse(TEXT("the plain city survives it"), Map->Damage(0, 100.0f, 250.0f));
+	TestFalse(TEXT("so does the raised one"), Map->Damage(1, 100.0f, 250.0f));
+
+	TestEqual(TEXT("the plain city lost exactly a hundred points"),
+			  Plain->MaxDefence - Plain->Defence, 100.0f, 0.01f);
+
+	TestEqual(TEXT("and the raised one lost exactly a hundred too, although its "
+				   "ceiling is a fifth higher"),
+			  Raised->MaxDefence - Raised->Defence, 100.0f, 0.01f);
+
+	TestEqual(TEXT("population likewise, in people"),
+			  Plain->MaxPopulation - Plain->Population, 250.0f, 0.01f);
+	TestEqual(TEXT("and the raised city loses the same number of people"),
+			  Raised->MaxPopulation - Raised->Population, 250.0f, 0.01f);
+
+	// AND THE SHARE PATH STILL BEHAVES LIKE A SHARE, which is the control. The
+	// same 10% takes 100 off the plain city and 120 off the raised one, which is
+	// exactly the behaviour that made the upgrade worthless.
+	Map->Bite(0, 0.10f, 0.0f);
+	Map->Bite(1, 0.10f, 0.0f);
+
+	TestEqual(TEXT("a tenth of the plain city's maximum is 100"),
+			  Plain->MaxDefence - Plain->Defence, 200.0f, 0.01f);
+	TestEqual(TEXT("a tenth of the raised city's maximum is 120"),
+			  Raised->MaxDefence - Raised->Defence, 220.0f, 0.01f);
+
+	// ZERO DEFENCE IS STILL A FALL, THROUGH THE POINTS PATH TOO.
+	TestTrue(TEXT("enough points take the city outright"),
+			 Map->Damage(0, 5000.0f, 50000.0f));
+	TestTrue(TEXT("and it has fallen"), Map->Find(0)->bFallen);
+	TestEqual(TEXT("leaving nobody rather than fewer than nobody"),
+			  Map->Find(0)->Population, 0.0f);
+
+	// A FALLEN CITY IS NOT DAMAGED AGAIN.
+	TestFalse(TEXT("damaging a fallen city does nothing"),
+			  Map->Damage(0, 100.0f, 100.0f));
+
+	return true;
+}
+
+/**
+ * The two city upgrades that raise a ceiling now buy resolves, at every tier.
+ *
+ * THIS IS THE TEST ISSUE #1331 WAS FILED FOR. Its table said the +20% upgrades
+ * bought ZERO extra resolves for a full city at all four tiers, because the
+ * damage was a share of the same pool it came out of. The numbers below are the
+ * same arithmetic with flat damage, and none of them is zero.
+ *
+ * THE DAMAGE FIGURES COME FROM `UCataclysmSurgeScheduler::SpecFor` rather than
+ * being written out here, so this cannot pass by agreeing with a constant it
+ * copied. The RESOLVE COUNTS are written out, because a count computed from the
+ * same expression the code uses would pass whatever the code did.
+ *
+ * A TYPICAL-DEPTH DUNGEON, so `BiteScale` is one and the depth axis is out of
+ * the way; how depth scales damage is `FCataclysmSurgeBiteScaleTest`.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapCeilingBuysResolvesTest,
+	"Cataclysm.EmpireMap.RaisingACitysCeilingBuysMoreResolvesAtEveryTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireMapCeilingBuysResolvesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireMapTest;
+
+	// HOW MANY RESOLVES A CITY OF THIS TIER SURVIVES, driven through the map
+	// rather than computed, so it measures what the game does.
+	auto ResolvesToFall =
+		[this](ECataclysmCityTier Tier, bool bUpgraded) -> int32
+		{
+			UCataclysmEmpireMap* Map = MakeMap();
+
+			int32 CityId = INDEX_NONE;
+			for (const FCataclysmCity& Candidate : Map->Cities)
+			{
+				if (Candidate.Tier == Tier)
+				{
+					CityId = Candidate.CityId;
+					break;
+				}
+			}
+
+			if (CityId == INDEX_NONE)
+			{
+				AddError(TEXT("no city of that tier is on the map"));
+				return -1;
+			}
+
+			if (bUpgraded)
+			{
+				FCataclysmCityUpgrade Bigger;
+				Bigger.RowName =
+					FName(TEXT("Architect_Increase_max_defense_by_20"));
+				Bigger.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+				Bigger.Value = 0.2f;
+				Map->AddUpgrade(CityId, Bigger);
+			}
+
+			const FCataclysmDungeonSpec Spec = UCataclysmSurgeScheduler::SpecFor(
+				ECataclysmDungeonType::Basic, Tier);
+
+			for (int32 Resolves = 1; Resolves <= 200; ++Resolves)
+			{
+				if (Map->Damage(CityId, Spec.DefenceDamage,
+								Spec.PopulationDamage))
+				{
+					return Resolves;
+				}
+			}
+
+			AddError(TEXT("the city stood through two hundred resolves"));
+			return -1;
+		};
+
+	// tier, resolves without the upgrade, resolves with it. WRITTEN OUT BY HAND
+	// from the ceilings and the damage the design gives each tier:
+	//
+	//   Outpost    1,000 / 100   = 10, and 1,200 / 100   = 12
+	//   Bulwark    3,000 / 270   = 12, and 3,600 / 270   = 14
+	//   Sanctuary  8,000 / 640   = 13, and 9,600 / 640   = 15
+	//   Pillar    20,000 / 1,200 = 17, and 24,000 / 1,200 = 20
+	struct FCase
+	{
+		ECataclysmCityTier Tier;
+		const TCHAR* Name;
+		int32 Plain;
+		int32 Upgraded;
+	};
+
+	const TArray<FCase> Cases = {
+		{ ECataclysmCityTier::Outpost,   TEXT("Outpost"),   10, 12 },
+		{ ECataclysmCityTier::Bulwark,   TEXT("Bulwark"),   12, 14 },
+		{ ECataclysmCityTier::Sanctuary, TEXT("Sanctuary"), 13, 15 },
+		{ ECataclysmCityTier::Pillar,    TEXT("Pillar"),    17, 20 },
+	};
+
+	for (const FCase& Row : Cases)
+	{
+		const int32 Plain = ResolvesToFall(Row.Tier, false);
+		const int32 Upgraded = ResolvesToFall(Row.Tier, true);
+
+		TestEqual(*FString::Printf(
+					  TEXT("a %s survives %d resolves"), Row.Name, Row.Plain),
+				  Plain, Row.Plain);
+
+		TestEqual(*FString::Printf(
+					  TEXT("and a %s survives %d with the ceiling upgrade"),
+					  Row.Name, Row.Upgraded),
+				  Upgraded, Row.Upgraded);
+
+		// THE CLAIM THE ISSUE MADE, SAID PLAINLY. Before #1331 every one of
+		// these differences was zero.
+		TestTrue(*FString::Printf(
+					 TEXT("a %s gains %d resolves from +20%% maximum defence, "
+						  "and gained 0 before issue #1331"),
+					 Row.Name, Upgraded - Plain),
+				 Upgraded > Plain);
+	}
+
+	// WHAT THIS DOES NOT CLAIM. A Pillar holds twenty times an Outpost's defence
+	// and still lasts 17 resolves against 10, because a Pillar dungeon takes
+	// twelve times an Outpost dungeon's points. That ladder is a separate
+	// question from this defect, and `docs/DECISIONS.md` records that those
+	// numbers were measured and deliberately left where they were.
 
 	return true;
 }

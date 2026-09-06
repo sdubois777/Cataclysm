@@ -22,8 +22,8 @@
 			"ResolveDays": 33.5,
 			"WalkDays": 12.0,
 			"Bosses": 4,
-			"DefenceBite": 0.125,
-			"PopulationBite": 0.0625,
+			"DefenceDamage": 125.0,
+			"PopulationDamage": 312.5,
 			"SpawnedDay": 96
 		}
 	],

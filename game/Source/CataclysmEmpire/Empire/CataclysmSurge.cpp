@@ -254,40 +254,55 @@ FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 	switch (Type)
 	{
 	case ECataclysmDungeonType::Basic:
+		// THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS OF THE CITY.
+		// Issue #1331, and `config.DUNGEON_SPECS` holds the same four pairs.
+		// Each one is the fraction it replaced multiplied by that tier's base
+		// maximum, so this table reproduces the old arithmetic exactly for a
+		// city at its base size and the change of shape can be measured on its
+		// own before any number is chosen:
+		//
+		//   Outpost    10% of  1,000 =   100 defence,  5% of   5,000 =   250
+		//   Bulwark      9% of 3,000 =   270 defence,  5% of  20,000 = 1,000
+		//   Sanctuary    8% of 8,000 =   640 defence,  4% of  60,000 = 2,400
+		//   Pillar     6% of 20,000 = 1,200 defence,  3% of 150,000 = 4,500
+		//
+		// THE TIER MAXIMUMS ARE `UCataclysmEmpireMap::OutpostMaxDefence` and
+		// its seven siblings. `tools/tests/test_surge_port.py` ties these four
+		// pairs to the model's and to a third hand-written copy.
 		switch (Tier)
 		{
 		case ECataclysmCityTier::Bulwark:
 			Spec.LeastFloors = 15;
 			Spec.MostFloors = 25;
-			Spec.DefenceBite = 0.09f;
-			Spec.PopulationBite = 0.05f;
+			Spec.DefenceDamage = 270.0f;
+			Spec.PopulationDamage = 1000.0f;
 			break;
 
 		case ECataclysmCityTier::Sanctuary:
 			Spec.LeastFloors = 25;
 			Spec.MostFloors = 40;
-			Spec.DefenceBite = 0.08f;
-			Spec.PopulationBite = 0.04f;
+			Spec.DefenceDamage = 640.0f;
+			Spec.PopulationDamage = 2400.0f;
 			break;
 
 		case ECataclysmCityTier::Pillar:
 			Spec.LeastFloors = 40;
 			Spec.MostFloors = 60;
-			Spec.DefenceBite = 0.06f;
-			Spec.PopulationBite = 0.03f;
+			Spec.DefenceDamage = 1200.0f;
+			Spec.PopulationDamage = 4500.0f;
 			break;
 
 		default:
 			Spec.LeastFloors = 8;
 			Spec.MostFloors = 15;
-			Spec.DefenceBite = 0.10f;
-			Spec.PopulationBite = 0.05f;
+			Spec.DefenceDamage = 100.0f;
+			Spec.PopulationDamage = 250.0f;
 			break;
 		}
 		break;
 
 	case ECataclysmDungeonType::Quest:
-		// THE ZERO BITES ARE THE DESIGN AND NOT A MISSING NUMBER. A Quest
+		// THE ZERO DAMAGE IS THE DESIGN AND NOT A MISSING NUMBER. A Quest
 		// dungeon "does not resolve -- refreshes and may move to adjacent
 		// city", so it never applies a consequence to the city it sits on.
 		// `Simulation._resolve` returns before touching defence or population
@@ -614,8 +629,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	// AND IT TAKES NOTHING. `SpecFor` answers zero for both, and copying them
 	// rather than writing zeroes here means a change to the spec cannot leave
 	// this behind.
-	Dungeon.DefenceBite = Spec.DefenceBite;
-	Dungeon.PopulationBite = Spec.PopulationBite;
+	Dungeon.DefenceDamage = Spec.DefenceDamage;
+	Dungeon.PopulationDamage = Spec.PopulationDamage;
 
 	// NO SUB-TYPE. A Fallen City is what a city became rather than something a
 	// surge rolled, and the sub-types are what a surge rolls.
@@ -642,8 +657,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	Dungeon.CityId = City.CityId;
 	Dungeon.CityTier = City.Tier;
 	Dungeon.SpawnedDay = Day;
-	Dungeon.DefenceBite = Spec.DefenceBite;
-	Dungeon.PopulationBite = Spec.PopulationBite;
+	Dungeon.DefenceDamage = Spec.DefenceDamage;
+	Dungeon.PopulationDamage = Spec.PopulationDamage;
 
 	// INCLUSIVE AT BOTH ENDS, which is what `FRandomStream::RandRange` is and
 	// what `random.randint` is, so the deepest dungeon the table describes can

@@ -229,7 +229,12 @@ class TestWhatADungeonIs:
     # this is deliberately a THIRD, so that the model and the C++ drifting
     # together still fails.
     #
-    # THE THREE NON-BASIC KINDS ALL BITE NOTHING and that is the design rather
+    # THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS OF THE CITY.
+    # Issue #1327 changed the model and issue #1331 changed the game. Each value
+    # is the fraction it replaced multiplied by that tier's base maximum:
+    # 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000 for defence.
+    #
+    # THE THREE NON-BASIC KINDS ALL TAKE NOTHING and that is the design rather
     # than a gap: a Quest dungeon never resolves, and a Fallen City and a
     # Cataclysm stand on a city whose damage is already done.
     #
@@ -237,10 +242,10 @@ class TestWhatADungeonIs:
     # Pillar and `TuningConfig.spec` raises when asked for another, so there are
     # thirteen pairs and not sixteen.
     SPECS = {
-        ("Basic", "Outpost"):        (8, 15, 0.10, 0.05),
-        ("Basic", "Bulwark"):        (15, 25, 0.09, 0.05),
-        ("Basic", "Sanctuary"):      (25, 40, 0.08, 0.04),
-        ("Basic", "Pillar"):         (40, 60, 0.06, 0.03),
+        ("Basic", "Outpost"):        (8, 15, 100.0, 250.0),
+        ("Basic", "Bulwark"):        (15, 25, 270.0, 1000.0),
+        ("Basic", "Sanctuary"):      (25, 40, 640.0, 2400.0),
+        ("Basic", "Pillar"):         (40, 60, 1200.0, 4500.0),
 
         ("Quest", "Outpost"):        (20, 30, 0.0, 0.0),
         ("Quest", "Bulwark"):        (30, 45, 0.0, 0.0),
@@ -319,8 +324,8 @@ class TestWhatADungeonIs:
     def _numbers_in(block: str):
         """The four spec numbers in one arm, or None if it sets no floors.
 
-        A BITE THAT IS NOT WRITTEN IS ZERO, because `FCataclysmDungeonSpec`
-        declares both bites `0.0f` and the three new kinds leave them alone.
+        DAMAGE THAT IS NOT WRITTEN IS ZERO, because `FCataclysmDungeonSpec`
+        declares both numbers `0.0f` and the three new kinds leave them alone.
         Reading an absent line as zero is what the struct actually does; reading
         it as missing would report every new row as broken.
         """
@@ -332,69 +337,161 @@ class TestWhatADungeonIs:
             return None
 
         return (one("LeastFloors", 0), one("MostFloors", 0),
-                one("DefenceBite", 0.0), one("PopulationBite", 0.0))
+                one("DefenceDamage", 0.0), one("PopulationDamage", 0.0))
 
     def test_the_model_holds_the_thirteen_specs_this_test_expects(self, model):
         """The model against the hand-written table above.
 
-        THE TWO SIDES NOW EXPRESS DAMAGE DIFFERENTLY AND STILL AGREE ON IT.
-        Issue #1327 changed the model from a fraction of the host city's own
-        maximum to a number of points, because the maximum divided out of how
-        long a city survived and every city-health upgrade in the design was
-        worth nothing. The game still holds fractions -- `Bite` in
-        `CataclysmEmpireMap.cpp` takes them, so its whole call chain depends on
-        the old shape -- and issue #1331 tracks porting it across.
+        BOTH SIDES NOW HOLD POINTS, so this compares them directly. Issue #1327
+        changed the model from a fraction of the host city's own maximum to a
+        number of points, because the maximum divided out of how long a city
+        survived and every city-health upgrade in the design was worth nothing;
+        issue #1331 did the same to the game, where `UCataclysmEmpireMap::Bite`
+        had the same shape and its whole call chain depended on it.
 
-        Until that lands the two are the SAME DAMAGE, because each of the
-        model's point values is the fraction beside it multiplied by that
-        tier's base maximum. Asserting the product rather than the fraction is
-        what keeps this test comparing the two implementations instead of
-        quietly comparing one of them with itself.
-
-        `test_empire_map_port.py` ties `TIER_STATS` to the C++
-        `OutpostMaxDefence` and its three siblings, so multiplying by the
-        model's own maximum here is not a shortcut past the C++ figure.
+        WHILE THE TWO DISAGREED IN SHAPE this asserted the PRODUCT -- the
+        model's points against the game's fraction times that tier's maximum --
+        so the divergence could not widen unnoticed while #1331 waited. That
+        scaffolding is gone now that both sides say the same thing.
         """
         from cataclysm_sim.config import CityTier, DungeonType
 
         for (kind, tier_name), (least, most, defence, pop) in self.SPECS.items():
             tier = CityTier(tier_name)
             spec = model.spec(DungeonType(kind), tier)
-            stats = model.TIER_STATS[tier]
 
             assert spec.floors == (least, most), (
                 f"{kind} on {tier_name}: this test expects {(least, most)} "
                 f"floors, the model has {spec.floors}")
-            assert spec.defense_damage == pytest.approx(
-                defence * stats.max_defense), (
+            assert spec.defense_damage == pytest.approx(defence), (
                 f"{kind} on {tier_name}: the model removes "
-                f"{spec.defense_damage} defence points and the game removes "
-                f"{defence:.0%} of {stats.max_defense:,.0f}, which is "
-                f"{defence * stats.max_defense:,.0f}")
-            assert spec.population_damage == pytest.approx(
-                pop * stats.max_population), (
+                f"{spec.defense_damage} defence points and this test expects "
+                f"{defence}")
+            assert spec.population_damage == pytest.approx(pop), (
                 f"{kind} on {tier_name}: the model removes "
-                f"{spec.population_damage} people and the game removes "
-                f"{pop:.0%} of {stats.max_population:,.0f}")
+                f"{spec.population_damage} people and this test expects {pop}")
 
-    def test_the_model_holds_points_rather_than_fractions(self, model):
+    def test_both_sides_hold_points_rather_than_fractions(self, model):
         """A fraction is below one and a point count is not.
 
-        WITHOUT THIS the test above would go on passing if the model's numbers
-        quietly became fractions again and `TIER_STATS` shrank to match, which
-        is the state issue #1327 exists to prevent. Only the Basic rows are
-        checked because the other three kinds deal no damage by design.
+        WITHOUT THIS the test above would go on passing if BOTH sides quietly
+        became fractions again together, which is the state issues #1327 and
+        #1331 exist to prevent. Only the Basic rows are checked because the
+        other three kinds deal no damage by design.
+
+        AND IT IS ASKED OF THE C++ TOO. The hand-written table above is a third
+        copy that both sides are compared against, so a table edited back to
+        fractions would take both implementations with it and every equality
+        check in this file would still pass.
         """
         from cataclysm_sim.config import CityTier, DungeonType
+
+        found = self.unreal_specs()
 
         for (kind, tier_name) in self.SPECS:
             if kind != "Basic":
                 continue
+
             spec = model.spec(DungeonType(kind), CityTier(tier_name))
             assert spec.defense_damage > 1.0, (
-                f"{tier_name} takes {spec.defense_damage} defence damage, "
-                "which is a fraction rather than a number of points")
+                f"{tier_name} takes {spec.defense_damage} defence damage in "
+                "the model, which is a fraction rather than a number of points")
             assert spec.population_damage > 1.0
+
+            _, _, defence, population = found[(kind, tier_name)]
+            assert defence > 1.0, (
+                f"CataclysmSurge.cpp gives a {tier_name} dungeon {defence} "
+                "defence damage, which is a fraction rather than points")
+            assert population > 1.0
+
+    def test_the_game_no_longer_takes_a_share_of_the_city_when_a_dungeon_resolves(
+            self):
+        """`ResolveDungeon` calls the points path, not the share path.
+
+        THE HALF OF ISSUE #1331 THE SPEC TABLE CANNOT SHOW. Points in the table
+        would still buy the player nothing if the map went on multiplying them
+        by the city's own maximum on the way in, and that multiplication lived
+        in `UCataclysmEmpireMap::Bite` rather than in the table.
+
+        `Bite` STILL EXISTS AND THAT IS DELIBERATE -- it is the share shape the
+        Siege sub-type keeps by the owner's ruling of 2026-09-05, "Keep it as a
+        deliberate exception (Recommended)". So the check is that the RESOLVE
+        path does not use it, not that it is gone.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+
+        resolving = source.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolving = resolving.split("\n}", 1)[0]
+
+        assert "Map->Damage(" in resolving, (
+            "ResolveDungeon no longer calls UCataclysmEmpireMap::Damage, so a "
+            "dungeon resolving may have gone back to taking a share of its "
+            "city. Issue #1331")
+
+        assert "Map->Bite(" not in resolving, (
+            "ResolveDungeon calls UCataclysmEmpireMap::Bite, which takes a "
+            "SHARE of the city's maximum. That share divides out of how many "
+            "resolves a city survives and makes every city-health upgrade "
+            "worth nothing. Issue #1331")
+
+    def test_the_map_takes_points_and_not_a_share_of_the_maximum(self):
+        """The subtraction in `Damage` has no `MaxDefence` in it.
+
+        THE ONE LINE THE WHOLE ISSUE IS ABOUT. It read
+        `City->Defence -= City->MaxDefence * DefenceTaken;`.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireMap.cpp")
+
+        damaging = source.split("UCataclysmEmpireMap::Damage(", 1)[1]
+        damaging = damaging.split("\n}", 1)[0]
+
+        assert "City->Defence -= DefenceTaken;" in damaging, (
+            "UCataclysmEmpireMap::Damage no longer subtracts the points it was "
+            "given. Issue #1331")
+
+        assert "MaxDefence" not in damaging and "MaxPopulation" not in damaging, (
+            "UCataclysmEmpireMap::Damage mentions a city maximum again. The "
+            "damage a dungeon deals must not scale with the pool it comes out "
+            "of, or raising a city's ceiling buys nothing. Issue #1331")
+
+    def test_a_siege_still_takes_a_share_of_the_city_and_that_is_the_ruling(self):
+        """The one place a city maximum is still a factor, on purpose.
+
+        THIS TEST GUARDS A DECISION RATHER THAN A DEFECT, and it is the reverse
+        of the two above. Issue #1331 turned every dungeon resolve into points;
+        the project owner was asked whether the Siege should follow and answered
+        on 2026-09-05, verbatim: "Keep it as a deliberate exception
+        (Recommended)" -- a siege does not care how thick your walls are.
+
+        SO A LATER SESSION TIDYING THE LAST PERCENTAGE OUT OF FRESHLY-FLATTENED
+        CODE FAILS HERE rather than silently removing the one threat that
+        city-health investment does not protect against.
+        `sim/cataclysm_sim/engine.py::_apply_siege_damage` is the same shape and
+        `docs/DECISIONS.md` carries the ruling.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+
+        besieging = source.split("UCataclysmEmpireRun::ApplySiegeDamage(", 1)[1]
+        besieging = besieging.split("\n}", 1)[0]
+
+        assert "City->MaxDefence * SiegeDefenceBitePerDay" in besieging, (
+            "ApplySiegeDamage no longer takes a share of the city's maximum "
+            "defence. That share is the project owner's deliberate exception "
+            "of 2026-09-05 and not an oversight left over from issue #1331")
+
+        assert "City->MaxPopulation * SiegePopulationBitePerDay" in besieging, (
+            "ApplySiegeDamage no longer takes a share of the city's maximum "
+            "population. See above")
+
+        # AND THE GROWTH IS STILL POINTS, which is the half of a Siege that city
+        # health DOES protect against -- ten points is 1% of an Outpost's
+        # defence and 0.05% of the Pillar's.
+        assert "SiegeDamageGrowthPerDay * Host.Value" in besieging, (
+            "ApplySiegeDamage no longer grows by a flat number of points per "
+            "day the Siege has stood. Issue #1329")
 
     def test_the_model_holds_no_other_spec(self, model):
         """Thirteen and not sixteen. A Cataclysm exists only at the Pillar, and
