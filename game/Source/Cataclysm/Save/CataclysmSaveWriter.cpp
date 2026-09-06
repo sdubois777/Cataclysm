@@ -186,6 +186,15 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 			UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false))
 	{
 		FCataclysmSaveGather::RunClockFrom(*Run, *LastRun);
+
+		// AND THE 25 CITIES: what each has left, what it has bought, and whether
+		// it still stands. Only the mutable half of each one is written; see
+		// `FCataclysmCity`. Issue #1307.
+		//
+		// THE DUNGEONS AND THE SURGE SCHEDULE ARE STILL NOT WRITTEN, which is
+		// the rest of that issue. A restore would put the cities back and find
+		// no dungeons standing on them.
+		FCataclysmSaveGather::CitiesFrom(*Run, *LastRun);
 	}
 
 	return Write(LastRun, RunSlotName(), Trigger);

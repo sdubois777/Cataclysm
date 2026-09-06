@@ -12,6 +12,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveGather.h"
@@ -912,6 +913,257 @@ bool FCataclysmSaveWriterKeepsTheDayWithNoRun::RunTest(const FString&)
 	TestEqual(TEXT("the day is left at what the record held"), Read->Day, 0);
 	TestNull(TEXT("and no campaign was started to save one"),
 			 Instance->EmpireRun.Get());
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersTheCities,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheCitiesAndWhatTheyHaveLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersTheCities::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	// A RUN THAT HAS NOT BEGUN HAS NO MAP, and must not empty a record that
+	// already held cities. That is the state a save written with no campaign
+	// running is in, and the same rule the day follows.
+	FCataclysmCity Placeholder;
+	Placeholder.CityId = 99;
+	Record->Cities.Add(Placeholder);
+	Record->CityUpgradeSlots = 2;
+
+	TestFalse(TEXT("a run that has not begun reads nothing"),
+			  FCataclysmSaveGather::CitiesFrom(*Run, *Record));
+
+	TestEqual(TEXT("and leaves the cities it already held"),
+			  Record->Cities.Num(), 1);
+	TestEqual(TEXT("and the slot count too"), Record->CityUpgradeSlots, 2);
+
+	Run->Begin(1);
+
+	if (!TestTrue(TEXT("a run that has begun reads"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("all 25 cities are carried"), Record->Cities.Num(), 25);
+	TestEqual(TEXT("and the ordinary three upgrade slots"),
+			  Record->CityUpgradeSlots, 3);
+
+	// NOW DAMAGE THE EMPIRE AND READ IT AGAIN, because a record that matched a
+	// freshly built map would also match one that copied nothing.
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	int32 Outpost = INDEX_NONE;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost)
+		{
+			Outpost = City.CityId;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("an Outpost was found"), Outpost != INDEX_NONE))
+	{
+		return false;
+	}
+
+	Map->Bite(Outpost, 0.3f, 0.2f);
+
+	FCataclysmCityUpgrade Upgrade;
+	Upgrade.RowName = FName(TEXT("Architect_This_city_has_25_more_defense"));
+	Upgrade.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+	Upgrade.Value = 0.25f;
+	Upgrade.Tier = 1;
+	Map->AddUpgrade(Outpost, Upgrade);
+
+	const FCataclysmCity* Live = Map->Find(Outpost);
+	if (!TestNotNull(TEXT("the bitten city is still on the map"), Live))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the bite really took something"),
+				  Live->Defence < Live->MaxDefence))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and the upgrade really raised the maximum"),
+			 Live->MaxDefence > UCataclysmEmpireMap::OutpostMaxDefence);
+
+	if (!TestTrue(TEXT("reading the damaged empire"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	// GUARDED, FOR THE REASON THE OTHER TEST IN THIS FILE GIVES AT LENGTH. A
+	// `prove_cpp_guard` run that empties the gather leaves no city to read, and
+	// indexing anyway crashes the editor rather than failing -- which the run
+	// then reports as "unknown tests performed", indistinguishable from a guard
+	// that did not fire.
+	if (!TestTrue(TEXT("the record carries the bitten city to read"),
+				  Record->Cities.IsValidIndex(Outpost)))
+	{
+		return false;
+	}
+
+	const FCataclysmCity& Saved = Record->Cities[Outpost];
+
+	TestEqual(TEXT("the record lines up by city identifier"), Saved.CityId,
+			  Outpost);
+	TestEqual(TEXT("the defence it has left"), Saved.Defence, Live->Defence,
+			  0.0001f);
+	TestEqual(TEXT("the population it has left"), Saved.Population,
+			  Live->Population, 0.0001f);
+	TestEqual(TEXT("the raised maximum defence"), Saved.MaxDefence,
+			  Live->MaxDefence, 0.0001f);
+	TestEqual(TEXT("the maximum population"), Saved.MaxPopulation,
+			  Live->MaxPopulation, 0.0001f);
+
+	// AND THE UPGRADE IT BOUGHT, field by field. A record that carried the
+	// numbers but dropped what the city had bought would restore an empire that
+	// forgot what the player spent slots on.
+	if (!TestEqual(TEXT("the upgrade it bought is carried"),
+				   Saved.Upgrades.Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("which row it came from"), Saved.Upgrades[0].RowName,
+			  Upgrade.RowName);
+	TestEqual(TEXT("what it does"),
+			  static_cast<uint8>(Saved.Upgrades[0].Effect),
+			  static_cast<uint8>(ECataclysmCityUpgradeEffect::MaxDefence));
+	TestEqual(TEXT("and by how much"), Saved.Upgrades[0].Value, 0.25f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheCities,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheCitiesThroughTheFile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheCities::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A CITY THAT HAS TAKEN A BEATING, so the file has something to carry that a
+	// freshly built map would not produce.
+	int32 Outpost = INDEX_NONE;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost)
+		{
+			Outpost = City.CityId;
+			break;
+		}
+	}
+
+	Run->Map->Bite(Outpost, 0.4f, 0.25f);
+	const float DefenceLeft = Run->Map->Find(Outpost)->Defence;
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before issue #1307 no city reached a save
+	// at all, so this read back empty however much of the empire had been lost.
+	TestEqual(TEXT("all 25 cities survive the file"), Read->Cities.Num(), 25);
+	TestEqual(TEXT("and the upgrade slot count"), Read->CityUpgradeSlots, 3);
+
+	// STOP HERE RATHER THAN INDEX AN EMPTY ARRAY. Everything below reads one
+	// city out of the record, and if nothing was written there is no city to
+	// read. **The first version of this test indexed it regardless and CRASHED
+	// THE EDITOR** when a `prove_cpp_guard` run broke the gather -- so the proof
+	// reported "unknown tests performed" rather than a failure, which reads like
+	// a guard that did not fire. A test must fail when its subject is missing,
+	// not take the process down.
+	if (!TestTrue(TEXT("the file carries the bitten city to read"),
+				  Read->Cities.IsValidIndex(Outpost)))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmCity& Restored = Read->Cities[Outpost];
+
+	TestEqual(TEXT("the bitten city kept the defence it had left"),
+			  Restored.Defence, DefenceLeft, 0.01f);
+
+	// WHAT MUST NOT SURVIVE THE FILE. The adjacency is rebuilt by
+	// `UCataclysmEmpireMap::Build`, so writing it would store 96 integers that
+	// can never legitimately differ. Reading them back empty is the proof they
+	// were never written.
+	TestEqual(TEXT("the outward lanes were not written"),
+			  Restored.Outward.Num(), 0);
+	TestEqual(TEXT("nor the inward ones"), Restored.Inward.Num(), 0);
+	TestTrue(TEXT("nor the city's name"), Restored.Name.IsEmpty());
+
+	// AND THE CONTROL: the live map really does have those lanes, so the empty
+	// arrays above are the save dropping them rather than the map never having
+	// had any.
+	TestTrue(TEXT("the live city really has lanes to drop"),
+			 Run->Map->Find(Outpost)->Inward.Num() > 0);
 
 	Forget(Writer, /*bWriteWasStarted=*/true);
 	World->DestroyWorld(false);
