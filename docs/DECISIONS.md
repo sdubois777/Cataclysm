@@ -2,6 +2,158 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The empire layer learns which Cataclysm is running, and the Cataclysm dungeon unlocks at half of them
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.h` and `.cpp`
+(new), `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`,
+`sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and
+`docs/Cataclysm_GDD_v2.md` section XI. Issues
+[#1357](https://github.com/sdubois777/Cataclysm/issues/1357) and
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324).
+
+### The ruling
+
+The question of how the eight per-Cataclysm objective counts combine was put to
+the project owner with three readings — add them, take the largest, or give each
+Cataclysm its own capital. **The owner gave a fourth**, on 2026-09-06, verbatim:
+
+> what if we did something a bit more creative. For instance something like, you
+> have to meet the quest objectives for half of the cataclysms you're facing in
+> order to unlock the cataclysm dungeon. So if you're facing 4, you have to
+> complete 2 quests, 8 would be 4. For odd numbers do something like 3 you need
+> 2, 5 you need 3, 7 you need 4? Since what quest dungeons spawn during a surge,
+> if any, is random, this might make it a bit more interesting.
+
+Every worked example is the ceiling of a half — 3 to 2, 4 to 2, 5 to 3, 7 to 4,
+8 to 4 — so `ceil(N / 2)` is what was built, and at one active Cataclysm it
+gives one rather than none.
+
+**The odd counts are the only ones that prove which rounding was built.** Floor
+and ceiling agree at 4 and at 8, two of the five examples the owner gave, so a
+test assembled from the ruling's own table would pass on `N / 2`, which is wrong
+at 3, 5 and 7. `Cataclysm.Roster.HalfRoundsUpAtEveryOddCount` is the guard that
+separates them and it asserts both halves of the comparison.
+
+### Why this needed the identity first
+
+**A total of quest objectives cannot express the rule.** A player facing four
+Cataclysms who clears eight quest dungeons all belonging to one of them has
+eight objectives and has finished at most one Cataclysm, where the rule asks for
+two. Counting objectives per run — which is what
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 5 shipped, and
+deliberately — cannot answer it.
+
+So the empire layer gained the Cataclysm identity it had never had: an
+`ECataclysmType` enum, a per-run active list drawn from the seed with its size
+taken from the difficulty tier, a `Cataclysm` field on `FCataclysmDungeon`, and a
+per-Cataclysm objective tally beside the run's total. The shape is ported from
+`cataclysm_order_for` and `active_cataclysms_for` in `sim/cataclysm_sim/engine.py`
+and `active_cataclysm_count` in `sim/cataclysm_sim/config.py`, which had it
+already.
+
+### The three readings this took, none of them ruled
+
+1. **Which half is whichever the player finishes first.** The owner did not say.
+   The natural reading is the passive one — the count is met when `ceil(N/2)` of
+   them are complete, however that happened — and it is also the only one that
+   fits the owner's stated reason for the rule, that what a surge lands is
+   random. A chosen set would need a commitment step the game has nowhere to put.
+2. **Finishing more than the requirement does nothing.** Nothing in the ruling
+   says it should.
+3. **Nothing re-locks.** The owner did not say what happens if the active count
+   rises mid-run. It cannot: the count comes from the difficulty tier and a run
+   is played at one tier from beginning to end. Recorded so that a later change
+   letting the tier move mid-run knows it is opening this question.
+
+### Where the game deliberately differs from the model
+
+- **The order draw is not the model's sequence and does not claim to be.**
+  `random.Random` seeded from a string and `FRandomStream` are different
+  generators, so seed 7 draws a different order in each. What is ported is the
+  shape: a uniform draw over the eight, keyed only on the seed, from a stream of
+  its own so that it does not consume the run's chance. Uniformity over orderings
+  is the model's stated **assumption** rather than a design decision; issue
+  [#1338](https://github.com/sdubois777/Cataclysm/issues/1338) carries whether
+  any ordering should be constrained.
+- **Which Cataclysm sends a dungeon is drawn uniformly, and the model weights
+  it.** The model gives each Cataclysm its own attack pattern and weights a
+  wave's volume by it; the game has no patterns at all, so weighting by them
+  would be inventing them. Issue
+  [#53](https://github.com/sdubois777/Cataclysm/issues/53).
+- **That draw comes from its own stream, where the model takes it from the main
+  one.** Drawing it from the run's stream would have consumed one number per
+  dungeon and shifted every later draw, so every fixed-seed test in the project
+  would have started measuring a different campaign for a reason unrelated to
+  what it measures. **It has to move into the main stream when the patterns are
+  ported**, because then which Cataclysm sends a dungeon decides where it lands
+  and how deep it is. That is recorded beside the field.
+
+### What did NOT change, and must not be read as having changed
+
+- **The Quest dungeon spawn rate is still a flat 12% and still underived.** The
+  owner ruled it "should depend on the Cataclysm" and that needs a number nobody
+  has given. What issue #1357 removes is the reason it *could* not be built, not
+  the work. It is now possible.
+- **Nothing acts on the unlock.** No Cataclysm boss dungeon is created in the
+  game and no run is won by it. Slice 6 of #1324 needs the enemy capital and the
+  loss condition, and neither exists as design or as code.
+- **The simulation's policies still steer by the old flat total.**
+  `sim/cataclysm_sim/policies.py` values a quest dungeon by
+  `quest_objectives_required - objectives`, which is now the fallback constant
+  rather than the rule, against a total that cannot answer the rule either. It
+  is a heuristic and it still runs; it is stale, and it is issue
+  [#1388](https://github.com/sdubois777/Cataclysm/issues/1388). Moving it in the
+  same change that moved the rule would have made it impossible to say which of
+  the two moved a balance figure.
+
+### What actually moved, measured
+
+`Simulation._maybe_open_cataclysm` no longer opens the boss at a flat 8
+objectives, so the win condition of every campaign the model has ever run has
+changed. Both gates were run in one process from the same seeds, `triage` with
+no tree, on 2026-09-06:
+
+| Tier | Campaigns | Old gate wins | New gate wins | Old mean days | New mean days |
+| --: | --: | --: | --: | --: | --: |
+| 1 | 60 | 14 | 11 | 1767 | 1549 |
+| 1 | 300 | 64 | 56 | 1788 | 1613 |
+| 1 | 1000 | 202 | 209 | 1781 | 1596 |
+| 4 | 1000 | 1 | 0 | 729 | 730 |
+| 8 | 1000 | 0 | 0 | 602 | 602 |
+
+**The win rate did not move. The length of a campaign did.** At tier 1 over
+1,000 campaigns each, 20.2% of runs were won under the old gate and 20.9% under
+the new one, and a run took 1,781 days on average before and 1,596 after — about
+185 days shorter. The player also cleared fewer quest dungeons on the way, 6.85
+against 5.86 on average, which is the direct effect: at tier 1 the requirement is
+the one active Cataclysm's own count, 5, 8 or 10 depending on which one the
+character drew, where it used to be a flat 8.
+
+**The 60-campaign reading points the other way and is noise.** 14 wins against 11
+looks like the rule made the game harder; 1,000 campaigns of each say it did not
+change the win rate at all. That is recorded here rather than quietly dropped,
+because 60 campaigns is a sample size this project has been tempted by before and
+issue [#693](https://github.com/sdubois777/Cataclysm/issues/693) is about exactly
+this.
+
+**At tiers 4 and 8 the gate makes almost no difference**, because almost no run
+finishes any Cataclysm at all: 1 win in 1,000 at tier 4 and 0 in 1,000 at tier 8,
+under either gate.
+
+**Every Siege figure `sim/cataclysm_sim/policies.py` states in prose moved with
+the campaign length, and has been re-measured and rewritten.** Over one
+10,000-campaign block at the report settings: the median walk went 13 / 22 / 34
+days to an Outpost, Bulwark and Sanctuary and is now 14 / 23 / 37, the Pillar
+median stayed at 123, and the Sieges reaching the map fell from 10.6 a campaign
+to 8.97 while the four shares by dungeon kind did not move at all. Nothing about
+a walk changed; what changed is how long a campaign runs and therefore what mix
+of dungeons it produces. `sim/tests/test_the_siege_prose_in_policies_is_true.py`
+is what failed and made this necessary.
+
+**`sim/experiments.py` has not been re-run.** It already owed a run for the Quest
+relocation rule; this is the second reason.
+
 ## 2026-09-06 — What the game counts when a dungeon is beaten, and the one number it refuses to invent
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and

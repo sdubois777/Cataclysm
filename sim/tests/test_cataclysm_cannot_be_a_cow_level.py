@@ -215,12 +215,13 @@ class TestTheFightsThatActuallyGetBuilt:
 
         assert built == 300
 
-    def test_no_earned_cataclysm_dungeon_is_ever_a_cow_level(self):
+    def test_no_earned_cataclysm_dungeon_is_ever_a_cow_level(
+            self, meet_the_unlock_requirement):
         cfg = safe()
 
         for seed in range(300):
             sim = Simulation(cfg, seed=seed)
-            sim.objectives = cfg.quest_objectives_required
+            meet_the_unlock_requirement(sim)
             sim._maybe_open_cataclysm()
             assert sim.cataclysm is not None
             assert sim.cataclysm.subtype != "Cow Level", (

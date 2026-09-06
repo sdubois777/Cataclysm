@@ -200,7 +200,26 @@ by `git add` with no error and no warning. Guarded by
   [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
   dungeon is and what it does differently, which moved down from the `Cataclysm`
-  module so that both modules can name the same kind.
+  module so that both modules can name the same kind, and city upgrades
+  (`Empire/CataclysmCityUpgrade.h`).
+
+  **The layer knows which Cataclysms a campaign faces, and which one sent each
+  dungeon.** `UCataclysmRoster` names the eight, draws the order a character adds
+  them in from its seed, and answers how many quest dungeons each of them asks
+  for. `UCataclysmEmpireRun` faces as many of them as the difficulty tier says,
+  stamps every dungeon a surge lands with the Cataclysm that sent it, counts
+  cleared quest dungeons per Cataclysm rather than only per run, and answers
+  whether the Cataclysm dungeon has been unlocked: **half of the active
+  Cataclysms, rounded up, with each of them having met its own objective count**,
+  which the project owner ruled on 2026-09-06. Until issue
+  [#1357](https://github.com/sdubois777/Cataclysm/issues/1357) none of that
+  existed and neither rule the owner had given could be built. **What is still
+  generic is how the eight differ in attack** — the simulation gives each its own
+  shape of wave and this draws uniformly, issue
+  [#53](https://github.com/sdubois777/Cataclysm/issues/53) — and **nothing acts
+  on the unlock**: no Cataclysm boss dungeon is created and no run is won,
+  because the enemy capital and the loss condition are both still missing, issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6.
 
   **Every dungeon a surge creates has a sub-type, and two of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring

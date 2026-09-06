@@ -175,11 +175,14 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *     dungeon to walk into, spends days at the forge, and kills the player. None
  *     of that belongs here: in the game the player is a character in a world,
  *     and what this owns is the empire's side of the clock.
- *   - **The win condition.** Nothing here compares `QuestObjectives` against a
- *     requirement, opens a Cataclysm boss dungeon or sets a won state. This
- *     counts and does not decide; slice 6 of issue #1324 is the gate, and it is
- *     blocked on this module having no notion of which Cataclysm is running --
- *     issue #1357.
+ *   - **The win condition, though no longer the requirement it reads.** Since
+ *     issue #1357 this DOES answer whether the player has earned the right to
+ *     face the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active
+ *     Cataclysms finished, rounded up. What it still does not do is ACT on the
+ *     answer: nothing here creates a Cataclysm boss dungeon, opens an enemy
+ *     capital or sets a won state. That is slice 6 of issue #1324, and its other
+ *     two blockers are untouched -- the enemy capital does not exist and neither
+ *     does the loss condition, and both are design gaps as well as missing code.
  *   - **The Last Stand.** `bPillarExposed` is the condition; the Cataclysm boss
  *     dungeon moving to the Pillar and absorbing everything still standing is
  *     issue #43.
@@ -345,9 +348,58 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<FCataclysmDungeon> Dungeons;
 
-	/** The one source of chance in the run. */
+	/**
+	 * The source of chance for everything the run does.
+	 *
+	 * IT IS NO LONGER THE ONLY ONE. `CataclysmStream` below draws which
+	 * Cataclysm sends each dungeon, deliberately away from this one; its comment
+	 * says why.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FRandomStream Stream;
+
+	/**
+	 * The chance that decides which Cataclysm sends a dungeon, and nothing else.
+	 *
+	 * **SEPARATE FROM `Stream` SO THAT ADDING CATACLYSM IDENTITY DID NOT RE-ROLL
+	 * EVERY RUN IN THE PROJECT.** Drawing this from `Stream` would consume one
+	 * number per dungeon and shift every later draw, so the same seed would land
+	 * different waves on different cities at different depths than it did before
+	 * issue #1357 -- and every fixed-seed test measuring something else would
+	 * have started failing for a reason that had nothing to do with what it
+	 * measures. `cataclysm_order_for` in `sim/cataclysm_sim/engine.py` keeps its
+	 * own generator for exactly this reason and states it.
+	 *
+	 * **IT WILL HAVE TO MOVE INTO `Stream` WHEN THE ATTACK PATTERNS ARE
+	 * PORTED**, and this is where that is recorded. Today the draw is uniform
+	 * and independent of everything else a wave rolls, so where it comes from
+	 * cannot affect anything but itself. Issue #53 gives each Cataclysm its own
+	 * pattern, at which point which one sends a dungeon decides where the
+	 * dungeon lands and how deep it is -- and then it is part of the wave's own
+	 * chance and belongs in the same stream. `Simulation.trigger_surge` already
+	 * draws it from the main stream for that reason.
+	 *
+	 * STILL DETERMINISTIC FROM THE RUN'S SEED, so the same seed still gives the
+	 * same run in every respect. `Begin` initialises both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FRandomStream CataclysmStream;
+
+	/**
+	 * Which Cataclysms this run faces.
+	 *
+	 * HOW MANY comes from the difficulty tier and WHICH ONES from the seed. The
+	 * design says a character faces one Cataclysm at first and gains one per
+	 * boss defeated until it faces all eight; the project owner ruled on
+	 * 2026-09-06 that the ORDER they are added in belongs to the character, so
+	 * replaying at the same seed meets the same ones. `UCataclysmRoster::
+	 * ActiveFor` draws it and its comment carries the argument.
+	 *
+	 * IT IS THE DENOMINATOR OF THE UNLOCK RULE. `CataclysmDungeonRequirement`
+	 * is half of this list's length, rounded up.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<ECataclysmType> ActiveCataclysms;
 
 	/** What the next dungeon will be numbered. Only ever counts up. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -407,21 +459,41 @@ public:
 	 * essences, cores and rituals the eight Cataclysms name are flavour for one
 	 * mechanic. A port of `Simulation.objectives`.
 	 *
-	 * **HOW MANY ARE NEEDED IS NOT HERE, AND THAT IS NOT AN OVERSIGHT.** The
-	 * design gives a count per Cataclysm -- Demonic 10, Death 5, War 10,
-	 * Pestilence 5, Famine 5, Celestial 10, Chaos 8, The Void 5 -- and **this
-	 * module has no notion of which Cataclysm is running.** There is no
-	 * Cataclysm enum in `CataclysmEmpire`, no active-Cataclysm list and no field
-	 * on `FCataclysmDungeon` saying which one sent it, so a required count read
-	 * from here would have exactly one reachable value. That is
-	 * [#1357](https://github.com/sdubois777/Cataclysm/issues/1357), and the gate
-	 * that compares this against a requirement is slice 6.
+	 * **IT IS THE RUN'S TOTAL AND IT IS NOT WHAT THE UNLOCK RULE READS.** That
+	 * is `QuestObjectivesByCataclysm` below, and the two are kept apart on
+	 * purpose. A total cannot express the owner's rule: a player facing four
+	 * Cataclysms who clears eight quest dungeons all belonging to one of them
+	 * has eight objectives and has finished at most one Cataclysm, where the
+	 * rule asks for two. This is what the empire screen shows and what a
+	 * player's sense of progress reads; the map below is what the gate reads.
 	 *
-	 * SO THIS COUNTS AND DOES NOT DECIDE. Nothing opens, nothing is won, and
-	 * nothing here reads the number back. Issue #1324 slice 5.
+	 * IT IS STILL THE SUM OF THE MAP, and the two are raised together in
+	 * `ClearDungeon`. A dungeon that names no Cataclysm -- one built by hand in
+	 * a test -- raises this and nothing in the map, which is the one case where
+	 * they come apart and is why the sum is not simply computed.
+	 *
+	 * Issue #1324 slice 5, and issue #1357 for the split.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 QuestObjectives = 0;
+
+	/**
+	 * Quest objectives earned FOR EACH CATACLYSM, which is what the unlock rule
+	 * reads.
+	 *
+	 * A PORT OF `Simulation.objectives_by_type`. Every active Cataclysm is a key
+	 * from the moment `Begin` runs, so one that has never sent a quest dungeon
+	 * reads as 0 rather than as absent, and a caller iterating this sees the
+	 * whole campaign rather than only the parts of it that have happened.
+	 *
+	 * IT IS NOT SAVED, and neither is `QuestObjectives`. What the player has
+	 * achieved this run is on the list `UCataclysmRunSave`'s own comment names as
+	 * deliberately absent; issue
+	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374) owns writing
+	 * it. This joins that list rather than starting a new problem.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
 
 	/**
 	 * How many times a dungeon's timer ran out and the empire actually paid.
@@ -459,16 +531,25 @@ public:
 	 * A SECOND CALL IS A FRESH RUN rather than a continuation, so a caller that
 	 * wants to keep a run has to keep this object.
 	 *
-	 * @param InSeed        what to seed the run's chance with. The same seed
-	 *                      gives the same run.
-	 * @param Mode          how surges escalate. An open tuning question; see
-	 *                      `ECataclysmSurgeMode`.
-	 * @param LethalityRung 0 Standard, 1 Hardcore, 2 Heretic.
+	 * @param InSeed         what to seed the run's chance with. The same seed
+	 *                       gives the same run, AND the same set of Cataclysms:
+	 *                       see `ActiveCataclysms`.
+	 * @param Mode           how surges escalate. An open tuning question; see
+	 *                       `ECataclysmSurgeMode`.
+	 * @param LethalityRung  0 Standard, 1 Hardcore, 2 Heretic.
+	 * @param DifficultyTier which tier this run is played at, 1 to 8. **IT IS
+	 *                       HOW MANY CATACLYSMS ARE ACTIVE** and that is the
+	 *                       only thing this class reads it for. It is passed in
+	 *                       rather than read off the game mode because
+	 *                       `ACataclysmGameMode` is in the `Cataclysm` module
+	 *                       and this one must not depend on it; the caller that
+	 *                       has both is the one that joins them.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	void Begin(int32 InSeed = 0,
 			   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
-			   int32 LethalityRung = 0);
+			   int32 LethalityRung = 0,
+			   int32 DifficultyTier = 1);
 
 	/** Which day the run is on. Counted from 0, before any day has passed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
@@ -477,6 +558,70 @@ public:
 	/** Whether the Cataclysm can reach the Pillar. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsLost() const;
+
+	// ----------------------------------------------------------------------
+	// The Cataclysm dungeon's unlock -- issue #1357
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many quest objectives this Cataclysm has earned so far.
+	 *
+	 * ZERO FOR ONE THAT IS NOT ACTIVE, and zero for `None`. Reading a Cataclysm
+	 * the run does not face is a caller's mistake and the honest answer is that
+	 * the player has done nothing towards it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 QuestObjectivesFor(ECataclysmType Cataclysm) const;
+
+	/**
+	 * Whether this Cataclysm's own objective count has been met.
+	 *
+	 * THE COUNTS DIFFER: Death asks for 5 quest dungeons and Demonic for 10. See
+	 * `UCataclysmRoster::QuestObjectivesFor`.
+	 *
+	 * FALSE FOR A CATACLYSM THE RUN DOES NOT FACE. `None` asks for 0, which
+	 * would otherwise read as complete the moment the run began; the active list
+	 * is what this is asked about and `None` is never in it, but a caller can
+	 * ask anything, so this refuses rather than relying on that.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsCataclysmComplete(ECataclysmType Cataclysm) const;
+
+	/** How many of the active Cataclysms have had their own count met. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmsComplete() const;
+
+	/**
+	 * How many have to be, for the Cataclysm dungeon to unlock.
+	 *
+	 * HALF OF `ActiveCataclysms`, ROUNDED UP. The project owner's ruling of
+	 * 2026-09-06; `UCataclysmRoster::CataclysmsRequiredFor` carries the verbatim
+	 * words, the worked table and the reason the odd counts are the only ones
+	 * that prove which rounding was built.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonRequirement() const;
+
+	/**
+	 * Whether the player has earned the right to face the Cataclysm.
+	 *
+	 * **IT ANSWERS AND IT DOES NOT ACT.** Nothing here creates a Cataclysm
+	 * dungeon, opens an enemy capital or sets a won state; that is slice 6 of
+	 * issue [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) and it
+	 * has two blockers left that this does not touch -- the enemy capital does
+	 * not exist, and neither does the loss condition. Both are design gaps as
+	 * well as missing code. What issue #1357 removes is the third: the module
+	 * could not tell which Cataclysm a quest dungeon belonged to, so the
+	 * requirement could not be checked at all.
+	 *
+	 * IT CAN GO FROM TRUE BACK TO FALSE ONLY IF THE ACTIVE COUNT RISES, and it
+	 * cannot: `ActiveCataclysms` is set once, by `Begin`, from a difficulty tier
+	 * a run is played at from beginning to end. The owner's ruling did not say
+	 * whether an unlocked Cataclysm dungeon should re-lock if a ninth Cataclysm
+	 * could arrive mid-run, and it does not have to, because it cannot.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsCataclysmDungeonUnlocked() const;
 
 	/**
 	 * One day passes.
@@ -635,6 +780,27 @@ private:
 	 * @param OutReport     the day's report, to record what arrived
 	 */
 	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
+
+	/**
+	 * Which active Cataclysm sent one dungeon of a wave.
+	 *
+	 * UNIFORM OVER THE ACTIVE SET, which is a statement about what is NOT built
+	 * rather than a design decision. `Simulation.trigger_surge` weights the draw
+	 * by each Cataclysm's `count_mult`, so a Death wave really is a swarm and a
+	 * Celestial one really is a handful -- and this module has no patterns at
+	 * all. Weighting by something that does not exist would be inventing it.
+	 * Issue #53 ports them, and then this is where the weights go.
+	 *
+	 * PER DUNGEON AND NOT PER WAVE, which is also the model's shape: a single
+	 * surge is a wave from every active Cataclysm at once rather than from one
+	 * of them in turn, which is what makes three active Cataclysms three
+	 * different problems instead of one problem three times over.
+	 *
+	 * `None` WHEN NOTHING IS ACTIVE, which `Begin` makes impossible -- the
+	 * active count is clamped to at least one -- but a run whose `Begin` never
+	 * ran has an empty list and reaches nothing else here anyway.
+	 */
+	ECataclysmType RollCataclysm();
 
 	/**
 	 * A dungeon's timer ran out: if it is a kind that detonates it takes a

@@ -16,6 +16,7 @@
 			"DungeonId": 3,
 			"Type": "Basic",
 			"SubType": "Siege",
+			"Cataclysm": "Demonic",
 			"CityId": 7,
 			"CityTier": "Outpost",
 			"Floors": 12,

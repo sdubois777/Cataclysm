@@ -530,9 +530,38 @@ class TuningConfig:
     # `experiments.exp_surge_modes` does.
     active_cataclysms: int | None = None
 
-    # The win condition. Every Cataclysm quest mechanic in GDD XI reduces to
-    # "clear N quest dungeons, then the enemy capital opens": 10 Rifts, 5 Seeds
-    # of Undeath, 10 Essences of War, 8 Pillars of Order. 8 is the midpoint.
+    # The win condition, PER CATACLYSM. Every Cataclysm quest mechanic in GDD
+    # XI reduces to "clear N quest dungeons, then the enemy capital opens", and
+    # the design states a different N for each of the eight: 10 Rifts, 5 Seeds
+    # of Undeath, 10 Essences of War, 5 vaccine steps, 5 Famine dungeons, 10
+    # Heavenly Cores, 8 Pillars of Order, 5 Sealing Rituals.
+    #
+    # THE KEYS ARE `CATACLYSM_ROSTER`'S ENTRIES and every one of the eight is
+    # present, which `quest_objectives_for` relies on rather than defaulting.
+    # `docs/Cataclysm_GDD_v2.md` section XI states all eight and
+    # `tools/tests/test_quest_objective_counts_are_stated.py` guards them there;
+    # this is the model's copy and
+    # `tools/tests/test_the_cataclysm_dungeon_unlocks_at_half.py` compares the
+    # two.
+    QUEST_OBJECTIVES: dict[str, int] = field(default_factory=lambda: {
+        "Demonic": 10,
+        "Death": 5,
+        "War": 10,
+        "Pestilence": 5,
+        "Famine": 5,
+        "Celestial": 10,
+        "Chaos": 8,
+        "Void": 5,
+    })
+
+    # SUPERSEDED BY `QUEST_OBJECTIVES` ABOVE AND KEPT ONLY AS A FALLBACK for a
+    # Cataclysm the roster does not name. It was a flat 8 for every Cataclysm --
+    # its own comment called that "the midpoint" of the stated numbers rather
+    # than a ruling -- and every balance figure this project holds was measured
+    # against it. The project owner ruled on 2026-09-06 that the counts differ
+    # per Cataclysm and that the Cataclysm dungeon unlocks when HALF of the
+    # active Cataclysms, rounded up, have had their own count met. See
+    # `cataclysms_required` and `Simulation._maybe_open_cataclysm`.
     quest_objectives_required: int = 8
     # A quest dungeon that reaches the end of its timer relocates instead of
     # detonating (GDD VIII: "does not resolve -- refreshes and may move").
@@ -667,6 +696,54 @@ class TuningConfig:
         """
         count = self.tier if self.active_cataclysms is None else self.active_cataclysms
         return max(1, min(len(self.CATACLYSM_ROSTER), count))
+
+    def quest_objectives_for(self, cataclysm: str) -> int:
+        """How many quest dungeons THIS Cataclysm asks the player to clear.
+
+        The design states a different count for each of the eight and
+        `docs/Cataclysm_GDD_v2.md` section XI says the variation is deliberate:
+        the project owner was asked whether to keep them or pick one number and
+        answered "Keep the per-Cataclysm numbers".
+
+        `quest_objectives_required` IS THE FALLBACK AND NOT THE RULE. It is the
+        flat 8 every figure this project holds was measured against, and it is
+        reached only for a name `QUEST_OBJECTIVES` does not carry -- which no
+        entry of `CATACLYSM_ROSTER` is.
+        """
+        return self.QUEST_OBJECTIVES.get(cataclysm, self.quest_objectives_required)
+
+    def cataclysms_required(self) -> int:
+        """How many of the active Cataclysms must be finished to open the boss.
+
+        HALF, ROUNDED UP. The project owner ruled it on 2026-09-06, verbatim:
+
+            "what if we did something a bit more creative. For instance
+            something like, you have to meet the quest objectives for half of
+            the cataclysms you're facing in order to unlock the cataclysm
+            dungeon. So if you're facing 4, you have to complete 2 quests, 8
+            would be 4. For odd numbers do something like 3 you need 2, 5 you
+            need 3, 7 you need 4? Since what quest dungeons spawn during a
+            surge, if any, is random, this might make it a bit more
+            interesting."
+
+        Every worked example is the ceiling of a half -- 3 to 2, 4 to 2, 5 to 3,
+        7 to 4, 8 to 4 -- so that is what this computes. **THE ODD CASES ARE THE
+        WHOLE POINT OF WRITING IT AS A CEILING**: floor and ceiling agree at 4
+        and at 8 and disagree at 3, 5 and 7, so a test that exercises only even
+        counts proves nothing about which of the two was implemented.
+
+        AT ONE ACTIVE CATACLYSM IT IS ONE, so the rule reduces to the single
+        count the design already describes rather than to zero, which a
+        requirement of "half" taken literally would give and which would open
+        the boss before the player had cleared anything.
+
+        WHICH HALF IS NOT DECIDED HERE, and the ruling deliberately did not
+        settle it. `Simulation._maybe_open_cataclysm` takes whichever ones the
+        player happens to have finished, because the owner's reason for the rule
+        was that what a surge lands is random; a player choosing a set in
+        advance would need a commitment step the game has nowhere to put.
+        """
+        return -(-self.active_cataclysm_count() // 2)
 
     def with_tree(self, tree: EmpireTree) -> "TuningConfig":
         return replace(self, tree=tree)

@@ -174,14 +174,15 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         sim._finish_current()
         return d
 
-    def test_the_boss_is_deeper_than_its_roll_when_dungeons_were_cleared(self):
+    def test_the_boss_is_deeper_than_its_roll_when_dungeons_were_cleared(
+            self, meet_the_unlock_requirement):
         cfg = self._safe()
         spec = cfg.spec(DungeonType.CATACLYSM, CityTier.PILLAR)
         deepest_roll = spec.floors[1]
 
         sim = Simulation(cfg, seed=4)
         sim.basic_cleared = 40
-        sim.objectives = cfg.quest_objectives_required
+        meet_the_unlock_requirement(sim)
         sim._maybe_open_cataclysm()
 
         assert sim.cataclysm is not None
@@ -189,7 +190,8 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
             "the boss is no deeper than the deepest it could roll, so the "
             "forty dungeons cleared added nothing")
 
-    def test_it_is_one_floor_for_each_ordinary_dungeon(self):
+    def test_it_is_one_floor_for_each_ordinary_dungeon(
+            self, meet_the_unlock_requirement):
         """The exact figure, not merely that it grew.
 
         Two runs at the same seed roll the same boss, so the difference between
@@ -200,27 +202,29 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         def depth(cleared):
             sim = Simulation(cfg, seed=11)
             sim.basic_cleared = cleared
-            sim.objectives = cfg.quest_objectives_required
+            meet_the_unlock_requirement(sim)
             sim._maybe_open_cataclysm()
             return sim.cataclysm.floors
 
         assert depth(30) - depth(0) == 30
         assert depth(7) - depth(0) == 7
 
-    def test_the_constant_is_what_decides_how_much(self):
+    def test_the_constant_is_what_decides_how_much(
+            self, meet_the_unlock_requirement):
         """Turning it off reproduces the game as it was before #1315."""
         def depth(per_dungeon):
             cfg = self._safe(cataclysm_floors_per_dungeon_cleared=per_dungeon)
             sim = Simulation(cfg, seed=11)
             sim.basic_cleared = 20
-            sim.objectives = cfg.quest_objectives_required
+            meet_the_unlock_requirement(sim)
             sim._maybe_open_cataclysm()
             return sim.cataclysm.floors
 
         assert depth(1) - depth(0) == 20
         assert depth(3) - depth(0) == 60
 
-    def test_clearing_quest_and_fallen_city_dungeons_does_not_deepen_it(self):
+    def test_clearing_quest_and_fallen_city_dungeons_does_not_deepen_it(
+            self, meet_the_unlock_requirement):
         """**The half of the rule that is about what does not count.**
 
         The owner ruled that a Quest dungeon is the win condition itself and
@@ -252,7 +256,7 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
             "Quest or Fallen City clears moved the counter that deepens the "
             "boss; the owner ruled only ordinary dungeons count")
 
-        sim.objectives = cfg.quest_objectives_required
+        meet_the_unlock_requirement(sim)
         sim._maybe_open_cataclysm()
 
         # AGAINST THE ROLL'S OWN RANGE, NOT AGAINST ANOTHER RUN. Two sims that
@@ -274,7 +278,7 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         grown = Simulation(cfg, seed=5)
         for _ in range(60):
             self._clear(grown, DungeonType.BASIC, rim.cid)
-        grown.objectives = cfg.quest_objectives_required
+        meet_the_unlock_requirement(grown)
         grown._maybe_open_cataclysm()
 
         assert grown.cataclysm.floors > spec.floors[1]
@@ -311,7 +315,8 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
             "the last stand grew with dungeons cleared; it takes its own "
             "bonuses only")
 
-    def test_the_walk_gets_longer_with_the_extra_floors(self):
+    def test_the_walk_gets_longer_with_the_extra_floors(
+            self, meet_the_unlock_requirement):
         """Depth and time are the same axis at the starting rate, so a deeper
         boss is a longer commitment. A grown boss whose walk was still worked
         out from its rolled depth would be free floors."""
@@ -320,7 +325,7 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         def walk(cleared):
             sim = Simulation(cfg, seed=11)
             sim.basic_cleared = cleared
-            sim.objectives = cfg.quest_objectives_required
+            meet_the_unlock_requirement(sim)
             sim._maybe_open_cataclysm()
             return sim.cataclysm.run_days, sim.cataclysm.floors
 
@@ -330,7 +335,8 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         assert long_floors == short_floors + 40
         assert long_days > short_days
 
-    def test_the_earned_boss_recomputes_its_walk_through_the_subtype_helper(self):
+    def test_the_earned_boss_recomputes_its_walk_through_the_subtype_helper(
+            self, meet_the_unlock_requirement):
         """It has to go through `_walk_days` rather than `run_days_for`.
 
         **THIS TEST USED TO BE ABOUT A COW LEVEL BOSS AND CANNOT BE ANY MORE.**
@@ -353,7 +359,7 @@ class TestTheBossGrowsWithOrdinaryDungeonsCleared:
         cfg = self._safe()
         sim = Simulation(cfg, seed=11)
         sim.basic_cleared = 25
-        sim.objectives = cfg.quest_objectives_required
+        meet_the_unlock_requirement(sim)
         sim._maybe_open_cataclysm()
         boss = sim.cataclysm
 
