@@ -569,7 +569,9 @@ CATACLYSM_TEST(FCataclysmCritChanceFollowsAHealthConditionTest,
 // WHY IT IS NOT THE CHARACTER'S NUMBER. The design's stat source table names
 // "the skill being used" as the source of critical strike chance, and the
 // sentence after it is "A character has no critical strike chance in the
-// abstract." docs/Cataclysm_GDD_v2.md lines 858 and 866. A character holds six
+// abstract." Both are in docs/Cataclysm_GDD_v2.md: the table row, and the
+// "Critical strike chance belongs to the skill, not the character" paragraph
+// under it. A character holds six
 // skills at once and the ability system has one CritChance attribute to put them
 // in, so a skill that states its own sends it with the hit instead.
 //

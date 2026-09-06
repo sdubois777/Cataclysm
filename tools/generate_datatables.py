@@ -2345,10 +2345,10 @@ def minion_types(book) -> list[dict]:
     how many, how often and how long; the type decides what the thing IS.
 
     HEALTH AND DAMAGE ARE ABSOLUTE, NOT A SHARE OF THE SUMMONER.
-    `docs/Cataclysm_GDD_v2.md` line 1588: "Every minion type has its own stats. A
-    minion is not a percentage of its summoner." Each is the type's own base
-    raised by the summoner's level, in the same `Base` and `Per Level` shape
-    `Class Stats` already uses for character stats.
+    `docs/Cataclysm_GDD_v2.md` states it as a bolded rule: "Every minion type
+    has its own stats. A minion is not a percentage of its summoner." Each is
+    the type's own base raised by the summoner's level, in the same `Base` and
+    `Per Level` shape `Class Stats` already uses for character stats.
 
     THE SUMMONER'S LEVEL IS THE ONLY THING THAT RAISES THEM. Gear does not cross
     unless a modifier names minions, so a minion's damage rises more slowly than

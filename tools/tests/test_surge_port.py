@@ -697,7 +697,9 @@ class TestWhatASiegeCostsItsHost:
     #: repository cited that sentence by line number -- seven as "line 3744"
     #: and one as "line 3732" -- and the document had grown past both. Issue
     #: #1355 replaced every one of them with this row citation, and
-    #: `tools/tests/test_the_siege_row_is_cited_by_name.py` holds them there.
+    #: `tools/tests/test_the_design_document_is_cited_by_name.py` holds them
+    #: there. Issue #1366 widened that guard from the Siege row to every
+    #: passage the repository cites, which is why it was renamed.
     #:
     #: THE NUMBER WENT STALE TWICE IN ONE DAY, which is the whole argument.
     #: #1355 was filed naming 3801 as the correct line; by the time it was

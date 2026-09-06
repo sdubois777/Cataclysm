@@ -19688,8 +19688,9 @@ slot tag is now added where the skill is read and the element tag where the weap
 is equipped, because only the equipped weapon knows its rolled damage type.
 
 **Three statements in `Cataclysm_GDD_v2.md` about longest range are in conflict
-with the data.** Line 4503 says 14 metres "is the longest range any player attack
-reaches ... and no attack states more", while two Demonic Staff rows state
+with the data.** The Corrupted Sentinel's "Its reach is the longest in the game"
+section says 14 metres "is the longest range any player attack reaches ... and no
+attack states more", while two Demonic Staff rows state
 `Range=15` and this log already calls 15 "the joint longest" in the 2026-08-04
 entry. Nothing in this decision exceeds 12 metres, so nothing here makes it worse.
 It is left as it stands because the Corrupted Sentinel's reach is derived from the
@@ -26465,8 +26466,9 @@ difficulty tier is the second, which is why the partition follows the mode.
 grants the slot in every league, including Hardcore. The items inside it stay in
 the league they were put in. So the entitlement crosses and the contents do not.
 If this game ever sells storage the same split applies — although the
-monetisation section already rules out selling it, at line 3109 of
-`docs/Cataclysm_GDD_v2.md`: "no stash or storage fees of any kind".
+monetisation section already rules out selling it, under "Buying the game buys
+all of it" in `docs/Cataclysm_GDD_v2.md`: "no stash or storage fees of any
+kind".
 
 ## What argues against it
 

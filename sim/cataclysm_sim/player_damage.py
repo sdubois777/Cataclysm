@@ -77,11 +77,14 @@ UNARMED_WEAPON = "Shield"
 #: 90; the two strongest legal pairs bracket it, an Axe with an Axe at 92 and an
 #: Axe with a Sword at 86, while no single weapon is near it. And reading it as a
 #: pair puts a Greatsword at 1.33 times the target, which is exactly the
-#: two-handed advantage `docs/Cataclysm_GDD_v2.md` line 2382 already states.
+#: two-handed advantage the "A Two-Handed Weapon Is Worth Double, Per Implicit
+#: and Per Affix" section of `docs/Cataclysm_GDD_v2.md` already states. That
+#: 1.33 is itself stale; the section says 1.29 and issue #1381 has the rest.
 #:
-#: THIS PAIR IS THE DESIGN DOCUMENT'S OWN EXAMPLE. Line 2378: "Two one-handed
-#: weapons **sum** their base damage, so an Axe and a Sword give 86 against a
-#: Greatsword's stated 78."
+#: THIS PAIR IS THE DESIGN DOCUMENT'S OWN EXAMPLE, under "It has to reach the
+#: implicits, not only the affixes": "Two one-handed weapons **sum** their
+#: base damage, so an Axe and a Sword give 86 against a Greatsword's stated
+#: 78."
 REFERENCE_LOADOUT: tuple[str, ...] = ("Axe", "Sword")
 
 #: How many of each kind of damage affix sit on a weapon rather than elsewhere.
@@ -239,11 +242,12 @@ def weapon_base_damage(loadout: str | tuple[str, ...],
                        gear_level: int = af.MAX_GEAR_LEVEL) -> float:
     """The flat attack damage a loadout supplies.
 
-    TWO ONE-HANDED WEAPONS SUM, which `docs/Cataclysm_GDD_v2.md` line 2378
-    states: "Two one-handed weapons **sum** their base damage, so an Axe and a
-    Sword give 86 against a Greatsword's stated 78." Attack speed averages
-    instead, at line 2401, and that difference is what stops summed damage
-    becoming a strict advantage.
+    TWO ONE-HANDED WEAPONS SUM, which "It has to reach the implicits, not only
+    the affixes" in `docs/Cataclysm_GDD_v2.md` states: "Two one-handed weapons
+    **sum** their base damage, so an Axe and a Sword give 86 against a
+    Greatsword's stated 78." Attack speed averages instead, under "Attack
+    speed is the average of the two weapons", and that difference is what
+    stops summed damage becoming a strict advantage.
 
     Asked of each base rather than of each implicit, so a two-handed weapon's
     doubling is applied where the rule lives.
@@ -323,7 +327,9 @@ def breakdown(tier: int,
 
     # Only a two-handed weapon doubles the affixes sitting on it. A pair of
     # one-handers holds twice as many weapon affix slots at single value, which
-    # `docs/Cataclysm_GDD_v2.md` line 2370 says is deliberately the same worth.
+    # "The figure is derived, not chosen" in `docs/Cataclysm_GDD_v2.md` says is
+    # deliberately the same worth: "Two is the multiplier that makes the two
+    # loadouts worth the same in affixes."
     two_handed = any(af.base_named(n).value_multiplier != 1.0 for n in names)
 
     on_weapon_flat = min(FLAT_DAMAGE_AFFIXES_ON_THE_WEAPON, flat_affixes)
@@ -408,11 +414,12 @@ def average_damage_per_hit(tier: int,
 def attack_rate(loadout: str | tuple[str, ...] = REFERENCE_LOADOUT) -> float:
     """Attacks per second a loadout supplies, before any attack speed affix.
 
-    THE AVERAGE OF THE WEAPONS HELD, not the sum and not the slower.
-    `docs/Cataclysm_GDD_v2.md` line 2401 states it and says why: it is what stops
-    summed base damage becoming a strict advantage, because a dual wielder deals
-    more per swing than either weapon alone without also swinging at the faster
-    weapon's rate. Read through `affixes.attack_speed_of`, which owns the rule.
+    THE AVERAGE OF THE WEAPONS HELD, not the sum and not the slower. "Attack
+    speed is the average of the two weapons" in `docs/Cataclysm_GDD_v2.md`
+    states it and says why: it is what stops summed base damage becoming a
+    strict advantage, because a dual wielder deals more per swing than either
+    weapon alone without also swinging at the faster weapon's rate. Read through
+    `affixes.attack_speed_of`, which owns the rule.
 
     The offhand is left out, because a shield is not swung.
     """
@@ -439,7 +446,9 @@ def gap_against_target(tier: int,
     THE TARGET DESCRIBES THE DUAL WIELDER, stated by the project owner on
     2026-08-15. So this reads about 1.0 for two one-handers and about 1.33 for a
     two-hander, and that second figure is not an error: it is the two-handed
-    advantage `docs/Cataclysm_GDD_v2.md` line 2382 states.
+    advantage the "A Two-Handed Weapon Is Worth Double, Per Implicit and Per
+    Affix" section of `docs/Cataclysm_GDD_v2.md` states. The section says 1.29
+    rather than 1.33 since issue #633; issue #1381 has that.
 
     THE TARGET APPLIES NO MITIGATION and is wrong for it, which is issue #511 and
     is stated in `damage_target`'s own docstring. Comparing against it is still
