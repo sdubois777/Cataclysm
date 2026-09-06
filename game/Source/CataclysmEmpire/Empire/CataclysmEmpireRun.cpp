@@ -249,6 +249,71 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	}
 }
 
+bool UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+	const TArray<FCataclysmDungeon>& Dungeons,
+	const TArray<FCataclysmDungeonTimer>& Timers,
+	FString& OutWhy)
+{
+	if (Dungeons.Num() != Timers.Num())
+	{
+		OutWhy = FString::Printf(
+			TEXT("%d dungeons stand and %d timers count down"),
+			Dungeons.Num(), Timers.Num());
+		return false;
+	}
+
+	// EVERY DUNGEON HAS EXACTLY ONE TIMER. Counting rather than only looking
+	// each one up, because two timers for one dungeon and none for another
+	// leaves the totals equal and every dungeon findable.
+	TMap<int32, int32> TimersFor;
+	for (const FCataclysmDungeonTimer& Timer : Timers)
+	{
+		++TimersFor.FindOrAdd(Timer.DungeonId);
+	}
+
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		const int32* Count = TimersFor.Find(Dungeon.DungeonId);
+
+		if (Count == nullptr)
+		{
+			OutWhy = FString::Printf(
+				TEXT("dungeon %d has no timer, so it would never resolve"),
+				Dungeon.DungeonId);
+			return false;
+		}
+
+		if (*Count != 1)
+		{
+			OutWhy = FString::Printf(
+				TEXT("dungeon %d has %d timers"), Dungeon.DungeonId, *Count);
+			return false;
+		}
+	}
+
+	// AND EVERY TIMER HAS A DUNGEON. The totals being equal and every dungeon
+	// having one does not settle this on its own: a timer for a dungeon that is
+	// not there would have been counted above and never looked for.
+	for (const FCataclysmDungeonTimer& Timer : Timers)
+	{
+		const bool bStands = Dungeons.ContainsByPredicate(
+			[&Timer](const FCataclysmDungeon& Dungeon)
+			{
+				return Dungeon.DungeonId == Timer.DungeonId;
+			});
+
+		if (!bStands)
+		{
+			OutWhy = FString::Printf(
+				TEXT("a timer counts down for dungeon %d, which is not standing"),
+				Timer.DungeonId);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool UCataclysmEmpireRun::IsBesieged(int32 CityId) const
 {
 	for (const FCataclysmDungeon& Dungeon : Dungeons)

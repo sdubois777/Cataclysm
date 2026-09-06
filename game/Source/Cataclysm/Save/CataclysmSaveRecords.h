@@ -6,7 +6,9 @@
 #include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmLethality.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmSurge.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSavePartition.h"
@@ -606,6 +608,51 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 CityUpgradeSlots = 0;
+
+	/**
+	 * The dungeons standing on the map.
+	 *
+	 * THE ONE THING IN A SAVED EMPIRE WITH NO HARD CEILING. Everything else has
+	 * one: 25 cities, at most three upgrades each. A dungeon that resolves
+	 * undefeated does not go away, so this list only shrinks when the player
+	 * clears one or a city falls and absorbs what stood on it.
+	 *
+	 * WHAT IT ACTUALLY REACHES, measured over 200 campaigns each in the model
+	 * this layer is a port of: about 13 standing at once in ordinary play,
+	 * 45 at the worst; about 117 under the harshest settings the design allows,
+	 * 140 at the worst. At 11 fields a dungeon and 5 a timer that is a few
+	 * thousand numbers, which is not a size worth designing around.
+	 *
+	 * IT IS WRITTEN WITH `DungeonTimers` OR NOT AT ALL. See there.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmDungeon> Dungeons;
+
+	/**
+	 * One resolve timer for each of those dungeons.
+	 *
+	 * A SEPARATE LIST BECAUSE THE GAME KEEPS IT SEPARATE. The day clock holds a
+	 * timer for each standing dungeon and nothing else about it, and the two are
+	 * kept in step by `UCataclysmEmpireRun` and by nothing else.
+	 *
+	 * NEITHER LIST IS EVER WRITTEN WITHOUT THE OTHER AGREEING WITH IT. A save
+	 * refuses rather than writing a pair that disagrees, so a file can never
+	 * hold a dungeon with no timer -- which would sit on its city for ever --
+	 * or a timer with no dungeon, which would bite a city on behalf of nothing.
+	 * `UCataclysmEmpireRun::DungeonsAgreeWithTimers` is the one definition of
+	 * agreement, and the restore will call the same one.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmDungeonTimer> DungeonTimers;
+
+	/**
+	 * Which dungeon the player was standing in, or -1.
+	 *
+	 * ITS TIMER IS THE ONE THAT DOES NOT MOVE, so a restore that forgot this
+	 * would start counting down the dungeon the player is inside.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CurrentDungeonId = -1;
 
 	/** The character records taking part: one in solo play, up to four in
 	 *  co-operative play. */

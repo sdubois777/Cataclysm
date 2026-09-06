@@ -120,6 +120,32 @@ public:
 	static bool CitiesFrom(const UCataclysmEmpireRun& Run,
 						   UCataclysmRunSave& Record);
 
+	/**
+	 * The standing dungeons and their resolve timers, together or not at all.
+	 *
+	 * IT REFUSES TO WRITE A PAIR THAT DISAGREES, and that is the point of this
+	 * function rather than a precaution inside it. A dungeon with no timer never
+	 * resolves; a timer with no dungeon bites a city on behalf of nothing.
+	 * Checking here means such a pair can never reach a file, so whoever builds
+	 * the restore inherits a guarantee rather than a hope -- and the fault is
+	 * named against the run that produced it rather than against a file somebody
+	 * later fails to load.
+	 *
+	 * `UCataclysmEmpireRun::DungeonsAgreeWithTimers` IS THE CHECK, and the
+	 * restore will call the same one. Two definitions of agreement would drift,
+	 * and this is exactly the relationship the design says is kept in step by
+	 * one object and nothing else.
+	 *
+	 * IT TAKES A RUN RATHER THAN A WORLD, for the reason `RunClockFrom` gives.
+	 *
+	 * @param OutWhy set to what disagreed, when it did. Untouched otherwise.
+	 * @return whether anything was written. False when the run has no clock, and
+	 *         false when the two lists disagree -- and in both cases the record
+	 *         keeps whatever it already held rather than being half-written.
+	 */
+	static bool DungeonsFrom(const UCataclysmEmpireRun& Run,
+							 UCataclysmRunSave& Record, FString& OutWhy);
+
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);

@@ -222,6 +222,32 @@ bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
 	return true;
 }
 
+bool FCataclysmSaveGather::DungeonsFrom(const UCataclysmEmpireRun& Run,
+									   UCataclysmRunSave& Record,
+									   FString& OutWhy)
+{
+	const UCataclysmDayClock* Clock = Run.Clock;
+	if (Clock == nullptr)
+	{
+		OutWhy = TEXT("the run has no clock, so it has not begun");
+		return false;
+	}
+
+	// CHECKED BEFORE ANYTHING IS COPIED, so a pair that disagrees leaves the
+	// record exactly as it was rather than half written.
+	if (!UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+			Run.Dungeons, Clock->Timers, OutWhy))
+	{
+		return false;
+	}
+
+	Record.Dungeons = Run.Dungeons;
+	Record.DungeonTimers = Clock->Timers;
+	Record.CurrentDungeonId = Clock->CurrentDungeonId;
+
+	return true;
+}
+
 bool FCataclysmSaveGather::CitiesFrom(const UCataclysmEmpireRun& Run,
 									 UCataclysmRunSave& Record)
 {
