@@ -141,7 +141,9 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     fresh Siege used to leave, that was a slack of one day or none: the median
     player arrived as the city fell. The owner cut the growth on issue #1349 on
     2026-09-06 and a fresh Siege now leaves 25 / 39 / 55, so the slack is
-    11 / 17 / 22 days by this file's walk figures.
+    13 / 19 / 22 days against the walks stated here and 11 / 17 / 22 against
+    the ones #1364 measured. Which pair is right is that issue's business; both
+    say the same thing about this decision.
 
     THAT MAKES THE ANSWER REACHABLE AND NOT AUTOMATIC. A Siege that has already
     stood for a while, or one on a Pillar -- 70 days against a median walk of
