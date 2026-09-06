@@ -30,6 +30,14 @@ left a session doing something `CLAUDE.md` forbids:
   never deleted. That issue carries the clean-up; this file holds the
   instruction that let it happen.
 
+Issue #1325 found a third gap of the same kind. `CLAUDE.md` requires looking up
+how Path of Exile, Last Epoch, Torchlight Infinite and Diablo solve a problem
+before proposing any formula, affix or mechanic, naming the sources, and
+recording them in `docs/DECISIONS.md`. The skill's reconnaissance step covered
+only reading this repository, so a session answering a design question from its
+own judgement was following the documented process correctly. An invented
+formula compiles, passes tests, and leaves no trace of why it was chosen.
+
 WHAT THIS DOES NOT GUARD. Whether the rest of the skill's prose is good advice,
 and whether the counts quoted in it are still current. Those still need reading.
 This checks the claims that can be checked mechanically.
@@ -65,6 +73,19 @@ DENIAL_WINDOW = 400
 
 def skill_text() -> str:
     return SKILL.read_text(encoding="utf-8")
+
+
+def collapsed(text: str) -> str:
+    """The same text with every run of whitespace reduced to one space.
+
+    MATCH A MULTI-WORD PHRASE AGAINST THIS, NOT AGAINST THE RAW FILE. Both
+    files are hard-wrapped prose, so a name can sit across a line break. On
+    2026-09-05 the skill wrapped Path of Exile between the words 'of' and
+    'Exile', and the first version of the guard below could not see it and
+    passed on the other three games instead. Rewrapping a paragraph must
+    not change what these tests find.
+    """
+    return re.sub(r"\s+", " ", text)
 
 
 def test_the_skill_file_was_found_and_is_the_real_one() -> None:
@@ -295,3 +316,91 @@ def test_the_skill_says_to_delete_the_branch_when_the_pull_request_merges() -> N
         f"{SKILL.name} deletes the local branch but not the one on GitHub. "
         "CLAUDE.md says to delete it in both places as part of merging."
     )
+
+
+#: The games `CLAUDE.md` names as having solved these problems in public. The
+#: skill may name a subset; it may not name something else instead, because a
+#: source the project has not vouched for is not the evidence this rule asks for.
+RESEARCHED_GAMES = ("Path of Exile", "Last Epoch", "Torchlight Infinite",
+                    "Diablo")
+
+
+def test_the_skill_says_to_research_the_genre_before_proposing_a_formula() -> None:
+    """A design question is answered from shipped games, not from judgement.
+
+    THIS IS THE THIRD ONE THAT FOUND SOMETHING, issue #1325. Step 2 is titled
+    "Deep reconnaissance" and covered only reading this repository: the code, its
+    callers, its git history. Nothing told a session to look outside it, and
+    nothing told it to record what it read. `CLAUDE.md` says the best structural
+    decision in this project came from exactly the route the skill omitted.
+
+    `docs/DECISIONS.md` is checked as well as the research itself, because a
+    source named in a pull request and nowhere else is gone as soon as the
+    conversation is.
+    """
+    instructions = INSTRUCTIONS.read_text(encoding="utf-8")
+    assert "Research the genre" in instructions, (
+        "CLAUDE.md no longer requires researching the genre before proposing a "
+        "formula. If the project's rule has changed, this test and the "
+        "work-issue skill both need re-reading."
+    )
+
+    text = skill_text()
+
+    flat = collapsed(text)
+    flat_instructions = collapsed(instructions)
+
+    for game in RESEARCHED_GAMES:
+        assert game in flat_instructions, (
+            f"CLAUDE.md no longer names {game} among the games whose "
+            "solutions count as evidence. Update RESEARCHED_GAMES to match "
+            "it, and the skill with it."
+        )
+        assert game in flat, (
+            f"{SKILL.name} does not name {game}. It has to carry the same "
+            f"list CLAUDE.md does -- {', '.join(RESEARCHED_GAMES)} -- because "
+            "a shortened list is a session looking in fewer places than the "
+            "project asked for."
+        )
+
+    assert "`docs/DECISIONS.md`" in flat, (
+        f"{SKILL.name} does not name `docs/DECISIONS.md`. CLAUDE.md requires "
+        "the sources be recorded there beside the decision, so the next person "
+        "can see why a shape was chosen and not only what was chosen."
+    )
+    assert (REPO_ROOT / "docs" / "DECISIONS.md").is_file(), (
+        f"{SKILL.name} sends sources to `docs/DECISIONS.md`, which does not "
+        "exist."
+    )
+
+
+def test_the_skill_says_what_to_do_where_the_research_settles_nothing() -> None:
+    """The part research cannot answer is labelled, and still answered.
+
+    `CLAUDE.md` asks for two things here and they pull in opposite directions,
+    which is why both are checked. Anything genuinely specific to this game has
+    to be labelled a judgement rather than presented as derived; and the session
+    still has to state the single recommendation it landed on rather than list
+    options. A skill that carried only the first would licence handing every
+    unresearched question back.
+    """
+    instructions = INSTRUCTIONS.read_text(encoding="utf-8")
+    for word in ("judgement", "recommendation"):
+        assert word in instructions, (
+            f"CLAUDE.md no longer says '{word}' where it describes what to do "
+            "with the part of a design question the research does not settle. "
+            "Re-read that rule before trusting this test."
+        )
+
+    text = skill_text()
+    for word, why in (
+        ("judgement",
+         "what is specific to this game has to be labelled a judgement rather "
+         "than presented as derived"),
+        ("recommendation",
+         "the session still has to land on the single recommendation it "
+         "reached, not hand back a list of options"),
+    ):
+        assert word in text, (
+            f"{SKILL.name} does not say '{word}'. CLAUDE.md requires it: {why}."
+        )

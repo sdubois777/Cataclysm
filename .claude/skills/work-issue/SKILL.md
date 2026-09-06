@@ -32,6 +32,20 @@ Before writing anything:
 - Identify what could break. Name the files.
 - For anything spanning more than a couple of files, use plan mode or delegate
   the reading to subagents so it does not crowd out the implementation.
+- **When the issue asks how something *should* work rather than why it is
+  broken, the research is part of the reconnaissance.** `CLAUDE.md` requires
+  looking up how shipped games in the genre solve it before answering — Path of
+  Exile, Last Epoch, Torchlight Infinite and Diablo have all solved these
+  problems in public. Do not invent a formula on the fly. Name what you read in
+  the proposal and record it in `docs/DECISIONS.md` beside the decision. "I
+  researched it" without naming the sources is not a citation, and a number
+  nobody can trace is what this guards against.
+- **Say which parts the research settles and which it does not.** What is
+  genuinely specific to this game still needs a judgement, and it has to be
+  labelled as one rather than presented as derived. Label it and still land on a
+  single recommendation rather than a list of options. This governs the shape of
+  a formula; the constants inside it are tuned against real play rather than
+  argued out first.
 
 Report what you found before proposing a change. If reconnaissance shows the
 issue is based on a wrong assumption, stop and say so — that is a successful
