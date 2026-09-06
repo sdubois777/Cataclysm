@@ -34,14 +34,19 @@ enum class ECataclysmSurgeMode : uint8
 };
 
 // `ECataclysmDungeonType` IS IN `Empire/CataclysmDungeonKind.h`, included
-// above, and only one of its four kinds is built:
+// above. `SpecFor` ANSWERS FOR ALL FOUR KINDS, but only one is ever CREATED:
 //
-//   - **Basic** is what a surge spawns, and the only one `SpecFor` answers for.
-//   - **Quest** relocates instead of resolving. The Cataclysm quest mechanics
-//     are issue #51.
-//   - **FallenCity** is what a city that has fallen becomes. It needs a dungeon
-//     runtime, issue #41.
-//   - **Cataclysm** is the boss dungeon. Issue #43.
+//   - **Basic** is what a surge spawns, and the only kind anything builds.
+//     `MakeDungeon` sets it on every dungeon that lands.
+//   - **Quest** relocates instead of resolving. Nothing creates one; issue
+//     #1324. Issue #51 is the Hell on Earth quest mechanic for the Demonic
+//     Cataclysm specifically, which is a different thing from this kind.
+//   - **FallenCity** is what a city that has fallen becomes. Nothing creates
+//     one; issue #1324. `UCataclysmEmpireMap` already records a city as fallen,
+//     so the trigger exists and the dungeon does not.
+//   - **Cataclysm** is the boss dungeon. Nothing creates one; issue #1324.
+//     Issue #43 moves it to the Pillar for the Last Stand and issue #1315 grows
+//     it per dungeon defeated, and both assume it exists first.
 
 /**
  * How deep a dungeon of one kind on one tier of city is, and what it takes when
@@ -514,11 +519,23 @@ public:
 	 * The floor range and the bites for one kind of dungeon on one tier of city.
 	 * `config.DUNGEON_SPECS`.
 	 *
-	 * ONLY `Basic` IS ANSWERED FOR. The other three kinds have no runtime in the
-	 * game and the specs they would need are numbers nothing would read; see
-	 * `ECataclysmDungeonType` for which issue each belongs to. Anything else
-	 * answers a spec whose `IsBuilt` is false rather than a plausible-looking
-	 * guess.
+	 * ALL FOUR KINDS ARE ANSWERED FOR, and the numbers are the model's rather
+	 * than new ones: every row here is copied from `config.DUNGEON_SPECS`, which
+	 * has carried all thirteen since long before the game had any of them.
+	 * `tools/tests/test_surge_port.py` compares all thirteen.
+	 *
+	 * ANSWERING IS NOT BUILDING. Nothing creates a Quest, Fallen City or
+	 * Cataclysm dungeon yet -- `MakeDungeon` still sets `Basic` on every dungeon
+	 * a surge lands. This function says what one WOULD be, which is what the
+	 * work that creates them needs first. Issue #1324 has the breakdown.
+	 *
+	 * THE CATACLYSM EXISTS ONLY AT THE PILLAR. Asked for on any other tier this
+	 * answers a spec whose `IsBuilt` is false, because the model has no such row
+	 * and raises when asked for one.
+	 *
+	 * THE THREE NEW KINDS ALL BITE NOTHING, which is the design rather than a
+	 * gap: a Quest dungeon never resolves, and a Fallen City and a Cataclysm
+	 * stand on a city whose damage is already done.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FCataclysmDungeonSpec SpecFor(ECataclysmDungeonType Type,
