@@ -21,6 +21,12 @@ dungeons at the cap, that a wave lands only on the frontier. Those are Unreal
 automation tests under the `Cataclysm.Surge` prefix. A test written against a
 constant cannot notice that the constant is wrong, and a test that reads the
 constant out of the source cannot notice that the code ignores it.
+
+IT READS TWO HEADERS. `CataclysmSurge.h` is the scheduler and is most of this
+file. `CataclysmEmpireRun.h` holds what a Siege costs its host every day, and
+`TestWhatASiegeCostsItsHost` is the only thing here that reads it -- see the
+note there for why those three constants run the opposite way round from every
+other number in this file. Issue #1353.
 """
 
 from __future__ import annotations
@@ -38,6 +44,11 @@ SURGE_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
 SURGE_TESTS = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Tests"
                / "CataclysmSurgeTests.cpp")
 
+#: The empire run, which owns what a Siege costs its host every day. A different
+#: header from the scheduler's, so it needs its own fixture.
+RUN_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+              / "CataclysmEmpireRun.h")
+
 
 def read(path: pathlib.Path) -> str:
     if not path.is_file():
@@ -45,17 +56,25 @@ def read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def constant(text: str, name: str, pattern: str) -> str:
+def constant(text: str, name: str, pattern: str, *,
+             where: str = SURGE_HEADER.name) -> str:
+    """One `static constexpr` value out of a header, by name.
+
+    `where` NAMES THE FILE THE TEXT CAME FROM and only the failure message uses
+    it. It defaults to the surge header because that is what every caller read
+    until this file grew a second one; a caller passing `run_header` must pass
+    `where=RUN_HEADER.name` too, or a renamed constant is reported against a
+    file it was never in.
+    """
     match = re.search(
         rf"static\s+constexpr\s+\w+\s+{name}\s*=\s*({pattern})\s*;", text)
     if not match:
-        pytest.fail(f"could not find {name} in {SURGE_HEADER.name}; "
-                    "has it been renamed?")
+        pytest.fail(f"could not find {name} in {where}; has it been renamed?")
     return match.group(1)
 
 
-def number(text: str, name: str) -> float:
-    return float(constant(text, name, r"-?[0-9.]+f?").rstrip("f"))
+def number(text: str, name: str, *, where: str = SURGE_HEADER.name) -> float:
+    return float(constant(text, name, r"-?[0-9.]+f?", where=where).rstrip("f"))
 
 
 def flag(text: str, name: str) -> bool:
@@ -65,6 +84,11 @@ def flag(text: str, name: str) -> bool:
 @pytest.fixture(scope="module")
 def surge_header() -> str:
     return read(SURGE_HEADER)
+
+
+@pytest.fixture(scope="module")
+def run_header() -> str:
+    return read(RUN_HEADER)
 
 
 @pytest.fixture(scope="module")
@@ -599,6 +623,136 @@ class TestWhatADungeonIs:
             assert f"ECataclysmDungeonType::{kind}" not in fallen, (
                 f"MakeFallenCityDungeon mentions {kind}; it should build one "
                 "kind only")
+
+
+class TestWhatASiegeCostsItsHost:
+    """What a Siege costs its host, in the game and in the model.
+
+    FOUR NUMBERS: the three a Siege bites with, which live in
+    `CataclysmEmpireRun.h`, and the cap on how many may stand on one city, which
+    lives with the scheduler in `CataclysmSurge.h`.
+
+    THIS IS THE ONE PORT CHECK IN THIS FILE THAT RUNS THE OTHER WAY ROUND.
+    Everywhere else the model came first and the game copied it. The Siege did
+    not: `CataclysmEmpireRun.h` was written from the design document while the
+    model gave a sub-type no behaviour at all, and `_apply_siege_damage` was
+    added to `sim/cataclysm_sim/engine.py` afterwards, on 2026-09-06, under
+    issue #1329. The header says so itself -- "The two must now be kept in step
+    like every other ported number" -- and until issue #1353 nothing made them.
+
+    SO A READER WHO ASSUMES THE MODEL IS AUTHORITATIVE WOULD CORRECT THE WRONG
+    SIDE. The failure messages below name the game's value first for that
+    reason, and the design document sentence each number came from is quoted
+    beside the table.
+
+    WHAT `sim/tests/test_siege_subtype.py` CANNOT DO, WHICH IS WHY THIS EXISTS.
+    Its `TestItMatchesTheGamesOwnStatedFigures` asserts that an unattended Siege
+    empties the four city sizes in 14, 23, 34 and 47 days. Those four figures
+    are literals copied out of this header's own prose, and that test runs the
+    MODEL and nothing else -- so it notices the model drifting away from them
+    and cannot notice the C++ constants moving underneath them.
+
+    WHAT THIS DOES NOT CHECK, because
+    `test_a_siege_still_takes_a_share_of_the_city_and_that_is_the_ruling` above
+    already does: that `ApplySiegeDamage` still USES all three, in the shapes
+    the ruling of 2026-09-05 calls for. A constant the code ignores would
+    satisfy every assertion here.
+    """
+
+    #: The game's name for each constant, the model's name for it, and the value
+    #: both must hold.
+    #:
+    #: THE VALUE IS A THIRD COPY, WRITTEN OUT BY HAND ON PURPOSE, as the spec
+    #: table above is. Comparing the two implementations against each other
+    #: alone would pass for a pair edited together, which is the easier mistake
+    #: to make here than a one-sided edit: a session porting a design change
+    #: touches both files.
+    #:
+    #: All three come from the Siege row of the sub-type table in
+    #: `docs/Cataclysm_GDD_v2.md`: "Deals 1% damage to city defenses and
+    #: population per day while active. Increases in power by 10 points per
+    #: day."
+    #:
+    #: THE ROW AND NOT A LINE NUMBER, DELIBERATELY. Five places in this
+    #: repository cite that sentence as "line 3744" and the document has moved
+    #: since; it is line 3801 as of 2026-09-06. Issue #1355.
+    BITES = {
+        "SiegeDefenceBitePerDay": ("siege_defence_bite_per_day", 0.01),
+        "SiegePopulationBitePerDay": ("siege_population_bite_per_day", 0.01),
+        "SiegeDamageGrowthPerDay": ("siege_damage_growth_per_day", 10.0),
+    }
+
+    def test_every_siege_constant_matches(self, run_header, model):
+        for cpp_name, (model_name, expected) in self.BITES.items():
+            assert hasattr(model, model_name), (
+                f"TuningConfig no longer has {model_name}, which is the "
+                f"model's copy of {cpp_name} in {RUN_HEADER.name}")
+
+            game = number(run_header, cpp_name, where=RUN_HEADER.name)
+            held = float(getattr(model, model_name))
+
+            assert game == pytest.approx(held), (
+                f"{cpp_name} is {game} in {RUN_HEADER.name} and "
+                f"TuningConfig.{model_name} is {held} in the model. The game "
+                "is the reference for the Siege; see this class's note")
+            assert game == pytest.approx(expected), (
+                f"{cpp_name} is {game} in the game and TuningConfig."
+                f"{model_name} is {held} in the model, so the two agree -- but "
+                f"this test's third copy says {expected}. Both sides appear to "
+                "have been edited together")
+
+    def test_the_bites_are_shares_and_the_growth_is_points(self, run_header):
+        """The SHAPES, which a pair of numbers wrong in the same way would pass.
+
+        THIS IS THE SAME ARGUMENT AS
+        `test_both_sides_hold_points_rather_than_fractions` above and the
+        opposite conclusion, because the Siege is the opposite case. Issue #1331
+        turned every dungeon resolve into points; the project owner was asked
+        whether the Siege should follow and answered on 2026-09-05, verbatim,
+        "Keep it as a deliberate exception (Recommended)". So its two bites stay
+        shares of the city's maximum -- a siege does not care how thick your
+        walls are -- while its growth is points, and the growth is the half of a
+        Siege that city health does protect against.
+
+        A bite of 1.0 would empty any city on the day the Siege arrived, and a
+        growth below 1.0 would be a fraction wearing a points name.
+        """
+        for name in ("SiegeDefenceBitePerDay", "SiegePopulationBitePerDay"):
+            share = number(run_header, name, where=RUN_HEADER.name)
+            assert 0.0 < share < 1.0, (
+                f"{name} is {share}, which is not a share of the city's "
+                "maximum. That share is the owner's deliberate exception of "
+                "2026-09-05, not an oversight left over from issue #1331")
+
+        growth = number(run_header, "SiegeDamageGrowthPerDay",
+                        where=RUN_HEADER.name)
+        assert growth > 1.0, (
+            f"SiegeDamageGrowthPerDay is {growth}, which reads as a fraction "
+            "rather than the number of points the design states. Issue #1329")
+
+    def test_the_one_per_city_cap_matches(self, surge_header, model):
+        """"Max 1 per city", which lives with the scheduler that enforces it.
+
+        THE ONE SIEGE NUMBER THAT IS NOT IN THE OTHER HEADER. `SiegesPerCity` is
+        the scheduler's, because refusing a second Siege is a rolling decision
+        rather than a daily cost, so this reads `surge_header` like the rest of
+        the file.
+
+        THE BEHAVIOUR IS CHECKED ELSEWHERE AND ONLY THE NUMBER IS HERE.
+        `UCataclysmSurgeScheduler::RollSubType` spreads a refused Siege across
+        the other six sub-types and `Simulation._roll_subtype` does the same;
+        `sim/tests/test_siege_subtype.py::TestOnePerCity` and the
+        `Cataclysm.Surge` automation tests own that.
+        """
+        game = number(surge_header, "SiegesPerCity")
+
+        assert game == pytest.approx(float(model.siege_max_per_city)), (
+            f"{SURGE_HEADER.name} caps a city at {game} Sieges and the model's "
+            f"siege_max_per_city is {model.siege_max_per_city}")
+        assert game == pytest.approx(1.0), (
+            f"both sides now cap a city at {game} Sieges. The Siege row of the "
+            "sub-type table in `docs/Cataclysm_GDD_v2.md` says "
+            "\"Max 1 per city\"")
 
 
 class TestWhatAFallenCityIs:
