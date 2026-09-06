@@ -3729,7 +3729,7 @@ This makes a surviving player's escape worth something to the whole party, and i
 | Basic | Standard dungeon. Most common type. |
 | Quest | Does not resolve — refreshes and may move to adjacent city. Required to challenge the Cataclysm. |
 | Fallen City | Captured player city. Must be retaken to restore it. Higher floor count and multiple bosses. |
-| Cataclysm | The final boss dungeon for the current run tier. Grows with every dungeon the player fails to clear. |
+| Cataclysm | The final boss dungeon for the current run tier. Grows by one floor with every dungeon the player defeats. |
 
   
 
