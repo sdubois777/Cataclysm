@@ -213,6 +213,14 @@ def summarise(results):
         "triage": 100.0 * mean([r.triage_pressure for r in results]),
         "idle": 100.0 * mean([r.idle_days / max(1, r.free_days) for r in results]),
         "points": mean([r.empire_points for r in results]),
+        # What the same clears would have paid WITHOUT the population
+        # multiplier, and the multiplier that separates them. Both come from
+        # the same campaigns, so `points` and `flatpoints` are a paired
+        # comparison and their difference needs no second batch. Reporting
+        # `points` alone cannot tell a run that cleared less from a run that
+        # was scaled harder. Issue #1348.
+        "flatpoints": mean([r.empire_points_flat for r in results]),
+        "pointmult": mean([r.empire_points_multiplier for r in results]),
     }
 
 

@@ -16,23 +16,32 @@ that, and the pull request that adds this file wrote both into
 
 A rule stated in the design document and implemented nowhere is the easiest kind
 to lose. Nothing fails when it is deleted, the next person to read the section
-sees no sign it was ever agreed, and in both of these cases the code currently
-does something else -- `sim/cataclysm_sim/engine.py` takes a fixed prefix of a
-fixed roster, and nothing anywhere scales empire points by population. So a
-reader comparing the document against the code and finding no rule would
-reasonably conclude the code is right. These tests fail if either sentence goes
-away.
+sees no sign it was ever agreed, and when this file was written the code did
+something else in both cases -- `sim/cataclysm_sim/engine.py` took a fixed
+prefix of a fixed roster, and nothing anywhere scaled empire points by
+population. So a reader comparing the document against the code and finding no
+rule would reasonably conclude the code is right. These tests fail if either
+sentence goes away.
+
+BOTH HAVE SINCE BEEN IMPLEMENTED IN THE MODEL, and that does not retire these
+tests. The document is still the only place the rules are stated as rules; the
+code can only ever show what it happens to do. #1338's half is guarded by
+`sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` and #1348's by
+`sim/tests/test_population_scales_empire_points.py`.
 
 WHAT IS DELIBERATELY ALSO CHECKED: that each rule still says what it does NOT
-fix. Neither statement is a formula. #1338 does not say whether every ordering
-is equally likely or whether any pairing is constrained; #1348 does not say
-whether the bonus is a fraction or an absolute count, per dungeon or per run,
-floored or capped. `CLAUDE.md` requires the genre to be researched and the
-sources named before any formula is proposed, and that research has not been
-done. If the "what the rule does not fix" paragraphs are deleted without those
-questions being answered, the document starts reading as a complete
-specification of something that was never specified, which is worse than the
-silence it replaced.
+fix. #1338 does not say whether every ordering is equally likely or whether any
+pairing is constrained. #1348's shape was open in exactly the same way until the
+owner ruled it on 2026-09-06 -- a fraction of maximum, per dungeon defeated,
+linear, no floor, no cap, every type -- and the tests for it changed direction
+that day: they now assert the formula is stated and that the sentence calling
+the shape unsettled is gone. What #1348 still leaves open is the owner's own
+sixth question, whether keeping cities should ALSO advance the win condition
+inside a run. If the "what the rule does not fix" paragraphs are deleted without
+those remaining questions being answered, the document starts reading as a
+complete specification of something that was never specified, which is worse
+than the silence it replaced. The reverse failure costs just as much: a settled
+question still listed as open is read as work to do.
 
 ONE OF THOSE OPEN QUESTIONS WAS ANSWERED, and the tests for it are the third
 class below. When this file was first written the document said both "each run
@@ -43,11 +52,9 @@ went further: a failed run replays the same tier against the same Cataclysms.
 The first sentence was reworded and the Ending a Run section, which promised
 only the same NUMBER of simultaneous Cataclysms, now promises the same ones.
 
-WHAT IS NOT CHECKED HERE. That the GAME implements any of this; nothing does
-yet, and #1348's half is unimplemented everywhere. The simulation's half of
-#1338 did land, and it is guarded by
-`sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` rather than
-here -- this file is about the document.
+WHAT IS NOT CHECKED HERE. That the GAME implements any of this; nothing in the
+C++ does yet, for either rule. Both simulation halves have landed and are
+guarded in `sim/tests/` rather than here -- this file is about the document.
 """
 
 from __future__ import annotations
@@ -270,14 +277,95 @@ class TestPopulationKeptAliveScalesEmpireProgression:
             "the surviving population scales them. It is the second statement "
             "of the same rule and it is now incomplete. Issue #1348.")
 
-    def test_it_still_says_which_parts_are_not_fixed(self, document):
-        assert "The direction is settled and the shape is not." in document, (
-            "the design no longer says what the population rule leaves "
-            "unfixed. Whether the bonus is a fraction of maximum or an "
-            "absolute count, per dungeon or per run, floored or capped, are "
-            "all open and none of them may be invented -- CLAUDE.md requires "
-            "the genre to be researched and the sources named first. "
+    def test_it_states_the_settled_formula(self, document):
+        """The owner ruled the shape on 2026-09-06 after the research he
+        ordered reported. Until then this section said "The direction is
+        settled and the shape is not", and this test asserted that sentence."""
+        assert ("points awarded = base points for the dungeon type × (living "
+                "population ÷ total maximum population)") in document, (
+            "docs/Cataclysm_GDD_v2.md no longer states the formula the owner "
+            "ruled on 2026-09-06: the base points for the dungeon type times "
+            "the living population over the total maximum. The direction "
+            "without the shape is what this section said before the ruling, "
+            "and the model now implements the shape. Issue #1348.")
+
+    def test_it_says_the_denominator_counts_fallen_cities(self, document):
+        """The half of the formula a reader would otherwise guess wrong, and
+        the half that decides whether a wiped-out empire reads as ruined or as
+        perfectly intact."""
+        assert "every city, fallen or not" in document, (
+            "the design states the population formula without saying that the "
+            "denominator counts every city, fallen or not. A denominator that "
+            "shrank with the empire would report a destroyed empire as fully "
+            "populated. Issue #1348.")
+
+    def test_it_says_the_award_is_measured_at_each_defeat(self, document):
+        assert ("measured at the instant each dungeon is defeated, not once at "
+                "the end of a run") in document, (
+            "the design no longer says when the population multiplier is "
+            "measured. Per defeat and at the end of a run are different games, "
+            "and the no-floor decision depends on which one it is. "
             "Issue #1348.")
+
+    def test_it_says_the_per_defeat_timing_is_what_makes_no_floor_safe(
+            self, document):
+        """THE COUPLING, and the reason it is written into the design rather
+        than only into the code. Someone moving the award to the end of a run
+        would remove a floor they did not know was there. The measurement is
+        quoted so the claim can be rechecked rather than believed."""
+        assert "that is what makes the absence of a floor safe" in document, (
+            "the design states the per-defeat timing and the absence of a "
+            "floor as two separate facts. They are one decision: awarding per "
+            "defeat is what supplies the floor. The worst of 500 simulated "
+            "campaigns kept 51% of the flat award per defeat and 0.25 applied "
+            "at the end of a run. Issue #1348.")
+        assert "45% of the flat award on average against 24%" in document, (
+            "the design asserts that the per-defeat timing supplies a floor "
+            "without the measurement behind it. The number is what makes it "
+            "checkable rather than a belief. Issue #1348.")
+
+    def test_it_says_the_figure_the_no_floor_ruling_rested_on_did_not_hold(
+            self, document):
+        """The owner ruled no floor on a measured worst case of 51%. That does
+        not reproduce on the current model -- 9% at the same condition, and 0%
+        at tier 8 surge 8. The shape is still what was ruled, but a design that
+        quoted only the number the decision was made on would be citing an
+        argument that has since failed."""
+        assert ("the figure the ruling was made on no longer holds"
+                in document), (
+            "docs/Cataclysm_GDD_v2.md states the no-floor rule without "
+            "recording that the measurement it was ruled on does not "
+            "reproduce. The worst case behind the ruling was 51% of the flat "
+            "award; it is 9% now, and 0% at tier 8 with surge size 8. Deleting "
+            "that leaves the design resting on an argument nobody can "
+            "reproduce. Issue #1348.")
+
+    def test_it_still_says_which_parts_are_not_fixed(self, document):
+        """The shape is settled; the owner's sixth question is not. An entry
+        that reads as a complete specification of something still open is the
+        failure this class of test exists to prevent -- and so is one that
+        still calls a settled question open, which is why the sentence this
+        test used to assert is gone."""
+        assert ("whether keeping cities should **also** advance the win "
+                "condition inside a single run is untouched by this and "
+                "remains open") in document, (
+            "the design no longer says what the population rule leaves "
+            "unfixed. The owner's own words ended \"I'm not sure if there "
+            "should be anything more than that\", so whether keeping cities "
+            "also advances the win condition WITHIN a run is still open even "
+            "though the shape of the between-run reward is settled. "
+            "Issue #1348.")
+
+    def test_the_old_open_shape_sentence_is_gone(self, document):
+        """The specific wording the ruling made wrong. Leaving it beside the
+        formula would leave the section saying both that the shape is settled
+        and that it is not."""
+        assert "The direction is settled and the shape is not." not in document, (
+            "docs/Cataclysm_GDD_v2.md still says the shape of the population "
+            "bonus is unsettled. The owner ruled it on 2026-09-06 and the "
+            "simulation implements it, so that sentence describes a game the "
+            "design no longer specifies. A settled question still listed as "
+            "open is read as work to do. Issue #1348.")
 
     def test_the_decisions_log_carries_the_owners_words(self, decisions):
         assert ("the more population you maintain, the more experience you get "
