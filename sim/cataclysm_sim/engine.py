@@ -309,12 +309,18 @@ class Simulation:
         tree's reduction does not apply. `run_days_for` applies the reduction,
         so a Cow Level must not go through it.
 
-        WHAT IT IS FOR is the callers that change a dungeon's depth AFTER
+        `_make_dungeon` CALLS IT FOR EVERY DUNGEON, and that is where the branch
+        below actually fires: an ordinary Cow Level really does walk in twice
+        the days.
+
+        THE OTHER CALLERS are the ones that change a dungeon's depth AFTER
         `_make_dungeon` built it and have to work the days out again.
         `_maybe_open_cataclysm` and `_open_last_stand` both do that.
 
         **BOTH OF THOSE BUILD A CATACLYSM DUNGEON, AND A CATACLYSM DUNGEON CAN
-        NO LONGER BE A COW LEVEL**, so neither can reach the branch below. The
+        NO LONGER BE A COW LEVEL**, so neither of them can reach the branch
+        below -- which is a statement about those two callers and not about the
+        branch, which `_make_dungeon` keeps reaching. The
         project owner ruled that on 2026-09-06 -- see `subtypes_allowed_on` --
         and it is what closes issue [#1333], which was about a Cow Level Last
         Stand losing its doubling to a bare `run_days_for`. They are called
