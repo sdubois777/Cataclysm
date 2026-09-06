@@ -626,7 +626,11 @@ class TestWhatADungeonIs:
 
 
 class TestWhatASiegeCostsItsHost:
-    """The three constants a Siege bites with, in the game and in the model.
+    """What a Siege costs its host, in the game and in the model.
+
+    FOUR NUMBERS: the three a Siege bites with, which live in
+    `CataclysmEmpireRun.h`, and the cap on how many may stand on one city, which
+    lives with the scheduler in `CataclysmSurge.h`.
 
     THIS IS THE ONE PORT CHECK IN THIS FILE THAT RUNS THE OTHER WAY ROUND.
     Everywhere else the model came first and the game copied it. The Siege did
@@ -638,8 +642,8 @@ class TestWhatASiegeCostsItsHost:
 
     SO A READER WHO ASSUMES THE MODEL IS AUTHORITATIVE WOULD CORRECT THE WRONG
     SIDE. The failure messages below name the game's value first for that
-    reason, and the design document line each number came from is quoted beside
-    the table.
+    reason, and the design document sentence each number came from is quoted
+    beside the table.
 
     WHAT `sim/tests/test_siege_subtype.py` CANNOT DO, WHICH IS WHY THIS EXISTS.
     Its `TestItMatchesTheGamesOwnStatedFigures` asserts that an unattended Siege
