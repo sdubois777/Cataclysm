@@ -4012,6 +4012,29 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.
 
+**The population the empire keeps alive scales what a defeated dungeon is
+worth.** Keeping cities alive means the population in them survives, and the
+more population a player maintains, the more empire upgrade points a dungeon
+defeat awards. Losing cities therefore costs more than the cities: it slows the
+tree down for every run afterwards. Stated by the project owner on 2026-09-06
+and recorded in `docs/DECISIONS.md`.
+
+**That is what defending the empire buys, and it is paid between runs rather
+than inside one.** A run is still won by defeating the Cataclysm boss dungeon
+and still ends when the capital falls, and neither of those is changed by this
+rule. What the surviving population buys is how fast the permanent tree fills,
+which is spent on the next run and every run after it. A measurement that covers
+a single campaign cannot see that reward at all, so a defensive investment
+looking worthless within one run is not evidence that it is worthless.
+
+**What the rule does not fix.** The direction is settled and the shape is not.
+It does not say whether the bonus follows population as a fraction of the
+empire's maximum or as an absolute count, whether it applies per dungeon
+defeated or once at the end of a run, whether a fallen city contributes nothing
+or contributes whatever population survived it, or whether the bonus has a floor
+or a ceiling. Those are tuning values and are not fixed here. Issue #1348
+carries them.
+
 **The empire upgrade tree belongs to the account, not to the character.** Every
 character on the account shares one tree with every other character in the same
 lethality mode. Making another character in a mode already being played costs
@@ -6029,6 +6052,12 @@ every character arrives at.
 ## **Roguelike Meta Progression**
 
 Empire upgrade points are earned by defeating dungeons and persist through all runs including failures. The empire upgrade tree provides permanent bonuses to city defenses, dungeon parameters, and empire management. This system ensures every run — even a failed one — makes the next attempt slightly stronger, rewarding persistence without making early runs trivial.
+
+**How many points a dungeon defeat is worth depends on how much population is
+still alive**, so a run that holds its cities feeds the tree faster than one
+that lets them fall. That is the between-run reward for defending the empire.
+The Empire-Wide Upgrades section states the rule in full and says which parts of
+its shape are not yet fixed.
 
 **The tree persists across characters as well as across runs, within one
 lethality mode.** It belongs to the account, so a new character inherits it —
