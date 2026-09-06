@@ -101,11 +101,18 @@ def a_reachable_siege(sim, city, **kw):
     covering the reachable case the first time the roll changed.
 
     THAT WAS ACUTE WHEN THE MARGIN WAS ONE DAY AND IT IS STILL TRUE NOW THAT IT
-    IS NOT. At tier 1 the median walk was 12 days against the 14 a fresh Siege
-    left on an Outpost and 33 against 34 on a Sanctuary; since the owner cut the
-    growth on issue #1349 on 2026-09-06 a fresh Siege leaves 25 and 55. The
-    margin is wide, but the roll still crosses it for a deep enough dungeon or a
-    Siege that has already stood a while, which is exactly the case this covers.
+    IS NOT. At tier 1 the median walk is 13 days to an Outpost and 35 to a
+    Sanctuary, against the 25 and 55 a fresh Siege has left since the owner cut
+    the growth on issue #1349 on 2026-09-06; it left 14 and 34 before that, and
+    the median player arrived as the city fell. The margin is wide now, but the
+    roll still crosses it for a deep enough dungeon or a Siege that has already
+    stood a while, which is exactly the case this covers.
+
+    THE 12 AND 33 THIS PARAGRAPH USED TO GIVE WERE NEVER REPRODUCIBLE, which is
+    what issue #1364 turned out to be about: the walk lengths are nearly uniform
+    where the median sits, so it is a coin flip between two adjacent days.
+    `test_the_siege_prose_in_policies_is_true.py` re-measures the four and holds
+    `policies.py` to them; nothing here depends on the exact day.
     """
     d = put(sim, city, run_days=2, **kw)
     assert policies.siege_urgency(sim, d, city, 5.0) > 1.0, (
