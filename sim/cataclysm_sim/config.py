@@ -350,16 +350,32 @@ class TuningConfig:
     # win -- from 84% of campaigns down to 8%. See `siege_damage_growth_per_day`
     # below for the other half of that ruling.
     #
-    # THE SIX ARE ROUNDED TO ONE DECIMAL RATHER THAN RESCALED EXACTLY, and that
+    # COW LEVEL IS HELD AT 7 AND ONLY THE OTHER FIVE ABSORBED THE SLACK, SINCE
+    # 2026-09-06. Applied literally, the rescale above lifted the Cow Level to
+    # 7 * (100 - 7.5) / (100 - 15) = 7.617647, which rounds to 7.6 and lands
+    # just ABOVE the Siege -- making the Siege the rarest thing a surge
+    # produces and reversing an order the design gives a reason for. Nobody
+    # chose that; it fell out of the arithmetic. Shown it, the owner delegated
+    # the answer with one constraint, verbatim: "Your call, but the cow level
+    # should be pretty rare" (issue #1369).
+    #
+    # SO THIS RESTORES A DECIDED NUMBER RATHER THAN INVENTING ONE. The 7 is the
+    # value #1293 set when the table was rescaled to total 100, and it is what
+    # "ridiculous amounts of loot" is paid for with. The Siege's 7.5 is the
+    # owner's own ruling and is NOT touched here.
+    #
+    # THE FIVE ARE ROUNDED TO ONE DECIMAL RATHER THAN RESCALED EXACTLY, and that
     # follows the owner's own precedent: asked on 2026-09-05 which form a
     # rescale of this same table should take, they chose "clean round numbers"
     # over an exact proportional rescale (`docs/DECISIONS.md`, the #1293 entry).
-    # An exact rescale gives 19.588235..., 16.323529... and 7.617647...; these
-    # sum to exactly 92.5 beside Siege's 7.5 and sit within 0.05 of a point of
-    # the exact shares. Siege's own share is 7.5 either way.
+    # Holding Siege at 7.5 and Cow Level at 7.0 leaves 85.5 for the other five,
+    # whose old shares total 78, so the scale factor is 85.5 / 78 = 1.096154:
+    # Timed and Horde 19.73, Elite and Volatile 16.44, Sacrificial 13.15.
+    # Sacrificial takes the rounding remainder at 13.3 so the seven total
+    # exactly 100.0, and the six that are not the Siege still total 92.5.
     SUBTYPE_SPAWN_WEIGHTS: dict[str, float] = field(default_factory=lambda: {
-        "Timed": 19.6, "Horde": 19.6, "Elite": 16.3,
-        "Volatile": 16.3, "Siege": 7.5, "Sacrificial": 13.1, "Cow Level": 7.6,
+        "Timed": 19.7, "Horde": 19.7, "Elite": 16.4,
+        "Volatile": 16.4, "Siege": 7.5, "Sacrificial": 13.3, "Cow Level": 7.0,
     })
 
     # WHICH SUB-TYPES A KIND OF DUNGEON MAY NOT ROLL. **THERE IS EXACTLY ONE

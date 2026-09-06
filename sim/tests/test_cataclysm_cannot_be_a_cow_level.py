@@ -98,21 +98,22 @@ class TestTheRule:
             f"{sorted(set(seen) - set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS))}")
 
     def test_the_barred_weight_is_spread_over_the_rest_in_proportion(self):
-        """Cow Level's 7.6 points go to the other six in proportion to theirs,
+        """Cow Level's 7 points go to the other six in proportion to theirs,
         which is what the Siege refusal already does and what the owner asked
-        for here. Dropping the 7.6 instead would leave the six at their old
-        shares of 100 and 7.6 in 100 rolls with nothing to return.
+        for here. Dropping the 7 instead would leave the six at their old shares
+        of 100 and 7 in 100 rolls with nothing to return.
 
-        IT WAS 7 UNTIL 2026-09-06. Halving the Siege weight on issue #1349 gave
-        the other six the 7.5 it released in proportion, which carried the Cow
-        Level to 7.6 and left the six that remain when it is barred at 92.4.
+        IT WAS 92.4 FOR ONE DAY. Halving the Siege weight on issue #1349 handed
+        its slack to all six of the others in proportion, which carried the Cow
+        Level from 7 to 7.6; issue #1369 put the Cow Level back to the 7 that
+        #1293 decided, so the six that remain when it is barred are 93 again.
         """
         sim = Simulation(TuningConfig(), seed=2)
         w = dict(sim.cfg.SUBTYPE_SPAWN_WEIGHTS)
         seen = spread(sim, DungeonType.CATACLYSM, pillar(sim))
 
         total = sum(v for n, v in w.items() if n != "Cow Level")
-        assert total == pytest.approx(92.4)
+        assert total == pytest.approx(93.0)
 
         for name, weight in w.items():
             if name == "Cow Level":
