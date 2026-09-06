@@ -64,6 +64,7 @@ command did.
 from __future__ import annotations
 
 import dataclasses
+import re
 import os
 import pathlib
 import shutil
@@ -83,6 +84,26 @@ SKIPPED = {".git", ".venv", "venv", "node_modules", "Binaries", "Intermediate",
            "DerivedDataCache", "Saved"}
 
 
+#: Text that only a pytest run prints, whether it finished or died collecting.
+#:
+#: CHOSEN AGAINST REAL OUTPUT, NOT GUESSED. The first attempt looked for
+#: "collected" and the session-starts banner, and a collection error under `-q`
+#: -- which `pyproject.toml` sets in `addopts` -- prints NEITHER, so the crash
+#: fell through to the exit code and read exactly as it did before the fix. The
+#: markers below are taken from the captured output of both cases.
+TEST_RUN_MARKERS = (
+    "short test summary info",
+    "error during collection",
+    "collected",
+    "test session starts",
+)
+
+#: pytest's "N failed" count, from its result line. Zero is written out as
+#: "0 failed" only when something else failed too, so any match means a test
+#: reached its assertions and did not pass.
+FAILED_COUNT = re.compile(r"\b([1-9]\d*) failed\b")
+
+
 @dataclasses.dataclass(frozen=True)
 class GuardResult:
     """What the command did while the files were broken."""
@@ -95,14 +116,84 @@ class GuardResult:
     disturbed: tuple[str, ...] = ()
 
     @property
+    def named_failures(self) -> tuple[str, ...]:
+        """The tests the run reported as failed, by name.
+
+        ASSERT ON THIS RATHER THAN ON `failed`. It says what a guard proof means
+        -- these named tests noticed the break -- where `failed` says only that
+        the command exited non-zero, which a crash also does.
+
+        Read from pytest's short summary, the `FAILED <test> - <reason>` lines.
+        Empty for a run that named none, including one that never got as far as
+        running a test.
+        """
+        out = []
+        for line in (self.stdout + self.stderr).splitlines():
+            if line.startswith("FAILED "):
+                out.append(line[len("FAILED "):].split(" - ")[0].strip())
+        return tuple(out)
+
+    @property
+    def looks_like_a_test_run(self) -> bool:
+        """Whether the output is pytest's, so the absence of a failure means
+        something.
+
+        `break_and_run` takes ANY command. One that is not a test runner has no
+        failures to report and its exit code is all there is to go on, so this
+        decides which rule `failed` applies. `collected` appears in pytest's
+        header and in its collection errors alike, which is exactly the case
+        that has to be caught.
+        """
+        text = self.stdout + self.stderr
+        return any(mark in text for mark in TEST_RUN_MARKERS)
+
+    @property
+    def reported_a_failing_test(self) -> bool:
+        """Whether any test reached its assertions and failed.
+
+        TWO INDEPENDENT SIGNALS, because either alone is too narrow. The named
+        `FAILED <test>` lines come from pytest's short summary, which can be
+        suppressed; the "N failed" count comes from its result line, which a
+        crashed run never prints. Requiring both would call a real failure a
+        crash -- issue #1313's mistake in the other direction.
+        """
+        if self.named_failures:
+            return True
+        return bool(FAILED_COUNT.search(self.stdout + self.stderr))
+
+    @property
+    def crashed(self) -> bool:
+        """A test run that exited non-zero without any test failing.
+
+        THIS IS THE HOLE ISSUE #1314 RECORDS. A break that stops a module
+        importing gives pytest a collection error and exit code 2, no test is
+        ever run, and the old `failed` reported the guard as having fired --
+        putting a worthless guard into the record with a proof attached.
+
+        Measured: a real guard break exits 1 and names its failures; adding
+        `import nonexistent_module_xyz` to the module under test exits 2, prints
+        "1 error" and names none. Both used to read the same.
+        """
+        return (self.returncode != 0
+                and self.looks_like_a_test_run
+                and not self.reported_a_failing_test)
+
+    @property
     def failed(self) -> bool:
         """Whether the command reported a failure, which is what proves a guard.
 
         FALSE WHEN THE RUN WAS DISTURBED, whatever the exit code. A run whose
         files moved underneath it did not test what it was asked to test, and a
         failure from one of those is not evidence a guard fires.
+
+        FALSE WHEN THE RUN CRASHED, for the same reason. A collection error is
+        not a test result; nothing was measured. Issue #1314. `summary` says
+        which of the two happened rather than leaving a bare False to be read as
+        a guard that did not fire -- that is the mistake in the other direction
+        and it is issue #1313.
         """
-        return self.returncode != 0 and not self.disturbed
+        return (self.returncode != 0 and not self.disturbed
+                and not self.crashed)
 
     @property
     def summary(self) -> str:
@@ -111,6 +202,12 @@ class GuardResult:
             return ("EVIDENCE COMPROMISED: " + ", ".join(self.disturbed)
                     + " changed underneath this run, so its result means nothing. "
                     "Something else is working in this checkout. Issue #598.")
+        if self.crashed:
+            return (f"NO MEASUREMENT: the run exited {self.returncode} without "
+                    "naming a single failing test, so no test reached its "
+                    "assertions. A break that stops the module importing does "
+                    "this. Make the break surgical and run it again. "
+                    "Issue #1314.")
         lines = [line for line in (self.stdout + self.stderr).splitlines() if line.strip()]
         return lines[-1].strip() if lines else "(no output)"
 

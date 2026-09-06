@@ -252,7 +252,32 @@ class TestOutcome:
     skipped_half: tuple[str, ...] = ()
 
     @property
+    def crashed(self) -> bool:
+        """The run never reported how many tests it performed.
+
+        THE COUNT IS THE ONLY EVIDENCE THE RUN FINISHED. `parse_test_log` reads
+        it from "Automation Test Queue Empty N tests performed", which the
+        engine prints when the queue drains. A run that died part way through
+        never prints it, so `performed` is None -- and `failed` is empty too,
+        because no failure was ever reported.
+
+        THAT USED TO READ AS A GUARD THAT DID NOT FIRE. `any_failed` was
+        `bool(self.failed)`, so a crash and a guard the break did not trip came
+        back identical, and a proof reported the guard worthless. Issue #1313.
+
+        Zero tests performed is the same state said differently and is caught
+        here too: the queue drained without running anything.
+        """
+        return self.performed is None or self.performed == 0
+
+    @property
     def any_failed(self) -> bool:
+        """Whether any test reported a failure.
+
+        UNCHANGED, and deliberately still False for a crashed run -- no test
+        failed, because no test ran. `CppGuardResult.failed` is what must not
+        read that as a guard verdict, and `crashed` is what tells it apart.
+        """
         return bool(self.failed)
 
     @property
@@ -282,6 +307,17 @@ class CppGuardResult:
     tests: TestOutcome
 
     @property
+    def crashed(self) -> bool:
+        """The test run did not finish, so it says nothing about the guard.
+
+        Issue #1313. A run that dies part way through reports no failures, and
+        no failures used to mean "the guard did not notice". It means the
+        measurement did not happen. `summary` says so rather than leaving a bare
+        False to be read as a verdict.
+        """
+        return self.build.succeeded and self.tests.crashed
+
+    @property
     def failed(self) -> bool:
         """Whether the guard noticed, which is what proves it works.
 
@@ -289,13 +325,25 @@ class CppGuardResult:
         compiles is a blunt way to prove a guard, but it is not evidence the
         guard fired, so callers should check `build.succeeded` too. `summary`
         says which of the two happened.
+
+        FALSE FOR A CRASHED RUN, and `crashed` is what distinguishes that from a
+        guard the break did not trip. Issue #1313. The two used to be identical
+        and the confident reading -- "the guard is worthless" -- is the one a
+        person makes.
         """
+        if self.crashed:
+            return False
         return self.tests.any_failed or not self.build.succeeded
 
     @property
     def summary(self) -> str:
         if not self.build.succeeded:
             return f"the build itself failed: {self.build.summary}"
+        if self.crashed:
+            return ("NO MEASUREMENT: the test run never reported how many tests "
+                    "it performed, so it did not finish and says nothing about "
+                    "the guard. Read game/Saved/Logs/Cataclysm.log for why, and "
+                    "run it again. Issue #1313. " + self.tests.summary)
         return self.tests.summary
 
 
