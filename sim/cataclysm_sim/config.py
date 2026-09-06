@@ -119,10 +119,23 @@ class DungeonSpec:
     """Floor and timer ranges for one (DungeonType, CityTier) pair."""
     floors: tuple[int, int]
     resolve_days: tuple[int, int]
-    # Fraction of the host city's MAX defense/population destroyed each time
-    # this dungeon resolves undefeated, before scaling by relative floor count.
-    defense_bite: float
-    population_bite: float
+
+    #: Defence POINTS and PEOPLE destroyed each time this dungeon resolves
+    #: undefeated, before scaling by relative floor count.
+    #:
+    #: ABSOLUTE, NOT A FRACTION OF THE CITY, and issue #1327 is why. These were
+    #: fractions of the host city's own maximum, which meant the maximum divided
+    #: out of "how many resolves does this city survive": a Pillar holding twenty
+    #: times an Outpost's defence lasted 17 resolves against 10, and every
+    #: upgrade in the game that raises a city's health was worth nothing. The
+    #: project owner ruled on 2026-09-05, verbatim: "damage to cities shouldn't
+    #: be a % of their hp. Instead, dungeons should have damage ranges that
+    #: aren't % based, but should be flat damage numbers."
+    #:
+    #: The same shape is still in the game, at
+    #: `UCataclysmEmpireMap::Bite`. Issue #1331 tracks porting this across.
+    defense_damage: float
+    population_damage: float
 
 
 @dataclass
@@ -150,6 +163,30 @@ class EmpireTree:
     # --- city survivability ----------------------------------------------
     city_damage_mult: float = 1.0   # product of every damage-reduction node
 
+    #: How much damage a city can absorb, as a multiple of its tier's base.
+    #: The sum of every city-health increase in the tree, because increases are
+    #: summed into one bucket in this project rather than multiplied.
+    #:
+    #: A SEPARATE LEVER FROM `city_damage_mult` AND NOT INTERCHANGEABLE WITH IT,
+    #: which is why issue #1288 refused to fold the two together and issue #1319
+    #: built this instead. Halving the damage and doubling the health look the
+    #: same on a full-health city and diverge immediately afterwards:
+    #:
+    #:   * `engine._resolve` takes a bite of `max_defense * bite * mult`, so
+    #:     raising `max_defense` raises the absolute size of every bite as well
+    #:     as the pool it comes out of. The two do not cancel for a city that
+    #:     has already taken damage.
+    #:   * `engine._retake` restores a fraction of `max_defense`, so a larger
+    #:     pool means a larger restore. Damage reduction does nothing for a city
+    #:     that has already fallen.
+    #:
+    #: IT SCALES DEFENCE AND NOT POPULATION. Four of the seven nodes say
+    #: "Defense" or "Max Health" and not population, and `Imperial Decree`
+    #: explicitly trades "-10% to population" for its +20% health, so the tree
+    #: treats the two apart. `world.build_empire` applies it to `max_defense`
+    #: only.
+    city_health_mult: float = 1.0
+
     # --- timers -----------------------------------------------------------
     resolve_bonus_days: float = 0.0
     surge_bonus_days: float = 0.0
@@ -157,6 +194,7 @@ class EmpireTree:
     def describe(self) -> str:
         return (f"{self.name}: run -{self.run_days_flat:g}d x{self.run_days_mult:.2f}, "
                 f"floors {self.floor_delta:+g}, city dmg x{self.city_damage_mult:.3f}, "
+                f"city hp x{self.city_health_mult:.2f}, "
                 f"resolve +{self.resolve_bonus_days:g}d, surge +{self.surge_bonus_days:g}d")
 
 
@@ -298,6 +336,52 @@ class TuningConfig:
         "Volatile": 15.0, "Siege": 15.0, "Sacrificial": 12.0, "Cow Level": 7.0,
     })
 
+    # --- the Siege sub-type ----------------------------------------------
+    #
+    # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S
+    # MAXIMUM, AND IT IS DELIBERATE. Issue #1327 turned every other city damage
+    # number into points, because a share of the maximum divided out of how long
+    # a city survived and made every city-health upgrade worthless. The project
+    # owner was asked whether the Siege should follow and answered on
+    # 2026-09-05, verbatim: "Keep it as a deliberate exception (Recommended)".
+    #
+    # THE REASON, AS IT WAS PUT TO THEM: a siege does not care how thick your
+    # walls are. It makes the Siege the one threat that city-health investment
+    # does not protect against, which gives the sub-type a situation of its own
+    # rather than only a number of its own. The cost -- that a fully invested
+    # city is still helpless against a siege -- was stated and accepted.
+    #
+    # SO A READER WHO FINDS A PERCENTAGE HERE HAS NOT FOUND AN OVERSIGHT.
+    # `docs/DECISIONS.md` carries the same warning for the same reason.
+    #
+    # WHERE THESE NUMBERS COME FROM. `docs/Cataclysm_GDD_v2.md` line 3744:
+    # "Deals 1% damage to city defenses and population per day while active.
+    # Increases in power by 10 points per day. Pauses city upgrades. Max 1 per
+    # city." The game reads it the same way in
+    # `CataclysmEmpireRun.h`; this model follows the game rather than the other
+    # way round, which is the reverse of this project's usual direction.
+    siege_defence_bite_per_day: float = 0.01
+    siege_population_bite_per_day: float = 0.01
+
+    # "Increases in power by 10 points per day", where the owner settled on
+    # 2026-09-05 that its power is "the damage it does to the city/population".
+    #
+    # POINTS AND NOT A SHARE, so the growth bites hardest where the empire is
+    # thinnest -- ten points is 1% of an Outpost's defence and 0.05% of the
+    # Pillar's. It is also the half of a Siege that city health DOES protect
+    # against, because a bigger pool absorbs the same points for longer.
+    siege_damage_growth_per_day: float = 10.0
+
+    #: "Max 1 per city". A refused roll is redistributed across the other
+    #: sub-types, which is what makes the Siege share of dungeons that reach
+    #: the map lower than its share of dungeons rolled.
+    siege_max_per_city: int = 1
+
+    # NOT MODELLED: "Pauses city upgrades." The model has no city upgrades to
+    # pause. `LethalityRules.city_upgrade_slots` exists and nothing reads it,
+    # which issue #318 already records. Stated here so the omission is a known
+    # gap rather than a silent one.
+
     # Overwhelm -- see combat.py.
     overwhelm_rate: float = 0.25
     overwhelm_cap: float = 0.50
@@ -399,16 +483,27 @@ class TuningConfig:
 
     # Floor ranges follow the stated intent: randomised within a range that
     # depends on both dungeon type and the tier of the host city.
+    #
+    # THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS. Issue #1327. Each
+    # one here is the fraction it replaced multiplied by that tier's base
+    # maximum, so this table reproduces the old arithmetic exactly for a city at
+    # its base size, and the change of shape can be measured on its own before
+    # any number is chosen:
+    #
+    #   Outpost    10% of 1,000 =   100 defence,  5% of   5,000 =   250 people
+    #   Bulwark     9% of 3,000 =   270 defence,  5% of  20,000 = 1,000 people
+    #   Sanctuary   8% of 8,000 =   640 defence,  4% of  60,000 = 2,400 people
+    #   Pillar      6% of 20,000 = 1,200 defence, 3% of 150,000 = 4,500 people
     DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
         default_factory=lambda: {
             (DungeonType.BASIC, CityTier.OUTPOST):
-                DungeonSpec((8, 15),   (10, 20), 0.10, 0.05),
+                DungeonSpec((8, 15),   (10, 20), 100.0, 250.0),
             (DungeonType.BASIC, CityTier.BULWARK):
-                DungeonSpec((15, 25),  (14, 26), 0.09, 0.05),
+                DungeonSpec((15, 25),  (14, 26), 270.0, 1_000.0),
             (DungeonType.BASIC, CityTier.SANCTUARY):
-                DungeonSpec((25, 40),  (20, 34), 0.08, 0.04),
+                DungeonSpec((25, 40),  (20, 34), 640.0, 2_400.0),
             (DungeonType.BASIC, CityTier.PILLAR):
-                DungeonSpec((40, 60),  (30, 50), 0.06, 0.03),
+                DungeonSpec((40, 60),  (30, 50), 1_200.0, 4_500.0),
 
             # Quest dungeons never resolve (GDD VIII) -- they refresh and may
             # move. Bites are zero; the timer is a relocation clock.
@@ -516,9 +611,36 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
 # #1319 is the gap. The previous value of 0.023 carried an untraceable 0.25
 # factor that may have been an attempt to fold that axis in here; folding two
 # axes into one number is what made it untraceable.
+# The city-health nodes, for the SAME scenario as the multiplier above -- a
+# Sanctuary next to the Pillar. Issue #1319. Summed as increases, which is this
+# project's convention for an increase.
+#
+#   Masonry Techniques    +150%   +10% per point x15, Bulwarks and Sanctuaries
+#   Reinforced Walls      +120%   +8% per point x15, all cities
+#   Monument Building     +100%   +10% per point x10, Sanctuaries
+#   Beacon of Hope         +50%   within 2 rings of the Pillar; a Sanctuary is
+#                                 in ring 1
+#   Foundation             +50%   +5% per point x10, unrestricted
+#   Imperial Decree        +20%   also -10% population, which is not modelled
+#                          ----
+#                          5.90x
+#
+# `Fortified Gates` is EXCLUDED and is the reason this number is not 6.54. It
+# grants +8% per point across 8 points, but only "for Outposts", and this
+# scenario is a Sanctuary. A first count of these nodes matched descriptions for
+# a percentage without reading the tier they apply to and produced 6.54; the
+# same class of mistake as the untraceable factor issue #1288 removed.
+#
+# ONE NUMBER WHERE THE TREE HAS PER-TIER RULES. Three of these six apply only to
+# some tiers, and this lever multiplies every tier alike, so an Outpost is
+# credited with Masonry, Monument Building and Beacon of Hope that it does not
+# get, and is not credited with Fortified Gates that it does. `city_damage_mult`
+# already makes the same simplification for the same reason. Making both levers
+# per-tier is a larger change and is not part of #1319.
 TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
     name="Architect maxed (as designed)",
     city_damage_mult=0.0766,
+    city_health_mult=5.90,
     resolve_bonus_days=13.0,
 )
 

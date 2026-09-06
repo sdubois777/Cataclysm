@@ -251,9 +251,14 @@ def build_empire(cfg: TuningConfig) -> Empire:
                 continue
             tier = RING_TIER[ring]
             stats = cfg.TIER_STATS[tier]
+            # The empire tree's city-health nodes raise how much damage a
+            # city can absorb. Applied here rather than at the bite, because
+            # `_retake` restores a fraction of `max_defense` too and a larger
+            # pool has to mean a larger restore. Issue #1319. Population is
+            # deliberately not scaled -- see `EmpireTree.city_health_mult`.
             city = City(cid=nid, name=f"{TIER_LABEL[tier]} ({r},{c})",
                         tier=tier, r=r, c=c,
-                        max_defense=stats.max_defense,
+                        max_defense=stats.max_defense * cfg.tree.city_health_mult,
                         max_population=stats.max_population)
             city.reset()
             cities[nid] = city

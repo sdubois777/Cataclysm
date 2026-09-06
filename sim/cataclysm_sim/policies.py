@@ -153,7 +153,10 @@ def triage(sim, dungeons):
         if not d.resolves:
             continue
 
-        bite = d.defense_bite * city.max_defense
+        # NEITHER THE DEPTH SCALE NOR THE TREE IS APPLIED, which was true of
+        # the fraction this replaced as well. A policy guesses; issue #1327
+        # changed the shape of the number and deliberately not the guess.
+        bite = d.defense_damage
         fatal = bite >= city.defense
         value = TIER_VALUE[d.city_tier] * (1.0 + (1.0 - city.defense_frac) * 3.0)
         if fatal:
@@ -231,7 +234,7 @@ def lane_aware(sim, dungeons):
 
         # A city off every shortest lane is worth little no matter its tier.
         lane = 1.0 + 9.0 * crit.get(city.cid, 0)
-        fatal = d.defense_bite * city.max_defense >= city.defense
+        fatal = d.defense_damage >= city.defense
         value = lane * (1.0 + (1.0 - city.defense_frac) * 2.0) * (1.0 + 2.0 * peril)
         if fatal:
             value *= 4.0

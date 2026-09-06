@@ -2,6 +2,276 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The Siege sub-type is modelled, and keeps percentage damage on purpose
+
+**Affects:** `sim/cataclysm_sim/config.py`, `engine.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`. Applied. Issue
+[#1329](https://github.com/sdubois777/Cataclysm/issues/1329).
+
+### The ruling
+
+Asked whether the Siege sub-type should be added to the model as part of the
+flat-damage work, the project owner answered on 2026-09-06, verbatim: **"Yes —
+add it as part of this work (Recommended)"**. They were told it costs time, that
+it is a real addition rather than a port, and that every empire figure moves
+again when it lands.
+
+### Why it could not be deferred
+
+Two earlier rulings made it load-bearing. The Siege keeps percentage damage as a
+deliberate exception, so city health does not protect against it. The combined
+defensive ceiling was then sent to measurement rather than chosen. **A
+measurement of how safe a fully invested empire is that leaves out the one
+threat which bypasses the investment overstates that safety by construction.**
+Siege is about 13 in every 100 dungeons that reach the map.
+
+### THE PERCENTAGE IS DELIBERATE AND WILL LOOK LIKE AN OVERSIGHT
+
+Everything else in this work moved from a share of a city's maximum to flat
+points, on 2026-09-06 in the entry above. **The Siege did not.** The owner ruled
+on 2026-09-05, verbatim: "Keep it as a deliberate exception (Recommended)", on
+the reasoning put to them that **a siege does not care how thick your walls
+are** — which gives the sub-type a situation of its own rather than only a
+number of its own. The cost was stated and accepted: a fully invested city is
+still helpless against a siege.
+
+So a reader who finds a percentage sitting in freshly-flattened code has not
+found something that was missed. `TuningConfig.siege_defence_bite_per_day`
+carries the same warning, and
+`sim/tests/test_siege_subtype.py::TestTheDeliberateException` asserts the
+property rather than only explaining it: with the growth removed, a Sanctuary at
+1x, 5.9x and 100x city health falls in exactly 100 days in every case.
+
+### Where the rules came from, and which direction the port ran
+
+**For once the game is the reference and the model is the follower**, which is
+the reverse of this project's usual direction and is written down because it
+will confuse someone later. There was no model code to copy.
+
+| Rule | Source | Modelled? |
+| :-- | :-- | :-- |
+| 1% of maximum defence and population per day it stands | `docs/Cataclysm_GDD_v2.md` line 3744 | yes |
+| damage grows by 10 points per day it has stood | same line, and the owner on 2026-09-05 settling that its "power" means "the damage it does to the city/population" | yes |
+| max 1 per city | same line | yes |
+| pauses city upgrades | same line | **no — see below** |
+
+`CataclysmEmpireRun.h` previously carried a comment saying the behaviour was
+"NOT PORTED FROM THE SIMULATION, BECAUSE THE SIMULATION DOES NOT MODEL IT". That
+explained an absence which no longer exists, and has been replaced.
+
+### The rule that is not modelled
+
+**"Pauses city upgrades" has no subject in the model.** There is no city upgrade
+system to pause: `LethalityRules.city_upgrade_slots` is set and read by nothing,
+which issue [#318](https://github.com/sdubois777/Cataclysm/issues/318) already
+records. `test_there_is_still_no_city_upgrade_system_to_pause` fails if one is
+added, so the omission stays known rather than silent.
+
+### The empire tree's damage reduction still applies to a Siege
+
+**A ruling, not a reading.** It was written first as a reading — the owner's
+exception is that city *health* does not protect against a siege, and reducing
+the damage is a different claim from thickening the wall — and then put to them
+as a confirm-or-overturn against two alternatives: that a siege ignores both
+defensive lines, and that reduction applies at a reduced rate.
+
+Owner, 2026-09-06, verbatim: **"Yes — damage reduction still applies
+(Recommended)"**. Neither alternative was taken.
+
+**A siege ignores how much a city can ABSORB and is still blunted by what
+REDUCES damage.** Both defensive lines stay meaningful, which is also why the
+combined defensive ceiling still has two things to multiply rather than one.
+
+### How the port was checked
+
+The C++ rolls Siege at 15 in 100 dungeons and lands **12.7** in 100 on the map,
+measured over twenty campaigns by the session that built the sub-type odds. The
+difference is the one-per-city cap: a refused roll is redistributed across the
+other six sub-types.
+
+**The model now lands 13.1 in 100 over twenty campaigns.** Had the share stayed
+at 15, the cap would be present but never reached.
+
+### Two things the test suite found rather than a person
+
+- `sim/analyse_lethality_modes.py` claimed that more dungeons means a larger
+  **share** of them resolving undefeated, and printed two **absolute counts** as
+  its evidence. That worked only while the two rows ran for similar lengths.
+  With Siege damage the empire falls sooner, campaigns run 1,152 days against
+  1,887, and the counts now point the other way while the share still rises —
+  86% against 80%. The script prints the share it claims, and says what the
+  counts do and do not settle.
+- `sim/tests/test_sweep_tier.py` estimated an unresolved-campaign rate from
+  eight campaigns against a 50% threshold, when the true rate for the Architect
+  preset at difficulty tier 2 is about 35%. Raised to sixteen. The underlying
+  behaviour — 97% of Architect campaigns at difficulty tier 4 end without
+  winning or losing — is issue
+  [#1336](https://github.com/sdubois777/Cataclysm/issues/1336) and is present on
+  `development`.
+
+## 2026-09-06 — City damage is a number of points, not a share of the city's own maximum
+
+**Affects:** `sim/cataclysm_sim/config.py`, `engine.py`, `policies.py`. Applied.
+Issues [#1327](https://github.com/sdubois777/Cataclysm/issues/1327),
+[#1319](https://github.com/sdubois777/Cataclysm/issues/1319),
+[#1331](https://github.com/sdubois777/Cataclysm/issues/1331).
+
+### The ruling
+
+The project owner, on 2026-09-05, verbatim:
+
+> damage to cities shouldn't be a % of their hp. Instead, dungeons should have
+> damage ranges that aren't % based, but should be flat damage numbers. Each city
+> has x health and y population, and the type of cataclysm the dungeon belongs to
+> as well as it's primary and subtypes determine what damage it does most to,
+> either defenses or population. We should probably do some research into what
+> those numbers look like, based on what tier the player is on. I think the
+> numbers we have for each city tier are just first guesses anyways, so let's do
+> some simulations on that and figure out what would be best as initial values,
+> with the understanding the empire tree exists.
+
+Two further rulings on the same day, both recorded on #1327:
+
+- **The `Siege` sub-type keeps percentage damage**, verbatim: "Keep it as a
+  deliberate exception (Recommended)". A siege does not care how thick your walls
+  are, which makes it the one threat city-health investment does not protect
+  against. `docs/Cataclysm_GDD_v2.md` line 3744 stands as written and the model
+  matches it rather than the other way round. **That invariance is intended, not
+  a bug**, and is written here so the next person to measure it does not file the
+  issue this one came from.
+- **What a maxed defensive tree should be worth goes to measurement**, verbatim:
+  "Let a session measure and propose (Recommended)". Not an input to this change.
+
+### What was wrong
+
+`engine._resolve` removed a fraction of the city's own maximum:
+
+```python
+city.defense -= city.max_defense * d.defense_bite * scale * cfg.tree.city_damage_mult
+```
+
+The maximum therefore divided out of how many resolves a city survived, so
+**every increase to a city's health was worth exactly nothing** — in the model,
+and in the shipping game, where `UCataclysmEmpireMap::Bite` has the same shape.
+The city-health lever #1319 asked for came out inert for this reason, and so do
+`Architect_Increase_max_defense_by_20` and its population twin in
+`game/Data/CityUpgrades.csv`. #1331 carries the game side.
+
+Evaluated over the constants:
+
+| tier | max defence | fraction | damage | resolves to fall | resolves every | days of neglect |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Outpost | 1,000 | 10% | 100 | 10 | 28d | 284 |
+| Bulwark | 3,000 | 9% | 270 | 12 | 42d | 504 |
+| Sanctuary | 8,000 | 8% | 640 | 13 | 62d | 806 |
+| Pillar | 20,000 | 6% | 1,200 | 17 | 90d | 1,530 |
+
+**A twenty-fold defence ladder bought 1.7x in resolves.** In days it is 5.4x,
+because a resolve timer is `10 + floors x 1.6` and deeper dungeons sit on bigger
+cities, so the timer was already doing most of the laddering. Both figures are
+here because the first on its own overstates the case, and it was published that
+way before being corrected on #1327.
+
+### The research
+
+Looked at before any number was proposed, and cited here so the shape can be
+argued with later.
+
+- **Percentage-of-maximum damage is a known way to make a health stat
+  worthless.** [CritPoints](https://critpoints.net/2023/05/14/how-do-you-set-the-maximum-limit-for-health-such/)
+  on how a defensive stat and a health stat trade off, and
+  [therpgsite](https://www.therpgsite.com/design-development-and-gameplay/damage-and-health-balance-game-design/).
+  Ours was the degenerate case: the damage scaled with the pool exactly.
+- **Real-time strategy sieges are flat.** Age of Empires II gives the Town Center
+  2,400 hit points and the Castle 4,800
+  ([Liquipedia](https://liquipedia.net/ageofempires/Town_Center)); a ram's damage
+  is a flat number modified by armour class. Total War tunes siege equipment in
+  absolute increments — Warhammer III moved towers and rams by 2,000 and 1,000
+  points ([TWCenter](https://www.twcenter.net/threads/how-to-modify-siege-tower-aspects.58787/)).
+- **Which pool damage lands in is the standard axis of variety**, expressed as a
+  damage-type against armour-class table
+  ([GameDev.net](https://gamedev.net/forums/topic/653437-rts-unit-balance-armour-types/),
+  [Rise of the Reds](https://generalsrotr.fandom.com/wiki/Damage_and_armor_types)).
+  Age of Empires II ships two building armour classes for exactly this
+  ([armour class](https://ageofempires.fandom.com/wiki/Armor_class_(Age_of_Empires_II))).
+  The owner's "what it does damage most to" is that table with two classes.
+- **They Are Billions** keeps defence and population as separate pools where the
+  population one feeds the threat
+  ([wiki](https://theyarebillions-archive.fandom.com/wiki/Infected)).
+- **Into the Breach** is the counter-example. Subset Games deliberately kept the
+  power bar short, because once protection stopped mattering players accepted the
+  losses
+  ([Game Developer](https://www.gamedeveloper.com/design/reimagining-failure-in-strategy-game-design-in-i-into-the-breach-i-)).
+  That is the failure this change risks and the reason the measurement below
+  reports what was left of the empire and not only who won.
+
+### What was applied
+
+`DungeonSpec.defense_bite` and `population_bite` became `defense_damage` and
+`population_damage`, in points and people. **Every value is the fraction it
+replaced multiplied by that tier's base maximum**, so the change of shape could
+be measured on its own before any number was chosen.
+
+**Evidence that it changed nothing by itself.** 1,080 campaigns — 7 presets, 3
+difficulty tiers, 5 policies, 12 seeds — against `origin/development` and against
+the change, comparing who won, days survived, cities lost, resolves suffered,
+dungeons cleared, population remaining and closest approach to defeat:
+
+- **900 of 900 identical** for every preset without a city-health multiplier;
+- **36 of 180 Architect campaigns differ**, which is the fix. It is the only
+  preset carrying `city_health_mult`, and that lever now works.
+
+Driven through the engine itself, a Sanctuary falls in 13 resolves with no tree,
+26 at 2x city health, 75 at 5.9x and 1,270 at 100x. Before this every one of
+those was 13.
+
+### The two levers are still two levers, for a new reason
+
+[#1288](https://github.com/sdubois777/Cataclysm/issues/1288) refused to fold
+`city_health_mult` into `city_damage_mult`. **The reason it gave has been
+overtaken and the conclusion has not**, which is recorded here rather than left
+to be discovered:
+
+- Under the fraction they differed because doubling the pool doubled the bite.
+  **Under flat damage they do not differ that way**: halving the damage and
+  doubling the pool both exactly double how long a city stands.
+- **Only damage reduction protects the people.** `city_health_mult` raises
+  defence and deliberately not population, so a city with the health nodes alone
+  stands twice as long and is emptied of its population doing it — 100% lost
+  against 51%. This is new with flat damage; while the damage was a fraction,
+  both pools drained at the same relative rate.
+- **Only city health helps a city that has already fallen**, because `_retake`
+  restores a share of the raised maximum.
+
+### Still open
+
+### The per-tier damage numbers are left exactly as they were, and that is a result
+
+Four candidate ladders were measured rather than argued: today's numbers, a soft
+rim, a hard core, and an even ladder between them, at 300 campaigns per cell.
+
+**Before Siege damage existed the choice mattered a great deal** — an untreed
+empire at difficulty tier 1 lost between 2.27 and 11.05 of its 25 cities
+depending on which ladder was used.
+
+**With the Siege modelled it stops mattering.** The same four ladders give win
+rates of 8.0%, 7.0%, 7.0% and 6.7%, all inside the 4.1 point noise floor of one
+another, and cities lost of 17.65, 19.89, 19.20 and 19.66. The Siege takes 1% of
+a city's maximum every day it stands plus ten points for each day it has already
+stood; an ordinary dungeon resolving on the same Outpost takes about 3.6 points
+a day. The per-resolve numbers are no longer what decides anything.
+
+**So no number is changed.** Every flat value is the fraction it replaced
+multiplied by that tier's base maximum. Changing them on this evidence would be
+changing them for no measured reason, and the content of this work is the change
+of shape — which makes every city-health upgrade in the design mean something —
+not a re-tune.
+- **A city can now be emptied of people and still stand.** Nothing falls on
+  population reaching zero, and under the fraction that could not happen. Raised
+  on #1327 and not decided here.
+- **The bias table** — which Cataclysm damages defence and which damages
+  population — is proposed on #1327 and waits on the dungeon sub-type spawn odds.
+
 ## 2026-09-06 — Only ordinary dungeons deepen the Cataclysm boss, and the Last Stand takes none of it
 
 **Affects:** `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py`,

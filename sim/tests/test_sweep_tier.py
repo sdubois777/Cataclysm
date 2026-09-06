@@ -1212,24 +1212,38 @@ class TestTheSweepFlagsCampaignsWithNoResult:
 
         **SIXTEEN CAMPAIGNS PER CELL, AND THE COUNT IS THE FRAGILE PART.** The
         campaigns are seeded from 0 upwards so this is reproducible rather than
-        flaky, but the threshold is 50% and one cell sits close to it, so a
-        small sample can land on the wrong side of a line the true rate is
-        nowhere near.
+        flaky, but the threshold is 50% and more than one cell sits close to
+        it, so a small sample can land on the wrong side of a line the true
+        rate is nowhere near.
 
         Four was too few: at tier 2, Explorer via floors (-25 floors) left two
-        of four unresolved, which is exactly 50%. Eight was enough until issue
-        #1315 gave the Cataclysm boss a floor for every ordinary dungeon
-        cleared, which lengthens campaigns. Measured over 60 campaigns, the
-        worst cell -- "Proposed budget (x0.85 time, x0.55 dmg)" at tier 2 --
-        went from **30% to 37%** of campaigns running out of days. Neither is
-        over the threshold. But at eight campaigns the estimate landed on 4 of
-        8, and the check is `>=`, so the test failed on its sample size rather
-        than on what it names.
+        of four unresolved, which is exactly 50%.
+
+        **Eight was enough until two separate changes on 2026-09-06 each pushed
+        a different cell past it**, which is why the count was raised once and
+        this docstring names two causes:
+
+          * issue #1315 gave the Cataclysm boss a floor for every ordinary
+            dungeon cleared, which lengthens campaigns. Over 60 campaigns the
+            "Proposed budget (x0.85 time, x0.55 dmg)" cell at tier 2 went from
+            **30% to 37%** of campaigns running out of days;
+          * issue #1327 moved the Architect preset, whose tier 2 cell genuinely
+            sits at about **35%** -- measured over 60 campaigns, and true on
+            `development` as well as here.
+
+        Neither rate is over the threshold. At eight campaigns the estimate
+        landed on 4 of 8 and the check is `>=`, so the test failed on its
+        sample size rather than on what it names.
 
         Sixteen passes and costs about 13 seconds against 7 for eight, measured
         on 2026-09-06. **If it fails again, measure the underlying rate over 60
         campaigns before raising this number**: a genuine move past 50% is a
         finding about the game, and raising the count would hide it.
+
+        THE UNDERLYING RATES ARE NOT A TEST PROBLEM. A maxed Architect empire
+        reaches the day cap without winning or losing in 13% of campaigns at
+        difficulty tier 1, 35% at tier 2 and 97% at tier 4. That is issue #1336
+        and is not caused by this file.
         """
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
         experiments.exp_presets(base, tiers=(1, 2), trials=16)

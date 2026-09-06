@@ -335,19 +335,66 @@ class TestWhatADungeonIs:
                 one("DefenceBite", 0.0), one("PopulationBite", 0.0))
 
     def test_the_model_holds_the_thirteen_specs_this_test_expects(self, model):
-        """The model against the hand-written table above."""
+        """The model against the hand-written table above.
+
+        THE TWO SIDES NOW EXPRESS DAMAGE DIFFERENTLY AND STILL AGREE ON IT.
+        Issue #1327 changed the model from a fraction of the host city's own
+        maximum to a number of points, because the maximum divided out of how
+        long a city survived and every city-health upgrade in the design was
+        worth nothing. The game still holds fractions -- `Bite` in
+        `CataclysmEmpireMap.cpp` takes them, so its whole call chain depends on
+        the old shape -- and issue #1331 tracks porting it across.
+
+        Until that lands the two are the SAME DAMAGE, because each of the
+        model's point values is the fraction beside it multiplied by that
+        tier's base maximum. Asserting the product rather than the fraction is
+        what keeps this test comparing the two implementations instead of
+        quietly comparing one of them with itself.
+
+        `test_empire_map_port.py` ties `TIER_STATS` to the C++
+        `OutpostMaxDefence` and its three siblings, so multiplying by the
+        model's own maximum here is not a shortcut past the C++ figure.
+        """
         from cataclysm_sim.config import CityTier, DungeonType
 
         for (kind, tier_name), (least, most, defence, pop) in self.SPECS.items():
-            spec = model.spec(DungeonType(kind), CityTier(tier_name))
+            tier = CityTier(tier_name)
+            spec = model.spec(DungeonType(kind), tier)
+            stats = model.TIER_STATS[tier]
 
             assert spec.floors == (least, most), (
                 f"{kind} on {tier_name}: this test expects {(least, most)} "
                 f"floors, the model has {spec.floors}")
-            assert spec.defense_bite == pytest.approx(defence), (
-                f"{kind} on {tier_name}: defence bite")
-            assert spec.population_bite == pytest.approx(pop), (
-                f"{kind} on {tier_name}: population bite")
+            assert spec.defense_damage == pytest.approx(
+                defence * stats.max_defense), (
+                f"{kind} on {tier_name}: the model removes "
+                f"{spec.defense_damage} defence points and the game removes "
+                f"{defence:.0%} of {stats.max_defense:,.0f}, which is "
+                f"{defence * stats.max_defense:,.0f}")
+            assert spec.population_damage == pytest.approx(
+                pop * stats.max_population), (
+                f"{kind} on {tier_name}: the model removes "
+                f"{spec.population_damage} people and the game removes "
+                f"{pop:.0%} of {stats.max_population:,.0f}")
+
+    def test_the_model_holds_points_rather_than_fractions(self, model):
+        """A fraction is below one and a point count is not.
+
+        WITHOUT THIS the test above would go on passing if the model's numbers
+        quietly became fractions again and `TIER_STATS` shrank to match, which
+        is the state issue #1327 exists to prevent. Only the Basic rows are
+        checked because the other three kinds deal no damage by design.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for (kind, tier_name) in self.SPECS:
+            if kind != "Basic":
+                continue
+            spec = model.spec(DungeonType(kind), CityTier(tier_name))
+            assert spec.defense_damage > 1.0, (
+                f"{tier_name} takes {spec.defense_damage} defence damage, "
+                "which is a fraction rather than a number of points")
+            assert spec.population_damage > 1.0
 
     def test_the_model_holds_no_other_spec(self, model):
         """Thirteen and not sixteen. A Cataclysm exists only at the Pillar, and
