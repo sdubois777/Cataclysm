@@ -217,9 +217,15 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 
 	if (StatusLabel)
 	{
+		// WHAT THE PLAYER HAS DONE, ON THE END OF WHAT HAS BEEN DONE TO THEM.
+		// Every other number on this screen describes the empire's decline;
+		// `ProgressLine` is the only one that describes progress. Issue #1324
+		// slice 5, and it lives on the layout class because a headless test
+		// cannot read a label. See `UCataclysmEmpireMapLayout::ProgressLine`.
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d   %d cities lost of 24   %d dungeons standing"),
-			Run->Day(), Run->Map->FallenCityCount(), Run->DungeonCount())));
+			TEXT("Day %d   %d cities lost of 24   %d dungeons standing   %s"),
+			Run->Day(), Run->Map->FallenCityCount(), Run->DungeonCount(),
+			*UCataclysmEmpireMapLayout::ProgressLine(Run))));
 	}
 
 	if (SurgeLabel)

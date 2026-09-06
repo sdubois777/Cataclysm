@@ -529,6 +529,24 @@ public:
 	static FString SubTypeName(ECataclysmDungeonSubType SubType);
 
 	/**
+	 * What to call a KIND of dungeon when a person has to read it.
+	 *
+	 * `SubTypeName` ABOVE, FOR THE OTHER HALF OF THE PAIR, and a plain switch
+	 * for the same reason: the spelling shown to a person is a decision, and
+	 * taking it from the identifier means renaming the identifier silently
+	 * changes what is on screen. `Fallen City` is two words here and one
+	 * identifier there, which is exactly that difference.
+	 *
+	 * `Basic` ANSWERS AN EMPTY STRING, not the word "Basic", matching `None` in
+	 * `SubTypeName`. Most dungeons are ordinary and a reader wants "dungeon 3 on
+	 * Outpost (1,2)" for one of those; what has to stand out is the Quest
+	 * dungeon that earns an objective and the Fallen City that is a lost city.
+	 * `UCataclysmEmpireRun::Describe` is the caller. Issue #1324 slice 5.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString KindName(ECataclysmDungeonType Type);
+
+	/**
 	 * What Cow Level multiplies the walk by.
 	 *
 	 * THE DESIGN DOCUMENT: "Time to complete is doubled and cannot be reduced."
