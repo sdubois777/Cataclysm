@@ -34,13 +34,22 @@ every node it names is present with the points and wording it expects, so a
 change to the design document breaks this script instead of silently making it
 wrong.
 
-**IT FOUND TWO.** `TREE_EXPLORER_AS_DESIGNED` removes 70 flat days where the
+**IT FOUND ONE.** `TREE_EXPLORER_AS_DESIGNED` removes 70 flat days where the
 Explorer branch's own unconditional nodes remove 60, and it credits the branch
-with none of the +50 floors its depth nodes add at tier 1 -- issue #1386. And
-`docs/Empire_Skill_Tree_Keystones.md` describes the same tree and does not list
-Opportunist or Rapid Descent at all, so the repository holds three different
-answers to how many days the branch removes -- issue #1387. Neither is repaired
-here; issue #1383 is under an instruction to change no tuning constant.
+with none of the +50 floors its depth nodes add at tier 1 -- issue #1386. It is
+not repaired here; issue #1383 is under an instruction to change no tuning
+constant.
+
+**WHY THIS FILE READS THE GRAPH AND NOT THE PROSE.**
+`docs/Empire_Skill_Tree_Keystones.md` describes the same tree and lists neither
+Opportunist nor Rapid Descent. That is not a disagreement to resolve: issue #25
+settled that the graph is the tree and the prose is commentary on it, which
+`docs/README.md` and the prose file's own first paragraph both state and
+`tools/tests/test_empire_tree_documents_agree.py` guards. The graph has 68 names
+the prose does not mention, because it is about three weeks newer, and those two
+are among them. An earlier version of this comment reported it as a second
+finding and opened issue #1387 for it; that issue is closed as not planned and
+the mistake was not searching `tools/tests/` for a test naming either file.
 
 WHAT IS HELD FIXED, AND THE SURGE CADENCE IS THE HALF THIS FILE DOES NOT MOVE.
 Difficulty tier 1, the `triage` policy, **static surges every 120 days for 5

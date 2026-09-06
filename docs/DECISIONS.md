@@ -2,6 +2,174 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The game is balanced around a player fully invested in the Explorer tree
+
+**Affects:** every future tuning decision. Issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383).
+
+The project owner set a balance target on 2026-09-06, verbatim:
+
+> how do we keep a player who is fully invested into the explorer tree engaged?
+> That is what the game should be mostly balanced around, or at least to some
+> degree.
+
+**This was written nowhere in `docs/` until now**, and it changes what tuning
+aims at. Before it, a tuning question could reasonably be answered against an
+untreed player, an average one, or whatever the sweep happened to default to.
+After it, the player a number has to be right for is the one who has spent the
+Explorer branch's 316 points.
+
+### Why that player and not an average one
+
+The Explorer branch is the one that buys dungeon speed, and speed is what
+decides how much of the empire layer the player experiences. A player with no
+tree is busy because every dungeon takes as many days as it has floors; the same
+campaign for an invested player can be almost entirely waiting. Measured over
+4,000 campaigns at difficulty tier 1 with the triage policy and static surges
+every 120 days for 5 dungeons, `sim/analyse_explorer_shape.py`:
+
+| | Days with nothing at all on the board | Cities lost of 25 |
+|---|---|---|
+| No empire tree | **6.6%** | 16.29 |
+| The Explorer branch as `TREE_EXPLORER_AS_DESIGNED` models it | **58.5%** | 0.78 |
+
+So the two ends of the investment range are not variations on one experience.
+Tuning that satisfies one can leave the other with nothing to do, and the owner's
+ruling says which one wins.
+
+### "Or at least to some degree" is part of the ruling
+
+The target is not that the uninvested player may be made unplayable. The same
+issue required, and measured, what each candidate change costs a player with no
+tree. Nothing in this entry licenses a change that only works for an invested
+player.
+
+---
+
+## 2026-09-06 — The Explorer branch's unconditional walk-time nodes become a percentage, and "a couple of days" is the whole stack
+
+**Affects:** `docs/Empire_Development_Tree_Final.json` — the four nodes named
+below, once a per-point value is decided. Issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383).
+
+**Nothing is changed in the tree, the simulation or the game by this entry.** The
+shape is ruled and the numbers are not, so this records the decision and says
+what still has to happen. See "What this entry does not change" at the end.
+
+### The ruling
+
+The project owner, 2026-09-06, verbatim: **"Change to a percentage"**.
+
+Four Explorer nodes stop removing a fixed number of days and start removing a
+percentage of the dungeon's run time, **combined multiplicatively**:
+
+| Node | Points | Today | Ruled |
+|---|---|---|---|
+| Temporal Mastery | 25 | -1 day per point | a percentage of run time per point |
+| Overclock | 20 | -1 day per point | a percentage of run time per point |
+| Pacing | 10 | -1 day per point | a percentage of run time per point |
+| Fleet Footed | 1 (keystone) | -5 days | a percentage of run time |
+
+**Every conditional and situational walk-time node stays exactly as it is**, as a
+fixed number of days:
+
+| Node | Where | What it keeps |
+|---|---|---|
+| Opportunist | Explorer, 5 points | -1 day per point, only in a city with no other active dungeon |
+| Sovereign's Haste | Explorer, 10 points | -1 day per point per active Cataclysm type, capped at -30 |
+| The Delver | Tier 1 capstone option | -5 days, to a minimum of 1 |
+| The Last Stand | capstone option | run time reduced to one day, in a city within 7 days of falling |
+| Rapid Descent | Explorer, 10 points | -0.1 days of remaining run time per floor cleared per point — its total already scales with depth |
+| Tactical Entry | Explorer keystone | run days halved above 50 floors — already multiplicative |
+
+### What it fixes, and what it does not
+
+**It fixes one thing: floor count starts affecting pace again.** A flat
+subtraction removes a fraction of the walk that depends on the dungeon's depth,
+and it removes the most from the dungeons that cost the least. Under the branch's
+shipped numbers the shallowest ordinary dungeon is cut by **98%** and the deepest
+by **67%**. A percentage gives every dungeon the same reduction, which is what
+speed means.
+
+Measured at matched speed — a flat amount and a percentage that both walk a
+40-floor dungeon in 4 days — the flat leaves **91%** of the 8-to-40 floor range on
+the one-day minimum and the percentage leaves **9%**.
+
+**It does not fix the Cataclysm being harmless, and it must not be presented as
+if it does.** Every candidate that changed only the walk-time reduction left the
+empire between **0.12 and 0.87** cities lost of 25, against **16.29** with no
+tree. The measurement found nothing that changes only the walk-time reduction
+would move that.
+
+**Two alternatives were offered and rejected**: leaving the shape alone, and
+attacking the cheap 56-point speed sub-build through node costs or prerequisites
+instead.
+
+### "A couple of days" means the whole stack
+
+The entry of 2026-09-05 in this file records the owner's words: with investment
+"you could have a 50 floor dungeon that only takes you a couple days in world
+time to beat". Issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) found that under the
+ruled shape a 50-floor dungeon takes about 8 days from the tree alone, and that
+reaching two would need a percentage so steep that 55% of ordinary dungeons
+collapse back onto the one-day minimum.
+
+The project owner, 2026-09-06, verbatim: **"The whole stack"**.
+
+So that sentence describes **the empire upgrade tree plus city upgrades plus the
+situational nodes together**, not the tree on its own. On that reading a 51-floor
+dungeon with the Explorer city upgrade (-4 days), The Delver (-5), Opportunist in
+a city with no other active dungeon (-5) and Tactical Entry (halving anything
+over 50 floors) comes to **3 days**.
+
+**That 3 days is arithmetic on the engine's formula and not a measurement.** The
+simulation has no city upgrades at all
+([#318](https://github.com/sdubois777/Cataclysm/issues/318)) and models neither
+Tactical Entry nor the conditional nodes, so no campaign batch has confirmed it.
+Nobody should quote it as measured until something measures it.
+
+**This is why the situational nodes stay as fixed days.** It makes them
+load-bearing rather than rounding errors: under a percentage alone the shallowest
+ordinary dungeon costs two days, and it reaches the one-day minimum only when
+those nodes line up. That in turn gives the **One-Day Specialist** keystone
+something to pay for — "if run time is reduced to the 1-Day minimum, all Explorer
+loot modifiers are doubled" — where today it is a free doubling on every dungeon,
+because every dungeon is already at the minimum.
+
+### What this entry does not change, and what has to happen next
+
+**The per-point percentages are not ruled.** The owner ruled the shape only. The
+figures in the analysis on
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) — a total near x0.15
+of base walk time, illustrated as -3% per point on the three basic nodes and -20%
+on Fleet Footed — are illustrations of the shape and **nothing should ship on
+their strength**.
+
+**So the four nodes in `docs/Empire_Development_Tree_Final.json` still read
+"-1 day per point" and "-5 days".** They are not edited here, because writing a
+percentage into them needs a percentage, and a placeholder in the file the passive
+tree editor reads and writes would be worse than the old text. When a value is
+ruled, three things change together:
+
+1. the four node descriptions in `docs/Empire_Development_Tree_Final.json`;
+2. `WALK_TIME_NODES` in `sim/analyse_explorer_shape.py`, which records each node's
+   flat-day value and would then describe a design that no longer exists;
+3. this entry, to say the tree has been changed and to what.
+
+`tools/tests/test_explorer_walk_time_shape_ruling.py` fails if the tree is changed
+without this entry being updated, so the three cannot drift apart.
+
+**Two further things are not ruled and are being worked separately.** The surge
+cadence — an invested player spends **44% to 61%** of the campaign with nothing on
+the board at today's 5 dungeons every 120 days, and no walk-time shape moved that.
+And `TREE_EXPLORER_AS_DESIGNED`, which models 70 flat days where the branch's
+unconditional nodes give 60 and credits it with none of the +50 floors its depth
+nodes add at tier 1 — issue
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386).
+
+---
+
 ## 2026-09-06 — The empire layer learns which Cataclysm is running, and the Cataclysm dungeon unlocks at half of them
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.h` and `.cpp`
