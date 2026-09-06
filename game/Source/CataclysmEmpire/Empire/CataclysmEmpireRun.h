@@ -69,11 +69,18 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 * adjacent city". Issue #1324 slice 4.
 	 *
 	 * **IT IS SHORTER THAN THE QUEST DUNGEONS IN `Resolved`, AND THAT IS THE
-	 * RULE RATHER THAN A LOSS.** A Quest dungeon whose neighbours are all
-	 * sealed or fallen has nowhere adjacent to go and stays where it stands,
-	 * which is where the design's "MAY move" comes from. About one quest timer
-	 * in five fires with no target. See
-	 * `UCataclysmSurgeScheduler::PickRelocation`.
+	 * RULE RATHER THAN A LOSS.** The design's "MAY move" has two halves and a
+	 * dungeon that stays may be either. It had nowhere adjacent to go -- every
+	 * neighbour sealed, fallen, the Pillar, or already besieged if it carries a
+	 * Siege itself -- which is about one quest timer in four; or it had
+	 * somewhere and the coin said no. The project owner ruled the coin on
+	 * 2026-09-06, verbatim "A chance each time", and chose 0.5. Together they
+	 * leave a Quest dungeon actually moving on roughly 38% of its timers. See
+	 * `UCataclysmSurgeScheduler::PickRelocation` and
+	 * `UCataclysmSurgeScheduler::QuestMoveChance`.
+	 *
+	 * NOTHING HERE SAYS WHICH OF THE TWO IT WAS, deliberately. A dungeon that
+	 * stayed is simply absent from this list either way.
 	 *
 	 * WHERE EACH ONE WENT IS READ OFF THE DUNGEON. `FCataclysmDungeon::CityId`
 	 * is already the new city by the time this report is returned, so recording
@@ -818,13 +825,27 @@ private:
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 
 	/**
-	 * A Quest dungeon whose timer ran out picks up and moves to an adjacent
-	 * city, or stays where it is when it has no adjacent city to move to.
+	 * A Quest dungeon whose timer ran out picks up and may move to an adjacent
+	 * city.
 	 *
 	 * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not
 	 * resolve -- refreshes and **may move to adjacent city**". The project
 	 * owner ruled on 2026-09-06, verbatim "Adjacent, and fix the simulation".
 	 * Issue #1324 slice 4.
+	 *
+	 * **THE "MAY" IS A COIN AS WELL AS A MAP, AND THIS IS WHERE THE COIN IS
+	 * FLIPPED.** The owner ruled on 2026-09-06, verbatim "A chance each time",
+	 * and chose 0.5; `UCataclysmSurgeScheduler::QuestMoveChance` carries the
+	 * number. The target is asked for FIRST and the coin flipped SECOND, which
+	 * is the order `Simulation._resolve` uses and is what keeps the two streams
+	 * in step: both draws happen whenever there is somewhere to go, neither when
+	 * there is not.
+	 *
+	 * **AND A DUNGEON CARRYING A SIEGE REFUSES A BESIEGED DESTINATION.** "Max 1
+	 * per city" was a spawn rule only until the owner ruled on 2026-09-06,
+	 * verbatim "Check the limit on arrival too". This counts the standing Sieges
+	 * and hands them to `PickRelocation`, the way `FireSurge` hands them to
+	 * `RollWave`. Issue #1371.
 	 *
 	 * `UCataclysmSurgeScheduler::PickRelocation` DECIDES AND THIS ACTS, which
 	 * is the division every other rule in this module keeps: the scheduler owns

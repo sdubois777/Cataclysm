@@ -3151,4 +3151,191 @@ bool FCataclysmSurgeRimRelocationTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * `PickRelocation` refuses a besieged city to a dungeon carrying a Siege, and
+ * to nothing else.
+ *
+ * **THE OWNER'S RULING OF 2026-09-06, VERBATIM: "Check the limit on arrival
+ * too".** Issue #1371. The design's Siege row says "Max 1 per city";
+ * `RollSubType` enforced it at spawn and nothing enforced it on a move.
+ *
+ * WHY IT ASKS EVERY CITY. The rule is a filter, and a filter is only as good as
+ * the cases it was asked about. Marking one city besieged and checking one
+ * neighbour would be satisfied by a function that answered "not that one".
+ *
+ * **THE THREE READINGS THIS SEPARATES.** Every assertion below fails under one
+ * of them and they are the three ways to get it wrong: refusing nothing, which
+ * is the state before the ruling; refusing the besieged city to every dungeon,
+ * which is a much larger rule than "max 1 Siege per city"; and refusing the move
+ * outright rather than the destination, which loses the owner's "pick another
+ * adjacent city".
+ *
+ * WHAT IT DOES NOT CHECK. That anything passes the counts in. That is
+ * `Cataclysm.EmpireRun.ARelocatingSiegeRefusesACityThatAlreadyHasOne`, which
+ * builds the situation on a real run and advances a day, because a filter that
+ * is right and unreachable is exactly the state `UCataclysmEmpireMap::Retake`
+ * was in before slice 2 of issue #1324 found it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeSiegeRelocationTest,
+	"Cataclysm.Surge.ARelocatingSiegeIsRefusedACityThatAlreadyHasOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeSiegeRelocationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+	FRandomStream Stream(23);
+
+	// EVERY CITY BESIEGED, which is the state that makes the refusal visible
+	// everywhere at once rather than on one hand-picked pair.
+	TArray<int32> AllBesieged;
+	AllBesieged.Init(UCataclysmSurgeScheduler::SiegesPerCity,
+					 Map->Cities.Num());
+
+	int32 AskedWithTargets = 0;
+	int32 RefusedCarryingASiege = 0;
+	int32 AnsweredCarryingNothing = 0;
+
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		// WHAT THE ORDINARY RULE OFFERS, WITH NO SIEGE INFORMATION AT ALL.
+		// **THE CONTROL ON EVERYTHING BELOW**: a city with no legal target
+		// under the ordinary filter would be refused whatever the Siege rule
+		// did, and counting it would make the refusal look like the new rule
+		// working when it is the old one.
+		const int32 Ordinary =
+			UCataclysmSurgeScheduler::PickRelocation(*Map, City, Stream);
+
+		if (Ordinary == INDEX_NONE)
+		{
+			continue;
+		}
+
+		++AskedWithTargets;
+
+		// **CARRYING A SIEGE, WITH EVERY CITY ALREADY HOLDING ONE.** There is
+		// nowhere legal to go, so it must answer nothing rather than pick the
+		// least bad option.
+		const int32 Carrying = UCataclysmSurgeScheduler::PickRelocation(
+			*Map, City, Stream, /* bCarriesSiege */ true, AllBesieged);
+
+		if (Carrying == INDEX_NONE)
+		{
+			++RefusedCarryingASiege;
+		}
+		else
+		{
+			AddError(FString::Printf(
+				TEXT("%s was offered city %d for a dungeon carrying a Siege "
+					 "while every city already holds one. The owner ruled on "
+					 "2026-09-06, verbatim \"Check the limit on arrival too\"; "
+					 "issue #1371"),
+				*City.Name, Carrying));
+		}
+
+		// **AND CARRYING NOTHING, ON THE SAME BESIEGED MAP.** The cap is "max 1
+		// Siege per city" and not "one dungeon per besieged city", so this must
+		// still be answered. It is the assertion that fails if the check is
+		// written against the destination instead of against the mover.
+		const int32 Plain = UCataclysmSurgeScheduler::PickRelocation(
+			*Map, City, Stream, /* bCarriesSiege */ false, AllBesieged);
+
+		if (Plain != INDEX_NONE)
+		{
+			++AnsweredCarryingNothing;
+		}
+		else
+		{
+			AddError(FString::Printf(
+				TEXT("%s was told it had nowhere to go although the dungeon "
+					 "carries no Siege. The cap is per Siege, not per dungeon"),
+				*City.Name));
+		}
+	}
+
+	// **ONE NEIGHBOUR BESIEGED AND THE REST FREE, WHICH IS THE CASE THE RULING
+	// IS ACTUALLY ABOUT.** The map-wide sweep above proves the refusal; this
+	// proves it redirects rather than cancels, which is the half of the owner's
+	// words -- "pick another adjacent city" -- that a blanket refusal satisfies
+	// while getting wrong.
+	int32 Redirects = 0;
+
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		const TArray<int32> Around =
+			UCataclysmSurgeScheduler::AdjacentCities(City);
+
+		int32 Barred = INDEX_NONE;
+		int32 Legal = 0;
+
+		for (const int32 Neighbour : Around)
+		{
+			if (Neighbour == Map->PillarId || !Map->IsExposed(Neighbour))
+			{
+				continue;
+			}
+
+			++Legal;
+
+			if (Barred == INDEX_NONE)
+			{
+				Barred = Neighbour;
+			}
+		}
+
+		if (Legal < 2)
+		{
+			// ONE LEGAL NEIGHBOUR CANNOT SHOW A REDIRECT. Barring it leaves
+			// nowhere to go, which is the case above rather than this one.
+			continue;
+		}
+
+		TArray<int32> OneBesieged;
+		OneBesieged.AddZeroed(Map->Cities.Num());
+		OneBesieged[Barred] = UCataclysmSurgeScheduler::SiegesPerCity;
+
+		for (int32 Draw = 0; Draw < 40; ++Draw)
+		{
+			const int32 Target = UCataclysmSurgeScheduler::PickRelocation(
+				*Map, City, Stream, /* bCarriesSiege */ true, OneBesieged);
+
+			TestNotEqual(FString::Printf(
+				TEXT("%s does not send a Siege onto the besieged city %d"),
+				*City.Name, Barred),
+				Target, Barred);
+
+			if (Target != INDEX_NONE && Target != Barred)
+			{
+				++Redirects;
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d cities had somewhere to go under the ordinary rule; all of "
+			 "them refused a Siege on a fully besieged map (%d) and all of "
+			 "them still answered a dungeon carrying nothing (%d). %d draws "
+			 "were redirected past a single besieged neighbour"),
+		AskedWithTargets, RefusedCarryingASiege, AnsweredCarryingNothing,
+		Redirects));
+
+	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED. A map on which no
+	// city had anywhere to go would pass every assertion above by reaching none
+	// of them.
+	TestTrue(TEXT("some cities had a relocation target under the ordinary "
+				  "rule"),
+			 AskedWithTargets > 0);
+	TestEqual(TEXT("and every one of them refused a Siege on a besieged map"),
+			  RefusedCarryingASiege, AskedWithTargets);
+	TestEqual(TEXT("and every one of them still answered a dungeon carrying "
+				   "nothing"),
+			  AnsweredCarryingNothing, AskedWithTargets);
+	TestTrue(TEXT("and a Siege was redirected past a besieged neighbour rather "
+				  "than stopped"),
+			 Redirects > 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

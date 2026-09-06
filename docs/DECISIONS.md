@@ -169,6 +169,139 @@ nodes add at tier 1 — issue
 [#1386](https://github.com/sdubois777/Cataclysm/issues/1386).
 
 ---
+## 2026-09-06 — A Quest dungeon moves on a coin of 0.5, and one carrying a Siege refuses a besieged city
+
+**Affects:** `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, their tests,
+`tools/tests/test_surge_port.py`,
+`tools/tests/test_quest_relocation_is_stated.py`,
+`sim/tests/test_quest_relocation_is_adjacent.py` and section VIII of
+`docs/Cataclysm_GDD_v2.md`. Issues
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324) and
+[#1371](https://github.com/sdubois777/Cataclysm/issues/1371).
+
+**This supersedes the section
+[Ruling 3 — “may move” means a chance, and the number is not decided yet](#ruling-3--may-move-means-a-chance-and-the-number-is-not-decided-yet)
+in the entry below**, which recorded the chance as ruled and not built. It is
+built.
+
+### Ruling 1 — the move chance is 0.5
+
+The owner ruled earlier the same day, verbatim: **“A chance each time”**, and
+gave no number. The curve was measured rather than invented, and asked for the
+number the owner answered, verbatim: **“0.5”**.
+
+| chance | earned route, block A / B | objectives A / B | cities lost A / B |
+| ---: | ---: | ---: | ---: |
+| 0.00 | 48.8 / 46.9 | 6.36 / 6.24 | 16.66 / 16.12 |
+| 0.25 | 49.5 / 48.0 | 6.37 / 6.27 | 16.54 / 16.07 |
+| **0.50** | **50.9 / 48.6** | **6.41 / 6.28** | **16.40 / 16.18** |
+| 0.75 | 51.2 / 48.5 | 6.40 / 6.28 | 16.41 / 16.21 |
+| 1.00 | 50.0 / 48.0 | 6.40 / 6.27 | 16.49 / 16.23 |
+
+Measured by `sim/analyse_quest_move_chance.py` over 1,000 campaigns in each of
+two disjoint seed blocks per dose, 10,000 campaigns in all, at difficulty tier 1,
+no empire tree, the `triage` policy, static surges every 120 days for **5**
+dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days
+for +4%, 8 objectives to win. **A figure from that run quoted without those
+conditions is not a figure.**
+
+**BALANCE DID NOT CHOOSE THE NUMBER AND THE CURVE MUST NOT BE RE-DERIVED TO
+JUSTIFY IT.** The whole ladder spans 2.4 points of the earned win route in block
+A and 1.7 in block B, against a **2.7-point gap between the two blocks measuring
+the same thing**. Paired seed by seed against always-moving and read as
+McNemar's test, the largest discordant split is 99 to 76 at chance 0.00, z =
+1.74, **p = 0.08. No dose is significant.** So the choice rests on the ruling's
+words: 0.5 is the plainest reading of “a chance each time”, the setting at which
+the mechanic reads as a chance rather than as a rule, and it costs nothing.
+
+**One result ran the opposite way to the mechanism and is recorded rather than
+explained away.** Never moving is the *worst* setting for the win route in both
+blocks — 12 and 11 campaigns per 1,000 behind always-moving, paired — although a
+stationary objective should be the easier one to reach. It is inside the noise
+and nothing rests on it.
+
+### The consequence that has to be stated beside the number
+
+**About a quarter of quest timers have nowhere adjacent to go regardless**, so at
+a chance of 0.5 a Quest dungeon actually moves on roughly **38% of its timers**.
+Both numbers are true and a reader who sees only one is surprised by the other,
+which is why section VIII of the design states both.
+
+**THE FIGURE RECORDED WITH THE RULING WAS 37% AND IT DESCRIBED A DIFFERENT
+GAME.** The share with somewhere to go was 73.7% to 75.8% across the ten cells
+of the curve above, and 0.5 of that is where the 37% came from. Both figures
+predate tying the active Cataclysm count to the difficulty tier and opening the
+Cataclysm dungeon at half of them, and each shortens a campaign.
+
+**RE-MEASURED ON THE SHIPPED CODE**, four disjoint blocks of 1,000 campaigns —
+115,064 quest timers — at the same settings as the curve: the share with
+somewhere to go is **75.2% to 77.5%** by block and 76.7% overall, and the share
+of timers that moved the dungeon is **37.6% to 38.7%** by block and 38.2%
+overall. Four blocks rather than two, because two give one difference and not a
+spread. **The coin itself did not move**: take-up over the timers that had a
+choice is 49.8%.
+
+### What it is built as, and the one thing that is load-bearing
+
+One constant on each side — `config.quest_move_chance` and
+`UCataclysmSurgeScheduler::QuestMoveChance` — and one draw on each side.
+
+**THE TARGET IS DRAWN FIRST AND THE COIN SECOND, IN BOTH.** Both draws are taken
+whenever there is somewhere to go and neither when there is not, so a quest timer
+costs the two streams the same two numbers whether the dungeon moves or stays.
+Flipping first and drawing a target only on success would save a number on the
+days the dungeon stays, and the two implementations would part company at the
+first quest timer that declined. It is also the order the curve above was
+measured in, so the recorded figures describe what is built.
+
+**The coin is deliberately not inside `PickRelocation`.** That function answers
+*where*, and `INDEX_NONE` from it means the map refused. Folding the coin in
+would make “nowhere to go” and “decided not to” the same answer to every caller,
+and the tests that check every refusal against the map would stop meaning
+anything.
+
+### Ruling 2 — the Siege cap is checked on arrival as well as at spawn
+
+A Siege is “Max 1 per city”, and both implementations enforced that only when a
+dungeon was **created**. Once a Quest dungeon could relocate — issue #1324 slice
+4 — one carrying the Siege sub-type could walk onto a city that already had one.
+Shown three options, the project owner answered, verbatim: **“Check the limit on
+arrival too”**.
+
+So a relocating dungeon carrying a Siege refuses a besieged destination and takes
+another adjacent city, or stays where it is when none is free. **It refuses the
+destination and not the move**, which is the shape the spawn half already uses: a
+refused Siege there is spread across the other sub-types rather than dropped.
+
+**Two alternatives were offered and rejected.** Letting two Sieges share a city
+when one arrived by moving was rejected because it would give a player double
+daily damage on one city through a path the design never describes. Barring a
+Quest dungeon from carrying the Siege sub-type at all was rejected because it
+would add a second sub-type legality exception, and the owner deliberately
+limited those to exactly one pair when they ruled “Only the one you ruled” on
+issue [#1333](https://github.com/sdubois777/Cataclysm/issues/1333).
+
+**The cap counts Sieges and not dungeons.** A Quest dungeon carrying any other
+sub-type still walks onto a besieged city freely. Both codebases have a control
+test that fails if the check is written against the destination rather than
+against what the mover carries.
+
+### Why the test for it is built by hand and not by running campaigns
+
+**The situation is real and almost never observed.** Issue #1371 measured it over
+40 campaigns of the model: **2** Siege-carrying Quest dungeons moved and **0**
+landings would have broken the cap. A test that ran campaigns and found no
+violation would therefore pass, unchanged, against a build with no check in it —
+it would be reporting the rarity of the situation and calling it a rule. So both
+halves place the dungeons themselves: a Siege on one neighbour, a Quest dungeon
+carrying a Siege on the city beside it, and an assertion that it lands on the
+free neighbour instead. The all-neighbours-besieged case is built the same way,
+and each has a control proving the besieged city would otherwise be a legal
+target.
 
 ## 2026-09-06 — The empire layer learns which Cataclysm is running, and the Cataclysm dungeon unlocks at half of them
 
@@ -647,12 +780,19 @@ nowhere to go, which is about one quest timer in five. The project owner ruled
 otherwise, verbatim: **“A chance each time”**. A Quest dungeon must sometimes
 stay even when it could move.
 
-**THE OWNER GAVE NO NUMBER AND NOTHING IMPLEMENTS A CHANCE OF STAYING.** This
-ruling is recorded here as ruled and **not built**, which is the difference
-between it and the two above. `CLAUDE.md` forbids inventing the constant, so
-`sim/analyse_quest_move_chance.py` measures a ladder of chances and a curve goes
-to the owner; the design document deliberately still says only “may”, which is
-true of what is built and does not foreclose the ruling.
+**THE OWNER GAVE NO NUMBER AND, WHEN THIS WAS WRITTEN, NOTHING IMPLEMENTED A
+CHANCE OF STAYING.** It was recorded here as ruled and **not built**, which was
+the difference between it and the two above. `CLAUDE.md` forbids inventing the
+constant, so `sim/analyse_quest_move_chance.py` measured a ladder of chances and
+a curve went to the owner.
+
+**THAT IS NO LONGER THE STATE AND THIS PARAGRAPH IS KEPT AS THE RECORD OF IT.**
+Later the same day the owner answered the curve, verbatim “0.5”, and the chance
+is built in both implementations. See
+[2026-09-06 — A Quest dungeon moves on a coin of 0.5](#2026-09-06--a-quest-dungeon-moves-on-a-coin-of-05-and-one-carrying-a-siege-refuses-a-besieged-city)
+at the top of this page, which supersedes this section. The design document no
+longer says only “may”: it states the chance and the 38% of timers it works out
+to in play.
 
 ## 2026-09-06 — Halve the Siege's rate and cut its growth, so the earned win route survives
 

@@ -889,11 +889,14 @@ class TestWhatAQuestDungeonIs:
 
     Slices 3 and 4 of issue #1324. Slice 3 shipped with a
     `test_neither_moves_a_quest_dungeon_yet` recording relocation as scope; the
-    three tests at the end of this class replace it, and the reason they are
-    three rather than one is that "adjacent" is a decision the design does not
-    make -- so what the two halves agree on has to be checked in three places:
-    that they both move it, what they both count as adjacent, and what they both
-    do when there is nowhere to go.
+    relocation tests at the end of this class replace it, and the reason they
+    are several rather than one is that a move is several decisions the design
+    does not spell out: that they both move it, what they both count as
+    adjacent, what they both do when there is nowhere to go, **how likely each
+    is to take a move it could take**, and **which destinations a dungeon
+    carrying a Siege may not have**. The last two are the owner's rulings of
+    2026-09-06, "A chance each time" with the number 0.5, and "Check the limit
+    on arrival too" -- issues #1324 and #1371.
     """
 
     def test_the_chance_a_surge_rolls_one_matches(self, surge_header, model):
@@ -1211,6 +1214,239 @@ class TestWhatAQuestDungeonIs:
             "has anywhere to send the dungeon. The model takes no draw on that "
             "path, so the two runs would diverge from the first quest timer "
             "that fires with nowhere to go")
+
+    def test_the_chance_it_takes_a_move_it_could_take_matches(
+            self, surge_header, model):
+        """`QuestMoveChance` against `config.quest_move_chance`.
+
+        **THE OWNER RULED THE MECHANIC AND THEN THE NUMBER**, both on
+        2026-09-06: verbatim "A chance each time", and then verbatim "0.5".
+        Before that a Quest dungeon moved whenever an adjacent exposed city
+        existed, which the ruling calls incomplete rather than wrong.
+
+        BALANCE DID NOT CHOOSE IT AND THIS TEST IS NOT WHERE THAT ARGUMENT
+        LIVES. `sim/analyse_quest_move_chance.py` measured the ladder over
+        10,000 campaigns and every response was flat; issue #1324 records the
+        curve. The job here is only that the two halves hold the SAME number, so
+        the game does not move quest dungeons at a rate no measurement was taken
+        at.
+        """
+        unreal = number(surge_header, "QuestMoveChance")
+
+        assert model.quest_move_chance == pytest.approx(unreal), (
+            f"the model moves a Quest dungeon that could move "
+            f"{model.quest_move_chance:.0%} of the time and the game "
+            f"{unreal:.0%}")
+
+    def test_both_draw_the_target_before_they_flip_the_coin(self):
+        """**THE ORDER, AND IT IS THE PORT RATHER THAN A STYLE.**
+
+        Two draws happen per quest timer that has somewhere to go: which city,
+        and whether to take it. Both halves take them in that order, so a timer
+        costs each stream the same two numbers whether the dungeon moves or
+        stays. Flipping first and drawing a target only on success would save a
+        number on the days the dungeon stays -- and the two implementations
+        would then diverge from the first quest timer that declined.
+
+        **AND THE COIN IS NOT IN `PickRelocation`.** That function answers
+        WHERE, and `INDEX_NONE` from it means the map refused. A coin folded
+        into it would make "nowhere to go" and "decided not to"
+        indistinguishable, and
+        `Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity`
+        checks every refusal against the map.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        # **THE COMMENTS ARE STRIPPED AND THE FIRST VERSION OF THIS TEST DID NOT
+        # DO THAT.** `_resolve` explains the order in a comment that names
+        # `cfg.quest_move_chance`, so the "the coin is not read first" assertion
+        # failed against the very code it was written for -- a guard failing for
+        # a reason that has nothing to do with what it guards. The same mistake
+        # in the other direction is what let `City.Perimeter` pass against a
+        # game that had stopped counting it.
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        after = resolve.split("self.rng.choice(targets)", 1)
+        assert len(after) == 2, (
+            "Simulation._resolve no longer draws a relocation target with "
+            "self.rng.choice(targets). Issue #1324 slice 4")
+
+        assert "self.rng.random() < cfg.quest_move_chance" in after[1], (
+            "Simulation._resolve does not flip the move coin after drawing the "
+            "target. The owner ruled the chance on 2026-09-06, verbatim \"A "
+            "chance each time\", and chose 0.5; the coin must come SECOND or "
+            "the game's stream and the model's part company")
+
+        assert "quest_move_chance" not in after[0], (
+            "Simulation._resolve reads the move chance before it has drawn a "
+            "target. The game draws the target first, so this would put the "
+            "two streams out of step on every quest timer that declines")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = code_only(
+            surge.split("UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        assert "QuestMoveChance" not in picked, (
+            "UCataclysmSurgeScheduler::PickRelocation now reads the move "
+            "chance. It answers WHERE a dungeon would go and INDEX_NONE from "
+            "it means the map refused; folding the coin in makes \"nowhere to "
+            "go\" and \"decided not to\" the same answer")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = code_only(
+            run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # **THE WHOLE STATEMENT, NOT THE CONSTANT'S NAME.** The name appears in
+        # this function's comments as well, so a search for it over the
+        # unstripped text would pass against a build that had stopped flipping
+        # anything.
+        assert ("Stream.FRand() >= UCataclysmSurgeScheduler::QuestMoveChance"
+                in moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer flips the "
+            "move coin against QuestMoveChance. The owner ruled the chance on "
+            "2026-09-06, verbatim \"A chance each time\", and chose 0.5; issue "
+            "#1324")
+
+        assert moved.index("PickRelocation") < moved.index("Stream.FRand()"), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon flips the move coin "
+            "before it asks PickRelocation where to go. The model draws the "
+            "target first, so this would take a number off the stream on a "
+            "quest timer the model spends nothing on")
+
+    def test_both_refuse_a_besieged_city_to_a_dungeon_carrying_a_siege(self):
+        """**"Max 1 per city" IS CHECKED ON ARRIVAL AND NOT ONLY AT SPAWN.**
+
+        The project owner ruled on 2026-09-06, verbatim "Check the limit on
+        arrival too". Issue
+        [#1371](https://github.com/sdubois777/Cataclysm/issues/1371). Before
+        that a Quest dungeon that had rolled Siege could walk onto a city that
+        already had one, because `Simulation._roll_subtype` and
+        `UCataclysmSurgeScheduler::RollSubType` are the only two places the cap
+        was read and neither is on the relocation path.
+
+        **THE COMMENTS ARE STRIPPED FIRST.** Both files explain the rule in a
+        comment that names `sieges_on` and `SiegesPerCity`, so a bare substring
+        search would match the explanation and pass against a build that had
+        stopped doing it. That exact failure has already happened once on issue
+        #1324, on `City.Perimeter`.
+
+        THE BEHAVIOUR IS PROVED ELSEWHERE, deliberately.
+        `TestASiegeMayNotWalkOntoABesiegedCity` in
+        `sim/tests/test_quest_relocation_is_adjacent.py` and
+        `Cataclysm.EmpireRun.ARelocatingSiegeRefusesACityThatAlreadyHasOne`
+        build the situation and watch it. This is the cheap guard that fails in
+        the fast suite when one side of the port is changed alone.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        assert "self.sieges_on(" in resolve, (
+            "Simulation._resolve no longer asks how many Sieges stand on a "
+            "relocation target. The design says \"Max 1 per city\" and the "
+            "owner ruled on 2026-09-06, verbatim \"Check the limit on arrival "
+            "too\"; issue #1371")
+
+        assert "cfg.siege_max_per_city" in resolve, (
+            "Simulation._resolve counts Sieges on a relocation target without "
+            "comparing the count against the cap, so the number it reads "
+            "decides nothing")
+
+        assert 'd.subtype == "Siege"' in resolve, (
+            "Simulation._resolve applies the Siege cap without asking whether "
+            "the MOVING dungeon carries one. The cap is \"max 1 Siege per "
+            "city\", not \"one dungeon per besieged city\"")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = code_only(
+            surge.split("UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # **THE WHOLE CONDITION, NOT THE NAMES IN IT, AND THIS TEST ASSERTED
+        # THE NAMES UNTIL IT WAS PROVED WORTHLESS.** `bCarriesSiege` is also
+        # the name of one of this function's parameters and `SiegesPerCity`
+        # is named in its own doc comment, so the slice above contains both
+        # whatever the body does. Replacing `if (bCarriesSiege` with
+        # `if (false` -- the whole rule disabled -- left the old assertion
+        # green. It is the same mistake the coin check below records making,
+        # and it is why that one reads a whole statement.
+        #
+        # THE WHITESPACE IS FLATTENED FIRST so the search survives
+        # reformatting, which a line-by-line one would not: the condition is
+        # wrapped across three lines and its indentation is tabs.
+        flat_picked = " ".join(picked.split())
+
+        assert ("if (bCarriesSiege "
+                "&& SiegesPerCityNow.IsValidIndex(CityId) "
+                "&& SiegesPerCityNow[CityId] >= SiegesPerCity)"
+                in flat_picked), (
+            "UCataclysmSurgeScheduler::PickRelocation no longer refuses a "
+            "besieged city to a dungeon carrying a Siege, so the game and the "
+            "model disagree about where a wandering Siege may land; issue "
+            "#1371")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = code_only(
+            run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # THE WHITESPACE IS FLATTENED so every search below survives
+        # reformatting. Each of them reads a whole statement rather than a
+        # name, and each of the three was a name search until breaking the
+        # rule it guards left it green.
+        flat_moved = " ".join(moved.split())
+
+        # **THE WHOLE ASSIGNMENT, NOT THE ENUMERATOR.**
+        # `ECataclysmDungeonSubType::Siege` is named again a few lines down,
+        # in the loop that counts the Sieges standing on the map, so a search
+        # for it alone passes against a function that has stopped working out
+        # whether the MOVER carries one. Proved: replacing the right-hand side
+        # with `false` left the old assertion green, and a `bCarriesSiege`
+        # that is always false makes the rule in `PickRelocation`
+        # unreachable -- which is the state issue #1324 slice 2 found in
+        # `UCataclysmEmpireMap::Retake`.
+        assert ("const bool bCarriesSiege = Dungeon->SubType "
+                "== ECataclysmDungeonSubType::Siege;" in flat_moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer tells "
+            "PickRelocation whether the moving dungeon carries a Siege, so the "
+            "rule in PickRelocation can never fire. A rule that is right and "
+            "unreachable is what issue #1324 slice 2 found in "
+            "UCataclysmEmpireMap::Retake")
+
+        # **AND THE WHOLE ARGUMENT LIST.** A bare "SiegesStanding" search
+        # passes against a call that declares the array, fills it, and then
+        # hands `PickRelocation` an empty one -- which is the "caller did not
+        # say" convention and refuses nothing. Proved: replacing the argument
+        # with `TArray<int32>()` left the old assertion green.
+
+        assert ("*Map, *From, Stream, bCarriesSiege, SiegesStanding);"
+                in flat_moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer hands "
+            "PickRelocation the Sieges standing on the map. It treats an "
+            "empty array as \"the caller did not say\" and refuses nothing, "
+            "so the check would silently do nothing")
 
     def test_neither_half_carries_the_new_hosts_tier_with_the_dungeon(self):
         """**A RELOCATED DUNGEON KEEPS THE TIER ITS DEPTH WAS ROLLED FROM.**

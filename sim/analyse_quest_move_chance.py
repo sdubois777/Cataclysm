@@ -9,12 +9,24 @@ timer in five. Asked whether that was the intent, the project owner ruled on
 stay even when it could move.
 
 **THE OWNER NAMED NO NUMBER AND `CLAUDE.md` FORBIDS INVENTING ONE.** So this
-file is a dose-response curve and a recommendation, and NOT a shipped constant.
-Nothing here writes to `cataclysm_sim/config.py`; there is no move-chance field
-in the model to write to, deliberately. The chance is applied by
-`_ChanceSimulation` below, which overrides one branch of `Simulation._resolve`
-for the length of one batch. This follows `analyse_siege_dose.py`, which is the
-shape that worked for issue #1349.
+file was written as a dose-response curve and a recommendation, and NOT as a
+shipped constant. The chance is applied by `_ChanceSimulation` below, which
+overrides one branch of `Simulation._resolve` for the length of one batch. This
+follows `analyse_siege_dose.py`, which is the shape that worked for issue #1349.
+
+**THE OWNER HAS SINCE ANSWERED, VERBATIM "0.5", AND IT IS BUILT.** The constant
+is `config.quest_move_chance` and the game's copy is
+`UCataclysmSurgeScheduler::QuestMoveChance`. **This paragraph is the only thing
+that changed here.** The file still sweeps a chance of its own through
+`_ChanceSimulation` rather than reading the field, so a later dose sweep does not
+have to write to the configuration to run -- and so the rows below still describe
+the run that produced them. Two sentences saying the model has no move-chance
+field, which it now does, were removed.
+
+**DO NOT RE-DERIVE THIS CURVE TO JUSTIFY 0.5.** It is recorded on issue #1324 and
+in `docs/DECISIONS.md`. Every response variable was flat, so the number came from
+the ruling and not from the balance; a fresh run would produce a different flat
+ladder and settle nothing.
 
 WHAT MOVES WHEN THE CHANCE MOVES, AND WHY IT IS NOT OBVIOUS. A Quest dungeon is
 the win condition: clearing `quest_objectives_required` of them opens the earned
@@ -42,7 +54,10 @@ THE THREE RESPONSE VARIABLES, IN THE ORDER THE OWNER WILL READ THEM.
 it is the share of the quest timers that HAD somewhere to go which took it, so it
 must read 0 at chance 0.0 and 100 at chance 1.0 whatever else the campaign did.
 `moved%` is the same count over every timer, which is smaller because about one
-timer in five has nowhere adjacent to go however the coin lands.
+timer in FOUR has nowhere adjacent to go however the coin lands. **This said
+one in five and disagreed with the table below it**, whose `couldGo%` column
+reads 73.7% to 75.8% -- a quarter left over, not a fifth. One in five is what
+slice 4 measured at the model's defaults, which is a different campaign.
 
 **EVERY DOSE DRAWS THE SAME NUMBER OF RANDOM NUMBERS PER QUEST TIMER.** The
 target is chosen and the coin is flipped whether or not the dungeon then moves,
@@ -50,12 +65,27 @@ so two doses run the same campaign up to the first quest timer whose OUTCOME
 differs, rather than diverging at the first one that fires. Doing it the other
 way round -- flip, and only draw a target if the flip passed -- would put the
 streams out of step immediately and turn part of every difference below into
-noise from a different random walk. That is the trap
-`sim/tests/test_quest_move_chance_curves.py` checks for.
+noise from a different random walk.
 
-**THE 1.0 ROW IS THE SHIPPED BEHAVIOUR AND IS MEASURED THROUGH THE SAME
-OVERRIDE.** It is not read off `development` or off any earlier report, so the
-baseline and the doses differ only in the dose. Figures measured before slice 4
+**AND THAT IS THE ORDER THE SHIPPED CODE TAKES TOO**, which was not true when
+this file was written and is why the rows below describe what was built.
+`Simulation._resolve` draws the target and then flips, and
+`UCataclysmEmpireRun::RelocateQuestDungeon` calls `PickRelocation` and then
+flips. `tools/tests/test_surge_port.py::TestWhatAQuestDungeonIs::
+test_both_draw_the_target_before_they_flip_the_coin` is the guard on both.
+
+**THERE IS NO `sim/tests/test_quest_move_chance_curves.py` AND THERE NEVER WAS.**
+This docstring named one twice, as the thing that checked the draw order and the
+thing that checked this class against `Simulation._resolve` at chance 1.0. Both
+references were false; the order is guarded by the port test named above, and
+nothing guards the duplication below, which is stated at `_ChanceSimulation`
+rather than papered over.
+
+**THE 1.0 ROW WAS THE SHIPPED BEHAVIOUR WHEN THIS RAN, AND IS NO LONGER.** The
+owner has since chosen 0.5, so the shipped setting is the 0.50 row; 1.0 is the
+baseline this was measured against rather than a description of the game. Every
+row is measured through the same override, not read off `development` or off
+any earlier report, so the baseline and the doses differ only in the dose. Figures measured before slice 4
 are not comparable to any row here at all: relocation to an adjacent city
 changed which cities a Quest dungeon threatens, so the whole random stream
 diverges from the first quest timer onward. Issue #1358 tracks that.
@@ -222,8 +252,17 @@ class _ChanceSimulation(Simulation):
     have to undo a move already made, and a dungeon whose `city_id` has been
     written and reverted is not the same as one that never moved -- the draw
     would already have been taken from a list computed after the fact.
-    `sim/tests/test_quest_move_chance_curves.py` asserts that this branch and
-    the real one agree at chance 1.0, so the duplication cannot drift unnoticed.
+
+    **NOTHING GUARDS THE DUPLICATION AND THIS DOCSTRING USED TO CLAIM SOMETHING
+    DID.** It named `sim/tests/test_quest_move_chance_curves.py` as asserting
+    that this branch and the real one agree at chance 1.0. **That file does not
+    exist and never has.** The divergence to watch for is real: `_resolve` now
+    also refuses a besieged destination to a dungeon carrying a Siege -- the
+    owner's ruling of 2026-09-06, "Check the limit on arrival too", issue #1371
+    -- and the branch below does not. It does not affect any row above, which
+    were measured before that rule existed, and a future sweep through this class
+    would be measuring a slightly different game. Issue #1371's own measurement
+    says how much: 2 Siege-carrying quest moves in 40 campaigns.
     """
 
     def __init__(self, cfg: TuningConfig, seed: int = 0,

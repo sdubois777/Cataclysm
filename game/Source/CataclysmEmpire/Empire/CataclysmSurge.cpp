@@ -722,9 +722,12 @@ TArray<int32> UCataclysmSurgeScheduler::AdjacentCities(
 	return Neighbours;
 }
 
-int32 UCataclysmSurgeScheduler::PickRelocation(const UCataclysmEmpireMap& Map,
-											   const FCataclysmCity& From,
-											   FRandomStream& Stream)
+int32 UCataclysmSurgeScheduler::PickRelocation(
+	const UCataclysmEmpireMap& Map,
+	const FCataclysmCity& From,
+	FRandomStream& Stream,
+	bool bCarriesSiege,
+	const TArray<int32>& SiegesPerCityNow)
 {
 	TArray<int32> Targets;
 
@@ -743,20 +746,54 @@ int32 UCataclysmSurgeScheduler::PickRelocation(const UCataclysmEmpireMap& Map,
 		// for both, so a Quest dungeon can only move somewhere a surge could
 		// have landed one -- which also means it never moves onto a fallen city
 		// and lands on top of the Fallen City dungeon standing there.
-		if (Map.IsExposed(CityId))
+		if (!Map.IsExposed(CityId))
 		{
-			Targets.Add(CityId);
+			continue;
 		}
+
+		// **AND A CITY THAT ALREADY HAS A SIEGE IS NOT A TARGET FOR A DUNGEON
+		// CARRYING ONE.** "Max 1 per city" -- the design's Siege row -- was
+		// enforced at spawn by `RollSubType` and by nothing here, so a Quest
+		// dungeon that had rolled Siege could walk onto a besieged city and the
+		// city would take the daily bite twice. The project owner ruled on
+		// 2026-09-06, verbatim "Check the limit on arrival too". Issue #1371.
+		//
+		// THE TEST IS BEFORE THE DRAW AND NOT AFTER IT, so the remaining
+		// neighbours keep their full share of the draw. Refusing afterwards
+		// would either cost a second draw or cancel a move the owner said
+		// should be redirected.
+		//
+		// AN EMPTY ARRAY MEANS THE CALLER DID NOT SAY, the same convention
+		// `RollWave` uses for the same count, so a test rolling against a bare
+		// map is not silently given a rule it did not ask for.
+		if (bCarriesSiege
+			&& SiegesPerCityNow.IsValidIndex(CityId)
+			&& SiegesPerCityNow[CityId] >= SiegesPerCity)
+		{
+			continue;
+		}
+
+		Targets.Add(CityId);
 	}
 
 	if (Targets.Num() == 0)
 	{
-		// NOWHERE ADJACENT TO GO, SO IT STAYS. Not a failure: the design says a
-		// Quest dungeon "MAY move", and a dungeon whose neighbours are all
-		// sealed is where that "may" comes from. No draw is taken, which is
+		// NOWHERE ADJACENT TO GO, SO IT STAYS. Not a failure: a dungeon whose
+		// neighbours are all sealed, fallen, the Pillar, or -- if it carries a
+		// Siege -- already besieged, is hemmed in. No draw is taken, which is
 		// what `Simulation._resolve` does -- its `self.rng.choice` sits behind
 		// `if targets` -- and taking one here would put the two streams out of
 		// step for the rest of the run.
+		//
+		// **THAT IS ONE OF THE TWO REASONS A QUEST DUNGEON STAYS AND THIS
+		// COMMENT USED TO SAY IT WAS THE WHOLE OF THE DESIGN'S "MAY".** The
+		// other is the coin, `QuestMoveChance`, flipped by
+		// `UCataclysmEmpireRun::RelocateQuestDungeon` after this answers. The
+		// owner ruled it on 2026-09-06, verbatim "A chance each time".
+		//
+		// THE COIN IS NOT DRAWN HERE, AND KEEPING IT OUT IS DELIBERATE. This
+		// answering `INDEX_NONE` means the map refused, and a caller -- or a
+		// test -- can hold it to that. See the header.
 		return INDEX_NONE;
 	}
 

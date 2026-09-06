@@ -567,6 +567,41 @@ class TuningConfig:
     # detonating (GDD VIII: "does not resolve -- refreshes and may move").
     quest_relocates: bool = True
 
+    #: The chance a Quest dungeon with somewhere adjacent to go actually goes.
+    #:
+    #: **THE DESIGN'S "MAY" IS A DIE ROLL AND NOT ONLY THE MAP.** Slice 4 of
+    #: issue #1324 read "may move" as satisfied by adjacency: the dungeon moved
+    #: whenever an exposed neighbour existed and stayed only when hemmed in. The
+    #: project owner ruled otherwise on 2026-09-06, verbatim "A chance each
+    #: time", and then chose the number, verbatim: "0.5".
+    #:
+    #: **BALANCE DID NOT CHOOSE IT AND NOTHING HERE SHOULD BE READ AS IF IT
+    #: HAD.** `sim/analyse_quest_move_chance.py` measured 0, 0.25, 0.5, 0.75 and
+    #: 1.0 over 10,000 campaigns in two disjoint seed blocks and every response
+    #: variable was flat: the whole ladder spans 2.4 points of the earned win
+    #: route in one block and 1.7 in the other, against a 2.7-point gap between
+    #: the two blocks measuring the same thing. Paired seed by seed the largest
+    #: split is z = 1.74, p = 0.08. The number came from the ruling. Do not
+    #: re-derive the curve to justify it; issue #1324 records it.
+    #:
+    #: **HALF THE COIN IS NOT HALF THE TIMERS.** About a quarter of quest timers
+    #: fire with nowhere adjacent to go whatever the coin says, so a Quest
+    #: dungeon actually moves on roughly 38% of its timers rather than 50%.
+    #: `docs/Cataclysm_GDD_v2.md` section VIII states both numbers for exactly
+    #: that reason, with the conditions and the sample.
+    #:
+    #: **THAT FIGURE WAS 37% WHEN THE CHANCE WAS RULED AND THE GAME HAS SINCE
+    #: CHANGED.** Tying the active Cataclysm count to the difficulty tier and
+    #: opening the Cataclysm dungeon at half of them both shorten a campaign.
+    #: Re-measured on the shipped code over four disjoint blocks of 1,000
+    #: campaigns at the curve's own settings: 37.6% to 38.7% by block, 38.2%
+    #: overall. The coin did not move -- take-up over the timers that had a
+    #: choice is 49.8%.
+    #:
+    #: `UCataclysmSurgeScheduler::QuestMoveChance` is the game's copy and
+    #: `tools/tests/test_surge_port.py` fails if the two drift.
+    quest_move_chance: float = 0.5
+
     # The Last Stand. When a Sanctuary falls the Cataclysm can reach the Pillar
     # and comes to you: a stronger Cataclysm dungeon that absorbs every dungeon
     # still standing on the map as extra floors. There is no escaping it --
