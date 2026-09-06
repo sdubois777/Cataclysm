@@ -26,6 +26,15 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	Dungeons.Reset();
 	NextDungeonId = 0;
 
+	// A SECOND `Begin` IS A FRESH RUN, so what the last one achieved goes with
+	// it. Leaving these standing would carry one campaign's quest objectives
+	// into the next, and the win condition slice 6 builds reads them. Issue
+	// #1324 slice 5.
+	DungeonsCleared = 0;
+	BasicDungeonsCleared = 0;
+	QuestObjectives = 0;
+	DungeonsDetonated = 0;
+
 	Stream.Initialize(InSeed);
 }
 
@@ -266,6 +275,19 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	const float Scale = Dungeon->BiteScale();
 	const float Defence = Dungeon->DefenceDamage * Scale;
 	const float Population = Dungeon->PopulationDamage * Scale;
+
+	// THE EMPIRE IS ABOUT TO PAY, SO THIS IS WHERE IT IS COUNTED. Every return
+	// above this line leaves the city untouched -- a kind that does not
+	// detonate, or a host that has already fallen -- so a tally raised at the
+	// top of this function would count timers rather than damage, which is what
+	// `FCataclysmDayReport::Resolved` already gives a caller and the reason
+	// nothing could answer how often the empire was hurt. Issue #1324 slice 5.
+	//
+	// THE MODEL COUNTS THIS DIFFERENTLY AND DELIBERATELY IS NOT COPIED.
+	// `Simulation._resolve` raises `self.resolved` above its own equivalent
+	// guard, so a Fallen City dungeon's timer counts there; measured at 15 of
+	// 4,051 over thirty campaigns. Issue #1373.
+	++DungeonsDetonated;
 
 	// COPIED OUT BEFORE THE BITE. `Damage` can lead to `CityFell`, which removes
 	// dungeons from `Dungeons`, and `Dungeon` points into that array.
@@ -634,12 +656,48 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// is nothing left to ask.
 	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
 	const int32 CityId = Dungeon ? Dungeon->CityId : INDEX_NONE;
-	const bool bWasFallenCity =
-		Dungeon != nullptr && Dungeon->Type == ECataclysmDungeonType::FallenCity;
+	const ECataclysmDungeonType Kind = Dungeon != nullptr
+		? Dungeon->Type : ECataclysmDungeonType::Basic;
 
 	if (!RemoveDungeon(DungeonId))
 	{
+		// NOTHING WAS CLEARED, SO NOTHING IS COUNTED. `Kind` above is a
+		// placeholder for a dungeon that was not there, and this is the branch
+		// that discards it: everything below runs only for a dungeon that
+		// really did come off the map.
 		return false;
+	}
+
+	const bool bWasFallenCity = Kind == ECataclysmDungeonType::FallenCity;
+
+	// THE RUN REMEMBERS WHAT THE PLAYER BEAT. Issue #1324 slice 5.
+	//
+	// HERE AND NOT IN `RemoveDungeon`, which is the whole point of the two being
+	// separate functions. A city that falls absorbs the dungeons standing on it
+	// through `RemoveDungeon`, and nobody walked those -- counting them would
+	// pay a player for losing a city and, for a Quest dungeon, would hand them
+	// an objective for watching one be destroyed.
+	++DungeonsCleared;
+
+	// ORDINARY DUNGEONS ONLY, WHICH IS A DIFFERENT NUMBER AND NOT A SUBSET
+	// KEPT FOR CONVENIENCE. `docs/Cataclysm_GDD_v2.md` section VIII: "Every
+	// **ordinary** dungeon defeated adds one floor to the Cataclysm boss
+	// dungeon. Quest dungeons and retaken Dungeon Cities do not". So the boss's
+	// depth reads this and never `DungeonsCleared`, or pursuing the win
+	// condition would make the final fight harder. Issue #1315 is the growth.
+	if (Kind == ECataclysmDungeonType::Basic)
+	{
+		++BasicDungeonsCleared;
+	}
+
+	// ONE CLEARED QUEST DUNGEON IS ONE OBJECTIVE. The project owner ruled it on
+	// 2026-09-06, verbatim "Yes -- one dungeon, one objective", and
+	// `docs/Cataclysm_GDD_v2.md` section XI states it. HOW MANY ARE NEEDED IS
+	// NOT ASKED HERE and cannot be: the count is per Cataclysm and this module
+	// has no notion of which one is running. Issues #1357 and #1324 slice 6.
+	if (Kind == ECataclysmDungeonType::Quest)
+	{
+		++QuestObjectives;
 	}
 
 	// BEATING A FALLEN CITY IS HOW A CITY COMES BACK. `docs/Cataclysm_GDD_v2.md`
@@ -946,6 +1004,21 @@ FString UCataclysmEmpireRun::Describe() const
 		Map->DistanceToDefeat(), Surges->DaysUntilNextSurge(Clock->Day),
 		Surges->DungeonsInNextSurge()));
 
+	// WHAT THE PLAYER HAS DONE, WHICH NOTHING ELSE SAID. Every line above this
+	// one describes what is being done TO the empire; a person reading a run had
+	// no way to see what they had achieved in it. Issue #1324 slice 5.
+	//
+	// THE QUEST OBJECTIVES ARE NAMED SEPARATELY BECAUSE THEY ARE THE ONLY ONE OF
+	// THE THREE THAT LEADS ANYWHERE. HOW MANY ARE NEEDED IS NOT SAID, and that
+	// is honest rather than lazy: the requirement is per Cataclysm and this
+	// module does not know which one is running. Printing "3 of 8" would be
+	// inventing a denominator. Issue #1357.
+	Lines.Add(FString::Printf(
+		TEXT("%d dungeons cleared, %d of them ordinary. %d quest objectives "
+			 "earned. %d resolves have cost a city."),
+		DungeonsCleared, BasicDungeonsCleared, QuestObjectives,
+		DungeonsDetonated));
+
 	if (Map->IsPillarExposed())
 	{
 		Lines.Add(TEXT("A Sanctuary has fallen. The Cataclysm can reach the "
@@ -963,20 +1036,46 @@ FString UCataclysmEmpireRun::Describe() const
 		{
 			const FCataclysmCity* City = Map->Find(Dungeon.CityId);
 
-			// THE SUB-TYPE IS SAID OUT LOUD BECAUSE NOTHING ELSE SAYS IT. A
-			// Siege takes a share of its host every day and a Cow Level costs
-			// twice the days to walk, and until this line a person reading the
-			// run could not tell which dungeon was which. An ordinary dungeon
-			// adds nothing here, which is most of them.
+			// THE KIND AND THE SUB-TYPE ARE SAID OUT LOUD BECAUSE NOTHING ELSE
+			// SAYS THEM. A Siege takes a share of its host every day and a Cow
+			// Level costs twice the days to walk, and until this line a person
+			// reading the run could not tell which dungeon was which.
+			//
+			// THE KIND JOINED IT FOR THE OBJECTIVE COUNT. A Quest dungeon is
+			// the only standing dungeon that earns an objective, and the line
+			// above says how many have been earned; without this a reader could
+			// see the total and not see which dungeon on the board would add to
+			// it. Issue #1324 slice 5.
+			//
+			// AN ORDINARY DUNGEON WITH NO SUB-TYPE ADDS NOTHING HERE, which is
+			// most of them: `KindName` answers an empty string for `Basic` and
+			// `SubTypeName` one for `None`, for the same reason.
+			TArray<FString> Marks;
+
+			const FString Kind =
+				UCataclysmSurgeScheduler::KindName(Dungeon.Type);
+			if (!Kind.IsEmpty())
+			{
+				Marks.Add(Kind);
+			}
+
 			const FString SubType =
 				UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
+			if (!SubType.IsEmpty())
+			{
+				Marks.Add(SubType);
+			}
+
+			const FString Marked = Marks.IsEmpty()
+				? FString()
+				: FString::Printf(TEXT(" (%s)"),
+								  *FString::Join(Marks, TEXT(", ")));
 
 			Lines.Add(FString::Printf(
 				TEXT("  dungeon %d%s on %s: %d floors, %.1f days until it "
 					 "resolves"),
 				Dungeon.DungeonId,
-				SubType.IsEmpty() ? TEXT("")
-								  : *FString::Printf(TEXT(" (%s)"), *SubType),
+				*Marked,
 				City ? *City->Name : TEXT("nowhere"),
 				Dungeon.Floors,
 				Clock->DaysUntilResolveFor(Dungeon.DungeonId)));

@@ -7,6 +7,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmEmpireMapLayout.generated.h"
 
+class UCataclysmEmpireRun;
+
 /**
  * How a city should read at a glance.
  *
@@ -195,4 +197,32 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString CityLabel(const UCataclysmEmpireMap* Map, int32 CityId);
+
+	/**
+	 * What the PLAYER has done to the map: dungeons beaten and objectives earned.
+	 *
+	 * "4 dungeons cleared, 1 quest objective". Everything else the empire screen
+	 * says is what is being done TO the empire -- the day, the cities lost, the
+	 * dungeons standing, the next surge -- and until this there was nowhere on
+	 * the screen a player could see what they had achieved. Issue #1324 slice 5.
+	 *
+	 * A FUNCTION HERE RATHER THAN A `Printf` INSIDE THE WIDGET, which is the
+	 * split this whole class exists for: the automation tests run with
+	 * `-nullrhi` and a headless widget's `BindWidget` labels are all null, so a
+	 * string built inside `WriteStatus` cannot be read back by any test. This
+	 * takes a run and answers a string, so every case below is covered.
+	 *
+	 * **HOW MANY OBJECTIVES ARE NEEDED IS NOT SHOWN, AND THAT IS DELIBERATE.**
+	 * The requirement is stated per Cataclysm in `docs/Cataclysm_GDD_v2.md`
+	 * section XI -- 10, 5, 10, 5, 5, 10, 8, 5 -- and the empire layer has no
+	 * notion of which Cataclysm is running, so "1 of 8" would be a denominator
+	 * this build invented. Issue #1357 is what has to land before a fraction can
+	 * be honest.
+	 *
+	 * @param Run the run to describe. Null, or one that has not begun, answers
+	 *            an empty string rather than a line of zeroes, so a screen with
+	 *            no run shows nothing instead of a false achievement.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString ProgressLine(const UCataclysmEmpireRun* Run);
 };
