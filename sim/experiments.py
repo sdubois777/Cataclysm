@@ -67,19 +67,26 @@ PRESET_TIERS = (1, 8)
 #: the calibrated 5 at EVERY other value tried, at both tiers:
 #:
 #:      dungeons per surge          4     5     6     7
-#:      tier 1, no tree win%       43    43    20    13
-#:      tier 1, presets beating it  1     3     4     4
-#:      tier 8, presets beating it  1     1     2     3
+#:      tier 1, no tree win%       44    52    15    11
+#:      tier 1, presets beating it  0     1     4     4
+#:      tier 8, presets beating it  1     1     2     2
 #:
-#: WHY 7 AND NOT 6 OR 4. Three reasons, in order of weight.
+#: WHY 7 AND NOT 6 OR 4. Two reasons decide it and a third does not.
 #:
 #:   1. It is the far end of the range `exp_calibrate` sweeps, which is 5, 6, 7.
 #:      That mirrors PRESET_TIERS taking both ends of the tier range for the same
 #:      reason: a scaling problem shows at the ends.
-#:   2. It separates the presets most -- 4 beat the no-tree row at tier 1 and 3
-#:      at tier 8, against 3 and 1 at the calibrated 5.
-#:   3. It is the CHEAPEST of the three. A tier 8 block gets faster as the surge
-#:      grows, because campaigns end sooner: 112 seconds at 4 against 74 at 7.
+#:   2. It is the CHEAPEST of the three, 102 seconds against 106 for 6 and 136
+#:      for 4. A tier 8 block gets FASTER as the surge grows, because campaigns
+#:      end sooner: 108 seconds at 4 against 72 at 7.
+#:   3. NOT "it separates the presets most", which decided this once and does
+#:      not now. On the pool this section ran at when issue #1297 chose 7, that
+#:      value beat 6 at tier 8, three presets against two. Issue #1303 took the
+#:      Corrupted Stalker back out of the modifier pool, which re-rolls every
+#:      campaign, and 6 and 7 now TIE at both tiers -- four presets beat the
+#:      no-tree row at tier 1 and two at tier 8, for both. The value did not
+#:      change because the two reasons above were always pool-independent, but
+#:      the reasoning is written as it now stands rather than as it was.
 #:
 #: 4 IS THE `TuningConfig` DEFAULT AND WAS REJECTED. `exp_calibrate` never tries
 #: it, so it describes a world this report would not choose; it is also the
@@ -869,9 +876,9 @@ def print_inherited_settings(cfg: TuningConfig) -> None:
           "campaigns per")
     print("  cell, moving only that number:")
     print("    dungeons per surge            4     5     6     7")
-    print("    tier 1, no tree win%         43    43    20    13")
-    print("    tier 1, presets beating it    1     3     4     4")
-    print("    tier 8, presets beating it    1     1     2     3")
+    print("    tier 1, no tree win%         44    52    15    11")
+    print("    tier 1, presets beating it    0     1     4     4")
+    print("    tier 8, presets beating it    1     1     2     2")
     print("  The ordering differed from the calibrated 5 at every other value, "
           "at both tiers,")
     print("  so the section runs a second size rather than warning about it. "

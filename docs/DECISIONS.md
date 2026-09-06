@@ -95,9 +95,9 @@ Measured 2026-09-05 at 150 campaigns per cell, moving only that number:
 
 | dungeons per surge | 4 | 5 | 6 | 7 |
 | :-- | --: | --: | --: | --: |
-| tier 1, no tree win rate | 43% | 43% | 20% | 13% |
-| tier 1, presets beating no tree | 1 | 3 | 4 | 4 |
-| tier 8, presets beating no tree | 1 | 1 | 2 | 3 |
+| tier 1, no tree win rate | 44% | 52% | 15% | 11% |
+| tier 1, presets beating no tree | 0 | 1 | 4 | 4 |
+| tier 8, presets beating no tree | 1 | 1 | 2 | 2 |
 
 **The ordering differed from the calibrated 5 at every other value tried, at both
 tiers.** By comparison the two difficulty tiers give two orderings. So the axis
@@ -110,10 +110,19 @@ Not decided by the owner; chosen on the evidence and recorded here.
 1. **It is the far end of the range `exp_calibrate` sweeps**, which is 5, 6 and 7.
    That mirrors the reason `PRESET_TIERS` takes both ends of the tier range: a
    scaling problem shows at the ends.
-2. **It separates the presets most** — four beat the no-tree row at tier 1 and
-   three at tier 8, against three and one at the calibrated 5.
-3. **It is the cheapest of the three.** A tier 8 block gets faster as the surge
-   grows, because campaigns end sooner: 112 seconds at 4 against 74 at 7.
+2. **It is the cheapest of the three**, 102 seconds against 106 for 6 and 136 for
+   4. A tier 8 block gets *faster* as the surge grows, because campaigns end
+   sooner: 108 seconds at 4 against 72 at 7.
+
+**A third reason was given when this was decided and no longer holds.** It read
+"it separates the presets most — four beat the no-tree row at tier 1 and three at
+tier 8, against three and one at the calibrated 5". That was measured with the
+Corrupted Stalker in the modifier pool. Issue
+[#1303](https://github.com/sdubois777/Cataclysm/issues/1303) took it back out,
+which re-rolls every campaign, and **6 and 7 now tie at both tiers** — four
+presets beat the no-tree row at tier 1 and two at tier 8, for both. The value did
+not change, because the two reasons above were always pool-independent. The
+reasoning is corrected rather than left standing, so it says what is true now.
 
 **4 was rejected** although it is `TuningConfig`'s default: `exp_calibrate` never
 tries it, so it describes a world this report would not choose, it is the slowest
