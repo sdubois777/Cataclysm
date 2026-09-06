@@ -220,6 +220,17 @@ by `git add` with no error and no warning. Guarded by
   weights, rather than being rolled again or left plain: measured at none at all
   over twenty campaigns and 10,914 simulated days.
 
+  **A Cataclysm dungeon may not be a Cow Level, and that is the only pair of the
+  twenty-eight that is barred.** The owner ruled it on 2026-09-06 because a Cow
+  Level Last Stand was losing the doubled walk it is supposed to keep; the
+  situation was removed rather than the symptom repaired. `BarredSubTypeOn` is
+  the rule and `RollSubType` takes the barred sub-type off the line before its
+  single draw, so the weight is spread over the other six and no second draw is
+  taken. **Nothing may be inferred from it about any other pair** — the other 27
+  stay legal. Issue
+  [#1333](https://github.com/sdubois777/Cataclysm/issues/1333). Nothing builds a
+  Cataclysm dungeon yet, so the rule answers rather than fires.
+
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.
   A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a

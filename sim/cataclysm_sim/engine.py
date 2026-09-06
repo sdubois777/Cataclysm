@@ -338,12 +338,24 @@ class Simulation:
         tree's reduction does not apply. `run_days_for` applies the reduction,
         so a Cow Level must not go through it.
 
-        WHAT IT IS FOR is the callers that change a dungeon's depth AFTER
+        `_make_dungeon` CALLS IT FOR EVERY DUNGEON, and that is where the branch
+        below actually fires: an ordinary Cow Level really does walk in twice
+        the days.
+
+        THE OTHER CALLERS are the ones that change a dungeon's depth AFTER
         `_make_dungeon` built it and have to work the days out again.
-        `_open_last_stand` does the same thing with a bare `run_days_for` and
-        therefore drops the doubling for a Cow Level Last Stand; that is issue
-        [#1333] and is deliberately not fixed here, because the owner ruled the
-        last stand's construction is to be left alone.
+        `_maybe_open_cataclysm` and `_open_last_stand` both do that.
+
+        **BOTH OF THOSE BUILD A CATACLYSM DUNGEON, AND A CATACLYSM DUNGEON CAN
+        NO LONGER BE A COW LEVEL**, so neither of them can reach the branch
+        below -- which is a statement about those two callers and not about the
+        branch, which `_make_dungeon` keeps reaching. The
+        project owner ruled that on 2026-09-06 -- see `subtypes_allowed_on` --
+        and it is what closes issue [#1333], which was about a Cow Level Last
+        Stand losing its doubling to a bare `run_days_for`. They are called
+        through this helper anyway, so that a later dungeon kind which CAN be a
+        Cow Level and CAN change its depth gets the rule without anyone
+        remembering to add it.
         """
         if subtype == "Cow Level":
             return max(1, int(math.ceil(floors * self.cfg.days_per_floor)) * 2)
@@ -404,8 +416,31 @@ class Simulation:
         return sum(1 for d in self.dungeons.values()
                    if d.subtype == "Siege" and d.city_id == city_id)
 
+    def subtypes_allowed_on(self, dtype: DungeonType) -> list[str]:
+        """The sub-types this kind of dungeon may roll, in weight order.
+
+        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL, AND THAT IS THE ONLY
+        EXCLUSION THERE IS.** The project owner ruled on 2026-09-06, verbatim:
+        "Last stand is a cataclysm dungeon and should not be allowed to roll as
+        a cow level sub type." Asked how far to take it they answered "Only the
+        one you ruled", so the other 27 pairs stay legal and nothing here may be
+        read as a statement about any of them. Issue #1333;
+        `config.SUBTYPES_FORBIDDEN_ON` carries the rule and the reasoning.
+
+        WHY THE RULING WAS MADE THAT WAY RATHER THAN AS A REPAIR. A Cow Level's
+        time "is doubled and cannot be reduced", and `_open_last_stand` recomputed
+        the walk after adding its floor bonuses, dropping the doubling. Offered
+        the repair, the owner removed the situation instead. The Last Stand's
+        construction is therefore still left alone and the defect can no longer
+        occur, which is why `_open_last_stand` needs no special case.
+        """
+        forbidden = self.cfg.SUBTYPES_FORBIDDEN_ON.get(dtype, ())
+        return [n for n in self.cfg.SUBTYPE_SPAWN_WEIGHTS
+                if n not in forbidden]
+
     def _roll_subtype(self, dtype: DungeonType, city: City) -> str:
-        """One sub-type, respecting "Max 1 per city" for the Siege.
+        """One sub-type, respecting "Max 1 per city" for the Siege and the one
+        dungeon-type exclusion in `subtypes_allowed_on`.
 
         A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
         still gets a sub-type -- every dungeon has one since issue #1293. That
@@ -413,9 +448,22 @@ class Simulation:
         its share of dungeons ROLLED: 15 in 100 rolled, and about 12.7 in 100
         arriving, measured over twenty campaigns of the C++ implementation.
         Issue #1329.
+
+        **A SUB-TYPE THE DUNGEON'S KIND FORBIDS IS REDISTRIBUTED THE SAME WAY,
+        AND FOR THE SAME REASON**, but it is done by shortening the list the
+        draw is taken from rather than by refusing afterwards. Both give each
+        remaining sub-type a share in proportion to its weight; taking the
+        shorter list costs no second draw, which the C++ port
+        (`UCataclysmSurgeScheduler::RollSubType`) requires -- the wave rolls
+        every dungeon from one stream, so a roll whose cost varied would make
+        each dungeon depend on what the one before it drew.
+
+        THE SIEGE REFUSAL STILL COSTS A SECOND DRAW HERE and does not in the
+        game; that difference predates this and is issue #1329's territory, not
+        this one's.
         """
         w = self.cfg.SUBTYPE_SPAWN_WEIGHTS
-        names = list(w)
+        names = self.subtypes_allowed_on(dtype)
         picked = self.rng.choices(names, weights=[w[n] for n in names], k=1)[0]
 
         if picked != "Siege":
@@ -797,6 +845,37 @@ class Simulation:
         nothing else in it is responsible. **Whether a Siege should be that
         decisive is a design question and has not been put to the owner.**
 
+        **RE-MEASURED AGAIN ON 2026-09-06 FOR ISSUE #1333**, which barred a
+        Cataclysm dungeon from rolling Cow Level and so changed the draw this
+        fight is built from. 2,000 campaigns in two disjoint blocks of 1,000
+        seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days x5
+        (`surge_dungeon_count=5`, not the default of 4), resolve ratio 2.0,
+        escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
+        settings live**:
+
+          - Last Stand **reached in 96.3% of campaigns** and entered in 1,836 of
+            them.
+          - Won **1 in 26.4 of those reached** -- 73 wins in 1,926 -- and 1 in
+            25.2 of those entered.
+          - Averaging **407 floors**.
+          - The earned Cataclysm dungeon **opens in 8.1% of campaigns** and is
+            won 41.6% of the time.
+
+        **THE SAME 2,000 SEEDS WITH THE RULE UNDONE give 1 in 28.8 reached, 67
+        wins in 1,926, and the same 96.3% and 407 floors.** So barring one
+        sub-type of seven moved the win rate by 0.31 of a percentage point on a
+        base of 3.5, which is well inside the noise at this sample: six wins
+        against a standard deviation of about eight. **The honest reading is
+        that the ruling did not measurably change this fight**, not that it made
+        it easier. 115 of the 1,926 Last Stands were Cow Levels before the rule
+        and none after, so the comparison is between two different things and
+        the nil result is a result.
+
+        WHY 96.3% RATHER THAN THE 99.1% ABOVE. Both were measured the same way;
+        what changed between them is commit `b196cd9`, which draws the active
+        Cataclysms from the campaign seed and ties their count to the tier. A
+        seeded campaign does not replay a figure measured before it.
+
         WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
         run has already gone, and a player only ever reaches this by having lost
         cities: a flat bonus, five floors for each dungeon still standing when
@@ -821,7 +900,15 @@ class Simulation:
         d.floors += (cfg.last_stand_floor_bonus
                      + len(absorbed) * cfg.last_stand_floors_per_absorbed
                      + ruin * cfg.last_stand_floors_per_fallen_city)
-        d.run_days = self.run_days_for(d.floors)
+
+        # THROUGH `_walk_days` RATHER THAN `run_days_for`, WHICH CHANGES NOTHING
+        # TODAY AND IS THE POINT. A bare `run_days_for` knows nothing about
+        # sub-types, so it dropped a Cow Level Last Stand's doubled walk -- issue
+        # #1333. The owner removed the situation instead of repairing it: a
+        # Cataclysm dungeon can no longer roll Cow Level, so the two calls give
+        # the same answer for every dungeon that can reach this line. This one
+        # is the one that stays right if that ever changes.
+        d.run_days = self._walk_days(d.floors, d.subtype)
         d.power_scale *= 1.0 + ruin * cfg.last_stand_power_per_fallen_city
         d.is_last_stand = True
 

@@ -87,8 +87,22 @@ FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
 	}
 }
 
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::BarredSubTypeOn(
+	ECataclysmDungeonType Type)
+{
+	// ONE KIND IS CONSTRAINED AND THREE ARE NOT. The owner's ruling of
+	// 2026-09-06 names exactly one illegal pair of the 28 and says nothing about
+	// the other 27; see `CataclysmForbiddenSubType`. A second `case` here is a
+	// design decision and belongs to the owner.
+	switch (Type)
+	{
+	case ECataclysmDungeonType::Cataclysm:	return CataclysmForbiddenSubType;
+	default:								return ECataclysmDungeonSubType::None;
+	}
+}
+
 float UCataclysmSurgeScheduler::TotalSpawnWeight(
-	ECataclysmDungeonSubType Excluded)
+	ECataclysmDungeonSubType Excluded, ECataclysmDungeonSubType AlsoExcluded)
 {
 	// THE ENUM IN ITS DECLARED ORDER, STARTING PAST `None`. Every value from
 	// `Timed` up to and including `Sacrificial`, which is the last one. Walking
@@ -108,7 +122,7 @@ float UCataclysmSurgeScheduler::TotalSpawnWeight(
 		const ECataclysmDungeonSubType Candidate =
 			static_cast<ECataclysmDungeonSubType>(Value);
 
-		if (Candidate != Excluded)
+		if (Candidate != Excluded && Candidate != AlsoExcluded)
 		{
 			Total += SpawnWeightFor(Candidate);
 		}
@@ -118,7 +132,7 @@ float UCataclysmSurgeScheduler::TotalSpawnWeight(
 }
 
 float UCataclysmSurgeScheduler::SpawnWeightBelow(
-	ECataclysmDungeonSubType SubType)
+	ECataclysmDungeonSubType SubType, ECataclysmDungeonSubType Excluded)
 {
 	float Below = 0.0f;
 
@@ -126,14 +140,21 @@ float UCataclysmSurgeScheduler::SpawnWeightBelow(
 		 Value < static_cast<uint8>(SubType);
 		 ++Value)
 	{
-		Below += SpawnWeightFor(static_cast<ECataclysmDungeonSubType>(Value));
+		const ECataclysmDungeonSubType Candidate =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		if (Candidate != Excluded)
+		{
+			Below += SpawnWeightFor(Candidate);
+		}
 	}
 
 	return Below;
 }
 
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::SubTypeAtPoint(
-	float Point, ECataclysmDungeonSubType Excluded)
+	float Point, ECataclysmDungeonSubType Excluded,
+	ECataclysmDungeonSubType AlsoExcluded)
 {
 	const uint8 Last = static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
 	ECataclysmDungeonSubType Furthest = ECataclysmDungeonSubType::None;
@@ -144,7 +165,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::SubTypeAtPoint(
 		const ECataclysmDungeonSubType Candidate =
 			static_cast<ECataclysmDungeonSubType>(Value);
 
-		if (Candidate == Excluded)
+		if (Candidate == Excluded || Candidate == AlsoExcluded)
 		{
 			continue;
 		}
@@ -167,9 +188,26 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::SubTypeAtPoint(
 }
 
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
-	FRandomStream& Stream, bool bSiegeAllowed)
+	FRandomStream& Stream, bool bSiegeAllowed, ECataclysmDungeonType Type)
 {
-	const float Total = TotalSpawnWeight();
+	// **WHAT THIS KIND OF DUNGEON MAY NOT BE, TAKEN OFF THE LINE BEFORE THE
+	// DRAW RATHER THAN REFUSED AFTER IT.** A Cataclysm may not be a Cow Level;
+	// see `BarredSubTypeOn` and `CataclysmForbiddenSubType` for the ruling.
+	//
+	// WHY BEFORE. Shortening the line is what makes the barred sub-type's weight
+	// land on the other six in proportion to theirs -- the gap closes rather
+	// than staying open -- and it costs no second draw, which the promise above
+	// forbids. Refusing after the draw would need one, or a re-read like the
+	// Siege's; there is no need for either when the option was never on the line.
+	//
+	// AND IT LEAVES EVERY EXISTING CALLER'S STREAM EXACTLY WHERE IT WAS. Three
+	// of the four kinds bar nothing, so `Barred` is `None`, which is not in the
+	// distribution and excludes nothing. Nothing builds a Cataclysm dungeon in
+	// the game yet -- see `SpecFor` -- so this rule answers rather than fires,
+	// and it is here so that it cannot be forgotten when something does.
+	const ECataclysmDungeonSubType Barred = BarredSubTypeOn(Type);
+
+	const float Total = TotalSpawnWeight(Barred);
 
 	// EVERY WEIGHT ZERO WOULD DIVIDE BY NOTHING. It cannot happen with the
 	// constants in the header and it is one line to be safe about. A dungeon
@@ -183,7 +221,7 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 
 	// ONE DRAW, AND THE ONLY ONE. See the header.
 	const float Point = Stream.FRand() * Total;
-	const ECataclysmDungeonSubType Chosen = SubTypeAtPoint(Point);
+	const ECataclysmDungeonSubType Chosen = SubTypeAtPoint(Point, Barred);
 
 	if (bSiegeAllowed || Chosen != ECataclysmDungeonSubType::Siege)
 	{
@@ -203,8 +241,13 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 	// Each therefore takes a share of the refusals in proportion to its weight,
 	// which is what "spread it across the others" asks for -- and it costs no
 	// further randomness, because no further randomness is drawn.
+	//
+	// AND IT IS THE SHORTENED LINE THAT IS RE-READ, not the full one. `Point`
+	// was drawn against `TotalSpawnWeight(Barred)`, so Siege's band starts and
+	// the smaller line it maps onto both have to leave the same one out, or the
+	// re-read would land in the wrong band.
 	const float BandStart =
-		SpawnWeightBelow(ECataclysmDungeonSubType::Siege);
+		SpawnWeightBelow(ECataclysmDungeonSubType::Siege, Barred);
 	const float BandWidth =
 		SpawnWeightFor(ECataclysmDungeonSubType::Siege);
 
@@ -223,8 +266,8 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 									  1.0f - KINDA_SMALL_NUMBER);
 
 	return SubTypeAtPoint(
-		Across * TotalSpawnWeight(ECataclysmDungeonSubType::Siege),
-		ECataclysmDungeonSubType::Siege);
+		Across * TotalSpawnWeight(ECataclysmDungeonSubType::Siege, Barred),
+		ECataclysmDungeonSubType::Siege, Barred);
 }
 
 // ---------------------------------------------------------------------------
@@ -709,7 +752,13 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// AND WHAT IT DOES DIFFERENTLY. Rolled after the depth so the depth is drawn
 	// from the same place in the stream it always was, and before the walk cost
 	// because Cow Level decides what that cost is.
-	Dungeon.SubType = RollSubType(Stream, bSiegeAllowed);
+	//
+	// `Kind` AND NOT `Type`, because `Kind` is what this dungeon actually became
+	// and `Type` is what was asked for. Both are Basic or Quest here and neither
+	// bars anything, so this changes no draw today; it is passed so that the one
+	// rule `RollSubType` knows about -- a Cataclysm may not be a Cow Level -- is
+	// wired up rather than waiting to be remembered.
+	Dungeon.SubType = RollSubType(Stream, bSiegeAllowed, Kind);
 
 	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP
 	// IT IS. One floor costs one day to begin with, so this starts at the floor
