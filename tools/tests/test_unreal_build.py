@@ -667,3 +667,61 @@ def test_a_bad_restore_build_does_not_hide_the_failure_that_came_first(
         "the restore build's own problem was dropped entirely. It has to reach "
         "the caller too -- a repository left with a stale binary is the fault "
         "issue #139 is about.")
+
+
+# ---------------------------------------------------------------------------
+# A crashed run is not a guard verdict either way. Issue #1313.
+# ---------------------------------------------------------------------------
+
+def test_a_test_run_that_never_reported_a_count_is_a_crash() -> None:
+    """`performed` is None when the engine never printed "Automation Test Queue
+    Empty N tests performed", which it prints when the queue drains. A run that
+    died part way through never gets there."""
+    from unreal_build import TestOutcome
+    assert TestOutcome(None, (), ()).crashed
+    assert TestOutcome(0, (), ()).crashed, (
+        "a run that drained its queue without running anything is the same "
+        "state said differently")
+    assert not TestOutcome(22, ("a",) * 22, ()).crashed
+
+
+def test_a_crashed_run_is_not_reported_as_a_guard_that_did_not_fire() -> None:
+    """The defect issue #1313 records. A crashed run reports no failures, and no
+    failures used to mean the guard did not notice. It means nothing was
+    measured."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    built = BuildOutcome(0, "", "Succeeded", ("CataclysmProjectile.cpp",),
+                         False, 12)
+    result = CppGuardResult(build=built, tests=TestOutcome(None, (), ()))
+    assert result.crashed
+    assert not result.failed
+    assert "NO MEASUREMENT" in result.summary
+    assert "#1313" in result.summary
+
+
+def test_a_real_failure_is_still_a_guard_firing() -> None:
+    """The half that matters more: a fix that called every quiet run a crash
+    would report every working guard as worthless."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    built = BuildOutcome(0, "", "Succeeded", ("CataclysmProjectile.cpp",),
+                         False, 12)
+    tests = TestOutcome(22, ("a",) * 21, ("Cataclysm.Skills.ItHits",))
+    result = CppGuardResult(build=built, tests=tests)
+    assert not result.crashed
+    assert result.failed
+    assert "Cataclysm.Skills.ItHits" in result.summary
+
+
+def test_a_build_that_did_not_compile_is_reported_as_such_not_as_a_crash():
+    """The build failing is a different state again, and it was already
+    distinguished. This says the crash check did not swallow it."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    failed_build = BuildOutcome(1, "error C2065", None, (), False, 0)
+    result = CppGuardResult(build=failed_build,
+                            tests=TestOutcome(None, (), ()))
+    assert not result.crashed, (
+        "a build that never compiled is reported as a crashed test run, which "
+        "hides the actual reason")
+    assert result.failed
+    assert "the build itself failed" in result.summary
+

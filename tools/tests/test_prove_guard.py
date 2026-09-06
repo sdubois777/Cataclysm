@@ -314,3 +314,92 @@ def test_an_undisturbed_failing_run_is_still_a_guard_firing(tmp_path):
             "the issue #598 check has broken every proof in the project.")
     finally:
         target.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# A crashed run is not a guard that fired. Issue #1314.
+# ---------------------------------------------------------------------------
+
+#: What pytest actually prints when a break stops the module importing, under
+#: the `-q` that pyproject.toml sets. CAPTURED, NOT WRITTEN: the first version of
+#: the fix looked for "collected" and the session-starts banner, and this output
+#: contains NEITHER, so the crash fell through to the exit code and read exactly
+#: as it had before. Keeping the real text is what stops that recurring.
+COLLECTION_ERROR = (
+    "ImportError while importing test module.\n"
+    "sim\\cataclysm_sim\\modifiers.py:23: in <module>\n"
+    "    import nonexistent_module_xyz\n"
+    "E   ModuleNotFoundError: No module named 'nonexistent_module_xyz'\n"
+    "=========================== short test summary info "
+    "===========================\n"
+    "ERROR tools/tests/test_dungeon_modifier_port.py\n"
+    "!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection "
+    "!!!!!!!!!!!!!!!!!\n"
+)
+
+#: A run where a test really did fail, for the same shape of comparison.
+REAL_FAILURE = (
+    "collected 3 items\n"
+    "FAILED tools/tests/test_x.py::test_y - AssertionError: no\n"
+    "1 failed, 2 passed in 0.10s\n"
+)
+
+
+def test_a_crashed_run_is_not_counted_as_a_guard_firing() -> None:
+    """The defect issue #1314 records. A collection error exits 2 and runs no
+    test at all; `failed` used to say True and a proof recorded the guard as
+    proven."""
+    result = GuardResult(2, COLLECTION_ERROR, "")
+    assert result.crashed
+    assert not result.failed, (
+        "a run in which no test executed is being reported as a guard that "
+        "fired. Issue #1314.")
+
+
+def test_a_crashed_run_says_no_measurement_rather_than_nothing() -> None:
+    """A bare False would read as the guard not noticing, which is the mistake
+    in the other direction and is issue #1313."""
+    summary = GuardResult(2, COLLECTION_ERROR, "").summary
+    assert "NO MEASUREMENT" in summary
+    assert "#1314" in summary
+
+
+def test_a_real_failure_is_still_counted() -> None:
+    """The half that matters more. A fix that called every non-zero exit a crash
+    would report every working guard as worthless."""
+    result = GuardResult(1, REAL_FAILURE, "")
+    assert not result.crashed
+    assert result.failed
+    assert result.named_failures == ("tools/tests/test_x.py::test_y",)
+
+
+def test_a_failure_without_a_short_summary_is_still_counted() -> None:
+    """The count and the named lines are two independent signals, and either is
+    enough. pytest's short summary can be suppressed; requiring it would call a
+    real failure a crash."""
+    result = GuardResult(1, "collected 3 items\n1 failed, 2 passed in 0.1s\n", "")
+    assert not result.crashed
+    assert result.failed
+    assert result.named_failures == ()
+
+
+def test_a_command_that_is_not_a_test_runner_still_falls_back_to_its_exit_code():
+    """`break_and_run` takes ANY command. One that prints nothing has no
+    failures to report, so the exit code is all there is to go on -- and an
+    exit-code-only rule would have broken this."""
+    result = GuardResult(3, "", "")
+    assert not result.crashed
+    assert result.failed
+
+
+def test_named_failures_reads_the_tests_that_noticed() -> None:
+    """`assert result.named_failures` is the stronger proof: it says which tests
+    caught the break, where `failed` says only that the command exited
+    non-zero."""
+    result = GuardResult(
+        1,
+        "FAILED a.py::test_one - AssertionError: x\n"
+        "FAILED b.py::test_two - ValueError\n"
+        "2 failed in 0.2s\n", "")
+    assert result.named_failures == ("a.py::test_one", "b.py::test_two")
+
