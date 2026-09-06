@@ -2,6 +2,52 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The Cataclysm boss dungeon grows on dungeons DEFEATED, not on dungeons failed
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`. Applied. Issue
+[#1291](https://github.com/sdubois777/Cataclysm/issues/1291).
+
+### What was wrong
+
+The design document stated two opposite rules for how the final boss dungeon
+grows, about eighty lines apart:
+
+| where | what it said |
+|---|---|
+| the run structure section | "Every dungeon defeated adds one floor to the Cataclysm boss dungeon." |
+| the dungeon type table | "Grows with every dungeon the player **fails to clear**." |
+
+One says the boss grows when the player wins a dungeon; the other when they lose
+one.
+
+### The ruling
+
+The project owner, 2026-09-05, verbatim: **"Grows on dungeons defeated"**. The
+run structure section was right and the table row was wrong. The table row is
+corrected to say the dungeon grows by one floor with every dungeon the player
+defeats.
+
+### Why the difference matters beyond tidiness
+
+The rejected reading **compounds a bad run**. A dungeon that resolves undefeated
+already takes a bite out of a city; making the final boss deeper for the same
+event would mean a run that is going badly is handed a harder ending as well as a
+weaker empire. Growth on victory does the opposite: the boss scales with how much
+the player has done, which is the same shape the Last Stand already uses, where
+the fight grows with the dungeons standing on the map when it fires.
+
+### The simulation does not implement this rule at all
+
+Found while making the correction, and filed separately as
+[#1315](https://github.com/sdubois777/Cataclysm/issues/1315).
+`engine.Simulation._maybe_open_cataclysm` builds the boss from the 100 to 150
+floor range in `DUNGEON_SPECS` and never adds to it, so a campaign that clears
+thirty dungeons meets the same boss as one that clears five. The rule is not in
+the model in either form, so the contradiction above never reached a number.
+
+---
+
+
 ## 2026-09-05 — The dungeon modifier Weight column is a danger score, not a spawn frequency
 
 **Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`,
