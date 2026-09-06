@@ -1708,8 +1708,8 @@ bool FCataclysmEmpireRunRetakeTest::RunTest(const FString& Parameters)
  *
  * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not resolve --
  * refreshes and may move to adjacent city". So the timer running out is a real
- * event -- it appears in the day's report and it is what slice 4 will hang the
- * move on -- and the city must be untouched by it.
+ * event -- it appears in the day's report and it is what the move hangs on --
+ * and the city must be untouched by it.
  *
  * IT DRIVES REAL CAMPAIGNS RATHER THAN BUILDING A DUNGEON BY HAND, because the
  * thing that could go wrong is `UCataclysmEmpireRun::ResolveDungeon` biting on a
@@ -1866,16 +1866,29 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 						Timer->DaysUntilResolve, Timer->ResolveDays, 0.001f);
 				}
 
-				// AND IT IS STILL ON THE CITY IT WAS ON THIS MORNING.
-				// Relocation is slice 4 of issue #1324; until then the refresh
-				// leaves it where it stands. **This should fail when slice 4
-				// lands**, and be replaced rather than deleted.
-				TestEqual(FString::Printf(
-					TEXT("quest dungeon %d did not move when its timer ran "
-						 "out"), DungeonId),
-					Still->CityId, CityOf.FindRef(DungeonId));
+				// AND THE REPORT AGREES ABOUT WHETHER IT MOVED. Slice 4 of
+				// issue #1324 made it move, so this used to assert it had NOT
+				// -- with a note saying it should fail when the move landed,
+				// which it did. What replaces it is the weaker claim this test
+				// is entitled to make: `Relocated` and the dungeon's own city
+				// say the same thing. Where it may move to is
+				// `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`.
+				const bool bMoved =
+					Still->CityId != CityOf.FindRef(DungeonId);
 
-				const int32 CityId = Still->CityId;
+				TestEqual(FString::Printf(
+					TEXT("the report says quest dungeon %d moved exactly when "
+						 "it did"), DungeonId),
+					Report.Relocated.Contains(DungeonId), bMoved);
+
+				// THE CITY IT WAS ON THIS MORNING, AND NOT THE ONE IT IS ON
+				// NOW. What this test measures is that its host paid nothing
+				// for the timer running out, and after a move the host is the
+				// city it left. Reading the new one would compare a city the
+				// dungeon only just arrived at against a snapshot taken while
+				// it was somewhere else, which happens to be a fair comparison
+				// and is not the claim being made.
+				const int32 CityId = CityOf.FindRef(DungeonId);
 
 				if (CitiesWithABiter.Contains(CityId)
 					|| Report.Fallen.Contains(CityId))
@@ -1924,6 +1937,309 @@ bool FCataclysmEmpireRunQuestRefreshTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and their timers actually ran out"), TimersChecked > 0);
 	TestTrue(TEXT("and some did so on a day nothing else hurt the city"),
 			 CleanDaysChecked > 0);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Quest dungeons relocating -- issue #1324 slice 4
+// ---------------------------------------------------------------------------
+
+/**
+ * A Quest dungeon whose timer runs out picks up and moves to an adjacent city.
+ *
+ * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not resolve --
+ * refreshes and **may move to adjacent city**". The project owner ruled on
+ * 2026-09-06, verbatim "Adjacent, and fix the simulation", so adjacency is the
+ * rule and the simulation moving it anywhere on the map was the defect.
+ *
+ * WHY THIS DRIVES CAMPAIGNS RATHER THAN CALLING `PickRelocation`. That function
+ * is checked directly by
+ * `Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity`, over
+ * every city of three map states. What that test cannot see is whether anything
+ * CALLS it. `UCataclysmEmpireMap::Retake` was correct, complete and unreachable
+ * for a whole slice, and only a test that ran the day loop would have found it.
+ *
+ * WHAT IS MEASURED, PER MOVE. Where the dungeon stood at the start of the day
+ * is recorded before `AdvanceDay`, because a move is only visible against the
+ * position it moved from; the day's `Relocated` list is compared against what
+ * actually changed; and the destination is checked against the adjacency of the
+ * city it left, read off the map rather than recomputed here.
+ *
+ * **A DUNGEON THAT STAYED IS NOT A FAILURE AND THE COUNT IS REPORTED.** A Quest
+ * dungeon whose neighbours are all sealed or fallen has nowhere adjacent to go,
+ * which is where the design's "may" comes from. Both outcomes are asserted to
+ * have happened, because a run that only ever moved them would never exercise
+ * the empty case and a run that never moved one would prove nothing at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunQuestMovesTest,
+	"Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	constexpr int32 Campaigns = 20;
+	constexpr int32 MostDays = 600;
+
+	int32 TimersFired = 0;
+	int32 Moves = 0;
+	int32 StayedPut = 0;
+	int32 AlongTheRim = 0;
+	int32 AbsorbedByAFall = 0;
+	int32 MovedThenAbsorbed = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			// WHERE EVERY QUEST DUNGEON STOOD THIS MORNING. Read before the
+			// day, because the whole measurement is a comparison against it.
+			TMap<int32, int32> StoodOn;
+			for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.Type == ECataclysmDungeonType::Quest)
+				{
+					StoodOn.Add(Dungeon.DungeonId, Dungeon.CityId);
+				}
+			}
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+			++Advanced;
+
+			// NOTHING BUT A QUEST DUNGEON MAY BE IN `Relocated`, and this is
+			// the assertion that would catch a Fallen City drifting off the
+			// ruin it is standing on.
+			for (const int32 DungeonId : Report.Relocated)
+			{
+				TestTrue(FString::Printf(
+					TEXT("dungeon %d that moved was a quest dungeon this "
+						 "morning"), DungeonId),
+					StoodOn.Contains(DungeonId));
+
+				TestTrue(FString::Printf(
+					TEXT("dungeon %d moved on a day its timer ran out"),
+					DungeonId),
+					Report.Resolved.Contains(DungeonId));
+			}
+
+			for (const TPair<int32, int32>& Was : StoodOn)
+			{
+				const int32 DungeonId = Was.Key;
+				const int32 From = Was.Value;
+
+				if (!Report.Resolved.Contains(DungeonId))
+				{
+					// ITS TIMER DID NOT RUN OUT, so it had no reason to move
+					// and must not have. A quest dungeon that wandered on an
+					// ordinary day would be a different bug from any this test
+					// is named for, and it would otherwise go unseen.
+					const FCataclysmDungeon* Idle = Run->FindDungeon(DungeonId);
+
+					if (Idle != nullptr)
+					{
+						TestEqual(FString::Printf(
+							TEXT("quest dungeon %d stayed put on a day its "
+								 "timer did not fire"), DungeonId),
+							Idle->CityId, From);
+					}
+
+					continue;
+				}
+
+				++TimersFired;
+
+				const FCataclysmDungeon* Still = Run->FindDungeon(DungeonId);
+
+				if (Still == nullptr)
+				{
+					// A CITY FELL UNDERNEATH IT AND ABSORBED IT. Real
+					// behaviour rather than an exception carved out to make
+					// this pass -- the same case
+					// `AQuestDungeonRefreshesInsteadOfBitingItsCity` found and
+					// measured at 5 of 832 timers.
+					++AbsorbedByAFall;
+
+					TestTrue(FString::Printf(
+						TEXT("quest dungeon %d is gone, so it was absorbed by "
+							 "a fall"), DungeonId),
+						Report.Absorbed.Contains(DungeonId));
+
+					// **AND IT MAY HAVE MOVED FIRST, WHICH THE FIRST VERSION OF
+					// THIS TEST DENIED.** It asserted an absorbed dungeon was
+					// never in `Relocated` and failed on two of them, which is
+					// the test being wrong rather than the code: a day resolves
+					// its timers in order, so a quest dungeon can drift onto a
+					// city and then be absorbed when a LATER dungeon on that
+					// same city fells it the same day. `PickRelocation` refuses
+					// a city that has already fallen, so the destination was
+					// standing when it arrived.
+					//
+					// WHAT IS TRUE EITHER WAY: the city that took it was
+					// adjacent to where it stood this morning if it moved, and
+					// was that city itself if it did not. That is the claim
+					// worth making, and it still fails if a move ever crossed
+					// the map.
+					const FCataclysmCity* Left = Run->Map->Find(From);
+
+					if (Left == nullptr)
+					{
+						continue;
+					}
+
+					if (Report.Relocated.Contains(DungeonId))
+					{
+						++MovedThenAbsorbed;
+
+						bool bAdjacentCityFell = false;
+						for (const int32 Fell : Report.Fallen)
+						{
+							bAdjacentCityFell = bAdjacentCityFell
+								|| UCataclysmSurgeScheduler::AdjacentCities(
+									   *Left).Contains(Fell);
+						}
+
+						TestTrue(FString::Printf(
+							TEXT("quest dungeon %d moved off %s and the city "
+								 "that then absorbed it was adjacent to it"),
+							DungeonId, *Left->Name),
+							bAdjacentCityFell);
+					}
+					else
+					{
+						TestTrue(FString::Printf(
+							TEXT("quest dungeon %d did not move, so the city "
+								 "that absorbed it was %s, which fell"),
+							DungeonId, *Left->Name),
+							Report.Fallen.Contains(From));
+					}
+
+					continue;
+				}
+
+				if (Still->CityId == From)
+				{
+					++StayedPut;
+
+					TestFalse(FString::Printf(
+						TEXT("quest dungeon %d stayed and is not in the day's "
+							 "relocated list"), DungeonId),
+						Report.Relocated.Contains(DungeonId));
+
+					// AND IT STAYED BECAUSE IT HAD TO. Every neighbour was
+					// sealed, fallen or the Pillar. Without this the whole test
+					// would be satisfied by a `RelocateQuestDungeon` that never
+					// did anything.
+					const FCataclysmCity* Host = Run->Map->Find(From);
+
+					if (Host != nullptr)
+					{
+						for (const int32 Neighbour :
+							 UCataclysmSurgeScheduler::AdjacentCities(*Host))
+						{
+							TestFalse(FString::Printf(
+								TEXT("quest dungeon %d stayed on %s while its "
+									 "neighbour %d was open to it"),
+								DungeonId, *Host->Name, Neighbour),
+								Run->Map->IsExposed(Neighbour)
+									&& Neighbour != Run->Map->PillarId);
+						}
+					}
+
+					continue;
+				}
+
+				++Moves;
+
+				TestTrue(FString::Printf(
+					TEXT("quest dungeon %d appears in the day's relocated "
+						 "list"), DungeonId),
+					Report.Relocated.Contains(DungeonId));
+
+				const FCataclysmCity* Left = Run->Map->Find(From);
+
+				if (!TestNotNull(TEXT("the city it left is on the map"), Left))
+				{
+					continue;
+				}
+
+				// **THE RULE.** One counter-example is a failure; this is not a
+				// rate.
+				TestTrue(FString::Printf(
+					TEXT("quest dungeon %d moved from %s to a city adjacent to "
+						 "it"), DungeonId, *Left->Name),
+					UCataclysmSurgeScheduler::AdjacentCities(*Left)
+						.Contains(Still->CityId));
+
+				const FCataclysmCity* Arrived =
+					Run->Map->Find(Still->CityId);
+
+				if (Arrived != nullptr)
+				{
+					TestTrue(FString::Printf(
+						TEXT("and %s was exposed when it arrived"),
+						*Arrived->Name),
+						Run->Map->IsExposed(Arrived->CityId)
+							|| Arrived->bFallen);
+
+					// AND ITS TIER MOVED WITH IT, which is what
+					// `Simulation._resolve` does: `d.city_tier =
+					// new_city.tier`. A dungeon carrying the tier of a city it
+					// no longer stands on would make `BiteScale` read the wrong
+					// spec row.
+					TestEqual(FString::Printf(
+						TEXT("quest dungeon %d carries the tier of the city it "
+							 "moved to"), DungeonId),
+						static_cast<int32>(Still->CityTier),
+						static_cast<int32>(Arrived->Tier));
+
+					if (Left->Perimeter.Contains(Still->CityId))
+					{
+						++AlongTheRim;
+					}
+				}
+
+				TestNotEqual(FString::Printf(
+					TEXT("quest dungeon %d did not move onto the Pillar"),
+					DungeonId),
+					Still->CityId, Run->Map->PillarId);
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d had nowhere "
+			 "adjacent to go, %d of the moves were along the rim's perimeter, "
+			 "and %d were absorbed by a city falling underneath them, %d of "
+			 "those having moved onto it earlier the same day"),
+		Campaigns, TimersFired, Moves, StayedPut, AlongTheRim,
+		AbsorbedByAFall, MovedThenAbsorbed));
+
+	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
+	TestTrue(TEXT("quest dungeon timers actually ran out"), TimersFired > 0);
+	TestTrue(TEXT("and quest dungeons actually moved"), Moves > 0);
+
+	// BOTH OUTCOMES, and the second is the design's "MAY move". A run in which
+	// every quest dungeon always had somewhere to go would never exercise the
+	// empty case, which is exactly the state the old move-anywhere rule was in:
+	// some exposed city always existed.
+	TestTrue(TEXT("and some had nowhere adjacent to go and stayed"),
+			 StayedPut > 0);
+
+	// AND THE PERIMETER LINKS ARE ACTUALLY BEING USED. If this were zero the
+	// adjacency decision recorded in docs/DECISIONS.md would be doing nothing
+	// in play, and the whole argument for it would be untested.
+	TestTrue(TEXT("and some moves were along the rim's perimeter links"),
+			 AlongTheRim > 0);
 
 	return true;
 }

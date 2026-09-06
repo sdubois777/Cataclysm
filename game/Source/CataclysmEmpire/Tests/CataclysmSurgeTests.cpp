@@ -2860,4 +2860,202 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Where a Quest dungeon may move -- issue #1324 slice 4
+// ---------------------------------------------------------------------------
+
+/**
+ * `PickRelocation` answers an adjacent, exposed, non-Pillar city, or nothing.
+ *
+ * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not resolve --
+ * refreshes and may move to adjacent city". The project owner ruled on
+ * 2026-09-06, verbatim "Adjacent, and fix the simulation", so adjacency is the
+ * rule and the model's move-anywhere was the defect.
+ *
+ * IT ASKS EVERY CITY ON EVERY MAP STATE IT BUILDS, rather than one worked
+ * example. The rule is a filter and a filter is only as good as the cases it
+ * was asked about; a single Outpost with one open neighbour would be satisfied
+ * by a function that answered "the first city in the list".
+ *
+ * WHAT IT DOES NOT CHECK. That anything calls it. That is
+ * `Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity`, which drives real
+ * campaigns -- and it is a separate test because a rule that is right and
+ * unreachable is exactly the state `UCataclysmEmpireMap::Retake` was in before
+ * slice 2 found it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRelocationTargetTest,
+	"Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRelocationTargetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	FRandomStream Stream(7);
+
+	int32 Answered = 0;
+	int32 Refused = 0;
+
+	// THREE MAP STATES, AND THE SECOND AND THIRD ARE WHY THIS IS A LOOP. An
+	// intact map has only its rim exposed, so it can never exercise the inward
+	// links; felling cities is what opens them.
+	for (int32 Fell = 0; Fell <= 2; ++Fell)
+	{
+		UCataclysmEmpireMap* Map = MakeMap();
+
+		// FELL FROM THE RIM INWARD, which is the only order the lane rule
+		// allows: a Bulwark cannot fall while every Outpost shielding it
+		// stands, because nothing can reach it to hurt it.
+		for (int32 Ring = 3; Ring > 3 - Fell; --Ring)
+		{
+			for (FCataclysmCity& City : Map->Cities)
+			{
+				if (FMath::Abs(City.R) + FMath::Abs(City.C) == Ring)
+				{
+					City.bFallen = true;
+					City.Defence = 0.0f;
+				}
+			}
+		}
+
+		for (const FCataclysmCity& City : Map->Cities)
+		{
+			const int32 Target =
+				UCataclysmSurgeScheduler::PickRelocation(*Map, City, Stream);
+
+			if (Target == INDEX_NONE)
+			{
+				++Refused;
+
+				// AND IT REFUSED FOR THE RIGHT REASON. Nothing adjacent was
+				// available; the assertion is what stops a `PickRelocation`
+				// that gave up early from reading as correct.
+				for (const int32 Neighbour :
+					 UCataclysmSurgeScheduler::AdjacentCities(City))
+				{
+					TestFalse(FString::Printf(
+						TEXT("%s was told it had nowhere to go while its "
+							 "neighbour %d was exposed"), *City.Name,
+						Neighbour),
+						Map->IsExposed(Neighbour)
+							&& Neighbour != Map->PillarId);
+				}
+
+				continue;
+			}
+
+			++Answered;
+
+			TestTrue(FString::Printf(
+				TEXT("%s relocates to a city adjacent to it"), *City.Name),
+				UCataclysmSurgeScheduler::AdjacentCities(City)
+					.Contains(Target));
+
+			TestTrue(FString::Printf(
+				TEXT("%s relocates to an exposed city"), *City.Name),
+				Map->IsExposed(Target));
+
+			// NEVER THE PILLAR. A dungeon reaching the Pillar is the Last
+			// Stand, issue #43, and not a quest dungeon wandering onto it.
+			TestNotEqual(FString::Printf(
+				TEXT("%s does not relocate onto the Pillar"), *City.Name),
+				Target, Map->PillarId);
+
+			// AND NEVER ONTO ITSELF, which would make "moved" and "stayed"
+			// indistinguishable to every caller.
+			TestNotEqual(FString::Printf(
+				TEXT("%s does not relocate onto itself"), *City.Name),
+				Target, City.CityId);
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d cities were given a relocation target and %d had none"),
+		Answered, Refused));
+
+	// BOTH OUTCOMES HAVE TO HAVE HAPPENED. A run where every city was refused
+	// would pass every assertion above without ever testing the answer, and one
+	// where none was refused would never test the empty case -- which is the
+	// design's "MAY move".
+	TestTrue(TEXT("some cities had an adjacent exposed city to move to"),
+			 Answered > 0);
+	TestTrue(TEXT("and some had none, which is the design's \"may\" move"),
+			 Refused > 0);
+
+	return true;
+}
+
+/**
+ * A Quest dungeon on the rim can drift along the rim, and that is a decision.
+ *
+ * **THE DESIGN NEVER DEFINES ADJACENCY AND THIS MAP DEFINES IT TWICE.**
+ * `UCataclysmEmpireMap`'s class comment describes lanes as the orthogonal
+ * steps; `FCataclysmCity::Perimeter` describes the rim's curved edges as
+ * existing "for adjacency effects". Relocation counts both -- see
+ * `UCataclysmSurgeScheduler::AdjacentCities` and `docs/DECISIONS.md`.
+ *
+ * WHY IT NEEDS ITS OWN TEST. On an intact map a rim Outpost's only orthogonal
+ * neighbour is one ring in, and that city is sealed precisely because the
+ * Outpost is still standing. So without the perimeter links a Quest dungeon
+ * landing on the rim -- where every dungeon lands at the start of a run --
+ * could never move at all, and the test above would still pass: it would simply
+ * count more refusals. This is the case that separates the two readings.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeRimRelocationTest,
+	"Cataclysm.Surge.AQuestDungeonOnAnIntactRimDriftsAlongIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeRimRelocationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSurgeTest;
+
+	UCataclysmEmpireMap* Map = MakeMap();
+
+	FRandomStream Stream(11);
+
+	int32 RimCities = 0;
+	int32 Moved = 0;
+
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (FMath::Abs(City.R) + FMath::Abs(City.C) != 3)
+		{
+			continue;
+		}
+
+		++RimCities;
+
+		// AN INTACT MAP, so nothing but the rim is exposed. Anything this
+		// answers is a perimeter link by construction.
+		const int32 Target =
+			UCataclysmSurgeScheduler::PickRelocation(*Map, City, Stream);
+
+		if (Target == INDEX_NONE)
+		{
+			continue;
+		}
+
+		++Moved;
+
+		TestTrue(FString::Printf(
+			TEXT("%s drifts to a rim Outpost it is linked to along the "
+				 "perimeter"), *City.Name),
+			City.Perimeter.Contains(Target));
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d of %d rim Outposts could move on an intact map"),
+		Moved, RimCities));
+
+	TestEqual(TEXT("the map still has twelve rim Outposts"), RimCities, 12);
+
+	// EVERY ONE OF THEM, and the strong form is deliberate. Each rim Outpost
+	// has at least one perimeter link, so if any could not move the perimeter
+	// is not being read.
+	TestEqual(TEXT("every rim Outpost can move along the rim"),
+			  Moved, RimCities);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

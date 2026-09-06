@@ -693,6 +693,65 @@ ECataclysmDungeonType UCataclysmSurgeScheduler::RollKind(FRandomStream& Stream)
 		: ECataclysmDungeonType::Basic;
 }
 
+TArray<int32> UCataclysmSurgeScheduler::AdjacentCities(
+	const FCataclysmCity& City)
+{
+	TArray<int32> Neighbours;
+	Neighbours.Reserve(City.Outward.Num() + City.Inward.Num()
+					   + City.Perimeter.Num());
+
+	Neighbours.Append(City.Outward);
+	Neighbours.Append(City.Inward);
+
+	// THE RIM'S CURVED EDGES, AND THEY ARE ONLY ON THE RIM. `Perimeter` is
+	// empty for every city inside it, so this costs nothing there and needs no
+	// test on the tier. See the header for why they are counted at all.
+	Neighbours.Append(City.Perimeter);
+
+	return Neighbours;
+}
+
+int32 UCataclysmSurgeScheduler::PickRelocation(const UCataclysmEmpireMap& Map,
+											   const FCataclysmCity& From,
+											   FRandomStream& Stream)
+{
+	TArray<int32> Targets;
+
+	for (const int32 CityId : AdjacentCities(From))
+	{
+		// THE PILLAR IS NEVER A TARGET. `ExposedCities` leaves it out of a
+		// surge's targets by default and the model's `exposed_cities` does the
+		// same; a dungeon reaching the Pillar is the Last Stand, issue #43, and
+		// not a quest dungeon wandering onto it.
+		if (CityId == Map.PillarId)
+		{
+			continue;
+		}
+
+		// AND A SEALED OR FALLEN ONE IS NOT EITHER. `IsExposed` answers false
+		// for both, so a Quest dungeon can only move somewhere a surge could
+		// have landed one -- which also means it never moves onto a fallen city
+		// and lands on top of the Fallen City dungeon standing there.
+		if (Map.IsExposed(CityId))
+		{
+			Targets.Add(CityId);
+		}
+	}
+
+	if (Targets.Num() == 0)
+	{
+		// NOWHERE ADJACENT TO GO, SO IT STAYS. Not a failure: the design says a
+		// Quest dungeon "MAY move", and a dungeon whose neighbours are all
+		// sealed is where that "may" comes from. No draw is taken, which is
+		// what `Simulation._resolve` does -- its `self.rng.choice` sits behind
+		// `if targets` -- and taking one here would put the two streams out of
+		// step for the rest of the run.
+		return INDEX_NONE;
+	}
+
+	return Targets[Stream.RandRange(0, Targets.Num() - 1)];
+}
+
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
 	FRandomStream& Stream, bool bSiegeAllowed, ECataclysmDungeonType Type) const

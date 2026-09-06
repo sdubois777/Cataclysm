@@ -54,11 +54,33 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 * slice 5 of that issue.
 	 *
 	 * A QUEST DUNGEON'S TIMER IS A RELOCATION CLOCK AND APPEARS HERE ON PURPOSE.
-	 * The design has it "refresh and may move to adjacent city"; the move is
-	 * slice 4 and this is the event it will hang on.
+	 * The design has it "refresh and may move to adjacent city", and this is the
+	 * event the move hangs on. `Relocated` below is which ones actually moved.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Resolved;
+
+	/**
+	 * The dungeons that moved to another city today.
+	 *
+	 * A SUBSET OF `Resolved` AND NEVER MORE THAN THAT. Only a Quest dungeon
+	 * moves, and only when its timer runs out; `docs/Cataclysm_GDD_v2.md`
+	 * section VIII says it "does not resolve -- refreshes and may move to
+	 * adjacent city". Issue #1324 slice 4.
+	 *
+	 * **IT IS SHORTER THAN THE QUEST DUNGEONS IN `Resolved`, AND THAT IS THE
+	 * RULE RATHER THAN A LOSS.** A Quest dungeon whose neighbours are all
+	 * sealed or fallen has nowhere adjacent to go and stays where it stands,
+	 * which is where the design's "MAY move" comes from. About one quest timer
+	 * in five fires with no target. See
+	 * `UCataclysmSurgeScheduler::PickRelocation`.
+	 *
+	 * WHERE EACH ONE WENT IS READ OFF THE DUNGEON. `FCataclysmDungeon::CityId`
+	 * is already the new city by the time this report is returned, so recording
+	 * the destination here would be a second copy of it that could disagree.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Relocated;
 
 	/**
 	 * The cities a Siege took its daily share of today.
@@ -82,9 +104,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 *
 	 * THEY ARE ABSORBED RATHER THAN CLEARED. In the design they become part of
 	 * the Dungeon City the fallen city turns into, and its floor count is how
-	 * many were standing there when it fell. Nothing builds that Dungeon City
-	 * yet, so today they are simply removed and the count is recorded here for
-	 * whoever does. Issue #41.
+	 * many were standing there when it fell. `CityFell` builds that dungeon
+	 * through `AddFallenCityDungeon`, since issue #1324 slice 2, so these are
+	 * removed from the map and counted into the one that replaces them. This
+	 * comment said nothing built it and that stopped being true at `c7e11f7`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Absorbed;
@@ -482,12 +505,40 @@ private:
 	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
 	 *
 	 * NOT EVERY KIND DETONATES. `FCataclysmDungeon::Resolves` is the rule and
-	 * this returns without touching the city when it answers false -- a Quest
-	 * dungeon refreshes instead, which is issue #1324 slice 3. The clock has
-	 * already put the timer back to full by the time this is called, so
-	 * refreshing is doing nothing.
+	 * this leaves the city untouched when it answers false -- a Quest dungeon
+	 * refreshes instead, which is issue #1324 slice 3. The clock has already put
+	 * the timer back to full by the time this is called, so refreshing is doing
+	 * nothing; what is not nothing is the move, which is
+	 * `RelocateQuestDungeon` below.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A Quest dungeon whose timer ran out picks up and moves to an adjacent
+	 * city, or stays where it is when it has no adjacent city to move to.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md` section VIII: a Quest dungeon "does not
+	 * resolve -- refreshes and **may move to adjacent city**". The project
+	 * owner ruled on 2026-09-06, verbatim "Adjacent, and fix the simulation".
+	 * Issue #1324 slice 4.
+	 *
+	 * `UCataclysmSurgeScheduler::PickRelocation` DECIDES AND THIS ACTS, which
+	 * is the division every other rule in this module keeps: the scheduler owns
+	 * what a dungeon is and where it may be, this owns the dungeons actually
+	 * standing on the map.
+	 *
+	 * **IT IS THE ONLY THING IN THIS CLASS THAT MOVES A DUNGEON**, and it is
+	 * separate from `ResolveDungeon` for that reason rather than for length.
+	 * `ResolveDungeon` holds its dungeon by const pointer, so a reader can see
+	 * at a glance that the biting path cannot move anything, and this is where
+	 * to look when a dungeon has changed city.
+	 *
+	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City and a Cataclysm also refuse
+	 * to resolve and also reach here; a Fallen City *is* its city and cannot
+	 * leave it, and the Cataclysm boss dungeon's one move is the Last Stand,
+	 * issue #43.
+	 */
+	void RelocateQuestDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 
 	/**
 	 * Every Siege takes its daily share of the city it stands on.
