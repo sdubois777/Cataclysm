@@ -153,6 +153,27 @@ There are two ways to get into one:
   stopped happening. Whether a Siege should be that decisive has not been
   put to the project owner.
 
+  **RE-MEASURED AFTER #1338 AND #1333, WHICH IS WHAT REPLACES THE STALE
+  FIGURES ABOVE.** 2,000 campaigns in two disjoint blocks of 1,000 seeds, at
+  tier 1, `No tree`, `triage`, STATIC surges every 120 days ×5
+  (`surge_dungeon_count` = 5, not the default of 4), resolve ratio 2.0,
+  escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
+  live**: the Last Stand is reached in **96.3%** of campaigns and won **1 in
+  26.4** of those reached -- 73 wins in 1,926, or 1 in 25.2 of the 1,836
+  entered -- at a mean 407 floors, and the earned Cataclysm dungeon opens in
+  **8.1%** of campaigns and is won **41.6%** of the time. Those are not
+  comparable with the 99.1% above: commit `b196cd9` now draws the active
+  Cataclysms from the campaign seed with their count tied to the tier, so a
+  seeded campaign does not replay a figure measured before it.
+
+  **Barring a Cataclysm dungeon from rolling Cow Level did not measurably
+  move any of that.** The same 2,000 seeds without the rule give 1 in 28.8
+  reached, 67 wins against 73, and the same 96.3% and 407 floors -- six wins
+  on a base of 67, against a standard deviation of about eight. 115 of those
+  Last Stands were Cow Levels before the rule and none after, so the two
+  conditions really are different and the nil result is a result. Issue
+  #1333, and `docs/DECISIONS.md` carries the ruling.
+
 A campaign that reaches the day cap has done neither, so it has **no
 result** rather than a third outcome. The `stale%` column reads like one
 and is not one, and nothing in the model ranks it against winning or
