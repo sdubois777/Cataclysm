@@ -59,14 +59,16 @@ namespace CataclysmCityUpgradeTest
 	 * the bug that split exists to prevent.
 	 */
 	void PlaceDungeon(UCataclysmEmpireRun& Run, int32 CityId, int32 DungeonId,
-					  float ResolveDays, float DefenceBite = 0.0f)
+					  float ResolveDays, float DefenceDamage = 0.0f)
 	{
 		FCataclysmDungeon Dungeon;
 		Dungeon.DungeonId = DungeonId;
 		Dungeon.CityId = CityId;
 		Dungeon.Floors = 10;
 		Dungeon.ResolveDays = ResolveDays;
-		Dungeon.DefenceBite = DefenceBite;
+
+		// POINTS OF DEFENCE, NOT A SHARE OF THE CITY. Issue #1331.
+		Dungeon.DefenceDamage = DefenceDamage;
 
 		Run.Dungeons.Add(Dungeon);
 		Run.Clock->AddDungeon(DungeonId, Dungeon.Floors);
@@ -598,8 +600,11 @@ bool FCataclysmCityUpgradeClearRestoreTest::RunTest(const FString& Parameters)
 	// rounding difference. The one that resolves takes the whole city.
 	PlaceDungeon(*Run, Second, /* DungeonId */ 901, /* ResolveDays */ 40.0f);
 	PlaceDungeon(*Run, Second, /* DungeonId */ 902, /* ResolveDays */ 40.0f);
+	// FIVE THOUSAND POINTS, WHICH IS FIVE TIMES AN OUTPOST'S WHOLE DEFENCE, so
+	// the city certainly falls whatever `BiteScale` does to it. It was 5.0
+	// before issue #1331, when that meant five times the maximum as a fraction.
 	PlaceDungeon(*Run, Second, /* DungeonId */ 903, /* ResolveDays */ 1.0f,
-				 /* DefenceBite */ 5.0f);
+				 /* DefenceDamage */ 5000.0f);
 
 	Run->AdvanceDay();
 

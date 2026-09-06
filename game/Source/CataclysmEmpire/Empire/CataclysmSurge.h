@@ -66,18 +66,33 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
 	int32 MostFloors = 1;
 
 	/**
-	 * Share of the host city's MAXIMUM defence taken each time this dungeon
-	 * resolves undefeated, before scaling by how deep this one is.
+	 * Defence POINTS taken each time this dungeon resolves undefeated, before
+	 * scaling by how deep this one is.
 	 *
-	 * OF THE MAXIMUM AND NOT OF WHAT IS LEFT. That is what makes an ignored city
-	 * die on a schedule rather than approach zero for ever.
+	 * ABSOLUTE, AND NOT A SHARE OF THE HOST CITY. Issue #1331 is why. These were
+	 * fractions of the city's own maximum, which meant the maximum divided out
+	 * of how many resolves the city survived: a Pillar holding twenty times an
+	 * Outpost's defence lasted 17 resolves against 10, and every upgrade in the
+	 * game that raises a city's health was worth nothing. The project owner
+	 * ruled on 2026-09-05, verbatim: "damage to cities shouldn't be a % of their
+	 * hp. Instead, dungeons should have damage ranges that aren't % based, but
+	 * should be flat damage numbers."
+	 *
+	 * `config.DungeonSpec.defense_damage` is the same number in the model, which
+	 * changed first on issue #1327. Every value in `SpecFor` is the fraction it
+	 * replaced multiplied by that tier's base maximum, so the arithmetic is
+	 * unchanged for a city at its base size and the change of shape stands on
+	 * its own.
+	 *
+	 * A DEEPER CITY STILL TAKES A SMALLER SHARE OF ITSELF: 100 points off an
+	 * Outpost's 1,000 is a tenth, and 640 off a Sanctuary's 8,000 is 8%.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
-	float DefenceBite = 0.0f;
+	float DefenceDamage = 0.0f;
 
-	/** The same, for population. */
+	/** The same, as a number of people. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
-	float PopulationBite = 0.0f;
+	float PopulationDamage = 0.0f;
 
 	/** Whether this spec describes a dungeon that exists in the game yet. */
 	bool IsBuilt() const { return MostFloors > 1; }
@@ -210,23 +225,31 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 */
 	float WalkDaysPerFloor() const;
 
+	/**
+	 * Defence points and people this dungeon takes when it resolves undefeated,
+	 * copied from its spec. See `FCataclysmDungeonSpec::DefenceDamage`: they are
+	 * POINTS and not shares of the city, which is issue #1331.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
-	float DefenceBite = 0.0f;
+	float DefenceDamage = 0.0f;
 
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
-	float PopulationBite = 0.0f;
+	float PopulationDamage = 0.0f;
 
 	/** Which day it arrived. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SpawnedDay = 0;
 
 	/**
-	 * How much of its type's bite this particular dungeon actually takes.
+	 * How much of its type's damage this particular dungeon actually deals.
 	 *
 	 * A DEEPER DUNGEON HITS HARDER, in proportion to how deep it is against a
 	 * typical one of its kind on that tier of city. `Simulation._resolve`
 	 * computes it as `floors / ((least + most) / 2)`, so a dungeon of exactly
 	 * typical depth scales by one.
+	 *
+	 * IT SCALES POINTS AND NOT A SHARE, since issue #1331. The name is the
+	 * event -- a dungeon biting a city -- rather than the old fraction.
 	 */
 	float BiteScale() const;
 };
