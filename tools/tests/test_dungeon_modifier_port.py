@@ -21,11 +21,11 @@ quietly: a modifier's weight is summed into `modifier_score`, which raises a
 dungeon's difficulty in `scoring.dungeon_score`. Every
 `(CataclysmType, ModifierName, Weight)` is compared, in both directions.
 
-WHAT IT DOES NOT CHECK. What the `Weight` column MEANS. This module reads it as
-a danger score and `game/Source/Cataclysm/Data/CataclysmDataRows.h` calls it
-"Selection weight. Higher is more common."; `docs/DECISIONS.md` settles neither
-and that is issue #1298. The comparison here is numeric and holds whichever way
-that is answered.
+WHAT THE COLUMN MEANS IS SETTLED AND IS CHECKED HERE. It is a danger score, higher
+being more dangerous -- issue #1298. `CataclysmDataRows.h` called it "Selection
+weight. Higher is more common." until then, and `TestBothSidesDescribeTheColumn`
+below refuses that description coming back. The row comparison itself is numeric
+and would hold either way; the description is what drifted.
 
 APOSTROPHES ARE COMPARED AS WRITTEN. Four names carry a straight apostrophe and
 one, `Heaven's Quake`, carries a typographic one, on both sides. Normalising them
@@ -270,6 +270,113 @@ class TestNothingStatesTheWrongRowCount:
             assert int(value) == len(rows), (
                 f"{relative} says there are {value} dungeon modifiers and "
                 f"game/Data/DungeonModifiers.csv holds {len(rows)}")
+
+
+class TestBothSidesDescribeTheColumnTheSameWay:
+    """The `Weight` column is a danger score. Issue #1298.
+
+    THE ROW COMPARISON ABOVE CANNOT CATCH THIS. It compares numbers, and 20 is
+    20 whether it means "most dangerous" or "most common". That is why the two
+    sides described the column in opposite terms for four months and nothing
+    noticed: `sim/cataclysm_sim/modifiers.py` consumed it as a danger score while
+    `game/Source/Cataclysm/Data/CataclysmDataRows.h` called it "Selection weight.
+    Higher is more common."
+
+    WHAT SETTLED IT. Section VIII of `docs/Cataclysm_GDD_v2.md`: "Each dungeon
+    modifier carries a weight, and the sum of the weights on a dungeon is the
+    Modifier Score in the Enemy Score formula in section X. This is how a dungeon
+    modifier makes the enemies inside it harder." And the rows agree -- see
+    `docs/DECISIONS.md`, "The dungeon modifier Weight column is a danger score".
+    """
+
+    #: Words that would put the frequency reading back. "Selection weight" and
+    #: "more common" are the two the C++ actually carried.
+    FREQUENCY_WORDS = ("selection weight", "more common", "more likely",
+                       "how often", "spawn weight", "spawn chance",
+                       "commonness", "frequency")
+
+    DATA_ROWS = ("game/Source/Cataclysm/Data/CataclysmDataRows.h")
+
+    def weight_comment(self) -> str:
+        """The comment block immediately above the `float Weight` field."""
+        path = REPO_ROOT / self.DATA_ROWS
+        if not path.is_file():
+            pytest.skip(f"{path.name} is not present")
+        text = path.read_text(encoding="utf-8")
+        marker = "float Weight"
+        assert marker in text, (
+            f"{self.DATA_ROWS} no longer declares a `float Weight` field, so "
+            "this check cannot find its description. Follow it or delete this "
+            "class -- do not leave it passing over nothing.")
+        before = text[:text.index(marker)]
+        start = before.rindex("/**")
+        return before[start:]
+
+    def summary_line(self) -> str:
+        """The first line of prose in the comment.
+
+        CHECKED INSTEAD OF THE WHOLE COMMENT, because the corrected comment
+        quotes the wrong reading in order to refuse it -- it says "NOT a
+        selection weight" -- and a check over the whole block fires on that. It
+        is the summary a reader and an editor tooltip see, so it is the line
+        that must not describe a frequency.
+        """
+        for line in self.weight_comment().splitlines():
+            stripped = line.strip().lstrip("/*").strip()
+            if stripped:
+                return stripped
+        raise AssertionError(
+            f"the comment above `float Weight` in {self.DATA_ROWS} is empty")
+
+    def test_the_cpp_summary_does_not_call_it_a_selection_weight(self):
+        """The description that was there, and the one a reader would write
+        again from the word "weight" alone."""
+        summary = self.summary_line().lower()
+        for word in self.FREQUENCY_WORDS:
+            assert word not in summary, (
+                f"{self.DATA_ROWS} summarises the dungeon modifier Weight as "
+                f"{word!r}, which is the frequency reading. It is a danger "
+                "score: the sum of a dungeon's weights is its Modifier Score. "
+                "Issue #1298.")
+
+    def test_the_cpp_summary_says_what_it_is(self):
+        """A summary that refused the wrong words and said nothing would pass
+        the check above and tell a reader less than the wrong one did."""
+        assert "danger" in self.summary_line().lower(), (
+            f"the first line of the Weight comment in {self.DATA_ROWS} does "
+            f"not say it is about danger. It reads: {self.summary_line()!r}")
+
+    def test_the_cpp_gives_the_reason_and_not_only_the_claim(self):
+        """The reason is what stops the next reader re-deriving the frequency
+        reading from the word "weight"."""
+        comment = self.weight_comment().lower()
+        assert "modifier score" in comment, (
+            f"{self.DATA_ROWS} no longer says the weights sum into the "
+            "Modifier Score, which is the reason it is a danger score rather "
+            "than an assertion that it is. Issue #1298.")
+
+    def test_the_model_does_not_call_the_question_unsettled(self):
+        """`sim/cataclysm_sim/modifiers.py` carried a note saying the two
+        readings could not both be right and that neither was recorded. Issue
+        #1298 recorded one."""
+        text = (REPO_ROOT / "sim" / "cataclysm_sim" / "modifiers.py").read_text(
+            encoding="utf-8")
+        assert "IS NOT SETTLED" not in text, (
+            "sim/cataclysm_sim/modifiers.py still says what the Weight column "
+            "means is unsettled. It was settled by issue #1298.")
+        assert "danger score" in text.lower(), (
+            "sim/cataclysm_sim/modifiers.py no longer says the Weight column "
+            "is a danger score, which is what it consumes it as.")
+
+    def test_the_decision_is_recorded_in_docs(self):
+        """CLAUDE.md: a design decision is not real until it is in `docs/`. This
+        one was delegated to a session rather than ruled on, which makes writing
+        it down more important rather than less -- there is no owner message to
+        fall back on."""
+        text = (REPO_ROOT / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
+        assert "Weight column is a danger score" in text, (
+            "docs/DECISIONS.md does not record what the dungeon modifier "
+            "Weight column means. Issue #1298.")
 
 
 class TestTheHeaderTheGuardReads:

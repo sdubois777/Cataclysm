@@ -10,12 +10,13 @@ shape of the four guards that already existed for the power model, the day
 clock, the surge scheduler and the empire map. Add a row here and to the data
 file together, or that guard fails.
 
-WHAT THE WEIGHT COLUMN MEANS IS NOT SETTLED IN `docs/`. This module consumes it
-as a danger score, higher being more dangerous, which is what feeds
-modifierScore. `game/Source/Cataclysm/Data/CataclysmDataRows.h` describes the
-same column as "Selection weight. Higher is more common." Those cannot both be
-right, and `docs/DECISIONS.md` records neither. Issue #1298 -- do not change
-this module to match the C++ on the strength of the comment alone.
+THE WEIGHT COLUMN IS A DANGER SCORE, higher being more dangerous, which is what
+this module has always consumed it as. Settled by issue #1298 after the project
+owner delegated it. `game/Source/Cataclysm/Data/CataclysmDataRows.h` described it
+as "Selection weight. Higher is more common." and is corrected; it never read the
+field to decide how often a modifier appears, so nothing behaved on the wrong
+reading. See docs/DECISIONS.md, "The dungeon modifier Weight column is a danger
+score".
 """
 
 from __future__ import annotations

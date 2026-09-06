@@ -35,7 +35,21 @@ struct FCataclysmDungeonModifierRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dungeon Modifier")
 	FString ModifierName;
 
-	/** Selection weight. Higher is more common. */
+	/**
+	 * How dangerous the modifier is. Higher is more dangerous.
+	 *
+	 * NOT a selection weight, which this comment said until issue #1298. The
+	 * sum of the weights on a dungeon IS its Modifier Score in the Enemy Score
+	 * formula, which is how a dungeon modifier makes the enemies inside it
+	 * harder -- section VIII of docs/Cataclysm_GDD_v2.md. Nothing reads this
+	 * field to decide how often a modifier appears.
+	 *
+	 * The data agrees: the 13 rows at 20 include instant death on contact, an
+	 * outright lose condition and an enemy that cannot die unless you do, while
+	 * 4 of the 25 rows at 5 carry an upside, one of them enemies that "do no
+	 * damage". Read as a frequency the table would make the harmless modifier
+	 * the rarest and instant death the commonest.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dungeon Modifier")
 	float Weight = 0.0f;
 

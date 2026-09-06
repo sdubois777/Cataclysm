@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The dungeon modifier Weight column is a danger score, not a spawn frequency
+
+**Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`sim/cataclysm_sim/modifiers.py`. Applied. Issue
+[#1298](https://github.com/sdubois777/Cataclysm/issues/1298).
+
+### What was wrong
+
+Two parts of this repository read the `Weight` column on
+`game/Data/DungeonModifiers.csv` in opposite ways, and `docs/` recorded neither.
+
+- **The simulation** stored it as each modifier's score and summed the scores of
+  a dungeon's modifiers into its difficulty. Higher is more dangerous.
+- **The game** described it, at `CataclysmDataRows.h` line 38, as *"Selection
+  weight. Higher is more common."*
+
+`sim/cataclysm_sim/modifiers.py` had carried a note about the contradiction since
+it was written, ending "Flagged, not resolved".
+
+### How it was decided
+
+**The project owner was asked twice.** Asked plainly what the column means, the
+answer was "How dangerous it is". Asked again with both sentences quoted — the
+C++ comment and the module's own note — the answer changed to a delegation:
+**"Uh, read the modifiers and decide which ones are the more dangerous and make
+the call on what to do"**.
+
+The first answer was never recorded, which is why nothing had to be retracted
+when it was superseded.
+
+### The design had already answered what the column is FOR
+
+Section VIII of `docs/Cataclysm_GDD_v2.md`:
+
+> Each dungeon modifier carries a weight, and the sum of the weights on a dungeon
+> is the Modifier Score in the Enemy Score formula in section X. **This is how a
+> dungeon modifier makes the enemies inside it harder**, and it is why dungeon
+> modifiers are scored where enemy modifiers are not: an environmental effect
+> applies to everything in the dungeon, so a score is the only way its difficulty
+> is expressed.
+
+A number that sums into a difficulty score is a danger score. Nothing in the
+design supports the frequency reading.
+
+### And the rows agree, which is what the owner asked to be checked
+
+Both extremes were read rather than the middle. **All 13 rows at weight 20**
+include:
+
+| modifier | what it does |
+|---|---|
+| The Reaper (Death) | "If they are hit by his scythe, they instantly die." |
+| Supply Lines (War) | "If the cart is destroyed, you lose." |
+| Blood Bond (Demonic) | an elite that "cannot die unless you do and is immune to your damage" |
+| Hard Mode (Famine) | "Players cannot use potions in this dungeon." |
+| Starvation (Famine) | max health and energy shield down 1% per floor, up to 60% |
+
+**The 25 rows at weight 5** are local nuisances — fog, artillery telegraphs,
+enemies that flee — and **four of them carry an upside**:
+
+| modifier | why it is not purely a cost |
+|---|---|
+| Illusory Enemies (Chaos) | "Some enemies are illusions. They look and act like real enemies but **do no damage**." |
+| Fungal Overgrowth (Pestilence) | stepping on a mushroom gives "either a 50% speed boost or a 50% slow" |
+| Judgment Zones (Celestial) | standing in the damage "increases boss loot" |
+| Pact of Temptation (Demonic) | offers a buff the player may decline |
+
+**Read as a frequency this table would make the modifier whose enemies do no
+damage the rarest thing in the game, and instant death the commonest.**
+
+The gradient holds across all four bands rather than only at the ends:
+
+| weight | rows | worded as unavoidable or run-ending | carrying an upside |
+|---:|---:|---:|---:|
+| 20 | 13 | 5 | 0 |
+| 15 | 21 | 2 | 1 |
+| 10 | 58 | 0 | 0 |
+| 5 | 25 | 1 | 4 |
+
+**The three apparent counterexamples are not.** `Blood Price` at 5 is severe but
+**opt-in** — the cost is only paid by choosing to open a chest or pull a lever.
+`Withering Touch` and `The Nihil's Embrace` at 15 both say "permanent" and both
+are **curable inside the dungeon**, by beating a floor boss or a high tier enemy.
+Nothing at 20 has a cure or an opt-out.
+
+The pattern also holds per Cataclysm type: all eight have at least one weight-20
+row and span several bands. Only `Generic` does not, because it has exactly one
+row.
+
+### What changed
+
+The comment on `CataclysmDataRows.h` is corrected and now gives the reason as
+well as the claim, because the reason is what stops the next reader re-deriving
+the frequency meaning from the word "weight" alone. The note in
+`sim/cataclysm_sim/modifiers.py` is replaced with what was settled.
+
+**No behaviour changed anywhere, and this was checked rather than assumed.** The
+only reference to the field in all of `game/Source/` is a test asserting every
+modifier has a non-zero weight. Nothing ever read it to decide how often a
+modifier appears, so it was a comment defect and not a defect in the game.
+
+`tools/tests/test_dungeon_modifier_port.py` gains a guard. The row comparison
+already there is numeric and would pass whichever way the column is read — 20 is
+20 either way — which is exactly why the two descriptions drifted apart unnoticed.
+
+---
+
+
 ## 2026-09-05 — The Corrupted Stalker is granted separately and does not take a modifier slot
 
 **Affects:** `sim/cataclysm_sim/modifiers.py`. Applied. Issue
