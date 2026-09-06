@@ -581,11 +581,12 @@ public:
 	 * written with no campaign running leaves this alone rather than emptying
 	 * it, the same rule `Day` follows.
 	 *
-	 * WHAT IS STILL NOT HERE. The dungeons standing on the map and their resolve
-	 * timers, and the surge schedule with the run's random stream. Those are the
-	 * other two slices of issue
-	 * [#1307](https://github.com/sdubois777/Cataclysm/issues/1307) and each
-	 * carries a trap that wants its own change.
+	 * WHAT ELSE A RESTORED EMPIRE NEEDS IS HERE TOO, in the fields below: the
+	 * dungeons standing on the map with their resolve timers, and the surge
+	 * schedule with the position the run's random stream had reached. All three
+	 * were separate slices of issue
+	 * [#1307](https://github.com/sdubois777/Cataclysm/issues/1307) because each
+	 * carried a different trap.
 	 *
 	 * AND NOTHING READS ANY OF IT BACK YET. Nothing in the running game loads a
 	 * save at all -- issue #753 -- so this is what a restore will need rather
@@ -653,6 +654,60 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 CurrentDungeonId = -1;
+
+	/**
+	 * When the next wave of dungeons is due, and how the schedule has escalated.
+	 *
+	 * FIVE PLAIN NUMBERS, WRITTEN OUT RATHER THAN COPIED FROM THE SCHEDULER. The
+	 * surge scheduler is an object rather than a struct, so there is nothing to
+	 * embed; and writing the fields out means the record says what it holds
+	 * instead of inheriting whatever that class gains later.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmSurgeMode SurgeMode = ECataclysmSurgeMode::Static;
+
+	/** 0 Standard, 1 Hardcore, 2 Heretic. It changes how many dungeons a wave
+	 *  brings and how many upgrade slots a city has. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgeLethalityRung = 0;
+
+	/** How many surges have already fired, which is what escalation counts. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgeIndex = 0;
+
+	/** How many have fired in total, including those a city falling caused. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgesFired = 0;
+
+	/** Which day the next wave is due on. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	float NextSurgeDay = 0.0f;
+
+	/**
+	 * Where the run's one source of chance had got to.
+	 *
+	 * **THIS FIELD EXISTS BECAUSE `FRandomStream` IS HALF SAVABLE, WHICH IS
+	 * WORSE THAN NOT SAVABLE AT ALL.** The engine's reflected declaration in
+	 * `NoExportTypes.h` marks its `InitialSeed` with `SaveGame` and its `Seed` --
+	 * the position reached in the sequence -- without it. So embedding the
+	 * stream would write the seed the run STARTED from, restore to the beginning
+	 * of the sequence, and replay every surge already generated, while looking
+	 * like it had worked.
+	 *
+	 * SO THE POSITION IS WRITTEN EXPLICITLY, from `GetCurrentSeed`, and a
+	 * restore calls `Initialize` with it. That continues the sequence exactly.
+	 * It does not restore `InitialSeed`, which nothing in this project reads --
+	 * `GetInitialSeed` appears nowhere in `game/Source/` -- and which there is no
+	 * public way to set independently.
+	 *
+	 * **DO NOT "SIMPLIFY" THIS BY MARKING `UCataclysmEmpireRun::Stream` AS
+	 * `SaveGame`.** It would compile, write a plausible-looking number, and
+	 * silently give a restored run a different future from the one it was saved
+	 * with. `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave` compares
+	 * the next WAVE rather than the seed, and is what would notice.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 RandomStreamSeed = 0;
 
 	/** The character records taking part: one in solo play, up to four in
 	 *  co-operative play. */

@@ -103,6 +103,12 @@ this record is never deleted as a consequence of play.
   filled upgrade slots — 3 slots, or 2 under Heretic
 - Active dungeons, their modifiers, their depth and their resolve timers
 - Surge schedule and pending surges
+- **Where the run's one source of chance had got to.** A run is generated from a
+  single seeded random stream, so restoring the board without the stream's
+  position would put the same cities and the same dungeons back and then roll a
+  different future onto them. **The position reached is saved, not the seed the
+  run started from**, and the two are not interchangeable: restoring the seed
+  replays every surge the run has already generated
 - Cataclysm quest progress, for example rifts sealed of the ten Hell on Earth
   requires
 - The identifiers of the character records taking part, one in solo play and up

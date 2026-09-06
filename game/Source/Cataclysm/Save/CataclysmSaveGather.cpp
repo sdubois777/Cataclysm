@@ -222,6 +222,30 @@ bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
 	return true;
 }
 
+bool FCataclysmSaveGather::SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
+											UCataclysmRunSave& Record)
+{
+	const UCataclysmSurgeScheduler* Surges = Run.Surges;
+	if (Surges == nullptr)
+	{
+		return false;
+	}
+
+	Record.SurgeMode = Surges->Mode;
+	Record.SurgeLethalityRung = Surges->LethalityRung;
+	Record.SurgeIndex = Surges->SurgeIndex;
+	Record.SurgesFired = Surges->SurgesFired;
+	Record.NextSurgeDay = Surges->NextSurgeDay;
+
+	// THE POSITION REACHED, NOT THE SEED THE RUN STARTED FROM. Saving the stream
+	// itself would write only the starting seed, because that is the half of it
+	// the engine marks as savable, and a restore would replay every surge
+	// already generated. See `UCataclysmRunSave::RandomStreamSeed`.
+	Record.RandomStreamSeed = Run.Stream.GetCurrentSeed();
+
+	return true;
+}
+
 bool FCataclysmSaveGather::DungeonsFrom(const UCataclysmEmpireRun& Run,
 									   UCataclysmRunSave& Record,
 									   FString& OutWhy)

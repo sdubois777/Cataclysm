@@ -191,10 +191,13 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 		// it still stands. Only the mutable half of each one is written; see
 		// `FCataclysmCity`. Issue #1307.
 		//
-		// THE SURGE SCHEDULE AND THE RUN'S RANDOM STREAM ARE STILL NOT WRITTEN,
-		// which is the last slice of that issue. A restore would put the board
-		// back and then roll a different future onto it.
 		FCataclysmSaveGather::CitiesFrom(*Run, *LastRun);
+
+		// AND WHEN THE NEXT WAVE IS DUE, WITH WHERE THE RUN'S CHANCE HAD GOT TO.
+		// Without the second of those a restored run would put the same board
+		// back and then roll a DIFFERENT future onto it. See
+		// `UCataclysmRunSave::RandomStreamSeed`.
+		FCataclysmSaveGather::SurgeScheduleFrom(*Run, *LastRun);
 
 		// AND THE DUNGEONS STANDING ON THOSE CITIES, WITH THEIR TIMERS. This one
 		// can refuse: it writes neither list unless the two agree, so a file can

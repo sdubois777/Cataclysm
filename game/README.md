@@ -291,9 +291,14 @@ by `git add` with no error and no warning. Guarded by
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in
   `sim/` still has no city upgrade system at all, so Heretic's two slots instead
   of three cannot be measured in a sweep (issue
-  [#318](https://github.com/sdubois777/Cataclysm/issues/318)). None of it is in a
-  save record: `UCataclysmRunSave` carries an `int32 Day` that nothing computes,
-  so quitting the game loses the empire.
+  [#318](https://github.com/sdubois777/Cataclysm/issues/318)). **The empire is
+  written to a save record now and still cannot be read back.** `UCataclysmRunSave`
+  carries the day and the part of a day, the 25 cities with their upgrades, the
+  dungeons standing on the map with their resolve timers, and the surge schedule
+  with the position the run's random stream reached (issue
+  [#1307](https://github.com/sdubois777/Cataclysm/issues/1307)). Nothing loads any
+  of it, so quitting the game still loses the empire until issue
+  [#753](https://github.com/sdubois777/Cataclysm/issues/753) lands.
 
 ## Running the tests
 

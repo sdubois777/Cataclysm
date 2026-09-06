@@ -101,6 +101,24 @@ both to add a field the record had gained:
   timer names this file's single dungeon, and changing one without the other
   would describe a state the game will not produce.
 
+`Run_v1.json` was edited a sixth time on 2026-09-05, also for issue #1307:
+
+- `SurgeMode`, `SurgeLethalityRung`, `SurgeIndex`, `SurgesFired`,
+  `NextSurgeDay` and `RandomStreamSeed`, because when the next wave of dungeons
+  is due -- and where the run's one source of chance had got to -- were not
+  written to a save.
+
+  **Every one of the six holds something other than its default**, and the two
+  counts differ from each other: 7 surges escalated against 9 waves landed. Two
+  integer fields holding the same number would round-trip perfectly with their
+  values swapped, and
+  `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheSurgeSchedule` is what reads
+  them back one at a time.
+
+  **`RandomStreamSeed` is a position, not a seed.** `FRandomStream` marks its
+  starting seed as savable and the position it has reached as not, so the record
+  writes the position out explicitly. See `UCataclysmRunSave::RandomStreamSeed`.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 
