@@ -13,17 +13,19 @@ section 7 receives:
 
     preset                          seeds 0-999   seeds 1000-1999   both
     No tree                                45.8              47.5   46.6
-    Architect maxed (as designed)          56.3              57.8   57.0
+    Architect maxed (as designed)          55.0              57.5   56.2
 
-The branch is 10.4 points ahead, replicated, against a 1.58 point tolerance at
+The branch is 9.6 points ahead, replicated, against a 1.58 point tolerance at
 2,000 campaigns.
 
-THESE FIGURES MOVED AND CAME BACK. Issue #1282 put the Corrupted Stalker into the
-pool the dungeon modifier draw reads, which re-rolled every campaign and made
-these cells 46.0 and 53.1. The project owner then ruled it is granted separately
-rather than drawn, and issue #1303 took it back out; the cells returned to 46.6
-and 57.0 exactly, block by block. The conclusion held at both: 7.1 points or 10.4
-points, the branch beats no tree by far more than the 1.58 point tolerance.
+THE FIGURE HAS MOVED THREE TIMES AND THE CONCLUSION HAS NOT. Issue #1282 put the
+Corrupted Stalker into the pool the dungeon modifier draw reads, re-rolling every
+campaign and making the gap 7.1. Issue #1303 took it back out on the owner's
+ruling and it returned to 10.4, exactly, block by block. Issue #1288 then
+corrected `city_damage_mult` from an untraceable 0.023 to 0.0766, the product of
+the eleven damage-reduction nodes, and it became 9.6. Every one of those is far
+outside the 1.58 point tolerance, which is why the branch beating no tree has
+survived three changes to the model underneath it.
 
 The report could not have shown that. Its orderings do carry a tolerance, but
 `rank_by_score` is given an `exclude` set holding every preset that failed to
@@ -172,12 +174,12 @@ class TestCompareAgainstNoTree:
     def test_a_gap_either_side_of_the_tolerance_reads_differently(self):
         """What 150 campaigns can and cannot do, stated as a test.
 
-        NOT that the true 10.4 point gap is unresolvable at 150 campaigns -- it
+        NOT that the true 9.6 point gap is unresolvable at 150 campaigns -- it
         is resolvable, at about 5.7 points for this pair. What happened in issue
-        #5 is that the section OBSERVED a nil gap when the truth is 10.4, which
-        is an unlucky draw of roughly 1.8 standard errors, and the issue read
+        #5 is that the section OBSERVED a nil gap when the truth is 9.6, which
+        is an unlucky draw of roughly 1.7 standard errors, and the issue read
         that observation as equality. A nil observation carries no information
-        about a 10.4 truth, which is why the verdict has to say so rather than
+        about a 9.6 truth, which is why the verdict has to say so rather than
         leave two equal-looking numbers side by side.
         """
         name = "Architect maxed (as designed)"

@@ -2,6 +2,88 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-05 — The Architect preset's city damage multiplier is the eleven damage-reduction nodes, and nothing else
+
+**Affects:** `sim/cataclysm_sim/config.py`. Applied. Issue
+[#1288](https://github.com/sdubois777/Cataclysm/issues/1288).
+
+### The ruling
+
+Asked whether the model's single `city_damage_mult` lever should represent only
+the tree's damage reduction, or damage reduction and its city health increases
+together, the project owner answered on 2026-09-05, verbatim: **"Damage reduction
+only, 0.0766"**.
+
+### What was wrong
+
+The value was **0.023**, derived in a comment from ten bare numbers. Checked
+against `docs/Empire_Development_Tree_Final.json`, which the keystones document
+says is the authoritative tree:
+
+- **Nine of the ten mapped onto nodes.** The tenth, 0.25, matched none — and was
+  the largest, worth a further factor of four on its own.
+- **Two real nodes were missing from the list**, Supply Lines and Unyielding
+  Defense. So it invented one factor and dropped two.
+- The eleven damage-reduction nodes at full investment multiply to **0.0766**.
+
+**Where 0.25 came from could not be established, and that is stated rather than
+guessed.** Three places were checked: the git history, where it has been present
+since the simulation's first commit so no revision introduced it; the current
+graph, where no node produces it; and the older prose, where the two nearest
+candidates — a Treasury node capped at 25% and a cut idea granting 25% resistance
+— both convert to 0.75, not 0.25. **It is not a cut node whose effect was kept.**
+
+### Why the ruling went this way
+
+The field's own declaration already said so. `config.py`:
+
+```python
+city_damage_mult: float = 1.0   # product of every damage-reduction node
+```
+
+**So the number was wrong and the description of what the number is for was right
+all along.** This is a correction back to a stated intent rather than a change of
+intent.
+
+The reason offered and accepted: folding two axes into one lever is what produced
+an untraceable number in the first place, and a model that silently represents
+city health as damage cannot later be given a health lever without moving
+everything again.
+
+### What it cost, measured on the shipped constant
+
+Tier 1, triage policy, 1,000 campaigns per block over two disjoint blocks:
+
+| preset | at 0.023 | at 0.0766 |
+|---|---:|---:|
+| No tree | 46.6 | 46.6 |
+| Architect maxed (as designed) | 57.0 | **56.2** |
+
+**0.8 points, inside the 1.58 point tolerance at 2,000 campaigns**, and cities
+lost stays at 0.0. The gap over no tree goes from 10.4 to 9.6 and the conclusion
+of [#5](https://github.com/sdubois777/Cataclysm/issues/5) is untouched.
+
+### The comment now names the nodes
+
+The previous list was bare numbers, and checking it against the graph is the work
+that found the defect. Each factor is now written beside the node it comes from
+and the rule that produces it, so the next reader can check it without
+re-deriving which node each number was.
+
+`Reclaimer's Resolve` is excluded and says why: +1% per city reclaimed has no
+value at full investment, because it depends on how the run went rather than on
+the tree.
+
+### What this deliberately leaves out
+
+**Seven Architect nodes raise how much damage a city can absorb — 6.54x for the
+same Sanctuary — and the model has no field for any of them.** That is now an
+explicit gap rather than one hidden inside a number that pretended to cover it.
+Issue [#1319](https://github.com/sdubois777/Cataclysm/issues/1319).
+
+---
+
+
 ## 2026-09-05 — The Cataclysm boss dungeon grows on dungeons DEFEATED, not on dungeons failed
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`. Applied. Issue
@@ -655,9 +737,9 @@ campaigns per cell over two disjoint blocks of seeds, difficulty tier 1, the
 | preset | seeds 0-999 | seeds 1000-1999 | both |
 |---|---|---|---|
 | No tree | 45.8 | 47.5 | 46.6 |
-| Architect maxed (as designed) | 56.3 | 57.8 | 57.0 |
+| Architect maxed (as designed) | 55.0 | 57.5 | 56.2 |
 
-**The branch is 10.4 points ahead, replicated**, against a 1.58 point tolerance
+**The branch is 9.6 points ahead, replicated**, against a 1.58 point tolerance
 at 2,000 campaigns. No node was added to it and none should be.
 
 **These figures moved and came back, and the conclusion held throughout.** Issue
@@ -668,8 +750,13 @@ Cataclysm draws from to 15 entries and the expected modifier score of a draw fro
 a gap of 7.1. The project owner then ruled the modifier is granted separately
 rather than drawn, and
 [#1303](https://github.com/sdubois777/Cataclysm/issues/1303) took it back out;
-the cells returned to 46.6 and 57.0 exactly. **7.1 points or 10.4, the branch
-beats no tree by far more than the 1.58 point tolerance either way.**
+the cells returned to 46.6 and 57.0 exactly. Issue
+[#1288](https://github.com/sdubois777/Cataclysm/issues/1288) then corrected
+`city_damage_mult` from an untraceable 0.023 to 0.0766 and the Architect cell
+became 56.2, which is why the table above no longer reads 57.0. **7.1 points,
+10.4 or 9.6 — the branch beats no tree by far more than the 1.58 point tolerance
+every time, which is why the conclusion has survived three changes to the model
+underneath it.**
 
 ### Why it works, which is the part worth keeping
 
@@ -727,7 +814,7 @@ ordering is conditional on them.
   as well as about one difficulty tier. Quoting it without both is quoting half of
   it.
 - **A nil gap in that table is not evidence of no difference.** The section now
-  says so in its own output; the gap it once read as zero is 10.4 points.
+  says so in its own output; the gap it once read as zero is 9.6 points.
 
 Pull requests [#1292](https://github.com/sdubois777/Cataclysm/pull/1292) and
 [#1294](https://github.com/sdubois777/Cataclysm/pull/1294).

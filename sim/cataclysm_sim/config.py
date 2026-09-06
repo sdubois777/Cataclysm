@@ -460,12 +460,39 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
     run_days_flat=70.0,
 )
 
-# Every multiplicative city damage-reduction node in the Architect branch,
-# multiplied out for a Sanctuary next to the Pillar holding 2+ upgrades:
-#   0.860 x 0.818 x 0.778 x 0.819 x 0.860 x 0.850 x 0.542 x 0.60 x 0.860 x 0.25
+# Every multiplicative city damage-reduction node in the Architect branch of
+# `docs/Empire_Development_Tree_Final.json`, at full investment, for a Sanctuary
+# next to the Pillar holding 2+ upgrades. THE NODE NAMES ARE HERE ON PURPOSE:
+# the previous list was bare numbers, and checking it against the graph is what
+# found that one factor matched no node at all. Issue #1288.
+#
+#   Urban Fortification    0.96^15    0.5421   -4% per point, 15 points
+#   Imperial Command       flat       0.6000   40% less surge damage, 2+ upgrades
+#   Sovereign's Might      0.99^25    0.7778   -1% per point, 25 points
+#   Siege Resistance     0.9867^15    0.8180   -1.33% per point, 15 points
+#   Fortified Pillar       0.98^10    0.8171   -2% population loss, within 2 rings
+#   Global Vigilance       capped     0.8500   -1% per dungeon cleared, 15% cap
+#   Civil Defense         0.985^10    0.8597   -1.5% per point, 15 points
+#   Structural Integrity  0.985^10    0.8597   -1.5% per point, 10 points
+#   Supply Lines          0.985^10    0.8597   -1.5% per point, adjacent to Pillar
+#   Iron Will              0.99^15    0.8601   -1% per point, 15 points
+#   Unyielding Defense    0.995^5     0.9752   -0.5% per point per active type
+#                                     ------
+#                                     0.0766
+#
+# `Reclaimer's Resolve` is excluded: +1% per city reclaimed has no value at full
+# investment, because it depends on how the run went rather than on the tree.
+#
+# WHAT THIS DELIBERATELY DOES NOT INCLUDE. Seven further Architect nodes raise
+# how much damage a city can ABSORB -- 6.54x for this same Sanctuary. The model
+# has no field for that and this lever does not stand in for it: the project
+# owner ruled on 2026-09-05, verbatim "Damage reduction only, 0.0766". Issue
+# #1319 is the gap. The previous value of 0.023 carried an untraceable 0.25
+# factor that may have been an attempt to fold that axis in here; folding two
+# axes into one number is what made it untraceable.
 TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
     name="Architect maxed (as designed)",
-    city_damage_mult=0.023,
+    city_damage_mult=0.0766,
     resolve_bonus_days=13.0,
 )
 
