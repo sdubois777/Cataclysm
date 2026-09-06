@@ -341,9 +341,25 @@ class TuningConfig:
     # `scoring.SUBTYPE_WEIGHTS`, which is a DIFFERENT quantity -- how much
     # harder each sub-type makes a dungeon -- and which keeps its "None" entry,
     # because a dungeon entered outside a surge still has no sub-type.
+    #
+    # SIEGE IS 7.5 AND NOT 15 SINCE 2026-09-06, AND THE OTHER SIX ABSORBED THE
+    # 7.5 IT GAVE UP. The owner ruled on issue #1349, verbatim, "Halve the rate
+    # and cut the growth", after the dose-response curves in
+    # `sim/analyse_siege_dose.py` showed a Siege at 15 in 100 taking the earned
+    # Cataclysm dungeon -- the route this design treats as the ordinary way to
+    # win -- from 84% of campaigns down to 8%. See `siege_damage_growth_per_day`
+    # below for the other half of that ruling.
+    #
+    # THE SIX ARE ROUNDED TO ONE DECIMAL RATHER THAN RESCALED EXACTLY, and that
+    # follows the owner's own precedent: asked on 2026-09-05 which form a
+    # rescale of this same table should take, they chose "clean round numbers"
+    # over an exact proportional rescale (`docs/DECISIONS.md`, the #1293 entry).
+    # An exact rescale gives 19.588235..., 16.323529... and 7.617647...; these
+    # sum to exactly 92.5 beside Siege's 7.5 and sit within 0.05 of a point of
+    # the exact shares. Siege's own share is 7.5 either way.
     SUBTYPE_SPAWN_WEIGHTS: dict[str, float] = field(default_factory=lambda: {
-        "Timed": 18.0, "Horde": 18.0, "Elite": 15.0,
-        "Volatile": 15.0, "Siege": 15.0, "Sacrificial": 12.0, "Cow Level": 7.0,
+        "Timed": 19.6, "Horde": 19.6, "Elite": 16.3,
+        "Volatile": 16.3, "Siege": 7.5, "Sacrificial": 13.1, "Cow Level": 7.6,
     })
 
     # WHICH SUB-TYPES A KIND OF DUNGEON MAY NOT ROLL. **THERE IS EXACTLY ONE
@@ -394,21 +410,42 @@ class TuningConfig:
     #
     # WHERE THESE NUMBERS COME FROM. The Siege row of the sub-type table in
     # `docs/Cataclysm_GDD_v2.md`: "Deals 1% damage to city defenses and
-    # population per day while active. Increases in power by 10 points per day.
+    # population per day while active. Increases in power by 2.5 points per day.
     # Pauses city upgrades. Max 1 per city." The game reads it the same way in
     # `CataclysmEmpireRun.h`; this model follows the game rather than the other
     # way round, which is the reverse of this project's usual direction.
+    #
+    # THE 1% IS UNTOUCHED BY THE RETUNE OF 2026-09-06 AND THAT IS DELIBERATE.
+    # Issue #1349 moved the growth below and the spawn weight above; the owner's
+    # ruling on it says outright that the 1% share of the maximum stays where
+    # they put it on 2026-09-05.
     siege_defence_bite_per_day: float = 0.01
     siege_population_bite_per_day: float = 0.01
 
-    # "Increases in power by 10 points per day", where the owner settled on
+    # "Increases in power by 2.5 points per day", where the owner settled on
     # 2026-09-05 that its power is "the damage it does to the city/population".
     #
     # POINTS AND NOT A SHARE, so the growth bites hardest where the empire is
-    # thinnest -- ten points is 1% of an Outpost's defence and 0.05% of the
+    # thinnest -- 2.5 points is 0.25% of an Outpost's defence and 0.0125% of the
     # Pillar's. It is also the half of a Siege that city health DOES protect
     # against, because a bigger pool absorbs the same points for longer.
-    siege_damage_growth_per_day: float = 10.0
+    #
+    # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
+    # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
+    # city in 14 / 23 / 34 / 47 days by size against a median walk of about
+    # 14 / 22 / 33, so the player arrived on the day the city fell; at 2.5 it
+    # takes 25 / 39 / 55 / 70. Damage dealt grows with the SQUARE of the days a
+    # Siege has stood, so this number buys days back far more slowly than it
+    # looks: halving it to 5 takes an Outpost only from 14 days to 19, while
+    # quartering it reaches 25. That is why the ruling cut it to a quarter
+    # rather than halving it, and why the damage scale was a poor lever on its
+    # own AT THE OLD NUMBERS: halving all three constants there saved no cities
+    # at all, 21.0 lost of 25 before and after. It is a better lever from here,
+    # because the flat 1% share now carries relatively more of the damage --
+    # re-measured after this change, halving all three gives 14.2 cities lost
+    # against 16.3. Neither figure is a reason to move it; both are recorded so
+    # the next reader does not carry the old one forward as a law.
+    siege_damage_growth_per_day: float = 2.5
 
     #: "Max 1 per city". A refused roll is redistributed across the other
     #: sub-types, which is what makes the Siege share of dungeons that reach

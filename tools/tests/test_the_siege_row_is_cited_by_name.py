@@ -88,7 +88,7 @@ SUBTYPE_TABLE_HEADING = "## **Dungeon Sub-Types**"
 SIEGE_ROW_OPENS = "| Siege |"
 SIEGE_ROW_SENTENCES = (
     "Deals 1% damage to city defenses and population per day while active.",
-    "Increases in power by 10 points per day.",
+    "Increases in power by 2.5 points per day.",
     "Max 1 per city.",
 )
 

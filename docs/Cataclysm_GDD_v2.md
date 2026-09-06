@@ -368,7 +368,9 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 
 
-**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on — which is what the simulation does now that the Siege is modelled — the Last Stand is reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives is reached in **2.4%**. **The route this document treats as the ordinary way to win has almost stopped happening.** That is isolated to the Siege's daily damage and to nothing else. Whether a Siege should be that decisive is a design question that has not been put to the project owner.
+**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on, and at the Siege settings of the day, the Last Stand was reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives in **2.4%** — the route this document treats as the ordinary way to win had almost stopped happening, isolated to the Siege's daily damage and to nothing else.
+
+**That was put to the project owner as [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) and they ruled against it on 2026-09-06**, verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was. **Measured on the shipped configuration** — 2,000 campaigns in two disjoint blocks of 1,000 seeds, difficulty tier 1, `No tree`, `triage`, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4%, with the Siege damage live and the play strategies able to see one — **the earned Cataclysm dungeon now opens in 51.2% and 48.9% of campaigns, the Last Stand is reached in 55.7% and 56.7%, and the empire loses 16.4 and 16.1 of its 25 cities.** The ordinary way to win is the ordinary outcome again, and the two 99.1% and 2.4% figures above describe the game that ruling moved away from.
 
 
 
@@ -3836,7 +3838,7 @@ This makes a surviving player's escape worth something to the whole party, and i
 | Horde | Number of floors equals number of enemy waves. |
 | Sacrificial | Double modifiers. Player can sacrifice materials to remove the extra modifiers, or accept them for bonus rewards. |
 | Elite | Every floor ends with a boss fight. |
-| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 10 points per day. Pauses city upgrades. Max 1 per city. |
+| Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. |
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
 
@@ -5002,17 +5004,21 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 | Subtype | Spawn weight |
 | :-: | :-: |
-| Timed | 18 |
-| Horde | 18 |
-| Siege | 15 |
-| Elite | 15 |
-| Volatile | 15 |
-| Sacrificial | 12 |
-| Cow Level | 7 |
+| Timed | 19.6 |
+| Horde | 19.6 |
+| Elite | 16.3 |
+| Volatile | 16.3 |
+| Sacrificial | 13.1 |
+| Cow Level | 7.6 |
+| Siege | 7.5 |
 
 
 
 **Every dungeon a surge creates has a subtype.** There is no “none” outcome and no row for one. Until 2026-09-05 there was, and it was the commonest at 34 in 100; the seven that remain were rescaled to take up that share while keeping their order.
+
+**The Siege was halved from 15 to 7.5 on 2026-09-06**, and the other six took the 7.5 it gave up in proportion, so the table still totals 100. The project owner ruled it on [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) — verbatim, “Halve the rate and cut the growth” — after 34,000 simulated campaigns showed a Siege at 15 in 100 taking the earned Cataclysm dungeon, the route this document treats as the ordinary way to win, from 84% of campaigns down to 8%. The other half of that ruling is in the Siege row of the sub-type table above: its growth went from 10 points a day to 2.5. **The 1% daily share of a city’s maximum was left exactly where it was**, which is the separate ruling of 2026-09-05 that a siege does not care how thick your walls are.
+
+**That makes the Siege the rarest subtype in the game, narrowly below the Cow Level**, which is a reversal of the order every earlier version of this table had and is a consequence of the ruling rather than a choice made alongside it. No proportional rescale avoids it: the Cow Level’s exact share is 7.62 against the Siege’s 7.5. Whether the Cow Level should stay the rarer of the two is [issue #1369](https://github.com/sdubois777/Cataclysm/issues/1369).
 
 
 
@@ -5028,7 +5034,7 @@ Write **W** for the tier width and **Pmin** for the previous tier's maximum. Wri
 
 
 
-**A Siege rolled for a city that already holds one is spread across the other six**, in proportion to their weights, rather than being rolled again or left plain. Rolling again would change the depth of every later dungeon in that wave, so the draw already made is re-read into the 85 points the other six occupy. Measured over twenty campaigns and 10,914 days: no dungeon at all comes out without a subtype.
+**A Siege rolled for a city that already holds one is spread across the other six**, in proportion to their weights, rather than being rolled again or left plain. Rolling again would change the depth of every later dungeon in that wave, so the draw already made is re-read into the 92.5 points the other six occupy. Measured over twenty campaigns and 10,914 days: no dungeon at all comes out without a subtype.
 
 
 

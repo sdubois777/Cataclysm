@@ -876,9 +876,9 @@ bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 	}
 
 	// THE FIGURE THE DESIGN DOCUMENT STATES: one per cent of the city's maximum
-	// per day, plus ten points for every day the Siege has already stood. The
+	// per day, plus 2.5 points for every day the Siege has already stood. The
 	// day measured is the day after the wave landed, so exactly one day's growth
-	// is in it. Written out from the constants rather than as 0.01 and 10, so a
+	// is in it. Written out from the constants rather than as 0.01 and 2.5, so a
 	// change to either fails this rather than silently passing.
 	const float Grown = UCataclysmEmpireRun::SiegeDamageGrowthPerDay * 1.0f;
 
@@ -1090,7 +1090,7 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 	}
 
 	// THE PILLAR, WHICH IS THE DEEPEST POCKET ON THE MAP. Twenty thousand
-	// defence takes 47 days of a growing Siege to empty, which leaves room to
+	// defence takes 70 days of a growing Siege to empty, which leaves room to
 	// measure several days without the city falling part way through.
 	int32 CityId = INDEX_NONE;
 	float MaxDefence = 0.0f;
@@ -1155,8 +1155,8 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 		Taken.Add(DefenceBefore - (After ? After->Defence : 0.0f));
 	}
 
-	// TEN, WRITTEN OUT, BECAUSE THE DESIGN DOCUMENT SAYS TEN. Every other
-	// assertion in this test compares against
+	// TWO AND A HALF, WRITTEN OUT, BECAUSE THE DESIGN DOCUMENT SAYS 2.5. Every
+	// other assertion in this test compares against
 	// `UCataclysmEmpireRun::SiegeDamageGrowthPerDay`, and a test whose expected
 	// value is read out of the same constant the code reads cannot notice that
 	// the constant is wrong: setting it to zero would make this test expect no
@@ -1165,10 +1165,14 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 	// FOUND BY BREAKING IT. A `prove_cpp_guard` run on 2026-09-05 set that
 	// constant to zero and all fifteen tests in this file still passed. This
 	// line and the strict comparison below are what that run was missing.
-	TestEqual(TEXT("the design's ten points a day"),
-			  UCataclysmEmpireRun::SiegeDamageGrowthPerDay, 10.0f, 0.0001f);
+	//
+	// IT WAS 10 UNTIL 2026-09-06, when the owner cut the growth on issue #1349.
+	// This literal is the one that has to be edited by hand when it moves, and
+	// that is the whole point of it being a literal.
+	TestEqual(TEXT("the design's two and a half points a day"),
+			  UCataclysmEmpireRun::SiegeDamageGrowthPerDay, 2.5f, 0.0001f);
 
-	// EACH DAY TAKES EXACTLY TEN MORE POINTS THAN THE ONE BEFORE IT. Checked as
+	// EACH DAY TAKES EXACTLY THAT MUCH MORE THAN THE ONE BEFORE IT. Checked as
 	// the difference between consecutive days rather than against an absolute
 	// figure, so it does not depend on which day the Siege happened to arrive.
 	for (int32 Step = 1; Step < Taken.Num(); ++Step)
@@ -1183,8 +1187,8 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 				 Taken[Step] > Taken[Step - 1]);
 
 		TestEqual(*FString::Printf(
-					  TEXT("day %d took ten more points of defence than day %d "
-						   "(%.1f against %.1f)"),
+					  TEXT("day %d took one growth step more defence than day "
+						   "%d (%.1f against %.1f)"),
 					  Step + 1, Step, Taken[Step], Taken[Step - 1]),
 				  Taken[Step] - Taken[Step - 1],
 				  UCataclysmEmpireRun::SiegeDamageGrowthPerDay, 0.01f);
@@ -1192,8 +1196,8 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 
 	// AND THE FIRST OF THEM IS THE FLAT SHARE PLUS ONE DAY'S GROWTH, which is
 	// what pins where the counting starts. A Siege that grew from the day before
-	// it arrived would take ten points more on every one of these days and the
-	// differences above would not notice.
+	// it arrived would take one growth step more on every one of these days and
+	// the differences above would not notice.
 	TestEqual(TEXT("the first day after it arrived is the flat share plus one "
 				   "day's growth"),
 			  Taken[0],
@@ -1990,6 +1994,12 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	int32 AbsorbedByAFall = 0;
 	int32 MovedThenAbsorbed = 0;
 
+	// HOW OFTEN THE STAYED-PUT CHECK HAD TO EXEMPT A NEIGHBOUR because the
+	// day's own falls opened it after the decision was taken. Counted so the
+	// exemption cannot quietly grow until the check means nothing; it is
+	// reported below beside the rest.
+	int32 OpenedByTheDaysOwnFalls = 0;
+
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
 		UCataclysmEmpireRun* Run = MakeRun(Seed);
@@ -2139,6 +2149,32 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 					// sealed, fallen or the Pillar. Without this the whole test
 					// would be satisfied by a `RelocateQuestDungeon` that never
 					// did anything.
+					//
+					// **READ AT THE END OF THE DAY, WHILE THE DECISION WAS MADE
+					// PART WAY THROUGH IT.** That is the same in-day ordering
+					// the absorbed branch above already documents: a day
+					// resolves its timers in order, so a city can fall AFTER
+					// this dungeon declined to move and open a neighbour that
+					// was sealed when `PickRelocation` looked at it. Reading
+					// exposure afterwards then reports an open neighbour that
+					// was not open at the time.
+					//
+					// SO THE EXEMPTION IS EXACTLY THE CITIES THE DAY'S OWN
+					// FALLS COULD HAVE OPENED, AND NOTHING ELSE.
+					// `UCataclysmEmpireMap::IsExposed` answers true only for a
+					// rim city or one whose `Outward` shield has fallen, and
+					// `Retake` -- the only thing that un-falls a city -- is
+					// reached from clearing a Fallen City dungeon and never from
+					// `AdvanceDay`. So within one day exposure can only be
+					// turned ON, only by a fall, and only for a city one of
+					// whose own shields fell. A neighbour open now whose
+					// shields all still stand was open then too, and that is a
+					// real relocation defect rather than an ordering artefact.
+					//
+					// FOUND BY THE SIEGE RETUNE OF 2026-09-06, issue #1349,
+					// which moved when cities fall and so changed the order
+					// inside a day. The assertion was too strong before that and
+					// passed on the seed it was written against.
 					const FCataclysmCity* Host = Run->Map->Find(From);
 
 					if (Host != nullptr)
@@ -2146,12 +2182,40 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 						for (const int32 Neighbour :
 							 UCataclysmSurgeScheduler::AdjacentCities(*Host))
 						{
-							TestFalse(FString::Printf(
+							if (Neighbour == Run->Map->PillarId
+								|| !Run->Map->IsExposed(Neighbour))
+							{
+								continue;
+							}
+
+							// COULD THE DAY'S OWN FALLS HAVE OPENED IT? Only a
+							// fall among this neighbour's own outward shields
+							// can have.
+							const FCataclysmCity* Open =
+								Run->Map->Find(Neighbour);
+							bool bOpenedToday = false;
+
+							if (Open != nullptr)
+							{
+								for (const int32 Shield : Open->Outward)
+								{
+									bOpenedToday = bOpenedToday
+										|| Report.Fallen.Contains(Shield);
+								}
+							}
+
+							if (bOpenedToday)
+							{
+								++OpenedByTheDaysOwnFalls;
+								continue;
+							}
+
+							AddError(FString::Printf(
 								TEXT("quest dungeon %d stayed on %s while its "
-									 "neighbour %d was open to it"),
-								DungeonId, *Host->Name, Neighbour),
-								Run->Map->IsExposed(Neighbour)
-									&& Neighbour != Run->Map->PillarId);
+									 "neighbour %d was open to it, and nothing "
+									 "that shields %d fell today, so it was "
+									 "open when PickRelocation looked"),
+								DungeonId, *Host->Name, Neighbour, Neighbour));
 						}
 					}
 
@@ -2220,9 +2284,11 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d had nowhere "
 			 "adjacent to go, %d of the moves were along the rim's perimeter, "
 			 "and %d were absorbed by a city falling underneath them, %d of "
-			 "those having moved onto it earlier the same day"),
+			 "those having moved onto it earlier the same day. %d neighbours "
+			 "were open by nightfall having been sealed when the dungeon "
+			 "declined to move, opened by the same day's falls"),
 		Campaigns, TimersFired, Moves, StayedPut, AlongTheRim,
-		AbsorbedByAFall, MovedThenAbsorbed));
+		AbsorbedByAFall, MovedThenAbsorbed, OpenedByTheDaysOwnFalls));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
 	TestTrue(TEXT("quest dungeon timers actually ran out"), TimersFired > 0);

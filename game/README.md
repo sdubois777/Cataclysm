@@ -208,9 +208,12 @@ by `git add` with no error and no warning. Guarded by
   upgrade does not apply to it; a Siege takes 1% of its host city's maximum
   defence and maximum population every day it stands, and a city may hold only
   one. Timed, Horde, Elite, Volatile and Sacrificial are rolled and named and
-  change nothing yet, and two further parts of the Siege — what "increases in
-  power by 10 points per day" means and what "pauses city upgrades" means — are
-  undecided rather than unbuilt. Issues
+  change nothing yet, and one further part of the Siege — what "pauses city
+  upgrades" means — is undecided rather than unbuilt. What "increases in power
+  by N points per day" means was settled by the owner on 2026-09-05 as the
+  damage it does to the city and population, and the N was cut from 10 to 2.5 on
+  [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) on 2026-09-06.
+  Issues
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
 

@@ -229,22 +229,38 @@ public:
 	/**
 	 * How much more damage a Siege deals for each day it has stood.
 	 *
-	 * THE DESIGN DOCUMENT SAYS "Increases in power by 10 points per day", and
+	 * THE DESIGN DOCUMENT SAYS "Increases in power by 2.5 points per day", and
 	 * the project owner settled on 2026-09-05 what its power is: "That's in
-	 * regards to the damage it does to the city/population". So this is ten
-	 * points of city defence and ten points of city population, added to the
+	 * regards to the damage it does to the city/population". So this is 2.5
+	 * points of city defence and 2.5 points of city population, added to the
 	 * day's damage for every day the Siege has already stood.
 	 *
-	 * POINTS AND NOT A SHARE, WHICH IS WHY SMALL CITIES SUFFER MOST. Ten points
-	 * is one per cent of an Outpost's thousand defence and half a per cent of a
-	 * Pillar's twenty thousand, so the growth bites hardest where the empire is
-	 * thinnest. An unattended Siege empties an Outpost's defence in 14 days, a
-	 * Bulwark's in 23, a Sanctuary's in 34 and the Pillar's in 47. Without the
-	 * growth every city would take exactly 100 days whatever its size, because
-	 * the flat part is a share of that city's own maximum.
+	 * IT WAS 10 UNTIL 2026-09-06, AND THE OWNER CUT IT ON ISSUE #1349, verbatim
+	 * "Halve the rate and cut the growth". The dose-response curves in
+	 * `sim/analyse_siege_dose.py` showed a Siege at the old numbers taking the
+	 * earned Cataclysm dungeon -- the route the design treats as the ordinary
+	 * way to win -- from 84% of campaigns to 8%. `SpawnWeightSiege` in
+	 * `CataclysmSurge.h` carries the other half of the ruling, 15 down to 7.5.
+	 * The 1% share above was left exactly where the owner put it.
+	 *
+	 * POINTS AND NOT A SHARE, WHICH IS WHY SMALL CITIES SUFFER MOST. Two and a
+	 * half points is a quarter of a per cent of an Outpost's thousand defence
+	 * and an eightieth of that of a Pillar's twenty thousand, so the growth
+	 * bites hardest where the empire is thinnest. An unattended Siege empties an
+	 * Outpost's defence in 25 days, a Bulwark's in 39, a Sanctuary's in 55 and
+	 * the Pillar's in 70. Without the growth every city would take exactly 100
+	 * days whatever its size, because the flat part is a share of that city's
+	 * own maximum.
+	 *
+	 * THOSE FOUR DAY-COUNTS ARE DERIVED AND NOT CHOSEN. A city falls on the
+	 * first day D where `D * 0.01 * MaxDefence + 2.5 * D * (D - 1) / 2` reaches
+	 * its maximum defence, which for an Outpost is `1.25*D*D + 8.75*D >= 1000`.
+	 * `sim/tests/test_siege_subtype.py::TestItMatchesTheGamesOwnStatedFigures`
+	 * runs the model's day loop against all four and fails by name if this
+	 * constant and this comment part company.
 	 *
 	 * IT COUNTS FROM THE DAY THE SIEGE ARRIVED, so its first day deals the flat
-	 * share alone and each later day adds another ten points.
+	 * share alone and each later day adds another 2.5 points.
 	 * `FCataclysmDungeon::SpawnedDay` is the day it arrived.
 	 *
 	 * IT IS ADDED TO BOTH THE DEFENCE AND THE POPULATION DAMAGE, which is the
@@ -253,7 +269,7 @@ public:
 	 * `docs/DECISIONS.md` as a reading rather than a ruling, because the owner's
 	 * answer settled what "power" means and not which of the two it grows.
 	 */
-	static constexpr float SiegeDamageGrowthPerDay = 10.0f;
+	static constexpr float SiegeDamageGrowthPerDay = 2.5f;
 
 	/**
 	 * Whether a list of dungeons and a list of timers describe the same board.

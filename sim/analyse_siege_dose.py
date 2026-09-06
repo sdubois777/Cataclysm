@@ -11,9 +11,12 @@ applied to a copy of the config for the length of one batch.
 
 THE THREE AXES, WHICH ARE NOT INTERCHANGEABLE.
 
-1. **How often a Siege appears** -- the spawn weight, 15 in 100 today. The doses
-   are the ones issue #1340 specifies: 0, 7.5, 15, 30, 50, with the other six
-   sub-types taking up the slack IN PROPORTION so the weights still total 100.
+1. **How often a Siege appears** -- the spawn weight, 7.5 in 100 today and 15
+   until the owner halved it on issue #1349 on 2026-09-06. The doses are the
+   ones issue #1340 specifies: 0, 7.5, 15, 30, 50, with the other six sub-types
+   taking up the slack IN PROPORTION so the weights still total 100. The 7.5
+   row is now the shipped configuration and the 15 row is what it replaced,
+   which is what makes this script a re-measurement rather than a sweep.
 
 2. **How hard one bites** -- `siege_defence_bite_per_day`,
    `siege_population_bite_per_day` and `siege_damage_growth_per_day`, scaled
@@ -137,8 +140,10 @@ SIEGE_WEIGHTS = (0.0, 7.5, 15.0, 30.0, 50.0)
 DAMAGE_SCALES = (0.0, 0.125, 0.25, 0.5, 1.0, 2.0)
 
 #: Axis 3. The growth term alone, in points per day stood, with the 1% share left
-#: where the owner set it. 10.0 is today.
-GROWTH_DOSES = (0.0, 2.5, 5.0, 20.0)
+#: where the owner set it. 2.5 is today; 10.0 is what it replaced on 2026-09-06
+#: and is kept on the ladder so the change this script was built to justify
+#: stays visible as a row rather than only in the prose.
+GROWTH_DOSES = (0.0, 2.5, 5.0, 10.0, 20.0)
 
 CITY_SIZES = (CityTier.OUTPOST, CityTier.BULWARK,
               CityTier.SANCTUARY, CityTier.PILLAR)
@@ -466,7 +471,7 @@ def main() -> None:
     print("AXIS 1 -- HOW OFTEN A SIEGE APPEARS. Spawn weight out of 100, the "
           "other six sub-types")
     print("taking up the slack in proportion. Doses from issue #1340. "
-          f"{SIEGE_WEIGHT_TODAY:.0f} is what development ships.")
+          f"{SIEGE_WEIGHT_TODAY:g} is what development ships.")
     print("=" * 108)
     print(HEADER)
     weight_rows = sweep(lambda w: f"weight {w:g}",

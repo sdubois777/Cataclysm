@@ -511,8 +511,8 @@ class TestWhatADungeonIs:
             "population. See above")
 
         # AND THE GROWTH IS STILL POINTS, which is the half of a Siege that city
-        # health DOES protect against -- ten points is 1% of an Outpost's
-        # defence and 0.05% of the Pillar's.
+        # health DOES protect against -- 2.5 points is 0.25% of an Outpost's
+        # defence and 0.0125% of the Pillar's.
         assert "SiegeDamageGrowthPerDay * Host.Value" in besieging, (
             "ApplySiegeDamage no longer grows by a flat number of points per "
             "day the Siege has stood. Issue #1329")
@@ -663,7 +663,7 @@ class TestWhatASiegeCostsItsHost:
 
     WHAT `sim/tests/test_siege_subtype.py` CANNOT DO, WHICH IS WHY THIS EXISTS.
     Its `TestItMatchesTheGamesOwnStatedFigures` asserts that an unattended Siege
-    empties the four city sizes in 14, 23, 34 and 47 days. Those four figures
+    empties the four city sizes in 25, 39, 55 and 70 days. Those four figures
     are literals copied out of this header's own prose, and that test runs the
     MODEL and nothing else -- so it notices the model drifting away from them
     and cannot notice the C++ constants moving underneath them.
@@ -686,8 +686,12 @@ class TestWhatASiegeCostsItsHost:
     #:
     #: All three come from the Siege row of the sub-type table in
     #: `docs/Cataclysm_GDD_v2.md`: "Deals 1% damage to city defenses and
-    #: population per day while active. Increases in power by 10 points per
+    #: population per day while active. Increases in power by 2.5 points per
     #: day."
+    #:
+    #: THE GROWTH WAS 10 UNTIL 2026-09-06, when the owner cut it on issue #1349
+    #: -- verbatim, "Halve the rate and cut the growth". The two 1% shares were
+    #: explicitly left alone by that ruling.
     #:
     #: THE ROW AND NOT A LINE NUMBER, DELIBERATELY. Eight places in this
     #: repository cited that sentence by line number -- seven as "line 3744"
@@ -701,7 +705,7 @@ class TestWhatASiegeCostsItsHost:
     BITES = {
         "SiegeDefenceBitePerDay": ("siege_defence_bite_per_day", 0.01),
         "SiegePopulationBitePerDay": ("siege_population_bite_per_day", 0.01),
-        "SiegeDamageGrowthPerDay": ("siege_damage_growth_per_day", 10.0),
+        "SiegeDamageGrowthPerDay": ("siege_damage_growth_per_day", 2.5),
     }
 
     def test_every_siege_constant_matches(self, run_header, model):
