@@ -2,6 +2,8 @@
 
 #include "Interface/CataclysmEmpireMapLayout.h"
 
+#include "Empire/CataclysmEmpireRun.h"
+
 int32 UCataclysmEmpireMapLayout::CellsAcross()
 {
 	// DERIVED FROM THE MAP'S OWN RADIUS AND NOT WRITTEN DOWN AGAIN. The lattice
@@ -121,4 +123,33 @@ FString UCataclysmEmpireMapLayout::CityLabel(const UCataclysmEmpireMap* Map,
 	const int32 Percent = FMath::CeilToInt(City->DefenceFraction() * 100.0f);
 
 	return FString::Printf(TEXT("%s %d%%"), *Tier, FMath::Clamp(Percent, 0, 100));
+}
+
+FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
+{
+	// A RUN THAT HAS NOT BEGUN SAYS NOTHING, rather than "no dungeons cleared".
+	// The two states look the same in the counters and are not the same thing,
+	// and a screen with no run already says so in its own words.
+	if (Run == nullptr || Run->Map == nullptr)
+	{
+		return FString();
+	}
+
+	const int32 Cleared = Run->DungeonsCleared;
+	const int32 Objectives = Run->QuestObjectives;
+
+	// THE PLURALS ARE WRITTEN OUT because this line is read by a person and
+	// "1 quest objectives" is the kind of thing that makes a screen look
+	// unfinished. The rest of this screen has no number that can be one.
+	const FString ClearedPart = Cleared == 0
+		? FString(TEXT("No dungeons cleared yet"))
+		: FString::Printf(TEXT("%d dungeon%s cleared"), Cleared,
+						  Cleared == 1 ? TEXT("") : TEXT("s"));
+
+	const FString ObjectivePart = Objectives == 0
+		? FString(TEXT("no quest objectives"))
+		: FString::Printf(TEXT("%d quest objective%s"), Objectives,
+						  Objectives == 1 ? TEXT("") : TEXT("s"));
+
+	return FString::Printf(TEXT("%s, %s"), *ClearedPart, *ObjectivePart);
 }

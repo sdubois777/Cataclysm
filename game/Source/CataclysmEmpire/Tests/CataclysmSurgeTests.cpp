@@ -2215,6 +2215,60 @@ bool FCataclysmSurgeSubTypeNameTest::RunTest(const FString& Parameters)
 }
 
 /**
+ * The four KINDS have readable names too, and an ordinary one has none.
+ *
+ * `UCataclysmEmpireRun::Describe` NAMES THE KIND BESIDE THE SUB-TYPE since issue
+ * #1324 slice 5, so a person reading a run can see which standing dungeon is the
+ * Quest dungeon that would earn them an objective. Before that the kind was
+ * invisible and the three non-Basic kinds read exactly like ordinary ones.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeKindNameTest,
+	"Cataclysm.Surge.EveryKindHasAReadableNameAndAnOrdinaryOneHasNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeKindNameTest::RunTest(const FString& Parameters)
+{
+	// `TestEqualSensitive` FOR THE SAME REASON AS ABOVE, and hand-written
+	// spellings for the same reason: `FallenCity` is two words when a person
+	// reads it and one identifier when the compiler does.
+	TestEqualSensitive(TEXT("Quest"), UCataclysmSurgeScheduler::KindName(
+		ECataclysmDungeonType::Quest), FString(TEXT("Quest")));
+
+	TestEqualSensitive(TEXT("Fallen City is two words"),
+		UCataclysmSurgeScheduler::KindName(
+			ECataclysmDungeonType::FallenCity), FString(TEXT("Fallen City")));
+
+	TestEqualSensitive(TEXT("Cataclysm"), UCataclysmSurgeScheduler::KindName(
+		ECataclysmDungeonType::Cataclysm), FString(TEXT("Cataclysm")));
+
+	// AN ORDINARY DUNGEON SAYS NOTHING, matching `None` above. Most dungeons
+	// are Basic and "dungeon 3 (Basic) on Outpost (1,2)" would put a word on
+	// every line to distinguish the common case from itself.
+	TestTrue(TEXT("and an ordinary dungeon has no kind name"),
+			 UCataclysmSurgeScheduler::KindName(
+				 ECataclysmDungeonType::Basic).IsEmpty());
+
+	// AND THE THREE THAT DO HAVE ONE ALL DIFFER. A switch that fell through
+	// would answer the same word for two kinds and every assertion above could
+	// still pass if that word happened to be right for one of them.
+	const FString QuestName =
+		UCataclysmSurgeScheduler::KindName(ECataclysmDungeonType::Quest);
+	const FString FallenName =
+		UCataclysmSurgeScheduler::KindName(ECataclysmDungeonType::FallenCity);
+	const FString BossName =
+		UCataclysmSurgeScheduler::KindName(ECataclysmDungeonType::Cataclysm);
+
+	// `Equals` WITH `CaseSensitive` RATHER THAN `!=`, because FString's own
+	// comparison ignores case and would call "Quest" and "quest" the same word.
+	TestTrue(TEXT("the three named kinds are three different words"),
+			 !QuestName.Equals(FallenName, ESearchCase::CaseSensitive)
+				 && !FallenName.Equals(BossName, ESearchCase::CaseSensitive)
+				 && !QuestName.Equals(BossName, ESearchCase::CaseSensitive));
+
+	return true;
+}
+
+/**
  * No dungeon a campaign produces comes out without a sub-type.
  *
  * WHAT THE OWNER RULED, MEASURED ON WHOLE CAMPAIGNS. Every dungeon a surge makes

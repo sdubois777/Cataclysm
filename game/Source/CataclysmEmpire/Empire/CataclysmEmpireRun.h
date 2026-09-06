@@ -171,22 +171,34 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
  *
  * WHAT IT DELIBERATELY DOES NOT DO, named so the scope is not argued later:
  *
- *   - **The player.** The model's day loop also asks a policy which dungeon to
- *     walk into, spends days at the forge, and kills the player. None of that
- *     belongs here: in the game the player is a character in a world, and what
- *     this owns is the empire's side of the clock. `EnterDungeon` and
- *     `LeaveDungeon` on the clock are how a player is represented, and nothing
- *     calls them yet.
- *   - **Clearing a dungeon.** Nothing here removes a dungeon because the player
- *     beat it. `ClearDungeon` exists for whoever joins a finished dungeon run to
- *     this, and no dungeon run reaches it today.
- *   - **The Dungeon City.** A fallen city should become a retakeable dungeon
- *     with the design's 20, 40 and 60 floor minimums. Issue #41.
+ *   - **Choosing for the player.** The model's day loop also asks a policy which
+ *     dungeon to walk into, spends days at the forge, and kills the player. None
+ *     of that belongs here: in the game the player is a character in a world,
+ *     and what this owns is the empire's side of the clock.
+ *   - **The win condition.** Nothing here compares `QuestObjectives` against a
+ *     requirement, opens a Cataclysm boss dungeon or sets a won state. This
+ *     counts and does not decide; slice 6 of issue #1324 is the gate, and it is
+ *     blocked on this module having no notion of which Cataclysm is running --
+ *     issue #1357.
  *   - **The Last Stand.** `bPillarExposed` is the condition; the Cataclysm boss
  *     dungeon moving to the Pillar and absorbing everything still standing is
  *     issue #43.
  *   - **Saving any of it.** `UCataclysmRunSave` carries an `int32 Day` that
  *     nothing computes. Joining that record to this is separate work.
+ *
+ * THREE THINGS THIS LIST CLAIMED WERE MISSING WERE ALREADY BUILT, and each had
+ * been for at least a slice before anybody re-read the list. They are recorded
+ * here rather than quietly deleted, because a comment that says a feature is
+ * absent is read as evidence that it is:
+ *
+ *   - It said nothing called `EnterDungeon` or `LeaveDungeon` on the clock.
+ *     `ACataclysmDungeonGameMode` calls both.
+ *   - It said no dungeon run reaches `ClearDungeon`. Walking to the bottom floor
+ *     of an empire dungeon calls it, through
+ *     `ACataclysmDungeonGameMode::ClearEmpireDungeon`, and that is the live path
+ *     the counters below are raised on.
+ *   - It said a fallen city becoming a retakeable dungeon was still issue #41.
+ *     `AddFallenCityDungeon`, in this class, has done it since `c7e11f7`.
  */
 UCLASS(BlueprintType)
 class CATACLYSMEMPIRE_API UCataclysmEmpireRun : public UObject
@@ -341,6 +353,105 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 NextDungeonId = 0;
 
+	// ----------------------------------------------------------------------
+	// What the run has come to -- issue #1324 slice 5
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many dungeons of any kind the player has beaten this run.
+	 *
+	 * A PORT OF `Simulation.cleared` in `sim/cataclysm_sim/engine.py`, which
+	 * counts every kind the same way. `ClearDungeon` is the only thing that
+	 * raises it, so a dungeon a falling city absorbed is not counted: nobody
+	 * walked it. `RemoveDungeon` is that path and it deliberately counts
+	 * nothing.
+	 *
+	 * IT IS NOT THE NUMBER THE BOSS DUNGEON GROWS BY. That is
+	 * `BasicDungeonsCleared` below, and reading this one instead would let
+	 * clearing quest dungeons deepen the fight they exist to unlock. The design
+	 * document is explicit about the difference; see there.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DungeonsCleared = 0;
+
+	/**
+	 * How many ORDINARY dungeons the player has beaten this run.
+	 *
+	 * "ORDINARY" IS THE DESIGN'S WORD FOR `ECataclysmDungeonType::Basic`.
+	 * `docs/Cataclysm_GDD_v2.md` section VIII: "Every **ordinary** dungeon
+	 * defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and
+	 * retaken Dungeon Cities do not: a Quest dungeon is the win condition itself,
+	 * and retaking your own city is recovery rather than progress." Settled with
+	 * the project owner on 2026-09-06.
+	 *
+	 * SO THIS IS A SEPARATE COUNTER AND NOT A CONVENIENCE. `DungeonsCleared`
+	 * above is the wrong number for the boss's depth, and the model says so in
+	 * as many words beside `Simulation.basic_cleared`, which this ports.
+	 *
+	 * NOTHING READS IT YET. The Cataclysm boss dungeon does not exist -- that is
+	 * slice 6 of issue #1324 -- and growing it by one floor per ordinary dungeon
+	 * is [#1315](https://github.com/sdubois777/Cataclysm/issues/1315). This is
+	 * the number both will need, counted from the day the player starts rather
+	 * than reconstructed afterwards from a board that no longer holds what was
+	 * cleared.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BasicDungeonsCleared = 0;
+
+	/**
+	 * How many quest objectives the player has earned this run.
+	 *
+	 * ONE CLEARED QUEST DUNGEON IS ONE OBJECTIVE, which the project owner ruled
+	 * on 2026-09-06, verbatim "Yes -- one dungeon, one objective".
+	 * `docs/Cataclysm_GDD_v2.md` section XI states it: the seals, seeds,
+	 * essences, cores and rituals the eight Cataclysms name are flavour for one
+	 * mechanic. A port of `Simulation.objectives`.
+	 *
+	 * **HOW MANY ARE NEEDED IS NOT HERE, AND THAT IS NOT AN OVERSIGHT.** The
+	 * design gives a count per Cataclysm -- Demonic 10, Death 5, War 10,
+	 * Pestilence 5, Famine 5, Celestial 10, Chaos 8, The Void 5 -- and **this
+	 * module has no notion of which Cataclysm is running.** There is no
+	 * Cataclysm enum in `CataclysmEmpire`, no active-Cataclysm list and no field
+	 * on `FCataclysmDungeon` saying which one sent it, so a required count read
+	 * from here would have exactly one reachable value. That is
+	 * [#1357](https://github.com/sdubois777/Cataclysm/issues/1357), and the gate
+	 * that compares this against a requirement is slice 6.
+	 *
+	 * SO THIS COUNTS AND DOES NOT DECIDE. Nothing opens, nothing is won, and
+	 * nothing here reads the number back. Issue #1324 slice 5.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 QuestObjectives = 0;
+
+	/**
+	 * How many times a dungeon's timer ran out and the empire actually paid.
+	 *
+	 * WHAT `FCataclysmDayReport::Resolved` CANNOT ANSWER, which is why this
+	 * exists. That list is every timer that ran out, and since slice 3 of issue
+	 * #1324 not every timer running out costs a city anything: a Quest dungeon
+	 * refreshes and moves, and a Fallen City and a Cataclysm stand on a city
+	 * whose damage is already done. A caller counting how often the empire was
+	 * hurt had no number to read and the report's own comment said so.
+	 *
+	 * **IT IS DELIBERATELY NOT A PORT OF `Simulation.resolved`, WHICH COUNTS
+	 * SOMETHING LOOSER.** The model raises its tally before asking whether the
+	 * dungeon detonates, so a Fallen City dungeon's timer running out counts
+	 * there and not here. `RunResult.dungeons_resolved` is documented in the
+	 * model as "times a dungeon detonated undefeated", which stopped being true
+	 * of it when slice 2 gave the model a kind that does not detonate. Copying
+	 * that arithmetic would have carried the defect across rather than the
+	 * meaning, so this counts the bite and the difference is recorded in
+	 * `docs/DECISIONS.md` and in
+	 * [#1373](https://github.com/sdubois777/Cataclysm/issues/1373).
+	 *
+	 * A CITY THAT HAS ALREADY FALLEN IS NOT A BITE EITHER. `ResolveDungeon`
+	 * returns before touching anything when its host is gone, and this is raised
+	 * where the damage is dealt rather than at the top of that function, so the
+	 * two cannot part company.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DungeonsDetonated = 0;
+
 	/**
 	 * Starts a run: an intact empire, a clock at day 0, and a surge due
 	 * immediately.
@@ -429,16 +540,27 @@ public:
 	/**
 	 * The PLAYER cleared a dungeon, and it leaves the map.
 	 *
-	 * NO DUNGEON RUN CALLS THIS YET. It is what a finished dungeon run will
-	 * call, and it is here because the alternative -- a caller reaching into
-	 * `Dungeons` and the clock's `Timers` separately -- is how the two lists
-	 * come apart.
+	 * A DUNGEON RUN DOES CALL THIS. `ACataclysmDungeonGameMode::GoDownOneFloor`
+	 * reaches the bottom floor of an empire dungeon and calls
+	 * `ClearEmpireDungeon`, which calls this. It is also here because the
+	 * alternative -- a caller reaching into `Dungeons` and the clock's `Timers`
+	 * separately -- is how the two lists come apart.
 	 *
 	 * IT IS NOT WHAT A CITY FALLING USES. A city that falls absorbs the dungeons
 	 * standing on it, and that goes through `RemoveDungeon` below instead. The
 	 * two are separate because clearing a dungeon can now restore a city's
 	 * defence, and a city that has just fallen must not be healed by the
 	 * dungeons that killed it.
+	 *
+	 * **AND IT IS THE ONLY THING THAT COUNTS PROGRESS**, which is the second
+	 * reason that split matters. `DungeonsCleared`, `BasicDungeonsCleared` and
+	 * `QuestObjectives` are all raised here and nowhere else, so a dungeon a
+	 * falling city swallowed earns the player nothing -- nobody walked it. Issue
+	 * #1324 slice 5.
+	 *
+	 * NOTHING IS COUNTED FOR A DUNGEON THAT WAS NOT THERE. The counters are
+	 * raised after the removal succeeds, so clearing the same identifier twice,
+	 * or one that never existed, adds nothing.
 	 *
 	 * @return whether it was there to clear.
 	 */

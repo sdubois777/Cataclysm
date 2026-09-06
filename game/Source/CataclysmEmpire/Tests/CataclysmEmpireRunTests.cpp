@@ -674,6 +674,15 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// NOTHING IS COUNTED BEFORE ANYTHING IS BEATEN. Issue #1324 slice 5. A
+	// counter that started at something would make every figure below wrong by
+	// a constant and look right.
+	TestEqual(TEXT("no dungeons are cleared yet"), Run->DungeonsCleared, 0);
+	TestEqual(TEXT("nor ordinary ones"), Run->BasicDungeonsCleared, 0);
+	TestEqual(TEXT("nor quest objectives"), Run->QuestObjectives, 0);
+
+	const ECataclysmDungeonType Kind = Dungeon->Type;
+
 	TestTrue(TEXT("it is cleared"), Run->ClearDungeon(DungeonId));
 
 	// BOTH LISTS, WHICH IS THE WHOLE REASON THIS IS A METHOD RATHER THAN A
@@ -686,9 +695,31 @@ bool FCataclysmEmpireRunClearTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the clock is counting three down"),
 			  Run->Clock->Timers.Num(), 3);
 
+	// AND THE RUN COUNTED IT. Which of the two other counters moved depends on
+	// what a surge rolled, so the kind is read off the dungeon rather than
+	// assumed: this test's seed has landed a Basic dungeon first for as long as
+	// it has existed and a change to the roll must not turn that into a silent
+	// failure of the wrong assertion.
+	TestEqual(TEXT("the run counted one dungeon cleared"),
+			  Run->DungeonsCleared, 1);
+	TestEqual(TEXT("and counted it as ordinary exactly when it was"),
+			  Run->BasicDungeonsCleared,
+			  Kind == ECataclysmDungeonType::Basic ? 1 : 0);
+	TestEqual(TEXT("and as a quest objective exactly when it was"),
+			  Run->QuestObjectives,
+			  Kind == ECataclysmDungeonType::Quest ? 1 : 0);
+
 	TestFalse(TEXT("clearing it twice does nothing"), Run->ClearDungeon(DungeonId));
 	TestFalse(TEXT("nor does clearing one that never existed"),
 			  Run->ClearDungeon(9999));
+
+	// AND NEITHER OF THOSE IS COUNTED. A refused clear that still raised a
+	// tally would let a caller earn quest objectives by asking twice.
+	TestEqual(TEXT("a refused clear counts nothing"), Run->DungeonsCleared, 1);
+	TestEqual(TEXT("nor as an ordinary one"), Run->BasicDungeonsCleared,
+			  Kind == ECataclysmDungeonType::Basic ? 1 : 0);
+	TestEqual(TEXT("nor as an objective"), Run->QuestObjectives,
+			  Kind == ECataclysmDungeonType::Quest ? 1 : 0);
 
 	// AND IT NEVER RESOLVES AGAIN. Two hundred days is long enough for its timer
 	// to have run out several times over.
@@ -2403,6 +2434,581 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and some moves crossed a tier boundary, so the tier check "
 				  "is not vacuous"),
 			 CrossedATierBoundary > 0);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Counting what the player achieved -- issue #1324 slice 5
+// ---------------------------------------------------------------------------
+
+/**
+ * A campaign played to the end, with every clear counted twice: once by the run
+ * and once here.
+ *
+ * WHAT THIS EXISTS TO CATCH. `UCataclysmEmpireRun` now carries three tallies of
+ * what the player beat, and the win condition slice 6 builds reads one of them.
+ * A tally that counted the wrong thing would be invisible: there is nothing to
+ * compare it against in play, and it is a plain integer that no other rule
+ * disagrees with.
+ *
+ * SO IT IS COUNTED INDEPENDENTLY HERE AND THE TWO ARE COMPARED EVERY DAY. This
+ * test walks a campaign, clears one dungeon a day, keeps its own three numbers
+ * from the kind it read off the dungeon BEFORE clearing it, and asserts the run
+ * agrees at the end of every day rather than only at the end of the run -- so a
+ * failure names the day and the campaign rather than a total.
+ *
+ * **THE HARD PART IS WHAT MUST *NOT* BE COUNTED**, and there are three:
+ *
+ *   - A dungeon a falling city ABSORBED. Nobody walked it. It goes through
+ *     `RemoveDungeon`, which is the whole reason that function is separate from
+ *     `ClearDungeon`, and this asserts the run's total never moved on a day
+ *     whose only losses were absorptions.
+ *   - A QUEST dungeon cleared must not deepen the Cataclysm boss dungeon.
+ *     `docs/Cataclysm_GDD_v2.md` section VIII: "Quest dungeons and retaken
+ *     Dungeon Cities do not" add a floor, so pursuing the win condition never
+ *     makes the final fight harder.
+ *   - A FALLEN CITY retaken must not either, by the same sentence, and must not
+ *     be a quest objective. It is still a dungeon cleared.
+ *
+ * ALL THREE KINDS HAVE TO ACTUALLY HAPPEN, and the counts are reported. A run
+ * that never cleared a Quest dungeon would satisfy every objective assertion
+ * above by never reaching one, which is the failure mode this issue has already
+ * recorded twice.
+ *
+ * **THE FIRST VERSION OF THIS TEST FAILED ON EXACTLY THOSE CONTROLS AND WAS
+ * RIGHT TO.** It cleared one dungeon a day, which is a player nothing can hurt:
+ * 20 campaigns of 600 days, 400 dungeons cleared, and **not one city fell** --
+ * so no Fallen City dungeon was ever built, nothing was ever absorbed, and two
+ * of the three rules this test exists for were being asserted against evidence
+ * that did not exist. It now spends the days a walk costs, which is what the
+ * game charges. See the walk loop below.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunCountsProgressTest,
+	"Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunCountsProgressTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	constexpr int32 Campaigns = 20;
+
+	// LONGER THAN THE OTHER CAMPAIGN TESTS IN THIS FILE, because this one is
+	// the only one in which the player spends days. A dungeon takes its floor
+	// count in days to walk, so six hundred days buys about twenty clears a
+	// campaign and the later ones -- the retaken cities -- come late.
+	constexpr int32 MostDays = 900;
+
+	int32 ClearedInAll = 0;
+	int32 OrdinaryInAll = 0;
+	int32 ObjectivesInAll = 0;
+	int32 FallenCitiesRetaken = 0;
+	int32 AbsorbedInAll = 0;
+	int32 DaysWhereOnlyAnAbsorptionRemovedOne = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		// A FRESH RUN HAS ACHIEVED NOTHING.
+		if (!TestEqual(TEXT("a fresh run has cleared nothing"),
+					   Run->DungeonsCleared, 0))
+		{
+			return false;
+		}
+
+		int32 Cleared = 0;
+		int32 Ordinary = 0;
+		int32 Objectives = 0;
+
+		// ONE DAY OF THE EMPIRE'S CLOCK. Returns the day's report and records
+		// what a falling city took with it, which must never be counted as
+		// something the player beat.
+		auto PassADay = [&]() -> FCataclysmDayReport
+		{
+			const int32 ClearedBefore = Run->DungeonsCleared;
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+
+			if (!Report.Absorbed.IsEmpty())
+			{
+				AbsorbedInAll += Report.Absorbed.Num();
+				++DaysWhereOnlyAnAbsorptionRemovedOne;
+
+				TestEqual(FString::Printf(
+					TEXT("seed %d day %d: %d dungeons were absorbed by a "
+						 "falling city and none of them was counted as "
+						 "cleared"), Seed, Report.Day, Report.Absorbed.Num()),
+					Run->DungeonsCleared, ClearedBefore);
+			}
+
+			return Report;
+		};
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			// WHICH DUNGEON THE PLAYER GOES TO. A Quest dungeon first, then a
+			// Fallen City, then whatever is oldest.
+			//
+			// THIS IS THE TEST'S POLICY AND NOT A RULE OF THE GAME, and it is
+			// this order so that all three kinds are actually beaten. A player
+			// who only ever took the first dungeon on the list would leave the
+			// quest objectives and the retaken cities to chance, and every
+			// assertion about them would be satisfied by never reaching one.
+			const FCataclysmDungeon* Target = nullptr;
+			for (const ECataclysmDungeonType Wanted :
+					{ ECataclysmDungeonType::Quest,
+					  ECataclysmDungeonType::FallenCity })
+			{
+				for (const FCataclysmDungeon& Standing : Run->Dungeons)
+				{
+					if (Standing.Type == Wanted)
+					{
+						Target = &Standing;
+						break;
+					}
+				}
+
+				if (Target != nullptr)
+				{
+					break;
+				}
+			}
+
+			if (Target == nullptr && !Run->Dungeons.IsEmpty())
+			{
+				Target = &Run->Dungeons[0];
+			}
+
+			if (Target == nullptr)
+			{
+				// NOTHING TO WALK. The day passes anyway; a surge is due
+				// eventually and the empire is quiet until then.
+				PassADay();
+				++Advanced;
+				continue;
+			}
+
+			// READ BEFORE ANY TIME PASSES. `Target` points into `Dungeons` and
+			// a day can add to that array, move it, or take this dungeon out of
+			// it altogether.
+			const int32 TargetId = Target->DungeonId;
+			const ECataclysmDungeonType Kind = Target->Type;
+			const int32 WalkDays =
+				FMath::Max(1, FMath::CeilToInt(Target->WalkDays));
+
+			// **WALKING A DUNGEON COSTS DAYS, AND THAT IS WHY THIS TEST DRIVES
+			// THE CLOCK RATHER THAN CLEARING ONE A DAY.** The first version of
+			// this test cleared a dungeon every day, which is a player nothing
+			// can hurt: over twenty campaigns of six hundred days **not one
+			// city fell**, so no Fallen City dungeon was ever created, nothing
+			// was ever absorbed, and the two rules about those were asserted
+			// against evidence that did not exist. It failed on exactly those
+			// two controls, which is what they are for.
+			for (int32 Spent = 0; Spent < WalkDays && Advanced < MostDays;
+				 ++Spent)
+			{
+				PassADay();
+				++Advanced;
+			}
+
+			if (Run->FindDungeon(TargetId) == nullptr)
+			{
+				// ITS CITY FELL WHILE THE PLAYER WAS INSIDE. The dungeon was
+				// absorbed and there is nothing left to beat, which is a real
+				// outcome rather than a case carved out to make this pass.
+				continue;
+			}
+
+			if (!Run->ClearDungeon(TargetId))
+			{
+				continue;
+			}
+
+			++Cleared;
+
+			if (Kind == ECataclysmDungeonType::Basic)
+			{
+				++Ordinary;
+			}
+			else if (Kind == ECataclysmDungeonType::Quest)
+			{
+				++Objectives;
+			}
+			else if (Kind == ECataclysmDungeonType::FallenCity)
+			{
+				++FallenCitiesRetaken;
+			}
+
+			// AFTER EVERY CLEAR, NOT ONLY AT THE END OF THE CAMPAIGN. A total
+			// compared once names neither the campaign nor the day it went
+			// wrong.
+			if (!TestEqual(FString::Printf(
+					TEXT("seed %d day %d: the run counted the same dungeons "
+						 "cleared as this test did"), Seed, Run->Day()),
+					Run->DungeonsCleared, Cleared))
+			{
+				return false;
+			}
+
+			if (!TestEqual(FString::Printf(
+					TEXT("seed %d day %d: and the same ordinary ones"),
+					Seed, Run->Day()),
+					Run->BasicDungeonsCleared, Ordinary))
+			{
+				return false;
+			}
+
+			if (!TestEqual(FString::Printf(
+					TEXT("seed %d day %d: and the same quest objectives"),
+					Seed, Run->Day()),
+					Run->QuestObjectives, Objectives))
+			{
+				return false;
+			}
+
+			// AND THE ONE THAT WAS WALKED REALLY LEFT THE BOARD. Without this
+			// the comparison above could be satisfied by a counter that moved
+			// while the dungeon stayed where it was.
+			TestNull(*FString::Printf(
+				TEXT("seed %d day %d: dungeon %d really left the board"),
+				Seed, Run->Day(), TargetId),
+				Run->FindDungeon(TargetId));
+		}
+
+		ClearedInAll += Cleared;
+		OrdinaryInAll += Ordinary;
+		ObjectivesInAll += Objectives;
+
+		// THE THREE ARE NOT INDEPENDENT AND THE RELATIONSHIP IS THE RULE. Every
+		// ordinary dungeon and every quest objective is also a dungeon cleared,
+		// and a Fallen City is a dungeon cleared that is neither.
+		TestTrue(FString::Printf(
+			TEXT("seed %d: ordinary and quest clears never exceed the total"),
+			Seed),
+			Run->BasicDungeonsCleared + Run->QuestObjectives
+				<= Run->DungeonsCleared);
+
+		// AND A SECOND `Begin` IS A FRESH CAMPAIGN. Carrying one run's quest
+		// objectives into the next would hand slice 6's win condition a head
+		// start that no player earned.
+		Run->Begin(Seed, ECataclysmSurgeMode::Static);
+
+		TestEqual(TEXT("beginning again forgets the dungeons cleared"),
+				  Run->DungeonsCleared, 0);
+		TestEqual(TEXT("and the ordinary ones"), Run->BasicDungeonsCleared, 0);
+		TestEqual(TEXT("and the quest objectives"), Run->QuestObjectives, 0);
+		TestEqual(TEXT("and the resolves that cost a city"),
+				  Run->DungeonsDetonated, 0);
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns: %d dungeons cleared, of which %d ordinary, %d "
+			 "quest objectives and %d retaken fallen cities. %d dungeons were "
+			 "absorbed by a falling city on %d days and none was counted"),
+		Campaigns, ClearedInAll, OrdinaryInAll, ObjectivesInAll,
+		FallenCitiesRetaken, AbsorbedInAll,
+		DaysWhereOnlyAnAbsorptionRemovedOne));
+
+	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED. Each of these makes
+	// one of the assertions above non-vacuous.
+	TestTrue(TEXT("dungeons were actually cleared"), ClearedInAll > 0);
+	TestTrue(TEXT("and ordinary ones among them"), OrdinaryInAll > 0);
+	TestTrue(TEXT("and quest objectives were actually earned"),
+			 ObjectivesInAll > 0);
+	TestTrue(TEXT("and a fallen city was actually retaken, so the rule that a "
+				  "retake is not an ordinary clear was actually exercised"),
+			 FallenCitiesRetaken > 0);
+	TestTrue(TEXT("and dungeons were actually absorbed by a falling city"),
+			 AbsorbedInAll > 0);
+
+	// AND THE THREE COUNTERS ARE NOT THE SAME NUMBER. If every clear were a
+	// Basic one the separation the design asks for would be untested, and a
+	// build that counted every kind as ordinary would pass everything above.
+	TestTrue(TEXT("the ordinary count is strictly below the total, so the "
+				  "three tallies are genuinely different numbers"),
+			 OrdinaryInAll < ClearedInAll);
+
+	return true;
+}
+
+/**
+ * How often a dungeon's timer running out actually cost the empire something.
+ *
+ * `FCataclysmDayReport::Resolved` IS NOT THAT NUMBER and its own comment said
+ * so: since slice 3 of issue #1324 a Quest dungeon's timer running out costs
+ * its city nothing, and a Fallen City and a Cataclysm stand on a city whose
+ * damage is already done. `UCataclysmEmpireRun::DungeonsDetonated` is the count
+ * a caller asking "how often was the empire hurt" needs, and this is what makes
+ * it more than a second name for the length of that list.
+ *
+ * THE TWO ASSERTIONS THAT MATTER ARE AN INEQUALITY AND AN EQUALITY.
+ *
+ *   - **Never more than the timers that could detonate.** A day cannot hurt the
+ *     empire more times than it ran timers out on kinds that bite.
+ *   - **Exactly that many on a day where no city fell.** A city falling
+ *     mid-day changes which hosts are alive part way through, so those days are
+ *     excluded rather than approximated -- and there are plenty left.
+ *
+ * AND IT HAS TO BE STRICTLY NARROWER THAN `Resolved` SOMEWHERE, or a counter
+ * that simply added one per entry in that list would pass both. The gap is
+ * reported.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDetonationCountTest,
+	"Cataclysm.EmpireRun.OnlyAResolveThatCostACitySomethingIsCounted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDetonationCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	constexpr int32 Campaigns = 20;
+	constexpr int32 MostDays = 600;
+
+	int32 ResolvedInAll = 0;
+	int32 DetonationsInAll = 0;
+	int32 QuietResolves = 0;
+	int32 QuietDaysChecked = 0;
+	int32 ExactDaysChecked = 0;
+
+	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
+	{
+		UCataclysmEmpireRun* Run = MakeRun(Seed);
+
+		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
+		{
+			return false;
+		}
+
+		int32 Advanced = 0;
+		while (Advanced < MostDays && Run->Map->ExposedCities().Num() >= 2)
+		{
+			// READ BEFORE THE DAY. A dungeon that is absorbed is gone from
+			// `Dungeons` afterwards, and a city that falls is marked afterwards.
+			//
+			// `Resolves()` AND NOT THE KIND, so this test asks the same
+			// question the empire run asks rather than repeating its answer.
+			TMap<int32, bool> BitesOf;
+			TMap<int32, bool> HostWasAlive;
+			for (const FCataclysmDungeon& Standing : Run->Dungeons)
+			{
+				BitesOf.Add(Standing.DungeonId, Standing.Resolves());
+
+				const FCataclysmCity* Host = Run->Map->Find(Standing.CityId);
+				HostWasAlive.Add(Standing.DungeonId,
+								 Host != nullptr && !Host->bFallen);
+			}
+
+			const int32 DetonatedBefore = Run->DungeonsDetonated;
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+			++Advanced;
+
+			const int32 DetonatedToday =
+				Run->DungeonsDetonated - DetonatedBefore;
+
+			ResolvedInAll += Report.Resolved.Num();
+			DetonationsInAll += DetonatedToday;
+
+			// HOW MANY OF TODAY'S TIMERS BELONGED TO A KIND THAT BITES AT ALL.
+			// `FCataclysmDungeon::Resolves` is the rule and it is read off the
+			// kind, which is what the empire run reads too.
+			int32 CouldBite = 0;
+			int32 CouldBiteALivingCity = 0;
+			int32 UnknownResolves = 0;
+			for (const int32 DungeonId : Report.Resolved)
+			{
+				const bool* Bites = BitesOf.Find(DungeonId);
+
+				if (Bites == nullptr)
+				{
+					// A TIMER THAT RAN OUT FOR A DUNGEON THAT WAS NOT STANDING
+					// THIS MORNING. Nothing should be able to arrive and run
+					// out on the same day, so this is not expected -- but a day
+					// containing one says nothing about the count either way,
+					// and guessing would be worse than skipping it.
+					++UnknownResolves;
+					continue;
+				}
+
+				if (!*Bites)
+				{
+					++QuietResolves;
+					continue;
+				}
+
+				++CouldBite;
+
+				if (HostWasAlive.FindRef(DungeonId))
+				{
+					++CouldBiteALivingCity;
+				}
+			}
+
+			if (!TestTrue(FString::Printf(
+					TEXT("seed %d day %d: %d detonations against %d timers on "
+						 "a kind that bites"),
+					Seed, Report.Day, DetonatedToday, CouldBite),
+					DetonatedToday <= CouldBite))
+			{
+				return false;
+			}
+
+			// A DAY WHOSE TIMERS ALL BELONGED TO A KIND THAT DOES NOT BITE MUST
+			// HAVE COST NOTHING. This is the assertion a counter that just
+			// followed `Resolved` would fail.
+			if (CouldBite == 0 && UnknownResolves == 0
+				&& !Report.Resolved.IsEmpty())
+			{
+				++QuietDaysChecked;
+
+				TestEqual(FString::Printf(
+					TEXT("seed %d day %d: %d timers ran out and every one of "
+						 "them was a kind that does not detonate, so the "
+						 "empire paid nothing"),
+					Seed, Report.Day, Report.Resolved.Num()),
+					DetonatedToday, 0);
+			}
+
+			// AND ON A DAY WHERE NOTHING FELL, THE COUNT IS EXACT. A fall
+			// part way through a day changes which hosts are alive after this
+			// snapshot was taken, so those days are skipped rather than
+			// guessed at.
+			if (Report.Fallen.IsEmpty() && UnknownResolves == 0
+				&& !Report.Resolved.IsEmpty())
+			{
+				++ExactDaysChecked;
+
+				TestEqual(FString::Printf(
+					TEXT("seed %d day %d: every biting timer on a living city "
+						 "cost that city something"), Seed, Report.Day),
+					DetonatedToday, CouldBiteALivingCity);
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d campaigns: %d timers ran out, %d of them cost a city "
+			 "something, and %d belonged to a kind that never bites. Checked "
+			 "exactly on %d days where nothing fell and %d days where every "
+			 "timer was a quiet one"),
+		Campaigns, ResolvedInAll, DetonationsInAll, QuietResolves,
+		ExactDaysChecked, QuietDaysChecked));
+
+	TestTrue(TEXT("timers actually ran out"), ResolvedInAll > 0);
+	TestTrue(TEXT("and the empire actually paid for some of them"),
+			 DetonationsInAll > 0);
+
+	// **AND THE TWO NUMBERS ARE NOT THE SAME NUMBER.** Without this a counter
+	// raised once per entry in `Resolved` would satisfy everything above, which
+	// is exactly the arithmetic the model uses and issue #1373 records.
+	TestTrue(TEXT("and strictly fewer resolves cost a city than ran out, so "
+				  "this is not a second name for the report's list"),
+			 DetonationsInAll < ResolvedInAll);
+
+	TestTrue(TEXT("and days on which every timer was a quiet one were actually "
+				  "reached"), QuietDaysChecked > 0);
+	TestTrue(TEXT("and the exact comparison was actually made"),
+			 ExactDaysChecked > 0);
+
+	return true;
+}
+
+/**
+ * `Describe` says what the player has achieved, and which dungeon is which kind.
+ *
+ * WHY THIS IS WORTH A TEST. `Describe` is what `Cataclysm.ShowEmpire` and
+ * `Cataclysm.EmpireAdvance` print, so it is the only way anybody outside a
+ * screen looks at a run -- and until issue #1324 slice 5 it had no test at all
+ * while three sessions had edited it. It also said nothing about a dungeon's
+ * KIND, so a Quest dungeon and an ordinary one read identically, which is
+ * useless beside a count of quest objectives.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDescribesProgressTest,
+	"Cataclysm.EmpireRun.DescribeSaysWhatWasClearedAndWhichDungeonIsAQuest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunDescribesProgressTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
+
+	TestEqual(TEXT("a run that has not begun says so"), Fresh->Describe(),
+			  FString(TEXT("The run has not begun.")));
+
+	// A CAMPAIGN WALKED UNTIL A QUEST DUNGEON IS STANDING. Which day that is
+	// depends on the roll, so it is searched for rather than assumed; a surge
+	// rolls one about an eighth of the time and the first wave brings four.
+	UCataclysmEmpireRun* Run = MakeRun(1);
+
+	int32 QuestId = INDEX_NONE;
+	int32 Advanced = 0;
+	while (QuestId == INDEX_NONE && Advanced < 200)
+	{
+		for (const FCataclysmDungeon& Standing : Run->Dungeons)
+		{
+			if (Standing.Type == ECataclysmDungeonType::Quest)
+			{
+				QuestId = Standing.DungeonId;
+				break;
+			}
+		}
+
+		if (QuestId != INDEX_NONE)
+		{
+			break;
+		}
+
+		Run->AdvanceDay();
+		++Advanced;
+	}
+
+	if (!TestTrue(TEXT("a quest dungeon was found to describe"),
+				  QuestId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	const FString WithAQuest = Run->Describe();
+
+	TestTrue(TEXT("the quest dungeon is named as one"),
+			 WithAQuest.Contains(TEXT("(Quest"), ESearchCase::CaseSensitive));
+
+	// AND NOT THE ORDINARY ONES. "Basic" must never appear, or every line
+	// carries a word that distinguishes the common case from itself.
+	TestFalse(TEXT("and an ordinary dungeon is not labelled Basic"),
+			  WithAQuest.Contains(TEXT("Basic"), ESearchCase::CaseSensitive));
+
+	// NOTHING CLEARED YET SAYS SO, WITH THE NUMBERS. This is the line a person
+	// running `Cataclysm.ShowEmpire` reads.
+	TestTrue(TEXT("it reports nothing cleared before anything is"),
+			 WithAQuest.Contains(
+				 TEXT("0 dungeons cleared, 0 of them ordinary. 0 quest "
+					  "objectives earned."), ESearchCase::CaseSensitive));
+
+	TestTrue(TEXT("and it clears"), Run->ClearDungeon(QuestId));
+
+	const FString AfterAClear = Run->Describe();
+
+	TestTrue(TEXT("and the objective is reported"),
+			 AfterAClear.Contains(
+				 TEXT("1 dungeons cleared, 0 of them ordinary. 1 quest "
+					  "objectives earned."), ESearchCase::CaseSensitive));
+
+	// AND THE DUNGEON IS GONE FROM THE LISTING, so the line above is describing
+	// a board that really changed rather than a counter that moved on its own.
+	TestFalse(TEXT("the cleared dungeon is no longer listed"),
+			  AfterAClear.Contains(
+				  *FString::Printf(TEXT("dungeon %d "), QuestId),
+				  ESearchCase::CaseSensitive));
 
 	return true;
 }

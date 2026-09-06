@@ -498,13 +498,30 @@ public:
  * cadence, the account record only when it actually changes, and it is that
  * split which makes a constant save affordable.
  *
- * WHAT IS DELIBERATELY ABSENT: the empire graph -- which cities stand, their
- * population, their defence and their filled upgrade slots -- the active
- * dungeons with their modifiers and resolve timers, the surge schedule, and
- * Cataclysm quest progress. All four live in the `CataclysmEmpire` module's
- * design and none of them has a runtime shape yet. `FCataclysmSavedFloor` IS
- * here, in full, because section 6 specifies its contents exactly and it is the
- * requirement the whole feature exists for.
+ * THIS COMMENT USED TO LIST FOUR THINGS AS DELIBERATELY ABSENT and by
+ * 2026-09-06 it was wrong about all four. It said the empire graph, the active
+ * dungeons with their resolve timers, the surge schedule and Cataclysm quest
+ * progress all lived in the `CataclysmEmpire` module's design and that "none of
+ * them has a runtime shape yet". The first three are FIELDS OF THIS CLASS --
+ * `Cities`, `Dungeons` with `DungeonTimers`, and the five surge fields -- put
+ * there by the slices of issue #1307. The fourth gained a runtime shape on
+ * 2026-09-06: `UCataclysmEmpireRun::QuestObjectives`, issue #1324 slice 5.
+ *
+ * WHAT IS STILL ABSENT, and this is the corrected list:
+ *
+ *   - **What the player has achieved this run.** `DungeonsCleared`,
+ *     `BasicDungeonsCleared`, `QuestObjectives` and `DungeonsDetonated` on
+ *     `UCataclysmEmpireRun` are not written here, so a restored run would forget
+ *     every quest objective earned and every dungeon beaten. Issue
+ *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+ *   - **A dungeon's modifiers.** The 117 rows of
+ *     `game/Data/DungeonModifiers.csv` are not on `FCataclysmDungeon` at all
+ *     yet, so there is nothing to write. Issue #41.
+ *   - **`NextDungeonId`**, so a restored run would hand out identifiers that
+ *     collide with the dungeons it just restored.
+ *
+ * `FCataclysmSavedFloor` IS here, in full, because section 6 specifies its
+ * contents exactly and it is the requirement the whole feature exists for.
  */
 UCLASS(BlueprintType)
 class CATACLYSM_API UCataclysmRunSave : public UCataclysmSaveRecord

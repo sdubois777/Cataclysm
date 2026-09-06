@@ -827,4 +827,83 @@ bool FCataclysmEmpireWidgetRunTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// What the player has achieved -- issue #1324 slice 5
+// ---------------------------------------------------------------------------
+
+/**
+ * The screen's one line about what the PLAYER has done.
+ *
+ * WHY IT IS WORTH A TEST OF ITS OWN. Everything else the empire screen says
+ * describes the empire's decline: the day, the cities lost, the dungeons
+ * standing, the next surge. `ProgressLine` is the only part of it that describes
+ * progress, and a quest objective is the only number on the screen that will
+ * ever be one, so the plural is a real case rather than pedantry.
+ *
+ * IT IS ON THE LAYOUT CLASS SO THAT IT CAN BE READ BACK. The widget's
+ * `StatusLabel` is a `BindWidget` and is null in a headless test, so a string
+ * built inside `WriteStatus` would be uncoverable -- which is the reason this
+ * whole class exists.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireProgressLineTest,
+	"Cataclysm.EmpireScreen.TheScreenSaysWhatThePlayerHasClearedAndEarned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
+{
+	// NO RUN AT ALL SAYS NOTHING. A screen with no run already says so in its
+	// own words, and "No dungeons cleared yet" beside it would read as a run
+	// that had begun and achieved nothing.
+	TestEqual(TEXT("no run says nothing"),
+			  UCataclysmEmpireMapLayout::ProgressLine(nullptr), FString());
+
+	// A RUN THAT HAS NOT BEGUN EITHER. `Begin` is what builds the map, so a
+	// freshly constructed run object is the same case.
+	UCataclysmEmpireRun* NotStarted = NewObject<UCataclysmEmpireRun>();
+	TestEqual(TEXT("a run that has not begun says nothing"),
+			  UCataclysmEmpireMapLayout::ProgressLine(NotStarted), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+
+	TestEqual(TEXT("a fresh run has cleared nothing and earned nothing"),
+			  UCataclysmEmpireMapLayout::ProgressLine(Run),
+			  FString(TEXT("No dungeons cleared yet, no quest objectives")));
+
+	// THE COUNTERS ARE SET DIRECTLY HERE, AND THAT IS THE POINT OF THIS TEST.
+	// Whether they are RAISED correctly is
+	// `Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`,
+	// which drives twenty campaigns to find out. What this covers is the
+	// wording, and reaching each case through a campaign would mean hunting for
+	// a seed that produced exactly one quest objective.
+	Run->DungeonsCleared = 1;
+
+	TestEqual(TEXT("one dungeon, singular, and still no objectives"),
+			  UCataclysmEmpireMapLayout::ProgressLine(Run),
+			  FString(TEXT("1 dungeon cleared, no quest objectives")));
+
+	Run->DungeonsCleared = 4;
+	Run->QuestObjectives = 1;
+
+	TestEqual(TEXT("four dungeons and one objective, each with its own plural"),
+			  UCataclysmEmpireMapLayout::ProgressLine(Run),
+			  FString(TEXT("4 dungeons cleared, 1 quest objective")));
+
+	Run->DungeonsCleared = 12;
+	Run->QuestObjectives = 3;
+
+	TestEqual(TEXT("and both plural"),
+			  UCataclysmEmpireMapLayout::ProgressLine(Run),
+			  FString(TEXT("12 dungeons cleared, 3 quest objectives")));
+
+	// **NO DENOMINATOR.** The design states a different objective count for each
+	// of the eight Cataclysms and the empire layer has no notion of which one is
+	// running, so "3 of 8" would be a number this build invented. Issue #1357 is
+	// what has to land first, and this fails if somebody adds one meanwhile.
+	TestFalse(TEXT("and it does not claim to know how many are needed"),
+			  UCataclysmEmpireMapLayout::ProgressLine(Run).Contains(TEXT(" of ")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

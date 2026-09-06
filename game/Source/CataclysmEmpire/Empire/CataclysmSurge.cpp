@@ -87,6 +87,17 @@ FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
 	}
 }
 
+FString UCataclysmSurgeScheduler::KindName(ECataclysmDungeonType Type)
+{
+	switch (Type)
+	{
+	case ECataclysmDungeonType::Quest:		return TEXT("Quest");
+	case ECataclysmDungeonType::FallenCity:	return TEXT("Fallen City");
+	case ECataclysmDungeonType::Cataclysm:	return TEXT("Cataclysm");
+	default:								return FString();
+	}
+}
+
 ECataclysmDungeonSubType UCataclysmSurgeScheduler::BarredSubTypeOn(
 	ECataclysmDungeonType Type)
 {

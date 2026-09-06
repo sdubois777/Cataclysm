@@ -70,18 +70,30 @@ def siege_daily_damage(sim, d, city) -> float:
     of every other dungeon's score.
 
     A MIRROR OF `Simulation._apply_siege_damage` AND NOT A SECOND OPINION. The
-    flat share, the ten-points-a-day growth, the day the growth counts from,
+    flat share, the growth of 2.5 points a day, the day the growth counts from,
     the damage-reduction multiplier and the rule that a fallen city is not
     bitten again all have to match the engine, or a policy would be reasoning
     about damage the day loop does not actually deal.
     `tests/test_policies_see_sieges.py` drives the two against each other for
-    that reason rather than restating the arithmetic.
+    that reason rather than restating the arithmetic. **The growth was ten
+    points a day until the owner cut it on issue #1349 on 2026-09-06**, and this
+    sentence still said ten afterwards, which is half of what issue #1364 is
+    about. `tests/test_the_siege_prose_in_policies_is_true.py` now reads the
+    figure out of this docstring and compares it against
+    `TuningConfig.siege_damage_growth_per_day`.
 
     ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
-    `_roll_subtype` runs for every `_make_dungeon`, and over twelve campaigns
-    measured on 2026-09-06 the Sieges that reached the map were 114 Basic, 28
-    Fallen City, 11 Quest and 3 Cataclysm. That is why the callers below apply
+    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-06 over
+    10,000 campaigns at the settings `siege_urgency` names below, the 105,997
+    Sieges that reached the map were 78% Basic, 11% Quest, 10% Fallen City and
+    1% Cataclysm, about 10.6 a campaign. That is why the callers below apply
     this in all three scoring branches instead of only the ordinary one.
+
+    THE COUNTS THAT USED TO BE HERE -- 114 Basic, 28 Fallen City, 11 Quest and 3
+    Cataclysm over twelve campaigns -- were taken before two changes of the same
+    day. The owner halved the Siege spawn weight on issue #1349, and a surge
+    began rolling Quest dungeons on issue #1324. Twelve campaigns could not have
+    separated Quest from Fallen City in any case, and the order was wrong.
     """
     if d.subtype != "Siege" or city is None or city.fallen:
         return 0.0
@@ -126,6 +138,12 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     still get there in time**. This returns the policy's own `fatal` multiplier
     when they can and 1.0 when they cannot.
 
+    THOSE FOUR WERE 14 / 23 / 34 / 47 until the owner cut the growth from ten
+    points a day to 2.5 on issue #1349 on 2026-09-06. They are not targets: the
+    constant moved and they followed it. The same day loop still returns the old
+    four when the growth is put back to ten, which is how the derivation is
+    checked -- `tests/test_the_siege_prose_in_policies_is_true.py` drives both.
+
     WHY IT IS THAT SHAPE AND NOT A SLIDING SCALE. The first version of this
     scaled with the share of the city the Siege would eat during the walk, and
     it was backwards: it gave FULL weight to Sieges that were already
@@ -135,22 +153,48 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     1.03, which is to say barely at all.
 
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
-    difficulty tier 1 with no tree the median walk is 12 days to an Outpost, 20
-    to a Bulwark and 33 to a Sanctuary as this file has long stated it, and
-    14 / 22 / 33 as issue #1364 measured it. Against the 14 / 23 / 34 days a
-    fresh Siege used to leave, that was a slack of one day or none: the median
-    player arrived as the city fell. The owner cut the growth on issue #1349 on
-    2026-09-06 and a fresh Siege now leaves 25 / 39 / 55, so the slack is
-    13 / 19 / 22 days against the walks stated here and 11 / 17 / 22 against
-    the ones #1364 measured. Which pair is right is that issue's business; both
-    say the same thing about this decision.
+    difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
+    and static surges of five dungeons every 120 days, the median walk is 13
+    days to an Outpost, 22 to a Bulwark, 34 to a Sanctuary and 123 to the
+    Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
+    sizes, the slack is 12 / 17 / 21 days. Measured on 2026-09-06 over 10,000
+    campaigns and 1,488,436 dungeons, each recorded at the moment it was made;
+    issue #1364.
+
+    QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
+    THEM FORWARD. The walk lengths are nearly uniform where the median sits --
+    45.2% of Outpost dungeons walk in 12 days or fewer and 50.5% in 13 or fewer
+    -- so the median is a coin flip between two adjacent days, and a block of
+    200 campaigns lands on either side of it at random. That is how this file
+    came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
+    same code: neither was reproducible, and neither was wrong by much.
+    `tests/test_the_siege_prose_in_policies_is_true.py` re-measures all four and
+    allows a day either way.
+
+    IT MOVED WHILE THIS PARAGRAPH WAS BEING WRITTEN, WHICH IS THE ARGUMENT FOR
+    THE GUARD. Issue #1369 put the Cow Level spawn weight back to 7 from the 7.6
+    the Siege rescale of issue #1349 had lifted it to, and a Cow Level walks in
+    twice the days. The Sanctuary median fell from 35 to 34 between the first
+    draft of this paragraph and the second, and the guard failed in continuous
+    integration rather than a reader finding it a month later. Re-measured on
+    `e8b33c2`.
+
+    THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
+    balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.
+    The two are different worlds, and at the larger city sizes the medians
+    differ by more than the day of wobble above. Issue #1286 names the block.
 
     THAT MAKES THE ANSWER REACHABLE AND NOT AUTOMATIC. A Siege that has already
-    stood for a while, or one on a Pillar -- 70 days against a median walk of
-    123, so a Pillar Siege can never be answered at any dose -- is still
-    hopeless, and this returns 1.0 for it. What changed is that the reachable
-    case is now common instead of vanishing, which is why the policy has to be
-    able to tell the two apart at all.
+    stood for a while is still hopeless, and this returns 1.0 for it. So is
+    every Siege on the Pillar, and that one is exact rather than typical. A
+    surge cannot target the Pillar, so the only dungeons that spawn there are
+    the Cataclysm at 100 to 150 floors and, once the Pillar falls, its own
+    Fallen City at 80 to 120 -- and both openers only ever ADD floors to a
+    Cataclysm. The shortest walk to any of them is therefore 80 days against the
+    70 a fresh Siege leaves, so a Pillar Siege can never be answered: not at the
+    median, and not at the best roll the model can produce. What changed is that
+    the reachable case is now common instead of vanishing, which is why the
+    policy has to be able to tell the two apart at all.
 
     WHY IT IS ANCHORED TO THE POLICY'S OWN `fatal` MULTIPLIER RATHER THAN TO A
     NEW CONSTANT. Each policy already has a number for "the damage about to

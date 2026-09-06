@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — What the game counts when a dungeon is beaten, and the one number it refuses to invent
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and
+`.cpp`, `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`,
+`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp`, and
+`game/Source/Cataclysm/Interface/CataclysmEmpireMapWidget.cpp`. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 5.
+
+**Nothing here is a new design rule.** Every rule this implements was already
+settled: one cleared quest dungeon is one objective, ruled by the project owner
+on 2026-09-06 and stated in `docs/Cataclysm_GDD_v2.md` section XI; and only an
+**ordinary** dungeon defeated deepens the Cataclysm boss dungeon, settled the
+same day and stated in section VIII. What is recorded below is the two readings
+the implementation had to take where those rules stop, and one question they
+raise that only the owner can answer.
+
+### What was built
+
+`UCataclysmEmpireRun` now carries four tallies, three raised in `ClearDungeon`
+and one where a resolve actually damages a city:
+
+| Counter | What it counts | The model's name for it |
+| :-- | :-- | :-- |
+| `DungeonsCleared` | every kind the player beat | `Simulation.cleared` |
+| `BasicDungeonsCleared` | ordinary ones only — what the boss's depth reads | `Simulation.basic_cleared` |
+| `QuestObjectives` | Quest dungeons beaten, one objective each | `Simulation.objectives` |
+| `DungeonsDetonated` | resolves that cost a city something | *deliberately not `Simulation.resolved`* |
+
+`Describe` reports all four and now names a dungeon's **kind** beside its
+sub-type, so a person reading a run can see which standing dungeon would earn
+them an objective. The empire screen's status line carries the same progress
+through `UCataclysmEmpireMapLayout::ProgressLine`.
+
+### Reading 1 — one objective counter for the whole run, because the alternative cannot be built
+
+`docs/Cataclysm_GDD_v2.md` section XI gives a count **per Cataclysm** — Demonic
+10, Death 5, War 10, Pestilence 5, Famine 5, Celestial 10, Chaos 8, The Void 5 —
+and the empire layer has no notion of which Cataclysm is running. There is no
+Cataclysm enum in `game/Source/CataclysmEmpire/`, no active-Cataclysm list, and
+no field on `FCataclysmDungeon` saying which one sent a dungeon. That is
+[#1357](https://github.com/sdubois777/Cataclysm/issues/1357), and it is the same
+blocker that stopped slice 3 deriving a spawn rate.
+
+So `QuestObjectives` is **one number for the run**, which is what
+`Simulation.objectives` is and the only shape this module can express today.
+**It is a reading, not a ruling**, and it is written here rather than left in
+the code so that whoever fixes #1357 knows a decision is waiting behind it.
+
+**Nothing compares it against a requirement.** No gate, no opened dungeon, no
+won state; slice 6 owns those. `ProgressLine` deliberately prints no
+denominator, because "3 of 8" would be a number this build invented, and a test
+fails if one appears.
+
+### Reading 2 — the game counts a detonation and the model counts something looser
+
+`Simulation._resolve` raises `self.resolved` **above** its own guard, so a
+Fallen City dungeon's timer running out is counted there while taking nothing
+from anybody. Measured over 30 campaigns at `TuningConfig()` defaults with the
+`triage` policy: **4,051 counted, 4,036 of which actually changed a city's
+defence or population.** Two of the fifteen were Fallen City dungeons and
+thirteen were ordinary dungeons standing on a city that had already fallen.
+
+`RunResult.dungeons_resolved` documents itself as "times a dungeon detonated
+undefeated", which it therefore is not — and it stopped being that the moment
+slice 2 gave the model a kind that does not detonate.
+
+**The arithmetic was not copied.** `DungeonsDetonated` is raised where
+`UCataclysmEmpireMap::Damage` is called, below every return that lets a timer
+run out for free, so it answers the question
+`FCataclysmDayReport::Resolved` cannot: how often the empire was actually hurt.
+The model's side is [#1373](https://github.com/sdubois777/Cataclysm/issues/1373)
+and it was not folded in here, because moving that line changes a figure
+`sim/experiments.py` reports and belongs in a change that re-measures.
+`test_the_game_counts_a_detonation_and_the_model_counts_something_else` in
+`tools/tests/test_surge_port.py` exists **to fail when #1373 lands**, and its
+message names this entry as one of the three places that then need correcting.
+
+### Still open, and it belongs to the owner
+
+**Several Cataclysms are active at once, and the design never says how their
+objective counts combine.** Section XI states a count for each of the eight and
+says "the enemy capital opens when the count is met" — one count, no rule for
+several. The design elsewhere talks about "C active Cataclysms" and how affix
+value changes with C, so more than one being live is not hypothetical. Checked
+with the file's hard wrapping flattened, four positive controls found and a
+control phrase that cannot be there correctly absent.
+
+Three readings are possible and they are not close together: the **sum** of every
+active Cataclysm's count, the **largest** of them, or **one capital per
+Cataclysm** with its own count. At tier 8 the difference is between 5 and about
+50 quest dungeons. **Slice 6 cannot be built without an answer**, and the
+simulation's flat 8 is a placeholder that predates the per-Cataclysm counts, so
+no measured figure settles it either.
+
+### Three comments that said a built thing was missing
+
+`UCataclysmEmpireRun`'s class comment listed as "what it deliberately does not
+do" three things it had been doing for at least a slice: that nothing called
+`EnterDungeon` or `LeaveDungeon` on the clock, that no dungeon run reached
+`ClearDungeon`, and that a fallen city becoming a retakeable dungeon was still
+future work. `ACataclysmDungeonGameMode` does all three, and the last has been in
+this very class since `c7e11f7`. `ECataclysmDungeonSubType`'s comment likewise
+still said nothing in the empire layer rolled a sub-type, which stopped being
+true at `#1289`.
+
+All four are corrected and the corrections are recorded in the comment rather
+than made silently, because a comment saying a feature is absent is read as
+evidence that it is. **That is the fifth time on issue #1324 that a note nobody
+re-read turned out to be false.**
+
 ## 2026-09-06 — The Cow Level stays at 7 and only the five take the Siege's slack, so a Cow Level is the rarest thing again
 
 **Affects:** `sim/cataclysm_sim/config.py`,
