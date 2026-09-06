@@ -146,12 +146,25 @@ There are two ways to get into one:
   cleared; the rest is not attributed, which is issue #1343.
 
   **THOSE ARE MEASURED WITH THE SIEGE'S CITY DAMAGE ZEROED**, because that
-  is the only way to compare with the older figures. With it on, which is
-  what the model does today after issue #1345, the Last Stand is reached in
-  **99.1%** of campaigns and the earned Cataclysm dungeon opens in **2.4%**.
-  The route the design treats as the ordinary win condition has almost
-  stopped happening. Whether a Siege should be that decisive has not been
-  put to the project owner.
+  is the only way to compare with the older figures. With it on, and at the
+  Siege settings of the day, the Last Stand was reached in **99.1%** of
+  campaigns and the earned Cataclysm dungeon opened in **2.4%**: the route
+  the design treats as the ordinary win condition had almost stopped
+  happening.
+
+  **THE OWNER RULED AGAINST THAT ON 2026-09-06, ISSUE #1349**, verbatim
+  "Halve the rate and cut the growth". The Siege spawn weight went 15 to 7.5
+  and `siege_damage_growth_per_day` 10 to 2.5; the two 1% shares of a city's
+  maximum were left alone. **Re-measured on the shipped configuration** with
+  `sim/analyse_siege_dose.py` at `CATACLYSM_SIEGE_DOSE_TRIALS=1000` -- 2,000
+  campaigns in two disjoint blocks of 1,000 seeds, at tier 1, `No tree`,
+  `triage`, STATIC surges every 120 days x5, resolve ratio 2.0, escalation
+  0.10 per 100 days, craft 12 days +4%, Siege damage live and the policies
+  able to see one -- **the earned Cataclysm dungeon opens in 51.2% and 48.9%
+  of campaigns, the Last Stand is reached in 55.7% and 56.7%, and the empire
+  loses 16.4 and 16.1 cities of 25.** An unattended Siege now empties a city
+  in 25 / 39 / 55 / 70 days by size rather than 14 / 23 / 34 / 47. **The
+  99.1% and 2.4% above describe the game that ruling moved away from.**
 
   **RE-MEASURED AFTER #1338 AND #1333, WHICH IS WHAT REPLACES THE STALE
   FIGURES ABOVE.** 2,000 campaigns in two disjoint blocks of 1,000 seeds, at

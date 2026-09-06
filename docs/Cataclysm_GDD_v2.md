@@ -368,7 +368,9 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
 
 
-**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on — which is what the simulation does now that the Siege is modelled — the Last Stand is reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives is reached in **2.4%**. **The route this document treats as the ordinary way to win has almost stopped happening.** That is isolated to the Siege's daily damage and to nothing else. Whether a Siege should be that decisive is a design question that has not been put to the project owner.
+**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on, and at the Siege settings of the day, the Last Stand was reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives in **2.4%** — the route this document treats as the ordinary way to win had almost stopped happening, isolated to the Siege's daily damage and to nothing else.
+
+**That was put to the project owner as [issue #1349](https://github.com/sdubois777/Cataclysm/issues/1349) and they ruled against it on 2026-09-06**, verbatim: “Halve the rate and cut the growth”. The Siege spawn weight went 15 to 7.5 and its growth 10 points a day to 2.5; the 1% daily share of a city's maximum was left where it was. **Measured on the shipped configuration** — 2,000 campaigns in two disjoint blocks of 1,000 seeds, difficulty tier 1, `No tree`, `triage`, static surges every 120 days for 5 dungeons, resolve floor ratio 2.0, escalation 0.10 per 100 days, craft 12 days for +4%, with the Siege damage live and the play strategies able to see one — **the earned Cataclysm dungeon now opens in 51.2% and 48.9% of campaigns, the Last Stand is reached in 55.7% and 56.7%, and the empire loses 16.4 and 16.1 of its 25 cities.** The ordinary way to win is the ordinary outcome again, and the two 99.1% and 2.4% figures above describe the game that ruling moved away from.
 
 
 

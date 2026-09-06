@@ -891,6 +891,24 @@ class Simulation:
           - The earned Cataclysm dungeon **opens in 8.1% of campaigns** and is
             won 41.6% of the time.
 
+        **AND THEN THE OWNER CUT THE SIEGE, WHICH MOVED THEM FURTHEST OF ALL.**
+        Issue #1349, 2026-09-06, verbatim "Halve the rate and cut the growth":
+        the Siege spawn weight went 15 to 7.5 and `siege_damage_growth_per_day`
+        10 to 2.5, with the two 1% shares of a city's maximum left alone.
+        Re-measured with `sim/analyse_siege_dose.py` on the shipped
+        configuration, 2,000 campaigns in two disjoint blocks of 1,000 seeds at
+        the settings named above:
+
+          - **The earned Cataclysm dungeon opens in 51.2% and 48.9% of
+            campaigns**, against the 8.1% immediately before it.
+          - Last Stand reached in **55.7% and 56.7%**, against 96.3%.
+          - Cleared, per Last Stand reached, **1 in 34.8 and 1 in 31.5**.
+          - Cities lost, of 25: **16.43 and 16.11**, against 21.0.
+
+        **So the ordinary way to win is the ordinary outcome again**, which is
+        what the ruling was for. Every figure above it on this docstring
+        describes a game with a Siege twice as common and four times as fast.
+
         **THE SAME 2,000 SEEDS WITH THE RULE UNDONE give 1 in 28.8 reached, 67
         wins in 1,926, and the same 96.3% and 407 floors.** So barring one
         sub-type of seven moved the win rate by 0.31 of a percentage point on a

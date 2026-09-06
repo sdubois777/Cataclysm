@@ -1994,6 +1994,12 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	int32 AbsorbedByAFall = 0;
 	int32 MovedThenAbsorbed = 0;
 
+	// HOW OFTEN THE STAYED-PUT CHECK HAD TO EXEMPT A NEIGHBOUR because the
+	// day's own falls opened it after the decision was taken. Counted so the
+	// exemption cannot quietly grow until the check means nothing; it is
+	// reported below beside the rest.
+	int32 OpenedByTheDaysOwnFalls = 0;
+
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
 		UCataclysmEmpireRun* Run = MakeRun(Seed);
@@ -2143,6 +2149,32 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 					// sealed, fallen or the Pillar. Without this the whole test
 					// would be satisfied by a `RelocateQuestDungeon` that never
 					// did anything.
+					//
+					// **READ AT THE END OF THE DAY, WHILE THE DECISION WAS MADE
+					// PART WAY THROUGH IT.** That is the same in-day ordering
+					// the absorbed branch above already documents: a day
+					// resolves its timers in order, so a city can fall AFTER
+					// this dungeon declined to move and open a neighbour that
+					// was sealed when `PickRelocation` looked at it. Reading
+					// exposure afterwards then reports an open neighbour that
+					// was not open at the time.
+					//
+					// SO THE EXEMPTION IS EXACTLY THE CITIES THE DAY'S OWN
+					// FALLS COULD HAVE OPENED, AND NOTHING ELSE.
+					// `UCataclysmEmpireMap::IsExposed` answers true only for a
+					// rim city or one whose `Outward` shield has fallen, and
+					// `Retake` -- the only thing that un-falls a city -- is
+					// reached from clearing a Fallen City dungeon and never from
+					// `AdvanceDay`. So within one day exposure can only be
+					// turned ON, only by a fall, and only for a city one of
+					// whose own shields fell. A neighbour open now whose
+					// shields all still stand was open then too, and that is a
+					// real relocation defect rather than an ordering artefact.
+					//
+					// FOUND BY THE SIEGE RETUNE OF 2026-09-06, issue #1349,
+					// which moved when cities fall and so changed the order
+					// inside a day. The assertion was too strong before that and
+					// passed on the seed it was written against.
 					const FCataclysmCity* Host = Run->Map->Find(From);
 
 					if (Host != nullptr)
@@ -2150,12 +2182,40 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 						for (const int32 Neighbour :
 							 UCataclysmSurgeScheduler::AdjacentCities(*Host))
 						{
-							TestFalse(FString::Printf(
+							if (Neighbour == Run->Map->PillarId
+								|| !Run->Map->IsExposed(Neighbour))
+							{
+								continue;
+							}
+
+							// COULD THE DAY'S OWN FALLS HAVE OPENED IT? Only a
+							// fall among this neighbour's own outward shields
+							// can have.
+							const FCataclysmCity* Open =
+								Run->Map->Find(Neighbour);
+							bool bOpenedToday = false;
+
+							if (Open != nullptr)
+							{
+								for (const int32 Shield : Open->Outward)
+								{
+									bOpenedToday = bOpenedToday
+										|| Report.Fallen.Contains(Shield);
+								}
+							}
+
+							if (bOpenedToday)
+							{
+								++OpenedByTheDaysOwnFalls;
+								continue;
+							}
+
+							AddError(FString::Printf(
 								TEXT("quest dungeon %d stayed on %s while its "
-									 "neighbour %d was open to it"),
-								DungeonId, *Host->Name, Neighbour),
-								Run->Map->IsExposed(Neighbour)
-									&& Neighbour != Run->Map->PillarId);
+									 "neighbour %d was open to it, and nothing "
+									 "that shields %d fell today, so it was "
+									 "open when PickRelocation looked"),
+								DungeonId, *Host->Name, Neighbour, Neighbour));
 						}
 					}
 
@@ -2224,9 +2284,11 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d had nowhere "
 			 "adjacent to go, %d of the moves were along the rim's perimeter, "
 			 "and %d were absorbed by a city falling underneath them, %d of "
-			 "those having moved onto it earlier the same day"),
+			 "those having moved onto it earlier the same day. %d neighbours "
+			 "were open by nightfall having been sealed when the dungeon "
+			 "declined to move, opened by the same day's falls"),
 		Campaigns, TimersFired, Moves, StayedPut, AlongTheRim,
-		AbsorbedByAFall, MovedThenAbsorbed));
+		AbsorbedByAFall, MovedThenAbsorbed, OpenedByTheDaysOwnFalls));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
 	TestTrue(TEXT("quest dungeon timers actually ran out"), TimersFired > 0);

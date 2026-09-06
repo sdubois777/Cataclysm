@@ -1548,11 +1548,15 @@ bool FCataclysmSurgeCataclysmNoCowLevelTest::RunTest(const FString& Parameters)
 
 		// **THE SEVENTH SUB-TYPE'S WEIGHT IS SPREAD OVER THE OTHER SIX IN
 		// PROPORTION, not dropped.** Dropping it would leave the six at their
-		// old shares of 100 and 7 rolls in every 100 with nothing to return.
+		// old shares of 100 and 7.6 rolls in every 100 with nothing to return.
+		//
+		// IT WAS 93 UNTIL 2026-09-06. The owner halved the Siege weight on issue
+		// #1349 and the other six took what it gave up, which carried the Cow
+		// Level from 7 to 7.6 and left 92.4 behind when it is barred.
 		const float Total = UCataclysmSurgeScheduler::TotalSpawnWeight(
 			ECataclysmDungeonSubType::CowLevel);
 
-		TestEqual(TEXT("the shortened line is 93 points wide"), Total, 93.0f,
+		TestEqual(TEXT("the shortened line is 92.4 points wide"), Total, 92.4f,
 				  0.0001f);
 
 		for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);

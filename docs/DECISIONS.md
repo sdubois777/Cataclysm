@@ -2,6 +2,146 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — Halve the Siege's rate and cut its growth, so the earned win route survives
+
+**Affects:** `sim/cataclysm_sim/config.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, the Siege row and the
+spawn table in `docs/Cataclysm_GDD_v2.md`, and nineteen files in all. Issue
+[#1349](https://github.com/sdubois777/Cataclysm/issues/1349).
+
+### The ruling
+
+Shown three dose-response curves over about 34,000 simulated campaigns and three
+options, the project owner answered, verbatim: **“Halve the rate and cut the
+growth”**.
+
+| Constant | Was | Now |
+| :-- | --: | --: |
+| Siege spawn weight, out of 100 | 15 | **7.5** |
+| `siege_damage_growth_per_day` | 10 | **2.5** |
+| `siege_defence_bite_per_day` | 0.01 | unchanged |
+| `siege_population_bite_per_day` | 0.01 | unchanged |
+
+**The 1% daily share of a city’s maximum is untouched**, which is the owner’s
+separate ruling of 2026-09-05 recorded further down this page — a siege does not
+care how thick your walls are.
+
+### What it was for
+
+At a weight of 15 and a growth of 10, the **earned Cataclysm dungeon — the route
+this design treats as the ordinary way to win — opened in about 8% of
+campaigns**, against about 84% with the Siege’s damage switched off. The Last
+Stand, which the design treats as what happens when you fail, was reached in
+about 96%. The design document described the two the other way round.
+
+### What was rejected
+
+**“Make Sieges rarer only”**, spawn weight to 5 with no constant changed, reaches
+the same headline — 52.8% / 52.9% against 51.8% / 49.8% — for a far smaller
+change. It was not taken because it leaves the share of Sieges the player can
+never answer at 46.9%, unchanged from before: it fixes how often a Siege appears
+and leaves the timing problem exactly where
+[#1351](https://github.com/sdubois777/Cataclysm/issues/1351) found it. **Leaving
+it as it is** was also offered and rejected; taking it would have meant rewriting
+the design document’s account of how a campaign is won.
+
+### The three findings the recommendation rested on
+
+- **Halving how often a Siege appears is about three times as effective as
+  halving its damage.**
+- **Halving the damage saves no cities at all** — 21.0 lost of 25 before and
+  after. Damage dealt grows with the square of the days a Siege has stood, so
+  time-to-fall moves as the inverse square root of the damage. The two levers are
+  not interchangeable.
+- **The share of Sieges a player can never answer has a floor of about 27%**, and
+  that floor is the player’s decision rate, not the Siege. No Siege setting
+  removes it.
+
+### What the shipped configuration measures, and it is a measurement
+
+**Re-measured after implementing rather than quoting the sweep’s prediction.**
+`sim/analyse_siege_dose.py` at `CATACLYSM_SIEGE_DOSE_TRIALS=1000`, which is 2,000
+campaigns in two disjoint blocks of 1,000 seeds: difficulty tier 1, `No tree`
+preset, `triage` policy, static surges every 120 days for **5** dungeons — not
+the `TuningConfig` default of 4 — resolve floor ratio 2.0, escalation 0.10 per
+100 days, craft 12 days for +4% of tier width, with the play strategies able to
+see a Siege.
+
+| | Predicted | **Measured, blocks A / B** |
+| :-- | --: | --: |
+| Earned Cataclysm dungeon opens | 51.8% / 49.8% | **51.2% / 48.9%** |
+| Cities lost, of 25 | 16.4 | **16.43 / 16.11** |
+| Sieges created per campaign | about 10.6 | **10.58 / 10.54** |
+| Share of Sieges never answerable | 39.5% / 38.7% | **39.6% / 38.6%** |
+
+**Every figure lands inside the gap between the two blocks**, which is the
+resolution this sample has. The prediction was made on `e058f75`; the measurement
+is on a tree that has since gained the Quest dungeon relocation of
+[#1368](https://github.com/sdubois777/Cataclysm/issues/1368), and the small
+rounding of the six other weights described below. Neither moved it.
+
+### An unattended Siege now takes 25 / 39 / 55 / 70 days
+
+Recomputed from the new growth rather than chosen: a city falls on the first day
+`D` where `D * 0.01 * MaxDefence + 2.5 * D * (D - 1) / 2` reaches its maximum
+defence. **They were 14 / 23 / 34 / 47.** The same closed form still returns the
+old four at a growth of 10, which is how the derivation was checked.
+
+Against a median walk of 12 / 20 / 33 days as `sim/cataclysm_sim/policies.py`
+states it — 14 / 22 / 33 as
+[#1364](https://github.com/sdubois777/Cataclysm/issues/1364) measured it — the
+player’s slack goes from **a day or none to eleven, seventeen and twenty-two
+days**. Before this, the median player arrived on the day the Outpost fell. A
+Pillar Siege still cannot be answered at any dose: 70 days against a median walk
+of 123.
+
+### The other six sub-types took the 7.5 in proportion, rounded to one decimal
+
+| Sub-type | Was | Now |
+| :-- | --: | --: |
+| Timed | 18 | 19.6 |
+| Horde | 18 | 19.6 |
+| Elite | 15 | 16.3 |
+| Volatile | 15 | 16.3 |
+| Sacrificial | 12 | 13.1 |
+| Cow Level | 7 | 7.6 |
+| Siege | 15 | **7.5** |
+
+They sum to exactly 92.5 beside the Siege’s 7.5, so the table still totals 100
+and each weight still reads as a percentage. **Rounding to one decimal rather
+than rescaling exactly is the form the owner chose for this same table on
+2026-09-05** — “clean round numbers” over an exact proportional rescale, recorded
+in the #1293 entry below. An exact rescale gives 19.588235, 16.323529, 13.058824
+and 7.617647; the rounded values sit within 0.05 of a point of those, and the
+Siege’s own share is 7.5 either way.
+
+### A consequence the owner was not asked about: the Siege is now the rarest
+
+At 7.5 against the Cow Level’s 7.6, **the Siege is the rarest sub-type in the
+game**, reversing an order the repository gives a design reason for — a Cow Level
+was the rarest because the design gives it “ridiculous amounts of loot”. **No
+rounding avoids it**: the exact proportional Cow Level is 7.617647, above 7.5
+either way. It falls out of the ruling rather than being part of it, and the two
+are now a tenth of a point apart, which is not a designed margin. Raised as
+[#1369](https://github.com/sdubois777/Cataclysm/issues/1369) and not decided here.
+`tools/tests/test_dungeon_subtype_port.py` now holds the Cow Level as the rarest
+of the six the ruling did not touch, and separately asserts that the exception is
+exactly one sub-type wide.
+
+### A latent test defect this surfaced
+
+`Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity` failed on the first run
+after the change. **The test was wrong, not the code.** It checked that a Quest
+dungeon which declined to relocate had no open neighbour, but read exposure at
+the END of the day while `PickRelocation` reads it part way through — and a day
+resolves its timers in order, so a city can fall after the decision and open a
+neighbour that was sealed when it was taken. The same test already documents that
+exact ordering trap in its neighbouring branch. Moving when cities fall is what
+exposed it. It now exempts only neighbours whose own outward shields fell that
+same day, and counts how often it does: **once in 191 stayed-put cases over 1,095
+quest timers**, so the check is still doing its work.
+
 ## 2026-09-06 — A Quest dungeon moves to an ADJACENT city, and the simulation was wrong
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` section VIII, the Dungeon Types table.
