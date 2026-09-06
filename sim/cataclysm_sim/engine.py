@@ -699,18 +699,23 @@ class Simulation:
         # SAMPLED HERE, AT THE INSTANT THE DUNGEON IS DEFEATED, AND THE ABSENCE
         # OF A FLOOR DEPENDS ON THAT. The two decisions are one decision.
         # Population starts at maximum and cities fall late, so a per-defeat
-        # sample is far kinder than an end-of-run one: measured over 500
-        # campaigns with no defensive tree and `greedy_loot`, a policy that
-        # abandons cities deliberately, the WORST run still kept 51% of the
-        # flat award. Applied once at the end of a run instead, the worst case
-        # falls to 0.25 and a floor would be needed to keep a bad run worth
-        # playing.
+        # sample is far kinder than an end-of-run one. Measured over 500
+        # campaigns at tier 1 surge 5 with no empire tree and `greedy_loot`, a
+        # policy that abandons cities deliberately: a run keeps 0.447 of the
+        # flat award on average and 0.090 at worst, against 0.241 and 0.000 for
+        # the end-of-run form.
         #
         # So MOVING THIS AWARD TO END-OF-RUN SILENTLY REMOVES THE FLOOR that
         # the per-defeat timing supplies for free. If it ever moves, a floor
-        # has to be argued for in the same change. The no-floor choice rests on
-        # that measurement and not on any published source: no developer
-        # anywhere turns "each run must count" into a numeric minimum.
+        # has to be argued for in the same change.
+        #
+        # HOW MUCH OF A FLOOR THAT IS, IS AN OPEN QUESTION -- issue #1361. The
+        # owner ruled no floor on a worst case of 0.51, which does not
+        # reproduce: it is 0.090 here and 0.000 at tier 8 surge 8. The shape
+        # below is what was ruled and is deliberately unchanged. The no-floor
+        # choice rests on measurement and not on any published source anyway:
+        # no developer anywhere turns "each run must count" into a numeric
+        # minimum.
         base = self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
         self.empire_points_flat += base
         self.empire_points += base * self.empire.population_frac()

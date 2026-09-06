@@ -21,11 +21,18 @@ because jitter put the comparison the right way round.
 THE COUPLING THAT MUST NOT BE LOST. The absence of a floor is only safe because
 the multiplier is sampled per defeat rather than once at the end of a run.
 Population starts at maximum and cities fall late, so the per-defeat sample is
-far kinder: measured over 500 campaigns with no defensive tree and a policy that
-abandons cities deliberately, the worst run still kept 51% of the flat award,
-against 0.25 for the end-of-run form. `TestItIsSampledWhenTheDungeonIsDefeated`
-is what stops that timing being changed quietly, because moving the award to the
-end of the run would remove a floor nobody would notice was there.
+far kinder: measured over 500 campaigns at tier 1 surge 5 with no empire tree
+and `greedy_loot`, a policy that abandons cities deliberately, a run keeps 0.447
+of the flat award on average and 0.090 at worst, against 0.241 and 0.000 for the
+end-of-run form. `TestItIsSampledWhenTheDungeonIsDefeated` is what stops that
+timing being changed quietly, because moving the award to the end of the run
+would remove a floor nobody would notice was there.
+
+HOW MUCH OF A FLOOR THAT IS, IS OPEN -- issue #1361. The owner ruled no floor on
+a worst case of 0.51, which does not reproduce on this model: 0.090 at the
+condition above, and 0.000 at tier 8 surge 8 where some runs earn nothing from
+the multiplier at all. The shape these tests guard is what was ruled and is
+deliberately unchanged; only the argument for it moved.
 
 WHAT IS DELIBERATELY NOT TESTED HERE. That the GAME implements any of this. The
 C++ awards no empire points yet; this is the model only. The design document and
@@ -170,11 +177,16 @@ class TestTheAwardScalesWithLivingPopulation:
 class TestThereIsNoFloorAndNoCap:
     """"No floor and no cap", ruled 2026-09-06.
 
-    The floor is the one most likely to be added later in good faith, because
-    a run that earns nothing looks broken. It is not: the per-defeat timing
-    means a real campaign never reaches this state, and the measured worst of
-    500 campaigns kept 51% of the flat award. Every floor above zero hands the
-    strategy of abandoning the empire its advantage back.
+    The floor is the one most likely to be added later in good faith, because a
+    run that earns nothing looks broken. The case against adding one is that
+    every floor above zero hands the strategy of abandoning the empire its
+    advantage back.
+
+    THESE TESTS GUARD THE RULING, NOT THE ARGUMENT FOR IT. The ruling was made
+    on a measured worst case of 0.51, which does not reproduce -- it is 0.090,
+    and 0.000 at tier 8 surge 8. Issue #1361 puts that back to the owner. If a
+    floor is ever ruled in, these are the tests that should be changed to say
+    so, deliberately, rather than quietly relaxed.
     """
 
     def test_a_dead_empire_awards_exactly_nothing(self):
@@ -305,9 +317,10 @@ class TestItIsSampledWhenTheDungeonIsDefeated:
     once at the end of a run -- and the no-floor decision depends on it.
 
     If the award were computed at the end of a run, every clear in a campaign
-    would be paid at the final population, the worst case would fall from 0.51
-    to 0.25 and a floor would be needed. These tests fail if the timing moves,
-    which is the only warning anyone would get that the floor had gone with it.
+    would be paid at the final population: measured, the mean falls from 0.447
+    to 0.241 and the worst of 500 from 0.090 to 0.000. These tests fail if the
+    timing moves, which is the only warning anyone would get that whatever
+    floor the structure does supply had gone with it.
     """
 
     def test_two_clears_at_different_populations_pay_different_amounts(self):
