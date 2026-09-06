@@ -84,10 +84,18 @@ There are two ways to get into one:
   parent Sanctuary have all fallen, so the Cataclysm can reach the Pillar
   and comes to the player, absorbing every dungeon still standing as extra
   floors. **This is not itself a loss**, and the older wording here said it
-  was. It is a fight, and at tier 1 it is a fight the player wins about 2%
-  of the time over 400 campaigns, against about 57% for an earned one.
-  Issue #5 measured that; whether a near-unwinnable fight is the intended
-  shape is issue #1286.
+  was. It is a fight, and at tier 1 it is a fight the player wins about
+  **1 time in 84 per Last Stand reached** -- 1 in 70 if you count only the
+  ones actually entered, which is a quarter fewer -- against about **40%**
+  for an earned one. Measured 2026-09-06 over 10,000 campaigns in two
+  disjoint seed blocks. Issue #5 measured the original; whether a
+  near-unwinnable fight is the intended shape is issue #1286, and the
+  owner ruled that it is.
+
+  **Those figures replace 2% and 57%, and the fight is now about twice as
+  common** -- 27.7% of campaigns against 13.5%. Two thirds of that rise is
+  the dungeon sub-type distribution and the boss growing with dungeons
+  cleared; the rest is not attributed, which is issue #1343.
 
 A campaign that reaches the day cap has done neither, so it has **no
 result** rather than a third outcome. The `stale%` column reads like one

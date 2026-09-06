@@ -339,6 +339,98 @@ count. Placing them on floors is the dungeon runtime's work, issue
 [#41](https://github.com/sdubois777/Cataclysm/issues/41), and nothing reads the
 count yet.
 
+## 2026-09-06 — The Last Stand happens twice as often and is harder to win than the figures on record
+
+**Affects:** `sim/cataclysm_sim/engine.py`, `sim/README.md`,
+`docs/Cataclysm_GDD_v2.md`, and the text of
+[#1286](https://github.com/sdubois777/Cataclysm/issues/1286). Applied. Figures
+only — no behaviour changed.
+
+### The ruling
+
+Told that the three places recording the Last Stand's win rate were all wrong,
+the project owner answered on 2026-09-06, verbatim: **"Correct all three, and
+record why they moved (Recommended)"**.
+
+The alternatives offered were: correct them and add a line saying the ruling still
+stands; correct the code and the issue but leave the design document to the owner;
+or hold everything until the unexplained part is traced. None was taken.
+
+**There were six places, not three**, found while doing the work: two in
+`sim/cataclysm_sim/engine.py`, one in `sim/README.md`, one in
+`docs/Cataclysm_GDD_v2.md`, and two in this file. All are corrected or annotated.
+
+### What the figures now are
+
+Measured over 10,000 campaigns in two disjoint seed blocks, every setting held at
+what #1286 names: tier 1, `No tree` preset, `triage` policy, static surges,
+resolve floor ratio 2.0, surge every 120 days for 5 dungeons, escalation 0.10 per
+100 days, craft 12 days for +4% of a tier width.
+
+| | Recorded | Measured 2026-09-06 |
+| :-- | --: | --: |
+| Last Stand reached, share of campaigns | 13.5% | **27.7%** |
+| Won, per Last Stand **reached** | 1 in 54 | **1 in 84** |
+| Won, per Last Stand **entered** | not stated | 1 in 70 |
+| Mean floors | about 440 | 438 and 440 |
+| Earned Cataclysm dungeon won | 57% | **40.4%** |
+
+**The denominator is named on purpose and it decides the verdict.** Per Last Stand
+reached, the 95% range is 1 in 63 to 1 in 127 and **1 in 54 is outside it**. Per
+Last Stand entered it is 1 in 53 to 1 in 106 and 1 in 54 is *inside*. About a
+quarter of Last Stands are never entered, because the campaign runs out of days
+first. #1286's table is headed "campaigns" and its row reads 54 and 1, so it
+counted reached — which is the comparison its ruling rests on, and on that
+comparison the rate moved.
+
+**A figure nobody targeted came back right**, which is what makes the
+reconstruction credible: #1286 reports "around 440 floors" and this measures 438
+and 440, across 2,768 Last Stands rather than 54.
+
+### One block would have given the wrong answer
+
+The first block alone gave 1 in 68 with a 95% range of 1 in 48 to 1 in 121, which
+**contains** 1 in 54 — so on one block the honest reading was "not shown to move",
+and that is what was reported. Only pooling the second block narrowed the interval
+enough to exclude it. **The two-block standard did not confirm a number here, it
+reversed the conclusion**, and that is a stronger argument for the standard than
+the reason it was adopted.
+
+### What moved it, and what is not attributed
+
+Of the 12.7 point rise in how often the fight happens, measured by undoing each
+candidate over 400 campaigns a condition in two blocks:
+
+| Condition | Share of campaigns |
+| :-- | --: |
+| Today | 26.2% |
+| Sub-type distribution change undone | 19.6% |
+| Boss growth undone | 23.9% |
+| **Both undone** | **18.0%** |
+| Recorded in #1286 | 13.5% |
+
+- The dungeon sub-type distribution
+  ([#1293](https://github.com/sdubois777/Cataclysm/issues/1293)): about **6.6
+  points**.
+- The boss growing with ordinary dungeons cleared
+  ([#1315](https://github.com/sdubois777/Cataclysm/issues/1315)): about **2.4
+  points**.
+- Together, **8.2 of 12.7**.
+- **The remaining 4.5 points are not attributable to any known change.** Both
+  blocks agree exactly at 72 of 400 with both undone, so that gap is not noise.
+  It is [#1343](https://github.com/sdubois777/Cataclysm/issues/1343) and was
+  deliberately not traced: the owner was offered that option and did not take it.
+
+**The change in the win rate is not attributed at all.**
+
+### The ruling this corrects a number under is unaffected
+
+The owner ruled on 2026-09-05 that a collapse should be near-fatal, having been
+shown 1 in 54 in an eighth of campaigns. Both figures moved in the direction that
+satisfies that ruling: the fight is rarer to survive and commoner to meet. **The
+decision stands; only the numbers under it were wrong.** A reader meeting a
+corrected figure that underpins a ruling should not have to work out whether the
+ruling survived it.
 
 ## 2026-09-06 — Only ordinary dungeons deepen the Cataclysm boss, and the Last Stand takes none of it
 
@@ -1020,6 +1112,8 @@ measured 2% is the punishment working as designed.
 | Earned: cleared 8 quest objectives, the enemy capital opened | 318 | 182 | 57% | about 126 |
 | Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
 
+> **These figures are what was measured on 2026-09-05 and are no longer current.** Re-measured on 2026-09-06 over 10,000 campaigns at the same settings: the Last Stand is reached in 27.7% of campaigns and won about 1 time in 84 of those, and the earned route is won 40.4% of the time. The entry at the top of this file has the detail. **The ruling below is unaffected** — both figures moved in the direction that satisfies it.
+
 372 of those 400 campaigns reached a decision; the rest ran out of days, which is
 why the two rows do not sum to 400.
 
@@ -1385,6 +1479,8 @@ two ways in, and over 400 campaigns at tier 1 they are not close:
 |---|---|---|---|---|
 | Earned: cleared the quest objectives, the capital opened | 318 | 182 | 57% | about 126 |
 | The Last Stand: a Sanctuary fell and it came to the Pillar | 54 | 1 | **2%** | **440** |
+
+> **No longer current.** Re-measured on 2026-09-06: 27.7% of campaigns reach a Last Stand and about 1 in 84 of those are won, against 40.4% for the earned route. See the entry at the top of this file.
 
 372 of those 400 campaigns reached a decision; the rest ran out of days. The Last
 Stand figures are stable across three different modifier pools — see the Last
