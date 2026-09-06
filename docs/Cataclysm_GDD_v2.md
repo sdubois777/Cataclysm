@@ -3830,6 +3830,32 @@ This makes a surviving player's escape worth something to the whole party, and i
 
   
 
+### **Where a Quest Dungeon Moves To, and What It Takes With It**
+
+A Quest dungeon's timer running out costs its host city nothing. The timer
+refreshes to full and the dungeon **may move to an adjacent city** — adjacency as
+section IX defines it, the rim's perimeter links included. It may only move onto a
+city a surge could have put a dungeon on: one that is exposed, has not fallen,
+and is not the Pillar. When no neighbour qualifies it stays where it is.
+
+  
+
+**A dungeon that moves is the same dungeon.** It keeps its **floor count**, its
+**resolve timer** and its **sub-type**. Nothing about it is rerolled by the move;
+only which city it is standing on changes. A player who has scouted a 44-floor
+Siege on their eastern Bulwark and finds it on the Outpost beside it the next
+morning is facing the same 44 floors, on the same clock, with the same rules.
+
+  
+
+**And its depth still counts against the city it was raised for.** A dungeon's
+damage scales by how deep it is against a typical dungeon of its kind **on the
+tier of city that spawned it**, and that comparison does not move with the
+dungeon. An Outpost dungeon that drifts onto a Sanctuary is not re-measured
+against what a Sanctuary dungeon would be; it is as deep as it always was.
+
+  
+
 ## **Dungeon Sub-Types**
 
 | Sub-Type | Description |
@@ -4035,10 +4061,31 @@ capital with it.
 
   
 
-**Distance is counted in rings.** Adjacency is orthogonal in lattice space, and
-every step changes the ring by exactly one, so a city's ring is also its distance
-from the Pillar. "Within 2 rings of the Pillar" means the four Sanctuaries and
-the eight Bulwarks — twelve cities.
+**Distance is counted in rings.** Every lane runs orthogonally in lattice space
+and changes the ring by exactly one, so a city's ring is also its distance from
+the Pillar. "Within 2 rings of the Pillar" means the four Sanctuaries and the
+eight Bulwarks — twelve cities.
+
+  
+
+**Two cities are adjacent when the map links them, which is not only the lanes.**
+A city's neighbours are the cities one ring further out, the cities one ring
+further in, and — for an Outpost on the rim — the Outposts beside it along the
+rim itself. Those last are the curved edges of the diamond. They are adjacency
+and they are not lanes: nothing reaches the Pillar through them, so they take no
+part in exposure and a city is still shielded only by the cities outside it.
+
+  
+
+**This was previously stated the other way and the difference is not cosmetic.**
+This section used to say adjacency was orthogonal, which excludes the rim links.
+A Quest dungeon relocates to an adjacent city, so the two readings are two
+different games: measured over 926 quest timers in 30 campaigns, a Quest dungeon
+has somewhere to go **79.5%** of the time with the rim links counted and **69.1%**
+without, a third of all observed moves used one, and a Quest dungeon standing on
+an intact rim could never move at all without them. Anything else that reads "and
+its neighbours" — a passive, a city upgrade, a Cataclysm effect — takes the same
+definition.
 
   
 

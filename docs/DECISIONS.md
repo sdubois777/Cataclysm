@@ -2,6 +2,94 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — What a Quest dungeon's move means: the rim counts, the dungeon keeps everything, and moving is a chance
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` sections VIII and IX,
+`sim/cataclysm_sim/engine.py`, `sim/cataclysm_sim/world.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324). This closes the
+three questions the entry
+[2026-09-06 — A Quest dungeon moves to an ADJACENT city](#2026-09-06--a-quest-dungeon-moves-to-an-adjacent-city-and-the-simulation-was-wrong)
+left open.
+
+### Ruling 1 — adjacency includes the rim's perimeter links
+
+Slice 4 chose to count them and recorded that it was choosing. Shown the choice
+and what it is worth, the project owner answered, verbatim: **“Include the
+perimeter links”**.
+
+**It was not an open question in the design, it was a contradicted one.**
+`docs/Cataclysm_GDD_v2.md` section IX said, in as many words, “Adjacency is
+orthogonal in lattice space”, and that was the only definition of adjacency the
+document had. Slice 4's report described the document as silent; it was not. So
+this is a correction to the design and not an addition to it. Section IX now
+distinguishes a **lane**, which is orthogonal and decides exposure, from
+**adjacency**, which is every link the map has: one ring out, one ring in, and —
+on the rim only — the perimeter links along the curved edges of the diamond.
+
+**Measured over 926 quest timers in 30 campaigns:** a Quest dungeon has somewhere
+to go **79.5%** of the time with the perimeter counted and **69.1%** without, and
+a third of all observed moves used one. A Quest dungeon on an intact rim could
+never move at all without them. That measurement is now in the design document
+beside the rule, because a rule with its reason deleted is the one that gets
+tidied away.
+
+**Two more copies of the rejected sentence were still in the source.** The C++
+class comment on `UCataclysmEmpireMap` was corrected in slice 4;
+`sim/cataclysm_sim/world.py`'s module docstring and `FCataclysmCity::Ring`'s
+comment were not, and both still said adjacency was orthogonal. Both are
+corrected here.
+
+### Ruling 2 — a relocated Quest dungeon keeps everything, and the size defect is fixed
+
+The project owner answered, verbatim: **“Keeps everything, fix the size”**.
+
+So a Quest dungeon that moves keeps its **floor count**, its **resolve timer**
+and its **sub-type**. Both implementations already did all three and the design
+said nothing about any of them, so nothing would have been wrong to change them.
+Section VIII now states it.
+
+**And the defect behind the ruling is corrected.** The dungeon's recorded city
+size moved with it while its floor count did not.
+
+| | Model | Game |
+| :-- | :-- | :-- |
+| The field | `Dungeon.city_tier` | `FCataclysmDungeon::CityTier` |
+| What it means | the tier the DEPTH was rolled from | the same; its own comment said so |
+| What read it | `Simulation._resolve`, for the bite scale | `FCataclysmDungeon::BiteScale`, and nothing else |
+| The defect | `d.city_tier = new_city.tier` on relocation | `Dungeon->CityTier = To->Tier;` |
+
+A dungeon's damage scales by `floors / typical`, where `typical` is the midpoint
+of the specification row for its kind on that tier. Moving the tier while leaving
+`floors` alone made the two halves of that division name different rows: a
+dungeon that drifted inward onto a bigger city read as **shallower** than it is
+and one that drifted outward read as **deeper**.
+
+**It cost nothing and nothing would have failed when it did.** A Quest dungeon
+has zero city damage and does not resolve, so the scale is never computed for the
+one kind of dungeon that can move. It would have become a live wrong number, in
+silence, the moment any non-Basic kind was given city damage. Both writes are
+removed and both codebases now have a test that fails if either comes back, with
+a control that refuses to pass unless some move actually crossed a tier boundary
+— between two cities of one tier the assertion holds either way.
+
+### Ruling 3 — “may move” means a chance, and the number is not decided yet
+
+Slice 4 read the design's “**may** move” as satisfied by the map: the dungeon
+moves whenever an adjacent exposed city exists and stays only when there is
+nowhere to go, which is about one quest timer in five. The project owner ruled
+otherwise, verbatim: **“A chance each time”**. A Quest dungeon must sometimes
+stay even when it could move.
+
+**THE OWNER GAVE NO NUMBER AND NOTHING IMPLEMENTS A CHANCE OF STAYING.** This
+ruling is recorded here as ruled and **not built**, which is the difference
+between it and the two above. `CLAUDE.md` forbids inventing the constant, so
+`sim/analyse_quest_move_chance.py` measures a ladder of chances and a curve goes
+to the owner; the design document deliberately still says only “may”, which is
+true of what is built and does not foreclose the ruling.
+
 ## 2026-09-06 — Halve the Siege's rate and cut its growth, so the earned win route survives
 
 **Affects:** `sim/cataclysm_sim/config.py`,
@@ -190,17 +278,29 @@ the move-anywhere rule that was replaced. **So this decision is worth about ten
 percentage points of relocation frequency**, and it is recorded rather than left
 implicit for that reason.
 
-### What this leaves open
+### What this left open, and where it was settled
+
+**ALL THREE OF THE QUESTIONS BELOW WERE ANSWERED BY THE OWNER LATER THE SAME
+DAY.** They are kept here as they were written, because the entry above them is
+the record of what slice 4 knew;
+[2026-09-06 — What a Quest dungeon's move means](#2026-09-06--what-a-quest-dungeons-move-means-the-rim-counts-the-dungeon-keeps-everything-and-moving-is-a-chance)
+carries the rulings. One of the three, the move chance, is ruled and still not
+built.
 
 **Whether a Quest dungeon that has somewhere to go always goes.** The design says
 “**may** move”. The owner was offered a chance-based variant and did not take it,
 but neither did they say movement is certain. What is built moves it whenever an
 adjacent exposed city exists and leaves it standing when none does, so “may” is
 satisfied by the map rather than by a die roll — which is a reading, not a ruling.
-Adding a chance later needs one number and no new structure.
+Adding a chance later needs one number and no new structure. **Ruled: “A chance
+each time”. The number is not decided.**
 
 **Whether a relocated dungeon keeps its depth, its timer and its sub-type.** It
 keeps all three today, in both implementations. The design says nothing about it.
+**Ruled: “Keeps everything, fix the size”, and the size was a defect.**
+
+**What “adjacent” means.** Recorded above as a reading. **Ruled: “Include the
+perimeter links”.**
 
 ### The balance figures this moves
 

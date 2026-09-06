@@ -198,9 +198,15 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	/**
 	 * How far out this city sits, which is also its distance from the Pillar.
 	 *
-	 * Adjacency is orthogonal and every orthogonal step changes the ring by
-	 * exactly one, so the two are the same number. "Within 2 rings of the
-	 * Pillar" is the four Sanctuaries and the eight Bulwarks, twelve cities.
+	 * Every LANE is orthogonal and changes the ring by exactly one, so the two
+	 * are the same number. "Within 2 rings of the Pillar" is the four
+	 * Sanctuaries and the eight Bulwarks, twelve cities.
+	 *
+	 * THIS SAID "ADJACENCY IS ORTHOGONAL" UNTIL 2026-09-06, which is the
+	 * reading the project owner rejected -- verbatim, "Include the perimeter
+	 * links". `Perimeter` above joins two rim Outposts at the SAME ring, so it
+	 * is adjacency that is not a lane and does not change this number.
+	 * `docs/Cataclysm_GDD_v2.md` section IX now states both. Issue #1324.
 	 */
 	int32 Ring() const { return FMath::Abs(R) + FMath::Abs(C); }
 

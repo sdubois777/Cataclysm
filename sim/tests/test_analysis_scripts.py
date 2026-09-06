@@ -115,7 +115,8 @@ def penetration_run():
                                   "analyse_experience_curve.py",
                                   "analyse_affix_spread.py",
                                   "analyse_affix_floors.py",
-                                  "analyse_siege_dose.py"])
+                                  "analyse_siege_dose.py",
+                                  "analyse_quest_move_chance.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
