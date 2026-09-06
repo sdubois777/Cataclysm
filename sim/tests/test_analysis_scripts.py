@@ -114,7 +114,8 @@ def penetration_run():
                                   "analyse_per_tier_rarity.py",
                                   "analyse_experience_curve.py",
                                   "analyse_affix_spread.py",
-                                  "analyse_affix_floors.py"])
+                                  "analyse_affix_floors.py",
+                                  "analyse_siege_dose.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -1902,3 +1903,337 @@ def test_the_headline_affixes_do_show_a_spread(affix_spread_run):
             f"{affix.name} now shows only {len(shown)} different numbers on an "
             f"early drop, so it has joined the squeezed list and the test "
             f"above needs updating too")
+
+
+# --------------------------------------------------------------------------
+# analyse_siege_dose.py -- issue #1349, the Siege dose-response investigation
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def siege_dose_run():
+    """The dose-response curves the project owner ordered on issue #1349.
+
+    A FEW SECONDS AT THE SCRIPT'S DEFAULT `TRIALS`, which is a smoke size, and
+    **the campaign shares it prints at that size are noise**. The curves put to
+    the owner were taken at `CATACLYSM_SIEGE_DOSE_TRIALS=1000`, which is 2,000
+    campaigns a dose over two disjoint seed blocks and 34,000 campaigns in all --
+    tens of minutes, and the better part of an hour on a busy machine.
+
+    SO NOTHING BELOW ASSERTS A SHARE. Every check here is either on arithmetic
+    that does not move with the sample size, on the instrument itself, or on the
+    script stating the conditions its figures were taken under -- which is the
+    failure this project has retracted figures to the owner for twice.
+    """
+    return run("analyse_siege_dose.py")
+
+
+def test_the_days_to_fall_closed_form_matches_the_day_loop(siege_dose_run):
+    """THE LOAD-BEARING CHECK ON AXIS 3.
+
+    `days_to_fall` is the Siege arithmetic written out in closed form, and the
+    script's whole third axis -- how much slower a Siege has to be before the
+    player can answer one -- is read off it. `_apply_siege_damage` is the
+    arithmetic the model actually runs. This stands a Siege on one city of each
+    size and advances days until it falls, the way
+    `sim/tests/test_siege_subtype.py` does, and compares the two.
+
+    A CLOSED FORM THAT DRIFTS FROM THE LOOP IT DESCRIBES FAILS SILENTLY. It
+    would still print a table, still be monotonic, and still look like a
+    measurement.
+    """
+    from dataclasses import replace
+
+    from cataclysm_sim.config import CityTier, DungeonType
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = siege_dose_run
+    base = ns["base_config"]()
+
+    for scale in (1.0, 0.5, 0.25):
+        cfg = replace(
+            base,
+            siege_defence_bite_per_day=base.siege_defence_bite_per_day * scale,
+            siege_population_bite_per_day=(
+                base.siege_population_bite_per_day * scale),
+            siege_damage_growth_per_day=(
+                base.siege_damage_growth_per_day * scale))
+        for tier in ns["CITY_SIZES"]:
+            sim = Simulation(cfg, seed=0)
+            city = next(c for c in sim.empire.cities.values()
+                        if c.tier is tier)
+            d = sim._make_dungeon(DungeonType.BASIC, city)
+            d.subtype = "Siege"
+            d.spawned_day = sim.day
+            days = 0
+            while city.defense > 0 and days < 10_000:
+                sim._apply_siege_damage()
+                sim.day += 1
+                days += 1
+            predicted = ns["days_to_fall"](
+                base.TIER_STATS[tier].max_defense * base.tree.city_health_mult,
+                scale=scale, cfg=base)
+            assert days == predicted, (
+                f"at {scale}x Siege damage a {tier.value} falls on day {days} "
+                f"in the day loop and analyse_siege_dose.days_to_fall says "
+                f"{predicted}. The closed form the axis 3 table is read off has "
+                "drifted from the model.")
+    assert CityTier.OUTPOST in ns["CITY_SIZES"]
+
+
+def test_it_reproduces_the_four_stated_days_to_fall(siege_dose_run):
+    """14, 23, 34 and 47 days for the four city sizes.
+
+    Those are the figures `game/Source/CataclysmEmpire/Empire/
+    CataclysmEmpireRun.h` states in prose and `sim/tests/test_siege_subtype.py`
+    asserts against the day loop. The script's table is a third statement of
+    them, so it has to agree or the table is describing a different game from
+    the one the owner is being asked to rule on.
+    """
+    from cataclysm_sim.config import CityTier
+
+    printed, ns = siege_dose_run
+    stated = {CityTier.OUTPOST: 14, CityTier.BULWARK: 23,
+              CityTier.SANCTUARY: 34, CityTier.PILLAR: 47}
+    today = ns["axis_3_table"]()["scale"][1.0]
+    assert today == stated, (
+        f"the script's table says {today} where the game states {stated}")
+    assert "   14         23         34         47" in printed
+
+
+def test_the_inverse_square_root_sentence_is_computed_not_typed(
+        siege_dose_run):
+    """The conclusion this whole file exists to guard: a typed sentence under a
+    computed table.
+
+    The script's headline claim on axis 3 is that halving the damage does NOT
+    double the time a city survives, because the damage dealt after n days is
+    quadratic in n. Both ratios are recomputed here from `days_to_fall` and
+    looked for in what the script printed, and the DIRECTION is asserted
+    separately -- that is the half a future edit is most likely to get
+    backwards, and getting it backwards would tell the owner that a smaller
+    number buys more time than it does.
+    """
+    from cataclysm_sim.config import CityTier
+
+    printed, ns = siege_dose_run
+    table = ns["axis_3_table"]()["scale"]
+    today = table[1.0][CityTier.OUTPOST]
+    half = table[0.5][CityTier.OUTPOST]
+    quarter = table[0.25][CityTier.OUTPOST]
+
+    assert 1.0 < half / today < 2.0, (
+        f"halving the Siege damage now multiplies an Outpost's life by "
+        f"{half / today:.2f}. Below 1 the lever is backwards; at or above 2 the "
+        "growth term no longer dominates and the script's axis 3 argument is "
+        "gone.")
+    assert f"from {today} days to {half}, which is {half / today:.2f}x the" \
+        in printed
+    assert f"Quartering it reaches {quarter} days, {quarter / today:.2f}x." \
+        in printed
+
+
+def test_zeroing_the_growth_gives_every_city_the_same_hundred_days(
+        siege_dose_run):
+    """The lever that is genuinely axis 3 and not axis 2.
+
+    Dropping the growth term and leaving the 1% share alone keeps the Siege's
+    identity -- the owner's deliberate exception, that a Siege does not care how
+    thick your walls are -- and makes time-to-fall independent of city size.
+    100 days is the same figure
+    `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp` asserts for
+    a share-only Siege, so this ties the script to the C++ as well.
+    """
+    printed, ns = siege_dose_run
+    zero_growth = ns["axis_3_table"]()["growth"][0.0]
+    assert set(zero_growth.values()) == {100}, (
+        f"a Siege with no growth term now empties the four city sizes in "
+        f"{sorted(set(zero_growth.values()))} days, not 100 for all of them")
+    assert "city size exactly 100 days" in printed
+
+
+def test_the_spawn_weights_are_the_doses_the_ruling_names(siege_dose_run):
+    """Issue #1340 specifies 0, 7.5, 15, 30 and 50, and 15 is what
+    `development` ships. A silently different ladder would answer a question the
+    owner did not ask."""
+    _, ns = siege_dose_run
+    assert ns["SIEGE_WEIGHTS"] == (0.0, 7.5, 15.0, 30.0, 50.0)
+    assert ns["SIEGE_WEIGHT_TODAY"] == 15.0, (
+        "development no longer ships Siege at 15 in 100, so the curves on issue "
+        "#1349 are centred on the wrong dose")
+
+
+def test_the_slack_is_taken_up_in_proportion_and_still_totals_a_hundred(
+        siege_dose_run):
+    """The other six sub-types share what Siege gives up IN PROPORTION, which is
+    what issue #1340 specifies. Redistributing it equally would be a second,
+    unasked-for change to the spawn table riding along inside the dose."""
+    _, ns = siege_dose_run
+    today = dict(ns["base_config"]().SUBTYPE_SPAWN_WEIGHTS)
+    reference = today["Timed"] / today["Cow Level"]
+
+    for weight in ns["SIEGE_WEIGHTS"]:
+        table = ns["weights_with_siege_at"](weight)
+        assert sum(table.values()) == pytest.approx(100.0)
+        assert table["Siege"] == pytest.approx(weight)
+        assert table["Timed"] / table["Cow Level"] == pytest.approx(reference), (
+            f"at Siege weight {weight} the other sub-types no longer keep "
+            "their proportions to each other")
+        assert set(table) == set(today), (
+            "a sub-type was dropped from the spawn table rather than reweighted")
+
+    assert ns["weights_with_siege_at"](15.0) == pytest.approx(today), (
+        "the 15 dose no longer reproduces the shipped table, so the curve's "
+        "centre point is not the game")
+
+
+def test_the_instrumentation_does_not_change_the_campaign(siege_dose_run):
+    """EVERY FIGURE THE SCRIPT PRINTS RESTS ON THIS.
+
+    The per-Siege response counts come from wrapping the policy, and a wrapper
+    that drew a random number, or changed what the policy returned, would shift
+    every campaign underneath the measurement while still printing a plausible
+    table. Compared field by field against the bare policy on the same seeds.
+    """
+    import dataclasses
+
+    from cataclysm_sim import policies
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = siege_dose_run
+    cfg = ns["base_config"]()
+    plain = policies.ALL["triage"]
+    counted = ns["instrumented"](plain)
+
+    for seed in range(12):
+        bare = Simulation(cfg, seed=seed).run(plain)
+        wrapped = ns["_InstrumentedSimulation"](cfg, seed=seed).run(counted)
+        assert dataclasses.asdict(bare) == dataclasses.asdict(wrapped), (
+            f"seed {seed} runs differently once the policy is instrumented, so "
+            "the response counts describe campaigns other than the ones the "
+            "shares were measured over")
+
+
+def test_sieges_are_counted_when_created_and_not_when_surviving(
+        siege_dose_run):
+    """A survivor count is not a frequency when the thing counted destroys its
+    own host.
+
+    A city that falls absorbs every dungeon standing on it, so counting the
+    Sieges left at the end under-counts exactly the Sieges that did their job.
+    The script hooks `_make_dungeon`; this checks the hook sees strictly more
+    than the end-of-run census over a batch where cities do fall.
+    """
+    from cataclysm_sim import policies
+
+    _, ns = siege_dose_run
+    cfg = ns["base_config"]()
+    counted = ns["instrumented"](policies.ALL["triage"])
+
+    created, standing, fell = 0, 0, 0
+    for seed in range(25):
+        sim = ns["_InstrumentedSimulation"](cfg, seed=seed)
+        sim.run(counted)
+        created += sim.sieges_created
+        standing += sum(1 for d in sim.dungeons.values()
+                        if d.subtype == "Siege")
+        fell += len(sim.empire.fallen_cities())
+
+    assert fell > 0, "no city fell, so this batch cannot show the difference"
+    assert created > standing, (
+        f"{created} Sieges were created and {standing} were still standing at "
+        "the end, so the two counts agree and the census trap is not being "
+        "avoided by construction")
+
+
+def test_the_two_readings_of_won_per_last_stand_are_not_the_same(
+        siege_dose_run):
+    """A figure without its denominator is not a figure, and this one has two.
+
+    `RunResult` carries `won` and `last_stand` and nothing joins them, so "won
+    per Last Stand reached" reads either as every win in a campaign that reached
+    one, or as the Last Stands actually cleared. **The readings differ by
+    nearly a factor of two**, because about half the campaigns that open the
+    earned boss go on to reach a Last Stand as well and their win is counted by
+    the first reading.
+
+    That gap is what made a session's reproduction of the issue #1349 baseline
+    look like a disagreement with the model when it was a disagreement about the
+    denominator. The script reports the second reading, which is the one issue
+    #1286's ruling was made on. This holds both apart so a future edit cannot
+    quietly collapse them into one number again.
+    """
+    from cataclysm_sim import policies
+
+    _, ns = siege_dose_run
+    cfg = ns["base_config"]()
+    counted = ns["instrumented"](policies.ALL["triage"])
+
+    reached = cleared = won_anything = both_routes = 0
+    for seed in range(150):
+        sim = ns["_InstrumentedSimulation"](cfg, seed=seed)
+        result = sim.run(counted)
+        if not result.last_stand:
+            continue
+        reached += 1
+        won_anything += 1 if result.won else 0
+        cleared += 1 if sim.won_by == "last stand" else 0
+        if result.cataclysm_floors > 0:
+            both_routes += 1
+
+    assert reached > 0, "no campaign reached a Last Stand in this batch"
+    assert both_routes > 0, (
+        "no campaign both opened the earned boss and reached a Last Stand, so "
+        "this batch cannot show the two readings apart and the test proves "
+        "nothing")
+    assert cleared <= won_anything, (
+        f"{cleared} Last Stands were cleared but only {won_anything} campaigns "
+        "that reached one won at all, which is impossible")
+    assert sim.won_by in (None, "earned", "last stand")
+
+
+def test_it_states_the_settings_beside_the_figures(siege_dose_run):
+    """A figure that travels without its conditions is how this project made
+    two retractions to the owner.
+
+    In particular `surge_dungeon_count` is 5 and not the `TuningConfig` default
+    of 4, which `experiments.exp_calibrate` records as rejected and never
+    calibrates; the balance report runs at 5. A reader who assumes 4 is reading
+    a different world.
+    """
+    printed, ns = siege_dose_run
+    cfg = ns["base_config"]()
+    assert cfg.surge_dungeon_count == 5
+    assert "NOT the TuningConfig default of 4" in printed
+    for expected in ("difficulty tier                 1",
+                     "empire tree preset              No tree",
+                     "policy                          triage",
+                     "resolve timer days per floor    2.0",
+                     "days per craft                  12"):
+        assert expected in printed, f"the settings block no longer states: {expected}"
+    assert f"campaigns per block             {ns['TRIALS']}" in printed
+
+
+def test_a_smoke_sized_run_says_its_shares_are_noise(siege_dose_run):
+    """A GUARD ON READING RATHER THAN ON CODE, and the one most likely to matter.
+
+    The script's default sample exists so this test file stays fast. At that
+    size the campaign shares mean nothing, and a table of them is exactly the
+    kind of output that gets quoted. It has to say so itself, in its own output,
+    rather than only in a docstring nobody prints.
+    """
+    printed, ns = siege_dose_run
+    if ns["TRIALS"] < 250:
+        assert "IS A SMOKE TEST AND THE SHARES BELOW ARE NOISE" in printed
+        assert "CATACLYSM_SIEGE_DOSE_TRIALS=1000" in printed
+    else:
+        assert "SMOKE TEST" not in printed
+
+
+def test_the_script_does_not_recommend_a_constant(siege_dose_run):
+    """The owner ruled, verbatim, "Investigate before changing anything", and
+    that no constant changes on the strength of a curve alone. The script prints
+    curves; the recommendation belongs on the issue where the owner can see what
+    it rests on."""
+    printed, _ = siege_dose_run
+    assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
+    assert "no constant changes" in printed
