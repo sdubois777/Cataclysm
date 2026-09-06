@@ -83,7 +83,9 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * player. The design says "a minion takes neither the summoner's critical
 	 * strike chance nor its multiplier" and set minion damage at the top of its
 	 * band because a minion has no critical strike layer to compound with.
-	 * See `docs/Cataclysm_GDD_v2.md` lines 1747 and 1776.
+	 * See "A minion reaches its summoner through exactly three channels"
+	 * and "Each grants 1.0% increased minion damage per point" in
+	 * `docs/Cataclysm_GDD_v2.md`.
 	 *
 	 * A DAMAGE OVER TIME TICK DOES NOT NEED THIS. It is already excluded by
 	 * `bIsDamageOverTime`, which the defender's attribute set reads directly.

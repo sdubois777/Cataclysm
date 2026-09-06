@@ -445,7 +445,9 @@ public:
 	 * "A minion takes neither the summoner's critical strike chance nor its
 	 * multiplier", and minion damage was set at the top of its band precisely
 	 * because it has no critical strike layer to compound with.
-	 * See `docs/Cataclysm_GDD_v2.md` lines 1747 and 1776.
+	 * See "A minion reaches its summoner through exactly three channels"
+	 * and "Each grants 1.0% increased minion damage per point" in
+	 * `docs/Cataclysm_GDD_v2.md`.
 	 *
 	 * A TAG RATHER THAN A FIELD, because this has to survive the trip from the
 	 * caller to the defender's attribute set, and a gameplay effect spec carries
@@ -466,8 +468,10 @@ public:
 	 * rule the list is an instance of: "A minion reaches its summoner through
 	 * exactly three channels, and nothing else crosses", those three being its
 	 * side, its base health and damage raised by the summoner's level, and
-	 * increased damage from one primary attribute. See
-	 * `docs/Cataclysm_GDD_v2.md` line 1747 and the table above it.
+	 * increased damage from one primary attribute. See "A minion reaches
+	 * its summoner through exactly three channels" in
+	 * `docs/Cataclysm_GDD_v2.md`, the table under it, and the "Everything
+	 * else is blocked" rule after that.
 	 *
 	 * IT STOPS BOTH PENETRATION STATS AND THE WEAPON SUB-TYPE'S SHARE. There are
 	 * three ways a summoner's armour penetration reaches a minion's blow, not

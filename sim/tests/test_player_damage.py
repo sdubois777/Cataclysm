@@ -74,7 +74,8 @@ def test_a_support_skill_deals_nothing_because_its_slot_deals_nothing():
 # --------------------------------------------------------------------------
 
 def test_two_one_handed_weapons_sum_their_base_damage():
-    """`docs/Cataclysm_GDD_v2.md` line 2378 states the rule and this example:
+    """The rule and this example are stated under "It has to reach the
+    implicits, not only the affixes" in `docs/Cataclysm_GDD_v2.md`:
     "an Axe and a Sword give 86 against a Greatsword's stated 78"."""
     axe = pd.weapon_base_damage("Axe")
     sword = pd.weapon_base_damage("Sword")
@@ -115,9 +116,9 @@ def test_the_offhand_does_not_drag_the_attack_rate():
 
 
 def test_the_attack_rate_of_a_pair_is_the_average_and_not_the_sum():
-    """`docs/Cataclysm_GDD_v2.md` line 2401: "Attack speed is the average of the
-    two weapons. Not the sum, and not the slower." That is what stops summed base
-    damage becoming a strict advantage."""
+    """`docs/Cataclysm_GDD_v2.md` states it as a bolded rule: "Attack speed is
+    the average of the two weapons. Not the sum, and not the slower." That is
+    what stops summed base damage becoming a strict advantage."""
     axe = af.base_named("Axe").attack_speed
     sword = af.base_named("Sword").attack_speed
     assert pd.attack_rate(("Axe", "Sword")) == pytest.approx((axe + sword) / 2.0)
@@ -240,9 +241,16 @@ def test_the_two_strongest_pairs_bracket_the_weapon_term_the_target_needs():
 
 
 def test_a_two_hander_beats_the_reference_pair_by_the_stated_multiplier():
-    """`docs/Cataclysm_GDD_v2.md` line 2382: "a two-handed weapon deals about
-    **1.33 times** the damage per hit". A two-hander exceeding the target is that
-    advantage working, not a loadout breaking the target."""
+    """The "A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix"
+    section of `docs/Cataclysm_GDD_v2.md` closes with the multiplier a
+    two-hander gains. A two-hander exceeding the target is that advantage
+    working, not a loadout breaking the target.
+
+    THE 1.33 BELOW IS STALE and is left alone deliberately. That section has
+    said "about **1.29 times** the damage per hit" since issue #633 re-derived
+    the flat damage affix, and this model measures 1.32. Three numbers, one
+    judgement to make: issue #1381.
+    """
     ratio = pd.damage_per_hit(8, ("Greatsword",)) / pd.damage_per_hit(8)
     assert ratio == pytest.approx(1.33, abs=0.05), (
         f"a Greatsword deals {ratio:.2f}x the reference pair and the design "

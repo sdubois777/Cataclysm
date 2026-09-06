@@ -124,7 +124,9 @@ struct FCataclysmWeaponSkillRow : public FTableRowBase
 	 * THE DESIGN PUTS THIS ON THE SKILL. Its stat source table says "the skill
 	 * being used" supplies critical strike chance, and the sentence after it is
 	 * "A character has no critical strike chance in the abstract."
-	 * See `docs/Cataclysm_GDD_v2.md` lines 858 and 866.
+	 * Both are in `docs/Cataclysm_GDD_v2.md`: the table row, and the
+	 * "Critical strike chance belongs to the skill, not the character"
+	 * paragraph under it.
 	 *
 	 * -1 MEANS THE ROW SAYS NOTHING, and that is the ordinary case: every one of
 	 * the 398 rows is blank today, so every skill in the game takes the 5%

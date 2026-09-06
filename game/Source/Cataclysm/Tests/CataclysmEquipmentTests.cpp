@@ -942,8 +942,10 @@ namespace CataclysmEquipmentTest
  * UCataclysmPlayerClassStats::ApplyTo, and a weapon's damage reaches it as an
  * ordinary flat modifier like any other.
  *
- * THE FIGURES ARE QUOTED FROM THE DESIGN DOCUMENT. docs/Cataclysm_GDD_v2.md
- * line 2627: "an Axe with an Axe at 92 and an Axe with a Sword at 86".
+ * THE FIGURES ARE QUOTED FROM THE DESIGN DOCUMENT, from the paragraph opening
+ * "That 87 is two one-handed weapons, not one weapon." in
+ * docs/Cataclysm_GDD_v2.md: "an Axe with an Axe at 92 and an Axe with a Sword
+ * at 86".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornWeaponsReachAttackDamage,
 	"Cataclysm.Equipment.WornWeaponsReachAttackDamageAndTwoOfThemSum",
