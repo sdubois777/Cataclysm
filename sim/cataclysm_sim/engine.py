@@ -147,6 +147,14 @@ class RunResult:
     final_surge_gap: float
     final_surge_count: int
     empire_points: float
+    # The same awards before the population multiplier, so a run records the
+    # multiplier it actually experienced rather than only its outcome. WITHOUT
+    # THIS THE MEASUREMENT IS AMBIGUOUS: a scaled award over many clears and a
+    # flat award over few are indistinguishable in the output, which is the
+    # failure issue #1327 documents. Accumulated in the same campaign, so the
+    # flat-versus-scaled difference is deterministic per run and needs no
+    # second batch to compare against. Issue #1348.
+    empire_points_flat: float
     power: float                    # final player power
     crafts: int
     craft_days: int
@@ -173,6 +181,23 @@ class RunResult:
         zero the empire game is decoration.
         """
         return 0.0 if self.free_days == 0 else self.decision_days / self.free_days
+
+    @property
+    def empire_points_multiplier(self) -> float:
+        """The population multiplier this run actually experienced, weighted by
+        what each clear was worth.
+
+        VALUE-WEIGHTED ON PURPOSE, not a plain mean of the per-clear fractions.
+        A Cataclysm is worth 25 points against a Basic dungeon's 1 and is
+        cleared last, when the population is lowest, so an unweighted mean
+        would flatter the run by counting the cheap early clears equally.
+
+        1.0 when nothing was cleared: no award was scaled, so no multiplier was
+        experienced. Issue #1348.
+        """
+        if self.empire_points_flat <= 0.0:
+            return 1.0
+        return self.empire_points / self.empire_points_flat
 
 
 class Simulation:
@@ -234,6 +259,10 @@ class Simulation:
         self.resolved = 0
         self.floors_cleared = 0     # loot proxy: reward scales with depth
         self.empire_points = 0.0
+        #: The same awards WITHOUT the population multiplier. Carried so a run
+        #: records the multiplier it actually experienced; see
+        #: `RunResult.empire_points_multiplier`. Issue #1348.
+        self.empire_points_flat = 0.0
         self.idle_days = 0
         self.decision_days = 0
         self.free_days = 0
@@ -660,7 +689,31 @@ class Simulation:
         self.floors_cleared += d.floors
         self.power += d.floors * self.tier_width * cfg.power_gain_per_floor_frac
         self.materials += d.floors * cfg.material_per_floor
-        self.empire_points += self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
+        # THE POPULATION KEPT ALIVE SCALES THE AWARD. The project owner ruled
+        # it on 2026-09-06:
+        #
+        #     points = base_points[dungeon_type] x (living / total maximum)
+        #
+        # Linear, no floor, no cap, every dungeon type. Issue #1348.
+        #
+        # SAMPLED HERE, AT THE INSTANT THE DUNGEON IS DEFEATED, AND THE ABSENCE
+        # OF A FLOOR DEPENDS ON THAT. The two decisions are one decision.
+        # Population starts at maximum and cities fall late, so a per-defeat
+        # sample is far kinder than an end-of-run one: measured over 500
+        # campaigns with no defensive tree and `greedy_loot`, a policy that
+        # abandons cities deliberately, the WORST run still kept 51% of the
+        # flat award. Applied once at the end of a run instead, the worst case
+        # falls to 0.25 and a floor would be needed to keep a bad run worth
+        # playing.
+        #
+        # So MOVING THIS AWARD TO END-OF-RUN SILENTLY REMOVES THE FLOOR that
+        # the per-defeat timing supplies for free. If it ever moves, a floor
+        # has to be argued for in the same change. The no-floor choice rests on
+        # that measurement and not on any published source: no developer
+        # anywhere turns "each run must count" into a numeric minimum.
+        base = self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
+        self.empire_points_flat += base
+        self.empire_points += base * self.empire.population_frac()
 
         # ONLY ORDINARY DUNGEONS DEEPEN THE BOSS. `cleared` above counts every
         # kind and is the wrong number for this; see
@@ -915,6 +968,7 @@ class Simulation:
             final_surge_gap=(self.surge_log[-1][1] if self.surge_log else 0.0),
             final_surge_count=(self.surge_log[-1][2] if self.surge_log else 0),
             empire_points=self.empire_points,
+            empire_points_flat=self.empire_points_flat,
             power=self.power,
             crafts=self.crafts_done,
             craft_days=self.craft_days_spent,
@@ -924,8 +978,7 @@ class Simulation:
             cataclysm_floors=(0 if self.cataclysm is None
                               else self.cataclysm.floors),
             cataclysm_floors_earned=self.cataclysm_floors_earned,
-            final_population_frac=(self.empire.total_population()
-                                   / max(1.0, self.empire.max_population())),
+            final_population_frac=self.empire.population_frac(),
             idle_days=self.idle_days,
             decision_days=self.decision_days,
             free_days=self.free_days,

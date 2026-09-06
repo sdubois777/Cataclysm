@@ -2,6 +2,225 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The population multiplier's shape: base points × living over maximum, per dungeon, no floor
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the Empire-Wide Upgrades section.
+`sim/cataclysm_sim/engine.py`, `sim/cataclysm_sim/world.py` and
+`sim/experiments.py`. Issue
+[#1348](https://github.com/sdubois777/Cataclysm/issues/1348). The entry below
+this one recorded the rule and listed five things it left open; this one closes
+four of them and implements the result in the model. The game's C++ still awards
+no empire points at all and is unchanged.
+
+### The ruling
+
+The owner was offered a multiplier and an additive alternative, and took the
+multiplier. Verbatim: **"Multiply by population share"**.
+
+> points awarded = base points for the dungeon type × (living population ÷
+> total maximum population)
+
+- **Evaluated at the instant each dungeon is defeated**, not once at the end of
+  a run.
+- **Linear.** No curve.
+- **No floor and no cap.**
+- **Every dungeon type**, the Cataclysm boss included.
+- **The denominator counts every city, fallen or not** — what the empire would
+  hold intact.
+
+The additive alternative — a flat award per surviving city, weighted by tier, in
+addition to an unscaled per-dungeon award — is the shape the genre mostly uses
+and is **not** what was built. The owner's original statement described a
+multiplier. It is recorded here because it was a real option and would give the
+floor for free.
+
+### The denominator was never actually open
+
+The entry below lists it as one of five open questions. It was not: this project
+had already decided it twice, the same way both times.
+`UCataclysmEmpireMap::TotalMaxPopulation` in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp` carries the reason in
+a comment — "EVERY CITY, FALLEN OR NOT. This is what the empire would hold
+intact, so it is the denominator the fraction lost is measured against and it
+must not shrink as cities are lost" — and `Empire.total_population()` in
+`sim/cataclysm_sim/world.py` already filtered on `alive` while `max_population()`
+did not. The empire tree's Iron Will node says the same thing in design language,
+"reduced proportionally as Empire population falls below maximum", and the
+Stimulus Package keystone triggers "if Empire Population falls below 50% of max".
+
+**Why the current maximum and not the starting population**, concretely: a city
+upgrade raises `MaxPopulation` and `Population` by the same amount
+(`CataclysmEmpireMap.cpp`, the `MaxPopulation` case). Against the current
+maximum, buying one can never lower the multiplier and never pushes it above
+1.0. Against a starting-population denominator the same upgrade pushes the ratio
+above 1.0, so buying population upgrades becomes a way to farm empire points and
+the tree's own "+2% Total Empire Population per point" turns into a
+progression-rate node compounding run over run. The current-maximum denominator
+closes that loop for free.
+
+### The absence of a floor is coupled to the per-dungeon timing, and this is the most important line in this entry
+
+**They are one decision and must not be separated.** Population starts at
+maximum and cities fall late, so sampling the multiplier at each defeat is far
+kinder than sampling it once at the end. The ruling was taken on this: measured
+over 500 campaigns with no defensive tree and a policy that abandons cities
+deliberately, the **worst** run still kept **51%** of the flat award, against
+**0.25** for the end-of-run form.
+
+So **moving the award to end-of-run would silently remove a floor** that nobody
+wrote down as a floor. If it is ever moved, a floor has to be argued for in the
+same change. `sim/cataclysm_sim/engine.py` carries this in a comment beside the
+award, and `TestItIsSampledWhenTheDungeonIsDefeated` in
+`sim/tests/test_population_scales_empire_points.py` fails if the timing moves.
+
+**The coupling reproduces. The 51% does not, and it was the whole argument for
+no floor.** Re-measured on `development` at `b196cd9` while implementing this,
+500 campaigns per case, no empire tree, no floor applied — the multiplier a run
+actually experienced, against the end-of-run fraction the same runs finished on:
+
+| case | mean | p5 | p1 | worst of 500 |
+|---|---:|---:|---:|---:|
+| tier 1 surge 5, `greedy_loot`, per defeat | 0.447 | 0.221 | 0.152 | **0.090** |
+| tier 1 surge 5, `greedy_loot`, end of run | 0.241 | 0.123 | 0.000 | **0.000** |
+| tier 1 surge 5, `triage`, per defeat | 0.905 | 0.806 | 0.627 | 0.485 |
+| tier 8 surge 8, `greedy_loot`, per defeat | 0.502 | 0.305 | 0.147 | **0.000** |
+| tier 8 surge 8, `triage`, per defeat | 0.805 | 0.678 | 0.574 | 0.474 |
+
+**Per defeat is still far kinder than end of run** — 0.447 against 0.241 in the
+mean, 0.090 against 0.000 at the worst — so the coupling the ruling rests on is
+real and the comment in `engine.py` stands. **But the worst case is 0.090 and
+not 0.51**, and at tier 8 with surge size 8 some runs earn nothing from the
+multiplier at all. The structural floor is roughly a fifth of what the ruling was
+told it was.
+
+**What that does and does not change.** It does not change what was built: the
+owner ruled the shape and the shape is implemented, floorless, exactly as ruled.
+It does change the *argument*, which was "a clamp would be guarding a case the
+structure already prevents". The structure does not prevent it. Whether the owner
+still wants no floor knowing the real distribution is a question for the owner
+and is recorded as issue
+[#1361](https://github.com/sdubois777/Cataclysm/issues/1361) rather than decided
+here. **No constant was changed to make this look better.**
+
+**This part rests on measurement and not on any published source.** The research
+could not settle the floor from anywhere: no developer operationalises "each run
+must count" into a numeric minimum award. The principle is stated widely — Dead
+Cells' "Each run counts" (Sébastien Bénard, GDC 2019) — and satisfied
+structurally rather than by a guaranteed number. Dead Cells itself has no floor;
+cells are simply lost on death. Recording this as measured rather than cited is
+the point: a later reader must not take it for a convention it can look up.
+
+### The research, and the gap in it that the owner chose to accept
+
+`CLAUDE.md` requires Path of Exile, Last Epoch, Torchlight Infinite and Diablo to
+be researched before any formula is proposed. **Only Path of Exile was covered.**
+The session's web-search budget was exhausted and the thread assigned to the
+other three had not returned. The owner was told, was offered the choice, and
+chose **"Accept it, note the gap"**. It is noted here rather than quietly
+omitted.
+
+**What would reopen this recommendation:** a finding that Last Epoch's Monolith
+stability, Torchlight Infinite, or Diablo's Greater Rift or Infernal Hordes
+scaling makes a **permanent** reward a function of a resource **preserved**
+through a run. Nothing in the thirty-odd titles checked does that continuously,
+so such a finding would be the strongest available counter-evidence and the shape
+should be revisited against it.
+
+Three closer analogues were substituted, each verified by direct quotation:
+
+- **Bad North** pays its entire meta-currency per surviving settlement — "the
+  player gains coins for each house remaining", houses worth 1, 2 or 3 by size.
+  The closest structural analogue found, and it is **additive per survivor
+  rather than a multiplier**, which is why it was offered as the alternative.
+- **They Are Billions** is the one published formula solving this exact problem,
+  and it floors itself three separate ways: it pays on **maximum** population
+  rather than surviving population, hard-caps attrition penalties at -5000, and
+  waives them entirely on a loss — "Colonist and soldier deaths do not provide
+  any reduction in points in the case of a losing game."
+- **Nova Drift** abandoned performance-scaled meta-progression outright in
+  v1.1.12, replacing score-earned unlocks with one point per wave cleared,
+  because score-based progression "led to rather inconsistent experiences where
+  some players would get showered with unlocks after powerful runs while other
+  players could see their progress slow to a crawl." First-party, and the
+  strongest single piece of evidence against steep scaling.
+
+What Path of Exile settles is narrower and is a negative result. The two
+mechanics in the reference set that most resemble a preserved resource deciding a
+reward — the Forbidden Sanctum's Resolve and Ultimatum — both resolve to a
+**cliff rather than a curve, and neither has a floor**: "If you run out of
+resolve before reaching this goal, you lose everything you gambled." In both the
+resource at risk is run loot rather than permanent progression; Path of Exile's
+actual meta-progression, the Atlas tree, is fed by flat completion. So the genre
+supports neither clamping nor a continuous multiplier, and the multiplier is the
+owner's call rather than a researched shape. The full source list, with which
+items were verified first-party and which were not, is in the research comment on
+issue [#1348](https://github.com/sdubois777/Cataclysm/issues/1348).
+
+### What this is worth, and every figure needs its conditions
+
+**Every figure the ruling quotes was measured on an earlier model and none of
+them reproduced.** They are given here beside the re-measurement so that neither
+version is quoted without the other. The re-measurement is on `development` at
+`b196cd9`, 400 campaigns per cell, deterministic seeds; "farm" is `greedy_loot`
+with no tree, "defend" is `triage` at 77x city damage reduction. The pre-change
+world is read from `RunResult.empire_points_flat` on the *same* campaigns, which
+is exact rather than approximate: empire points are never spent and no policy
+reads them, so scaling the award cannot change a campaign's trajectory.
+
+| Claim in the ruling | Re-measured on `b196cd9` |
+|---|---|
+| tier 8 s8: defending takes points 37.52 → 108.67, **2.9x** | 6.62 → 48.99, **7.40x** |
+| tier 1: farm out-earns defend by **42 points** under the flat award | farm leads by **32.54** |
+| tier 1 scaled: **0.39 points apart, a tie needing ~20,169 campaigns per cell** | **defend leads by 36.14**, 95% CI `[+33.65, +38.64]` |
+
+**Defensive investment already paid between runs before this change, and by
+more than the ruling said.** At difficulty tier 8 with surge size 8, defending
+takes empire points from 6.62 to 48.99 — **7.4 times** — purely because
+surviving lets a player keep clearing dungeons. That needed no multiplier. The
+earlier reading that the defensive branch bought nothing came from looking only
+at win rate within one run; it bought progression rate, and the measurement was
+narrow rather than wrong. This is the one conclusion the re-measurement
+strengthens rather than weakens.
+
+**The low-difficulty tie did not reproduce, and it must not be quoted.** The
+ruling describes the multiplier as a tie-breaker that brings farming and
+defending to a dead heat at tier 1. On the current model it does not: under the
+flat award farming leads by 32.54 points, and under the multiplier defending
+leads by 36.14 with a confidence interval nowhere near zero. **The multiplier
+still reverses the ordering at low difficulty, which is what it was chosen to
+do — it overshoots parity rather than landing on it.** At tier 8 the ordering is
+unchanged either way, defending leading by 43.29 flat and 42.56 scaled.
+
+So the direction of every qualitative claim holds and every magnitude moved.
+Anyone re-deriving these should expect them to move again, and should say which
+commit they measured on.
+
+Two conditions change these numbers enough to invert a reading, so never quote a
+figure without them. **`surge_dungeon_count` defaults to 4, which
+`sim/experiments.py` records as REJECTED, and the balance report uses the
+calibrated 5.** Everything above is at 5. And policy matters as much as either:
+at tier 1 surge 5 with no tree, the population an undefended run ends with is
+0.239 under `greedy_loot`, 0.306 under `triage` and 0.346 under
+`nearest_deadline`.
+
+The ruling also carries a warning that the mechanic is worth almost nothing at
+the model's defaults — an 8.6 percentage point swing. **That no longer holds
+either**: at tier 1 surge 4, `triage` under 77x defence ends on 0.993 against
+0.403 with no tree, a swing of 59.0 points, and at surge 5 it is 68.3. The
+mechanic now bites at the defaults too. Measuring at 5 is still right, because
+that is what the balance report uses, but not for the reason the ruling gives.
+
+### What the model still gets wrong, and it is pessimistic in both directions
+
+The simulation has **no city upgrades and no population regrowth**
+([#318](https://github.com/sdubois777/Cataclysm/issues/318)); the game has both.
+So the model overstates the penalty by an unknown amount. Separately, every
+figure above was measured before
+[#1327](https://github.com/sdubois777/Cataclysm/issues/1327)'s flat city-damage
+ruling is reflected everywhere, and under flat damage raising a city's maximum
+population genuinely protects it, so the fraction will sit higher and the swing
+will narrow. Re-derive rather than reusing these numbers.
+
 ## 2026-09-06 — The Cataclysm draw is per character and a failed run replays the same ones
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the Game Start and Ending a Run
@@ -214,14 +433,24 @@ all". **That is wrong, and it was checked.** `sim/cataclysm_sim/config.py` line
 281 holds `empire_points_per_dungeon`, a per-dungeon-type dictionary; the
 comment above it calls it UNKNOWN #5 and says it is "Not consumed by the strategy
 sim; recorded so the meta-progression curve can be fitted from the same runs".
-`sim/cataclysm_sim/engine.py` line 588 accumulates it on every dungeon defeat and
-line 842 reports it on the campaign result.
+`sim/cataclysm_sim/engine.py` accumulates it on every dungeon defeat, in
+`_finish_current`, and reports it on the run result.
 
-So the model already counts empire points; **what it does not do is scale them by
-surviving population**, and `engine.py` line 588 is the single line that would
-take the factor. Nothing here changes it, because whether a between-run reward
-belongs in a single-campaign model is a real question rather than a formality,
-and it cannot be answered before the shape above is settled.
+So the model already counts empire points; **as of this entry, what it does not
+do is scale them by surviving population**, and that single award line is the one
+that would take the factor. Nothing in this entry changes it, because whether a
+between-run reward belongs in a single-campaign model is a real question rather
+than a formality, and it cannot be answered before the shape above is settled.
+
+**SUPERSEDED THE SAME DAY.** The owner ruled the shape later on 2026-09-06 and
+the model now applies the multiplier on every defeat. The paragraph above records
+what was true when this entry was written and is kept because the correction it
+makes — that the model was never empty of empire progression, contrary to issue
+[#1348](https://github.com/sdubois777/Cataclysm/issues/1348) as filed — is still
+the thing a reader meets the wrong version of first. The entry at the top of this
+file has the formula. Line numbers have deliberately been removed from this
+paragraph rather than refreshed: the two it carried were already stale within a
+day.
 
 ## 2026-09-06 — The order the Cataclysms are added in is randomised per character
 

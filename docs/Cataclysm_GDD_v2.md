@@ -4065,13 +4065,47 @@ which is spent on the next run and every run after it. A measurement that covers
 a single campaign cannot see that reward at all, so a defensive investment
 looking worthless within one run is not evidence that it is worthless.
 
-**What the rule does not fix.** The direction is settled and the shape is not.
-It does not say whether the bonus follows population as a fraction of the
-empire's maximum or as an absolute count, whether it applies per dungeon
-defeated or once at the end of a run, whether a fallen city contributes nothing
-or contributes whatever population survived it, or whether the bonus has a floor
-or a ceiling. Those are tuning values and are not fixed here. Issue #1348
-carries them.
+**The shape, ruled by the project owner on 2026-09-06.** A defeated dungeon
+awards the base points for its type multiplied by the share of the empire's
+population still living:
+
+> points awarded = base points for the dungeon type × (living population ÷
+> total maximum population)
+
+It is **linear** — half the population is half the points, at every level. It
+has **no floor and no cap**. It applies to **every dungeon type**, the Cataclysm
+boss included. The denominator counts **every city, fallen or not**: it is what
+the empire would hold intact, so losing a city moves the fraction down instead
+of quietly rebasing it, and a fallen city contributes nothing to the living
+total. The empire tree's own Iron Will node already reads the same quantity the
+same way, "reduced proportionally as Empire population falls below maximum".
+
+**The multiplier is measured at the instant each dungeon is defeated, not once
+at the end of a run, and that is what makes the absence of a floor safe.** The
+two halves are one decision. Population starts at maximum and cities fall late,
+so a per-defeat award is far kinder than an end-of-run one. Measured over 500
+simulated campaigns at difficulty tier 1 with no empire tree and a policy that
+abandons cities deliberately, a run keeps **45% of the flat award on average
+against 24%** for the end-of-run form, and its **worst case is 9% against 0%**.
+Moving the award to the end of a run would therefore remove a floor without
+anyone deciding to.
+
+**How much of a floor that is has not been settled, and the figure the ruling
+was made on no longer holds.** The ruling of 2026-09-06 was taken on a measured
+worst case of 51%, which does not reproduce on the current model — it is 9% at
+that condition and 0% at difficulty tier 8 with surge size 8, where some runs
+earn nothing from the multiplier at all. The shape above is what the owner ruled
+and is what is built. Whether the absence of a floor still follows from it is
+reopened by those numbers rather than answered by them, and
+`docs/DECISIONS.md` records both the original figures and the re-measurement.
+
+**What the rule still does not fix.** The owner's statement ended "I'm not sure
+if there should be anything more than that", so whether keeping cities should
+**also** advance the win condition inside a single run is untouched by this and
+remains open. The base points per dungeon type are tuning values and are not
+fixed here. Issue #1348 carries both, and `docs/DECISIONS.md` records the
+research behind the shape — including the three reference games that were not
+checked.
 
 **The empire upgrade tree belongs to the account, not to the character.** Every
 character on the account shares one tree with every other character in the same

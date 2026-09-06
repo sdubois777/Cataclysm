@@ -128,6 +128,28 @@ class Empire:
     def max_population(self) -> float:
         return sum(c.max_population for c in self.cities.values())
 
+    def population_frac(self) -> float:
+        """Living population over what the empire would hold intact.
+
+        THE DENOMINATOR COUNTS EVERY CITY, FALLEN OR NOT, and that is the whole
+        point of it: a fallen city drops out of `total_population` and stays in
+        `max_population`, so losing one moves the fraction down instead of
+        quietly rebasing it. A denominator that shrank with the empire would
+        report a wiped-out empire as 100% intact.
+
+        The game module made the same choice explicitly and left a comment
+        saying why -- `UCataclysmEmpireMap::TotalMaxPopulation` in
+        `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp`: "EVERY
+        CITY, FALLEN OR NOT. This is what the empire would hold intact, so it
+        is the denominator the fraction lost is measured against and it must
+        not shrink as cities are lost."
+
+        An erased city -- one the Void took -- is still counted. `erased` is a
+        flag and the city stays in `self.cities`, so the denominator never
+        shrinks even then. Issue #1348.
+        """
+        return self.total_population() / max(1.0, self.max_population())
+
     # -- lanes -----------------------------------------------------------
 
     def is_exposed(self, c: City) -> bool:
