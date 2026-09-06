@@ -366,6 +366,23 @@ class TuningConfig:
     last_stand_power_per_fallen_city: float = 0.05
     last_stand_floors_per_fallen_city: int = 4
 
+    # How much deeper the EARNED Cataclysm dungeon gets for each ordinary
+    # dungeon the player has cleared. The design document: "Every dungeon
+    # defeated adds one floor to the Cataclysm boss dungeon."
+    #
+    # ONLY ORDINARY DUNGEONS COUNT, which the owner settled on 2026-09-06:
+    # "Only ordinary dungeons count (Recommended)". A Quest dungeon is the win
+    # condition itself and retaking a fallen city is recovery rather than
+    # progress, so neither makes the final fight harder. The consequence is
+    # deliberate: PURSUING THE WIN CONDITION NEVER DEEPENS THE BOSS.
+    #
+    # IT DOES NOT APPLY TO THE LAST STAND. That fight is built from its own
+    # bonuses above and nothing else; the owner settled that the same day: "No
+    # -- the last stand replaces it". It is won 1 time in 54 on purpose, and
+    # adding earned growth on top would have made a chosen number worse by
+    # accident.
+    cataclysm_floors_per_dungeon_cleared: int = 1
+
     # Runs are long now that a 40-floor dungeon costs 40 days.
     max_days: int = 2500
 
