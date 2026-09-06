@@ -191,10 +191,27 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 		// it still stands. Only the mutable half of each one is written; see
 		// `FCataclysmCity`. Issue #1307.
 		//
-		// THE DUNGEONS AND THE SURGE SCHEDULE ARE STILL NOT WRITTEN, which is
-		// the rest of that issue. A restore would put the cities back and find
-		// no dungeons standing on them.
+		// THE SURGE SCHEDULE AND THE RUN'S RANDOM STREAM ARE STILL NOT WRITTEN,
+		// which is the last slice of that issue. A restore would put the board
+		// back and then roll a different future onto it.
 		FCataclysmSaveGather::CitiesFrom(*Run, *LastRun);
+
+		// AND THE DUNGEONS STANDING ON THOSE CITIES, WITH THEIR TIMERS. This one
+		// can refuse: it writes neither list unless the two agree, so a file can
+		// never hold a dungeon with no timer or a timer with no dungeon.
+		//
+		// A REFUSAL IS LOGGED AND THE SAVE STILL HAPPENS. The rest of the record
+		// is sound and worth keeping; dropping the whole write would cost the
+		// player their floor and their character to protect a pair that was
+		// already wrong. The log names the run so the fault can be found.
+		FString Disagreement;
+		if (!FCataclysmSaveGather::DungeonsFrom(*Run, *LastRun, Disagreement))
+		{
+			UE_LOG(LogCataclysm, Warning,
+				   TEXT("The empire's dungeons were not saved: %s. Everything "
+						"else in run %s was written."),
+				   *Disagreement, *RunId.ToString(EGuidFormats::Digits));
+		}
 	}
 
 	return Write(LastRun, RunSlotName(), Trigger);

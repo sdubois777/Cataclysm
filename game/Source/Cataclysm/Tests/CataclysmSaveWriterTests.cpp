@@ -1170,4 +1170,259 @@ bool FCataclysmSaveWriterWritesTheCities::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterRefusesAMismatchedPair,
+	"Cataclysm.SaveWriter.ADungeonWithNoTimerIsRefusedRatherThanWritten",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
+{
+	// THE TEST THE WHOLE CHECK EXISTS FOR. A well-formed pair round-tripping
+	// proves nothing about the failure this guards against, so the mismatched
+	// states below are built deliberately, one of each kind.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(1);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first wave put dungeons on the map"),
+				  Run->DungeonCount() > 0))
+	{
+		return false;
+	}
+
+	FString Why;
+
+	// THE CONTROL. A run nobody has interfered with agrees with itself, so a
+	// refusal below is the mismatch rather than the check refusing everything.
+	if (!TestTrue(TEXT("an untouched run agrees with itself"),
+				  UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+					  Run->Dungeons, Run->Clock->Timers, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+		return false;
+	}
+
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	if (!TestTrue(TEXT("and so it is written"),
+				  FCataclysmSaveGather::DungeonsFrom(*Run, *Record, Why)))
+	{
+		return false;
+	}
+
+	const int32 WrittenDungeons = Record->Dungeons.Num();
+	TestEqual(TEXT("with one timer for each dungeon"),
+			  Record->DungeonTimers.Num(), WrittenDungeons);
+
+	// NOW A TIMER SIMPLY MISSING, which leaves the two lists different lengths.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+		Broken->Clock->Timers.RemoveAt(0);
+
+		FString Refusal;
+		TestFalse(TEXT("a missing timer is refused"),
+				  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record, Refusal));
+
+		// THE COUNTS ARE WHAT DIFFER HERE, so that is what the refusal says. The
+		// case where a dungeon is unmatched while the COUNTS AGREE is below, and
+		// it is a different branch: this assertion was written expecting that
+		// message and the test caught it.
+		TestTrue(TEXT("and the refusal counts both lists"),
+				 Refusal.Contains(TEXT("timers count down")));
+
+		// AND THE RECORD WAS NOT HALF WRITTEN. It still holds what the sound run
+		// put there, rather than a list from one run and a list from another.
+		TestEqual(TEXT("the record kept the dungeons it already held"),
+				  Record->Dungeons.Num(), WrittenDungeons);
+		TestEqual(TEXT("and the timers"), Record->DungeonTimers.Num(),
+				  WrittenDungeons);
+	}
+
+	// AND A TIMER WITH NO DUNGEON. It would bite a city on behalf of nothing.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+		Broken->Dungeons.RemoveAt(0);
+
+		FString Refusal;
+		TestFalse(TEXT("a timer with no dungeon is refused"),
+				  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record, Refusal));
+
+		TestTrue(TEXT("and the refusal says so"),
+				 Refusal.Contains(TEXT("not standing"))
+					 || Refusal.Contains(TEXT("timers count down")));
+	}
+
+	// A DUNGEON WITH NO TIMER WHILE THE COUNTS STILL AGREE, which the length
+	// comparison cannot see. One timer is pointed at a dungeon that is not
+	// there, so one dungeon is left unmatched and one timer is orphaned, and
+	// both lists are still the same length.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+
+		if (Broken->Clock->Timers.Num() > 0)
+		{
+			Broken->Clock->Timers[0].DungeonId = 9999;
+
+			FString Refusal;
+			TestFalse(TEXT("an unmatched dungeon is refused even when the "
+						   "counts agree"),
+					  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record,
+														 Refusal));
+
+			TestTrue(TEXT("and the refusal names the dungeon with no timer"),
+					 Refusal.Contains(TEXT("no timer")));
+		}
+	}
+
+	// AND THE CASE EQUAL TOTALS WOULD HIDE: two timers for one dungeon and none
+	// for another. The counts match and every dungeon is findable, so a check
+	// that only compared lengths, or only looked each dungeon up, would pass.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+
+		if (Broken->Clock->Timers.Num() >= 2)
+		{
+			Broken->Clock->Timers[1].DungeonId =
+				Broken->Clock->Timers[0].DungeonId;
+
+			FString Refusal;
+			TestFalse(TEXT("two timers for one dungeon is refused"),
+					  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record,
+														 Refusal));
+
+			TestTrue(TEXT("and the refusal counts them"),
+					 Refusal.Contains(TEXT("2 timers")));
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheDungeons,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// ENOUGH DAYS THAT TIMERS HAVE MOVED AND DUNGEONS HAVE RESOLVED, so the
+	// board is one a freshly begun run could not produce.
+	Run->AdvanceDays(200);
+
+	const int32 Standing = Run->DungeonCount();
+	if (!TestTrue(TEXT("dungeons are standing to save"), Standing > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// AND THE PLAYER IS INSIDE ONE, so the note of which dungeon is being walked
+	// has something to carry.
+	const int32 Walked = Run->Dungeons[0].DungeonId;
+	Run->Clock->EnterDungeon(Walked);
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before this change no dungeon reached a
+	// save at all, so a restored empire would have had cities and nothing
+	// besieging them.
+	TestEqual(TEXT("every standing dungeon survives the file"),
+			  Read->Dungeons.Num(), Standing);
+	TestEqual(TEXT("with one timer each"), Read->DungeonTimers.Num(), Standing);
+	TestEqual(TEXT("and the dungeon the player was inside"),
+			  Read->CurrentDungeonId, Walked);
+
+	// AND THE PAIR THAT CAME BACK STILL AGREES, checked with the same function
+	// the save used. A file that round-tripped into a disagreeing pair would be
+	// a serialisation fault rather than a gather one, and nothing else here
+	// would catch it.
+	FString Why;
+	if (!TestTrue(TEXT("the pair read back still agrees"),
+				  UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+					  Read->Dungeons, Read->DungeonTimers, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+	}
+
+	// AND ONE DUNGEON'S DETAIL SURVIVED, not merely the count. A record that
+	// wrote the right number of default-constructed dungeons would pass above.
+	if (Read->Dungeons.Num() > 0 && Run->Dungeons.Num() > 0)
+	{
+		const FCataclysmDungeon& Live = Run->Dungeons[0];
+		const FCataclysmDungeon& Saved = Read->Dungeons[0];
+
+		TestEqual(TEXT("its number"), Saved.DungeonId, Live.DungeonId);
+		TestEqual(TEXT("which city it assaults"), Saved.CityId, Live.CityId);
+		TestEqual(TEXT("how deep it is"), Saved.Floors, Live.Floors);
+		TestEqual(TEXT("what it does differently"),
+				  static_cast<uint8>(Saved.SubType),
+				  static_cast<uint8>(Live.SubType));
+		TestEqual(TEXT("how long walking it costs"), Saved.WalkDays,
+				  Live.WalkDays, 0.001f);
+		TestEqual(TEXT("and which day it arrived"), Saved.SpawnedDay,
+				  Live.SpawnedDay);
+	}
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

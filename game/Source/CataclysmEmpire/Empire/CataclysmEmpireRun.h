@@ -211,6 +211,37 @@ public:
 	static constexpr float SiegeDamageGrowthPerDay = 10.0f;
 
 	/**
+	 * Whether a list of dungeons and a list of timers describe the same board.
+	 *
+	 * THE ONE DEFINITION OF "THESE AGREE", AND IT IS STATIC ON PURPOSE. The two
+	 * lists are kept in step by this class and by nothing else, so a save that
+	 * wrote them and a load that read them back would each be a second writer of
+	 * that relationship. Both sides call this rather than each deciding for
+	 * itself what agreement means, because two definitions drift.
+	 *
+	 * WHAT DISAGREEMENT COSTS, WHICH IS WHY IT IS WORTH A CHECK AT ALL. A
+	 * dungeon with no timer never resolves and sits on its city for ever. A
+	 * timer with no dungeon runs out and bites a city on behalf of a dungeon
+	 * that is not there. Neither announces itself.
+	 *
+	 * IT IS CALLED ON THE WAY OUT, BY THE SAVE. Refusing to write a pair that
+	 * disagrees means a corrupt pair cannot reach a file at all, so whoever
+	 * builds the restore inherits a guarantee rather than a hope, and the
+	 * load-side check becomes a second line rather than the only one. It also
+	 * names the run that produced the fault, where a check on the way in could
+	 * only say the file was bad.
+	 *
+	 * @param OutWhy  set to what is wrong, for a log or a test message. Untouched
+	 *                when they agree.
+	 * @return whether every dungeon has exactly one timer and every timer has a
+	 *         dungeon
+	 */
+	static bool DungeonsAgreeWithTimers(
+		const TArray<FCataclysmDungeon>& Dungeons,
+		const TArray<FCataclysmDungeonTimer>& Timers,
+		FString& OutWhy);
+
+	/**
 	 * Whether a Siege stands on that city.
 	 *
 	 * WHAT IT IS FOR. A besieged city cannot buy an upgrade. See

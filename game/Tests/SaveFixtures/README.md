@@ -87,6 +87,20 @@ both to add a field the record had gained:
   `UCataclysmEmpireMap::Build` recomputes all of them identically. See
   `FCataclysmCity` for the split.
 
+`Run_v1.json` was edited a fifth time on 2026-09-05, also for issue #1307:
+
+- `Dungeons`, `DungeonTimers` and `CurrentDungeonId`, because the dungeons
+  standing on the map and their resolve timers were not written to a save.
+
+  **One dungeon and its one timer**, for the same reason the cities hold two
+  rather than 25: the guard checks every FIELD survives a round trip, not every
+  element.
+
+  **The two lists must agree**, and a save refuses to write them if they do not
+  -- see `UCataclysmEmpireRun::DungeonsAgreeWithTimers`. So this file's single
+  timer names this file's single dungeon, and changing one without the other
+  would describe a state the game will not produce.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

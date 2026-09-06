@@ -98,10 +98,10 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DungeonId = INDEX_NONE;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmDungeonType Type = ECataclysmDungeonType::Basic;
 
 	/**
@@ -123,15 +123,15 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * floor with the sub-type weight the design gives it. Before this field
 	 * existed that weight was always the one for `None`.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None;
 
 	/** Which city it is assaulting. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CityId = INDEX_NONE;
 
 	/** That city's tier when the dungeon spawned, which set its depth. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmCityTier CityTier = ECataclysmCityTier::Outpost;
 
 	/**
@@ -144,11 +144,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * day as a starting rate and `WalkDays` below is where that lands, so a city
 	 * upgrade can make the walk shorter while this stays where it is.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Floors = 1;
 
 	/** Days from spawning until it resolves undefeated, jitter included. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float ResolveDays = 0.0f;
 
 	/**
@@ -170,7 +170,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * City Upgrades sheet says. A dungeon that cost no time at all would be free,
 	 * and the empire layer's whole tension is that nothing is.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float WalkDays = 0.0f;
 
 	/**
@@ -182,14 +182,14 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 */
 	float WalkDaysPerFloor() const;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float DefenceBite = 0.0f;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float PopulationBite = 0.0f;
 
 	/** Which day it arrived. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SpawnedDay = 0;
 
 	/**

@@ -27,7 +27,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonTimer
 	 * the surge system and it does not exist. The clock only ever compares these
 	 * for equality, so any distinct numbers will do.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DungeonId = INDEX_NONE;
 
 	/**
@@ -37,15 +37,15 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonTimer
 	 * how long walking the dungeon takes; and the resolve timer is set from it
 	 * too, so a deeper dungeon is both slower to clear and slower to bite.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Floors = 1;
 
 	/** Days until it resolves undefeated. Counts down, one a day. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float DaysUntilResolve = 0.0f;
 
 	/** What the timer is set back to when it resolves. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float ResolveDays = 0.0f;
 
 	/**
@@ -55,7 +55,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonTimer
 	 * is what lets an ignored city actually die: the same dungeon bites it again
 	 * every time its timer runs out.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 TimesResolved = 0;
 };
 
@@ -285,7 +285,7 @@ public:
 	 *
 	 * IT IS THE ONE TIMER THAT DOES NOT MOVE. See `bTimerTicksWhileRunning`.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 CurrentDungeonId = INDEX_NONE;
 
 	/** Every dungeon the clock is counting down, in the order they were added. */

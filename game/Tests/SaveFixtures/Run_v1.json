@@ -4,6 +4,31 @@
 	"Day": 118,
 	"PartialDay": 0.25,
 	"CityUpgradeSlots": 3,
+	"CurrentDungeonId": 3,
+	"Dungeons": [
+		{
+			"DungeonId": 3,
+			"Type": "Basic",
+			"SubType": "Siege",
+			"CityId": 7,
+			"CityTier": "Outpost",
+			"Floors": 12,
+			"ResolveDays": 33.5,
+			"WalkDays": 12.0,
+			"DefenceBite": 0.125,
+			"PopulationBite": 0.0625,
+			"SpawnedDay": 96
+		}
+	],
+	"DungeonTimers": [
+		{
+			"DungeonId": 3,
+			"Floors": 12,
+			"DaysUntilResolve": 11.25,
+			"ResolveDays": 33.5,
+			"TimesResolved": 2
+		}
+	],
 	"Cities": [
 		{
 			"CityId": 0,
