@@ -92,6 +92,52 @@ def document() -> str:
     return flattened(GDD)
 
 
+#: What an extracted C++ expression is allowed to contain. Anything else and the
+#: extraction refuses rather than guessing, because a formula this cannot read is
+#: a formula nobody has checked.
+CPP_EXPRESSION = re.compile(r"^[\sActive0-9+\-*/()]+$")
+
+
+def cpp_requirement_formula(source: str):
+    """The expression `CataclysmsRequiredFor` returns, as something callable.
+
+    WHY THE EXPRESSION AND NOT THE WHOLE FUNCTION. Reading a C++ body in Python
+    is not a project this file should start. What is worth reading is the one
+    line the ruling lives in, and the clamp above it is covered separately.
+
+    INTEGER DIVISION, BECAUSE THAT IS WHAT `int32 / int32` IS IN C++. Python's
+    `/` would give 2.0 for the ceiling of 3 and 1.5 for the floor, so both
+    roundings would come back wrong and the comparison would fail for a reason
+    that has nothing to do with the code under test. THE VALUES ARE POSITIVE, so
+    `//` and C++'s truncation agree; a formula that could go negative would need
+    more care and `CPP_EXPRESSION` would still let it through, which is written
+    down here rather than discovered later.
+    """
+    match = re.search(
+        r"int32 UCataclysmRoster::CataclysmsRequiredFor\([^)]*\)\s*\{"
+        r"(.*?)\n\}", source, re.S)
+
+    assert match is not None, (
+        "CataclysmRoster.cpp no longer defines CataclysmsRequiredFor.")
+
+    returns = re.findall(r"return\s+([^;]+);", match.group(1))
+
+    assert len(returns) == 1, (
+        f"CataclysmsRequiredFor has {len(returns)} return statements and this "
+        "reads the expression of a single one. Follow the rewrite here rather "
+        "than deleting the check.")
+
+    expression = " ".join(returns[0].split())
+
+    assert CPP_EXPRESSION.match(expression), (
+        f"CataclysmsRequiredFor returns {expression!r}, which is not plain "
+        "integer arithmetic on `Active`. This refuses to evaluate what it "
+        "cannot read; check the formula by hand and teach this to read it.")
+
+    python = expression.replace("Active", "active").replace("/", "//")
+    return lambda active: eval(python, {"__builtins__": {}}, {"active": active})
+
+
 # ---------------------------------------------------------------------------
 # The arithmetic
 # ---------------------------------------------------------------------------
@@ -185,18 +231,86 @@ class TestTheGameComputesTheSameThing:
             "Issue #1324.")
 
     def test_the_cpp_and_the_model_agree_at_every_count(self, roster_source):
-        """Both sides are evaluated rather than compared as text: the C++ is
-        read out of the source and applied, so a change of formula that still
-        contained the substring above would be caught here."""
+        """**Both sides are evaluated, and the C++ side comes out of the file.**
+
+        The test above reads the C++ as text and looks for one substring. That
+        is worth having and it is not this: a formula rewritten into a shape
+        that still contained `(Active + 1) / 2` somewhere, or a second `return`
+        placed above it, would satisfy the substring and compute something else.
+        So this lifts the expression the function actually returns, evaluates
+        it, and compares the answer against the model's at every count a run can
+        face.
+
+        UNTIL 2026-09-06 IT DID NOT. This test took `roster_source` as a fixture
+        and never read it, comparing the model against a Python literal spelt
+        the same way as the C++ -- so the C++ could have said anything. The
+        docstring claimed the behaviour this one now has. `CLAUDE.md` warns that
+        a test whose name asserts something nobody verified is worse than a
+        failure; this was one.
+
+        THE CLAMP IS SKIPPED DELIBERATELY. `CataclysmsRequiredFor` clamps its
+        argument to 1..8 before the expression below, and every count tried here
+        is already inside that range, so evaluating the return alone gives the
+        same answer the whole function does.
+        `test_a_count_outside_the_roster_is_held_to_it` is what covers the clamp.
+        """
         from dataclasses import replace
         from cataclysm_sim.config import TuningConfig
 
+        formula = cpp_requirement_formula(roster_source)
+
         for active in range(1, 9):
             cfg = replace(TuningConfig(), active_cataclysms=active)
-            assert cfg.cataclysms_required() == (active + 1) // 2, (
+            assert cfg.cataclysms_required() == formula(active), (
                 f"the model and the C++ disagree at {active} active "
                 f"Cataclysms: the model says {cfg.cataclysms_required()} and "
-                f"(Active + 1) / 2 gives {(active + 1) // 2}.")
+                f"the expression CataclysmsRequiredFor returns gives "
+                f"{formula(active)}.")
+
+    def test_the_extraction_of_the_cpp_formula_can_actually_fail(
+            self, roster_source):
+        """THE CONTROL FOR THE TEST ABOVE, and it needs one.
+
+        Reading an expression out of a file and evaluating it is machinery, and
+        machinery that quietly returns the right answer for the wrong reason is
+        exactly what this file exists to prevent. So the same extraction is run
+        against the source with the rounding changed to the floor, and it has to
+        produce the floor. If it produced the ceiling anyway, the test above
+        would pass whatever the C++ said.
+        """
+        floored = roster_source.replace("(Active + 1) / 2", "Active / 2")
+        assert floored != roster_source, (
+            "the rounding is no longer spelt `(Active + 1) / 2` in "
+            "CataclysmRoster.cpp, so this control changed nothing and proves "
+            "nothing. Follow the rewrite here.")
+
+        formula = cpp_requirement_formula(floored)
+
+        assert [formula(n) for n in ODD_COUNTS] == [n // 2 for n in ODD_COUNTS], (
+            "the extraction returned the ceiling from a source that says the "
+            "floor, so it is not reading the file it claims to read.")
+
+    def test_a_count_outside_the_roster_is_held_to_it(self, roster_source):
+        """An active count below one or above eight is a caller's mistake, and
+        both sides answer with the nearest real one rather than with nonsense.
+
+        WHY IT MATTERS RATHER THAN BEING TIDINESS. Half of zero is zero, so
+        without the lower clamp a run that had somehow reached no active
+        Cataclysms would report the Cataclysm dungeon as already unlocked.
+        """
+        from dataclasses import replace
+        from cataclysm_sim.config import TuningConfig
+
+        assert replace(TuningConfig(), active_cataclysms=0
+                       ).cataclysms_required() == 1
+        assert replace(TuningConfig(), active_cataclysms=99
+                       ).cataclysms_required() == 4
+
+        assert re.search(r"FMath::Clamp\(\s*ActiveCount\s*,\s*1\s*,\s*Count\s*\)",
+                         roster_source), (
+            "CataclysmsRequiredFor no longer clamps its argument to the roster. "
+            "Half of zero is zero, which would report the Cataclysm dungeon as "
+            "unlocked on a run facing nothing.")
 
     def test_the_odd_case_guard_exists_in_the_unreal_tests(self):
         """A guard that is deleted is a guard that never fired.
@@ -213,11 +327,24 @@ class TestTheGameComputesTheSameThing:
             "ceiling agree at the 4 and 8 the owner worked through, so without "
             "it nothing in the C++ suite distinguishes the two. Issue #1324.")
 
-        assert "TestNotEqual" in text, (
-            "CataclysmRosterTests.cpp no longer asserts what the requirement is "
-            "NOT. The odd-count guard is a comparison between two roundings; "
-            "checking only that the ceiling is right leaves it able to pass on "
-            "an implementation that returns the floor.")
+        # IN THAT TEST'S OWN BODY AND NOT ANYWHERE IN THE FILE. Searching the
+        # whole file found `TestNotEqual` in the wave-stamping test, which is
+        # about something else entirely, so the check passed whether or not the
+        # odd-count guard contained a comparison at all.
+        body = re.search(
+            r"bool FCataclysmRosterHalfRoundsUpTest::RunTest\([^)]*\)\s*\{"
+            r"(.*?)\n\}", text, re.S)
+
+        assert body is not None, (
+            "CataclysmRosterTests.cpp no longer defines "
+            "FCataclysmRosterHalfRoundsUpTest, which is the odd-count guard. If "
+            "it was renamed, rename it here.")
+
+        assert "TestNotEqual" in body.group(1), (
+            "the odd-count guard no longer asserts what the requirement is "
+            "NOT. It is a comparison between two roundings; checking only that "
+            "the ceiling is right leaves it able to pass on an implementation "
+            "that returns the floor.")
 
 
 # ---------------------------------------------------------------------------

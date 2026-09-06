@@ -101,20 +101,58 @@ already.
 - **The simulation's policies still steer by the old flat total.**
   `sim/cataclysm_sim/policies.py` values a quest dungeon by
   `quest_objectives_required - objectives`, which is now the fallback constant
-  rather than the rule. It is a heuristic and it still runs; it is stale.
+  rather than the rule, against a total that cannot answer the rule either. It
+  is a heuristic and it still runs; it is stale, and it is issue
+  [#1388](https://github.com/sdubois777/Cataclysm/issues/1388). Moving it in the
+  same change that moved the rule would have made it impossible to say which of
+  the two moved a balance figure.
 
-### Every balance figure moves, again
+### What actually moved, measured
 
 `Simulation._maybe_open_cataclysm` no longer opens the boss at a flat 8
 objectives, so the win condition of every campaign the model has ever run has
-changed. Measured over 60 campaigns of the `triage` policy with no tree: at tier
-1 the win count went 14 to 11 of 60, and at tiers 4 and 8 it was 0 of 60 both
-before and after. **60 campaigns cannot resolve a difference of that size** —
-`sim/tests/` and issue
-[#693](https://github.com/sdubois777/Cataclysm/issues/693) both record that the
-noise floor at this sample size is several points — so that is a direction and
-not a measurement. `sim/experiments.py` has not been re-run. It already owed a
-run for the Quest relocation rule; this is the second reason.
+changed. Both gates were run in one process from the same seeds, `triage` with
+no tree, on 2026-09-06:
+
+| Tier | Campaigns | Old gate wins | New gate wins | Old mean days | New mean days |
+| --: | --: | --: | --: | --: | --: |
+| 1 | 60 | 14 | 11 | 1767 | 1549 |
+| 1 | 300 | 64 | 56 | 1788 | 1613 |
+| 1 | 1000 | 202 | 209 | 1781 | 1596 |
+| 4 | 1000 | 1 | 0 | 729 | 730 |
+| 8 | 1000 | 0 | 0 | 602 | 602 |
+
+**The win rate did not move. The length of a campaign did.** At tier 1 over
+1,000 campaigns each, 20.2% of runs were won under the old gate and 20.9% under
+the new one, and a run took 1,781 days on average before and 1,596 after — about
+185 days shorter. The player also cleared fewer quest dungeons on the way, 6.85
+against 5.86 on average, which is the direct effect: at tier 1 the requirement is
+the one active Cataclysm's own count, 5, 8 or 10 depending on which one the
+character drew, where it used to be a flat 8.
+
+**The 60-campaign reading points the other way and is noise.** 14 wins against 11
+looks like the rule made the game harder; 1,000 campaigns of each say it did not
+change the win rate at all. That is recorded here rather than quietly dropped,
+because 60 campaigns is a sample size this project has been tempted by before and
+issue [#693](https://github.com/sdubois777/Cataclysm/issues/693) is about exactly
+this.
+
+**At tiers 4 and 8 the gate makes almost no difference**, because almost no run
+finishes any Cataclysm at all: 1 win in 1,000 at tier 4 and 0 in 1,000 at tier 8,
+under either gate.
+
+**Every Siege figure `sim/cataclysm_sim/policies.py` states in prose moved with
+the campaign length, and has been re-measured and rewritten.** Over one
+10,000-campaign block at the report settings: the median walk went 13 / 22 / 34
+days to an Outpost, Bulwark and Sanctuary and is now 14 / 23 / 37, the Pillar
+median stayed at 123, and the Sieges reaching the map fell from 10.6 a campaign
+to 8.97 while the four shares by dungeon kind did not move at all. Nothing about
+a walk changed; what changed is how long a campaign runs and therefore what mix
+of dungeons it produces. `sim/tests/test_the_siege_prose_in_policies_is_true.py`
+is what failed and made this necessary.
+
+**`sim/experiments.py` has not been re-run.** It already owed a run for the Quest
+relocation rule; this is the second reason.
 
 ## 2026-09-06 — What the game counts when a dungeon is beaten, and the one number it refuses to invent
 

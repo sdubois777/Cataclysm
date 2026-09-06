@@ -158,6 +158,25 @@ both to add a field the record had gained:
   load one, the same change would need `SchemaVersionNow` to move and a
   `Migrate_1_to_2` step that multiplied each fraction by its city's maximum.
 
+`Run_v1.json` was edited a ninth time on 2026-09-06, for issue #1357:
+
+- `Cataclysm`, because a dungeon record now says which Cataclysm sent it. The
+  empire layer had no notion of which Cataclysm was running at all until that
+  issue, so there was nothing for the field to hold; the Cataclysm dungeon's
+  unlock rule reads it, because a run's total of quest objectives cannot say
+  whether any one Cataclysm is finished.
+
+  **It holds `Demonic` rather than the default `None`**, for the same reason
+  `Bosses` holds 4: a fixture carrying a field's default cannot show that the
+  value survives a round trip rather than being re-defaulted on load, and
+  `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` would pass
+  either way.
+
+  **`None` is a real value and not an absent one.** A Fallen City dungeon is
+  built from what a city was carrying rather than sent by anybody and carries
+  `None` in play, so the value has to stay reachable. This fixture describes the
+  other case, which is the one that has something to round trip.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

@@ -559,15 +559,49 @@ bool FCataclysmRosterWaveIsStampedTest::RunTest(const FString& Parameters)
 	// unattended empire `Cataclysm.EmpireRun.AnUnattendedEmpireAlwaysLosesThe
 	// PathToThePillar` describes, and it uses the same 2000-day horizon.
 	UCataclysmEmpireRun* Run = MakeRun(/* Seed */ 31, /* DifficultyTier */ 4);
-	Run->AdvanceDays(2000);
 
-	TestTrue(TEXT("some dungeons landed"), Run->Dungeons.Num() > 0);
-
+	// **EVERY DUNGEON THAT EVER STOOD, AND NOT THE ONES LEFT STANDING AT THE
+	// END.** This test asked `Run->Dungeons` once, after 2000 days, and found
+	// nothing a surge had landed: `CityFell` removes every dungeon standing on a
+	// city it takes and leaves one Fallen City dungeon in their place, so by the
+	// time an unattended empire has lost every city, every dungeon on the board
+	// is the kind nobody sends. The two controls below caught it -- they read
+	// "0 dungeons were sent by somebody" -- which is what they are for.
+	//
+	// SO THE BOARD IS READ EVERY DAY AND WHAT IT HELD IS ACCUMULATED. A dungeon
+	// is examined the first day it appears and never again, which is what the
+	// test's own name asks about: what a surge LANDS, not what survives. It is
+	// the same correction `analyse_siege_dose.py` makes at length in the
+	// simulation -- a census of survivors under-counts whatever destroys its own
+	// host.
+	//
+	// AN IDENTIFIER IS NEVER REUSED, so `Seen` cannot confuse two dungeons:
+	// `NextDungeonId` only ever counts up, which `UCataclysmEmpireRun` states
+	// and `FireSurge` relies on.
 	TSet<ECataclysmType> Senders;
+	TSet<int32> Seen;
 	int32 Sent = 0;
 	int32 FallenCities = 0;
+	TArray<FCataclysmDungeon> Everything;
 
-	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	for (int32 Elapsed = 0; Elapsed < 2000; ++Elapsed)
+	{
+		Run->AdvanceDay();
+
+		for (const FCataclysmDungeon& Standing : Run->Dungeons)
+		{
+			bool bAlreadySeen = false;
+			Seen.Add(Standing.DungeonId, &bAlreadySeen);
+			if (!bAlreadySeen)
+			{
+				Everything.Add(Standing);
+			}
+		}
+	}
+
+	TestTrue(TEXT("some dungeons landed"), Everything.Num() > 0);
+
+	for (const FCataclysmDungeon& Dungeon : Everything)
 	{
 		// A FALLEN CITY NAMES NOBODY, because it is made from what a city was
 		// carrying rather than sent by anyone. It is the one kind the game

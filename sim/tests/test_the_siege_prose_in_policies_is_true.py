@@ -347,8 +347,8 @@ class TestTheMedianWalkTheProseStates:
             "The docstring's claim that the median is a coin flip between two "
             "adjacent days rests on that being near half.")
         says(DOC_URGENCY,
-             "45.2% of Outpost dungeons walk in 12 days or fewer and 50.5% in "
-             "13 or fewer",
+             "49.0% of Outpost dungeons walk in 13 days or fewer and 56.2% in "
+             "14 or fewer",
              "Those are the shares from the 10,000-campaign measurement.")
 
 
