@@ -906,9 +906,9 @@ def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
 
         preset                        seeds 0-999   seeds 1000-1999   both
         No tree                              45.8              47.5   46.6
-        Architect maxed (as designed)        56.3              57.8   57.0
+        Architect maxed (as designed)        55.0              57.5   56.2
 
-    The Architect preset beats no tree by 10.4 points, replicated. At 150
+    The Architect preset beats no tree by 9.6 points, replicated. At 150
     campaigns that was invisible, and the no-tree cell happened to land 5.4
     points above its own long-run value, which closed the gap to nothing.
 
@@ -925,6 +925,12 @@ def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
     That is the evidence that `modifiers.pool_for` is the only route by which a
     modifier reaches a dungeon. A figure that moves and comes back tells you
     where the control is; a figure that only moves does not.
+
+    THOSE THREE FIGURES ARE HISTORY AND THE TABLE ABOVE IS NOT. They were all
+    measured at `city_damage_mult` = 0.023, which issue #1288 then corrected to
+    0.0766 because the old value carried a factor matching no node in the tree.
+    That is why the Architect cell reads 56.2 above and 57.0 in the paragraph --
+    a different change, to a different constant, not a contradiction.
 
     WHY THE ORDERINGS DID NOT CATCH IT. They carry a tolerance and they group
     ties honestly, but `rank_by_score` is given an `exclude` set holding every
@@ -986,7 +992,7 @@ def print_comparison_against_no_tree(comparison, trials: int,
           "50%. Reading a nil")
     print("  gap here as evidence that a branch does nothing is what "
           "produced issue #5, and")
-    print("  measured at 1,000 campaigns the gap it called zero is 10.4 "
+    print("  measured at 1,000 campaigns the gap it called zero is 9.6 "
           "points. See")
     print("  compare_against_no_tree.")
 
