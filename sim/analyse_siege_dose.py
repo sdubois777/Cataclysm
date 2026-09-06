@@ -94,7 +94,11 @@ from cataclysm_sim.engine import Simulation
 #: script; at 12 it costs 11 and would be the largest single cost in the fast
 #: suite. **AT THE DEFAULT THE PRINTED SHARES ARE NOISE AND THE OUTPUT SAYS SO.**
 #: The curves put to the owner on issue #1349 were taken at 1,000, which is
-#: 2,000 campaigns a dose, and took about 16 minutes.
+#: 2,000 campaigns a dose and 34,000 campaigns in all. That is tens of minutes,
+#: and much longer on a machine you are also working on -- the run that produced
+#: those curves shared the machine with two full `pytest` runs and six
+#: `prove_guard` runs and took the better part of an hour. Run it in the
+#: background, as `CLAUDE.md` says of `experiments.py` for the same reason.
 #:
 #: Set `CATACLYSM_SIEGE_DOSE_TRIALS` to re-run at that size. An environment
 #: variable rather than a command line flag because

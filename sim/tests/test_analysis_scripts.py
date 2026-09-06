@@ -1916,8 +1916,8 @@ def siege_dose_run():
     A FEW SECONDS AT THE SCRIPT'S DEFAULT `TRIALS`, which is a smoke size, and
     **the campaign shares it prints at that size are noise**. The curves put to
     the owner were taken at `CATACLYSM_SIEGE_DOSE_TRIALS=1000`, which is 2,000
-    campaigns a dose over two disjoint seed blocks and takes about a quarter of
-    an hour.
+    campaigns a dose over two disjoint seed blocks and 34,000 campaigns in all --
+    tens of minutes, and the better part of an hour on a busy machine.
 
     SO NOTHING BELOW ASSERTS A SHARE. Every check here is either on arithmetic
     that does not move with the sample size, on the instrument itself, or on the
