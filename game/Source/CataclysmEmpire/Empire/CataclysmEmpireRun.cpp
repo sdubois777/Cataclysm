@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
-								int32 LethalityRung)
+								int32 LethalityRung, int32 DifficultyTier)
 {
 	Map = NewObject<UCataclysmEmpireMap>(this);
 	Map->Build();
@@ -36,6 +36,29 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	DungeonsDetonated = 0;
 
 	Stream.Initialize(InSeed);
+
+	// WHICH CATACLYSMS THIS CHARACTER FACES. How many comes from the difficulty
+	// tier and which ones from the seed, so replaying the same seed meets the
+	// same Cataclysms and the same seed one tier higher meets those plus one --
+	// the project owner's ruling of 2026-09-06. Issues #1338 and #1357.
+	ActiveCataclysms = UCataclysmRoster::ActiveFor(InSeed, DifficultyTier);
+
+	// EVERY ACTIVE CATACLYSM IS A KEY BEFORE ANYTHING HAS HAPPENED, so one that
+	// has never sent a quest dungeon reads as 0 rather than as absent. A caller
+	// showing the player their progress towards each Cataclysm gets the whole
+	// campaign rather than only the parts of it that have started.
+	QuestObjectivesByCataclysm.Reset();
+	for (const ECataclysmType Cataclysm : ActiveCataclysms)
+	{
+		QuestObjectivesByCataclysm.Add(Cataclysm, 0);
+	}
+
+	// ITS OWN STREAM, AND NOT THE SAME SEED SHIFTED BY ONE. See `CataclysmStream`
+	// for why it is separate from `Stream`, and `UCataclysmRoster::MixedSeed` for
+	// why deriving it by adding to the seed would have made one run's Cataclysm
+	// draws a copy of the next run's waves.
+	CataclysmStream.Initialize(
+		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::WaveSalt));
 }
 
 int32 UCataclysmEmpireRun::Day() const
@@ -46,6 +69,84 @@ int32 UCataclysmEmpireRun::Day() const
 bool UCataclysmEmpireRun::IsLost() const
 {
 	return Map != nullptr && Map->IsPillarExposed();
+}
+
+// ---------------------------------------------------------------------------
+// The Cataclysm dungeon's unlock -- issue #1357
+// ---------------------------------------------------------------------------
+
+ECataclysmType UCataclysmEmpireRun::RollCataclysm()
+{
+	if (ActiveCataclysms.Num() == 0)
+	{
+		return ECataclysmType::None;
+	}
+
+	// INCLUSIVE AT BOTH ENDS, which is what `FRandomStream::RandRange` is, so
+	// the last entry can be drawn.
+	return ActiveCataclysms[
+		CataclysmStream.RandRange(0, ActiveCataclysms.Num() - 1)];
+}
+
+int32 UCataclysmEmpireRun::QuestObjectivesFor(ECataclysmType Cataclysm) const
+{
+	const int32* Earned = QuestObjectivesByCataclysm.Find(Cataclysm);
+	return Earned != nullptr ? *Earned : 0;
+}
+
+bool UCataclysmEmpireRun::IsCataclysmComplete(ECataclysmType Cataclysm) const
+{
+	// `None` CAN NEVER BE COMPLETE. It asks for nothing, and "nothing" is met by
+	// nothing, so without this a caller asking about it would be told yes. It is
+	// never in `ActiveCataclysms` so the rule below never asks -- but this is
+	// public and a caller can ask anything.
+	if (Cataclysm == ECataclysmType::None)
+	{
+		return false;
+	}
+
+	return QuestObjectivesFor(Cataclysm)
+		>= UCataclysmRoster::QuestObjectivesFor(Cataclysm);
+}
+
+int32 UCataclysmEmpireRun::CataclysmsComplete() const
+{
+	int32 Complete = 0;
+
+	// OVER THE ACTIVE SET AND NOT OVER THE MAP OF TALLIES. They hold the same
+	// keys today, because `Begin` seeds one from the other and `ClearDungeon`
+	// only ever raises a Cataclysm that sent a dungeon -- which can only be an
+	// active one. Counting the active set is what the rule is about, so a tally
+	// that somehow named a Cataclysm this run does not face could not make the
+	// player's requirement easier to meet.
+	for (const ECataclysmType Cataclysm : ActiveCataclysms)
+	{
+		if (IsCataclysmComplete(Cataclysm))
+		{
+			++Complete;
+		}
+	}
+
+	return Complete;
+}
+
+int32 UCataclysmEmpireRun::CataclysmDungeonRequirement() const
+{
+	return UCataclysmRoster::CataclysmsRequiredFor(ActiveCataclysms.Num());
+}
+
+bool UCataclysmEmpireRun::IsCataclysmDungeonUnlocked() const
+{
+	// A RUN THAT NEVER BEGAN IS NOT UNLOCKED. `CataclysmsRequiredFor` clamps an
+	// empty list up to a requirement of one, so the comparison below already
+	// answers false -- but only by arithmetic, and saying it here means a change
+	// to that clamp cannot quietly open the boss on a run with no Cataclysms.
+	if (ActiveCataclysms.Num() == 0)
+	{
+		return false;
+	}
+
+	return CataclysmsComplete() >= CataclysmDungeonRequirement();
 }
 
 // ---------------------------------------------------------------------------
@@ -186,9 +287,28 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 		}
 	}
 
-	const TArray<FCataclysmDungeon> Wave =
+	TArray<FCataclysmDungeon> Wave =
 		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
 						 SiegesStanding);
+
+	// AND EACH ONE IS STAMPED WITH THE CATACLYSM THAT SENT IT. Issue #1357.
+	//
+	// HERE AND NOT IN THE SCHEDULER, which is where the model puts it too:
+	// `Simulation.trigger_surge` sets `d.source` after `_make_dungeon` has
+	// returned. The scheduler is deliberately ignorant of which Cataclysms this
+	// campaign faces -- it must stay able to roll a wave against a bare map in a
+	// test, the same reason the dungeon and siege counts are passed in -- and
+	// the active set belongs to the run.
+	//
+	// BEFORE THE CLOCK IS TOLD ANYTHING, so a dungeon cannot reach `Dungeons`
+	// carrying `None` and be corrected afterwards. There is no correcting it:
+	// `ClearDungeon` reads this field to decide which Cataclysm an objective
+	// counts for, and a dungeon that reached the map unstamped would earn the
+	// player nothing when they cleared it.
+	for (FCataclysmDungeon& Dungeon : Wave)
+	{
+		Dungeon.Cataclysm = RollCataclysm();
+	}
 
 	for (const FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -651,13 +771,15 @@ TArray<int32> UCataclysmEmpireRun::DungeonsOn(int32 CityId) const
 
 bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 {
-	// WHICH CITY IT WAS ON AND WHAT KIND IT WAS, READ BEFORE IT IS REMOVED.
-	// `RemoveDungeon` takes the dungeon out of `Dungeons`, so afterwards there
-	// is nothing left to ask.
+	// WHICH CITY IT WAS ON, WHAT KIND IT WAS, AND WHICH CATACLYSM SENT IT, READ
+	// BEFORE IT IS REMOVED. `RemoveDungeon` takes the dungeon out of `Dungeons`,
+	// so afterwards there is nothing left to ask.
 	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
 	const int32 CityId = Dungeon ? Dungeon->CityId : INDEX_NONE;
 	const ECataclysmDungeonType Kind = Dungeon != nullptr
 		? Dungeon->Type : ECataclysmDungeonType::Basic;
+	const ECataclysmType Sender = Dungeon != nullptr
+		? Dungeon->Cataclysm : ECataclysmType::None;
 
 	if (!RemoveDungeon(DungeonId))
 	{
@@ -692,12 +814,27 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 
 	// ONE CLEARED QUEST DUNGEON IS ONE OBJECTIVE. The project owner ruled it on
 	// 2026-09-06, verbatim "Yes -- one dungeon, one objective", and
-	// `docs/Cataclysm_GDD_v2.md` section XI states it. HOW MANY ARE NEEDED IS
-	// NOT ASKED HERE and cannot be: the count is per Cataclysm and this module
-	// has no notion of which one is running. Issues #1357 and #1324 slice 6.
+	// `docs/Cataclysm_GDD_v2.md` section XI states it.
+	//
+	// AND IT COUNTS FOR THE CATACLYSM THAT SENT IT, which is what the unlock
+	// rule reads. Issue #1357 put `FCataclysmDungeon::Cataclysm` on the dungeon
+	// for this; before it, the only number that could be kept was the run's
+	// total, and a total cannot say whether any one Cataclysm is finished.
+	//
+	// THE TOTAL IS STILL RAISED, and for a dungeon carrying no Cataclysm it is
+	// the only thing raised. That is not dead code: a dungeon built by hand in a
+	// test carries `None`, and so does a Fallen City -- which cannot be a Quest
+	// dungeon, but the rule here is about what the field says rather than about
+	// which kinds happen to reach it today.
 	if (Kind == ECataclysmDungeonType::Quest)
 	{
 		++QuestObjectives;
+
+		if (Sender != ECataclysmType::None)
+		{
+			int32& Earned = QuestObjectivesByCataclysm.FindOrAdd(Sender);
+			++Earned;
+		}
 	}
 
 	// BEATING A FALLEN CITY IS HOW A CITY COMES BACK. `docs/Cataclysm_GDD_v2.md`

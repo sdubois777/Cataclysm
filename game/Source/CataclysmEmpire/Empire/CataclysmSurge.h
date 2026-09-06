@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmRoster.h"
 #include "UObject/Object.h"
 #include "CataclysmSurge.generated.h"
 
@@ -115,8 +116,9 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
  * the surge system and it does not exist". This is that thing.
  *
  * WHAT IS NOT ON IT YET: the 117 dungeon modifiers in
- * `game/Data/DungeonModifiers.csv`, and which Cataclysm sent it. Both are issue
- * #41 and issue #53. The sub-type IS on it now; see `SubType` below.
+ * `game/Data/DungeonModifiers.csv`, issue #41. The sub-type IS on it -- see
+ * `SubType` below -- and so, since issue #1357, is which Cataclysm sent it; see
+ * `Cataclysm`.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSMEMPIRE_API FCataclysmDungeon
@@ -150,6 +152,38 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	ECataclysmDungeonSubType SubType = ECataclysmDungeonSubType::None;
+
+	/**
+	 * Which Cataclysm sent it.
+	 *
+	 * A PORT OF `Dungeon.source` IN `sim/cataclysm_sim/engine.py`, and the
+	 * field this struct's own comment named as missing until issue #1357. Its
+	 * absence was the reason two of the project owner's rulings could not be
+	 * built: a Quest dungeon's spawn chance "should depend on the Cataclysm",
+	 * and the Cataclysm dungeon unlocks when half the ACTIVE Cataclysms have had
+	 * their objectives met. Both are rules about which Cataclysm a dungeon
+	 * belongs to, and nothing could answer that.
+	 *
+	 * **IT IS WHAT MAKES AN OBJECTIVE COUNT FOR SOMETHING.**
+	 * `UCataclysmEmpireRun::ClearDungeon` reads it to decide which Cataclysm a
+	 * cleared Quest dungeon advances. A run's total of quest objectives cannot
+	 * answer the unlock rule -- eight cleared for one Cataclysm while four are
+	 * active finishes at most one of the two required -- so the total is kept
+	 * and this is what the gate reads.
+	 *
+	 * `None` IS WHAT A DUNGEON NOBODY ASSIGNED CARRIES, and it is reachable: a
+	 * dungeon built by hand in a test has one, and so does a Fallen City, which
+	 * is made from what a city was carrying rather than sent by anybody. It
+	 * counts towards no Cataclysm.
+	 *
+	 * WHO SETS IT IS THE DAY LOOP AND NOT THIS SCHEDULER, which is where the
+	 * model puts it too: `Simulation.trigger_surge` assigns `d.source` after
+	 * `_make_dungeon` has returned, and `UCataclysmEmpireRun::TriggerSurge`
+	 * stamps a wave the same way. The scheduler does not know which Cataclysms
+	 * are active; the run does.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	ECataclysmType Cataclysm = ECataclysmType::None;
 
 	/** Which city it is assaulting. */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -326,11 +360,16 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *
  * WHAT IS NOT PORTED, named so the scope is not argued later:
  *
- *   - **The other seven Cataclysms.** The simulation splits a wave between
- *     however many are active, each attacking in its own way -- a Death wave is
- *     a swarm of shallow dungeons, a Celestial one is a handful of deep ones.
- *     This is the generic pattern, which is uniform pressure on the frontier
- *     weighted by tier. Issue #53.
+ *   - **The EIGHT ATTACK PATTERNS, though no longer the other seven Cataclysms
+ *     themselves.** Which Cataclysms a campaign faces, and which one sent a
+ *     given dungeon, are ported since issue #1357: `UCataclysmRoster` draws the
+ *     active set and `UCataclysmEmpireRun::TriggerSurge` stamps every dungeon in
+ *     a wave with one. What is still generic is HOW they attack. The simulation
+ *     gives each its own shape -- a Death wave is a swarm of shallow dungeons, a
+ *     Celestial one is a handful of deep ones -- and weights how much of a wave
+ *     each contributes by that shape. Everything below is still uniform pressure
+ *     on the frontier weighted by tier, and the Cataclysm a dungeon carries
+ *     changes nothing about where it lands or how deep it is. Issue #53.
  *   - **The Demonic Cataclysm's rifts, which ignore the frontier entirely.**
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
