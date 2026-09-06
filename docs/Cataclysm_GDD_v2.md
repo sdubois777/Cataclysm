@@ -294,7 +294,31 @@ If a clear path is opened to the capital, the Cataclysm boss dungeon moves there
 
   
 
-**The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost. Measured in the simulation at difficulty tier 1 over 400 campaigns: the Last Stand was reached 54 times and won once, at around 440 floors, against a 57% win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead. That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time.
+**The reason it is so lopsided is that every part of it grows with how badly the run has already gone**, and a player only ever arrives here by having lost cities. The boss dungeon takes a flat bonus in floors, five more floors for every dungeon still standing when the map is swallowed, four more for every city already lost, and a power increase that also scales with the cities lost.
+
+
+
+**Measured in the simulation on 2026-09-06, over 10,000 campaigns in two disjoint seed blocks at difficulty tier 1**: the Last Stand was reached in **27.7%** of campaigns and won **about 1 time in 84 of those reached** — 33 wins in 2,768 — at around 440 floors, against a **40.4%** win rate at around 126 floors for a Cataclysm boss dungeon the player opened by clearing quest objectives instead.
+
+
+
+**The denominator matters and is stated on purpose.** Counted per Last Stand *entered* rather than reached, the rate is 1 in 70, because about a quarter of Last Stands are never entered — the campaign runs out of days first. The two denominators give different answers, so a figure quoted without one cannot be compared with anything.
+
+
+
+**These replace the figures this section carried until 2026-09-06**: 54 Last Stands in 400 campaigns, 1 won, and 57% for the earned fight. Both the frequency and the difficulty moved, and both moved the same way. Of the rise in frequency, the dungeon sub-type distribution accounts for about 6.6 percentage points and the boss growing with every ordinary dungeon cleared for about 2.4; **the remaining 4.5 points are not attributable to any known change** and are being tracked separately. The change in the win rate is not attributed at all.
+
+
+
+**The owner's ruling that a collapse should be near-fatal is unaffected.** Both numbers moved in the direction that satisfies it.
+
+
+
+**Those figures are measured with the Siege's city damage switched off**, which is the only way to compare them with the older ones. With it on — which is what the simulation does now that the Siege is modelled — the Last Stand is reached in **99.1%** of campaigns and the Cataclysm boss dungeon opened by clearing quest objectives is reached in **2.4%**. **The route this document treats as the ordinary way to win has almost stopped happening.** That is isolated to the Siege's daily damage and to nothing else. Whether a Siege should be that decisive is a design question that has not been put to the project owner.
+
+
+
+That lopsidedness does not depend on which dungeon modifiers are in the draw: measured over three different modifier pools it was 54, 55 and 54 Last Stands, won once every time. That check was made before the figures above and has not been repeated on them.
 
   
 

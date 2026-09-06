@@ -610,12 +610,59 @@ class Simulation:
     def _open_last_stand(self) -> None:
         """The Cataclysm assaults the Pillar, absorbing everything still standing.
 
-        NEAR-FATAL BY DESIGN, AND THE 2% WIN RATE IS NOT A BUG. Letting the
-        empire collapse is meant to be close to a loss; the project owner
-        settled that on 2026-09-05 and `docs/DECISIONS.md` records it. Measured
-        over 400 campaigns at tier 1: 54 Last Stands, 1 won, averaging about 440
-        floors, against about 126 floors and a 57% win rate for a Cataclysm
-        dungeon opened by clearing quest objectives instead. Issue #1286.
+        NEAR-FATAL BY DESIGN, AND LOSING IT IS NOT A BUG. Letting the empire
+        collapse is meant to be close to a loss; the project owner settled that
+        on 2026-09-05 and `docs/DECISIONS.md` records it.
+
+        **THE FIGURE THE RULING WAS MADE ON IS NO LONGER THE FIGURE.** Measured
+        on 2026-09-06 over 10,000 campaigns in two disjoint seed blocks, with
+        every setting held at what issue #1286 names:
+
+          - **About 1 in 84 PER LAST STAND REACHED**, 33 wins in 2,768, against
+            the 1 in 54 #1286 reported. The 95% range is 1 in 63 to 1 in 127, so
+            1 in 54 is outside it.
+          - **About 1 in 70 per Last Stand ENTERED**, 33 wins in 2,322, and on
+            THAT denominator 1 in 54 is not excluded. A quarter of Last Stands
+            are never entered because the day cap arrives first, so the two
+            denominators give different verdicts on the same data. #1286 counted
+            reached, so reached is the comparison its ruling rests on.
+          - **Reached in 27.7% of campaigns**, against 13.5%. The fight is about
+            twice as common as when the ruling was made.
+          - Averaging 438 and 440 floors, which is #1286's "about 440" unchanged.
+          - The earned Cataclysm dungeon is won **40.4%** of the time, against
+            57%.
+
+        WHAT MOVED IT, AND WHAT DID NOT. Of the 12.7 point rise in how often the
+        fight happens, the dungeon sub-type distribution change accounts for
+        about 6.6 points and the boss growing with dungeons cleared for about
+        2.4. **The remaining 4.5 points are not attributable to any known
+        change** -- with both undone the rate is 18.0%, with two blocks agreeing
+        exactly. That is issue #1343. The change in the WIN RATE is not
+        attributed at all.
+
+        **THE RULING IS UNAFFECTED.** The owner ruled that a collapse should be
+        near-fatal. Both figures moved in the direction that satisfies it, so
+        nothing here reopens the decision -- only the numbers under it.
+
+        **AND THEN #1345 MOVED THEM AGAIN, MUCH FURTHER.** Teaching the model
+        what a Siege does to a city took the Last Stand from 26% of campaigns to
+        **99%**, measured the same way. The figures above are with the three
+        Siege damage settings zeroed, which is the only way to compare with what
+        #1286 recorded; with them on, current behaviour is:
+
+          - Last Stand reached in **99.1%** of campaigns.
+          - Won about **1 in 19** of those reached -- easier, because it is now
+            met with the empire in better shape and at fewer floors, 386 against
+            438.
+          - **The earned Cataclysm dungeon opens in 2.4% of campaigns**, against
+            74.7%. The route the design treats as the ordinary win condition has
+            almost stopped happening.
+
+        THAT IS ATTRIBUTED AND ISOLATED. Zeroing `siege_defence_bite_per_day`,
+        `siege_population_bite_per_day` and `siege_damage_growth_per_day`
+        reproduces 25.8% and 26.0% against the 26.2% measured before #1345, so
+        nothing else in it is responsible. **Whether a Siege should be that
+        decisive is a design question and has not been put to the owner.**
 
         WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
         run has already gone, and a player only ever reaches this by having lost
@@ -712,9 +759,11 @@ class Simulation:
 
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
         # the player. In practice this is the end of the run. The fight is
-        # winnable in principle and almost never in practice -- measured at 2%
-        # over 400 campaigns at tier 1, against 57% for a Cataclysm dungeon the
-        # player opened by clearing quest objectives. See `_open_last_stand`.
+        # winnable in principle and almost never in practice -- measured on
+        # 2026-09-06 at about 1 in 84 per Last Stand REACHED, against 40.4% for
+        # a Cataclysm dungeon the player opened by clearing quest objectives.
+        # See `_open_last_stand`, which carries the denominators and what moved
+        # them.
         self.min_d2d = min(self.min_d2d, self.empire.distance_to_defeat())
         if self.empire.pillar_exposed():
             self._open_last_stand()
