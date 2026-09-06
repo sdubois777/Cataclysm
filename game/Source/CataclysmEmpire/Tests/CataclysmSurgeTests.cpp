@@ -1968,6 +1968,23 @@ bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
 		{
 			for (const FCataclysmDungeon& Dungeon : Live.Dungeons)
 			{
+				// A FALLEN CITY IS NOT A DUNGEON A SURGE ROLLED, so it is not
+				// one this rule is about. Issue #1324 slice 2 made a city that
+				// falls become a dungeon standing on itself, and nothing rolls
+				// a sub-type for it -- `MakeFallenCityDungeon` takes no random
+				// stream at all, because its depth is determined by the siege
+				// that took the city rather than drawn.
+				//
+				// WHETHER IT SHOULD HAVE ONE IS AN OPEN DESIGN QUESTION, issue
+				// #1342, and not something this test should decide by
+				// accident. Counting it here would have this test report the
+				// removed no-sub-type outcome as though the roll had produced
+				// it, which is the opposite of what it exists to catch.
+				if (Dungeon.Type == ECataclysmDungeonType::FallenCity)
+				{
+					continue;
+				}
+
 				bool bAlready = false;
 				Counted.Add(Dungeon.DungeonId, &bAlready);
 				if (!bAlready)
@@ -2120,5 +2137,102 @@ bool FCataclysmSurgeRefusedSiegeSpreadTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+
+/**
+ * Issue #1324 slice 2. The dungeon a city becomes is as deep as the siege that
+ * took it, and holds one boss for each dungeon that was standing.
+ *
+ * IT IS THE ONE DUNGEON WHOSE DEPTH IS NOT ROLLED, so this is checked by
+ * calling the maker directly with a count rather than by driving a run.
+ * `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself` is the other
+ * half: that a real fall actually calls this.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeFallenCityTest,
+	"Cataclysm.Surge.AFallenCityIsAsDeepAsTheSiegeThatTookIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSurgeFallenCityTest::RunTest(const FString& Parameters)
+{
+	FCataclysmCity City;
+	City.CityId = 4;
+	City.Tier = ECataclysmCityTier::Outpost;
+
+	// A QUIET CITY GETS THE TIER'S MINIMUM. One dungeon standing is far below
+	// the twenty floors the design floors an Outpost at.
+	{
+		const FCataclysmDungeon Made =
+			UCataclysmSurgeScheduler::MakeFallenCityDungeon(9, City, 40, 1);
+
+		TestEqual(TEXT("it is a Fallen City"), Made.Type,
+				  ECataclysmDungeonType::FallenCity);
+		TestEqual(TEXT("on the city that fell"), Made.CityId, 4);
+		TestEqual(TEXT("a quiet Outpost floors at twenty"), Made.Floors, 20);
+		TestEqual(TEXT("and holds one boss"), Made.Bosses, 1);
+		TestEqual(TEXT("it takes no defence"), Made.DefenceBite, 0.0f);
+		TestEqual(TEXT("and no population"), Made.PopulationBite, 0.0f);
+		TestEqual(TEXT("and never resolves"), Made.ResolveDays,
+				  UCataclysmSurgeScheduler::FallenCityResolveDays);
+		TestEqual(TEXT("and has no sub-type"), Made.SubType,
+				  ECataclysmDungeonSubType::None);
+	}
+
+	// A BESIEGED ONE IS DEEPER THAN THE MINIMUM, AND THE BOSSES FOLLOW THE
+	// SIEGE RATHER THAN THE FLOORS. Twenty-five dungeons standing makes a
+	// twenty-five floor dungeon with twenty-five bosses in it; twenty-one makes
+	// a twenty-one floor one. The two numbers are the same count here and are
+	// NOT the same rule -- at three dungeons the floors are twenty and the
+	// bosses are three.
+	{
+		const FCataclysmDungeon Deep =
+			UCataclysmSurgeScheduler::MakeFallenCityDungeon(9, City, 40, 25);
+
+		TestEqual(TEXT("a besieged Outpost is as deep as its siege"),
+				  Deep.Floors, 25);
+		TestEqual(TEXT("and holds one boss each"), Deep.Bosses, 25);
+	}
+
+	{
+		const FCataclysmDungeon Few =
+			UCataclysmSurgeScheduler::MakeFallenCityDungeon(9, City, 40, 3);
+
+		TestEqual(TEXT("three dungeons still floor the depth at twenty"),
+				  Few.Floors, 20);
+		TestEqual(TEXT("but the bosses are the three, not the twenty"),
+				  Few.Bosses, 3);
+	}
+
+	// EVERY TIER FLOORS AT ITS OWN MINIMUM, which is the spec's shallow end and
+	// the design's 20/40/60.
+	for (const TPair<ECataclysmCityTier, int32>& Pair :
+			TMap<ECataclysmCityTier, int32>{
+				{ ECataclysmCityTier::Outpost, 20 },
+				{ ECataclysmCityTier::Bulwark, 40 },
+				{ ECataclysmCityTier::Sanctuary, 60 } })
+	{
+		FCataclysmCity Host;
+		Host.CityId = 1;
+		Host.Tier = Pair.Key;
+
+		const FCataclysmDungeon Made =
+			UCataclysmSurgeScheduler::MakeFallenCityDungeon(1, Host, 0, 1);
+
+		TestEqual(TEXT("the tier's minimum is the design's"), Made.Floors,
+				  Pair.Value);
+	}
+
+	// AND A COUNT OF ZERO STILL LEAVES A DUNGEON WITH A BOSS IN IT. It should
+	// not arise -- a city falls because a dungeon standing on it resolved -- but
+	// a floorless, bossless dungeon would be worse than the floor of one.
+	{
+		const FCataclysmDungeon None =
+			UCataclysmSurgeScheduler::MakeFallenCityDungeon(9, City, 40, 0);
+
+		TestEqual(TEXT("no siege still floors at twenty"), None.Floors, 20);
+		TestEqual(TEXT("and still holds one boss"), None.Bosses, 1);
+	}
+
+	return true;
+}
 
 #endif // WITH_AUTOMATION_TESTS

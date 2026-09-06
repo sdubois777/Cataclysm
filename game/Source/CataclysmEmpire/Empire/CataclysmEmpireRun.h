@@ -483,8 +483,27 @@ private:
 	 */
 	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
 
-	/** A city fell: its dungeons are absorbed and its fall fires a surge. */
+	/**
+	 * A city fell: its dungeons are absorbed into the one it becomes, and its
+	 * fall fires a surge.
+	 */
 	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * The city that just fell becomes a dungeon standing on itself.
+	 *
+	 * IT IS THE ONLY DUNGEON NOT PUT THERE BY A SURGE, and the only one whose
+	 * depth is decided rather than rolled. See
+	 * `UCataclysmSurgeScheduler::MakeFallenCityDungeon`.
+	 *
+	 * AN ERASED CITY GETS NONE. The Void erases rather than takes, and an erased
+	 * city cannot be retaken, so a dungeon on one would be a reward the map
+	 * refuses to pay.
+	 *
+	 * @param DungeonsAbsorbed how many stood on it when it fell.
+	 */
+	void AddFallenCityDungeon(int32 CityId, int32 DungeonsAbsorbed,
+							  FCataclysmDayReport& OutReport);
 
 	/**
 	 * Takes a dungeon off the map and off the clock, and nothing else.

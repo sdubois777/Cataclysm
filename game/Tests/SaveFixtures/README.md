@@ -119,6 +119,25 @@ both to add a field the record had gained:
   starting seed as savable and the position it has reached as not, so the record
   writes the position out explicitly. See `UCataclysmRunSave::RandomStreamSeed`.
 
+`Run_v1.json` was edited a seventh time on 2026-09-06, for issue #1324:
+
+- `Bosses`, because a dungeon record now says how many bosses it holds. Most
+  dungeons hold one, on the final floor, which is the design's universal rule. A
+  Fallen City is the stated exception and holds one per dungeon that was standing
+  on the city when it fell.
+
+  **It holds 4 rather than the default of 1**, deliberately. A fixture carrying a
+  field's default cannot show that the value survives a round trip rather than
+  being re-defaulted on load, and
+  `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` would pass
+  either way. Four is also distinct from every other whole number in that
+  dungeon -- `DungeonId` 3, `CityId` 7, `Floors` 12 and `SpawnedDay` 96 -- so two
+  fields written into one another could not go unnoticed.
+
+  **The dungeon it sits on is `Basic`, which in play would hold one.** The
+  fixture is test data rather than a reachable game state, and the value is
+  chosen to be readable back rather than to be realistic.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

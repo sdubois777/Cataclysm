@@ -440,13 +440,22 @@ class TestWhatADungeonIs:
                 f"CataclysmSurge.cpp answers a Cataclysm spec on a {tier}, "
                 "which the model has no row for")
 
-    def test_nothing_creates_a_dungeon_that_is_not_basic_yet(self):
-        """Slice 1 of #1324 answers what a dungeon WOULD be; it builds none.
+    def test_a_surge_still_lands_only_basic_dungeons(self):
+        """A wave a surge rolls is `Basic` and nothing else, still.
 
-        This is the guard on the scope of that change. `MakeDungeon` is the only
-        thing that puts a dungeon on the map, and it still sets `Basic`. When the
-        work that creates the other kinds lands, this test is the one that should
-        fail and be rewritten -- deliberately, rather than the scope drifting.
+        THIS TEST WAS RENAMED, AND THE OLD NAME IS WHY. Slice 1 of #1324 called
+        it `test_nothing_creates_a_dungeon_that_is_not_basic_yet`, and its
+        docstring said `MakeDungeon` "is the only thing that puts a dungeon on
+        the map". Slice 2 made both false: a city that falls becomes a Fallen
+        City dungeon, built by `MakeFallenCityDungeon` and added by
+        `UCataclysmEmpireRun::CityFell`. The test kept passing, because it only
+        ever read `MakeDungeon` -- so its NAME claimed something broader than
+        what it checked, which is worse than a failure. It now says what it
+        checks.
+
+        WHAT IT STILL GUARDS. Slices 3 to 6 are the ones that make a surge roll a
+        kind. When one lands, this test should fail and be rewritten
+        deliberately, rather than the scope drifting.
         """
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
@@ -455,14 +464,144 @@ class TestWhatADungeonIs:
         made = made.split("return Dungeon;", 1)[0]
 
         assert "Dungeon.Type = ECataclysmDungeonType::Basic;" in made, (
-            "MakeDungeon no longer sets Basic. If dungeon kinds are now rolled, "
+            "MakeDungeon no longer sets Basic. If a surge now rolls a kind, "
             "this test has done its job and should be replaced by one that "
             "checks the roll.")
 
         for kind in ("Quest", "FallenCity", "Cataclysm"):
             assert f"ECataclysmDungeonType::{kind}" not in made, (
-                f"MakeDungeon mentions {kind}, so something may now create one. "
+                f"MakeDungeon mentions {kind}, so a surge may now land one. "
                 "See issue #1324 for the slice that is meant to.")
+
+    def test_only_a_city_falling_creates_a_dungeon_a_surge_did_not(self):
+        """One route puts a dungeon on the map that no surge rolled, and one only.
+
+        Slice 2 of #1324 added `MakeFallenCityDungeon`. This is the guard that a
+        third route does not appear without being noticed: the two makers on
+        `UCataclysmSurgeScheduler` are the whole of how a dungeon comes to exist.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        makers = re.findall(r"UCataclysmSurgeScheduler::(Make\w*Dungeon)\(",
+                            source)
+
+        assert sorted(set(makers)) == ["MakeDungeon", "MakeFallenCityDungeon"], (
+            f"the makers of a dungeon are now {sorted(set(makers))}. A new one "
+            "means a new way for a dungeon to exist; see issue #1324")
+
+        # AND THE FALLEN CITY ONE IS THE ONLY THING THAT NAMES A KIND A SURGE
+        # DOES NOT ROLL.
+        fallen = source.split("MakeFallenCityDungeon(\n", 1)[1]
+        fallen = fallen.split("\n}", 1)[0]
+
+        assert "ECataclysmDungeonType::FallenCity" in fallen, (
+            "MakeFallenCityDungeon no longer makes a Fallen City")
+
+        for kind in ("Quest", "Cataclysm"):
+            assert f"ECataclysmDungeonType::{kind}" not in fallen, (
+                f"MakeFallenCityDungeon mentions {kind}; it should build one "
+                "kind only")
+
+
+class TestWhatAFallenCityIs:
+    """A city that falls becomes a dungeon standing on itself.
+
+    Slice 2 of issue #1324. The retaken city's half-restore is compared in
+    `test_empire_map_port.py`, which owns `UCataclysmEmpireMap::RetakenFraction`;
+    what is here is the dungeon the fall leaves behind.
+    """
+
+    def test_it_never_resolves_in_either(self, surge_header, model):
+        """Its timer is set past the end of any run, in both.
+
+        A Fallen City has no consequence left to apply -- the city it stands on
+        has already fallen -- so a timer is meaningless for it. The model says so
+        with `(999, 999)` on every Fallen City row.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        unreal = number(surge_header, "FallenCityResolveDays")
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
+            assert spec.resolve_days[0] == pytest.approx(unreal), (
+                f"{tier}: the model gives a Fallen City "
+                f"{spec.resolve_days[0]} days, the game gives {unreal}")
+
+    def test_it_takes_nothing_from_the_city_in_either(self, model):
+        """It destroys nothing at any tier. The city has already fallen.
+
+        ZERO IS ZERO IN EITHER UNIT, which is why this test did not have to
+        change its meaning when issue #1327 turned the model's damage from a
+        fraction of the city's maximum into a number of points. It changed its
+        FIELD NAMES only. The game still holds fractions, and
+        `test_every_dungeon_spec_matches_in_the_game` above is what converts
+        between the two by multiplying the game's fraction by the tier's own
+        maximum. A Fallen City needs no conversion, because it destroys nothing
+        under either unit.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
+            assert spec.defense_damage == 0.0, tier
+            assert spec.population_damage == 0.0, tier
+
+    def test_the_games_depth_is_the_siege_that_took_the_city(self):
+        """The game derives the depth; it does not roll it.
+
+        `docs/Cataclysm_GDD_v2.md` section VIII: "Floor count equals the number
+        of dungeons that were in the city when it fell (minimum 20/40/60 for
+        Outpost/Bulwark/Sanctuary)". The spec's shallow ends ARE those minimums,
+        so the game reads the floor from there rather than writing it twice.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("MakeFallenCityDungeon(", 1)[1].split("\n}", 1)[0]
+
+        assert "FMath::Max(Absorbed, Spec.LeastFloors)" in made, (
+            "MakeFallenCityDungeon no longer takes the deeper of the absorbed "
+            "count and the tier's minimum, which is the design's rule")
+
+        assert "Stream" not in made, (
+            "MakeFallenCityDungeon draws on a random stream. A Fallen City's "
+            "depth is determined by what the city was carrying, not rolled")
+
+    def test_the_model_still_rolls_that_depth_and_that_is_issue_1341(self, model):
+        """THIS TEST ASSERTS A DIVERGENCE ON PURPOSE, so that the two halves
+        disagreeing does not read as the drift this file exists to catch.
+
+        `Simulation._make_dungeon` draws uniformly from the spec range for every
+        kind, so a city besieged by six dungeons leaves the same distribution of
+        Fallen City as one besieged by one. The design says otherwise and the
+        design is authoritative here, so the MODEL is what is wrong. Issue #1341.
+
+        The owner ruled the same way on the same class of conflict on 2026-09-06,
+        about a Quest dungeon's adjacency: verbatim "Adjacent, and fix the
+        simulation".
+
+        **When #1341 is fixed this test should fail**, and be replaced by one
+        comparing the two rules rather than recording that they differ.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        made = inspect.getsource(Simulation._make_dungeon)
+
+        assert "self.rng.randint(lo, hi)" in made, (
+            "Simulation._make_dungeon no longer rolls its floor count. If #1341 "
+            "has been fixed, replace this test with one that compares the "
+            "game's rule against the model's rather than recording that they "
+            "differ")
+
+        fall = inspect.getsource(Simulation._fall)
+
+        assert "absorbed" in fall and "len(absorbed)" not in fall, (
+            "Simulation._fall now appears to use how many dungeons it absorbed. "
+            "If #1341 has been fixed, this test needs replacing; see above")
 
 
 class TestTheEscalationModes:

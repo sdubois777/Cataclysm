@@ -271,6 +271,74 @@ not a re-tune.
   on #1327 and not decided here.
 - **The bias table** — which Cataclysm damages defence and which damages
   population — is proposed on #1327 and waits on the dungeon sub-type spawn odds.
+## 2026-09-06 — A fallen city becomes a dungeon, and comes back at half
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`. Applied. Issue
+[#1324](https://github.com/sdubois777/Cataclysm/issues/1324), slice 2.
+
+The design has always said a fallen city becomes a Dungeon City that must be
+retaken, and **nothing ever built one**. A city that fell stayed fallen for the
+rest of the run: `UCataclysmEmpireMap::Retake` existed, did the right thing, and
+had no caller anywhere in the game. Two questions blocked building it and both
+were answered on 2026-09-06.
+
+### 1. One boss per dungeon that was standing when it fell
+
+**The owner's answer, verbatim: "One per dungeon that was standing when it fell
+(Recommended)".**
+
+The design says a Dungeon City's floor count equals the number of dungeons that
+were in the city when it fell, so the boss count reuses a rule that already
+exists rather than inventing a second one. Losing a heavily besieged city is
+therefore visibly worse than losing a quiet one.
+
+**THIS IS THE ONE STATED EXCEPTION TO A UNIVERSAL RULE, not a violation of it.**
+`docs/Cataclysm_GDD_v2.md` says "Every dungeon has a boss on the final floor".
+That still holds for every other kind, and a Dungeon City's final floor still
+carries one of its bosses. The exception is written into the design document
+beside the rule, and into
+`FCataclysmDungeon::Bosses`, so neither reads as an oversight.
+
+**The floor count and the boss count are the same COUNT and not the same NUMBER.**
+A city that fell holding three dungeons becomes a twenty floor dungeon with three
+bosses in it, because the floors are also subject to the tier minimum and the
+bosses are not.
+
+### 2. A retaken city comes back at half, keeps its upgrades, and can fall again
+
+**The owner's answer, verbatim: "Half its maximum, upgrades intact, can fall
+again (Recommended)".**
+
+Half the maximum defence and half the maximum population. The purchased upgrades
+survive the loss. Retaking does not make a city permanently safe.
+
+**THE 50% WAS NOWHERE IN THE DESIGN DOCUMENT AND IS NOW.** It could previously be
+inferred only from `docs/Empire_Skill_Tree_Keystones.md`, which describes a Tier 4
+keystone as restoring a reclaimed city "to 75% of its original Population/Defense
+instead of 50%" -- a number stated only as the thing an upgrade improves on. That
+made the keystone hard to value, because its base did not exist in writing.
+
+`UCataclysmEmpireMap::RetakenFraction` already held 0.5 and
+`tools/tests/test_empire_map_port.py` already compared it against
+`Simulation._retake`, so the code agreed with a rule the design had never made.
+
+### What was NOT decided here
+
+**How deep the model makes a Fallen City.** The game derives the depth from the
+siege that took the city, as the design says. `Simulation._make_dungeon` rolls it
+from a range for every kind of dungeon, so how heavily a city was besieged
+changes nothing about what it costs to win back. The two now disagree, with the
+game correct. That is issue
+[#1341](https://github.com/sdubois777/Cataclysm/issues/1341) and it is a balance
+change that wants a sweep behind it.
+
+**Where the bosses stand.** `FCataclysmDungeon::Bosses` is the strategy layer's
+count. Placing them on floors is the dungeon runtime's work, issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41), and nothing reads the
+count yet.
+
 
 ## 2026-09-06 — Only ordinary dungeons deepen the Cataclysm boss, and the Last Stand takes none of it
 
