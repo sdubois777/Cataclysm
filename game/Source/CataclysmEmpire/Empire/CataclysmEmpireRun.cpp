@@ -490,10 +490,11 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 		// the map speaks, the flat share is multiplied instead and the division
 		// -- and the guard against a maximum of zero it needed -- is gone.
 		//
-		// TEN POINTS OFF AN OUTPOST'S THOUSAND DEFENCE IS A FURTHER ONE PER
-		// CENT; off the Pillar's twenty thousand it is a twentieth of that. See
-		// `SiegeDamageGrowthPerDay` for why that asymmetry is the point rather
-		// than a rounding of it.
+		// TWO AND A HALF POINTS OFF AN OUTPOST'S THOUSAND DEFENCE IS A FURTHER
+		// QUARTER OF A PER CENT; off the Pillar's twenty thousand it is a
+		// twentieth of that. See `SiegeDamageGrowthPerDay` for why that
+		// asymmetry is the point rather than a rounding of it, and for the
+		// ruling of 2026-09-06 that took the growth from 10 to 2.5.
 		const float Grown = SiegeDamageGrowthPerDay * Host.Value;
 
 		const float Defence = City->MaxDefence * SiegeDefenceBitePerDay + Grown;

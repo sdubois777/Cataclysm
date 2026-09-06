@@ -802,7 +802,11 @@ deliberate exception, so city health does not protect against it. The combined
 defensive ceiling was then sent to measurement rather than chosen. **A
 measurement of how safe a fully invested empire is that leaves out the one
 threat which bypasses the investment overstates that safety by construction.**
-Siege is about 13 in every 100 dungeons that reach the map.
+Siege is about 13 in every 100 dungeons that reach the map. **It is about 6.8 in
+100 since later the same day**, when the owner halved the spawn weight on
+[#1349](https://github.com/sdubois777/Cataclysm/issues/1349); the argument above
+is unaffected, because a threat that bypasses the investment still bypasses it
+at half the rate.
 
 ### THE PERCENTAGE IS DELIBERATE AND WILL LOOK LIKE AN OVERSIGHT
 
@@ -870,6 +874,14 @@ other six sub-types.
 
 **The model now lands 13.1 in 100 over twenty campaigns.** Had the share stayed
 at 15, the cap would be present but never reached.
+
+**Both figures are at the spawn weight of the day and it moved later on
+2026-09-06.** The owner halved it to 7.5 on
+[#1349](https://github.com/sdubois777/Cataclysm/issues/1349); the model now rolls
+7.5 in 100 and lands 6.8 in 100 over the same twenty campaigns. The check itself
+is unchanged — arriving is still strictly below rolled, which is what says the
+cap is reached — and `sim/tests/test_siege_subtype.py` now states the bound as a
+fraction of the rolled share rather than as a second copy of a measured figure.
 
 ### Two things the test suite found rather than a person
 
@@ -2233,14 +2245,21 @@ points is not a share, so it bites hardest where the empire is thinnest:
 
 | City | Maximum defence | Flat share per day | Days to empty, flat only | Days to empty, with the growth |
 | :-- | --: | --: | --: | --: |
-| Outpost | 1,000 | 10 | 100 | 14 |
-| Bulwark | 3,000 | 30 | 100 | 23 |
-| Sanctuary | 8,000 | 80 | 100 | 34 |
-| Pillar | 20,000 | 200 | 100 | 47 |
+| Outpost | 1,000 | 10 | 100 | 25 |
+| Bulwark | 3,000 | 30 | 100 | 39 |
+| Sanctuary | 8,000 | 80 | 100 | 55 |
+| Pillar | 20,000 | 200 | 100 | 70 |
 
-A frontier Outpost left to an unattended Siege is gone in a fortnight, and the
-capital would take seven weeks. That is the shape the design wants: the frontier
+A frontier Outpost left to an unattended Siege is gone in under a month, and the
+capital would take ten weeks. That is the shape the design wants: the frontier
 falls first.
+
+**The growth column read 14 / 23 / 34 / 47 until 2026-09-06**, when the owner cut
+the growth from 10 points a day to 2.5 on
+[#1349](https://github.com/sdubois777/Cataclysm/issues/1349). The entry for that
+ruling is further up this page. Nothing else in this section moved: the answer
+quoted above is what "power" means, and the flat share is still 1% of the city's
+own maximum, so the flat-only column is still 100 days for every size.
 
 **Two details the answer did not settle, put back to the owner and confirmed.**
 The owner's answer says what the power is. It does not say which of the two kinds

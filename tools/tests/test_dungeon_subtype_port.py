@@ -177,17 +177,41 @@ class TestTheSpawnWeights:
         that check cannot see. This states the design intent instead: a Cow
         Level is the rarest thing a surge produces, because the design document
         gives it "ridiculous amounts of loot".
+
+        **EXCEPT THE SIEGE, SINCE 2026-09-06, AND THAT IS A CONSEQUENCE OF A
+        RULING RATHER THAN A WEAKENED GUARD.** The owner halved the Siege weight
+        to 7.5 on issue #1349 because a Siege at 15 in 100 was ending campaigns;
+        the other six absorbed what it gave up, which carried the Cow Level to
+        7.6 and put it above the Siege. No rounding avoids that -- an exact
+        proportional rescale puts the Cow Level at 7.617647. The Cow Level's
+        rarity argument is about its loot and says nothing about the Siege, so
+        this holds it against the six the ruling did not touch and records the
+        exception. Whether the order should be restored is issue #1369.
         """
         unreal = {cpp: weight(surge_source, cpp) for cpp in NAMES.values()}
+        untouched = {k: v for k, v in unreal.items() if k != "Siege"}
 
-        assert unreal["CowLevel"] == min(unreal.values()), (
-            f"Cow Level is no longer the rarest: {unreal}")
+        assert unreal["CowLevel"] == min(untouched.values()), (
+            "Cow Level is no longer the rarest of the sub-types the ruling of "
+            f"2026-09-06 did not move: {unreal}")
 
         assert unreal["Timed"] == unreal["Horde"] == max(unreal.values()), (
             "Timed and Horde are no longer the joint commonest sub-types")
 
+        model_untouched = {k: v for k, v in model.SUBTYPE_SPAWN_WEIGHTS.items()
+                           if k != "Siege"}
         assert (model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]
-                == min(model.SUBTYPE_SPAWN_WEIGHTS.values()))
+                == min(model_untouched.values()))
+
+        # AND THE EXCEPTION IS EXACTLY ONE SUB-TYPE WIDE. Without this the two
+        # assertions above would pass for a table where three things had sunk
+        # below the Cow Level, which is a different distribution from the one
+        # the owner ruled on.
+        below = [name for name, value in model.SUBTYPE_SPAWN_WEIGHTS.items()
+                 if value < model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]]
+        assert below == ["Siege"], (
+            f"{below} are rarer than a Cow Level. The owner's ruling of "
+            "2026-09-06 put the Siege there and nothing else; see issue #1369")
 
 
 class TestTheEnumTheRollWalks:

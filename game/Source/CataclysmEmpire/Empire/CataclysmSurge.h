@@ -444,23 +444,36 @@ public:
 	 * weight without rebalancing the rest changes that sub-type's share and
 	 * dilutes every other, which is the behaviour you want from a weight.
 	 *
-	 * COW LEVEL IS THE RAREST AT 7, which is what its reward deserves: the design
-	 * document gives it "ridiculous amounts of loot" for double the walk. It was
-	 * 4 in 100 while a third of dungeons were plain, so its share rose along with
-	 * everything else when that third was redistributed.
+	 * COW LEVEL IS THE RAREST AT 7.6, which is what its reward deserves: the
+	 * design document gives it "ridiculous amounts of loot" for double the walk.
+	 * It was 4 in 100 while a third of dungeons were plain, so its share rose
+	 * along with everything else when that third was redistributed.
+	 *
+	 * SIEGE IS 7.5 AND NOT 15 SINCE 2026-09-06. The owner ruled on issue #1349,
+	 * verbatim, "Halve the rate and cut the growth", after the dose-response
+	 * curves in `sim/analyse_siege_dose.py` showed a Siege at 15 in 100 taking
+	 * the earned Cataclysm dungeon from 84% of campaigns to 8%. The 7.5 it gave
+	 * up went to the other six IN PROPORTION, so the table still totals 100 and
+	 * a Siege is still the third commonest thing a surge makes.
+	 * `UCataclysmEmpireRun::SiegeDamageGrowthPerDay` carries the other half of
+	 * that ruling, 10 points a day down to 2.5.
+	 *
+	 * THE SIX ARE ROUNDED TO ONE DECIMAL rather than rescaled exactly, which is
+	 * the form the owner chose for this same table on 2026-09-05: "clean round
+	 * numbers" over an exact proportional rescale. They sum to exactly 92.5.
 	 *
 	 * THESE ARE A COPY AND THE SIMULATION IS THE ORIGINAL, the same arrangement
 	 * every other constant in this file is in.
 	 * `tools/tests/test_dungeon_subtype_port.py` reads each one back out of this
 	 * header and fails if either side moves.
 	 */
-	static constexpr float SpawnWeightTimed			= 18.0f;
-	static constexpr float SpawnWeightHorde			= 18.0f;
-	static constexpr float SpawnWeightSiege			= 15.0f;
-	static constexpr float SpawnWeightCowLevel		= 7.0f;
-	static constexpr float SpawnWeightElite			= 15.0f;
-	static constexpr float SpawnWeightVolatile		= 15.0f;
-	static constexpr float SpawnWeightSacrificial	= 12.0f;
+	static constexpr float SpawnWeightTimed			= 19.6f;
+	static constexpr float SpawnWeightHorde			= 19.6f;
+	static constexpr float SpawnWeightSiege			=  7.5f;
+	static constexpr float SpawnWeightCowLevel		=  7.6f;
+	static constexpr float SpawnWeightElite			= 16.3f;
+	static constexpr float SpawnWeightVolatile		= 16.3f;
+	static constexpr float SpawnWeightSacrificial	= 13.1f;
 
 	/**
 	 * How often the given sub-type is rolled.

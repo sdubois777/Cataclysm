@@ -2,8 +2,10 @@
 
 WHY THIS FILE EXISTS. Issue #1329. The model gave a sub-type no behaviour beyond
 Cow Level's doubled walk and Sacrificial's doubled modifiers, so the Siege --
-about 13 in every 100 dungeons that reach the map -- did nothing at all. The
-project owner ruled on 2026-09-06, verbatim: "Yes — add it as part of this work".
+about 13 in every 100 dungeons that reached the map at the weight of the day --
+did nothing at all. The project owner ruled on 2026-09-06, verbatim: "Yes — add
+it as part of this work". The weight was halved later the same day on issue
+#1349 and the share arriving is now about 6 in every 100.
 
 WHY IT COULD NOT WAIT. Issue #1327 turned every other city damage number into
 points so that raising a city's health would mean something. The Siege keeps a
@@ -58,7 +60,7 @@ def sim_for(tree: EmpireTree = TREE_NONE, tier: int = 1) -> Simulation:
 class TestWhatItTakesEachDay:
     """The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`:
     "Deals 1% damage to city defenses and population per day while active.
-    Increases in power by 10 points per day.\""""
+    Increases in power by 2.5 points per day.\""""
 
     def test_on_the_day_it_arrives_it_takes_the_flat_share_alone(self):
         """The growth counts from the day the Siege arrived, so its first day
@@ -70,13 +72,18 @@ class TestWhatItTakesEachDay:
         assert before - city.defense == pytest.approx(city.max_defense * 0.01)
 
     @pytest.mark.parametrize("days", [0, 1, 5, 20])
-    def test_each_later_day_adds_ten_points(self, days):
+    def test_each_later_day_adds_two_and_a_half_points(self, days):
+        """WRITTEN OUT RATHER THAN READ FROM THE CONFIG, for the same reason
+        `CataclysmEmpireRunTests.cpp` writes its copy out: a test that took the
+        growth from `cfg.siege_damage_growth_per_day` would expect no growth,
+        find no growth and pass with the constant set to zero. It was 10.0 here
+        until the owner cut the growth on issue #1349."""
         sim = sim_for()
         d, city = a_siege(sim, stood_for=days)
         before = city.defense
         sim._apply_siege_damage()
         assert before - city.defense == pytest.approx(
-            city.max_defense * 0.01 + 10.0 * days)
+            city.max_defense * 0.01 + 2.5 * days)
 
     def test_it_takes_the_same_from_the_population(self):
         """Both halves apply to both pools. The design sentence names both, and
@@ -86,7 +93,7 @@ class TestWhatItTakesEachDay:
         before = city.population
         sim._apply_siege_damage()
         assert before - city.population == pytest.approx(
-            city.max_population * 0.01 + 70.0)
+            city.max_population * 0.01 + 17.5)
 
     def test_a_spawn_day_after_the_clock_does_not_heal_the_city(self):
         """A dungeon built by hand in a test can carry a spawn day later than
@@ -165,7 +172,7 @@ class TestTheDeliberateException:
             "is no longer a share of the maximum.")
 
     def test_but_the_growth_half_is_protected_by_city_health(self):
-        """The ten points a day ARE absolute, so a bigger pool absorbs them for
+        """The 2.5 points a day ARE absolute, so a bigger pool absorbs them for
         longer. A Siege is therefore not wholly immune to city health -- only
         its percentage half is, which is what makes the exception a situation
         rather than a blanket."""
@@ -196,20 +203,27 @@ class TestItMatchesTheGamesOwnStatedFigures:
     """THE STRONGEST CHECK AVAILABLE ON AN ADDITION THAT HAD NO REFERENCE CODE.
 
     `CataclysmEmpireRun.h` does not only give the constants; it states what they
-    produce: "An unattended Siege empties an Outpost's defence in 14 days, a
-    Bulwark's in 23, a Sanctuary's in 34 and the Pillar's in 47." Those four
+    produce: "An unattended Siege empties an Outpost's defence in 25 days, a
+    Bulwark's in 39, a Sanctuary's in 55 and the Pillar's in 70." Those four
     numbers were written from the C++ implementation, so reproducing them is a
     check on the whole arithmetic -- the share, the growth, the order of the two
     and the day the growth starts counting from -- rather than on four
     constants copied across.
 
-    The figures come out of `5*D*D + 5*D >= max_defence` for an Outpost, which
-    is the flat 1% share plus ten points for each day already stood.
+    The figures come out of `1.25*D*D + 8.75*D >= max_defence` for an Outpost,
+    which is the flat 1% share plus 2.5 points for each day already stood --
+    `D*0.01*M + 2.5*D*(D-1)/2`, with `M` a thousand. At D = 25 that is exactly
+    1,000, which is why an Outpost falls on day 25 and not day 26.
+
+    THEY WERE 14 / 23 / 34 / 47 UNTIL 2026-09-06. The owner cut the growth from
+    10 to 2.5 on issue #1349 and these are the recomputed result, not a target:
+    the constant moved and this followed it. The same arithmetic at growth 10
+    still returns the old four, which is how the derivation above was checked.
     """
 
     @pytest.mark.parametrize("tier, days", [
-        (CityTier.OUTPOST, 14), (CityTier.BULWARK, 23),
-        (CityTier.SANCTUARY, 34), (CityTier.PILLAR, 47)])
+        (CityTier.OUTPOST, 25), (CityTier.BULWARK, 39),
+        (CityTier.SANCTUARY, 55), (CityTier.PILLAR, 70)])
     def test_an_unattended_siege_empties_a_city_in_the_stated_days(
             self, tier, days):
         sim = sim_for()
@@ -266,14 +280,22 @@ class TestOnePerCity:
 
 class TestTheShareThatReachesTheMap:
     def test_fewer_sieges_arrive_than_are_rolled(self):
-        """THE CHECK ON THE PORT, and the reason it is worth running. The C++
-        rolls Siege at 15 in 100 and lands about 12.7 in 100 on the map,
-        measured over twenty campaigns, because a refused roll is
-        redistributed. If the model's share did not move off 15 the cap would
-        not be being reached and the rule would be present but idle.
+        """THE CHECK ON THE PORT, and the reason it is worth running. A refused
+        roll is redistributed, so the Siege share of dungeons REACHING the map
+        is lower than its share of dungeons rolled. If the model's share did not
+        move off the spawn weight the cap would not be being reached and the
+        rule would be present but idle.
 
-        Measured here at 13.1% over twenty campaigns. The bound is loose on
-        purpose -- this is a campaign statistic, not arithmetic.
+        SEVEN AND A HALF IN 100 SINCE 2026-09-06, halved from 15 on issue #1349.
+        Measured here at 5.91% arriving over the eight campaigns this test runs
+        and 6.82% over twenty. At the old weight it was 13.1% arriving against
+        15 rolled; the gap is proportionally smaller now because a rarer Siege
+        collides with the one-per-city cap less often.
+
+        THE LOWER BOUND IS A THIRD OF THE ROLLED SHARE rather than a measured
+        figure, so it says "the cap has not started eating most of them" without
+        being a second copy of a campaign statistic. The upper bound is the
+        rolled share itself and is the half that carries the meaning.
         """
         cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
         rolled = (100.0 * cfg.SUBTYPE_SPAWN_WEIGHTS["Siege"]
@@ -295,11 +317,12 @@ class TestTheShareThatReachesTheMap:
             total += len(made)
 
         arriving = 100.0 * seen / total
-        assert rolled == pytest.approx(15.0)
-        assert 10.0 < arriving < rolled, (
+        assert rolled == pytest.approx(7.5)
+        floor = rolled / 3.0
+        assert floor < arriving < rolled, (
             f"Siege is rolled at {rolled:.1f}% and reaches the map at "
-            f"{arriving:.1f}%. Below 10% something other than the cap is "
-            f"removing them; at or above {rolled:.1f}% the cap is never "
+            f"{arriving:.1f}%. Below {floor:.1f}% something other than the cap "
+            f"is removing them; at or above {rolled:.1f}% the cap is never "
             "reached and the one-per-city rule is not doing anything.")
 
 

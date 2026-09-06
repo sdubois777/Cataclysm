@@ -1198,33 +1198,36 @@ bool FCataclysmSurgeSubTypeWeightsTest::RunTest(const FString& Parameters)
 	// compared `SpawnWeightFor(Timed)` with `SpawnWeightTimed` would pass
 	// whatever either was. These are the numbers in
 	// `config.SUBTYPE_SPAWN_WEIGHTS`.
-	TestEqual(TEXT("Timed is 18"),
+	TestEqual(TEXT("Timed is 19.6"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Timed), 18.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Timed), 19.6f, 0.0001f);
 
-	TestEqual(TEXT("Horde is 18"),
+	TestEqual(TEXT("Horde is 19.6"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Horde), 18.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Horde), 19.6f, 0.0001f);
 
-	TestEqual(TEXT("Siege is 15"),
+	// SEVEN AND A HALF SINCE 2026-09-06, HALVED FROM 15 ON ISSUE #1349. The
+	// other six took the 7.5 it gave up in proportion, which is why none of
+	// them is a round number any more.
+	TestEqual(TEXT("Siege is 7.5"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Siege), 15.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Siege), 7.5f, 0.0001f);
 
-	TestEqual(TEXT("Cow Level is 7"),
+	TestEqual(TEXT("Cow Level is 7.6"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::CowLevel), 7.0f, 0.0001f);
+				  ECataclysmDungeonSubType::CowLevel), 7.6f, 0.0001f);
 
-	TestEqual(TEXT("Elite is 15"),
+	TestEqual(TEXT("Elite is 16.3"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Elite), 15.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Elite), 16.3f, 0.0001f);
 
-	TestEqual(TEXT("Volatile is 15"),
+	TestEqual(TEXT("Volatile is 16.3"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Volatile), 15.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Volatile), 16.3f, 0.0001f);
 
-	TestEqual(TEXT("Sacrificial is 12"),
+	TestEqual(TEXT("Sacrificial is 13.1"),
 			  UCataclysmSurgeScheduler::SpawnWeightFor(
-				  ECataclysmDungeonSubType::Sacrificial), 12.0f, 0.0001f);
+				  ECataclysmDungeonSubType::Sacrificial), 13.1f, 0.0001f);
 
 	// **AND NO SUB-TYPE AT ALL IS WEIGHTED NOTHING**, which is the change the
 	// owner made on 2026-09-05: every dungeon a surge produces has a sub-type.
@@ -2378,15 +2381,15 @@ bool FCataclysmSurgeRefusedSiegeSpreadTest::RunTest(const FString& Parameters)
 
 	// THE LINE THE OTHER SIX OCCUPY, worked out here rather than read from the
 	// code, so a change to the totals shows up as a disagreement.
-	const float Left = 100.0f - 15.0f;
+	const float Left = 100.0f - 7.5f;
 
 	const TPair<ECataclysmDungeonSubType, float> Expected[] = {
-		{ ECataclysmDungeonSubType::Timed,		 18.0f },
-		{ ECataclysmDungeonSubType::Horde,		 18.0f },
-		{ ECataclysmDungeonSubType::CowLevel,	  7.0f },
-		{ ECataclysmDungeonSubType::Elite,		 15.0f },
-		{ ECataclysmDungeonSubType::Volatile,	 15.0f },
-		{ ECataclysmDungeonSubType::Sacrificial, 12.0f },
+		{ ECataclysmDungeonSubType::Timed,		 19.6f },
+		{ ECataclysmDungeonSubType::Horde,		 19.6f },
+		{ ECataclysmDungeonSubType::CowLevel,	  7.6f },
+		{ ECataclysmDungeonSubType::Elite,		 16.3f },
+		{ ECataclysmDungeonSubType::Volatile,	 16.3f },
+		{ ECataclysmDungeonSubType::Sacrificial, 13.1f },
 	};
 
 	int32 Seen = 0;

@@ -3,7 +3,7 @@
 WHY THIS FILE EXISTS. Issue #1340. `sim/cataclysm_sim/policies.py` scored every
 dungeon by what ONE RESOLVE costs its city -- `d.defense_damage`. A Siege's
 damage does not happen at resolve time; it happens every day the Siege stands
-and grows by ten points a day. So the single most dangerous dungeon in the model
+and grows every day it has stood. So the single most dangerous dungeon in the model
 was scored identically to an ordinary one on the same city, and no policy could
 choose it *because* it was a Siege. The project owner ruled on 2026-09-06,
 verbatim: "Fix the policies soon, before more figures accumulate (Recommended)".
@@ -27,7 +27,10 @@ WHY NO POLICY COULD MEET THAT CRITERION, measured on 2026-09-06 at tier 1, no
 tree, surge 4:
 
   * The player is free to choose on **8.0%** of days -- a dungeon walk is 12 to
-    49 days and a fresh Siege empties its city in 14 to 47.
+    49 days and a fresh Siege empties its city in 14 to 47. **Those two day
+    counts are the ones that held when this was measured**; the owner cut the
+    growth on issue #1349 later the same day and a fresh Siege now empties its
+    city in 25 to 70, which is the change the figures below argued for.
   * So **72.7%** of Sieges standing on a living city give the player **zero**
     moments at which they are both free and could still finish the walk in
     time. The other 27.3% give exactly one. None gave two.
@@ -93,11 +96,16 @@ def a_reachable_siege(sim, city, **kw):
     """A Siege the player could still finish walking before the city dies.
 
     THE WALK LENGTH IS FORCED RATHER THAN ROLLED, and that is the point. A
-    dungeon's depth is random and the margin is genuinely tight -- at tier 1 the
-    median walk against the days a fresh Siege leaves is 12 against 14 on an
-    Outpost and 33 against 34 on a Sanctuary -- so a rolled dungeon lands on
-    either side of the line depending on the seed. A test that let it roll would
-    quietly stop covering the reachable case the first time the roll changed.
+    dungeon's depth is random, so a rolled dungeon lands on either side of the
+    line depending on the seed and a test that let it roll would quietly stop
+    covering the reachable case the first time the roll changed.
+
+    THAT WAS ACUTE WHEN THE MARGIN WAS ONE DAY AND IT IS STILL TRUE NOW THAT IT
+    IS NOT. At tier 1 the median walk was 12 days against the 14 a fresh Siege
+    left on an Outpost and 33 against 34 on a Sanctuary; since the owner cut the
+    growth on issue #1349 on 2026-09-06 a fresh Siege leaves 25 and 55. The
+    margin is wide, but the roll still crosses it for a deep enough dungeon or a
+    Siege that has already stood a while, which is exactly the case this covers.
     """
     d = put(sim, city, run_days=2, **kw)
     assert policies.siege_urgency(sim, d, city, 5.0) > 1.0, (
@@ -217,10 +225,11 @@ class TestItIsSilentAboutEverythingElse:
 
 
 class TestTheWindowToAnswerOneOpensAndCloses:
-    """AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY -- 14 days for an Outpost, 47
-    for the Pillar -- so "will this city die?" is settled before a policy is
-    asked. The only live question is whether the player can still get there,
-    and that is what the urgency answers.
+    """AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY -- 25 days for an Outpost, 70
+    for the Pillar since the owner cut the growth on issue #1349 -- so "will
+    this city die?" is settled before a policy is asked. The only live question
+    is whether the player can still get there, and that is what the urgency
+    answers.
     """
 
     def test_a_siege_the_player_can_still_reach_is_worth_the_fatal_weight(self):
@@ -355,7 +364,7 @@ class TestThePolicyActuallyPicksIt:
         assert policies.siege_urgency(sim, hopeless, city, 5.0) == 1.0
         plain = put(sim, city, subtype="Timed", run_days=2)
         assert policies.ALL[name](sim, [hopeless, plain]) is plain, (
-            f"{name} walked 400 days to a Siege that empties the city in 14")
+            f"{name} walked 400 days to a Siege that empties the city in 25")
 
 
 class TestTheControlsStayBlind:

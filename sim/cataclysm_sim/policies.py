@@ -103,8 +103,8 @@ def siege_damage_during_the_walk(sim, d, city) -> float:
     stops while the player is inside it.
 
     The growth is included, because it does not stop either: over `k` days the
-    bite rises by ten points each day, which is the closed form below rather
-    than `k` times today's bite.
+    bite rises by `siege_damage_growth_per_day` each day, which is the closed
+    form below rather than `k` times today's bite.
     """
     per_day = siege_daily_damage(sim, d, city)
     if per_day <= 0.0:
@@ -120,8 +120,8 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     it. Exactly 1.0 -- no change at all -- for everything that is not one.
 
     AN UNATTENDED SIEGE ALWAYS KILLS ITS CITY. That is not a risk, it is the
-    sub-type's definition: 14 days for an Outpost, 23 for a Bulwark, 34 for a
-    Sanctuary, 47 for the Pillar. So "will this city die?" is settled before
+    sub-type's definition: 25 days for an Outpost, 39 for a Bulwark, 55 for a
+    Sanctuary, 70 for the Pillar. So "will this city die?" is settled before
     the policy is asked, and the only live question is **whether the player can
     still get there in time**. This returns the policy's own `fatal` multiplier
     when they can and 1.0 when they cannot.
@@ -134,12 +134,21 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     Measured over 600 campaigns it moved the acceptance ratio from 1.01 to
     1.03, which is to say barely at all.
 
-    WHY THE MARGIN IS SO TIGHT THAT THE DISTINCTION MATTERS. At difficulty tier
-    1 with no tree, the median walk against the days a fresh Siege leaves is 12
-    against 14 on an Outpost, 20 against 23 on a Bulwark and 33 against 34 on a
-    Sanctuary. A Siege is answerable, and only just, and only if the player
-    goes more or less at once -- which is exactly why a policy needs to be able
-    to see one, and why a weight that ramps up slowly is no use.
+    WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
+    difficulty tier 1 with no tree the median walk is 12 days to an Outpost, 20
+    to a Bulwark and 33 to a Sanctuary as this file has long stated it, and
+    14 / 22 / 33 as issue #1364 measured it. Against the 14 / 23 / 34 days a
+    fresh Siege used to leave, that was a slack of one day or none: the median
+    player arrived as the city fell. The owner cut the growth on issue #1349 on
+    2026-09-06 and a fresh Siege now leaves 25 / 39 / 55, so the slack is
+    11 / 17 / 22 days by this file's walk figures.
+
+    THAT MAKES THE ANSWER REACHABLE AND NOT AUTOMATIC. A Siege that has already
+    stood for a while, or one on a Pillar -- 70 days against a median walk of
+    123, so a Pillar Siege can never be answered at any dose -- is still
+    hopeless, and this returns 1.0 for it. What changed is that the reachable
+    case is now common instead of vanishing, which is why the policy has to be
+    able to tell the two apart at all.
 
     WHY IT IS ANCHORED TO THE POLICY'S OWN `fatal` MULTIPLIER RATHER THAN TO A
     NEW CONSTANT. Each policy already has a number for "the damage about to

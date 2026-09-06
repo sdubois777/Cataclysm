@@ -445,9 +445,14 @@ class Simulation:
         A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
         still gets a sub-type -- every dungeon has one since issue #1293. That
         is what makes the Siege share of dungeons REACHING THE MAP lower than
-        its share of dungeons ROLLED: 15 in 100 rolled, and about 12.7 in 100
-        arriving, measured over twenty campaigns of the C++ implementation.
-        Issue #1329.
+        its share of dungeons ROLLED: 7.5 in 100 rolled, and about 6.8 in 100
+        arriving, measured over twenty campaigns of this model. Issue #1329.
+
+        THOSE WERE 15 AND 12.7 UNTIL 2026-09-06, the second measured over twenty
+        campaigns of the C++ implementation. The owner halved the spawn weight
+        on issue #1349. The gap between rolled and arriving is proportionally
+        narrower now because a rarer Siege meets the one-per-city cap less
+        often, which is the rule working rather than the rule weakening.
 
         **A SUB-TYPE THE DUNGEON'S KIND FORBIDS IS REDISTRIBUTED THE SAME WAY,
         AND FOR THE SAME REASON**, but it is done by shortening the list the
@@ -864,7 +869,11 @@ class Simulation:
         `siege_population_bite_per_day` and `siege_damage_growth_per_day`
         reproduces 25.8% and 26.0% against the 26.2% measured before #1345, so
         nothing else in it is responsible. **Whether a Siege should be that
-        decisive is a design question and has not been put to the owner.**
+        decisive was put to the owner as issue #1349 and they ruled that it
+        should not**, verbatim "Halve the rate and cut the growth", on
+        2026-09-06. Every figure in this block predates that ruling and
+        describes the game it moved away from; the block at the end of this
+        docstring is the measurement of what replaced it.
 
         **RE-MEASURED AGAIN ON 2026-09-06 FOR ISSUE #1333**, which barred a
         Cataclysm dungeon from rolling Cow Level and so changed the draw this

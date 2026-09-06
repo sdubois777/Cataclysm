@@ -1981,23 +1981,35 @@ def test_the_days_to_fall_closed_form_matches_the_day_loop(siege_dose_run):
 
 
 def test_it_reproduces_the_four_stated_days_to_fall(siege_dose_run):
-    """14, 23, 34 and 47 days for the four city sizes.
+    """25, 39, 55 and 70 days for the four city sizes.
 
     Those are the figures `game/Source/CataclysmEmpire/Empire/
     CataclysmEmpireRun.h` states in prose and `sim/tests/test_siege_subtype.py`
     asserts against the day loop. The script's table is a third statement of
     them, so it has to agree or the table is describing a different game from
     the one the owner is being asked to rule on.
+
+    THEY WERE 14 / 23 / 34 / 47 UNTIL 2026-09-06, when the owner cut the growth
+    from 10 points a day to 2.5 on issue #1349. The old four are still on the
+    axis-3 ladder as the `10.0` row, and the check below that they are is what
+    stops this test quietly becoming a check on one dose.
     """
     from cataclysm_sim.config import CityTier
 
     printed, ns = siege_dose_run
-    stated = {CityTier.OUTPOST: 14, CityTier.BULWARK: 23,
-              CityTier.SANCTUARY: 34, CityTier.PILLAR: 47}
+    stated = {CityTier.OUTPOST: 25, CityTier.BULWARK: 39,
+              CityTier.SANCTUARY: 55, CityTier.PILLAR: 70}
     today = ns["axis_3_table"]()["scale"][1.0]
     assert today == stated, (
         f"the script's table says {today} where the game states {stated}")
-    assert "   14         23         34         47" in printed
+    assert "   25         39         55         70" in printed
+
+    replaced = {CityTier.OUTPOST: 14, CityTier.BULWARK: 23,
+                CityTier.SANCTUARY: 34, CityTier.PILLAR: 47}
+    assert ns["axis_3_table"]()["growth"][10.0] == replaced, (
+        "the growth the owner ruled against no longer produces the four days "
+        "every record of it names, so the before-and-after in the script's "
+        "axis 3 is not comparable with what issue #1349 measured")
 
 
 def test_the_inverse_square_root_sentence_is_computed_not_typed(
@@ -2052,14 +2064,35 @@ def test_zeroing_the_growth_gives_every_city_the_same_hundred_days(
 
 
 def test_the_spawn_weights_are_the_doses_the_ruling_names(siege_dose_run):
-    """Issue #1340 specifies 0, 7.5, 15, 30 and 50, and 15 is what
-    `development` ships. A silently different ladder would answer a question the
-    owner did not ask."""
+    """Issue #1340 specifies 0, 7.5, 15, 30 and 50, and 7.5 is what
+    `development` ships since the owner halved it on issue #1349 on 2026-09-06.
+    A silently different ladder would answer a question the owner did not ask.
+
+    THE SHIPPED WEIGHT IS ON THE LADDER AND SO IS THE ONE IT REPLACED, which is
+    what lets one run of this script show both the configuration in the tree and
+    the configuration the ruling moved away from."""
     _, ns = siege_dose_run
     assert ns["SIEGE_WEIGHTS"] == (0.0, 7.5, 15.0, 30.0, 50.0)
-    assert ns["SIEGE_WEIGHT_TODAY"] == 15.0, (
-        "development no longer ships Siege at 15 in 100, so the curves on issue "
-        "#1349 are centred on the wrong dose")
+    assert ns["SIEGE_WEIGHT_TODAY"] == 7.5, (
+        "development no longer ships Siege at 7.5 in 100, so the curves on "
+        "issue #1349 are centred on the wrong dose")
+    assert 15.0 in ns["SIEGE_WEIGHTS"], (
+        "the weight the owner ruled against is no longer on the ladder, so a "
+        "run of this script cannot show what the change bought")
+
+
+def test_the_growth_doses_carry_the_shipped_value_and_the_one_it_replaced(
+        siege_dose_run):
+    """Axis 3 has to include both ends of the ruling of 2026-09-06 for the same
+    reason axis 1 does: the script is a re-measurement of a change, not only a
+    sweep around a point."""
+    _, ns = siege_dose_run
+    assert ns["GROWTH_TODAY"] == 2.5, (
+        "development no longer ships a Siege growth of 2.5 points a day, which "
+        "is what the owner ruled on issue #1349")
+    assert ns["GROWTH_TODAY"] in ns["GROWTH_DOSES"]
+    assert 10.0 in ns["GROWTH_DOSES"], (
+        "the growth the owner ruled against is no longer on the ladder")
 
 
 def test_the_slack_is_taken_up_in_proportion_and_still_totals_a_hundred(
@@ -2081,9 +2114,10 @@ def test_the_slack_is_taken_up_in_proportion_and_still_totals_a_hundred(
         assert set(table) == set(today), (
             "a sub-type was dropped from the spawn table rather than reweighted")
 
-    assert ns["weights_with_siege_at"](15.0) == pytest.approx(today), (
-        "the 15 dose no longer reproduces the shipped table, so the curve's "
-        "centre point is not the game")
+    assert ns["weights_with_siege_at"](7.5) == pytest.approx(today), (
+        "the 7.5 dose no longer reproduces the shipped table, so the curve's "
+        "centre point is not the game. 7.5 is what the owner ruled on issue "
+        "#1349 on 2026-09-06; before that this check was on the 15 dose")
 
 
 def test_the_instrumentation_does_not_change_the_campaign(siege_dose_run):
