@@ -2370,12 +2370,14 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d campaigns: %d quest timers ran out, %d moved, %d had nowhere "
 			 "adjacent to go, %d of the moves were along the rim's perimeter, "
-			 "and %d were absorbed by a city falling underneath them, %d of "
-			 "those having moved onto it earlier the same day. %d neighbours "
-			 "were open by nightfall having been sealed when the dungeon "
-			 "declined to move, opened by the same day's falls"),
+			 "%d of the moves crossed a tier boundary, and %d were absorbed by "
+			 "a city falling underneath them, %d of those having moved onto it "
+			 "earlier the same day. %d neighbours were open by nightfall "
+			 "having been sealed when the dungeon declined to move, opened by "
+			 "the same day's falls"),
 		Campaigns, TimersFired, Moves, StayedPut, AlongTheRim,
-		AbsorbedByAFall, MovedThenAbsorbed, OpenedByTheDaysOwnFalls));
+		CrossedATierBoundary, AbsorbedByAFall, MovedThenAbsorbed,
+		OpenedByTheDaysOwnFalls));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
 	TestTrue(TEXT("quest dungeon timers actually ran out"), TimersFired > 0);

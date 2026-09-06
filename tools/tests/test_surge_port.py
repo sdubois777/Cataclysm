@@ -1210,6 +1210,63 @@ class TestWhatAQuestDungeonIs:
             "path, so the two runs would diverge from the first quest timer "
             "that fires with nowhere to go")
 
+    def test_neither_half_carries_the_new_hosts_tier_with_the_dungeon(self):
+        """**A RELOCATED DUNGEON KEEPS THE TIER ITS DEPTH WAS ROLLED FROM.**
+
+        The project owner ruled on 2026-09-06, verbatim "Keeps everything, fix
+        the size". `Dungeon.city_tier` and `FCataclysmDungeon::CityTier` are the
+        tier the DEPTH was rolled from, not the host's tier, and each is read to
+        find the specification row whose floor midpoint the depth is divided by.
+        Both implementations used to assign the destination's tier while leaving
+        the floor count alone, so the two halves of that division named
+        different rows.
+
+        **WHY A SOURCE-LEVEL CHECK ON TOP OF TWO CAMPAIGN TESTS.** The campaign
+        tests are the ones that prove the behaviour, and the C++ one costs four
+        builds to prove it fires. This one costs nothing, fails in the fast
+        suite, and is the guard that catches somebody putting either line back
+        while looking at only one side of the port. Issue #1324.
+
+        THE COMMENTS ARE STRIPPED FIRST, because both files explain the removed
+        line in a comment that names it, and a bare substring search would match
+        the explanation. That failure has already happened once on this issue,
+        on `City.Perimeter`.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                              text.splitlines())
+
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        assert "city_tier =" not in resolve, (
+            "Simulation._resolve assigns city_tier again. It is the tier the "
+            "dungeon's DEPTH was rolled from and the floor count does not move "
+            "either; the owner ruled on 2026-09-06, verbatim \"Keeps "
+            "everything, fix the size\". See TestWhatARelocatedDungeonKeeps in "
+            "sim/tests/test_quest_relocation_is_adjacent.py")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+        moved = code_only(moved.split("\n}\n", 1)[0], "//")
+
+        assert "CityTier =" not in moved, (
+            "UCataclysmEmpireRun::RelocateQuestDungeon assigns CityTier again, "
+            "so the game and the model disagree about what a moving dungeon "
+            "carries. `BiteScale` divides Floors by the midpoint of "
+            "SpecFor(Type, CityTier) and Floors does not move")
+
+        # AND THE MOVE ITSELF IS STILL THERE, or the two assertions above are
+        # satisfied by a function that stopped moving anything at all.
+        assert "CityId = MovingTo;" in moved, (
+            "RelocateQuestDungeon no longer moves the dungeon, so the checks "
+            "above prove nothing")
+
 
 class TestTheEscalationModes:
     def test_the_enum_names_the_same_four_modes(self, surge_header):
