@@ -262,8 +262,10 @@ at 15, the cap would be present but never reached.
 
 ## 2026-09-06 — City damage is a number of points, not a share of the city's own maximum
 
-**Affects:** `sim/cataclysm_sim/config.py`, `engine.py`, `policies.py`. Applied.
-Issues [#1327](https://github.com/sdubois777/Cataclysm/issues/1327),
+**Affects:** `sim/cataclysm_sim/config.py`, `engine.py`, `policies.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `.cpp`,
+`CataclysmSurge.h` and `.cpp`, `CataclysmEmpireRun.h` and `.cpp`. Applied on both
+sides. Issues [#1327](https://github.com/sdubois777/Cataclysm/issues/1327),
 [#1319](https://github.com/sdubois777/Cataclysm/issues/1319),
 [#1331](https://github.com/sdubois777/Cataclysm/issues/1331).
 
@@ -393,6 +395,44 @@ to be discovered:
   both pools drained at the same relative rate.
 - **Only city health helps a city that has already fallen**, because `_retake`
   restores a share of the raised maximum.
+
+### The game followed, and the two shipped upgrades now buy something
+
+Issue [#1331](https://github.com/sdubois777/Cataclysm/issues/1331). The same
+defect was in `game/Source/CataclysmEmpire/` with the same numbers, and the whole
+call chain was built on the fraction. What changed:
+
+- `UCataclysmEmpireMap` gained **`Damage(CityId, DefencePoints,
+  PopulationPoints)`**, which is now the only place a city loses anything.
+  `Bite`, which takes a share, is kept as a thin wrapper over it — see the Siege
+  below — so the two resistance upgrades and the fall check exist once.
+- `FCataclysmDungeonSpec::DefenceBite` and `PopulationBite` became
+  **`DefenceDamage` and `PopulationDamage`**, and `SpecFor` holds the same four
+  pairs the model does: 100/250, 270/1,000, 640/2,400 and 1,200/4,500.
+- `ResolveDungeon` calls `Damage`. `ApplySiegeDamage` multiplies by the city's
+  maximum itself and also calls `Damage`, which **removes the division that used
+  to turn the Siege's flat growth into a share** so it could fit through `Bite`.
+
+**`Architect_Increase_max_defense_by_20` and
+`Architect_Increase_max_population_by_20` are now real upgrades**, measured
+through the map by `Cataclysm.EmpireMap.RaisingACitysCeilingBuysMoreResolvesAtEveryTier`:
+
+| tier | resolves survived | with +20% maximum defence | gained | gained before |
+| :-- | --: | --: | --: | --: |
+| Outpost | 10 | 12 | **+2** | 0 |
+| Bulwark | 12 | 14 | **+2** | 0 |
+| Sanctuary | 13 | 15 | **+2** | 0 |
+| Pillar | 17 | 20 | **+3** | 0 |
+
+**Neither `game/Data/CityUpgrades.csv` nor any tuning number was touched.**
+Whether +20% is the right size now that it buys anything is a separate question
+and is not answered here.
+
+**A rename, not a schema version bump.** The two fields are `SaveGame`
+properties, so `Run_v1.json` was edited to match under the standing exception in
+`game/Tests/SaveFixtures/README.md`: nothing has ever loaded a save, so no file
+with the old names exists. Once the game can load one, the same change would need
+a migration step multiplying each fraction by its city's maximum.
 
 ### Still open
 

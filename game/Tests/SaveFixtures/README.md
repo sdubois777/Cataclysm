@@ -138,6 +138,26 @@ both to add a field the record had gained:
   fixture is test data rather than a reachable game state, and the value is
   chosen to be readable back rather than to be realistic.
 
+`Run_v1.json` was edited an eighth time on 2026-09-06, for issue #1331:
+
+- `DefenceBite` and `PopulationBite` became `DefenceDamage` and
+  `PopulationDamage`, because a dungeon's damage is now a number of POINTS
+  rather than a share of the host city's maximum. A share of the maximum divided
+  out of how many resolves a city survived, which made every city-health upgrade
+  in the game worth nothing.
+
+  **The two values are the old ones converted rather than new numbers.** The
+  dungeon sits on city 7, an Outpost with 1,000 maximum defence and 5,000
+  maximum population, so 0.125 became 125 defence points and 0.0625 became 312.5
+  people. Both are exactly representable in binary, both are non-default, and
+  neither collides with any other number in that dungeon.
+
+  **This is a rename, and a rename is normally a schema version bump.** It is
+  not one here only because of the exception above: nothing has ever loaded a
+  save, so no file with the old field names exists anywhere. Once the game can
+  load one, the same change would need `SchemaVersionNow` to move and a
+  `Migrate_1_to_2` step that multiplied each fraction by its city's maximum.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

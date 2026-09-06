@@ -192,7 +192,7 @@ bool FCataclysmEmpireRunDayNumberTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunBiteTest,
-	"Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsShareOfItsCity",
+	"Cataclysm.EmpireRun.ADungeonResolvingTakesExactlyItsPointsOfDefence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
@@ -206,7 +206,9 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 
 	// TWO HUNDRED DAYS, WATCHING EVERY RESOLVE. Which dungeon resolves on which
 	// day depends on the roll; what must hold whatever the roll was is that the
-	// defence lost is exactly the dungeon's own share of its city's maximum.
+	// defence lost is exactly the dungeon's own damage in POINTS, scaled by how
+	// deep it is. The city's own maximum is deliberately not in that expression
+	// -- issue #1331 -- and this test was renamed when it left.
 	for (int32 Days = 0; Days < 200; ++Days)
 	{
 		const TArray<float> Before = DefenceSnapshot(*Run);
@@ -232,7 +234,7 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 			}
 
 			Expected.FindOrAdd(Dungeon->CityId) +=
-				Dungeon->DefenceBite * Dungeon->BiteScale();
+				Dungeon->DefenceDamage * Dungeon->BiteScale();
 		}
 
 		for (const TPair<int32, float>& Pair : Expected)
@@ -252,24 +254,28 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 			}
 
 			const float Lost = Before[Pair.Key] - City->Defence;
-			const float Share = City->MaxDefence * Pair.Value;
+
+			// THE CITY'S MAXIMUM IS NOT IN THIS EXPRESSION, and that absence is
+			// the whole of issue #1331. It used to read
+			// `City->MaxDefence * Pair.Value`.
+			const float Points = Pair.Value;
 
 			// A BESIEGED CITY LOSES MORE THAN THE RESOLVE, AND THAT IS CORRECT.
 			// A Siege takes its own share of its host every day whether or not
 			// anything resolved, so on a day that also carries a resolve the
 			// city loses both. This test is about what a RESOLVE takes, so a
 			// besieged city is checked for the weaker property instead: it lost
-			// at least the resolve's share, and strictly more than it. How much
-			// more is pinned by the Siege's own tests further down this file,
-			// and writing that arithmetic out again here would only duplicate
-			// the code under test.
+			// at least the resolve's points, and strictly more than them. How
+			// much more is pinned by the Siege's own tests further down this
+			// file, and writing that arithmetic out again here would only
+			// duplicate the code under test.
 			if (Report.Besieged.Contains(Pair.Key))
 			{
 				TestTrue(FString::Printf(
 					TEXT("on day %d, besieged %s lost %.2f defence, more than "
 						 "the %.2f its resolves alone would take"),
-					Report.Day, *City->Name, Lost, Share),
-					Lost > Share);
+					Report.Day, *City->Name, Lost, Points),
+					Lost > Points);
 
 				++BesiegedBitesChecked;
 				continue;
@@ -277,9 +283,9 @@ bool FCataclysmEmpireRunBiteTest::RunTest(const FString& Parameters)
 
 			TestEqual(FString::Printf(
 				TEXT("on day %d, %s lost %.2f defence, which is its dungeons' "
-					 "share of its maximum"),
+					 "damage in points"),
 				Report.Day, *City->Name, Lost),
-				Lost, Share, 0.01f);
+				Lost, Points, 0.01f);
 
 			++BitesChecked;
 		}
@@ -1198,6 +1204,165 @@ bool FCataclysmEmpireRunSiegeGrowsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * A Siege still takes a SHARE of the city's maximum, and that is a ruling.
+ *
+ * THE ONE THING ISSUE #1331 DELIBERATELY DID NOT CHANGE. Every dungeon resolve
+ * became a number of points, because a share of the maximum divided out of how
+ * long a city survived and made every city-health upgrade worthless. The project
+ * owner was asked whether the Siege should follow and answered on 2026-09-05,
+ * verbatim: "Keep it as a deliberate exception (Recommended)" -- a siege does
+ * not care how thick your walls are.
+ *
+ * SO THIS TEST ASSERTS THE COST OF THAT RULING RATHER THAN ONLY EXPLAINING IT.
+ * A city that bought `Architect_Increase_max_defense_by_20` loses a fifth MORE
+ * defence to a Siege than one that did not, which reads exactly like the defect
+ * #1331 was filed about and is the owner's decision.
+ *
+ * WITH THE CONTROL BESIDE IT: the same two cities lose identical points to an
+ * ordinary dungeon resolving. Without the control this test would pass on an
+ * implementation where nothing had changed at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeIgnoresCityHealthTest,
+	"Cataclysm.EmpireRun.CityHealthDoesNotProtectAgainstASiegeAndThatIsTheRuling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunSiegeIgnoresCityHealthTest::RunTest(
+	const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* Run = MakeRun(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	// TWO OUTPOSTS, so the comparison is of the ceiling and not of the tier.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost && Outposts.Num() < 2)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+
+	if (!TestEqual(TEXT("two Outposts were found"), Outposts.Num(), 2))
+	{
+		return false;
+	}
+
+	const int32 Plain = Outposts[0];
+	const int32 Raised = Outposts[1];
+
+	FCataclysmCityUpgrade Bigger;
+	Bigger.RowName = FName(TEXT("Architect_Increase_max_defense_by_20"));
+	Bigger.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+	Bigger.Value = 0.2f;
+
+	TestTrue(TEXT("the second Outpost buys a fifth more maximum defence"),
+			 Map->AddUpgrade(Raised, Bigger));
+
+	// EVERY ROLLED DUNGEON REMOVED, so nothing but the two hand-built Sieges can
+	// touch either city. The wave that lands on day one is not wanted here.
+	Run->AdvanceDay();
+
+	while (Run->DungeonCount() > 0)
+	{
+		Run->ClearDungeon(Run->Dungeons[0].DungeonId);
+	}
+
+	// ONE SIEGE ON EACH, ARRIVING ON THE SAME DAY, so both carry exactly the
+	// same growth and the only thing that can differ is the flat share.
+	int32 NextId = 9100;
+	for (const int32 CityId : { Plain, Raised })
+	{
+		FCataclysmDungeon Siege;
+		Siege.DungeonId = NextId++;
+		Siege.SubType = ECataclysmDungeonSubType::Siege;
+		Siege.CityId = CityId;
+		Siege.Floors = 10;
+		Siege.SpawnedDay = Run->Day();
+		Siege.ResolveDays = 10000.0f;
+
+		Run->Dungeons.Add(Siege);
+		Run->Clock->AddDungeon(Siege.DungeonId, Siege.Floors);
+		Run->Clock->SetResolveDays(Siege.DungeonId, Siege.ResolveDays);
+	}
+
+	const float PlainBefore = Map->Find(Plain)->Defence;
+	const float RaisedBefore = Map->Find(Raised)->Defence;
+	const float PlainMax = Map->Find(Plain)->MaxDefence;
+	const float RaisedMax = Map->Find(Raised)->MaxDefence;
+
+	if (!TestEqual(TEXT("the raised city really is a fifth bigger"), RaisedMax,
+				   PlainMax * 1.2f, 0.01f))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("nothing resolved on the day measured"),
+				  Report.Resolved.IsEmpty()))
+	{
+		return false;
+	}
+
+	const float PlainLost = PlainBefore - Map->Find(Plain)->Defence;
+	const float RaisedLost = RaisedBefore - Map->Find(Raised)->Defence;
+
+	// ONE DAY'S GROWTH IN EACH, since both arrived on the same day.
+	const float Grown = UCataclysmEmpireRun::SiegeDamageGrowthPerDay;
+
+	TestEqual(TEXT("the plain city loses 1% of its own maximum plus the growth"),
+			  PlainLost,
+			  PlainMax * UCataclysmEmpireRun::SiegeDefenceBitePerDay + Grown,
+			  0.01f);
+
+	TestEqual(TEXT("and the raised city loses 1% of ITS larger maximum, which "
+				   "is more"),
+			  RaisedLost,
+			  RaisedMax * UCataclysmEmpireRun::SiegeDefenceBitePerDay + Grown,
+			  0.01f);
+
+	// THE RULING, STATED AS A STRICT INEQUALITY. Buying city health makes a
+	// Siege hurt MORE in absolute terms, not less. If this line ever fails, the
+	// Siege has stopped being the exception and `docs/DECISIONS.md`, the owner's
+	// 2026-09-05 ruling and `UCataclysmEmpireRun::ApplySiegeDamage` all need
+	// revisiting -- it is not a test to relax.
+	TestTrue(*FString::Printf(
+				 TEXT("a Siege takes %.1f from the city with the bigger ceiling "
+					  "and %.1f from the plain one"),
+				 RaisedLost, PlainLost),
+			 RaisedLost > PlainLost + 0.01f);
+
+	// THE CONTROL: THE SAME TWO CITIES, HIT BY AN ORDINARY RESOLVE, LOSE THE
+	// SAME POINTS. This is what changed in #1331, and without it the assertions
+	// above would pass on the code as it was before.
+	const FCataclysmDungeonSpec Spec = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+
+	const float PlainBeforeResolve = Map->Find(Plain)->Defence;
+	const float RaisedBeforeResolve = Map->Find(Raised)->Defence;
+
+	Map->Damage(Plain, Spec.DefenceDamage, 0.0f);
+	Map->Damage(Raised, Spec.DefenceDamage, 0.0f);
+
+	TestEqual(TEXT("an ordinary resolve takes the same points from both"),
+			  PlainBeforeResolve - Map->Find(Plain)->Defence,
+			  RaisedBeforeResolve - Map->Find(Raised)->Defence, 0.01f);
+
+	TestEqual(TEXT("which is the dungeon spec's own number"),
+			  PlainBeforeResolve - Map->Find(Plain)->Defence,
+			  Spec.DefenceDamage, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunBesiegedCityCannotBuyTest,
 	"Cataclysm.EmpireRun.ABesiegedCityCannotBuyAnUpgradeButKeepsTheOnesItHas",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1416,8 +1581,8 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 					  Left->Bosses, WasCarrying);
 
 			// AND IT TAKES NOTHING MORE FROM THE CITY, EVER.
-			TestEqual(TEXT("it takes no defence"), Left->DefenceBite, 0.0f);
-			TestEqual(TEXT("and no population"), Left->PopulationBite, 0.0f);
+			TestEqual(TEXT("it takes no defence"), Left->DefenceDamage, 0.0f);
+			TestEqual(TEXT("and no population"), Left->PopulationDamage, 0.0f);
 
 			// ITS TIMER IS PAST THE END OF ANY RUN, so it never appears in a
 			// day report as having resolved.

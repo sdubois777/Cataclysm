@@ -493,15 +493,26 @@ public:
 	// ----------------------------------------------------------------------
 
 	/**
-	 * A dungeon resolves undefeated on a city and takes a share of it.
+	 * A city loses a NUMBER OF POINTS of defence and a number of people.
 	 *
-	 * THE SHARES ARE FRACTIONS OF THE MAXIMUM, NOT OF WHAT IS LEFT, which is
-	 * what makes an ignored city die on a schedule rather than approaching zero
-	 * for ever. `Simulation._resolve` does the same.
+	 * THE ONE PLACE A CITY LOSES ANYTHING. `Bite` below is a share expressed in
+	 * terms of this, so the resistances and the fall check exist once.
+	 *
+	 * POINTS AND NOT A SHARE OF THE MAXIMUM, WHICH IS THE WHOLE OF ISSUE #1331.
+	 * While a resolve took a fraction of the host city's own maximum, that
+	 * maximum divided out of "how many resolves does this city survive": a
+	 * Pillar holding twenty times an Outpost's defence lasted 17 resolves
+	 * against 10, and every upgrade in the game that raises a city's health was
+	 * worth nothing -- including the two that ship,
+	 * `Architect_Increase_max_defense_by_20` and its population twin in
+	 * `game/Data/CityUpgrades.csv`. The project owner ruled on 2026-09-05,
+	 * verbatim: "damage to cities shouldn't be a % of their hp. Instead,
+	 * dungeons should have damage ranges that aren't % based, but should be flat
+	 * damage numbers." `Simulation._resolve` was changed first, on issue #1327.
 	 *
 	 * WHAT THE CALLER IS EXPECTED TO HAVE FOLDED IN: the dungeon type's own
-	 * bite, how deep this dungeon is relative to a typical one of its type, and
-	 * any empire tree reduction. This takes the finished fraction because none
+	 * damage, how deep this dungeon is relative to a typical one of its type,
+	 * and any empire tree reduction. This takes the finished number because none
 	 * of those three exist here.
 	 *
 	 * WHAT THIS FOLDS IN ITSELF: the city's own two resistance upgrades. They
@@ -509,11 +520,44 @@ public:
 	 * and this is the only place a city loses anything, so a second caller
 	 * cannot forget them.
 	 *
-	 * @param DefenceFraction    share of maximum defence to take. Negative is
-	 *                           read as zero; nothing here heals a city.
-	 * @param PopulationFraction share of maximum population to take.
+	 * @param DefencePoints    points of defence to take. Negative is read as
+	 *                         zero; nothing here heals a city.
+	 * @param PopulationPoints people to take.
 	 * @return whether the city fell as a result. False if it was already fallen,
 	 *         in which case nothing is taken -- there is nothing left to take.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool Damage(int32 CityId, float DefencePoints, float PopulationPoints);
+
+	/**
+	 * The same, expressed as a SHARE OF THE CITY'S MAXIMUM.
+	 *
+	 * KEPT DELIBERATELY, AND IT IS NOT THE ORDINARY PATH. Issue #1331 moved
+	 * every dungeon resolve onto `Damage` above, and this is what remains of the
+	 * shape it replaced. It is here because one thing in the design still works
+	 * this way and needs a name for it:
+	 *
+	 * THE `Siege` SUB-TYPE KEEPS PERCENTAGE DAMAGE, AS A DELIBERATE EXCEPTION.
+	 * The project owner ruled on 2026-09-05, verbatim: "Keep it as a deliberate
+	 * exception (Recommended)" -- a siege does not care how thick your walls
+	 * are, which makes it the one threat city-health investment does not protect
+	 * against. `docs/Cataclysm_GDD_v2.md` line 3744 and `docs/DECISIONS.md` both
+	 * carry it. `UCataclysmEmpireRun::ApplySiegeDamage` is where that share is
+	 * taken; it multiplies by the city's maximum itself, because a Siege's
+	 * damage is a share PLUS a growth in points and only one of the two fits
+	 * through here.
+	 *
+	 * SO A READER WHO FINDS A SHARE HERE HAS NOT FOUND AN OVERSIGHT. Removing
+	 * this would remove the only written statement of what "a share of the
+	 * maximum" means for a city.
+	 *
+	 * OF THE MAXIMUM AND NOT OF WHAT IS LEFT, which is what makes a city bitten
+	 * this way die on a schedule rather than approaching zero for ever.
+	 *
+	 * @param DefenceFraction    share of maximum defence to take. Negative is
+	 *                           read as zero.
+	 * @param PopulationFraction share of maximum population to take.
+	 * @return whether the city fell as a result.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool Bite(int32 CityId, float DefenceFraction, float PopulationFraction);

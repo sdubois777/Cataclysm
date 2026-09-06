@@ -237,13 +237,17 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 
 	// A DEEPER DUNGEON HITS HARDER, in proportion to how deep it is against a
 	// typical one of its kind on that tier of city.
+	//
+	// POINTS AND NOT A SHARE OF THE CITY, WHICH IS ISSUE #1331. `Map->Damage`
+	// and not `Map->Bite`: the city's own maximum is deliberately not a factor
+	// here, so raising a city's ceiling raises how many resolves it survives.
 	const float Scale = Dungeon->BiteScale();
-	const float Defence = Dungeon->DefenceBite * Scale;
-	const float Population = Dungeon->PopulationBite * Scale;
+	const float Defence = Dungeon->DefenceDamage * Scale;
+	const float Population = Dungeon->PopulationDamage * Scale;
 
-	// COPIED OUT BEFORE THE BITE. `Bite` can lead to `CityFell`, which removes
+	// COPIED OUT BEFORE THE BITE. `Damage` can lead to `CityFell`, which removes
 	// dungeons from `Dungeons`, and `Dungeon` points into that array.
-	if (Map->Bite(CityId, Defence, Population))
+	if (Map->Damage(CityId, Defence, Population))
 	{
 		CityFell(CityId, OutReport);
 	}
@@ -336,10 +340,10 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 	}
 
 	// THE CITIES AND THE DAYS COLLECTED BEFORE ANYTHING IS BITTEN, and not
-	// bitten as the list is walked. `Bite` can lead to `CityFell`, which removes
-	// dungeons from `Dungeons`, and walking that array while it is being emptied
-	// is how a crash gets written. `ResolveDungeon` beside this takes the same
-	// care for the same reason.
+	// bitten as the list is walked. `Damage` can lead to `CityFell`, which
+	// removes dungeons from `Dungeons`, and walking that array while it is being
+	// emptied is how a crash gets written. `ResolveDungeon` beside this takes
+	// the same care for the same reason.
 	TArray<TPair<int32, int32>> Hosts;
 
 	for (const FCataclysmDungeon& Dungeon : Dungeons)
@@ -370,24 +374,38 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 			continue;
 		}
 
-		// THE GROWTH IS IN POINTS AND `Bite` TAKES SHARES, so it is divided by
-		// the city's own maximum to become one. Ten points off an Outpost's
-		// thousand defence is a further one per cent; off the Pillar's twenty
-		// thousand it is a twentieth of that. See `SiegeDamageGrowthPerDay` for
-		// why that asymmetry is the point rather than a rounding of it.
+		// A SIEGE IS THE ONE THING IN THE GAME THAT STILL TAKES A SHARE OF A
+		// CITY'S MAXIMUM, AND IT IS DELIBERATE. Issue #1331 turned every other
+		// city damage number into points, because a share of the maximum divided
+		// out of how long a city survived and made every city-health upgrade
+		// worthless. The project owner was asked whether the Siege should follow
+		// and answered on 2026-09-05, verbatim: "Keep it as a deliberate
+		// exception (Recommended)" -- a siege does not care how thick your walls
+		// are. So a fully invested city is no better off against a Siege than an
+		// untouched one, which was stated and accepted, and a reader who finds a
+		// percentage here has not found an oversight. `docs/DECISIONS.md` and
+		// `UCataclysmEmpireMap::Bite` carry the same warning.
+		//
+		// THE SHARE IS TURNED INTO POINTS HERE, WHICH IS THE OTHER WAY ROUND
+		// FROM BEFORE #1331. The growth used to be divided by the city's maximum
+		// so that it could go through `Bite`; now that points are the currency
+		// the map speaks, the flat share is multiplied instead and the division
+		// -- and the guard against a maximum of zero it needed -- is gone.
+		//
+		// TEN POINTS OFF AN OUTPOST'S THOUSAND DEFENCE IS A FURTHER ONE PER
+		// CENT; off the Pillar's twenty thousand it is a twentieth of that. See
+		// `SiegeDamageGrowthPerDay` for why that asymmetry is the point rather
+		// than a rounding of it.
 		const float Grown = SiegeDamageGrowthPerDay * Host.Value;
 
-		const float Defence =
-			SiegeDefenceBitePerDay
-			+ (City->MaxDefence > 0.0f ? Grown / City->MaxDefence : 0.0f);
+		const float Defence = City->MaxDefence * SiegeDefenceBitePerDay + Grown;
 
 		const float Population =
-			SiegePopulationBitePerDay
-			+ (City->MaxPopulation > 0.0f ? Grown / City->MaxPopulation : 0.0f);
+			City->MaxPopulation * SiegePopulationBitePerDay + Grown;
 
 		OutReport.Besieged.Add(CityId);
 
-		if (Map->Bite(CityId, Defence, Population))
+		if (Map->Damage(CityId, Defence, Population))
 		{
 			CityFell(CityId, OutReport);
 		}

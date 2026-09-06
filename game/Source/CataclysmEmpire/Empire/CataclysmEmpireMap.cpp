@@ -447,8 +447,8 @@ TArray<int32> UCataclysmEmpireMap::AliveCities(bool bIncludePillar) const
 // What happens to a city
 // ---------------------------------------------------------------------------
 
-bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
-							   float PopulationFraction)
+bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
+								 float PopulationPoints)
 {
 	FCataclysmCity* City = FindMutable(CityId);
 	if (City == nullptr || City->bFallen)
@@ -469,14 +469,17 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistPopulationLoss),
 		0.0f, 1.0f);
 
+	// THE CITY'S MAXIMUM IS DELIBERATELY ABSENT FROM BOTH LINES. That is issue
+	// #1331: while it was a factor here it divided out of how long the city
+	// survived, and raising a ceiling bought nothing.
 	const float DefenceTaken =
-		FMath::Max(0.0f, DefenceFraction) * (1.0f - DefenceResisted);
+		FMath::Max(0.0f, DefencePoints) * (1.0f - DefenceResisted);
 
 	const float PopulationTaken =
-		FMath::Max(0.0f, PopulationFraction) * (1.0f - PopulationResisted);
+		FMath::Max(0.0f, PopulationPoints) * (1.0f - PopulationResisted);
 
-	City->Defence -= City->MaxDefence * DefenceTaken;
-	City->Population -= City->MaxPopulation * PopulationTaken;
+	City->Defence -= DefenceTaken;
+	City->Population -= PopulationTaken;
 	City->Population = FMath::Max(0.0f, City->Population);
 
 	if (City->Defence <= 0.0f)
@@ -485,6 +488,23 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 	}
 
 	return false;
+}
+
+bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
+							   float PopulationFraction)
+{
+	const FCataclysmCity* City = Find(CityId);
+	if (City == nullptr || City->bFallen)
+	{
+		return false;
+	}
+
+	// TURNED INTO POINTS AND HANDED STRAIGHT ON, so the resistances, the clamp
+	// on population and the fall check exist once rather than twice. See the
+	// header: this path survives for the Siege sub-type's deliberate exception
+	// and for nothing else.
+	return Damage(CityId, City->MaxDefence * FMath::Max(0.0f, DefenceFraction),
+				  City->MaxPopulation * FMath::Max(0.0f, PopulationFraction));
 }
 
 // ---------------------------------------------------------------------------

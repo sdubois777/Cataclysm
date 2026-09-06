@@ -178,6 +178,11 @@ public:
 	 * carries `_apply_siege_damage` with `TuningConfig.siege_defence_bite_per_day`
 	 * beside it. Issue #1329. The two must now be kept in step like every other
 	 * ported number.
+	 *
+	 * IT IS THE LAST SHARE-OF-THE-MAXIMUM IN THE GAME AND THAT IS ON PURPOSE.
+	 * Issue #1331 turned every dungeon resolve into flat points; the owner ruled
+	 * on 2026-09-05, verbatim, "Keep it as a deliberate exception
+	 * (Recommended)". See `ApplySiegeDamage`.
 	 */
 	static constexpr float SiegeDefenceBitePerDay = 0.01f;
 
@@ -457,8 +462,10 @@ private:
 	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
 
 	/**
-	 * A dungeon's timer ran out: it takes its share of its host city, and the
-	 * city may fall.
+	 * A dungeon's timer ran out: it takes a NUMBER OF POINTS off its host city,
+	 * and the city may fall.
+	 *
+	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
 	 */
 	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
 
@@ -474,12 +481,24 @@ private:
 	 * what the sentence has to mean. A percentage of the remainder never reaches
 	 * zero, so a city could be besieged for ever and never fall; a percentage of
 	 * the maximum takes a hundred days to empty an untouched city, which is a
-	 * real threat on the empire's timescale. Every other city damage in this
-	 * layer is a fraction of the maximum for the same reason.
+	 * real threat on the empire's timescale.
 	 *
-	 * IT GOES THROUGH `UCataclysmEmpireMap::Bite`, so a city that bought damage
-	 * resistance resists this too. The upgrade says it resists damage and does
-	 * not name a source.
+	 * AND IT IS NOW THE ONLY CITY DAMAGE IN THIS LAYER THAT IS A SHARE. It used
+	 * to be one of many. Issue #1331 turned every dungeon resolve into points,
+	 * because a share of the maximum divided out of how long a city survived and
+	 * made every city-health upgrade worthless; the project owner ruled on
+	 * 2026-09-05, verbatim, "Keep it as a deliberate exception (Recommended)"
+	 * for the Siege, on the grounds that a siege does not care how thick your
+	 * walls are. So this is the one threat city-health investment does not
+	 * protect against, and the percentage in the implementation is the ruling
+	 * rather than an oversight.
+	 *
+	 * IT GOES THROUGH `UCataclysmEmpireMap::Damage`, so a city that bought
+	 * damage resistance resists this too. The upgrade says it resists damage and
+	 * does not name a source. A siege ignores how much a city can ABSORB and is
+	 * still blunted by what REDUCES damage; the owner confirmed that separately
+	 * on 2026-09-06, verbatim: "Yes -- damage reduction still applies
+	 * (Recommended)".
 	 */
 	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
 
