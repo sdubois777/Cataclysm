@@ -22,14 +22,24 @@ wrong is `Simulation._resolve` reaching for the wrong list, and a unit test of
 something else. `TestWhatActuallyHappensInACampaign` below drives real runs and
 checks every move that happened, which is the only way to catch that.
 
-**WHAT "MAY MOVE" MEANS IS NOT SETTLED BY THIS FILE.** What is built moves the
-dungeon whenever an adjacent exposed city exists, so the "may" comes from the map
-rather than from a die roll. The project owner ruled otherwise on 2026-09-06,
-verbatim: *"A chance each time"*. No number was given, `CLAUDE.md` forbids
-inventing one, and `sim/analyse_quest_move_chance.py` is the dose-response curve
-that exists to get one. Until it is answered
-`test_some_stayed_because_they_had_nowhere_adjacent_to_go` below still holds, and
-its last assertion says in as many words what to do when a chance arrives.
+**WHAT "MAY MOVE" MEANS, AND IT IS TWO THINGS.** The project owner ruled on
+2026-09-06, verbatim: *"A chance each time"*, and then chose the number, verbatim
+*"0.5"*. So a Quest dungeon stays for either of two reasons -- it had nowhere
+adjacent to go, or it had somewhere and the coin said no --
+and `TestWhyAQuestDungeonStays` below asserts that both happen, because a sample
+showing only one of them would leave half the rule untested. This replaces
+`test_some_stayed_because_they_had_nowhere_adjacent_to_go`, whose last assertion
+said in as many words that a chance arriving is what should replace it.
+
+**AND A DUNGEON CARRYING A SIEGE MAY NOT LAND ON A BESIEGED CITY.** "Max 1 per
+city" was enforced at spawn and by nothing on this path until the owner ruled on
+2026-09-06, verbatim *"Check the limit on arrival too"*. Issue
+[#1371](https://github.com/sdubois777/Cataclysm/issues/1371).
+`TestASiegeMayNotWalkOntoABesiegedCity` builds the situation by hand rather than
+looking for it, because looking for it does not find it: measured over 40
+campaigns of this model there was **one** quest timer on a Siege-carrying dungeon
+and **zero** landings that would have broken the cap, so a campaign-driven test
+would pass identically against a game with no check at all.
 
 THE GAME'S HALF is `UCataclysmSurgeScheduler::PickRelocation` and
 `UCataclysmEmpireRun::RelocateQuestDungeon`, checked against these by
@@ -40,6 +50,7 @@ THE GAME'S HALF is `UCataclysmSurgeScheduler::PickRelocation` and
 from __future__ import annotations
 
 import dataclasses
+import math
 
 import pytest
 
@@ -198,49 +209,61 @@ class TestWhereAQuestDungeonMayMoveTo:
                 f"{city.name} may relocate a quest dungeon onto the Pillar")
 
 
+@pytest.fixture(scope="module")
+def moves():
+    """Every relocation that happened, as (from, to, neighbours-of-from).
+
+    `stayed` counts, for each quest timer that did not move the dungeon, how
+    many destinations it could legally have taken. Zero means hemmed in and more
+    than zero means the coin said no; both are outcomes the design describes and
+    `TestWhyAQuestDungeonStays` asserts both occur.
+
+    **IT IS A MODULE FIXTURE AND WAS A CLASS ONE.** Two classes read it now --
+    the adjacency rule and the reasons a dungeon stays -- and twenty campaigns
+    are too slow to run twice.
+    """
+    seen: list[tuple[int, int, list[int]]] = []
+    stayed: list[int] = []
+    original = Simulation._resolve
+
+    def watched(self, d, _o=original):
+        if d.dtype is not DungeonType.QUEST:
+            return _o(self, d)
+
+        was = d.city_id
+        around = self.empire.neighbours(self.empire.cities[was])
+        had = [c.cid for c in
+               self.empire.adjacent_exposed_cities(self.empire.cities[was])
+               if d.subtype != "Siege"
+               or self.sieges_on(c.cid) < self.cfg.siege_max_per_city]
+
+        result = _o(self, d)
+
+        if d.city_id != was:
+            seen.append((was, d.city_id, around))
+        else:
+            stayed.append(len(had))
+
+        return result
+
+    Simulation._resolve = watched
+    try:
+        for seed in range(20):
+            Simulation(safe(), seed=seed).run(POLICIES["triage"])
+    finally:
+        Simulation._resolve = original
+
+    return seen, stayed
+
+
 class TestWhatActuallyHappensInACampaign:
     """Driving real runs, because a helper nothing calls is worth nothing.
 
     THE SAMPLE IS STATED SO IT CAN BE RECHECKED. Twenty campaigns under the
     `triage` policy produce a few hundred quest timers between them, which is
-    enough for both outcomes -- moved, and had nowhere to go -- to appear many
-    times over.
+    enough for every outcome -- moved, declined, and had nowhere to go -- to
+    appear many times over.
     """
-
-    @pytest.fixture(scope="class")
-    @classmethod
-    def moves(cls):
-        """Every relocation that happened, as (from, to, neighbours-of-from)."""
-        seen: list[tuple[int, int, list[int]]] = []
-        stayed: list[int] = []
-        original = Simulation._resolve
-
-        def watched(self, d, _o=original):
-            if d.dtype is not DungeonType.QUEST:
-                return _o(self, d)
-
-            was = d.city_id
-            around = self.empire.neighbours(self.empire.cities[was])
-            had = [c.cid for c in
-                   self.empire.adjacent_exposed_cities(self.empire.cities[was])]
-
-            result = _o(self, d)
-
-            if d.city_id != was:
-                seen.append((was, d.city_id, around))
-            else:
-                stayed.append(len(had))
-
-            return result
-
-        Simulation._resolve = watched
-        try:
-            for seed in range(20):
-                Simulation(safe(), seed=seed).run(POLICIES["triage"])
-        finally:
-            Simulation._resolve = original
-
-        return seen, stayed
 
     def test_quest_dungeons_actually_relocated(self, moves):
         """The evidence has to exist before anything can be concluded from it.
@@ -262,28 +285,224 @@ class TestWhatActuallyHappensInACampaign:
                 "is not adjacent to it. The owner ruled on 2026-09-06, "
                 "verbatim \"Adjacent, and fix the simulation\"")
 
-    def test_some_stayed_because_they_had_nowhere_adjacent_to_go(self, moves):
-        """The design says a Quest dungeon "MAY move", and this is the whole of
-        where the "may" comes from -- no die roll, just a dungeon hemmed in.
 
-        **THIS IS ALSO THE CONTROL ON THE TEST ABOVE.** If every quest timer
-        moved the dungeon, the adjacency assertion could be satisfied by a rule
-        that simply never ran out of targets, which is what the old
-        move-anywhere rule was: it had one on every single day of every single
-        campaign.
-        """
+class TestWhyAQuestDungeonStays:
+    """**THE DESIGN'S "MAY", AND IT IS TWO THINGS RATHER THAN ONE.**
+
+    A Quest dungeon stays because it had nowhere adjacent to go, or because it
+    had somewhere and the coin said no. The project owner ruled the second one
+    on 2026-09-06, verbatim *"A chance each time"*, and chose the number,
+    verbatim *"0.5"*.
+
+    **THIS REPLACES `test_some_stayed_because_they_had_nowhere_adjacent_to_go`,
+    WHICH ASSERTED THE OPPOSITE ON PURPOSE.** Its last assertion read "Nothing
+    implements a chance of staying; if one has been added, this test needs
+    replacing rather than relaxing", and one has been.
+
+    **THE STAYING CASE IS STILL THE CONTROL ON THE ADJACENCY TEST.** If every
+    quest timer moved the dungeon, the adjacency assertion would be satisfied by
+    a rule that never ran out of targets, which is what the old move-anywhere
+    rule was: it had one on every single day of every single campaign.
+    """
+
+    def test_some_stayed_because_they_had_nowhere_adjacent_to_go(self, moves):
+        """The half that predates the chance, and it must not be swallowed by
+        it: a dungeon hemmed in by sealed neighbours never reaches the coin."""
         _, stayed = moves
 
-        assert stayed, (
-            "no quest dungeon ever stayed put. Under the adjacency rule some "
-            "must -- a dungeon whose neighbours are all sealed has nowhere to "
-            "go -- so either the rule is not being applied or the sample is "
-            "not representative")
+        assert any(count == 0 for count in stayed), (
+            "no quest dungeon ever stayed for want of anywhere to go. Under "
+            "the adjacency rule some must -- a dungeon whose neighbours are "
+            "all sealed is hemmed in -- so either the rule is not being "
+            "applied or the sample is not representative")
 
-        assert all(count == 0 for count in stayed), (
-            "a quest dungeon stayed where it was while it had somewhere "
-            "adjacent to go. Nothing implements a chance of staying; if one "
-            "has been added, this test needs replacing rather than relaxing")
+    def test_some_stayed_although_they_had_somewhere_to_go(self, moves):
+        """**THE RULING.** Before 2026-09-06 this could not happen at all, and
+        the test it replaces asserted that it did not."""
+        _, stayed = moves
+
+        assert any(count > 0 for count in stayed), (
+            "every quest dungeon that stayed was hemmed in, so nothing ever "
+            "declined a move it could have taken. The owner ruled on "
+            "2026-09-06, verbatim \"A chance each time\", and chose 0.5; see "
+            "config.quest_move_chance. Issue #1324")
+
+    def test_the_take_up_rate_is_the_configured_chance(self, moves):
+        """The number, measured over every quest timer that had a choice.
+
+        **THE BAND IS COMPUTED, NOT CHOSEN.** Take-up is a binomial proportion
+        over `n` independent draws, so its standard deviation is
+        `sqrt(p(1-p)/n)`; four of those either side is the band. Writing it this
+        way rather than as a hard-coded interval is what stops the tolerance
+        being widened until whatever the code does passes -- and it still fails
+        loudly at the two settings that matter, because a chance of 0 gives a
+        take-up of 0% and a chance of 1 gives 100%, both tens of standard
+        deviations out.
+        """
+        _, stayed = moves
+        seen, _ = moves
+
+        declined = sum(1 for count in stayed if count > 0)
+        chose = len(seen) + declined
+
+        assert chose > 100, (
+            f"only {chose} quest timers had a choice to make across 20 "
+            "campaigns, which is too few to say anything about the rate")
+
+        wanted = TuningConfig().quest_move_chance
+        spread = 4.0 * math.sqrt(wanted * (1.0 - wanted) / chose)
+        rate = len(seen) / chose
+
+        assert abs(rate - wanted) <= spread, (
+            f"a Quest dungeon with somewhere to go took it {rate:.1%} of the "
+            f"time over {chose} timers, against the configured "
+            f"{wanted:.0%} and a four-sigma band of "
+            f"{wanted - spread:.1%} to {wanted + spread:.1%}. The owner ruled "
+            "the chance on 2026-09-06, verbatim \"A chance each time\", and "
+            "chose 0.5; see config.quest_move_chance")
+
+
+class TestASiegeMayNotWalkOntoABesiegedCity:
+    """**THE OWNER'S RULING OF 2026-09-06, VERBATIM: "Check the limit on arrival
+    too".** Issue
+    [#1371](https://github.com/sdubois777/Cataclysm/issues/1371).
+
+    The design's Siege row says "Max 1 per city". `_roll_subtype` enforced that
+    when a dungeon was created and nothing enforced it when one moved, so a Quest
+    dungeon that had rolled Siege could walk onto a city that already had one and
+    the city would take the daily bite twice.
+
+    **THE SITUATION IS BUILT BY HAND AND THAT IS THE POINT.** Watched over 40
+    campaigns of this model, exactly **one** quest timer fired on a Siege-carrying
+    dungeon and **none** of them would have broken the cap. A test that ran
+    campaigns and found no violation would therefore pass, unchanged, against a
+    build with no check in it at all -- which is what issue #1371 says in as many
+    words. Everything below places the dungeons itself.
+
+    **AND IT REFUSES THE DESTINATION RATHER THAN THE MOVE**, which is the shape
+    `_roll_subtype` already uses on the spawn half of the same rule: a refused
+    Siege there is spread across the other sub-types rather than dropped, and a
+    refused city here leaves the other neighbours available.
+    """
+
+    @staticmethod
+    def _rim_pair(sim):
+        """A rim Outpost and one of its perimeter neighbours.
+
+        On an intact map a rim Outpost's exposed neighbours are exactly its
+        perimeter links, so a scenario built here has a known, small target set
+        and nothing else can creep into it.
+        """
+        for city in sim.empire.cities.values():
+            if city.ring == RADIUS and len(city.perimeter) >= 2:
+                return city, [sim.empire.cities[k] for k in city.perimeter]
+        raise AssertionError("no rim Outpost has two perimeter links")
+
+    @staticmethod
+    def _quest_siege_on(sim, city):
+        d = sim._make_dungeon(DungeonType.QUEST, city)
+        d.subtype = "Siege"
+        return d
+
+    def test_the_situation_is_reachable_at_all(self):
+        """**THE CONTROL ON EVERY TEST BELOW.** If a Quest dungeon could never
+        carry the Siege sub-type, the whole class would be asserting something
+        about a state that cannot exist and would pass whatever the code did.
+        """
+        sim = Simulation(safe(), seed=1)
+
+        assert "Siege" in sim.subtypes_allowed_on(DungeonType.QUEST), (
+            "a Quest dungeon may no longer roll Siege, so issue #1371's "
+            "situation cannot arise and this class guards nothing. Barring the "
+            "pair was the alternative the owner REJECTED on 2026-09-06")
+
+    def test_it_moves_to_the_free_neighbour_instead(self):
+        """The redirect. One neighbour is besieged, the other is not, so the
+        only legal answer is the free one -- and it is reached often enough that
+        the coin cannot hide the result."""
+        sim = Simulation(safe(), seed=1)
+        home, (blocked, free) = self._rim_pair(sim)
+
+        # THE CITY THAT ALREADY HAS ONE, and it is a Basic dungeon so that the
+        # thing being refused is the destination rather than the mover.
+        sitting = sim._make_dungeon(DungeonType.BASIC, blocked)
+        sitting.subtype = "Siege"
+
+        landed = set()
+        for _ in range(200):
+            wanderer = self._quest_siege_on(sim, home)
+            sim._resolve(wanderer)
+            landed.add(wanderer.city_id)
+            sim.dungeons.pop(wanderer.did, None)
+
+        assert blocked.cid not in landed, (
+            f"a Quest dungeon carrying a Siege moved onto {blocked.name}, "
+            f"which already holds one. The owner ruled on 2026-09-06, verbatim "
+            "\"Check the limit on arrival too\"; issue #1371")
+
+        assert free.cid in landed, (
+            f"the dungeon never reached {free.name}, which carries no Siege "
+            "and is adjacent to it. Refusing the besieged city must redirect "
+            "the move, not cancel it")
+
+    def test_it_stays_when_every_neighbour_is_besieged(self):
+        """The other outcome the owner named: "or stay where it is if there is
+        none". A refused destination is not a licence to teleport."""
+        sim = Simulation(safe(), seed=2)
+        home, neighbours = self._rim_pair(sim)
+
+        for city in neighbours:
+            occupied = sim._make_dungeon(DungeonType.BASIC, city)
+            occupied.subtype = "Siege"
+
+        for _ in range(50):
+            wanderer = self._quest_siege_on(sim, home)
+            sim._resolve(wanderer)
+            assert wanderer.city_id == home.cid, (
+                "a Quest dungeon carrying a Siege moved although every city "
+                f"adjacent to {home.name} already had one. It must stay where "
+                "it is; issue #1371")
+            sim.dungeons.pop(wanderer.did, None)
+
+    def test_a_dungeon_carrying_no_siege_is_not_refused(self):
+        """**THE CONTROL THAT SAYS THE RULE IS NARROW.** The cap is about
+        Sieges. A check written against the destination rather than against what
+        the mover carries would stop every dungeon from entering a besieged
+        city, which is a different and much larger rule than the one ruled.
+        """
+        sim = Simulation(safe(), seed=3)
+        home, (blocked, _free) = self._rim_pair(sim)
+
+        sitting = sim._make_dungeon(DungeonType.BASIC, blocked)
+        sitting.subtype = "Siege"
+
+        landed = set()
+        for _ in range(200):
+            plain = sim._make_dungeon(DungeonType.QUEST, home)
+            plain.subtype = "Horde"
+            sim._resolve(plain)
+            landed.add(plain.city_id)
+            sim.dungeons.pop(plain.did, None)
+
+        assert blocked.cid in landed, (
+            f"a Quest dungeon carrying no Siege was kept out of {blocked.name} "
+            "because something else there has one. The cap is 'max 1 Siege per "
+            "city' and not 'one dungeon per besieged city'")
+
+    def test_the_besieged_city_is_still_adjacent_and_exposed(self):
+        """**THE CONTROL THAT MAKES THE REFUSAL MEAN SOMETHING.** If the
+        besieged city were sealed, or not a neighbour, the adjacency filter
+        would already have excluded it and the tests above would pass with no
+        Siege rule present at all.
+        """
+        sim = Simulation(safe(), seed=1)
+        home, (blocked, _free) = self._rim_pair(sim)
+
+        offered = [c.cid for c in sim.empire.adjacent_exposed_cities(home)]
+
+        assert blocked.cid in offered, (
+            f"{blocked.name} is not an adjacent exposed city of {home.name} "
+            "even before any Siege is placed, so refusing it proves nothing")
 
 
 class TestWhatARelocatedDungeonKeeps:
