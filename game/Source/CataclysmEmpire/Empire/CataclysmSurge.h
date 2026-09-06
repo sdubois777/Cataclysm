@@ -352,31 +352,36 @@ public:
 	/**
 	 * How often each sub-type is rolled. `config.SUBTYPE_SPAWN_WEIGHTS`.
 	 *
+	 * **EVERY DUNGEON A SURGE MAKES HAS A SUB-TYPE, AND THERE IS NO WEIGHT FOR
+	 * `None` HERE ON PURPOSE.** The project owner ruled on 2026-09-05 that every
+	 * dungeon should have one; before that, no sub-type at all was the commonest
+	 * outcome at 34 in 100. The constant that held that 34 is gone rather than
+	 * set to zero, because a zero weight reads as live code that can still be
+	 * chosen. `ECataclysmDungeonSubType::None` still exists and still means
+	 * something -- see `SpawnWeightFor` -- but no roll can produce it.
+	 *
 	 * THEY ADD UP TO 100, so each one reads as a percentage, but nothing depends
 	 * on that: `RollSubType` divides by whatever the total is. Changing one
 	 * weight without rebalancing the rest changes that sub-type's share and
 	 * dilutes every other, which is the behaviour you want from a weight.
 	 *
-	 * NO SUB-TYPE AT ALL IS THE COMMONEST OUTCOME, at 34 against the largest
-	 * single sub-type's 12. A dungeon that does something unusual should be worth
-	 * noticing, and it is not if most of them do.
-	 *
-	 * COW LEVEL IS THE RAREST AT 4, which is what its reward deserves: the design
-	 * document gives it "ridiculous amounts of loot" for double the walk.
+	 * COW LEVEL IS THE RAREST AT 7, which is what its reward deserves: the design
+	 * document gives it "ridiculous amounts of loot" for double the walk. It was
+	 * 4 in 100 while a third of dungeons were plain, so its share rose along with
+	 * everything else when that third was redistributed.
 	 *
 	 * THESE ARE A COPY AND THE SIMULATION IS THE ORIGINAL, the same arrangement
 	 * every other constant in this file is in.
-	 * `tools/tests/test_dungeon_subtype_port.py` reads all eight back out of this
+	 * `tools/tests/test_dungeon_subtype_port.py` reads each one back out of this
 	 * header and fails if either side moves.
 	 */
-	static constexpr float SpawnWeightNone			= 34.0f;
-	static constexpr float SpawnWeightTimed			= 12.0f;
-	static constexpr float SpawnWeightHorde			= 12.0f;
-	static constexpr float SpawnWeightSiege			= 10.0f;
-	static constexpr float SpawnWeightCowLevel		= 4.0f;
-	static constexpr float SpawnWeightElite			= 10.0f;
-	static constexpr float SpawnWeightVolatile		= 10.0f;
-	static constexpr float SpawnWeightSacrificial	= 8.0f;
+	static constexpr float SpawnWeightTimed			= 18.0f;
+	static constexpr float SpawnWeightHorde			= 18.0f;
+	static constexpr float SpawnWeightSiege			= 15.0f;
+	static constexpr float SpawnWeightCowLevel		= 7.0f;
+	static constexpr float SpawnWeightElite			= 15.0f;
+	static constexpr float SpawnWeightVolatile		= 15.0f;
+	static constexpr float SpawnWeightSacrificial	= 12.0f;
 
 	/**
 	 * How often the given sub-type is rolled.
@@ -422,21 +427,70 @@ public:
 	 * out, so two of them on one city would take that share twice a day and no
 	 * city could survive the pair.
 	 *
-	 * A SECOND ONE BECOMES A DUNGEON WITH NO SUB-TYPE rather than being rolled
-	 * again. Rolling again would take a second draw from the stream, and every
-	 * later dungeon in the same wave would then depend on what this one first
-	 * rolled -- see `RollSubType`. Plain is also the honest answer: the design
-	 * says a city may not have two Sieges, not that it should get something else
-	 * instead.
+	 * **A SECOND ONE IS SPREAD ACROSS THE OTHER SIX SUB-TYPES rather than being
+	 * rolled again or made plain.** The project owner ruled on 2026-09-06,
+	 * verbatim: "Spread it across the others". So a dungeon that would have been
+	 * a Siege on a city that already has one becomes Timed, Horde, Cow Level,
+	 * Elite, Volatile or Sacrificial, in proportion to their weights.
+	 *
+	 * AND IT STILL COSTS NO SECOND DRAW, which is what made this awkward.
+	 * `RollSubType` re-reads THE DRAW IT ALREADY MADE into the weight space the
+	 * other six occupy; see there for why that is exact rather than approximate.
+	 * A second draw would make every later dungeon in the same wave depend on
+	 * what this one first rolled.
+	 *
+	 * IT USED TO BECOME A DUNGEON WITH NO SUB-TYPE, until every dungeon was
+	 * given one on 2026-09-05. That left this as the single way a surge could
+	 * still produce a plain dungeon -- 1.6% of them, measured -- which is the
+	 * hole this closes.
 	 */
 	static constexpr int32 SiegesPerCity = 1;
 
 	/**
+	 * The total weight of every sub-type that can be rolled, leaving one out.
+	 *
+	 * @param Excluded which to leave out of the total. `None` is not in the
+	 *                 distribution at all, so passing it excludes nothing, which
+	 *                 is why it is the default.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static float TotalSpawnWeight(
+		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None);
+
+	/**
+	 * The total weight of every sub-type declared before this one.
+	 *
+	 * WHERE A SUB-TYPE'S BAND STARTS on the weighted line `SubTypeAtPoint`
+	 * walks. `RollSubType` needs it to work out where in Siege's own band a
+	 * draw landed.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static float SpawnWeightBelow(ECataclysmDungeonSubType SubType);
+
+	/**
+	 * Which sub-type a point on the weighted line lands on.
+	 *
+	 * THE LINE RUNS FROM 0 TO `TotalSpawnWeight(Excluded)`, with each sub-type
+	 * occupying a stretch as wide as its weight, in the enum's declared order.
+	 * A point outside that range answers the last sub-type on the line rather
+	 * than `None`: a caller asking which of these options a number picks should
+	 * get one of them.
+	 *
+	 * @param Excluded a sub-type to leave off the line entirely, closing the gap
+	 *                 rather than leaving a hole in it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static ECataclysmDungeonSubType SubTypeAtPoint(
+		float Point,
+		ECataclysmDungeonSubType Excluded = ECataclysmDungeonSubType::None);
+
+	/**
 	 * Rolls one sub-type, weighted.
 	 *
-	 * ONE DRAW FROM THE STREAM, ALWAYS, whatever it returns. See the note on
-	 * `PickTargets` about draw counts: a roll that sometimes took two would make
-	 * every later dungeon in the same wave depend on what this one rolled.
+	 * ONE DRAW FROM THE STREAM, ALWAYS, whatever it returns and whether or not a
+	 * Siege is allowed. See the note on `PickTargets` about draw counts: a roll
+	 * that sometimes took two would make every later dungeon in the same wave
+	 * depend on what this one rolled.
 	 *
 	 * IT WALKS THE ENUM IN ITS DECLARED ORDER, WHICH IS NOT THE MODEL'S ORDER.
 	 * `config.SUBTYPE_SPAWN_WEIGHTS` lists them commonest first and
@@ -444,8 +498,17 @@ public:
 	 * does. The two therefore pick different sub-types from the same random
 	 * fraction, and both give the same distribution. The port test compares the
 	 * weights by name for that reason, and not a sequence of rolls.
+	 *
+	 * @param bSiegeAllowed whether this dungeon's city may take a Siege. When it
+	 *                      may not and the draw lands on one, THE SAME DRAW is
+	 *                      re-read into the weight space the other six occupy,
+	 *                      so the refused Siege is spread across them in
+	 *                      proportion to their weights. See `SiegesPerCity` for
+	 *                      the ruling and the implementation for why re-reading
+	 *                      is exact.
 	 */
-	static ECataclysmDungeonSubType RollSubType(FRandomStream& Stream);
+	static ECataclysmDungeonSubType RollSubType(FRandomStream& Stream,
+												bool bSiegeAllowed = true);
 
 	/**
 	 * The floor range and the bites for one kind of dungeon on one tier of city.
@@ -599,9 +662,15 @@ public:
 	 * alone, leaving the floor count, the reward and the timer where they are.
 	 * A fifty floor dungeon that costs two days to walk is still fifty floors
 	 * deep and still bites on the same schedule.
+	 *
+	 * @param bSiegeAllowed whether this city may take a Siege. Passed straight
+	 *                      to `RollSubType`; see there. It defaults to allowing
+	 *                      one because only `RollWave` knows what is already
+	 *                      standing, and this is called on its own by tests.
 	 */
 	FCataclysmDungeon MakeDungeon(int32 DungeonId, const FCataclysmCity& City,
-								  int32 Day, FRandomStream& Stream) const;
+								  int32 Day, FRandomStream& Stream,
+								  bool bSiegeAllowed = true) const;
 
 	/**
 	 * The whole wave: picks the targets and rolls a dungeon for each.

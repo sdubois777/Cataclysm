@@ -202,17 +202,23 @@ by `git add` with no error and no warning. Guarded by
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind.
 
-  **Two of the eight dungeon sub-types do something, and the other six do not.**
-  Every dungeon a surge creates rolls one from the design's weights, and the
-  dungeon the player walks carries it into the creature-scoring model. A Cow
-  Level costs twice the days to walk and the walk-shortening city upgrade does
-  not apply to it; a Siege takes 1% of its host city's maximum defence and
-  maximum population every day it stands, and a city may hold only one. Timed,
-  Horde, Elite, Volatile and Sacrificial are rolled and named and change nothing
-  yet, and two further parts of the Siege — what "increases in power by 10 points
-  per day" means and what "pauses city upgrades" means — are undecided rather
-  than unbuilt. Issue
-  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+  **Every dungeon a surge creates has a sub-type, and two of the seven do
+  something.** The dungeon the player walks carries it into the creature-scoring
+  model. A Cow Level costs twice the days to walk and the walk-shortening city
+  upgrade does not apply to it; a Siege takes 1% of its host city's maximum
+  defence and maximum population every day it stands, and a city may hold only
+  one. Timed, Horde, Elite, Volatile and Sacrificial are rolled and named and
+  change nothing yet, and two further parts of the Siege — what "increases in
+  power by 10 points per day" means and what "pauses city upgrades" means — are
+  undecided rather than unbuilt. Issues
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+  [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
+
+  **A dungeon can still have no sub-type; nothing a surge creates has one.** One
+  entered outside the empire has none. A Siege rolled for a city that already
+  holds one is spread across the other six sub-types in proportion to their
+  weights, rather than being rolled again or left plain: measured at none at all
+  over twenty campaigns and 10,914 simulated days.
 
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.

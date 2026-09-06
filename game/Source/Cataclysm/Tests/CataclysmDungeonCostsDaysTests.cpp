@@ -66,6 +66,34 @@ namespace CataclysmDungeonCostsDaysTest
 
 		return Out;
 	}
+
+	/**
+	 * The first dungeon that costs the ordinary one day a floor, or -1.
+	 *
+	 * **WHY A SEARCH RATHER THAN `Dungeons[0]`.** A Cow Level costs two days a
+	 * floor deliberately, and three of the tests below are about the starting
+	 * rate of one floor, one day. They took the first dungeon on the map until
+	 * the sub-type distribution changed on 2026-09-06 -- Cow Level went from 4
+	 * in 100 to 7, and every dungeon now gets a sub-type -- at which point the
+	 * first dungeon at seed 1 became a Cow Level and all three failed with the
+	 * exact doubling they exist to leave to `AWalkedCowLevelCostsTwiceTheDays`.
+	 *
+	 * CHOOSING BY WHAT IT COSTS RATHER THAN BY SEED. A seed that happens to
+	 * produce an ordinary dungeon would work until the next distribution change
+	 * and then fail the same way; asking each dungeon what its walk costs cannot.
+	 */
+	int32 FirstOrdinaryDungeon(const UCataclysmEmpireRun& Run)
+	{
+		for (int32 Index = 0; Index < Run.Dungeons.Num(); ++Index)
+		{
+			if (Run.Dungeons[Index].SubType
+				!= ECataclysmDungeonSubType::CowLevel)
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +122,17 @@ bool FCataclysmDungeonCostsDaysTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const int32 DungeonId = Bound.Run->Dungeons[0].DungeonId;
-	const int32 Floors = Bound.Run->Dungeons[0].Floors;
+	// AN ORDINARY DUNGEON, because this test is about the starting rate. A Cow
+	// Level costs two days a floor and has its own test for it.
+	const int32 Ordinary = FirstOrdinaryDungeon(*Bound.Run);
+	if (!TestTrue(TEXT("the wave holds a dungeon at the ordinary walk rate"),
+				  Ordinary != INDEX_NONE))
+	{
+		return false;
+	}
+
+	const int32 DungeonId = Bound.Run->Dungeons[Ordinary].DungeonId;
+	const int32 Floors = Bound.Run->Dungeons[Ordinary].Floors;
 	const int32 DayBefore = Bound.Run->Day();
 
 	// ENTERING IS A FLOOR. The player is standing on floor 1 and a floor costs a
@@ -222,8 +259,25 @@ bool FCataclysmDungeonTimerStopsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const int32 Walked = Bound.Run->Dungeons[0].DungeonId;
-	const int32 Other = Bound.Run->Dungeons[1].DungeonId;
+	// AN ORDINARY DUNGEON TO WALK, so that five floors down really is five days.
+	// A Cow Level would spend ten and the check below would fail for a reason
+	// that has nothing to do with which timer stops.
+	const int32 Ordinary = FirstOrdinaryDungeon(*Bound.Run);
+	if (!TestTrue(TEXT("the wave holds a dungeon at the ordinary walk rate"),
+				  Ordinary != INDEX_NONE))
+	{
+		return false;
+	}
+
+	const int32 Walked = Bound.Run->Dungeons[Ordinary].DungeonId;
+	const int32 Other =
+		Bound.Run->Dungeons[Ordinary == 0 ? 1 : 0].DungeonId;
+
+	if (!TestTrue(TEXT("the other dungeon is a different one"),
+				  Other != Walked))
+	{
+		return false;
+	}
 
 	Bound.Mode->EnterEmpireDungeon(Walked);
 
@@ -290,11 +344,29 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const FCataclysmDungeon First = Bound.Run->Dungeons[0];
+	// AN ORDINARY DUNGEON. A Cow Level takes twice as long to walk, which gives
+	// a later surge time to land while the player is underground and makes the
+	// count of what is standing afterwards say nothing.
+	const int32 Ordinary = FirstOrdinaryDungeon(*Bound.Run);
+	if (!TestTrue(TEXT("the wave holds a dungeon at the ordinary walk rate"),
+				  Ordinary != INDEX_NONE))
+	{
+		return false;
+	}
+
+	const FCataclysmDungeon First = Bound.Run->Dungeons[Ordinary];
 	const int32 DungeonId = First.DungeonId;
 	const int32 CityId = First.CityId;
 	const int32 Floors = First.Floors;
-	const int32 StandingBefore = Bound.Run->DungeonCount();
+
+	// WHICH DUNGEONS WERE STANDING, NOT HOW MANY. A surge that lands while the
+	// player is underground adds one, and a count would then fail for a reason
+	// that has nothing to do with clearing.
+	TSet<int32> StandingBefore;
+	for (const FCataclysmDungeon& Dungeon : Bound.Run->Dungeons)
+	{
+		StandingBefore.Add(Dungeon.DungeonId);
+	}
 
 	Bound.Mode->EnterEmpireDungeon(DungeonId);
 
@@ -328,8 +400,19 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 			 Bound.Run->FindDungeon(DungeonId));
 	TestEqual(TEXT("and off the clock"),
 			  Bound.Run->Clock->DaysUntilResolveFor(DungeonId), -1.0f);
-	TestEqual(TEXT("one fewer is standing"),
-			  Bound.Run->DungeonCount(), StandingBefore - 1);
+	// AND IT IS THE ONLY ONE THAT WENT. Every other dungeon that was standing
+	// still is, which a count could not tell from one arriving as another left.
+	for (const int32 Id : StandingBefore)
+	{
+		if (Id == DungeonId)
+		{
+			continue;
+		}
+
+		TestNotNull(*FString::Printf(
+						TEXT("dungeon %d was left alone"), Id),
+					Bound.Run->FindDungeon(Id));
+	}
 	TestEqual(TEXT("and nothing is being walked"),
 			  Bound.Mode->EmpireDungeonId, INDEX_NONE);
 
@@ -357,7 +440,7 @@ bool FCataclysmDungeonBottomTest::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonWholeWaveTest,
-	"Cataclysm.DungeonMode.ClearingAWholeWaveCostsItsFloorsInDays",
+	"Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
@@ -389,17 +472,52 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	}
 
 	const int32 StartedOnDay = Bound.Run->Day();
-	const int32 WaveSize = Bound.Run->DungeonCount();
+
+	// THE WAVE ITSELF, BY IDENTIFIER. Clearing it takes weeks and a later surge
+	// lands during them, so "keep going until the map is empty" clears more than
+	// the wave and the arithmetic below would be about a different set of
+	// dungeons than the one it names.
+	TArray<int32> Wave;
+	for (const FCataclysmDungeon& Dungeon : Bound.Run->Dungeons)
+	{
+		Wave.Add(Dungeon.DungeonId);
+	}
+
+	const int32 WaveSize = Wave.Num();
 
 	int32 FloorsWalked = 0;
 	int32 Cleared = 0;
+	int32 Absorbed = 0;
 
-	// ENTER, WALK TO THE BOTTOM, BEAT IT, TAKE THE NEXT. The bound is a
-	// backstop rather than the exit: the exit is running out of dungeons.
-	for (int32 Guard = 0; Guard < 1000 && Bound.Run->DungeonCount() > 0; ++Guard)
+	//: What the dungeons actually walked cost, added up as they are reached.
+	//
+	// **NOT WORKED OUT UP FRONT, BECAUSE A DUNGEON CAN GO BEFORE ITS TURN.**
+	// Clearing the wave takes weeks, and a city that falls in the meantime
+	// absorbs every dungeon standing on it -- including ones the player has not
+	// reached. The first version of this test asked for a total before it
+	// started and failed when dungeon 3 was no longer there to walk.
+	int32 DaysWalkingCost = 0;
+	int32 FloorsToWalk = 0;
+
+	// ENTER, WALK TO THE BOTTOM, BEAT IT, TAKE THE NEXT.
+	for (const int32 DungeonId : Wave)
 	{
-		const int32 DungeonId = Bound.Run->Dungeons[0].DungeonId;
-		const int32 Floors = Bound.Run->Dungeons[0].Floors;
+		const FCataclysmDungeon* Standing = Bound.Run->FindDungeon(DungeonId);
+		if (Standing == nullptr)
+		{
+			// ABSORBED BY ITS CITY FALLING. It is off the map either way, which
+			// is what the check after this loop asks.
+			++Absorbed;
+			continue;
+		}
+
+		const int32 Floors = Standing->Floors;
+
+		// WHAT THIS ONE COSTS TO WALK, WHICH IS NOT ALWAYS ITS FLOOR COUNT. One
+		// floor costs one day as a starting rate; a Cow Level costs two, and
+		// this wave may hold one now that every dungeon has a sub-type.
+		DaysWalkingCost += FMath::RoundToInt(Standing->WalkDays);
+		FloorsToWalk += Floors;
 
 		if (!Bound.Mode->EnterEmpireDungeon(DungeonId))
 		{
@@ -436,24 +554,54 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 				 Bound.Run->FindDungeon(DungeonId));
 	}
 
-	TestEqual(TEXT("every dungeon of the wave was cleared"), Cleared, WaveSize);
-	TestEqual(TEXT("and nothing is left standing"), Bound.Run->DungeonCount(), 0);
+	AddInfo(FString::Printf(
+		TEXT("a wave of %d: %d cleared, %d absorbed by their cities falling "
+			 "first; %d floors walked over %d days"),
+		WaveSize, Cleared, Absorbed, FloorsWalked, DaysWalkingCost));
 
-	// AND THE DAY MOVED BY EXACTLY THE FLOORS WALKED, because nothing in this
-	// run has shortened a walk. One floor costs one day as a starting rate, not
-	// as an invariant; depth and reward are the same axis, depth and time are
-	// not once a player has invested.
+	// EVERY DUNGEON OF THE WAVE IS OFF THE MAP, one way or the other. Clearing
+	// it and its city falling on it are the two ways a dungeon leaves, and the
+	// count above says which happened to each.
+	TestEqual(TEXT("every dungeon of the wave was accounted for"),
+			  Cleared + Absorbed, WaveSize);
+
+	for (const int32 DungeonId : Wave)
+	{
+		TestNull(*FString::Printf(TEXT("dungeon %d is off the map"), DungeonId),
+				 Bound.Run->FindDungeon(DungeonId));
+	}
+
+	// AND MOST OF IT WAS WALKED RATHER THAN LOST. A run where every dungeon
+	// vanished before the player reached it would satisfy the line above while
+	// measuring nothing about walking.
+	TestTrue(FString::Printf(
+				 TEXT("%d of the wave's %d dungeons were walked"), Cleared,
+				 WaveSize),
+			 Cleared > Absorbed);
+
+	// AND THE DAY MOVED BY EXACTLY WHAT THOSE WALKS COST, because nothing in
+	// this run has shortened one. One floor costs one day as a starting rate,
+	// not as an invariant: a Cow Level costs two days a floor, so the days spent
+	// are the sum of each dungeon's own walk cost rather than the floor count.
+	// Depth and reward are the same axis; depth and time are not, once a player
+	// has invested or a sub-type has intervened.
 	TestEqual(FString::Printf(
 		TEXT("walking %d floors across %d dungeons cost %d days"),
-		FloorsWalked, Cleared, FloorsWalked),
-		Bound.Run->Day(), StartedOnDay + FloorsWalked);
+		FloorsWalked, Cleared, DaysWalkingCost),
+		Bound.Run->Day(), StartedOnDay + DaysWalkingCost);
 
-	// A WAVE IS WEEKS OF WORK, not an afternoon. Four Outpost dungeons of 8 to
-	// 15 floors is 32 days at the very least, which is what makes ignoring one
-	// a real decision rather than an obvious mistake.
+	// AND EVERY FLOOR OF THOSE DUNGEONS WAS ACTUALLY WALKED. A run whose day
+	// cost was right while half its floors went unvisited would satisfy the line
+	// above.
+	TestEqual(TEXT("and the floors walked are those dungeons' floors"),
+			  FloorsWalked, FloorsToWalk);
+
+	// A WAVE IS WEEKS OF WORK, not an afternoon. Outpost dungeons are 8 to 15
+	// floors each, which is what makes ignoring one a real decision rather than
+	// an obvious mistake.
 	TestTrue(FString::Printf(
-		TEXT("clearing the wave cost %d days"), FloorsWalked),
-		FloorsWalked >= 4 * 8);
+		TEXT("clearing what was left of the wave cost %d days"), FloorsWalked),
+		FloorsWalked >= Cleared * 8);
 
 	return true;
 }
@@ -471,7 +619,7 @@ bool FCataclysmDungeonCarriesItsSubTypeTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonCostsDaysTest;
 
 	// A SEED WHOSE FIRST DUNGEON IS A COW LEVEL, found by looking rather than
-	// hoped for. Cow Level is 4 in 100, so most seeds are not one, and a run is
+	// hoped for. Cow Level is 7 in 100, so most seeds are not one, and a run is
 	// built here without a world because that is much cheaper than building one
 	// per seed.
 	int32 CowSeed = INDEX_NONE;

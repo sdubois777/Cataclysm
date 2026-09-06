@@ -2,6 +2,166 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — Every dungeon a surge creates has a sub-type; the no-sub-type outcome is removed
+
+**Affects:** `sim/cataclysm_sim/config.py`,
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`,
+`docs/Cataclysm_GDD_v2.md`, `game/README.md`,
+`tools/tests/test_dungeon_subtype_port.py` and the automation tests for
+the surge scheduler and for walking a dungeon. Applied. Issue
+[#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
+
+### The ruling
+
+Asked whether the eight spawn weights that had no design source were what they
+intended, the project owner answered on 2026-09-05, verbatim: **"I feel like
+every dungeon should have a sub type. Maybe remove the none option and
+recalculate the values?"**
+
+Asked which form the recalculated values should take, they chose **clean round
+numbers** over an exact proportional rescale.
+
+| Sub-type | Was | Now |
+| :-- | --: | --: |
+| No sub-type | 34 | **removed** |
+| Timed | 12 | 18 |
+| Horde | 12 | 18 |
+| Siege | 10 | 15 |
+| Elite | 10 | 15 |
+| Volatile | 10 | 15 |
+| Sacrificial | 8 | 12 |
+| Cow Level | 4 | 7 |
+
+The seven that remain previously summed to 66; these sum to 100 and keep the same
+order.
+
+### The outcome is removed, not weighted zero
+
+`SpawnWeightNone` is gone from the header rather than set to `0.0f`, and
+`UCataclysmSurgeScheduler::RollSubType` walks the enum from `Timed` rather than
+from zero. A zero weight sitting in the list beside the real ones reads as an
+outcome that can still come up; its absence is what says it cannot.
+
+**`ECataclysmDungeonSubType::None` still exists and is still reached, and could
+not be deleted.** It is what `UCataclysmGameMode::RunDungeonSubType` returns for
+a dungeon entered outside the empire, the default on `FCataclysmEnemyScoreInput`,
+and the value `UCataclysmEnemyScore::SubTypeWeight` gives no difficulty. What
+changed is that no roll produces it.
+
+### The exception it left, and what the owner did about it
+
+A Siege rolled for a city that already holds one used to become a plain dungeon
+rather than being rolled again — a second draw would change the depth of every
+later dungeon in that wave. So removing the no-sub-type outcome from the
+distribution did not remove plain dungeons from the game.
+
+**It was 1.6%.** Twenty campaigns, 10,914 simulated days, 1,925 dungeons made:
+31 with no sub-type, 133 Cow Levels, 244 Sieges. That was put back to the owner,
+who answered on 2026-09-06, verbatim: **"Spread it across the others"**.
+
+**A refused Siege is now spread across the other six in proportion to their
+weights, and it still costs no second draw.** The same twenty campaigns now
+report 0 with no sub-type, 137 Cow Levels and the same 244 Sieges, over the same
+10,914 days and the same 1,925 dungeons — the stream is untouched, so every
+dungeon that was not a refused Siege comes out exactly as it did before.
+
+**How it is done, and why it is exact rather than approximate.** The draw is a
+point on a line 100 wide, with each sub-type holding a stretch as wide as its
+weight. Given that the point landed inside Siege's own stretch, it is uniform
+over that stretch; dividing by the stretch's width gives a number uniform over 0
+to 1, and multiplying by the 85 the other six occupy gives a point uniform over a
+line made of exactly those six. Each therefore takes a share of the refusals in
+proportion to its weight. `UCataclysmSurgeScheduler::RollSubType` does this, and
+`Cataclysm.Surge.ARefusedSiegeIsSpreadAcrossTheOthersInProportion` measures the
+result against the arithmetic.
+
+**The measurement checked over four million draws before any of it was written**,
+in plain Python, and the largest gap between a sub-type's measured share and its
+proportional share was 0.045 percentage points — sampling noise at that count.
+
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType` asserts zero
+rather than a small share on purpose: a test that still allowed 1.6% would pass
+whether the redistribution worked or not.
+
+**A wave can refuse a Siege with no city holding one.** `RollWave` counts the
+Sieges it is itself creating, because targets are rolled with replacement and one
+wave can put two dungeons on the same city.
+
+**A census of standing dungeons cannot measure any of this.** A Siege takes 1% of
+its host city's defence and population every day, so it destroys the city it
+stands on, and a fallen city removes every dungeon on it. Counting the board
+after a 600 day campaign found 14 dungeons standing and not one Siege. The
+measurement records each dungeon as it arrives instead.
+
+### What it changes for a player
+
+**Average dungeon difficulty rises**, because a sub-type adds its difficulty
+weight to the enemy score and about a third of dungeons previously added none.
+**Cow Levels go from 1 in 25 to about 1 in 14.**
+
+**Only two of the seven have behaviour built** — Cow Level and Siege. Timed,
+Horde, Elite, Volatile and Sacrificial now appear on every dungeon that rolls
+them while doing nothing beyond their difficulty contribution. That was put to
+the owner before they answered.
+
+### What the balance sweeps say, run on both distributions
+
+`sim/experiments.py` was run twice, once on each distribution, from the same
+code otherwise. **It is 150 campaigns a cell, and that cannot resolve a
+difference under 5.8 percentage points** — the file says so itself. So the
+individual win rates below are at or under the noise floor and the shape is what
+matters, not any one of them.
+
+**At the same settings, the game got harder.** The calibration's own best static
+baseline:
+
+| | Before | After |
+| :-- | --: | --: |
+| Win | 34% | 28% |
+| Loss | 55% | 70% |
+| Stalemate | 11% | 2% |
+| Triage | 43% | 47% |
+| Final power | 508 | 456 |
+
+The loss and stalemate movements are well clear of the noise floor. And every one
+of the seven play policies moved down or held: random 4 to 1, greedy loot 2 to 2,
+never craft 0 to 0, always craft 6 to 1, nearest deadline 40 to 36, triage 34 to
+31, lane aware 31 to 25. Each of those on its own is noise; all seven pointing
+the same way is not.
+
+**Then the sweep compensated, and that is the finding worth keeping.** Section 2
+picks what a craft is worth by scoring a no-tree player against a 55% win and 45%
+triage target. It chose **12 days for +4% of a tier width before and +8% after**,
+so a craft is now worth twice what it was, and "judgement beats the better
+extreme" by 48 points of win rate instead of 40.
+
+**So the second policy table in the report is not comparable with the first
+run's.** It is measured at the recalibrated craft value and shows higher win
+rates than the old run; that is the compensation, not the change. Anyone quoting
+those numbers against the old ones is comparing two different calibrations.
+
+**The sweeps cannot see the Siege rule at all.** `sim/cataclysm_sim/engine.py`
+has no Siege behaviour: no daily city damage, no one-per-city cap. So the model
+feels the new weights and not the redistribution, and the figures above are the
+weight change alone.
+
+### Why the design document now holds the distribution
+
+Issue #1293's original point was that these numbers existed only in code, so
+nobody who owns the design could review them. They are now in
+`docs/Cataclysm_GDD_v2.md`.
+
+**Both subtype tables in that document now name their quantity.** "Subtype
+Weights" became "Subtype Difficulty Weights" and the new one is "Subtype Spawn
+Weights — how often each one is rolled". They are near-inverses of each other,
+and mistaking one for the other was most of the issue: the difficulty table gives
+Timed a weight of zero, so reusing it as a spawn distribution would mean no Timed
+dungeon ever spawns. This is the same confusion recorded on 2026-09-05 in "The
+dungeon modifier Weight column is a danger score, not a spawn frequency".
+
+`tools/tests/test_dungeon_subtype_port.py` now holds three copies in agreement —
+the model, the C++ port and the design document — rather than two.
+
 ## 2026-09-05 — The Architect preset's city damage multiplier is the eleven damage-reduction nodes, and nothing else
 
 **Affects:** `sim/cataclysm_sim/config.py`. Applied. Issue
@@ -636,14 +796,22 @@ the timers.
 ### The one-Siege-per-city rule
 
 "Max 1 per city" is enforced when a wave is rolled. A dungeon that rolls Siege
-for a city that already has one **becomes a dungeon with no sub-type** rather
-than being rolled again.
+for a city that already has one **is spread across the other six sub-types** in
+proportion to their weights, rather than being rolled again.
 
 **Rolling again would cost a second draw from the random stream**, and every
 dungeon in a wave is rolled from one stream in sequence, so the depth of every
-later dungeon in that wave would depend on what this one first rolled. Making it
-plain is also the honest reading: the design says a city may not have two
-Sieges, not that it should be given something else instead.
+later dungeon in that wave would depend on what this one first rolled. The
+redistribution avoids that by re-reading the draw it already made rather than
+taking another.
+
+**It used to become a dungeon with no sub-type**, on the reading that the design
+says a city may not have two Sieges rather than that it should be given something
+else instead. That stopped being tenable when every dungeon was given a sub-type
+on 2026-09-05, because it left this as the only way a surge could produce one
+without: 1.6% of all dungeons made. The owner ruled on 2026-09-06, verbatim:
+**"Spread it across the others"**. See the entry headed "Every dungeon a surge
+creates has a sub-type" for how the re-reading works and why it is exact.
 
 The rule counts Sieges the wave itself is creating as well as those already
 standing, because targets are rolled with replacement and one wave can land two
@@ -678,10 +846,11 @@ A frontier Outpost left to an unattended Siege is gone in a fortnight, and the
 capital would take seven weeks. That is the shape the design wants: the frontier
 falls first.
 
-**Two details the answer did not settle, and what was done about them.** The
-owner's answer says what the power is. It does not say which of the two kinds of
-damage grows, nor from which day. Both are read here from the sentence rather
-than ruled on, and both are recorded as readings so they are cheap to correct:
+**Two details the answer did not settle, put back to the owner and confirmed.**
+The owner's answer says what the power is. It does not say which of the two kinds
+of damage grows, nor from which day. Both were read from the sentence, built that
+way, and recorded as readings; on 2026-09-06 the owner confirmed both stand as
+built. They are rulings now:
 
 - **It grows both the defence damage and the population damage.** The sentence
   whose subject is "its power" follows a sentence that names both, so the plain
@@ -689,6 +858,12 @@ than ruled on, and both are recorded as readings so they are cheap to correct:
 - **It counts from the day the Siege arrived.** "Increases by 10 per day" means
   that after one day it has increased by ten, so a Siege's first day deals the
   flat share alone.
+
+**The owner's exact words for this confirmation were not recorded**, unlike every
+other ruling on this page. The confirmation reached this work through the
+coordinating session rather than directly, so it is written down as a
+confirmation rather than quoted. The two readings above are unchanged by it,
+which is why nothing was rebuilt.
 
 ### What "pauses city upgrades" means
 

@@ -48,7 +48,18 @@ float UCataclysmSurgeScheduler::SpawnWeightFor(ECataclysmDungeonSubType SubType)
 	// spawns.
 	switch (SubType)
 	{
-	case ECataclysmDungeonSubType::None:			return SpawnWeightNone;
+	// **NOT A WEIGHT OF ZERO STANDING IN FOR A REAL ONE.** There is no
+	// `SpawnWeightNone` constant any more: the owner ruled on 2026-09-05 that
+	// every dungeon a surge makes has a sub-type, so no roll can produce this
+	// value and zero is the true answer to how often it is rolled. The enum
+	// value itself is still needed, because a dungeon entered outside the empire
+	// has no sub-type -- `UCataclysmGameMode::RunDungeonSubType` returns this,
+	// and `UCataclysmEnemyScore::SubTypeWeight` gives it no difficulty.
+	//
+	// NOTHING A SURGE MAKES CARRIES IT. A Siege refused by the one-per-city cap
+	// used to become one; since 2026-09-06 it is spread across the other six
+	// instead. See `SiegesPerCity`.
+	case ECataclysmDungeonSubType::None:			return 0.0f;
 	case ECataclysmDungeonSubType::Timed:			return SpawnWeightTimed;
 	case ECataclysmDungeonSubType::Horde:			return SpawnWeightHorde;
 	case ECataclysmDungeonSubType::Siege:			return SpawnWeightSiege;
@@ -76,37 +87,69 @@ FString UCataclysmSurgeScheduler::SubTypeName(ECataclysmDungeonSubType SubType)
 	}
 }
 
-ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
-	FRandomStream& Stream)
+float UCataclysmSurgeScheduler::TotalSpawnWeight(
+	ECataclysmDungeonSubType Excluded)
 {
-	// THE ENUM IN ITS DECLARED ORDER. Every value from `None` up to and including
-	// `Sacrificial`, which is the last one. Walking the enum rather than a
-	// hand-written list means a sub-type added to it is rolled as soon as
-	// `SpawnWeightFor` gives it a weight.
-	const uint8 Last = static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
-
+	// THE ENUM IN ITS DECLARED ORDER, STARTING PAST `None`. Every value from
+	// `Timed` up to and including `Sacrificial`, which is the last one. Walking
+	// the enum rather than a hand-written list means a sub-type added to it
+	// counts as soon as `SpawnWeightFor` gives it a weight.
+	//
+	// **IT STARTS AT `Timed` RATHER THAN AT ZERO BECAUSE `None` IS NOT AN
+	// OUTCOME.** Every dungeon a surge makes has a sub-type; see the weights in
+	// the header. Beginning at zero and relying on a weight of zero to skip it
+	// would work and would read as though the value were still in the running.
 	float Total = 0.0f;
-	for (uint8 Value = 0; Value <= Last; ++Value)
-	{
-		Total += SpawnWeightFor(static_cast<ECataclysmDungeonSubType>(Value));
-	}
 
-	// EVERY WEIGHT ZERO WOULD DIVIDE BY NOTHING. It cannot happen with the
-	// constants above and it is one line to be safe about; a dungeon with no
-	// sub-type is the right answer when nothing can be chosen.
-	if (Total <= 0.0f)
-	{
-		return ECataclysmDungeonSubType::None;
-	}
-
-	// ONE DRAW, WHATEVER IT RETURNS. See the header.
-	float Point = Stream.FRand() * Total;
-
-	for (uint8 Value = 0; Value <= Last; ++Value)
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+		 ++Value)
 	{
 		const ECataclysmDungeonSubType Candidate =
 			static_cast<ECataclysmDungeonSubType>(Value);
 
+		if (Candidate != Excluded)
+		{
+			Total += SpawnWeightFor(Candidate);
+		}
+	}
+
+	return Total;
+}
+
+float UCataclysmSurgeScheduler::SpawnWeightBelow(
+	ECataclysmDungeonSubType SubType)
+{
+	float Below = 0.0f;
+
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value < static_cast<uint8>(SubType);
+		 ++Value)
+	{
+		Below += SpawnWeightFor(static_cast<ECataclysmDungeonSubType>(Value));
+	}
+
+	return Below;
+}
+
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::SubTypeAtPoint(
+	float Point, ECataclysmDungeonSubType Excluded)
+{
+	const uint8 Last = static_cast<uint8>(ECataclysmDungeonSubType::Sacrificial);
+	ECataclysmDungeonSubType Furthest = ECataclysmDungeonSubType::None;
+
+	for (uint8 Value = static_cast<uint8>(ECataclysmDungeonSubType::Timed);
+		 Value <= Last; ++Value)
+	{
+		const ECataclysmDungeonSubType Candidate =
+			static_cast<ECataclysmDungeonSubType>(Value);
+
+		if (Candidate == Excluded)
+		{
+			continue;
+		}
+
+		Furthest = Candidate;
 		Point -= SpawnWeightFor(Candidate);
 
 		if (Point < 0.0f)
@@ -115,11 +158,73 @@ ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
 		}
 	}
 
-	// ONLY REACHED IF `FRand` RETURNED EXACTLY 1.0, which its own documentation
-	// says it does not. The last weighted sub-type is the honest answer if it
-	// ever does, rather than `None`, which would quietly make the commonest
-	// outcome commoner still.
-	return static_cast<ECataclysmDungeonSubType>(Last);
+	// PAST THE END OF THE LINE. Reached when `FRand` returns exactly 1.0, which
+	// its own documentation says it does not, and by any caller passing a point
+	// larger than the total. The last sub-type on the line is the honest answer;
+	// `None` would not be, because the caller asked which of THESE a number
+	// picks.
+	return Furthest;
+}
+
+ECataclysmDungeonSubType UCataclysmSurgeScheduler::RollSubType(
+	FRandomStream& Stream, bool bSiegeAllowed)
+{
+	const float Total = TotalSpawnWeight();
+
+	// EVERY WEIGHT ZERO WOULD DIVIDE BY NOTHING. It cannot happen with the
+	// constants in the header and it is one line to be safe about. A dungeon
+	// with no sub-type is still the honest answer when nothing can be chosen,
+	// even though nothing can reach it: the alternative is naming one sub-type
+	// as the answer to "which of these zero options", which would be a lie.
+	if (Total <= 0.0f)
+	{
+		return ECataclysmDungeonSubType::None;
+	}
+
+	// ONE DRAW, AND THE ONLY ONE. See the header.
+	const float Point = Stream.FRand() * Total;
+	const ECataclysmDungeonSubType Chosen = SubTypeAtPoint(Point);
+
+	if (bSiegeAllowed || Chosen != ECataclysmDungeonSubType::Siege)
+	{
+		return Chosen;
+	}
+
+	// **THE SAME DRAW, READ A SECOND TIME INTO A SMALLER LINE.** The city
+	// already holds a Siege, and the owner's ruling is that this dungeon is
+	// spread across the other six rather than made plain or rolled again. See
+	// `SiegesPerCity`.
+	//
+	// WHY RE-READING IS EXACT AND NOT AN APPROXIMATION. `Point` is uniform over
+	// the whole line, so given that it landed inside Siege's own band it is
+	// uniform over that band. Dividing by the band's width turns it into a
+	// number uniform over 0 to 1, and multiplying by the total of the other six
+	// turns that into a point uniform over a line made of exactly those six.
+	// Each therefore takes a share of the refusals in proportion to its weight,
+	// which is what "spread it across the others" asks for -- and it costs no
+	// further randomness, because no further randomness is drawn.
+	const float BandStart =
+		SpawnWeightBelow(ECataclysmDungeonSubType::Siege);
+	const float BandWidth =
+		SpawnWeightFor(ECataclysmDungeonSubType::Siege);
+
+	if (BandWidth <= 0.0f)
+	{
+		// SIEGE IS NOT ON THE LINE AT ALL, so `Chosen` could not have been one
+		// and this is unreachable. It is here because dividing by it is not.
+		return Chosen;
+	}
+
+	// CLAMPED BELOW ONE so the re-read point cannot land past the end of the
+	// smaller line. `Point` is inside the band by construction; the clamp is
+	// against floating-point arithmetic at its very edge, not against a real
+	// case.
+	const float Across = FMath::Clamp((Point - BandStart) / BandWidth, 0.0f,
+									  1.0f - KINDA_SMALL_NUMBER);
+
+	return SubTypeAtPoint(
+		Across * TotalSpawnWeight(ECataclysmDungeonSubType::Siege),
+		ECataclysmDungeonSubType::Siege);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +507,7 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
-	FRandomStream& Stream) const
+	FRandomStream& Stream, bool bSiegeAllowed) const
 {
 	const FCataclysmDungeonSpec Spec =
 		SpecFor(ECataclysmDungeonType::Basic, City.Tier);
@@ -442,7 +547,7 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// AND WHAT IT DOES DIFFERENTLY. Rolled after the depth so the depth is drawn
 	// from the same place in the stream it always was, and before the walk cost
 	// because Cow Level decides what that cost is.
-	Dungeon.SubType = RollSubType(Stream);
+	Dungeon.SubType = RollSubType(Stream, bSiegeAllowed);
 
 	// AND HOW LONG WALKING IT COSTS, WHICH IS NOT THE SAME QUESTION AS HOW DEEP
 	// IT IS. One floor costs one day to begin with, so this starts at the floor
@@ -522,31 +627,30 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 			continue;
 		}
 
-		FCataclysmDungeon Dungeon =
-			MakeDungeon(FirstDungeonId + Index, *City, Day, Stream);
+		// **ASKED BEFORE THE DUNGEON IS MADE, NOT CORRECTED AFTERWARDS.** The
+		// roll needs to know whether a Siege is allowed here, because when it is
+		// not it re-reads its own draw into the other six sub-types rather than
+		// taking a second one. See `UCataclysmSurgeScheduler::RollSubType`.
+		//
+		// AN EMPTY LIST MEANS THE CALLER DID NOT SAY, and then nothing is
+		// refused on account of what was already standing. Sieges this wave
+		// makes are still counted, because `Sieges` is grown to fit below.
+		const bool bSiegeAllowed =
+			!Sieges.IsValidIndex(City->CityId)
+			|| Sieges[City->CityId] < SiegesPerCity;
+
+		FCataclysmDungeon Dungeon = MakeDungeon(FirstDungeonId + Index, *City,
+												Day, Stream, bSiegeAllowed);
 
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{
-			// AN EMPTY LIST MEANS THE CALLER DID NOT SAY, and then nothing is
-			// refused on account of what was already standing. Sieges this wave
-			// made are still counted, because `Sieges` is grown to fit below.
 			if (!Sieges.IsValidIndex(Dungeon.CityId))
 			{
 				Sieges.SetNumZeroed(
 					FMath::Max(Sieges.Num(), Dungeon.CityId + 1));
 			}
 
-			if (Sieges[Dungeon.CityId] >= SiegesPerCity)
-			{
-				// PLAIN, AND NOT ROLLED AGAIN. See `SiegesPerCity`: a second
-				// draw here would make every later dungeon in this wave depend
-				// on what this one rolled first.
-				Dungeon.SubType = ECataclysmDungeonSubType::None;
-			}
-			else
-			{
-				++Sieges[Dungeon.CityId];
-			}
+			++Sieges[Dungeon.CityId];
 		}
 
 		Wave.Add(Dungeon);

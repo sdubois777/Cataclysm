@@ -1,14 +1,30 @@
 """The Unreal dungeon sub-type weights must match the simulation's.
 
 WHY THIS EXISTS AT ALL. `UCataclysmSurgeScheduler::RollSubType` in the
-`CataclysmEmpire` module rolls one of eight sub-types for every dungeon a surge
-puts on the map, and the eight weights it rolls from are a copy of
-`config.SUBTYPE_SPAWN_WEIGHTS` in `sim/cataclysm_sim/config.py`. Two copies of a
-number are two numbers. `test_day_clock_port.py`, `test_surge_port.py` and
-`test_empire_map_port.py` beside this guard the same arrangement for the other
-constants in that module, and `CLAUDE.md` carries a rule about it because the
-power model in `sim/cataclysm_sim/scoring.py` drifted from its own source twice
-before anyone noticed.
+`CataclysmEmpire` module rolls a sub-type for every dungeon a surge puts on the
+map, and the weights it rolls from are a copy of `config.SUBTYPE_SPAWN_WEIGHTS`
+in `sim/cataclysm_sim/config.py`. Two copies of a number are two numbers.
+`test_day_clock_port.py`, `test_surge_port.py` and `test_empire_map_port.py`
+beside this guard the same arrangement for the other constants in that module,
+and `CLAUDE.md` carries a rule about it because the power model in
+`sim/cataclysm_sim/scoring.py` drifted from its own source twice before anyone
+noticed.
+
+EVERY DUNGEON A SURGE MAKES HAS A SUB-TYPE, so `None` is not in the distribution
+on either side. The owner ruled that on 2026-09-05, in
+https://github.com/sdubois777/Cataclysm/issues/1293. Before it, no sub-type at
+all was the commonest outcome at 34 in 100, and the remaining weights were
+rescaled to take up that share.
+
+`ECataclysmDungeonSubType::None` STILL EXISTS AND IS STILL REACHED, which is why
+this file checks that it is in the enum and NOT in the distribution rather than
+checking it is gone. A dungeon entered outside the empire has no sub-type --
+`UCataclysmGameMode::RunDungeonSubType` returns that value -- and it is what
+`UCataclysmEnemyScore::SubTypeWeight` gives no difficulty.
+
+NOTHING A SURGE MAKES CARRIES IT. A Siege refused by the one-per-city cap used
+to, until the owner ruled on 2026-09-06 that such a dungeon is spread across the
+other six sub-types instead.
 
 WHAT IT DOES NOT CHECK. That the roll behaves -- that the spread over many rolls
 matches the weights, that it takes exactly one draw from the stream, that a Cow
@@ -41,10 +57,20 @@ SURGE_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
 KIND_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
                / "CataclysmDungeonKind.h")
 
+GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
+
+#: The heading over the design's spawn table, matched by its opening rather than
+#: in full: the rest of the line explains which quantity it is and is prose.
+#:
+#: THERE ARE TWO SUBTYPE TABLES IN THAT DOCUMENT AND THEY ARE NOT THE SAME
+#: QUANTITY. "Subtype Difficulty Weights" says how much harder each one makes a
+#: dungeon and is guarded by `test_enemy_score_formula.py`. This one says how
+#: often each is rolled. Reading the wrong one was most of issue #1293.
+SPAWN_HEADING = "### **Subtype Spawn Weights"
+
 #: The name the model gives each sub-type, against the name the C++ constant and
 #: the enumerator use. The model's names carry a space where C++ cannot.
 NAMES = {
-    "None": "None",
     "Timed": "Timed",
     "Horde": "Horde",
     "Siege": "Siege",
@@ -91,7 +117,7 @@ def model():
     return TuningConfig()
 
 
-class TestTheEightWeights:
+class TestTheSpawnWeights:
     def test_every_sub_type_carries_the_same_weight_in_both(
             self, surge_source, model):
         for model_name, cpp_name in NAMES.items():
@@ -116,7 +142,8 @@ class TestTheEightWeights:
             self, surge_source, model):
         """Not required by either roll, which divides by its own total, but it
         is what makes each weight readable as a percentage. A change that
-        forgets to rebalance the rest shows up here."""
+        forgets to rebalance the rest shows up here, which is exactly what
+        removing the no-sub-type outcome had to avoid."""
         unreal = sum(weight(surge_source, cpp) for cpp in NAMES.values())
 
         assert unreal == pytest.approx(100.0), (
@@ -124,30 +151,58 @@ class TestTheEightWeights:
         assert sum(model.SUBTYPE_SPAWN_WEIGHTS.values()) == pytest.approx(
             100.0)
 
-    def test_no_sub_type_at_all_is_the_commonest_outcome(
+    def test_no_sub_type_at_all_is_not_in_the_distribution_on_either_side(
             self, surge_source, model):
-        """A dungeon that does something unusual is only worth noticing if most
-        of them do not. `None` carries more weight than any single sub-type on
-        both sides."""
+        """Every dungeon a surge makes has a sub-type.
+
+        THE C++ CONSTANT IS GONE RATHER THAN SET TO ZERO. A weight of zero sits
+        in the list beside the real ones and reads as an outcome that can still
+        come up; the absence of the constant is what says it cannot. So this
+        asserts the declaration is absent, not that it holds zero.
+        """
+        assert "None" not in model.SUBTYPE_SPAWN_WEIGHTS, (
+            "the model's spawn distribution has a no-sub-type entry again; "
+            "the owner ruled on 2026-09-05 that every dungeon has a sub-type")
+
+        assert "SpawnWeightNone" not in surge_source, (
+            f"{SURGE_HEADER.name} declares a SpawnWeightNone again. Removing "
+            "the outcome means removing the constant, not setting it to zero")
+
+    def test_cow_level_is_the_rarest_and_the_two_commonest_are_level(
+            self, surge_source, model):
+        """The shape of the distribution, not its individual numbers.
+
+        Every weight being wrong in the same direction would pass the per-value
+        check above only if both copies moved together, which is the one thing
+        that check cannot see. This states the design intent instead: a Cow
+        Level is the rarest thing a surge produces, because the design document
+        gives it "ridiculous amounts of loot".
+        """
         unreal = {cpp: weight(surge_source, cpp) for cpp in NAMES.values()}
-        others = [value for name, value in unreal.items() if name != "None"]
 
-        assert unreal["None"] > max(others), (
-            "in Unreal a sub-type is now at least as common as no sub-type")
+        assert unreal["CowLevel"] == min(unreal.values()), (
+            f"Cow Level is no longer the rarest: {unreal}")
 
-        model_others = [value
-                        for name, value in model.SUBTYPE_SPAWN_WEIGHTS.items()
-                        if name != "None"]
+        assert unreal["Timed"] == unreal["Horde"] == max(unreal.values()), (
+            "Timed and Horde are no longer the joint commonest sub-types")
 
-        assert model.SUBTYPE_SPAWN_WEIGHTS["None"] > max(model_others)
+        assert (model.SUBTYPE_SPAWN_WEIGHTS["Cow Level"]
+                == min(model.SUBTYPE_SPAWN_WEIGHTS.values()))
 
 
 class TestTheEnumTheRollWalks:
-    def test_the_enum_names_the_same_eight_sub_types(self, kind_source):
-        """`RollSubType` walks `ECataclysmDungeonSubType` from 0 to
+    def test_the_enum_names_every_sub_type_the_port_covers_and_no_sub_type(
+            self, kind_source):
+        """`RollSubType` walks `ECataclysmDungeonSubType` from `Timed` to
         `Sacrificial` and asks `SpawnWeightFor` for each. A sub-type added to
         the enum without a weight would never be rolled; one removed would make
-        the port silently narrower."""
+        the port silently narrower.
+
+        `None` IS IN THE ENUM AND NOT IN THE DISTRIBUTION, and that is the whole
+        arrangement this checks. It is what a dungeon entered outside the empire
+        carries, and what a Siege refused by the one-per-city cap becomes, so
+        deleting the value would break both.
+        """
         block = re.search(
             r"enum\s+class\s+ECataclysmDungeonSubType\s*:\s*uint8\s*\{(.*?)\}",
             kind_source, re.DOTALL)
@@ -157,9 +212,28 @@ class TestTheEnumTheRollWalks:
 
         found = dict(re.findall(r"(\w+)\s*=\s*(\d+)", block.group(1)))
 
-        assert set(found) == set(NAMES.values()), (
+        assert set(found) == set(NAMES.values()) | {"None"}, (
             f"the enum names {sorted(found)}, the port covers "
-            f"{sorted(NAMES.values())}")
+            f"{sorted(NAMES.values())} and expects a None beside them")
+
+    def test_the_roll_starts_past_no_sub_type(self, surge_source):
+        """`RollSubType` must not begin its walk at zero.
+
+        Beginning at zero and relying on `SpawnWeightFor` returning zero for
+        `None` would give the same distribution and would read as though no
+        sub-type were still one of the options. The source says which value it
+        starts from, and this is what keeps that true.
+        """
+        source = (SURGE_HEADER.parent / "CataclysmSurge.cpp").read_text(
+            encoding="utf-8")
+
+        assert "ECataclysmDungeonSubType::Timed);" in source, (
+            "UCataclysmSurgeScheduler::RollSubType no longer names Timed as "
+            "the first sub-type it walks")
+
+        assert "for (uint8 Value = 0;" not in source, (
+            "UCataclysmSurgeScheduler::RollSubType walks from zero again, "
+            "which puts no-sub-type back among the options it considers")
 
     def test_sacrificial_is_still_the_last_one(self, kind_source):
         """`RollSubType` stops at `Sacrificial` by name. A sub-type added after
@@ -218,3 +292,76 @@ class TestWhatACowLevelCosts:
         assert "run_days_for" not in branch.group(1), (
             "the model now runs a Cow Level's walk through run_days_for, which "
             "applies the tree's reduction; Unreal still skips the city upgrade")
+def spawn_table_in(document: str) -> dict[str, float]:
+    """The design's spawn table, as names against numbers.
+
+    Same shape of reader as `test_enemy_score_formula.table_after`, kept here
+    rather than imported because the two files guard different documents' tables
+    and one changing its parser should not silently change the other's.
+    """
+    start = document.find(SPAWN_HEADING)
+    assert start != -1, (
+        f"{GDD.name} has no heading beginning {SPAWN_HEADING!r}. The spawn "
+        "distribution has to be stated in the design: that is issue #1293")
+
+    after = document[start + len(SPAWN_HEADING):]
+    stop = re.search(r"^#{1,6} ", after, re.MULTILINE)
+    body = after[:stop.start()] if stop else after
+
+    out: dict[str, float] = {}
+    for line in body.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        name, value = cells[0], cells[1]
+        if not name or not re.fullmatch(r"-?\d+(?:\.\d+)?", value):
+            continue
+        out[name] = float(value)
+    return out
+
+
+@pytest.fixture(scope="module")
+def design() -> str:
+    return read(GDD)
+
+
+class TestTheDesignStatesTheSameDistribution:
+    """The numbers have a design source, and it is the same one the code uses.
+
+    ISSUE #1293 WAS THAT THEY HAD NO SOURCE AT ALL. The distribution lived only
+    in `sim/cataclysm_sim/config.py` and its port, so nobody who owns the design
+    could review it and nothing could be checked against it. Writing it into the
+    document fixes that only until the two drift, which is what these check.
+    """
+
+    def test_the_design_states_every_sub_type_the_model_rolls(
+            self, design, model):
+        stated = spawn_table_in(design)
+
+        assert set(stated) == set(model.SUBTYPE_SPAWN_WEIGHTS), (
+            f"{GDD.name} states {sorted(stated)}, the model rolls "
+            f"{sorted(model.SUBTYPE_SPAWN_WEIGHTS)}")
+
+    def test_the_design_states_the_same_numbers_as_the_model(
+            self, design, model):
+        stated = spawn_table_in(design)
+
+        for name, wanted in model.SUBTYPE_SPAWN_WEIGHTS.items():
+            assert stated.get(name) == pytest.approx(wanted), (
+                f"{name}: {GDD.name} says {stated.get(name)}, the model says "
+                f"{wanted}")
+
+    def test_the_design_does_not_state_a_no_sub_type_spawn_weight(self, design):
+        """The design's OTHER subtype table still has a None row, and should.
+
+        That one is the difficulty weight, and a dungeon entered outside the
+        empire genuinely has no subtype and genuinely adds no difficulty. A None
+        row appearing in the spawn table would mean the two had been merged or
+        the wrong one edited.
+        """
+        stated = spawn_table_in(design)
+
+        assert "None" not in stated, (
+            f"{GDD.name}'s spawn table has a None row. Every dungeon a surge "
+            "creates has a sub-type; the None row belongs to the difficulty "
+            "table above it, which is a different quantity")
