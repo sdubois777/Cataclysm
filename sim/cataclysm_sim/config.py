@@ -392,10 +392,10 @@ class TuningConfig:
     # SO A READER WHO FINDS A PERCENTAGE HERE HAS NOT FOUND AN OVERSIGHT.
     # `docs/DECISIONS.md` carries the same warning for the same reason.
     #
-    # WHERE THESE NUMBERS COME FROM. `docs/Cataclysm_GDD_v2.md` line 3744:
-    # "Deals 1% damage to city defenses and population per day while active.
-    # Increases in power by 10 points per day. Pauses city upgrades. Max 1 per
-    # city." The game reads it the same way in
+    # WHERE THESE NUMBERS COME FROM. The Siege row of the sub-type table in
+    # `docs/Cataclysm_GDD_v2.md`: "Deals 1% damage to city defenses and
+    # population per day while active. Increases in power by 10 points per day.
+    # Pauses city upgrades. Max 1 per city." The game reads it the same way in
     # `CataclysmEmpireRun.h`; this model follows the game rather than the other
     # way round, which is the reverse of this project's usual direction.
     siege_defence_bite_per_day: float = 0.01

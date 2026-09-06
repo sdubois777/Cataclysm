@@ -14,9 +14,10 @@ construction, and the combined defensive ceiling is exactly what #1327 is
 measuring.
 
 THIS IS AN ADDITION AND NOT A PORT, WHICH IS THE REVERSE OF THIS PROJECT'S USUAL
-DIRECTION. There was no model code to copy. Every rule comes from
-`docs/Cataclysm_GDD_v2.md` line 3744 and from the C++ that already implements it
-in `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, so for once the
+DIRECTION. There was no model code to copy. Every rule comes from the Siege row
+of the sub-type table in `docs/Cataclysm_GDD_v2.md` and from the C++ that
+already implements it in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, so for once the
 game is the reference and the model is the follower. Each test below names where
 its rule came from.
 
@@ -55,9 +56,9 @@ def sim_for(tree: EmpireTree = TREE_NONE, tier: int = 1) -> Simulation:
 
 
 class TestWhatItTakesEachDay:
-    """`docs/Cataclysm_GDD_v2.md` line 3744: "Deals 1% damage to city defenses
-    and population per day while active. Increases in power by 10 points per
-    day.\""""
+    """The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`:
+    "Deals 1% damage to city defenses and population per day while active.
+    Increases in power by 10 points per day.\""""
 
     def test_on_the_day_it_arrives_it_takes_the_flat_share_alone(self):
         """The growth counts from the day the Siege arrived, so its first day
@@ -225,7 +226,8 @@ class TestItMatchesTheGamesOwnStatedFigures:
 
 
 class TestOnePerCity:
-    """`docs/Cataclysm_GDD_v2.md` line 3744: "Max 1 per city.\""""
+    """The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`:
+    "Max 1 per city.\""""
 
     def test_a_second_siege_is_never_rolled_onto_one_city(self):
         sim = sim_for()

@@ -699,10 +699,10 @@ will confuse someone later. There was no model code to copy.
 
 | Rule | Source | Modelled? |
 | :-- | :-- | :-- |
-| 1% of maximum defence and population per day it stands | `docs/Cataclysm_GDD_v2.md` line 3744 | yes |
-| damage grows by 10 points per day it has stood | same line, and the owner on 2026-09-05 settling that its "power" means "the damage it does to the city/population" | yes |
-| max 1 per city | same line | yes |
-| pauses city upgrades | same line | **no — see below** |
+| 1% of maximum defence and population per day it stands | the Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md` | yes |
+| damage grows by 10 points per day it has stood | same row, and the owner on 2026-09-05 settling that its "power" means "the damage it does to the city/population" | yes |
+| max 1 per city | same row | yes |
+| pauses city upgrades | same row | **no — see below** |
 
 `CataclysmEmpireRun.h` previously carried a comment saying the behaviour was
 "NOT PORTED FROM THE SIMULATION, BECAUSE THE SIMULATION DOES NOT MODEL IT". That
@@ -786,10 +786,10 @@ Two further rulings on the same day, both recorded on #1327:
 - **The `Siege` sub-type keeps percentage damage**, verbatim: "Keep it as a
   deliberate exception (Recommended)". A siege does not care how thick your walls
   are, which makes it the one threat city-health investment does not protect
-  against. `docs/Cataclysm_GDD_v2.md` line 3744 stands as written and the model
-  matches it rather than the other way round. **That invariance is intended, not
-  a bug**, and is written here so the next person to measure it does not file the
-  issue this one came from.
+  against. The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`
+  stands as written and the model matches it rather than the other way round.
+  **That invariance is intended, not a bug**, and is written here so the next
+  person to measure it does not file the issue this one came from.
 - **What a maxed defensive tree should be worth goes to measurement**, verbatim:
   "Let a session measure and propose (Recommended)". Not an input to this change.
 
@@ -2005,7 +2005,8 @@ comparison above holds whichever it is. Issue
 
 Building the Siege dungeon sub-type for issue
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). The design document has
-exactly one sentence about it, `docs/Cataclysm_GDD_v2.md` line 3732:
+exactly one sentence about it, the Siege row of the sub-type table in
+`docs/Cataclysm_GDD_v2.md`:
 
 > Siege | Deals 1% damage to city defenses and population per day while active.
 > Increases in power by 10 points per day. Pauses city upgrades. Max 1 per city.
