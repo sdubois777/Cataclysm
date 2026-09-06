@@ -84,10 +84,17 @@ def siege_daily_damage(sim, d, city) -> float:
 
     ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
     `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-06 over
-    10,000 campaigns at the settings `siege_urgency` names below, the 105,997
+    10,000 campaigns at the settings `siege_urgency` names below, the 89,652
     Sieges that reached the map were 78% Basic, 11% Quest, 10% Fallen City and
-    1% Cataclysm, about 10.6 a campaign. That is why the callers below apply
+    1% Cataclysm, about 8.97 a campaign. That is why the callers below apply
     this in all three scoring branches instead of only the ordinary one.
+
+    THE RATE FELL FROM 10.6 A CAMPAIGN AND THE FOUR SHARES DID NOT MOVE AT ALL.
+    Issue #1357 changed when the Cataclysm dungeon opens, so campaigns end
+    sooner and fewer dungeons of every kind reach the map. Which kinds carry a
+    Siege is a property of `_roll_subtype` and not of how long a campaign runs,
+    which is why one number moved and the other four did not -- and it is the
+    shares rather than the rate that the sentence above exists to justify.
 
     THE COUNTS THAT USED TO BE HERE -- 114 Basic, 28 Fallen City, 11 Quest and 3
     Cataclysm over twelve campaigns -- were taken before two changes of the same
@@ -154,16 +161,16 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
 
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
-    and static surges of five dungeons every 120 days, the median walk is 13
-    days to an Outpost, 22 to a Bulwark, 34 to a Sanctuary and 123 to the
+    and static surges of five dungeons every 120 days, the median walk is 14
+    days to an Outpost, 23 to a Bulwark, 37 to a Sanctuary and 123 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 12 / 17 / 21 days. Measured on 2026-09-06 over 10,000
-    campaigns and 1,488,436 dungeons, each recorded at the moment it was made;
+    sizes, the slack is 11 / 16 / 18 days. Measured on 2026-09-06 over 10,000
+    campaigns and 1,250,908 dungeons, each recorded at the moment it was made;
     issue #1364.
 
     QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
     THEM FORWARD. The walk lengths are nearly uniform where the median sits --
-    45.2% of Outpost dungeons walk in 12 days or fewer and 50.5% in 13 or fewer
+    49.0% of Outpost dungeons walk in 13 days or fewer and 56.2% in 14 or fewer
     -- so the median is a coin flip between two adjacent days, and a block of
     200 campaigns lands on either side of it at random. That is how this file
     came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
@@ -178,6 +185,27 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     draft of this paragraph and the second, and the guard failed in continuous
     integration rather than a reader finding it a month later. Re-measured on
     `e8b33c2`.
+
+    AND IT MOVED AGAIN, FOR A REASON THAT IS NOT ABOUT WALKS AT ALL. Issue #1357
+    changed WHEN A CAMPAIGN ENDS: the Cataclysm dungeon used to open at a flat
+    total of 8 quest objectives and now opens when half the active Cataclysms,
+    rounded up, have each met their own count -- at tier 1 that is the one
+    active Cataclysm's own number, which is 5, 8 or 10 depending on which one
+    the character drew. Campaigns therefore run to different lengths, the mix of
+    city sizes a surge has left to hit changes with them, and every figure above
+    is an average over that mix. The three medians rose by 1, 1 and 3 days and
+    the sample fell from 1,488,436 dungeons to 1,250,908. **Nothing about a walk
+    changed.** Re-measured over 10,000 campaigns on 2026-09-06; the guard failed
+    first, which is what it is for.
+
+    THE OUTPOST MEDIAN NOW SITS HIGHER INSIDE ITS OWN BIN THAN IT DID, and that
+    is worth knowing before the next change moves it again. 56.2% of Outpost
+    dungeons walk in the stated 14 days or fewer, where the figure was 50.5% at
+    the stated 13. The guard asks for that share to be between 44% and 58%, so
+    the headroom above is now under two points rather than seven and a half. It
+    passes; the next thing that lengthens a campaign is likely to trip it, and
+    the answer then is to re-measure rather than to widen the range. Issue #1389
+    carries what to look at when it does.
 
     THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
     balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.
@@ -307,6 +335,13 @@ def triage(sim, dungeons):
         siege = siege_urgency(sim, d, city, 5.0)
 
         if d.dtype is DungeonType.QUEST:
+            # THIS IS STALE AND IT IS ISSUE #1388. Both halves of the
+            # subtraction stopped meaning what they say when the owner ruled on
+            # 2026-09-06: `quest_objectives_required` is now only a fallback for
+            # a Cataclysm the roster does not name, and the gate reads
+            # `Simulation.cataclysms_complete` rather than this total. It is a
+            # heuristic and it still steers a campaign, so it was left alone
+            # rather than moved in the same change that moved the rule.
             remaining = max(1, cfg.quest_objectives_required - sim.objectives)
             value = 14.0 * (1.0 - 0.6 * danger) * (1.0 + 1.0 / remaining)
             score = value * siege / max(1, d.run_days)
@@ -395,6 +430,13 @@ def lane_aware(sim, dungeons):
         siege = siege_urgency(sim, d, city, 4.0)
 
         if d.dtype is DungeonType.QUEST:
+            # THIS IS STALE AND IT IS ISSUE #1388. Both halves of the
+            # subtraction stopped meaning what they say when the owner ruled on
+            # 2026-09-06: `quest_objectives_required` is now only a fallback for
+            # a Cataclysm the roster does not name, and the gate reads
+            # `Simulation.cataclysms_complete` rather than this total. It is a
+            # heuristic and it still steers a campaign, so it was left alone
+            # rather than moved in the same change that moved the rule.
             remaining = max(1, cfg.quest_objectives_required - sim.objectives)
             value = 14.0 * (1.0 - 0.7 * peril) * (1.0 + 1.0 / remaining)
             score = value * siege / max(1, d.run_days)

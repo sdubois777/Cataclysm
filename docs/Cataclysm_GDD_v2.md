@@ -6103,6 +6103,33 @@ One cleared quest dungeon is one objective. The seals, seeds, essences, cores an
 
   
 
+## **How many Cataclysms must be finished to unlock the Cataclysm dungeon**
+
+A character faces more than one Cataclysm from difficulty tier 2 onwards, and all eight at tier 8. **To unlock the Cataclysm dungeon, meet the quest objectives of half of the Cataclysms you are facing, rounded up.** The project owner ruled it on 2026-09-06, verbatim:
+
+> what if we did something a bit more creative. For instance something like, you have to meet the quest objectives for half of the cataclysms you're facing in order to unlock the cataclysm dungeon. So if you're facing 4, you have to complete 2 quests, 8 would be 4. For odd numbers do something like 3 you need 2, 5 you need 3, 7 you need 4? Since what quest dungeons spawn during a surge, if any, is random, this might make it a bit more interesting.
+
+| Cataclysms faced | Must be finished |
+| --: | --: |
+| 1 | 1 |
+| 2 | 1 |
+| 3 | 2 |
+| 4 | 2 |
+| 5 | 3 |
+| 6 | 3 |
+| 7 | 4 |
+| 8 | 4 |
+
+At one Cataclysm the rule gives one, so it reduces to the single count the table above already states.
+
+**Which half is whichever the player finishes first.** The owner's reason for the rule is that what quest dungeons a surge lands is random, so a player pursues whatever the map offers rather than working through a fixed list. There is no step at which a set is chosen and no penalty for finishing more than the requirement.
+
+**The individual counts stay meaningful, which is the point.** Facing all eight, the four cheapest -- Death, Pestilence, Famine and The Void, at 5 each -- total 20 quest dungeons, and the four dearest -- Demonic, War and Celestial at 10 and Chaos at 8 -- total 38. So the real requirement is somewhere between 20 and 38 depending on what the player is offered and what they take, against 58 if the eight counts were simply added together.
+
+**What this does not settle.** Whether an already-unlocked Cataclysm dungeon re-locks if the number of active Cataclysms rises mid-run. A run is played at a fixed difficulty tier and the tier is what sets the count, so the situation does not arise today.
+
+  
+
 # **XII. Progression System**
 
 ## **Character Leveling**

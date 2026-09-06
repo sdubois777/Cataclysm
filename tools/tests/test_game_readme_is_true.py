@@ -192,6 +192,13 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmCityUpgrade.h",
         "CataclysmCityUpgrade.cpp",
         "CataclysmCityUpgradeTests.cpp",
+        # The eight Cataclysms, added 2026-09-06 for issue #1357. The readme's
+        # empire bullet now has a paragraph on what the layer knows about them
+        # and on the two things it still does not, which is what this test is
+        # really checking.
+        "CataclysmRoster.h",
+        "CataclysmRoster.cpp",
+        "CataclysmRosterTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

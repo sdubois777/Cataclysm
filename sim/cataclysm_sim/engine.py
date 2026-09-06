@@ -256,6 +256,13 @@ class Simulation:
 
         # tallies
         self.objectives = 0
+        #: Objectives earned FOR EACH ACTIVE CATACLYSM, which is what the
+        #: unlock rule reads. `objectives` above is still the run's total and is
+        #: still what `RunResult` reports; the two answer different questions
+        #: and the total cannot answer this one. Every active Cataclysm is a key
+        #: from the start, so a Cataclysm that has never landed a quest dungeon
+        #: reads as 0 rather than as absent. Issues #1324 and #1357.
+        self.objectives_by_type: dict[str, int] = {t: 0 for t in self.active_types}
         self.cleared = 0
         #: Ordinary dungeons cleared, which is what deepens the earned boss.
         #: NOT `cleared`, which counts every kind. See
@@ -836,6 +843,15 @@ class Simulation:
 
         if d.dtype is DungeonType.QUEST:
             self.objectives += 1
+
+            # AND IT COUNTS TOWARDS THE CATACLYSM THAT SENT IT. `source` is set
+            # by `trigger_surge` for every dungeon a wave lands, so a quest
+            # dungeon always names one; the guard is for a dungeon built by hand
+            # in a test, which names none and can only be counted in the total.
+            if d.source:
+                self.objectives_by_type[d.source] = (
+                    self.objectives_by_type.get(d.source, 0) + 1)
+
             self._maybe_open_cataclysm()
 
         if d.dtype is DungeonType.CATACLYSM:
@@ -995,8 +1011,42 @@ class Simulation:
 
         self.last_stand = d
 
+    def cataclysms_complete(self) -> tuple[str, ...]:
+        """Which active Cataclysms have had their own objective count met.
+
+        A CATACLYSM IS FINISHED WHEN ITS OWN NUMBER IS REACHED, and the numbers
+        differ: Death asks for 5 quest dungeons and Demonic for 10. See
+        `TuningConfig.quest_objectives_for`.
+
+        IN THE ROSTER'S DRAWN ORDER, so the answer is stable rather than
+        whatever order a dictionary happens to hold.
+        """
+        cfg = self.cfg
+        return tuple(t for t in self.active_types
+                     if self.objectives_by_type.get(t, 0)
+                     >= cfg.quest_objectives_for(t))
+
     def _maybe_open_cataclysm(self) -> None:
-        """Once the quest objectives are met, the enemy capital opens.
+        """Once HALF the active Cataclysms are finished, the enemy capital opens.
+
+        HALF, ROUNDED UP, of however many are active. The project owner ruled it
+        on 2026-09-06 -- `TuningConfig.cataclysms_required` carries the verbatim
+        words and the worked examples -- and it replaced a flat total of 8 quest
+        dungeons that took no notice of which Cataclysm sent them.
+
+        WHY THE TOTAL COULD NOT EXPRESS IT. Facing four Cataclysms and clearing
+        eight quest dungeons all belonging to one of them satisfies "8
+        objectives" and satisfies none of the ruling: the player has finished at
+        most one Cataclysm and the requirement is two. So this reads
+        `cataclysms_complete`, which counts Cataclysms, and never `objectives`,
+        which counts dungeons.
+
+        THE PLAYER DOES NOT CHOOSE WHICH HALF. Whichever `ceil(N/2)` finish
+        first are the ones that count. The owner's stated reason for the rule is
+        that what a surge lands is random, so the player pursues what the map
+        offers; a chosen set would need a commitment step that does not exist.
+        The ruling did not settle this and `docs/DECISIONS.md` records it as a
+        reading rather than a decision.
 
         IT IS AS DEEP AS THE WORK THE PLAYER CHOSE TO DO. The design document
         says "every dungeon defeated adds one floor to the Cataclysm boss
@@ -1011,7 +1061,7 @@ class Simulation:
         own bonuses and takes none of this; the two are deliberately separate.
         """
         cfg = self.cfg
-        if self.objectives < cfg.quest_objectives_required:
+        if len(self.cataclysms_complete()) < cfg.cataclysms_required():
             return
         if any(x.dtype is DungeonType.CATACLYSM for x in self.dungeons.values()):
             return

@@ -101,10 +101,12 @@ def a_reachable_siege(sim, city, **kw):
     covering the reachable case the first time the roll changed.
 
     THAT WAS ACUTE WHEN THE MARGIN WAS ONE DAY AND IT IS STILL TRUE NOW THAT IT
-    IS NOT. At tier 1 the median walk is 13 days to an Outpost and 34 to a
+    IS NOT. At tier 1 the median walk is 14 days to an Outpost and 37 to a
     Sanctuary, against the 25 and 55 a fresh Siege has left since the owner cut
     the growth on issue #1349 on 2026-09-06; it left 14 and 34 before that, and
-    the median player arrived as the city fell. The margin is wide now, but the
+    the median player arrived as the city fell. Both medians rose by issue
+    #1357, which changed when a campaign ends rather than anything about a walk;
+    `siege_urgency` carries the measurement. The margin is wide now, but the
     roll still crosses it for a deep enough dungeon or a Siege that has already
     stood a while, which is exactly the case this covers.
 

@@ -638,7 +638,7 @@ public:
 	 * WHAT IT ACTUALLY REACHES, measured over 200 campaigns each in the model
 	 * this layer is a port of: about 13 standing at once in ordinary play,
 	 * 45 at the worst; about 117 under the harshest settings the design allows,
-	 * 140 at the worst. At 11 fields a dungeon and 5 a timer that is a few
+	 * 140 at the worst. At 12 fields a dungeon and 5 a timer that is a few
 	 * thousand numbers, which is not a size worth designing around.
 	 *
 	 * IT IS WRITTEN WITH `DungeonTimers` OR NOT AT ALL. See there.
