@@ -725,3 +725,62 @@ def test_a_build_that_did_not_compile_is_reported_as_such_not_as_a_crash():
     assert result.failed
     assert "the build itself failed" in result.summary
 
+
+def test_named_failures_names_the_tests_that_noticed() -> None:
+    """`CLAUDE.md` tells every session to prove a C++ guard with
+    `assert result.named_failures`. Until issue #1455 the attribute did not
+    exist and that line raised `AttributeError`, so the proof never ran."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    built = BuildOutcome(0, "", "Succeeded", ("CataclysmProjectile.cpp",),
+                         False, 12)
+    tests = TestOutcome(22, ("a",) * 20,
+                        ("ItHitsWhatItAimsAt", "ItStopsAtTheWall"))
+    result = CppGuardResult(build=built, tests=tests)
+    assert result.named_failures == ("ItHitsWhatItAimsAt", "ItStopsAtTheWall")
+
+
+def test_named_failures_holds_short_names_unlike_the_python_helper() -> None:
+    """The asymmetry a reader who learns one helper and applies it to the other
+    walks into. `parse_test_log` records what the engine prints, which drops the
+    `Cataclysm.<Group>.` prefix, where `prove_guard` returns a full pytest node
+    id. A membership test written with the prefix matches nothing."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    built = BuildOutcome(0, "", "Succeeded", ("CataclysmProjectile.cpp",),
+                         False, 12)
+    tests = TestOutcome(1, (), ("ItHitsWhatItAimsAt",))
+    result = CppGuardResult(build=built, tests=tests)
+    assert result.named_failures == ("ItHitsWhatItAimsAt",)
+    assert not any(name.startswith("Cataclysm.")
+                   for name in result.named_failures), (
+        "the engine's log holds short names; a test asserting on the full "
+        "Cataclysm.Group.Name form would silently match nothing")
+
+
+def test_named_failures_is_empty_when_the_build_did_not_compile() -> None:
+    """THE REASON TO PREFER IT OVER `failed`. A break that stops the file
+    compiling exits non-zero and `failed` is True, which reads as a guard that
+    fired when no test ran at all. `named_failures` is empty, so a proof written
+    against it cannot record a worthless guard as proven."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    failed_build = BuildOutcome(1, "error C2065", None, (), False, 0)
+    result = CppGuardResult(build=failed_build,
+                            tests=TestOutcome(None, (), ()))
+    assert result.failed, "the existing weaker signal still reports a problem"
+    assert result.named_failures == (), (
+        "a build that never compiled ran no test, so no test noticed anything")
+
+
+def test_named_failures_is_empty_for_a_crashed_run() -> None:
+    """The other way a run measures nothing. Issue #1313 is that a crash used to
+    read as a guard that did not fire; this says the new attribute does not
+    reintroduce the opposite reading either."""
+    from unreal_build import BuildOutcome, CppGuardResult, TestOutcome
+    built = BuildOutcome(0, "", "Succeeded", ("CataclysmProjectile.cpp",),
+                         False, 12)
+    result = CppGuardResult(build=built, tests=TestOutcome(None, (), ()))
+    assert result.crashed
+    assert result.named_failures == ()
+    assert "NO MEASUREMENT" in result.summary, (
+        "an empty named_failures must not be read as a verdict; the summary is "
+        "what says the run did not finish")
+

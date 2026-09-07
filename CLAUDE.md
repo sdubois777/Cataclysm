@@ -29,9 +29,21 @@ cheaper than re-tuning in the editor.
 Run from the repository root unless stated otherwise.
 
 ```bash
-python -m pytest                          # fast test suite, about 65 seconds
+python -m pytest                          # fast test suite, about 6 minutes
 python -m ruff check .                    # lint
 ```
+
+**"About 65 seconds" is what this line said until 2026-09-07, and it had not been
+true for a long time.** Measured that day: **4,745 tests in 349.8 seconds**, five
+minutes fifty, on a developer machine with two other sessions working on it. On
+the continuous integration runner the same suite takes longer still -- nine runs
+measured between 7m30s and 10m10s, which is why the job's cap was raised from ten
+minutes to thirty in [#1452](https://github.com/sdubois777/Cataclysm/pull/1452).
+
+**Nobody knows why the runner is slower than a developer machine**, and nobody
+has run `pytest --durations` on either. That is issue #1451. One trap recorded
+there: the suite's run-to-run variation is larger than what a whole pull request
+contributes, so two total times cannot attribute growth to any change.
 
 Those two are what continuous integration runs. `pytest` from the repository root
 collects `sim/tests/` and `tools/tests/` together. Running `sim/tests/` on its
@@ -66,8 +78,11 @@ more — longer on a machine you are also working on, where it has been seen to
 take 40. Both figures are being revisited in issue #693, which proposes fewer
 campaigns.
 
-Do not run it to check whether a change works; run `pytest`, which is more than
-ten times shorter. Run it when you have deliberately changed the power model, the
+Do not run it to check whether a change works; run `pytest`, which is several
+times shorter -- about six minutes against twenty or more. **This line said "more
+than ten times shorter" while the line above claimed the suite took 65 seconds;
+correcting the one made the other false.** Run it when you have deliberately
+changed the power model, the
 day loop, or a tuning constant, and you need to see what moved. Run it in the
 background and keep working. Python block-buffers when redirected, so use
 `python -u` if you want to watch progress.
@@ -260,6 +275,20 @@ issue #1313, the mirror of the Python one. `result.crashed` is True when the run
 never said how many tests it performed, and `summary` says so rather than
 printing a count of zero that reads like a verdict.
 
+**`named_failures` holds SHORT names here and full ones in the Python helper.**
+The Unreal one is read from the engine's log, which prints
+`ItLobsTheRockFromItsHandRatherThanItsWaist` without the `Cataclysm.Brute.`
+group in front; `prove_guard` returns a whole pytest node id, path and all. A
+membership check written with the group prefix matches nothing and reads as a
+guard that never fired. `result.tests.failed` is the same tuple under its other
+name, and `result.failed` is a bool rather than a list -- iterating it raises
+`TypeError` after the four builds have already been spent.
+
+**That line in the block above used to raise `AttributeError`.** `CppGuardResult`
+had no `named_failures` until issue #1455; both examples were rewritten together
+when issue #1314 added it to the Python side and only one of the two classes
+gained the property. Two sessions lost time to it before anyone read the class.
+
 It breaks the files, builds, refuses to go on unless the build actually compiled
 them, runs the automation tests, restores the files with a modification time
 forced past the break, and rebuilds. Four builds' worth of time, so narrow
@@ -285,9 +314,14 @@ cycle each:
   three times before anyone noticed. Check the exit code and check that the
   output says how many tests were performed.
 - **A passing test may have checked half of what it is named for, and the run
-  says so.** Fifteen tests take a shorter path when the Paragon art packs are
+  says so.** Many tests take a shorter path when the Paragon art packs are
   absent. They report it with `CataclysmTestSkip::ReportSkippedHalf`, and
-  `python tools/unreal_build.py tests` names them after the pass count:
+  `python tools/unreal_build.py tests` names them after the pass count.
+
+  **Do not trust a count written here.** This file said fifteen tests; on
+  2026-09-07 there were 54 calls to that helper across 21 test files, and the
+  number grows with every creature added. The line the run prints is the only
+  figure worth quoting:
 
   ```
   22 tests performed, 22 succeeded, 0 failed. 1 skipped part of what they
@@ -351,6 +385,28 @@ someone still working by accident.
 (`.gitignore` line 83) and no Paragon file is in git, so the art exists only in
 the main checkout at `C:\Projects\Cataclysm`. A worktree never has it, which is
 why the fifteen tests described above report themselves as skipped there.
+
+**No working directory is authoritative, the main checkout included. Read a rule
+you are about to quote out of git.**
+
+```bash
+git fetch origin
+git show origin/development:CLAUDE.md
+git show origin/development:docs/DECISIONS.md
+```
+
+A worktree is a snapshot from when it was made, and the main checkout is only as
+current as the last time somebody pulled it. On 2026-09-07 it was **73 commits
+behind, and its copy of this file was missing 41 lines** -- including the whole
+guard-proof section above. It bit in both directions the same afternoon: two
+greps run there reported a documented attribute absent from `tools/prove_guard.py`
+when the committed file has it twice, so a correct piece of documentation briefly
+looked wrong. Issue #1456.
+
+This matters most for the rules that changed. A session quoting the pre-2026-08-02
+rule that `docs/` is a snapshot rather than the source has read a stale copy, and
+has twice filed work asking the project owner to hand-edit Google Drive documents
+that were already correct in the repository.
 
 **The `master-kit` plugin.** `.claude/settings.json` enables it for this project.
 **Its skills and commands are namespaced, and the prefix is part of the name.** A
