@@ -621,19 +621,37 @@ bool FCataclysmDungeonModeClassForTest::RunTest(const FString& Parameters)
 	}
 
 	// AND NO ORDINARY FLOOR CARRIES THE BOSS. The design places a Gatekeeper at
-	// the end of a dungeon, one per dungeon. Nothing holds a floor count yet --
-	// that is issue #41 -- so the way to keep the promise today is that no
-	// creature the populator can name maps to it.
-	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	// the end of a dungeon, and this loop used to keep that promise by checking
+	// that NO creature the populator can name maps to the Gatekeeper class --
+	// because nothing held a floor count and there was no way to say "the end".
+	//
+	// **THAT IS NO LONGER HOW THE PROMISE IS KEPT, AND THE OLD CHECK WOULD NOW
+	// REFUSE THE FEATURE.** `FCataclysmFloorBrief::bBossAtTheExit` says which
+	// floors have an end, and `FCataclysmDungeonFloorRules::BossAtTheExit`
+	// decides: the last floor of any dungeon, and every floor of an Elite one.
+	// Issue #41.
+	//
+	// WHAT KEEPS IT OFF AN ORDINARY FLOOR IS THAT THE DENSITY CANNOT DRAW ONE.
+	// `FCataclysmFloorPopulator::PackKinds` is every group a floor is made of
+	// and the Gatekeeper is not among them, so the only route onto a floor is
+	// the boss rule.
+	for (const FCataclysmFloorPopulator::FPackKind& Kind :
+		 FCataclysmFloorPopulator::PackKinds())
 	{
-		const ECataclysmDungeonCreature Creature =
-			static_cast<ECataclysmDungeonCreature>(Which);
-
 		TestNotEqual(FString::Printf(
-			TEXT("a %s is not the boss"), CataclysmDungeonCreatureName(Creature)),
-			ACataclysmDungeonGameMode::ClassFor(Creature).Get(),
+			TEXT("the density can draw a %s and it is not the boss"),
+			CataclysmDungeonCreatureName(Kind.Creature)),
+			ACataclysmDungeonGameMode::ClassFor(Kind.Creature).Get(),
 			static_cast<UClass*>(ACataclysmGatekeeperCharacter::StaticClass()));
 	}
+
+	// AND THE BOSS IS STILL SPAWNABLE, which is the other half and is what the
+	// loop above would pass without. A rule that places a Gatekeeper the game
+	// mode cannot spawn puts nothing on the floor and says nothing.
+	TestEqual(TEXT("and a Gatekeeper gives the Gatekeeper class"),
+		ACataclysmDungeonGameMode::ClassFor(
+			ECataclysmDungeonCreature::Gatekeeper).Get(),
+		static_cast<UClass*>(ACataclysmGatekeeperCharacter::StaticClass()));
 
 	// THE CONTROL. Without it the loop above passes on a `ClassFor` that returns
 	// null for everything, which is exactly the failure it is written against.

@@ -280,7 +280,18 @@ bool FCataclysmDungeonModifierEnteringCarriesItTest::RunTest(const FString& Para
 	}
 
 	TestEqual(TEXT("entering carries the dungeon's modifier score over"),
-			  Mode->RunModifierScore(), Dungeon.ModifierScore);
+			  Mode->DungeonModifierScore, Dungeon.ModifierScore);
+
+	// **AND THE NUMBER THE SCORE MODEL READS IS THE FLOOR'S, NOT THE DUNGEON'S.**
+	// Since issue #41's sub-type slice a floor decides its own modifiers:
+	// `FCataclysmDungeonFloorRules` gives a Volatile dungeon a different set on
+	// every floor, and gives any floor carrying the Unstable Dimensions modifier
+	// one extra. For every other dungeon the two numbers are the same, which is
+	// why the check below is against the floor and the check above is against
+	// the dungeon. `Cataclysm.FloorBrief.*` is where the per-floor rules are
+	// covered.
+	TestEqual(TEXT("and the number read back is the floor's own"),
+			  Mode->RunModifierScore(), Mode->FloorBrief.ModifierScore);
 
 	// AND THE SCORE MODEL READS IT OFF THE GAME MODE. This is the last link and
 	// the one that was a hard-coded zero.
@@ -296,7 +307,15 @@ bool FCataclysmDungeonModifierEnteringCarriesItTest::RunTest(const FString& Para
 	const FCataclysmScoredFloor Floor =
 		UCataclysmEnemyScore::FloorFor(Mode, /* DifficultyTier */ 4);
 	TestEqual(TEXT("and the score model reads it back off the game mode"),
-			  Floor.ModifierScore, Dungeon.ModifierScore);
+			  Floor.ModifierScore, Mode->FloorBrief.ModifierScore);
+
+	// AND IT IS NOT ZERO, which is what the whole route exists to stop. Asserting
+	// only that two numbers agree would pass if both were the hard-coded zero
+	// this replaced.
+	TestTrue(FString::Printf(
+				 TEXT("the floor's modifiers are worth %.1f, which is above zero"),
+				 Floor.ModifierScore),
+			 Floor.ModifierScore > 0.0f);
 
 	// AND THE REST OF THAT READING STILL HAPPENS. Four other fields come out of
 	// the same block and none of them was reachable from a test before the

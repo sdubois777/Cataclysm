@@ -7,12 +7,14 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
+#include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Empire/CataclysmEmpireRun.h"
@@ -315,6 +317,20 @@ float ACataclysmDungeonGameMode::ChooseEnemyScale() const
 	return FMath::Max(0.0f, EnemyScale);
 }
 
+FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
+{
+	FCataclysmDungeonIdentity Dungeon;
+	Dungeon.DungeonSeed = ChooseSeed();
+	Dungeon.TotalFloors = ChooseTotalFloors();
+	Dungeon.SubType = DungeonSubType;
+	Dungeon.Layout = ChooseLayout();
+	Dungeon.DifficultyTier = DifficultyTierFor(this);
+	Dungeon.Modifiers = DungeonModifiers;
+	Dungeon.ModifierScore = DungeonModifierScore;
+	Dungeon.ModifierPool = DungeonModifierPool;
+	return Dungeon;
+}
+
 ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 {
 	UWorld* World = GetWorld();
@@ -333,10 +349,22 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 		return nullptr;
 	}
 
+	// WHAT THIS FLOOR OF THIS DUNGEON IS, DECIDED ONCE. `BuildFloor` takes the
+	// layout out of it, `PopulateFloor` takes the boss and the wave, and
+	// `RunModifierScore` takes the modifier score. Deciding it here rather than
+	// in `GoToFloor` is what keeps this function callable on its own, which is
+	// what every test of the geometry does. Issue #41.
+	FloorBrief = FCataclysmDungeonFloorRules::BriefFor(
+		DungeonIdentity(), ChooseFloorNumber());
+
 	FCataclysmFloorRequest Request;
 	Request.DungeonSeed = ChooseSeed();
 	Request.FloorNumber = ChooseFloorNumber();
-	Request.Layout = ChooseLayout();
+
+	// THE BRIEF'S LAYOUT AND NOT `ChooseLayout`, which the brief has already
+	// read. A Horde dungeon is one open space on every floor and every other
+	// dungeon is carved by whatever the setting or the console variable said.
+	Request.Layout = FloorBrief.Layout;
 
 	if (!CurrentFloor->Build(FCataclysmFloorGenerator::Generate(Request)))
 	{
@@ -384,6 +412,8 @@ TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
 		return ACataclysmCorruptedSentinelCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Succubus:
 		return ACataclysmSuccubusCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Gatekeeper:
+		return ACataclysmGatekeeperCharacter::StaticClass();
 	default:
 		// NOT A FALLBACK TO SOMETHING SPAWNABLE, deliberately. A creature added
 		// to the enum and forgotten here should show up as a creature that never
@@ -452,6 +482,18 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->DrawModifiersForRarity();
 		break;
 
+	// THE BOSS, AND ITS NUMBERS COME FROM THE SAME PLACE THE SANDBOX'S DOES.
+	// `ACataclysmGameMode::GatekeeperHealth` and the two beside it are what
+	// `SpawnGatekeepers` already uses, so a Gatekeeper at the bottom of a
+	// dungeon and one in the sandbox are the same creature. Issue #41.
+	case ECataclysmDungeonCreature::Gatekeeper:
+		Enemy->SetHealth(GatekeeperHealth);
+		Enemy->SetArmour(GatekeeperArmour);
+		Enemy->SetAttackDamage(GatekeeperAttackDamage);
+		Enemy->SetRarityStep(RarityStepFor(GatekeeperRarityStep, Enemy));
+		Enemy->DrawModifiersForRarity();
+		break;
+
 	default:
 		break;
 	}
@@ -489,8 +531,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// FIRST, because this is called again every time the floor is replaced.
 	ClearFloorEnemies();
 
+	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
+	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
+	// creatures into one wave. `BuildFloor` decided it; this only spends it.
 	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
-		CurrentFloor->GetPlan(), ChooseEnemyScale());
+		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride =
@@ -553,11 +598,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("Put %d creatures on the dungeon floor in %d groups: %d Imps, %d "
-			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels "
-			 "and %d Succubi. The floor has %d walkable cells and the density "
-			 "asked for %d. No creature stands within %d cells of where the "
-			 "player arrives, and no two group middles are within %d cells of "
-			 "each other."),
+			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels, "
+			 "%d Succubi and %d Gatekeepers. The floor has %d walkable cells and "
+			 "the density asked for %d. No creature stands within %d cells of "
+			 "where the player arrives. It is %s, and its modifiers are worth "
+			 "%.1f."),
 		Spawned, Population.PackCount,
 		Population.HowMany(ECataclysmDungeonCreature::Imp),
 		Population.HowMany(ECataclysmDungeonCreature::Hellhound),
@@ -565,9 +610,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		Population.HowMany(ECataclysmDungeonCreature::AbyssalWarden),
 		Population.HowMany(ECataclysmDungeonCreature::CorruptedSentinel),
 		Population.HowMany(ECataclysmDungeonCreature::Succubus),
+		Population.HowMany(ECataclysmDungeonCreature::Gatekeeper),
 		CurrentFloor->GetPlan().FloorCount(), Population.Wanted,
 		FCataclysmFloorPopulator::LeastCellsFromEntrance,
-		FCataclysmFloorPopulator::LeastCellsBetweenPacks);
+		FloorBrief.bOneWave
+			? TEXT("one wave gathered at the far end")
+			: TEXT("separate encounters spread over the floor"),
+		FloorBrief.ModifierScore);
 
 	return Spawned;
 }
@@ -769,6 +818,21 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// this was hard-zeroed in the score model itself.
 	DungeonModifierScore = Dungeon->ModifierScore;
 
+	// AND WHICH ONES THEY ARE, AND WHAT ELSE THIS DUNGEON COULD HAVE DRAWN.
+	// Both are needed by rules that decide a floor's modifiers rather than a
+	// dungeon's: a Volatile dungeon re-draws them for every floor and needs the
+	// pool, and the Unstable Dimensions modifier adds one per floor and needs to
+	// know whether the dungeon is carrying it. `FCataclysmDungeonFloorRules` is
+	// where both rules live. Issue #41.
+	//
+	// NARROWED ONCE, HERE, rather than on every floor.
+	// `UCataclysmEmpireRun::ModifierPool` is the whole 117-row table and
+	// `PoolFor` cuts it to the Cataclysms this run is facing, which does not
+	// change while the player is inside one dungeon.
+	DungeonModifiers = Dungeon->Modifiers;
+	DungeonModifierPool = UCataclysmDungeonModifierRules::PoolFor(
+		Run->ModifierPool, Run->ActiveCataclysms);
+
 	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
 	// is whatever the last dungeon left behind, and entering a shallower one
 	// while standing deep in a deeper one makes `IsOnTheLastFloor` true straight
@@ -811,7 +875,16 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// are replaced by the next dungeon rather than lingering -- but a player who
 	// LEAVES the empire and walks a plain floor would otherwise still be
 	// fighting creatures carrying the last dungeon's modifier score.
+	//
+	// ALL FOUR AND NOT ONLY THE SCORE. Since issue #41's sub-type slice the
+	// number the score model actually reads is the FLOOR's, not the dungeon's,
+	// so clearing the dungeon's alone would leave the last floor's modifiers in
+	// force on a plain floor. The row keys and the pool go too, or the next
+	// dungeon's floors would draw from the Cataclysms the last run faced.
 	DungeonModifierScore = 0.0f;
+	DungeonModifiers.Reset();
+	DungeonModifierPool.Reset();
+	FloorBrief = FCataclysmFloorBrief();
 }
 
 bool ACataclysmDungeonGameMode::ClearEmpireDungeon()

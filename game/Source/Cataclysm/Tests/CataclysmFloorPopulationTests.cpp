@@ -852,10 +852,32 @@ bool FCataclysmPopulationVarietyTest::RunTest(const FString& Parameters)
 	{
 		const ECataclysmDungeonCreature Creature =
 			static_cast<ECataclysmDungeonCreature>(Which);
+
+		// **THE BOSS IS THE ONE CREATURE THE DENSITY CANNOT DRAW, AND THAT IS
+		// THE DESIGN.** It is placed by `FCataclysmFloorBrief::bBossAtTheExit`
+		// and by nothing else, so it never appears on a floor that was not
+		// asked for one. Expecting it here would demand a Gatekeeper on every
+		// floor of every dungeon, which is what
+		// `ECataclysmDungeonCreature`'s own comment says must not happen.
+		// Issue #41.
+		if (Creature == ECataclysmDungeonCreature::Gatekeeper)
+		{
+			continue;
+		}
+
 		TestTrue(FString::Printf(TEXT("a %s is placed somewhere in the sweep"),
 				 CataclysmDungeonCreatureName(Creature)),
 				 EverSeen.Contains(Creature));
 	}
+
+	// AND IT IS ABSENT, WHICH IS A CLAIM AND NOT THE ABSENCE OF ONE. Skipping it
+	// above only stops the sweep demanding it; this says that over three layouts
+	// and every seed in the sweep, no floor that was not asked for a boss got
+	// one.
+	TestFalse(FString::Printf(
+		TEXT("no boss appeared on any of the %d floors in the sweep, none of "
+			 "which asked for one"), Floors),
+		EverSeen.Contains(ECataclysmDungeonCreature::Gatekeeper));
 
 	return true;
 }

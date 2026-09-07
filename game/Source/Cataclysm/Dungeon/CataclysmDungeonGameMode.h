@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Player/CataclysmGameMode.h"
+#include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Templates/SubclassOf.h"
@@ -51,10 +52,16 @@ class ACataclysmEnemyCharacter;
  * pressing Play gives you, and `IsOnTheLastFloor` says so plainly: no floor
  * count means no bottom. It is the sandbox's behaviour rather than an oversight.
  *
- * WHAT IT DOES NOT DO YET. There is no boss on the last floor -- that is issue
- * #41's side of the join -- and beating a dungeon moves the player nowhere,
- * because there is nowhere to go: the capital hub is issue #48. A player who
- * reaches the bottom is left standing on the floor they beat.
+ * AND THE DUNGEON DECIDES WHAT ITS FLOORS HOLD. `DungeonIdentity` gathers what
+ * the dungeon is and `FCataclysmDungeonFloorRules::BriefFor` turns it into what
+ * one floor of it is: which layout carves it, which modifiers are in force on
+ * it, whether a boss stands at its exit and whether its creatures are one wave.
+ * A Gatekeeper now stands on the last floor of every dungeon, and on every
+ * floor of an Elite one. Issue #41.
+ *
+ * WHAT IT DOES NOT DO YET. Beating a dungeon moves the player nowhere, because
+ * there is nowhere to go: the capital hub is issue #48. A player who reaches
+ * the bottom is left standing on the floor they beat.
  */
 UCLASS(Config = Game)
 class CATACLYSM_API ACataclysmDungeonGameMode : public ACataclysmGameMode
@@ -111,10 +118,14 @@ public:
 	/**
 	 * Which kind of dungeon this is, and what it does differently.
 	 *
-	 * READ ONLY BY ENEMY SCORE SO FAR. Neither changes how a floor is built or
-	 * what stands on it; a Horde dungeon being one big arena is issue #41's
-	 * side of the join. Both are here because the score model takes them and
-	 * Basic with no sub-type is the only combination that adds nothing.
+	 * THE KIND IS READ ONLY BY ENEMY SCORE. It changes what a creature is worth
+	 * and nothing about how a floor is built.
+	 *
+	 * THE SUB-TYPE CHANGES THE FLOOR SINCE 2026-09-07, which this comment used
+	 * to say it did not. `DungeonIdentity` hands it to
+	 * `FCataclysmDungeonFloorRules`, which decides the layout, the modifiers,
+	 * whether a boss stands at the exit and whether the creatures are one wave.
+	 * Three sub-types use it: Horde, Elite and Volatile. Issue #41.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmDungeonType DungeonType = ECataclysmDungeonType::Basic;
@@ -136,9 +147,44 @@ public:
 	 * floor with no empire behind it, and a floor should be able to be told what
 	 * it is standing in. Zero is exactly "no modifiers", because the score model
 	 * adds it as a flat term.
+	 *
+	 * **THE DUNGEON'S, AND NOT THE FLOOR'S.** `RunModifierScore` answers with
+	 * `FloorBrief.ModifierScore` instead, because a Volatile dungeon's modifiers
+	 * change every floor and this would then be a different number on every one
+	 * of them. This stays what the dungeon drew, so the per-floor rules always
+	 * start from the same place rather than from whatever the last floor left
+	 * behind. Issue #41.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	float DungeonModifierScore = 0.0f;
+
+	/**
+	 * The dungeon's own modifiers, as row keys of the modifier table.
+	 *
+	 * CARRIED SO A PER-FLOOR RULE CAN READ THEM. One of the 117 modifiers,
+	 * Unstable Dimensions, gives every floor an extra modifier of its own, and
+	 * whether it fires depends on which modifiers the dungeon drew. The score
+	 * alone cannot answer that.
+	 *
+	 * SET BY `EnterEmpireDungeon` FROM `FCataclysmDungeon::Modifiers`. Empty is
+	 * a real answer: a floor walked without an empire behind it has none.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TArray<FName> DungeonModifiers;
+
+	/**
+	 * Every modifier a floor of this dungeon may draw for itself.
+	 *
+	 * ALREADY NARROWED TO THE CATACLYSMS THE RUN IS FACING, by
+	 * `UCataclysmDungeonModifierRules::PoolFor`, so the rules do not have to
+	 * know what a Cataclysm is. `EnterEmpireDungeon` narrows it once when the
+	 * player walks in rather than on every floor.
+	 *
+	 * EMPTY MEANS NOTHING RE-DRAWS, and every floor carries the dungeon's own
+	 * modifiers. That is what a headless test gets, because filling the run's
+	 * pool needs the modifier DataTable.
+	 */
+	TArray<FCataclysmDungeonModifier> DungeonModifierPool;
 
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
@@ -398,6 +444,34 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TObjectPtr<ACataclysmDungeonFloor> CurrentFloor;
 
+	/**
+	 * What the dungeon is, as much of it as building a floor needs.
+	 *
+	 * GATHERED FROM THE SETTINGS ABOVE rather than from the empire dungeon
+	 * directly, so that pressing Play in `L_Dungeon` and walking a dungeon off
+	 * the empire map go down the same road. `EnterEmpireDungeon` fills those
+	 * settings in from the dungeon; nothing else has to.
+	 */
+	FCataclysmDungeonIdentity DungeonIdentity() const;
+
+	/**
+	 * What the floor being stood on is, decided by `BuildFloor`.
+	 *
+	 * READ BY THREE THINGS. `BuildFloor` takes its layout, `PopulateFloor` takes
+	 * its boss and its wave, and `RunModifierScore` takes its modifier score.
+	 * They are one decision made once rather than three that could disagree.
+	 *
+	 * PUBLIC SO A TEST CAN READ IT. "The floor the player is standing on carries
+	 * these modifiers" is the thing a Volatile dungeon's test has to check, and
+	 * it is not visible in the geometry or in the creatures.
+	 *
+	 * NOT A `UPROPERTY`, the same as `ACataclysmDungeonFloor::Plan` next door
+	 * and for the reason `FCataclysmFloorPlan`'s own comment gives: it is plain
+	 * data holding no object, so it is a plain struct until something actually
+	 * needs reflection. Unreal's header tool refuses a `UPROPERTY` of one.
+	 */
+	FCataclysmFloorBrief FloorBrief;
+
 	// ----------------------------------------------------------------------
 	// Putting creatures on it
 	// ----------------------------------------------------------------------
@@ -547,13 +621,25 @@ public:
 	}
 
 	/**
-	 * What this dungeon's modifiers add to every creature's enemy score.
+	 * What the modifiers in force ON THIS FLOOR add to every creature's enemy
+	 * score.
 	 *
-	 * SET BY `EnterEmpireDungeon` FROM THE DUNGEON ITSELF, the same route the
-	 * sub-type takes, and left at zero for a floor walked without an empire
-	 * behind it -- pressing Play in `L_Dungeon` to look at a floor is not a run.
+	 * **THE FLOOR'S AND NOT THE DUNGEON'S, SINCE 2026-09-07.** For every dungeon
+	 * but a Volatile one they are the same number, because an ordinary dungeon's
+	 * modifiers do not change as it is walked. A Volatile dungeon re-draws them
+	 * on every floor -- "Dungeon modifiers change every floor" is the whole of
+	 * what the design gives that sub-type -- so its creatures are worth a
+	 * different amount on floor 2 than on floor 1. `DungeonModifierScore` above
+	 * is still the dungeon's own. Issue #41.
+	 *
+	 * ZERO UNTIL A FLOOR HAS BEEN BUILT, which is the same answer this gave
+	 * before any dungeon carried modifiers, and the right one: a game mode that
+	 * has not built a floor is not standing in a dungeon.
 	 */
-	virtual float RunModifierScore() const override { return DungeonModifierScore; }
+	virtual float RunModifierScore() const override
+	{
+		return FloorBrief.ModifierScore;
+	}
 
 protected:
 
