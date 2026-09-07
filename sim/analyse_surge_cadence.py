@@ -121,8 +121,9 @@ really is the whole branch. So the two worlds here are:
   * **Explorer whole** -- `TREE_EXPLORER_AS_DESIGNED` as it now ships. Its
     dungeons are deep enough that sixty days no longer collapses them, so depth
     still costs time.
-  * **Explorer speed** -- `TREE_EXPLORER_DAY_NODES_ONLY`, defined in this file:
-    the same day removal with the depth nodes left unbought. A real and cheap
+  * **Explorer speed** -- `TREE_EXPLORER_DAY_NODES_ONLY`, which `config.py` ships
+    since issue [#1420]: the same speed nodes with the depth nodes left unbought.
+    A real and cheap
     build, whose dungeons all collapse to the one-day floor. **Every "Explorer
     maxed" figure this project published before #1399 describes this one**, so
     it is kept in the grid to make those figures comparable.
@@ -178,8 +179,9 @@ from types import SimpleNamespace
 
 from cataclysm_sim import policies
 from cataclysm_sim.config import (TREE_ARCHITECT_AS_DESIGNED,
-                                  TREE_EXPLORER_AS_DESIGNED, TREE_NONE, CityTier,
-                                  DungeonType, SurgeMode, TuningConfig)
+                                  TREE_EXPLORER_AS_DESIGNED,
+                                  TREE_EXPLORER_DAY_NODES_ONLY, TREE_NONE,
+                                  CityTier, DungeonType, SurgeMode, TuningConfig)
 from cataclysm_sim.engine import Simulation, active_cataclysms_for
 from cataclysm_sim.patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 
@@ -252,6 +254,12 @@ COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS", (4, 5, 10, 14, 20), SMOKE)
 #: reach, so it is the floor of what the game's own arithmetic considers sane.
 INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 
+#: The active Cataclysm type count the one-line preset summaries below are
+#: quoted at. **NAMED BECAUSE THREE NODES PAY PER ACTIVE TYPE**, so a preset's
+#: day and floor totals are per-tier figures and a summary without the tier is
+#: not a figure. The grid itself runs at each world's own tier. Issue #1397.
+ACTIVE = 1
+
 #: `(label, tree, difficulty tier)`. The four worlds every cell is measured in.
 #:
 #: TIER 4 IS THE SECOND TIER AND HERE IS WHY. The tier is the number of active
@@ -263,63 +271,18 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
 #: and a no-tree player is already at the floor at every cell there, so it could
 #: say nothing about what the answer costs an uninvested player.
-#: The cheap half of the Explorer branch: its four unconditional speed nodes
-#: and none of its five depth nodes. 56 of the branch's 316 points.
 #:
-#: **THOSE FOUR REMOVE A PERCENTAGE OF RUN TIME AND NOT A NUMBER OF DAYS SINCE
-#: 2026-09-07**, so this preset removes no flat days at all and its speed is
-#: entirely `run_days_mult`. The project owner ruled the shape on 2026-09-06,
-#: verbatim "Change to a percentage"; issue #1383 chose the values. The name is
-#: kept because the sub-build is the same 56 points it always was.
-#:
-#: THIS IS A REAL PLAYER AND THE ONE THE COMPLAINT BELONGS TO. Issue [#1386]
-#: found that `TREE_EXPLORER_AS_DESIGNED` used to model exactly this sub-build
-#: while being named for the whole branch, and [#1399] repaired it -- the preset
-#: now carries the branch's depth nodes as well, so it is the WHOLE branch and
-#: this file no longer has to invent one. What the repair leaves without a name
-#: is the sub-build itself, which is what this preset is for: a player who buys
-#: the cheap speed nodes and stops, and every "Explorer maxed" figure this
-#: project quoted before #1399 describes it rather than a fully invested player.
-#:
-#: **ITS DUNGEONS NO LONGER COLLAPSE TO THE ONE-DAY FLOOR**, and that sentence
-#: stood here until 2026-09-07. The four nodes it is made of became a percentage
-#: of run time on that date -- the project owner ruled the shape on 2026-09-06,
-#: verbatim "Change to a percentage" -- so this sub-build is still cheap and
-#: still fast and no longer flat. Issue #1383. Being bought at 56 of 316 points
-#: is the half of that finding the ruling did not address.
-#:
-#: **THE FOUR EXPLICIT ZEROES IN THE `replace` BELOW ARE LOAD-BEARING.**
-#: `replace` carries across every field it is not told to change, so naming only
-#: `floor_delta` left this preset silently holding `Infinite Depths` and
-#: `Sovereign's Haste` -- +20 floors and a fifth day node it is documented as not
-#: having. Issue [#1416] found and fixed that.
-#:
-#: DEFINED HERE RATHER THAN IN `config.py` because it is a question this file
-#: asks, not a preset the model needs, and this file changes no constant.
-#: **THE PER-TYPE FIELDS ARE ZEROED TOO AND THAT IS NOT TIDINESS.** Issue
-#: [#1397] gave `TREE_EXPLORER_AS_DESIGNED` a per-active-Cataclysm-type half for
-#: its days and its floors, and `replace` copies whatever it is not told to
-#: change. Left alone, this preset would have quietly gained `Sovereign's Haste`
-#: -- a fifth day-removal node worth ten more points, so no longer 56 -- and
-#: `Infinite Depths`, which would have put +20 floors on it at tier 1 and +180 at
-#: tier 8, when the whole point of it is that it has none. **It is the four
-#: unconditional nodes and nothing else, at every tier**, which is what makes it
-#: comparable across the worlds below.
-TREE_EXPLORER_DAY_NODES_ONLY = replace(
-    TREE_EXPLORER_AS_DESIGNED,
-    name="Explorer day nodes only (#1386)",
-    floor_delta=0.0,
-    floor_delta_per_type=0.0,
-    run_days_flat_per_type=0.0,
-    run_days_flat_per_type_cap=0.0,
-)
-
-#: The active Cataclysm type count the one-line preset summaries below are
-#: quoted at. **NAMED BECAUSE THREE NODES PAY PER ACTIVE TYPE**, so a preset's
-#: day and floor totals are per-tier figures and a summary without the tier is
-#: not a figure. The grid itself runs at each world's own tier. Issue #1397.
-ACTIVE = 1
-
+#: **THE SUB-BUILD WORLD IS A SHIPPED PRESET AND IS NO LONGER DEFINED HERE.**
+#: `TREE_EXPLORER_DAY_NODES_ONLY` was `replace(TREE_EXPLORER_AS_DESIGNED, ...)`
+#: in this file until issue [#1420] moved it into `sim/cataclysm_sim/config.py`,
+#: where every one of its twelve fields is written out. `dataclasses.replace`
+#: carries across every field it is not told to change, so the copy silently
+#: gained a fifth day-removal node and +20 floors at difficulty tier 1 when
+#: issue [#1397] added those fields to the preset it copied -- and separately,
+#: `sim/analyse_board_empty_surge.py` could not measure this build at all,
+#: because using it would have meant copying a definition rather than importing
+#: one. Both problems were about where it lived; neither was about what it is
+#: worth, and no value moved when it moved.
 WORLDS = (
     ("no tree, tier 1", TREE_NONE, 1),
     ("Explorer speed, t1", TREE_EXPLORER_DAY_NODES_ONLY, 1),
