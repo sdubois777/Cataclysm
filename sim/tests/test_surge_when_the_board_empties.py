@@ -9,15 +9,19 @@ dungeon that detonated undefeated both count. A narrower reading -- fire only on
 a clear -- was proposed and the owner overruled it, so the tests below assert
 the broad rule and one of them asserts the narrow one is NOT what was built.
 
-Three things about it are worth guarding and each has a class here:
+Five things about it are worth guarding and each has a class here:
 
   * the trigger fires on an empty board and only on an empty board;
   * `surge_interval_min` brakes it, and a braked trigger is delayed rather than
     lost;
+  * it advances the escalation counter as a scheduled surge does, which is why
+    it takes no flag of its own;
   * the 120-day clock is still there. That is not decoration: a Quest dungeon
     and a Fallen City dungeon never leave the board on their own, so a trigger
     that REPLACED the clock would give a player who ignores one FEWER surges
-    than today.
+    than today;
+  * over whole campaigns the rule adds waves and never removes one, and the
+    setting that turns it off really turns it off.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ import dataclasses
 import pytest
 
 from cataclysm_sim import policies
-from cataclysm_sim.config import TuningConfig
+from cataclysm_sim.config import SurgeMode, TuningConfig
 from cataclysm_sim.engine import DungeonType, Simulation
 
 #: Kinds `Simulation._resolve` never takes off the board. A Quest dungeon
@@ -229,6 +233,61 @@ class TestTheMinimumGapBrakes:
             "board-empty trigger as well as the floor under the escalating "
             "surge modes, so moving it needs the sweep in "
             "sim/analyse_board_empty_surge.py re-run and issue #1406 updated.")
+
+
+class TestWhatItDoesToTheEscalationCounter:
+    """`_maybe_surge_on_empty_board` takes no flag of its own, unlike
+    `city_fall_advances_escalation`. The reasoning in its docstring is a claim
+    about the code and is worth a guard.
+    """
+
+    def test_an_empty_board_surge_advances_the_counter(self):
+        """It IS the scheduled surge arriving early, so it counts as one."""
+        sim = parked(quiet())
+        before = sim.surge_index
+
+        sim.step(do_nothing)
+
+        assert sim.surges_from_empty_board == 1
+        assert sim.surge_index == before + 1, (
+            "an empty-board surge did not advance surge_index. It replaces the "
+            "scheduled wave rather than adding to it -- trigger_surge resets "
+            "next_surge_day from today -- so it counts as one surge; see "
+            "Simulation._maybe_surge_on_empty_board")
+
+    def test_under_static_surges_the_counter_changes_nothing(self):
+        """**WHY NO FLAG WAS ADDED.** Only STATIC has ever been measured, here
+        or anywhere, and under STATIC the counter is read by neither the gap
+        nor the count. So the choice above cannot move any figure on record.
+        """
+        cfg = quiet()
+        assert cfg.surge_mode.value == "static"
+        sim = Simulation(cfg, seed=1)
+
+        gap = sim.surge_gap()
+        count = sim.surge_count()
+        sim.surge_index += 50
+        assert sim.surge_gap() == gap, (
+            "surge_gap now depends on surge_index under STATIC, so an "
+            "empty-board surge advancing the counter changes the cadence and "
+            "needs its own flag after all")
+        assert sim.surge_count() == count, (
+            "surge_count now depends on surge_index under STATIC")
+
+    def test_it_cannot_outrun_the_floor_the_escalating_modes_already_have(self):
+        """The worry behind `city_fall_advances_escalation` is an event-driven
+        surge speeding the game up without limit. It does not apply here,
+        because both the trigger and `surge_gap` are floored at the same
+        `surge_interval_min`, so the fastest cadence this rule can reach is the
+        fastest cadence ACCELERATING could already reach."""
+        cfg = dataclasses.replace(TuningConfig(),
+                                  surge_mode=SurgeMode.ACCELERATING)
+        sim = Simulation(cfg, seed=1)
+        sim.surge_index = 500          # far past any real campaign
+
+        assert sim.surge_gap() >= cfg.surge_interval_min, (
+            "surge_gap no longer floors at surge_interval_min, so the two "
+            "brakes are no longer the same number")
 
 
 class TestTheClockIsStillThere:

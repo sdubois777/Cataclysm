@@ -485,7 +485,14 @@ def pooled(measured: dict[str, dict], world_index: int, min_gap: float,
     cells = [measured[_cell_key(world_index, min_gap, on, seed0)]
              for _, seed0 in BLOCKS]
     keys = [k for k, v in cells[0].items() if isinstance(v, (int, float))]
-    return {k: statistics.fmean([c[k] for c in cells]) for k in keys}
+    out = {k: statistics.fmean([c[k] for c in cells]) for k in keys}
+
+    # A LONGEST UNBROKEN STRETCH IS A MAXIMUM AND NOT A MEAN. Averaging
+    # two blocks' worst cases gives a number that is neither block's
+    # answer and understates the real worst case, which is the figure
+    # section 6 reads to say the clock has to stay.
+    out["longestStuck"] = max(c["longestStuck"] for c in cells)
+    return out
 
 
 # ---------------------------------------------------------------------------
