@@ -238,9 +238,15 @@ def comment() -> str:
 
     Only the leading `#` of each line is stripped, so a `#1420` inside the prose
     survives as written.
+
+    **THE ANCHOR IS THE ASSIGNMENT AND NOT THE `EmpireTree(` CALL**, so that a
+    preset built from something else still has its comment read. Anchoring on
+    the call made a proof of that rule report four ERRORS from this fixture
+    instead of four failures from the checks that use it, which hid what the
+    comment did or did not say behind a broken extraction.
     """
     source = CONFIG.read_text(encoding="utf-8")
-    anchor = "TREE_EXPLORER_DAY_NODES_ONLY = EmpireTree("
+    anchor = "TREE_EXPLORER_DAY_NODES_ONLY = "
     assert source.count(anchor) == 1, (
         f"{anchor!r} appears {source.count(anchor)} times in config.py")
     block = source[:source.index(anchor)].rsplit("\n\n", 1)[-1]
