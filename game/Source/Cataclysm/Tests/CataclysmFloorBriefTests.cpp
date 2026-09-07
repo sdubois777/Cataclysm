@@ -774,6 +774,16 @@ bool FCataclysmFloorBriefHordeCrowdTest::RunTest(const FString& Parameters)
 	// separate a wave floor from an ordinary one are that its groups stand
 	// closer than that rule allows, and that its creatures are gathered around
 	// one point instead of spread over the floor.
+	//
+	// **BOTH WERE PROVED BY BREAKING THEM, AND THE FIRST ATTEMPT WAS A NO-OP.**
+	// Swapping the wave's `Occupied` check in `FCataclysmFloorPopulator::Populate`
+	// for the ordinary floor's `Claimed` check changes nothing, because
+	// `Claimed` is only FILLED on an ordinary floor -- so the break consults a
+	// set that is always empty and every test still passes. It reads exactly
+	// like a test that cannot fail. Turning the spacing rule back on for a wave
+	// needs the fill AND the check, and done that way this test fails. The
+	// other break, reversing the sort that orders candidate cells by distance
+	// from the wave site, also fails it.
 	int32 Measured = 0;
 	float WorstWaveSpread = 0.0f;
 	float BestOrdinarySpread = 1000.0f;
@@ -1334,6 +1344,179 @@ bool FCataclysmFloorBriefEnteringCarriesThePoolTest::RunTest(const FString& Para
 			  Mode->DungeonModifierPool.Num(), 0);
 	TestEqual(TEXT("and the floor's own score"),
 			  Mode->RunModifierScore(), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefRealDungeonTest,
+	"Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefRealDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **EVERY OTHER TEST IN THIS FILE BUILDS ITS DUNGEON BY HAND.** All of them
+	// would pass while a dungeon that a surge actually landed on a city never
+	// reached the rules at all, because the sub-type has to cross from
+	// `FCataclysmDungeon` in the empire layer onto the game mode and then into
+	// `DungeonIdentity`. This is the only test that walks a dungeon off the map.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+
+	Run->Begin(/* Seed */ 3, ECataclysmSurgeMode::Static,
+			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"),
+				  Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	Mode->SetEmpireRunForTests(Run);
+
+	// **THE SUB-TYPE IS SET ON THE DUNGEON RATHER THAN SEARCHED FOR.** Waiting
+	// for a surge to roll each of the three would be a sweep over seeds, and
+	// what is being checked is the route from a dungeon on the map to the rules,
+	// which is the same route whatever the roll gave.
+	const int32 DungeonId = Run->Dungeons[0].DungeonId;
+
+	// FOUR FLOORS AND AN EMPTY DENSITY. This test is about what the brief says,
+	// not about what stands on the floor, and it builds sixteen floors -- four
+	// of each of four dungeons. At the designed density that is several thousand
+	// spawned characters for nothing, and the crowd itself is measured by
+	// `AHordeFloorsCreaturesAreOneCrowdAndNotSeveralEncounters` from a plan,
+	// with no world at all.
+	//
+	// THE BOSS IS STILL PLACED AT A DENSITY OF ZERO, which is deliberate and is
+	// asserted by `TheBossStandsOnTheWayDownAndIsNotOneOfTheCrowd`, so the boss
+	// half of this test is not weakened by emptying the floor.
+	const int32 Floors = 4;
+	Run->Dungeons[0].Floors = Floors;
+	Mode->EnemyScale = 0.0f;
+
+	struct FCase
+	{
+		ECataclysmDungeonSubType SubType;
+		const TCHAR* Name;
+	};
+	const TArray<FCase> Cases = {
+		{ ECataclysmDungeonSubType::Horde, TEXT("Horde") },
+		{ ECataclysmDungeonSubType::Elite, TEXT("Elite") },
+		{ ECataclysmDungeonSubType::Volatile, TEXT("Volatile") },
+		{ ECataclysmDungeonSubType::None, TEXT("no sub-type") } };
+
+	for (const FCase& Case : Cases)
+	{
+		Run->Dungeons[0].SubType = Case.SubType;
+
+		if (!TestTrue(FString::Printf(TEXT("a %s dungeon is entered"), Case.Name),
+					  Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+
+		// THE SUB-TYPE CROSSED. Without this the three checks below could all
+		// pass on a game mode that was still carrying the last case's sub-type.
+		TestEqual(FString::Printf(TEXT("the %s dungeon's sub-type reached the "
+									   "rules"), Case.Name),
+				  static_cast<int32>(Mode->DungeonIdentity().SubType),
+				  static_cast<int32>(Case.SubType));
+
+		// AND THE FLOOR BEING STOOD ON IS THE ONE THE RULES DESCRIBE.
+		TestEqual(FString::Printf(TEXT("and the %s dungeon's floor 1 brief is "
+									   "the one the rules give"), Case.Name),
+				  KeysOf(Mode->FloorBrief),
+				  KeysOf(FCataclysmDungeonFloorRules::BriefFor(
+							 Mode->DungeonIdentity(), 1)));
+
+		TArray<FString> PerFloor;
+		TArray<bool> Bosses;
+		TArray<int32> Layouts;
+		for (int32 Floor = 1; Floor <= Floors; ++Floor)
+		{
+			Mode->GoToFloor(Floor);
+			PerFloor.Add(KeysOf(Mode->FloorBrief));
+			Bosses.Add(Mode->FloorBrief.bBossAtTheExit);
+			Layouts.Add(static_cast<int32>(Mode->FloorBrief.Layout));
+		}
+
+		int32 BossFloors = 0;
+		for (const bool bBoss : Bosses)
+		{
+			BossFloors += bBoss ? 1 : 0;
+		}
+
+		int32 ArenaFloors = 0;
+		for (const int32 Layout : Layouts)
+		{
+			ArenaFloors +=
+				(Layout == static_cast<int32>(ECataclysmFloorLayout::Arena))
+					? 1 : 0;
+		}
+
+		const int32 DistinctSets = TSet<FString>(PerFloor).Num();
+
+		AddInfo(FString::Printf(
+			TEXT("a %s dungeon of %d floors off the map: %d boss floors, %d "
+				 "Arena floors, %d different modifier sets"),
+			Case.Name, Floors, BossFloors, ArenaFloors, DistinctSets));
+
+		switch (Case.SubType)
+		{
+		case ECataclysmDungeonSubType::Horde:
+			TestEqual(TEXT("every floor of a Horde dungeon off the map is an "
+						   "Arena"), ArenaFloors, Floors);
+			TestEqual(TEXT("and it still has one boss, on its last floor"),
+					  BossFloors, 1);
+			break;
+
+		case ECataclysmDungeonSubType::Elite:
+			TestEqual(TEXT("every floor of an Elite dungeon off the map ends "
+						   "with a boss"), BossFloors, Floors);
+			break;
+
+		case ECataclysmDungeonSubType::Volatile:
+			TestTrue(FString::Printf(
+						 TEXT("a Volatile dungeon off the map carried %d "
+							  "different modifier sets over %d floors"),
+						 DistinctSets, Floors),
+					 DistinctSets > 1);
+			break;
+
+		default:
+			// **THE CONTROL, AND IT IS THE SAME DUNGEON ON THE SAME MAP.** One
+			// boss on the last floor, no Arena unless the setting says so, and
+			// one modifier set for the whole dungeon.
+			TestEqual(TEXT("a dungeon with no sub-type has one boss floor"),
+					  BossFloors, 1);
+			TestEqual(TEXT("and no floor is forced to an Arena"), ArenaFloors, 0);
+			TestEqual(TEXT("and every floor carries the same modifiers"),
+					  DistinctSets, 1);
+			break;
+		}
+
+		Mode->LeaveEmpireDungeon();
+	}
 
 	return true;
 }
