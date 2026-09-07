@@ -111,24 +111,31 @@ half of it is what the answer costs an uninvested one.
 
 **"AN INVESTED PLAYER" IS TWO DIFFERENT PLAYERS AND BOTH ARE MEASURED.** Issue
 [#1386] found that `TREE_EXPLORER_AS_DESIGNED` -- the preset every campaign
-figure this project has quoted for "Explorer maxed" was measured against -- is
-not the Explorer branch at full investment. It is one 56-point sub-build of it:
-the four unconditional day-removal nodes, with their total overstated at 70 days
-where the branch's own is 60, and **none of the branch's five depth nodes**,
-which add about fifty floors to every dungeon at tier 1. So this file measures
-both, and the world labels say which:
+figure this project quoted for "Explorer maxed" was measured against -- was not
+the Explorer branch at full investment. It modelled one 56-point sub-build of
+it: the four unconditional day-removal nodes, their total overstated at 70 days
+where the branch's own is 60, and **none of the branch's five depth nodes**.
+[#1399] repaired the preset, which now carries 60 flat days and +40 floors and
+really is the whole branch. So the two worlds here are:
 
-  * **Explorer speed** -- `run_days_flat = 70`, no floor change. What
-    `config.py` ships and what every earlier figure describes. Every Basic
-    dungeon collapses to the one-day floor at every city size, so depth stops
-    meaning time at all.
-  * **Explorer whole** -- `run_days_flat = 60`, `floor_delta = +50`, the numbers
-    `sim/analyse_explorer_shape.py` uses on [#1383] so the two grids can be read
-    against each other. Its dungeons are deep enough that sixty days no longer
-    collapses them.
+  * **Explorer whole** -- `TREE_EXPLORER_AS_DESIGNED` as it now ships. Its
+    dungeons are deep enough that sixty days no longer collapses them, so depth
+    still costs time.
+  * **Explorer speed** -- `TREE_EXPLORER_DAY_NODES_ONLY`, defined in this file:
+    the same day removal with the depth nodes left unbought. A real and cheap
+    build, whose dungeons all collapse to the one-day floor. **Every "Explorer
+    maxed" figure this project published before #1399 describes this one**, so
+    it is kept in the grid to make those figures comparable.
 
-**Neither of those is the shape the branch is about to have.** [#1383] measured
-what shape the walk-time reduction should be and the owner has ruled that the
+**THE FLOOR BONUS IS +40 AND NOT +50.** #1386's node table sums to +40 --
+20 + 10 + 20 + 0 - 10 -- while its prose said +50, and
+`sim/analyse_explorer_shape.py` measured #1383 at +50. That was raised on #1386
+and #1399 settled on +40, which is what the preset now carries and what this
+file measures. **A figure here and a figure on #1383 therefore differ by ten
+floors of investment** and are not interchangeable.
+
+**Neither world is the shape the branch is about to have.** [#1383] measured
+what shape the walk-time reduction should be, and the owner has ruled that the
 four unconditional nodes become a percentage of run time rather than a fixed
 subtraction. **The per-point numbers are not settled and nothing is
 implemented**, so nothing here measures it, and a cadence chosen on this grid
@@ -256,47 +263,33 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
 #: and a no-tree player is already at the floor at every cell there, so it could
 #: say nothing about what the answer costs an uninvested player.
-#: The whole Explorer branch, which is NOT what `TREE_EXPLORER_AS_DESIGNED`
-#: models. Issue [#1386]: that preset removes 70 flat days where the branch's own
-#: unconditional total is 60, and credits it with none of its five depth nodes,
-#: which add about 50 floors to every dungeon at tier 1. It is one 56-point
-#: speed sub-build with its day count overstated, and #1386's words for a
-#: campaign run under it are "a player who does not exist".
+#: The cheap half of the Explorer branch: its four unconditional day-removal
+#: nodes and none of its five depth nodes. 56 of the branch's 316 points.
 #:
-#: THE TWO ARE DIFFERENT PLAYERS AND BOTH ARE MEASURED HERE, because every
-#: campaign figure this project has ever quoted for "Explorer maxed" -- including
-#: the ones on [#4] and [#1090] -- describes the sub-build, and dropping it would
-#: make this grid incomparable with all of them.
+#: THIS IS A REAL PLAYER AND THE ONE THE COMPLAINT BELONGS TO. Issue [#1386]
+#: found that `TREE_EXPLORER_AS_DESIGNED` used to model exactly this sub-build
+#: while being named for the whole branch, and [#1399] repaired it -- the preset
+#: now carries the branch's depth nodes as well, so it is the WHOLE branch and
+#: this file no longer has to invent one. What the repair leaves without a name
+#: is the sub-build itself, which is what this preset is for: a player who buys
+#: the cheap speed nodes and stops. Its dungeons collapse to the one-day floor,
+#: and every "Explorer maxed" figure this project quoted before #1399 describes
+#: it rather than a fully invested player.
 #:
-#: DEFINED HERE RATHER THAN IN `config.py` ON PURPOSE. Repairing the preset
-#: changes a tuning constant, #1386 defers that deliberately until the shape
-#: ruling on [#1383] lands, and this file changes no constant.
-#:
-#: THE NUMBERS ARE #1383'S, so this grid is directly comparable with the one in
-#: its comment: `sim/analyse_explorer_shape.py` uses `flat=60.0,
-#: floor_delta=50.0`. **#1386's own node table sums to +40 and not +50** --
-#: 20 + 10 + 20 + 0 - 10 -- which is a discrepancy in that issue rather than in
-#: this file, and it is raised there. +50 is used here because matching the
-#: published measurement matters more than picking a side.
-#:
-#: TIER 1 ONLY. One of the five depth nodes, Infinite Depths, scales with the
-#: number of active Cataclysms, so the branch's floor bonus is larger at tier 4
-#: and #1386 has not settled by how much. Inventing one is what `CLAUDE.md`
-#: forbids, so this world is measured at tier 1 and the tier-4 row is left to
-#: whoever settles it.
-TREE_EXPLORER_WHOLE_BRANCH = replace(
+#: DEFINED HERE RATHER THAN IN `config.py` because it is a question this file
+#: asks, not a preset the model needs, and this file changes no constant.
+TREE_EXPLORER_DAY_NODES_ONLY = replace(
     TREE_EXPLORER_AS_DESIGNED,
-    name="Explorer whole branch (#1386)",
-    run_days_flat=60.0,
-    floor_delta=50.0,
+    name="Explorer day nodes only (#1386)",
+    floor_delta=0.0,
 )
 
 WORLDS = (
     ("no tree, tier 1", TREE_NONE, 1),
-    ("Explorer speed, t1", TREE_EXPLORER_AS_DESIGNED, 1),
+    ("Explorer speed, t1", TREE_EXPLORER_DAY_NODES_ONLY, 1),
     ("no tree, tier 4", TREE_NONE, 4),
-    ("Explorer speed, t4", TREE_EXPLORER_AS_DESIGNED, 4),
-    ("Explorer whole, t1", TREE_EXPLORER_WHOLE_BRANCH, 1),
+    ("Explorer whole, t4", TREE_EXPLORER_AS_DESIGNED, 4),
+    ("Explorer whole, t1", TREE_EXPLORER_AS_DESIGNED, 1),
     ("Architect def., t1", TREE_ARCHITECT_AS_DESIGNED, 1),
 )
 
@@ -601,7 +594,7 @@ def section_1_walk_days() -> dict:
 
     tables = {}
     for tree in (TREE_NONE, TREE_EXPLORER_AS_DESIGNED,
-                 TREE_EXPLORER_WHOLE_BRANCH):
+                 TREE_EXPLORER_DAY_NODES_ONLY):
         tables[tree.name] = walk_day_table(tree)
         print(f"\n  {tree.name}  (flat days removed: {tree.run_days_flat:g})")
         print(f"    {'kind':<12}{'tier':<11}{'floors':>10}{'walk days':>12}"
@@ -953,12 +946,14 @@ def settings_lines() -> list[str]:
         f"  days per craft                  {cfg.craft_days}",
         f"  tier width gained per craft     {cfg.craft_power_gain_frac:.2f}",
         f"  lethality mode                  {cfg.lethality_mode.value}",
-        f"  Explorer speed sub-build        run_days_flat="
-        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g}, floors "
-        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} -- what config.py ships",
         f"  Explorer whole branch           run_days_flat="
-        f"{TREE_EXPLORER_WHOLE_BRANCH.run_days_flat:g}, floors "
-        f"{TREE_EXPLORER_WHOLE_BRANCH.floor_delta:+g} -- issues #1386 and #1383",
+        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g}, floors "
+        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} -- what config.py ships "
+        "since #1399",
+        f"  Explorer day nodes only         run_days_flat="
+        f"{TREE_EXPLORER_DAY_NODES_ONLY.run_days_flat:g}, floors "
+        f"{TREE_EXPLORER_DAY_NODES_ONLY.floor_delta:+g} -- the 56-point "
+        "sub-build, issue #1386",
         f"  surge_count_max                 raised to the knob (ships at "
         f"{SHIPPED_COUNT_CAP})",
         f"  campaigns per block             {TRIALS}",
@@ -1014,8 +1009,8 @@ def main() -> None:
     print("WHAT THE RUN SAYS")
     print("=" * 118)
 
-    speed = walk[TREE_EXPLORER_AS_DESIGNED.name]
-    whole = walk[TREE_EXPLORER_WHOLE_BRANCH.name]
+    speed = walk[TREE_EXPLORER_DAY_NODES_ONLY.name]
+    whole = walk[TREE_EXPLORER_AS_DESIGNED.name]
     speed_basics = [speed[(DungeonType.BASIC, t)]["walk"] for t in CITY_TIERS]
     whole_basics = [whole[(DungeonType.BASIC, t)]["walk"] for t in CITY_TIERS]
     clamped = all(w == (1, 1) for w in speed_basics)

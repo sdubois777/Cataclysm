@@ -2560,8 +2560,8 @@ def test_the_settings_block_states_every_condition(cadence_run):
                      f"campaigns per block             {ns['TRIALS']}"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}")
-    for expected in ("Explorer speed sub-build        run_days_flat=70",
-                     "Explorer whole branch           run_days_flat=60"):
+    for expected in ("Explorer whole branch           run_days_flat=60",
+                     "Explorer day nodes only         run_days_flat=60"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}. Issue #1386 "
             "found that the shipped preset is one sub-build of the branch "
