@@ -98,7 +98,7 @@ The owner ruled the step of four on 2026-09-07 and it stands. **It now prices th
 weight band rather than the individual row**, which changes the outcome
 substantially:
 
-| Weight | Rows written (chest) | Share of draws, per row (before) | Share of draws, per band (now) |
+| Weight | Benefit rows written (chest) | Share of benefit draws, per row (before) | Share of benefit draws, per band (now) |
 | :-: | --: | --: | --: |
 | 1 | 39 | 0.9% | **1.2%** |
 | 2 | 154 | 14.5% | **4.7%** |
@@ -120,7 +120,7 @@ and 1,684, and a uniform draw over the four bands would give 1,000 each.
 
 **Per row, weights 3 and 4 came out at the same rate.** Four times as many weight
 3 rows are written as weight 4 ones, which cancelled the step between exactly
-those two rungs. A "Moderate" pair and a "Common" pair were met equally often,
+those two rungs. A "Moderate" benefit and a "Common" one were met equally often,
 which no reading of the design supports.
 
 **Per band is what keeps the drawback's draw meaningful.** The drawback is drawn
@@ -167,15 +167,23 @@ is recorded as a consequence, not smoothed away.
 
 ### What the research settles and what it does not
 
-**Settled by the genre: the structure.** Path of Exile's Scourge league (3.16)
-is the same mechanic. An item gained "a pair of Scourged Modifiers; one
-beneficial and one detrimental", and each of the three transformations
+**Settled by the genre: that the two halves should be tied at all, and that a
+floor is a shape the genre has shipped.** Path of Exile's Scourge league (3.16)
+is the closest published mechanic. An item gained "a pair of Scourged Modifiers;
+one beneficial and one detrimental", and each of the three transformations
 "guarantees a minimum tier of beneficial and detrimental mods equal to the number
-of times it has been transformed" — one tier drives both halves. Scourge also
-shows the deliberate exception: the Blood Crucible's Anomalous Aura could raise
-the beneficial mod a tier and Stabilising Energy lower the detrimental one, so
-skewing the pair was something a player earned rather than something the roll
-handed out. The same shape recurs wherever the genre sells power for danger:
+of times it has been transformed". **That is a floor rather than a match**, which
+is worth stating plainly because the first attempt here built a match.
+
+**It settles the direction and not the detail.** Scourge's floor is a common one
+applied to both halves; this one ties the drawback's floor to the benefit's own
+weight. So the precedent supports tying them and supports a floor over an
+equality, and does not decide the rest.
+
+Scourge also shows the deliberate exception: the Blood Crucible's Anomalous Aura
+could raise the beneficial mod a tier and Stabilising Energy lower the detrimental
+one, so skewing the pair was something a player earned rather than something the
+roll handed out. The same shape recurs wherever the genre sells power for danger:
 Path of Exile's map modifiers pay item quantity in proportion to how dangerous
 the modifier is, and Last Epoch's Corruption raises monster health and damage and
 item rarity off one dial.
