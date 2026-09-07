@@ -250,9 +250,16 @@ It now reads "**(cap 100%)**". The cap is sized against the two largest Loot
 Quantity effects in the design document: `Bounty`, 15 points at +5% each for
 **+75%**, and `The Hoarder`, a Tier 1 capstone option worth **+100%** on its own.
 At the cap, Speed Runner's 10 points buy +100% where the keystone's single point
-buys +50%, so the keystone stays ten times the effect per point — which is the
-ordering [#1390](https://github.com/sdubois777/Cataclysm/issues/1390) said had
-been inverted.
+buys +50%, so the keystone is **five times** the effect per point — 50% against
+10%. That is the ordering
+[#1390](https://github.com/sdubois777/Cataclysm/issues/1390) said had been
+inverted, restored.
+
+**Capping it below the keystone's 50% total, which is the other reading of that
+issue, would make it a dead node.** At 50% over 10 points it would pay 5% a
+point, exactly `Bounty`'s rate, while also carrying a condition `Bounty` does
+not. A ten-point node has to be worth more in total than a one-point keystone
+and less per point, and +100% is the smallest round figure that does both.
 
 **This is arithmetic and genre precedent, not a measurement, and it cannot be
 one here.** `EmpireTree` in `sim/cataclysm_sim/config.py` has no loot field at
