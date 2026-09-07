@@ -151,9 +151,9 @@ The final ability in each branch is a powerful capstone passive. These are not m
 
 ### Tier 1: The Scout
 
-- **Pacing (Max 10 pts):** -1 days from dungeon run time per point (Min 1).
+- **Pacing (Max 10 pts):** -2.5% of dungeon run time per point, multiplicative (Min 1).
 - **Eyes of the Empire (Max 10 pts):** +5% Magic Find per point.
-- **NOTABLE: Fleet Footed:** -5 days from dungeon run time.
+- **NOTABLE: Fleet Footed:** -12% of dungeon run time, multiplicative.
 - **NOTABLE: Field Depot (Rank 1):** A Stash appears every 30 floors in dungeons.
 - **NOTABLE: Tactical Entry:** If a dungeon has more than 50 floors, the days it takes to run are halved.
 
@@ -170,14 +170,14 @@ The final ability in each branch is a powerful capstone passive. These are not m
 ### Tier 3: The Trailblazer
 
 - **Architect of Greed (Max 20 pts):** +1 floors to dungeons per point.
-- **Overclock (Max 20 pts):** -1 day from dungeon run time per point.
+- **Overclock (Max 20 pts):** -2.5% of dungeon run time per point, multiplicative.
 - **NOTABLE: Field Depot (Rank 2):** A Stash appears every 15 floors.
 - **NOTABLE: Temporal Efficiency:** Every 5 points invested in the **Artisan** branch increases loot quantity by 10%.
 - **NOTABLE: The High Roller:** For every 10 floors **Added** to a dungeon, gain a 5% chance for the Boss to drop an additional Legendary or above item.
 
 ### Tier 4: Master Explorer
 
-- **Temporal Mastery (Max 25 pts):** -1 Day from dungeon run time per point.
+- **Temporal Mastery (Max 25 pts):** -2.5% of dungeon run time per point, multiplicative.
 - **Manifest Wealth (Max 25 pts):** +1% Magic Find per floor cleared in the current dungeon.
 - **NOTABLE: Field Depot (Rank 3):** A Stash appears every 5 floors.
 - **DECISION NOTABLE: Auto-Seller:** Items hidden by your loot filter are automatically sold for 25% gold value **OR** **Auto-Shatter:** Items hidden by your loot filter are automatically converted into crafting materials upon drop.

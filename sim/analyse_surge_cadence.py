@@ -263,8 +263,14 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
 #: and a no-tree player is already at the floor at every cell there, so it could
 #: say nothing about what the answer costs an uninvested player.
-#: The cheap half of the Explorer branch: its four unconditional day-removal
-#: nodes and none of its five depth nodes. 56 of the branch's 316 points.
+#: The cheap half of the Explorer branch: its four unconditional speed nodes
+#: and none of its five depth nodes. 56 of the branch's 316 points.
+#:
+#: **THOSE FOUR REMOVE A PERCENTAGE OF RUN TIME AND NOT A NUMBER OF DAYS SINCE
+#: 2026-09-07**, so this preset removes no flat days at all and its speed is
+#: entirely `run_days_mult`. The project owner ruled the shape on 2026-09-06,
+#: verbatim "Change to a percentage"; issue #1383 chose the values. The name is
+#: kept because the sub-build is the same 56 points it always was.
 #:
 #: THIS IS A REAL PLAYER AND THE ONE THE COMPLAINT BELONGS TO. Issue [#1386]
 #: found that `TREE_EXPLORER_AS_DESIGNED` used to model exactly this sub-build
@@ -272,9 +278,21 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: now carries the branch's depth nodes as well, so it is the WHOLE branch and
 #: this file no longer has to invent one. What the repair leaves without a name
 #: is the sub-build itself, which is what this preset is for: a player who buys
-#: the cheap speed nodes and stops. Its dungeons collapse to the one-day floor,
-#: and every "Explorer maxed" figure this project quoted before #1399 describes
-#: it rather than a fully invested player.
+#: the cheap speed nodes and stops, and every "Explorer maxed" figure this
+#: project quoted before #1399 describes it rather than a fully invested player.
+#:
+#: **ITS DUNGEONS NO LONGER COLLAPSE TO THE ONE-DAY FLOOR**, and that sentence
+#: stood here until 2026-09-07. The four nodes it is made of became a percentage
+#: of run time on that date -- the project owner ruled the shape on 2026-09-06,
+#: verbatim "Change to a percentage" -- so this sub-build is still cheap and
+#: still fast and no longer flat. Issue #1383. Being bought at 56 of 316 points
+#: is the half of that finding the ruling did not address.
+#:
+#: **AND IT STILL CARRIES `Infinite Depths`, WHICH ITS NAME DENIES.** `replace`
+#: with `floor_delta=0.0` clears only the tier-independent half of the tree's
+#: depth, so this preset adds +20 floors at one active Cataclysm type and +160
+#: at eight. Left as it is rather than repaired here, because changing it would
+#: move the figures issue [#1395] published. Issue [#1415] is the repair.
 #:
 #: DEFINED HERE RATHER THAN IN `config.py` because it is a question this file
 #: asks, not a preset the model needs, and this file changes no constant.
@@ -295,6 +313,12 @@ TREE_EXPLORER_DAY_NODES_ONLY = replace(
     run_days_flat_per_type=0.0,
     run_days_flat_per_type_cap=0.0,
 )
+
+#: The active Cataclysm type count the one-line preset summaries below are
+#: quoted at. **NAMED BECAUSE THREE NODES PAY PER ACTIVE TYPE**, so a preset's
+#: day and floor totals are per-tier figures and a summary without the tier is
+#: not a figure. The grid itself runs at each world's own tier. Issue #1397.
+ACTIVE = 1
 
 WORLDS = (
     ("no tree, tier 1", TREE_NONE, 1),
@@ -558,8 +582,15 @@ def walk_day_table(tree) -> dict:
 
     THE COW LEVEL COLUMN IS NOT DECORATION. `Simulation._walk_days` routes that
     sub-type around `run_days_for` entirely -- "time to complete is doubled and
-    cannot be reduced" -- so it is the one kind of dungeon an Explorer's 70 flat
-    days do not touch, at a spawn weight of 7 in 100.
+    cannot be reduced" -- so it is the one kind of dungeon an Explorer's
+    reduction does not touch, at a spawn weight of 7 in 100.
+
+    **THE DEPTH AND THE DAYS ARE BOTH READ PER TIER**, through
+    `EmpireTree.floors_added` and `EmpireTree.days_removed`. Three nodes in
+    `docs/Empire_Development_Tree_Final.json` pay per active Cataclysm type, so
+    the plain fields behind those two accessors are each only half an answer,
+    and `tools/tests/test_the_tree_is_read_per_tier.py` fails on a production
+    file that reads either of them directly. Issue #1397.
     """
     cfg = base_config(tree=tree)
     sim = Simulation(cfg, seed=0)
@@ -624,7 +655,8 @@ def section_1_walk_days() -> dict:
                  TREE_EXPLORER_DAY_NODES_ONLY):
         tables[tree.name] = walk_day_table(tree)
         print(f"\n  {tree.name}  (flat days removed at {active} active "
-              f"Cataclysm types: {tree.days_removed(active):g})")
+              f"Cataclysm types: {tree.days_removed(active):g}, walk "
+              f"multiplier x{tree.run_days_mult:.4f})")
         print(f"    {'kind':<12}{'tier':<11}{'floors':>10}{'walk days':>12}"
               f"{'as a Cow Level':>17}")
         for (dtype, tier), cell in sorted(
@@ -985,15 +1017,17 @@ def settings_lines() -> list[str]:
         # would describe half the grid.
         f"  Explorer whole branch           days removed="
         f"{TREE_EXPLORER_AS_DESIGNED.days_removed(1):g} at tier 1 and "
-        f"{TREE_EXPLORER_AS_DESIGNED.days_removed(4):g} at tier 4, floors "
+        f"{TREE_EXPLORER_AS_DESIGNED.days_removed(4):g} at tier 4, walk "
+        f"x{TREE_EXPLORER_AS_DESIGNED.run_days_mult:.4f}, floors "
         f"{TREE_EXPLORER_AS_DESIGNED.floors_added(1):+g} and "
         f"{TREE_EXPLORER_AS_DESIGNED.floors_added(4):+g} -- what config.py "
-        "ships since #1399, per tier since #1397",
+        "ships since #1399, per tier since #1397, a multiplier since #1383",
         # THE SUB-BUILD IS THE SAME AT EVERY TIER, deliberately: it holds none
         # of the branch's per-active-type nodes, which is what makes it
         # comparable between the tier 1 and tier 4 worlds.
         f"  Explorer day nodes only         days removed="
-        f"{TREE_EXPLORER_DAY_NODES_ONLY.days_removed(ACTIVE):g}, floors "
+        f"{TREE_EXPLORER_DAY_NODES_ONLY.days_removed(ACTIVE):g}, walk "
+        f"x{TREE_EXPLORER_DAY_NODES_ONLY.run_days_mult:.4f}, floors "
         f"{TREE_EXPLORER_DAY_NODES_ONLY.floors_added(ACTIVE):+g} at every "
         "tier -- the 56-point sub-build, issue #1386",
         f"  surge_count_max                 raised to the knob (ships at "

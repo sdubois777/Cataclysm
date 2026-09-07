@@ -118,6 +118,7 @@ def penetration_run():
                                   "analyse_siege_dose.py",
                                   "analyse_quest_move_chance.py",
                                   "analyse_explorer_shape.py",
+                                  "analyse_explorer_rate.py",
                                   "analyse_surge_cadence.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
@@ -2905,9 +2906,15 @@ def test_the_noise_floor_uses_six_disjoint_blocks(cadence_run):
 def test_the_settings_block_states_every_condition(cadence_run):
     """A FIGURE WITHOUT ITS CONDITIONS IS NOT A FIGURE, and this project has
     retracted balance numbers for exactly that. The two that get lost are the
-    ones that are not obvious from the axes: that the Explorer branch is held
-    at the flat 70 days issue #1383 proposes replacing, and that
-    `surge_count_max` was raised so the count axis means what it says.
+    ones that are not obvious from the axes: what the Explorer branch does to a
+    walk, and that `surge_count_max` was raised so the count axis means what it
+    says.
+
+    **THE BRANCH USED TO BE A FLAT 70 DAYS AND THE BLOCK USED TO SAY SO.** Issue
+    #1383 replaced the four unconditional day-removal nodes with a percentage on
+    2026-09-07, so the block states a day total and a walk multiplier, and both
+    are checked. A grid that printed only the flat half would look unchanged
+    while the thing it was measured against had moved by a factor of four.
     """
     printed, ns = cadence_run
     for expected in ("policy                          triage",
@@ -2922,22 +2929,35 @@ def test_the_settings_block_states_every_condition(cadence_run):
     # **THE WHOLE-BRANCH LABEL IS PER TIER SINCE ISSUE #1397** and this file
     # measures at tiers 1 and 4, so it states both. It used to read
     # `run_days_flat=60`, which was the tier-independent half and was wrong at
-    # every tier: the branch removes 70 days at tier 1 and 90 at tier 4.
+    # every tier.
     #
-    # **THE SUB-BUILD'S 60 IS UNCHANGED AND THAT IS THE POINT OF IT.** It holds
-    # none of the branch's per-active-type nodes, so it is the same player at
-    # every tier and the two tier worlds are comparable. Issue #1397 briefly
-    # gave it +20 floors and a fifth day node by inheritance; see its
+    # **THE SUB-BUILD IS THE SAME AT EVERY TIER AND THAT IS THE POINT OF IT.**
+    # It holds none of the branch's per-active-type nodes, so it is the same
+    # player at every tier and the two tier worlds are comparable. Issue #1397
+    # briefly gave it +20 floors and a fifth day node by inheritance; see its
     # definition in `analyse_surge_cadence.py`.
-    for expected in ("Explorer whole branch           days removed=70 at "
-                     "tier 1 and 90 at tier 4",
-                     "Explorer day nodes only         days removed=60, "
-                     "floors +0 at every tier"):
+    #
+    # **AND THE WALK MULTIPLIER, WHICH IS WHERE THE BRANCH'S SPEED LIVES SINCE
+    # 2026-09-07.** The four unconditional nodes became a percentage of run
+    # time, so the day totals fell to Sovereign's Haste alone and a block
+    # stating only them would read as if the branch had stopped mattering.
+    # Issue #1383.
+    for expected in ("Explorer whole branch           days removed=10 at "
+                     "tier 1 and 30 at tier 4",
+                     "Explorer day nodes only         days removed=0, "
+                     "walk x0.2186, floors +0 at every tier",
+                     "walk x0.2186"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}. Issue #1386 "
             "found that the shipped preset is one sub-build of the branch "
             "and not the branch, so a grid measured against either has to "
-            "say which.")
+            "say which; issue #1383 made the branch a multiplier, so the "
+            "multiplier has to be in the block as well as the day total.")
+    assert printed.count("walk x0.2186") == 2, (
+        "both Explorer rows in the settings block should carry the walk "
+        "multiplier. The two presets differ in their depth nodes and not in "
+        "their speed, and a block that showed it once would read as if only "
+        "one of them had it.")
     assert "raised to the knob" in printed, (
         "the settings block no longer says surge_count_max was lifted.")
 

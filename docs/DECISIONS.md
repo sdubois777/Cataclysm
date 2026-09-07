@@ -2,6 +2,306 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — The Explorer branch's walk-time percentage is -2.5% per point, and Speed Runner gains a cap
+
+**Affects:** `docs/Empire_Development_Tree_Final.json` (five node descriptions),
+`docs/Empire_Skill_Tree_Keystones.md`, `sim/cataclysm_sim/config.py`
+(`TREE_EXPLORER_AS_DESIGNED`), `sim/analyse_explorer_shape.py`, and the new
+`sim/analyse_explorer_rate.py`. Issues
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) and
+[#1390](https://github.com/sdubois777/Cataclysm/issues/1390).
+
+The entry of 2026-09-06 below records the project owner's ruling that these four
+nodes become a percentage, and says the per-point values were **not** ruled and
+that nothing should ship on the strength of the illustration in the analysis.
+This entry chooses them. **The values here are not the owner's and can be
+overruled**; the shape is the owner's and is not in question.
+
+### What the four nodes now say
+
+| Node | Points | Was | Is |
+| :-- | --: | :-- | :-- |
+| Temporal Mastery | 25 | -1 Day from dungeon run time per point | **-2.5% of dungeon run time per point, multiplicative** |
+| Overclock | 20 | -1 day from dungeon run time per point | **-2.5% of dungeon run time per point, multiplicative** |
+| Pacing | 10 | -1 days from dungeon run time per point (Min 1) | **-2.5% of dungeon run time per point, multiplicative (Min 1)** |
+| Fleet Footed | 1 (keystone) | -5 days from dungeon run time | **-12% of dungeon run time, multiplicative** |
+
+At full investment that is `0.975 ** 55 × 0.88`, which is **x0.2186** — a
+dungeon takes 21.9% of the days its floor count would otherwise cost. The
+Explorer branch now removes **no unconditional flat days at all**; the only
+fixed-day node left in it is `Sovereign's Haste`, which pays per active
+Cataclysm type and is one of the six the ruling left alone.
+
+**The word "multiplicative" is in each description on purpose.** 55 points at
+-2.5% is `0.975 ** 55 = 0.248` and not `1 - 55 × 0.025`, which is negative. A
+description that leaves it out is a description a reader will add up.
+
+### Why -2.5% and not something else
+
+Two constraints bound the total, and they pull in opposite directions.
+`sim/analyse_explorer_rate.py` computes both from the engine's own formula
+rather than from a table.
+
+**The lower bound is x0.1251.** Walk time is a whole number of days, so a
+reduction that is too steep pushes the shallow end of the ordinary dungeon range
+back onto the one-day minimum — the collapse this change exists to remove,
+reached by a different route. The binding case is the shallowest ordinary Basic
+dungeon, 8 floors, which needs `8 × m` to round up past one day.
+
+**The upper bound is x0.2222**, and it is the owner's own worked example of the
+whole stack. The 2026-09-06 ruling reads "a 50 floor dungeon that only takes you
+a couple days" as covering the empire tree plus city upgrades plus the
+situational nodes, and its arithmetic landed on **three days** and accepted it. A
+51-floor dungeon with the tree, `Opportunist`, `The Delver` and one Explorer city
+upgrade reaches three days at x0.2222 and four days above it.
+
+**The keystone is not chosen separately.** `Fleet Footed` removed 5 days where a
+basic point removed 1, so it was worth exactly 5 basic points. The ruling changed
+the shape and not the weights, so its percentage is whatever preserves that ratio
+under a multiplicative design: `1 - 0.975 ** 5` is 11.9%, written as -12%, which
+comes to 5.05 basic points. That leaves the per-point value as the only free
+number.
+
+**At half-percent granularity only two values reach the window**, because tying
+the keystone to the basic nodes makes the total `(1-p) ** 60` and half a percent
+on p moves it by about a third:
+
+| Per point | Keystone | Total | 40-floor walk | Distinct walk lengths, 8-40 floors |
+| --: | --: | --: | --: | --: |
+| -2.0% | -10% | x0.2963 | 12 days | 10 |
+| **-2.5%** | **-12%** | **x0.2186** | **9 days** | **8** |
+| -3.0% | -14% | x0.1610 | 7 days | 6 |
+| -3.5% | -16% | x0.1184 | 5 days | 5 |
+
+-2.0% and -3.5% are outside the window. The choice is between -2.5% and -3.0%,
+and **-2.5% is taken because it is the weaker of the two and every axis outside
+the window favours the weakest reduction that satisfies both bounds.**
+
+### The measurement
+
+4,000 campaigns a row, eight disjoint blocks of 500, at difficulty tier 1 with
+the `triage` policy and static surges every 120 days for 5 dungeons. Those are
+`experiments.exp_calibrate`'s settings and what the balance report uses; the bare
+`TuningConfig` default of 4 dungeons a surge is a value calibration rejects, so a
+figure here and a figure at 4 are not comparable.
+
+| Walk-time reduction | Mean walk days | Dungeons walked in one day | Cities lost of 25 | Days with an empty board | Reached the Last Stand | Campaign length |
+| :-- | --: | --: | --: | --: | --: | --: |
+| No empire tree | 23.6 | **0%** | 13.65 ±0.13 | 7.10% ±0.11 | 45.4% | 1309 |
+| The flat subtraction this replaces | 10.2 | **86.1%** | 3.85 ±0.06 | 7.27% ±0.17 | 4.1% | 1385 |
+| x0.150 | 15.2 | **0%** | 3.72 ±0.06 | 2.77% ±0.11 | 2.8% | 1131 |
+| x0.1610, which is -3% per point | 15.9 | **0%** | 4.18 ±0.06 | 2.56% ±0.11 | 2.6% | 1123 |
+| **x0.2186, chosen, -2.5% per point** | **19.0** | **0%** | **7.50 ±0.09** | **1.48% ±0.07** | **11.4%** | **1093** |
+| x0.250 | 20.7 | **0%** | 9.37 ±0.10 | 1.12% ±0.06 | 22.0% | 1078 |
+| x0.300 | 23.5 | **0%** | 12.50 ±0.11 | 0.59% ±0.04 | 41.3% | 1068 |
+
+The plus-or-minus figures are standard errors over the 4,000 individual
+campaigns. The standard deviation of the eight block means is printed beside them
+in the script's own output and agrees; issue
+[#1379](https://github.com/sdubois777/Cataclysm/issues/1379) records why a gap
+between two blocks is not a noise floor.
+
+**The collapse is gone, and that is the ruled fix, measured.** Under the flat
+subtraction **86.1% of every dungeon the campaigns built walked in one day**, so
+floor count bought the player nothing. Under **every** percentage tested,
+including ones far steeper than the one chosen, it is **zero**.
+
+**Cities lost rises with every weakening of the reduction**, and the gaps are
+tens of standard errors apart: 3.72, 4.18, 7.50, 9.37 and 12.50 at x0.150,
+x0.1610, x0.2186, x0.250 and x0.300, against **13.65** for a player with no tree
+at all. The chosen x0.2186 leaves the empire losing **55%** of what an untreed
+empire loses, where the flat subtraction left it at **28%**, and it takes the
+share of campaigns reaching the Last Stand from **4.1%** to **11.4%**.
+
+**Days with an empty board fall the same way**: 2.56% at x0.1610 against 1.48% at
+x0.2186. The direction agrees with what issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) measured — a slower
+player has fewer empty days, because at a fixed cadence a faster one only empties
+a nearly-empty board sooner. The absolute figures are far lower than that issue's
+44% to 61%, because it measured a preset that carried none of the branch's depth
+nodes; the preset has carried them since
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386), and depth is work.
+
+**So the choice between x0.2186 and x0.1610 is settled by measurement and not by
+where they sit in the window.** x0.2186 is better on both metrics the owner named.
+
+**Two cautions on reading the table across shapes rather than down it.** The flat
+subtraction's campaigns last **1385 days** and the percentages' last 1068 to
+1131, so "cities lost" is not directly comparable between the two shapes — a
+longer campaign has more chances to lose a city. And nothing here says the shape
+change on its own moves the threat: x0.150 loses **3.72** cities where the flat
+subtraction loses **3.85**, a gap of 0.13 against a standard error of 0.09 on
+the difference. What moves the threat is how weak the total is, which is what
+issue [#1383](https://github.com/sdubois777/Cataclysm/issues/1383) found and what
+the 2026-09-06 ruling says.
+
+**Nothing here fixes the Cataclysm being harmless**, and the 2026-09-06 ruling
+says so in as many words. What it fixes is that floor count affects pace again.
+
+### What it costs the uninvested player
+
+**Nothing, and the untreed row in the table above is the measurement rather than
+the argument.** A player with no tree has `run_days_flat` 0 and `run_days_mult`
+1.00 whatever the branch's nodes say, so changing what those nodes do cannot move
+their walk times. The row is run in the same batch as every candidate for exactly
+that reason, and it comes out at **13.65 ±0.13 cities lost of 25**, a **24.15%**
+win rate and **7.10%** of days with an empty board.
+
+Investment still has to be worth something and it plainly is: even at x0.300, the
+weakest reduction measured, the invested player loses 12.50 cities against 13.65
+and wins 29.1% against 24.15%. At the chosen x0.2186 it is 7.50 cities and
+48.75%.
+
+**The untreed control has itself moved since issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) measured 16.29
+cities lost**, because the day loop changed several times on 2026-09-06 and
+2026-09-07. Every row in the table above was taken in one run at one commit, so
+they are comparable with each other and not with figures from another day.
+
+### The genre research behind the shape and the size
+
+`CLAUDE.md` requires the sources to be named here rather than only in the issue.
+
+**Checked in the course of this decision:**
+
+- **Diablo 3, cooldown reduction.** Percentage sources combine multiplicatively,
+  `CDR = 1 - (1 - CDR1) × (1 - CDR2)`, so two 50% sources give 75% and not 100%,
+  and no stack of smaller effects reaches 100%. The full formula is
+  `max(0.5; (1 - CDR) × (Base Cooldown - Flat CDR))`: a flat subtraction applied
+  **first**, then a multiplicative term, then an absolute floor.
+  [Maxroll, Cooldown and Resource Cost Reduction Mechanics](https://maxroll.gg/d3/resources/cooldown-and-resource-cost-reduction-mechanics).
+  **`Simulation.run_days_for` already computes that skeleton**, which is why this
+  change needed no new mechanism.
+- **Path of Exile, cooldown recovery rate.** Time compression is a rate on
+  recovery rather than a subtraction of seconds: `New Cooldown = Base Cooldown /
+  (1 + rate)`, so 50% increased recovery takes a 6 second cooldown to 4 seconds.
+  That form approaches zero and never reaches it, whatever is stacked.
+  [Path of Exile Wiki, Cooldown](https://pathofexile.fandom.com/wiki/Cooldown),
+  [Game8, Cooldown Recovery Rate Explained](https://game8.co/games/Path-of-Exile-2/archives/552944).
+- **Diablo 2, magic find.** The genre's answer to a reward stat that scales
+  without bound: the stat is uncapped and its **effect** asymptotes, by
+  `Trunc((mf × 250) / (mf + 250)) + 100` for uniques, so 1000% magic find buys
+  200% and infinite magic find buys 250%.
+  [Diablo Wiki, Magic find diminishing returns](https://diablo2.diablowiki.net/Magic_find_diminishing_returns),
+  [Diablo Wiki, Magic find](https://diablo.fandom.com/wiki/Magic_find).
+
+**Recorded on [#1383](https://github.com/sdubois777/Cataclysm/issues/1383) and
+not re-checked here**, listed so the shape ruling's own evidence is in `docs/`:
+Path of Exile movement speed as a percentage prefix on boots with six tiers from
+10% to 35%; Torchlight Infinite movement speed as
+`Base × (1 + non-additional bonuses) × (1 + additional 1) × (1 + additional 2)`;
+Last Epoch `Increased Movement Speed` as an item prefix and Haste as +30%.
+
+### What the research settles and what is a judgement
+
+**The research settles the shape**, and the shape was already ruled: every one of
+those games expresses clear-speed investment as a rate on a base quantity and
+never as a fixed subtraction from the content's length, and where a flat
+subtraction exists it is applied first and is small against the base. It also
+settles that a rate is chosen **because it cannot reach zero**.
+
+**The research does not settle the size, and three things here are judgements:**
+
+1. **How large the rate should be.** None of those four games has a strategic
+   layer where the time the player spends inside content is also the clock the
+   threat advances on. In all four, clearing faster is close to a pure gain; here
+   it directly removes the pressure the empire layer is made of. That is this
+   game's own question and is answered by the window and the campaigns above.
+2. **Keeping the keystone worth 5 basic points.** Defensible as "change only what
+   was ruled", and it is what makes -12% rather than a round -10% or -20%.
+3. **Speed Runner's cap of +100%.** See below; nothing in this repository can
+   measure it.
+
+**One thing worth saying plainly: a 78.1% reduction from one branch of one tree
+is a heavier compression than the sources describe.** The Path of Exile movement
+speed prefix recorded on
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) tops out at 35% on
+boots, and Diablo 3's cooldown reduction is built so that no stack of sources
+reaches 100% at all. Neither says what a strategy layer's speed budget should be,
+and this one is set by the owner's own ruling that a 50-floor dungeon reaches a
+couple of days with the whole stack. **It is the weakest reduction that ruling
+allows**, which is the only defence offered for it being this large.
+
+### Issue #1390: Speed Runner gains a cap of 100%
+
+Three Explorer nodes pay the player Loot Quantity for having removed days, and
+**changing the shape of the reduction changes what all three are worth**, which
+is why this landed in the same change.
+
+`Speed Runner` (10 points) says "+5% bonus Loot Quantity per 2 days under default
+run time per point" and stated no ceiling. Its sibling keystone `Efficiency
+Premium` has always said "cap 50%". "Days under default run time" grows with the
+dungeon's depth, and the Explorer branch's own depth nodes add +40 floors at
+difficulty tier 1 and +180 at tier 8, so the payout grew without limit:
+
+| Dungeon's default depth | Floors with the branch's depth nodes | Under the flat subtraction | Under the percentage |
+| --: | --: | --: | --: |
+| 8 floors | 48 | +1175% | +975% |
+| 20 floors | 60 | +1475% | +1225% |
+| 40 floors | 80 | +1750% | +1600% |
+| 125 floors | 165 | +1750% | +3275% |
+
+**The shape change does not repair it and makes the deepest case worse**, which
+is what [#1390](https://github.com/sdubois777/Cataclysm/issues/1390) predicted:
+most of a dungeon's floor count is still "under default run time" whatever shape
+the reduction takes, and a percentage keeps compressing where a flat 70 runs out.
+
+It now reads "**(cap 100%)**". The cap is sized against the two largest Loot
+Quantity effects in the design document: `Bounty`, 15 points at +5% each for
+**+75%**, and `The Hoarder`, a Tier 1 capstone option worth **+100%** on its own.
+At the cap, Speed Runner's 10 points buy +100% where the keystone's single point
+buys +50%, so the keystone stays ten times the effect per point — which is the
+ordering [#1390](https://github.com/sdubois777/Cataclysm/issues/1390) said had
+been inverted.
+
+**This is arithmetic and genre precedent, not a measurement, and it cannot be
+one here.** `EmpireTree` in `sim/cataclysm_sim/config.py` has no loot field at
+all, so no campaign batch in this repository is affected by any of the three
+nodes. The exposure is in the game once Explorer loot nodes are implemented.
+
+### One-Day Specialist, which the shape change moves the most
+
+`One-Day Specialist` (keystone) doubles all Explorer loot modifiers "if run time
+reduced to 1-Day minimum". Under the flat subtraction that was a free doubling on
+every ordinary dungeon, because every ordinary dungeon was already at the
+minimum. Under the percentage a maxed branch **never** reaches one day: with the
+tree alone it would need a dungeon of 14 floors or fewer, and the branch's own
+depth nodes add 40, so the shallowest dungeon in the game arrives at 48.
+
+Reachable depths, counting the whole stack:
+
+| Stack | Reaches one day up to |
+| :-- | --: |
+| The tree alone | 14 floors |
+| + Opportunist, The Delver, one Explorer city upgrade | 28 floors |
+| + the same with the city upgrade fully bought | 36 floors |
+
+So the keystone now pays out for `The Last Stand`, which sets run time to one day
+outright, and for a build that skips the branch's depth nodes. **That is the
+keystone getting something to pay for**, which the 2026-09-06 ruling asks for.
+**Whether it is far enough is not ruled and is not decided here**: it is a much
+rarer trigger than before, and if it should fire more often the repair belongs to
+the node, not to the walk-time percentage.
+
+### What still has to be re-measured
+
+**The surge cadence is held at today's value and the owner has directed that it
+rise.** Every figure above describes a player on the cadence the owner called
+"incredibly low", so the value chosen here has to be re-measured once the cadence
+moves. That is the half of the directive this entry does not touch.
+
+**Every campaign figure this project has recorded against
+`TREE_EXPLORER_AS_DESIGNED` is now stale.** The preset changed twice in two days
+— issue [#1386](https://github.com/sdubois777/Cataclysm/issues/1386) gave it the
+branch's depth nodes and issue
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) made it per-tier —
+and this change replaces its flat days with a multiplier. The row in the entry
+headed "The game is balanced around a player fully invested in the Explorer tree"
+is corrected in this change; anything else quoting 58.5% empty days or 0.78
+cities lost for the Explorer branch is describing a preset that no longer exists.
+
+---
+
 ## 2026-09-07 — The campaign figures on record are refreshed, and stale ones are marked rather than rewritten
 
 **Affects:** the Last Stand subsection of `docs/Cataclysm_GDD_v2.md`,
@@ -394,19 +694,40 @@ Explorer branch's 316 points.
 
 The Explorer branch is the one that buys dungeon speed, and speed is what
 decides how much of the empire layer the player experiences. A player with no
-tree is busy because every dungeon takes as many days as it has floors; the same
-campaign for an invested player can be almost entirely waiting. Measured over
-4,000 campaigns at difficulty tier 1 with the triage policy and static surges
-every 120 days for 5 dungeons, `sim/analyse_explorer_shape.py`:
+tree is busy because every dungeon takes as many days as it has floors; an
+invested player can spend much of the same campaign waiting.
+
+**THE FIGURES THAT WERE HERE ARE STALE AND ARE REPLACED RATHER THAN CORRECTED.**
+This entry originally read 6.6% empty days and 16.29 cities lost with no tree,
+against 58.5% and 0.78 for `TREE_EXPLORER_AS_DESIGNED`, measured over 4,000
+campaigns by `sim/analyse_explorer_shape.py`. That preset then changed three
+times: issue [#1386](https://github.com/sdubois777/Cataclysm/issues/1386) gave it
+the branch's five depth nodes, issue
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) made its three
+per-type nodes scale with the difficulty tier, and issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) replaced its flat
+days with a percentage. The day loop moved several times over the same two days.
+**A figure taken before those is not a figure about today's preset.**
+
+Re-measured on 2026-09-07 by `sim/analyse_explorer_rate.py`, 4,000 campaigns a
+row over eight blocks of 500, at difficulty tier 1 with the triage policy and
+static surges every 120 days for 5 dungeons:
 
 | | Days with nothing at all on the board | Cities lost of 25 |
 |---|---|---|
-| No empire tree | **6.6%** | 16.29 |
-| The Explorer branch as `TREE_EXPLORER_AS_DESIGNED` models it | **58.5%** | 0.78 |
+| No empire tree | **7.10%** ±0.11 | 13.65 ±0.13 |
+| The Explorer branch as `TREE_EXPLORER_AS_DESIGNED` modelled it before 2026-09-07, a flat subtraction | **7.27%** ±0.17 | 3.85 ±0.06 |
+| The Explorer branch as it is modelled now, x0.2186 of a dungeon's walk | **1.48%** ±0.07 | 7.50 ±0.09 |
 
-So the two ends of the investment range are not variations on one experience.
-Tuning that satisfies one can leave the other with nothing to do, and the owner's
-ruling says which one wins.
+**The direction of the original claim survives and its size does not.** An
+invested player is still much safer than an untreed one -- 7.50 cities lost of 25
+against 13.65 -- so tuning that satisfies one can still leave the other with
+nothing to do, and the owner's ruling says which one wins. But the invested
+player is no longer the one with an empty calendar: counting the branch's depth
+nodes gives them **more** work than an untreed player, not less. The empty-day
+figures of 44% to 61% quoted on issue
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) all describe a
+preset with no depth nodes in it.
 
 ### "Or at least to some degree" is part of the ruling
 

@@ -17,12 +17,14 @@ count a campaign can face.
 
 **`Sovereign's Haste` IS COUNTED NOW AND WAS NOT BEFORE.** That is the whole
 substance of #1397: it removes a day per point per active type, which is as
-unconditional as the four flat nodes once the tier is known. Counting it takes
-the preset to 70 days at tier 1 -- **the same number it carried before #1386, by
-a completely different and correct route.** The old 70 was `Opportunist` plus
-`The Delver`; two wrong terms summed to the figure one missing right one would
-have given. `test_seventy_at_tier_one_is_not_the_old_seventy` is what keeps that
-from being read as a revert.
+unconditional as the four flat nodes once the tier is known.
+
+**AND SINCE 2026-09-07 IT IS THE ONLY FLAT-DAY NODE IN THE BRANCH.** The project
+owner ruled the other four a percentage of the dungeon's run time -- verbatim
+"Change to a percentage" -- and `sim/analyse_explorer_rate.py` chose -2.5% per
+point and -12% for the keystone, x0.2186 combined. So this file checks a
+multiplier as well as a day total, and the day total at tier 1 is 10 rather than
+the 70 it was between issues #1397 and #1383. Issue #1383.
 
 **THE NUMBERS HERE ARE COMPUTED FROM THE GRAPH, NOT TYPED.** A guard that
 restated the same constants a second time would pass after the design document
@@ -58,18 +60,28 @@ TREE_JSON = REPO_ROOT / "docs" / "Empire_Development_Tree_Final.json"
 #: range, so these are all eight tiers.
 ACTIVE_COUNTS = (1, 2, 3, 4, 5, 6, 7, 8)
 
-#: The Explorer-branch nodes that take a flat number of days off EVERY dungeon
-#: at EVERY tier alike. `phrase` is checked against the node's own text before
-#: `per_point` is believed.
+#: The Explorer-branch nodes that MULTIPLY every dungeon's walk at every tier
+#: alike. `phrase` is checked against the node's own text before `per_point` is
+#: believed.
 #:
-#: `Fleet Footed` is a single point worth 5 days rather than 5 points worth 1,
+#: **THEY WERE FOUR FLAT-DAY NODES UNTIL 2026-09-07**, removing 25, 20, 10 and 5
+#: days. The project owner ruled them a percentage on 2026-09-06, verbatim
+#: "Change to a percentage", and `sim/analyse_explorer_rate.py` chose the
+#: values. Issue #1383.
+#:
+#: `Fleet Footed` is a single point worth -12% rather than 5 points worth -2.5%,
 #: which is why the value is per point and the points come from the graph.
-FLAT_DAY_NODES = (
-    ("Temporal Mastery", 1.0, "-1 Day from dungeon run time per point"),
-    ("Overclock", 1.0, "-1 day from dungeon run time per point"),
-    ("Pacing", 1.0, "-1 days from dungeon run time per point"),
-    ("Fleet Footed", 5.0, "-5 days from dungeon run time"),
+PERCENT_NODES = (
+    ("Temporal Mastery", 0.025, "-2.5% of dungeon run time per point"),
+    ("Overclock", 0.025, "-2.5% of dungeon run time per point"),
+    ("Pacing", 0.025, "-2.5% of dungeon run time per point"),
+    ("Fleet Footed", 0.12, "-12% of dungeon run time"),
 )
+
+#: There is no unconditional flat-day node left in the branch at all. The tuple
+#: is kept, empty, so `days_removed` below stays the same shape as
+#: `floors_added` and a node that goes back to fixed days has somewhere to land.
+FLAT_DAY_NODES = ()
 
 #: Days removed per point PER ACTIVE CATACLYSM TYPE, and the cap on the total.
 #: The cap's own wording says "floors" and means days; that is the design
@@ -173,6 +185,18 @@ def days_removed(nodes: list[dict], active_types: int) -> float:
     return total
 
 
+def run_days_mult(nodes: list[dict]) -> float:
+    """What the four percentage nodes multiply a walk by, at full investment.
+
+    COMBINED MULTIPLICATIVELY, which is what the owner ruled: 55 points at -2.5%
+    is `0.975 ** 55` and not `1 - 55 * 0.025`, and the second is negative.
+    """
+    product = 1.0
+    for name, per_point, phrase in PERCENT_NODES:
+        product *= (1.0 - per_point) ** points(check(nodes, name, phrase))
+    return product
+
+
 def floors_added(nodes: list[dict], active_types: int) -> float:
     total = sum(points(check(nodes, name, phrase)) * per_point
                 for name, per_point, phrase in FLOOR_NODES)
@@ -210,7 +234,7 @@ class TestThePresetIsWhatTheGraphSays:
     def test_the_derived_totals_are_what_the_graph_gives(self, nodes):
         """The eight-tier answers, pinned as literals so that a change to them
         has to be deliberate. The typed comment is checked separately below."""
-        assert [days_removed(nodes, n) for n in (1, 2, 3, 8)] == [70, 80, 90, 90]
+        assert [days_removed(nodes, n) for n in (1, 2, 3, 8)] == [10, 20, 30, 30]
         assert [floors_added(nodes, n) for n in (1, 8)] == [40, 180]
 
     def test_the_comment_above_the_constant_states_the_same_totals(self, nodes):
@@ -306,34 +330,63 @@ class TestThePresetIsWhatTheGraphSays:
             "counts; Sovereign's Haste should move it until its cap")
 
     def test_the_day_cap_is_reached_and_then_holds(self, nodes, preset):
-        """`Sovereign's Haste` stops at -30, so the day total stops at 90.
+        """`Sovereign's Haste` stops at -30, and it is the only flat-day node
+        left in the branch, so the day total stops at 30.
 
         Asserted separately because the parametrised cases would pass on an
         implementation with no cap at all -- they compare against a derivation
         that has the same cap in it.
         """
-        assert preset.days_removed(3) == preset.days_removed(8) == 90.0
-        assert preset.days_removed(2) == 80.0
+        assert preset.days_removed(3) == preset.days_removed(8) == 30.0
+        assert preset.days_removed(2) == 20.0
 
-    def test_seventy_at_tier_one_is_not_the_old_seventy(self, preset):
-        """**THE COINCIDENCE, HELD DOWN SO IT IS NOT READ AS A REVERT.**
+    def test_the_multiplier_matches_the_four_percentage_nodes(
+            self, nodes, preset):
+        """**THE OTHER HALF OF WHAT THE BRANCH DOES TO A WALK, and since
+        2026-09-07 it is the larger half.**
+
+        The four nodes that used to supply 60 flat days are a multiplier now, so
+        a guard that only checked `days_removed` would pass while the preset
+        made an invested player any speed at all.
+        """
+        derived = run_days_mult(nodes)
+        assert abs(preset.run_days_mult - derived) < 1e-12, (
+            f"TREE_EXPLORER_AS_DESIGNED multiplies a walk by "
+            f"{preset.run_days_mult:.6f} and the Explorer branch's four "
+            f"percentage nodes multiply it by {derived:.6f}. Issue #1383.")
+        assert 0.0 < derived < 1.0
+
+    def test_no_unconditional_flat_days_are_left_in_the_branch(self, preset):
+        """**THE CONTROL FOR THE TEST ABOVE.** A preset that kept the old flat
+        60 as well as gaining the multiplier would satisfy every check here that
+        looks at one term or the other."""
+        assert preset.run_days_flat == 0.0, (
+            f"the preset still removes {preset.run_days_flat:g} unconditional "
+            "flat days. The four nodes that supplied them moved into "
+            "`run_days_mult`; they were not added to a second term.")
+
+    def test_the_flat_days_left_are_sovereigns_haste_and_nothing_else(
+            self, preset):
+        """**THE NUMBER 70 IS IN THIS PROJECT'S HISTORY TWICE AND IS NOW
+        NEITHER.**
 
         `run_days_flat` was 70 before issue #1386, reached by `Opportunist` --
         conditional on the board -- plus `The Delver`, a Tier 1 capstone option
-        in no branch at all. It is 70 again at one active Cataclysm type, and
-        this time it is the four unconditional nodes plus `Sovereign's Haste`.
-        Two wrong terms summed to the figure one missing right one would have.
+        in no branch at all. Issue #1397 made it 70 again at one active type by
+        a correct route, the four unconditional nodes plus `Sovereign's Haste`.
+        Since 2026-09-07 those four are a multiplier and the flat total at one
+        active type is 10.
 
-        The difference is visible in two places and this checks both: the old 70
-        was flat at every tier, and it carried no floors.
+        Any campaign figure quoting 70 flat days is stale whichever 70 it came
+        from, which is why this asserts the new totals rather than the absence
+        of the old one.
         """
-        assert preset.days_removed(1) == 70.0
-        assert preset.days_removed(8) == 90.0, (
-            "the old 70 was the same at every tier. If this is 70 at tier 8 "
-            "too, the per-type part is not being applied and the preset has "
-            "gone back to what issue #1386 repaired.")
+        assert preset.days_removed(1) == 10.0
+        assert preset.days_removed(8) == 30.0, (
+            "the flat part must still rise with the tier: Sovereign's Haste "
+            "pays per active Cataclysm type. Issue #1397.")
         assert preset.floors_added(1) == 40.0, (
-            "the old 70 came with no floors at all. Issue #1386 added them.")
+            "the branch's five depth nodes. Issue #1386 added them.")
 
 
 class TestTheExclusionsStillHaveTheirReasons:
