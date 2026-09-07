@@ -7,10 +7,10 @@ the next with a horizontal rule, then a blank line, then the heading:
 
     ## 2026-09-06 - A Quest dungeon moves on a coin of 0.5
 
-Sixty-three boundaries do not. The separator is not decoration: when two entries
+Sixty-one boundaries do not. The separator is not decoration: when two entries
 join with no gap the file reads as one entry with a stray heading inside it, and
 the next person resolving a conflict there is more likely to drop one. That is
-how it reached sixty-three.
+how it reached sixty-three before pull request #1416 repaired two of them.
 
 THE DEFECT IS NOT SITTING STILL, which is why the check is worth more than a
 one-off tidy-up. This is the most conflict-prone file in the repository and every
@@ -21,6 +21,7 @@ Counted directly out of the file rather than reported:
     at commit 3fe0b08               363 entries, 61 wrong
     at commit 7d29ee4               364 entries, 62 wrong
     at commit f687744               365 entries, 63 wrong
+    at commit 70c5718               365 entries, 61 wrong
 
 Issue #1402 records 61 for the first of those rows rather than 60. Every row
 above was re-measured here, reading each commit's blob out of git and applying
@@ -29,10 +30,15 @@ The difference on the first row is the first dated entry, which is exempt and
 which that earliest count had not yet excluded. The direction of travel, which
 is what the table is for, is the same either way.
 
+THE LAST ROW IS THE FIRST FALL IN THE SERIES. Pull request #1416 put a rule
+and a blank line above two headings while repairing something else, so this
+check landed at 61 rather than 63. Those two are gone from `ALREADY_WRONG`,
+which is the list doing what it is for.
+
 WHY THIS LANDS WITHOUT THE CLEANUP. The obvious objection to a check that arrives
-first is that it goes red over sixty-three faults it did not cause. `ALREADY_WRONG`
+first is that it goes red over sixty-one faults it did not cause. `ALREADY_WRONG`
 is the answer: it lists those boundaries by heading text, so the suite is green
-today and goes red the moment a sixty-fourth appears. The project owner ruled for
+today and goes red the moment a sixty-second appears. The project owner ruled for
 this sequencing on issue #1402 after two sessions gave opposite advice; both had
 independently named the merge window as the hard part, and an allowance list is
 the one approach that needs no merge window. The cleanup follows in small pieces,
@@ -53,7 +59,7 @@ FOUR TRAPS, EACH OF WHICH COST A SESSION A CYCLE ON THIS FILE.
 2. THE FIRST DATED ENTRY IS CORRECT AS IT STANDS. It is preceded by the
    "Decisions made outside the Google Drive documents, newest first." line and a
    blank, not by a rule, and it is where the log starts. A check that does not
-   exempt it reports sixty-four problems where there are sixty-three.
+   exempt it reports sixty-two problems where there are sixty-one.
 
 3. ONLY DATED HEADINGS ARE ENTRIES. The file has 427 headings starting with two
    hashes and only 365 are entries; the other 62 are section headings inside an
@@ -109,14 +115,12 @@ PREAMBLE = "Decisions made outside the Google Drive documents, newest first."
 #: line to delete. Nothing may ever be added to this list: a new bad boundary is
 #: the thing this file exists to stop.
 #:
-#: Measured at commit f687744 by reading the file's bytes, normalising the line
+#: Measured at commit 70c5718 by reading the file's bytes, normalising the line
 #: endings, and taking every dated heading after the first whose two preceding
-#: lines are not a rule and a blank. Fifty-nine have a blank line but no rule
+#: lines are not a rule and a blank. Fifty-seven have a blank line but no rule
 #: above it, three have neither, and one has the rule pressed straight against
 #: the heading.
 ALREADY_WRONG = frozenset({
-    '## 2026-09-06 — The empire tree presets hold per-tier values',
-    '## 2026-09-06 — The Explorer preset is made to describe the Explorer branch',
     '## 2026-09-06 — The game is balanced around a player fully invested in the Explorer tree',
     '## 2026-09-06 — The empire layer learns which Cataclysm is running, and the Cataclysm dungeon unlocks at half of them',
     '## 2026-09-06 — What the game counts when a dungeon is beaten, and the one number it refuses to invent',
@@ -250,11 +254,11 @@ def test_the_file_parses_at_all(decisions_lines, decisions_entries):
         "wrong, and every count in this file is meaningless until it is fixed.")
     assert len(decisions_entries) > 100, (
         f"Only {len(decisions_entries)} dated entries were found in "
-        f"{DECISIONS.name}. There were 365 at commit f687744 and the log only "
+        f"{DECISIONS.name}. There were 365 at commit 70c5718 and the log only "
         "grows, so this is a parsing failure rather than a shrinking file.")
     assert any(line.strip() == RULE for line in decisions_lines), (
         f"No horizontal rule was found anywhere in {DECISIONS.name}. There were "
-        "311 at commit f687744.")
+        "313 at commit 70c5718.")
     assert PREAMBLE in decisions_lines, (
         f"{DECISIONS.name} no longer opens with the preamble line this check "
         "exempts the first entry against. Check that the first entry is still "
