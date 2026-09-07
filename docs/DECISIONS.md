@@ -2,6 +2,242 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — A surge fires whenever the board has no dungeons on it, and the 120-day clock stays
+
+**Affects:** `sim/cataclysm_sim/config.py` (`surge_on_empty_board`),
+`sim/cataclysm_sim/engine.py` (`Simulation._maybe_surge_on_empty_board`,
+`board_is_empty`, `days_since_last_surge`, `RunResult.surges_from_empty_board`),
+`sim/README.md`, and a new `sim/analyse_board_empty_surge.py`. Issue
+[#1406](https://github.com/sdubois777/Cataclysm/issues/1406). The game does not
+have this rule; [#1414](https://github.com/sdubois777/Cataclysm/issues/1414) owns
+the port, and a test in `tools/tests/test_surge_port.py` fails the moment it
+lands.
+
+### The ruling
+
+The project owner ruled on 2026-09-07, **verbatim**:
+
+> Anytime there are no longer dungeons on the board, a surge happens.
+
+and, on whether it replaces the existing cadence, **verbatim**:
+
+> it does not replace the surge cadence. It is there to ensure pressure remains.
+
+**Any empty board fires, whatever emptied it.** A dungeon the player cleared and
+a dungeon that detonated undefeated both count. A narrower reading — fire only
+when the player *clears* the last dungeon — was proposed and overruled.
+
+**The 120-day timer is untouched.** `surge_interval_days` stays at 120 and
+behaves exactly as before. The board-empty check is an additional trigger, and
+whichever comes first wins. A surge fired by an empty board resets the timer the
+way any surge does, because it goes through `trigger_surge`.
+
+`surge_interval_min`, 25 days, is the only brake on the new trigger. It is the
+same constant that floors the gap under the escalating surge modes, so moving it
+moves both.
+
+### THIS SETTING DEFAULTS ON, SO EVERY CAMPAIGN FIGURE ON RECORD NOW DESCRIBES A DIFFERENT GAME
+
+Not "may have moved" — measured against a different rule. **The seven figures in
+the 2026-09-07 entry at the top of this file, and the copy of that table in
+`sim/README.md`, all predate this rule**: Last Stand reached 45.9%, cleared per
+Last Stand reached 1 in 24.6, earned Cataclysm dungeon opens 54.9%, earned
+dungeon won 40.4%, campaign won at all 24.1%, cities lost 13.61 of 25, and Sieges
+created per campaign 8.99. They are **not re-measured here** — they were taken at
+surge size 5 and 6,000 campaigns, and this work measures at surge size 4.
+
+**`sim/experiments.py` owes a re-run.** It already owed one for two other
+reasons; this is the third.
+
+**One of those seven changes meaning rather than value.** *Sieges created per
+campaign* counts Sieges rolled when a dungeon is created, so it scales with how
+many dungeons a campaign sees — and under this rule that is no longer a fixed
+budget set by the clock. Measured below, the number of surges in a campaign rose
+from 21.1 to 22.5 for a player with no empire tree at tier 1, and from 15.3 to
+16.7 for the Defensive branch. `RunResult.surges_from_empty_board` exists so a
+figure can say which kind of surge it counted.
+
+### The conditions every figure below was measured under
+
+A campaign figure without its conditions is not a figure. All of these are
+**2,000 campaigns a cell**, in two disjoint blocks of 1,000, on the **`triage`**
+policy, **static** surges of **4 dungeons every 120 days**, surge count cap 14,
+resolve floor ratio 2.0, dungeon power escalation 0.10 per 100 days, craft 12
+days for +4% of a tier width. **Active Cataclysms: 1 at difficulty tier 1, 4 at
+tier 4.** Measured on **`efddb49`**, whose merge base with `development` was
+`f687744`. The instrument is `sim/analyse_board_empty_surge.py`.
+
+**Every rule-off cell and every rule-on cell is measured in one process, in one
+run, against one checkout**, differing by exactly one boolean field. The pair
+cannot be comparing two models.
+
+### The instrument was cross-checked against the one that produced the figures on record
+
+Measuring with the rule **off**, `sim/analyse_board_empty_surge.py` reproduces
+two idle shares recorded from `sim/analyse_surge_cadence.py` **exactly**: a
+player with no empire tree at tier 1 is idle **16.7%** of the campaign, and the
+Defensive branch **23.4%**. Two exact matches from a separately written copy of
+the configuration is what says the two files measure the same world; a test
+compares the two configurations field by field so the copy cannot drift.
+
+The third recorded figure, 10.8% for the whole Explorer branch, reads 12.3% here.
+**It is superseded, not wrong.** `f687744` changed
+`TREE_EXPLORER_AS_DESIGNED` itself — `floor_delta` from 40.0 to 20.0, plus a
+per-active-type day removal of 10.0 capped at 30.0 — so at tier 1 that preset now
+removes 70 days rather than 60. The earlier session measured correctly for the
+code it had.
+
+### What the rule does
+
+| World | idle% off → on | surges off → on | of which early | cities lost off → on | earned dungeon off → on | won off → on |
+| :-- | --: | --: | --: | --: | --: | --: |
+| no tree, tier 4 | 0.0 → 0.0 | 26.0 → 26.0 | 0.0 | 24.04 → 24.04 | 0.0% → 0.0% | 0.0% → 0.0% |
+| no tree, tier 1 | 16.7 → 0.0 | 21.1 → 22.5 | 5.8 | 7.89 → 9.49 | 69.0% → 72.4% | 27.5% → 31.4% |
+| Explorer whole, tier 1 | 12.3 → 0.8 | 17.7 → 19.2 | 5.8 | 2.07 → 2.59 | 77.2% → 86.1% | 58.2% → 69.8% |
+| Explorer whole, tier 4 | 32.2 → 32.2 | 25.0 → 25.0 | 0.0 | 21.52 → 21.52 | 0.0% → 0.0% | 0.1% → 0.1% |
+| Defensive, tier 1 | 23.4 → 0.0 | 15.3 → 16.7 | 11.9 | 0.02 → 0.06 | 73.7% → 88.3% | 27.6% → 36.7% |
+
+**The noise floor**, six disjoint blocks of 1,000 campaigns in the no-tree tier-1
+world: win rate 1.191 points block to block, cities lost 0.156 of 25, earned
+dungeon 1.879 points. A difference between two cells has to beat about
+2 × √2 × these — roughly **3.37 points** on the win rate and **0.44 of 25** on
+cities lost.
+
+**One difference does not survive that and is not claimed.** For a player with no
+empire tree at tier 1 the earned-dungeon rate rose 3.4 points against a 5.31
+threshold: **not resolved.** The cities-lost rise of 1.60 and the win-rate rise
+of 3.9 points do clear it, the second only just. The Explorer and Defensive
+win-rate and earned-dungeon rises are several times their standard errors.
+
+**The players it reaches lose more cities and win more campaigns.** More content
+means more clears, which means more power and more quest objectives.
+
+### It cannot hurt the weakest player, because it never fires for them
+
+A player with no empire tree at difficulty tier 4 — who loses 24.04 of 25 cities
+and reaches the earned Cataclysm dungeon in 0.0% of campaigns, issue
+[#1392](https://github.com/sdubois777/Cataclysm/issues/1392) — is **identical to
+the printed precision** with the rule off and on.
+
+**That is not a nil result read off a noise floor.** Checked as an identity
+instead: over 300 campaigns the trigger fired **once in total** there, and
+**zero times** in 300 campaigns for a fully invested Explorer at tier 4. Their
+board is never empty, so the code path essentially never runs.
+
+### The 120-day clock stays, and here is the measurement that says it had to
+
+A Quest dungeon relocates instead of detonating and a Fallen City dungeon
+refreshes, so **neither ever leaves the board on its own**. A player who ignores
+one keeps the board permanently non-empty, and a trigger that *replaced* the
+clock would then give them fewer surges than today. Measured with the rule off,
+against a 2,500-day campaign cap:
+
+| World | share of days whose whole board never leaves | campaigns holding at least one such day | longest unbroken stretch |
+| :-- | --: | --: | --: |
+| no tree, tier 4 | 27.9% | 86.9% | **370 days** |
+| no tree, tier 1 | 1.9% | 40.5% | 227 days |
+| Explorer whole, tier 1 | 2.1% | 43.3% | 120 days |
+| Explorer whole, tier 4 | 16.9% | 95.3% | **1,860 days** |
+| Defensive, tier 1 | 0.1% | 1.1% | 120 days |
+
+1,860 days of a 2,500-day cap, in a world where 95.3% of campaigns hold at least
+one such day. The owner's ruling that the clock stays is what these numbers
+support.
+
+### The 25-day minimum gap needs no change
+
+Swept at 10, 15, 25, 40, 60, 90 and 120 days. Every world is unchanged from 10
+through 40, moves slightly at 60, and degrades sharply at 90 and 120 — at 120 the
+brake is as strong as the clock and the rule can add nothing.
+
+**Checked as an identity rather than against a noise floor**: at a 10-day and a
+40-day minimum the campaigns are *literally the same campaigns* in 291 of 300,
+240 of 300 and 295 of 300 seeds, in the three worlds where the trigger fires. So
+lowering it buys almost nothing and raising it to 40 costs almost nothing. **25 is
+on a plateau and is left where it is.**
+
+### The broad rule and the narrow rule are the same rule today, and that is why the broad one is right
+
+**`dungeon_persists_after_resolve` is `True`**, so a Basic dungeon that detonates
+undefeated *stays* on the board with a refreshed timer. A detonation therefore
+cannot empty the board at the shipped settings. Measured over 20 campaigns on the
+`triage` policy: **126 board-empty surges fired and all 126 followed the player
+clearing the last dungeon** — none followed a detonation, and none followed a
+city falling and absorbing the last dungeons.
+
+**So a reason given for the broad rule on the issue does not hold**: the stalling
+trade — let the last dungeon detonate instead of clearing it, pay one city's
+damage, buy a quiet stretch — is not available today. That reason has been
+withdrawn on #1406.
+
+**The broad rule is still the one built, and the load-bearing reason is
+robustness.** It stays correct if `dungeon_persists_after_resolve` is ever turned
+off, where the narrow rule would silently acquire that exploit. It is also what
+the owner ruled, and it is simpler to read from inside the game: there is always
+something on the board, so a player never has to work out why a wave did or did
+not arrive. **This is written down so that nobody later "simplifies" the broad
+rule into the narrow one and reintroduces an exploit that is dormant rather than
+absent.** `test_a_detonation_does_not_empty_the_board_at_the_shipped_setting`
+holds the fact the reasoning rests on.
+
+The other reason given does hold: the game already fires a surge on a failure,
+because `surge_on_city_fall` defaults `True` and `_fall` calls
+`trigger_surge(from_city_fall=True)`.
+
+### An empty-board surge advances the escalation counter, and takes no flag of its own
+
+It **is** the scheduled surge arriving early: `trigger_surge` resets
+`next_surge_day` from today, so one wave replaces one wave. The worry recorded
+beside `city_fall_advances_escalation` — an event-triggered surge speeding the
+game up without limit — does not apply, because the gap this can reach is floored
+at `surge_interval_min`, the same floor `surge_gap` already applies to
+`ACCELERATING`. **Only `STATIC` has ever been measured**, and under `STATIC`
+neither `surge_gap` nor `surge_count` reads the counter.
+
+### What was NOT measured, said plainly
+
+**The 56-point cheap Explorer sub-build — the four unconditional day-removal
+nodes and none of the five depth nodes, the case with the most idle time in the
+project at 65.0% — was not measured under this rule.** It is defined by which
+walk-time nodes it buys, and those are being changed from removing flat days to
+removing a percentage of run time under
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383), so a figure taken
+now would stop describing that build the moment those percentages land. **It
+should be measured after #1383.** The two Explorer worlds above are the *whole*
+branch fully invested and do not cover it.
+
+**THE TWO EXPLORER ROWS ABOVE DESCRIBE A PRESET THAT NO LONGER EXISTS.** They
+were measured on `efddb49`, before `b4799a2` — the entry below this one — replaced
+`TREE_EXPLORER_AS_DESIGNED`'s 60 flat days removed with a multiplier of
+`0.975 ** 55 * 0.88`. Anything quoting 12.3% idle, 2.07 or 2.59 cities lost,
+77.2% or 86.1% earned, or 58.2% or 69.8% won for the Explorer branch is
+describing that older preset. **The three non-Explorer worlds are unaffected**:
+`TREE_NONE` and `TREE_ARCHITECT_AS_DESIGNED` did not change.
+
+Relayed from the session that built `b4799a2` and **not verified here**: on that
+branch a fully invested Explorer is idle 1.48% of the campaign and an untreed
+player 7.10%, against the 12.3% and 16.7% measured above.
+
+**If that holds, the argument for this rule shifts.** The case has been that the
+invested player is idle and bored; at 1.48% they are not, and the reason is the
+walk-time change rather than anything about surges. What the rule then rests on
+is the owner's ruling, that it costs the weakest player nothing because it never
+fires for them, and that it removes idle time for the untreed player and the
+cheap sub-build — the builds that still have idle time to remove. **The
+tier-4 finding in the next section survives either way**, because faster walking
+does not make an unsurvivable dungeon survivable.
+
+### A finding that is not about surges at all
+
+**A fully invested Explorer at difficulty tier 4 is idle 32.2% of the campaign,
+and none of it is an empty board.** Every one of those days had dungeons standing
+that the player would not enter, because none was inside `death_risk_tolerance`.
+That is a power problem; no surge cadence fixes it, and more surges make it
+worse. It survives the walk-time change, because faster walking does not make an
+unsurvivable dungeon survivable. It has its own issue.
+
+---
+
 ## 2026-09-07 — The Explorer branch's walk-time percentage is -2.5% per point, and Speed Runner gains a cap
 
 **Affects:** `docs/Empire_Development_Tree_Final.json` (five node descriptions),
