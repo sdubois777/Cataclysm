@@ -2955,8 +2955,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireBegin(
 		 "accelerating|swelling|both] [0 Standard, 1 Hardcore, 2 Heretic] "
 		 "[difficulty tier 1-8]. THROWS AWAY THE RUN IN PROGRESS. The same seed "
 		 "gives the same empire. The tier decides how many Cataclysms the run "
-		 "faces and how many modifiers each dungeon carries; it defaults to 1 "
-		 "because nothing else supplies one, which is issue #1444."),
+		 "faces and how many modifiers each dungeon carries; leave it out and "
+		 "the run takes the tier the game is being played at, which is "
+		 "Cataclysm.DifficultyTier or the game mode's own."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -2999,17 +3000,25 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireBegin(
 
 			const int32 Rung = Args.Num() >= 3 ? FCString::Atoi(*Args[2]) : 0;
 
-			// THE DIFFICULTY TIER, WHICH NOTHING ELSE SUPPLIES. It decides how
-			// many Cataclysms the run faces and how many modifiers each dungeon
-			// carries, and the game's own difficulty tier has never been
-			// connected to a run -- issue #1444. This argument is how the
-			// behaviour is reached until it is. Clamped to the eight tiers the
-			// design has, so a typo asks for a run that exists.
+			// THE DIFFICULTY TIER, OR NOTHING AND LET THE GAME SAY. It decides
+			// how many Cataclysms the run faces and how many modifiers each
+			// dungeon carries. Zero is what `UCataclysmGameInstance::
+			// BeginEmpireRun` reads as "ask `ACataclysmGameMode::
+			// DifficultyTierIn`", so leaving the argument out now starts a run
+			// at the tier the game is actually being played at rather than at a
+			// hard 1. That join is issue #1444; this argument stays because
+			// naming a tier outright is still the quickest way to look at a
+			// deep one.
+			//
+			// AN ARGUMENT THAT IS GIVEN IS CLAMPED to the eight tiers the design
+			// has, so a typo asks for a run that exists. A typed zero is
+			// therefore tier 1 and not "ask the game": somebody who names a
+			// tier means it, and zero is not one of the eight.
 			const int32 Tier = Args.Num() >= 4
 				? FMath::Clamp(FCString::Atoi(*Args[3]),
 							   ACataclysmGameMode::LowestDifficultyTier,
 							   ACataclysmGameMode::HighestDifficultyTier)
-				: 1;
+				: 0;
 
 			UCataclysmEmpireRun* Run =
 				Instance->BeginEmpireRun(Seed, Mode, Rung, Tier);

@@ -160,6 +160,75 @@ namespace CataclysmTestWorld
 	};
 
 	/**
+	 * Pins the difficulty tier for as long as it is in scope. Issue #1444.
+	 *
+	 * THE SAME SHAPE AS `FScopedCritRoll` ABOVE, AND FOR A SHARPER REASON. The
+	 * tier is read through `ACataclysmGameMode::DifficultyTierFor`, which takes
+	 * the `Cataclysm.DifficultyTier` console variable when it is above zero, and
+	 * that variable is what a test has to move to say which tier the game is
+	 * being played at. A test world has no authority game mode and cannot be
+	 * given one, so this is the only way to say it.
+	 *
+	 * **AT THE CONSOLE'S OWN PRIORITY, WHICH IS NOT OPTIONAL.** Unreal remembers
+	 * which source last set a console variable and silently discards a write
+	 * from a lower-priority one. `ECVF_SetByConsole` is the highest priority
+	 * there is, and `CataclysmDroppedItemTests.cpp` uses it on this variable, so
+	 * from the moment `Cataclysm.Drop.*` has run, a plain `Set` on this variable
+	 * does nothing at all.
+	 *
+	 * THAT FAILS IN THE WORST WAY: the group passes when it is run on its own
+	 * with `--prefix` and fails in a full suite run, because the groups run in
+	 * name order and `Cataclysm.Drop` comes before `Cataclysm.EmpireRunTier`.
+	 * Measured, not reasoned: five tests passed alone and the same five failed
+	 * in the full run, every one of them reading tier 1.
+	 *
+	 * `Found` IS WHY THIS IS NOT SILENT. A missing console variable would
+	 * otherwise leave every tier reading 1 and the test failing for a reason it
+	 * does not name.
+	 *
+	 * TWO OTHER FILES STILL WRITE THIS VARIABLE AT CODE PRIORITY and pass only
+	 * because their group names sort before `Cataclysm.Drop`:
+	 * `CataclysmDifficultyTierTests.cpp` and `CataclysmDamageCalculationTests.cpp`.
+	 * Moving them here is issue #1470.
+	 */
+	struct FScopedDifficultyTier
+	{
+		explicit FScopedDifficultyTier(int32 Tier)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.DifficultyTier"));
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Tier, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedDifficultyTier()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		/** Change the tier without leaving the scope. Same priority. */
+		void Set(int32 Tier) const
+		{
+			if (Variable)
+			{
+				Variable->Set(Tier, ECVF_SetByConsole);
+			}
+		}
+
+		/** Whether the console variable exists at all. */
+		bool Found() const { return Variable != nullptr; }
+
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = 0;
+	};
+
+	/**
 	 * A world in which an actor spawned later actually receives `BeginPlay`.
 	 *
 	 * USE THIS BY DEFAULT. It is the one that behaves like the running game, and

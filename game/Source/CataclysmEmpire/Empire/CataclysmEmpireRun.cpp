@@ -1259,6 +1259,26 @@ FString UCataclysmEmpireRun::Describe() const
 		TEXT("Day %d. %d dungeons standing. %d cities lost of 25."),
 		Clock->Day, Dungeons.Num(), Map->FallenCityCount()));
 
+	// WHICH TIER THIS RUN IS BEING PLAYED AT, AND WHO IT IS AGAINST. Until issue
+	// #1444 the answer was always 1 and there was nothing to look at; now that
+	// the tier comes from the game rather than from a default, a person needs to
+	// be able to see which one a run took. This and the empire screens are the
+	// only places a run is visible at all.
+	//
+	// THE CATACLYSMS ARE NAMED RATHER THAN COUNTED, because which ones a
+	// character faces is drawn from its seed and is the thing a person would
+	// otherwise have to re-derive to check.
+	TArray<FString> Facing;
+	for (const ECataclysmType Cataclysm : ActiveCataclysms)
+	{
+		Facing.Add(UCataclysmRoster::NameFor(Cataclysm).ToString());
+	}
+
+	Lines.Add(FString::Printf(
+		TEXT("Difficulty tier %d, facing %d: %s."),
+		DifficultyTier, ActiveCataclysms.Num(),
+		Facing.IsEmpty() ? TEXT("nobody") : *FString::Join(Facing, TEXT(", "))));
+
 	Lines.Add(FString::Printf(
 		TEXT("%d cities from defeat. Next surge in %.0f days, bringing %d."),
 		Map->DistanceToDefeat(), Surges->DaysUntilNextSurge(Clock->Day),

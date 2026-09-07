@@ -426,13 +426,34 @@ public:
 	 * modifiers a dungeon carries. It was a parameter of `Begin` and nothing
 	 * else until issue #41's modifier slice needed it after the run had started.
 	 *
-	 * **NOTHING IN THE GAME PASSES A REAL ONE YET.**
-	 * `UCataclysmGameInstance::BeginEmpireRun` does not take a tier, so every
-	 * run the game starts is tier 1 -- one active Cataclysm and one modifier a
-	 * dungeon. That is a gap in the join between the game and the empire layer
-	 * rather than in either of them, and it predates this field: it already
-	 * decided how many Cataclysms a run faced. Issue
-	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444).
+	 * WHERE IT COMES FROM, IN THE GAME. `UCataclysmGameInstance::BeginEmpireRun`
+	 * reads `ACataclysmGameMode::DifficultyTierIn` when its caller does not name
+	 * a tier, and every path that starts a run goes through it. **Nothing passed
+	 * a real one until issue
+	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444)**: every run
+	 * the game started was tier 1 -- one active Cataclysm and one modifier a
+	 * dungeon -- whatever tier the player was fighting at. That was a gap in the
+	 * join between the game and the empire layer rather than in either of them,
+	 * and it predated this field: it already decided how many Cataclysms a run
+	 * faced.
+	 *
+	 * IT IS SET ONCE, BY `Begin`, AND NOTHING RAISES IT.
+	 * `docs/Cataclysm_GDD_v2.md` section XII: "A run is played at a fixed tier,
+	 * so a player does not move up the tiers inside a run; they finish a
+	 * campaign and start the next one higher." The design has the tier rising
+	 * BETWEEN runs, on defeating the Cataclysm boss dungeon, and a failed run
+	 * replaying the same tier. Neither half can be built here yet: nothing in
+	 * the game sets a won state -- see the class comment above -- and a
+	 * character has no tier of its own to carry between runs. Issue
+	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
+	 *
+	 * **IT IS NOT SAVED.** `UCataclysmRunSave` carries neither this nor
+	 * `ActiveCataclysms`, so a run restored from a file would face one
+	 * Cataclysm whatever it was facing. Nothing loads a run at all today
+	 * ([#753](https://github.com/sdubois777/Cataclysm/issues/753)), so this
+	 * costs nothing yet and would cost the whole campaign the moment loading
+	 * lands. Issue
+	 * [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 DifficultyTier = 1;
