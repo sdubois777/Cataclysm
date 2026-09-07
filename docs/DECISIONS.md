@@ -79,11 +79,17 @@ the window favours the weakest reduction that satisfies both bounds.**
 
 ### The measurement
 
-4,000 campaigns a row, eight disjoint blocks of 500, at difficulty tier 1 with
-the `triage` policy and static surges every 120 days for 5 dungeons. Those are
-`experiments.exp_calibrate`'s settings and what the balance report uses; the bare
-`TuningConfig` default of 4 dungeons a surge is a value calibration rejects, so a
-figure here and a figure at 4 are not comparable.
+4,000 campaigns a row, eight disjoint blocks of 500, at **difficulty tier 1,
+which is one active Cataclysm type**, with the `triage` policy and **static
+surges every 120 days for 5 dungeons**. Those are `experiments.exp_calibrate`'s
+settings and what the balance report uses; the bare `TuningConfig` default of 4
+dungeons a surge is a value calibration rejects, so a figure here and a figure at
+4 are not comparable.
+
+**The active count is stated because it is not a detail.** Three nodes in the
+Explorer branch pay per active Cataclysm type, so the preset these campaigns run
+against removes 10 flat days and adds +40 floors here and removes 30 and adds
++180 at tier 8. A figure quoted without it is a figure without its conditions.
 
 | Walk-time reduction | Mean walk days | Dungeons walked in one day | Cities lost of 25 | Days with an empty board | Reached the Last Stand | Campaign length |
 | :-- | --: | --: | --: | --: | --: | --: |
