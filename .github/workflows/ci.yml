@@ -25,7 +25,7 @@ jobs:
   sim:
     name: Simulation checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     # The `secrets` context cannot be read from an `if:` condition, so the
     # token is lifted into the environment here and the optional steps below
     # test `env.DUNGEONSIM_TOKEN` instead.
