@@ -240,21 +240,46 @@ def test_the_two_strongest_pairs_bracket_the_weapon_term_the_target_needs():
     assert pd.weapon_base_damage(("Axe", "Axe")) > required
 
 
-def test_a_two_hander_beats_the_reference_pair_by_the_stated_multiplier():
-    """The "A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix"
-    section of `docs/Cataclysm_GDD_v2.md` closes with the multiplier a
-    two-hander gains. A two-hander exceeding the target is that advantage
-    working, not a loadout breaking the target.
+def test_a_two_hander_is_ahead_of_the_target_by_the_figure_the_design_states():
+    """The "The Damage Target" section of `docs/Cataclysm_GDD_v2.md` states
+    that "a two-handed weapon deals about 1.32 times the target". A two-hander
+    exceeding the target is the two-handed multiplier working, not a loadout
+    breaking the target.
 
-    THE 1.33 BELOW IS STALE and is left alone deliberately. That section has
-    said "about **1.29 times** the damage per hit" since issue #633 re-derived
-    the flat damage affix, and this model measures 1.32. Three numbers, one
-    judgement to make: issue #1381.
+    WHAT THIS USED TO ASSERT, AND WHY IT CAUGHT NOTHING. It measured the
+    two-hander against the reference PAIR rather than against the target, and
+    compared it to 1.33 with a tolerance of 0.05. That band spans 1.28 to 1.38,
+    so it passed for the 1.3211 the model gives, and would have passed for 1.29
+    and for the stale 1.33 alike. Issue #1381. The tolerance below is 0.005,
+    which is tight enough that any of the three would fail.
+
+    **THREE FIGURES ARE IN PLAY AND ONLY ONE OF THEM BELONGS HERE.**
+
+    * **1.32** -- composed damage per hit over the 1,860 target. Stated in
+      "The Damage Target". It is what this test asserts.
+    * **1.29** -- the ratio of the weapon brackets alone, 310 against 240.
+      Stated in "A Two-Handed Weapon Is Worth Double, Per Implicit and Per
+      Affix" and solved by `sim/analyse_two_handed_multiplier.py`.
+    * **1.3211** -- this model's two-hander over the Axe and Sword pair, which
+      is what this test used to measure. Stated nowhere, because it is 1.32
+      divided by the pair's own 1% shortfall against the target.
+
+    `tools/tests/test_two_handed_advantage_matches_the_design.py` holds the
+    first two to the sentences that state them, which is the check that was
+    missing while the figure drifted for three weeks.
     """
-    ratio = pd.damage_per_hit(8, ("Greatsword",)) / pd.damage_per_hit(8)
-    assert ratio == pytest.approx(1.33, abs=0.05), (
-        f"a Greatsword deals {ratio:.2f}x the reference pair and the design "
-        "document states about 1.33x")
+    ratio = pd.gap_against_target(8, ("Greatsword",))
+    assert ratio == pytest.approx(1.32, abs=0.005), (
+        f"a Greatsword deals {ratio:.4f} times the damage target and the "
+        f'"The Damage Target" section of docs/Cataclysm_GDD_v2.md states about '
+        f"1.32. Do not relax this to cover the 1.29 in the two-handed section: "
+        f"that is the weapon-bracket ratio, a different quantity.")
+
+    against_pair = pd.damage_per_hit(8, ("Greatsword",)) / pd.damage_per_hit(8)
+    assert against_pair > ratio, (
+        "the two-hander should be further ahead of the reference PAIR than of "
+        "the target, because the Axe and Sword land about 1% under the target. "
+        f"Against the target {ratio:.4f}, against the pair {against_pair:.4f}.")
 
 
 def test_every_two_hander_is_above_the_target_and_every_lone_one_hander_below_it():
