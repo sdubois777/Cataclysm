@@ -17,10 +17,17 @@ one-off tidy-up. This is the most conflict-prone file in the repository and ever
 resolution is by hand, so it gains roughly one bad boundary per hand resolution.
 Counted directly out of the file rather than reported:
 
-    when issue #1402 was filed      362 entries, 61 wrong
+    at 3d1b288, when #1402 filed    362 entries, 60 wrong
     at commit 3fe0b08               363 entries, 61 wrong
     at commit 7d29ee4               364 entries, 62 wrong
     at commit f687744               365 entries, 63 wrong
+
+Issue #1402 records 61 for the first of those rows rather than 60. Every row
+above was re-measured here, reading each commit's blob out of git and applying
+the rule this file implements; the other three agree with the issue exactly.
+The difference on the first row is the first dated entry, which is exempt and
+which that earliest count had not yet excluded. The direction of travel, which
+is what the table is for, is the same either way.
 
 WHY THIS LANDS WITHOUT THE CLEANUP. The obvious objection to a check that arrives
 first is that it goes red over sixty-three faults it did not cause. `ALREADY_WRONG`
