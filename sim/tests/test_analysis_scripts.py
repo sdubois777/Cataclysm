@@ -57,6 +57,7 @@ import io
 import math
 import pathlib
 import runpy
+import statistics
 
 import pytest
 
@@ -120,7 +121,8 @@ def penetration_run():
                                   "analyse_explorer_shape.py",
                                   "analyse_explorer_rate.py",
                                   "analyse_surge_cadence.py",
-                                  "analyse_board_empty_surge.py"])
+                                  "analyse_board_empty_surge.py",
+                                  "analyse_tier_throughput.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3276,3 +3278,195 @@ def test_the_report_states_the_owners_wording(board_empty_run):
         "the report no longer quotes the owner's wording of 2026-09-07. It is "
         "hard-wrapped across two lines, so this flattens the whitespace before "
         "searching -- a raw search would report a clean file that is not.")
+
+
+# --------------------------------------------------------------------------
+# analyse_tier_throughput.py -- issue #1392
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def throughput_run():
+    """The diagnosis of why an uninvested player loses everything at tier 4.
+
+    At the default `TRIALS` of 1 it runs 20 campaigns in total, which is about
+    a second. Module-scoped so every test below shares the one run.
+    """
+    return run("analyse_tier_throughput.py")
+
+
+def test_the_arrival_rate_is_the_engines_own_arithmetic(throughput_run):
+    """**THE HEADLINE OF THE WHOLE FILE**: more walk-days of dungeon arrive at
+    tier 4 than a day contains, so the board can only grow.
+
+    Recomputed here from `TuningConfig` and the engine's own methods rather
+    than trusted, because the script prints a sentence naming the first tier
+    above 1.0 and that sentence is exactly the kind that goes stale silently --
+    it is the failure this whole file was built for.
+    """
+    _, ns = throughput_run
+    rate = {t: ns["arrival_rate"](ns["base_config"](tier=t))
+            for t in (1, 2, 4, 8)}
+
+    assert rate[1] < 1.0, (
+        f"tier 1 now lands {rate[1]:.2f} walk-days a day, so the board cannot "
+        "be kept clear even there and this script's whole framing is wrong.")
+    assert rate[4] > 1.0, (
+        f"tier 4 now lands {rate[4]:.2f} walk-days a day. Below 1.0 the "
+        "uninvested player can keep the board clear and issue #1392's finding "
+        "should be re-measured, not just this test updated.")
+    assert rate[1] < rate[2] < rate[4] < rate[8], (
+        "the arrival rate no longer rises with the difficulty tier: "
+        f"{rate}. That is the mechanism this file reports.")
+
+    printed, _ = throughput_run
+    first_over = min(t for t in (1, 2, 3, 4, 5, 6, 8)
+                     if ns["arrival_rate"](ns["base_config"](tier=t)) > 1.0)
+    assert (f"THE BOARD CANNOT BE KEPT CLEAR FROM TIER {first_over} UPWARD"
+            in printed), (
+        f"the script names a different tier than the {first_over} its own "
+        "numbers give.")
+
+
+def test_the_wave_multiplier_comes_from_the_pattern_table(throughput_run):
+    """The tier multiplies the wave, and the script must read that from the
+    same table `trigger_surge` reads. A hand-written 2.694 would keep printing
+    after somebody changed a `count_mult`."""
+    from cataclysm_sim.engine import active_cataclysms_for
+    from cataclysm_sim.patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
+
+    _, ns = throughput_run
+    for tier in (1, 4, 8):
+        cfg = ns["base_config"](tier=tier)
+        expected = statistics.fmean([
+            sum(PATTERNS.get(t, PATTERN_DEFAULT).count_mult
+                for t in active_cataclysms_for(cfg, seed))
+            ** cfg.cataclysm_volume_exponent
+            for seed in range(ns["ROSTER_SEEDS"])])
+        assert ns["wave_multiplier"](cfg) == pytest.approx(expected)
+
+    one, four = (ns["base_config"](tier=t) for t in (1, 4))
+    assert ns["dungeons_per_surge"](four) > ns["dungeons_per_surge"](one), (
+        "a surge at tier 4 no longer lands more dungeons than one at tier 1, "
+        "which is the first step of the mechanism on issue #1392.")
+
+
+def test_a_city_absorbs_the_same_bites_at_every_tier(throughput_run):
+    """**THE POINT OF SECTION 2, and it is a claim about what the tier does
+    NOT do.** The uninvested player's cities are no weaker at tier 4; what the
+    tier multiplies is what arrives at them. If a per-tier city term is ever
+    added, the script's stated conclusion becomes false and this fails."""
+    _, ns = throughput_run
+    for ctier in ns["LOSABLE"]:
+        counts = [ns["detonations_survived"](ns["base_config"](tier=t), ctier)
+                  for t in (1, 2, 4, 8)]
+        assert counts[0] == pytest.approx(counts[1]) == pytest.approx(
+            counts[2]) == pytest.approx(counts[3]), (
+            f"{ctier.value} now absorbs a different number of detonations by "
+            f"tier: {counts}. Section 2 says it does not.")
+
+    printed, _ = throughput_run
+    assert "THE DIFFICULTY TIER DOES NOT CHANGE A SINGLE ONE OF THESE" in printed
+
+
+def test_the_instrumented_campaign_draws_nothing(throughput_run):
+    """An instrumented campaign must be the campaign a bare `Simulation` would
+    have run, or every figure in sections 3 to 5 describes a different game.
+    The same property `analyse_board_empty_surge._Ledger` is held to."""
+    from cataclysm_sim import policies
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = throughput_run
+    cfg = ns["base_config"](tier=4)
+    plain = Simulation(cfg, seed=7).run(policies.ALL["triage"])
+    ledger = ns["_Ledger"](cfg, seed=7)
+    counted = ledger.run(ns["ledger_policy"](policies.ALL["triage"]))
+    assert counted == plain, (
+        "instrumenting the campaign changed it, so a hook is drawing from the "
+        "random number generator.")
+
+
+def test_the_day_kinds_account_for_the_whole_campaign(throughput_run):
+    """Dead, at the forge, walking, or free. `Simulation.step` branches on
+    exactly those, so they must sum to the days survived. A fifth branch added
+    to the day loop would silently be counted as none of them."""
+    from cataclysm_sim import policies
+
+    _, ns = throughput_run
+    cfg = ns["base_config"](tier=4)
+    s = ns["_Ledger"](cfg, seed=3)
+    r = s.run(ns["ledger_policy"](policies.ALL["triage"]))
+    assert (s.dead_days + s.forge_days + s.walk_days + r.free_days
+            == r.survived_days)
+    assert (s.empty_board_days + s.no_safe_days + s.declined_days
+            == r.idle_days)
+
+
+def test_refusing_the_last_stand_really_refuses_it(throughput_run):
+    """**THE CONTROL ON SECTION 5.** Its whole conclusion is that a player who
+    is not committed to the Last Stand still reaches the earned Cataclysm in
+    0% of campaigns. If the wrapper stopped hiding the Last Stand, both rows
+    would be the same run and the section would prove nothing while still
+    printing two lines."""
+    from cataclysm_sim import policies
+
+    _, ns = throughput_run
+    cfg = ns["base_config"](tier=4)
+    s = ns["_Ledger"](cfg, seed=1)
+    r = s.run(ns["ledger_policy"](policies.ALL["triage"],
+                                  refuse_last_stand=True))
+    assert s.last_stand is not None, (
+        "seed 1 no longer opens the Last Stand at tier 4, so this test cannot "
+        "check that refusing it works. Find a seed that does.")
+    assert not s.entered_last_stand, (
+        "the refusing policy entered the Last Stand anyway.")
+    assert r.survived_days == cfg.max_days, (
+        f"the refusing campaign ended on day {r.survived_days} rather than "
+        f"running to {cfg.max_days}, so something else is ending it and "
+        "section 5's comparison is not what it says it is.")
+
+
+def test_the_throughput_script_measures_the_cadence_scripts_world(
+        throughput_run, cadence_run):
+    """ANOTHER COPY THAT MUST NOT DRIFT. `analyse_tier_throughput.base_config`
+    is copied from `analyse_surge_cadence.base_config` so a figure from one can
+    be read against a figure from the other, the same way
+    `analyse_board_empty_surge` is. Compared as whole configurations, field by
+    field: a copy that drifts drifts in the field nobody listed."""
+    _, mine = throughput_run
+    _, cadence = cadence_run
+    for tier in (1, 4):
+        assert mine["base_config"](tier=tier) == cadence["base_config"](
+            tier=tier,
+            count=cadence["SHIPPED_COUNT"],
+            interval=cadence["SHIPPED_INTERVAL"]), (
+            f"at tier {tier} analyse_tier_throughput no longer measures the "
+            "same world as analyse_surge_cadence, so their figures cannot be "
+            "read against each other.")
+
+
+def test_every_lever_changes_exactly_one_setting(throughput_run):
+    """Section 4's whole claim is that each row isolates one step. A row that
+    changed two would attribute both to one of them."""
+    import dataclasses as dc
+
+    _, ns = throughput_run
+    shipped = ns["base_config"](tier=4)
+    for label, over in ns["LEVERS"]:
+        assert len(over) <= 1, f"{label!r} changes {len(over)} settings, not one"
+        changed = [f.name for f in dc.fields(shipped)
+                   if getattr(ns["base_config"](tier=4, **over), f.name)
+                   != getattr(shipped, f.name)]
+        assert changed == list(over), (
+            f"{label!r} says it changes {list(over)} but the configuration "
+            f"differs in {changed}.")
+
+
+def test_the_throughput_script_recommends_no_constant(throughput_run):
+    """No constant moves on the strength of a sweep alone on this project --
+    issue #1349. Section 4 prints eight of them and must say so."""
+    printed, _ = throughput_run
+    assert "NONE IS A" in printed and "PROPOSAL" in printed
+    flat = " ".join(printed.split())
+    assert "IT MEASURES AND PROPOSES NOTHING" in source(
+        "analyse_tier_throughput.py")
+    assert "issue #1349" in flat
