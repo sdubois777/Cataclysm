@@ -1,0 +1,2568 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Ravager Class Tree",
+    "description": "Single continuous web. The Path of Ruin runs up the centre and is what fills Fervour from enemies in reach. Unbreaking lower-left, Sundering upper-left, Scorched Earth upper-right, Relentless lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four onslaught capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "createdAt": "2026-09-07T00:00:00.000Z",
+    "updatedAt": "2026-09-07T00:00:00.000Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 1200.0,
+    "y": 200.0,
+    "zoom": 0.45
+  },
+  "nodes": [
+    {
+      "id": "basic_spine_000",
+      "position": {
+        "x": 0,
+        "y": 780
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fervour",
+        "description": "Enemies in reach generate Fervour: 1 for each enemy your attacks hit, and 1 per second for every enemy within 4 metres of you. While you have this, Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact is what empties it rather than a timer.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_001",
+      "position": {
+        "x": -450,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Thick Hide",
+        "description": "+1% increased Armor and +0.5% increased Maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_002",
+      "position": {
+        "x": 675,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Long Stride",
+        "description": "+1% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_003",
+      "position": {
+        "x": -300,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Weight of the Axe",
+        "description": "+2% increased Attack Damage per point while an enemy is within 4 metres.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_004",
+      "position": {
+        "x": -300,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wide Grip",
+        "description": "+2% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_005",
+      "position": {
+        "x": 900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Closing Ground",
+        "description": "+1% increased Movement Speed and +1% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_006",
+      "position": {
+        "x": -375,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Set Stance",
+        "description": "+1% increased Damage Reduction per point. At 4 points: you cannot be knocked back while an enemy is within 4 metres.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_007",
+      "position": {
+        "x": 900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Trailing Embers",
+        "description": "+3% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_008",
+      "position": {
+        "x": -375,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Scarred Plate",
+        "description": "+1.5% increased Armor per point. At 4 points: +5% increased Crowd Control Resistance.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_009",
+      "position": {
+        "x": 900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Stoked",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_010",
+      "position": {
+        "x": -150,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unspent Ruin",
+        "description": "+1% increased Attack Damage per point for every full 20 Fervour you currently hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_001",
+      "position": {
+        "x": 150,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Ironhide",
+        "description": "Your Armor cannot be ignored: armor penetration and piercing weapons remove none of it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_002",
+      "position": {
+        "x": 0,
+        "y": 252
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Every Swing Lands",
+        "description": "Your melee attacks have no maximum target count.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_003",
+      "position": {
+        "x": -150,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Unstoppable",
+        "description": "You cannot be stunned, slowed or knocked back while an enemy is within 4 metres of you.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem0",
+      "position": {
+        "x": -450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slab of Muscle",
+        "description": "+2% increased Maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem1",
+      "position": {
+        "x": -450,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hardened",
+        "description": "+2% increased Armor per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem2",
+      "position": {
+        "x": -300,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rooted",
+        "description": "+3% increased Crowd Control Resistance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a0",
+      "position": {
+        "x": -600,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Plated",
+        "description": "+1.5% increased Armor per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a1",
+      "position": {
+        "x": -600,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Thick Blood",
+        "description": "+1% increased Life Leech per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a2",
+      "position": {
+        "x": -600,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slow to Fall",
+        "description": "+2% increased Health Regeneration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b0",
+      "position": {
+        "x": -450,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Braced",
+        "description": "+1% increased Damage Reduction per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b1",
+      "position": {
+        "x": -450,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Weathered",
+        "description": "+1% increased Damage Reduction per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b2",
+      "position": {
+        "x": -450,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Second Wind",
+        "description": "+2% increased Health Regeneration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c0",
+      "position": {
+        "x": -300,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Stubborn",
+        "description": "+3% increased Crowd Control Resistance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c1",
+      "position": {
+        "x": -300,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Wells",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kA",
+      "position": {
+        "x": -600,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Unbreaking",
+        "description": "You take 15% less damage while three or more enemies are within 4 metres of you.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kB",
+      "position": {
+        "x": -450,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Nothing Moves You",
+        "description": "Crowd control effects on you last half as long, and one ends entirely when you kill the enemy that applied it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kC",
+      "position": {
+        "x": -300,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Weight Bearing",
+        "description": "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you have.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem0",
+      "position": {
+        "x": -900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Broad Swing",
+        "description": "+2% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem1",
+      "position": {
+        "x": -900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Heavy Head",
+        "description": "+2% increased Attack Damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem2",
+      "position": {
+        "x": -750,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Momentum",
+        "description": "+2% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a0",
+      "position": {
+        "x": -1050,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Reach",
+        "description": "+2% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a1",
+      "position": {
+        "x": -1050,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Crushing Weight",
+        "description": "+2% increased Attack Damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a2",
+      "position": {
+        "x": -1050,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cleaving Arc",
+        "description": "+1% increased Attack Damage per point for each enemy your attack hits beyond the first.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b0",
+      "position": {
+        "x": -900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Two Hands",
+        "description": "Two-handed weapons only. +3% increased Attack Damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b1",
+      "position": {
+        "x": -900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Swing Through",
+        "description": "+2% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b2",
+      "position": {
+        "x": -900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Splitting Blow",
+        "description": "+1.5% increased Critical Strike Multiplier per point on melee attacks.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c0",
+      "position": {
+        "x": -750,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wind Up",
+        "description": "+2% increased Attack Damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c1",
+      "position": {
+        "x": -750,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Whirl",
+        "description": "+2% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kA",
+      "position": {
+        "x": -1050,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Sundering",
+        "description": "Your melee attacks ignore enemy Armor entirely when they hit three or more enemies at once.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kB",
+      "position": {
+        "x": -900,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Follow Through",
+        "description": "Killing an enemy with a melee attack immediately repeats that attack at no cost, no more than once every 3 seconds.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kC",
+      "position": {
+        "x": -750,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Overreach",
+        "description": "Your melee attacks reach 2 metres further than the skill states.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem0",
+      "position": {
+        "x": 450,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Kindling",
+        "description": "+3% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem1",
+      "position": {
+        "x": 450,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Slow Burn",
+        "description": "+3% increased damage over time duration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem2",
+      "position": {
+        "x": 600,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bellows",
+        "description": "+2% increased damage over time frequency per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a0",
+      "position": {
+        "x": 300,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Molten Trail",
+        "description": "+3% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a1",
+      "position": {
+        "x": 300,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cinders",
+        "description": "+3% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a2",
+      "position": {
+        "x": 300,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Banked Heat",
+        "description": "+1% increased damage over time damage per point for each burning enemy within 8 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b0",
+      "position": {
+        "x": 450,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Charring",
+        "description": "+3% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b1",
+      "position": {
+        "x": 450,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lingering Heat",
+        "description": "+3% increased damage over time duration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b2",
+      "position": {
+        "x": 450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fed by Ruin",
+        "description": "+2% increased Fervour gained from enemies your attacks hit per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c0",
+      "position": {
+        "x": 600,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ground Aflame",
+        "description": "+3% increased Area of Effect per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c1",
+      "position": {
+        "x": 600,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Heat Haze",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kA",
+      "position": {
+        "x": 300,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Scorched Earth",
+        "description": "Burning ground you create lasts twice as long and spreads 1 metre outward each second.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kB",
+      "position": {
+        "x": 450,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Slag Trail",
+        "description": "You leave burning ground behind you as you move while at maximum Fervour.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kC",
+      "position": {
+        "x": 600,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Feed the Fire",
+        "description": "Enemies burning from your skills each grant you 1 Fervour per second.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -1500,
+        "y": 780
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The First Onslaught",
+        "description": "Unlocks at 25 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Wade In",
+            "description": "Each enemy within 4 metres of you grants 3% increased Armor and 3% increased Attack Damage."
+          },
+          {
+            "name": "Firewalker",
+            "description": "Burning ground does not slow you, and enemies standing in yours take 20% increased damage from you."
+          },
+          {
+            "name": "Headlong",
+            "description": "+25% increased Movement Speed, and your first melee attack after moving 5 metres deals 50% increased damage."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -1500,
+        "y": 540
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Second Onslaught",
+        "description": "Unlocks at 50 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Rendering Blows",
+            "description": "Every third melee attack against the same enemy removes 20% of its Armor for 6 seconds."
+          },
+          {
+            "name": "Bank the Heat",
+            "description": "Fervour you would gain above your maximum instead grants 1% increased damage over time damage each, for 4 seconds."
+          },
+          {
+            "name": "Long Hold",
+            "description": "Killing an enemy restores 5% of your maximum health."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -1500,
+        "y": 300
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Third Onslaught",
+        "description": "Unlocks at 100 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Ground Down",
+            "description": "Enemies within 4 metres of you have 15% reduced Movement Speed and 15% reduced Attack Speed."
+          },
+          {
+            "name": "Kindled Wounds",
+            "description": "Your damage over time damage is increased by 1% for every 2% of Damage Reduction you have."
+          },
+          {
+            "name": "Shoulder Through",
+            "description": "Moving into an enemy pushes it aside and deals your melee damage to it."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -1500,
+        "y": 60
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Final Onslaught",
+        "description": "Unlocks at 200 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Firestorm Made Flesh",
+            "description": "Killing a burning enemy spreads its burn to everything within 4 metres, and each burning enemy within 8 metres grants you 3% more damage."
+          },
+          {
+            "name": "The Whole Field",
+            "description": "Your melee attacks strike every enemy within 6 metres of you, and each enemy struck beyond the first grants that attack 2% more damage."
+          },
+          {
+            "name": "Nothing Stops It",
+            "description": "You cannot be brought below 1 health by a single hit. When a hit would have done so you take no damage for 2 seconds, no more than once every 20 seconds."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem0",
+      "position": {
+        "x": 900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Never Still",
+        "description": "+1% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem1",
+      "position": {
+        "x": 900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hunter's Pace",
+        "description": "+1% increased Movement Speed and +1% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem2",
+      "position": {
+        "x": 975,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Drinker",
+        "description": "+1% increased Life Leech per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a0",
+      "position": {
+        "x": 750,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Onset",
+        "description": "+2% increased Attack Damage per point while an enemy is within 4 metres.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a1",
+      "position": {
+        "x": 750,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Pressing",
+        "description": "+1% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a2",
+      "position": {
+        "x": 750,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cornered Quarry",
+        "description": "+2% increased Attack Damage per point against enemies below 35% health.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kA",
+      "position": {
+        "x": 750,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Relentless",
+        "description": "Your Movement Speed cannot be reduced by any effect.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b0",
+      "position": {
+        "x": 900,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Held Ground",
+        "description": "+2% increased Fervour gained from enemies near you per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b1",
+      "position": {
+        "x": 900,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Stoked Further",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b2",
+      "position": {
+        "x": 900,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Banked Ruin",
+        "description": "+1% increased Damage Reduction per point for every full 25 Fervour you currently hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kB",
+      "position": {
+        "x": 900,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "In Among Them",
+        "description": "You deal 2% more damage for each enemy within 4 metres of you.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c0",
+      "position": {
+        "x": 1050,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sustained Assault",
+        "description": "+1% increased Life Leech per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c1",
+      "position": {
+        "x": 1050,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unwavering",
+        "description": "+2% increased Health Regeneration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kC",
+      "position": {
+        "x": 1050,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "No Ground Given",
+        "description": "Your Fervour does not decay while an enemy is within 8 metres of you, rather than 4.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_frame_1",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -120.0,
+        "y": 1400.0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 0.7,
+        "text": "RAVAGER",
+        "fontSize": 22
+      },
+      "measured": {
+        "width": 132,
+        "height": 33
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1",
+      "source": "basic_spine_000",
+      "target": "basic_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_2",
+      "source": "basic_spine_000",
+      "target": "basic_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_3",
+      "source": "basic_spine_001",
+      "target": "basic_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_4",
+      "source": "basic_spine_003",
+      "target": "basic_spine_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_5",
+      "source": "basic_spine_002",
+      "target": "basic_spine_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "e_6",
+      "source": "basic_spine_004",
+      "target": "basic_spine_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_7",
+      "source": "basic_spine_005",
+      "target": "basic_spine_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_8",
+      "source": "basic_spine_006",
+      "target": "basic_spine_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_9",
+      "source": "basic_spine_007",
+      "target": "basic_spine_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_10",
+      "source": "basic_spine_008",
+      "target": "basic_spine_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_11",
+      "source": "basic_spine_001",
+      "target": "keystone_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_12",
+      "source": "basic_spine_004",
+      "target": "keystone_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_13",
+      "source": "basic_spine_010",
+      "target": "keystone_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_14",
+      "source": "basic_spine_008",
+      "target": "basic_a_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_15",
+      "source": "basic_a_stem0",
+      "target": "basic_a_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_16",
+      "source": "basic_a_stem1",
+      "target": "basic_a_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_17",
+      "source": "basic_a_stem1",
+      "target": "basic_a_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_18",
+      "source": "basic_a_a0",
+      "target": "basic_a_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_19",
+      "source": "basic_a_a1",
+      "target": "basic_a_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_20",
+      "source": "basic_a_stem1",
+      "target": "basic_a_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_21",
+      "source": "basic_a_b0",
+      "target": "basic_a_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_22",
+      "source": "basic_a_b1",
+      "target": "basic_a_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_23",
+      "source": "basic_a_stem2",
+      "target": "basic_a_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_24",
+      "source": "basic_a_c0",
+      "target": "basic_a_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_25",
+      "source": "basic_a_a2",
+      "target": "keystone_a_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_26",
+      "source": "basic_a_b2",
+      "target": "keystone_a_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_27",
+      "source": "basic_a_c1",
+      "target": "keystone_a_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_42",
+      "source": "basic_spine_001",
+      "target": "basic_b_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_43",
+      "source": "basic_b_stem0",
+      "target": "basic_b_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_44",
+      "source": "basic_b_stem1",
+      "target": "basic_b_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_45",
+      "source": "basic_b_stem1",
+      "target": "basic_b_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_46",
+      "source": "basic_b_a0",
+      "target": "basic_b_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_47",
+      "source": "basic_b_a1",
+      "target": "basic_b_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_48",
+      "source": "basic_b_stem1",
+      "target": "basic_b_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_49",
+      "source": "basic_b_b0",
+      "target": "basic_b_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_50",
+      "source": "basic_b_b1",
+      "target": "basic_b_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_51",
+      "source": "basic_b_stem2",
+      "target": "basic_b_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_52",
+      "source": "basic_b_c0",
+      "target": "basic_b_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_53",
+      "source": "basic_b_a2",
+      "target": "keystone_b_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_54",
+      "source": "basic_b_b2",
+      "target": "keystone_b_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_55",
+      "source": "basic_b_c1",
+      "target": "keystone_b_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_56",
+      "source": "basic_spine_002",
+      "target": "basic_c_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_57",
+      "source": "basic_c_stem0",
+      "target": "basic_c_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_58",
+      "source": "basic_c_stem1",
+      "target": "basic_c_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_59",
+      "source": "basic_c_stem1",
+      "target": "basic_c_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_60",
+      "source": "basic_c_a0",
+      "target": "basic_c_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_61",
+      "source": "basic_c_a1",
+      "target": "basic_c_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_62",
+      "source": "basic_c_stem1",
+      "target": "basic_c_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_63",
+      "source": "basic_c_b0",
+      "target": "basic_c_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_64",
+      "source": "basic_c_b1",
+      "target": "basic_c_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_65",
+      "source": "basic_c_stem2",
+      "target": "basic_c_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_66",
+      "source": "basic_c_c0",
+      "target": "basic_c_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_67",
+      "source": "basic_c_a2",
+      "target": "keystone_c_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_68",
+      "source": "basic_c_b2",
+      "target": "keystone_c_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_69",
+      "source": "basic_c_c1",
+      "target": "keystone_c_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_d_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_d_stem0",
+      "target": "basic_d_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_d_stem1",
+      "target": "basic_d_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_d_stem1",
+      "target": "basic_d_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_d_stem2",
+      "target": "basic_d_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_d_stem2",
+      "target": "basic_d_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_d_a0",
+      "target": "basic_d_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_d_a1",
+      "target": "basic_d_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_d_a2",
+      "target": "keystone_d_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_d_b0",
+      "target": "basic_d_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_d_b1",
+      "target": "basic_d_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_d_b2",
+      "target": "keystone_d_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_d_c0",
+      "target": "basic_d_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_d_c1",
+      "target": "keystone_d_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    }
+  ]
+}

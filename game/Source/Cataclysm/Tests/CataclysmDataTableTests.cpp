@@ -194,19 +194,25 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Tags sheet has exactly one row, so a ninth damage type raises this number
 	// and a missing one fails generation before it reaches here.
 	CHECK_TABLE(FCataclysmElementVisualRow,     "ElementVisuals.csv",          8)
-	// 293: every node of the four class trees that exist. Berserker holds 71
-	// and the other three hold 74 each. The design says "approximately 74
+	// 441: every node of the six class trees that exist. Berserker holds 71
+	// and the other five hold 74 each. The design says "approximately 74
 	// nodes" per tree; the pin is what notices the generator silently dropping
 	// one, which would leave a hole in a tree the game draws. Issue #50.
 	//
-	// IT RISES A LOT WHEN THE OTHER TWENTY TREES ARRIVE, issue #24, and that
-	// is what a pin is for: a jump nobody meant is the same shape as a jump
+	// 293 UNTIL 2026-09-07, when the Ravager and Ritualist trees were added for
+	// issue #950 and brought 74 nodes each. That is the jump this pin is for:
+	// it rose by exactly two trees' worth, which is the check that nothing else
+	// moved at the same time.
+	//
+	// IT RISES A LOT AGAIN WHEN THE OTHER EIGHTEEN TREES ARRIVE, issue #24, and
+	// that is what a pin is for: a jump nobody meant is the same shape as a jump
 	// somebody did.
-	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          293)
-	// 278: every dependency edge of those four trees. Fewer than the nodes,
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          441)
+	// 416: every dependency edge of those six trees. Fewer than the nodes,
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
-	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          278)
+	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          416)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.

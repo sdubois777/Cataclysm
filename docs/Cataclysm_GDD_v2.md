@@ -732,11 +732,11 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **A generator is a set of rates, and each rate is its own stat.** The Masochist's is three: Fervour gained per 1% of maximum health lost to damage, Fervour gained per 1% spent as an ability cost, and Fervour removed per 1% restored by healing. Three rather than one because the tree moves them separately — different nodes increase each of the first two, one node reduces the third, and two keystones trade the first two against each other. Every rate is zero for every class until a tree's starting node grants it, which is what makes that node worth a point.
 
-**A rate is per percent of maximum health rather than per point of it.** A character with 500 health and one with 5000 both gain 10 Fervour from losing a tenth of themselves. Per point, more health would mean a slower bar, which is the opposite of what the class is for. Only the Masochist's generator is built; `docs/DECISIONS.md`, 2026-08-25, records the shape and what the other three would need.
+**A rate is per percent of maximum health rather than per point of it.** A character with 500 health and one with 5000 both gain 10 Fervour from losing a tenth of themselves. Per point, more health would mean a slower bar, which is the opposite of what the class is for. Only the Masochist's generator is built in code; `docs/DECISIONS.md`, 2026-08-25, records the shape and what the others would need. The Ravager's and the Ritualist's are designed but not built, which is why the table below has six rows and the code has one.
 
 **The generator's rates are not the only way Fervour arrives.** A rate is tied to health moving, and individual nodes may grant Fervour for something else entirely. Two do. The Masochist's Low Life keystone grants a flat amount per second while the character is at or below 35% health, from nothing having happened at all; and the first option of its 200 point capstone, The Last Drop, grants a flat amount for every skill cast while the character is below 20% health. Both are separate stats from the three rates and neither is part of any generator, which is why a node can add one without changing what a class's starting node grants.
 
-The four generators designed so far, one per class, each granted by that class's starting node:
+The six generators designed so far, one per class, each granted by that class's starting node:
 
   
 
@@ -746,6 +746,8 @@ The four generators designed so far, one per class, each granted by that class's
 | Berserker (War) | 1 per critical strike | Fervour decays at 10 per second after 3 seconds out of combat |
 | Saboteur (War) | Placing a trap or gadget, and one of them dealing damage or triggering | Nothing. Fervour keeps its default of not decaying |
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it |
+| Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
+| Ritualist (Demonic) | 1 per second for each imp or thrall held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
 
   
 
@@ -765,7 +767,11 @@ The four generators designed so far, one per class, each granted by that class's
 
   
 
-The node graph is `docs/Masochist_Class_Tree_Final.json`. The Ravager and Ritualist generators are not designed yet, and neither are the other 19 class trees; issue #24 covers them and issue #950 covers those two.
+The node graphs are `docs/Masochist_Class_Tree_Final.json`, `docs/Ravager_Class_Tree_Final.json` and `docs/Ritualist_Class_Tree_Final.json`, which is all three Demonic classes and so all three the vertical slice ships. The other 19 class trees are not designed; issue #24 covers them.
+
+  
+
+**Neither of the two added on 2026-09-07 grants anything a machine can read yet.** Both are node text alone: the numbers behind a node are authored by hand in the design workbook's `Passive Effects` sheet, and no rows were written for either. Issue #1463 is that work. So the share of passive nodes that do something fell from 78 of 293 to 78 of 441 when they landed, which is a denominator moving rather than anything breaking.
 
   
 

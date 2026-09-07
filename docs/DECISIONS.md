@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — The Ravager and Ritualist get passive trees, the Ravager fills Fervour from enemies in reach and the Ritualist from what it commands
+
+**Affects:** `docs/Ravager_Class_Tree_Final.json` and
+`docs/Ritualist_Class_Tree_Final.json` (both new),
+`docs/Cataclysm_GDD_v2.md` (the Class Resource Systems section),
+`game/Data/PassiveNodes.csv`, `game/Data/PassiveEdges.csv`,
+`tools/generate_datatables.py`, `tools/tests/test_class_passive_trees.py`,
+`tools/tests/test_passive_tables_match_the_tree_files.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`. **Applied.**
+Issue [#950](https://github.com/sdubois777/Cataclysm/issues/950). Opens issue
+[#1463](https://github.com/sdubois777/Cataclysm/issues/1463).
+
+The Ravager is the class a character starts on --
+`UCataclysmPlayerClassStats::StartingClassName` is `Ravager` and the console
+variable `Cataclysm.PlayerClass` defaults to it -- and it had no tree, so the
+only tree the default character could spend a point in belonged to another
+class. Demonic is the vertical slice's damage type and unlocks three classes;
+one of the three had a tree. Both now do, so all three do.
+
+### One correction to the record before anything else
+
+**The ruling that every class shares one resource was already documented, in
+both places, and a session was told it was in neither.** It is the 2026-08-25
+entry further down this file, "Every class shares one resource, called Fervour",
+whose own **Affects** line already names issue #950; and it is
+`docs/Cataclysm_GDD_v2.md` from "Every class shares one resource, called
+Fervour" through "Nothing is called Resolve, Fury, Preparation or Anguish any
+more." `UCataclysmClassResourceAttributeSet.h` carries it in a comment as well.
+Nothing needed writing down. **Issue #950's own table, which lists the Ravager
+and Ritualist as having "no resource", is what is stale** -- it was written on
+2026-08-25 and the ruling landed the same day.
+
+### The two generators
+
+A generator is what a tree's starting node grants, and it is the only reason
+that node is worth a point. The two here are the fifth and sixth.
+
+| Class | Fills Fervour from | Adds about emptying |
+| :-- | :-- | :-- |
+| Ravager | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Decays at 5 per second after 3 seconds with no enemy within 4 metres |
+| Ritualist | 1 per second for each imp or thrall held, and 5 when one of them dies | Nothing. It keeps the default of not decaying |
+
+**Each fills from the thing its class is described as doing**, which is the only
+test a generator has to pass, and each is a different axis from the four that
+existed. The Berserker fills on critical strikes and empties on a timer; the
+Ravager fills on being surrounded and empties on losing contact. Those look
+alike written down and are not: one scales with critical strike chance and is a
+burst filler, the other scales with how many enemies are on you and is a sustain
+filler. That is the design document's own contrast between the two, "where the
+Berserker is a shock troop, the Ravager is the consistent fighter", expressed as
+a resource rather than as flavour.
+
+**The Ritualist keeps the default of not decaying, and that is not a shrug.** Its
+Fervour is also a standing reservation -- a thrall claims 30 of it -- and a bar
+that drained would be an army that shrank while the player did nothing.
+
+### What the genre settles, and what it does not
+
+**Settled: a summoner's army is capped by a reservation pool, and the passive
+tree grows the army by growing the pool.** Path of Exile 2's Spirit is exactly
+this. Each permanent minion reserves Spirit, more Spirit is bought from gear,
+passives and jewels, and the same pool also pays for auras, so an army is
+directly traded against everything else the pool could do. This project already
+decided the same shape on 2026-09-02 -- "the army cap is the Fervour pool
+itself" -- and the Ritualist tree is built on it: five nodes grant maximum
+Fervour, a keystone grants a flat +30, which is exactly one more thrall at the
+30 a thrall reserves, and a second keystone converts maximum mana into it.
+
+**Settled: what a minion tree contains.** Last Epoch's Necromancer tree is minion
+damage, minion health, minion attack speed, nodes that raise the summon limit,
+and nodes that pay the player per active minion. The Ritualist's four limbs are
+that list.
+
+**Settled: what a heavy two-handed melee tree contains.** Diablo 4's Barbarian
+clusters are Fury generation, weapon damage, defensive layers, and weapon
+mastery, and its damage reduction is bought conditionally -- stacking per
+Frenzy stack, or per Flay hit. The Ravager's limbs are armor and damage
+reduction, area of effect and multi-target, damage over time, and movement with
+leech, and its two defensive keystones are both conditional on enemies being
+close rather than unconditional.
+
+**Settled: a stacking bonus rounds down in whole steps**, which this file
+already decided on 2026-08-25 off Path of Exile's "per 10 Strength" behaviour.
+Three nodes across the two trees use "for every full N", worded that way.
+
+**A judgement, not settled by any of them: the Ravager's generator.** No shipped
+game fills a resource from enemy proximity in the way described above. Diablo's
+Barbarian fills from using a basic attack, Path of Exile's Rage from hitting at
+all. Proximity was chosen because the class's stated identity is being in
+contact and its two Greataxe skills are a wide cone and a spin, so a bar that
+fills from being surrounded makes the identity mechanical rather than flavour
+text. **It is a judgement and it should be read as one.**
+
+**A judgement: the sizes.** Every number in both trees -- 1 Fervour an enemy,
+5 per second decaying, 2% a point, the 4 metre radius -- is a starting value
+chosen to sit in the range the four existing trees use, not a tuned one. The
+Ravager's fill rate is the one most likely to be wrong: a Greataxe cone hitting
+ten enemies grants 10 Fervour a swing against a pool of 100.
+
+**A judgement: reusing the Masochist's skeleton.** Which node hangs off which,
+how many points each holds and where each sits are the Masochist's, because that
+is the shape the project owner accepted on 2026-08-25 after asking for a tree
+that "grows like a tree". The layout decision says positions come from an
+ordinary layered tree layout, so an identical graph under that rule lands in
+identical places; only names and descriptions differ. Both trees are 74 nodes,
+15 keystones, 4 capstones, 69 edges and 440 spendable points, and neither has a
+node drawn below its starting node.
+
+### What was deliberately not decided
+
+**Whether a thrall's reservation subtracts from the usable pool.** That is issue
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160), which weighs two
+shapes and picks neither, and **the Ritualist tree makes it bite.** #1160 says so
+in as many words: "It stops being invisible the moment #950 lands. Once the
+Ritualist has nodes or abilities that spend Fervour, a player holding four
+thralls should have 30 Fervour to work with rather than 150, and today would
+have 150." No node here assumes either answer.
+
+**Whether the four names are gone from the War class table.** They are not:
+`docs/Cataclysm_GDD_v2.md` still ends three Identity cells "Resource: Resolve.",
+"Resource: Fury." and "Resource: Preparation." The check that was meant to hold
+this looks for a whole table cell, `| Resolve |`, and cannot see a name buried
+in a prose cell. Issue
+[#1464](https://github.com/sdubois777/Cataclysm/issues/1464).
+
+**Whether the display name, the regeneration rule or the maximum vary by class.**
+The owner ruled that class resources are the same and said nothing about those
+three. Nothing here decides them. The one thing already settled is that the
+maximum is not uniform: `game/Data/ClassStats.csv` gives the Ritualist 150 and
+every other class 100, which the design document states and which the thrall cap
+already relies on.
+
+### What these trees do not do yet
+
+**Neither grants anything a machine can read.** A node's numbers are authored by
+hand in the design workbook's `Passive Effects` sheet, and no rows were written
+for either tree, so the share of passive nodes that grant something fell from 78
+of 293 to 78 of 441. That is a denominator moving. Issue #1463 is the work, and
+the pinned counts in `test_passive_effects_match_the_node_text.py` were raised
+with it named rather than the fall being left to look like a regression.
+
+### What was checked
+
+`tools/tests/test_class_passive_trees.py` runs its whole rule set over six trees
+instead of four and passes: version and point budget, node counts, exactly 15
+keystones, exactly 4 capstones at 25/50/100/200 with three options each, 440
+spendable points, no edge asking more than its source holds, a keystone
+requiring full investment in its parent, one connected web, capstones not wired
+into it, and unique ids and names.
+
+Five pinned counts moved, all measured rather than estimated:
+`STRINGS_CONTAINING_THE_WORD` 30 to 42, `STRINGS_USING_IT_AS_A_MAGNITUDE` 21 to
+27, `NODES_RELYING_ON_THE_WIDENED_RULE` 7 to 10, `NAMED_OPTIONS` 36 to 60 and
+`TOTAL_NODES` 293 to 441.
+
+**No basic node in either tree uses "more" or "less" as a magnitude.** All six
+new magnitude uses are on keystones or capstone options. That is the practice the
+2026-08-25 rewrite settled rather than a rule written anywhere: a conditional
+bonus on a basic node joins the increases bracket, which is why Grand Tithe and
+Staunch were reworded then.
+
+---
+
 ## 2026-09-07 — A dungeon's sub-type decides what its floors hold, and three of the seven now use it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp`
