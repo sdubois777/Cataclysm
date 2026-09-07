@@ -30,6 +30,16 @@ it cannot resolve a small ordering change either way. Re-running it is 1.8
 minutes of the report's 20; nobody has done it since #1338. See the next
 section.
 
+**There are now three reasons it is not re-measured, and the third blocks it
+outright.** The first two are above. The third: `TREE_EXPLORER_AS_DESIGNED` was
+corrected on [#1386](https://github.com/sdubois777/Cataclysm/issues/1386) and its
+`floor_delta` is a **tier 1** figure, because `Infinite Depths` pays per active
+Cataclysm type — the branch adds +40 floors at tier 1 and +180 at tier 8, and
+`EmpireTree` holds one number. **This claim compares tier 1 against tier 8**, so
+re-measuring it with that preset would give a figure that is right at one end and
+wrong at the other. It needs the per-tier presets ruling on
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) first.
+
 The tier is `SWEEP_TIER` in `experiments.py`, and the preset section's tiers are
 `PRESET_TIERS`. Sweeping all eight tiers would take about two and a half hours,
 which is why only section 7 pays for a second one. This was issue
