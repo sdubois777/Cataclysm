@@ -3319,12 +3319,39 @@ def test_the_arrival_rate_is_the_engines_own_arithmetic(throughput_run):
         f"{rate}. That is the mechanism this file reports.")
 
     printed, _ = throughput_run
-    first_over = min(t for t in (1, 2, 3, 4, 5, 6, 8)
-                     if ns["arrival_rate"](ns["base_config"](tier=t)) > 1.0)
-    assert (f"THE BOARD CANNOT BE KEPT CLEAR FROM TIER {first_over} UPWARD"
+    over = [t for t in (1, 2, 3, 4, 5, 6, 8)
+            if ns["arrival_rate"](ns["base_config"](tier=t)) > 1.0]
+    assert (f"THE BOARD CANNOT BE KEPT CLEAR FROM TIER {min(over)} UPWARD"
             in printed), (
-        f"the script names a different tier than the {first_over} its own "
+        f"the script names a different tier than the {min(over)} its own "
         "numbers give.")
+
+
+def test_the_arrival_rate_section_survives_every_tier_being_safe(
+        throughput_run):
+    """**IT USED TO CRASH THERE**, on `min()` over an empty sequence, and a
+    guard proof of the test above found it: the break was caught by the "does
+    it run at all" test while nine others errored. Every tier under 1.0 is the
+    outcome a balance change would be trying for, so the script has to be able
+    to report it."""
+    import io
+    import contextlib
+
+    _, ns = throughput_run
+    # THE FUNCTION'S OWN GLOBALS AND NOT `ns`. `runpy.run_path` returns a
+    # COPY of the module dictionary, so rebinding a name in `ns` does not
+    # change what `section_arrival_rate` looks up -- the first version of
+    # this test did that and the section ran unpatched.
+    g = ns["section_arrival_rate"].__globals__
+    real = g["arrival_rate"]
+    out = io.StringIO()
+    try:
+        g["arrival_rate"] = lambda cfg: 0.5
+        with contextlib.redirect_stdout(out):
+            ns["section_arrival_rate"]()
+    finally:
+        g["arrival_rate"] = real
+    assert "EVERY TIER IS UNDER 1.00" in out.getvalue()
 
 
 def test_the_wave_multiplier_comes_from_the_pattern_table(throughput_run):
@@ -3383,6 +3410,61 @@ def test_the_instrumented_campaign_draws_nothing(throughput_run):
     assert counted == plain, (
         "instrumenting the campaign changed it, so a hook is drawing from the "
         "random number generator.")
+
+
+def test_the_board_empty_surge_counter_can_actually_count(throughput_run):
+    """**THIS COLUMN WAS ZERO BY CONSTRUCTION AND LOOKED LIKE A MEASUREMENT.**
+
+    The first version of `_Ledger.trigger_surge` decided a surge came from an
+    empty board by comparing `Simulation.surges_from_empty_board` across the
+    call. The engine increments that counter AFTER `trigger_surge` returns
+    (`engine.py:670-673`), so the comparison was always false, every
+    board-empty surge was filed under "scheduled", and the report printed
+    0.000 in a world where the trigger fires six times a campaign.
+
+    Checked at tier 1, where it fires often, against the engine's own counter
+    on the same seeds. A column that cannot be non-zero is worse than no
+    column: it reads as evidence."""
+    from cataclysm_sim import policies
+
+    _, ns = throughput_run
+    cfg = ns["base_config"](tier=1)
+    mine = engine_says = 0
+    for seed in range(12):
+        s = ns["_Ledger"](cfg, seed=seed)
+        r = s.run(ns["ledger_policy"](policies.ALL["triage"]))
+        mine += s.surges_empty
+        engine_says += r.surges_from_empty_board
+    assert engine_says > 0, (
+        "the board-empty surge no longer fires at tier 1 on these seeds, so "
+        "this test cannot tell a working counter from a broken one. Find "
+        "seeds where it does, or say on #1406 that the trigger stopped firing.")
+    assert mine == engine_says, (
+        f"the report counted {mine} board-empty surges where the engine "
+        f"counted {engine_says}.")
+
+
+def test_the_player_is_outpaced_rather_than_too_weak(throughput_run):
+    """**THE CLAIM THE WHOLE FILE RESTS ON.** If the least dangerous dungeon
+    standing were near `death_risk_tolerance`, the tier-4 story would be that
+    the player is too weak and the answer would be more power. It is not: they
+    always had something safe to enter and could not get to enough of them.
+
+    Also the guard on `_Ledger.safest` being populated at all -- an empty list
+    means the report prints 0.000 and the claim reads stronger, not weaker."""
+    from cataclysm_sim import policies
+
+    _, ns = throughput_run
+    cfg = ns["base_config"](tier=4)
+    s = ns["_Ledger"](cfg, seed=0)
+    s.run(ns["ledger_policy"](policies.ALL["triage"]))
+    assert s.safest, "no free day sampled the board, so `safest` says nothing"
+    worst = statistics.fmean(s.safest)
+    assert 0.0 < worst < cfg.death_risk_tolerance / 2.0, (
+        f"the least dangerous dungeon standing at tier 4 now averages a death "
+        f"chance of {worst:.3f} against a tolerance of "
+        f"{cfg.death_risk_tolerance:g}. The file says the player is outpaced "
+        "rather than too weak, and that sentence rests on this number.")
 
 
 def test_the_day_kinds_account_for_the_whole_campaign(throughput_run):

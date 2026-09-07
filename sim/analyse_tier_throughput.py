@@ -14,10 +14,15 @@ move on the strength of a curve alone.
 ## What it found
 
 **The player is not too weak. They are outpaced.** At difficulty tier 4 with no
-empire tree they are idle 0.0% of the campaign and walking a dungeon 94.1% of it,
-and the least dangerous dungeon standing sits at a death chance of 0.118 against
+empire tree they are idle 0.0% of the campaign and walking a dungeon 94.0% of it,
+and the least dangerous dungeon standing sits at a death chance of 0.117 against
 a `death_risk_tolerance` of 0.35. Setting that tolerance to 1.0, so the player
 refuses nothing, moves no column at all.
+
+**EVERY CAMPAIGN FIGURE IN THIS DOCSTRING IS AT 400 CAMPAIGNS A CELL**, which
+is what the command further down runs, and every one of them is printed by the
+section named beside it. A figure in prose that the output does not carry is
+what `sim/tests/test_analysis_scripts.py` exists to prevent.
 
 **Section 1 is the whole answer and it needs no campaigns.** The difficulty tier
 is the number of active Cataclysms, and `Simulation.trigger_surge` raises the
@@ -34,7 +39,7 @@ The four steps after that all follow from the first, and each is checked here:
    `dungeon_persists_after_resolve` is True -- section 3;
 3. a city absorbs a fixed 10 to 12.5 detonations and **the difficulty tier does
    not change that** -- section 2, arithmetic;
-4. every fall fires another surge, which is 89% of all surges at tier 4 and the
+4. every fall fires another surge, which is 88% of all surges at tier 4 and the
    only trigger with no spacing floor -- sections 3 and 4, and issue [#1432];
 5. the run ends when the player is committed to the Last Stand at a death chance
    of 0.999, because `triage`'s endgame branch ignores `death_risk_tolerance`
@@ -199,19 +204,29 @@ def section_arrival_rate() -> dict:
     print("   day per day, so above 1.00 the board can only grow. Scheduled")
     print("   waves only -- a surge fired by a city falling lands on top.")
     print()
-    print(f"   {'tier':>5} {'active':>7} {'dungeons/surge':>15} "
-          f"{'walk days each':>15} {'gap':>5} {'arriving per day':>17}")
+    print(f"   {'tier':>5} {'active':>7} {'wave x':>7} "
+          f"{'dungeons/surge':>15} {'walk days each':>15} "
+          f"{'walk-days/surge':>16} {'gap':>5} {'arriving per day':>17}")
     out = {}
     for tier in (1, 2, 3, 4, 5, 6, 8):
         cfg = base_config(tier=tier)
         per, walk = dungeons_per_surge(cfg), walk_days_per_dungeon(cfg)
         rate = arrival_rate(cfg)
         out[tier] = rate
-        print(f"   {tier:>5} {cfg.active_cataclysm_count():>7} {per:>15} "
-              f"{walk:>15.1f} {cfg.surge_interval_days:>5.0f} {rate:>17.2f}")
+        print(f"   {tier:>5} {cfg.active_cataclysm_count():>7} "
+              f"{wave_multiplier(cfg):>7.3f} {per:>15} {walk:>15.1f} "
+              f"{per * walk:>16.0f} {cfg.surge_interval_days:>5.0f} "
+              f"{rate:>17.2f}")
     print()
-    print(f"   THE BOARD CANNOT BE KEPT CLEAR FROM TIER "
-          f"{min(t for t, r in out.items() if r > 1.0)} UPWARD.")
+    # NOT `min(...)` OVER A COMPREHENSION. It raises on an empty sequence,
+    # and the sequence is empty exactly when no tier is over 1.0 -- which is
+    # the outcome a balance change would be TRYING for. The script crashed
+    # there, and a guard proof of the arrival-rate test found it.
+    over = [t for t, r in out.items() if r > 1.0]
+    print(f"   THE BOARD CANNOT BE KEPT CLEAR FROM TIER {min(over)} UPWARD."
+          if over else
+          "   EVERY TIER IS UNDER 1.00: the board can be kept clear at all "
+          "of them.")
     print(f"   Tier 1 is {out[1]:.2f} and tier 4 is {out[4]:.2f}, which is "
           f"{out[4] / out[1]:.2f} times as much work per day.")
     return out
@@ -285,6 +300,20 @@ class _Ledger(Simulation):
         self.empty_board_days = self.no_safe_days = self.declined_days = 0
         self.spawned = 0
         self.surges_scheduled = self.surges_from_fall = self.surges_empty = 0
+        #: Set while `_maybe_surge_on_empty_board` is on the stack.
+        #: **NOT `Simulation.surges_from_empty_board`, WHICH CANNOT WORK HERE.**
+        #: The engine increments that counter AFTER `trigger_surge` returns
+        #: (`engine.py:670-673`), so an override of `trigger_surge` that reads
+        #: it always sees the old value and files every board-empty surge under
+        #: "scheduled". The first version of this file did exactly that and
+        #: printed a column of zeroes that looked like a measurement.
+        self._in_empty_board_surge = False
+        #: The least dangerous dungeon standing, sampled on every free day.
+        #: THE CLAIM THIS FILE RESTS ON is that the player is outpaced
+        #: rather than too weak, and this is the figure that says so: well
+        #: inside `death_risk_tolerance` means something was always safe to
+        #: enter and there were simply too many of them.
+        self.safest: list[float] = []
         self.last_stand_day: int | None = None
         self.last_stand_risk: float | None = None
         self.entered_last_stand = False
@@ -304,15 +333,22 @@ class _Ledger(Simulation):
                 and self.current.did == self.last_stand.did):
             self.entered_last_stand = True
 
+    def _maybe_surge_on_empty_board(self) -> None:
+        prev, self._in_empty_board_surge = self._in_empty_board_surge, True
+        try:
+            super()._maybe_surge_on_empty_board()
+        finally:
+            self._in_empty_board_surge = prev
+
     def trigger_surge(self, from_city_fall: bool = False) -> None:
-        before, empty_before = self._next_did, self.surges_from_empty_board
+        before = self._next_did
         super().trigger_surge(from_city_fall=from_city_fall)
         if self._next_did <= before:
             return
         self.spawned += self._next_did - before
         if from_city_fall:
             self.surges_from_fall += 1
-        elif self.surges_from_empty_board > empty_before:
+        elif self._in_empty_board_surge:
             self.surges_empty += 1
         else:
             self.surges_scheduled += 1
@@ -349,6 +385,8 @@ def ledger_policy(policy, refuse_last_stand: bool = False):
         if refuse_last_stand and sim.last_stand is not None:
             dungeons = [d for d in dungeons if d.did != sim.last_stand.did]
         risks = [sim.death_chance(d) for d in dungeons]
+        if risks:
+            sim.safest.append(min(risks))
         choice = policy(sim, dungeons)
         if choice is None:
             if not dungeons:
@@ -417,6 +455,8 @@ def measure(cfg: TuningConfig, seed0: int = 0, trials: int = 0,
         "lastStand%": 100.0 * len(ls) / trials,
         "lastStandDay": statistics.fmean([s.last_stand_day for s in ls]) if ls else 0.0,
         "lastStandRisk": statistics.fmean([s.last_stand_risk for s in ls]) if ls else 0.0,
+        "safest": statistics.fmean(
+            [statistics.fmean(s.safest) for s in sims if s.safest] or [0.0]),
         "ends": ends,
     }
 
@@ -427,14 +467,14 @@ def measure(cfg: TuningConfig, seed0: int = 0, trials: int = 0,
 
 _HDR = (f"   {'world':<30} {'days':>6} {'cities':>7} {'+-':>5} {'earned%':>8} "
         f"{'won%':>6} {'cleared':>8} {'spawned':>8} {'idle%':>6} "
-        f"{'noSafe%':>8} {'walk%':>6}")
+        f"{'noSafe%':>8} {'walk%':>6} {'safest':>7}")
 
 
 def _row(label: str, s: dict) -> str:
     return (f"   {label:<30} {s['days']:>6.0f} {s['cities']:>7.2f} "
             f"{s['cities_se']:>5.2f} {s['earned%']:>8.1f} {s['won%']:>6.1f} "
             f"{s['cleared']:>8.1f} {s['spawned']:>8.1f} {s['idle%']:>6.1f} "
-            f"{s['noSafe%']:>8.1f} {s['walk%']:>6.1f}")
+            f"{s['noSafe%']:>8.1f} {s['walk%']:>6.1f} {s['safest']:>7.3f}")
 
 
 def section_campaigns() -> dict:
@@ -442,6 +482,13 @@ def section_campaigns() -> dict:
     print("=" * 78)
     print(f"3. WHAT THE CAMPAIGNS DO, no empire tree, {TRIALS} per cell")
     print("=" * 78)
+    print("   `safest` is the death chance of the least dangerous dungeon "
+          "standing, meaned over")
+    print(f"   every free day. Well under "
+          f"{TuningConfig().death_risk_tolerance:g} means the player "
+          "always had something safe to")
+    print("   enter and simply could not get to enough of them.")
+    print()
     cells = {}
     print(_HDR)
     for tier in (1, 4):
@@ -459,6 +506,7 @@ def section_campaigns() -> dict:
               f"{s['lastStandRisk']:>13.3f}")
 
     print()
+    section_campaigns.tier1_empty = cells[1]["sgEmpty"]
     for tier, s in cells.items():
         total = max(1.0, s["sgSched"] + s["sgFall"] + s["sgEmpty"])
         print(f"   tier {tier}: {100.0 * s['sgFall'] / total:.0f}% of surges "
@@ -501,15 +549,22 @@ def section_levers() -> dict:
         out[label] = measure(base_config(tier=4, **over))
         print(_row(label, out[label]))
     control, empty = out["shipped, the control"], out["no surge when board empties"]
-    identical = all(
-        control[k] == empty[k]
-        for k in ("days", "cities", "earned%", "spawned", "sgSched", "sgFall"))
+    # REPORTED AS A COUNT, NOT AS "IDENTICAL". An earlier version printed
+    # that turning the trigger off reproduced the control digit for digit,
+    # on a counter that could not have said otherwise -- see
+    # `_Ledger._in_empty_board_surge`. It is rare here rather than absent,
+    # and "rare" is what the output should say.
+    same = [k for k in ("days", "cities", "earned%", "spawned", "sgSched",
+                        "sgFall") if control[k] == empty[k]]
     print()
-    print(f"   THE BOARD-EMPTY SURGE FIRES {control['sgEmpty']:.3f} TIMES A "
-          f"CAMPAIGN HERE. Turning it off")
-    print("   reproduces the control in every column, digit for digit."
-          if identical else
-          "   does NOT reproduce the control, so it now moves this world.")
+    print(f"   THE BOARD-EMPTY SURGE FIRES {control['sgEmpty']:.4f} TIMES A "
+          f"CAMPAIGN AT TIER 4, against")
+    print(f"   {section_campaigns.tier1_empty:.4f} at tier 1 in section 3 -- "
+          "the board at tier 4 is never empty."
+          if hasattr(section_campaigns, "tier1_empty") else
+          "   a tier 1 figure section 3 prints for comparison.")
+    print(f"   Turning it off leaves {len(same)} of 6 headline columns "
+          f"exactly equal to the control.")
     return out
 
 
