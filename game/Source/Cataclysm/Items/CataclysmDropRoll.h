@@ -227,8 +227,12 @@ public:
 	/**
 	 * The two enchantment tables, or null with the reason logged.
 	 *
-	 * TWO TABLES AND NOT ONE, because the two halves are drawn independently
-	 * and the pools are different sizes: 379 positives and 195 negatives.
+	 * TWO TABLES AND NOT ONE, because a positive and a negative are separate
+	 * rows drawn from pools of different sizes -- 379 and 195 -- rather than two
+	 * columns of one authored pairing. The two halves are NOT independent of
+	 * each other: RollEnchantments draws the negative from the weights the
+	 * positive's weight allows. This comment used to give that independence as
+	 * the reason there are two tables, which stopped being true on 2026-09-07.
 	 */
 	static const UDataTable* LoadPositiveEnchantmentTable();
 	static const UDataTable* LoadNegativeEnchantmentTable();

@@ -3382,7 +3382,7 @@ Enchantments are tag-based rather than skill-specific, ensuring the loot pool re
 
 So a strong positive is never bought cheaply, and a modest positive can still arrive with a severe drawback — a genuinely cursed low-value item, which happens on about 0.9% of pairs and is intended rather than a leak.
 
-This paragraph used to say the two halves "roll independently — a strong positive is not guaranteed to come with a weak negative". **The mechanism it named defeated the goal stated in the same sentence**, and by a wide margin: measured on the 334 positive and 182 negative rows a chest piece can draw, independent draws gave a weight 1 positive a milder drawback **99.2%** of the time, and the mildest tier of all just over half of those times. The goal survived and the mechanism was replaced.
+**Why this replaced an earlier rule, so nobody restores it.** This section used to pair the two halves by rolling them independently, while promising in the same sentence that a strong positive was not guaranteed a weak negative. Measured on the 334 positive and 182 negative rows a chest piece can draw, independent rolls gave a weight 1 positive a milder drawback **99.2%** of the time — so the mechanism defeated the goal written beside it. The goal is what survived. `docs/DECISIONS.md` holds the full history.
 
   
 
@@ -3394,7 +3394,7 @@ This paragraph used to say the two halves "roll independently — a strong posit
 
   
 
-**One enchantment is a positive and a negative together, filling one slot.** Ruled by the project owner on 2026-09-07. The weight table above already described each weight as an effect *and* a consequence, and the paragraph above says a player may land "a weight 1 positive paired with a weight 1 negative". The two halves are drawn independently from their two pools, which are different sizes, so the pairing is made when the item rolls rather than authored in the sheet.
+**One enchantment is a positive and a negative together, filling one slot.** Ruled by the project owner on 2026-09-07. The weight table above already described each weight as an effect *and* a consequence. The two halves are drawn from two separate pools of different sizes, so a pair is made when the item rolls rather than authored in the sheet: the positive's weight is drawn first, and the negative is then drawn from the weights the floor above allows.
 
   
 
