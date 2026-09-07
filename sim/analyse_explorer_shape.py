@@ -14,9 +14,9 @@ written to, and no shape below is installed as a preset.
 THE ENGINE ALREADY SUPPORTS EVERY SHAPE UNDER CONSIDERATION, which is the first
 thing worth saying. `Simulation.run_days_for` computes
 
-    days = max(run_days_min, min(run_days_max, (floors * days_per_floor
-                                                - tree.run_days_flat)
-                                               * tree.run_days_mult))
+    days = max(run_days_min, min(run_days_max,
+               (floors * days_per_floor - tree.days_removed(active_types))
+               * tree.run_days_mult))
 
 so a flat subtraction, a rate multiplier, a higher floor, and any combination of
 them are already expressible in fields that exist. No candidate here needs a new
@@ -130,6 +130,15 @@ HALVES = (("A", BLOCKS[:BLOCK_COUNT // 2]), ("B", BLOCKS[BLOCK_COUNT // 2:]))
 #: branch, which is the distinction that matters below.
 QUADRANTS = {("S", "E"): "Explorer", ("N", "E"): "Architect",
              ("S", "W"): "Treasury", ("N", "W"): "Artisan"}
+
+#: How many Cataclysm types are active in every figure below. This file is
+#: written at difficulty tier 1 -- see "WHAT IS HELD FIXED" above -- and
+#: `TuningConfig.active_cataclysm_count` makes that one active type.
+#:
+#: **IT HAS TO BE NAMED SINCE ISSUE #1397.** Three nodes in the graph pay per
+#: active Cataclysm type, so a preset's day and floor totals are per-tier
+#: figures now, and quoting one without the tier is what that issue is about.
+ACTIVE_TYPES = 1
 
 #: Every node whose text changes how long a dungeon takes to walk, wherever it
 #: sits in the tree, with what it is worth at full investment and what it is
@@ -312,9 +321,17 @@ def section_one(nodes: list[dict]) -> dict:
     print(f"  Explorer-branch unconditional flat total        "
           f"-{unconditional:g} days, bought with {unconditional_points} points "
           f"of the branch's {branch_points}")
-    modelled = TREE_EXPLORER_AS_DESIGNED.run_days_flat
-    print(f"  TREE_EXPLORER_AS_DESIGNED.run_days_flat         -{modelled:g} days")
-    gap = modelled - unconditional
+    modelled = TREE_EXPLORER_AS_DESIGNED.days_removed(ACTIVE_TYPES)
+    # AT ZERO ACTIVE TYPES THE PER-TYPE PART IS NOTHING, so the difference
+    # is exactly what Sovereign's Haste contributes -- read through the
+    # accessor rather than off `run_days_flat`, which is the same rule
+    # `tools/tests/test_the_tree_is_read_per_tier.py` holds everyone to.
+    haste = modelled - TREE_EXPLORER_AS_DESIGNED.days_removed(0)
+    print(f"  Sovereign's Haste at {ACTIVE_TYPES} active type(s)"
+          f"{'':<12}-{haste:g} days, per active Cataclysm type, capped at -30")
+    print(f"  TREE_EXPLORER_AS_DESIGNED at {ACTIVE_TYPES} active type(s)"
+          f"{'':<3}-{modelled:g} days")
+    gap = modelled - (unconditional + haste)
     print(f"  difference                                      {gap:g} days")
     print()
     if gap:
@@ -323,17 +340,23 @@ def section_one(nodes: list[dict]) -> dict:
         print("  either number; issue #1386 is where the last disagreement of "
               "this kind was resolved.")
     else:
-        print("  THEY AGREE, SINCE ISSUE #1386. The constant removed 70 days "
-              "until that repair, and the two")
-        print("  extra terms were Opportunist, which carries a condition in "
-              "its own text, and The Delver,")
-        print("  which is one of three exclusive options at the Tier 1 "
-              "capstone rather than an Explorer node")
-        print("  at all. The comment above the constant now names each node it "
-              "counts, both terms it")
-        print("  dropped, and the three walk-time nodes it does not fold in -- "
-              "Tactical Entry, Rapid Descent")
-        print("  and Imperial Roads.")
+        print("  THEY AGREE. The constant removed 70 days before issue #1386, "
+              "and the two extra terms")
+        print("  were Opportunist, which carries a condition in its own text, "
+              "and The Delver, which is one")
+        print("  of three exclusive options at the Tier 1 capstone rather than "
+              "an Explorer node at all.")
+        print()
+        print("  **IT REMOVES 70 AGAIN AT ONE ACTIVE TYPE, AND THAT IS NOT A "
+              "REVERT.** Issue #1397 folded")
+        print("  Sovereign's Haste in at the tier the campaign is played at, "
+              "which is -10 days here and")
+        print("  -30 from tier 3 upwards. Two wrong terms had summed to the "
+              "figure one missing right")
+        print("  one would have given. The old 70 was flat at every tier and "
+              "carried no floors; this is")
+        print(f"  {modelled:g} at {ACTIVE_TYPES} active and 90 at eight, with "
+              "floors beside it.")
     print()
     print(f"  IT TAKES {unconditional_points} POINTS TO REMOVE "
           f"{unconditional:g} DAYS. The deepest dungeon a surge can put on the "
@@ -358,9 +381,10 @@ def section_one(nodes: list[dict]) -> dict:
     net = sum(floors for _n, _p, floors, _note in FLOOR_NODES)
     print(f"{'':26} {'':>4} {net:>+7g}  net, with every node in the branch "
           f"taken")
-    print(f"  `TREE_EXPLORER_AS_DESIGNED.floor_delta` is "
-          f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g}, which is the NET "
-          f"figure: a maxed branch has")
+    print(f"  `TREE_EXPLORER_AS_DESIGNED` adds "
+          f"{TREE_EXPLORER_AS_DESIGNED.floors_added(ACTIVE_TYPES):+g} at "
+          f"{ACTIVE_TYPES} active type(s), which is the NET figure: a maxed "
+          f"branch has")
     print(f"  Exclusionary Mapping too. Rows marked '+50f' below use "
           f"{floors_total:+g} instead -- the same four adding")
     print("  nodes with that one left untaken -- so the two differ by 10 "
@@ -448,8 +472,9 @@ class Shape:
         `sim/tests/test_explorer_shape.py` checks the two agree.
         """
         cfg = self.config(base)
-        floors = max(1, int(round(floors + cfg.tree.floor_delta)))
-        value = floors * cfg.days_per_floor - cfg.tree.run_days_flat
+        active = cfg.active_cataclysm_count()
+        floors = max(1, int(round(floors + cfg.tree.floors_added(active))))
+        value = floors * cfg.days_per_floor - cfg.tree.days_removed(active)
         value *= cfg.tree.run_days_mult
         value = max(cfg.run_days_min, min(cfg.run_days_max, value))
         return int(math.ceil(value))
@@ -471,7 +496,7 @@ def base_config() -> TuningConfig:
 
 
 BASE = base_config()
-FLAT_TODAY = TREE_EXPLORER_AS_DESIGNED.run_days_flat
+FLAT_TODAY = TREE_EXPLORER_AS_DESIGNED.days_removed(ACTIVE_TYPES)
 
 #: The candidates, in the order they are printed. Read off the config rather
 #: than written out where possible, so a change to `TREE_EXPLORER_AS_DESIGNED`

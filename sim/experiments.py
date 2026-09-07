@@ -421,7 +421,8 @@ def exp_days_vs_floors(base: TuningConfig):
         ("+30 floors (deep)", EmpireTree(name="f+30", floor_delta=+30)),
     ]:
         cfg = base.with_tree(tree)
-        eff = max(1, int(round(30 + tree.floor_delta)))
+        eff = max(1, int(round(
+            30 + tree.floors_added(cfg.active_cataclysm_count()))))
         rd = Simulation(cfg, seed=0).run_days_for(eff)
         s = summarise(batch(cfg, policies.triage, trials=150))
         _, spread = policy_spread(cfg, trials=120)

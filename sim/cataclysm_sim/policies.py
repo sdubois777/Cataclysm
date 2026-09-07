@@ -108,7 +108,7 @@ def siege_daily_damage(sim, d, city) -> float:
     days_stood = max(0, sim.day - d.spawned_day)
     grown = cfg.siege_damage_growth_per_day * days_stood
     return ((city.max_defense * cfg.siege_defence_bite_per_day + grown)
-            * cfg.tree.city_damage_mult)
+            * cfg.tree.damage_taken(cfg.active_cataclysm_count()))
 
 
 def siege_damage_during_the_walk(sim, d, city) -> float:
@@ -130,7 +130,8 @@ def siege_damage_during_the_walk(sim, d, city) -> float:
         return 0.0
     cfg = sim.cfg
     k = max(1, d.run_days)
-    growth = cfg.siege_damage_growth_per_day * cfg.tree.city_damage_mult
+    growth = (cfg.siege_damage_growth_per_day
+              * cfg.tree.damage_taken(cfg.active_cataclysm_count()))
     return k * per_day + growth * k * (k - 1) / 2.0
 
 

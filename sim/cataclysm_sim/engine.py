@@ -296,7 +296,8 @@ class Simulation:
         # Floor deltas from the tree change depth, and because this model charges
         # one day a floor they change run time and reward at the same time. The
         # game can separate the two; this model cannot.
-        floors = max(1, int(round(floors + cfg.tree.floor_delta)))
+        floors = max(1, int(round(
+            floors + cfg.tree.floors_added(cfg.active_cataclysm_count()))))
 
         # Subtype and modifiers. One modifier per tier; Sacrificial starts with
         # double, which is exactly what makes it a gamble worth taking.
@@ -384,7 +385,7 @@ class Simulation:
         """
         cfg = self.cfg
         base = floors * cfg.days_per_floor
-        days = base - cfg.tree.run_days_flat
+        days = base - cfg.tree.days_removed(cfg.active_cataclysm_count())
         days *= cfg.tree.run_days_mult
         days = max(cfg.run_days_min, min(cfg.run_days_max, days))
         return int(math.ceil(days))
@@ -693,8 +694,9 @@ class Simulation:
         # damage was a fraction of it, it divided out of how many resolves the
         # city survived and every city-health upgrade in the design was worth
         # nothing. Issue #1327.
-        city.defense -= d.defense_damage * scale * cfg.tree.city_damage_mult
-        city.population -= d.population_damage * scale * cfg.tree.city_damage_mult
+        taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+        city.defense -= d.defense_damage * scale * taken
+        city.population -= d.population_damage * scale * taken
         city.population = max(0.0, city.population)
 
         if city.defense <= 0:
@@ -754,11 +756,12 @@ class Simulation:
             # BLUNTED BY WHAT REDUCES DAMAGE. Both defensive lines stay
             # meaningful, which is also why the combined defensive ceiling
             # still has two things to multiply. Issue #1329.
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
             city.defense -= (city.max_defense * cfg.siege_defence_bite_per_day
-                             + grown) * cfg.tree.city_damage_mult
+                             + grown) * taken
             city.population -= (
                 city.max_population * cfg.siege_population_bite_per_day
-                + grown) * cfg.tree.city_damage_mult
+                + grown) * taken
             city.population = max(0.0, city.population)
 
             if city.defense <= 0:

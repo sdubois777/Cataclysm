@@ -1,30 +1,41 @@
-"""`TREE_EXPLORER_AS_DESIGNED` is what the Explorer branch actually gives.
+"""`TREE_EXPLORER_AS_DESIGNED` is what the Explorer branch gives, at every tier.
 
 WHY THIS FILE EXISTS. Issue #1386. The preset said the branch removes 70 flat
 days and adds no floors. Read node by node out of
-`docs/Empire_Development_Tree_Final.json`, the branch removes 60 and adds 40, and
-the 70 was reached by counting a node with a condition on it (`Opportunist`) and
-a node in a different part of the tree (`The Delver`). Every campaign figure ever
-quoted against the preset described a player who did not exist.
+`docs/Empire_Development_Tree_Final.json`, the branch removes 60 unconditionally
+and adds 40 at one active Cataclysm type, and the 70 was reached by counting a
+node with a condition on it (`Opportunist`) and a node in a different part of the
+tree (`The Delver`).
 
-**THE NUMBERS HERE ARE COMPUTED FROM THE GRAPH, NOT TYPED.** That is the whole
-point. A guard that restated the same two constants a second time would pass
-after the design document changed, which is exactly what issue #1288 found had
-happened to the Architect branch: one factor in the modelled multiplier matched
-no node in the graph at all. So this reads the maximum points off each node and
-multiplies by the per-point value the node's own text states, and the per-point
-values are the only thing written down here.
+**AND THEN ISSUE #1397 MADE IT PER-TIER, WHICH IS WHY THIS CHECKS EIGHT NUMBERS
+AND NOT TWO.** Three nodes in the graph pay per ACTIVE CATACLYSM TYPE, and a
+preset holding one float has to choose a tier to be right at. The project owner
+ruled on 2026-09-06, verbatim, "Make the presets hold per-tier values". So
+`EmpireTree` now carries a tier-independent part and a per-type part for each
+affected effect, and this compares the pair against the graph at every active
+count a campaign can face.
 
-**AND IT CHECKS THE TEXT IT IS MULTIPLYING.** A points count read from the graph
+**`Sovereign's Haste` IS COUNTED NOW AND WAS NOT BEFORE.** That is the whole
+substance of #1397: it removes a day per point per active type, which is as
+unconditional as the four flat nodes once the tier is known. Counting it takes
+the preset to 70 days at tier 1 -- **the same number it carried before #1386, by
+a completely different and correct route.** The old 70 was `Opportunist` plus
+`The Delver`; two wrong terms summed to the figure one missing right one would
+have given. `test_seventy_at_tier_one_is_not_the_old_seventy` is what keeps that
+from being read as a revert.
+
+**THE NUMBERS HERE ARE COMPUTED FROM THE GRAPH, NOT TYPED.** A guard that
+restated the same constants a second time would pass after the design document
+changed, which is what issue #1288 found had happened to the Architect branch. So
+this reads the maximum points off each node and multiplies by the per-point value
+the node's own text states, and the per-point values are the only thing written
+down here.
+
+**AND IT CHECKS THE TEXT IT IS MULTIPLYING.** A point count read from the graph
 and multiplied by a per-point value nobody checked is half a guard: the node
 could be reworded from "-1 day per point" to "-1% per point" and every total here
-would stay the same. Each node therefore carries a phrase from its own
-description, and the phrase is asserted before the arithmetic is believed.
-
-WHAT THIS DOES NOT CHECK. That the preset is the right *idea* — whether a
-per-active-Cataclysm node belongs in a tier-independent float at all is issue
-#1397, and this file follows whatever `EXPECTED_ACTIVE_TYPES` says rather than
-arguing it.
+would stay the same. Each node carries a phrase from its own description, and the
+phrase is asserted before the arithmetic is believed.
 
 `sim/tests/test_explorer_shape.py` checks the analysis script that found the
 defect. This checks the constant that carried it. Neither can notice what the
@@ -41,15 +52,14 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 TREE_JSON = REPO_ROOT / "docs" / "Empire_Development_Tree_Final.json"
 
-#: How many Cataclysm types the preset is written for. `Infinite Depths` pays
-#: per active type, and `TuningConfig.active_cataclysm_count` ties that to the
-#: difficulty tier, so a preset holding one float is a figure for one tier.
-#: Difficulty tier 1 faces one. Issue #1397 is whether that is the right rule.
-EXPECTED_ACTIVE_TYPES = 1
+#: Every number of active Cataclysm types a campaign can face.
+#: `TuningConfig.active_cataclysm_count` clamps the difficulty tier to this
+#: range, so these are all eight tiers.
+ACTIVE_COUNTS = (1, 2, 3, 4, 5, 6, 7, 8)
 
-#: The Explorer-branch nodes that take a flat number of days off EVERY dungeon,
-#: with no condition attached. `phrase` is checked against the node's own text
-#: before `per_point` is believed.
+#: The Explorer-branch nodes that take a flat number of days off EVERY dungeon
+#: at EVERY tier alike. `phrase` is checked against the node's own text before
+#: `per_point` is believed.
 #:
 #: `Fleet Footed` is a single point worth 5 days rather than 5 points worth 1,
 #: which is why the value is per point and the points come from the graph.
@@ -60,10 +70,15 @@ FLAT_DAY_NODES = (
     ("Fleet Footed", 5.0, "-5 days from dungeon run time"),
 )
 
-#: The Explorer-branch nodes that change how deep a dungeon is. `per_point` is
-#: floors per point at `EXPECTED_ACTIVE_TYPES`; `Infinite Depths` is the one
-#: that depends on that number and it is multiplied in below rather than baked
-#: in here.
+#: Days removed per point PER ACTIVE CATACLYSM TYPE, and the cap on the total.
+#: The cap's own wording says "floors" and means days; that is the design
+#: document's slip and it is quoted rather than corrected here.
+PER_TYPE_DAY_NODES = (
+    ("Sovereign's Haste", 1.0, 30.0, "for each active Cataclysm type"),
+)
+
+#: The Explorer-branch nodes that change how deep a dungeon is, at every tier
+#: alike.
 FLOOR_NODES = (
     ("Architect of Greed", 1.0, "+1 floors to dungeons per point"),
     ("Deep Boring", 1.0, "+1 floors to dungeons per point"),
@@ -85,8 +100,6 @@ EXCLUDED = (
     ("Rapid Descent", "reduces the remaining run time",
      "not a flat subtraction"),
     ("Tactical Entry", "are halved", "a multiplier, not a subtraction"),
-    ("Sovereign's Haste", "for each active Cataclysm type",
-     "per active type and left out; issue #1397"),
 )
 
 
@@ -136,68 +149,62 @@ def points(node: dict) -> int:
     return value
 
 
-def check_text(node: dict, phrase: str) -> None:
+def check(nodes: list[dict], name: str, phrase: str) -> dict:
+    """The node, with its branch and its wording confirmed."""
+    node = find(nodes, name)
+    assert branch_of(node) == "Explorer", (
+        f"{name} is now in the {branch_of(node)} branch, not Explorer")
     text = node["data"].get("description") or ""
     assert phrase.lower() in text.lower(), (
-        f"{node['data'].get('name')}'s description is now {text!r} and no "
-        f"longer contains {phrase!r}. The totals below multiply this node's "
-        "point count by a per-point value taken from that wording, so the "
-        "wording changing means the value may have too. Check it by hand and "
-        "follow it here.")
+        f"{name}'s description is now {text!r} and no longer contains "
+        f"{phrase!r}. The totals below multiply this node's point count by a "
+        "per-point value taken from that wording, so the wording changing "
+        "means the value may have too. Check it by hand and follow it here.")
+    return node
 
 
-def flat_days(nodes: list[dict]) -> float:
-    total = 0.0
-    for name, per_point, phrase in FLAT_DAY_NODES:
-        node = find(nodes, name)
-        assert branch_of(node) == "Explorer", (
-            f"{name} is now in the {branch_of(node)} branch")
-        check_text(node, phrase)
-        total += points(node) * per_point
+def days_removed(nodes: list[dict], active_types: int) -> float:
+    total = sum(points(check(nodes, name, phrase)) * per_point
+                for name, per_point, phrase in FLAT_DAY_NODES)
+    for name, per_point, cap, phrase in PER_TYPE_DAY_NODES:
+        node = check(nodes, name, phrase)
+        total += min(cap, points(node) * per_point * active_types)
     return total
 
 
-def floor_delta(nodes: list[dict], active_types: int) -> float:
-    total = 0.0
-    for name, per_point, phrase in FLOOR_NODES:
-        node = find(nodes, name)
-        assert branch_of(node) == "Explorer", (
-            f"{name} is now in the {branch_of(node)} branch")
-        check_text(node, phrase)
-        total += points(node) * per_point
+def floors_added(nodes: list[dict], active_types: int) -> float:
+    total = sum(points(check(nodes, name, phrase)) * per_point
+                for name, per_point, phrase in FLOOR_NODES)
     for name, per_point, phrase in PER_TYPE_FLOOR_NODES:
-        node = find(nodes, name)
-        assert branch_of(node) == "Explorer", (
-            f"{name} is now in the {branch_of(node)} branch")
-        check_text(node, phrase)
-        total += points(node) * per_point * active_types
+        total += points(check(nodes, name, phrase)) * per_point * active_types
     return total
 
 
 # ---------------------------------------------------------------------------
-# The two numbers
+# The two numbers, at every tier
 # ---------------------------------------------------------------------------
 
 class TestThePresetIsWhatTheGraphSays:
-    def test_the_flat_days_are_the_branchs_unconditional_nodes(
-            self, nodes, preset):
-        derived = flat_days(nodes)
-        assert preset.run_days_flat == derived, (
-            f"TREE_EXPLORER_AS_DESIGNED removes {preset.run_days_flat:g} flat "
-            f"days and the Explorer branch's unconditional nodes remove "
-            f"{derived:g}. It said 70 against 60 until issue #1386, because it "
-            "counted Opportunist, which has a condition in its own text, and "
-            "The Delver, which is a Tier 1 capstone option rather than an "
-            "Explorer node. Do not change the constant to match a new total "
-            "without reading why the total moved.")
+    @pytest.mark.parametrize("active", ACTIVE_COUNTS)
+    def test_the_days_removed_match_at_every_active_count(
+            self, nodes, preset, active):
+        derived = days_removed(nodes, active)
+        assert preset.days_removed(active) == derived, (
+            f"at {active} active Cataclysm types TREE_EXPLORER_AS_DESIGNED "
+            f"removes {preset.days_removed(active):g} flat days and the "
+            f"Explorer branch's nodes remove {derived:g}. Read the preset "
+            "through `days_removed` and not off `run_days_flat`, which is only "
+            "the tier-independent half. Issues #1386 and #1397.")
 
-    def test_the_floor_delta_is_the_branchs_depth_nodes(self, nodes, preset):
-        derived = floor_delta(nodes, EXPECTED_ACTIVE_TYPES)
-        assert preset.floor_delta == derived, (
-            f"TREE_EXPLORER_AS_DESIGNED adds {preset.floor_delta:+g} floors "
-            f"and the Explorer branch's depth nodes add {derived:+g} at "
-            f"{EXPECTED_ACTIVE_TYPES} active Cataclysm type(s). It was 0 until "
-            "issue #1386, which credited the branch with none of them.")
+    @pytest.mark.parametrize("active", ACTIVE_COUNTS)
+    def test_the_floors_added_match_at_every_active_count(
+            self, nodes, preset, active):
+        derived = floors_added(nodes, active)
+        assert preset.floors_added(active) == derived, (
+            f"at {active} active Cataclysm types TREE_EXPLORER_AS_DESIGNED "
+            f"adds {preset.floors_added(active):+g} floors and the Explorer "
+            f"branch's depth nodes add {derived:+g}. Read the preset through "
+            "`floors_added` and not off `floor_delta`.")
 
     def test_the_derived_totals_are_the_ones_the_comment_states(self, nodes):
         """The comment above the constant writes both totals out node by node.
@@ -206,8 +213,57 @@ class TestThePresetIsWhatTheGraphSays:
         be the thing that is guarded. Issue #1288's incident was a comment that
         went on stating a total after the node behind it stopped existing.
         """
-        assert flat_days(nodes) == 60.0
-        assert floor_delta(nodes, EXPECTED_ACTIVE_TYPES) == 40.0
+        assert [days_removed(nodes, n) for n in (1, 2, 3, 8)] == [70, 80, 90, 90]
+        assert [floors_added(nodes, n) for n in (1, 8)] == [40, 180]
+
+    def test_the_per_type_part_is_actually_per_type(self, nodes, preset):
+        """**THE CONTROL FOR EVERYTHING ABOVE.**
+
+        Eight equal numbers would satisfy every parametrised case while the
+        preset was still a single figure standing for all eight tiers, which is
+        the state issue #1397 exists to end. So both totals must actually move
+        with the active count.
+        """
+        floors = {preset.floors_added(n) for n in ACTIVE_COUNTS}
+        days = {preset.days_removed(n) for n in ACTIVE_COUNTS}
+
+        assert len(floors) == len(ACTIVE_COUNTS), (
+            f"the preset gives {sorted(floors)} floors across the eight active "
+            "counts; it should give a different answer at each, because "
+            "Infinite Depths pays per active Cataclysm type")
+        assert len(days) > 1, (
+            f"the preset removes {sorted(days)} days across the eight active "
+            "counts; Sovereign's Haste should move it until its cap")
+
+    def test_the_day_cap_is_reached_and_then_holds(self, nodes, preset):
+        """`Sovereign's Haste` stops at -30, so the day total stops at 90.
+
+        Asserted separately because the parametrised cases would pass on an
+        implementation with no cap at all -- they compare against a derivation
+        that has the same cap in it.
+        """
+        assert preset.days_removed(3) == preset.days_removed(8) == 90.0
+        assert preset.days_removed(2) == 80.0
+
+    def test_seventy_at_tier_one_is_not_the_old_seventy(self, preset):
+        """**THE COINCIDENCE, HELD DOWN SO IT IS NOT READ AS A REVERT.**
+
+        `run_days_flat` was 70 before issue #1386, reached by `Opportunist` --
+        conditional on the board -- plus `The Delver`, a Tier 1 capstone option
+        in no branch at all. It is 70 again at one active Cataclysm type, and
+        this time it is the four unconditional nodes plus `Sovereign's Haste`.
+        Two wrong terms summed to the figure one missing right one would have.
+
+        The difference is visible in two places and this checks both: the old 70
+        was flat at every tier, and it carried no floors.
+        """
+        assert preset.days_removed(1) == 70.0
+        assert preset.days_removed(8) == 90.0, (
+            "the old 70 was the same at every tier. If this is 70 at tier 8 "
+            "too, the per-type part is not being applied and the preset has "
+            "gone back to what issue #1386 repaired.")
+        assert preset.floors_added(1) == 40.0, (
+            "the old 70 came with no floors at all. Issue #1386 added them.")
 
 
 class TestTheExclusionsStillHaveTheirReasons:
@@ -222,8 +278,20 @@ class TestTheExclusionsStillHaveTheirReasons:
     @pytest.mark.parametrize("name,phrase,why", EXCLUDED)
     def test_the_reason_is_still_in_the_nodes_own_text(
             self, nodes, name, phrase, why):
-        node = find(nodes, name)
-        check_text(node, phrase)
+        check(nodes, name, phrase)
+
+    def test_sovereigns_haste_is_no_longer_excluded(self, nodes, preset):
+        """It was on the list above until issue #1397 and is now counted.
+
+        Kept as a test rather than deleted, because the reason it was excluded
+        -- that it varies with the tier -- is now the reason `EmpireTree` has
+        per-type fields at all.
+        """
+        assert preset.run_days_flat_per_type > 0, (
+            "Sovereign's Haste is back out of the preset. The owner ruled on "
+            "2026-09-06 that presets hold per-tier values rather than "
+            "excluding the nodes that need them. Issue #1397.")
+        assert "Sovereign's Haste" not in [name for name, _p, _w in EXCLUDED]
 
     def test_the_delver_is_not_an_explorer_node(self, nodes):
         """The other excluded term, and it is excluded for a different reason:
@@ -243,30 +311,68 @@ class TestTheExclusionsStillHaveTheirReasons:
         assert len(holder["data"]["options"]) == 3
 
 
-class TestTheTierAssumptionIsStated:
-    def test_the_preset_understates_the_branch_above_tier_one(self, nodes):
-        """**The limitation, asserted so it cannot be forgotten.**
-
-        `Infinite Depths` pays per active Cataclysm type and a single float
-        cannot follow that, so the preset is a tier 1 figure that
-        `sim/experiments.py` nonetheless runs at every tier. This states the
-        size of the gap rather than leaving it to a comment. Issue #1397.
-        """
-        at_one = floor_delta(nodes, 1)
-        at_eight = floor_delta(nodes, 8)
-        assert at_one == 40.0
-        assert at_eight == 180.0
-        assert at_eight > at_one, (
-            "Infinite Depths no longer scales with the active Cataclysm count, "
-            "so the preset may no longer need to be a per-tier figure at all. "
-            "Issue #1397.")
-
-    def test_the_active_type_count_is_the_difficulty_tier(self):
-        """Where `EXPECTED_ACTIVE_TYPES` comes from, checked rather than
-        assumed: the model derives the active count from the tier."""
+class TestTheModelAgreesWithTheTier:
+    def test_the_active_count_is_the_difficulty_tier(self):
+        """Where the number handed to the accessors comes from, checked rather
+        than assumed."""
         from dataclasses import replace
 
         from cataclysm_sim.config import TuningConfig
 
-        assert replace(TuningConfig(), tier=EXPECTED_ACTIVE_TYPES
-                       ).active_cataclysm_count() == EXPECTED_ACTIVE_TYPES
+        for tier in ACTIVE_COUNTS:
+            assert replace(TuningConfig(), tier=tier
+                           ).active_cataclysm_count() == tier
+
+    def test_a_campaign_walks_a_dungeon_differently_at_a_different_tier(self):
+        """**THE END-TO-END CHECK, and the one that would catch a call site the
+        source guard misses.**
+
+        Everything above tests the preset. This runs the engine's own two
+        readers with the same tree at two tiers and requires each answer to
+        differ, so a `run_days_for` or a `_make_dungeon` that read the raw
+        fields would fail here even if every arithmetic test above passed.
+
+        **THE DEPTH IS 400 FLOORS AND THAT IS NOT ARBITRARY.** The preset
+        removes 70 days at tier 1 and 90 at tier 8, and `run_days_min` is 1, so
+        anything shallower than about 90 floors clamps to one day at BOTH tiers
+        and the comparison passes on a broken reader by measuring the clamp. A
+        first draft of this test used 60 floors and did exactly that.
+        """
+        from dataclasses import replace
+
+        from cataclysm_sim.config import (
+            TREE_EXPLORER_AS_DESIGNED, CityTier, DungeonType, TuningConfig,
+        )
+        from cataclysm_sim.engine import Simulation
+
+        def sim_at(tier: int) -> Simulation:
+            cfg = replace(TuningConfig(), tier=tier).with_tree(
+                TREE_EXPLORER_AS_DESIGNED)
+            return Simulation(cfg, seed=0)
+
+        shallow, deep = sim_at(1), sim_at(8)
+
+        # THE CONTROL FOR THE DEPTH. Both walks must be off the one-day floor,
+        # or the assertion below would be comparing two clamps.
+        assert shallow.run_days_for(400) > shallow.cfg.run_days_min
+        assert deep.run_days_for(400) > deep.cfg.run_days_min
+
+        assert shallow.run_days_for(400) != deep.run_days_for(400), (
+            "a 400-floor dungeon walks in the same number of days at tier 1 "
+            "and tier 8 under the maxed Explorer preset. `run_days_for` is "
+            "reading the tier-independent half of the tree; see "
+            "`EmpireTree.days_removed`. Issue #1397.")
+
+        # AND THE DEPTH THE DUNGEON IS BUILT WITH, which is the other reader.
+        # `_make_dungeon` adds the tree's floors; `run_days_for` does not, so
+        # neither check covers the other.
+        def floors_of(sim: Simulation) -> int:
+            city = next(c for c in sim.empire.cities.values()
+                        if c.tier is CityTier.OUTPOST)
+            return sim._make_dungeon(DungeonType.BASIC, city).floors
+
+        assert floors_of(shallow) < floors_of(deep), (
+            "a dungeon is built the same depth at tier 1 and tier 8 under the "
+            "maxed Explorer preset. `_make_dungeon` is reading the "
+            "tier-independent half; see `EmpireTree.floors_added`. The branch "
+            "adds +40 floors at tier 1 and +180 at tier 8.")
