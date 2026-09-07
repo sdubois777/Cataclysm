@@ -76,13 +76,48 @@ struct CATACLYSM_API FCataclysmRolledAffix
 };
 
 /**
+ * One enchantment as it sits on a particular item: a positive and a negative.
+ *
+ * ONE SLOT HOLDS BOTH HALVES, ruled by the project owner on 2026-09-07. The
+ * design document's weight table describes each weight as an effect AND a
+ * consequence together -- "Rare -- very powerful effect, severe consequence" --
+ * and the section beneath it says a player "could theoretically land a weight 1
+ * positive paired with a weight 1 negative". So an enchantment is a bargain
+ * rather than a modifier, and one of an item's four slots buys the whole bargain.
+ *
+ * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which is the rest of that sentence:
+ * "Positives and negatives roll independently -- a strong positive is not
+ * guaranteed to come with a weak negative." The pools are different sizes, 379
+ * and 195, so they could not be paired in the data even if the design wanted it.
+ *
+ * WHY ROW NAMES RATHER THAN THE TEXT. The same reason FCataclysmRolledAffix
+ * stores which affix rather than what it grants: the effect wording lives in
+ * `game/Data/EnchantmentsPositive.csv` and `EnchantmentsNegative.csv` and is one
+ * answer for every item that rolled it. What belongs to the item is only which
+ * two rows it drew.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmRolledEnchantment
+{
+	GENERATED_BODY()
+
+	/** Row name in the EnchantmentsPositive table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Positive;
+
+	/** Row name in the EnchantmentsNegative table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Negative;
+};
+
+/**
  * One item: which base it is, how far it has been upgraded, and what it rolled.
  *
  * WHAT IS NOT HERE. Rarity, because it is computed from the contents. The affix
  * values, because they depend on the upgrade level and the base. Which gem sits
- * in a socket, which is issue #46, and which enchantments a piece carries, which
- * is issue #45 -- only the COUNT of enchantments is here, because rarity cannot
- * be computed without it.
+ * in a socket, which is issue #46. What an enchantment DOES, which is the rest of
+ * issue #45: a piece now records which enchantments it carries and says so in the
+ * tool tip, and not one of the 574 changes a character's stats yet.
  *
  * EVERY FIELD ON THIS STRUCT AND ON FCataclysmRolledAffix IS MARKED `SaveGame`,
  * and it has to be, one field at a time. An item is persisted inside a character
@@ -135,11 +170,31 @@ struct CATACLYSM_API FCataclysmItem
 	/**
 	 * How many of the four slots hold an enchantment rather than an affix.
 	 *
-	 * The enchantments themselves are not modelled yet. The count is, because
-	 * an item carrying one is a Legendary and rarity cannot be read without it.
+	 * STILL THE RARITY AUTHORITY, and still a separate field from the array
+	 * below on purpose. Rarity is computed from how many slots an enchantment
+	 * fills, and an item assembled by hand in a test sets this without naming
+	 * any enchantment. Collapsing the two would make every such test name two
+	 * rows it does not care about.
+	 *
+	 * WHEN BOTH ARE SET THEY MUST AGREE. A dropped item fills the array and this
+	 * count from the same rarity, so the array's length equals this.
+	 * `Cataclysm.Enchantments.ADroppedItemCarriesAsManyEnchantmentsAsItsRaritySays`
+	 * is what holds them together.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	int32 EnchantmentCount = 0;
+
+	/**
+	 * Which enchantments the piece carries, each a positive and a negative.
+	 *
+	 * EMPTY IS NOT THE SAME AS NONE. An item built by hand may set
+	 * EnchantmentCount above and leave this empty; a dropped item fills both.
+	 * Anything reading this for display has to cope with an item whose count
+	 * says four and whose array is empty, which is what every item that dropped
+	 * before this field existed looks like after being loaded from a save.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FCataclysmRolledEnchantment> Enchantments;
 
 	/**
 	 * How many gem sockets the piece has, from none up to its base's maximum.

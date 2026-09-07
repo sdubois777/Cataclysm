@@ -209,8 +209,10 @@ private:
 	void RefreshGear(const UCataclysmEquipmentComponent* Equipment,
 					 const UDataTable* Bases, const UDataTable* Affixes,
 					 const UDataTable* Rarities, const UDataTable* Materials,
-					 const UDataTable* Tiers, bool bResized, float CellPx,
-					 float LabelFontPx, bool bWornChanged);
+					 const UDataTable* Tiers,
+					 const UDataTable* PositiveEnchantments,
+					 const UDataTable* NegativeEnchantments, bool bResized,
+					 float CellPx, float LabelFontPx, bool bWornChanged);
 
 	/** The panel behind everything. What CursorIsOverPanel measures. */
 	UPROPERTY()

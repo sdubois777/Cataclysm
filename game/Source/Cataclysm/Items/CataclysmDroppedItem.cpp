@@ -487,8 +487,12 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	const UDataTable* Tiers = UCataclysmDropRoll::LoadAffixTierTable();
 	const UDataTable* WeaponSkills =
 		UCataclysmWeaponSkills::LoadGeneratedTable();
+	const UDataTable* PositiveEnchantments =
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+	const UDataTable* NegativeEnchantments =
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable();
 	if (!Drops || !Rarities || !Bases || !Affixes || !Sockets || !Tiers
-		|| !WeaponSkills)
+		|| !WeaponSkills || !PositiveEnchantments || !NegativeEnchantments)
 	{
 		// Each Load* has already said which table is missing and why.
 		return 0;
@@ -553,7 +557,9 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 
 		FCataclysmItem Item;
 		if (!UCataclysmDropRoll::RollItem(Bases, Affixes, Rarities, Sockets,
-										  Tiers, WeaponSkills, Slot,
+										  Tiers, WeaponSkills,
+										  PositiveEnchantments,
+										  NegativeEnchantments, Slot,
 										  DifficultyTier, Together, Stream, Item))
 		{
 			// RollItem has already said why. One item failing to roll is not a

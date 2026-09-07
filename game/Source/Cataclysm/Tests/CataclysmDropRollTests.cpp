@@ -1047,11 +1047,13 @@ namespace CataclysmDropRollTest
 		UDataTable* Sockets = nullptr;
 		UDataTable* AffixTiers = nullptr;
 		UDataTable* WeaponSkills = nullptr;
+		UDataTable* PositiveEnchantments = nullptr;
+		UDataTable* NegativeEnchantments = nullptr;
 
 		bool AllPresent() const
 		{
 			return Bases && Affixes && Rarities && Sockets && AffixTiers
-				&& WeaponSkills;
+				&& WeaponSkills && PositiveEnchantments && NegativeEnchantments;
 		}
 	};
 
@@ -1068,6 +1070,10 @@ namespace CataclysmDropRollTest
 		// test failing for a data reason rather than an import reason.
 		Out.WeaponSkills =
 			LoadTable<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
+		Out.PositiveEnchantments = LoadTable<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsPositive.csv"));
+		Out.NegativeEnchantments = LoadTable<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsNegative.csv"));
 		return Out;
 	}
 
@@ -1077,8 +1083,9 @@ namespace CataclysmDropRollTest
 	{
 		return FDrop::RollItem(Tables.Bases, Tables.Affixes, Tables.Rarities,
 							   Tables.Sockets, Tables.AffixTiers,
-							   Tables.WeaponSkills, Slot, Tier, MagicFind, Stream,
-							   OutItem);
+							   Tables.WeaponSkills, Tables.PositiveEnchantments,
+							   Tables.NegativeEnchantments, Slot, Tier, MagicFind,
+							   Stream, OutItem);
 	}
 
 	/** The base row a rolled item came from, or null. */

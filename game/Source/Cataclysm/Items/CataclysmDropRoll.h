@@ -7,6 +7,7 @@
 #include "CataclysmDropRoll.generated.h"
 
 struct FCataclysmAffixRow;
+struct FCataclysmEnchantmentRow;
 struct FCataclysmEnemyDropRow;
 struct FCataclysmGearRarityRow;
 struct FCataclysmItemBaseRow;
@@ -219,6 +220,18 @@ public:
 	/** The affix table, or null with the reason logged. Every affix a drop can
 	 *  roll, across the four kinds. */
 	static const UDataTable* LoadAffixTable();
+
+	static const TCHAR* PositiveEnchantmentTableAssetPath;
+	static const TCHAR* NegativeEnchantmentTableAssetPath;
+
+	/**
+	 * The two enchantment tables, or null with the reason logged.
+	 *
+	 * TWO TABLES AND NOT ONE, because the two halves are drawn independently
+	 * and the pools are different sizes: 379 positives and 195 negatives.
+	 */
+	static const UDataTable* LoadPositiveEnchantmentTable();
+	static const UDataTable* LoadNegativeEnchantmentTable();
 
 	/**
 	 * The GearRarity row name for a rarity: the ECataclysmRarity entry's own
@@ -563,6 +576,97 @@ public:
 										 int32 DifficultyTier,
 										 FRandomStream& Stream);
 
+	// -----------------------------------------------------------------------
+	// Which enchantments a drop rolls
+	// -----------------------------------------------------------------------
+
+	/**
+	 * How much rarer each weight is than the one below it. Four.
+	 *
+	 * RULED BY THE PROJECT OWNER ON 2026-09-07, as a relative frequency of
+	 * 1, 4, 16, 64 for weights 1 to 4. The design document orders the four --
+	 * "Weight 1 enchantments are rare and very powerful. Weight 4 enchantments
+	 * are common and modest" -- and states no frequency, so this is a tuning
+	 * value rather than a derived one and is expected to be retuned.
+	 *
+	 * THE REASONING GIVEN: the design calls enchantments high-variance
+	 * build-defining modifiers, so a weight 1 should be a genuinely rare find
+	 * rather than a mild preference. At this step one row of weight 1 is drawn
+	 * as often as 64 rows of weight 4.
+	 */
+	static constexpr float EnchantmentWeightStep = 4.0f;
+
+	/** The lowest and highest weight the sheet may state. */
+	static constexpr float LowestEnchantmentWeight = 1.0f;
+	static constexpr float HighestEnchantmentWeight = 4.0f;
+
+	/**
+	 * The relative frequency of one sheet weight: 1, 4, 16 or 64.
+	 *
+	 * INVERTED, because weight 1 is the RAREST and the sheet numbers it
+	 * lowest. Weight 4 is drawn 64 times as often as weight 1.
+	 *
+	 * @return 0 for a weight outside 1 to 4, which is a row that cannot be drawn
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float EnchantmentDrawWeight(float SheetWeight);
+
+	/**
+	 * Whether one enchantment row may appear on a gear slot.
+	 *
+	 * TWO RULES, AND ONLY TWO.
+	 *
+	 * A SET ROW IS NEVER DRAWN HERE. `docs/Cataclysm_GDD_v2.md` says set
+	 * positives and negatives are "paired and guaranteed", so a set belongs to
+	 * a mechanism that hands out a whole set rather than to this draw. The 55
+	 * set rows also carry a set identifier in the Weight column instead of a
+	 * weight, which is issue #1443; excluding them here is correct on the
+	 * design's terms and happens to sidestep that too.
+	 *
+	 * A SLOT TAG BINDS AND EVERY OTHER TAG DOES NOT. The project owner ruled on
+	 * 2026-09-07 that an enchantment's tags say what it AFFECTS, not which item
+	 * it may sit on. Three of the 574 rows also carry an `Item.Slot.` tag, all
+	 * three `Item.Slot.Weapon` and all three genuinely about a weapon -- "This
+	 * weapon has 2-4 damage types" cannot sit on a belt. So a row carrying one
+	 * or more `Item.Slot.` tags is restricted to those slots, and a row carrying
+	 * none may appear anywhere.
+	 */
+	static bool EnchantmentSuitsSlot(const FCataclysmEnchantmentRow& Row,
+									 const FString& Slot);
+
+	/** Every row of a table that may appear on a gear slot. */
+	static void EnchantmentCandidatesFor(const UDataTable* Table,
+										 const FString& Slot,
+										 TArray<FName>& OutCandidates);
+
+	/**
+	 * Draw one enchantment row name, weighted, skipping names already taken.
+	 *
+	 * @return NAME_None when nothing is left to draw, which the caller reports
+	 */
+	static FName DrawEnchantment(const UDataTable* Table,
+								 const TArray<FName>& Candidates,
+								 const TSet<FName>& Taken,
+								 FRandomStream& Stream);
+
+	/**
+	 * The enchantments one dropped item carries, each a positive and a negative.
+	 *
+	 * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which the design states outright:
+	 * "a strong positive is not guaranteed to come with a weak negative".
+	 *
+	 * NEITHER HALF REPEATS ON ONE PIECE. A Cataclysmic item holds four pairs and
+	 * a player reading four copies of one line would think the item was broken.
+	 * This is NOT the design's unique-per-character rule, which spans all worn
+	 * gear and is enforced at equip time; that is still unbuilt.
+	 *
+	 * @return false when a table is missing or a pool cannot fill the count
+	 */
+	static bool RollEnchantments(
+		const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+		const FString& Slot, int32 Count, FRandomStream& Stream,
+		TArray<FCataclysmRolledEnchantment>& OutRolled);
+
 	/**
 	 * Roll one whole item for a gear slot at a difficulty tier.
 	 *
@@ -582,6 +686,8 @@ public:
 						 const UDataTable* SocketTable,
 						 const UDataTable* AffixTierTable,
 						 const UDataTable* WeaponSkillTable,
+						 const UDataTable* PositiveEnchantmentTable,
+						 const UDataTable* NegativeEnchantmentTable,
 						 const FString& Slot, int32 DifficultyTier,
 						 float MagicFind, FRandomStream& Stream,
 						 FCataclysmItem& OutItem);

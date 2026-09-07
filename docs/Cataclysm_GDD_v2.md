@@ -3371,7 +3371,23 @@ Enchantments are high-power modifiers available only on Legendary and above item
 
 ### **How Enchantments Roll**
 
-Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags that determine which items it can appear on. Positives and negatives roll independently — a strong positive is not guaranteed to come with a weak negative.
+Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags. Positives and negatives roll independently — a strong positive is not guaranteed to come with a weak negative.
+
+  
+
+**A TAG SAYS WHAT AN ENCHANTMENT AFFECTS, NOT WHICH ITEM IT MAY SIT ON.** The project owner ruled this on 2026-09-07. This paragraph used to say tags "determine which items it can appear on", which contradicted the tag categories listed below — element, skill type, stat, keyword and trigger tags all describe an effect's subject — and contradicted the data: of the 574 enchantments written, **three** carry an item slot tag. So an enchantment is normally eligible for every slot, and its tags decide which of a character's skills and stats it reaches, exactly as the Skill Tags section describes for skills.
+
+  
+
+**The exception is the `Item.Slot.` tag, and it binds.** An enchantment carrying one may appear only on those slots. The three that carry one are all `Item.Slot.Weapon` and all three are statements about a weapon — "This weapon has 2-4 damage types" cannot sit on a belt. Writing a new enchantment that only makes sense on one kind of piece means giving it that tag; writing one without a slot tag puts it on everything.
+
+  
+
+**One enchantment is a positive and a negative together, filling one slot.** Ruled by the project owner on 2026-09-07. The weight table above already described each weight as an effect *and* a consequence, and the paragraph above says a player may land "a weight 1 positive paired with a weight 1 negative". The two halves are drawn independently from their two pools, which are different sizes, so the pairing is made when the item rolls rather than authored in the sheet.
+
+  
+
+**A weight is four times as common as the weight below it: 1, 4, 16, 64.** Ruled by the project owner on 2026-09-07, weight 1 being the rarest. The ordering was already stated; the steepness was not, and it is a tuning value expected to be retuned rather than a derived one. The reasoning given was that enchantments are described as high-variance build-defining modifiers, so a weight 1 should be a genuinely rare find rather than a mild preference.
 
   
 

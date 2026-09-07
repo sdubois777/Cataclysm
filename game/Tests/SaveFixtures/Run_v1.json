@@ -129,6 +129,12 @@
 					"DamageTypes": [],
 					"Affixes": [],
 					"EnchantmentCount": 1,
+					"Enchantments": [
+						{
+							"Positive": "Positive_Additional_100_300_crit_multiplier",
+							"Negative": "Negative_You_have_no_armor"
+						}
+					],
 					"Sockets": 0,
 					"Residue": 2.5
 				},

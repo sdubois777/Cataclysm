@@ -432,6 +432,17 @@ run the generator there, copy the changed asset out of `Content/Data/` and the
 whole of `Data/datatable_asset_sources.json` back into the worktree, then
 `git restore game/` in the ordinary checkout to leave it clean.
 
+**THAT LAST STEP DESTROYS OTHER SESSIONS' WORK, AND NOTHING WARNS YOU.**
+`git restore game/` discards every uncommitted change under `game/` in that
+checkout — not only the ones this procedure made. Several Claude sessions work on
+this repository at once and they all share the ordinary checkout at
+`C:\Projects\Cataclysm`, so anything another session has in progress there is
+gone, with no prompt and nothing to recover it from. **Before starting this
+procedure, check that nothing else is live in that checkout**: `git status` there,
+and `python tools/unreal_lock.py status` for whether somebody is driving the
+editor. If another session is working, wait or ask it to land first. The
+procedure is safe only when you are the only writer.
+
 **Building the worktree its own binaries is not the fix**, and neither is sharing
 the ordinary checkout's through a junction. Those binaries are compiled from
 `Source/`, and a worktree exists to hold a different version of that tree, so the

@@ -10,6 +10,7 @@
 struct FCataclysmCarriedSlot;
 struct FCataclysmItem;
 struct FCataclysmRolledAffix;
+struct FCataclysmRolledEnchantment;
 class UDataTable;
 
 /**
@@ -156,23 +157,67 @@ public:
 									   const UDataTable* BaseTable);
 
 	/**
+	 * The word marking the negative half of an enchantment. "Drawback".
+	 *
+	 * THE DESIGN'S OWN WORD, from the weight table in
+	 * `docs/Cataclysm_GDD_v2.md`: "significant drawback", "manageable drawback",
+	 * "minor drawback". Not a term invented here.
+	 */
+	static const TCHAR* DrawbackPrefix;
+
+	/**
+	 * How one enchantment reads: its positive, then its negative. Up to 2 lines.
+	 *
+	 * TWO LINES FOR ONE SLOT, because one enchantment is a positive and a
+	 * negative together and both are true of the item. Running them onto one
+	 * line would make the longest tool tip in the game unreadable; a Cataclysmic
+	 * piece carries four of these.
+	 *
+	 * THE NEGATIVE IS MARKED AND THE POSITIVE IS NOT. Issue #45 states the
+	 * requirement: "The negatives are build-breaking by design, so the equip
+	 * flow must make them impossible to miss." Colour is not available -- these
+	 * are plain strings, and everything that draws them draws one colour -- so
+	 * the word is what does it.
+	 *
+	 * THE SHEET'S OWN WORDING, UNCHANGED. There is nothing to compute. An
+	 * enchantment has one value rather than seven tiers and a roll band, so
+	 * unlike an affix there is no number to resolve against the upgrade level.
+	 *
+	 * @return no lines when neither row can be looked up, which is what an item
+	 *         loaded from a save written before enchantments were stored gives
+	 */
+	static TArray<FString> EnchantmentLines(
+		const FCataclysmRolledEnchantment& Rolled,
+		const UDataTable* PositiveEnchantmentTable,
+		const UDataTable* NegativeEnchantmentTable);
+
+	/**
 	 * Every line describing what a carried slot holds, in reading order.
 	 *
 	 * An empty slot gives no lines. A crafting material gives its name, how many
 	 * are stacked and what it is for. An item gives its whole name, its upgrade
 	 * level, what it is if it is a weapon, its implicits, its affixes, its
-	 * sockets and its residue.
+	 * enchantments, its sockets and its residue.
+	 *
+	 * ENCHANTMENTS COME AFTER THE AFFIXES AND BEFORE THE SOCKETS. They sit with
+	 * the affixes because they occupy the same four slots and are the same kind
+	 * of thing to a player -- what carrying this does to the character -- and
+	 * after them because they are the rarer half of that pair.
 	 */
 	static TArray<FString> LinesFor(const FCataclysmCarriedSlot& Slot,
 									const UDataTable* BaseTable,
 									const UDataTable* AffixTable,
-									const UDataTable* CraftingMaterialTable);
+									const UDataTable* CraftingMaterialTable,
+									const UDataTable* PositiveEnchantmentTable,
+									const UDataTable* NegativeEnchantmentTable);
 
 	/** The same lines joined with newlines, which is what a tool tip takes. */
 	static FString TextFor(const FCataclysmCarriedSlot& Slot,
 						   const UDataTable* BaseTable,
 						   const UDataTable* AffixTable,
-						   const UDataTable* CraftingMaterialTable);
+						   const UDataTable* CraftingMaterialTable,
+						   const UDataTable* PositiveEnchantmentTable,
+						   const UDataTable* NegativeEnchantmentTable);
 
 	/**
 	 * A number as a tool tip states it: no decimal point when it is whole.

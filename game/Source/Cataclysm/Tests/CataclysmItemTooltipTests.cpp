@@ -53,6 +53,14 @@ namespace CataclysmTooltipTest
 	{
 		return UCataclysmDropRoll::LoadCraftingMaterialTable();
 	}
+	const UDataTable* Positives()
+	{
+		return UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+	}
+	const UDataTable* Negatives()
+	{
+		return UCataclysmDropRoll::LoadNegativeEnchantmentTable();
+	}
 
 	/** A carried slot holding one item. */
 	FCataclysmCarriedSlot Carrying(const FCataclysmItem& Item)
@@ -546,10 +554,12 @@ bool FCataclysmTooltipEmptySlot::RunTest(const FString& Parameters)
 	const FCataclysmCarriedSlot Nothing;
 	TestEqual(TEXT("an empty slot produces no lines"),
 		UCataclysmItemTooltip::LinesFor(Nothing, Bases(), Affixes(),
-										Materials()).Num(), 0);
+										Materials(), Positives(),
+										Negatives()).Num(), 0);
 	TestTrue(TEXT("and no text"),
 		UCataclysmItemTooltip::TextFor(Nothing, Bases(), Affixes(),
-									   Materials()).IsEmpty());
+									   Materials(), Positives(),
+									   Negatives()).IsEmpty());
 
 	return true;
 }
@@ -563,7 +573,8 @@ bool FCataclysmTooltipMaterial::RunTest(const FString& Parameters)
 	using namespace CataclysmTooltipTest;
 
 	const TArray<FString> Many = UCataclysmItemTooltip::LinesFor(
-		CarryingMaterial(Material, 7), Bases(), Affixes(), Materials());
+		CarryingMaterial(Material, 7), Bases(), Affixes(), Materials(),
+		Positives(), Negatives());
 
 	if (!TestTrue(TEXT("a material produces lines"), Many.Num() >= 2))
 	{
@@ -577,7 +588,8 @@ bool FCataclysmTooltipMaterial::RunTest(const FString& Parameters)
 	// ONE OF SOMETHING DOES NOT SAY "1 carried", because a count of one is what
 	// a slot holding a single thing already looks like.
 	const TArray<FString> Single = UCataclysmItemTooltip::LinesFor(
-		CarryingMaterial(Material, 1), Bases(), Affixes(), Materials());
+		CarryingMaterial(Material, 1), Bases(), Affixes(), Materials(),
+		Positives(), Negatives());
 	TestFalse(TEXT("a single one does not state a count"),
 		Single.ContainsByPredicate([](const FString& Line)
 			{ return Line.Contains(TEXT("carried")); }));
@@ -599,7 +611,8 @@ bool FCataclysmTooltipWholeItem::RunTest(const FString& Parameters)
 	Item.Residue = 3.0f;
 
 	const TArray<FString> Lines = UCataclysmItemTooltip::LinesFor(
-		Carrying(Item), Bases(), Affixes(), Materials());
+		Carrying(Item), Bases(), Affixes(), Materials(), Positives(),
+		Negatives());
 
 	const FString All = FString::Join(Lines, TEXT(" | "));
 
@@ -634,7 +647,8 @@ bool FCataclysmTooltipWholeItem::RunTest(const FString& Parameters)
 	// has never been upgraded is +0 and a line saying so on all of them is noise.
 	FCataclysmItem Fresh = HelmWith(FlatHealthAffix);
 	const TArray<FString> FreshLines = UCataclysmItemTooltip::LinesFor(
-		Carrying(Fresh), Bases(), Affixes(), Materials());
+		Carrying(Fresh), Bases(), Affixes(), Materials(), Positives(),
+		Negatives());
 	TestFalse(TEXT("a piece at +0 states no upgrade level"),
 		FreshLines.ContainsByPredicate([](const FString& Line)
 			{ return Line == TEXT("+0"); }));
@@ -904,7 +918,8 @@ bool FCataclysmTooltipWholeWeapon::RunTest(const FString& Parameters)
 	Item.GearLevel = 4;
 
 	const TArray<FString> Lines = UCataclysmItemTooltip::LinesFor(
-		Carrying(Item), Bases(), Affixes(), Materials());
+		Carrying(Item), Bases(), Affixes(), Materials(), Positives(),
+		Negatives());
 	const FString All = FString::Join(Lines, TEXT(" | "));
 
 	TestTrue(FString::Printf(TEXT("it says what it is: %s"), *All),

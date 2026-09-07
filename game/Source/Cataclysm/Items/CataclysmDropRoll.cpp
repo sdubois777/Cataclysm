@@ -195,6 +195,23 @@ const UDataTable* UCataclysmDropRoll::LoadAffixTable()
 					   TEXT("Affixes.csv"), TEXT("Affixes"));
 }
 
+const TCHAR* UCataclysmDropRoll::PositiveEnchantmentTableAssetPath =
+	TEXT("/Game/Data/DT_EnchantmentsPositive.DT_EnchantmentsPositive");
+const TCHAR* UCataclysmDropRoll::NegativeEnchantmentTableAssetPath =
+	TEXT("/Game/Data/DT_EnchantmentsNegative.DT_EnchantmentsNegative");
+
+const UDataTable* UCataclysmDropRoll::LoadPositiveEnchantmentTable()
+{
+	return LoadTableAt(PositiveEnchantmentTableAssetPath,
+					   TEXT("EnchantmentsPositive.csv"), TEXT("Enchantments"));
+}
+
+const UDataTable* UCataclysmDropRoll::LoadNegativeEnchantmentTable()
+{
+	return LoadTableAt(NegativeEnchantmentTableAssetPath,
+					   TEXT("EnchantmentsNegative.csv"), TEXT("Enchantments"));
+}
+
 FName UCataclysmDropRoll::RowNameFor(ECataclysmRarity Rarity)
 {
 	// THE ENUM'S OWN ENTRY NAME, not its UMETA display name. The generator keys
@@ -1200,12 +1217,215 @@ TArray<FName> UCataclysmDropRoll::RollDamageTypes(
 	return Rolled;
 }
 
+float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
+{
+	// THE SHEET'S NUMBER MUST BE A WHOLE ONE FROM 1 TO 4. Anything else is a row
+	// this draw cannot price, which today means one of the 55 set rows carrying
+	// a set identifier where a weight belongs -- issue #1443. Those are already
+	// excluded by EnchantmentSuitsSlot, so reaching here with one is a fault in
+	// the data rather than an unlucky roll, and a zero takes the row out of the
+	// draw instead of pricing it wrongly.
+	const float Rounded = FMath::RoundToFloat(SheetWeight);
+	if (!FMath::IsNearlyEqual(Rounded, SheetWeight)
+		|| Rounded < LowestEnchantmentWeight
+		|| Rounded > HighestEnchantmentWeight)
+	{
+		return 0.0f;
+	}
+
+	// INVERTED: weight 1 is the rarest, so it gets the smallest frequency.
+	// Weight 1 -> step^0 = 1, weight 4 -> step^3 = 64.
+	return FMath::Pow(EnchantmentWeightStep, Rounded - LowestEnchantmentWeight);
+}
+
+bool UCataclysmDropRoll::EnchantmentSuitsSlot(const FCataclysmEnchantmentRow& Row,
+											  const FString& Slot)
+{
+	// A SET ROW BELONGS TO A DIFFERENT MECHANISM. The design says set positives
+	// and negatives are "paired and guaranteed", so a set is handed out whole
+	// rather than drawn one half at a time.
+	if (Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))
+	{
+		return false;
+	}
+
+	// A SLOT TAG BINDS; EVERY OTHER TAG DESCRIBES WHAT THE ENCHANTMENT AFFECTS.
+	// Three rows of 574 carry one. A row with none may appear anywhere, which is
+	// the other 571.
+	static const FString SlotTagPrefix = TEXT("Item.Slot.");
+
+	TArray<FString> Tags;
+	Row.Tags.ParseIntoArray(Tags, TEXT(","), true);
+
+	bool bHasSlotTag = false;
+	for (FString Each : Tags)
+	{
+		Each.TrimStartAndEndInline();
+		if (!Each.StartsWith(SlotTagPrefix, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		bHasSlotTag = true;
+		if (Each.RightChop(SlotTagPrefix.Len()).Equals(Slot,
+													   ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+
+	return !bHasSlotTag;
+}
+
+void UCataclysmDropRoll::EnchantmentCandidatesFor(const UDataTable* Table,
+												  const FString& Slot,
+												  TArray<FName>& OutCandidates)
+{
+	OutCandidates.Reset();
+	if (!Table)
+	{
+		return;
+	}
+
+	Table->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentCandidatesFor"),
+		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
+		{
+			if (EnchantmentSuitsSlot(Row, Slot)
+				&& EnchantmentDrawWeight(Row.Weight) > 0.0f)
+			{
+				OutCandidates.Add(Key);
+			}
+		});
+}
+
+FName UCataclysmDropRoll::DrawEnchantment(const UDataTable* Table,
+										  const TArray<FName>& Candidates,
+										  const TSet<FName>& Taken,
+										  FRandomStream& Stream)
+{
+	if (!Table)
+	{
+		return NAME_None;
+	}
+
+	// ONE PASS TO TOTAL THE WEIGHT, A SECOND TO WALK IT. Not a shuffle like the
+	// affix draw, because that one is uniform and this one is not: a weight 4
+	// row has to come up 64 times as often as a weight 1.
+	float Total = 0.0f;
+	for (const FName& Candidate : Candidates)
+	{
+		if (Taken.Contains(Candidate))
+		{
+			continue;
+		}
+		if (const FCataclysmEnchantmentRow* Row =
+				Table->FindRow<FCataclysmEnchantmentRow>(
+					Candidate, TEXT("DrawEnchantment"),
+					/*bWarnIfMissing=*/false))
+		{
+			Total += EnchantmentDrawWeight(Row->Weight);
+		}
+	}
+
+	if (Total <= 0.0f)
+	{
+		return NAME_None;
+	}
+
+	float Landed = Stream.FRand() * Total;
+	for (const FName& Candidate : Candidates)
+	{
+		if (Taken.Contains(Candidate))
+		{
+			continue;
+		}
+		const FCataclysmEnchantmentRow* Row =
+			Table->FindRow<FCataclysmEnchantmentRow>(
+				Candidate, TEXT("DrawEnchantment"), /*bWarnIfMissing=*/false);
+		if (!Row)
+		{
+			continue;
+		}
+		Landed -= EnchantmentDrawWeight(Row->Weight);
+		if (Landed <= 0.0f)
+		{
+			return Candidate;
+		}
+	}
+
+	// FLOATING POINT LANDED PAST THE END. The running total and the sum are the
+	// same additions in the same order, so this is rare rather than impossible;
+	// the last eligible candidate is the honest answer.
+	for (int32 Index = Candidates.Num() - 1; Index >= 0; --Index)
+	{
+		if (!Taken.Contains(Candidates[Index]))
+		{
+			return Candidates[Index];
+		}
+	}
+	return NAME_None;
+}
+
+bool UCataclysmDropRoll::RollEnchantments(
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+	const FString& Slot, int32 Count, FRandomStream& Stream,
+	TArray<FCataclysmRolledEnchantment>& OutRolled)
+{
+	OutRolled.Reset();
+	if (Count <= 0)
+	{
+		return Count == 0;
+	}
+	if (!PositiveTable || !NegativeTable)
+	{
+		return false;
+	}
+
+	TArray<FName> Positives;
+	TArray<FName> Negatives;
+	EnchantmentCandidatesFor(PositiveTable, Slot, Positives);
+	EnchantmentCandidatesFor(NegativeTable, Slot, Negatives);
+
+	// NEITHER HALF REPEATS ON ONE PIECE, tracked separately because a positive
+	// and a negative are drawn from different tables and cannot collide.
+	TSet<FName> TakenPositives;
+	TSet<FName> TakenNegatives;
+
+	for (int32 Filled = 0; Filled < Count; ++Filled)
+	{
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive =
+			DrawEnchantment(PositiveTable, Positives, TakenPositives, Stream);
+		Rolled.Negative =
+			DrawEnchantment(NegativeTable, Negatives, TakenNegatives, Stream);
+
+		if (Rolled.Positive.IsNone() || Rolled.Negative.IsNone())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Asked for %d enchantments on a '%s' and the pools supply "
+					 "%d positives and %d negatives, so only %d could be "
+					 "drawn. That is a fault in the enchantment pool rather "
+					 "than an unlucky roll."),
+				Count, *Slot, Positives.Num(), Negatives.Num(), Filled);
+			OutRolled.Reset();
+			return false;
+		}
+
+		TakenPositives.Add(Rolled.Positive);
+		TakenNegatives.Add(Rolled.Negative);
+		OutRolled.Add(MoveTemp(Rolled));
+	}
+
+	return true;
+}
+
 bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 								  const UDataTable* AffixTable,
 								  const UDataTable* GearRarityTable,
 								  const UDataTable* SocketTable,
 								  const UDataTable* AffixTierTable,
 								  const UDataTable* WeaponSkillTable,
+								  const UDataTable* PositiveEnchantmentTable,
+								  const UDataTable* NegativeEnchantmentTable,
 								  const FString& Slot, int32 DifficultyTier,
 								  float MagicFind, FRandomStream& Stream,
 								  FCataclysmItem& OutItem)
@@ -1281,6 +1501,15 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 	// item it described before.
 	OutItem.DamageTypes = RollDamageTypes(WeaponSkillTable, *BaseRow,
 										  DifficultyTier, Stream);
+
+	// AFTER THE DAMAGE TYPES, FOR THE SAME REASON THEY COME AFTER THE AFFIXES.
+	// This was the newest draw when it was added, so it goes on the end.
+	if (!RollEnchantments(PositiveEnchantmentTable, NegativeEnchantmentTable,
+						  Slot, OutItem.EnchantmentCount, Stream,
+						  OutItem.Enchantments))
+	{
+		return false;
+	}
 
 	return true;
 }
