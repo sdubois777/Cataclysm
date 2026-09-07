@@ -227,8 +227,12 @@ public:
 	/**
 	 * The two enchantment tables, or null with the reason logged.
 	 *
-	 * TWO TABLES AND NOT ONE, because the two halves are drawn independently
-	 * and the pools are different sizes: 379 positives and 195 negatives.
+	 * TWO TABLES AND NOT ONE, because a positive and a negative are separate
+	 * rows drawn from pools of different sizes -- 379 and 195 -- rather than two
+	 * columns of one authored pairing. The two halves are NOT independent of
+	 * each other: RollEnchantments draws the negative from the weights the
+	 * positive's weight allows. This comment used to give that independence as
+	 * the reason there are two tables, which stopped being true on 2026-09-07.
 	 */
 	static const UDataTable* LoadPositiveEnchantmentTable();
 	static const UDataTable* LoadNegativeEnchantmentTable();
@@ -581,18 +585,41 @@ public:
 	// -----------------------------------------------------------------------
 
 	/**
-	 * How much rarer each weight is than the one below it. Four.
+	 * How much commoner each weight band is than the band above it. Four.
 	 *
-	 * RULED BY THE PROJECT OWNER ON 2026-09-07, as a relative frequency of
-	 * 1, 4, 16, 64 for weights 1 to 4. The design document orders the four --
-	 * "Weight 1 enchantments are rare and very powerful. Weight 4 enchantments
-	 * are common and modest" -- and states no frequency, so this is a tuning
-	 * value rather than a derived one and is expected to be retuned.
+	 * A WEIGHT IS A STRENGTH TIER, NOT ONLY A RARITY. The project owner ruled on
+	 * 2026-09-07 that the column exists "to determine what benefits go with what
+	 * negatives ... to ensure you can't get the most powerful benefits with
+	 * negatives that barely do anything". So a weight says how rare a row is AND
+	 * which rows may be paired with it. RollEnchantments draws the benefit
+	 * first and the drawback at the benefit's weight or harsher; see it for the
+	 * whole rule.
 	 *
-	 * THE REASONING GIVEN: the design calls enchantments high-variance
-	 * build-defining modifiers, so a weight 1 should be a genuinely rare find
-	 * rather than a mild preference. At this step one row of weight 1 is drawn
-	 * as often as 64 rows of weight 4.
+	 * THE STEP OF FOUR IS THE OWNER'S 2026-09-07 RULING AND IS UNCHANGED. What
+	 * changed on 2026-09-07 is what it multiplies. It used to price a single
+	 * ROW, so the share of draws a weight took depended on how many rows the
+	 * sheet happened to carry at it, and 113 weight 3 rows against 28 weight 4
+	 * rows cancelled the step between those two rungs exactly: both came out at
+	 * about 42% of draws. It now prices a BAND, so the four shares are 1.2%,
+	 * 4.7%, 18.8% and 75.3% whatever the row counts do.
+	 *
+	 * PER BAND IS ALSO WHAT KEEPS THE DRAWBACK'S DRAW MEANINGFUL. The drawback
+	 * is drawn from weight 1 up to the benefit's weight, so the pool it comes
+	 * from changes size with every roll -- 22 negative rows when the benefit is
+	 * weight 1, all 182 when it is weight 4. Priced per row, the odds inside
+	 * that range would move with the row counts of whichever bands happened to
+	 * be in it. Priced per band, the same ladder simply renormalises over the
+	 * weights the floor allows.
+	 *
+	 * THE PROJECT ALREADY DRAWS A RARITY BAND THIS WAY AT THIS STEP.
+	 * `game/Data/MaterialTiers.csv` carries 256, 64, 16, 4, 1 across Common,
+	 * Uncommon, Rare, Very Rare and Extremely Rare -- a step of four -- and
+	 * RollMaterialTier draws the tier from those per-tier weights rather than
+	 * from how many rows sit at each.
+	 *
+	 * A TUNING VALUE, NOT A DERIVED ONE. The design document orders the four
+	 * weights and states no frequency, so this is expected to be retuned against
+	 * real play.
 	 */
 	static constexpr float EnchantmentWeightStep = 4.0f;
 
@@ -600,11 +627,21 @@ public:
 	static constexpr float LowestEnchantmentWeight = 1.0f;
 	static constexpr float HighestEnchantmentWeight = 4.0f;
 
+	/** How many weight bands there are. Four. */
+	static constexpr int32 EnchantmentWeightCount =
+		static_cast<int32>(HighestEnchantmentWeight
+						   - LowestEnchantmentWeight) + 1;
+
 	/**
-	 * The relative frequency of one sheet weight: 1, 4, 16 or 64.
+	 * The relative frequency of one weight BAND: 1, 4, 16 or 64.
 	 *
 	 * INVERTED, because weight 1 is the RAREST and the sheet numbers it
-	 * lowest. Weight 4 is drawn 64 times as often as weight 1.
+	 * lowest. The weight 4 band is drawn 64 times as often as the weight 1 band,
+	 * however many rows are written at either.
+	 *
+	 * ALSO THE TEST OF WHETHER A ROW CAN BE DRAWN AT ALL, which is why it takes
+	 * the sheet's number rather than a band index: a row whose Weight is not a
+	 * whole 1 to 4 prices at zero and EnchantmentCandidatesFor drops it.
 	 *
 	 * @return 0 for a weight outside 1 to 4, which is a row that cannot be drawn
 	 */
@@ -640,27 +677,86 @@ public:
 										 TArray<FName>& OutCandidates);
 
 	/**
-	 * Draw one enchantment row name, weighted, skipping names already taken.
+	 * The same rows, sorted into the four weight bands.
 	 *
-	 * @return NAME_None when nothing is left to draw, which the caller reports
+	 * OutByWeight[0] holds the weight 1 rows and OutByWeight[3] the weight 4
+	 * rows. Always sized EnchantmentWeightCount, so a band with nothing in it
+	 * is an empty array rather than a missing one.
 	 */
-	static FName DrawEnchantment(const UDataTable* Table,
-								 const TArray<FName>& Candidates,
-								 const TSet<FName>& Taken,
-								 FRandomStream& Stream);
+	static void EnchantmentCandidatesByWeight(
+		const UDataTable* Table, const FString& Slot,
+		TArray<TArray<FName>>& OutByWeight);
+
+	/**
+	 * Pick one weight band, 1 to 4, from the bands offered.
+	 *
+	 * THE DESIGNED FREQUENCIES RENORMALISED OVER WHATEVER IS OFFERED. Both
+	 * halves of a pair use this. The benefit is offered every band that can
+	 * supply one; the drawback is offered weight 1 up to the benefit's weight,
+	 * which is how the floor is enforced -- a band above the benefit's weight is
+	 * simply never on the list.
+	 *
+	 * RENORMALISING IS THE WHOLE MECHANISM AND NOT A FALLBACK. Offered bands 1
+	 * and 2 it draws them 1 to 4, so a weight 2 benefit takes a weight 2
+	 * drawback 80% of the time and a weight 1 drawback the other 20%.
+	 *
+	 * @param bBandCanSupply one entry per band, lowest weight first
+	 * @return 0 when no band was offered, which the caller reports
+	 */
+	static int32 DrawEnchantmentWeight(const TArray<bool>& bBandCanSupply,
+									   FRandomStream& Stream);
+
+	/**
+	 * Draw one row name uniformly from one band, skipping names already taken.
+	 *
+	 * UNIFORM INSIDE A BAND, AND THAT IS A JUDGEMENT RATHER THAN A DERIVATION.
+	 * The weight is the only rank the design gives an enchantment, so rows
+	 * sharing one are equals as far as anything written down goes. If some rows
+	 * inside a band should be rarer than others, the sheet has no column saying
+	 * so and inventing one here would be inventing design.
+	 *
+	 * @return NAME_None when the band has nothing untaken left
+	 */
+	static FName DrawEnchantmentInBand(const TArray<FName>& BandCandidates,
+									   const TSet<FName>& Taken,
+									   FRandomStream& Stream);
 
 	/**
 	 * The enchantments one dropped item carries, each a positive and a negative.
 	 *
-	 * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which the design states outright:
-	 * "a strong positive is not guaranteed to come with a weak negative".
+	 * THE DRAWBACK IS NEVER MILDER THAN THE BENEFIT. The benefit's weight is
+	 * drawn first, at the frequencies EnchantmentDrawWeight states. The
+	 * drawback is then drawn from weight 1 up to the benefit's weight -- so it
+	 * matches the benefit or is harsher, and can never be weaker:
+	 *
+	 *     weight 1 benefit -> weight 1 drawback only
+	 *     weight 2 benefit -> weight 1 or 2
+	 *     weight 3 benefit -> weight 1, 2 or 3
+	 *     weight 4 benefit -> any
+	 *
+	 * A FLOOR RATHER THAN A MATCH, WHICH THE PROJECT OWNER CHOSE ON 2026-09-07
+	 * from three options. An exact match on both sides was offered and
+	 * rejected. The floor keeps the rule that you cannot buy the most powerful
+	 * benefits cheaply, while leaving room for a genuinely cursed low-value
+	 * item: a weight 4 benefit carrying a weight 1 drawback happens on 0.9% of
+	 * pairs and is a deliberate outcome, not a leak.
+	 *
+	 * WHAT IT REPLACED, AND WHY. The two halves used to be drawn independently,
+	 * and the design document used to say so. That sentence stated a goal --
+	 * "a strong positive is not guaranteed to come with a weak negative" -- that
+	 * the mechanism named in the same sentence defeated: measured on the shipped
+	 * pool for a chest piece, a weight 1 benefit came with a milder drawback
+	 * 99.2% of the time.
+	 *
+	 * EACH PAIR ROLLS ITS OWN WEIGHTS. A Cataclysmic item holds four pairs and
+	 * they are four separate bargains, not one repeated four times.
 	 *
 	 * NEITHER HALF REPEATS ON ONE PIECE. A Cataclysmic item holds four pairs and
 	 * a player reading four copies of one line would think the item was broken.
 	 * This is NOT the design's unique-per-character rule, which spans all worn
 	 * gear and is enforced at equip time; that is still unbuilt.
 	 *
-	 * @return false when a table is missing or a pool cannot fill the count
+	 * @return false when a table is missing or no band can fill the count
 	 */
 	static bool RollEnchantments(
 		const UDataTable* PositiveTable, const UDataTable* NegativeTable,

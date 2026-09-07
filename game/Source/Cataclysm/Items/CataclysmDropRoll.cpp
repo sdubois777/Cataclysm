@@ -1234,7 +1234,9 @@ float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
 	}
 
 	// INVERTED: weight 1 is the rarest, so it gets the smallest frequency.
-	// Weight 1 -> step^0 = 1, weight 4 -> step^3 = 64.
+	// Weight 1 -> step^0 = 1, weight 4 -> step^3 = 64. This is the frequency of
+	// the whole BAND rather than of one row in it; RollEnchantments picks a band
+	// with these and then draws inside it uniformly.
 	return FMath::Pow(EnchantmentWeightStep, Rounded - LowestEnchantmentWeight);
 }
 
@@ -1297,72 +1299,116 @@ void UCataclysmDropRoll::EnchantmentCandidatesFor(const UDataTable* Table,
 		});
 }
 
-FName UCataclysmDropRoll::DrawEnchantment(const UDataTable* Table,
-										  const TArray<FName>& Candidates,
-										  const TSet<FName>& Taken,
-										  FRandomStream& Stream)
+void UCataclysmDropRoll::EnchantmentCandidatesByWeight(
+	const UDataTable* Table, const FString& Slot,
+	TArray<TArray<FName>>& OutByWeight)
 {
+	// ALWAYS FOUR BANDS, EVEN WHEN A BAND IS EMPTY. A caller that has to check
+	// whether a band exists as well as whether it holds anything gets the check
+	// wrong; an empty array answers both questions at once.
+	OutByWeight.Reset();
+	OutByWeight.SetNum(EnchantmentWeightCount);
 	if (!Table)
 	{
-		return NAME_None;
+		return;
 	}
 
-	// ONE PASS TO TOTAL THE WEIGHT, A SECOND TO WALK IT. Not a shuffle like the
-	// affix draw, because that one is uniform and this one is not: a weight 4
-	// row has to come up 64 times as often as a weight 1.
-	float Total = 0.0f;
+	TArray<FName> Candidates;
+	EnchantmentCandidatesFor(Table, Slot, Candidates);
+
 	for (const FName& Candidate : Candidates)
 	{
-		if (Taken.Contains(Candidate))
+		const FCataclysmEnchantmentRow* Row =
+			Table->FindRow<FCataclysmEnchantmentRow>(
+				Candidate, TEXT("EnchantmentCandidatesByWeight"),
+				/*bWarnIfMissing=*/false);
+		if (!Row)
 		{
 			continue;
 		}
-		if (const FCataclysmEnchantmentRow* Row =
-				Table->FindRow<FCataclysmEnchantmentRow>(
-					Candidate, TEXT("DrawEnchantment"),
-					/*bWarnIfMissing=*/false))
+
+		// EnchantmentCandidatesFor has already dropped anything that does not
+		// price, so the weight here is a whole 1 to 4 and the index is in range.
+		const int32 Band = FMath::RoundToInt(Row->Weight)
+			- static_cast<int32>(LowestEnchantmentWeight);
+		if (OutByWeight.IsValidIndex(Band))
 		{
-			Total += EnchantmentDrawWeight(Row->Weight);
+			OutByWeight[Band].Add(Candidate);
+		}
+	}
+}
+
+int32 UCataclysmDropRoll::DrawEnchantmentWeight(
+	const TArray<bool>& bBandCanSupply, FRandomStream& Stream)
+{
+	// ONE PASS TO TOTAL, A SECOND TO WALK. Four entries, so the cost of the two
+	// passes is nothing and the alternative is a table that has to be kept in
+	// step with EnchantmentDrawWeight by hand.
+	float Total = 0.0f;
+	for (int32 Band = 0; Band < bBandCanSupply.Num(); ++Band)
+	{
+		if (bBandCanSupply[Band])
+		{
+			Total += EnchantmentDrawWeight(
+				LowestEnchantmentWeight + static_cast<float>(Band));
 		}
 	}
 
 	if (Total <= 0.0f)
 	{
-		return NAME_None;
+		return 0;
 	}
 
 	float Landed = Stream.FRand() * Total;
-	for (const FName& Candidate : Candidates)
+	for (int32 Band = 0; Band < bBandCanSupply.Num(); ++Band)
 	{
-		if (Taken.Contains(Candidate))
+		if (!bBandCanSupply[Band])
 		{
 			continue;
 		}
-		const FCataclysmEnchantmentRow* Row =
-			Table->FindRow<FCataclysmEnchantmentRow>(
-				Candidate, TEXT("DrawEnchantment"), /*bWarnIfMissing=*/false);
-		if (!Row)
-		{
-			continue;
-		}
-		Landed -= EnchantmentDrawWeight(Row->Weight);
+		Landed -= EnchantmentDrawWeight(
+			LowestEnchantmentWeight + static_cast<float>(Band));
 		if (Landed <= 0.0f)
 		{
-			return Candidate;
+			return Band + static_cast<int32>(LowestEnchantmentWeight);
 		}
 	}
 
 	// FLOATING POINT LANDED PAST THE END. The running total and the sum are the
 	// same additions in the same order, so this is rare rather than impossible;
-	// the last eligible candidate is the honest answer.
-	for (int32 Index = Candidates.Num() - 1; Index >= 0; --Index)
+	// the last band that can supply is the honest answer.
+	for (int32 Band = bBandCanSupply.Num() - 1; Band >= 0; --Band)
 	{
-		if (!Taken.Contains(Candidates[Index]))
+		if (bBandCanSupply[Band])
 		{
-			return Candidates[Index];
+			return Band + static_cast<int32>(LowestEnchantmentWeight);
 		}
 	}
-	return NAME_None;
+	return 0;
+}
+
+FName UCataclysmDropRoll::DrawEnchantmentInBand(
+	const TArray<FName>& BandCandidates, const TSet<FName>& Taken,
+	FRandomStream& Stream)
+{
+	// UNIFORM, so the untaken rows are gathered and one index is drawn. Walking
+	// a weighted total the way DrawEnchantmentWeight does would be the same
+	// arithmetic with every term equal, which is a longer way to write this.
+	TArray<FName> Available;
+	Available.Reserve(BandCandidates.Num());
+	for (const FName& Candidate : BandCandidates)
+	{
+		if (!Taken.Contains(Candidate))
+		{
+			Available.Add(Candidate);
+		}
+	}
+
+	if (Available.Num() == 0)
+	{
+		return NAME_None;
+	}
+	return Available[Stream.RandRange(0, Available.Num() - 1)];
 }
 
 bool UCataclysmDropRoll::RollEnchantments(
@@ -1380,32 +1426,135 @@ bool UCataclysmDropRoll::RollEnchantments(
 		return false;
 	}
 
-	TArray<FName> Positives;
-	TArray<FName> Negatives;
-	EnchantmentCandidatesFor(PositiveTable, Slot, Positives);
-	EnchantmentCandidatesFor(NegativeTable, Slot, Negatives);
+	TArray<TArray<FName>> PositivesByWeight;
+	TArray<TArray<FName>> NegativesByWeight;
+	EnchantmentCandidatesByWeight(PositiveTable, Slot, PositivesByWeight);
+	EnchantmentCandidatesByWeight(NegativeTable, Slot, NegativesByWeight);
 
 	// NEITHER HALF REPEATS ON ONE PIECE, tracked separately because a positive
 	// and a negative are drawn from different tables and cannot collide.
 	TSet<FName> TakenPositives;
 	TSet<FName> TakenNegatives;
 
+	// ASKED WITHOUT DRAWING. DrawEnchantmentInBand would answer this too, but it
+	// takes a number off the stream to do it, and a test that moves the stream
+	// changes what the item rolls next.
+	auto HasUntaken = [](const TArray<FName>& Rows, const TSet<FName>& Taken)
+	{
+		for (const FName& Row : Rows)
+		{
+			if (!Taken.Contains(Row))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
 	for (int32 Filled = 0; Filled < Count; ++Filled)
 	{
-		FCataclysmRolledEnchantment Rolled;
-		Rolled.Positive =
-			DrawEnchantment(PositiveTable, Positives, TakenPositives, Stream);
-		Rolled.Negative =
-			DrawEnchantment(NegativeTable, Negatives, TakenNegatives, Stream);
+		// ASKED PAIR BY PAIR RATHER THAN ONCE, because the four pairs on a
+		// Cataclysmic item draw from the same pools and empty them as they go.
+		TArray<bool> bDrawbackBandHasRow;
+		bDrawbackBandHasRow.Reserve(EnchantmentWeightCount);
+		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		{
+			bDrawbackBandHasRow.Add(
+				HasUntaken(NegativesByWeight[Band], TakenNegatives));
+		}
 
-		if (Rolled.Positive.IsNone() || Rolled.Negative.IsNone())
+		// A BENEFIT'S WEIGHT CAN BE DRAWN WHEN IT HAS AN UNTAKEN ROW AND SOME
+		// DRAWBACK AT OR BELOW IT IS LEFT TO PAY FOR IT. "At or below" is the
+		// floor: a weight 2 benefit may be bought with a weight 1 or a weight 2
+		// drawback and nothing milder, so a weight 2 benefit with only weight 3
+		// and 4 drawbacks left cannot be offered at all.
+		TArray<bool> bBenefitBandCanSupply;
+		bBenefitBandCanSupply.Reserve(EnchantmentWeightCount);
+		bool bAnyDrawbackAtOrBelow = false;
+		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		{
+			bAnyDrawbackAtOrBelow =
+				bAnyDrawbackAtOrBelow || bDrawbackBandHasRow[Band];
+			bBenefitBandCanSupply.Add(
+				HasUntaken(PositivesByWeight[Band], TakenPositives)
+				&& bAnyDrawbackAtOrBelow);
+
+			if (!bBenefitBandCanSupply[Band])
+			{
+				// WORTH A LINE IN THE LOG EVEN THOUGH IT CANNOT HAPPEN TODAY.
+				// Every band holds at least 22 rows a side for every slot and
+				// an item draws at most four pairs, so reaching here means the
+				// sheet changed, and the weights the remaining bands are then
+				// drawn at are not the designed ones.
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("A weight %d benefit cannot be paired on a '%s' (%d "
+						 "benefit and %d drawback rows written at that weight, "
+						 "%d and %d already on this piece), so this drop draws "
+						 "the other weights more often than designed."),
+					Band + static_cast<int32>(LowestEnchantmentWeight), *Slot,
+					PositivesByWeight[Band].Num(),
+					NegativesByWeight[Band].Num(),
+					TakenPositives.Num(), TakenNegatives.Num());
+			}
+		}
+
+		// THE BENEFIT'S WEIGHT FIRST. It is what the pair is worth, and it is
+		// what the drawback's range is then measured against.
+		const int32 BenefitWeight =
+			DrawEnchantmentWeight(bBenefitBandCanSupply, Stream);
+		if (BenefitWeight <= 0)
 		{
 			UE_LOG(LogCataclysm, Warning,
-				TEXT("Asked for %d enchantments on a '%s' and the pools supply "
-					 "%d positives and %d negatives, so only %d could be "
-					 "drawn. That is a fault in the enchantment pool rather "
-					 "than an unlucky roll."),
-				Count, *Slot, Positives.Num(), Negatives.Num(), Filled);
+				TEXT("Asked for %d enchantments on a '%s' and no weight can "
+					 "supply a benefit with a drawback at or below it, so only "
+					 "%d could be drawn. That is a fault in the enchantment "
+					 "pool rather than an unlucky roll."),
+				Count, *Slot, Filled);
+			OutRolled.Reset();
+			return false;
+		}
+
+		const int32 BenefitBand =
+			BenefitWeight - static_cast<int32>(LowestEnchantmentWeight);
+
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = DrawEnchantmentInBand(PositivesByWeight[BenefitBand],
+												TakenPositives, Stream);
+
+		// THE DRAWBACK FROM WEIGHT 1 UP TO THE BENEFIT'S WEIGHT, AND NO
+		// FURTHER. This one line is the floor the project owner chose on
+		// 2026-09-07: bands above the benefit's are never offered, so the
+		// drawback matches it or is harsher and can never be milder.
+		TArray<bool> bDrawbackBandCanSupply;
+		bDrawbackBandCanSupply.Reserve(EnchantmentWeightCount);
+		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		{
+			bDrawbackBandCanSupply.Add(Band <= BenefitBand
+									   && bDrawbackBandHasRow[Band]);
+		}
+
+		const int32 DrawbackWeight =
+			DrawEnchantmentWeight(bDrawbackBandCanSupply, Stream);
+		if (DrawbackWeight > 0)
+		{
+			Rolled.Negative = DrawEnchantmentInBand(
+				NegativesByWeight[DrawbackWeight
+					- static_cast<int32>(LowestEnchantmentWeight)],
+				TakenNegatives, Stream);
+		}
+
+		// BOTH ARE SET, because a benefit weight was only offered once a
+		// drawback at or below it was left. Checked anyway: a future change
+		// that breaks that would otherwise write NAME_None onto an item and the
+		// player would meet it as a blank line on a tool tip.
+		if (Rolled.Positive.IsNone() || Rolled.Negative.IsNone())
+		{
+			UE_LOG(LogCataclysm, Error,
+				TEXT("A weight %d benefit was chosen for a '%s' and then could "
+					 "not be paired. The check that offered that weight and the "
+					 "draw that followed it disagree about what the bands "
+					 "hold."),
+				BenefitWeight, *Slot);
 			OutRolled.Reset();
 			return false;
 		}
