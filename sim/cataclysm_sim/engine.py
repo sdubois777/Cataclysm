@@ -971,19 +971,45 @@ class Simulation:
         Issue #1349, 2026-09-06, verbatim "Halve the rate and cut the growth":
         the Siege spawn weight went 15 to 7.5 and `siege_damage_growth_per_day`
         10 to 2.5, with the two 1% shares of a city's maximum left alone.
-        Re-measured with `sim/analyse_siege_dose.py` on the shipped
-        configuration, 2,000 campaigns in two disjoint blocks of 1,000 seeds at
-        the settings named above:
+        Re-measured on 2026-09-07 for issue #1358, on `a71ee1f`, over 6,000
+        campaigns in six disjoint blocks of 1,000 seeds at the settings named
+        above -- six blocks and not two, because two blocks give one realised
+        difference and no estimate of a spread at all. **All of it with NO
+        empire tree**, which matters because the owner has ruled the game is
+        balanced around a fully invested Explorer player and nothing on record
+        measures that player here:
 
-          - **The earned Cataclysm dungeon opens in 51.2% and 48.9% of
-            campaigns**, against the 8.1% immediately before it.
-          - Last Stand reached in **55.7% and 56.7%**, against 96.3%.
-          - Cleared, per Last Stand reached, **1 in 34.8 and 1 in 31.5**.
-          - Cities lost, of 25: **16.43 and 16.11**, against 21.0.
+          - **The earned Cataclysm dungeon opens in 54.9% of campaigns**,
+            3,294 of 6,000, against the 8.1% immediately before the ruling,
+            and is won **40.4%** of the time, 1,332 of 3,294.
+          - Last Stand **reached in 45.9%**, 2,754 of 6,000, against 96.3%.
+          - Cleared, per Last Stand reached, **1 in 24.6** -- 112 of 2,754.
+          - Cities lost, of 25: **13.61**, against 21.0.
+          - A campaign is won at all **24.1%** of the time.
+
+        Block standard deviations across the six: 1.27 on the earned share,
+        2.19 on its win rate, 1.22 on the Last Stand share, 0.16 of a city on
+        cities lost, and 0.34 points on the clear rate. The six blocks run
+        1 in 22 to 1 in 28 there, pooled 95% interval 1 in 21 to 1 in 30, so
+        read it as about one in twenty-five and nothing narrower.
+
+        **AN EARLIER SET TAKEN THE SAME DAY ON `e8b33c2` IS SUPERSEDED, AND IT
+        WAS NOT WRONG.** It read 50.0 / 38.3 / 56.4 / 1 in 34.5 / 16.34. The
+        same instrument run against a checkout of `e8b33c2` reproduces all of
+        it to every digit, so what moved is the model and not the measurement:
+        `035f396` gave the empire layer a Cataclysm identity and unlocked the
+        Cataclysm dungeon at half of the active ones, and `bb20848` gave a
+        Quest dungeon a 0.5 chance of moving. Five of the seven figures moved,
+        the clear rate moved marginally, and the earned win rate did not move
+        at all.
+
+        **DO NOT USE A TWO-BLOCK GAP AS A NOISE FLOOR.** On these six the
+        A-to-B gap ran from 0.67 to 1.81 times the real block-to-block
+        standard deviation depending on which figure was read. Issue #1379.
 
         **So the ordinary way to win is the ordinary outcome again**, which is
-        what the ruling was for. Every figure above it on this docstring
-        describes a game with a Siege twice as common and four times as fast.
+        what the ruling was for. Every figure above this block describes a game
+        with a Siege twice as common and four times as fast.
 
         **THE SAME 2,000 SEEDS WITH THE RULE UNDONE give 1 in 28.8 reached, 67
         wins in 1,926, and the same 96.3% and 407 floors.** So barring one
@@ -1138,8 +1164,9 @@ class Simulation:
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
         # the player. In practice this is the end of the run. The fight is
         # winnable in principle and almost never in practice -- measured on
-        # 2026-09-06 at about 1 in 84 per Last Stand REACHED, against 40.4% for
-        # a Cataclysm dungeon the player opened by clearing quest objectives.
+        # 2026-09-07 at about 1 in 24.6 per Last Stand REACHED, against 40.4%
+        # for a Cataclysm dungeon the player opened by clearing quest
+        # objectives, both with no empire tree.
         # See `_open_last_stand`, which carries the denominators and what moved
         # them.
         self.min_d2d = min(self.min_d2d, self.empire.distance_to_defeat())
