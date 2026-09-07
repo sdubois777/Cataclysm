@@ -677,12 +677,30 @@ class Simulation:
                         d.city_id = target.cid
             return
 
+        # THIS ONE COUNTS TIMERS AND IS MEANT TO. `times_resolved` is per
+        # dungeon and says how many times this dungeon's clock ran out, which
+        # for a Fallen City dungeon it repeatedly does. `self.resolved` below
+        # counts something else and the two used to sit on adjacent lines,
+        # which is how the confusion issue #1373 records got started.
         d.times_resolved += 1
-        self.resolved += 1
 
         if not d.resolves or city.fallen:
             d.resolve_in = float(d.resolve_max)
             return
+
+        # THE EMPIRE IS ABOUT TO PAY, SO THIS IS WHERE IT IS COUNTED.
+        # `RunResult.dungeons_resolved` documents itself as "times a dungeon
+        # detonated undefeated" and this line used to sit ABOVE the guard, so a
+        # Fallen City dungeon -- whose `resolves` is false by design -- and a
+        # Basic dungeon on a city that had already fallen were both counted as
+        # detonations that took nothing. Measured before the move at 10 of
+        # 3,665 over thirty campaigns at `TuningConfig()` defaults on the
+        # `triage` policy, and 0 of 3,655 after it. Issue #1373.
+        #
+        # `UCataclysmEmpireRun::ResolveDungeon` raises `DungeonsDetonated` in
+        # the same place for the same reason, and the two are now the same
+        # number; they were deliberately different until this moved.
+        self.resolved += 1
 
         # Bigger dungeons hit harder. Scale the bite by how deep this one is
         # relative to a typical dungeon of its type on this tier.

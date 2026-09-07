@@ -1677,20 +1677,22 @@ class TestWhatClearingADungeonCounts:
                 "on it, and it is separate from ClearDungeon so that it counts "
                 "nothing. Issue #1324 slice 5")
 
-    def test_the_game_counts_a_detonation_and_the_model_counts_something_else(
-            self):
-        """**A DELIBERATE DIVERGENCE, RECORDED SO IT IS NOT MISTAKEN FOR DRIFT.**
+    def test_both_halves_count_a_detonation_where_the_city_pays(self):
+        """**THEY USED TO DIFFER AND ISSUE #1373 ENDED THAT.**
 
-        `UCataclysmEmpireRun::DungeonsDetonated` is raised where the city is
-        damaged. `Simulation.resolved` is raised ABOVE the model's own guard, so
-        a Fallen City dungeon's timer running out counts there and takes
-        nothing -- measured at 15 of 4,051 over thirty campaigns, and
-        `RunResult.dungeons_resolved` documents itself as "times a dungeon
-        detonated undefeated", which it therefore is not. That is issue #1373.
+        `UCataclysmEmpireRun::DungeonsDetonated` has always been raised where
+        the city is damaged. `Simulation.resolved` was raised ABOVE the model's
+        own guard, so a Fallen City dungeon's timer running out counted there
+        and took nothing -- measured at 10 of 3,665 over thirty campaigns at
+        `TuningConfig()` defaults on the `triage` policy, while
+        `RunResult.dungeons_resolved` documented itself as "times a dungeon
+        detonated undefeated". The model's line moved below its guard, the same
+        thirty campaigns now count 3,655 with none of them free, and the two
+        halves are one number.
 
-        THIS TEST EXISTS TO FAIL WHEN #1373 IS FIXED, which is the point: at
-        that moment the two become the same number, this divergence stops being
-        real, and the comments in both files that describe it become wrong.
+        THIS ASSERTS THE ORDER IN BOTH FILES rather than either alone, because
+        the defect was a line in the wrong place and not a missing line. A test
+        that only checked the count exists would have passed throughout.
         """
         import inspect
 
@@ -1703,14 +1705,17 @@ class TestWhatClearingADungeonCounts:
         assert after, (
             "Simulation._resolve no longer raises self.resolved at all")
 
-        assert "if not d.resolves or city.fallen:" in after, (
-            "Simulation._resolve now raises self.resolved AFTER the guard that "
-            "decides whether the city pays anything, which is what issue #1373 "
-            "asked for. The game's DungeonsDetonated and the model's resolved "
-            "are now the same number: delete this test, and correct the "
-            "comments in CataclysmEmpireRun.h and CataclysmEmpireRun.cpp and "
-            "the docs/DECISIONS.md entry of 2026-09-06 that all say they "
-            "differ")
+        assert "if not d.resolves or city.fallen:" in before, (
+            "Simulation._resolve raises self.resolved ABOVE the guard that "
+            "decides whether the city pays anything, so a Fallen City dungeon "
+            "and a dungeon on a fallen city are counted as detonations that "
+            "took nothing. RunResult.dungeons_resolved says \"times a dungeon "
+            "detonated undefeated\" and would stop being that. Issue #1373")
+
+        assert "return" not in after.split("city.defense -=", 1)[0], (
+            "there is now a return between the self.resolved count and the "
+            "city damage below it, so a resolve can be counted without the "
+            "city paying for it. Issue #1373")
 
         run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                    / "Empire" / "CataclysmEmpireRun.cpp")

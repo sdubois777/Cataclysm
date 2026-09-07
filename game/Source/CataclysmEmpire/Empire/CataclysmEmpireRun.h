@@ -512,16 +512,20 @@ public:
 	 * whose damage is already done. A caller counting how often the empire was
 	 * hurt had no number to read and the report's own comment said so.
 	 *
-	 * **IT IS DELIBERATELY NOT A PORT OF `Simulation.resolved`, WHICH COUNTS
-	 * SOMETHING LOOSER.** The model raises its tally before asking whether the
-	 * dungeon detonates, so a Fallen City dungeon's timer running out counts
-	 * there and not here. `RunResult.dungeons_resolved` is documented in the
-	 * model as "times a dungeon detonated undefeated", which stopped being true
-	 * of it when slice 2 gave the model a kind that does not detonate. Copying
-	 * that arithmetic would have carried the defect across rather than the
-	 * meaning, so this counts the bite and the difference is recorded in
-	 * `docs/DECISIONS.md` and in
-	 * [#1373](https://github.com/sdubois777/Cataclysm/issues/1373).
+	 * **IT IS DELIBERATELY NOT A PORT OF `Simulation.resolved` AS THAT STOOD,
+	 * AND THE MODEL HAS SINCE BEEN CORRECTED TO MATCH.** The model used to
+	 * raise its tally before asking whether the dungeon detonates, so a Fallen
+	 * City dungeon's timer running out counted there and not here --
+	 * `RunResult.dungeons_resolved` is documented in the model as "times a
+	 * dungeon detonated undefeated", which stopped being true of it when slice
+	 * 2 gave the model a kind that does not detonate. Copying that arithmetic
+	 * would have carried the defect across rather than the meaning, so this
+	 * counted the bite;
+	 * [#1373](https://github.com/sdubois777/Cataclysm/issues/1373) then moved
+	 * the model's line below its own guard and **the two are now one number**.
+	 * `docs/DECISIONS.md` records both halves, and
+	 * `test_both_halves_count_a_detonation_where_the_city_pays` in
+	 * `tools/tests/test_surge_port.py` fails if either drifts back.
 	 *
 	 * A CITY THAT HAS ALREADY FALLEN IS NOT A BITE EITHER. `ResolveDungeon`
 	 * returns before touching anything when its host is gone, and this is raised

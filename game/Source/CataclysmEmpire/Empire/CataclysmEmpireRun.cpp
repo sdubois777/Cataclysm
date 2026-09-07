@@ -403,10 +403,13 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// `FCataclysmDayReport::Resolved` already gives a caller and the reason
 	// nothing could answer how often the empire was hurt. Issue #1324 slice 5.
 	//
-	// THE MODEL COUNTS THIS DIFFERENTLY AND DELIBERATELY IS NOT COPIED.
-	// `Simulation._resolve` raises `self.resolved` above its own equivalent
-	// guard, so a Fallen City dungeon's timer counts there; measured at 15 of
-	// 4,051 over thirty campaigns. Issue #1373.
+	// THE MODEL USED TO COUNT THIS DIFFERENTLY AND NOW DOES NOT.
+	// `Simulation._resolve` raised `self.resolved` above its own equivalent
+	// guard, so a Fallen City dungeon's timer counted there -- measured at 10
+	// of 3,665 over thirty campaigns. Issue #1373 moved that line below the
+	// guard, so the model's `RunResult.dungeons_resolved` and this are the same
+	// number. `test_both_halves_count_a_detonation_where_the_city_pays` in
+	// `tools/tests/test_surge_port.py` fails if either half moves back.
 	++DungeonsDetonated;
 
 	// COPIED OUT BEFORE THE BITE. `Damage` can lead to `CityFell`, which removes
