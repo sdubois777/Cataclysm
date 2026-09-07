@@ -83,11 +83,19 @@
  * test that notices the budget no longer adds up -- and the budget is what every
  * tree's shape was chosen for.
  *
- * WHAT A SPENT POINT IS WORTH IS COVERED FOR THE 26 NODES THAT HAVE A NUMBER,
- * and for no others. `game/Data/PassiveEffects.csv` gives a stat, a bucket and a
- * value per point for 26 of the 293 nodes; the remaining 267 say what they do in
- * a sentence written for a player and carry no number anywhere a machine can
- * read. Issues #936 and #939. Of the 26, the one that names a required tag
+ * WHAT A SPENT POINT IS WORTH IS COVERED FOR THE NODES THAT HAVE A NUMBER, and
+ * for no others. `game/Data/PassiveEffects.csv` gives a stat, a bucket and a
+ * value per point for 78 of the 441 nodes, in 130 rows; the remaining 363 say
+ * what they do in a sentence written for a player and carry no number anywhere a
+ * machine can read. Issues #936 and #939.
+ *
+ * THIS PARAGRAPH SAID "26 OF THE 293" AND BOTH HALVES WERE WRONG BY 2026-09-07.
+ * The 26 went stale on its own as authoring continued after it was written. The
+ * 293 went stale when issue #950 added the Ravager and Ritualist trees, 74 nodes
+ * each. The numerator did not move with them, because neither tree has an
+ * authored effect row yet; that is issue #1463. So the share that does something
+ * fell without anything regressing, which is the reading this paragraph exists
+ * to give. Of the 26, the one that names a required tag
  * reaches nobody -- see `ATagScopedNodeGrantsNothingYet` and issue #943.
  *
  * WHAT IS DELIBERATELY NOT COVERED. Anything a person can see: the automation
@@ -1138,7 +1146,7 @@ bool FCataclysmPassiveCapstoneOptionTest::RunTest(const FString&)
 	}
 
 	// AND A ROW WITH NO OPTION IS UNTOUCHED BY ANY OF THIS, which is every row in
-	// the four trees except the capstones'. Without this the check could have been
+	// the six trees except the capstones'. Without this the check could have been
 	// written as "skip a row unless its option matches" and would have silenced
 	// the whole sheet.
 	Allocation.Add(FName(TEXT("Ravager_mid")), 4);
@@ -5790,7 +5798,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveTheLastDropOnARealCharacterTes
  * `docs/DECISIONS.md` carries the reasoning.
  *
  * THE CONDITION IS THE FIRST STRICTLY-BELOW HEALTH THRESHOLD IN THE GAME. Every
- * other health threshold in all four trees is worded "at or below" and takes
+ * other health threshold in all six trees is worded "at or below" and takes
  * `health_at_or_below`. The boundary itself is checked in
  * `Cataclysm.StatPipeline.BelowAndAtOrBelowDifferAtExactlyTheThreshold`; what
  * this test adds is that the row reaches a real character and that the game's
