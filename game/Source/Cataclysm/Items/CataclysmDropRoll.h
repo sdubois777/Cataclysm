@@ -581,18 +581,38 @@ public:
 	// -----------------------------------------------------------------------
 
 	/**
-	 * How much rarer each weight is than the one below it. Four.
+	 * How much commoner each weight band is than the band above it. Four.
 	 *
-	 * RULED BY THE PROJECT OWNER ON 2026-09-07, as a relative frequency of
-	 * 1, 4, 16, 64 for weights 1 to 4. The design document orders the four --
-	 * "Weight 1 enchantments are rare and very powerful. Weight 4 enchantments
-	 * are common and modest" -- and states no frequency, so this is a tuning
-	 * value rather than a derived one and is expected to be retuned.
+	 * A WEIGHT IS A STRENGTH TIER, NOT ONLY A RARITY. The project owner ruled on
+	 * 2026-09-07 that the column exists "to determine what benefits go with what
+	 * negatives ... to ensure you can't get the most powerful benefits with
+	 * negatives that barely do anything". So a weight says how rare a pair is
+	 * AND which rows may be paired with which. RollEnchantments draws both
+	 * halves of a pair at ONE weight; see it for the whole rule.
 	 *
-	 * THE REASONING GIVEN: the design calls enchantments high-variance
-	 * build-defining modifiers, so a weight 1 should be a genuinely rare find
-	 * rather than a mild preference. At this step one row of weight 1 is drawn
-	 * as often as 64 rows of weight 4.
+	 * THE STEP OF FOUR IS THE OWNER'S 2026-09-07 RULING AND IS UNCHANGED. What
+	 * changed on 2026-09-07 is what it multiplies. It used to price a single
+	 * ROW, so the share of draws a weight took depended on how many rows the
+	 * sheet happened to carry at it, and 113 weight 3 rows against 28 weight 4
+	 * rows cancelled the step between those two rungs exactly: both came out at
+	 * about 42% of draws. It now prices a BAND, so the four shares are 1.2%,
+	 * 4.7%, 18.8% and 75.3% whatever the row counts do.
+	 *
+	 * PER BAND IS FORCED RATHER THAN PREFERRED, once a pair shares one weight.
+	 * The two pools are shaped differently -- a chest piece can draw 39, 154,
+	 * 113 and 28 positives against 22, 80, 58 and 22 negatives -- so per-row
+	 * pricing gives the two halves different frequencies and there is no single
+	 * frequency for the pair to be drawn at.
+	 *
+	 * THE PROJECT ALREADY DRAWS A RARITY BAND THIS WAY AT THIS STEP.
+	 * `game/Data/MaterialTiers.csv` carries 256, 64, 16, 4, 1 across Common,
+	 * Uncommon, Rare, Very Rare and Extremely Rare -- a step of four -- and
+	 * RollMaterialTier draws the tier from those per-tier weights rather than
+	 * from how many rows sit at each.
+	 *
+	 * A TUNING VALUE, NOT A DERIVED ONE. The design document orders the four
+	 * weights and states no frequency, so this is expected to be retuned against
+	 * real play.
 	 */
 	static constexpr float EnchantmentWeightStep = 4.0f;
 
@@ -600,11 +620,21 @@ public:
 	static constexpr float LowestEnchantmentWeight = 1.0f;
 	static constexpr float HighestEnchantmentWeight = 4.0f;
 
+	/** How many weight bands there are. Four. */
+	static constexpr int32 EnchantmentWeightCount =
+		static_cast<int32>(HighestEnchantmentWeight
+						   - LowestEnchantmentWeight) + 1;
+
 	/**
-	 * The relative frequency of one sheet weight: 1, 4, 16 or 64.
+	 * The relative frequency of one weight BAND: 1, 4, 16 or 64.
 	 *
 	 * INVERTED, because weight 1 is the RAREST and the sheet numbers it
-	 * lowest. Weight 4 is drawn 64 times as often as weight 1.
+	 * lowest. The weight 4 band is drawn 64 times as often as the weight 1 band,
+	 * however many rows are written at either.
+	 *
+	 * ALSO THE TEST OF WHETHER A ROW CAN BE DRAWN AT ALL, which is why it takes
+	 * the sheet's number rather than a band index: a row whose Weight is not a
+	 * whole 1 to 4 prices at zero and EnchantmentCandidatesFor drops it.
 	 *
 	 * @return 0 for a weight outside 1 to 4, which is a row that cannot be drawn
 	 */
@@ -640,27 +670,73 @@ public:
 										 TArray<FName>& OutCandidates);
 
 	/**
-	 * Draw one enchantment row name, weighted, skipping names already taken.
+	 * The same rows, sorted into the four weight bands.
 	 *
-	 * @return NAME_None when nothing is left to draw, which the caller reports
+	 * OutByWeight[0] holds the weight 1 rows and OutByWeight[3] the weight 4
+	 * rows. Always sized EnchantmentWeightCount, so a band with nothing in it
+	 * is an empty array rather than a missing one.
 	 */
-	static FName DrawEnchantment(const UDataTable* Table,
-								 const TArray<FName>& Candidates,
-								 const TSet<FName>& Taken,
-								 FRandomStream& Stream);
+	static void EnchantmentCandidatesByWeight(
+		const UDataTable* Table, const FString& Slot,
+		TArray<TArray<FName>>& OutByWeight);
+
+	/**
+	 * Pick the weight band one pair is drawn at, 1 to 4.
+	 *
+	 * ONLY BANDS THAT CAN SUPPLY BOTH HALVES ARE CONSIDERED, and the designed
+	 * frequencies are renormalised over those. With the pool as written every
+	 * band holds at least 22 rows on each side for every gear slot, so nothing
+	 * is ever excluded and this is a guard against future data rather than a
+	 * live rule -- but it is the guard's behaviour that decides what a data gap
+	 * does, so it is stated here rather than left to fall out. RollEnchantments
+	 * logs when a band is excluded.
+	 *
+	 * @param bBandCanSupply one entry per band, lowest weight first
+	 * @return 0 when no band can supply a pair, which the caller reports
+	 */
+	static int32 DrawEnchantmentWeight(const TArray<bool>& bBandCanSupply,
+									   FRandomStream& Stream);
+
+	/**
+	 * Draw one row name uniformly from one band, skipping names already taken.
+	 *
+	 * UNIFORM INSIDE A BAND, AND THAT IS A JUDGEMENT RATHER THAN A DERIVATION.
+	 * The weight is the only rank the design gives an enchantment, so rows
+	 * sharing one are equals as far as anything written down goes. If some rows
+	 * inside a band should be rarer than others, the sheet has no column saying
+	 * so and inventing one here would be inventing design.
+	 *
+	 * @return NAME_None when the band has nothing untaken left
+	 */
+	static FName DrawEnchantmentInBand(const TArray<FName>& BandCandidates,
+									   const TSet<FName>& Taken,
+									   FRandomStream& Stream);
 
 	/**
 	 * The enchantments one dropped item carries, each a positive and a negative.
 	 *
-	 * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which the design states outright:
-	 * "a strong positive is not guaranteed to come with a weak negative".
+	 * BOTH HALVES OF A PAIR ARE DRAWN AT ONE WEIGHT. The weight band is picked
+	 * first, at the frequencies EnchantmentDrawWeight states, and the positive
+	 * and the negative are then drawn from that band. So a weight 1 positive is
+	 * always bought with a weight 1 negative.
+	 *
+	 * THE PROJECT OWNER RULED THIS ON 2026-09-07: the weight column exists "to
+	 * determine what benefits go with what negatives ... to ensure you can't get
+	 * the most powerful benefits with negatives that barely do anything". The
+	 * design document used to say the two halves "roll independently"; that
+	 * sentence was removed the same day, because independent draws defeated the
+	 * goal stated beside them. Measured on the shipped pool for a chest piece,
+	 * a weight 1 positive came with a milder negative 99.2% of the time.
+	 *
+	 * EACH PAIR ROLLS ITS OWN WEIGHT. A Cataclysmic item holds four pairs and
+	 * they are four separate bargains, not one repeated four times.
 	 *
 	 * NEITHER HALF REPEATS ON ONE PIECE. A Cataclysmic item holds four pairs and
 	 * a player reading four copies of one line would think the item was broken.
 	 * This is NOT the design's unique-per-character rule, which spans all worn
 	 * gear and is enforced at equip time; that is still unbuilt.
 	 *
-	 * @return false when a table is missing or a pool cannot fill the count
+	 * @return false when a table is missing or no band can fill the count
 	 */
 	static bool RollEnchantments(
 		const UDataTable* PositiveTable, const UDataTable* NegativeTable,

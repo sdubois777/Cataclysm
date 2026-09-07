@@ -3371,7 +3371,9 @@ Enchantments are high-power modifiers available only on Legendary and above item
 
 ### **How Enchantments Roll**
 
-Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags. Positives and negatives roll independently — a strong positive is not guaranteed to come with a weak negative.
+Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags. **A POSITIVE AND ITS NEGATIVE ARE DRAWN AT THE SAME WEIGHT.** The project owner ruled this on 2026-09-07: the weight column exists "to determine what benefits go with what negatives … to ensure you can't get the most powerful benefits with negatives that barely do anything". So a strong positive is never bought cheaply — the weight decides how good the benefit is, how severe the drawback is, and how rare the pair is, all at once.
+
+This paragraph used to say the two halves "roll independently — a strong positive is not guaranteed to come with a weak negative". **The mechanism it named defeated the goal stated in the same sentence**, and by a wide margin: measured on the 334 positive and 182 negative rows a chest piece can draw, independent draws gave a weight 1 positive a milder drawback **99.2%** of the time, and the mildest tier of all just over half of those times. The goal survived and the mechanism was replaced.
 
   
 
@@ -3397,7 +3399,9 @@ Enchantments are tag-based rather than skill-specific, ensuring the loot pool re
 
   
 
-The weight system governs rarity and balance simultaneously. Weight 1 enchantments are rare and very powerful. Weight 4 enchantments are common and modest. Because positives and negatives roll separately, a player could theoretically land a weight 1 positive paired with a weight 1 negative — extremely powerful but extremely costly.
+The weight system governs rarity and balance simultaneously. Weight 1 enchantments are rare and very powerful. Weight 4 enchantments are common and modest. **A weight 1 positive always comes with a weight 1 negative — extremely powerful and extremely costly.** That was described here as a theoretical possibility while the two halves rolled separately; it is now what a weight 1 pair is.
+
+**How often each weight comes up: 1, 4, 16, 64 for weights 1 to 4**, so the pair's weight is drawn at 1.2%, 4.7%, 18.8% and 75.3%. The project owner ruled the step of four on 2026-09-07. It prices the **weight band**, not the individual row, so the frequencies do not move when rows are added to the sheet. Pricing each row instead — which the first implementation did — made a "Moderate" weight 3 pair and a "Common" weight 4 pair equally likely, because four times as many weight 3 rows are written as weight 4 ones and that cancelled the step exactly. The step is a tuning value and is expected to be retuned against real play.
 
   
 

@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — An enchantment's positive and negative are drawn at one weight, and the 1/4/16/64 step prices the weight band rather than the row
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`
+(`EnchantmentWeightStep`, `EnchantmentDrawWeight`, `EnchantmentWeightCount`,
+`EnchantmentCandidatesByWeight`, `DrawEnchantmentWeight`,
+`DrawEnchantmentInBand`, `RollEnchantments`),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentTests.cpp`,
+`docs/Cataclysm_GDD_v2.md` (the Enchantment System section). Issue
+[#1453](https://github.com/sdubois777/Cataclysm/issues/1453). Supersedes part of
+the entry further down this file dated the same day.
+
+### The ruling, verbatim
+
+The project owner, on 2026-09-07, on what the `Weight` column is for:
+
+> What's in there now only exist to determine what benefits go with what
+> negatives. This is to ensure you can't get the most powerful benefits with
+> negatives that barely do anything.
+
+**So a weight is a strength tier, not only a rarity.** It sets how rare a pair is
+**and** which rows may be paired with which. The first implementation read it as
+a rarity ladder only, which the design document supported, and drew the two
+halves on separate tables with nothing relating them.
+
+### The design document said the opposite, twice, and its own goal is why it lost
+
+This was not a gap in the document. It stated the old behaviour outright —
+"Positives and negatives roll independently — a strong positive is not guaranteed
+to come with a weak negative" — and again under the weight table. Both sentences
+were rewritten as part of this decision.
+
+**The document's stated goal and its stated mechanism disagreed with each other,
+and the size of the gap is why the goal won.** Measured over the 334 positive and
+182 negative rows a chest piece can draw, under the independent draw:
+
+| Outcome under independent draws | Share |
+| --- | --: |
+| Given a weight 1 positive, the negative is a milder weight | **99.2%** |
+| Given a weight 1 positive, the negative is the mildest weight of all | 53% |
+| The two halves happen to match | 38.6% |
+
+A sentence promising that a strong positive is not guaranteed a weak drawback,
+implemented by a mechanism that delivers a weaker drawback 99.2% of the time, is
+one the implementation had already broken. The owner's ruling kept the goal.
+
+### What is drawn, and in what order
+
+**The weight first, then both halves from it.** A pair is one bargain struck at
+one strength. Each of an item's enchantment slots rolls its own weight, so a
+Cataclysmic item holds four separate bargains rather than one repeated four
+times. Inside a band the row is drawn uniformly.
+
+**Uniform inside a band is a judgement, not a derivation.** The weight is the
+only rank the design gives an enchantment, so rows sharing one are equals as far
+as anything written down goes. The sheet has no column that would say otherwise
+and inventing one in code would be inventing design.
+
+### The step of four is unchanged. What it multiplies is not
+
+The owner ruled the step of four on 2026-09-07 and it stands. **It now prices the
+weight band rather than the individual row**, which changes the outcome
+substantially:
+
+| Weight | Rows written (chest) | Share of draws, per row (before) | Share of draws, per band (now) |
+| :-: | --: | --: | --: |
+| 1 | 39 | 0.9% | **1.2%** |
+| 2 | 154 | 14.5% | **4.7%** |
+| 3 | 113 | 42.5% | **18.8%** |
+| 4 | 28 | 42.1% | **75.3%** |
+
+**Where each column comes from, because they are not the same kind of number.**
+The "before" column is a measurement of the shipped behaviour, computed by
+replaying the old rule over the two enchantment CSV files; it reproduces the
+independently measured table on issue #1453 to the last digit. The "now" column
+is the designed frequency itself — 1, 4, 16 and 64 over a total of 85 — because
+per-band pricing makes the share of a band exactly what was chosen for it. That
+the drawing code actually delivers it is checked rather than assumed:
+`ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` samples 4,000 draws and fails
+if any band lands outside 40% (weights 1 and 2) or 25% (weights 3 and 4) of its
+designed count. Those tolerances are wide enough for sampling noise and narrow
+enough to exclude both wrong answers: per-row pricing would give 36, 580, 1,700
+and 1,684, and a uniform draw over the four bands would give 1,000 each.
+
+**Per row, weights 3 and 4 came out at the same rate.** Four times as many weight
+3 rows are written as weight 4 ones, which cancelled the step between exactly
+those two rungs. A "Moderate" pair and a "Common" pair were met equally often,
+which no reading of the design supports.
+
+**Per band is forced rather than preferred, once a pair shares one weight.** The
+two pools are shaped differently — 39/154/113/28 positives against 22/80/58/22
+negatives — so per-row pricing gives the two halves different frequencies, and
+there is then no single frequency for the pair to be drawn at. Per band also
+decouples the outcome from the sheet: adding rows at a weight makes each of those
+rows rarer and leaves the band's share alone.
+
+### What the research settles and what it does not
+
+**Settled by the genre: the structure.** Path of Exile's Scourge league (3.16)
+is the same mechanic. An item gained "a pair of Scourged Modifiers; one
+beneficial and one detrimental", and each of the three transformations
+"guarantees a minimum tier of beneficial and detrimental mods equal to the number
+of times it has been transformed" — one tier drives both halves. Scourge also
+shows the deliberate exception: the Blood Crucible's Anomalous Aura could raise
+the beneficial mod a tier and Stabilising Energy lower the detrimental one, so
+skewing the pair was something a player earned rather than something the roll
+handed out. The same shape recurs wherever the genre sells power for danger:
+Path of Exile's map modifiers pay item quantity in proportion to how dangerous
+the modifier is, and Last Epoch's Corruption raises monster health and damage and
+item rarity off one dial.
+
+**Not settled by the genre: the four frequencies.** No shipped game's numbers
+transfer here, because they depend on this sheet's four bands and this game's
+drop rates. The step of four is the owner's ruling. Choosing to apply it per band
+is this decision, and it rests on the two arguments above rather than on
+precedent.
+
+**The nearest precedent is this project's own.** `game/Data/MaterialTiers.csv`
+carries 256, 64, 16, 4, 1 across Common, Uncommon, Rare, Very Rare and Extremely
+Rare — a step of four — and `UCataclysmDropRoll::RollMaterialTier` draws the tier
+from those per-tier weights rather than from how many rows sit at each. Applying
+the same step the same way to enchantment weights is consistency rather than a
+new invention.
+
+Sources: [Path of Exile on the Scourge
+league](https://x.com/pathofexile/status/1448727040832655384),
+[PoE Vault's Scourge league
+hub](https://www.poe-vault.com/guides/scourge-league-guide-hub),
+[Path of Exile's 3.20 Eldritch Altar balance
+manifesto](https://www.pathofexile.com/forum/view-thread/3322752),
+[Last Epoch on
+Corruption](https://support.lastepoch.com/hc/en-us/articles/46361996533147-Affixes).
+
+### What happens when a weight cannot supply a pair
+
+**Nothing, today — it cannot happen, and that was measured rather than assumed.**
+Every weight has rows on both sides for every one of the eleven gear slots. The
+smallest cell is 22 rows, and an item draws at most four pairs.
+
+| Slot | w1 | w2 | w3 | w4 |
+| --- | --: | --: | --: | --: |
+| Every slot except Weapon | 39/22 | 154/80 | 113/58 | 28/22 |
+| Weapon | 40/22 | 155/80 | 114/58 | 28/22 |
+
+Positives/negatives. Ten of the eleven slots have an identical pool; only Weapon
+differs, by the three `Item.Slot.Weapon` rows, all of them positives.
+
+**The guard is still a decision, because the sheet can change.** A band that
+cannot supply both halves is dropped from the draw and the designed frequencies
+are renormalised over the bands that remain, with a warning naming the band and
+the slot. Renormalising was chosen over falling back to a neighbouring band
+because it needs no tie-breaking rule and never hands out a rarer pair than
+designed. The warning matters more than the rule: a silent renormalisation is a
+balance change nobody ordered.
+
+### What holds it
+
+`Cataclysm.Enchantments.APairIsBoughtAtItsOwnWeight` checks 2,640 pairs across
+all eleven slots and fails if any pair's two halves differ in weight. **It could
+not pass under the old code** — 61.4% of pairs came out mismatched — which is why
+none of the tests written with that code caught this.
+`Cataclysm.Enchantments.ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` now
+also checks that each rung outnumbers the one above it, which is the half of the
+ruling the per-row pricing did not deliver.
+
+---
+
 ## 2026-09-07 - Which dungeon modifiers a dungeon gets is an equal chance across the pool, with no repeats
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmDungeonModifier.h`
@@ -128,10 +294,17 @@ So one of an item's four slots buys a bargain rather than a modifier.
 `FCataclysmRolledEnchantment` holds two row names, and `EnchantmentCount` counts
 pairs.
 
-**The two halves are drawn independently**, which the document does state:
-"Positives and negatives roll independently — a strong positive is not guaranteed
-to come with a weak negative." The pools are different sizes, 379 and 195, so
-they could not have been paired in the sheet even if the design wanted it.
+**SUPERSEDED THE SAME DAY — see the 2026-09-07 entry at the top of this file.**
+This paragraph said: "**The two halves are drawn independently**, which the
+document does state: 'Positives and negatives roll independently — a strong
+positive is not guaranteed to come with a weak negative.' The pools are different
+sizes, 379 and 195, so they could not have been paired in the sheet even if the
+design wanted it."
+
+Two things in that are wrong. The owner later ruled that a weight decides which
+positive goes with which negative, so the halves are **not** drawn independently.
+And the different pool sizes were never an argument against pairing: nothing has
+to pair row-to-row in the sheet for a pair to be drawn at one weight.
 
 ### A weight is four times as common as the weight below it: 1, 4, 16, 64
 
