@@ -30,9 +30,21 @@ that table. A sweep that did not lift the cap would print three identical rows
 and would never once measure the number in the owner's question.
 `base_config` therefore raises `surge_count_max` to the knob whenever the knob is
 higher, which is the only way the axis means what its label says.
-**SHIPPING ANY COUNT ABOVE 14 THEREFORE COSTS TWO CONSTANTS AND NOT ONE**, in
-both the simulation and `CataclysmSurge.h`. That is a real cost of any
-recommendation above 14 and it is stated on the issue.
+
+**THE OWNER RULED ON 2026-09-06: "Leave it, document it".** The cap stays at 14.
+So this is the documentation, and it is written here because this is the file a
+future sweeper of the surge count will open:
+
+    ASKING FOR MORE THAN 14 DUNGEONS A SURGE SILENTLY GIVES 14.
+    It does not warn, error, or print anything different. A sweep whose count
+    axis runs past 14 measures the same cell repeatedly and reports it as a
+    trend. This file lifts the cap so its own axis means something; NOTHING
+    ELSE DOES, and nothing that ships may exceed 14 without moving
+    `surge_count_max` here and `MostDungeonsPerSurge` in `CataclysmSurge.h`
+    together.
+
+The axis keeps one value above the cap -- 20, the number in the owner's question
+-- so the grid can show what the ruling costs rather than merely asserting it.
 
 THE OWNER'S FLOOR RANGES ARE NOT THE SHIPPED ONES, and the difference is not
 cosmetic. An earlier form of the question described three layers at 5-10, 15-25
@@ -97,14 +109,31 @@ the balance report uses. THE DIFFICULTY TIER AND THE EMPIRE TREE ARE AXES here
 rather than constants, because the whole question is about an invested player and
 half of it is what the answer costs an uninvested one.
 
-**THE EXPLORER BRANCH IS HELD AT ITS SHIPPED SHAPE, `run_days_flat = 70.0`.**
-Issue [#1383] proposes replacing that flat reduction, because 70 flat days
-collapse every surge-spawned dungeon to the one-day floor and floor count stops
-affecting pace at all -- `section_1_walk_days` prints the table that shows it.
-**The two questions interact and this file answers only one of them.** Every
-Explorer figure here describes a player who clears any Basic dungeon in one day
-whatever its depth. If #1383 lands, the walk cost of a wave changes and this
-grid has to be re-run.
+**"AN INVESTED PLAYER" IS TWO DIFFERENT PLAYERS AND BOTH ARE MEASURED.** Issue
+[#1386] found that `TREE_EXPLORER_AS_DESIGNED` -- the preset every campaign
+figure this project has quoted for "Explorer maxed" was measured against -- is
+not the Explorer branch at full investment. It is one 56-point sub-build of it:
+the four unconditional day-removal nodes, with their total overstated at 70 days
+where the branch's own is 60, and **none of the branch's five depth nodes**,
+which add about fifty floors to every dungeon at tier 1. So this file measures
+both, and the world labels say which:
+
+  * **Explorer speed** -- `run_days_flat = 70`, no floor change. What
+    `config.py` ships and what every earlier figure describes. Every Basic
+    dungeon collapses to the one-day floor at every city size, so depth stops
+    meaning time at all.
+  * **Explorer whole** -- `run_days_flat = 60`, `floor_delta = +50`, the numbers
+    `sim/analyse_explorer_shape.py` uses on [#1383] so the two grids can be read
+    against each other. Its dungeons are deep enough that sixty days no longer
+    collapses them.
+
+**Neither of those is the shape the branch is about to have.** [#1383] measured
+what shape the walk-time reduction should be and the owner has ruled that the
+four unconditional nodes become a percentage of run time rather than a fixed
+subtraction. **The per-point numbers are not settled and nothing is
+implemented**, so nothing here measures it, and a cadence chosen on this grid
+will be read against a tree that is changing. When that shape lands, this grid
+has to be re-run.
 
 **`surge_dungeon_count` IS STILL NOT THE NUMBER OF DUNGEONS A SURGE SPAWNS**,
 even with the cap lifted. `Simulation.trigger_surge` spawns
@@ -141,7 +170,8 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from cataclysm_sim import policies
-from cataclysm_sim.config import (TREE_EXPLORER_AS_DESIGNED, TREE_NONE, CityTier,
+from cataclysm_sim.config import (TREE_ARCHITECT_AS_DESIGNED,
+                                  TREE_EXPLORER_AS_DESIGNED, TREE_NONE, CityTier,
                                   DungeonType, SurgeMode, TuningConfig)
 from cataclysm_sim.engine import Simulation, active_cataclysms_for
 from cataclysm_sim.patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
@@ -202,11 +232,13 @@ NOISE_BLOCKS = 6
 
 #: The count axis. 4 is what `sim/cataclysm_sim/config.py` and
 #: `UCataclysmSurgeScheduler` both ship, 5 is what `experiments.exp_calibrate`
-#: chooses and the balance report runs at, and 20 is the number in the owner's
-#: question. 10 brackets the two, and 30 and 40 are there to show where it breaks
-#: rather than because anyone proposes them. EVERY VALUE ABOVE 14 NEEDS THE CAP
-#: LIFTED; see the module docstring.
-COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS", (4, 5, 10, 20, 30, 40), SMOKE)
+#: chooses and the balance report runs at, 10 brackets the two, and 14 is
+#: `surge_count_max` -- the most the shipped game will ever spawn, which the
+#: owner ruled on 2026-09-06 stays where it is. 20 is the number in the owner's
+#: question and is the one value here that CANNOT SHIP without moving that cap;
+#: it is measured so the grid shows what the ruling costs. See the module
+#: docstring.
+COUNTS = _axis("CATACLYSM_SURGE_CADENCE_COUNTS", (4, 5, 10, 14, 20), SMOKE)
 
 #: The interval axis, in days between surges. 120 ships; 30 is close to the
 #: shortest gap `surge_interval_min` (25) would ever allow an escalating run to
@@ -224,11 +256,48 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: the knob axis meaningless -- a knob of 40 there is 176 dungeons in one wave --
 #: and a no-tree player is already at the floor at every cell there, so it could
 #: say nothing about what the answer costs an uninvested player.
+#: The whole Explorer branch, which is NOT what `TREE_EXPLORER_AS_DESIGNED`
+#: models. Issue [#1386]: that preset removes 70 flat days where the branch's own
+#: unconditional total is 60, and credits it with none of its five depth nodes,
+#: which add about 50 floors to every dungeon at tier 1. It is one 56-point
+#: speed sub-build with its day count overstated, and #1386's words for a
+#: campaign run under it are "a player who does not exist".
+#:
+#: THE TWO ARE DIFFERENT PLAYERS AND BOTH ARE MEASURED HERE, because every
+#: campaign figure this project has ever quoted for "Explorer maxed" -- including
+#: the ones on [#4] and [#1090] -- describes the sub-build, and dropping it would
+#: make this grid incomparable with all of them.
+#:
+#: DEFINED HERE RATHER THAN IN `config.py` ON PURPOSE. Repairing the preset
+#: changes a tuning constant, #1386 defers that deliberately until the shape
+#: ruling on [#1383] lands, and this file changes no constant.
+#:
+#: THE NUMBERS ARE #1383'S, so this grid is directly comparable with the one in
+#: its comment: `sim/analyse_explorer_shape.py` uses `flat=60.0,
+#: floor_delta=50.0`. **#1386's own node table sums to +40 and not +50** --
+#: 20 + 10 + 20 + 0 - 10 -- which is a discrepancy in that issue rather than in
+#: this file, and it is raised there. +50 is used here because matching the
+#: published measurement matters more than picking a side.
+#:
+#: TIER 1 ONLY. One of the five depth nodes, Infinite Depths, scales with the
+#: number of active Cataclysms, so the branch's floor bonus is larger at tier 4
+#: and #1386 has not settled by how much. Inventing one is what `CLAUDE.md`
+#: forbids, so this world is measured at tier 1 and the tier-4 row is left to
+#: whoever settles it.
+TREE_EXPLORER_WHOLE_BRANCH = replace(
+    TREE_EXPLORER_AS_DESIGNED,
+    name="Explorer whole branch (#1386)",
+    run_days_flat=60.0,
+    floor_delta=50.0,
+)
+
 WORLDS = (
     ("no tree, tier 1", TREE_NONE, 1),
-    ("Explorer, tier 1", TREE_EXPLORER_AS_DESIGNED, 1),
+    ("Explorer speed, t1", TREE_EXPLORER_AS_DESIGNED, 1),
     ("no tree, tier 4", TREE_NONE, 4),
-    ("Explorer, tier 4", TREE_EXPLORER_AS_DESIGNED, 4),
+    ("Explorer speed, t4", TREE_EXPLORER_AS_DESIGNED, 4),
+    ("Explorer whole, t1", TREE_EXPLORER_WHOLE_BRANCH, 1),
+    ("Architect def., t1", TREE_ARCHITECT_AS_DESIGNED, 1),
 )
 
 #: Restrict the grid to some of `WORLDS`, by comma-separated index, so a long run
@@ -491,7 +560,12 @@ def walk_day_table(tree) -> dict:
     sim = Simulation(cfg, seed=0)
     out = {}
     for (dtype, tier), spec in cfg.DUNGEON_SPECS.items():
-        lo, hi = spec.floors
+        # THE TREE'S FLOOR DELTA IS PART OF THE DEPTH, and `_make_dungeon`
+        # applies it to the spec range before anything asks how long the walk
+        # is. A table that read the bare spec would understate the Explorer
+        # branch's real dungeons by its fifty floors and would make the walk
+        # look shorter than the campaigns below actually ran. Issue [#1386].
+        lo, hi = (max(1, int(round(f + tree.floor_delta))) for f in spec.floors)
         out[(dtype, tier)] = {
             "floors": (lo, hi),
             "walk": (sim.run_days_for(lo), sim.run_days_for(hi)),
@@ -526,7 +600,8 @@ def section_1_walk_days() -> dict:
           "question.")
 
     tables = {}
-    for tree in (TREE_NONE, TREE_EXPLORER_AS_DESIGNED):
+    for tree in (TREE_NONE, TREE_EXPLORER_AS_DESIGNED,
+                 TREE_EXPLORER_WHOLE_BRANCH):
         tables[tree.name] = walk_day_table(tree)
         print(f"\n  {tree.name}  (flat days removed: {tree.run_days_flat:g})")
         print(f"    {'kind':<12}{'tier':<11}{'floors':>10}{'walk days':>12}"
@@ -878,9 +953,12 @@ def settings_lines() -> list[str]:
         f"  days per craft                  {cfg.craft_days}",
         f"  tier width gained per craft     {cfg.craft_power_gain_frac:.2f}",
         f"  lethality mode                  {cfg.lethality_mode.value}",
-        "  Explorer branch                  held at run_days_flat="
-        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g} (issue #1383 proposes "
-        "replacing it)",
+        f"  Explorer speed sub-build        run_days_flat="
+        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g}, floors "
+        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} -- what config.py ships",
+        f"  Explorer whole branch           run_days_flat="
+        f"{TREE_EXPLORER_WHOLE_BRANCH.run_days_flat:g}, floors "
+        f"{TREE_EXPLORER_WHOLE_BRANCH.floor_delta:+g} -- issues #1386 and #1383",
         f"  surge_count_max                 raised to the knob (ships at "
         f"{SHIPPED_COUNT_CAP})",
         f"  campaigns per block             {TRIALS}",
@@ -936,34 +1014,36 @@ def main() -> None:
     print("WHAT THE RUN SAYS")
     print("=" * 118)
 
-    explorer = walk[TREE_EXPLORER_AS_DESIGNED.name]
-    basics = [explorer[(DungeonType.BASIC, t)]["walk"] for t in CITY_TIERS]
-    clamped = all(w == (1, 1) for w in basics)
-    print("\n1. THE FLAT-DAY REDUCTION FLATTENS EVERY SURGE-SPAWNED DUNGEON TO "
-          "THE FLOOR.")
-    print(f"   A maxed Explorer walks every Basic dungeon at every city tier "
-          f"in {'exactly 1 day' if clamped else 'the days above'},")
-    print("   from an 8-floor Outpost to a 60-floor Pillar. Depth stops "
-          "meaning time at all, so a")
-    print("   bigger dungeon is not a longer one -- it is the same one day for "
-          "more reward.")
-    cow = explorer[(DungeonType.BASIC, CityTier.OUTPOST)]["cow"]
-    print(f"   THE ONE EXCEPTION IS THE COW LEVEL, at 7 in 100: it walks "
+    speed = walk[TREE_EXPLORER_AS_DESIGNED.name]
+    whole = walk[TREE_EXPLORER_WHOLE_BRANCH.name]
+    speed_basics = [speed[(DungeonType.BASIC, t)]["walk"] for t in CITY_TIERS]
+    whole_basics = [whole[(DungeonType.BASIC, t)]["walk"] for t in CITY_TIERS]
+    clamped = all(w == (1, 1) for w in speed_basics)
+    print("\n1. THE TWO INVESTED PLAYERS WALK A SURGE AT COMPLETELY DIFFERENT "
+          "SPEEDS.")
+    print("   THE SPEED SUB-BUILD, which config.py ships as "
+          "'Explorer maxed', walks every Basic")
+    print(f"   dungeon at every city tier in "
+          f"{'exactly 1 day' if clamped else 'the days above'}, from an "
+          "8-floor Outpost to a 60-floor Pillar.")
+    print("   Depth stops meaning time at all, so a bigger dungeon is not a "
+          "longer one -- it is")
+    print("   the same one day for more reward.")
+    print(f"   THE WHOLE BRANCH does not clamp: its Basic dungeons walk "
+          f"{whole_basics[0][0]}-{whole_basics[0][1]} days on an")
+    print(f"   Outpost and {whole_basics[2][0]}-{whole_basics[2][1]} on a "
+          "Sanctuary, because its fifty extra floors outrun the")
+    print("   sixty days it removes. Issue #1386: these are different players "
+          "and every figure")
+    print("   below says which one it describes.")
+    cow = speed[(DungeonType.BASIC, CityTier.OUTPOST)]["cow"]
+    print(f"   THE COW LEVEL IS THE EXCEPTION FOR BOTH, at 7 in 100: it walks "
           f"{cow[0]}-{cow[1]} days on an Outpost")
-    print("   because its doubling cannot be reduced. It is the largest time "
-          "cost a surge can")
-    print("   present an invested player, and it is a coin flip rather than a "
-          "decision.")
-    deep = [(k, v) for k, v in explorer.items() if v["walk"][1] > 1]
-    print(f"   NOT EVERYTHING CLAMPS: {len(deep)} of {len(explorer)} "
-          "(kind, tier) pairs still cost more than a")
-    print("   day at their deepest -- the endgame dungeons. The clamp is a "
-          "statement about the")
-    print("   content a SURGE produces, which is the content this question is "
-          "about.")
-    print("   THIS IS WHAT ISSUE #1383 PROPOSES CHANGING, and it is held fixed "
-          "here. Every")
-    print("   Explorer figure below describes the player this table describes.")
+    print("   for the speed sub-build because its doubling cannot be reduced.")
+    deep = [(k, v) for k, v in speed.items() if v["walk"][1] > 1]
+    print(f"   NOT EVERYTHING CLAMPS EVEN FOR THE SUB-BUILD: {len(deep)} of "
+          f"{len(speed)} (kind, tier) pairs still")
+    print("   cost more than a day at their deepest -- the endgame dungeons.")
 
     print("\n2. THE DIFFICULTY TIER IS ALREADY A DUNGEONS-PER-SURGE LEVER, AND "
           "A LARGER ONE.")
