@@ -387,6 +387,16 @@ void UCataclysmInventoryWidget::Refresh(
 	// know what the affixes are; the tool tip states every one of them.
 	const UDataTable* Affixes = UCataclysmDropRoll::LoadAffixTable();
 
+	// THE ENCHANTMENT TABLES ARE THE TOOL TIP'S BUSINESS TOO, and for the same
+	// reason as the affix table above. A Cataclysmic piece carries four
+	// enchantments and no regular affixes, so without these the tool tip on the
+	// best item in the game states its name, its upgrade level and nothing about
+	// its contents. Issue #45.
+	const UDataTable* PositiveEnchantments =
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+	const UDataTable* NegativeEnchantments =
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable();
+
 	// TOOL TIPS ARE REBUILT WHEN THE CONTENTS CHANGE AND NOT EVERY FRAME.
 	// This function runs from NativeTick, so anything done per cell is done
 	// 48 times a frame; a tool tip's text is a dozen table lookups and a
@@ -464,8 +474,9 @@ void UCataclysmInventoryWidget::Refresh(
 			// AN EMPTY STRING REMOVES THE TOOL TIP RATHER THAN SHOWING A BLANK
 			// BOX, which is what an empty cell should do.
 			Widgets.Frame->SetToolTipText(FText::FromString(
-				UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes,
-											   Materials)));
+				UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes, Materials,
+											   PositiveEnchantments,
+											   NegativeEnchantments)));
 		}
 	}
 
@@ -484,13 +495,16 @@ void UCataclysmInventoryWidget::Refresh(
 	bGearToolTipsBuilt = true;
 
 	RefreshGear(Equipment, Bases, Affixes, Rarities, Materials, Tiers,
-				bResized, CellPx, LabelFontPx, bWornChanged);
+				PositiveEnchantments, NegativeEnchantments, bResized, CellPx,
+				LabelFontPx, bWornChanged);
 }
 
 void UCataclysmInventoryWidget::RefreshGear(
 	const UCataclysmEquipmentComponent* Equipment, const UDataTable* Bases,
 	const UDataTable* Affixes, const UDataTable* Rarities,
-	const UDataTable* Materials, const UDataTable* Tiers, bool bResized,
+	const UDataTable* Materials, const UDataTable* Tiers,
+	const UDataTable* PositiveEnchantments,
+	const UDataTable* NegativeEnchantments, bool bResized,
 	float CellPx, float LabelFontPx, bool bWornChanged)
 {
 	if (GearCells.Num() != UCataclysmGearSlots::AllSlots().Num() || !GearHeader)
@@ -584,7 +598,8 @@ void UCataclysmInventoryWidget::RefreshGear(
 
 		Widgets.Frame->SetToolTipText(FText::FromString(
 			Worn ? UCataclysmItemTooltip::TextFor(AsCarried, Bases, Affixes,
-												  Materials)
+												  Materials, PositiveEnchantments,
+												  NegativeEnchantments)
 				 : FString()));
 	}
 }

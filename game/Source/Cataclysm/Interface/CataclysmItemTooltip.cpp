@@ -453,9 +453,51 @@ TArray<FString> UCataclysmItemTooltip::WeaponLines(const FCataclysmItem& Item,
 	return Lines;
 }
 
+const TCHAR* UCataclysmItemTooltip::DrawbackPrefix = TEXT("Drawback: ");
+
+TArray<FString> UCataclysmItemTooltip::EnchantmentLines(
+	const FCataclysmRolledEnchantment& Rolled,
+	const UDataTable* PositiveEnchantmentTable,
+	const UDataTable* NegativeEnchantmentTable)
+{
+	TArray<FString> Lines;
+
+	if (PositiveEnchantmentTable && !Rolled.Positive.IsNone())
+	{
+		if (const FCataclysmEnchantmentRow* Row =
+				PositiveEnchantmentTable->FindRow<FCataclysmEnchantmentRow>(
+					Rolled.Positive, TEXT("UCataclysmItemTooltip"),
+					/*bWarnIfMissing=*/false))
+		{
+			if (!Row->Effect.IsEmpty())
+			{
+				Lines.Add(Row->Effect);
+			}
+		}
+	}
+
+	if (NegativeEnchantmentTable && !Rolled.Negative.IsNone())
+	{
+		if (const FCataclysmEnchantmentRow* Row =
+				NegativeEnchantmentTable->FindRow<FCataclysmEnchantmentRow>(
+					Rolled.Negative, TEXT("UCataclysmItemTooltip"),
+					/*bWarnIfMissing=*/false))
+		{
+			if (!Row->Effect.IsEmpty())
+			{
+				Lines.Add(FString(DrawbackPrefix) + Row->Effect);
+			}
+		}
+	}
+
+	return Lines;
+}
+
 TArray<FString> UCataclysmItemTooltip::LinesFor(
 	const FCataclysmCarriedSlot& Slot, const UDataTable* BaseTable,
-	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable)
+	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
+	const UDataTable* PositiveEnchantmentTable,
+	const UDataTable* NegativeEnchantmentTable)
 {
 	TArray<FString> Lines;
 
@@ -552,6 +594,12 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 		}
 	}
 
+	for (const FCataclysmRolledEnchantment& Rolled : Item.Enchantments)
+	{
+		Lines.Append(EnchantmentLines(Rolled, PositiveEnchantmentTable,
+									  NegativeEnchantmentTable));
+	}
+
 	if (Item.Sockets > 0)
 	{
 		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets,
@@ -570,12 +618,14 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	return Lines;
 }
 
-FString UCataclysmItemTooltip::TextFor(const FCataclysmCarriedSlot& Slot,
-									   const UDataTable* BaseTable,
-									   const UDataTable* AffixTable,
-									   const UDataTable* CraftingMaterialTable)
+FString UCataclysmItemTooltip::TextFor(
+	const FCataclysmCarriedSlot& Slot, const UDataTable* BaseTable,
+	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
+	const UDataTable* PositiveEnchantmentTable,
+	const UDataTable* NegativeEnchantmentTable)
 {
 	return FString::Join(
-		LinesFor(Slot, BaseTable, AffixTable, CraftingMaterialTable),
+		LinesFor(Slot, BaseTable, AffixTable, CraftingMaterialTable,
+				 PositiveEnchantmentTable, NegativeEnchantmentTable),
 		TEXT("\n"));
 }

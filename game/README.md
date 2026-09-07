@@ -420,23 +420,55 @@ reach the report or a commit. Its only committed content used to be
 nothing: the name appears nowhere in Unreal 5.8's source, and `UEditorEngine` is
 declared `config=Engine` so it would not read the Editor ini anyway.
 
-**It does not work from a git worktree, and it says so instead of doing nothing.**
-The editor cannot load a project whose C++ modules are not built, `game/Binaries/`
-is gitignored, so a worktree never has one. Before this check existed the editor
-started, ran for about twenty seconds, wrote nothing and exited normally, and the
-only sign was `tools/tests/test_datatable_assets_are_current.py` failing later
-about stale assets. That was issue
-[#279](https://github.com/sdubois777/Cataclysm/issues/279). To regenerate a table
-while working in a worktree: make the same CSV change in the ordinary checkout,
-run the generator there, copy the changed asset out of `Content/Data/` and the
-whole of `Data/datatable_asset_sources.json` back into the worktree, then
-`git restore game/` in the ordinary checkout to leave it clean.
+**It does not work from a checkout whose C++ modules are not built, and it says
+so instead of doing nothing.** The editor cannot load such a project.
+`game/Binaries/` is gitignored, so a **fresh** worktree has none. Before this
+check existed the editor started, ran for about twenty seconds, wrote nothing and
+exited normally, and the only sign was
+`tools/tests/test_datatable_assets_are_current.py` failing later about stale
+assets. That was issue
+[#279](https://github.com/sdubois777/Cataclysm/issues/279).
 
-**Building the worktree its own binaries is not the fix**, and neither is sharing
-the ordinary checkout's through a junction. Those binaries are compiled from
-`Source/`, and a worktree exists to hold a different version of that tree, so the
-editor would load C++ that does not match the source beside it and report
-nothing.
+**BUILDING THE EDITOR TARGET IN THE WORKTREE IS THE FIX, and it is the one to
+reach for.** Measured on 2026-09-07 in
+`.claude/worktrees/friendly-dirac-2b1368`: after
+`python tools/unreal_build.py build`, `game/Binaries/Win64/` held the three
+module libraries the runner checks for, and
+`python tools/run_editor_python.py tools/generate_datatable_assets.py` ran the
+editor there and reported `rebuilt 0 DataTable assets and left 28 already
+current, 2304 rows in total across /Game/Data`. **This paragraph previously said
+building the worktree its own binaries was not the fix. That was wrong.** The
+reasoning it gave — that the binaries would not match the source beside them —
+applies to sharing another checkout's binaries through a junction, which is still
+true and still a bad idea. A worktree's own build is compiled from its own
+`Source/`, so it matches by construction.
+
+Note that the run rewrites `game/Data/datatable_asset_sources.json` with LF line
+endings even when it rebuilds nothing, which shows up as a modified file with an
+empty diff. `git checkout -- game/Data/datatable_asset_sources.json` puts it back.
+
+**The old way round, which is now the fallback and not the first choice.** If for
+some reason you cannot build in the worktree: make the same CSV change in the
+ordinary checkout, run the generator there, copy the changed asset out of
+`Content/Data/` and the whole of `Data/datatable_asset_sources.json` back into the
+worktree, then `git restore game/` in the ordinary checkout to leave it clean.
+
+**THAT LAST STEP DESTROYS OTHER SESSIONS' WORK, AND NOTHING WARNS YOU.**
+`git restore game/` discards every uncommitted change under `game/` in that
+checkout — not only the ones this procedure made. Several Claude sessions work on
+this repository at once and they all share the ordinary checkout at
+`C:\Projects\Cataclysm`, so anything another session has in progress there is
+gone, with no prompt and nothing to recover it from. **Before starting this
+procedure, check that nothing else is live in that checkout**: `git status` there,
+and `python tools/unreal_lock.py status` for whether somebody is driving the
+editor. If another session is working, wait or ask it to land first. The
+procedure is safe only when you are the only writer.
+
+**Sharing the ordinary checkout's binaries through a junction is not the fix.**
+Those binaries are compiled from that checkout's `Source/`, and a worktree exists
+to hold a different version of that tree, so the editor would load C++ that does
+not match the source beside it and report nothing. Build in the worktree instead,
+as above.
 
 **If you do run the editor by hand, `-script=` must be an absolute path.** A
 relative one resolves from the engine's own binaries directory rather than from

@@ -2,6 +2,158 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — An enchantment is a positive and a negative together, weights are 1/4/16/64, and a tag says what an enchantment affects
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmItem.h`
+(`FCataclysmRolledEnchantment`, `FCataclysmItem::Enchantments`),
+`game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`
+(`EnchantmentWeightStep`, `EnchantmentDrawWeight`, `EnchantmentSuitsSlot`,
+`EnchantmentCandidatesFor`, `DrawEnchantment`, `RollEnchantments`),
+`game/Source/Cataclysm/Interface/CataclysmItemTooltip.h` and `.cpp`
+(`EnchantmentLines`, `DrawbackPrefix`),
+`game/Source/Cataclysm/Interface/CataclysmInventoryWidget.cpp`,
+`docs/Cataclysm_GDD_v2.md` (the Enchantment System section), and the three save
+fixtures in `game/Tests/SaveFixtures/`. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45).
+
+Four questions were put to the project owner on 2026-09-07 because the design
+document did not settle them, or settled them twice in different ways. All four
+were answered the same day.
+
+### One enchantment is a positive and a negative together, filling one slot
+
+The document never said this outright and implied it twice. Its weight table
+describes each weight as an effect *and* a consequence — "Rare — very powerful
+effect, severe consequence" — and the paragraph under it says a player "could
+theoretically land a weight 1 positive paired with a weight 1 negative".
+
+So one of an item's four slots buys a bargain rather than a modifier.
+`FCataclysmRolledEnchantment` holds two row names, and `EnchantmentCount` counts
+pairs.
+
+**The two halves are drawn independently**, which the document does state:
+"Positives and negatives roll independently — a strong positive is not guaranteed
+to come with a weak negative." The pools are different sizes, 379 and 195, so
+they could not have been paired in the sheet even if the design wanted it.
+
+### A weight is four times as common as the weight below it: 1, 4, 16, 64
+
+Weight 1 is the rarest. The document ordered the four weights and gave no
+frequency, so this is a **tuning value and not a derived one**, and it is
+expected to be retuned against real play.
+
+The reasoning the owner gave: the design calls enchantments high-variance
+build-defining modifiers, so a weight 1 should be a genuinely rare find rather
+than a mild preference. At this step one weight 1 row is drawn as often as 64
+weight 4 rows.
+
+**The pool is not one row per weight, so the step is not the outcome.**
+`Cataclysm.Enchantments.ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne`
+measures it rather than asserting it.
+
+`EnchantmentWeightStep` is the constant and carries this ruling beside it.
+
+#### What the ruling actually produces, measured against the written pool
+
+Counting the 334 positive rows a chest piece can draw — every row that is not a
+set row and carries no slot tag barring it — and applying the 1/4/16/64 step:
+
+| Weight | Rows written | Relative frequency | Share of draws |
+| :-: | --: | --: | --: |
+| 1 | 39 | 1 | **0.9%** |
+| 2 | 154 | 4 | 14.5% |
+| 3 | 113 | 16 | **42.5%** |
+| 4 | 28 | 64 | **42.1%** |
+
+**Weight 3 and weight 4 come out at the same rate, and that is the sheet's row
+counts rather than the ruling.** There are four times as many weight 3 rows
+written as weight 4 ones, which cancels the step between those two rungs almost
+exactly. The design document describes weight 3 as "Moderate" and weight 4 as
+"Common", and a player would meet them equally often.
+
+**This is recorded rather than corrected.** The ruling asked for a step between
+weights and that is what was built; how many rows carry each weight is a
+different decision and belongs to whoever writes the sheet. The two ways to
+change it are to write more weight 4 rows or to steepen the step, and neither
+should be guessed at. **Nothing is broken by it** — the ladder still separates
+weight 1 from everything else by a factor of 46, which is the separation the
+ruling was mostly about.
+
+Weight 1 lands on 0.9% of draws, about one in 109. The owner's stated intent was
+roughly one in 85; the gap is the row counts again, and is small enough to be a
+tuning matter rather than a misreading of the ruling.
+
+### A tag says what an enchantment affects, not which item it may sit on
+
+The design document said both, 25 lines apart. The overview paragraph said tags
+"determine which items it can appear on"; the tag categories listed below it —
+element, skill type, stat, keyword, trigger — all describe an effect's subject.
+
+**The data settles it in favour of the second reading.** Of the 574 enchantments
+written, **three** carry an `Item.Slot.` tag, all three `Item.Slot.Weapon`. So
+the first acceptance criterion on
+[#45](https://github.com/sdubois777/Cataclysm/issues/45) — "tag matching so an
+enchantment only rolls on items it is eligible for" — describes a rule that is
+close to a no-op, and is superseded by this ruling.
+
+**The `Item.Slot.` tag still binds where it appears.** All three rows carrying one
+are statements about a weapon: "This weapon has 2-4 damage types" cannot sit on a
+belt. A row with no slot tag may appear on any slot.
+
+The contradicting sentence in `docs/Cataclysm_GDD_v2.md` was rewritten rather
+than left standing, because a comment on an issue does not change the design and
+the next reader would have found the superseded rule.
+
+### The Weight column gains a separate SetId column rather than keeping its double meaning
+
+`Weight` is documented as 1 to 4 in the design document and in
+`FCataclysmEnchantmentRow`'s own comment. All 519 ordinary rows obey that. All
+**55 rows typed `Set` carry 5 to 18 instead, which is a set identifier**: 5 is
+Archon's Aegis, 18 is Reaper's Embrace, three positive rows per set for the
+2-piece, 6-piece and 10-piece bonuses.
+
+The owner chose to fix the sheet rather than work around it: **add a `SetId`
+column to the Enchantments sheet and give the set rows an ordinary 1-to-4
+weight.** Issue [#1443](https://github.com/sdubois777/Cataclysm/issues/1443) owns
+that work.
+
+**It is not done here, and the reason is mechanical rather than a choice.**
+Adding a column changes every row of `game/Data/EnchantmentsPositive.csv` and
+`EnchantmentsNegative.csv`, which changes their checksums, which means the two
+DataTable assets have to be rebuilt through the editor before
+`tools/tests/test_datatable_assets_are_current.py` will pass. Issue
+[#331](https://github.com/sdubois777/Cataclysm/issues/331) records that this
+cannot be finished from a git worktree and names
+[#45](https://github.com/sdubois777/Cataclysm/issues/45) as one of the issues it
+blocks.
+
+**Set rows are excluded from the ordinary draw regardless**, and that is the
+design's own rule rather than a way around the column: the document says set
+positives and negatives are "paired and guaranteed", so a set is handed out whole
+rather than half-drawn. `EnchantmentSuitsSlot` excludes them by type, and
+`EnchantmentDrawWeight` returns zero for any weight outside 1 to 4, so a set row
+could not be priced even if it reached the draw.
+
+### What this does not decide
+
+**What an enchantment does.** Not one of the 574 changes a character's stats. A
+piece now records which two rows it drew and says so in the tool tip, and that is
+all. Issues [#666](https://github.com/sdubois777/Cataclysm/issues/666) and
+[#913](https://github.com/sdubois777/Cataclysm/issues/913) already record that
+some of the written enchantments describe behaviour the game cannot model, so
+"all 574 roll" will not mean "all 574 do what they say".
+
+**The unique-per-character rule.** The design says an enchantment may appear only
+once across all equipped gear. What is enforced here is the narrower rule that
+neither half repeats on a single piece. The equip-time rule needs a decision
+about what happens when a player equips an item that would duplicate one already
+worn, and is still open on
+[#45](https://github.com/sdubois777/Cataclysm/issues/45).
+
+**Set bonuses.** Nothing hands out a set, and no item belongs to one.
+
+---
+
 ## 2026-09-07 — The balance report is re-run, and the preset ordering claim is removed because there is no tier 8 ordering to compare
 
 **Affects:** `sim/README.md`. No code changed. Issue

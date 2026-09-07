@@ -33,6 +33,7 @@
 					}
 				],
 				"EnchantmentCount": 0,
+				"Enchantments": [],
 				"Sockets": 2,
 				"Residue": 4.25
 			},
@@ -46,6 +47,7 @@
 				"DamageTypes": [],
 				"Affixes": [],
 				"EnchantmentCount": 0,
+				"Enchantments": [],
 				"Sockets": 0,
 				"Residue": 0
 			},
