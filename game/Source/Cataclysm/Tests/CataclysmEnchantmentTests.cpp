@@ -601,7 +601,11 @@ bool FCataclysmEnchantmentCataclysmicIsNotBlank::RunTest(const FString&)
 	// so the best item in the game hovered as a name, an upgrade level and a
 	// residue line with nothing in between.
 	FCataclysmItem Item;
-	Item.Base = TEXT("Circlet");
+	// THE ROW NAME, NOT THE BASE NAME. ItemBases.csv keys a row as
+	// "<Slot>_<BaseName>", so the Circlet is "Head_Circlet". A base the
+	// table cannot find produces no implicit lines and no name, and
+	// LinesFor then returns nothing at all.
+	Item.Base = TEXT("Head_Circlet");
 	Item.GearLevel = 10;
 	Item.EnchantmentCount = 4;
 
@@ -671,7 +675,11 @@ bool FCataclysmEnchantmentOldSaveIsNotACrash::RunTest(const FString&)
 	// array behind it. The count is what rarity is read from, so the item is
 	// still a Cataclysmic and still has to draw.
 	FCataclysmItem Item;
-	Item.Base = TEXT("Circlet");
+	// THE ROW NAME, NOT THE BASE NAME. ItemBases.csv keys a row as
+	// "<Slot>_<BaseName>", so the Circlet is "Head_Circlet". A base the
+	// table cannot find produces no implicit lines and no name, and
+	// LinesFor then returns nothing at all.
+	Item.Base = TEXT("Head_Circlet");
 	Item.EnchantmentCount = 4;
 
 	const TArray<FString> Lines = UCataclysmItemTooltip::LinesFor(
