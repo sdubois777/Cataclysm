@@ -88,10 +88,23 @@ tier 8 while spending 83% of its free days facing two or more dungeons about to
 detonate, so that player never enters a dungeon. That issue cross-references
 [#1392](https://github.com/sdubois777/Cataclysm/issues/1392) and
 [#1425](https://github.com/sdubois777/Cataclysm/issues/1425), which measured
-neighbouring problems at difficulty tier 4 under different conditions. The instrument is
-`exact_tier8_margins.py`, which prints counts rather than rates because a count
-is exact; it was not kept, because `sim/analyse_*.py` is for measurements that
-will be repeated and this one settles a question rather than opening one.
+neighbouring problems at difficulty tier 4 under different conditions.
+
+**HOW TO REPRODUCE THE EXACT COUNTS, because the instrument was not kept.** Build
+the configuration section 7 receives, set `tier=8`, and count outcomes rather
+than reading rates:
+
+```python
+runs = [Simulation(cfg, seed=i).run(policies.triage) for i in range(600)]
+won, lost = sum(r.won for r in runs), sum(r.lost for r in runs)
+```
+
+A count is exact where a printed rate is rounded. **The script was deliberately
+not added to `sim/`**: `test_every_analysis_script_is_covered_here` in
+`sim/tests/test_analysis_scripts.py` requires every `sim/analyse_*.py` to be run
+by the fast suite, and this measurement takes about ten minutes, which is more
+than twice the whole suite. Adding it would either fail that test or triple the
+suite.
 
 **What raising the sample would have cost, measured rather than quoted.** The
 600-campaign run of section 7 took **2,462 seconds for 14,400 campaigns**, 171
