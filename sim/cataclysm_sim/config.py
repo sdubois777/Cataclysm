@@ -1061,6 +1061,91 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
     #: Infinite Depths, 10 points at +2 floors per point per active type.
     floor_delta_per_type=20.0,
 )
+# THE CHEAP HALF OF THE EXPLORER BRANCH: its four unconditional speed nodes and
+# none of its five depth nodes. 56 of the branch's 316 points.
+#
+#   Temporal Mastery   25 points   -2.5% of dungeon run time per point
+#   Overclock          20 points   -2.5% of dungeon run time per point
+#   Pacing             10 points   -2.5% of dungeon run time per point
+#   Fleet Footed        1 point    -12% of dungeon run time, the keystone
+#                      ---------
+#                      56 points   0.975^55 x 0.88 = x0.2186
+#
+# **A REAL PLAYER, AND THE ONE THE OWNER'S ORIGINAL COMPLAINT BELONGS TO.** Issue
+# #1386 found that `TREE_EXPLORER_AS_DESIGNED` modelled exactly this sub-build
+# while being named for the whole branch, and #1399 repaired that preset, which
+# now carries the branch's depth nodes as well. What the repair left without a
+# name is the sub-build itself: a player who buys the cheap speed nodes and
+# stops. **Every "Explorer maxed" figure this project quoted before #1399
+# describes this build rather than a fully invested player**, which is why it is
+# kept rather than deleted.
+#
+# **IT REMOVES NO FLAT DAYS AT ALL AND ITS SPEED IS ENTIRELY `run_days_mult`.**
+# The four nodes it is made of were fixed days until 2026-09-07. The project
+# owner ruled them a percentage of run time on 2026-09-06, verbatim "Change to a
+# percentage", and issue #1383 chose the values. The name is kept because the
+# sub-build is the same 56 points it always was.
+#
+# WHY IT IS DEFINED HERE, FIELD BY FIELD, AND NOT COPIED FROM THE PRESET ABOVE.
+# It lived in `sim/analyse_surge_cadence.py` as
+# `replace(TREE_EXPLORER_AS_DESIGNED, ...)` until issue #1420 moved it here.
+# `dataclasses.replace` carries across every field it is not told to change, so
+# when issue #1397 gave the preset above a per-active-Cataclysm-type half for its
+# days and its floors, the copy silently gained both:
+#
+#   * `Sovereign's Haste`, a fifth day-removal node worth ten more points, so no
+#     longer 56 and no longer "the four";
+#   * `Infinite Depths`, which puts **+20 floors on it at difficulty tier 1 and
+#     +160 at tier 8** -- when having no depth nodes at all is its entire reason
+#     for existing.
+#
+# Nothing failed. It kept running and kept producing figures under a comment that
+# had become false, and a person reading the diff found it. Issue #1416 repaired
+# the copy; issue #1420 removed the copy, which is this block.
+#
+# **+180 IS THE WHOLE BRANCH'S FLOOR TOTAL AT TIER 8, NOT THAT NODE'S.** It is
+# `Infinite Depths`'s 160 plus the tier-independent +20 the other four depth
+# nodes give. The comment this replaces stated the node as +180, which is issue
+# #1427.
+#
+# **EVERY FIELD IS WRITTEN OUT, INCLUDING THE TEN THAT SIT AT THEIR DATACLASS
+# DEFAULT, AND THAT IS THE POINT RATHER THAN TIDINESS.** A field this build does
+# not buy is stated as not bought, so the whole build is readable in one place
+# and a field added to a NEIGHBOURING preset cannot reach it. The honest limit:
+# a new field added to `EmpireTree` itself would still default here. This is a
+# guard against inheritance from another preset, not against the dataclass
+# growing, and `tools/tests/test_the_cheap_explorer_preset_matches_its_own_description.py`
+# is what checks the build against the design document either way.
+TREE_EXPLORER_DAY_NODES_ONLY = EmpireTree(
+    name="Explorer day nodes only (#1386)",
+    #: NO FLAT DAYS. `Sovereign's Haste` is the only flat-day node left in the
+    #: branch since issue #1383, and this build does not buy it.
+    run_days_flat=0.0,
+    #: Temporal Mastery 25, Overclock 20 and Pacing 10 at -2.5% a point, and the
+    #: Fleet Footed keystone at -12%. **THE SAME MULTIPLIER AS THE WHOLE
+    #: BRANCH**, because all four of the branch's percentage nodes are in this
+    #: build: what it lacks is depth, not speed. Written as the product rather
+    #: than as 0.2186 for the same reason as the preset above.
+    run_days_mult=0.975 ** 55 * 0.88,
+    #: `Sovereign's Haste` unbought, so there is no per-type day term and no cap
+    #: to apply to one. A cap of 0 means no cap.
+    run_days_flat_per_type=0.0,
+    run_days_flat_per_type_cap=0.0,
+    #: **NONE OF THE BRANCH'S FIVE DEPTH NODES.** Architect of Greed, Deep
+    #: Boring, Infinite Depths, Architectural Insight and Exclusionary Mapping
+    #: are all unbought, so this build's dungeons are exactly the depth
+    #: `DUNGEON_SPECS` gives them, at every tier alike.
+    floor_delta=0.0,
+    floor_delta_per_type=0.0,
+    #: Nothing at all in the Architect branch, which is where every city node
+    #: this model carries lives.
+    city_damage_mult=1.0,
+    city_damage_mult_per_type=1.0,
+    city_health_mult=1.0,
+    #: No timer nodes.
+    resolve_bonus_days=0.0,
+    surge_bonus_days=0.0,
+)
 
 # Every multiplicative city damage-reduction node in the Architect branch of
 # `docs/Empire_Development_Tree_Final.json`, at full investment, for a Sanctuary
@@ -1163,6 +1248,7 @@ TREE_PROPOSED_FIX = EmpireTree(
 TREE_PRESETS = [
     TREE_NONE,
     TREE_EXPLORER_AS_DESIGNED,
+    TREE_EXPLORER_DAY_NODES_ONLY,
     TREE_EXPLORER_VIA_FLOORS,
     TREE_EXPLORER_DEEP,
     TREE_ARCHITECT_AS_DESIGNED,

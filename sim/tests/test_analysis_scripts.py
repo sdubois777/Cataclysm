@@ -2935,8 +2935,12 @@ def test_the_settings_block_states_every_condition(cadence_run):
     # **THE SUB-BUILD IS THE SAME AT EVERY TIER AND THAT IS THE POINT OF IT.**
     # It holds none of the branch's per-active-type nodes, so it is the same
     # player at every tier and the two tier worlds are comparable. Issue #1397
-    # briefly gave it +20 floors and a fifth day node by inheritance; see its
-    # definition in `analyse_surge_cadence.py`.
+    # briefly gave it +20 floors and a fifth day node by inheritance, because
+    # it was a `dataclasses.replace` copy of the whole-branch preset. Issue
+    # #1420 made it a shipped preset instead; its definition is now in
+    # `sim/cataclysm_sim/config.py` and
+    # `tools/tests/test_the_cheap_explorer_preset_matches_its_own_description.py`
+    # checks it against the design document.
     #
     # **AND THE WALK MULTIPLIER, WHICH IS WHERE THE BRANCH'S SPEED LIVES SINCE
     # 2026-09-07.** The four unconditional nodes became a percentage of run
