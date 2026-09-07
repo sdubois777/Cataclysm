@@ -239,6 +239,22 @@ public:
 	}
 
 	/**
+	 * What the dungeon's modifiers add to every creature's enemy score.
+	 *
+	 * ZERO IN THE SANDBOX, and zero is exactly "no modifiers" rather than an
+	 * approximation: the Enemy Score model adds this as a flat term, so nothing
+	 * carried means nothing added. `docs/Cataclysm_GDD_v2.md` section VIII: "the
+	 * sum of the weights on a dungeon is the Modifier Score in the Enemy Score
+	 * formula".
+	 *
+	 * THE SUM AND NOT THE MODIFIERS. What a dungeon carries is
+	 * `FCataclysmDungeon::Modifiers`, and what those modifiers DO is not built
+	 * -- every one of the 117 is still only a name and a description. This is
+	 * the one part of them that reaches the game. Issue #41.
+	 */
+	virtual float RunModifierScore() const { return 0.0f; }
+
+	/**
 	 * The rung a creature spawns at, given what its sandbox setting holds.
 	 *
 	 * NOT A UFUNCTION. Nothing in Blueprint calls it, and it takes a raw actor

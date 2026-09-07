@@ -25,7 +25,12 @@
 			"Bosses": 4,
 			"DefenceDamage": 125.0,
 			"PopulationDamage": 312.5,
-			"SpawnedDay": 96
+			"SpawnedDay": 96,
+			"Modifiers": [
+				"Demonic_Infernal_Rain",
+				"Demonic_Blood_Altar"
+			],
+			"ModifierScore": 25.0
 		}
 	],
 	"DungeonTimers": [

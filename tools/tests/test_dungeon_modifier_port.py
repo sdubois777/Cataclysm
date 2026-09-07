@@ -37,12 +37,18 @@ from __future__ import annotations
 
 import csv
 import pathlib
+import re
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 MODIFIER_CSV = REPO_ROOT / "game" / "Data" / "DungeonModifiers.csv"
+
+#: Where the Unreal side keeps the two counts that decide how many modifiers a
+#: dungeon carries. Issue #41.
+RULES_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                / "CataclysmDungeonModifier.h")
 
 #: The Cataclysm Type that means "every Cataclysm draws this". Read from the
 #: model rather than written out, so a rename there cannot leave this pointing
@@ -377,6 +383,101 @@ class TestBothSidesDescribeTheColumnTheSameWay:
         assert "Weight column is a danger score" in text, (
             "docs/DECISIONS.md does not record what the dungeon modifier "
             "Weight column means. Issue #1298.")
+
+
+class TestHowManyModifiersADungeonCarries:
+    """The two counts, which are a copy like the table itself. Issue #41.
+
+    WHY A GUARD AND NOT A COMMENT. `sim/cataclysm_sim/config.py` holds
+    `modifiers_per_tier` and `sacrificial_modifier_multiplier`, and
+    `UCataclysmDungeonModifierRules` in the `CataclysmEmpire` module holds
+    `ModifiersPerTier` and `SacrificialMultiplier`. Two copies of a number are
+    two numbers. `test_day_clock_port.py`, `test_surge_port.py`,
+    `test_empire_map_port.py` and `test_dungeon_subtype_port.py` guard the same
+    arrangement for the other constants in that module.
+
+    NEITHER SIDE IS CHECKED AGAINST THE DESIGN HERE, because the design states
+    them in prose rather than as numbers -- "one modifier per difficulty tier"
+    and "double that". `TestTheDesignSaysWhatTheseCountsMean` below is where the
+    sentences are read.
+    """
+
+    def cpp(self, name: str) -> int:
+        if not RULES_HEADER.is_file():
+            pytest.skip(f"{RULES_HEADER.name} is not present")
+        text = RULES_HEADER.read_text(encoding="utf-8")
+        match = re.search(
+            rf"static\s+constexpr\s+int32\s+{name}\s*=\s*(-?\d+)\s*;", text)
+        assert match, (
+            f"could not find {name} in {RULES_HEADER.name}. If it was renamed, "
+            "rename it here; do not delete the check.")
+        return int(match.group(1))
+
+    def model(self):
+        from cataclysm_sim.config import TuningConfig
+        return TuningConfig()
+
+    def test_one_modifier_per_tier_on_both_sides(self):
+        assert self.cpp("ModifiersPerTier") == self.model().modifiers_per_tier
+
+    def test_a_sacrificial_dungeon_doubles_on_both_sides(self):
+        assert (self.cpp("SacrificialMultiplier")
+                == self.model().sacrificial_modifier_multiplier)
+
+    def test_the_values_are_the_ones_the_design_states(self):
+        """A comparison of two copies passes when both are wrong together.
+
+        The design says one per tier and double for Sacrificial, so these are
+        the two numbers. Written out rather than derived, which is the whole
+        point: this is what fails if somebody changes both sides at once.
+        """
+        assert self.model().modifiers_per_tier == 1
+        assert self.model().sacrificial_modifier_multiplier == 2
+
+
+class TestTheDesignSaysWhatTheseCountsMean:
+    """The sentences the two counts come from, in the design document.
+
+    THE THIRD SIDE OF THE PORT. The class above compares the simulation and the
+    game to each other; this compares both to the thing they are copies of.
+    `docs/` is the design and is authoritative -- `CLAUDE.md` says so -- so a
+    count that no longer matches its own sentence is the count being wrong
+    rather than the sentence.
+
+    THE FILE IS HARD-WRAPPED, so the sentence is searched for with its line
+    breaks flattened. A raw search reports a clean file that is not clean.
+    """
+
+    def flattened(self) -> str:
+        path = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
+        if not path.is_file():
+            pytest.skip("the design document is not present")
+        return re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
+
+    def test_the_design_says_one_modifier_per_difficulty_tier(self):
+        assert "one modifier per difficulty tier" in self.flattened(), (
+            "docs/Cataclysm_GDD_v2.md no longer says a dungeon carries one "
+            "modifier per difficulty tier, which is where "
+            "config.modifiers_per_tier and UCataclysmDungeonModifierRules::"
+            "ModifiersPerTier both come from. If the design changed, change "
+            "both counts with it.")
+
+    def test_the_design_says_a_sacrificial_dungeon_carries_double(self):
+        assert "A Sacrificial dungeon carries double that" in self.flattened(), (
+            "docs/Cataclysm_GDD_v2.md no longer says a Sacrificial dungeon "
+            "carries double the modifiers, which is where "
+            "config.sacrificial_modifier_multiplier and "
+            "UCataclysmDungeonModifierRules::SacrificialMultiplier both come "
+            "from.")
+
+    def test_the_design_says_the_weights_sum_into_the_modifier_score(self):
+        """The sentence the danger reading rests on. Issue #1298."""
+        flat = self.flattened()
+        assert ("the sum of the weights on a dungeon is the Modifier Score"
+                in flat), (
+            "docs/Cataclysm_GDD_v2.md no longer says the weights on a dungeon "
+            "sum into its Modifier Score. That sentence is the whole reason "
+            "the Weight column is a danger score rather than a frequency.")
 
 
 class TestTheHeaderTheGuardReads:

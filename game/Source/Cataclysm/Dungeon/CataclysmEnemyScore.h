@@ -6,6 +6,8 @@
 #include "Empire/CataclysmDungeonKind.h"
 #include "CataclysmEnemyScore.generated.h"
 
+class ACataclysmGameMode;
+
 // `ECataclysmDungeonType` AND `ECataclysmDungeonSubType` USED TO BE DECLARED
 // HERE, and are now in `Empire/CataclysmDungeonKind.h` in the `CataclysmEmpire`
 // module, which is included above. Every file that includes this one still gets
@@ -184,4 +186,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Score",
 			  meta = (WorldContext = "WorldContext"))
 	static FCataclysmScoredFloor FloorIn(const UObject* WorldContext);
+
+	/**
+	 * The same, read off a game mode handed over rather than found in a world.
+	 *
+	 * **SPLIT OUT SO THE READING CAN BE TESTED AT ALL.** `FloorIn` finds its
+	 * game mode with `UWorld::GetAuthGameMode`, and a world built by
+	 * `UWorld::CreateWorld` has no authority game mode: `UWorld::
+	 * AuthorityGameMode` is private and only a game instance sets it, and an
+	 * automation world has no game instance. So a game mode spawned into a test
+	 * world is never found, and every field this copies -- the floor number, the
+	 * length, the kind, the sub-type and the modifier score -- was read by
+	 * nothing any test could reach. A `nullptr` here gives the defaults, which
+	 * is what `FloorIn` did for a world with no game mode and still does.
+	 *
+	 * THE DIFFICULTY TIER IS PASSED IN because it does not come from the game
+	 * mode's virtuals: `ACataclysmGameMode::DifficultyTierFor` reads a console
+	 * variable first and the mode's own setting second.
+	 */
+	static FCataclysmScoredFloor FloorFor(const ACataclysmGameMode* Mode,
+										  int32 DifficultyTier);
 };

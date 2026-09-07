@@ -123,6 +123,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmDungeonSubType DungeonSubType = ECataclysmDungeonSubType::None;
 
+	/**
+	 * What this dungeon's modifiers add to every creature's enemy score.
+	 *
+	 * THE SUM OF THEIR DANGER SCORES AND NOT THE MODIFIERS THEMSELVES. What the
+	 * dungeon carries is `FCataclysmDungeon::Modifiers`, over in the empire
+	 * layer; this is the one number the score model takes.
+	 * `docs/Cataclysm_GDD_v2.md` section VIII is where the sum is defined.
+	 *
+	 * SET FROM THE EMPIRE DUNGEON BY `EnterEmpireDungeon`, and editable here for
+	 * the same reason `DungeonSubType` is: pressing Play in `L_Dungeon` builds a
+	 * floor with no empire behind it, and a floor should be able to be told what
+	 * it is standing in. Zero is exactly "no modifiers", because the score model
+	 * adds it as a flat term.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
+	float DungeonModifierScore = 0.0f;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -528,6 +545,15 @@ public:
 	{
 		return DungeonSubType;
 	}
+
+	/**
+	 * What this dungeon's modifiers add to every creature's enemy score.
+	 *
+	 * SET BY `EnterEmpireDungeon` FROM THE DUNGEON ITSELF, the same route the
+	 * sub-type takes, and left at zero for a floor walked without an empire
+	 * behind it -- pressing Play in `L_Dungeon` to look at a floor is not a run.
+	 */
+	virtual float RunModifierScore() const override { return DungeonModifierScore; }
 
 protected:
 

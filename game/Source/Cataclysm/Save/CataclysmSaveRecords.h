@@ -507,6 +507,12 @@ public:
  * there by the slices of issue #1307. The fourth gained a runtime shape on
  * 2026-09-06: `UCataclysmEmpireRun::QuestObjectives`, issue #1324 slice 5.
  *
+ * A DUNGEON'S MODIFIERS ARE HERE NOW and used not to be. This list said "the
+ * 117 rows of `game/Data/DungeonModifiers.csv` are not on `FCataclysmDungeon`
+ * at all yet, so there is nothing to write" until issue #41's modifier slice put
+ * `Modifiers` and `ModifierScore` on that struct. Both are `SaveGame`, so both
+ * are written by `Dungeons` below without a field of their own here.
+ *
  * WHAT IS STILL ABSENT, and this is the corrected list:
  *
  *   - **What the player has achieved this run.** `DungeonsCleared`,
@@ -514,9 +520,11 @@ public:
  *     `UCataclysmEmpireRun` are not written here, so a restored run would forget
  *     every quest objective earned and every dungeon beaten. Issue
  *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
- *   - **A dungeon's modifiers.** The 117 rows of
- *     `game/Data/DungeonModifiers.csv` are not on `FCataclysmDungeon` at all
- *     yet, so there is nothing to write. Issue #41.
+ *   - **What tier the run is played at, and which Cataclysms it faces.**
+ *     `UCataclysmEmpireRun::DifficultyTier` and `ActiveCataclysms` are not
+ *     written here. A restored run would face one Cataclysm whatever it was
+ *     facing before, and would give every later dungeon one modifier instead of
+ *     one per tier. Issue #41 put the two counts in; nothing saves them.
  *   - **`NextDungeonId`**, so a restored run would hand out identifiers that
  *     collide with the dungeons it just restored.
  *

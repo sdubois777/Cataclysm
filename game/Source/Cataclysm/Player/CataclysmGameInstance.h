@@ -74,12 +74,29 @@ public:
 	 *                      `ECataclysmSurgeMode`.
 	 * @param LethalityRung 0 Standard, 1 Hardcore, 2 Heretic. Heretic surges
 	 *                      bring 25% more dungeons.
+	 * @param DifficultyTier which tier the run is played at, 1 to 8. It decides
+	 *                      how many Cataclysms the run faces and how many
+	 *                      modifiers each dungeon carries.
+	 *
+	 * **THE TIER DEFAULTS TO 1 AND NOTHING PASSES ANOTHER**, so every run the
+	 * game starts faces one Cataclysm and gives every dungeon one modifier. The
+	 * game's own difficulty tier is `ACataclysmGameMode::DifficultyTierIn` and
+	 * the two have never been connected. Issue
+	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444). Until that
+	 * is fixed, `Cataclysm.EmpireBegin` takes a tier as its fourth argument so
+	 * the behaviour can be reached by hand.
+	 *
+	 * IT ALSO FILLS THE RUN'S MODIFIER POOL, which is the one thing a run cannot
+	 * do for itself: `DT_DungeonModifiers` has a row type in this module and
+	 * `CataclysmEmpire` must not depend on it, so the caller that has both
+	 * modules is the one that joins them. Issue #41.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* BeginEmpireRun(
 		int32 Seed = 0,
 		ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
-		int32 LethalityRung = 0);
+		int32 LethalityRung = 0,
+		int32 DifficultyTier = 1);
 
 	/**
 	 * The run belonging to the game instance a world is part of, or null.

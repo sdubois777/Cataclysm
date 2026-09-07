@@ -2,6 +2,7 @@
 
 #include "Player/CataclysmGameInstance.h"
 
+#include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -24,10 +25,22 @@ UCataclysmEmpireRun* UCataclysmGameInstance::GetOrBeginEmpireRun()
 }
 
 UCataclysmEmpireRun* UCataclysmGameInstance::BeginEmpireRun(
-	int32 Seed, ECataclysmSurgeMode Mode, int32 LethalityRung)
+	int32 Seed, ECataclysmSurgeMode Mode, int32 LethalityRung,
+	int32 DifficultyTier)
 {
 	EmpireRun = NewObject<UCataclysmEmpireRun>(this);
-	EmpireRun->Begin(Seed, Mode, LethalityRung);
+
+	// THE MODIFIER TABLE BEFORE THE RUN BEGINS, so the first wave -- which is
+	// due on day 0 -- already draws from it. Filling it afterwards would leave
+	// exactly the dungeons a fresh run starts with carrying no modifiers, which
+	// is the hardest kind of gap to notice. Issue #41.
+	//
+	// AN EMPTY POOL IS NOT A FAILURE. `LoadPool` answers empty when the
+	// DataTable cannot be read, and a run with an empty pool gives every dungeon
+	// no modifiers, which is what the game did before this existed.
+	EmpireRun->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+
+	EmpireRun->Begin(Seed, Mode, LethalityRung, DifficultyTier);
 
 	return EmpireRun;
 }

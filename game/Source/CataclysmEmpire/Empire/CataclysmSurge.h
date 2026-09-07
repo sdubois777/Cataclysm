@@ -117,10 +117,13 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeonSpec
  * "SUPPLIED RATHER THAN GENERATED, because the thing that creates dungeons is
  * the surge system and it does not exist". This is that thing.
  *
- * WHAT IS NOT ON IT YET: the 117 dungeon modifiers in
- * `game/Data/DungeonModifiers.csv`, issue #41. The sub-type IS on it -- see
- * `SubType` below -- and so, since issue #1357, is which Cataclysm sent it; see
- * `Cataclysm`.
+ * WHAT IS ON IT. The sub-type, since issue #1289; which Cataclysm sent it, since
+ * issue #1357; and, since issue #41's modifier slice, which of the 117 dungeon
+ * modifiers in `game/Data/DungeonModifiers.csv` it carries and how much danger
+ * they add -- see `Modifiers` and `ModifierScore`.
+ *
+ * WHAT IS STILL NOT ON IT: where its bosses stand. `Bosses` counts them and
+ * nothing places them, which is the join with issue #40.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSMEMPIRE_API FCataclysmDungeon
@@ -298,6 +301,43 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	int32 SpawnedDay = 0;
 
 	/**
+	 * The dungeon modifiers it carries, as row keys of the modifier table.
+	 *
+	 * ONE PER DIFFICULTY TIER, DOUBLED FOR A SACRIFICIAL DUNGEON, drawn from the
+	 * modifiers of every Cataclysm the run is facing.
+	 * `UCataclysmDungeonModifierRules` holds every part of that rule and
+	 * `UCataclysmEmpireRun::GiveModifiers` is what calls it. Issue #41.
+	 *
+	 * ROW KEYS AND NOT NAMES, so that what a modifier is called and what it does
+	 * stay in the table. Anything that wants to show a player the name looks it
+	 * up; `UCataclysmDungeonModifierTable::FindRow` in the `Cataclysm` module is
+	 * the lookup.
+	 *
+	 * EMPTY IS A REAL ANSWER AND A REACHABLE ONE. A dungeon built by hand in a
+	 * test has none, and so does one created by a run whose modifier pool was
+	 * never filled -- which is every run in a headless test, because filling it
+	 * needs the DataTable.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FName> Modifiers;
+
+	/**
+	 * How much harder those modifiers make every creature inside it.
+	 *
+	 * THE SUM OF THEIR DANGER SCORES, which is the design's own definition:
+	 * "the sum of the weights on a dungeon is the Modifier Score in the Enemy
+	 * Score formula", `docs/Cataclysm_GDD_v2.md` section VIII.
+	 *
+	 * STORED RATHER THAN SUMMED ON DEMAND, because the danger scores live in the
+	 * table and this module cannot read it. `ACataclysmDungeonGameMode::
+	 * EnterEmpireDungeon` copies this onto the game mode and
+	 * `UCataclysmEnemyScore::FloorIn` reads it back, which is the same route the
+	 * sub-type takes.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ModifierScore = 0.0f;
+
+	/**
 	 * How much of its type's damage this particular dungeon actually deals.
 	 *
 	 * A DEEPER DUNGEON HITS HARDER, in proportion to how deep it is against a
@@ -376,7 +416,11 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     That is the one pattern the vertical slice would actually use, and it
  *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
  *     records what it would mean for the lane rule.
- *   - **The 117 dungeon modifiers.** Issue #41.
+ *   - **The 117 dungeon modifiers**, which THIS CLASS does not do and
+ *     `UCataclysmEmpireRun::GiveModifiers` does. They are drawn where the
+ *     Cataclysm that sent a dungeon is stamped, and for the same reason: the
+ *     draw needs the run's active Cataclysms and its difficulty tier, and this
+ *     scheduler knows neither. Issue #41.
  *   - **What six of the seven sub-types do.** One of them is here: Cow Level
  *     doubles the walk. The other six describe what happens inside a dungeon,
  *     or need systems that are not built. Issue #41.

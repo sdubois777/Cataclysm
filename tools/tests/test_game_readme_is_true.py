@@ -199,6 +199,13 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmRoster.h",
         "CataclysmRoster.cpp",
         "CataclysmRosterTests.cpp",
+        # Dungeon modifiers, added 2026-09-07 for issue #41. The readme's empire
+        # bullet now says a dungeon carries them and that nothing has been built
+        # to make any of them DO anything, which is what this test is really
+        # checking.
+        "CataclysmDungeonModifier.h",
+        "CataclysmDungeonModifier.cpp",
+        "CataclysmDungeonModifierTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()
