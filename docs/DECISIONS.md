@@ -163,6 +163,8 @@ new magnitude uses are on keystones or capstone options. That is the practice th
 bonus on a basic node joins the increases bracket, which is why Grand Tithe and
 Staunch were reworded then.
 
+---
+
 ## 2026-09-07 — A dungeon's sub-type decides what its floors hold, and three of the seven now use it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp`
