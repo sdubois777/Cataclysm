@@ -3371,7 +3371,16 @@ Enchantments are high-power modifiers available only on Legendary and above item
 
 ### **How Enchantments Roll**
 
-Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags. **A POSITIVE AND ITS NEGATIVE ARE DRAWN AT THE SAME WEIGHT.** The project owner ruled this on 2026-09-07: the weight column exists "to determine what benefits go with what negatives … to ensure you can't get the most powerful benefits with negatives that barely do anything". So a strong positive is never bought cheaply — the weight decides how good the benefit is, how severe the drawback is, and how rare the pair is, all at once.
+Enchantments are tag-based rather than skill-specific, ensuring the loot pool remains manageable while still feeling relevant to builds. Each enchantment has one or more tags. **A NEGATIVE IS NEVER MILDER THAN THE POSITIVE IT IS PAIRED WITH.** The project owner ruled on 2026-09-07 that the weight column exists "to determine what benefits go with what negatives … to ensure you can't get the most powerful benefits with negatives that barely do anything", and chose a floor rather than an exact match:
+
+| Positive's weight | Negative may be |
+| :-: | --- |
+| 1 | weight 1 only |
+| 2 | weight 1 or 2 |
+| 3 | weight 1, 2 or 3 |
+| 4 | any weight |
+
+So a strong positive is never bought cheaply, and a modest positive can still arrive with a severe drawback — a genuinely cursed low-value item, which happens on about 0.9% of pairs and is intended rather than a leak.
 
 This paragraph used to say the two halves "roll independently — a strong positive is not guaranteed to come with a weak negative". **The mechanism it named defeated the goal stated in the same sentence**, and by a wide margin: measured on the 334 positive and 182 negative rows a chest piece can draw, independent draws gave a weight 1 positive a milder drawback **99.2%** of the time, and the mildest tier of all just over half of those times. The goal survived and the mechanism was replaced.
 
@@ -3399,9 +3408,20 @@ This paragraph used to say the two halves "roll independently — a strong posit
 
   
 
-The weight system governs rarity and balance simultaneously. Weight 1 enchantments are rare and very powerful. Weight 4 enchantments are common and modest. **A weight 1 positive always comes with a weight 1 negative — extremely powerful and extremely costly.** That was described here as a theoretical possibility while the two halves rolled separately; it is now what a weight 1 pair is.
+The weight system governs rarity and balance simultaneously. Weight 1 enchantments are rare and very powerful. Weight 4 enchantments are common and modest. **A weight 1 positive always comes with a weight 1 negative — extremely powerful and extremely costly.** That was described here as a theoretical possibility while the two halves rolled separately; it is now what a weight 1 pair is, because weight 1 is the only weight its drawback may be drawn from.
 
-**How often each weight comes up: 1, 4, 16, 64 for weights 1 to 4**, so the pair's weight is drawn at 1.2%, 4.7%, 18.8% and 75.3%. The project owner ruled the step of four on 2026-09-07. It prices the **weight band**, not the individual row, so the frequencies do not move when rows are added to the sheet. Pricing each row instead — which the first implementation did — made a "Moderate" weight 3 pair and a "Common" weight 4 pair equally likely, because four times as many weight 3 rows are written as weight 4 ones and that cancelled the step exactly. The step is a tuning value and is expected to be retuned against real play.
+**How often each weight comes up: 1, 4, 16, 64 for weights 1 to 4**, so a positive's weight is drawn at 1.2%, 4.7%, 18.8% and 75.3%. The project owner ruled the step of four on 2026-09-07. It prices the **weight band**, not the individual row, so the frequencies do not move when rows are added to the sheet. Pricing each row instead — which the first implementation did — made a "Moderate" weight 3 positive and a "Common" weight 4 one equally likely, because four times as many weight 3 rows are written as weight 4 ones and that cancelled the step exactly. The step is a tuning value and is expected to be retuned against real play.
+
+**The negative's weight is then drawn on the same ladder, restricted to the weights the floor allows.** A weight 2 positive takes a weight 2 negative 80% of the time and a weight 1 negative the other 20%. **This distribution is derived from the floor rather than chosen**, and it is not the same as the positive's: every positive tier can reach a weight 1 negative, while only the top tier can reach a weight 1 positive.
+
+| Weight | Share of positives | Share of negatives |
+| :-: | --: | --: |
+| 1 | 1.2% | 3.9% |
+| 2 | 4.7% | 10.9% |
+| 3 | 18.8% | 28.5% |
+| 4 | 75.3% | 56.7% |
+
+**So severe drawbacks appear 3.3 times as often as the powerful benefits that would justify them.** That is a consequence of the floor and not a decision anybody took; it is recorded here so a later reader does not mistake it for one.
 
   
 

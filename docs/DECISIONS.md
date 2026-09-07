@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-07 — An enchantment's positive and negative are drawn at one weight, and the 1/4/16/64 step prices the weight band rather than the row
+## 2026-09-07 — An enchantment's negative is never milder than its positive, and the 1/4/16/64 step prices the weight band rather than the row
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`
 (`EnchantmentWeightStep`, `EnchantmentDrawWeight`, `EnchantmentWeightCount`,
@@ -13,7 +13,7 @@ Decisions made outside the Google Drive documents, newest first.
 [#1453](https://github.com/sdubois777/Cataclysm/issues/1453). Supersedes part of
 the entry further down this file dated the same day.
 
-### The ruling, verbatim
+### What the column is for, verbatim
 
 The project owner, on 2026-09-07, on what the `Weight` column is for:
 
@@ -21,10 +21,42 @@ The project owner, on 2026-09-07, on what the `Weight` column is for:
 > negatives. This is to ensure you can't get the most powerful benefits with
 > negatives that barely do anything.
 
-**So a weight is a strength tier, not only a rarity.** It sets how rare a pair is
-**and** which rows may be paired with which. The first implementation read it as
-a rarity ladder only, which the design document supported, and drew the two
-halves on separate tables with nothing relating them.
+**So a weight is a strength tier, not only a rarity.** It sets how rare a row is
+**and** which rows may be paired with it. The first implementation read it as a
+rarity ladder only, which the design document supported, and drew the two halves
+on separate tables with nothing relating them.
+
+### The pairing rule: a floor, chosen from three options
+
+**The owner SELECTED from three written options rather than writing a rule, so
+there is no sentence of theirs to quote for this half.** The quotation above is
+about what the column is for; the shape below is a choice between alternatives.
+Recording all three is the point, because the two rejected ones are what stop the
+question being re-opened.
+
+**The option they chose:**
+
+> **A floor — the drawback is never milder.** A weight 1 benefit can come with a
+> weight 1 drawback, but never a weaker one. A weight 4 benefit could come with
+> any drawback, including a harsh one. Keeps your rule intact but leaves room for
+> genuinely cursed low-value items.
+>
+> Weight 1 benefit → weight 1 only
+> Weight 2 benefit → weight 1 or 2
+> Weight 3 benefit → weight 1, 2 or 3
+> Weight 4 benefit → any
+
+**The two they rejected:** an **exact match on both sides**, where a weight 1
+benefit always takes a weight 1 drawback and a weight 4 benefit always takes a
+weight 4 one; and **within one step either way**, where a weight 1 benefit could
+take a weight 2 drawback.
+
+**A first attempt at this change implemented the exact match**, on the reasonable
+reading that "determine what benefits go with what negatives" meant a matched
+pair. It was written, tested and proved before the question was put to the owner,
+and the answer changed it. **Asking was worth it**: the exact match forbids the
+cheap cursed item the owner explicitly wanted room for, and no amount of care
+implementing the wrong rule would have found that.
 
 ### The design document said the opposite, twice, and its own goal is why it lost
 
@@ -49,10 +81,11 @@ one the implementation had already broken. The owner's ruling kept the goal.
 
 ### What is drawn, and in what order
 
-**The weight first, then both halves from it.** A pair is one bargain struck at
-one strength. Each of an item's enchantment slots rolls its own weight, so a
-Cataclysmic item holds four separate bargains rather than one repeated four
-times. Inside a band the row is drawn uniformly.
+**The benefit's weight first, then the drawback from weight 1 up to it.** The
+benefit's weight is what the pair is worth, and it is what the drawback's range is
+measured against. Each of an item's enchantment slots rolls its own pair of
+weights, so a Cataclysmic item holds four separate bargains rather than one
+repeated four times. Inside a band the row is drawn uniformly.
 
 **Uniform inside a band is a judgement, not a derivation.** The weight is the
 only rank the design gives an enchantment, so rows sharing one are equals as far
@@ -90,12 +123,47 @@ and 1,684, and a uniform draw over the four bands would give 1,000 each.
 those two rungs. A "Moderate" pair and a "Common" pair were met equally often,
 which no reading of the design supports.
 
-**Per band is forced rather than preferred, once a pair shares one weight.** The
-two pools are shaped differently — 39/154/113/28 positives against 22/80/58/22
-negatives — so per-row pricing gives the two halves different frequencies, and
-there is then no single frequency for the pair to be drawn at. Per band also
-decouples the outcome from the sheet: adding rows at a weight makes each of those
-rows rarer and leaves the band's share alone.
+**Per band is what keeps the drawback's draw meaningful.** The drawback is drawn
+from weight 1 up to the benefit's weight, so the pool it comes from changes size
+with every roll — 22 negative rows when the benefit is weight 1, all 182 when it
+is weight 4, a factor of eight. Priced per row, the odds inside that range would
+move with the row counts of whichever bands happened to be in it. Priced per
+band, the same ladder simply renormalises over the weights the floor allows: a
+weight 2 benefit takes a weight 2 drawback 80% of the time and a weight 1
+drawback the other 20%. Per band also decouples the outcome from the sheet:
+adding rows at a weight makes each of those rows rarer and leaves the band's
+share alone.
+
+### The drawback distribution is derived from the floor, not chosen
+
+Nobody picked these four numbers. They are what summing the same ladder over each
+allowed range produces, and they differ from the benefit's because **every
+benefit tier can reach a weight 1 drawback while only the top tier can reach a
+weight 1 benefit**:
+
+| Weight | Share of benefits | Share of drawbacks |
+| :-: | --: | --: |
+| 1 | 1.2% | **3.9%** |
+| 2 | 4.7% | **10.9%** |
+| 3 | 18.8% | **28.5%** |
+| 4 | 75.3% | **56.7%** |
+
+**Severe drawbacks therefore appear 3.31 times as often as the powerful benefits
+that would justify them.** Two further figures fall out of the same arithmetic
+and are worth recording because they are the difference between the chosen rule
+and the rejected ones: **24.0% of pairs take a drawback harsher than their
+benefit**, which an exact match would make 0%; and **0.9% of pairs are a weight 4
+benefit carrying a weight 1 drawback**, the cheap cursed item, which both
+rejected options would make impossible.
+
+Both are checked rather than asserted —
+`ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` samples the drawback side as
+well as the benefit side, and `ADrawbackIsNeverMilderThanItsBenefit` fails if the
+harsher-drawback case drops below a tenth of pairs or the cheap cursed item never
+occurs.
+
+**This is the owner's to judge, not the implementation's to correct.** 3.31 times
+is recorded as a consequence, not smoothed away.
 
 ### What the research settles and what it does not
 
@@ -158,13 +226,19 @@ balance change nobody ordered.
 
 ### What holds it
 
-`Cataclysm.Enchantments.APairIsBoughtAtItsOwnWeight` checks 2,640 pairs across
-all eleven slots and fails if any pair's two halves differ in weight. **It could
-not pass under the old code** — 61.4% of pairs came out mismatched — which is why
-none of the tests written with that code caught this.
-`Cataclysm.Enchantments.ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` now
-also checks that each rung outnumbers the one above it, which is the half of the
-ruling the per-row pricing did not deliver.
+`Cataclysm.Enchantments.ADrawbackIsNeverMilderThanItsBenefit` checks 2,640 pairs
+across all eleven slots. It fails if any drawback is milder than its benefit, and
+it also fails if the drawback is *never* harsher — so it rejects the exact match
+as well as the independent draw. **It could not pass under the old code**, where
+a weight 1 benefit took a milder drawback 99.2% of the time, which is why none of
+the tests written with that code caught this.
+`Cataclysm.Enchantments.ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne` checks
+both sides' weight distributions against the designed figures.
+
+**Both were proved to fire, against both rejected rules**, with `prove_cpp_guard`
+from `tools/unreal_build.py`. Removing the floor and replacing it with an exact
+match were each broken in the source and rebuilt; each break failed the same two
+tests and left the other eight passing.
 
 ---
 
@@ -304,7 +378,8 @@ design wanted it."
 Two things in that are wrong. The owner later ruled that a weight decides which
 positive goes with which negative, so the halves are **not** drawn independently.
 And the different pool sizes were never an argument against pairing: nothing has
-to pair row-to-row in the sheet for a pair to be drawn at one weight.
+to pair row-to-row in the sheet for a negative to be drawn from the weights a
+positive's weight allows.
 
 ### A weight is four times as common as the weight below it: 1, 4, 16, 64
 

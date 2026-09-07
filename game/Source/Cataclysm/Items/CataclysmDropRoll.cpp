@@ -1453,29 +1453,44 @@ bool UCataclysmDropRoll::RollEnchantments(
 
 	for (int32 Filled = 0; Filled < Count; ++Filled)
 	{
-		// A BAND CAN SUPPLY WHEN IT HAS AN UNTAKEN ROW ON BOTH SIDES. Asked
-		// pair by pair rather than once, because the four pairs on a
+		// ASKED PAIR BY PAIR RATHER THAN ONCE, because the four pairs on a
 		// Cataclysmic item draw from the same pools and empty them as they go.
-		TArray<bool> bBandCanSupply;
-		bBandCanSupply.Reserve(EnchantmentWeightCount);
+		TArray<bool> bDrawbackBandHasRow;
+		bDrawbackBandHasRow.Reserve(EnchantmentWeightCount);
 		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
 		{
-			bBandCanSupply.Add(
-				HasUntaken(PositivesByWeight[Band], TakenPositives)
-				&& HasUntaken(NegativesByWeight[Band], TakenNegatives));
+			bDrawbackBandHasRow.Add(
+				HasUntaken(NegativesByWeight[Band], TakenNegatives));
+		}
 
-			if (!bBandCanSupply[Band])
+		// A BENEFIT'S WEIGHT CAN BE DRAWN WHEN IT HAS AN UNTAKEN ROW AND SOME
+		// DRAWBACK AT OR BELOW IT IS LEFT TO PAY FOR IT. "At or below" is the
+		// floor: a weight 2 benefit may be bought with a weight 1 or a weight 2
+		// drawback and nothing milder, so a weight 2 benefit with only weight 3
+		// and 4 drawbacks left cannot be offered at all.
+		TArray<bool> bBenefitBandCanSupply;
+		bBenefitBandCanSupply.Reserve(EnchantmentWeightCount);
+		bool bAnyDrawbackAtOrBelow = false;
+		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		{
+			bAnyDrawbackAtOrBelow =
+				bAnyDrawbackAtOrBelow || bDrawbackBandHasRow[Band];
+			bBenefitBandCanSupply.Add(
+				HasUntaken(PositivesByWeight[Band], TakenPositives)
+				&& bAnyDrawbackAtOrBelow);
+
+			if (!bBenefitBandCanSupply[Band])
 			{
 				// WORTH A LINE IN THE LOG EVEN THOUGH IT CANNOT HAPPEN TODAY.
-				// Every band holds at least 22 rows a side for every slot, so
-				// reaching here means the sheet changed, and the frequencies
-				// the rest of the bands are then drawn at are not the designed
-				// ones.
+				// Every band holds at least 22 rows a side for every slot and
+				// an item draws at most four pairs, so reaching here means the
+				// sheet changed, and the weights the remaining bands are then
+				// drawn at are not the designed ones.
 				UE_LOG(LogCataclysm, Warning,
-					TEXT("Weight %d cannot supply an enchantment pair for a "
-						 "'%s' (%d positives and %d negatives written, %d and "
-						 "%d already on this piece), so this drop draws the "
-						 "other weights more often than designed."),
+					TEXT("A weight %d benefit cannot be paired on a '%s' (%d "
+						 "benefit and %d drawback rows written at that weight, "
+						 "%d and %d already on this piece), so this drop draws "
+						 "the other weights more often than designed."),
 					Band + static_cast<int32>(LowestEnchantmentWeight), *Slot,
 					PositivesByWeight[Band].Num(),
 					NegativesByWeight[Band].Num(),
@@ -1483,41 +1498,63 @@ bool UCataclysmDropRoll::RollEnchantments(
 			}
 		}
 
-		// THE WEIGHT FIRST, THEN BOTH HALVES FROM IT. This is the whole point of
-		// the function: the pair is one bargain struck at one strength, not two
-		// draws that happen to sit next to each other.
-		const int32 Weight = DrawEnchantmentWeight(bBandCanSupply, Stream);
-		if (Weight <= 0)
+		// THE BENEFIT'S WEIGHT FIRST. It is what the pair is worth, and it is
+		// what the drawback's range is then measured against.
+		const int32 BenefitWeight =
+			DrawEnchantmentWeight(bBenefitBandCanSupply, Stream);
+		if (BenefitWeight <= 0)
 		{
 			UE_LOG(LogCataclysm, Warning,
 				TEXT("Asked for %d enchantments on a '%s' and no weight can "
-					 "supply both a positive and a negative, so only %d could "
-					 "be drawn. That is a fault in the enchantment pool rather "
-					 "than an unlucky roll."),
+					 "supply a benefit with a drawback at or below it, so only "
+					 "%d could be drawn. That is a fault in the enchantment "
+					 "pool rather than an unlucky roll."),
 				Count, *Slot, Filled);
 			OutRolled.Reset();
 			return false;
 		}
 
-		const int32 Band = Weight - static_cast<int32>(LowestEnchantmentWeight);
+		const int32 BenefitBand =
+			BenefitWeight - static_cast<int32>(LowestEnchantmentWeight);
 
 		FCataclysmRolledEnchantment Rolled;
-		Rolled.Positive = DrawEnchantmentInBand(PositivesByWeight[Band],
+		Rolled.Positive = DrawEnchantmentInBand(PositivesByWeight[BenefitBand],
 												TakenPositives, Stream);
-		Rolled.Negative = DrawEnchantmentInBand(NegativesByWeight[Band],
-												TakenNegatives, Stream);
 
-		// BOTH ARE SET, because the band was only offered to the draw once it
-		// had an untaken row on each side. Checked anyway: a future change that
-		// breaks that would otherwise write NAME_None onto an item and the
+		// THE DRAWBACK FROM WEIGHT 1 UP TO THE BENEFIT'S WEIGHT, AND NO
+		// FURTHER. This one line is the floor the project owner chose on
+		// 2026-09-07: bands above the benefit's are never offered, so the
+		// drawback matches it or is harsher and can never be milder.
+		TArray<bool> bDrawbackBandCanSupply;
+		bDrawbackBandCanSupply.Reserve(EnchantmentWeightCount);
+		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		{
+			bDrawbackBandCanSupply.Add(Band <= BenefitBand
+									   && bDrawbackBandHasRow[Band]);
+		}
+
+		const int32 DrawbackWeight =
+			DrawEnchantmentWeight(bDrawbackBandCanSupply, Stream);
+		if (DrawbackWeight > 0)
+		{
+			Rolled.Negative = DrawEnchantmentInBand(
+				NegativesByWeight[DrawbackWeight
+					- static_cast<int32>(LowestEnchantmentWeight)],
+				TakenNegatives, Stream);
+		}
+
+		// BOTH ARE SET, because a benefit weight was only offered once a
+		// drawback at or below it was left. Checked anyway: a future change
+		// that breaks that would otherwise write NAME_None onto an item and the
 		// player would meet it as a blank line on a tool tip.
 		if (Rolled.Positive.IsNone() || Rolled.Negative.IsNone())
 		{
 			UE_LOG(LogCataclysm, Error,
-				TEXT("Weight %d was chosen for a '%s' and then could not supply "
-					 "a pair. DrawEnchantmentWeight and DrawEnchantmentInBand "
-					 "disagree about what a band holds."),
-				Weight, *Slot);
+				TEXT("A weight %d benefit was chosen for a '%s' and then could "
+					 "not be paired. The check that offered that weight and the "
+					 "draw that followed it disagree about what the bands "
+					 "hold."),
+				BenefitWeight, *Slot);
 			OutRolled.Reset();
 			return false;
 		}

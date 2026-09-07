@@ -586,9 +586,10 @@ public:
 	 * A WEIGHT IS A STRENGTH TIER, NOT ONLY A RARITY. The project owner ruled on
 	 * 2026-09-07 that the column exists "to determine what benefits go with what
 	 * negatives ... to ensure you can't get the most powerful benefits with
-	 * negatives that barely do anything". So a weight says how rare a pair is
-	 * AND which rows may be paired with which. RollEnchantments draws both
-	 * halves of a pair at ONE weight; see it for the whole rule.
+	 * negatives that barely do anything". So a weight says how rare a row is AND
+	 * which rows may be paired with it. RollEnchantments draws the benefit
+	 * first and the drawback at the benefit's weight or harsher; see it for the
+	 * whole rule.
 	 *
 	 * THE STEP OF FOUR IS THE OWNER'S 2026-09-07 RULING AND IS UNCHANGED. What
 	 * changed on 2026-09-07 is what it multiplies. It used to price a single
@@ -598,11 +599,13 @@ public:
 	 * about 42% of draws. It now prices a BAND, so the four shares are 1.2%,
 	 * 4.7%, 18.8% and 75.3% whatever the row counts do.
 	 *
-	 * PER BAND IS FORCED RATHER THAN PREFERRED, once a pair shares one weight.
-	 * The two pools are shaped differently -- a chest piece can draw 39, 154,
-	 * 113 and 28 positives against 22, 80, 58 and 22 negatives -- so per-row
-	 * pricing gives the two halves different frequencies and there is no single
-	 * frequency for the pair to be drawn at.
+	 * PER BAND IS ALSO WHAT KEEPS THE DRAWBACK'S DRAW MEANINGFUL. The drawback
+	 * is drawn from weight 1 up to the benefit's weight, so the pool it comes
+	 * from changes size with every roll -- 22 negative rows when the benefit is
+	 * weight 1, all 182 when it is weight 4. Priced per row, the odds inside
+	 * that range would move with the row counts of whichever bands happened to
+	 * be in it. Priced per band, the same ladder simply renormalises over the
+	 * weights the floor allows.
 	 *
 	 * THE PROJECT ALREADY DRAWS A RARITY BAND THIS WAY AT THIS STEP.
 	 * `game/Data/MaterialTiers.csv` carries 256, 64, 16, 4, 1 across Common,
@@ -681,18 +684,20 @@ public:
 		TArray<TArray<FName>>& OutByWeight);
 
 	/**
-	 * Pick the weight band one pair is drawn at, 1 to 4.
+	 * Pick one weight band, 1 to 4, from the bands offered.
 	 *
-	 * ONLY BANDS THAT CAN SUPPLY BOTH HALVES ARE CONSIDERED, and the designed
-	 * frequencies are renormalised over those. With the pool as written every
-	 * band holds at least 22 rows on each side for every gear slot, so nothing
-	 * is ever excluded and this is a guard against future data rather than a
-	 * live rule -- but it is the guard's behaviour that decides what a data gap
-	 * does, so it is stated here rather than left to fall out. RollEnchantments
-	 * logs when a band is excluded.
+	 * THE DESIGNED FREQUENCIES RENORMALISED OVER WHATEVER IS OFFERED. Both
+	 * halves of a pair use this. The benefit is offered every band that can
+	 * supply one; the drawback is offered weight 1 up to the benefit's weight,
+	 * which is how the floor is enforced -- a band above the benefit's weight is
+	 * simply never on the list.
+	 *
+	 * RENORMALISING IS THE WHOLE MECHANISM AND NOT A FALLBACK. Offered bands 1
+	 * and 2 it draws them 1 to 4, so a weight 2 benefit takes a weight 2
+	 * drawback 80% of the time and a weight 1 drawback the other 20%.
 	 *
 	 * @param bBandCanSupply one entry per band, lowest weight first
-	 * @return 0 when no band can supply a pair, which the caller reports
+	 * @return 0 when no band was offered, which the caller reports
 	 */
 	static int32 DrawEnchantmentWeight(const TArray<bool>& bBandCanSupply,
 									   FRandomStream& Stream);
@@ -715,20 +720,31 @@ public:
 	/**
 	 * The enchantments one dropped item carries, each a positive and a negative.
 	 *
-	 * BOTH HALVES OF A PAIR ARE DRAWN AT ONE WEIGHT. The weight band is picked
-	 * first, at the frequencies EnchantmentDrawWeight states, and the positive
-	 * and the negative are then drawn from that band. So a weight 1 positive is
-	 * always bought with a weight 1 negative.
+	 * THE DRAWBACK IS NEVER MILDER THAN THE BENEFIT. The benefit's weight is
+	 * drawn first, at the frequencies EnchantmentDrawWeight states. The
+	 * drawback is then drawn from weight 1 up to the benefit's weight -- so it
+	 * matches the benefit or is harsher, and can never be weaker:
 	 *
-	 * THE PROJECT OWNER RULED THIS ON 2026-09-07: the weight column exists "to
-	 * determine what benefits go with what negatives ... to ensure you can't get
-	 * the most powerful benefits with negatives that barely do anything". The
-	 * design document used to say the two halves "roll independently"; that
-	 * sentence was removed the same day, because independent draws defeated the
-	 * goal stated beside them. Measured on the shipped pool for a chest piece,
-	 * a weight 1 positive came with a milder negative 99.2% of the time.
+	 *     weight 1 benefit -> weight 1 drawback only
+	 *     weight 2 benefit -> weight 1 or 2
+	 *     weight 3 benefit -> weight 1, 2 or 3
+	 *     weight 4 benefit -> any
 	 *
-	 * EACH PAIR ROLLS ITS OWN WEIGHT. A Cataclysmic item holds four pairs and
+	 * A FLOOR RATHER THAN A MATCH, WHICH THE PROJECT OWNER CHOSE ON 2026-09-07
+	 * from three options. An exact match on both sides was offered and
+	 * rejected. The floor keeps the rule that you cannot buy the most powerful
+	 * benefits cheaply, while leaving room for a genuinely cursed low-value
+	 * item: a weight 4 benefit carrying a weight 1 drawback happens on 0.9% of
+	 * pairs and is a deliberate outcome, not a leak.
+	 *
+	 * WHAT IT REPLACED, AND WHY. The two halves used to be drawn independently,
+	 * and the design document used to say so. That sentence stated a goal --
+	 * "a strong positive is not guaranteed to come with a weak negative" -- that
+	 * the mechanism named in the same sentence defeated: measured on the shipped
+	 * pool for a chest piece, a weight 1 benefit came with a milder drawback
+	 * 99.2% of the time.
+	 *
+	 * EACH PAIR ROLLS ITS OWN WEIGHTS. A Cataclysmic item holds four pairs and
 	 * they are four separate bargains, not one repeated four times.
 	 *
 	 * NEITHER HALF REPEATS ON ONE PIECE. A Cataclysmic item holds four pairs and

@@ -21,14 +21,16 @@
  * halves come as a pair, which the design document's weight table already
  * described -- "Rare -- very powerful effect, severe consequence".
  *
- * AND THE PAIR IS STRUCK AT ONE WEIGHT. The same owner ruled later on
- * 2026-09-07 that the weight column exists "to determine what benefits go with
- * what negatives ... to ensure you can't get the most powerful benefits with
- * negatives that barely do anything". The two halves used to be drawn
- * independently and the design document used to say so; that sentence was
- * removed, because independent draws defeated the goal stated beside them.
- * APairIsBoughtAtItsOwnWeight below is what holds the rule now, and it is the
- * one test here that could not pass before the rule existed.
+ * AND THE DRAWBACK IS NEVER MILDER THAN THE BENEFIT. The same owner ruled later
+ * on 2026-09-07 that the weight column exists "to determine what benefits go
+ * with what negatives ... to ensure you can't get the most powerful benefits
+ * with negatives that barely do anything", and then chose a FLOOR rather than an
+ * exact match: the drawback is drawn from weight 1 up to the benefit's weight.
+ * The two halves used to be drawn independently and the design document used to
+ * say so; that sentence was removed, because independent draws defeated the goal
+ * stated beside them. ADrawbackIsNeverMilderThanItsBenefit below is what holds
+ * the rule, and it is the one test here that could not pass before the rule
+ * existed. It also fails an exact match, which was offered and rejected.
  *
  * WHAT IS NOT TESTED HERE BECAUSE IT DOES NOT EXIST. What an enchantment DOES.
  * Not one of the 574 changes a character's stats; the rest of issue #45.
@@ -552,16 +554,16 @@ bool FCataclysmEnchantmentWeightIsApplied::RunTest(const FString&)
 	// would give 36, 580, 1700 and 1684; drawing the bands uniformly would give
 	// 1000 each. Both fall outside every band below except weight 1's, which is
 	// why weight 1 is not the rung doing the work.
-	auto CheckShare = [&](int32 Weight, int32 Observed, float ExpectedShare,
-						  float Tolerance)
+	auto CheckShare = [&](const TCHAR* Half, int32 Weight, int32 Observed,
+						  float ExpectedShare, float Tolerance)
 	{
 		const float Expected = ExpectedShare * static_cast<float>(Draws);
 		const float Low = Expected * (1.0f - Tolerance);
 		const float High = Expected * (1.0f + Tolerance);
 		TestTrue(FString::Printf(
-					 TEXT("weight %d took %d of %d draws (%.1f%%), and the "
-						  "design says %.1f%% -- expected %.0f to %.0f"),
-					 Weight, Observed, Draws,
+					 TEXT("weight %d %s took %d of %d draws (%.2f%%), and the "
+						  "design says %.2f%% -- expected %.0f to %.0f"),
+					 Weight, Half, Observed, Draws,
 					 100.0f * static_cast<float>(Observed)
 						 / static_cast<float>(Draws),
 					 100.0f * ExpectedShare, Low, High),
@@ -570,23 +572,59 @@ bool FCataclysmEnchantmentWeightIsApplied::RunTest(const FString&)
 	};
 
 	// 1, 4, 16 and 64 over a total of 85.
-	CheckShare(1, Rarest, 1.0f / 85.0f, 0.40f);
-	CheckShare(2, Uncommon, 4.0f / 85.0f, 0.40f);
-	CheckShare(3, Moderate, 16.0f / 85.0f, 0.25f);
-	CheckShare(4, Commonest, 64.0f / 85.0f, 0.25f);
+	CheckShare(TEXT("benefits"), 1, Rarest, 1.0f / 85.0f, 0.40f);
+	CheckShare(TEXT("benefits"), 2, Uncommon, 4.0f / 85.0f, 0.40f);
+	CheckShare(TEXT("benefits"), 3, Moderate, 16.0f / 85.0f, 0.25f);
+	CheckShare(TEXT("benefits"), 4, Commonest, 64.0f / 85.0f, 0.25f);
+
+	// THE DRAWBACK SIDE IS A DIFFERENT DISTRIBUTION AND IT IS DERIVED, NOT
+	// CHOSEN. A drawback is drawn from weight 1 up to the benefit's weight, so
+	// every benefit tier can reach a weight 1 drawback and only the top tier can
+	// reach a weight 1 benefit. Summing the same ladder renormalised over each
+	// allowed range gives 3.90%, 10.89%, 28.51% and 56.69%.
+	//
+	// SO HARSH DRAWBACKS ARE 3.31 TIMES COMMONER THAN POWERFUL BENEFITS, which
+	// is a consequence of the floor rather than a decision anyone took, and is
+	// the reason this is measured here rather than asserted in a document.
+	TMap<int32, int32> DrawbacksByWeight;
+	FRandomStream DrawbackStream(90713);
+	for (int32 Try = 0; Try < Draws; ++Try)
+	{
+		TArray<FCataclysmRolledEnchantment> Rolled;
+		if (!FDrop::RollEnchantments(Positive, Negative, TEXT("Chest"), 1,
+									 DrawbackStream, Rolled))
+		{
+			AddError(TEXT("A single enchantment could not be drawn."));
+			return false;
+		}
+		const FCataclysmEnchantmentRow* Row =
+			Negative->FindRow<FCataclysmEnchantmentRow>(
+				Rolled[0].Negative, TEXT("Test"), /*bWarnIfMissing=*/false);
+		if (!Row)
+		{
+			AddError(TEXT("A drawn drawback is not in the table."));
+			return false;
+		}
+		++DrawbacksByWeight.FindOrAdd(FMath::RoundToInt(Row->Weight));
+	}
+
+	CheckShare(TEXT("drawbacks"), 1, DrawbacksByWeight.FindRef(1), 0.0390f, 0.30f);
+	CheckShare(TEXT("drawbacks"), 2, DrawbacksByWeight.FindRef(2), 0.1089f, 0.30f);
+	CheckShare(TEXT("drawbacks"), 3, DrawbacksByWeight.FindRef(3), 0.2851f, 0.25f);
+	CheckShare(TEXT("drawbacks"), 4, DrawbacksByWeight.FindRef(4), 0.5669f, 0.25f);
 
 	return true;
 }
 
 // ---------------------------------------------------------------------------
-// The pair is struck at one weight
+// The drawback is never milder than the benefit
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentPairSharesAWeight,
-	"Cataclysm.Enchantments.APairIsBoughtAtItsOwnWeight",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentDrawbackIsNeverMilder,
+	"Cataclysm.Enchantments.ADrawbackIsNeverMilderThanItsBenefit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEnchantmentPairSharesAWeight::RunTest(const FString&)
+bool FCataclysmEnchantmentDrawbackIsNeverMilder::RunTest(const FString&)
 {
 	using namespace CataclysmEnchantmentTest;
 
@@ -598,10 +636,14 @@ bool FCataclysmEnchantmentPairSharesAWeight::RunTest(const FString&)
 		return false;
 	}
 
-	// THIS IS THE TEST THE INDEPENDENT DRAW COULD NOT PASS. Before the pairing
-	// rule the two halves were drawn on their own tables with nothing relating
-	// them, and 61.4% of pairs came out at different weights -- so this fails on
-	// the first handful of rolls rather than needing an unlucky sample.
+	// THE RULE. A LOWER WEIGHT IS THE HARSHER ONE, so the drawback's weight must
+	// be at or below the benefit's. Weight 1 benefit takes a weight 1 drawback
+	// only; weight 4 takes anything.
+	//
+	// THIS IS THE TEST THE INDEPENDENT DRAW COULD NOT PASS. The two halves used
+	// to be drawn on their own tables with nothing relating them, so a weight 1
+	// benefit came with a milder drawback 99.2% of the time -- this fails on the
+	// first handful of rolls rather than needing an unlucky sample.
 	//
 	// EVERY SLOT, because the pools are filtered per slot and a rule that held
 	// only for a chest piece would be no rule.
@@ -611,8 +653,10 @@ bool FCataclysmEnchantmentPairSharesAWeight::RunTest(const FString&)
 		TEXT("Ring"), TEXT("Shoulders"), TEXT("Weapon") };
 
 	FRandomStream Stream(14530);
-	TSet<int32> WeightsSeen;
+	TSet<int32> BenefitWeightsSeen;
 	int32 PairsChecked = 0;
+	int32 StrictlyHarsher = 0;
+	int32 CheapAndCursed = 0;
 
 	for (const TCHAR* Slot : EverySlot)
 	{
@@ -631,34 +675,42 @@ bool FCataclysmEnchantmentPairSharesAWeight::RunTest(const FString&)
 
 			for (const FCataclysmRolledEnchantment& One : Rolled)
 			{
-				const FCataclysmEnchantmentRow* Good =
+				const FCataclysmEnchantmentRow* Benefit =
 					Positive->FindRow<FCataclysmEnchantmentRow>(
 						One.Positive, TEXT("Test"), /*bWarnIfMissing=*/false);
-				const FCataclysmEnchantmentRow* Bad =
+				const FCataclysmEnchantmentRow* Drawback =
 					Negative->FindRow<FCataclysmEnchantmentRow>(
 						One.Negative, TEXT("Test"), /*bWarnIfMissing=*/false);
-				if (!Good || !Bad)
+				if (!Benefit || !Drawback)
 				{
 					AddError(TEXT("A drawn row is not in its table."));
 					return false;
 				}
 
-				const int32 GoodWeight = FMath::RoundToInt(Good->Weight);
-				const int32 BadWeight = FMath::RoundToInt(Bad->Weight);
+				const int32 BenefitWeight = FMath::RoundToInt(Benefit->Weight);
+				const int32 DrawbackWeight = FMath::RoundToInt(Drawback->Weight);
 				++PairsChecked;
-				WeightsSeen.Add(GoodWeight);
+				BenefitWeightsSeen.Add(BenefitWeight);
+				if (DrawbackWeight < BenefitWeight)
+				{
+					++StrictlyHarsher;
+				}
+				if (BenefitWeight == 4 && DrawbackWeight == 1)
+				{
+					++CheapAndCursed;
+				}
 
-				if (GoodWeight != BadWeight)
+				if (DrawbackWeight > BenefitWeight)
 				{
 					AddError(FString::Printf(
 						TEXT("On a '%s', the weight %d benefit '%s' was bought "
-							 "with a weight %d drawback '%s'. The owner ruled on "
-							 "2026-09-07 that a weight decides what a benefit is "
-							 "paired with, so that you cannot get the most "
-							 "powerful benefits with negatives that barely do "
-							 "anything."),
-						Slot, GoodWeight, *One.Positive.ToString(),
-						BadWeight, *One.Negative.ToString()));
+							 "with a MILDER weight %d drawback '%s'. The owner "
+							 "chose on 2026-09-07 that a drawback is never "
+							 "milder than its benefit, so that you cannot get "
+							 "the most powerful benefits with negatives that "
+							 "barely do anything."),
+						Slot, BenefitWeight, *One.Positive.ToString(),
+						DrawbackWeight, *One.Negative.ToString()));
 					return false;
 				}
 			}
@@ -668,11 +720,34 @@ bool FCataclysmEnchantmentPairSharesAWeight::RunTest(const FString&)
 	// A RULE NOTHING EXERCISES IS NOT PROVED. If every pair drawn happened to be
 	// weight 4, the loop above would pass without ever testing the case the
 	// ruling is about. 2,640 pairs at the designed frequencies reach weight 1
-	// about 31 times, so all four bands appearing is the expected outcome and
-	// its absence is a real failure.
-	TestEqual(FString::Printf(TEXT("all four weights were drawn across %d pairs"),
-							  PairsChecked),
-			  WeightsSeen.Num(), 4);
+	// about 31 times, so all four appearing is the expected outcome.
+	TestEqual(FString::Printf(
+				  TEXT("all four benefit weights were drawn across %d pairs"),
+				  PairsChecked),
+			  BenefitWeightsSeen.Num(), 4);
+
+	// A FLOOR AND NOT A MATCH, WHICH IS THE HALF ABOVE CANNOT SEE. An
+	// implementation that drew both halves at exactly one weight would satisfy
+	// every assertion so far, and the owner rejected exactly that on 2026-09-07
+	// in favour of a floor. About 24.0% of pairs should take a drawback harsher
+	// than their benefit -- roughly 634 of 2,640 -- so a floor of a tenth of the
+	// pairs is clear of sampling noise and of zero.
+	TestTrue(FString::Printf(
+				 TEXT("%d of %d pairs took a drawback harsher than their "
+					  "benefit, which an exact match would never produce"),
+				 StrictlyHarsher, PairsChecked),
+			 StrictlyHarsher > PairsChecked / 10);
+
+	// AND THE CASE THE OWNER ASKED ROOM FOR ACTUALLY HAPPENS: a modest weight 4
+	// benefit carrying the harshest weight 1 drawback, the "genuinely cursed
+	// low-value item". About 0.9% of pairs, so roughly 23 of 2,640. This is also
+	// what separates the floor from a within-one-step rule, which was the third
+	// option offered and would make this outcome impossible.
+	TestTrue(FString::Printf(
+				 TEXT("%d of %d pairs were a weight 4 benefit with a weight 1 "
+					  "drawback"),
+				 CheapAndCursed, PairsChecked),
+			 CheapAndCursed > 0);
 
 	return true;
 }
