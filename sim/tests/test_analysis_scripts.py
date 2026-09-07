@@ -2342,7 +2342,7 @@ def test_the_count_axis_is_not_silently_capped_at_fourteen(cadence_run):
     assert surge_count_for(1, 40, shipped_cap) == 14
 
     # Under what this script measures, the knob is the knob.
-    for knob in (4, 5, 10, 20, 30, 40):
+    for knob in (4, 5, 10, 14, 20, 30, 40):
         assert surge_count_for(1, knob) == knob, (
             f"a knob of {knob} fires {surge_count_for(1, knob)} dungeons. "
             "base_config has stopped raising surge_count_max, so every count "
@@ -2373,7 +2373,7 @@ def test_the_unbound_surge_count_matches_a_real_simulation(cadence_run):
     from cataclysm_sim.engine import Simulation
 
     _, ns = cadence_run
-    for knob in (4, 5, 10, 20, 30, 40):
+    for knob in (4, 5, 10, 14, 20, 30, 40):
         real = Simulation(ns["base_config"](tier=1, count=knob), seed=0)
         assert ns["surge_count_for"](1, knob) == real.surge_count(), (
             f"the stand-in and a real Simulation disagree at knob {knob}")
@@ -2560,10 +2560,13 @@ def test_the_settings_block_states_every_condition(cadence_run):
                      f"campaigns per block             {ns['TRIALS']}"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}")
-    assert "run_days_flat=70" in printed, (
-        "the settings block no longer says which Explorer shape it held fixed. "
-        "Issue #1383 proposes replacing that number, so a grid measured "
-        "against it has to say so.")
+    for expected in ("Explorer speed sub-build        run_days_flat=70",
+                     "Explorer whole branch           run_days_flat=60"):
+        assert expected in printed, (
+            f"the settings block no longer states: {expected}. Issue #1386 "
+            "found that the shipped preset is one sub-build of the branch "
+            "and not the branch, so a grid measured against either has to "
+            "say which.")
     assert "raised to the knob" in printed, (
         "the settings block no longer says surge_count_max was lifted.")
 
@@ -2576,7 +2579,7 @@ def test_a_smoke_sized_cadence_run_says_its_shares_are_noise(cadence_run):
     if ns["TRIALS"] < ns["SMOKE_BELOW"]:
         assert "IS A SMOKE TEST AND EVERY SHARE BELOW IS NOISE" in printed
         assert "CATACLYSM_SURGE_CADENCE_TRIALS=1000" in printed
-        assert ns["COUNTS"] == (4, 40) and ns["INTERVALS"] == (30, 120), (
+        assert ns["COUNTS"] == (4, 20) and ns["INTERVALS"] == (30, 120), (
             "the smoke run no longer narrows to the ends of the axes, so it "
             "costs the fast suite the full thirteen seconds.")
     else:

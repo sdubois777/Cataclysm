@@ -85,6 +85,21 @@ campaign figures.
   A flat timer table cannot coexist with the rule above — a 40-floor dungeon
   on a 30-day timer is unsavable no matter how well the player plays.
 - **A city falling triggers a surge**, and optionally advances the escalation.
+- **A surge never brings more than `surge_count_max` dungeons, and that
+  ceiling applies to the BASE count and not only to escalation growth.** It is
+  14, matching `MostDungeonsPerSurge` in `CataclysmSurge.h`. The project owner
+  ruled on 2026-09-06, verbatim, "Leave it, document it", so this is the
+  documentation.
+
+  **SETTING `surge_dungeon_count` ABOVE 14 SILENTLY GIVES 14.**
+  `Simulation.surge_count` applies `min(n, surge_count_max)` before anything
+  else, and warns about nothing. A sweep whose count axis runs past 14
+  measures the same cell over and over and reports it as a trend; that is how
+  it was found, on issue #1090, where a grid of 4, 5, 10, 20, 30 and 40 was
+  really a grid of 4, 5, 10, 14, 14 and 14. `sim/analyse_surge_cadence.py`
+  raises the cap for the length of its own batches so its axis means what its
+  label says; nothing that ships may exceed 14 without moving both constants
+  together.
 
 ## What it models
 
