@@ -318,6 +318,35 @@ class CppGuardResult:
         return self.build.succeeded and self.tests.crashed
 
     @property
+    def named_failures(self) -> tuple[str, ...]:
+        """The automation tests that failed, by name.
+
+        ASSERT ON THIS RATHER THAN ON `failed`, the same rule the Python
+        `prove_guard.GuardResult` carries. It says what a guard proof means --
+        these named tests noticed the break -- where `failed` is also True when
+        the build did not compile, which proves nothing about the guard.
+
+        IT EXISTS SO THE TWO HELPERS READ ALIKE. `CLAUDE.md` documented
+        `assert result.named_failures` for both and only the Python one had it,
+        so the C++ example raised `AttributeError` and the proof never ran. Two
+        sessions lost time to it on 2026-09-07. Issue #1455.
+
+        **THESE ARE SHORT NAMES AND THE PYTHON ONES ARE NOT.** `parse_test_log`
+        records what the engine prints, so
+        `Cataclysm.Skills.ItLobsTheRockFromItsHandRatherThanItsWaist` appears
+        here as `ItLobsTheRockFromItsHandRatherThanItsWaist` alone, where the
+        Python helper returns a full pytest node id. A membership test written
+        with the group prefix matches nothing.
+
+        EMPTY FOR A RUN THAT MEASURED NOTHING, and that falls out rather than
+        being special-cased: a crashed run never reported a failure and a build
+        that did not compile never ran a test, so `tests.failed` is empty in
+        both. Read `crashed` and `build.succeeded` to tell those apart from a
+        guard the break genuinely did not trip -- `summary` says which.
+        """
+        return self.tests.failed
+
+    @property
     def failed(self) -> bool:
         """Whether the guard noticed, which is what proves it works.
 
