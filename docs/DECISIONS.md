@@ -47,13 +47,41 @@ build-defining modifiers, so a weight 1 should be a genuinely rare find rather
 than a mild preference. At this step one weight 1 row is drawn as often as 64
 weight 4 rows.
 
-**The pool is not one row per weight, so the step is not the outcome.** The
-positive pool holds 40 rows at weight 1 and 28 at weight 4, so the draws land
-about 45 times more often on a weight 4 row than a weight 1 one, not 64.
+**The pool is not one row per weight, so the step is not the outcome.**
 `Cataclysm.Enchantments.ACommonEnchantmentIsDrawnFarMoreOftenThanARareOne`
 measures it rather than asserting it.
 
 `EnchantmentWeightStep` is the constant and carries this ruling beside it.
+
+#### What the ruling actually produces, measured against the written pool
+
+Counting the 334 positive rows a chest piece can draw — every row that is not a
+set row and carries no slot tag barring it — and applying the 1/4/16/64 step:
+
+| Weight | Rows written | Relative frequency | Share of draws |
+| :-: | --: | --: | --: |
+| 1 | 39 | 1 | **0.9%** |
+| 2 | 154 | 4 | 14.5% |
+| 3 | 113 | 16 | **42.5%** |
+| 4 | 28 | 64 | **42.1%** |
+
+**Weight 3 and weight 4 come out at the same rate, and that is the sheet's row
+counts rather than the ruling.** There are four times as many weight 3 rows
+written as weight 4 ones, which cancels the step between those two rungs almost
+exactly. The design document describes weight 3 as "Moderate" and weight 4 as
+"Common", and a player would meet them equally often.
+
+**This is recorded rather than corrected.** The ruling asked for a step between
+weights and that is what was built; how many rows carry each weight is a
+different decision and belongs to whoever writes the sheet. The two ways to
+change it are to write more weight 4 rows or to steepen the step, and neither
+should be guessed at. **Nothing is broken by it** — the ladder still separates
+weight 1 from everything else by a factor of 46, which is the separation the
+ruling was mostly about.
+
+Weight 1 lands on 0.9% of draws, about one in 109. The owner's stated intent was
+roughly one in 85; the gap is the row counts again, and is small enough to be a
+tuning matter rather than a misreading of the ruling.
 
 ### A tag says what an enchantment affects, not which item it may sit on
 
