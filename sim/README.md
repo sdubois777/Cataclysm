@@ -21,24 +21,116 @@ This matters because tier width — the gap between one tier's maximum player
 Power Score and the tier below — multiplies every weighted term of the Enemy
 Score formula. It runs 385, 498, 625, 717, 853, 979, 1063, 1207 across the eight
 tiers, so the relation between player power and enemy power is not the same at
-both ends. Measured: the empire tree preset ordering in section 7 is not the same
-at tier 1 as at tier 8. **STALE, AND UNDER-POWERED, AND STILL NOT RE-MEASURED.**
-That comparison was made when both tiers ran against one fixed Cataclysm, so it
-compared two power scales rather than two tiers; and section 7 runs 150
-campaigns per cell, where `experiments.win_rate_noise(150)` is 5.77 points, so
-it cannot resolve a small ordering change either way. Re-running it is 1.8
-minutes of the report's 20; nobody has done it since #1338. See the next
-section.
+both ends.
 
-**There are now three reasons it is not re-measured, and the third blocks it
-outright.** The first two are above. The third: `TREE_EXPLORER_AS_DESIGNED` was
-corrected on [#1386](https://github.com/sdubois777/Cataclysm/issues/1386) and its
-`floor_delta` is a **tier 1** figure, because `Infinite Depths` pays per active
-Cataclysm type — the branch adds +40 floors at tier 1 and +180 at tier 8, and
-`EmpireTree` holds one number. **This claim compares tier 1 against tier 8**, so
-re-measuring it with that preset would give a figure that is right at one end and
-wrong at the other. It needs the per-tier presets ruling on
-[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) first.
+**THE CLAIM THAT THE PRESET ORDERING DIFFERS BETWEEN TIER 1 AND TIER 8 IS GONE
+FROM THIS FILE, BECAUSE THERE IS NO TIER 8 ORDERING TO COMPARE.** Re-measured on
+`998d758`, which is the first run of the report since
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386),
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397),
+[#1383](https://github.com/sdubois777/Cataclysm/issues/1383) and
+[#1406](https://github.com/sdubois777/Cataclysm/issues/1406) changed what it
+measures. Issue
+[#1404](https://github.com/sdubois777/Cataclysm/issues/1404) is where this was
+tracked.
+
+**THE CONDITIONS.** 150 campaigns per cell, the `triage` policy, static surges,
+resolve timer 1.6 days per floor, 120 days between surges, dungeon power +0.22
+per 100 days, craft 12 days for +4% of a tier width, day cap 2,500, and
+`surge_on_empty_board` on. **Active Cataclysms follow the tier**: 1 at tier 1 and
+8 at tier 8. A figure from section 7 without those is not a figure.
+
+| dungeons per surge | tier 1 | tier 8 | what the report printed |
+|---|---|---|---|
+| 5, the size sections 0 and 2 calibrated | 5 presets in 4 groups | 5 presets in **1 group** | NO CONCLUSION. Every preset ties at tier 8 |
+| 7, the second size | 6 presets in 6 groups | 6 presets in 2 groups | The ordering DIFFERS between tiers |
+
+**MORE CAMPAIGNS DO NOT PRODUCE ONE, AND THAT IS MEASURED RATHER THAN ARGUED.**
+Section 7 was re-run at four times the sample, everything else held:
+
+| campaigns per cell | tier 1 closest pair | tier 8 closest pair |
+|---|---|---|
+| 150 | gap 5.3, tolerance 9.3, tied | gap 0.0, tolerance 1.5, tied |
+| 600 | gap 8.5, tolerance 5.2, **apart** | gap 0.0, tolerance 0.4, tied |
+
+The extra campaigns bought a full tier 1 ordering — the tie between `Explorer
+maxed (as designed)` and `No tree` broke — and bought nothing at tier 8, where
+the tolerance fell to about a quarter and separated nothing.
+
+**WHY IT SEPARATED NOTHING, FROM THE EXACT COUNTS RATHER THAN THE ROUNDED
+COLUMNS.** The report prints win, loss and win-minus-loss to the nearest whole
+number and the closest gap to one decimal, so "0% win" and "gap 0.0" cannot be
+read as exact. Measured directly at tier 8, surge size 5, the five ranked
+presets:
+
+| campaigns per cell | campaigns won, every preset | margins |
+|---|---|---|
+| 150 | **0 of 150** | all five exactly -100.000000 |
+| 600 | **0 of 600** | four exactly -100.000000; `Explorer via floors (-25 floors)` is -99.833333 |
+
+**No preset has won a single tier 8 campaign in 600 attempts.** The one
+difference at 600 is a campaign that reached the day cap without winning or
+losing, not a win, and the closest pair is still separated by exactly
+0.000000 points because the other four remain identical. **A shrinking tolerance
+never separates two identical numbers.**
+
+**THAT IS ALSO A STATEMENT ABOUT THE GAME AND NOT ONLY ABOUT THE SAMPLE**, and
+it has its own issue rather than living inside this one:
+[#1441](https://github.com/sdubois777/Cataclysm/issues/1441). The sixth preset,
+`Architect maxed (as designed)`, wins nothing either — it is left out of the
+ranking because 82% of its campaigns reach the day cap, which is the absence of a
+result and not a better one. And `Explorer maxed (as designed)` clears **zero
+floors** at tier 8 while spending 83% of its free days facing two or more
+dungeons about to detonate, so that player never enters a dungeon at all.
+
+**WHAT A LARGER SAMPLE WOULD COST.** Section 7 at 600 campaigns per cell took
+2,462 seconds for 14,400 campaigns, 171 ms each, on a machine also running the
+full report. Cost is linear in the sample, so the same section at 150 per cell is
+a quarter of that, about 615 seconds. **`docs/DECISIONS.md` records 225 seconds
+for it on 2026-09-05 and that no longer holds** — the difference is some mixture
+of machine contention and `surge_on_empty_board` lengthening campaigns, and this
+run cannot separate the two. On the measured figure, 1,250 campaigns per cell is
+about 85 minutes and 30,000 campaigns for section 7 alone, which is more
+campaigns than the whole rest of the report, and it would change none of the
+above.
+
+**THE SURGE-SIZE-7 "DIFFERS" IS NOT THE OLD CLAIM.** It differs because the
+Architect preset is ranked at surge size 7 and left out at surge size 5: 82% of
+its tier 8 campaigns ran out of days at size 5 against 47% at size 7, and the
+cut-off is `UNRESOLVED_WARNING_PERCENT`, 50%. What differs is that tier 1 has an
+order and tier 8 has one preset ahead of a five-way tie — not two orderings of
+the same presets.
+
+**THE 5.77 POINTS THIS FILE USED TO QUOTE WAS THE TOLERANCE FOR A DIFFERENT
+TABLE**, and that is worth stating on its own because it was wrong whatever the
+ordering did. `experiments.win_rate_noise(150)` is 5.77, and it governs the win
+rate ranking section 7 prints **as a second opinion**. The ordering is ranked on
+win rate MINUS loss rate, whose tolerance is `margin_noise` — 11.55 points at 150
+campaigns as a cap, and a tighter per-pair figure in practice. The distinction is
+deliberate: `margin_noise`'s docstring opens "WHY IT IS NOT `win_rate_noise`.
+Issue [#294](https://github.com/sdubois777/Cataclysm/issues/294)", and the report
+prints `ITS TOLERANCE IS NOT THE WIN RATE'S 5.8 POINTS` directly above the
+ordering. This file contradicted a sentence printed in the output it described.
+
+**WHAT WAS WRONG WITH THE OLD CLAIM BESIDES THAT.** It was measured when both
+tiers ran against one fixed Cataclysm, Demonic, so it compared two power scales
+rather than two tiers — issue
+[#1338](https://github.com/sdubois777/Cataclysm/issues/1338), and the next
+section. It also used `TREE_EXPLORER_AS_DESIGNED` when that preset held a single
+tier 1 number. It no longer does: `floors_added` is 40 at tier 1 and 180 at tier
+8, and `days_removed` is 10 and 30, so a preset is now correct at every tier.
+
+**A LARGER SAMPLE DOES CHANGE AN ANSWER ELSEWHERE IN SECTION 7, SO DO NOT READ
+THE ABOVE AS "THE SAMPLE NEVER MATTERS".** At tier 1 the same four-times-larger
+run turned the Explorer branch's comparison against taking no empire tree from
+"+2.0 points, cannot be told apart" into "+5.8 points, BETTER". Those are nested
+samples — a cell's seeds run from 0 upward — so the second is a better estimate
+of the same quantity, not a second opinion. The game is balanced around a player
+fully invested in that branch, and at the report's own sample size the report
+cannot tell that player from one who allocated no points. That is issue
+[#1437](https://github.com/sdubois777/Cataclysm/issues/1437), and it is the
+failure that produced issue
+[#5](https://github.com/sdubois777/Cataclysm/issues/5).
 
 The tier is `SWEEP_TIER` in `experiments.py`, and the preset section's tiers are
 `PRESET_TIERS`. Sweeping all eight tiers would take about two and a half hours,
@@ -88,10 +180,14 @@ still changes at tier 8 is the ORDER the eight sit in, and `_surge` picks a
 Cataclysm by index, so one seeded campaign will not replay identically. The
 distribution a tier 8 cell samples from has not moved; the particular sample has.
 
-**What is still stale in this file**: the claim that the preset ordering in
-section 7 differs between tier 1 and tier 8. The Last Stand figures in the map
-section below **have** been re-measured on `e8b33c2` and carry their conditions
-and the history they replace. Issue
+**Nothing in this file is now marked stale for that reason.** The claim that the
+preset ordering in section 7 differs between tier 1 and tier 8 was the last one,
+and it has been removed rather than re-stated — the section above says what the
+report measured on `998d758` and why no tier 8 ordering exists to compare. Issue
+[#1404](https://github.com/sdubois777/Cataclysm/issues/1404). The Last Stand
+figures in the map section below **have** been re-measured on `e8b33c2` and carry
+their conditions and the history they replace; note that they predate
+`surge_on_empty_board`, which is a separate matter recorded with them. Issue
 [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) is where both were
 tracked; it also asked for a sweep of `docs/DECISIONS.md`, which has now been
 done -- the older entries there are annotated where their figures are
@@ -208,6 +304,15 @@ There are two ways to get into one:
   that the game is balanced around a player fully invested in the Explorer
   tree; **nothing on record measures that player at these settings**, so do
   not read these as describing them.
+
+  **AND EVERY ROW BELOW PREDATES `surge_on_empty_board`, WHICH DEFAULTS ON.**
+  A surge now fires whenever the board has no dungeons on it, on top of the
+  120-day clock, so these seven figures were measured against a different
+  rule rather than merely at different settings. `docs/DECISIONS.md` names
+  this table specifically in its 2026-09-07 entry and says the same. Issue
+  [#1406](https://github.com/sdubois777/Cataclysm/issues/1406). They are the
+  best figures on record and they have not been re-measured; quote them with
+  this sentence attached.
 
   | | Value | Block sd | Count |
   |---|---:|---:|---|
