@@ -167,6 +167,114 @@ community wikis rather than developers — and the finding that the trigger for
 reopening the recommendation was searched for and not found. Issue
 [#1348](https://github.com/sdubois777/Cataclysm/issues/1348) has the full comment. **Nothing in it overturns the owner's
 ruling; it supports it.**
+
+## 2026-09-06 — The empire tree presets hold per-tier values
+
+**Affects:** `sim/cataclysm_sim/config.py` (`EmpireTree`,
+`TREE_EXPLORER_AS_DESIGNED`, `TREE_ARCHITECT_AS_DESIGNED`),
+`sim/cataclysm_sim/engine.py`, `policies.py`, `sim/experiments.py`,
+`sim/analyse_siege_dose.py`, `sim/analyse_explorer_shape.py`, and three new
+guards under `tools/tests/`. Issue
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397).
+
+### The ruling
+
+Three nodes in `docs/Empire_Development_Tree_Final.json` pay per **active
+Cataclysm type**, and `TuningConfig.active_cataclysm_count` ties that to the
+difficulty tier. `EmpireTree` held one float for each effect, so each of the
+three had to be folded in at some fixed tier or left out. **The presets did both,
+inconsistently, and nowhere said so.** The project owner ruled on 2026-09-06,
+verbatim: **"Make the presets hold per-tier values"**.
+
+| Node | Branch | What it pays | Was |
+| :-- | :-- | :-- | :-- |
+| `Infinite Depths` | Explorer | +2 floors per point per active type | counted at one active type |
+| `Unyielding Defense` | Architect | −0.5% city damage per point per active type | counted at one active type, unstated |
+| `Sovereign's Haste` | Explorer | −1 day per point per active type, capped at −30 | **not counted at all** |
+
+**Both constant-level options were offered and rejected**: counting all three at
+one active type and labelling every preset a tier 1 figure, and excluding all
+three. The reasoning is on the issue.
+
+### How it is built
+
+Each affected field keeps its meaning as the **tier-independent** part and gains
+a per-active-type companion beside it. Three accessors take the active count and
+return the whole answer: `days_removed`, `floors_added` and `damage_taken`.
+Twenty call sites now read the tree through those, and every one of them already
+had a config with the tier in scope, so nothing had to be threaded anywhere.
+
+**The keyword arguments are not renamed.** `EmpireTree(run_days_flat=10)` still
+means a flat ten days at every tier, which is what the thirty-seven places that
+build a tree by hand actually want.
+
+### What the presets now give
+
+| | Tier 1 | Tier 2 | Tier 3 | Tier 8 |
+| :-- | --: | --: | --: | --: |
+| Explorer, days removed | 70 | 80 | 90 | 90 |
+| Explorer, floors added | +40 | +60 | +80 | +180 |
+| Architect, damage taken | 0.0766 | 0.0747 | 0.0729 | 0.0643 |
+
+**The Architect figure at tier 1 is exactly what it was**, because its per-type
+factor was already folded in at one active type; `0.0766 / 0.995^5 × 0.995^5`
+reproduces it. That is the control on the split and it is asserted.
+
+### 70 is not a revert, and this is the paragraph that says so
+
+`TREE_EXPLORER_AS_DESIGNED.run_days_flat` was **70** before
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386), reached by
+`Opportunist` — conditional on the board — plus `The Delver`, a Tier 1 capstone
+option in no branch at all. #1386 repaired it to 60. **Folding `Sovereign's
+Haste` in at one active type gives 70 again.**
+
+**Two wrong terms had summed to the figure one missing right one would have
+given.** The two are not the same number in any sense that matters: the old 70
+was flat at every tier and carried no floors; this one is 70 at tier 1, 90 from
+tier 3, and comes with +40 floors at tier 1 and +180 at tier 8.
+`test_seventy_at_tier_one_is_not_the_old_seventy` holds that down.
+
+### What it moves, measured
+
+400 campaigns of `triage` per cell, both arms from the same seeds in one process.
+The "before" arm is the presets exactly as `development` carried them at
+`feb2dfc`, written as literals rather than recomputed.
+
+| Preset | Tier | | win% | loss% | cities lost | mean days |
+| :-- | --: | :-- | --: | --: | --: | --: |
+| Explorer | 1 | before | 40.0 | 36.0 | 3.01 | 1697 |
+| Explorer | 1 | after | 41.2 | 36.8 | 2.89 | 1666 |
+| Explorer | 4 | before | 0.0 | 99.8 | 23.75 | 978 |
+| Explorer | 4 | after | 0.0 | 99.5 | 22.72 | 769 |
+| Explorer | 8 | before | 0.2 | 98.5 | 23.98 | 726 |
+| Explorer | 8 | after | 0.0 | 100.0 | 22.08 | 651 |
+| Architect | 1 | before | 25.8 | 42.8 | 0.03 | 1801 |
+| Architect | 1 | after | 25.8 | 42.8 | 0.03 | 1801 |
+| Architect | 8 | before | 0.0 | 17.2 | 8.43 | 2431 |
+| Architect | 8 | after | 0.0 | 17.5 | 6.50 | 2425 |
+
+**At tier 1 the Explorer move is inside the noise floor.** 400 campaigns cannot
+resolve a win-rate difference under about 3.5 percentage points, and 40.0 against
+41.2 is smaller than that. **What moved is campaign length above tier 1**: a tier
+4 campaign runs 769 days against 978, a fifth shorter, because the branch is
+deeper and faster than the model was giving it credit for.
+
+**The Architect tier 1 row is identical in both arms**, and so is `TREE_NONE` at
+every tier. Both are controls rather than results.
+
+### What has not been re-measured
+
+**`sim/experiments.py` has not been re-run.** Every preset row in the balance
+report describes the old figures, and has since
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386). This is now the
+second reason it owes a run, and the ruling says it should land before that run
+rather than after it.
+
+**Section 7 of `sim/README.md`** — the claim that the empire tree preset ordering
+differs between tier 1 and tier 8 — is unblocked by this and is not re-measured
+here. It is already marked stale for an earlier and separate reason, that the
+comparison was made when both tiers ran against one fixed Cataclysm.
+
 ## 2026-09-06 — The Explorer preset is made to describe the Explorer branch
 
 **Affects:** `sim/cataclysm_sim/config.py` (`TREE_EXPLORER_AS_DESIGNED`),

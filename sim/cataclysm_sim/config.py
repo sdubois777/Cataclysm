@@ -150,8 +150,19 @@ class EmpireTree:
     name: str = "None"
 
     # --- dungeon run time -------------------------------------------------
-    run_days_flat: float = 0.0      # total flat days removed (the current design)
+    run_days_flat: float = 0.0      # flat days removed, at every tier alike
     run_days_mult: float = 1.0      # multiplicative scalar
+
+    #: Days removed PER ACTIVE CATACLYSM TYPE, on top of `run_days_flat`, and
+    #: the most the per-type part may reach. `Sovereign's Haste` is the node:
+    #: "-1 day from dungeon run time per point for each active Cataclysm type in
+    #: your empire. (Max of -30 floors)" -- the cap says floors and means days,
+    #: which is the design document's wording and not this model's.
+    #:
+    #: A CAP OF 0 MEANS NO CAP, so a tree that has no such node leaves both at
+    #: zero and behaves exactly as it did before issue #1397.
+    run_days_flat_per_type: float = 0.0
+    run_days_flat_per_type_cap: float = 0.0
 
     # Floors added/removed. This model charges one day a floor, so this lever
     # changes run time AND reward together: it cannot buy speed without paying
@@ -160,8 +171,19 @@ class EmpireTree:
     # upgrade shortens the walk without touching the floor count at all.
     floor_delta: float = 0.0
 
+    #: Floors added PER ACTIVE CATACLYSM TYPE. `Infinite Depths` is the node,
+    #: "+2 floors per active Cataclysm type per point" across 10 points.
+    floor_delta_per_type: float = 0.0
+
     # --- city survivability ----------------------------------------------
     city_damage_mult: float = 1.0   # product of every damage-reduction node
+
+    #: Multiplied in ONCE PER ACTIVE CATACLYSM TYPE, on top of
+    #: `city_damage_mult`. `Unyielding Defense` is the node: "-0.5% damage taken
+    #: by cities per active Cataclysm type per point (multiplicative). Stacks
+    #: once per active type", across 5 points, so the factor is 0.995^5 per
+    #: type. 1.0 means no such node and no change.
+    city_damage_mult_per_type: float = 1.0
 
     #: How much damage a city can absorb, as a multiple of its tier's base.
     #: The sum of every city-health increase in the tree, because increases are
@@ -191,11 +213,67 @@ class EmpireTree:
     resolve_bonus_days: float = 0.0
     surge_bonus_days: float = 0.0
 
-    def describe(self) -> str:
-        return (f"{self.name}: run -{self.run_days_flat:g}d x{self.run_days_mult:.2f}, "
-                f"floors {self.floor_delta:+g}, city dmg x{self.city_damage_mult:.3f}, "
+    # ---------------------------------------------------------------------
+    # What the tree is worth AT A GIVEN NUMBER OF ACTIVE CATACLYSM TYPES
+    # ---------------------------------------------------------------------
+    #
+    # **READ THE TREE THROUGH THESE AND NOT OFF THE FIELDS.** Three nodes in
+    # `docs/Empire_Development_Tree_Final.json` pay per active Cataclysm type,
+    # so three of the fields above are only half of an answer: the other half
+    # depends on the difficulty tier the campaign is played at, which
+    # `TuningConfig.active_cataclysm_count` decides.
+    #
+    # A CALLER THAT READS `floor_delta` DIRECTLY GETS THE TIER-INDEPENDENT PART
+    # AND NO WARNING, which is the same shape of defect issue #1386 repaired --
+    # a number that looks complete and is not.
+    # `tools/tests/test_the_tree_is_read_per_tier.py` fails if a production file
+    # reads one of the three outside this class.
+    #
+    # THE OWNER RULED THIS RATHER THAN EITHER CONSTANT-LEVEL OPTION, on
+    # 2026-09-06, verbatim: "Make the presets hold per-tier values". Folding all
+    # three in at one active type and labelling every preset a tier 1 figure was
+    # offered and rejected, as was excluding all three. Issue #1397.
+
+    def days_removed(self, active_types: int) -> float:
+        """Flat days this tree takes off a dungeon's walk at this tier.
+
+        THE CAP APPLIES TO THE PER-TYPE PART ALONE and not to the total, because
+        it is one node's cap and not a rule about the tree.
+        """
+        per_type = self.run_days_flat_per_type * max(0, active_types)
+        if self.run_days_flat_per_type_cap:
+            per_type = min(per_type, self.run_days_flat_per_type_cap)
+        return self.run_days_flat + per_type
+
+    def floors_added(self, active_types: int) -> float:
+        """Floors this tree adds to a dungeon at this tier. May be negative."""
+        return self.floor_delta + self.floor_delta_per_type * max(0, active_types)
+
+    def damage_taken(self, active_types: int) -> float:
+        """The share of a dungeon's damage a city actually takes at this tier.
+
+        MULTIPLIED ONCE PER ACTIVE TYPE, which is what `Unyielding Defense`
+        says. `0.995^5` per type over eight types is `0.995^40`, not `0.995^5`
+        applied once.
+        """
+        return self.city_damage_mult * self.city_damage_mult_per_type ** max(0, active_types)
+
+    def describe(self, active_types: int = 1) -> str:
+        """One line, AT A STATED NUMBER OF ACTIVE TYPES.
+
+        The default of 1 is difficulty tier 1 and is stated in the output, so a
+        line copied out of a report carries the tier it was true at. Every
+        figure this project ever quoted from a preset was a tier 1 figure
+        without saying so; that is what issue #1397 is about.
+        """
+        return (f"{self.name} @{active_types} active: "
+                f"run -{self.days_removed(active_types):g}d "
+                f"x{self.run_days_mult:.2f}, "
+                f"floors {self.floors_added(active_types):+g}, "
+                f"city dmg x{self.damage_taken(active_types):.3f}, "
                 f"city hp x{self.city_health_mult:.2f}, "
-                f"resolve +{self.resolve_bonus_days:g}d, surge +{self.surge_bonus_days:g}d")
+                f"resolve +{self.resolve_bonus_days:g}d, "
+                f"surge +{self.surge_bonus_days:g}d")
 
 
 @dataclass
@@ -868,21 +946,34 @@ TREE_NONE = EmpireTree(name="No tree")
 # at tier 8. `EmpireTree` holds a float and `experiments.py` sweeps this preset
 # across every tier, so it understates the branch everywhere above tier 1.
 #
-# ONE NODE IS LEFT OUT THAT THE SAME ARGUMENT WOULD LET IN, and it is not
-# settled. **`Sovereign's Haste`** (Explorer, 10 points) removes "-1 day from
-# dungeon run time per point for each active Cataclysm type", capped at 30. At
-# one active type that is a flat -10 days off every dungeon, exactly as
-# unconditional as the four counted above; at tier 3 and beyond it is -30. So a
-# preset that counts `Infinite Depths` at one active type and not this one is
-# inconsistent, and this preset does exactly that -- it follows issue #1386,
-# whose day total is what `sim/analyse_explorer_shape.py` measured at.
-# `TREE_ARCHITECT_AS_DESIGNED` below has the same unstated assumption:
-# `Unyielding Defense` is -0.5% per point per active type and is folded in as
-# 0.995^5, which is one active type. Issue #1397 carries the choice.
+# **`Sovereign's Haste` IS NOW COUNTED, AND IT IS WHY THIS PRESET HAS PER-TYPE
+# FIELDS.** The node (Explorer, 10 points) removes "-1 day from dungeon run time
+# per point for each active Cataclysm type", capped at 30 -- so -10 days at one
+# active type, -20 at two and -30 from three upwards. Issue #1386 left it out
+# while counting `Infinite Depths`, which also pays per active type, and said so
+# rather than hiding it. The project owner ruled on 2026-09-06, verbatim, "Make
+# the presets hold per-tier values", rejecting both of the constant-level
+# options; issue #1397 records what each cost.
+#
+# **SO THIS PRESET REMOVES 70 DAYS AT DIFFICULTY TIER 1, WHICH IS THE NUMBER IT
+# CARRIED BEFORE ISSUE #1386, BY A COMPLETELY DIFFERENT AND CORRECT ROUTE.** The
+# old 70 was `Opportunist` -- conditional on the board -- plus `The Delver`,
+# which is a Tier 1 capstone option in no branch at all. **Two wrong terms
+# summed to the figure one missing right one would have given.** Nothing here is
+# a revert: the old 70 was flat at every tier, and this is 70 at tier 1, 80 at
+# tier 2 and 90 from tier 3 upwards, with +40 floors at tier 1 and +180 at tier
+# 8 beside it. Read `days_removed` and `floors_added` rather than the fields.
 TREE_EXPLORER_AS_DESIGNED = EmpireTree(
     name="Explorer maxed (as designed)",
+    #: Temporal Mastery 25, Overclock 20, Pacing 10, Fleet Footed 5.
     run_days_flat=60.0,
-    floor_delta=40.0,
+    #: Sovereign's Haste, 10 points at -1 day per point per active type.
+    run_days_flat_per_type=10.0,
+    run_days_flat_per_type_cap=30.0,
+    #: Architect of Greed +20, Deep Boring +10, Exclusionary Mapping -10.
+    floor_delta=20.0,
+    #: Infinite Depths, 10 points at +2 floors per point per active type.
+    floor_delta_per_type=20.0,
 )
 
 # Every multiplicative city damage-reduction node in the Architect branch of
@@ -901,9 +992,16 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
 #   Structural Integrity  0.985^10    0.8597   -1.5% per point, 10 points
 #   Supply Lines          0.985^10    0.8597   -1.5% per point, adjacent to Pillar
 #   Iron Will              0.99^15    0.8601   -1% per point, 15 points
-#   Unyielding Defense    0.995^5     0.9752   -0.5% per point per active type
 #                                     ------
-#                                     0.0766
+#                                     0.0785
+#
+# **`Unyielding Defense` IS NO LONGER IN THAT PRODUCT AND IS A PER-TYPE FIELD
+# INSTEAD.** It is -0.5% per point across 5 points and it "Stacks once per
+# active type", so it is 0.995^5 per type: 0.9752 at one, and 0.995^40 = 0.8183
+# at all eight. It was folded in at 0.995^5 -- one active type -- and nothing
+# said so, which is half of what issue #1397 is about. The product above is now
+# the tier-independent part, and 0.0785 x 0.9752 reproduces the 0.0766 this
+# constant carried, so no balance figure measured at tier 1 moves for this node.
 #
 # `Reclaimer's Resolve` is excluded: +1% per city reclaimed has no value at full
 # investment, because it depends on how the run went rather than on the tree.
@@ -943,7 +1041,11 @@ TREE_EXPLORER_AS_DESIGNED = EmpireTree(
 # per-tier is a larger change and is not part of #1319.
 TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
     name="Architect maxed (as designed)",
-    city_damage_mult=0.0766,
+    #: Every damage-reduction node EXCEPT `Unyielding Defense`, which is below.
+    #: `0.0785 x 0.995^5` is the 0.0766 this held before issue #1397.
+    city_damage_mult=0.0766 / 0.995 ** 5,
+    #: `Unyielding Defense`, multiplied in once per active Cataclysm type.
+    city_damage_mult_per_type=0.995 ** 5,
     city_health_mult=5.90,
     resolve_bonus_days=13.0,
 )

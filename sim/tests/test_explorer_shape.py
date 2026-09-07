@@ -90,21 +90,34 @@ def test_the_explorer_branchs_unconditional_flat_total_is_sixty(report):
     assert namespace["RESULT"]["facts"]["unconditional"] == 60.0
 
 
-def test_the_model_now_removes_exactly_what_the_branch_does(report):
-    """The gap is the finding, so it is asserted as a gap and not as two totals.
+def test_the_gap_between_the_model_and_the_branch_is_sovereigns_haste(report):
+    """**The gap is the finding, so it is asserted as a gap and not as a total.**
 
-    If somebody corrects `TREE_EXPLORER_AS_DESIGNED` this test fails, which is
-    the point: the report's whole first section would then be stale.
+    It was 10 days before issue #1386, and the 10 was wrong: `Opportunist`,
+    which carries a condition, plus `The Delver`, a capstone option in no
+    branch. That repair closed it to 0.
+
+    **It is 10 again since issue #1397, and this 10 is right.** The script's
+    `unconditional` total is the four nodes that remove days at every tier
+    alike; the preset also folds in `Sovereign's Haste`, which pays per active
+    Cataclysm type, and the script reports at one. Same number, different term,
+    which is exactly the trap this file exists to keep visible.
     """
     _printed, namespace = report
     facts = namespace["RESULT"]["facts"]
-    assert facts["modelled"] == TREE_EXPLORER_AS_DESIGNED.run_days_flat
-    assert facts["modelled"] - facts["unconditional"] == 0.0, (
-        "the model and the Explorer branch disagree about how many flat days "
-        "the branch removes. They differed by 10 until issue #1386 -- the "
-        "model counted Opportunist, which is conditional, and The Delver, "
-        "which is a capstone option in no branch. If the branch's own total "
-        "moved, follow it in TREE_EXPLORER_AS_DESIGNED rather than here.")
+    active = namespace["ACTIVE_TYPES"]
+    preset_days = TREE_EXPLORER_AS_DESIGNED.days_removed(active)
+
+    assert facts["modelled"] == preset_days
+    assert facts["modelled"] - facts["unconditional"] == preset_days - 60.0
+
+    haste = preset_days - TREE_EXPLORER_AS_DESIGNED.days_removed(0)
+    assert facts["modelled"] - facts["unconditional"] == haste, (
+        "the model and the Explorer branch differ by something other than "
+        "Sovereign's Haste at this active count. If a node moved, follow it in "
+        "TREE_EXPLORER_AS_DESIGNED and in "
+        "tools/tests/test_the_explorer_preset_matches_the_tree.py, which "
+        "derives both totals from the graph.")
 
 
 def test_the_two_extra_terms_are_conditional_or_outside_the_branch(report):
@@ -148,11 +161,16 @@ def test_the_added_and_the_net_floor_totals_are_ten_apart(report):
         "the added and net floor totals no longer differ by Exclusionary "
         "Mapping's 10, so either that node changed or another floor-removing "
         "node was added. Both figures below depend on which is which.")
-    assert TREE_EXPLORER_AS_DESIGNED.floor_delta == net, (
-        f"TREE_EXPLORER_AS_DESIGNED.floor_delta is "
-        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} and the branch's net is "
-        f"{net:+g}. tools/tests/test_the_explorer_preset_matches_the_tree.py "
-        "derives that from the graph; follow it there first.")
+    # THROUGH THE ACCESSOR, because since issue #1397 `floor_delta` is only
+    # the tier-independent half: +20 here, with Infinite Depths' +20 per active
+    # type on top. The script reports at `ACTIVE_TYPES`, which is one.
+    active = namespace["ACTIVE_TYPES"]
+    assert TREE_EXPLORER_AS_DESIGNED.floors_added(active) == net, (
+        f"the preset adds "
+        f"{TREE_EXPLORER_AS_DESIGNED.floors_added(active):+g} floors at "
+        f"{active} active type(s) and the branch's net is {net:+g}. "
+        "tools/tests/test_the_explorer_preset_matches_the_tree.py derives that "
+        "from the graph; follow it there first.")
 
 
 def test_a_renamed_node_breaks_the_script_rather_than_the_total(report):

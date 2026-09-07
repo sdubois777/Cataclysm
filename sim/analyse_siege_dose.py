@@ -241,8 +241,9 @@ def days_to_fall(max_defense: float, scale: float = 1.0,
     share = cfg.siege_defence_bite_per_day * scale
     grow = (cfg.siege_damage_growth_per_day * scale
             if growth is None else growth)
-    per_day_flat = max_defense * share * cfg.tree.city_damage_mult
-    per_day_growth = grow * cfg.tree.city_damage_mult
+    taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+    per_day_flat = max_defense * share * taken
+    per_day_growth = grow * taken
     if per_day_flat <= 0.0 and per_day_growth <= 0.0:
         return 0
     dealt, day = 0.0, 0
