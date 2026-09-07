@@ -166,6 +166,16 @@ elif SMOKE:
 else:
     SELECTED_INDICES = tuple(range(len(WORLDS)))
 
+#: Which world section 5 measures the noise floor in. **NOT WORLD 0.** The
+#: weakest player wins 0.0% of campaigns and loses 24.04 cities of 25 whatever
+#: happens, so a block-to-block spread taken there is 0.103 points on a win rate
+#: and understates the noise everywhere a difference actually appears. This is
+#: the first world in `SELECTED_INDICES` that is not world 0, which is the
+#: tier-1 player with no empire tree -- the weakest player who still has
+#: outcomes that move.
+NOISE_WORLD = next((i for i in SELECTED_INDICES if i != 0),
+                   SELECTED_INDICES[0])
+
 #: A smoke run sweeps only the two ends. The shipped value is measured anyway,
 #: because section 2 needs that cell and the two share it.
 SWEPT_GAPS = MIN_GAPS if not SMOKE else (MIN_GAPS[0], SHIPPED_MIN_GAP,
@@ -368,7 +378,7 @@ def measure(cfg: TuningConfig, seed0: int, trials: int = TRIALS) -> dict:
 HEADER = (f"{'rule':>5} {'gap':>6} {'idle%':>7} {'+-':>5} {'empty%':>7} "
           f"{'noSafe%':>8} {'inDgn%':>7} {'surges':>7} {'early':>7} "
           f"{'days/sg':>8} {'cities':>7} {'+-':>5} {'earned%':>8} "
-          f"{'won%':>6} {'days':>6}")
+          f"{'won%':>6} {'+-':>5} {'days':>6}")
 
 
 def row(label: str, gap: str, s: dict) -> str:
@@ -376,7 +386,8 @@ def row(label: str, gap: str, s: dict) -> str:
             f"{s['empty%']:>7.1f} {s['noSafe%']:>8.1f} {s['walk%']:>7.1f} "
             f"{s['surges']:>7.1f} {s['early']:>7.1f} {s['gap']:>8.1f} "
             f"{s['cities']:>7.2f} {s['cities_se']:>5.2f} "
-            f"{s['earned%']:>8.1f} {s['won%']:>6.1f} {s['days']:>6.0f}")
+            f"{s['earned%']:>8.1f} {s['won%']:>6.1f} "
+            f"{s['won%se']:>5.2f} {s['days']:>6.0f}")
 
 
 # ---------------------------------------------------------------------------
@@ -439,8 +450,17 @@ def gap_cells() -> list[str]:
 
 
 def noise_cells() -> list[str]:
-    """Section 5: `NOISE_BLOCKS` disjoint blocks in the weakest world."""
-    return [_cell_key(SELECTED_INDICES[0], SHIPPED_MIN_GAP, True, b * TRIALS)
+    """Section 5: `NOISE_BLOCKS` disjoint blocks in one world.
+
+    **NOT WORLD 0, AND THAT IS THE WHOLE POINT.** The weakest player loses every
+    losable city and wins nothing in nearly every campaign, so a win rate
+    measured there barely varies between blocks and a spread taken from it
+    understates the noise in every world where anything actually moves. This
+    file did measure it there at first, and got a block-to-block standard
+    deviation of 0.103 points on a win rate of 0.0% -- a floor low enough to
+    call almost any difference real. `NOISE_WORLD` names a world that varies.
+    """
+    return [_cell_key(NOISE_WORLD, SHIPPED_MIN_GAP, True, b * TRIALS)
             for b in range(NOISE_BLOCKS)]
 
 
@@ -661,24 +681,41 @@ def section_5_noise_floor(measured: dict[str, dict]) -> dict:
     SIX DISJOINT BLOCKS OF THE SAME CELL. Every difference in this report is
     read against this and never against a two-block gap, which is one draw of a
     spread and not the spread. Issue [#1379].
+
+    MEASURED IN `NOISE_WORLD` AND NOT IN WORLD 0. See `noise_cells` for why:
+    the weakest player's outcomes barely vary at all, so a floor taken there
+    would call almost any difference real.
     """
-    label = WORLDS[SELECTED_INDICES[0]][0]
-    cells = [measured[_cell_key(SELECTED_INDICES[0], SHIPPED_MIN_GAP, True,
+    label = WORLDS[NOISE_WORLD][0]
+    cells = [measured[_cell_key(NOISE_WORLD, SHIPPED_MIN_GAP, True,
                                 b * TRIALS)]
              for b in range(NOISE_BLOCKS)]
     wins = [c["won%"] for c in cells]
     cities = [c["cities"] for c in cells]
+    earned = [c["earned%"] for c in cells]
     empirical = statistics.stdev(wins) if len(wins) > 1 else float("nan")
     analytic = statistics.fmean([c["won%se"] for c in cells])
+    city_sd = (statistics.stdev(cities) if len(cities) > 1 else float("nan"))
+    earned_sd = (statistics.stdev(earned) if len(earned) > 1 else float("nan"))
     print(f"\n{'=' * 118}")
     print(f"5. THE NOISE FLOOR, {NOISE_BLOCKS} disjoint blocks of "
           f"{TRIALS} campaigns in '{label}'.")
     print("=" * 118)
-    print(f"   win rate, block to block   sd {empirical:.3f} points, "
+    print("   NOT world 0. The weakest player's outcomes barely vary, so a "
+          "floor taken there would call")
+    print("   almost any difference real. See `noise_cells`.")
+    print()
+    print(f"   win rate, block to block         sd {empirical:.3f} points, "
           f"against an analytic {analytic:.3f}")
-    print(f"   cities lost, block to block sd "
-          f"{statistics.stdev(cities) if len(cities) > 1 else float('nan'):.3f}"
-          f" of 25")
+    print(f"   cities lost, block to block      sd {city_sd:.3f} of 25")
+    print(f"   earned dungeon, block to block   sd {earned_sd:.3f} points")
+    print()
+    print("   A DIFFERENCE BETWEEN TWO CELLS HAS TO BEAT ABOUT 2.8 OF THESE, "
+          "not one: each side carries")
+    print("   its own spread, so the threshold is 2 x sqrt(2) x sd. On the win "
+          "rate that is roughly")
+    print(f"   {2 * math.sqrt(2) * empirical:.2f} points and on cities lost "
+          f"{2 * math.sqrt(2) * city_sd:.2f} of 25.")
     print("   Read every difference above against these. A gap smaller than "
           "about two of them is not")
     print("   a difference; it is the sample size.")
