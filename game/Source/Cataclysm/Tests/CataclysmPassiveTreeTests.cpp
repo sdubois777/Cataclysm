@@ -95,8 +95,15 @@
  * each. The numerator did not move with them, because neither tree has an
  * authored effect row yet; that is issue #1463. So the share that does something
  * fell without anything regressing, which is the reading this paragraph exists
- * to give. Of the 26, the one that names a required tag
- * reaches nobody -- see `ATagScopedNodeGrantsNothingYet` and issue #943.
+ * to give.
+ *
+ * SEVEN OF THE 130 ROWS NAME A REQUIRED TAG, and whether each tag reaches a real
+ * character is a separate question. `ATagScopedNodeGrantsNothingYet` and issue
+ * #943 record one that does not. THAT WAS THE ONLY TAGGED ROW WHEN #943 WAS
+ * WRITTEN AND THERE ARE SEVEN NOW, so the other six have not been checked here
+ * and this comment does not claim they have. This sentence previously read "Of
+ * the 26, the one that names a required tag reaches nobody", which was stale in
+ * the count and in the "the one".
  *
  * WHAT IS DELIBERATELY NOT COVERED. Anything a person can see: the automation
  * command passes `-nullrhi`, so `WBP_PassiveTree` cannot be loaded and no widget
