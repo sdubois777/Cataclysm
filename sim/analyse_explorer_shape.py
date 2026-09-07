@@ -34,11 +34,22 @@ every node it names is present with the points and wording it expects, so a
 change to the design document breaks this script instead of silently making it
 wrong.
 
-**IT FOUND ONE.** `TREE_EXPLORER_AS_DESIGNED` removes 70 flat days where the
-Explorer branch's own unconditional nodes remove 60, and it credits the branch
-with none of the +50 floors its depth nodes add at tier 1 -- issue #1386. It is
-not repaired here; issue #1383 is under an instruction to change no tuning
-constant.
+**IT FOUND ONE, AND IT IS NOW REPAIRED.** `TREE_EXPLORER_AS_DESIGNED` removed 70
+flat days where the Explorer branch's own unconditional nodes remove 60, and
+credited the branch with none of the floors its depth nodes add -- issue #1386.
+The repair landed after this script was written: the constant is now 60 days and
++40 floors, and `tools/tests/test_the_explorer_preset_matches_the_tree.py`
+derives both from the graph so they cannot drift again. **Nothing in this file
+changed a constant**; issue #1383 was under an instruction not to, and it was not
+the change that repaired it.
+
+**+50 AND +40 ARE TWO BUILDS, NOT TWO ANSWERS.** The rows below labelled `+50f`
+add the branch's four floor-ADDING nodes and leave `Exclusionary Mapping`
+untaken, which the printed table says in as many words. `TREE_EXPLORER_AS_DESIGNED`
+carries the NET total of all five, +40, because a maxed branch has every node in
+it. Neither figure is wrong; issue #1386 stated one in a heading above a table
+that summed to the other, which is what made it look like a disagreement, and
+both are measured below so the ten floors between them can be read.
 
 **WHY THIS FILE READS THE GRAPH AND NOT THE PROSE.**
 `docs/Empire_Skill_Tree_Keystones.md` describes the same tree and lists neither
@@ -304,20 +315,25 @@ def section_one(nodes: list[dict]) -> dict:
     modelled = TREE_EXPLORER_AS_DESIGNED.run_days_flat
     print(f"  TREE_EXPLORER_AS_DESIGNED.run_days_flat         -{modelled:g} days")
     gap = modelled - unconditional
-    print(f"  difference                                      {gap:g} days, and "
-          f"it is Opportunist (conditional) plus The Delver (not an")
-    print(f"{'':50}Explorer node -- one of three exclusive options at the "
-          f"Tier 1 capstone)")
+    print(f"  difference                                      {gap:g} days")
     print()
-    print("  The config comment above that constant calls its six terms 'every "
-          "unconditional flat run-time")
-    print("  reduction in Empire_Development_Tree_Final'. Two of the six are "
-          "neither unconditional nor in")
-    print("  the Explorer branch. It names Rapid Descent and Sovereign's Haste "
-          "as its only exclusions; it")
-    print("  does not mention Tactical Entry, which halves run days above 50 "
-          "floors and is the one")
-    print("  multiplicative walk-time node the tree already has.")
+    if gap:
+        print("  THE TWO STILL DISAGREE. Read the config comment against the "
+              "table above before trusting")
+        print("  either number; issue #1386 is where the last disagreement of "
+              "this kind was resolved.")
+    else:
+        print("  THEY AGREE, SINCE ISSUE #1386. The constant removed 70 days "
+              "until that repair, and the two")
+        print("  extra terms were Opportunist, which carries a condition in "
+              "its own text, and The Delver,")
+        print("  which is one of three exclusive options at the Tier 1 "
+              "capstone rather than an Explorer node")
+        print("  at all. The comment above the constant now names each node it "
+              "counts, both terms it")
+        print("  dropped, and the three walk-time nodes it does not fold in -- "
+              "Tactical Entry, Rapid Descent")
+        print("  and Imperial Roads.")
     print()
     print(f"  IT TAKES {unconditional_points} POINTS TO REMOVE "
           f"{unconditional:g} DAYS. The deepest dungeon a surge can put on the "
@@ -328,8 +344,9 @@ def section_one(nodes: list[dict]) -> dict:
     print("  full investment the owner's question is about.")
     print()
 
-    print("  FLOOR-COUNT NODES IN THE SAME BRANCH, WHICH THE MODEL CREDITS THE "
-          "BRANCH WITH NONE OF:")
+    print("  FLOOR-COUNT NODES IN THE SAME BRANCH. The model credited the "
+          "branch with none of these until")
+    print("  issue #1386; it now carries their net total.")
     print(f"{'node':26} {'pts':>4} {'floors':>7}  note")
     floors_total = 0.0
     for name, points, floors, note in FLOOR_NODES:
@@ -338,12 +355,18 @@ def section_one(nodes: list[dict]) -> dict:
             floors_total += floors
     print(f"{'':26} {'':>4} {floors_total:>+7g}  taking Exclusionary Mapping's "
           f"-10 as not taken")
+    net = sum(floors for _n, _p, floors, _note in FLOOR_NODES)
+    print(f"{'':26} {'':>4} {net:>+7g}  net, with every node in the branch "
+          f"taken")
     print(f"  `TREE_EXPLORER_AS_DESIGNED.floor_delta` is "
-          f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g}. A maxed Explorer at "
-          f"tier 1 adds {floors_total:+g} floors to every")
-    print("  dungeon, which changes both what the flat subtraction collapses "
-          "and what the dungeon is worth.")
-    print("  Rows marked '+50f' below are run with that included.")
+          f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g}, which is the NET "
+          f"figure: a maxed branch has")
+    print(f"  Exclusionary Mapping too. Rows marked '+50f' below use "
+          f"{floors_total:+g} instead -- the same four adding")
+    print("  nodes with that one left untaken -- so the two differ by 10 "
+          "floors on purpose. Both change")
+    print("  what the flat subtraction collapses and what a dungeon is worth. "
+          "Issue #1386.")
     print()
 
     print("  NODES THAT PAY FOR HAVING REMOVED DAYS -- change the shape and "
@@ -456,7 +479,11 @@ FLAT_TODAY = TREE_EXPLORER_AS_DESIGNED.run_days_flat
 SHAPES = (
     Shape("none"),
     Shape(f"flat {FLAT_TODAY:g}", flat=FLAT_TODAY),
-    Shape("flat 60", flat=60.0),
+    # A hard-coded `Shape("flat 60", flat=60.0)` used to sit here, as the
+    # branch's real total against the model's wrong 70. Issue #1386 repaired the
+    # constant, so `FLAT_TODAY` IS 60 and the row above is that row; keeping
+    # both would print the same measurement twice under the same label.
+    Shape("flat 70 (pre-fix)", flat=70.0),
     Shape(f"flat {FLAT_TODAY:g} min10", flat=FLAT_TODAY, minimum=10),
     Shape("x0.30", mult=0.30),
     Shape("x0.20", mult=0.20),
@@ -464,6 +491,12 @@ SHAPES = (
     Shape("x0.10", mult=0.10),
     Shape("flat5 x0.15", flat=5.0, mult=0.15),
     Shape("flat5 x0.10", flat=5.0, mult=0.10),
+    # WHAT THE MODEL NOW SHIPS. `TREE_EXPLORER_AS_DESIGNED` carries the branch's
+    # NET floor total, +40, since issue #1386. The `+50f` row below is the same
+    # four adding nodes with `Exclusionary Mapping` untaken, which is a
+    # different build rather than a different answer; both are measured so the
+    # ten floors between them can be read rather than argued.
+    Shape("flat 60 +40f", flat=60.0, floor_delta=40.0),
     Shape("flat 60 +50f", flat=60.0, floor_delta=50.0),
     Shape("flat5 x0.15 +50f", flat=5.0, mult=0.15, floor_delta=50.0),
 )

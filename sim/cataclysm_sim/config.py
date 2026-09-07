@@ -803,14 +803,86 @@ class TuningConfig:
 
 TREE_NONE = EmpireTree(name="No tree")
 
-# Every unconditional flat run-time reduction in Empire_Development_Tree_Final:
-#   Pacing 10 + Overclock 20 + Temporal Mastery 25 + Opportunist 5
-#   + Fleet Footed 5 + The Delver 5  = 70 days
-# (Rapid Descent and Sovereign's Haste are excluded -- they scale with floors
-#  and active Cataclysm count and would only make this worse.)
+# The Explorer branch of `docs/Empire_Development_Tree_Final.json` at full
+# investment: every one of its 316 points spent. Issue #1386.
+#
+# THE DAYS IT REMOVES. Every node in the Explorer branch that takes a flat
+# number of days off every dungeon, with no condition on it:
+#
+#   Temporal Mastery   25 points   -1 day per point    -25
+#   Overclock          20 points   -1 day per point    -20
+#   Pacing             10 points   -1 day per point    -10
+#   Fleet Footed        1 point    -5 days flat         -5
+#                                                      ---
+#                                                      -60 days, 56 points
+#
+# TWO TERMS THIS USED TO COUNT AND SHOULD NOT HAVE. It said 70 days, and the two
+# extra were:
+#
+#   * **Opportunist**, 5 points, whose own text is "Dungeons in cities with no
+#     other active dungeons cost -1 day to run per point". That is a condition
+#     on the board, and the list it sat in called itself unconditional.
+#   * **The Delver**, -5 days, which is not in the Explorer branch at all. It is
+#     one of three mutually exclusive options at the Tier 1 milestone capstone,
+#     alongside The Aegis of Hope and The Hoarder, so a player who maxes this
+#     branch does not have it unless they also spend that capstone on it.
+#
+# THREE FURTHER NODES CHANGE THE WALK AND ARE NOT FOLDED IN HERE, named so the
+# omission is deliberate rather than missed:
+#
+#   * **Tactical Entry** (Explorer, 1 point) halves run days above 50 floors.
+#     A multiplier, and `run_days_mult` is where it would go.
+#   * **Rapid Descent** (Explorer, 10 points) takes 0.1 days off the REMAINING
+#     run time per floor cleared per point. Neither a flat subtraction nor a
+#     scalar.
+#   * **Imperial Roads** (Architect, 10 points) is Fallen City dungeons only,
+#     and is in a different branch.
+#
+# THE FLOORS IT ADDS, which this preset credited the branch with none of:
+#
+#   Architect of Greed     20 points   +1 floor per point               +20
+#   Deep Boring            10 points   +1 floor per point               +10
+#   Infinite Depths        10 points   +2 per active Cataclysm type     +20
+#   Architectural Insight  10 points   +1 per 10 Architect points        +0
+#   Exclusionary Mapping   10 points   -1 floor per point               -10
+#                                                                       ---
+#                                                                       +40
+#
+# **`Architectural Insight` IS ZERO BECAUSE THIS IS A PURE EXPLORER BUILD.** It
+# pays +1 floor for every 10 points in the Architect branch, and this preset
+# spends nothing there.
+#
+# **`Exclusionary Mapping` IS COUNTED, AND THAT IS WHAT "MAXED" MEANS.** It is
+# the one node that removes floors, it exists to feed `Quality over Quantity`
+# (+2% Magic Find per floor removed from the default depth), and a player with
+# every point in the branch has it. `sim/analyse_explorer_shape.py` measures
+# rows labelled `+50f` instead, which is the same four adding nodes with this
+# one left untaken; its printed output says so. **+50 is the added total and
+# +40 is the net**, and the two are different builds rather than two answers to
+# one question. Issue #1386 states +50 in a heading above a table that sums to
+# +40, which is what asked the question.
+#
+# THIS IS THE TIER 1 FIGURE AND THE TIER IS NOT A DETAIL. `Infinite Depths`
+# pays per ACTIVE CATACLYSM TYPE, and `TuningConfig.active_cataclysm_count` ties
+# that to the difficulty tier, so the branch adds +40 floors at tier 1 and +180
+# at tier 8. `EmpireTree` holds a float and `experiments.py` sweeps this preset
+# across every tier, so it understates the branch everywhere above tier 1.
+#
+# ONE NODE IS LEFT OUT THAT THE SAME ARGUMENT WOULD LET IN, and it is not
+# settled. **`Sovereign's Haste`** (Explorer, 10 points) removes "-1 day from
+# dungeon run time per point for each active Cataclysm type", capped at 30. At
+# one active type that is a flat -10 days off every dungeon, exactly as
+# unconditional as the four counted above; at tier 3 and beyond it is -30. So a
+# preset that counts `Infinite Depths` at one active type and not this one is
+# inconsistent, and this preset does exactly that -- it follows issue #1386,
+# whose day total is what `sim/analyse_explorer_shape.py` measured at.
+# `TREE_ARCHITECT_AS_DESIGNED` below has the same unstated assumption:
+# `Unyielding Defense` is -0.5% per point per active type and is folded in as
+# 0.995^5, which is one active type. Issue #1397 carries the choice.
 TREE_EXPLORER_AS_DESIGNED = EmpireTree(
     name="Explorer maxed (as designed)",
-    run_days_flat=70.0,
+    run_days_flat=60.0,
+    floor_delta=40.0,
 )
 
 # Every multiplicative city damage-reduction node in the Architect branch of

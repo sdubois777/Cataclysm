@@ -90,7 +90,7 @@ def test_the_explorer_branchs_unconditional_flat_total_is_sixty(report):
     assert namespace["RESULT"]["facts"]["unconditional"] == 60.0
 
 
-def test_the_model_removes_ten_days_more_than_the_branch_does(report):
+def test_the_model_now_removes_exactly_what_the_branch_does(report):
     """The gap is the finding, so it is asserted as a gap and not as two totals.
 
     If somebody corrects `TREE_EXPLORER_AS_DESIGNED` this test fails, which is
@@ -99,7 +99,12 @@ def test_the_model_removes_ten_days_more_than_the_branch_does(report):
     _printed, namespace = report
     facts = namespace["RESULT"]["facts"]
     assert facts["modelled"] == TREE_EXPLORER_AS_DESIGNED.run_days_flat
-    assert facts["modelled"] - facts["unconditional"] == 10.0
+    assert facts["modelled"] - facts["unconditional"] == 0.0, (
+        "the model and the Explorer branch disagree about how many flat days "
+        "the branch removes. They differed by 10 until issue #1386 -- the "
+        "model counted Opportunist, which is conditional, and The Delver, "
+        "which is a capstone option in no branch. If the branch's own total "
+        "moved, follow it in TREE_EXPLORER_AS_DESIGNED rather than here.")
 
 
 def test_the_two_extra_terms_are_conditional_or_outside_the_branch(report):
@@ -120,15 +125,34 @@ def test_the_two_extra_terms_are_conditional_or_outside_the_branch(report):
     assert len(siblings) == 3 and "The Delver" in siblings
 
 
-def test_the_branch_adds_floors_the_model_credits_it_with_none_of(report):
-    """`TREE_EXPLORER_AS_DESIGNED` models the branch's day-removal nodes and
-    none of its floor-addition nodes, which is a second gap of the same kind as
-    the first and pulls the walk time in the opposite direction."""
+def test_the_added_and_the_net_floor_totals_are_ten_apart(report):
+    """**The two floor totals this file and the model deliberately differ on.**
+
+    The rows here labelled `+50f` sum the four nodes that ADD floors and leave
+    `Exclusionary Mapping` untaken. `TREE_EXPLORER_AS_DESIGNED` carries the NET
+    total of all five, because a maxed branch has every node in it. Ten floors
+    apart, on purpose, and this asserts the gap rather than either figure alone
+    so that a change to one without the other fails.
+
+    Until issue #1386 the model carried 0 here, crediting the branch with none
+    of its depth nodes at all.
+    """
     _printed, namespace = report
     added = sum(floors for _n, _p, floors, _note in namespace["FLOOR_NODES"]
                 if floors > 0)
+    net = sum(floors for _n, _p, floors, _note in namespace["FLOOR_NODES"])
+
     assert added == 50.0
-    assert TREE_EXPLORER_AS_DESIGNED.floor_delta == 0.0
+    assert net == 40.0
+    assert added - net == 10.0, (
+        "the added and net floor totals no longer differ by Exclusionary "
+        "Mapping's 10, so either that node changed or another floor-removing "
+        "node was added. Both figures below depend on which is which.")
+    assert TREE_EXPLORER_AS_DESIGNED.floor_delta == net, (
+        f"TREE_EXPLORER_AS_DESIGNED.floor_delta is "
+        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} and the branch's net is "
+        f"{net:+g}. tools/tests/test_the_explorer_preset_matches_the_tree.py "
+        "derives that from the graph; follow it there first.")
 
 
 def test_a_renamed_node_breaks_the_script_rather_than_the_total(report):
