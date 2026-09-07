@@ -177,6 +177,24 @@ both to add a field the record had gained:
   `None` in play, so the value has to stay reachable. This fixture describes the
   other case, which is the one that has something to round trip.
 
+`Run_v1.json` was edited a tenth time on 2026-09-07, for issue #41:
+
+- `Modifiers` and `ModifierScore`, because a dungeon record now says which
+  dungeon modifiers it carries and how much harder they make everything inside
+  it. Nothing in the game had ever read a row of
+  `game/Data/DungeonModifiers.csv` until then.
+
+  **`Modifiers` holds two row keys and not one**, so the fixture proves an array
+  survives a round trip rather than only its first element. Both are real rows
+  of the modifier table and both are Demonic, which is what the dungeon's
+  `Cataclysm` field says sent it -- a pairing the game itself would produce.
+
+  **`ModifierScore` holds 25.0, which is those two rows' danger scores added
+  up**: Infernal Rain is 10 and Blood Altar is 15. It is non-default, exactly
+  representable in binary, and distinct from every other number in that dungeon.
+  It is stored rather than recomputed on load because the danger scores live in
+  a DataTable the empire module may not read.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

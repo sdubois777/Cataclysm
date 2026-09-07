@@ -221,12 +221,13 @@ by `git add` with no error and no warning. Guarded by
   because the enemy capital and the loss condition are both still missing, issue
   [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6.
 
-  **Every dungeon a surge creates has a sub-type, and two of the seven do
+  **Every dungeon a surge creates has a sub-type, and three of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring
   model. A Cow Level costs twice the days to walk and the walk-shortening city
   upgrade does not apply to it; a Siege takes 1% of its host city's maximum
   defence and maximum population every day it stands, and a city may hold only
-  one. Timed, Horde, Elite, Volatile and Sacrificial are rolled and named and
+  one; a Sacrificial dungeon carries twice as many dungeon modifiers, which is
+  the paragraph below. Timed, Horde, Elite and Volatile are rolled and named and
   change nothing yet, and one further part of the Siege — what "pauses city
   upgrades" means — is undecided rather than unbuilt. What "increases in power
   by N points per day" means was settled by the owner on 2026-09-05 as the
@@ -235,6 +236,31 @@ by `git add` with no error and no warning. Guarded by
   Issues
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
+
+  **Every dungeon carries dungeon modifiers, and not one of them does
+  anything.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
+  difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
+  modifiers of every Cataclysm the run is facing. The sum of their danger scores
+  is the dungeon's Modifier Score, which
+  `ACataclysmDungeonGameMode::EnterEmpireDungeon` carries over when the player
+  walks in, and which makes every creature on every floor worth more. Before
+  this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in the
+  game had ever read, and the Modifier Score was a hard-coded zero.
+
+  **A modifier is a name and a number and nothing else.** No modifier in the
+  table changes what happens on a floor: no floor goes dark, no ceiling drops
+  fire, no enemy is resurrected. All 117 are unbuilt in that sense, and the only
+  thing they do is make creatures score higher. Three further gaps are open.
+  The one Generic modifier, the Corrupted Stalker, is deliberately never drawn —
+  the project owner ruled it is granted separately — and nothing grants it, which
+  is issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308). A
+  Sacrificial dungeon's doubled modifiers cannot be shed by sacrificing
+  materials, because there is nothing to sacrifice to. And **no modifier is
+  rarer than any other**: which ones a dungeon gets is an equal chance across the
+  pool, which the project owner ruled on 2026-09-07 because no design document
+  states a selection rule. That is the absence of a designed rarity rather than
+  one, and `docs/DECISIONS.md` records what was rejected alongside it. Issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 
   **A dungeon can still have no sub-type; nothing a surge creates has one.** One
   entered outside the empire has none. A Siege rolled for a city that already

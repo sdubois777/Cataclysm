@@ -554,11 +554,24 @@ class TestTheEmpireLayerKnowsWhichCataclysmIsRunning:
             "UCataclysmEmpireRun no longer holds which Cataclysms the run "
             "faces. It is the denominator of the unlock rule.")
 
-        assert re.search(r"void Begin\(.*?int32 DifficultyTier", run, re.S), (
+        # THE PARAMETER IS `InDifficultyTier` AND THE MEMBER IS
+        # `DifficultyTier`. It was only a parameter until issue #41's dungeon
+        # modifier slice, which had to keep the tier on the run -- the modifier
+        # count is one per tier and is asked long after `Begin` returns -- and
+        # renamed the parameter so it would not shadow the member. This pattern
+        # accepts either spelling so that it checks what it is named for, which
+        # is that `Begin` still TAKES a tier at all.
+        assert re.search(r"void Begin\(.*?int32 In?DifficultyTier", run, re.S), (
             "UCataclysmEmpireRun::Begin no longer takes a difficulty tier. The "
             "tier is how many Cataclysms are active, and the empire module "
             "cannot read it off ACataclysmGameMode because that is in the "
             "Cataclysm module and this one must not depend on it.")
+
+        assert "int32 DifficultyTier = 1;" in run, (
+            "UCataclysmEmpireRun no longer keeps the difficulty tier it was "
+            "begun with. Issue #41's dungeon modifier slice needs it after "
+            "`Begin` has returned, because a dungeon carries one modifier per "
+            "tier.")
 
     def test_the_model_counts_objectives_per_cataclysm_too(self):
         engine = read(REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py")

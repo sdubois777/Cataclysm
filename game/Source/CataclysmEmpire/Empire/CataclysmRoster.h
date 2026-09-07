@@ -67,8 +67,9 @@ enum class ECataclysmType : uint8
  *     Cataclysm contributes by that shape. This module knows WHICH Cataclysms
  *     are active and nothing about how they differ, so
  *     `UCataclysmEmpireRun::RollCataclysm` draws uniformly. Issue #53.
- *   - **The 117 dungeon modifiers**, which the model pools across the active
- *     Cataclysms. Issue #41.
+ *   - Nothing about the 117 dungeon modifiers. `UCataclysmDungeonModifierRules`
+ *     pools them across the active Cataclysms, exactly as the model does, and
+ *     reads `ActiveCataclysms` off the run to do it. Issue #41.
  *   - **The Quest dungeon spawn rate.** The owner ruled it "should depend on the
  *     Cataclysm" and the rule is still not derived; issue #1357 owns it. What
  *     this class removes is the reason it COULD not be built, not the work.
@@ -220,4 +221,17 @@ public:
 	 * draws are not the same sequence read twice.
 	 */
 	static constexpr int32 WaveSalt = 2;
+
+	/**
+	 * The salt `UCataclysmEmpireRun::ModifierStream` uses.
+	 *
+	 * A THIRD STREAM FOR THE SAME REASON THE SECOND ONE EXISTS. Drawing a
+	 * dungeon's modifiers from the run's main stream would consume one number
+	 * per modifier and shift every later draw, so the same seed would land
+	 * different waves on different cities at different depths than it did before
+	 * issue #41's modifier slice -- and every fixed-seed test measuring
+	 * something else would start failing for a reason that has nothing to do
+	 * with what it measures. `CataclysmStream` carries the argument in full.
+	 */
+	static constexpr int32 ModifierSalt = 3;
 };

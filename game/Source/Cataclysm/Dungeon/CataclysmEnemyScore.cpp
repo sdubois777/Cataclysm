@@ -209,18 +209,40 @@ FCataclysmScoredFloor UCataclysmEnemyScore::FloorIn(const UObject* WorldContext)
 		return Floor;
 	}
 
-	Floor.DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
+	// THE READING ITSELF IS `FloorFor`, so that it can be tested. Nothing in an
+	// automation run can make `GetAuthGameMode` answer, so every line of it used
+	// to be unreachable from a test. See `FloorFor`.
+	return FloorFor(World->GetAuthGameMode<ACataclysmGameMode>(),
+					ACataclysmGameMode::DifficultyTierIn(World));
+}
 
-	if (const ACataclysmGameMode* Mode = World->GetAuthGameMode<ACataclysmGameMode>())
+FCataclysmScoredFloor UCataclysmEnemyScore::FloorFor(
+	const ACataclysmGameMode* Mode, int32 DifficultyTier)
+{
+	FCataclysmScoredFloor Floor;
+	Floor.DifficultyTier = DifficultyTier;
+
+	if (Mode == nullptr)
 	{
-		Floor.FloorNumber = Mode->RunFloorNumber();
-		Floor.TotalFloors = Mode->RunTotalFloors();
-		Floor.Type = Mode->RunDungeonType();
-		Floor.SubType = Mode->RunDungeonSubType();
+		// THE DEFAULTS, WHICH ARE A REAL FLOOR: one floor of one, a Basic
+		// dungeon with no sub-type and no modifiers. See `FloorIn`.
+		return Floor;
 	}
 
-	// THE MODIFIER SCORE IS LEFT AT ZERO because dungeon modifiers do not exist.
-	// It is a flat addend in the model rather than a multiplier, so zero is
-	// exactly "no modifiers" and not an approximation. Issue #41.
+	Floor.FloorNumber = Mode->RunFloorNumber();
+	Floor.TotalFloors = Mode->RunTotalFloors();
+	Floor.Type = Mode->RunDungeonType();
+	Floor.SubType = Mode->RunDungeonSubType();
+
+	// THE DUNGEON'S MODIFIERS, as the sum of their danger scores. It was
+	// hard-zeroed here until issue #41's modifier slice, with a comment saying
+	// dungeon modifiers did not exist. They do now: the empire layer draws them
+	// when a surge lands a dungeon and
+	// `ACataclysmDungeonGameMode::EnterEmpireDungeon` carries the sum over.
+	//
+	// STILL ZERO FOR A FLOOR WITH NO EMPIRE BEHIND IT, which is a real answer
+	// and not a fallback: a flat addend of zero is exactly "no modifiers".
+	Floor.ModifierScore = Mode->RunModifierScore();
+
 	return Floor;
 }

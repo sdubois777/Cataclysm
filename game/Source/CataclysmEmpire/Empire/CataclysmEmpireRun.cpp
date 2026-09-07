@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
-								int32 LethalityRung, int32 DifficultyTier)
+								int32 LethalityRung, int32 InDifficultyTier)
 {
 	Map = NewObject<UCataclysmEmpireMap>(this);
 	Map->Build();
@@ -26,6 +26,11 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	Dungeons.Reset();
 	NextDungeonId = 0;
 
+	// KEPT, RATHER THAN ONLY USED. `GiveModifiers` asks how many modifiers a
+	// dungeon carries long after `Begin` has returned, and the answer is one per
+	// difficulty tier. It was a parameter and nothing else until then.
+	DifficultyTier = InDifficultyTier;
+
 	// A SECOND `Begin` IS A FRESH RUN, so what the last one achieved goes with
 	// it. Leaving these standing would carry one campaign's quest objectives
 	// into the next, and the win condition slice 6 builds reads them. Issue
@@ -41,7 +46,7 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	// tier and which ones from the seed, so replaying the same seed meets the
 	// same Cataclysms and the same seed one tier higher meets those plus one --
 	// the project owner's ruling of 2026-09-06. Issues #1338 and #1357.
-	ActiveCataclysms = UCataclysmRoster::ActiveFor(InSeed, DifficultyTier);
+	ActiveCataclysms = UCataclysmRoster::ActiveFor(InSeed, InDifficultyTier);
 
 	// EVERY ACTIVE CATACLYSM IS A KEY BEFORE ANYTHING HAS HAPPENED, so one that
 	// has never sent a quest dungeon reads as 0 rather than as absent. A caller
@@ -59,6 +64,39 @@ void UCataclysmEmpireRun::Begin(int32 InSeed, ECataclysmSurgeMode Mode,
 	// draws a copy of the next run's waves.
 	CataclysmStream.Initialize(
 		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::WaveSalt));
+
+	// AND A THIRD, FOR THE MODIFIER DRAW. See `ModifierStream`: taking those
+	// draws from either of the streams above would shift every later draw made
+	// on it, and re-roll every fixed-seed test in the project.
+	ModifierStream.Initialize(
+		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::ModifierSalt));
+
+	// THE POOL IS NOT CLEARED BY A FRESH RUN. It is the modifier TABLE and not
+	// anything this campaign did, and the caller that filled it in did so once.
+	// Clearing it here would make `Begin` a second time silently stop giving
+	// dungeons modifiers.
+}
+
+void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
+{
+	if (ModifierPool.Num() == 0)
+	{
+		// NOTHING, AND NOT AN EMPTY LIST. See the header: a dungeon a test built
+		// by hand keeps the modifiers the test gave it.
+		return;
+	}
+
+	const TArray<FCataclysmDungeonModifier> Pool =
+		UCataclysmDungeonModifierRules::PoolFor(ModifierPool, ActiveCataclysms);
+
+	const int32 Count = UCataclysmDungeonModifierRules::CountFor(
+		DifficultyTier, Dungeon.SubType);
+
+	const TArray<FCataclysmDungeonModifier> Drawn =
+		UCataclysmDungeonModifierRules::Draw(Pool, Count, ModifierStream);
+
+	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);
+	Dungeon.ModifierScore = UCataclysmDungeonModifierRules::DangerOf(Drawn);
 }
 
 int32 UCataclysmEmpireRun::Day() const
@@ -308,6 +346,16 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
 		Dungeon.Cataclysm = RollCataclysm();
+
+		// AND ITS MODIFIERS, HERE FOR THE SAME REASON AND IN THE SAME PLACE.
+		// The scheduler knows neither which Cataclysms this campaign faces nor
+		// what tier it is played at, and the draw needs both. Issue #41.
+		//
+		// AFTER THE CATACLYSM AND NOT BEFORE IT, because the pool is the union
+		// of the ACTIVE Cataclysms' modifiers and not the sender's -- so the
+		// order does not matter today. It is written this way round so that if
+		// the pool ever narrows to the sender, the field is already set.
+		GiveModifiers(Dungeon);
 	}
 
 	for (const FCataclysmDungeon& Dungeon : Wave)
@@ -788,9 +836,16 @@ void UCataclysmEmpireRun::AddFallenCityDungeon(
 		return;
 	}
 
-	const FCataclysmDungeon Dungeon =
+	FCataclysmDungeon Dungeon =
 		UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 			NextDungeonId, *City, OutReport.Day, DungeonsAbsorbed);
+
+	// A FALLEN CITY CARRIES MODIFIERS TOO. The design's rule is about dungeons
+	// and names no exception -- "a dungeon carries one modifier per difficulty
+	// tier" -- and a Fallen City is a dungeon the player walks. It gets no
+	// Cataclysm stamped on it, because nobody sent it; that is a different
+	// field and a different rule. Issues #41 and #1324.
+	GiveModifiers(Dungeon);
 
 	// THE SAME TWO STEPS A LANDED DUNGEON TAKES, in the same order. The
 	// dungeons and the clock's timers are parallel lists kept in step by this
@@ -1276,14 +1331,37 @@ FString UCataclysmEmpireRun::Describe() const
 				: FString::Printf(TEXT(" (%s)"),
 								  *FString::Join(Marks, TEXT(", ")));
 
+			// AND WHAT ITS MODIFIERS ADD, WHICH NOTHING ELSE SHOWS ANYWHERE. A
+			// dungeon's modifiers make every creature inside it worth more and
+			// there is no screen that says so, so without this line the whole
+			// feature is invisible outside its tests. Issue #41.
+			//
+			// A COUNT AND A NUMBER RATHER THAN THE NAMES. `FCataclysmDungeon::
+			// Modifiers` holds row keys and turning one into `Edict of Silence`
+			// needs the modifier DataTable, whose row type lives in the
+			// `Cataclysm` module that this one must not depend on.
+			// `UCataclysmDungeonModifierTable::NameOf` is that lookup, for a
+			// caller that has both.
+			//
+			// NOTHING AT ALL WHEN IT CARRIES NONE, which is every dungeon in a
+			// run whose modifier pool was never filled -- every headless test,
+			// and the game itself if the DataTable cannot be read. A line
+			// reading "0 modifiers" on every dungeon would be noise.
+			const FString Modifiers = Dungeon.Modifiers.IsEmpty()
+				? FString()
+				: FString::Printf(TEXT(", %d modifiers worth %.0f danger"),
+								  Dungeon.Modifiers.Num(),
+								  Dungeon.ModifierScore);
+
 			Lines.Add(FString::Printf(
 				TEXT("  dungeon %d%s on %s: %d floors, %.1f days until it "
-					 "resolves"),
+					 "resolves%s"),
 				Dungeon.DungeonId,
 				*Marked,
 				City ? *City->Name : TEXT("nowhere"),
 				Dungeon.Floors,
-				Clock->DaysUntilResolveFor(Dungeon.DungeonId)));
+				Clock->DaysUntilResolveFor(Dungeon.DungeonId),
+				*Modifiers));
 		}
 	}
 

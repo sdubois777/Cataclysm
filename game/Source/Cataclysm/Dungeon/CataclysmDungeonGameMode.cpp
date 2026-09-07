@@ -762,6 +762,13 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// whatever the settings said, which in a real run was always `None`.
 	DungeonSubType = Dungeon->SubType;
 
+	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
+	// game mode and adds it to every creature on the floor, which is how a
+	// dungeon modifier makes a dungeon harder --
+	// `docs/Cataclysm_GDD_v2.md` section VIII. Until issue #41's modifier slice
+	// this was hard-zeroed in the score model itself.
+	DungeonModifierScore = Dungeon->ModifierScore;
+
 	// AND THE PLAYER STARTS AT ITS ENTRANCE. Without this the floor being walked
 	// is whatever the last dungeon left behind, and entering a shallower one
 	// while standing deep in a deeper one makes `IsOnTheLastFloor` true straight
@@ -798,6 +805,13 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	}
 
 	EmpireDungeonId = INDEX_NONE;
+
+	// AND THE DUNGEON'S MODIFIERS GO WITH IT. `EnterEmpireDungeon` overwrites
+	// `TotalFloors`, `DungeonType` and `DungeonSubType` on the way in, so those
+	// are replaced by the next dungeon rather than lingering -- but a player who
+	// LEAVES the empire and walks a plain floor would otherwise still be
+	// fighting creatures carrying the last dungeon's modifier score.
+	DungeonModifierScore = 0.0f;
 }
 
 bool ACataclysmDungeonGameMode::ClearEmpireDungeon()

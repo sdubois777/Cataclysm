@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
 #include "Math/RandomStream.h"
@@ -413,6 +414,85 @@ public:
 	int32 NextDungeonId = 0;
 
 	// ----------------------------------------------------------------------
+	// Dungeon modifiers -- issue #41
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Which difficulty tier this run is played at, 1 to 8.
+	 *
+	 * TWO THINGS READ IT AND BOTH ARE COUNTS. `Begin` asks
+	 * `UCataclysmRoster::ActiveCountFor` how many Cataclysms are active, and
+	 * `GiveModifiers` asks `UCataclysmDungeonModifierRules::CountFor` how many
+	 * modifiers a dungeon carries. It was a parameter of `Begin` and nothing
+	 * else until issue #41's modifier slice needed it after the run had started.
+	 *
+	 * **NOTHING IN THE GAME PASSES A REAL ONE YET.**
+	 * `UCataclysmGameInstance::BeginEmpireRun` does not take a tier, so every
+	 * run the game starts is tier 1 -- one active Cataclysm and one modifier a
+	 * dungeon. That is a gap in the join between the game and the empire layer
+	 * rather than in either of them, and it predates this field: it already
+	 * decided how many Cataclysms a run faced. Issue
+	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DifficultyTier = 1;
+
+	/**
+	 * Every dungeon modifier the table holds, or empty.
+	 *
+	 * **HANDED IN RATHER THAN LOADED, BECAUSE THIS MODULE MAY NOT READ THE
+	 * TABLE.** `DT_DungeonModifiers` has a row type declared in the `Cataclysm`
+	 * module and `CataclysmEmpire` must not depend on it.
+	 * `UCataclysmDungeonModifierTable::PoolFromTable` over there builds this list
+	 * and `UCataclysmGameInstance::BeginEmpireRun` hands it over. It is the same
+	 * arrangement `Begin` already uses for the lethality rung, and the reason
+	 * given there is the reason here: the caller that has both modules is the one
+	 * that joins them.
+	 *
+	 * EMPTY IS A REAL STATE AND EVERY HEADLESS TEST IS IN IT. A run whose pool
+	 * was never filled gives every dungeon no modifiers and a modifier score of
+	 * zero, which is exactly what the game did before this existed. Nothing
+	 * refuses to run without it.
+	 *
+	 * IT IS NOT FILTERED. `GiveModifiers` narrows it to the run's active
+	 * Cataclysms on every draw rather than storing a narrowed copy, so a run
+	 * whose active set changes -- which nothing does today -- cannot be left
+	 * drawing from a stale pool.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDungeonModifier> ModifierPool;
+
+	/**
+	 * The chance that decides which modifiers a dungeon carries, and nothing
+	 * else.
+	 *
+	 * SEPARATE FROM `Stream` FOR THE REASON `CataclysmStream` IS, and separate
+	 * from `CataclysmStream` so that a dungeon's Cataclysm and its modifiers are
+	 * not one sequence read twice. `UCataclysmRoster::ModifierSalt` is what
+	 * keeps the three apart.
+	 *
+	 * IT IS DRAWN ON ONCE PER MODIFIER AND NOT ONCE PER DUNGEON, so a tier 8
+	 * Sacrificial dungeon consumes sixteen numbers where a tier 1 plain one
+	 * consumes one. Nothing else reads this stream, so that costs nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FRandomStream ModifierStream;
+
+	/**
+	 * Gives one dungeon its modifiers and its modifier score.
+	 *
+	 * DOES NOTHING WHEN THE POOL IS EMPTY, which leaves the dungeon exactly as it
+	 * was rather than clearing what it had. A dungeon built by hand in a test
+	 * keeps whatever the test put on it.
+	 *
+	 * CALLED WHERE `Cataclysm` IS STAMPED AND FOR THE SAME REASON: the scheduler
+	 * does not know which Cataclysms this campaign faces or what tier it is
+	 * played at, and it must stay able to roll a wave against a bare map in a
+	 * test. The run knows both.
+	 */
+	void GiveModifiers(FCataclysmDungeon& Dungeon);
+
+	// ----------------------------------------------------------------------
 	// What the run has come to -- issue #1324 slice 5
 	// ----------------------------------------------------------------------
 
@@ -548,19 +628,22 @@ public:
 	 * @param Mode           how surges escalate. An open tuning question; see
 	 *                       `ECataclysmSurgeMode`.
 	 * @param LethalityRung  0 Standard, 1 Hardcore, 2 Heretic.
-	 * @param DifficultyTier which tier this run is played at, 1 to 8. **IT IS
-	 *                       HOW MANY CATACLYSMS ARE ACTIVE** and that is the
-	 *                       only thing this class reads it for. It is passed in
-	 *                       rather than read off the game mode because
-	 *                       `ACataclysmGameMode` is in the `Cataclysm` module
-	 *                       and this one must not depend on it; the caller that
-	 *                       has both is the one that joins them.
+	 * @param InDifficultyTier which tier this run is played at, 1 to 8. It
+	 *                       decides HOW MANY CATACLYSMS ARE ACTIVE and, since
+	 *                       issue #41's modifier slice, HOW MANY MODIFIERS a
+	 *                       dungeon carries. It is kept, in `DifficultyTier`,
+	 *                       because the second of those is asked long after this
+	 *                       returns. It is passed in rather than read off the
+	 *                       game mode because `ACataclysmGameMode` is in the
+	 *                       `Cataclysm` module and this one must not depend on
+	 *                       it; the caller that has both is the one that joins
+	 *                       them.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	void Begin(int32 InSeed = 0,
 			   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 			   int32 LethalityRung = 0,
-			   int32 DifficultyTier = 1);
+			   int32 InDifficultyTier = 1);
 
 	/** Which day the run is on. Counted from 0, before any day has passed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

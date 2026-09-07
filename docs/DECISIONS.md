@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 - Which dungeon modifiers a dungeon gets is an equal chance across the pool, with no repeats
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmDungeonModifier.h`
+(`UCataclysmDungeonModifierRules::Draw`). Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+### The ruling
+
+**The project owner SELECTED from three options rather than writing an answer, so
+there is no sentence of theirs to quote.** Every other entry in this file that
+quotes the owner marks the quotation as verbatim. This one records the choice
+instead, which is a truthful account of how the decision was made and is stronger
+than a quotation would be: the two rejected options are what stop the question
+being re-opened.
+
+**The question, as it was put to them:**
+
+> A dungeon gets one modifier per difficulty tier, drawn from the modifiers of
+> every currently active Cataclysm. How should it pick which ones?
+
+**The option they chose:**
+
+> **Equal chance, no repeats.** Every eligible modifier is equally likely; a
+> dungeon cannot get the same one twice. This is what the simulation already
+> does, and what the enemy-modifier code next door does -- you approved the
+> no-repeats part of that on 2026-09-05. Copying it is not inventing a
+> distribution.
+
+**The two they did not choose:**
+
+> **Dangerous ones are rarer.** The danger score also controls frequency,
+> inversely -- a danger-20 modifier appears about a quarter as often as a
+> danger-5 one. Makes a badly-modified dungeon a notable event rather than
+> routine. But it reuses the danger column for a second purpose, which your
+> 2026-09-05 ruling explicitly told us not to do.
+
+> **Dangerous ones are commoner at high tiers.** The draw is uniform at tier 1
+> and biases toward high-danger modifiers as the tier rises. Makes the difficulty
+> ladder steeper in a second way.
+
+### Why the question existed at all
+
+The owner's decision of 2026-09-05, "The dungeon modifier Weight column is a
+danger score, not a spawn frequency", ends by saying there was then no source for
+how often a modifier appears, and instructs whoever builds the draw:
+
+> **Do not invent a distribution and do not reuse the danger score for it.** If
+> slice 2 needs a selection rule, raise it and it will go to the owner as its own
+> question.
+
+Slice 2 needed one, so it was raised. Raising it was following that instruction.
+
+### What the ruling is consistent with, which is why it was answerable in one sentence
+
+Three things in the repository already drew this way, and none of them was a
+design decision until now:
+
+- **`sim/cataclysm_sim/engine.py`.** `Simulation._make_dungeon` picks with
+  `self.rng.sample(pool, k)`, a uniform draw without replacement. Issue #41's
+  description names that file as the reference implementation for this system.
+- **`UCataclysmEnemyModifiers::Draw`.** The same job for a creature's modifiers,
+  drawn uniformly from its own pool.
+- **The no-repeats half of that rule**, which the owner personally approved on
+  2026-09-05 on the reasoning that three copies of one aura read to a player as
+  one aura that hurts more.
+
+### What this ruling does NOT settle, and it will be asked
+
+**There is still no source for how often each dungeon modifier appears, and this
+does not create one.** Saying the frequency is uniform is a different thing from
+a designed distribution: no modifier is rarer or commoner than any other, at any
+tier, and nothing in the design says any of them should be. The 2026-09-05
+instruction not to invent one still stands.
+
+**Using the danger score to control frequency was explicitly on the table and was
+not chosen.** It is the second and third options above. So the `Weight` column
+still means exactly one thing -- how dangerous a modifier is -- and nothing reads
+it to decide how often one appears.
+
+### Where it is implemented
+
+`UCataclysmDungeonModifierRules::Draw` is the only place a modifier is chosen. It
+takes the pool and a random stream, and it never reads
+`FCataclysmDungeonModifier::Danger`.
+`Cataclysm.DungeonModifiers.ADrawIsDistinctAndComesOutOfThePool` is the test.
+
+**One property a future change must keep.** The draw takes its numbers from
+`UCataclysmEmpireRun::ModifierStream`, which is separate from the run's main
+stream and from its Cataclysm stream. A draw moved onto either of those would
+shift every later roll made on it, so the same seed would land different waves on
+different cities at different depths - and every fixed-seed test in the project
+would start failing for a reason that has nothing to do with what it measures.
+`Cataclysm.DungeonModifiers.TheDrawDoesNotShiftAnythingElseTheRunRolls` is what
+holds that.
+
+---
+
 ## 2026-09-07 — An enchantment is a positive and a negative together, weights are 1/4/16/64, and a tag says what an enchantment affects
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmItem.h`

@@ -2952,8 +2952,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireBegin(
 	TEXT("Cataclysm.EmpireBegin"),
 	TEXT("Start a fresh empire run: Cataclysm.EmpireBegin [seed] [static|"
-		 "accelerating|swelling|both] [0 Standard, 1 Hardcore, 2 Heretic]. "
-		 "THROWS AWAY THE RUN IN PROGRESS. The same seed gives the same empire."),
+		 "accelerating|swelling|both] [0 Standard, 1 Hardcore, 2 Heretic] "
+		 "[difficulty tier 1-8]. THROWS AWAY THE RUN IN PROGRESS. The same seed "
+		 "gives the same empire. The tier decides how many Cataclysms the run "
+		 "faces and how many modifiers each dungeon carries; it defaults to 1 "
+		 "because nothing else supplies one, which is issue #1444."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -2996,7 +2999,20 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireBegin(
 
 			const int32 Rung = Args.Num() >= 3 ? FCString::Atoi(*Args[2]) : 0;
 
-			UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(Seed, Mode, Rung);
+			// THE DIFFICULTY TIER, WHICH NOTHING ELSE SUPPLIES. It decides how
+			// many Cataclysms the run faces and how many modifiers each dungeon
+			// carries, and the game's own difficulty tier has never been
+			// connected to a run -- issue #1444. This argument is how the
+			// behaviour is reached until it is. Clamped to the eight tiers the
+			// design has, so a typo asks for a run that exists.
+			const int32 Tier = Args.Num() >= 4
+				? FMath::Clamp(FCString::Atoi(*Args[3]),
+							   ACataclysmGameMode::LowestDifficultyTier,
+							   ACataclysmGameMode::HighestDifficultyTier)
+				: 1;
+
+			UCataclysmEmpireRun* Run =
+				Instance->BeginEmpireRun(Seed, Mode, Rung, Tier);
 
 			Ar.Logf(TEXT("A fresh empire, seed %d. %s"), Seed, *Run->Describe());
 		}));
