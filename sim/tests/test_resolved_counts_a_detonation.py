@@ -170,49 +170,84 @@ class _Counted(Simulation):
             self.bites += 1
 
 
+#: How many seeds the search below may look through. 32 campaigns at
+#: `TuningConfig()` defaults is about a second.
+SEED_LIMIT = 32
+
+
+@pytest.fixture(scope="module")
+def campaigns() -> list[tuple[int, int, int, int]]:
+    """Every campaign in `range(SEED_LIMIT)`, as
+    `(seed, reported, bites, old_tally)`.
+
+    RUN ONCE AND SHARED, because three tests want the same campaigns and each
+    one costs about 30 ms.
+    """
+    out = []
+    for seed in range(SEED_LIMIT):
+        sim = _Counted(TuningConfig(), seed=seed)
+        result = sim.run(policies.triage)
+        out.append((seed, result.dungeons_resolved, sim.bites, sim.old_tally))
+    return out
+
+
 class TestOverWholeCampaigns:
     """The same claim, measured rather than constructed."""
 
-    @pytest.mark.parametrize("seed", range(4))
-    def test_every_counted_resolve_took_something_from_a_city(self, seed):
-        sim = _Counted(TuningConfig(), seed=seed)
-        result = sim.run(policies.triage)
+    def test_every_counted_resolve_took_something_from_a_city(self,
+                                                              campaigns):
+        for seed, reported, bites, _ in campaigns:
+            assert reported == bites, (
+                f"campaign {seed} reported {reported} resolves but only "
+                f"{bites} of them changed a city's defence or population. "
+                f"RunResult.dungeons_resolved says \"times a dungeon detonated "
+                f"undefeated\"; issue #1373")
 
-        assert result.dungeons_resolved == sim.bites, (
-            f"campaign {seed} reported {result.dungeons_resolved} resolves "
-            f"but only {sim.bites} of them changed a city's defence or "
-            f"population. RunResult.dungeons_resolved says \"times a dungeon "
-            f"detonated undefeated\"; issue #1373")
-
-    def test_a_campaign_records_some_resolves_at_all(self):
+    def test_a_campaign_records_some_resolves_at_all(self, campaigns):
         """The control on the class. `reported == bites` is satisfied by zero
         against zero, which is what a campaign where nothing ever detonated
         would report."""
-        sim = _Counted(TuningConfig(), seed=0)
-        result = sim.run(policies.triage)
+        assert sum(reported for _, reported, _, _ in campaigns) > 0, (
+            f"no dungeon detonated in {SEED_LIMIT} whole campaigns at "
+            "TuningConfig() defaults, so the equality above is comparing zero "
+            "against zero")
 
-        assert result.dungeons_resolved > 0, (
-            "no dungeon detonated in a whole campaign at TuningConfig() "
-            "defaults, so the equality above is comparing zero against zero")
-
-    def test_the_old_arithmetic_really_did_count_more(self):
+    def test_the_old_arithmetic_really_did_count_more(self, campaigns):
         """**THE CONTROL ON THE FIX ITSELF.** If the two tallies agreed there
         was nothing to fix and every test above would pass against the code as
-        it stood. Measured across four campaigns rather than one, because a
-        single campaign need not contain either free case.
-        """
-        gap = 0
-        for seed in range(4):
-            sim = _Counted(TuningConfig(), seed=seed)
-            result = sim.run(policies.triage)
-            assert sim.old_tally >= result.dungeons_resolved
-            gap += sim.old_tally - result.dungeons_resolved
+        it stood.
 
-        assert gap > 0, (
-            "counting every non-Quest timer gives the same total as counting "
-            "the ones that cost a city something, so no campaign here ever "
-            "reaches a Fallen City dungeon or a dungeon on a fallen city and "
-            "this file's negative cases are unreachable in play")
+        **THE SEEDS ARE SEARCHED FOR BY OUTCOME RATHER THAN FIXED, AND THAT IS
+        THE POINT.** An earlier version summed the gap over seeds 0 to 3. The
+        board-empty surge rule being built on issue #1406 changes which
+        campaigns those seeds produce; measured on that branch, none of the four
+        reached either free case and this control failed for a reason that had
+        nothing to do with what it guards. **The situation is no rarer** --
+        across `range(32)` at `TuningConfig()` defaults on the `triage` policy,
+        5 seeds show a positive gap without that rule and 6 with it, but not the
+        same seeds, and seeds 0 to 3 hold three of the first set and none of the
+        second. Fixed seeds had simply stopped covering it.
+
+        The search is bounded and the bound is asserted, so a change that made
+        the situation genuinely rare fails here rather than widening the search
+        until it finds one.
+        """
+        for seed, reported, _, old in campaigns:
+            assert old >= reported, (
+                f"campaign {seed}: counting every non-Quest timer gave {old}, "
+                f"fewer than the {reported} that cost a city something. The "
+                "second is a subset of the first and cannot exceed it")
+
+        with_a_gap = [seed for seed, reported, _, old in campaigns
+                      if old > reported]
+
+        assert with_a_gap, (
+            f"in {SEED_LIMIT} campaigns, counting every non-Quest timer gave "
+            "the same total as counting the ones that cost a city something. "
+            "So no campaign here reaches a Fallen City dungeon whose timer "
+            "runs out, or a dungeon standing on a city that has already "
+            "fallen, and this file's negative cases are unreachable in play. "
+            "Issue #1373")
 
 
 class TestTheFieldStillMeansWhatItSays:
