@@ -76,10 +76,19 @@ UNARMED_WEAPON = "Shield"
 #: solves the pipeline backwards and reports the weapon term must supply about
 #: 90; the two strongest legal pairs bracket it, an Axe with an Axe at 92 and an
 #: Axe with a Sword at 86, while no single weapon is near it. And reading it as a
-#: pair puts a Greatsword at 1.33 times the target, which is exactly the
-#: two-handed advantage the "A Two-Handed Weapon Is Worth Double, Per Implicit
-#: and Per Affix" section of `docs/Cataclysm_GDD_v2.md` already states. That
-#: 1.33 is itself stale; the section says 1.29 and issue #1381 has the rest.
+#: pair puts a Greatsword at 1.32 times the target, which is what the "The
+#: Damage Target" section of `docs/Cataclysm_GDD_v2.md` states.
+#:
+#: **1.32 IS NOT THE 1.29 THE TWO-HANDED SECTION STATES, AND NEITHER IS WRONG.**
+#: They are different quantities. This one is composed damage per hit divided by
+#: the 1,860 target. The 1.29 in "A Two-Handed Weapon Is Worth Double, Per
+#: Implicit and Per Affix" is the ratio of the weapon brackets alone, 310
+#: against 240, which `sim/analyse_two_handed_multiplier.py` solves as 1.292.
+#: This comment said 1.33 until issue #1381: that was the target ratio before
+#: issue #633 re-derived the flat damage affix, and it also claimed to be
+#: "exactly" the figure the two-handed section states, which it never was after
+#: that commit. `tools/tests/test_two_handed_advantage_matches_the_design.py`
+#: now holds each figure to its own source.
 #:
 #: THIS PAIR IS THE DESIGN DOCUMENT'S OWN EXAMPLE, under "It has to reach the
 #: implicits, not only the affixes": "Two one-handed weapons **sum** their
@@ -444,11 +453,17 @@ def gap_against_target(tier: int,
     One means the two agree. Above one is a loadout that overshoots the content.
 
     THE TARGET DESCRIBES THE DUAL WIELDER, stated by the project owner on
-    2026-08-15. So this reads about 1.0 for two one-handers and about 1.33 for a
-    two-hander, and that second figure is not an error: it is the two-handed
-    advantage the "A Two-Handed Weapon Is Worth Double, Per Implicit and Per
-    Affix" section of `docs/Cataclysm_GDD_v2.md` states. The section says 1.29
-    rather than 1.33 since issue #633; issue #1381 has that.
+    2026-08-15. So this reads about 1.0 for two one-handers and about 1.32 for a
+    two-hander, and that second figure is not an error: it is the figure the
+    "The Damage Target" section of `docs/Cataclysm_GDD_v2.md` states, and it is
+    the two-handed multiplier working rather than a loadout overshooting.
+
+    **DO NOT "CORRECT" THAT 1.32 TO THE 1.29 THE TWO-HANDED SECTION STATES.**
+    The two are different quantities and both are right: 1.32 divides composed
+    damage per hit by the 1,860 target, while 1.29 is the ratio of the weapon
+    brackets alone that `sim/analyse_two_handed_multiplier.py` solves. This
+    docstring said 1.33 until issue #1381, which was the target ratio before
+    issue #633 re-derived the flat damage affix.
 
     THE TARGET APPLIES NO MITIGATION and is wrong for it, which is issue #511 and
     is stated in `damage_target`'s own docstring. Comparing against it is still
@@ -581,7 +596,15 @@ if __name__ == "__main__":
     print()
     two = damage_per_hit(8, ("Greatsword",))
     dual = damage_per_hit(8, REFERENCE_LOADOUT)
-    print(f"  A Greatsword deals {two / dual:.2f}x what the reference pair deals "
-          f"per hit.")
-    print("  The design document states 1.33x, and that is the two-handed")
-    print("  multiplier working rather than a loadout beating the target.")
+    print(f"  A Greatsword deals {two / dual:.4f}x what the reference pair "
+          f"deals per hit, and "
+          f"{gap_against_target(8, ('Greatsword',)):.4f}x the target. Those "
+          f"differ because")
+    print("  the Axe and Sword land about 1% under the target themselves.")
+    print("  The design document states the second of those, 1.32x, under "
+          "\"The Damage")
+    print("  Target\", and it is the two-handed multiplier working rather "
+          "than a loadout")
+    print("  beating the target. The 1.29x the two-handed section states is "
+          "the ratio of")
+    print("  the weapon brackets alone -- a different quantity. Issue #1381.")
