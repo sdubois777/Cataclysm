@@ -143,6 +143,54 @@ class TestWhatACityFallingDoes:
                 == model.city_fall_advances_escalation)
 
 
+class TestWhatAnEmptyBoardDoes:
+    """**A DELIBERATE DIVERGENCE, RECORDED SO IT IS NOT MISTAKEN FOR DRIFT.**
+
+    The project owner ruled on 2026-09-07, verbatim: "Anytime there are no
+    longer dungeons on the board, a surge happens." Issue #1406 built that in
+    the model. The game does not have it yet and issue #1414 owns porting it.
+    """
+
+    def test_the_model_fires_a_surge_on_an_empty_board(self, model):
+        """The model's half of the rule, which is what #1414 has to copy."""
+        assert model.surge_on_empty_board is True, (
+            "TuningConfig.surge_on_empty_board is off. The owner ruled the "
+            "rule on 2026-09-07 and issue #1406 built it; turning it off is a "
+            "design change and needs their ruling, not a default")
+
+    def test_the_brake_is_the_gap_the_game_already_carries(self, surge_header,
+                                                           model):
+        """`surge_interval_min` is the ONLY brake on the trigger and the game
+        already holds the same number as `LeastIntervalDays`. So #1414 has the
+        constant it needs and does not get to pick a second one.
+
+        `TestTheCadence` already compares the two; this says which rule now
+        depends on them being equal.
+        """
+        assert (number(surge_header, "LeastIntervalDays")
+                == pytest.approx(model.surge_interval_min))
+
+    def test_the_game_has_no_board_empty_trigger_yet(self, surge_header):
+        """**THIS TEST EXISTS TO FAIL WHEN ISSUE #1414 LANDS**, which is the
+        point: at that moment the divergence stops being real and the records
+        of it become wrong.
+
+        Searched with the header's whitespace flattened, because every file
+        here is hard-wrapped and a raw search for a phrase reports a clean file
+        that is not.
+        """
+        flat = " ".join(surge_header.split())
+
+        assert "bSurgeOnEmptyBoard" not in flat, (
+            "UCataclysmSurgeScheduler now declares bSurgeOnEmptyBoard, so the "
+            "game has the board-empty surge trigger and this divergence is "
+            "over. Delete this test, assert instead that the flag matches "
+            "TuningConfig.surge_on_empty_board the way "
+            "test_a_fall_fires_a_surge_in_both does, close issue #1414, and "
+            "correct the docs/DECISIONS.md entry of 2026-09-07 that says the "
+            "game does not have it")
+
+
 class TestTheLethalityModes:
     def test_only_heretic_changes_the_wave(self):
         """The Unreal side has one constant, for Heretic, and answers 1.0 for

@@ -112,6 +112,32 @@ on what evidence at the time.
   A flat timer table cannot coexist with the rule above — a 40-floor dungeon
   on a 30-day timer is unsavable no matter how well the player plays.
 - **A city falling triggers a surge**, and optionally advances the escalation.
+- **An empty board triggers a surge too, however it emptied.** The project owner
+  ruled on 2026-09-07, verbatim, "Anytime there are no longer dungeons on the
+  board, a surge happens." A dungeon the player cleared and a dungeon that
+  detonated undefeated both count; a narrower "only a clear fires" version was
+  proposed and overruled. `TuningConfig.surge_on_empty_board` carries it and
+  issue #1406 has the reasoning.
+
+  **AT THESE DEFAULTS THE BROAD AND NARROW VERSIONS BEHAVE IDENTICALLY**, and
+  that is a fact about `dungeon_persists_after_resolve` rather than about either
+  of them. It is `True`, so a Basic dungeon that detonates undefeated *stays* on
+  the board with a refreshed timer and cannot empty it. Measured over 20
+  campaigns on the `triage` policy: 126 empty-board surges fired and all 126
+  followed the player clearing the last dungeon. The broad rule is still what is
+  built — it is what the owner ruled, and it stays correct if that setting is
+  ever turned off — but nothing on record may claim the narrow version allows a
+  stalling trade that today it does not.
+
+  **THE 120-DAY CLOCK STAYS AND WHICHEVER COMES FIRST WINS.** A trigger that
+  replaced the timer would give the weakest player *fewer* surges than today,
+  because a Quest dungeon and a Fallen City dungeon never leave the board on
+  their own — `_resolve` relocates the first and refreshes the second — so a
+  player who ignores one keeps the board permanently non-empty.
+
+  **`surge_interval_min` is the only brake on it**, and it is the same constant
+  that floors the gap under the escalating surge modes, so moving it moves both.
+  `sim/analyse_board_empty_surge.py` sweeps it.
 - **A surge never brings more than `surge_count_max` dungeons, and that
   ceiling applies to the BASE count and not only to escalation growth.** It is
   14, matching `MostDungeonsPerSurge` in `CataclysmSurge.h`. The project owner
