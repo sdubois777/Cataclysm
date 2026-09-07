@@ -214,18 +214,41 @@ were measured on `efddb49`, before `b4799a2` — the entry below this one — re
 describing that older preset. **The three non-Explorer worlds are unaffected**:
 `TREE_NONE` and `TREE_ARCHITECT_AS_DESIGNED` did not change.
 
-Relayed from the session that built `b4799a2` and **not verified here**: on that
-branch a fully invested Explorer is idle 1.48% of the campaign and an untreed
-player 7.10%, against the 12.3% and 16.7% measured above.
+### The figures on the walk-time entry are at a different surge size, and are not a before-and-after of these
 
-**If that holds, the argument for this rule shifts.** The case has been that the
-invested player is idle and bored; at 1.48% they are not, and the reason is the
-walk-time change rather than anything about surges. What the rule then rests on
-is the owner's ruling, that it costs the weakest player nothing because it never
-fires for them, and that it removes idle time for the untreed player and the
-cheap sub-build — the builds that still have idle time to remove. **The
-tier-4 finding in the next section survives either way**, because faster walking
-does not make an unsurvivable dungeon survivable.
+The entry below reports **1.48%** of the campaign with an empty board for a fully
+invested Explorer and **7.10%** for a player with no empire tree. Those are
+measured at **5 dungeons a surge**; everything above is at **4**, the shipped
+`TuningConfig` default. **They are not the same measurement at two points in
+time.**
+
+**The untreed figure is the clear case: the walk-time change cannot have moved it
+at all**, because a player with no empire tree has none of the nodes it changes.
+Measured here, 500 campaigns a row, no tree, tier 1, `triage`, static surges every
+120 days, this rule off:
+
+| surge size | days with an empty board | cities lost of 25 |
+| --: | --: | --: |
+| 4 | **16.65%** ±0.54 | 7.93 ±0.32 |
+| 5 | **6.88%** ±0.30 | 14.08 ±0.35 |
+
+6.88 ±0.30 against their 7.10 ±0.11 is a difference of 0.22 on a threshold of
+about 0.64 — **the same figure.** So the whole 16.7-to-7.10 gap is the surge size,
+and **16.7% is not superseded by 7.10%.**
+
+The Explorer figure carries **both** differences — a different surge size *and*
+the new preset — so it cannot be read against the 12.3% above either. **The
+controlled pair is inside that entry and belongs to it**: 7.27% under the flat
+subtraction against 1.48% after the change, both at 5 dungeons a surge. That
+isolates the walk-time change, and the effect is large.
+
+**The argument for this rule still shifts, on that controlled pair rather than on
+a cross-condition comparison.** The case has been that a fully invested Explorer
+is idle and bored; at 1.48% they are not. What this rule then rests on is the
+owner's ruling, that it costs the weakest player nothing because it never fires
+for them, and that it removes idle time for the untreed player and the cheap
+sub-build. **The tier-4 finding in the next section survives either way**,
+because faster walking does not make an unsurvivable dungeon survivable.
 
 ### A finding that is not about surges at all
 
