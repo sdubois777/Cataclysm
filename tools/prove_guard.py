@@ -40,6 +40,33 @@ moved underneath it did not test what it was asked to test**, and a failure from
 one of those is not evidence that a guard fires. `result.summary` says so in
 those words.
 
+**THAT DETECTION ONLY WORKS IN ONE DIRECTION (issue #1429).** It catches another
+process *writing* over the broken file. **It cannot catch one *reading* it**,
+because a reader changes nothing: the bytes still match, `disturbed` stays empty,
+and this reports a clean result. **The damage lands in the other process rather
+than in the proof**, which is why it is worth a paragraph rather than a flag.
+
+On 2026-09-07 an 84,000 campaign measurement was running in the same worktree,
+fanned out across worker subprocesses that re-execute their script and import
+`cataclysm_sim` every few seconds for an hour. A guard proof started in that
+window would have had a worker import a deliberately broken model, measure a
+different game, and print a number in the same shape as every other cell.
+**Nothing anywhere would have said so** -- not `disturbed`, not the worker's exit
+code, not the report.
+
+**So run the proof in a copy whenever anything else in this worktree imports the
+code you are about to break** -- a second test run, a long measurement, another
+session. `REPO_ROOT` above is derived from *this module's own file location*, so
+a copy breaks itself and leaves the live worktree alone. **That is why the recipe
+works, and it is the half to remember when your layout differs:**
+
+    git archive HEAD | tar -x -C <an empty directory>
+    cd <that directory> && python your_proof_script.py
+
+`git archive HEAD` gives the committed state, so commit first -- which a guard
+proof wants anyway. Afterwards the live worktree should be untouched: `git
+status` empty, and nothing to restore.
+
 WHAT THIS DOES NOT DO. It does not run the Unreal build. Issue #139 records the
 same class of problem for compiled C++ — restoring a source file with a
 preserved timestamp leaves the stale binary in place — and the fix there is to
