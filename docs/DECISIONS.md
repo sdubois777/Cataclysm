@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-06 — The Explorer preset is made to describe the Explorer branch
+
+**Affects:** `sim/cataclysm_sim/config.py` (`TREE_EXPLORER_AS_DESIGNED`),
+`sim/analyse_explorer_shape.py`, `sim/tests/test_explorer_shape.py`, and the new
+`tools/tests/test_the_explorer_preset_matches_the_tree.py`. Issue
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386).
+
+### What was wrong
+
+`TREE_EXPLORER_AS_DESIGNED` is the model's "Explorer branch at full investment".
+It removed **70 flat days** and added **no floors**. Read node by node out of
+`docs/Empire_Development_Tree_Final.json` — which `docs/README.md` rules is the
+tree, with `docs/Empire_Skill_Tree_Keystones.md` as commentary on it — both
+numbers were wrong and they were wrong in opposite directions.
+
+| | Was | Is | Why |
+| :-- | --: | --: | :-- |
+| Flat days removed | 70 | **60** | It counted `Opportunist`, whose own text applies only "in cities with no other active dungeons", and `The Delver`, which is one of three exclusive options at the Tier 1 milestone capstone and is in no branch |
+| Floors added | 0 | **+40** | It credited the branch with none of its five depth nodes |
+
+The 60 is `Temporal Mastery` 25, `Overclock` 20, `Pacing` 10 and `Fleet Footed`
+5, bought with 56 of the branch's 316 points. The +40 is `Architect of Greed`
++20, `Deep Boring` +10, `Infinite Depths` +20 and `Exclusionary Mapping` −10,
+with `Architectural Insight` at 0 because a pure Explorer build spends nothing in
+the Architect branch.
+
+### +50 and +40 are two builds, not two answers
+
+The project owner asked on
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386) which was right,
+because the issue's heading said +50 above a table that summed to +40.
+
+**Both are correct for what they describe.** +50 is the four floor-ADDING nodes
+with `Exclusionary Mapping` left untaken, which is the build
+`sim/analyse_explorer_shape.py` measures and states in its printed output. +40 is
+the NET of all five, which is what a maxed branch has. The preset takes +40,
+because "maxed" means every node.
+
+**The owner's warning that it matters by more than ten floors is correct**, and
+the difference is now measured rather than argued. Over the 8-to-40-floor
+ordinary Basic range at a flat 60:
+
+| Floors added | Distinct walk lengths | Share collapsed to a one-day walk |
+| --: | --: | --: |
+| +50 | 30 | 12% |
+| **+40** | **20** | **42%** |
+
+So a fully invested Explorer, modelled correctly, still puts **42% of ordinary
+Basic dungeons on a one-day walk**. That is the shape of the problem the owner's
+directive — "adjust the explorer tree so it doesn't just completely null the
+threat of the cataclysm" — is about, and it is worse than the +50 rows suggested.
+
+### One node is deliberately left out and the choice is not settled
+
+`Sovereign's Haste` (Explorer, 10 points) removes "-1 day from dungeon run time
+per point for each active Cataclysm type", capped at 30. At one active type that
+is a flat −10 days off every dungeon, as unconditional as the four that are
+counted. **It is not counted, and `Infinite Depths` — which also pays per active
+type — is.** That asymmetry follows
+[#1386](https://github.com/sdubois777/Cataclysm/issues/1386) rather than an
+argument, and is kept so the model agrees with the figures
+`sim/analyse_explorer_shape.py` was measured at.
+
+`TREE_ARCHITECT_AS_DESIGNED` makes the same unstated assumption:
+`Unyielding Defense` is −0.5% per point per active type and is folded in as
+`0.995^5`, which is one active type. Issue
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) carries the ruling.
+
+**Had `Sovereign's Haste` been counted at one active type, the constant would be
+70 again** — the number it already held, reached by two wrong terms rather than
+one missing right one. That coincidence is written down so the repair is not
+later read as having changed nothing.
+
+### This is a tier 1 figure and a single float cannot be more
+
+`Infinite Depths` pays per active Cataclysm type and
+`TuningConfig.active_cataclysm_count` ties that to the difficulty tier, so the
+branch adds **+40 floors at tier 1 and +180 at tier 8**. `EmpireTree` holds a
+float and `sim/experiments.py` runs every preset at every tier, so the preset
+understates the branch everywhere above tier 1. That is recorded in
+[#1397](https://github.com/sdubois777/Cataclysm/issues/1397) as the larger repair.
+
+### Every figure measured against this preset describes a different player
+
+**Not restated here, and no existing entry in this file has been rewritten.**
+Anything quoted against "Explorer maxed (as designed)" — including the preset
+rows in `sim/experiments.py`'s balance report and the figures in issue
+[#4](https://github.com/sdubois777/Cataclysm/issues/4) — was measured with 70
+days and no floors, which is a 56-point sub-build with its amount overstated by
+10 days. **`sim/experiments.py` has not been re-run.**
+
+The owner's balance target that makes this preset load-bearing is the
+entry below, dated the same day.
+
 ## 2026-09-06 — The game is balanced around a player fully invested in the Explorer tree
 
 **Affects:** every future tuning decision. Issue
