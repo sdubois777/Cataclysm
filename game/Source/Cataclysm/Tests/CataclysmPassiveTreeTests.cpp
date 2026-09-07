@@ -727,7 +727,7 @@ bool FCataclysmPassivePointsStayWhenTheWeaponChangesTest::RunTest(const FString&
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRealTablesLoadTest,
-	"Cataclysm.Passives.TheGeneratedTablesHoldTheFourTreesTheDesignHas",
+	"Cataclysm.Passives.TheGeneratedTablesHoldEveryTreeTheDesignHas",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmPassiveRealTablesLoadTest::RunTest(const FString&)
@@ -743,12 +743,25 @@ bool FCataclysmPassiveRealTablesLoadTest::RunTest(const FString&)
 		return false;
 	}
 
+	// SIX SINCE 2026-09-07, issue #950, which added the Ravager and the Ritualist.
+	// It was four, and the test was named for the number until then. THE NAME NO
+	// LONGER CARRIES THE COUNT, because it will rise again: issue #24 covers the
+	// other eighteen trees, and a name that has to be rewritten every time a tree
+	// lands is a name that will eventually disagree with the assertion under it.
+	//
+	// PINNED EXACTLY RATHER THAN AS A FLOOR. A tree that the generator silently
+	// dropped would leave a class with nothing to spend a point in, and the
+	// characters that start on it -- the Ravager is the class every new character
+	// starts on -- would have no tree of their own. That is worth a deliberate
+	// failure whenever the count moves.
 	const TArray<FString> Trees = UCataclysmPassiveTree::TreeNames(NodeTable);
-	TestEqual(TEXT("four class trees"), Trees.Num(), 4);
+	TestEqual(TEXT("every class tree the design has"), Trees.Num(), 6);
 	TestTrue(TEXT("Berserker"), Trees.Contains(TEXT("Berserker")));
 	TestTrue(TEXT("Bulwark"), Trees.Contains(TEXT("Bulwark")));
 	TestTrue(TEXT("Masochist"), Trees.Contains(TEXT("Masochist")));
 	TestTrue(TEXT("Saboteur"), Trees.Contains(TEXT("Saboteur")));
+	TestTrue(TEXT("Ravager"), Trees.Contains(TEXT("Ravager")));
+	TestTrue(TEXT("Ritualist"), Trees.Contains(TEXT("Ritualist")));
 
 	// EVERY TREE HOLDS FAR MORE THAN A CHARACTER CAN SPEND, which is the point
 	// the design makes: "The per-character point budget is 230, meaning players
