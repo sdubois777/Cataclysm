@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -206,15 +207,84 @@ class TestThePresetIsWhatTheGraphSays:
             f"branch's depth nodes add {derived:+g}. Read the preset through "
             "`floors_added` and not off `floor_delta`.")
 
-    def test_the_derived_totals_are_the_ones_the_comment_states(self, nodes):
-        """The comment above the constant writes both totals out node by node.
-
-        A reader checks the comment, not the arithmetic, so the comment has to
-        be the thing that is guarded. Issue #1288's incident was a comment that
-        went on stating a total after the node behind it stopped existing.
-        """
+    def test_the_derived_totals_are_what_the_graph_gives(self, nodes):
+        """The eight-tier answers, pinned as literals so that a change to them
+        has to be deliberate. The typed comment is checked separately below."""
         assert [days_removed(nodes, n) for n in (1, 2, 3, 8)] == [70, 80, 90, 90]
         assert [floors_added(nodes, n) for n in (1, 8)] == [40, 180]
+
+    def test_the_comment_above_the_constant_states_the_same_totals(self, nodes):
+        """**THE TYPED COPY, WHICH IS NOT THE SAME THING AS THE COMPUTED ONE.**
+
+        A reader checks the comment, not the arithmetic, and the comment is
+        hand-typed while everything else here is derived from the graph. That
+        asymmetry is exactly how four Siege figures sat stale under passing
+        tests: the checks read what a script PRINTS, where the sentence is built
+        from a function and cannot go stale, while the same worked example typed
+        into a docstring went unread by anything.
+
+        **AN EARLIER VERSION OF THIS TEST HAD THIS NAME AND DID NOT DO IT.** It
+        asserted the derivation against literals and never opened `config.py`,
+        while its own docstring said "the comment has to be the thing that is
+        guarded". `CLAUDE.md` warns that a test whose name asserts something
+        nobody verified is worse than a failure. That was one, and it was
+        written in the same change that repaired two others of the same shape.
+
+        THE COMMENT IS FLATTENED FIRST, because it is hard-wrapped: a phrase
+        longer than one line is not present in the raw text, and a search for
+        one would report a clean file that is not clean.
+        """
+        source = (REPO_ROOT / "sim" / "cataclysm_sim" / "config.py").read_text(
+            encoding="utf-8")
+        start = source.index("TREE_EXPLORER_AS_DESIGNED = EmpireTree(")
+        block = source[:start].rsplit("\n\n", 1)[-1].replace("#", " ")
+        comment = re.sub(r"\s+", " ", block)
+
+        # THE POSITIVE CONTROL. A phrase known to be in that block has to be
+        # found, or a clean result below would mean the extraction is broken
+        # rather than that the comment is right.
+        assert "Sovereign's Haste" in comment, (
+            "the comment block above TREE_EXPLORER_AS_DESIGNED was not found, "
+            "so every check below would be searching an empty string")
+
+        days = [days_removed(nodes, n) for n in (1, 2, 3)]
+        floors = [floors_added(nodes, n) for n in (1, 8)]
+
+        # **EVERY OCCURRENCE, NOT THE FIRST, AND THAT DISTINCTION IS NOT
+        # THEORETICAL.** The comment states the floor totals in two separate
+        # paragraphs. A first version of this check asked whether the right
+        # sentence appeared somewhere, and its own guard proof caught it: a
+        # break that changed one of the two copies to +160 left the other
+        # intact and the test passed. So each claim is found by pattern and
+        # every match has to agree.
+        CLAIMS = (
+            (r"REMOVES (\d+) DAYS AT DIFFICULTY TIER 1",
+             (f"{days[0]:g}",),
+             "how many days the preset removes at difficulty tier 1"),
+            (r"(\d+) at tier 1, (\d+) at tier 2 and (\d+) from tier 3 upwards",
+             (f"{days[0]:g}", f"{days[1]:g}", f"{days[2]:g}"),
+             "the days removed at tiers 1, 2 and 3"),
+            (r"\+(\d+) floors at tier 1 and \+(\d+) at tier 8",
+             (f"{floors[0]:g}", f"{floors[1]:g}"),
+             "the floors added at tiers 1 and 8"),
+        )
+
+        for pattern, expected, what in CLAIMS:
+            found = re.findall(pattern, comment)
+            found = [hit if isinstance(hit, tuple) else (hit,) for hit in found]
+
+            assert found, (
+                f"the comment above TREE_EXPLORER_AS_DESIGNED no longer states "
+                f"{what}. It is the only copy of these numbers a reader sees, "
+                "and it is hand-typed while everything else here is derived. If "
+                "the sentence was reworded, follow it here rather than deleting "
+                "the check. Issues #1386 and #1397.")
+
+            wrong = [hit for hit in found if hit != expected]
+            assert not wrong, (
+                f"the comment states {what} as {wrong} in {len(wrong)} of "
+                f"{len(found)} places, and the graph gives {expected}. A single "
+                "stale copy is the whole failure this checks for.")
 
     def test_the_per_type_part_is_actually_per_type(self, nodes, preset):
         """**THE CONTROL FOR EVERYTHING ABOVE.**

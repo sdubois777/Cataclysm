@@ -278,10 +278,22 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #:
 #: DEFINED HERE RATHER THAN IN `config.py` because it is a question this file
 #: asks, not a preset the model needs, and this file changes no constant.
+#: **THE PER-TYPE FIELDS ARE ZEROED TOO AND THAT IS NOT TIDINESS.** Issue
+#: [#1397] gave `TREE_EXPLORER_AS_DESIGNED` a per-active-Cataclysm-type half for
+#: its days and its floors, and `replace` copies whatever it is not told to
+#: change. Left alone, this preset would have quietly gained `Sovereign's Haste`
+#: -- a fifth day-removal node worth ten more points, so no longer 56 -- and
+#: `Infinite Depths`, which would have put +20 floors on it at tier 1 and +180 at
+#: tier 8, when the whole point of it is that it has none. **It is the four
+#: unconditional nodes and nothing else, at every tier**, which is what makes it
+#: comparable across the worlds below.
 TREE_EXPLORER_DAY_NODES_ONLY = replace(
     TREE_EXPLORER_AS_DESIGNED,
     name="Explorer day nodes only (#1386)",
     floor_delta=0.0,
+    floor_delta_per_type=0.0,
+    run_days_flat_per_type=0.0,
+    run_days_flat_per_type_cap=0.0,
 )
 
 WORLDS = (
@@ -556,9 +568,17 @@ def walk_day_table(tree) -> dict:
         # THE TREE'S FLOOR DELTA IS PART OF THE DEPTH, and `_make_dungeon`
         # applies it to the spec range before anything asks how long the walk
         # is. A table that read the bare spec would understate the Explorer
-        # branch's real dungeons by its fifty floors and would make the walk
-        # look shorter than the campaigns below actually ran. Issue [#1386].
-        lo, hi = (max(1, int(round(f + tree.floor_delta))) for f in spec.floors)
+        # branch's real dungeons and would make the walk look shorter than the
+        # campaigns below actually ran. Issue [#1386].
+        #
+        # **THROUGH `floors_added` AND NOT OFF `floor_delta`.** Since issue
+        # #1397 that field is only the tier-INDEPENDENT half: the Explorer
+        # branch's `Infinite Depths` pays +2 floors per point per ACTIVE
+        # CATACLYSM TYPE, so the branch adds +40 floors at tier 1 and +180 at
+        # tier 8. Reading the bare field would put this table 20 floors short
+        # at the tier 4 this file runs at.
+        added = tree.floors_added(cfg.active_cataclysm_count())
+        lo, hi = (max(1, int(round(f + added))) for f in spec.floors)
         out[(dtype, tier)] = {
             "floors": (lo, hi),
             "walk": (sim.run_days_for(lo), sim.run_days_for(hi)),
@@ -592,11 +612,19 @@ def section_1_walk_days() -> dict:
     print("  the model and the game implement. Which set is wanted is a design "
           "question.")
 
+    # AT THIS FILE'S OWN TIER, WHICH IS NOT 1. `Sovereign's Haste` pays per
+    # active Cataclysm type, so "flat days removed" is a per-tier figure since
+    # issue #1397, and a label without the tier is wrong at seven tiers out of
+    # eight. Read off `base_config` rather than written down, so it follows the
+    # tier this file runs at if that ever moves.
+    active = base_config().active_cataclysm_count()
+
     tables = {}
     for tree in (TREE_NONE, TREE_EXPLORER_AS_DESIGNED,
                  TREE_EXPLORER_DAY_NODES_ONLY):
         tables[tree.name] = walk_day_table(tree)
-        print(f"\n  {tree.name}  (flat days removed: {tree.run_days_flat:g})")
+        print(f"\n  {tree.name}  (flat days removed at {active} active "
+              f"Cataclysm types: {tree.days_removed(active):g})")
         print(f"    {'kind':<12}{'tier':<11}{'floors':>10}{'walk days':>12}"
               f"{'as a Cow Level':>17}")
         for (dtype, tier), cell in sorted(
@@ -937,6 +965,12 @@ def section_5_noise_floor(measured: dict[str, dict]) -> dict:
 
 def settings_lines() -> list[str]:
     cfg = base_config()
+
+    #: THE TIER THIS FILE RUNS AT, as a number of active Cataclysm types. Two
+    #: of the figures below vary with it since issue #1397, so quoting either
+    #: without it says nothing.
+    ACTIVE = cfg.active_cataclysm_count()
+
     return [
         "  policy                          triage",
         f"  surge mode                      {cfg.surge_mode.value}",
@@ -946,14 +980,22 @@ def settings_lines() -> list[str]:
         f"  days per craft                  {cfg.craft_days}",
         f"  tier width gained per craft     {cfg.craft_power_gain_frac:.2f}",
         f"  lethality mode                  {cfg.lethality_mode.value}",
-        f"  Explorer whole branch           run_days_flat="
-        f"{TREE_EXPLORER_AS_DESIGNED.run_days_flat:g}, floors "
-        f"{TREE_EXPLORER_AS_DESIGNED.floor_delta:+g} -- what config.py ships "
-        "since #1399",
-        f"  Explorer day nodes only         run_days_flat="
-        f"{TREE_EXPLORER_DAY_NODES_ONLY.run_days_flat:g}, floors "
-        f"{TREE_EXPLORER_DAY_NODES_ONLY.floor_delta:+g} -- the 56-point "
-        "sub-build, issue #1386",
+        # THE WHOLE BRANCH IS A PER-TIER FIGURE SINCE ISSUE #1397 and this
+        # file measures at tiers 1 and 4, so both are stated. Quoting one
+        # would describe half the grid.
+        f"  Explorer whole branch           days removed="
+        f"{TREE_EXPLORER_AS_DESIGNED.days_removed(1):g} at tier 1 and "
+        f"{TREE_EXPLORER_AS_DESIGNED.days_removed(4):g} at tier 4, floors "
+        f"{TREE_EXPLORER_AS_DESIGNED.floors_added(1):+g} and "
+        f"{TREE_EXPLORER_AS_DESIGNED.floors_added(4):+g} -- what config.py "
+        "ships since #1399, per tier since #1397",
+        # THE SUB-BUILD IS THE SAME AT EVERY TIER, deliberately: it holds none
+        # of the branch's per-active-type nodes, which is what makes it
+        # comparable between the tier 1 and tier 4 worlds.
+        f"  Explorer day nodes only         days removed="
+        f"{TREE_EXPLORER_DAY_NODES_ONLY.days_removed(ACTIVE):g}, floors "
+        f"{TREE_EXPLORER_DAY_NODES_ONLY.floors_added(ACTIVE):+g} at every "
+        "tier -- the 56-point sub-build, issue #1386",
         f"  surge_count_max                 raised to the knob (ships at "
         f"{SHIPPED_COUNT_CAP})",
         f"  campaigns per block             {TRIALS}",

@@ -168,6 +168,8 @@ reopening the recommendation was searched for and not found. Issue
 [#1348](https://github.com/sdubois777/Cataclysm/issues/1348) has the full comment. **Nothing in it overturns the owner's
 ruling; it supports it.**
 
+---
+
 ## 2026-09-06 — The empire tree presets hold per-tier values
 
 **Affects:** `sim/cataclysm_sim/config.py` (`EmpireTree`,
@@ -274,6 +276,8 @@ rather than after it.
 differs between tier 1 and tier 8 — is unblocked by this and is not re-measured
 here. It is already marked stale for an earlier and separate reason, that the
 comparison was made when both tiers ran against one fixed Cataclysm.
+
+---
 
 ## 2026-09-06 — The Explorer preset is made to describe the Explorer branch
 

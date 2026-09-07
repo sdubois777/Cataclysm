@@ -2919,8 +2919,20 @@ def test_the_settings_block_states_every_condition(cadence_run):
                      f"campaigns per block             {ns['TRIALS']}"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}")
-    for expected in ("Explorer whole branch           run_days_flat=60",
-                     "Explorer day nodes only         run_days_flat=60"):
+    # **THE WHOLE-BRANCH LABEL IS PER TIER SINCE ISSUE #1397** and this file
+    # measures at tiers 1 and 4, so it states both. It used to read
+    # `run_days_flat=60`, which was the tier-independent half and was wrong at
+    # every tier: the branch removes 70 days at tier 1 and 90 at tier 4.
+    #
+    # **THE SUB-BUILD'S 60 IS UNCHANGED AND THAT IS THE POINT OF IT.** It holds
+    # none of the branch's per-active-type nodes, so it is the same player at
+    # every tier and the two tier worlds are comparable. Issue #1397 briefly
+    # gave it +20 floors and a fifth day node by inheritance; see its
+    # definition in `analyse_surge_cadence.py`.
+    for expected in ("Explorer whole branch           days removed=70 at "
+                     "tier 1 and 90 at tier 4",
+                     "Explorer day nodes only         days removed=60, "
+                     "floors +0 at every tier"):
         assert expected in printed, (
             f"the settings block no longer states: {expected}. Issue #1386 "
             "found that the shipped preset is one sub-build of the branch "
