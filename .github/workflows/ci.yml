@@ -57,8 +57,14 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
+      # -rs makes the run report WHY each test skipped. Without it the log
+      # gives a count and no reasons, because addopts in pyproject.toml is
+      # -q. On 2026-09-07 three sessions spent real time reconstructing why
+      # the runner skips 17 tests where a development machine skips 6; the
+      # answer was this flag. Seventeen extra lines is cheaper than having
+      # that conversation again. Issues #1417 and #1418.
       - name: Tests
-        run: python -m pytest
+        run: python -m pytest -rs
 
       # game/Config/Tags/CataclysmTags.ini is generated from the Tags sheet of
       # the design workbook. --check fails if the sheet was edited without
