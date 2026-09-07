@@ -26,13 +26,21 @@ THE THREE AXES, WHICH ARE NOT INTERCHANGEABLE.
    folding in issue #1351.
 
 **AXIS 3 IS NOT A RESTATEMENT OF AXIS 2, AND THE ARITHMETIC IS WHY.** A Siege's
-damage on the day it has stood for `k` days is `1% of maximum + 10k`, so the
+damage on the day it has stood for `k` days is `1% of maximum + 2.5k`, so the
 total it has dealt after `n` days is quadratic in `n` and the growth term
 dominates almost immediately. Time-to-fall therefore moves as roughly the INVERSE
 SQUARE ROOT of the damage scale, not its inverse: halving every Siege constant
-takes an Outpost from 14 days to 20, and it takes a QUARTER of today's damage to
-reach 28. `days_to_fall` computes this exactly and `axis_3_table` prints it, so
+takes an Outpost from 25 days to 37, and it takes a QUARTER of today's damage to
+reach 54. `days_to_fall` computes this exactly and `axis_3_table` prints it, so
 the claim is checked against the model rather than argued.
+
+**THOSE FOUR NUMBERS SAID 10k, 14, 20 AND 28 UNTIL 2026-09-06 AND THE FILE
+PRINTED 25 AND 37 UNDERNEATH THEM.** They described a growth of 10 points a day,
+which the owner cut to 2.5 on issue #1349; the constant moved and the prose did
+not. Issue #1375.
+`sim/tests/test_the_siege_prose_in_the_dose_script_is_true.py` now reads every
+one of them back out of this file and recomputes it, so the pair cannot part
+company again.
 
 That is why this file sweeps the growth term ON ITS OWN as well. Growth is the
 half of a Siege that decides how fast it kills; the 1% share is the half that
@@ -216,10 +224,16 @@ def days_to_fall(max_defense: float, scale: float = 1.0,
 
     THE SAME ARITHMETIC `Simulation._apply_siege_damage` RUNS, in closed form:
     the flat share of the maximum every day, plus `growth` points for each day
-    the Siege has already stood. At today's settings this returns 14, 23, 34 and
-    47 for the four city sizes, which is what
+    the Siege has already stood. At today's settings this returns 25, 39, 55 and
+    70 for the four city sizes, which is what
     `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` states and what
     `sim/tests/test_siege_subtype.py` asserts against the day loop itself.
+
+    THIS SAID 14, 23, 34 AND 47 UNTIL 2026-09-06, which is what the same
+    arithmetic gives at a growth of 10 points a day -- the value the owner cut to
+    2.5 on issue #1349. Pass `growth=10.0` and the old four come back, which is
+    how `test_the_siege_prose_in_the_dose_script_is_true.py` proves the
+    derivation itself did not change. Issue #1375.
 
     Returns 0 when the Siege deals no damage at all, meaning it never falls.
     """
@@ -531,8 +545,14 @@ def main() -> None:
             print(row(label, name, candidate_rows[label][name]))
     candidate_rows["today"] = scale_rows[1.0]
     for name, _ in BLOCKS:
+        # **READ OFF THE CONFIGURATION, NOT WRITTEN OUT.** This label said
+        # "weight 15, growth 10" while the row underneath it was produced at
+        # 7.5 and 2.5, so a reader of the OUTPUT -- not just of the source --
+        # was told the wrong constants. It is the worst of the four stale
+        # figures issue #1375 found for exactly that reason.
         print(row("today", name, scale_rows[1.0][name])
-              + ("   <- weight 15, growth 10" if name == "A" else ""))
+              + (f"   <- weight {SIEGE_WEIGHT_TODAY:g}, "
+                 f"growth {GROWTH_TODAY:g}" if name == "A" else ""))
 
     table = axis_3_table()
     print(f"\n{'=' * 108}")
