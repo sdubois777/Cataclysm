@@ -1214,29 +1214,50 @@ won state; slice 6 owns those. `ProgressLine` deliberately prints no
 denominator, because "3 of 8" would be a number this build invented, and a test
 fails if one appears.
 
-### Reading 2 — the game counts a detonation and the model counts something looser
+### Reading 2 — the game counts a detonation and the model counted something looser
 
-`Simulation._resolve` raises `self.resolved` **above** its own guard, so a
-Fallen City dungeon's timer running out is counted there while taking nothing
+**RESOLVED ON 2026-09-07 BY [#1373](https://github.com/sdubois777/Cataclysm/issues/1373).
+The divergence this reading records no longer exists**; what follows is what was
+found on 2026-09-06 and what was done about it, kept because the measurement is
+the evidence for the change.
+
+`Simulation._resolve` raised `self.resolved` **above** its own guard, so a
+Fallen City dungeon's timer running out was counted there while taking nothing
 from anybody. Measured over 30 campaigns at `TuningConfig()` defaults with the
 `triage` policy: **4,051 counted, 4,036 of which actually changed a city's
 defence or population.** Two of the fifteen were Fallen City dungeons and
 thirteen were ordinary dungeons standing on a city that had already fallen.
 
 `RunResult.dungeons_resolved` documents itself as "times a dungeon detonated
-undefeated", which it therefore is not — and it stopped being that the moment
+undefeated", which it therefore was not — and it stopped being that the moment
 slice 2 gave the model a kind that does not detonate.
 
 **The arithmetic was not copied.** `DungeonsDetonated` is raised where
 `UCataclysmEmpireMap::Damage` is called, below every return that lets a timer
 run out for free, so it answers the question
 `FCataclysmDayReport::Resolved` cannot: how often the empire was actually hurt.
-The model's side is [#1373](https://github.com/sdubois777/Cataclysm/issues/1373)
-and it was not folded in here, because moving that line changes a figure
-`sim/experiments.py` reports and belongs in a change that re-measures.
-`test_the_game_counts_a_detonation_and_the_model_counts_something_else` in
-`tools/tests/test_surge_port.py` exists **to fail when #1373 lands**, and its
-message names this entry as one of the three places that then need correcting.
+The model's side was left for #1373 because moving that line moves a published
+figure and belonged in a change that re-measures.
+
+**What #1373 did.** `self.resolved += 1` moved below the
+`if not d.resolves or city.fallen:` guard, so the model counts the bite and not
+the timer, exactly as the game already did. Re-measured on `f687744` at the
+same 30 campaigns, `TuningConfig()` defaults, `triage` policy — the totals moved
+because `development` did, not because the instrument changed:
+
+| | before the move | after |
+| :-- | --: | --: |
+| counted as resolved | 3,665 | 3,655 |
+| of those, took something from a city | 3,655 | 3,655 |
+| counted while taking nothing | **10** | **0** |
+
+`Dungeon.times_resolved` deliberately stayed above the guard. It is per dungeon
+and counts timers, which is a different question and the one it is named for.
+`test_the_game_counts_a_detonation_and_the_model_counts_something_else` was
+replaced by `test_both_halves_count_a_detonation_where_the_city_pays` in
+`tools/tests/test_surge_port.py`, which asserts the line's position in both
+halves, and by `sim/tests/test_resolved_counts_a_detonation.py`, which asserts
+the number the model actually reports.
 
 ### Still open, and it belongs to the owner
 
