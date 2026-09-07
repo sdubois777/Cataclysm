@@ -163,10 +163,18 @@ class TestTheTriggerFires:
             "clearing the last dungeon did not fire a surge")
 
     def test_a_dungeon_detonating_undefeated_fires_it_too(self):
-        """The other way, and **the half the owner overruled a narrower rule to
-        keep.** A clear-only rule would let a player buy a quiet stretch by
-        letting the last dungeon detonate instead of clearing it. Under this
-        rule that trade does not exist.
+        """The other way a board can empty, and the half the owner overruled a
+        narrower rule to keep.
+
+        **THIS IS NOT THE SHIPPED SETTING AND THE TEST SAYS SO IN ITS FIRST
+        LINE.** `dungeon_persists_after_resolve` defaults to True, so a Basic
+        dungeon that detonates undefeated normally STAYS on the board with a
+        refreshed timer and a detonation cannot empty it; see
+        `test_a_detonation_does_not_empty_the_board_at_the_shipped_setting`
+        below, and `TuningConfig.surge_on_empty_board` for what that means for
+        the reasoning. What this asserts is that the rule is agnostic to the
+        cause -- which is what the owner ruled, and what keeps it correct if
+        that setting is ever turned off.
         """
         cfg = quiet(dungeon_persists_after_resolve=False)
         sim = parked(cfg)
@@ -181,6 +189,39 @@ class TestTheTriggerFires:
             "a dungeon detonating undefeated emptied the board and no surge "
             "followed. The owner overruled the narrower \"only a clear fires\" "
             "rule on 2026-09-07; issue #1406")
+
+
+    def test_a_detonation_does_not_empty_the_board_at_the_shipped_setting(self):
+        """**WHAT THE TWO RULES ACTUALLY DIFFER BY TODAY, WHICH IS NOTHING.**
+
+        `dungeon_persists_after_resolve` ships True, so a Basic dungeon that
+        detonates undefeated stays with a refreshed timer. A detonation
+        therefore cannot empty the board at the shipped settings, and the broad
+        rule and the narrower "only a clear fires" rule behave identically.
+
+        The broad rule is still the one built: it is what the owner ruled, and
+        it stays correct if that setting is ever turned off. But the reasoning
+        recorded beside it must not claim a stalling exploit that today does not
+        exist, and this test is what would fail if the claim became false in the
+        other direction -- a setting change making detonation remove a dungeon
+        while the comments still said it did not.
+        """
+        cfg = quiet()
+        assert cfg.dungeon_persists_after_resolve is True
+
+        sim = parked(cfg)
+        d = sim._make_dungeon(DungeonType.BASIC, a_standing_city(sim))
+        d.resolve_in = 1.0
+
+        sim.step(do_nothing)
+
+        assert d.did in sim.dungeons, (
+            "a dungeon detonating undefeated left the board at the shipped "
+            "settings. dungeon_persists_after_resolve is True, so it should "
+            "stay with a refreshed timer -- and the comments on "
+            "TuningConfig.surge_on_empty_board say the broad and narrow "
+            "versions of the rule are indistinguishable because of it")
+        assert sim.surges_from_empty_board == 0
 
 
 class TestTheMinimumGapBrakes:
@@ -389,6 +430,50 @@ class TestOverWholeCampaigns:
             "no board emptied in four whole campaigns at TuningConfig() "
             "defaults on the triage policy, so nothing above is measuring the "
             "rule")
+
+    def test_at_the_shipped_settings_a_clear_is_what_empties_the_board(self):
+        """Measured rather than reasoned, because the reasoning recorded beside
+        this rule depends on it.
+
+        `dungeon_persists_after_resolve` ships True, so the ways a board can
+        empty are: the player clears the last dungeon, or a Cataclysm that
+        erases cities takes the last host away without leaving a Fallen City
+        dungeon behind. Over 20 campaigns on the `triage` policy every one of
+        126 empty-board surges was a clear; this checks the same thing over the
+        four campaigns the fast suite can afford.
+
+        IF THIS EVER STOPS BEING TRUE that is a finding and not a failure --
+        but the comment on `TuningConfig.surge_on_empty_board` and the
+        `docs/DECISIONS.md` entry of 2026-09-07 both state it, and they would
+        then be wrong.
+        """
+        cleared_it = 0
+        fired = 0
+
+        class Watched(Simulation):
+            def _finish_current(inner) -> None:      # noqa: N805
+                super()._finish_current()
+                inner._after_a_clear = not inner.dungeons
+
+            def _maybe_surge_on_empty_board(inner) -> None:   # noqa: N805
+                nonlocal cleared_it, fired
+                before = inner.surges_from_empty_board
+                super()._maybe_surge_on_empty_board()
+                if inner.surges_from_empty_board > before:
+                    fired += 1
+                    cleared_it += 1 if getattr(
+                        inner, "_after_a_clear", False) else 0
+
+        cfg = TuningConfig()
+        for seed in range(4):
+            Watched(cfg, seed=seed).run(policies.triage)
+
+        assert fired > 0, "no empty-board surge fired, so this measures nothing"
+        assert cleared_it == fired, (
+            f"{fired - cleared_it} of {fired} empty-board surges followed "
+            "something other than the player clearing the last dungeon. At the "
+            "shipped settings a detonated dungeon stays on the board, so a "
+            "clear should be the only thing that empties it")
 
     @pytest.mark.parametrize("seed", range(4))
     def test_the_flag_gates_the_whole_trigger(self, seed):
