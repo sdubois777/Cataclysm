@@ -1439,9 +1439,9 @@ bool UCataclysmDropRoll::RollEnchantments(
 	// ASKED WITHOUT DRAWING. DrawEnchantmentInBand would answer this too, but it
 	// takes a number off the stream to do it, and a test that moves the stream
 	// changes what the item rolls next.
-	auto HasUntaken = [](const TArray<FName>& Rows, const TSet<FName>& Taken)
+	auto HasUntaken = [](const TArray<FName>& CandidateRows, const TSet<FName>& Taken)
 	{
-		for (const FName& Row : Rows)
+		for (const FName& Row : CandidateRows)
 		{
 			if (!Taken.Contains(Row))
 			{
