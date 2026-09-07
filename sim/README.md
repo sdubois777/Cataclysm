@@ -112,6 +112,22 @@ on what evidence at the time.
   A flat timer table cannot coexist with the rule above — a 40-floor dungeon
   on a 30-day timer is unsavable no matter how well the player plays.
 - **A city falling triggers a surge**, and optionally advances the escalation.
+- **An empty board triggers a surge too, however it emptied.** The project owner
+  ruled on 2026-09-07, verbatim, "Anytime there are no longer dungeons on the
+  board, a surge happens." A dungeon the player cleared and a dungeon that
+  detonated undefeated both count; a narrower "only a clear fires" version was
+  proposed and overruled. `TuningConfig.surge_on_empty_board` carries it and
+  issue #1406 has the reasoning.
+
+  **THE 120-DAY CLOCK STAYS AND WHICHEVER COMES FIRST WINS.** A trigger that
+  replaced the timer would give the weakest player *fewer* surges than today,
+  because a Quest dungeon and a Fallen City dungeon never leave the board on
+  their own — `_resolve` relocates the first and refreshes the second — so a
+  player who ignores one keeps the board permanently non-empty.
+
+  **`surge_interval_min` is the only brake on it**, and it is the same constant
+  that floors the gap under the escalating surge modes, so moving it moves both.
+  `sim/analyse_board_empty_surge.py` sweeps it.
 - **A surge never brings more than `surge_count_max` dungeons, and that
   ceiling applies to the BASE count and not only to escalation growth.** It is
   14, matching `MostDungeonsPerSurge` in `CataclysmSurge.h`. The project owner

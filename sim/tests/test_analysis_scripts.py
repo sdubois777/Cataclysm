@@ -119,7 +119,8 @@ def penetration_run():
                                   "analyse_quest_move_chance.py",
                                   "analyse_explorer_shape.py",
                                   "analyse_explorer_rate.py",
-                                  "analyse_surge_cadence.py"])
+                                  "analyse_surge_cadence.py",
+                                  "analyse_board_empty_surge.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -2984,3 +2985,290 @@ def test_the_cadence_script_does_not_recommend_a_constant(cadence_run):
     printed, _ = cadence_run
     assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
     assert "no constant changes" in printed.lower()
+
+
+# --------------------------------------------------------------------------
+# analyse_board_empty_surge.py -- issue #1406
+#
+# WHAT THIS SECTION IS FOR. The script measures what the board-empty surge
+# trigger costs and sweeps the one constant that brakes it. Four things about
+# it can go wrong quietly.
+#
+# 1. THE SETTINGS CAN DRIFT FROM analyse_surge_cadence.py. Its `base_config` is
+#    a COPY of that file's, because that file calls `main()` at module level
+#    and importing it would run a fifty-minute report. A copy that drifts makes
+#    two sets of figures that read as comparable and are not.
+# 2. THE DAY LEDGER CAN STOP ADDING UP, exactly as it can in the cadence
+#    script, and for the same reason: `_Ledger` classifies every day by reading
+#    three flags at the top of `Simulation.step`.
+# 3. THE CONTROL ROW CAN STOP BEING A CONTROL. Every conclusion is a difference
+#    between the rule off and the rule on. If the "off" cells stopped actually
+#    turning the trigger off, the whole report would compare a thing against
+#    itself and print zeros.
+# 4. THE FAN-OUT CAN STOP MATCHING, which for a report measured across worker
+#    processes means the only run anybody quotes is the wrong one.
+#
+# The script's own campaign shares are NOT checked here. At its default sample
+# they are one campaign each and mean nothing, which the run says itself.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def board_empty_run():
+    """Under a second. Its default narrows to two worlds and the two ends of
+    the gap axis for exactly that reason; see `SELECTED_INDICES` in the
+    script."""
+    return run("analyse_board_empty_surge.py")
+
+
+def test_the_two_surge_scripts_measure_the_same_world(board_empty_run,
+                                                      cadence_run):
+    """THE COPY THAT MUST NOT DRIFT.
+
+    `analyse_board_empty_surge.base_config` is copied from
+    `analyse_surge_cadence.base_config` so that a figure from one can be read
+    against a figure from the other. They are copied rather than imported
+    because the cadence script calls `main()` at module level.
+
+    Compared as whole configurations at the shipped surge size and interval,
+    field by field, rather than by checking a handful of constants: a copy that
+    drifts is most likely to drift in the field nobody thought to list.
+    `surge_on_empty_board` is the one field allowed to differ, because it is
+    the thing the newer script exists to turn on and off.
+    """
+    import dataclasses as dc
+
+    _, board = board_empty_run
+    _, cadence = cadence_run
+
+    for tier in (1, 4):
+        mine = board["base_config"](tier=tier, on=False)
+        theirs = cadence["base_config"](
+            tier=tier,
+            count=board["SHIPPED_COUNT"],
+            interval=board["SHIPPED_INTERVAL"])
+        assert (dc.replace(mine, surge_on_empty_board=True)
+                == dc.replace(theirs, surge_on_empty_board=True)), (
+            f"at tier {tier} the two surge scripts no longer measure the same "
+            "world, so their figures cannot be read against each other. "
+            "analyse_board_empty_surge.base_config is a copy of "
+            "analyse_surge_cadence.base_config and one of them has moved.")
+
+
+def test_the_control_row_really_turns_the_trigger_off(board_empty_run):
+    """**THE CONTROL ON THE WHOLE REPORT.** Every conclusion in it is a
+    difference between an "off" cell and an "on" cell. If `base_config(on=...)`
+    stopped reaching `TuningConfig.surge_on_empty_board`, both sides would be
+    the same world and the report would print a wall of zeros that reads as
+    "the rule changes nothing".
+
+    Both halves are asserted, because either alone is satisfied by a flag wired
+    to nothing.
+    """
+    from cataclysm_sim import policies as pol
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = board_empty_run
+    assert ns["base_config"](on=False).surge_on_empty_board is False
+    assert ns["base_config"](on=True).surge_on_empty_board is True
+
+    off = Simulation(ns["base_config"](tier=1, on=False), seed=0).run(
+        pol.triage)
+    on = Simulation(ns["base_config"](tier=1, on=True), seed=0).run(pol.triage)
+    assert off.surges_from_empty_board == 0
+    assert on.surges_from_empty_board > 0, (
+        "no board emptied in the control world at seed 0, so the report's "
+        "'on' rows are measuring a rule that never fires")
+
+
+def test_the_minimum_gap_is_the_only_axis_that_moves(board_empty_run):
+    """The sweep is supposed to isolate the brake. Setting
+    `surge_interval_min` must not also move the scheduled surge interval, or
+    the sweep would be changing two things at once and could attribute nothing.
+
+    `Simulation.surge_gap` applies `max(surge_interval_min, gap)`, so a minimum
+    ABOVE the interval would raise the scheduled gap as well. Every value on
+    the axis has to stay at or below the interval for that not to happen.
+    """
+    _, ns = board_empty_run
+    interval = ns["SHIPPED_INTERVAL"]
+    for gap in ns["MIN_GAPS"]:
+        assert gap <= interval, (
+            f"the minimum-gap axis includes {gap:g}, which is above the "
+            f"{interval:g}-day surge interval. Simulation.surge_gap floors the "
+            "scheduled gap at surge_interval_min, so that cell moves the clock "
+            "as well as the brake and the sweep stops isolating anything.")
+        cfg = ns["base_config"](min_gap=gap)
+        assert cfg.surge_interval_days == interval
+        assert cfg.surge_interval_min == gap
+
+
+def test_the_day_ledger_accounts_for_every_day_here_too(board_empty_run):
+    """Walking, at the forge, dead, or free -- and nothing else. The same check
+    the cadence script carries, because this file has its own copy of `_Ledger`
+    and a fifth branch in `Simulation.step` would break both."""
+    from cataclysm_sim import policies as pol
+
+    _, ns = board_empty_run
+    policy = ns["ledger_policy"](pol.ALL["triage"])
+    for world_index in range(len(ns["WORLDS"])):
+        _, tree, tier = ns["WORLDS"][world_index]
+        for on in (False, True):
+            cfg = ns["base_config"](tier=tier, tree=tree, on=on)
+            sim = ns["_Ledger"](cfg, seed=world_index)
+            result = sim.run(policy)
+            total = (sim.walk_days + sim.forge_days + sim.dead_days
+                     + sim.free_days)
+            assert total == result.survived_days, (
+                f"world {world_index}, rule {'on' if on else 'off'}: the "
+                f"ledger accounts for {total} days of a "
+                f"{result.survived_days}-day campaign. Simulation.step has a "
+                "branch _Ledger does not know about.")
+
+
+def test_instrumenting_a_campaign_here_does_not_change_it(board_empty_run):
+    """A MEASUREMENT THAT MOVES WHAT IT MEASURES IS NOT ONE. Neither `_Ledger`
+    nor `ledger_policy` may draw a random number."""
+    from cataclysm_sim import policies as pol
+    from cataclysm_sim.engine import Simulation
+
+    _, ns = board_empty_run
+    triage = pol.ALL["triage"]
+    for world_index in range(len(ns["WORLDS"])):
+        _, tree, tier = ns["WORLDS"][world_index]
+        for seed in (0, 1):
+            cfg = ns["base_config"](tier=tier, tree=tree)
+            plain = Simulation(cfg, seed=seed).run(triage)
+            counted = ns["_Ledger"](cfg, seed=seed).run(
+                ns["ledger_policy"](triage))
+            assert counted == plain, (
+                f"world {world_index}, seed {seed}: the instrumented campaign "
+                "is not the campaign a bare Simulation runs.")
+
+
+def test_the_fan_out_here_measures_what_this_process_measures(board_empty_run):
+    """The report is measured across worker processes, so a cell whose settings
+    came from a module-level constant rather than from its own key would come
+    back measured under the worker's defaults -- silently, and only for the
+    fanned-out run, which is the only run anyone quotes."""
+    _, ns = board_empty_run
+    keys = [ns["_cell_key"](0, ns["SHIPPED_MIN_GAP"], False, 0),
+            ns["_cell_key"](0, ns["MIN_GAPS"][0], True, 0)]
+    here = ns["measure_cells"](keys, 1)
+    split = ns["measure_cells"](keys, 2)
+    assert set(here) == set(split)
+    for key in here:
+        assert set(here[key]) == set(split[key])
+        for field, value in here[key].items():
+            other = split[key][field]
+            # A one-campaign cell has no spread, so its standard error is NaN,
+            # which is never equal to itself.
+            if isinstance(value, float) and math.isnan(value):
+                assert math.isnan(other), (
+                    f"{key}.{field} is NaN in this process and {other} in a "
+                    "worker")
+                continue
+            assert value == other, (
+                f"{key}.{field} is {value} in this process and {other} in a "
+                "worker. Something in the cell is being read from the "
+                "worker's environment rather than from the cell it was asked "
+                "for.")
+
+
+def test_the_weakest_player_is_world_zero(board_empty_run):
+    """Issue #1406 says to measure the weakest player first and use the minimum
+    gap as the lever if the rule is too harsh on them. Section 5's noise floor
+    and section 6's conclusion both read world 0 by index, so which world that
+    is decides what the report concludes about."""
+    from cataclysm_sim.config import TREE_NONE
+
+    _, ns = board_empty_run
+    label, tree, tier = ns["WORLDS"][0]
+    assert tree is TREE_NONE and tier == 4, (
+        f"world 0 is now '{label}'. Issue #1406 asks for the weakest player "
+        "first -- no empire tree at difficulty tier 4, which issue #1392 "
+        "measured losing every losable city -- and sections 5 and 6 read "
+        "world 0 by index.")
+
+
+def test_every_batch_is_measured_once(board_empty_run):
+    """The three sections name their batches the same way, so a batch two of
+    them want is measured once. The shipped minimum gap with the rule on is
+    section 2's row and also section 4's control row."""
+    _, ns = board_empty_run
+    keys = ns["all_cells"]()
+    assert len(keys) == len(set(keys)), "all_cells returned a duplicate"
+    listed = ns["control_cells"]() + ns["gap_cells"]() + ns["noise_cells"]()
+    assert set(keys) == set(listed)
+    assert len(keys) < len(listed), (
+        "no batch is shared between the three sections any more, so either "
+        "the gap axis no longer contains the shipped value or the key format "
+        "changed.")
+
+
+def test_the_noise_blocks_are_disjoint(board_empty_run):
+    """A gap between two seed blocks is one difference and not a spread; issue
+    #1379. The blocks have to actually be disjoint for the spread to mean
+    anything."""
+    _, ns = board_empty_run
+    trials = ns["TRIALS"]
+    seeds = [int(key.split(",")[3]) for key in ns["noise_cells"]()]
+    assert len(seeds) == ns["NOISE_BLOCKS"] >= 3
+    assert seeds == sorted(seeds) and len(set(seeds)) == len(seeds)
+    for earlier, later in zip(seeds, seeds[1:], strict=False):
+        assert later - earlier >= trials, (
+            f"blocks starting at {earlier} and {later} overlap at {trials} "
+            "campaigns each.")
+
+
+def test_the_settings_block_states_the_three_conditions(board_empty_run):
+    """A FIGURE WITHOUT ITS CONDITIONS IS NOT A FIGURE, and this project has
+    retracted balance numbers for exactly that. The three that default to
+    something the balance report does not use are the surge size, the number of
+    active Cataclysms, and the policy."""
+    printed, ns = board_empty_run
+    for expected in ("policy                        triage",
+                     "surge size                    4 dungeons",
+                     "active Cataclysms             1 at tier 1, 4 at tier 4",
+                     "minimum gap, as shipped       25 days",
+                     f"campaigns per cell            {2 * ns['TRIALS']}"):
+        assert expected in printed, (
+            f"the conditions block no longer states: {expected}")
+
+
+def test_a_smoke_sized_board_empty_run_says_its_shares_are_noise(
+        board_empty_run):
+    """At the default sample every share is one campaign, and a table of them
+    is exactly the kind of output that gets quoted."""
+    printed, ns = board_empty_run
+    if ns["TRIALS"] < ns["SMOKE_BELOW"]:
+        assert "SMOKE RUN" in printed
+        assert "is noise" in printed
+        assert "CATACLYSM_BOARD_EMPTY_TRIALS=1000" in printed
+        assert ns["SELECTED_INDICES"] == (0, 2), (
+            "the smoke run no longer narrows to two worlds, so it costs the "
+            "fast suite several seconds rather than one.")
+    else:
+        assert "SMOKE RUN" not in printed
+
+
+def test_the_board_empty_script_does_not_recommend_a_constant(
+        board_empty_run):
+    """No constant changes on the strength of a sweep alone on this project.
+    The script prints the sweep; issue #1406 carries the single recommendation
+    the owner rules on."""
+    printed, _ = board_empty_run
+    assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
+    assert "no constant moves" in printed.lower()
+
+
+def test_the_report_states_the_owners_wording(board_empty_run):
+    """A design decision is not real until it is written down, and the wording
+    IS the decision. The script quotes it so a reader of the output alone knows
+    what rule the numbers describe."""
+    printed, _ = board_empty_run
+    flat = " ".join(printed.split())
+    assert ("Anytime there are no longer dungeons on the board, a surge "
+            "happens." in flat), (
+        "the report no longer quotes the owner's wording of 2026-09-07. It is "
+        "hard-wrapped across two lines, so this flattens the whitespace before "
+        "searching -- a raw search would report a clean file that is not.")

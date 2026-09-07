@@ -151,6 +151,10 @@ class RunResult:
     objectives: int                 # quest dungeons cleared toward the win
     floors_cleared: int             # loot proxy -- reward scales with depth
     surges: int
+    #: Of `surges`, how many the empty board pulled forward rather than the
+    #: clock delivering. Issue #1406. 0 with `surge_on_empty_board` off, which
+    #: is what every figure measured before 2026-09-07 describes.
+    surges_from_empty_board: int
     final_surge_gap: float
     final_surge_count: int
     empire_points: float
@@ -225,6 +229,12 @@ class Simulation:
         self.next_surge_day = 0.0
         self.surge_index = 0        # how many surges have happened
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
+        #: Of those, how many were pulled forward by the board being empty
+        #: rather than arriving on the clock. Issue #1406. Counted so that a
+        #: figure stated per campaign can say which kind it is counting -- under
+        #: this rule the number of surges in a campaign stops being a fixed
+        #: budget, so "surges per campaign" changes meaning rather than value.
+        self.surges_from_empty_board = 0
 
         self.current: Dungeon | None = None
         self.crafting = False
@@ -584,6 +594,83 @@ class Simulation:
         # A city falling is itself an escalation, not just an extra wave.
         if not from_city_fall or cfg.city_fall_advances_escalation:
             self.surge_index += 1
+
+    def board_is_empty(self) -> bool:
+        """Nothing at all stands on the map.
+
+        THE DUNGEON THE PLAYER IS WALKING COUNTS AS STANDING. `self.current`
+        stays in `self.dungeons` until `_finish_current` pops it, so a player
+        inside the last dungeon has not emptied the board and cannot pull the
+        next wave forward by being slow inside it.
+
+        SO DO THE CATACLYSM DUNGEON AND THE LAST STAND. Both are in
+        `self.dungeons` and both are something to do, which is the whole
+        question this asks.
+        """
+        return not self.dungeons
+
+    def days_since_last_surge(self) -> float:
+        """How long since a wave last landed.
+
+        MEASURED FROM THE LAST SURGE THAT ACTUALLY SPAWNED, not from the last
+        attempt. `trigger_surge` returns without logging anything when the
+        frontier has no targets, and it is retried every day when that happens,
+        so counting attempts would make the gap read as zero forever.
+
+        THE START OF THE RUN COUNTS AS DAY 0. Before any surge has landed the
+        log is empty and the whole campaign so far is the gap, so the trigger
+        becomes available `surge_interval_min` days into the run rather than
+        never. It is not "fires immediately": on day 1 the gap is one day, which
+        is inside the brake. In practice this fallback is almost unreachable,
+        because `next_surge_day` starts at 0 and a wave lands on day 1; it is
+        the frontier having no target at all that can leave the log empty, and
+        `trigger_surge` returns without logging when that happens.
+        """
+        if not self.surge_log:
+            return float(self.day)
+        return float(self.day - self.surge_log[-1][0])
+
+    def _maybe_surge_on_empty_board(self) -> None:
+        """Fire a wave when there is nothing left on the map.
+
+        THE OWNER'S RULE OF 2026-09-07, VERBATIM: "Anytime there are no longer
+        dungeons on the board, a surge happens." Issue #1406. Any empty board
+        fires, whatever emptied it -- a clear and a detonation both count. See
+        `TuningConfig.surge_on_empty_board` for why the narrower "only a clear
+        fires" version was overruled.
+
+        THE MINIMUM GAP IS THE ONLY BRAKE. A board can empty the day after a
+        wave is cleared, so without a floor a fast player would face one
+        continuous surge. `surge_interval_min` is that floor and used to be
+        read by the escalating modes alone.
+
+        A BLOCKED TRIGGER IS NOT A LOST ONE. The board is still empty tomorrow,
+        so this is re-asked every day and fires on the first day the gap allows,
+        rather than needing the board to empty a second time.
+
+        AN EMPTY-BOARD SURGE ADVANCES THE ESCALATION COUNTER exactly as a
+        scheduled one does, and takes no flag of its own. It IS the scheduled
+        surge arriving early: `trigger_surge` resets `next_surge_day` from
+        today, so one wave replaces one wave. The worry that produced
+        `city_fall_advances_escalation` -- an event-triggered surge speeding the
+        game up without limit -- does not apply, because the gap this can reach
+        is floored at `surge_interval_min`, which is the same floor
+        `surge_gap` already applies to ACCELERATING. **Only STATIC has ever been
+        measured**, here or anywhere, and under STATIC the counter changes
+        nothing at all.
+        """
+        cfg = self.cfg
+        if not cfg.surge_on_empty_board:
+            return
+        if not self.board_is_empty():
+            return
+        if self.days_since_last_surge() < cfg.surge_interval_min:
+            return
+
+        before = len(self.surge_log)
+        self.trigger_surge()
+        if len(self.surge_log) > before:
+            self.surges_from_empty_board += 1
 
     # -- consequences ----------------------------------------------------
 
@@ -1194,6 +1281,23 @@ class Simulation:
         if self.empire.pillar_exposed():
             self._open_last_stand()
 
+        # THE BOARD IS EMPTY, SO THE NEXT WAVE COMES NOW.
+        #
+        # BELOW `_open_last_stand` AND NOT ABOVE IT, deliberately. The Last
+        # Stand absorbs everything standing and pays five floors for each one,
+        # so a surge fired into an empty board a moment before it opens would
+        # deepen a fight the design already calls near-fatal. Below this line
+        # the Last Stand is itself on the board, so the board is not empty and
+        # no wave is added to it.
+        #
+        # AFTER EVERY REMOVAL THIS DAY HAS. `_resolve` above pops a detonated
+        # dungeon and `_fall` absorbs the ones on a lost city; a dungeon the
+        # player CLEARS is popped by `_finish_current` at the bottom of this
+        # method, so a clear on day N is seen here on day N+1 -- before the
+        # player is asked to choose, which is what matters. Either way the
+        # player is never asked to choose from an empty board.
+        self._maybe_surge_on_empty_board()
+
         # -- player action ------------------------------------------------
 
         # Respawning after a death.
@@ -1263,6 +1367,7 @@ class Simulation:
             objectives=self.objectives,
             floors_cleared=self.floors_cleared,
             surges=len(self.surge_log),
+            surges_from_empty_board=self.surges_from_empty_board,
             final_surge_gap=(self.surge_log[-1][1] if self.surge_log else 0.0),
             final_surge_count=(self.surge_log[-1][2] if self.surge_log else 0),
             empire_points=self.empire_points,

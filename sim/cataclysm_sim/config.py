@@ -316,6 +316,14 @@ class TuningConfig:
 
     # ACCELERATING / BOTH: each surge multiplies the gap by this and floors it.
     surge_interval_decay: float = 0.88
+    # THE SHORTEST GAP BETWEEN ANY TWO SURGES, AND SINCE THE BOARD-EMPTY RULE
+    # BELOW IT IS THE ONLY BRAKE ON HOW FAST WAVES CAN COME. It used to be
+    # consulted by the escalating modes alone, where it floors the decaying
+    # gap; `surge_on_empty_board` now consults it as well, so moving it moves
+    # both. That coupling is deliberate -- a second constant would be a second
+    # answer to one question -- but it means this number is worth more than it
+    # was. What it should be is a measurement; see
+    # `sim/analyse_board_empty_surge.py`, which sweeps it.
     surge_interval_min: float = 25.0
 
     # SWELLING / BOTH: each surge adds this many dungeons, capped.
@@ -334,6 +342,36 @@ class TuningConfig:
     # Does a fall-triggered surge also advance the escalation counter? If it
     # does, losing a city permanently speeds the game up -- a death spiral.
     city_fall_advances_escalation: bool = True
+
+    # A surge also fires the moment the board holds no dungeons at all.
+    #
+    # THE OWNER RULED THIS ON 2026-09-07, VERBATIM: "Anytime there are no
+    # longer dungeons on the board, a surge happens." Issue #1406.
+    #
+    # ANY EMPTY BOARD, WHATEVER EMPTIED IT. A dungeon the player cleared and a
+    # dungeon that detonated undefeated both count. A narrower rule -- fire
+    # only on a clear -- was proposed and the owner overruled it. It was worse
+    # for two reasons. The game already fires a surge on a failure, because
+    # `surge_on_city_fall` above defaults True. And a clear-only rule creates a
+    # stalling exploit: a player wanting a quiet stretch lets the last dungeon
+    # detonate instead of clearing it, pays one city's damage, and buys the
+    # rest of the interval in peace. Under this rule that trade does not exist.
+    #
+    # THE 120-DAY CLOCK STAYS AND WHICHEVER COMES FIRST WINS. A trigger that
+    # REPLACED the timer would give the weakest player FEWER surges than today,
+    # because a Quest dungeon and a Fallen City dungeon never leave the board on
+    # their own -- `_resolve` relocates the first and refreshes the second -- so
+    # a player who ignores one keeps the board permanently non-empty. Measured
+    # over 60 campaigns at these defaults on the `triage` policy: 32 of them
+    # held at least one day whose whole board was made of such dungeons, and the
+    # longest unbroken stretch was 171 days, which is longer than the clock.
+    # Firing early therefore ADDS surges and never removes one.
+    #
+    # `surge_interval_min` ABOVE IS THE ONLY BRAKE ON IT. The board can empty
+    # again the day after a wave is cleared, so without a floor a fast player
+    # would face a continuous surge. 25 days is what that constant already held
+    # for the escalating modes.
+    surge_on_empty_board: bool = True
 
     # UNKNOWN #3 -- resolve timers.
     # A flat timer table cannot work at one day a floor: a 40-floor dungeon
