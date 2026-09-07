@@ -6,8 +6,17 @@ int32 UCataclysmDungeonModifierRules::CountFor(
 	int32 DifficultyTier, ECataclysmDungeonSubType SubType)
 {
 	// NOT CLAMPED FROM ABOVE. Eight is the highest tier the design has, and a
-	// tier above it is a caller's mistake rather than a rung; `Begin` is where a
-	// run's tier is bounded and clamping here as well would hide that.
+	// tier above it is a caller's mistake rather than a rung; clamping here as
+	// well would hide it.
+	//
+	// THIS USED TO SAY `Begin` WAS WHERE A RUN'S TIER IS BOUNDED. It is not, and
+	// never was: `UCataclysmEmpireRun::Begin` stores what it is given. The tier a
+	// run takes FROM THE GAME is bounded, because
+	// `ACataclysmGameMode::DifficultyTierFor` clamps before
+	// `UCataclysmGameInstance::BeginEmpireRun` hands it over, and
+	// `Cataclysm.EmpireBegin` clamps an argument typed at the console. A caller
+	// that calls `Begin` directly can still pass anything, which is what the
+	// clamp from below on the next line answers.
 	const int32 Tier = FMath::Max(0, DifficultyTier);
 	const int32 Base = Tier * ModifiersPerTier;
 

@@ -60,6 +60,11 @@ public:
 	 * THE SEED COMES FROM THE CLOCK, so two sessions are two different empires.
 	 * A run started deliberately, by a console command or a test, passes its own
 	 * seed to `BeginEmpireRun` and gets the same empire every time.
+	 *
+	 * AND THE DIFFICULTY TIER COMES FROM THE GAME, through `BeginEmpireRun`
+	 * below rather than through a second read here. This is the path
+	 * `Cataclysm.EmpireMap` and `Cataclysm.EmpireAdvance` reach, so it is the
+	 * one that has to be right. Issue #1444.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* GetOrBeginEmpireRun();
@@ -74,17 +79,49 @@ public:
 	 *                      `ECataclysmSurgeMode`.
 	 * @param LethalityRung 0 Standard, 1 Hardcore, 2 Heretic. Heretic surges
 	 *                      bring 25% more dungeons.
-	 * @param DifficultyTier which tier the run is played at, 1 to 8. It decides
-	 *                      how many Cataclysms the run faces and how many
-	 *                      modifiers each dungeon carries.
+	 * @param DifficultyTier which tier the run is played at, 1 to 8, or 0 to
+	 *                      take whatever tier the game is being played at. It
+	 *                      decides how many Cataclysms the run faces and how
+	 *                      many modifiers each dungeon carries.
 	 *
-	 * **THE TIER DEFAULTS TO 1 AND NOTHING PASSES ANOTHER**, so every run the
-	 * game starts faces one Cataclysm and gives every dungeon one modifier. The
-	 * game's own difficulty tier is `ACataclysmGameMode::DifficultyTierIn` and
-	 * the two have never been connected. Issue
-	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444). Until that
-	 * is fixed, `Cataclysm.EmpireBegin` takes a tier as its fourth argument so
-	 * the behaviour can be reached by hand.
+	 * **ZERO MEANS ASK THE GAME, AND IT IS THE DEFAULT.** The tier then comes
+	 * from `ACataclysmGameMode::DifficultyTierIn`, which is the one place that
+	 * answers what tier this world is being played at: the
+	 * `Cataclysm.DifficultyTier` console variable when it has been set above
+	 * zero, then the game mode's own `DifficultyTier`, then tier 1.
+	 *
+	 * IT IS READ HERE RATHER THAN BY EACH CALLER, because this is the only door
+	 * into a run and a caller that forgets to pass a tier is exactly what went
+	 * wrong before: every run the game started was tier 1, faced one Cataclysm
+	 * and gave every dungeon one modifier, whatever tier the player was
+	 * fighting at. Issue
+	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444).
+	 *
+	 * ZERO RATHER THAN A SECOND FUNCTION, because `Cataclysm.DifficultyTier`
+	 * already uses zero to mean "nobody said, work it out" and a second
+	 * convention for the same question would be one more thing to remember.
+	 *
+	 * A POSITIVE TIER IS USED AS GIVEN AND IS NOT CLAMPED, so a caller that
+	 * wants a run outside the eight tiers still gets one and nothing that could
+	 * reach `UCataclysmEmpireRun::Begin` before is refused now.
+	 * `Cataclysm.EmpireBegin` clamps its own argument before it gets here.
+	 *
+	 * THE TIER IS READ ONCE, WHEN THE RUN STARTS, AND KEPT.
+	 * `docs/Cataclysm_GDD_v2.md` section XII: "A run is played at a fixed tier,
+	 * so a player does not move up the tiers inside a run; they finish a
+	 * campaign and start the next one higher." Typing a new tier at the console
+	 * part way through therefore changes what armour is worth and does not
+	 * re-tier the campaign; the next `Cataclysm.EmpireBegin` picks it up.
+	 *
+	 * **WHERE THE TIER OUGHT TO COME FROM EVENTUALLY IS THE CHARACTER**, and
+	 * not the world. The design has a character at a tier that rises when it
+	 * defeats the Cataclysm boss dungeon and replays the same tier when it
+	 * fails, and neither the character's tier nor a won state exists in the
+	 * game yet. `ACataclysmGameMode::DifficultyTier` says the same of the
+	 * world-wide figure it holds: it "does not block the encounter-level answer
+	 * and should be replaced by it". What this function does is join the tier
+	 * the game HAS to the run; it is not the progression rule. Issue
+	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
 	 *
 	 * IT ALSO FILLS THE RUN'S MODIFIER POOL, which is the one thing a run cannot
 	 * do for itself: `DT_DungeonModifiers` has a row type in this module and
@@ -96,7 +133,7 @@ public:
 		int32 Seed = 0,
 		ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 		int32 LethalityRung = 0,
-		int32 DifficultyTier = 1);
+		int32 DifficultyTier = 0);
 
 	/**
 	 * The run belonging to the game instance a world is part of, or null.

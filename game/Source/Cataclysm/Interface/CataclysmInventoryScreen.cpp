@@ -16,11 +16,40 @@ const TCHAR* UCataclysmInventoryScreen::InkHex = TEXT("F5F0EA");
 
 namespace
 {
+	// NAMED `Grid...` AND NOT `Rows` AND `Columns`, WHICH IS NOT A STYLE
+	// PREFERENCE. An anonymous namespace is file scope to the compiler and
+	// MODULE scope to a unity build, which concatenates several .cpp files into
+	// one translation unit. `Rows` is an ordinary parameter name in this module
+	// -- `UCataclysmEnemyModifiers` alone takes `const TArray<FName>& Rows` nine
+	// times, and `UCataclysmDropRoll::RollEnchantments` has a lambda that does
+	// -- and any of those landing in the same blob as this file hides this
+	// constant. Unreal builds with warnings as errors, so the module then stops
+	// compiling, in a file nobody edited.
+	//
+	// IT HAD ALREADY STOPPED. `development` did not compile at 82f9276 for
+	// exactly this collision, between this file and
+	// `UCataclysmDropRoll::RollEnchantments`, which is issue #1462.
+	//
+	// IT IS FIXED FROM BOTH ENDS, ON PURPOSE. Pull request #1473 renamed that
+	// lambda's parameter to `CandidateRows`, which removes one of the thirteen
+	// declarations named `Rows` in this module; this renames what all thirteen
+	// would shadow, so none of them can collide with it. Either alone unblocks
+	// the build. Both together are what stops the next one.
+	//
+	// WHY NOBODY SAW IT SOONER, AND IT IS THE PART WORTH REMEMBERING. The build
+	// log says `Using 'git status' to determine working set for adaptive
+	// non-unity build`. **A file you have modified is compiled on its own**,
+	// where nothing else declares the same names, so a session editing either
+	// file builds green every time. The collision appears only once the tree is
+	// clean and the files are merged into one translation unit. Continuous
+	// integration does not compile C++ at all -- that is issue #20 -- so nothing
+	// else catches it. Issue #1469 carries the guard that would.
+
 	/** Twelve. Read from the store rather than copied, so there is one answer. */
-	constexpr int32 Columns = UCataclysmInventoryComponent::Columns;
+	constexpr int32 GridColumns = UCataclysmInventoryComponent::Columns;
 
 	/** Four. */
-	constexpr int32 Rows = UCataclysmInventoryComponent::Rows;
+	constexpr int32 GridRows = UCataclysmInventoryComponent::Rows;
 
 	/**
 	 * The rarity of a carried item, defaulting to the bottom rung.
@@ -57,14 +86,14 @@ float UCataclysmInventoryScreen::CellSizeFor(float ViewportWidth,
 	// EVERY COLUMN THE PANEL HOLDS, not only the carried grid's twelve.
 	// The panel of worn gear sits beside it and its columns come out of the
 	// same width. Issue #831.
-	constexpr int32 AllColumns = Columns + ColumnsBeside;
+	constexpr int32 AllColumns = GridColumns + ColumnsBeside;
 	const float AcrossWidth = ViewportWidth * PanelWidthShare
 		- PanelPaddingPx * 2.0f - CellGapPx * (AllColumns - 1);
 	const float DownHeight = ViewportHeight * PanelHeightShare
-		- PanelPaddingPx * 2.0f - HeaderHeightPx - CellGapPx * (Rows - 1);
+		- PanelPaddingPx * 2.0f - HeaderHeightPx - CellGapPx * (GridRows - 1);
 
 	const float Fits = FMath::Min(AcrossWidth / AllColumns,
-								  DownHeight / Rows);
+								  DownHeight / GridRows);
 
 	// THE FLOOR IS A READABLE SIZE RATHER THAN A GUARD AGAINST A NEGATIVE
 	// ONE. See SmallestCellPx: a frame is padding inside its cell, so a cell
