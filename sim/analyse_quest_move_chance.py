@@ -111,6 +111,15 @@ figure below ran under the settings named above -- tier 1, no empire tree,
 `triage`, static surges every 120 days for **5** dungeons, resolve floor ratio
 2.0, escalation 0.10 per 100 days, craft 12 days for +4%.
 
+**IT WAS TAKEN OVER TWO SEED BLOCKS AND THIS FILE NOW RUNS FOUR.** A fresh run
+will not reproduce the columns below, because there are two more of them and
+the same total campaign count is spread differently. The table is kept as the
+record of what was put to the owner on issue #1324, and the conclusion it
+carries survives the change -- it rested on the paired test, which does not
+depend on the block count, and not on the two-block gap that issue #1379
+retired. Set `CATACLYSM_QUEST_MOVE_TRIALS=1000` and expect 20,000 campaigns
+rather than 10,000.
+
     chance   earned% A/B   objectives A/B   cities A/B   questAge A/B
       0.00    48.8 / 46.9    6.36 / 6.24   16.66 / 16.12   57.9 / 55.1
       0.25    49.5 / 48.0    6.37 / 6.27   16.54 / 16.07   58.1 / 55.7
@@ -175,6 +184,7 @@ this reason.
 
 from __future__ import annotations
 
+import math
 import os
 import statistics
 from dataclasses import replace
@@ -201,10 +211,28 @@ from cataclysm_sim.engine import Simulation
 #: own arguments.
 TRIALS = int(os.environ.get("CATACLYSM_QUEST_MOVE_TRIALS", "3"))
 
-#: The two blocks. Disjoint by construction at any `TRIALS`, and block A starts
-#: at seed 0 so a run reproduces the block every other measurement on this issue
-#: was taken over.
-BLOCKS = (("A", 0), ("B", TRIALS))
+#: The seed blocks. Disjoint by construction at any `TRIALS`, and block A
+#: starts at seed 0 so a run reproduces the block every other measurement on
+#: this issue was taken over.
+#:
+#: **THERE WERE TWO OF THESE, AND TWO CANNOT MEASURE NOISE.** Two blocks give
+#: ONE realised difference, not an estimate of how far a block mean moves.
+#: This file used to compute a threshold from that single difference and print
+#: a categorical conclusion against it. Issue #1379.
+#:
+#: **THE WORKED CASE THAT SETTLES IT.** For Sieges created per campaign,
+#: blocks A and B differed by 0.04 while six disjoint blocks of the same size
+#: gave a standard deviation of 0.105. The two-block gap understated the
+#: spread by about two and a half times, because A and B happened to be the
+#: two lowest of the six. It fails in both directions: a real move smaller
+#: than the true spread would have been called significant, and the old
+#: `spread` took a MAXIMUM over doses, which drifts upward as the ladder grows
+#: and starts calling real differences noise.
+#:
+#: Four is the smallest count that gives a standard deviation worth reading.
+#: It doubles the campaigns: the curve on issue #1324 was 10,000 at two blocks
+#: and the same run is 20,000 now.
+BLOCKS = (("A", 0), ("B", TRIALS), ("C", 2 * TRIALS), ("D", 3 * TRIALS))
 
 #: The doses. Chance that a Quest dungeon whose timer runs out takes a move it
 #: could take. 1.0 is what `development` ships -- move whenever there is
@@ -415,15 +443,57 @@ def sweep() -> dict:
     return out
 
 
-def both(cell: dict, key: str) -> tuple[float, float]:
-    return cell["A"][key], cell["B"][key]
+def across(cell: dict, key: str) -> list[float]:
+    """One value per seed block, in block order."""
+    return [cell[name][key] for name, _ in BLOCKS]
 
 
-def spread(rows: dict, key: str) -> float:
-    """The largest gap between the two blocks at any dose: the noise floor a
-    difference has to clear before it is worth calling a difference."""
-    return max(abs(a - b) for a, b in
-               (both(cell, key) for cell in rows.values()))
+def block_sd(rows: dict, key: str) -> float:
+    """How far a single block's estimate of `key` moves from block to block.
+
+    **THIS REPLACED A FUNCTION CALLED `spread`, AND THAT ONE WAS NOT A
+    MEASUREMENT OF ANYTHING.** It took the gap between the two blocks at the
+    worst dose, and `main` compared a difference against it as though it were
+    a threshold. A gap between two numbers is one realised difference: it can
+    land arbitrarily close to zero and it can land wide. Issue #1379 measured
+    how badly -- for Sieges per campaign the A-to-B gap was 0.04 against a
+    six-block standard deviation of 0.105.
+
+    **IT IS A DESCRIPTION AND NOT A THRESHOLD, AND NOTHING COMPARES AGAINST
+    IT.** The verdict below comes from `mcnemar` on the same seeds, which does
+    not depend on where the blocks happened to land. This is printed so a
+    reader can see how much of the table is sampling noise, which is a
+    different job from deciding anything.
+
+    AVERAGED OVER THE DOSES RATHER THAN MAXIMISED OVER THEM, which is the
+    other half of the old function's problem: a maximum grows as doses are
+    added, so the same ladder with one more rung would have been harder to
+    call significant for no reason but its length.
+    """
+    return statistics.fmean(
+        statistics.stdev(across(cell, key)) for cell in rows.values())
+
+
+def mcnemar(gained: int, lost: int) -> tuple[float, float]:
+    """McNemar's test on the paired counts, as z and a two-sided p.
+
+    **THE SCRIPT PRINTED THE TWO COUNTS AND NEVER THE TEST.** The p-value in
+    this file's own RESULT section was worked out by hand and typed in, which
+    is how every stale number in this repository started. Issue #1379.
+
+    `gained` is campaigns that reached the earned boss at this dose and not at
+    the baseline, `lost` the reverse. Concordant pairs carry no information
+    about a difference, which is the whole point of the test: under the null
+    the discordant ones are a fair coin, so `z` is the normal approximation to
+    that binomial and `erfc` turns it into a two-sided p exactly.
+
+    Standard library only, which `CLAUDE.md` requires of the simulation.
+    """
+    discordant = gained + lost
+    if discordant == 0:
+        return 0.0, 1.0
+    z = (gained - lost) / math.sqrt(discordant)
+    return z, math.erfc(abs(z) / math.sqrt(2.0))
 
 
 def settings_lines() -> list[str]:
@@ -443,8 +513,9 @@ def settings_lines() -> list[str]:
         f"  tier width gained per craft     {cfg.craft_power_gain_frac:.2f}",
         f"  quest objectives to win         {cfg.quest_objectives_required}",
         f"  campaigns per block             {TRIALS}",
-        f"  seed blocks                     A from {BLOCKS[0][1]}, "
-        f"B from {BLOCKS[1][1]} (disjoint)",
+        "  seed blocks                     "
+        + ", ".join(f"{name} from {seed0}" for name, seed0 in BLOCKS)
+        + " (disjoint)",
     ]
 
 
@@ -497,22 +568,49 @@ def main() -> dict:
     print("READING IT")
     print("=" * 112)
 
-    base_a, base_b = both(rows[1.0], "earned%")
-    zero_a, zero_b = both(rows[0.0], "earned%")
-    floor = spread(rows, "earned%")
+    base = across(rows[1.0], "earned%")
+    zero = across(rows[0.0], "earned%")
+    sd = block_sd(rows, "earned%")
 
-    print(f"\n  Block-to-block spread in earned%, worst dose: "
-          f"{floor:.1f} points. A gap")
-    print("  smaller than that is the sample size and not the dose.")
-    print(f"\n  earned% at chance 1.00 (shipped): {base_a:.1f} / {base_b:.1f}")
-    print(f"  earned% at chance 0.00 (never moves): {zero_a:.1f} / {zero_b:.1f}")
+    print(f"\n  Block-to-block standard deviation in earned%, mean over "
+          f"the doses: {sd:.1f} points,")
+    print(f"  over {len(BLOCKS)} disjoint blocks. THAT IS A DESCRIPTION OF "
+          "THE SAMPLING NOISE AND NOT A")
+    print("  THRESHOLD. Nothing below is compared against it. This file "
+          "used to take the gap")
+    print("  between two blocks and call it a noise floor; a gap is one "
+          "realised difference")
+    print("  and estimates nothing. Issue #1379.")
 
-    direction = ((zero_a + zero_b) / 2.0) - ((base_a + base_b) / 2.0)
-    if abs(direction) <= floor:
-        print(f"\n  The two ends differ by {direction:+.1f} points, which is "
-              "inside the block-to-block")
-        print("  spread. ON THIS SAMPLE THE MOVE CHANCE DOES NOT MOVE THE "
-              "EARNED ROUTE.")
+    shown = " / ".join(f"{v:.1f}" for v in base)
+    print(f"\n  earned% at chance 1.00 (shipped):     {shown}")
+    shown = " / ".join(f"{v:.1f}" for v in zero)
+    print(f"  earned% at chance 0.00 (never moves): {shown}")
+
+    direction = statistics.fmean(zero) - statistics.fmean(base)
+
+    # **THE VERDICT COMES FROM THE PAIRED TEST AND NOT FROM THE BLOCKS.**
+    # Every dose runs the same seeds, so a campaign that reached the earned
+    # boss at one dose and not the other is the evidence; two shares two
+    # points apart are not. Pooled over the blocks because they are disjoint.
+    flips = [paired_flips(rows, 0.0, name) for name, _ in BLOCKS]
+    gained = sum(g for g, _ in flips)
+    lost = sum(l for _, l in flips)
+    z, p = mcnemar(gained, lost)
+
+    print(f"\n  Paired on the same seeds, chance 0.00 against 1.00, pooled "
+          f"over {len(BLOCKS)} blocks:")
+    print(f"    {gained} campaigns gained, {lost} lost, z = {z:+.2f}, "
+          f"p = {p:.3f}")
+
+    if p >= 0.05:
+        print(f"\n  The two ends differ by {direction:+.1f} points of "
+              "earned%, and the paired test on")
+        print("  the same seeds does not separate them. ON THIS SAMPLE THE "
+              "MOVE CHANCE IS NOT")
+        print("  SHOWN TO MOVE THE EARNED ROUTE -- which is a statement "
+              "about this run's power")
+        print("  and not a demonstration that the dose does nothing.")
     elif direction > 0:
         print(f"\n  A dungeon that stays put is easier to reach: "
               f"{direction:+.1f} points of earned%")
@@ -529,17 +627,20 @@ def main() -> dict:
 
     print("\n  The dose was applied. Take-up should track the chance:")
     for chance in MOVE_CHANCES:
-        a, b = both(rows[chance], "takeUp%")
-        print(f"    chance {chance:.2f} -> take-up {a:5.1f}% / {b:5.1f}%")
+        shown = " / ".join(f"{v:5.1f}%" for v
+                           in across(rows[chance], "takeUp%"))
+        print(f"    chance {chance:.2f} -> take-up {shown}")
 
     print(f"\n{'=' * 112}")
     print("HOW LONG A QUEST OBJECTIVE SURVIVES, and how many are ever answered")
     print("=" * 112)
     for chance in MOVE_CHANCES:
-        age_a, age_b = both(rows[chance], "questAge")
-        rate_a, rate_b = both(rows[chance], "clearRate%")
-        print(f"    chance {chance:.2f} -> {age_a:6.1f} / {age_b:6.1f} days "
-              f"to clear, {rate_a:5.1f}% / {rate_b:5.1f}% ever cleared")
+        ages = " / ".join(f"{v:6.1f}" for v
+                          in across(rows[chance], "questAge"))
+        rates = " / ".join(f"{v:5.1f}%" for v
+                           in across(rows[chance], "clearRate%"))
+        print(f"    chance {chance:.2f} -> {ages} days to clear, "
+              f"{rates} ever cleared")
 
     print(f"\n{'=' * 112}")
     print("THE SAME SEEDS, PAIRED AGAINST CHANCE 1.00. Campaigns that reached "

@@ -2273,3 +2273,365 @@ def test_the_script_does_not_recommend_a_constant(siege_dose_run):
     printed, _ = siege_dose_run
     assert "THE RECOMMENDATION IS NOT IN THIS FILE" in printed
     assert "no constant changes" in printed
+
+
+# --------------------------------------------------------------------------
+# The PROSE in analyse_siege_dose.py -- issue #1375
+# --------------------------------------------------------------------------
+#
+# **EVERY CHECK ABOVE READS WHAT THE SCRIPT PRINTS, AND THAT IS EXACTLY WHY THE
+# DOCSTRINGS DRIFTED.** `test_the_inverse_square_root_sentence_is_computed_not_
+# typed` recomputes the worked example and looks for it in the OUTPUT, where the
+# script builds the sentence out of `days_to_fall`. The same worked example is
+# also written by hand in the module docstring, and there it said 14, 20 and 28
+# -- a growth of 10 points a day -- for the whole time the file printed 25 and 37
+# a few inches below it. Four figures were stale at once and the fast suite was
+# green throughout. Issue #1375.
+#
+# So these read the SOURCE instead, and recompute every number rather than
+# repeating it. **The line wrapping is flattened first**: every docstring in this
+# repository is hard-wrapped, so a phrase search over the raw text matches
+# nothing and reports a clean file, which is a guard that cannot fail.
+
+
+def flat_source(name: str) -> str:
+    """One analysis script's source with its line wrapping flattened."""
+    return " ".join(source(name).split())
+
+
+def outpost_days(ns, scale: float) -> int:
+    """Days an unattended Siege takes to empty an Outpost at `scale` damage."""
+    base = ns["base_config"]()
+    tier = list(ns["CITY_SIZES"])[0]
+    return ns["days_to_fall"](
+        base.TIER_STATS[tier].max_defense * base.tree.city_health_mult,
+        scale=scale, cfg=base)
+
+
+def test_the_module_docstring_states_the_growth_term_it_runs_at(
+        siege_dose_run):
+    """The formula the whole of axis 3 is argued from.
+
+    It said `1% of maximum + 10k` while the shipped growth was 2.5, so a reader
+    working the arithmetic by hand got a Siege four times as fast as the one the
+    tables underneath describe.
+    """
+    _, ns = siege_dose_run
+    base = ns["base_config"]()
+    share = base.siege_defence_bite_per_day * 100.0
+    growth = base.siege_damage_growth_per_day
+
+    wanted = f"`{share:g}% of maximum + {growth:g}k`"
+    assert wanted in flat_source("analyse_siege_dose.py"), (
+        f"the module docstring no longer states the Siege damage formula as "
+        f"{wanted}. It is `siege_defence_bite_per_day` as a percentage plus "
+        "`siege_damage_growth_per_day` per day stood, and it said 10k while the "
+        "constant was 2.5. Issue #1375")
+
+
+def test_the_worked_example_in_the_module_docstring_is_recomputed(
+        siege_dose_run):
+    """The three numbers the inverse-square-root argument hangs off.
+
+    THE PRINTED SENTENCE IS ALREADY GUARDED and this is the typed one beside it.
+    They disagreed by 11, 17 and 26 days.
+    """
+    _, ns = siege_dose_run
+    today = outpost_days(ns, 1.0)
+    half = outpost_days(ns, 0.5)
+    quarter = outpost_days(ns, 0.25)
+    flat = flat_source("analyse_siege_dose.py")
+
+    assert f"takes an Outpost from {today} days to {half}" in flat, (
+        f"the module docstring's worked example no longer says an Outpost goes "
+        f"from {today} days to {half} when every Siege constant is halved. "
+        "`days_to_fall` is what it has to agree with; issue #1375")
+
+    assert f"reach {quarter}." in flat, (
+        f"the module docstring no longer says quartering the damage reaches "
+        f"{quarter} days. Issue #1375")
+
+    # THE DIRECTION, SEPARATELY. A future edit that swaps the two numbers keeps
+    # both assertions above satisfiable by editing one of them, and would tell
+    # the owner a weaker Siege buys LESS time.
+    assert today < half < quarter, (
+        f"less Siege damage now buys less time, not more: {today} days at "
+        f"today's damage, {half} at half, {quarter} at a quarter")
+
+
+def test_days_to_fall_states_the_four_days_it_returns(siege_dose_run):
+    """`days_to_fall`'s own docstring, which is the derivation axis 3 rests on.
+
+    It named 14, 23, 34 and 47 while returning 25, 39, 55 and 70, and it named
+    two other files as agreeing with it -- both of which say 25 / 39 / 55 / 70.
+    """
+    _, ns = siege_dose_run
+    base = ns["base_config"]()
+    four = [ns["days_to_fall"](
+        base.TIER_STATS[t].max_defense * base.tree.city_health_mult, cfg=base)
+        for t in ns["CITY_SIZES"]]
+    a, b, c, d = four
+
+    assert (f"this returns {a}, {b}, {c} and {d} for the four city sizes"
+            in flat_source("analyse_siege_dose.py")), (
+        f"days_to_fall's docstring no longer states the four days it returns, "
+        f"which are {four}. Issue #1375")
+
+
+def test_the_growth_ten_control_reproduces_the_four_the_prose_used_to_state(
+        siege_dose_run):
+    """**THE CONTROL THAT SAYS WHICH THING BROKE.**
+
+    Without it, a failure of the test above means either that a constant moved
+    -- which is ordinary and wants the prose updating -- or that the arithmetic
+    itself changed, which is a defect. Passing `growth=10.0` reproduces the four
+    the prose used to state, so this separates the two: if this passes and the
+    one above fails, a constant moved.
+    """
+    _, ns = siege_dose_run
+    base = ns["base_config"]()
+    old = [ns["days_to_fall"](
+        base.TIER_STATS[t].max_defense * base.tree.city_health_mult,
+        growth=10.0, cfg=base) for t in ns["CITY_SIZES"]]
+
+    assert old == [14, 23, 34, 47], (
+        f"at the growth of 10 points a day the owner cut on issue #1349, "
+        f"days_to_fall now returns {old} rather than the [14, 23, 34, 47] the "
+        "file's prose stated for as long as that was the shipped value. The "
+        "arithmetic has changed, not just a constant")
+
+    a, b, c, d = old
+    assert (f"THIS SAID {a}, {b}, {c} AND {d} UNTIL 2026-09-06"
+            in flat_source("analyse_siege_dose.py")), (
+        "days_to_fall's docstring no longer records the four it used to state "
+        "and why they changed. A reader of issue #1349's tables needs to know "
+        "which set is current")
+
+
+def test_the_today_row_is_labelled_with_the_constants_that_produced_it(
+        siege_dose_run):
+    """**THE WORST OF THE FOUR, BECAUSE IT WAS PRINTED RATHER THAN ONLY READ.**
+
+    The `today` row of the candidates table carried a hand-written label saying
+    "weight 15, growth 10" while the row was produced at 7.5 and 2.5. Somebody
+    reading only the report -- which is the whole point of the report -- was
+    told the wrong pair of constants.
+
+    THE POSITIVE ASSERTION IS THE ONE THAT MATTERS. Hard-coding the label again
+    fails it whatever the wording, because the printed text would name constants
+    the run did not use.
+    """
+    printed, ns = siege_dose_run
+    base = ns["base_config"]()
+    weight = base.SUBTYPE_SPAWN_WEIGHTS["Siege"]
+    growth = base.siege_damage_growth_per_day
+
+    assert f"<- weight {weight:g}, growth {growth:g}" in printed, (
+        f"the candidates table's `today` row is not labelled with the "
+        f"constants that produced it, which are weight {weight:g} and growth "
+        f"{growth:g}. It said weight 15, growth 10 while running at 7.5 and "
+        "2.5. Issue #1375")
+
+    # **THE COMMENTS ARE STRIPPED AND THE FIRST VERSION OF THIS DID NOT DO
+    # IT.** The comment beside the label in the script quotes the old wording
+    # to explain what went wrong, so a bare search over the whole source
+    # matched the explanation and failed against the very code it was written
+    # for -- a guard failing for a reason that has nothing to do with what it
+    # guards. `test_surge_port.py` records the same mistake.
+    stripped = [line.split("#", 1)[0] for line
+                in source("analyse_siege_dose.py").splitlines()]
+
+    assert not any("weight 15, growth 10" in line
+                   for line in stripped), (
+        "the `today` label is hard-coded again. It has to be read off the "
+        "configuration, or it drifts the next time a Siege constant moves")
+
+
+# --------------------------------------------------------------------------
+# analyse_quest_move_chance.py -- issues #1324 and #1379
+# --------------------------------------------------------------------------
+#
+# **THIS SCRIPT HAD NO TESTS AT ALL BEYOND "IT RUNS", AND ITS OUTPUT REACHED THE
+# OWNER.** The curve it printed is what issue #1324's move-chance ruling was
+# argued from and it is quoted in `docs/DECISIONS.md`. The conclusion it printed
+# was computed against the gap between two seed blocks, treated as a noise
+# floor. A gap between two numbers is one realised difference and estimates
+# nothing; issue #1379 measured a case where the two-block gap understated the
+# real spread by about two and a half times.
+
+
+@pytest.fixture(scope="module")
+def quest_move_chance_run():
+    """The move-chance dose-response curve, at the script's smoke `TRIALS`.
+
+    **NOTHING BELOW ASSERTS A CAMPAIGN SHARE.** At the default size the shares
+    are noise and the script says so itself. Every check here is on the
+    instrument: how many blocks it runs, that its spread is a standard deviation
+    rather than a gap, that its statistical test reproduces a figure computed
+    independently, and that the dose reaches the model at all.
+    """
+    return run("analyse_quest_move_chance.py")
+
+
+def test_there_are_more_than_two_seed_blocks_and_they_are_disjoint(
+        quest_move_chance_run):
+    """**THE HEART OF ISSUE #1379.**
+
+    Two blocks give one realised difference, which is why the threshold built
+    from them was not a measurement. Three would be the bare minimum for a
+    standard deviation to mean anything and the script runs four.
+
+    THE DISJOINTNESS IS CHECKED TOO, because four blocks that share seeds are
+    worse than two that do not: the spread would collapse towards zero and the
+    file would look like it had been fixed.
+    """
+    _, ns = quest_move_chance_run
+    blocks = ns["BLOCKS"]
+    trials = ns["TRIALS"]
+
+    assert len(blocks) >= 3, (
+        f"the script runs {len(blocks)} seed blocks. Two give one difference "
+        "and not a spread, which is the defect issue #1379 records; a standard "
+        "deviation needs at least three")
+
+    seeds = [set(range(seed0, seed0 + trials)) for _, seed0 in blocks]
+    for i, first in enumerate(seeds):
+        for second in seeds[i + 1:]:
+            assert not (first & second), (
+                "two seed blocks overlap, so they are not independent samples "
+                "and the spread between them is not a spread")
+
+    assert len({name for name, _ in blocks}) == len(blocks), (
+        "two seed blocks share a name, so `across` would read the same block "
+        "twice")
+
+
+def test_the_block_spread_is_a_standard_deviation_over_every_block(
+        quest_move_chance_run):
+    """`block_sd` recomputed here on a table with known values.
+
+    IT REPLACED A MAXIMUM OVER A PAIRWISE GAP. The old function took the widest
+    A-to-B difference across the doses, which fails in both directions: it
+    understates when the two blocks happen to land close together, and a
+    maximum over doses grows as the ladder lengthens, so the same curve with one
+    more rung was harder to call significant for no reason but its length.
+
+    A SYNTHETIC TABLE, not the run's own rows, so the check does not depend on
+    campaign noise and states its expected answer in full.
+    """
+    import statistics
+
+    _, ns = quest_move_chance_run
+    names = [name for name, _ in ns["BLOCKS"]]
+    doses = {0.0: [1.0, 2.0, 3.0, 4.0], 1.0: [10.0, 10.0, 10.0, 16.0]}
+
+    if len(names) != 4:
+        pytest.skip(f"this check is written for four blocks, not {len(names)}")
+
+    rows = {dose: {name: {"x": values[i]} for i, name in enumerate(names)}
+            for dose, values in doses.items()}
+
+    wanted = statistics.fmean(
+        [statistics.stdev(values) for values in doses.values()])
+
+    assert ns["block_sd"](rows, "x") == pytest.approx(wanted), (
+        "block_sd is no longer the mean over doses of the standard deviation "
+        "across blocks. Issue #1379")
+
+    assert ns["across"](rows[0.0], "x") == doses[0.0], (
+        "`across` no longer returns one value per block in block order")
+
+    # AND IT IS NOT THE OLD PAIRWISE GAP. On this table the largest A-to-B gap
+    # is 6.0 and the answer is about 3.5, so a reintroduced `spread` would fail
+    # here rather than pass quietly.
+    assert ns["block_sd"](rows, "x") < 6.0, (
+        "block_sd returned the widest gap between two blocks rather than a "
+        "standard deviation across all of them")
+
+
+def test_mcnemar_reproduces_the_figure_recorded_on_the_issue(
+        quest_move_chance_run):
+    """**THE CONTROL ON THE TEST ITSELF.**
+
+    The script printed the two paired counts and never the test; the p-value in
+    its own RESULT section was worked out by hand. Issue #1324 records 99 gained
+    against 76 lost at chance 0.00, z = 1.74, p = 0.08. If this implementation
+    did not reproduce that, either the new code is wrong or the number the owner
+    was given was -- and there would be no way to tell which from the file.
+    """
+    _, ns = quest_move_chance_run
+    z, p = ns["mcnemar"](99, 76)
+
+    assert z == pytest.approx(1.74, abs=0.005), (
+        f"McNemar's z for 99 gained against 76 lost is {z:.3f} here and issue "
+        "#1324 records 1.74")
+    assert p == pytest.approx(0.08, abs=0.005), (
+        f"the two-sided p for that split is {p:.3f} here and issue #1324 "
+        "records 0.08")
+
+    # THE SHAPE, so a sign error or a one-sided tail cannot hide behind one
+    # matching case.
+    assert ns["mcnemar"](76, 99)[0] == pytest.approx(-z), (
+        "swapping gained and lost does not flip the sign of z")
+    assert ns["mcnemar"](76, 99)[1] == pytest.approx(p), (
+        "the p-value is not two-sided: swapping gained and lost changed it")
+    assert ns["mcnemar"](0, 0) == (0.0, 1.0), (
+        "with no discordant pairs the test must decide nothing rather than "
+        "divide by zero")
+    assert ns["mcnemar"](100, 20)[1] < 0.001, (
+        "a five-to-one split over 120 discordant pairs is not being called "
+        "significant, so the test has no power at all")
+
+
+def test_the_verdict_is_read_off_the_paired_test_and_not_the_spread(
+        quest_move_chance_run):
+    """**WHAT ISSUE #1379 IS ACTUALLY ABOUT.**
+
+    The script may print a spread -- it is useful to see how much of the table
+    is noise -- but it must not decide anything with it. The decision is the
+    paired test on the same seeds, which does not depend on where the blocks
+    happened to land.
+    """
+    printed, _ = quest_move_chance_run
+
+    assert "z = " in printed and "p = " in printed, (
+        "the run no longer prints the paired test it decides on. It printed "
+        "the two counts and left the test to be done by hand, which is how the "
+        "p-value in its own docstring came to be typed rather than computed")
+
+    assert "NOT A" in printed and "THRESHOLD" in printed, (
+        "the run no longer says that the block spread is a description and not "
+        "a threshold. Without that a reader takes it for the old noise floor")
+
+    source_text = source("analyse_quest_move_chance.py")
+
+    assert "abs(direction) <= " not in source_text, (
+        "the run compares the difference between two doses against a threshold "
+        "again. That is the shape issue #1379 retired: the verdict comes from "
+        "the paired test")
+
+    assert "if p >= 0.05:" in source_text, (
+        "the verdict branch no longer keys off the paired test's p-value")
+
+    assert "def spread(" not in source_text, (
+        "`spread` is back. It took the largest gap between two blocks and "
+        "called it a noise floor; issue #1379 measured how badly that "
+        "understates the real spread")
+
+
+def test_the_dose_actually_reaches_the_model(quest_move_chance_run):
+    """**THE CONTROL THAT MAKES EVERY ROW MEAN SOMETHING.**
+
+    Take-up is the share of quest timers that HAD somewhere to go and took it,
+    so it must read 0 at a chance of 0.00 and 100 at 1.00 whatever else the
+    campaign did. If it did not, the sweep would be measuring five copies of
+    the same game and every conclusion drawn from it would be about noise.
+    """
+    printed, _ = quest_move_chance_run
+
+    assert "chance 0.00 -> take-up   0.0%" in printed, (
+        "at a chance of 0.00 some quest dungeon still took a move it could "
+        "have taken, so the dose is not being applied")
+    assert "chance 1.00 -> take-up 100.0%" in printed, (
+        "at a chance of 1.00 some quest dungeon declined a move it could have "
+        "taken, so the dose is not being applied")
