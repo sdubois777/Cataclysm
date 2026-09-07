@@ -38,8 +38,10 @@ DOCS = REPO_ROOT / "docs"
 NODES_CSV = REPO_ROOT / "game" / "Data" / "PassiveNodes.csv"
 EDGES_CSV = REPO_ROOT / "game" / "Data" / "PassiveEdges.csv"
 
-#: The four class trees that exist. The other twenty are issue #24.
-CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist")
+#: The six class trees that exist. The other eighteen are issue #24. The Ravager
+#: and the Ritualist were added on 2026-09-07 for issue #950.
+CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
+               "Ritualist")
 
 #: The four capstone tiers, from the Passive Class Trees section of the design
 #: document.
@@ -210,11 +212,15 @@ def test_capstone_options_are_carried_across(trees, node_rows):
                 if expected:
                     carried += 1
 
-    # NOT VACUOUS. Three trees carry three options on each of four capstones,
-    # which is 36. Without this the test above would pass just as happily if the
+    # NOT VACUOUS. Five trees carry three options on each of four capstones,
+    # which is 60. Without this the test above would pass just as happily if the
     # generator wrote empty columns for every capstone in every tree.
-    assert carried == 36, (
-        f"{carried} capstone options were carried across, expected 36: three "
+    #
+    # IT WAS 36 AND THREE TREES UNTIL 2026-09-07, when the Ravager and Ritualist
+    # trees were added for issue #950 and brought twelve capstones between them,
+    # each offering three options.
+    assert carried == 60, (
+        f"{carried} capstone options were carried across, expected 60: five "
         "trees with three options on each of four capstones. The Saboteur's "
         "four have none, which is issue #935."
     )

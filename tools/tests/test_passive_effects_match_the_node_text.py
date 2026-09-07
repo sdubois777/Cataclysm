@@ -594,11 +594,22 @@ AUTHORED_NODES = 78
 AUTHORED_OPTIONS = 12
 
 #: How many capstone options are named at all, across every tree.
-NAMED_OPTIONS = 36
+#:
+#: 36 UNTIL 2026-09-07, when the Ravager and Ritualist trees landed for issue
+#: #950 with twelve capstones between them, three options each.
+NAMED_OPTIONS = 60
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
-TOTAL_NODES = 293
+#:
+#: 293 UNTIL 2026-09-07. The two trees added for issue #950 are 74 nodes each.
+#:
+#: THE SHARE THAT GRANTS SOMETHING FELL, AND THAT IS THE POINT OF PRINTING BOTH.
+#: `AUTHORED_NODES` did not move, because a node's numbers are authored in the
+#: design workbook's `Passive Effects` sheet and no rows were written for either
+#: new tree. So 78 of 441 nodes grant something where 78 of 293 did. Authoring
+#: them is issue #1463, opened with the trees rather than left implied.
+TOTAL_NODES = 441
 
 
 def rows_of(path: pathlib.Path) -> list[dict]:

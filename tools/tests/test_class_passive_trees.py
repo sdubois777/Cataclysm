@@ -1,4 +1,4 @@
-"""The four class passive trees in docs/, checked against the design document.
+"""The six class passive trees in docs/, checked against the design document.
 
 WHY THIS EXISTS. Issue #63 asked for a Demonic class passive tree, which is one
 of the five Phase 1 vertical slice deliverables in section XV of
@@ -11,6 +11,15 @@ rules they follow were only written down in prose.
 `docs/Masochist_Class_Tree_Final.json` is the fourth, added for #63. Writing it
 meant reading the other three to work out the rules, and that reading is what
 this file makes permanent.
+
+`docs/Ravager_Class_Tree_Final.json` and `docs/Ritualist_Class_Tree_Final.json`
+are the fifth and sixth, added on 2026-09-07 for issue #950. They complete the
+Demonic damage type, which unlocks exactly those three classes and is the
+vertical slice's type, and they give the Ravager -- the class every new
+character starts on -- a tree of its own for the first time. They follow the
+Masochist's shape rather than the March trees': the same node count, the same
+limb topology and the same layered layout the project owner accepted on
+2026-08-25 after asking for a tree that "grows like a tree".
 
 WHAT A CLASS TREE IS. A node graph authored in the editor at
 C:\\Projects\\PassiveTreeCreator and exported as JSON. Three node kinds: basic
@@ -58,13 +67,18 @@ WHAT IS ASSERTED HERE.
       points spent rather than by a path
     node ids and node names are unique within a tree
     basic nodes do not use "more" or "less" as a magnitude
+    EVERY tree grants Fervour from exactly one node holding exactly one point
+    the design document's generator table has a row for every tree that exists
     the Masochist tree specifically: it exists, and it has the two ways of
       filling Fervour that the project owner decided on
+    the Ravager and Ritualist trees specifically: they exist, their starting
+      nodes say both how Fervour fills and what empties it, and the Ritualist's
+      grants maximum Fervour, because its army cap IS the Fervour pool
 
 EVERY CLASS SHARES ONE RESOURCE, CALLED FERVOUR, since 2026-08-25. What a tree
 owns is a generator -- how it fills Fervour and what that class adds about
 emptying it -- rather than a resource of its own. Every tree's starting node
-is named "Fervour" for that reason: they are four ways into one bar, not four
+is named "Fervour" for that reason: they are six ways into one bar, not six
 resources. `docs/DECISIONS.md` has the reasoning.
 """
 
@@ -83,7 +97,13 @@ GDD = DOCS / "Cataclysm_GDD_v2.md"
 
 #: Every class tree in docs/. The empire tree is a different shape and has its
 #: own checks in test_empire_tree_documents_agree.py.
-CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist")
+#:
+#: THE RAVAGER AND RITUALIST JOINED ON 2026-09-07, issue #950. They take the
+#: Demonic damage type from one designed class of three to all three, which is
+#: what the vertical slice needs, and they take the Ravager -- the class every
+#: new character starts on -- from having no tree to having one.
+CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
+               "Ritualist")
 
 #: The tree issue #63 added, and the one the Phase 1 vertical slice needs.
 DEMONIC_TREE = "Masochist"
@@ -143,8 +163,22 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: is Rock Bottom's "no more than once every 30 seconds", which is ordinary
 #: English, and it is the reason these two counts are measured separately rather
 #: than one being derived from the other.
-STRINGS_CONTAINING_THE_WORD = 30
-STRINGS_USING_IT_AS_A_MAGNITUDE = 21
+#:
+#: BOTH ROSE ON 2026-09-07, when the Ravager and Ritualist trees were added for
+#: issue #950. Containing went 30 to 42 and magnitudes 21 to 27, so twelve new
+#: strings use the word and half of them are magnitudes. The six magnitudes are
+#: two Ravager keystones (Unbreaking's "15% less damage", In Among Them's "2%
+#: more damage"), two options of the Ravager's 200 point capstone, one option of
+#: the Ritualist's 100 point capstone and one of its 200 point capstone. The
+#: other six are ordinary English -- "no more than once every 3 seconds", "three
+#: or more enemies" -- which is again why the two are counted separately.
+#:
+#: NOT ONE BASIC NODE IN EITHER NEW TREE USES A MAGNITUDE, which is the practice
+#: the 2026-08-25 rewrite settled rather than a rule written anywhere: a
+#: conditional bonus on a basic node joins the increases bracket, and only
+#: keystones and capstone options take a separate multiplier.
+STRINGS_CONTAINING_THE_WORD = 42
+STRINGS_USING_IT_AS_A_MAGNITUDE = 27
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -180,13 +214,21 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: damage" per debuff. A count that does not move is exactly the case a reader
 #: would assume nothing happened in, so the list is spelled out again below.
 #:
-#: The seven are Economic Zones, Salvage Protocol, The Imperial Vanguard and
+#: The seven were Economic Zones, Salvage Protocol, The Imperial Vanguard and
 #: Thrifty in the empire tree, The Third Vow and The Final Vow in the Masochist
 #: tree, and Reinforced Housing in the Saboteur tree.
 #:
+#: TEN SINCE 2026-09-07, when the Ravager and Ritualist trees were added for
+#: issue #950. The three that joined are all capstones -- the Ravager's The Final
+#: Onslaught, and the Ritualist's The Third Pact and The Final Pact. Every one of
+#: them wants a separate multiplier rather than an increase: two are 200 point
+#: capstone options, which is the tier the design describes as "god-tier
+#: mechanics", and the third is a flat conditional damage reduction that would
+#: mean almost nothing in a bracket a character already fills from gear.
+#:
 #: Pinned exactly rather than as a floor, for the reason
 #: `test_the_widened_rule_is_actually_relied_on` gives.
-NODES_RELYING_ON_THE_WIDENED_RULE = 7
+NODES_RELYING_ON_THE_WIDENED_RULE = 10
 
 
 def load(tree_name: str) -> dict:
@@ -733,6 +775,144 @@ def test_the_gdd_class_resource_table_names_the_masochist_resource(demonic):
             f"docs/Cataclysm_GDD_v2.md has a table cell naming {gone!r}. Every "
             f"class shares one resource called Fervour since 2026-08-25, and a "
             f"second name for it is the confusion that change removed.")
+
+
+# ---------------------------------------------------------------------------
+# The other two Demonic trees, added by issue #950
+# ---------------------------------------------------------------------------
+#
+# Demonic is the vertical slice's damage type and it unlocks three classes:
+# Ravager, Ritualist and Masochist. Only the Masochist had a tree, and the
+# Ravager is the class every new character starts on --
+# `UCataclysmPlayerClassStats::StartingClassName` is `Ravager` and the console
+# variable `Cataclysm.PlayerClass` defaults to it -- so the default character's
+# own tree did not exist and the only one it could spend a point in belonged to
+# another class. Both were added on 2026-09-07.
+
+#: The two trees issue #950 added. Named rather than derived, so that deleting
+#: one fails here instead of quietly shrinking every check that globs.
+TREES_ADDED_BY_950 = ("Ravager", "Ritualist")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_BY_950)
+def test_the_other_two_demonic_trees_exist(tree_name):
+    """The line issue #950 was opened for. All three Demonic classes ship in the
+    vertical slice with one weapon each -- Greataxe for the Ravager, Fist for the
+    Masochist, Staff for the Ritualist -- and two of the three had nothing to
+    spend a passive point on."""
+    data = load(tree_name)
+    assert data["metadata"]["name"] == f"{tree_name} Class Tree", (
+        f"{tree_name}: the tree's metadata name is "
+        f"{data['metadata']['name']!r}. The generated tables key a row on the "
+        f"tree name, so it has to match the class.")
+
+
+def test_every_tree_grants_fervour_from_exactly_one_node(tree):
+    """"Every tree's starting node is now called Fervour, because they are four
+    ways into one bar rather than four things." `docs/DECISIONS.md`, 2026-08-25.
+
+    THIS GENERALISES A CHECK THAT NAMED THE MASOCHIST. There was one of these
+    per tree and only the Masochist had one, so a tree could be added without a
+    generator at all and nothing would say so -- which is exactly the state the
+    Ravager and Ritualist were in before #950, described by the design document
+    as "not optional stat bars, they are the engine of the build".
+
+    A SECOND NODE OF THAT NAME IS A FAULT TOO, not only a missing one. Which
+    node is a class's generator is what `Fervour` identifies, and two of them
+    makes that ambiguous.
+    """
+    name, data = tree
+    granting = [n for n in data["nodes"] if n["data"]["name"] == "Fervour"]
+    assert len(granting) == 1, (
+        f"{name}: {len(granting)} nodes are named 'Fervour', not 1. That node "
+        f"is what grants this class its way of filling the shared resource, "
+        f"and every tree has exactly one.")
+    assert granting[0]["data"]["maxPoints"] == 1, (
+        f"{name}: the Fervour node holds "
+        f"{granting[0]['data']['maxPoints']} points. Granting a way to fill "
+        f"the resource happens once.")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_BY_950)
+def test_the_new_generators_say_both_how_they_fill_and_what_they_empty(tree_name):
+    """A generator is two statements, not one. The design document: "What
+    differs by class is how it is filled and what it is spent on", and
+    separately "Fervour does not decay. A class may add a rule that changes
+    that, and it says so on its own starting node rather than the resource
+    carrying it."
+
+    So a starting node that says only how it fills has left half the generator
+    unstated, and a reader cannot tell whether the class keeps the default of
+    not decaying or whether somebody forgot to say. Both of these say which.
+    """
+    data = load(tree_name)
+    text = [n["data"]["description"] for n in data["nodes"]
+            if n["data"]["name"] == "Fervour"][0]
+
+    assert "generate" in text.lower() or "generates" in text.lower(), (
+        f"{tree_name}: the Fervour node does not say what generates it. "
+        f"It reads: {text!r}")
+
+    empties = ("decay", "does not decay", "empties", "removes")
+    assert any(word in text.lower() for word in empties), (
+        f"{tree_name}: the Fervour node says how the bar fills and says "
+        f"nothing about it emptying. Every other generator states one or the "
+        f"other -- the Saboteur's says 'Nothing. Fervour keeps its default of "
+        f"not decaying' rather than staying silent. It reads: {text!r}")
+
+
+def test_the_ritualist_tree_grows_the_army_by_growing_the_pool():
+    """THE CONSTRAINT THIS TREE WAS BUILT AROUND, and the one most likely to be
+    lost, because it was decided outside the tree and outside this file.
+
+    `docs/DECISIONS.md`, 2026-09-01, on the Staff Ultimate `Subjugate`: "Holding
+    a thrall reserves 30 Fervour, so your army is only as large as your pool."
+    And: "**The army cap is the Fervour pool itself** rather than a separate
+    number, so the Ritualist's 150 holds five and every point of maximum Fervour
+    a tree grants is progress toward a sixth."
+
+    `UCataclysmCommand::HasRoomForAnotherThrall` already enforces that against
+    the character's MAXIMUM class resource. So maximum Fervour is not one stat
+    among many for this class -- it is the only thing in the game that makes the
+    army bigger, and a Ritualist tree that grants none caps every build at five
+    thralls forever.
+
+    WHY A COUNT RATHER THAN ONE NAMED NODE. Naming one node would pass while the
+    other four were reworded away, and a single 2% node would not reach a sixth
+    thrall: 150 needs +30, which is +20%.
+    """
+    data = load("Ritualist")
+    granting = [n["data"]["name"] for n in data["nodes"]
+                if "maximum Fervour" in (n["data"].get("description") or "")]
+    assert len(granting) >= 4, (
+        f"only {len(granting)} Ritualist nodes grant maximum Fervour: "
+        f"{granting}. The army cap is the Fervour pool itself, so this is the "
+        f"only thing in the tree that can make the army bigger than five "
+        f"thralls. docs/DECISIONS.md, 2026-09-01.")
+
+
+def test_the_design_document_says_how_every_tree_fills_fervour():
+    """The Class Resource Systems table is where a reader looks to find out what
+    a class does with the resource, and it listed three of four before issue #63
+    and four of six before #950.
+
+    IT FINDS THE TREES FIRST AND THEN REQUIRES THE ROW, so it fails when a tree
+    is added without one rather than restating a list that has to be kept in
+    step by hand. That is the same shape as
+    `test_the_design_document_permits_the_nodes_that_rely_on_it` above and for
+    the same reason.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+    document = " ".join(GDD.read_text(encoding="utf-8").split())
+
+    missing = [name for name in CLASS_TREES
+               if f"| {name} (" not in document]
+    assert not missing, (
+        f"the Class Resource Systems table in {GDD.name} has no row for "
+        f"{missing}, and those trees exist in docs/. A class whose tree grants "
+        f"a generator and whose row is absent reads as a class with no way to "
+        f"fill the resource. Rows are written '| Ravager (Demonic) | ...'.")
 
 
 # ---------------------------------------------------------------------------

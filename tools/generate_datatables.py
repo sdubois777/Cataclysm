@@ -2876,7 +2876,8 @@ def enemy_rarities(_book=None) -> list[dict]:
 # --------------------------------------------------------------------------
 
 #: The four class trees that exist. The other twenty are issue #24.
-CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist")
+CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
+               "Ritualist")
 
 #: How many options a capstone offers, from the design document: "Player chooses
 #: one of three options per tier." Fixed at three, which is why the options are
