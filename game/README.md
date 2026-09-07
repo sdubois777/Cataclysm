@@ -151,14 +151,16 @@ by `git add` with no error and no warning. Guarded by
   [#17](https://github.com/sdubois777/Cataclysm/issues/17),
   [#18](https://github.com/sdubois777/Cataclysm/issues/18) and
   [#19](https://github.com/sdubois777/Cataclysm/issues/19)).
-- **A dungeon floor generates and can be walked, and nothing else about a
-  dungeon exists.** `L_Dungeon` builds one floor from a seed when play begins
+- **A dungeon generates, can be walked down, and has a bottom.** `L_Dungeon`
+  builds one floor from a seed when play begins
   and stands the player on it. The floor is a grid of four-metre cells carved
   by one of three layout families, drawn as untextured blocks, with a
-  navigation mesh over it that a character can path across. **There are no
-  enemies on it, the stairs down do nothing, and there is no dungeon** — no
-  floor count, no boss, no timer, no empire layer. `L_Sandbox` is still where
-  creatures are fought (issues
+  navigation mesh over it that a character can path across. Creatures stand on
+  it, the stairs down build the next floor, and the last floor of a dungeon ends
+  with a Gatekeeper. **What `L_Dungeon` still does not have on its own is an
+  empire behind it** — no city, no timer, no resolution — so pressing Play
+  gives a dungeon ten floors deep with no consequences off it. `L_Sandbox` is
+  still where creatures are fought without a floor (issues
   [#40](https://github.com/sdubois777/Cataclysm/issues/40) and
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
 - **No interface screens, and only combat is visible on screen.** Nothing in the
@@ -221,14 +223,29 @@ by `git add` with no error and no warning. Guarded by
   because the enemy capital and the loss condition are both still missing, issue
   [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6.
 
-  **Every dungeon a surge creates has a sub-type, and three of the seven do
+  **Every dungeon a surge creates has a sub-type, and six of the seven do
   something.** The dungeon the player walks carries it into the creature-scoring
   model. A Cow Level costs twice the days to walk and the walk-shortening city
   upgrade does not apply to it; a Siege takes 1% of its host city's maximum
   defence and maximum population every day it stands, and a city may hold only
   one; a Sacrificial dungeon carries twice as many dungeon modifiers, which is
-  the paragraph below. Timed, Horde, Elite and Volatile are rolled and named and
-  change nothing yet, and one further part of the Siege — what "pauses city
+  the paragraph below.
+
+  **And three of them change the floors the dungeon generates.**
+  `FCataclysmDungeonFloorRules` in
+  `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` turns what a dungeon is
+  into what one of its floors is, and three sub-types read it. A **Volatile**
+  dungeon re-draws its dungeon modifiers on every floor, so its creatures are
+  worth a different amount on floor 3 than on floor 2. An **Elite** dungeon
+  stands a Gatekeeper on every floor's exit rather than only on its last. A
+  **Horde** dungeon carves every floor as one open space and gathers its
+  creatures into one crowd at the far end instead of spreading them out as
+  separate encounters — its floor count is its wave count and is not reduced.
+  Every other dungeon keeps a boss on its last floor and nothing else changes.
+
+  **Timed alone is still rolled and named and changes nothing**, because it is a
+  clock on the run and a reward multiplier rather than anything about a floor.
+  One further part of the Siege — what "pauses city
   upgrades" means — is undecided rather than unbuilt. What "increases in power
   by N points per day" means was settled by the owner on 2026-09-05 as the
   damage it does to the city and population, and the N was cut from 10 to 2.5 on
@@ -247,10 +264,16 @@ by `git add` with no error and no warning. Guarded by
   this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in the
   game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **A modifier is a name and a number and nothing else.** No modifier in the
-  table changes what happens on a floor: no floor goes dark, no ceiling drops
-  fire, no enemy is resurrected. All 117 are unbuilt in that sense, and the only
-  thing they do is make creatures score higher. Three further gaps are open.
+  **One modifier of the 117 does something on a floor, and the other 116 are a
+  name and a number.** No modifier in the table makes a floor go dark, drops
+  fire from a ceiling or resurrects an enemy. The one that was built is
+  `Chaos_Unstable_Dimensions`, "Unstable Dimensions": every floor of a dungeon
+  carrying it draws one extra modifier of its own, which is what its row says.
+  It was built through `FCataclysmDungeonFloorRules`, the same seam three
+  dungeon sub-types use, to show that the seam is not only for sub-types — a
+  sub-type replaces a floor's modifier list and this one adds to it. The
+  remaining 116 are unbuilt in that sense, and the only thing they do is make
+  creatures score higher. Three further gaps are open.
   The one Generic modifier, the Corrupted Stalker, is deliberately never drawn —
   the project owner ruled it is granted separately — and nothing grants it, which
   is issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308). A

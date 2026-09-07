@@ -3,16 +3,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 
 /**
  * Which designed creature stands on a floor.
  *
- * SIX OF THE SEVEN THAT ARE BUILT. The Gatekeeper is missing on purpose: it is
- * the boss, the design places one at the end of a dungeon rather than around a
- * floor, and there is no dungeon object holding a floor count for "the end" to
- * mean anything yet. That is issue #41's side of the join. Adding it here would
- * put a boss on every floor of every dungeon.
+ * ALL SEVEN THAT ARE BUILT. The Gatekeeper was left out until 2026-09-07 and
+ * this comment said why: it is the boss, the design places one at the end of a
+ * dungeon rather than around a floor, and nothing held a floor count for "the
+ * end" to mean anything. `FCataclysmFloorBrief::bBossAtTheExit` is now what
+ * holds it, so the Gatekeeper is placed on the floors that have an end and on
+ * no others -- the last floor of any dungeon, and every floor of an Elite one.
+ *
+ * IT IS NOT ONE OF THE GROUPS THE DENSITY DRAWS. `PackKinds()` does not name
+ * it, so nothing can put one on a floor except the boss rule, and a floor
+ * holds at most one.
  *
  * NOT REFLECTED, unlike `ECataclysmFloorLayout` next door. That one is a
  * `UENUM` because `ACataclysmDungeonGameMode` carries a `UPROPERTY` of it, and
@@ -29,6 +35,9 @@ enum class ECataclysmDungeonCreature : uint8
 	AbyssalWarden,
 	CorruptedSentinel,
 	Succubus,
+
+	/** The boss. Placed at a floor's exit, never by the density. */
+	Gatekeeper,
 
 	/** Not a creature. How many there are, for a test that must cover each. */
 	Count
@@ -90,6 +99,22 @@ struct CATACLYSM_API FCataclysmFloorPopulation
 	 * gave up.
 	 */
 	int32 Wanted = 0;
+
+	/**
+	 * Where a wave gathers, or `(-1, -1)` on a floor that is not one wave.
+	 *
+	 * THE WALKABLE CELL FURTHEST FROM THE ENTRANCE, so the wave forms at the
+	 * far end of the arena and the player walks in to meet it rather than
+	 * arriving inside it. It is the same measurement the floor generator makes
+	 * to decide the walk to the stairs is worth taking, so on an Arena floor the
+	 * wave stands at or near the way down.
+	 *
+	 * RECORDED SO THE CROWD CAN BE MEASURED RATHER THAN ASSERTED. "The floor's
+	 * creatures are one body" is a statement about how far they stand from this
+	 * cell, and a test that could not read it could only check that the pack
+	 * spacing rule was off, which is not the same claim.
+	 */
+	FIntPoint WaveSite = FIntPoint(-1, -1);
 
 	/** How many of one kind of creature stand on the floor. */
 	int32 HowMany(ECataclysmDungeonCreature Creature) const;
@@ -316,12 +341,27 @@ public:
 	/**
 	 * Decides what stands where on a floor.
 	 *
+	 * IT TOOK NO BRIEF UNTIL 2026-09-07, so nothing it decided could depend on
+	 * which dungeon the floor belonged to. Two of the seven dungeon sub-types
+	 * are rules about what a floor holds and neither could be written here.
+	 * Issue #41.
+	 *
+	 * A DEFAULT BRIEF IS AN ORDINARY FLOOR, and every caller that does not name
+	 * a dungeon gets exactly the behaviour there was before: creatures in
+	 * separated groups spread over the floor, and no boss.
+	 *
 	 * @param Plan  a built floor. An unbuilt one gives an empty population.
 	 * @param Scale multiplies the density. 0 empties the floor, which is what
 	 *              `Cataclysm.DungeonEnemyScale 0` is for. Negative is clamped
 	 *              to 0, because a negative count is not a floor with anything
 	 *              on it.
+	 * @param Brief what this floor of this dungeon is. Its `bOneWave` gathers
+	 *              the creatures into one crowd instead of spreading them, and
+	 *              its `bBossAtTheExit` stands a Gatekeeper on the way down.
+	 *              The density is not touched by either: a boss is one creature
+	 *              beyond what the density asked for, not one of them.
 	 */
-	static FCataclysmFloorPopulation Populate(const FCataclysmFloorPlan& Plan,
-											  float Scale = 1.0f);
+	static FCataclysmFloorPopulation Populate(
+		const FCataclysmFloorPlan& Plan, float Scale = 1.0f,
+		const FCataclysmFloorBrief& Brief = FCataclysmFloorBrief());
 };

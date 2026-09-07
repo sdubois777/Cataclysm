@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-07 — A dungeon's sub-type decides what its floors hold, and three of the seven now use it
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp`
+(new: `FCataclysmDungeonIdentity`, `FCataclysmFloorBrief`,
+`FCataclysmDungeonFloorRules`),
+`game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.h` and `.cpp`
+(`Populate` takes a brief; `ECataclysmDungeonCreature::Gatekeeper`),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`
+(`DungeonIdentity`, `FloorBrief`, `DungeonModifiers`, `DungeonModifierPool`).
+Issue [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+### What was decided
+
+**A dungeon's identity is data that floor generation reads, and floor generation
+asks it.** Nothing pushes into the generator. `FCataclysmDungeonIdentity` says
+what a dungeon is; `FCataclysmDungeonFloorRules::BriefFor` turns it and a floor
+number into an `FCataclysmFloorBrief`, which says what that one floor is: which
+layout carves it, which modifiers are in force on it, whether a boss stands at
+its exit, and whether its creatures are one wave.
+
+**A floor's modifiers are a per-floor quantity.** They were drawn once for a
+whole dungeon and stored on it, which is why "Dungeon modifiers change every
+floor" could not be written down anywhere. The dungeon still draws its own set;
+what changed is that `ACataclysmDungeonGameMode::RunModifierScore` now answers
+with the floor's rather than the dungeon's, and the two are the same number for
+every dungeon whose floors do not re-draw.
+
+### The three sub-types built through it, and the sentence each comes from
+
+`docs/Cataclysm_GDD_v2.md`, the Dungeon Sub-Types table:
+
+| Sub-type | The design sentence | What it does |
+| :-- | :-- | :-- |
+| Volatile | "Dungeon modifiers change every floor." | every floor re-draws the dungeon's modifier count from the run's pool |
+| Elite | "Every floor ends with a boss fight." | a Gatekeeper stands on every floor's exit, not only the last |
+| Horde | "Number of floors equals number of enemy waves." | every floor is one open space holding one wave of creatures |
+
+**And one of the 117 dungeon modifiers, through the same field the Volatile
+sub-type uses.** `Chaos_Unstable_Dimensions`: "Every time you clear a floor, the
+very fabric of the dungeon warps. A new 'reality' is imposed, granting a new,
+random modifier to all enemies on the next floor." Volatile REPLACES a floor's
+modifier list; this ADDS one to it. Two different rules on one field is what says
+the seam is a seam rather than three sub-types bolted together.
+
+### The genre research, and what it settles
+
+Six sources were read on 2026-09-07 before any of this was designed:
+
+| Source | What it does |
+| :-- | :-- |
+| Diablo II `Levels.txt` (Phrozen Keep column reference) | every area is a data row carrying `DrlgType`, which picks the generation algorithm, `MonDen`, a monster density, and `mon1`–`mon25`, which monsters may appear |
+| Path of Exile map mods (PoE Wiki, *List of map mods*) | mods are rolled onto the map item and apply to the whole generated area |
+| Diablo IV Nightmare Dungeon affixes (Maxroll, Wowhead) | one positive and two to four negative affixes, applied to the whole dungeon; Escalating Nightmare accumulates them from one dungeon to the next |
+| Last Epoch Monolith of Fate echo types (Maxroll, Last Epoch Wiki) | the echo's type decides its objective and its layout; an Arena Echo is 12 to 18 waves |
+| Last Epoch Arena of Champions (Icy Veins, Maxroll) | a fixed number of waves fought in one arena, a boss at the end, and modifiers offered at intervals |
+| Diablo III Greater Rifts (Maxroll) | one Rift Guardian at the end of the whole rift, not one per level |
+
+**What the research settles.**
+
+- **The shape of the mechanism.** All four games make the area's identity a piece
+  of data that generation reads. Diablo II is the plainest: `DrlgType` is the
+  area's own row choosing which algorithm carves it, which is exactly what
+  `FCataclysmFloorBrief::Layout` is here.
+- **Horde.** Waves fought in one open space, with the count fixed rather than
+  endless, is Last Epoch's Arena of Champions and its Arena Echo. Making a Horde
+  floor an Arena is not invented.
+
+**What the research does NOT settle, and these are judgements.**
+
+- **Volatile has no precedent in any of the six.** Path of Exile fixes a map's
+  mods when the map is opened, Diablo IV fixes a dungeon's affixes when the sigil
+  is used, and Diablo II fixes an area's content in its `Levels.txt` row. Diablo
+  IV's Escalating Nightmare adds affixes BETWEEN dungeons and never within one.
+  So re-drawing modifiers per floor is a thing no shipped game in the genre does,
+  and it is the rule the mechanism had to be shaped around rather than copied
+  from. **It is also the reason the seam is where it is:** a mechanism that could
+  not express it would have been in the wrong place.
+- **Where an Elite dungeon's boss stands.** Diablo III puts its Rift Guardian at
+  the end of the whole rift. Nothing found puts one at the end of every level. "A
+  floor ends at the way down" is a reading of the design sentence, and standing
+  the Gatekeeper on the exit cell is a judgement.
+- **Where a wave gathers.** The walkable cell furthest from the entrance, so the
+  player walks in to meet the wave rather than arriving inside it. Nothing in the
+  research or the design says where a wave forms.
+- **What makes a crowd a crowd.** `FCataclysmFloorPopulator::LeastCellsBetweenPacks`
+  already existed so that "a floor reads as a series of encounters rather than as
+  one crowd that arrives together" — its own words. A wave is that crowd, so the
+  rule is turned off for one and the groups are filled outward from the wave site
+  instead of being scattered. That reading of the existing constant is a
+  judgement, not something the design states.
+
+### Which sub-types were deliberately left out, and why
+
+**Timed, Sacrificial, Siege and Cow Level are not in this seam.** None of them
+changes what a floor contains, so building any of them here would have meant
+either a rule that does nothing or a field nothing reads.
+
+| Sub-type | Why not |
+| :-- | :-- |
+| Timed | "Failing the time limit is treated as dying. Killing enemies adds time. Rewards scale with clear speed." A clock on the run and a reward multiplier. Different seam. |
+| Sacrificial | "Double modifiers." Already built: `UCataclysmDungeonModifierRules::CountFor` has doubled the count since 2026-09-07. Its other half, sacrificing materials to shed the extras, is a player choice with an economy behind it. |
+| Siege | Acts on a city and the day clock. Already modelled in `UCataclysmEmpireRun`. |
+| Cow Level | Doubles the walk and multiplies loot. Acts on the day clock. Already modelled. |
+
+`tools/tests/test_dungeon_subtype_floor_rules_are_the_design.py` holds the
+Timed sentence OUT of the rules file, so adding a sub-type here without building
+it fails a test.
+
+### What this does NOT settle
+
+**A Horde wave stands waiting rather than arriving.** Every creature on the floor
+is placed before the player walks in, gathered at the far end. Nothing spawns
+creatures over time, because nothing in the project spawns creatures mid-floor.
+Whether a wave should walk in is a separate question and this does not answer it.
+
+**The other 116 dungeon modifiers still do nothing on a floor.** One was built
+through the seam as proof that the seam is not only for sub-types. The rest are
+still a name, a description and a danger score.
+
+**Nothing chooses which boss.** The Gatekeeper is the only boss creature that
+exists, so every boss floor holds one. `FCataclysmDungeon::Bosses`, which counts
+how many bosses a dungeon carries and which a Fallen City raises, is still read
+by nothing.
+
+**How often a Horde or Elite dungeon should appear is unchanged.** The spawn
+weights are the owner's, from 2026-09-06, and nothing here touches them. What
+changed is that a Horde dungeon at 19.7 in 100, an Elite at 16.4 and a Volatile
+at 16.4 — together more than half of every dungeon a surge makes — now play
+differently from a plain one, where before they differed only by a number in the
+enemy score model.
+
+---
+
 ## 2026-09-07 — An enchantment's negative is never milder than its positive, and the 1/4/16/64 step prices the weight band rather than the row
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`
@@ -247,6 +380,7 @@ both sides' weight distributions against the designed figures.
 from `tools/unreal_build.py`. Removing the floor and replacing it with an exact
 match were each broken in the source and rebuilt; each break failed the same two
 tests and left the other eight passing.
+
 
 ---
 
