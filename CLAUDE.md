@@ -224,6 +224,13 @@ cannot poison the next case, and restores every file in a `finally` so a crash
 does not leave the repository broken. Issue #159 has the incident that produced
 it.
 
+**It breaks the real files, so run it in a copy when anything else in the
+worktree imports them.** Its `disturbed` check catches another process *writing*
+over the broken file and cannot catch one *reading* it, so a worker that imported
+the break measures a different model and nothing anywhere says so. `REPO_ROOT`
+comes from the module's own file location, so `git archive HEAD | tar -x -C <an
+empty directory>` and running the proof there is enough. Issue #1429.
+
 **For a C++ guard, use `tools/unreal_build.py` instead.** The same class of
 problem exists for compiled C++ and it is worse, because the build tells you it
 succeeded. Restoring a source file with a tool that preserves its modification
