@@ -169,6 +169,7 @@ nodes add at tier 1 — issue
 [#1386](https://github.com/sdubois777/Cataclysm/issues/1386).
 
 ---
+
 ## 2026-09-06 — A Quest dungeon moves on a coin of 0.5, and one carrying a Siege refuses a besieged city
 
 **Affects:** `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py`,
