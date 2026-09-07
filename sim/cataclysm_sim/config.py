@@ -884,18 +884,39 @@ TREE_NONE = EmpireTree(name="No tree")
 # The Explorer branch of `docs/Empire_Development_Tree_Final.json` at full
 # investment: every one of its 316 points spent. Issue #1386.
 #
-# THE DAYS IT REMOVES. Every node in the Explorer branch that takes a flat
-# number of days off every dungeon, with no condition on it:
+# HOW MUCH IT SPEEDS A DUNGEON UP. Every node in the Explorer branch that
+# shortens every dungeon's walk with no condition on it. **ALL FOUR ARE A
+# PERCENTAGE OF THE DUNGEON'S RUN TIME AND NOT A NUMBER OF DAYS**, combined
+# multiplicatively:
 #
-#   Temporal Mastery   25 points   -1 day per point    -25
-#   Overclock          20 points   -1 day per point    -20
-#   Pacing             10 points   -1 day per point    -10
-#   Fleet Footed        1 point    -5 days flat         -5
-#                                                      ---
-#                                                      -60 days, 56 points
+#   Temporal Mastery   25 points   -2.5% per point   0.975^25
+#   Overclock          20 points   -2.5% per point   0.975^20
+#   Pacing             10 points   -2.5% per point   0.975^10
+#   Fleet Footed        1 point    -12%              0.88
+#                                                    --------
+#                                          0.975^55 x 0.88 = x0.2186, 56 points
 #
-# TWO TERMS THIS USED TO COUNT AND SHOULD NOT HAVE. It said 70 days, and the two
-# extra were:
+# **THEY WERE A FLAT -60 DAYS UNTIL 2026-09-06 AND THE OWNER RULED THEM A
+# PERCENTAGE**, verbatim "Change to a percentage", because a flat subtraction
+# removes a fraction of the walk that depends on how deep the dungeon is: under
+# the old numbers the shallowest ordinary dungeon was cut by 98% and the deepest
+# by 67%, so every dungeon a surge could reach collapsed onto the one-day
+# minimum and floor count stopped affecting pace at all. Issue #1383.
+#
+# **THE PER-POINT VALUES ARE NOT THE OWNER'S**; the owner ruled the shape only.
+# They come from `sim/analyse_explorer_rate.py`, which computes the window they
+# have to sit in -- a lower bound where the shallow end of the ordinary range
+# falls back onto the one-day minimum, an upper bound from the ruling that a
+# 50-floor dungeon reaches "a couple of days" with the whole stack -- and
+# measures the campaigns. `docs/DECISIONS.md` carries the entry and the sources.
+#
+# **`run_days_flat` IS 0 AND `run_days_mult` CARRIES IT NOW.**
+# `Simulation.run_days_for` subtracts the flat days first and multiplies second,
+# which is the order Diablo 3's cooldown formula uses, so the two terms are not
+# interchangeable: the flat part is now `Sovereign's Haste` alone.
+#
+# TWO TERMS THIS USED TO COUNT AND SHOULD NOT HAVE. Before issue #1386 it
+# removed 70 flat days rather than 60, and the two extra were:
 #
 #   * **Opportunist**, 5 points, whose own text is "Dungeons in cities with no
 #     other active dungeons cost -1 day to run per point". That is a condition
@@ -955,19 +976,32 @@ TREE_NONE = EmpireTree(name="No tree")
 # the presets hold per-tier values", rejecting both of the constant-level
 # options; issue #1397 records what each cost.
 #
-# **SO THIS PRESET REMOVES 70 DAYS AT DIFFICULTY TIER 1, WHICH IS THE NUMBER IT
-# CARRIED BEFORE ISSUE #1386, BY A COMPLETELY DIFFERENT AND CORRECT ROUTE.** The
-# old 70 was `Opportunist` -- conditional on the board -- plus `The Delver`,
-# which is a Tier 1 capstone option in no branch at all. **Two wrong terms
-# summed to the figure one missing right one would have given.** Nothing here is
-# a revert: the old 70 was flat at every tier, and this is 70 at tier 1, 80 at
-# tier 2 and 90 from tier 3 upwards, with +40 floors at tier 1 and +180 at tier
-# 8 beside it. Read `days_removed` and `floors_added` rather than the fields.
+# **SO THIS PRESET REMOVES 10 DAYS AT DIFFICULTY TIER 1, AND ALL TEN OF THEM
+# ARE `Sovereign's Haste`'s.** Everything else the branch does to a walk is the
+# multiplier above. The flat total is 10 at tier 1, 20 at tier 2 and 30 from
+# tier 3 upwards, where that node's own cap stops it. Read `days_removed` and
+# `floors_added` rather than the fields.
+#
+# A HISTORICAL NOTE, BECAUSE THE NUMBER 70 IS IN SEVERAL PLACES. Between issues
+# #1386 and #1383 this preset removed 70 flat days at tier 1, and it had removed
+# 70 before #1386 as well by a wrong route -- `Opportunist`, which is
+# conditional on the board, plus `The Delver`, a Tier 1 capstone option in no
+# branch at all. Two wrong terms had summed to the figure one missing right one
+# would have given. Any campaign figure quoting 70 flat days is now stale
+# whichever of the two 70s it came from.
 TREE_EXPLORER_AS_DESIGNED = EmpireTree(
     name="Explorer maxed (as designed)",
-    #: Temporal Mastery 25, Overclock 20, Pacing 10, Fleet Footed 5.
-    run_days_flat=60.0,
-    #: Sovereign's Haste, 10 points at -1 day per point per active type.
+    #: **NO UNCONDITIONAL FLAT DAYS AT ALL SINCE 2026-09-06.** Temporal Mastery,
+    #: Overclock, Pacing and Fleet Footed are the multiplier below. Issue #1383.
+    run_days_flat=0.0,
+    #: Temporal Mastery 25, Overclock 20 and Pacing 10 at -2.5% a point, and the
+    #: Fleet Footed keystone at -12%. **WRITTEN AS THE PRODUCT RATHER THAN AS
+    #: 0.2186**, so that changing a per-point value here cannot silently
+    #: disagree with what the node descriptions in the design document say.
+    run_days_mult=0.975 ** 55 * 0.88,
+    #: Sovereign's Haste, 10 points at -1 day per point per active type. The
+    #: ruling left every conditional and situational node as fixed days, and
+    #: this is the only one of them the model carries.
     run_days_flat_per_type=10.0,
     run_days_flat_per_type_cap=30.0,
     #: Architect of Greed +20, Deep Boring +10, Exclusionary Mapping -10.

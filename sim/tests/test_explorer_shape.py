@@ -5,11 +5,12 @@ reduction should have, and the answer rests on four claims that are structural
 rather than statistical. A campaign batch cannot check any of them, and all four
 are the kind of claim that goes quietly wrong when the design document moves:
 
-1. The Explorer branch's own unconditional flat reduction is **60 days**, not the
-   70 that `TREE_EXPLORER_AS_DESIGNED.run_days_flat` models. The extra 10 is
-   Opportunist, which is conditional, plus The Delver, which is a central
-   capstone option and not an Explorer node at all. Issue #1288 found exactly
-   this class of error in the Architect branch, where one factor matched no node.
+1. The Explorer branch's own unconditional reduction is a **multiplier of
+   x0.2186** and **no flat days at all**. It was 60 flat days until 2026-09-07,
+   when the four nodes that supplied them became a percentage; the project owner
+   ruled the shape on 2026-09-06, verbatim "Change to a percentage", and
+   `sim/analyse_explorer_rate.py` chose the values. Issue #1288 found the same
+   class of error in the Architect branch, where one factor matched no node.
 2. A flat subtraction cannot compress the gradient. It stretches it while the
    amount is below the shallowest dungeon and destroys it above, with nothing in
    between. **That is the whole argument against every flat candidate**, so it is
@@ -77,17 +78,30 @@ def report(monkeypatch_session=None):
 # Claim 1: what the branch actually gives
 # --------------------------------------------------------------------------
 
-def test_the_explorer_branchs_unconditional_flat_total_is_sixty(report):
+def test_the_branch_has_no_unconditional_flat_days_and_one_multiplier(report):
     """Read off the design document, not off the config.
 
-    Four nodes, all in the Explorer branch, all unconditional: Temporal Mastery
-    25, Overclock 20, Pacing 10, Fleet Footed 5.
+    Four nodes, all in the Explorer branch, all unconditional, all now a
+    percentage: Temporal Mastery 25 points, Overclock 20, Pacing 10 and the
+    Fleet Footed keystone. **BOTH HALVES MATTER.** A test that only checked the
+    multiplier would pass on a branch that had kept its 60 flat days as well,
+    which would make an invested player roughly four times faster than the
+    2026-09-06 ruling intends.
     """
     _printed, namespace = report
-    total = sum(days for _n, branch, _p, days, note in namespace["WALK_TIME_NODES"]
-                if days is not None and not note and branch == "Explorer")
-    assert total == 60.0
-    assert namespace["RESULT"]["facts"]["unconditional"] == 60.0
+    rows = namespace["WALK_TIME_NODES"]
+    flat = sum(days for _n, branch, _p, days, _pc, note in rows
+               if days is not None and not note and branch == "Explorer")
+    assert flat == 0.0, (
+        "an unconditional Explorer node still removes a fixed number of days. "
+        "The 2026-09-06 ruling moved all four of them to a percentage.")
+
+    product = 1.0
+    for _n, branch, points, _days, percent, note in rows:
+        if percent is not None and not note and branch == "Explorer":
+            product *= (1.0 - percent) ** points
+    assert product == pytest.approx(0.2186, abs=5e-5)
+    assert namespace["RESULT"]["facts"]["unconditional"] == 0.0
 
 
 def test_the_gap_between_the_model_and_the_branch_is_sovereigns_haste(report):
@@ -98,10 +112,11 @@ def test_the_gap_between_the_model_and_the_branch_is_sovereigns_haste(report):
     branch. That repair closed it to 0.
 
     **It is 10 again since issue #1397, and this 10 is right.** The script's
-    `unconditional` total is the four nodes that remove days at every tier
-    alike; the preset also folds in `Sovereign's Haste`, which pays per active
-    Cataclysm type, and the script reports at one. Same number, different term,
-    which is exactly the trap this file exists to keep visible.
+    `unconditional` flat total is the Explorer nodes that remove days at every
+    tier alike, and since 2026-09-07 there are none of them; the preset folds in
+    `Sovereign's Haste`, which pays per active Cataclysm type, and the script
+    reports at one. Same number, different term, which is exactly the trap this
+    file exists to keep visible.
     """
     _printed, namespace = report
     facts = namespace["RESULT"]["facts"]
@@ -109,7 +124,7 @@ def test_the_gap_between_the_model_and_the_branch_is_sovereigns_haste(report):
     preset_days = TREE_EXPLORER_AS_DESIGNED.days_removed(active)
 
     assert facts["modelled"] == preset_days
-    assert facts["modelled"] - facts["unconditional"] == preset_days - 60.0
+    assert facts["modelled"] - facts["unconditional"] == preset_days - 0.0
 
     haste = preset_days - TREE_EXPLORER_AS_DESIGNED.days_removed(0)
     assert facts["modelled"] - facts["unconditional"] == haste, (
@@ -254,13 +269,14 @@ def test_a_surge_reaches_deeper_than_the_basic_dungeon_range(report):
     assert (min(mults), max(mults)) == (0.55, 1.60)
     assert (wide[0], wide[-1]) == (4, 80)
 
-    shipped = namespace["Shape"]("probe", flat=TREE_EXPLORER_AS_DESIGNED.run_days_flat)
-    assert on_floor(namespace, shipped) == 100.0
-    assert on_floor(namespace, shipped, wide) < 100.0, (
-        "the shipped flat 70 does put every BASIC surge dungeon on the one-day "
-        "floor, but not every dungeon a surge can reach; issue #1383's table "
-        "leaves out Quest dungeons and the Cataclysm depth multiplier")
-    _ratio, answers = namespace["gradient"](shipped, wide)
+    replaced = namespace["Shape"]("probe", flat=namespace["FLAT_REPLACED"])
+    assert on_floor(namespace, replaced) == 100.0
+    assert on_floor(namespace, replaced, wide) < 100.0, (
+        "the flat 70 this change replaced does put every BASIC surge dungeon on "
+        "the one-day floor, but not every dungeon a surge can reach; issue "
+        "#1383's table leaves out Quest dungeons and the Cataclysm depth "
+        "multiplier")
+    _ratio, answers = namespace["gradient"](replaced, wide)
     assert answers > 1
 
 
@@ -322,7 +338,7 @@ def test_raising_the_floor_leaves_one_walk_length_at_any_height(report):
     a reader is most likely to reach for after seeing the one-day figure."""
     _printed, namespace = report
     shape_of, gradient = namespace["Shape"], namespace["gradient"]
-    flat = TREE_EXPLORER_AS_DESIGNED.run_days_flat
+    flat = namespace["FLAT_REPLACED"]
     for minimum in range(1, 41):
         _ratio, answers = gradient(
             shape_of("probe", flat=flat, minimum=minimum))

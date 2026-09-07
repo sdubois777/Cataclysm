@@ -1036,7 +1036,7 @@
       "data": {
         "kind": "basic",
         "name": "Pacing",
-        "description": "-1 days from dungeon run time per point (Min 1).",
+        "description": "-2.5% of dungeon run time per point, multiplicative (Min 1).",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 10
@@ -1188,7 +1188,7 @@
       "data": {
         "kind": "keystone",
         "name": "Fleet Footed",
-        "description": "-5 days from dungeon run time.",
+        "description": "-12% of dungeon run time, multiplicative.",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 1
@@ -1493,7 +1493,7 @@
       "data": {
         "kind": "basic",
         "name": "Overclock",
-        "description": "-1 day from dungeon run time per point.",
+        "description": "-2.5% of dungeon run time per point, multiplicative.",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 20
@@ -1668,7 +1668,7 @@
       "data": {
         "kind": "basic",
         "name": "Temporal Mastery",
-        "description": "-1 Day from dungeon run time per point.",
+        "description": "-2.5% of dungeon run time per point, multiplicative.",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 25
@@ -1733,7 +1733,7 @@
       "data": {
         "kind": "basic",
         "name": "Speed Runner",
-        "description": "+5% bonus Loot Quantity per 2 days under default run time per point.",
+        "description": "+5% bonus Loot Quantity per 2 days under default run time per point (cap 100%).",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 10

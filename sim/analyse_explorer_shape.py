@@ -146,27 +146,34 @@ ACTIVE_TYPES = 1
 #: document for time words and reading each hit; `assert_document_matches`
 #: re-runs that sweep and fails if it finds one this list does not name.
 #:
-#: `days` is the flat days removed at full investment. `None` means the node is
-#: not a flat subtraction at all and is described in `note` instead.
+#: `days` is the flat days removed at full investment and `percent` is the share
+#: of run time removed PER POINT. `None` in either means the node does not work
+#: that way; a node with `None` in both is described in `note` instead.
+#:
+#: **THE FIRST FOUR CARRIED 25, 20, 10 AND 5 FLAT DAYS UNTIL 2026-09-07.** The
+#: project owner ruled them a percentage on 2026-09-06, verbatim "Change to a
+#: percentage", and `sim/analyse_explorer_rate.py` chose the values. So the
+#: branch has NO unconditional flat reduction left at all: what it has is a
+#: multiplier of `0.975 ** 55 * 0.88`. Issue #1383.
 WALK_TIME_NODES = (
-    # name, branch, points, days, condition
-    ("Temporal Mastery", "Explorer", 25, 25.0, ""),
-    ("Overclock", "Explorer", 20, 20.0, ""),
-    ("Pacing", "Explorer", 10, 10.0, ""),
-    ("Fleet Footed", "Explorer", 1, 5.0, ""),
-    ("Opportunist", "Explorer", 5, 5.0,
+    # name, branch, points, days, percent, condition
+    ("Temporal Mastery", "Explorer", 25, None, 0.025, ""),
+    ("Overclock", "Explorer", 20, None, 0.025, ""),
+    ("Pacing", "Explorer", 10, None, 0.025, ""),
+    ("Fleet Footed", "Explorer", 1, None, 0.12, ""),
+    ("Opportunist", "Explorer", 5, 5.0, None,
      "only in a city with no other active dungeon"),
-    ("Rapid Descent", "Explorer", 10, None,
+    ("Rapid Descent", "Explorer", 10, None, None,
      "-0.1 days of REMAINING run time per floor cleared per point"),
-    ("Sovereign's Haste", "Explorer", 10, None,
+    ("Sovereign's Haste", "Explorer", 10, None, None,
      "-1 day per point per active Cataclysm type, capped at -30"),
-    ("Tactical Entry", "Explorer", 1, None,
+    ("Tactical Entry", "Explorer", 1, None, None,
      "run days HALVED above 50 floors -- a multiplier, not a subtraction"),
-    ("The Delver", "CENTRAL", 1, 5.0,
+    ("The Delver", "CENTRAL", 1, 5.0, None,
      "one of three exclusive options at the Tier 1 capstone"),
-    ("The Last Stand", "CENTRAL", 1, None,
+    ("The Last Stand", "CENTRAL", 1, None, None,
      "run time set to one day, in a city within 7 days of falling"),
-    ("Imperial Roads", "Architect", 10, None,
+    ("Imperial Roads", "Architect", 10, None, None,
      "-1 day per point, Fallen City dungeons only"),
 )
 
@@ -189,7 +196,8 @@ FLOOR_NODES = (
 #: floor. They are why the shape of the reduction is not only a pacing question:
 #: change the shape and these three change what they are worth.
 REWARD_NODES = (
-    ("Speed Runner", 10, "+5% Loot Quantity per 2 days under default run time per point"),
+    ("Speed Runner", 10,
+     "+5% Loot Quantity per 2 days under default run time per point, cap 100%"),
     ("Efficiency Premium", 1, "+5% Loot Quantity per day removed, capped at 50%"),
     ("One-Day Specialist", 1,
      "if run time reaches the 1-day minimum, all Explorer loot modifiers doubled"),
@@ -239,7 +247,7 @@ def assert_document_matches(nodes: list[dict]) -> None:
     branch, and a check that only confirms the nodes you already wrote down
     cannot catch a node you never wrote down.
     """
-    for name, branch, points, _days, _note in WALK_TIME_NODES:
+    for name, branch, points, _days, _percent, _note in WALK_TIME_NODES:
         node, data = named(nodes, name)
         assert branch_of(node) == branch, (
             f"{name} is in the {branch_of(node)} branch, not {branch}")
@@ -260,7 +268,7 @@ def assert_document_matches(nodes: list[dict]) -> None:
         low = (text or "").lower()
         return any(word in low for word in TIME_WORDS)
 
-    assert mentions_time("-1 day from dungeon run time per point."), (
+    assert mentions_time("-2.5% of dungeon run time per point, multiplicative."), (
         "the time-word sweep does not match Overclock's own description")
     assert not mentions_time("+5% Loot Quantity per point."), (
         "the time-word sweep matches a pure loot node")
@@ -307,26 +315,42 @@ def section_one(nodes: list[dict]) -> dict:
     explorer = [n for n in nodes if branch_of(n) == "Explorer"]
     branch_points = sum(n["data"].get("maxPoints") or 0 for n in explorer)
 
-    print(f"{'node':26} {'branch':10} {'pts':>4} {'days':>6}  condition")
+    print(f"{'node':26} {'branch':10} {'pts':>4} {'effect':>9}  condition")
     unconditional = 0.0
+    unconditional_mult = 1.0
     unconditional_points = 0
-    for name, branch, points, days, note in WALK_TIME_NODES:
-        shown = f"-{days:g}" if days is not None else "see note"
-        print(f"{name:26} {branch:10} {points:>4} {shown:>6}  "
+    for name, branch, points, days, percent, note in WALK_TIME_NODES:
+        if days is not None:
+            shown = f"-{days:g}d"
+        elif percent is not None:
+            shown = (f"-{percent * 100:g}%/pt" if points > 1
+                     else f"-{percent * 100:g}%")
+        else:
+            shown = "see note"
+        print(f"{name:26} {branch:10} {points:>4} {shown:>9}  "
               f"{note or 'always, every dungeon'}")
-        if days is not None and not note and branch == "Explorer":
-            unconditional += days
+        if not note and branch == "Explorer":
             unconditional_points += points
+            if days is not None:
+                unconditional += days
+            elif percent is not None:
+                unconditional_mult *= (1.0 - percent) ** points
     print()
     print(f"  Explorer-branch unconditional flat total        "
           f"-{unconditional:g} days, bought with {unconditional_points} points "
           f"of the branch's {branch_points}")
+    print(f"  Explorer-branch unconditional MULTIPLIER        "
+          f"x{unconditional_mult:.4f}, the same {unconditional_points} points")
     modelled = TREE_EXPLORER_AS_DESIGNED.days_removed(ACTIVE_TYPES)
+    haste = modelled - TREE_EXPLORER_AS_DESIGNED.days_removed(0)
+    assert abs(unconditional_mult - TREE_EXPLORER_AS_DESIGNED.run_days_mult) < 1e-12, (
+        f"the four ruled nodes multiply to {unconditional_mult:.6f} and "
+        f"TREE_EXPLORER_AS_DESIGNED.run_days_mult is "
+        f"{TREE_EXPLORER_AS_DESIGNED.run_days_mult:.6f}")
     # AT ZERO ACTIVE TYPES THE PER-TYPE PART IS NOTHING, so the difference
     # is exactly what Sovereign's Haste contributes -- read through the
     # accessor rather than off `run_days_flat`, which is the same rule
     # `tools/tests/test_the_tree_is_read_per_tier.py` holds everyone to.
-    haste = modelled - TREE_EXPLORER_AS_DESIGNED.days_removed(0)
     print(f"  Sovereign's Haste at {ACTIVE_TYPES} active type(s)"
           f"{'':<12}-{haste:g} days, per active Cataclysm type, capped at -30")
     print(f"  TREE_EXPLORER_AS_DESIGNED at {ACTIVE_TYPES} active type(s)"
@@ -340,31 +364,37 @@ def section_one(nodes: list[dict]) -> dict:
         print("  either number; issue #1386 is where the last disagreement of "
               "this kind was resolved.")
     else:
-        print("  THEY AGREE. The constant removed 70 days before issue #1386, "
-              "and the two extra terms")
-        print("  were Opportunist, which carries a condition in its own text, "
-              "and The Delver, which is one")
-        print("  of three exclusive options at the Tier 1 capstone rather than "
-              "an Explorer node at all.")
-        print()
-        print("  **IT REMOVES 70 AGAIN AT ONE ACTIVE TYPE, AND THAT IS NOT A "
-              "REVERT.** Issue #1397 folded")
-        print("  Sovereign's Haste in at the tier the campaign is played at, "
-              "which is -10 days here and")
-        print("  -30 from tier 3 upwards. Two wrong terms had summed to the "
-              "figure one missing right")
-        print("  one would have given. The old 70 was flat at every tier and "
-              "carried no floors; this is")
-        print(f"  {modelled:g} at {ACTIVE_TYPES} active and 90 at eight, with "
-              "floors beside it.")
+        print("  THEY AGREE, AND BOTH ARE NOW ZERO PLUS SOVEREIGN'S HASTE. The "
+              "four nodes that used to")
+        print("  supply 60 unconditional flat days became a percentage on "
+              "2026-09-07 -- the owner ruled")
+        print("  the shape on 2026-09-06, verbatim \"Change to a percentage\", "
+              "and sim/analyse_explorer_")
+        print("  rate.py chose the values. The branch's whole unconditional "
+              "reduction is the multiplier")
+        print(f"  x{unconditional_mult:.4f} above, and the only flat days left "
+              f"in it are Sovereign's Haste's "
+              f"-{haste:g} at")
+        print(f"  {ACTIVE_TYPES} active type(s), rising to -30 from tier 3 "
+              "upwards. Issue #1383.")
     print()
-    print(f"  IT TAKES {unconditional_points} POINTS TO REMOVE "
-          f"{unconditional:g} DAYS. The deepest dungeon a surge can put on the "
-          "board is 50 floors")
-    print(f"  (a Quest at a Sanctuary), so the collapse is complete at "
-          f"{unconditional_points} of the branch's {branch_points} points, well "
-          "short of the")
-    print("  full investment the owner's question is about.")
+    print(f"  IT TAKES {unconditional_points} POINTS TO REACH "
+          f"x{unconditional_mult:.4f}, of the branch's {branch_points}. THAT IS "
+          f"THE PART OF THIS FINDING THE")
+    print("  SHAPE CHANGE DID NOT REPAIR: the reduction is still bought well "
+          "short of the full")
+    print("  investment the owner's question is about, so a player who takes "
+          "these four nodes and")
+    print("  skips the branch's five depth nodes is as fast as a maxed one and "
+          "faces shallower dungeons.")
+    print(f"  Under the fixed-day design those same {unconditional_points} "
+          f"points removed 60 days, which put EVERY")
+    print(f"  ordinary Basic dungeon -- {ORDINARY[0]} to {ORDINARY[-1]} floors "
+          f"-- on the one-day minimum, and 88% of the wider")
+    print(f"  {min(surge_reachable())}-{max(surge_reachable())} floor range a "
+          f"surge can reach. Now they leave a gradient. Being cheap is a")
+    print("  separate complaint from being flat, and only the second was ruled "
+          "on.")
     print()
 
     print("  FLOOR-COUNT NODES IN THE SAME BRANCH. The model credited the "
@@ -496,20 +526,31 @@ def base_config() -> TuningConfig:
 
 
 BASE = base_config()
-FLAT_TODAY = TREE_EXPLORER_AS_DESIGNED.days_removed(ACTIVE_TYPES)
+#: The flat days the branch removed at one active Cataclysm type UNDER THE
+#: FIXED-DAY DESIGN THIS ANALYSIS REPLACED: Temporal Mastery 25, Overclock 20,
+#: Pacing 10, Fleet Footed 5 and Sovereign's Haste 10.
+#:
+#: **A CONSTANT AND NO LONGER A READ OFF THE PRESET.** It was
+#: `TREE_EXPLORER_AS_DESIGNED.days_removed(ACTIVE_TYPES)`, which is 10 since the
+#: 2026-09-07 change moved the first four into `run_days_mult`. Every row below
+#: labelled "flat 70" is the design the owner ruled against, kept so the
+#: comparison that produced the ruling can still be re-run; reading it off the
+#: preset now would silently retitle those rows "flat 10" and measure something
+#: nobody asked about. Issue #1383.
+FLAT_REPLACED = 70.0
 
 #: The candidates, in the order they are printed. Read off the config rather
 #: than written out where possible, so a change to `TREE_EXPLORER_AS_DESIGNED`
 #: cannot leave this file claiming the wrong baseline.
 SHAPES = (
     Shape("none"),
-    Shape(f"flat {FLAT_TODAY:g}", flat=FLAT_TODAY),
-    # A hard-coded `Shape("flat 60", flat=60.0)` used to sit here, as the
-    # branch's real total against the model's wrong 70. Issue #1386 repaired the
-    # constant, so `FLAT_TODAY` IS 60 and the row above is that row; keeping
-    # both would print the same measurement twice under the same label.
-    Shape("flat 70 (pre-fix)", flat=70.0),
-    Shape(f"flat {FLAT_TODAY:g} min10", flat=FLAT_TODAY, minimum=10),
+    Shape(f"flat {FLAT_REPLACED:g}", flat=FLAT_REPLACED),
+    # A hard-coded `Shape("flat 60", flat=60.0)` and a `Shape("flat 70
+    # (pre-fix)", flat=70.0)` used to sit here. Both are now the same
+    # measurement as the row above -- `FLAT_REPLACED` is 70 -- and printing one
+    # measurement three times under three labels is what made this list look
+    # like it covered more ground than it did.
+    Shape(f"flat {FLAT_REPLACED:g} min10", flat=FLAT_REPLACED, minimum=10),
     Shape("x0.30", mult=0.30),
     Shape("x0.20", mult=0.20),
     Shape("x0.15", mult=0.15),
@@ -590,7 +631,7 @@ def section_two() -> dict:
           "count has stopped being a")
     print("  reason to pick one dungeon over another.")
     print()
-    shipped = table[f"flat {FLAT_TODAY:g}"]
+    shipped = table[f"flat {FLAT_REPLACED:g}"]
     print("  A CORRECTION TO ISSUE #1383, WHICH SAYS EVERY SURGE DUNGEON "
           "COSTS ONE DAY. Over the Basic range")
     print(f"  that is right -- {shipped['clamped']:.0f}% of it is on the "
@@ -843,19 +884,19 @@ def section_five(pooled: dict, table: dict, facts: dict) -> None:
           "COSTS THEM. Issue #1383 item 4.")
     print("-" * 100)
     control = pooled["none"]
-    today = pooled[f"flat {FLAT_TODAY:g}"]
+    today = pooled[f"flat {FLAT_REPLACED:g}"]
     print(f"  An untreed player reaches the earned Cataclysm dungeon in "
           f"{control['earned%']:.1f}% of campaigns, loses "
           f"{control['cities']:.2f}")
     print(f"  of 25 cities, clears {control['cleared']:.1f} dungeons and "
           f"spends {control['empty%']:.1f}% of the campaign with an empty "
           f"board.")
-    print(f"  The shipped branch takes those to {today['earned%']:.1f}%, "
+    print(f"  The replaced flat branch takes those to {today['earned%']:.1f}%, "
           f"{today['cities']:.2f}, {today['cleared']:.1f} and "
           f"{today['empty%']:.1f}%, with")
     print(f"  {today['at_floor%']:.0f}% of every dungeon it meets walked at the "
           f"one-day floor and "
-          f"{table[f'flat {FLAT_TODAY:g}']['answers']} distinct walk lengths "
+          f"{table[f'flat {FLAT_REPLACED:g}']['answers']} distinct walk lengths "
           f"left across 8-40 floors.")
     print()
     print("  A candidate has to leave the invested player ahead of the "
@@ -875,7 +916,7 @@ def section_five(pooled: dict, table: dict, facts: dict) -> None:
           "the tree, so it applies to")
     print("  everyone. It makes an 8-floor dungeon cost an untreed player 10 "
           "days instead of 8. That is a")
-    raised = table[f"flat {FLAT_TODAY:g} min10"]
+    raised = table[f"flat {FLAT_REPLACED:g} min10"]
     print(f"  second reason to reject it beyond the {raised['answers']} "
           f"distinct walk lengths it leaves.")
     print()
