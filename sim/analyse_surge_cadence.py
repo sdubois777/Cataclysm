@@ -288,11 +288,11 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: still fast and no longer flat. Issue #1383. Being bought at 56 of 316 points
 #: is the half of that finding the ruling did not address.
 #:
-#: **AND IT STILL CARRIES `Infinite Depths`, WHICH ITS NAME DENIES.** `replace`
-#: with `floor_delta=0.0` clears only the tier-independent half of the tree's
-#: depth, so this preset adds +20 floors at one active Cataclysm type and +160
-#: at eight. Left as it is rather than repaired here, because changing it would
-#: move the figures issue [#1395] published. Issue [#1415] is the repair.
+#: **THE FOUR EXPLICIT ZEROES IN THE `replace` BELOW ARE LOAD-BEARING.**
+#: `replace` carries across every field it is not told to change, so naming only
+#: `floor_delta` left this preset silently holding `Infinite Depths` and
+#: `Sovereign's Haste` -- +20 floors and a fifth day node it is documented as not
+#: having. Issue [#1416] found and fixed that.
 #:
 #: DEFINED HERE RATHER THAN IN `config.py` because it is a question this file
 #: asks, not a preset the model needs, and this file changes no constant.
