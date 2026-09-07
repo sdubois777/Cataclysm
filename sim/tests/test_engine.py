@@ -99,6 +99,49 @@ class TestFixedDesignRules:
 
         assert mean_depth(-25) < mean_depth(0) < mean_depth(30)
 
+    def test_a_surge_never_brings_more_than_the_cap_however_much_is_asked(self):
+        """`surge_count_max` bounds the BASE count, not only escalation growth.
+
+        THE OWNER RULED THIS STAYS -- verbatim, "Leave it, document it", on
+        2026-09-06 -- so it is a fixed rule and belongs here rather than being
+        rediscovered. **It is silent**: asking for 40 dungeons a surge returns
+        14 and warns about nothing, so a sweep whose count axis runs past the
+        cap measures one cell repeatedly and reports it as a trend. That is
+        what happened on issue #1090, where a grid of 4, 5, 10, 20, 30 and 40
+        was really a grid of 4, 5, 10, 14, 14 and 14.
+
+        Both halves are asserted: that the cap binds above 14, and that it does
+        NOT bind at or below it, so a change that clamped everything to some
+        other value would fail here rather than looking like this rule.
+        """
+        cap = TuningConfig().surge_count_max
+        assert cap == 14, (
+            f"surge_count_max is {cap}, not the 14 the owner ruled on "
+            "2026-09-06 and that CataclysmSurge.h's MostDungeonsPerSurge "
+            "carries. If it moved deliberately, sim/README.md and "
+            "sim/analyse_surge_cadence.py both state 14 and need updating.")
+
+        for asked in (1, 4, 5, 10, cap):
+            cfg = dataclasses.replace(TuningConfig(), surge_dungeon_count=asked,
+                          surge_mode=SurgeMode.STATIC)
+            assert Simulation(cfg, seed=0).surge_count() == asked, (
+                f"a count of {asked} is at or below the cap and must be "
+                "delivered unchanged")
+
+        for asked in (cap + 1, 20, 30, 40):
+            cfg = dataclasses.replace(TuningConfig(), surge_dungeon_count=asked,
+                          surge_mode=SurgeMode.STATIC)
+            assert Simulation(cfg, seed=0).surge_count() == cap, (
+                f"a count of {asked} no longer clamps to {cap}. If the cap has "
+                "stopped applying to the base count, every figure measured "
+                "against it -- and the warning in sim/README.md -- is stale.")
+
+        # Raising the cap alongside the count is the only way past it, and it
+        # is what sim/analyse_surge_cadence.py does for its own batches.
+        lifted = dataclasses.replace(TuningConfig(), surge_dungeon_count=40,
+                         surge_count_max=40, surge_mode=SurgeMode.STATIC)
+        assert Simulation(lifted, seed=0).surge_count() == 40
+
 
 class TestAccounting:
     """Totals the report divides by must stay internally consistent."""
