@@ -2,6 +2,252 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-08 — The Ravager trades its fire branch for one that wears the enemy down, gets three nodes that use Fervour, and gains the only loadout that breaks the six-socket rule
+
+**Affects:** `docs/Ravager_Class_Tree_Final.json`, `docs/Cataclysm_GDD_v2.md`
+(the Class Resource Systems section and the Weapon Types section),
+`docs/All_Things_Cataclysm.xlsx` (the Weapon Skills sheet, four rows),
+`tools/generate_datatables.py`, `game/Data/WeaponSkills.csv`,
+`game/Data/PassiveNodes.csv`, `game/Content/Data/DT_PassiveNodes.uasset`,
+`tools/tests/test_class_passive_trees.py`. **Applied.**
+
+The project owner reviewed the Ravager tree, which landed on 2026-09-07 under
+issue [#950](https://github.com/sdubois777/Cataclysm/issues/950), and made four
+rulings. This is all four.
+
+### The tree's shape did not move, and that was the constraint
+
+Every change below rewrites a node's name and description in place. Node ids,
+positions, `maxPoints` and every edge are untouched, so the tree is still 74
+nodes, 15 keystones, 4 capstones, 69 edges and 440 spendable points. That is
+asserted in the script that made the change rather than checked afterwards.
+`game/Data/PassiveNodes.csv` still has 441 rows.
+
+### Ruling one: cut the fire branch and rebuild the space
+
+**"Cut the 82-point fire and damage-over-time branch entirely and design 82
+points of something that fits a frontline fighter who is hard to stop."** The
+branch was 11 basic nodes worth 82 points plus 3 keystones, and one further
+damage-over-time node sat on the spine, `Trailing Embers`. Measured before the
+change: 11 nodes and 63 points mentioned damage over time or burning, and three
+of the twelve capstone options scaled it.
+
+**The replacement is Cripple and Weaken, and the reason is that they already
+exist and nothing used them.** `game/Data/StatusEffects.csv` defines both as
+player-applied debuffs — Cripple reduces an enemy's movement and attack speed by
+30% for 4 seconds with a magnitude cap of 80%, Weaken reduces its damage by 20%
+for 5 seconds with the same cap — and `game/Data/Affixes.csv` already sells
+"Chance to cripple" and "Chance to weaken" as gear suffixes. **Counted across all
+six class trees and the empire tree: zero nodes used either word.** So the branch
+is built on shipped mechanics with existing gear precedent, in a space no class
+had claimed.
+
+**Why it suits this class rather than another.** The design describes the Ravager
+as "the consistent fighter" with "the fastest movement so it is always in
+contact". A branch that makes enemies slower, weaker and unable to disengage is
+the offensive expression of that, and it is not any of the other three branches:
+the lower left is armor and damage reduction, the upper left is area and
+multi-target, the lower right is movement and leech. The branch is now called
+Attrition.
+
+**It feeds two of the four choice gates rather than sitting beside them.** The
+100 point option `Ground Down` slows and weakens everything within 4 metres
+without needing a hit, and the 200 point option `Nowhere to Run` stops enemies
+retreating outright. A branch about applying those effects on hit builds toward
+both.
+
+### Ruling two: `Every Swing Lands` is not worth having at that size
+
+**"If it only affects the basic attack it might as well not exist."** The node
+said "your melee attacks have no maximum target count". Of the 403 rows in
+`game/Data/WeaponSkills.csv`, 9 set a target cap and no Axe or Greataxe skill is
+among them, so against skills it did nothing; the cap it removed was the one all
+nine melee weapon bases set on the basic attack in `game/Data/ItemBases.csv`.
+
+**Two shapes were open — widen it to cover melee skills, or replace it. It is
+replaced, and here is why widening was rejected.** Widening would deliver nothing
+to the class it belongs to, because no Greataxe or Axe skill has a cap to remove.
+It would only reach the five capped melee skills on other weapons, and reading
+them shows every one is deliberately single-target: Shield Bash slams one enemy,
+Emberpierce drives into "a single enemy", Impale drives through one, Nail Down
+impales "the first enemy you reach", and Searing Hook is one hook. Uncapping them
+would break five skills' stated design to make one keystone larger.
+
+**It keeps its name, which is now literally what it does:** "Your melee attacks
+cannot be evaded, and your melee arc is a full circle rather than a cone." Both
+halves are real. Enemy evasion is in `game/Data/EnemyArchetypes.csv` — 25% on the
+Imp, 20% on the Hellhound, 10% on the Succubus, 0% on the other five — and the
+Imp arrives in packs, which is what this class fights. The arc half matters
+because the Greataxe's own skills are cones: its basic attack is 120 degrees, and
+Molten Cleave was too.
+
+**The design's rule that a basic attack hits one target is left alone**, which is
+the point of replacing rather than widening. It stands as
+`docs/Cataclysm_GDD_v2.md` writes it.
+
+**A keystone lifting the 75% damage reduction cap was considered and rejected.**
+It would have been the most on-identity rule to break, and it is the wrong one:
+`CataclysmDamageCalculation.h` sets `DamageReductionCap = 75.0f`, the design's
+cap table calls it "Hard", and the reason recorded there is that "No combination
+of these layers reaches immunity". The design already says of the one Berserker
+keystone that approaches a cap that it "does not lift the cap". A tree may not
+undo an invariant that exists to stop immunity.
+
+### Ruling three: give the tree nodes that use Fervour
+
+The tree filled Fervour from contact and paid only for holding it — `Unspent
+Ruin` and `Banked Ruin` grant per full 20 and per full 25 held. **Those two nodes
+are kept.** Path of Exile's Rage grants attack damage, attack speed and movement
+speed in proportion to how much is held and decays when the player stops gaining
+it, and the skill Berserk consumes it; both plays are real and they compete for
+one bar. **A hoarding bonus is not the fault. The absent consumer was.**
+
+Three nodes now use Fervour, one per branch, each replacing a node whose text was
+word-for-word identical to another node in the same tree:
+
+| Replaced | Which was identical to | Now |
+| :-- | :-- | :-- |
+| `Weathered`, 8 points | `Braced`, its own neighbour | `Set Against It` — brace at 50 Fervour or more, draining 6 per second, for damage reduction and attack damage |
+| `Splitting Blow`, 8 points | nothing; it was the tree's only critical strike node | `Bought With Ruin` — each enemy beyond the first costs 2 Fervour and deals more for it |
+| `Unwavering`, 6 points | `Slow to Fall` and `Second Wind` | `Wrung Out` — a kill spends 5 Fervour to restore health |
+
+**`Splitting Blow` going also settles the class overlap the owner raised.**
+Critical strikes are the Berserker's resource generator, and that node was the
+only place the Ravager tree mentioned them.
+
+**No shape here is invented.** Each is one the project's own trees already use:
+draining while a state is held is the Berserker's Wrath at 5 per second and
+Frenzy at 8, a flat cost per extra enemy is the Berserker's Cleave at 5, and
+spending at the moment of a kill is the Berserker's Crimson Tide. The genre
+agrees on the same skeleton — Diablo 4's Barbarian generates Fury on Basic skills
+and spends it on Core skills, Path of Exile's Discharge pays out per charge
+consumed, and Last Epoch's Runic Invocation states outright that holding more
+runes makes the result stronger.
+
+**All three use "increased" rather than "more"**, because no basic node in either
+2026-09-07 tree uses a separate multiplier and that is the practice the
+2026-08-25 rewrite settled.
+
+### Ruling four: the four choice gates, and dual wielding two two-handed weapons
+
+The complaint was that no option at any gate disagreed with the others. Each gate
+now asks one question three ways, and a build cannot want all three.
+
+| Gate | The question | The three answers |
+| :-- | :-- | :-- |
+| 25 | how do you keep them in front of you? | `Wade In` wants a crowd; **`Never Lets Go`** Cripples what you hit; `Headlong` wants to keep moving |
+| 50 | what do you do with what you absorb? | `Rendering Blows` strips armor; **`Nothing Wasted`** adds the damage your mitigation removed to your next attack; `Long Hold` heals on a kill |
+| 100 | what does standing there buy you? | `Ground Down` slows everything near you; **`Weight Against Them`** turns Damage Reduction into Attack Damage; `Shoulder Through` walks through them |
+| 200 | — | `Nothing Stops It` survives any single hit; **`Both Hands Full`** holds two two-handed weapons; **`Nowhere to Run`** stops enemies retreating |
+
+**`Nothing Wasted` deliberately is not retaliation.** An option returning a share
+of damage taken was drafted and dropped: the Masochist's stated identity is
+"converts received damage into buffs and counterattacks" and it is the only
+Demonic class with base Retaliation. Converting the damage your armour **removed**
+is a different mechanic and leaves that identity alone.
+
+**`Nowhere to Run` is the third 200 point option and it breaks a rule rather than
+adding a number.** Every other capstone multiplier in the project is a rate per
+something; this states no percentage at all. It makes "always in contact"
+mechanical, and it repairs the Ravager's own generator as a side effect, because
+that generator empties when contact is lost.
+
+### Dual wielding two two-handed weapons, and what it costs
+
+`Both Hands Full` is the only way to hold two two-handed weapons.
+`docs/Cataclysm_GDD_v2.md` now says so in both places that would otherwise
+contradict it: the three-loadout sentence gains a fourth, and the six-socket
+sentence states what the exception does to sockets and affixes.
+
+| Loadout | Affix slots | Multiplier | Effective affix value | Gem sockets |
+| :-- | --: | --: | --: | --: |
+| One two-hander | 4 | x2 | 8 | 6 |
+| Two one-handers | 8 | x1 | 8 | 6 |
+| **Two two-handers** | **8** | **x2** | **16** | **12** |
+
+**The x2 derivation is not rewritten and does not need to be.** It is correct for
+the three loadouts it covers, and the new one is an exception to the equality it
+produces rather than a counterexample to the arithmetic.
+
+**No mechanical penalty applies, and that is the owner's ruling**, in their
+words: "a 200 point capstone should be rule breaking. Dual wielding two handers
+costs you 200 class points and the ability to really multiclass. That's enough."
+**The cost is larger than it reads.** The document's own Progression section says
+reaching the 230 point budget "requires killing every unique Cataclysm boss
+once", and that levelling to 100 gives 150. So a character that never fights a
+Cataclysm boss can never take a 200 point capstone at all, and one that does has
+30 points left of 230 for every other tree.
+
+### Every minion and gadget skill now reserves Fervour
+
+The rule was written down only for thralls. **Measured before the change: one row
+of 403 in `game/Data/WeaponSkills.csv` carried `FervourReserve`.** Four more do
+now, and `docs/Cataclysm_GDD_v2.md` states the rule, because it was previously
+true of the data and of the document and absent from both as a general rule.
+
+| Skill | What it makes | Reserves each |
+| :-- | :-- | --: |
+| Subjugate | a thrall, permanent | 30, unchanged |
+| Summon Imp | an imp, 20 seconds, up to 3 | 10 |
+| Bolt Turret | a turret, 5 seconds | 5 |
+| Ballista | a ballista, 8 seconds | 5 |
+| Iron Fortress | 2 ballistae and 3 spike traps, 20 seconds | 5 each, so 25 |
+
+**The sizes are judgements and they follow how permanent and how strong the thing
+is.** A thrall is a possessed enemy and never expires; an imp has 200 base health
+in `game/Data/MinionTypes.csv`, lasts 20 seconds and is capped at three; a turret
+lasts five seconds.
+
+**What it does to the Ritualist's army was measured before the values were
+chosen**, because a rule that both fills and drains the same pool can be
+degenerate:
+
+| Case | imps + thralls = minions |
+| :-- | :-- |
+| before: imps free, thralls 30, pool 150 | 3 + 5 = 8 |
+| imps reserve 10 | 3 + 4 = 7 |
+| with the keystone `The Swarm`, 5 imps | 5 + 3 = 8 |
+| with the keystone `Room for One More`, pool 180 | 3 + 5 = 8 |
+| fully invested, pool 381 | 5 + 11 = 16, imps taking 13% of the pool |
+
+So the rule costs one minion at base, the tree buys it back, and it does not run
+away at high investment.
+
+**`tools/generate_datatables.py` had to change for three of the four.** The
+generator holds a per-shape allowlist of parameter keys, and `FervourReserve` was
+allowed on the Summon shape and not on Deployable. Bolt Turret, Ballista and Iron
+Fortress are all Deployable, so the generator refused them until the key was
+added to that shape.
+
+**Each of the four states its reservation in its own prose as well as its
+parameters**, matching Subjugate, which has said "Holding a thrall reserves 30
+Fervour" since 2026-09-01. A rule that half the rows state and half only encode
+is the split this project keeps having to repair.
+
+### What was deliberately not decided
+
+**Whether a reservation subtracts from the spendable pool.** Still issue
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160). Nothing separates
+available Fervour from total in code, and `HasRoomForAnotherThrall` reads the
+maximum rather than the current value, so a character holding minions still has
+its whole pool to spend. **Four more skills reserving makes that gap wider, not
+narrower**, and the design document now says so where it states the rule.
+
+**Whether the keystone `Conduit` should satisfy the Ritualist's new "enemies you
+have damaged in the last 2 seconds" condition.** It does as written. Recorded on
+2026-09-08 and unanswered; nothing here changes it.
+
+**Whether any of this grants anything a machine can read.** No row was written to
+`game/Data/PassiveEffects.csv`. That is issue
+[#1463](https://github.com/sdubois777/Cataclysm/issues/1463) and it now covers a
+larger surface than it did, because 19 of the Ravager's nodes and 5 of its
+capstone options changed what they say.
+
+**Whether the Ritualist needs nodes that use Fervour.** Its use of the resource
+is reservation and it works. Three were proposed on 2026-09-08 and withdrawn.
+
+---
+
 ## 2026-09-08 — The Ritualist tree uses the game's own word for a minion, and three nodes that needed one named skill equipped are replaced
 
 **Affects:** `docs/Ritualist_Class_Tree_Final.json` and

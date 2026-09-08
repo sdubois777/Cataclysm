@@ -2,7 +2,7 @@
   "version": "1.0",
   "metadata": {
     "name": "Ravager Class Tree",
-    "description": "Single continuous web. The Path of Ruin runs up the centre and is what fills Fervour from enemies in reach. Unbreaking lower-left, Sundering upper-left, Scorched Earth upper-right, Relentless lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four onslaught capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "description": "Single continuous web. The Path of Ruin runs up the centre and is what fills Fervour from enemies in reach. Unbreaking lower-left, Sundering upper-left, Attrition upper-right, Relentless lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four onslaught capstones are the 25/50/100/200 point tiers and stand apart from the web.",
     "createdAt": "2026-09-07T00:00:00.000Z",
     "updatedAt": "2026-09-07T00:00:00.000Z",
     "pointBudget": 230
@@ -176,8 +176,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Trailing Embers",
-        "description": "+3% increased damage over time damage per point.",
+        "name": "Wearing Blows",
+        "description": "+2% chance to Cripple and +2% chance to Weaken on melee hit per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Every Swing Lands",
-        "description": "Your basic attack strikes every enemy in its arc rather than one.",
+        "description": "Your melee attacks cannot be evaded, and your melee arc is a full circle rather than a cone.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -484,8 +484,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Weathered",
-        "description": "+1% increased Damage Reduction per point.",
+        "name": "Set Against It",
+        "description": "You may brace while at 50 Fervour or more. While braced, Fervour drains at 6 per second and you gain +2% increased Damage Reduction and +3% increased Attack Damage per point. Bracing ends when Fervour reaches 0.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -814,8 +814,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Splitting Blow",
-        "description": "+1.5% increased Critical Strike Multiplier per point on melee attacks.",
+        "name": "Bought With Ruin",
+        "description": "Each enemy your melee attack hits beyond the first costs 2 Fervour and deals +3% increased damage per point. If you cannot pay, the attack still hits but gains nothing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -946,8 +946,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Kindling",
-        "description": "+3% increased damage over time damage per point.",
+        "name": "Hobbling Blows",
+        "description": "+3% chance to Cripple on melee hit per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -968,8 +968,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Slow Burn",
-        "description": "+3% increased damage over time duration per point.",
+        "name": "Blunting Blows",
+        "description": "+3% chance to Weaken on melee hit per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -990,8 +990,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Bellows",
-        "description": "+2% increased damage over time frequency per point.",
+        "name": "Deeper Hurt",
+        "description": "+3% increased duration of Cripple and Weaken you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1012,8 +1012,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Molten Trail",
-        "description": "+3% increased damage over time damage per point.",
+        "name": "Hamstring",
+        "description": "+4% chance to Cripple on melee hit per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1034,8 +1034,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Cinders",
-        "description": "+3% increased Area of Effect per point.",
+        "name": "Dragging Weight",
+        "description": "+3% increased magnitude of Cripple you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1056,8 +1056,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Banked Heat",
-        "description": "+1% increased damage over time damage per point for each burning enemy within 8 metres of you.",
+        "name": "Run Them Ragged",
+        "description": "+2% increased Attack Damage per point against Crippled enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1078,8 +1078,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Charring",
-        "description": "+3% increased damage over time damage per point.",
+        "name": "Take the Edge Off",
+        "description": "+4% chance to Weaken on melee hit per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1100,8 +1100,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Lingering Heat",
-        "description": "+3% increased damage over time duration per point.",
+        "name": "Sapped",
+        "description": "+3% increased magnitude of Weaken you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1122,8 +1122,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Fed by Ruin",
-        "description": "+2% increased Fervour gained from enemies your attacks hit per point.",
+        "name": "Wearing Them Down",
+        "description": "+2% increased Damage Reduction per point against enemies you have Weakened.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1144,8 +1144,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Ground Aflame",
-        "description": "+3% increased Area of Effect per point.",
+        "name": "Spreading Hurt",
+        "description": "+4% increased Area of Effect per point for attacks that Cripple or Weaken.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1166,8 +1166,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Heat Haze",
-        "description": "+2% increased maximum Fervour per point.",
+        "name": "Nothing Left In Them",
+        "description": "+2% increased Attack Damage per point against enemies that are both Crippled and Weakened.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1188,8 +1188,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Scorched Earth",
-        "description": "Burning ground you create lasts twice as long and spreads 1 metre outward each second.",
+        "name": "Attrition",
+        "description": "Your melee attacks always Cripple and always Weaken, with no chance roll.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1210,8 +1210,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Slag Trail",
-        "description": "You leave burning ground behind you as you move while at maximum Fervour.",
+        "name": "No Second Wind",
+        "description": "Cripple and Weaken you applied do not expire while that enemy is within 4 metres of you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1232,8 +1232,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Feed the Fire",
-        "description": "Enemies burning from your skills each grant you 1 Fervour per second.",
+        "name": "Grinding Halt",
+        "description": "Each Crippled enemy within 4 metres of you grants you 1 Fervour per second.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1266,8 +1266,8 @@
             "description": "Each enemy within 4 metres of you grants 3% increased Armor and 3% increased Attack Damage."
           },
           {
-            "name": "Firewalker",
-            "description": "Enemies standing in burning ground you created take 20% increased damage from you."
+            "name": "Never Lets Go",
+            "description": "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% increased damage to Crippled enemies."
           },
           {
             "name": "Headlong",
@@ -1305,8 +1305,8 @@
             "description": "Every third melee attack against the same enemy removes 20% of its Armor for 6 seconds."
           },
           {
-            "name": "Bank the Heat",
-            "description": "Fervour you would gain above your maximum instead grants 1% increased damage over time damage each, for 4 seconds."
+            "name": "Nothing Wasted",
+            "description": "Damage your Armor and Damage Reduction remove is added to your next melee attack, up to 100% of that attack's damage."
           },
           {
             "name": "Long Hold",
@@ -1344,8 +1344,8 @@
             "description": "Enemies within 4 metres of you have 15% reduced Movement Speed and 15% reduced Attack Speed."
           },
           {
-            "name": "Kindled Wounds",
-            "description": "Your damage over time damage is increased by 1% for every 2% of Damage Reduction you have."
+            "name": "Weight Against Them",
+            "description": "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage Reduction you have."
           },
           {
             "name": "Shoulder Through",
@@ -1379,12 +1379,12 @@
         "isDecision": true,
         "options": [
           {
-            "name": "Firestorm Made Flesh",
-            "description": "Killing a burning enemy spreads its burn to everything within 4 metres, and each burning enemy within 8 metres grants you 3% more damage."
+            "name": "Nowhere to Run",
+            "description": "Enemies within 8 metres of you cannot move away from you. They may move toward you or around you, but not further away. Your Fervour does not decay while any enemy is held this way."
           },
           {
-            "name": "The Whole Field",
-            "description": "Your melee attacks strike every enemy within 6 metres of you, and each enemy struck beyond the first grants that attack 2% more damage."
+            "name": "Both Hands Full",
+            "description": "You may hold a two-handed weapon in each hand. Both contribute their damage, their affixes and their sockets."
           },
           {
             "name": "Nothing Stops It",
@@ -1674,8 +1674,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Unwavering",
-        "description": "+2% increased Health Regeneration per point.",
+        "name": "Wrung Out",
+        "description": "Killing an enemy spends 5 Fervour to restore 1% of your maximum health per point. If you have no Fervour it restores nothing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
