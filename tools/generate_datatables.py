@@ -519,8 +519,14 @@ SHAPE_PARAMS = {
     # code could read it.
     #
     # The name matches the existing tag rather than inventing a new word.
+    # FERVOURRESERVE JOINED ON 2026-09-08. The project owner ruled that every
+    # minion and gadget skill reserves Fervour, not only the Staff Ultimate
+    # that takes thralls. Three of the four rows that gained the key are
+    # Deployable -- Bolt Turret, Ballista and Iron Fortress -- and the shape
+    # did not allow it, so the generator refused them. Summon already allowed
+    # it because Subjugate has carried it since 2026-09-01.
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent"},
+                   "Interval", "Minions", "HealthPercent", "FervourReserve"},
     "Aura": {"Radius", "Duration", "Interval"},
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
                "SpreadWhen", "SpreadRadius"},

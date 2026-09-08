@@ -728,6 +728,8 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **Fervour does not decay.** A class may add a rule that changes that, and it says so on its own starting node rather than the resource carrying it. That is deliberate: a class whose bar empties fast is buying that with how fast it fills, and a class that wants to hold Fervour in reserve for its own abilities can.
 
+**Minion and gadget skills reserve Fervour.** A reservation is a standing claim on the pool for as long as the thing it paid for is out, not a cost paid once, and it is stated as `FervourReserve` in `game/Data/WeaponSkills.csv`. Five rows carry it: Subjugate reserves 30 for each thrall, Summon Imp 10 for each imp, and Bolt Turret, Ballista and Iron Fortress 5 for each gadget, so Iron Fortress's five deployables reserve 25 between them. **The army cap is the pool itself** rather than a separate number, so the Ritualist's 150 holds five thralls, or three imps and four thralls, and every point of maximum Fervour a tree grants is progress toward one more. **The reservation is designed and is not built.** Nothing separates available Fervour from total yet, and `HasRoomForAnotherThrall` reads the maximum rather than the current value, so a character holding minions still has its whole pool to spend. Issue #1160 carries that half.
+
 **The pool is one number.** It is the `class_resource` stat in `game/Data/ClassStats.csv`: 100 for every class, and 150 for the Ritualist. Passive nodes that increase maximum Fervour increase that one pool.
 
 **A generator is a set of rates, and each rate is its own stat.** The Masochist's is three: Fervour gained per 1% of maximum health lost to damage, Fervour gained per 1% spent as an ability cost, and Fervour removed per 1% restored by healing. Three rather than one because the tree moves them separately — different nodes increase each of the first two, one node reduces the third, and two keystones trade the first two against each other. Every rate is zero for every class until a tree's starting node grants it, which is what makes that node worth a point.
@@ -1995,6 +1997,12 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
 There are three legal loadouts: one two-handed weapon, two one-handed weapons, or
 a single one-handed weapon.
 
+**A 200 point class capstone adds a fourth.** The Ravager's `Both Hands Full`
+permits a two-handed weapon in each hand. It is the only way to hold two, it costs
+the whole of the 200 point capstone tier, and reaching 200 of a 230 point budget
+requires killing every unique Cataclysm boss once -- so a character that never
+fights one tops out at 150 points and can never take it.
+
 **The Shield is a one-handed weapon that grants no attack damage.** It is the one
 weapon bought for something other than a hit: it carries block chance and armor
 and no attack damage at all, and it has its own skills — Shield Bash, Shield
@@ -2006,6 +2014,15 @@ second weapon would have added.
 two-handed weapon carries all six on its own; a one-handed weapon carries three,
 so two of them make six. What the hands hold counts as **one equipped piece** for
 Power Score whatever the loadout, so none is worth free Power Score.
+
+**The capstone loadout deliberately does not, and that is what makes it worth 200
+points.** Two two-handed weapons carry 12 sockets, and eight affix slots at the
+two-handed multiplier of 2, so 16 effective affix value against every other
+loadout's 8, and double the base weapon damage. What the hands hold still counts
+as one equipped piece, so a character carrying two two-handers holds power its
+Power Score does not count, and the empire layer uses that rating to decide what
+a player survives. Nothing else in the game grants it and the 200 points are the
+whole price: no further mechanical penalty applies.
 
 **A held weapon that grants no attack damage contributes nothing to the basic
 attack** — neither damage nor swing rate. That is a rule about the item's stats

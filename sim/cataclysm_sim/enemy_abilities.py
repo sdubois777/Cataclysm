@@ -99,8 +99,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
                "HealthThresholdPercent"),
+    # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
+    # every minion and gadget skill reserves Fervour rather than only the one
+    # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all
+    # Deployable and all three gained the key. No enemy ability uses it.
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent"),
+                   "Interval", "Minions", "HealthPercent", "FervourReserve"),
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.

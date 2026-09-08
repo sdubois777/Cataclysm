@@ -192,8 +192,19 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: oversight. It counts NODES rather than strings, and The Third Pact was
 #: already in it for its other option, Standing Apart's "25% less damage".
 #: A second magnitude on a capstone already counted adds nothing to it.
-STRINGS_CONTAINING_THE_WORD = 43
-STRINGS_USING_IT_AS_A_MAGNITUDE = 28
+#:
+#: BOTH FELL ON 2026-09-08, when the Ravager's fire branch was replaced and
+#: its four choice gates rewritten. Containing 43 to 42, magnitudes 28 to 26,
+#: and the two counts moved by DIFFERENT amounts, which is the case this pair
+#: exists to make visible. Two strings left and both were magnitudes -- the
+#: Ravager's 200 point options Firestorm Made Flesh, "3% more damage" per
+#: burning enemy, and The Whole Field, "2% more damage" per enemy struck. One
+#: string arrived containing the word and it is NOT a magnitude: the basic node
+#: Set Against It reads "while at 50 Fervour or more", which is ordinary
+#: English. So containing lost two and gained one while magnitudes lost two and
+#: gained none.
+STRINGS_CONTAINING_THE_WORD = 42
+STRINGS_USING_IT_AS_A_MAGNITUDE = 26
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -243,7 +254,15 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #:
 #: Pinned exactly rather than as a floor, for the reason
 #: `test_the_widened_rule_is_actually_relied_on` gives.
-NODES_RELYING_ON_THE_WIDENED_RULE = 10
+#:
+#: NINE SINCE 2026-09-08. The Ravager's The Final Onslaught left, because both
+#: of its options that used a magnitude were replaced -- Firestorm Made Flesh by
+#: Both Hands Full, which grants a second two-handed weapon and states no
+#: percentage, and The Whole Field by Nowhere to Run, which stops enemies
+#: retreating and states none either. No Ravager node outside a keystone now
+#: uses the wording at all, so the remaining nine are the empire tree's four,
+#: the Masochist's two, the Ritualist's two and the Saboteur's one.
+NODES_RELYING_ON_THE_WIDENED_RULE = 9
 
 
 def load(tree_name: str) -> dict:
