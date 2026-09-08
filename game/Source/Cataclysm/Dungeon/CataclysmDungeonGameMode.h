@@ -71,8 +71,6 @@ class CATACLYSM_API ACataclysmDungeonGameMode : public ACataclysmGameMode
 public:
 	ACataclysmDungeonGameMode();
 
-	ACataclysmDungeonGameMode();
-
 	virtual void StartPlay() override;
 
 	/**

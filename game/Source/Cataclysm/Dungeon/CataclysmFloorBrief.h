@@ -185,6 +185,23 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	bool bSameArenaAsLastFloor = false;
 
 	/**
+	 * Which floor number's geometry this floor is carved from.
+	 *
+	 * USUALLY ITS OWN, and then this is just `FloorNumber` again. **A HORDE
+	 * DUNGEON'S IS ALWAYS 1**, because every one of its floors is the same
+	 * arena and an arena carved from floor 5's seed is a different shape from
+	 * one carved from floor 1's.
+	 *
+	 * **`bSameArenaAsLastFloor` IS NOT ENOUGH ON ITS OWN AND THAT IS THE POINT
+	 * OF THIS FIELD.** That one says to keep the floor already standing, which
+	 * works while the player is playing and does nothing when there is no floor
+	 * standing to keep -- loading a save taken on wave 5 builds a floor from
+	 * nothing, and without this it would build floor 5's shape and drop the
+	 * player into an arena they had never been in.
+	 */
+	int32 CarvedAsFloorNumber = 1;
+
+	/**
 	 * What this floor's creatures multiply the distance they notice a target by.
 	 *
 	 * ONE, AND NOT ZERO, ON AN ORDINARY FLOOR. It multiplies rather than
@@ -336,6 +353,16 @@ public:
 	 * floor 1 to be the same space as.
 	 */
 	static bool SameArenaAsLastFloor(const FCataclysmDungeonIdentity& Dungeon,
+									 int32 FloorNumber);
+
+	/**
+	 * Which floor number's geometry carves this floor.
+	 *
+	 * ONE FOR EVERY FLOOR OF A HORDE DUNGEON, and the floor's own number for
+	 * everything else. See `FCataclysmFloorBrief::CarvedAsFloorNumber` for the
+	 * case that needs it: a floor built from nothing after a save is loaded.
+	 */
+	static int32 CarvedAsFloorNumber(const FCataclysmDungeonIdentity& Dungeon,
 									 int32 FloorNumber);
 
 	/**

@@ -224,6 +224,42 @@ namespace CataclysmFloorBriefTest
 		return Counted > 0 ? Total / static_cast<float>(Counted) : 0.0f;
 	}
 
+	/** The mean cell of every creature: where the crowd's weight sits. */
+	FVector2D CentreOfMass(const FCataclysmFloorPopulation& Population)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		FVector2D Total = FVector2D::ZeroVector;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			Total += FVector2D(static_cast<float>(Placement.Cell.X),
+							   static_cast<float>(Placement.Cell.Y));
+		}
+		return Total / static_cast<float>(Population.Enemies.Num());
+	}
+
+	/** The mean cell of every walkable cell: the middle of the floor itself. */
+	FVector2D MiddleOfTheFloor(const FCataclysmFloorPlan& Plan)
+	{
+		FVector2D Total = FVector2D::ZeroVector;
+		int32 Counted = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] != ECataclysmFloorCell::Floor)
+			{
+				continue;
+			}
+			const FIntPoint Cell = Plan.CellAt(Index);
+			Total += FVector2D(static_cast<float>(Cell.X),
+							   static_cast<float>(Cell.Y));
+			++Counted;
+		}
+		return Counted > 0 ? Total / static_cast<float>(Counted) : Total;
+	}
+
 	/**
 	 * The closest two group middles stand, in cells WALKED, or -1 for fewer than
 	 * two groups.
@@ -1082,6 +1118,8 @@ bool FCataclysmFloorBriefHordeRimTest::RunTest(const FString& Parameters)
 	float WorstWalkIn = -1.0f;
 	float BestOrdinary = MAX_flt;
 	float BestGathered = MAX_flt;
+	float WorstOffCentre = -1.0f;
+	float BestGatheredOffCentre = MAX_flt;
 
 	for (int32 Seed = 1; Seed <= RimSeeds; ++Seed)
 	{
@@ -1158,9 +1196,65 @@ bool FCataclysmFloorBriefHordeRimTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
+		// **AND IT RINGS THE ARENA RATHER THAN BUNCHING ALONG ONE EDGE, WHICH
+		// THE MEASUREMENT ABOVE CANNOT SEE.** A wave placed entirely along the
+		// top edge is on the rim too, and would pass every check so far. It was
+		// the first version of this rule: every cell on the rim is at distance
+		// zero, so breaking the tie by cell index took them in row-major order.
+		//
+		// A CROWD THAT RINGS THE FLOOR HAS ITS WEIGHT AT THE MIDDLE OF IT, and
+		// one bunched on one side does not.
+		//
+		// **AN EIGHTH OF THE FLOOR'S WIDTH, AND IT IS NOT ZERO ON PURPOSE.** A
+		// ring is not perfectly even, because `LeastCellsFromEntrance` keeps
+		// every creature eight cells clear of where the player arrives, so the
+		// arc of the rim nearest the entrance is empty and the weight is pulled
+		// away from it. Measured over this sweep the worst is a few cells; a
+		// wave bunched along one edge of a 45-cell floor is about twenty. The
+		// bound sits between the two and is written as a fraction of the floor
+		// so it does not need revisiting when floors change size. The tightest
+		// bound this could take was tried first and it was 2.0 cells, which one
+		// seed of twelve failed at 2.6 for exactly the keep-out reason above.
+		const FVector2D Weight = CentreOfMass(Rim);
+		const FVector2D Middle = MiddleOfTheFloor(Plan);
+		const float OffCentre = FVector2D::Distance(Weight, Middle);
+
+		const float MostOffCentre = static_cast<float>(Plan.Width) / 8.0f;
+
+		if (OffCentre > MostOffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave's weight is at (%.1f, %.1f) "
+					 "and the middle of the floor is (%.1f, %.1f), %.1f cells "
+					 "away and the most allowed is %.1f, so it is bunched on "
+					 "one side rather than ringing the arena"),
+				Seed, Weight.X, Weight.Y, Middle.X, Middle.Y, OffCentre,
+				MostOffCentre));
+			return false;
+		}
+
+		// THE CONTROL FOR THAT ONE. A gathered wave stands at the far end, so
+		// ITS weight is a long way off centre -- which is what says the check
+		// above is measuring something a crowd can fail.
+		const float GatheredOffCentre =
+			FVector2D::Distance(CentreOfMass(Crowd), Middle);
+
+		if (GatheredOffCentre <= OffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: a gathered wave's weight is %.1f cells off "
+					 "centre and the walk-in wave's is %.1f, so the off-centre "
+					 "check cannot tell them apart"),
+				Seed, GatheredOffCentre, OffCentre));
+			return false;
+		}
+
 		WorstWalkIn = FMath::Max(WorstWalkIn, RimMean);
 		BestOrdinary = FMath::Min(BestOrdinary, SpreadMean);
 		BestGathered = FMath::Min(BestGathered, CrowdMean);
+		WorstOffCentre = FMath::Max(WorstOffCentre, OffCentre);
+		BestGatheredOffCentre =
+			FMath::Min(BestGatheredOffCentre, GatheredOffCentre);
 		++Measured;
 	}
 
@@ -1174,6 +1268,16 @@ bool FCataclysmFloorBriefHordeRimTest::RunTest(const FString& Parameters)
 					  "gathered wave %.2f"),
 				 WorstWalkIn, BestOrdinary, BestGathered),
 			 WorstWalkIn < BestOrdinary && WorstWalkIn < BestGathered);
+
+	// AND THE SAME FOR THE OFF-CENTRE MEASUREMENT, so the margin between a wave
+	// that rings the arena and one gathered at its far end is on record rather
+	// than only the per-floor comparison.
+	TestTrue(FString::Printf(
+				 TEXT("the most off-centre walk-in wave's weight is %.2f cells "
+					  "from the middle of its floor and the least off-centre "
+					  "gathered wave's is %.2f"),
+				 WorstOffCentre, BestGatheredOffCentre),
+			 WorstOffCentre < BestGatheredOffCentre);
 
 	return true;
 }

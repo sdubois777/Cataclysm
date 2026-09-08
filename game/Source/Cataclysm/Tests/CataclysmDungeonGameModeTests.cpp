@@ -21,6 +21,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Engine/World.h"
@@ -1563,6 +1564,203 @@ bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
 
 	// AND STILL NO STAIRS on the second wave either.
 	TestNull(TEXT("and still no stairs"), Mode->Stairs.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeArenaSurvivesALoadTest,
+	"Cataclysm.DungeonMode.AHordeArenaBuiltStraightOntoWaveFiveIsTheSameArenaAsWaveOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeArenaSurvivesALoadTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE CASE THAT KEEPING THE FLOOR ALREADY STANDING CANNOT COVER.** Waves 2
+	// and later keep the arena that is already built, which is how one space is
+	// held while the player plays. Loading a save taken on wave 5 builds a floor
+	// from nothing: there is no arena standing to keep, so the shape has to come
+	// from somewhere, and floor 5's own seed carves a DIFFERENT arena. Without
+	// `FCataclysmFloorBrief::CarvedAsFloorNumber` the player would come back
+	// into a space they had never been in.
+	//
+	// `Cataclysm.DungeonFloor` REACHES THE SAME PATH, so this is not only about
+	// saves: jumping to a floor to look at it builds one straight off too.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ONE MODE THAT WALKS INTO WAVE 1, and another that is built straight onto
+	// wave 5. Two modes rather than one, because the whole question is what a
+	// floor built with nothing standing comes out as.
+	ACataclysmDungeonGameMode* FromTheTop = SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	ACataclysmDungeonGameMode* Loaded = SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	if (!TestNotNull(TEXT("the first game mode spawned"), FromTheTop)
+		|| !TestNotNull(TEXT("the second game mode spawned"), Loaded))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("wave 1 was reached"), FromTheTop->GoToFloor(1))
+		|| !TestTrue(TEXT("wave 5 was built straight off"), Loaded->GoToFloor(5)))
+	{
+		return false;
+	}
+
+	const FCataclysmFloorPlan& First = FromTheTop->CurrentFloor->GetPlan();
+	const FCataclysmFloorPlan& Fifth = Loaded->CurrentFloor->GetPlan();
+
+	TestEqual(TEXT("wave 5's arena is the same width as wave 1's"),
+			  Fifth.Width, First.Width);
+	TestEqual(TEXT("and the same height"), Fifth.Height, First.Height);
+	TestEqual(TEXT("and has its entrance in the same place"),
+			  Fifth.Entrance.ToString(), First.Entrance.ToString());
+	TestTrue(TEXT("and every cell of it is the same"), Fifth.Cells == First.Cells);
+
+	// **THE CONTROL.** An ordinary dungeon's floor 5 is a different floor from
+	// its floor 1, which is what says the check above measures the Horde rule
+	// and not some accident that makes every floor of every dungeon identical.
+	ACataclysmDungeonGameMode* Plain = SpawnMode(World);
+	ACataclysmDungeonGameMode* PlainDeep = SpawnMode(World);
+	if (!TestNotNull(TEXT("an ordinary game mode spawned"), Plain)
+		|| !TestNotNull(TEXT("a second ordinary game mode spawned"), PlainDeep))
+	{
+		return false;
+	}
+	Plain->DungeonSeed = 31337;
+	Plain->EnemyScale = 0.0f;
+	PlainDeep->DungeonSeed = 31337;
+	PlainDeep->EnemyScale = 0.0f;
+
+	if (!TestTrue(TEXT("an ordinary floor 1 was built"), Plain->GoToFloor(1))
+		|| !TestTrue(TEXT("an ordinary floor 5 was built"), PlainDeep->GoToFloor(5)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("an ordinary dungeon's floor 5 is NOT its floor 1"),
+			  PlainDeep->CurrentFloor->GetPlan().Cells
+				  == Plain->CurrentFloor->GetPlan().Cells);
+
+	// **AND THE PLAYER IS ACTUALLY STOOD AT THE ENTRANCE, WHICH IS A SEPARATE
+	// FAULT WITH THE SAME CAUSE.** The rule that stops the player being moved
+	// between waves is written on "this floor is the same space as the last
+	// one", and that is true on wave 5 whether or not there is a wave 4 standing
+	// to be the same space as. A floor built from nothing has no "where they
+	// already were", so leaving them alone leaves them wherever the level put
+	// them -- which is not on the arena.
+	ACataclysmDungeonGameMode* Reloaded =
+		SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	APawn* Standing = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector(50'000.0f, 50'000.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a third game mode spawned"), Reloaded)
+		|| !TestNotNull(TEXT("a pawn was spawned to place"), Standing))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("wave 5 was built straight off with a pawn to place"),
+				  Reloaded->GoToFloor(5, Standing)))
+	{
+		return false;
+	}
+
+	const FVector Entrance = Reloaded->CurrentFloor->EntranceWorld();
+	const float FromEntrance =
+		FVector::Dist2D(Standing->GetActorLocation(), Entrance);
+
+	TestTrue(FString::Printf(
+				 TEXT("a wave-5 arena built from nothing stands the player at "
+					  "its entrance; the pawn ended up %.0f cm from it"),
+				 FromEntrance),
+			 FromEntrance < FCataclysmFloorGenerator::CellSizeCm);
+
+	// **THE CONTROL, AND IT IS THE HALF THAT PROVES THE CONDITION IS NOT SIMPLY
+	// "ALWAYS PLACE".** Going from wave 5 to wave 6 in the arena the player is
+	// already standing in must leave them where they are, mid-fight.
+	Standing->SetActorLocation(Entrance + FVector(2'000.0f, 2'000.0f, 0.0f));
+	const FVector MidFight = Standing->GetActorLocation();
+
+	if (!TestTrue(TEXT("wave 6 arrived"), Reloaded->GoToFloor(6, Standing)))
+	{
+		return false;
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("the next wave in the same arena leaves the player where "
+					  "they were; they moved %.0f cm"),
+				 FVector::Dist2D(Standing->GetActorLocation(), MidFight)),
+			 FVector::Dist2D(Standing->GetActorLocation(), MidFight) < 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeRemovesOldStairsTest,
+	"Cataclysm.DungeonMode.EnteringAHordeArenaTakesTheLastDungeonsStairsOutOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeRemovesOldStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE BUG THIS EXISTS FOR IS REACHABLE IN PLAY AND WAS IN THE FIRST
+	// VERSION OF THIS FEATURE.** `EnterEmpireDungeon` reuses one game mode and
+	// overwrites its sub-type, so a player who walks an ordinary dungeon and
+	// then enters a Horde one arrives in an arena with the last dungeon's stairs
+	// standing in it -- still watching for them, still bound to
+	// `HandleStairsTaken`. Walking over them would take a floor without fighting
+	// the wave and would spend a day for it.
+	//
+	// NOT PLACING THE STAIRS IS NOT ENOUGH, which is the whole point: the actor
+	// is already in the world and leaving `PlaceStairs` uncalled leaves it
+	// exactly where it was.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 909;
+	Mode->EnemyScale = 0.1f;
+
+	// AN ORDINARY DUNGEON FIRST, which is what puts the stairs in the world.
+	if (!TestTrue(TEXT("an ordinary dungeon's first floor was reached"),
+				  Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TWeakObjectPtr<ACataclysmDungeonStairs> Old = Mode->Stairs.Get();
+	if (!TestTrue(TEXT("the ordinary dungeon put stairs in the world"),
+				  Old.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and they are watching for the player"), Old->IsWatching());
+
+	// AND THEN A HORDE DUNGEON, the way entering one off the empire map does it:
+	// the sub-type is overwritten and floor 1 is built again.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+
+	if (!TestTrue(TEXT("the Horde dungeon's first floor was reached"),
+				  Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestNull(TEXT("the game mode no longer holds any stairs"), Mode->Stairs.Get());
+	TestFalse(TEXT("and the old stairs are gone from the world rather than "
+				   "standing in the arena"),
+			  Old.IsValid());
 
 	return true;
 }

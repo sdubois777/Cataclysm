@@ -405,7 +405,13 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 
 	FCataclysmFloorRequest Request;
 	Request.DungeonSeed = ChooseSeed();
-	Request.FloorNumber = ChooseFloorNumber();
+
+	// THE BRIEF'S FLOOR NUMBER AND NOT `ChooseFloorNumber`. They are the same
+	// number for every dungeon but a Horde one, whose every floor is carved as
+	// floor 1 because every floor of it is the same arena. Without this a save
+	// taken on wave 5 and loaded back would build floor 5's shape and put the
+	// player in an arena they had never been in.
+	Request.FloorNumber = FloorBrief.CarvedAsFloorNumber;
 
 	// THE BRIEF'S LAYOUT AND NOT `ChooseLayout`, which the brief has already
 	// read. A Horde dungeon is one open space on every floor and every other
@@ -772,7 +778,13 @@ void ACataclysmDungeonGameMode::BringTheNextWaveIn()
 		return;
 	}
 
+	// READ BEFORE THE NEXT WAVE ARRIVES, ALL THREE. `GoDownOneFloor` runs
+	// `PopulateFloor`, which replaces `CurrentWave` and `WaveSpawned` with the
+	// NEW wave's -- so asking afterwards would report the arriving wave's
+	// numbers under the finished wave's name.
 	const int32 Finished = WavesArrived;
+	const int32 LeftStanding = WaveStillAlive();
+	const int32 ArrivedWith = WaveSpawned;
 
 	// THE SAME CALL THE STAIRS MAKE. A wave is a floor, so bringing the next one
 	// in spends a day, moves the floor number, and -- on the last wave --
@@ -785,7 +797,7 @@ void ACataclysmDungeonGameMode::BringTheNextWaveIn()
 		UE_LOG(LogCataclysm, Verbose,
 			   TEXT("Wave %d of the arena was down to %d of the %d it arrived "
 					"with, so wave %d walked in."),
-			   Finished, WaveStillAlive(), WaveSpawned, WavesArrived);
+			   Finished, LeftStanding, ArrivedWith, WavesArrived);
 		return;
 	}
 
@@ -797,7 +809,7 @@ void ACataclysmDungeonGameMode::BringTheNextWaveIn()
 	UE_LOG(LogCataclysm, Verbose,
 		   TEXT("The last wave of the arena, wave %d, was down to %d of the %d "
 				"it arrived with."),
-		   Finished, WaveStillAlive(), WaveSpawned);
+		   Finished, LeftStanding, ArrivedWith);
 
 	CurrentWave.Reset();
 	WaveSpawned = 0;
@@ -1150,6 +1162,27 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	{
 		PlaceStairs();
 	}
+	else
+	{
+		// **AND ANY STAIRS ALREADY IN THE WORLD ARE TAKEN OUT OF IT, WHICH IS
+		// NOT THE SAME AS NOT PLACING ANY.** `EnterEmpireDungeon` reuses this
+		// game mode, so a player who walks an ordinary dungeon and then enters a
+		// Horde one arrives with the last dungeon's stairs still standing --
+		// somewhere in the middle of the new arena, still watching for them, and
+		// still bound to `HandleStairsTaken`. Walking over them would skip a
+		// wave and spend a day for it. Not placing the stairs leaves that actor
+		// exactly where it was; destroying it is what removes it.
+		//
+		// STOPPED BEFORE IT IS DESTROYED, so a look already in flight cannot
+		// arrive during the destruction. `StopWatching`'s own comment says the
+		// broadcast rebuilds the floor from inside itself.
+		if (IsValid(Stairs))
+		{
+			Stairs->StopWatching();
+			Stairs->Destroy();
+		}
+		Stairs = nullptr;
+	}
 
 	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
 	// they would be placed at the previous floor's entrance.
@@ -1161,7 +1194,14 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// next wave arrives around the player; teleporting them back to the mouth of
 	// the arena between waves would undo the fight they were in the middle of,
 	// and there is no new entrance to put them at because there is no new floor.
-	if (!FloorBrief.bSameArenaAsLastFloor)
+	//
+	// **`bReplacingAFloor` AS WELL, AND WITHOUT IT A LOADED SAVE LEAVES THE
+	// PLAYER NOWHERE.** `bSameArenaAsLastFloor` is true on wave 5 of an arena
+	// whether or not there is a wave 4 standing to be the same space as. Loading
+	// a save taken on wave 5 builds the arena from nothing, so there is no
+	// "where they already were" to leave them at and they have to be stood at
+	// the entrance like any other first floor.
+	if (!FloorBrief.bSameArenaAsLastFloor || !bReplacingAFloor)
 	{
 		APawn* Moving = PawnToMove;
 		if (!Moving)

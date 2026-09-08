@@ -379,7 +379,7 @@ is reservation and it works. Three were proposed on 2026-09-08 and withdrawn.
 
 ---
 
-## 2026-09-07 — A Horde dungeon is one arena, its waves walk in around the outside, and the next arrives at a tenth
+## 2026-09-08 — A Horde dungeon is one arena, its waves walk in around the outside, and the next arrives at a tenth
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (a new **Horde Dungeons** section, and
 the Arena bullet in the floor layouts list),

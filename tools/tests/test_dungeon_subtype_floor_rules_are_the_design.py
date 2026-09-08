@@ -282,13 +282,13 @@ class TestTheOwnersFourHordeRulesAreInTheDesign:
         # **THE READING THAT WAS CHOSEN KEEPS THIS SENTENCE EXACTLY.** A Horde
         # dungeon is one arena and its floor count is its wave count, so the
         # equation still holds. If this row ever has to change, the choice
-        # recorded in docs/DECISIONS.md on 2026-09-07 has been abandoned and
+        # recorded in docs/DECISIONS.md on 2026-09-08 has been abandoned and
         # `FCataclysmDungeonFloorRules::SameArenaAsLastFloor` needs rethinking.
         rows = design_subtype_rows()
         assert rows.get("Horde") == SUBTYPE_RULES["Horde"], (
             f"the design's Horde row now reads {rows.get('Horde')!r}. The one "
             f"arena reading was chosen precisely because it keeps that row as "
-            f"written; see docs/DECISIONS.md, 2026-09-07."
+            f"written; see docs/DECISIONS.md, 2026-09-08."
         )
 
     def test_the_code_quotes_the_answer_it_was_built_from(self):

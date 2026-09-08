@@ -295,15 +295,35 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 		// a rectangle and cannot be read off the width and the height.
 		const TArray<int32> FromRim = CataclysmFloorRimDistances(Plan);
 
-		// SORTED BY DISTANCE AND THEN BY CELL INDEX, for the reason the other
-		// ordering below gives: `TArray::Sort` is not stable and a rim is full
-		// of cells that are all at distance zero, so without the tiebreak the
-		// same seed would stop giving the same floor.
-		Candidates.Sort([&FromRim](int32 A, int32 B)
+		// **SHUFFLED FIRST, AND THE TIEBREAK IS THE SHUFFLE RATHER THAN THE
+		// CELL INDEX.** Every cell on the rim is at distance zero, so breaking
+		// the tie by index would take them in row-major order: a wave smaller
+		// than the rim can hold would be placed along the TOP edge of the arena
+		// and the rest of the rim would be empty. That is the same fault the
+		// ordinary floor's shuffle exists to avoid, in its own words, and it is
+		// not visible in a measurement of how far the wave stands from the rim
+		// -- a wave bunched along one edge is on the rim too.
+		//
+		// STILL DETERMINISTIC. The stream comes from the floor's own seed, so
+		// the same seed puts the same wave in the same places, and every rank is
+		// distinct so the sort is total.
+		for (int32 Last = Candidates.Num() - 1; Last > 0; --Last)
+		{
+			Candidates.Swap(Last, Stream.RandRange(0, Last));
+		}
+
+		TMap<int32, int32> Rank;
+		Rank.Reserve(Candidates.Num());
+		for (int32 Where = 0; Where < Candidates.Num(); ++Where)
+		{
+			Rank.Add(Candidates[Where], Where);
+		}
+
+		Candidates.Sort([&FromRim, &Rank](int32 A, int32 B)
 		{
 			const int32 OutA = FromRim[A] == INDEX_NONE ? MAX_int32 : FromRim[A];
 			const int32 OutB = FromRim[B] == INDEX_NONE ? MAX_int32 : FromRim[B];
-			return (OutA != OutB) ? (OutA < OutB) : (A < B);
+			return (OutA != OutB) ? (OutA < OutB) : (Rank[A] < Rank[B]);
 		});
 
 		bOrdered = true;

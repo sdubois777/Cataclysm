@@ -108,6 +108,20 @@ bool FCataclysmDungeonFloorRules::SameArenaAsLastFloor(
 	return Dungeon.SubType == ECataclysmDungeonSubType::Horde && FloorNumber > 1;
 }
 
+int32 FCataclysmDungeonFloorRules::CarvedAsFloorNumber(
+	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
+{
+	// EVERY FLOOR OF A HORDE DUNGEON IS FLOOR 1'S ARENA. The floor number still
+	// decides the modifiers, the wave and the day spent; it decides nothing
+	// about the shape of the space, because there is only one space.
+	if (Dungeon.SubType == ECataclysmDungeonSubType::Horde)
+	{
+		return 1;
+	}
+
+	return FloorNumber;
+}
+
 float FCataclysmDungeonFloorRules::SightRadiusMultiplierFor(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
 {
@@ -230,6 +244,7 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.bOneWave = OneWave(Dungeon, Floor);
 	Brief.bWaveWalksIn = WaveWalksIn(Dungeon, Floor);
 	Brief.bSameArenaAsLastFloor = SameArenaAsLastFloor(Dungeon, Floor);
+	Brief.CarvedAsFloorNumber = CarvedAsFloorNumber(Dungeon, Floor);
 	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
 	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore);
 

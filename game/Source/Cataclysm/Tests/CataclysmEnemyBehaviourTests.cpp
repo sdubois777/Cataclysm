@@ -24,6 +24,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Dungeon/CataclysmFloorBrief.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -3399,6 +3400,77 @@ bool FCataclysmKnockedDownMonsterDoesNothingTest::RunTest(const FString&)
 		static_cast<int32>(ECataclysmBrainAction::Stunned));
 	TestEqual(TEXT("so the player takes nothing from it"),
 		Player.Health(), BeforeFloored, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBehaviourWidenedSightTest,
+	"Cataclysm.AI.AWidenedNoticeRadiusIsWhatTheControllerActuallyAsksFor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBehaviourWidenedSightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// **THIS IS THE CALL SITE, AND NOTHING ELSE TESTS IT.** The Horde dungeon
+	// tests check that a creature is GIVEN the arena's multiplier and that
+	// `NoticesFromCm` multiplies correctly. Neither of those touches
+	// `ACataclysmEnemyController::ChooseTarget`, which is the one place a notice
+	// radius is read -- so both would pass with the controller still asking for
+	// the unmultiplied radius and the wave standing where it spawned.
+	//
+	// ISSUE #1467. The project owner's rule is that in a Horde dungeon the
+	// enemies "all always run towards the player".
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A HUNDRED METRES APART. Every designed creature notices from 10 to 15
+	// metres, so this is far outside any of them and well inside the 300 metres
+	// a Horde arena's multiplier reaches.
+	FScopedFighter Monster(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+	FScopedFighter Player(World, FVector(100 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	ACataclysmEnemyController* Brain = Monster.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned monster has no controller, so nothing drives it."));
+		return false;
+	}
+
+	// **THE CONTROL FIRST.** Without a widened radius it notices nothing at that
+	// distance, which is what says the check below is the multiplier working and
+	// not the creature seeing that far anyway.
+	TestEqual(TEXT("a monster a hundred metres away notices nothing"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Idle));
+	TestNull(TEXT("and has no target"), Brain->CurrentTarget.Get());
+
+	// AND THEN THE ARENA'S MULTIPLIER, set the way
+	// `ACataclysmDungeonGameMode::PopulateFloor` sets it on every creature of a
+	// Horde wave.
+	Monster.Actor->SightRadiusMultiplier =
+		FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier;
+
+	TestEqual(TEXT("the same monster with a Horde arena's widened notice radius "
+				   "runs at the player from a hundred metres"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestEqual(TEXT("and the player is what it is going after"),
+		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
+
+	// AND A MULTIPLIER OF ONE PUTS IT BACK, which is what every creature in
+	// every other dungeon in the game carries.
+	Monster.Actor->SightRadiusMultiplier = 1.0f;
+
+	TestEqual(TEXT("and back at a multiplier of one it notices nothing again"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Idle));
 
 	return true;
 }
