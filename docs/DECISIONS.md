@@ -452,6 +452,27 @@ the wave itself. Zero survivors is always reachable: the population pass only
 places a creature on a cell it has already proved can be walked to from the
 entrance, so no wave has a last member that cannot be reached and killed.
 
+### The last wave is cleared rather than thinned, and that is a judgement
+
+**The owner's rule says when the NEXT wave spawns.** After the last wave of a
+dungeon there is no next one, so the rule does not reach it and something had to
+be decided.
+
+**Applying the tenth to the last wave as well would let a player beat a dungeon
+without killing its boss.** Every dungeon has a boss on its final floor; a Horde
+dungeon's final floor is its final wave; the Gatekeeper is placed into that wave
+like any other creature. Ending the dungeon with a tenth of the wave standing
+would mean the boss could be one of the survivors, and that universal rule would
+gate nothing.
+
+**So the last wave has to be killed to the last creature.** It cannot lock: the
+population pass only places a creature on a cell it has already proved can be
+walked to from the entrance.
+
+A Horde dungeon with no bottom — pressing Play in `L_Dungeon`, where there is no
+empire dungeon bound — never reaches this and runs waves for ever, which is what
+the same map already does with floors.
+
 ### What "the previous wave" counts
 
 **One wave's own creatures, and not everything standing.** Survivors of earlier

@@ -767,8 +767,30 @@ bool ACataclysmDungeonGameMode::ShouldTheNextWaveArrive() const
 		return false;
 	}
 
-	return WaveStillAlive()
-		<= FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(WaveSpawned);
+	// **THE LAST WAVE IS CLEARED RATHER THAN THINNED, AND THAT IS NOT THE
+	// OWNER'S RULE BEING BENT.** Their rule says when the NEXT wave spawns, and
+	// after the last wave there is no next one for it to say anything about.
+	//
+	// WHAT GOES WRONG WITHOUT IT. The Gatekeeper is placed into the last wave
+	// like any other creature -- `FCataclysmFloorBrief::bBossAtTheExit` is true
+	// on a dungeon's final floor, and that floor is the final wave. So ending
+	// the dungeon at a tenth remaining lets a player beat it with its boss
+	// standing, and "Every dungeon has a boss on the final floor" would gate
+	// nothing at all.
+	//
+	// IT CANNOT LOCK. Every creature the population pass places stands on a cell
+	// it has already proved can be walked to from the entrance, so a wave can
+	// always be finished off. That is the same reason
+	// `NextWaveArrivesAtOrBelow` is safe to round down to zero.
+	//
+	// A DUNGEON WITH NO BOTTOM NEVER REACHES IT, which is what keeps pressing
+	// Play in `L_Dungeon` running waves for ever the way it runs floors for
+	// ever. `IsOnTheLastFloor` answers false when there is no empire dungeon.
+	const int32 Threshold = IsOnTheLastFloor()
+		? 0
+		: FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(WaveSpawned);
+
+	return WaveStillAlive() <= Threshold;
 }
 
 void ACataclysmDungeonGameMode::BringTheNextWaveIn()

@@ -4012,7 +4012,11 @@ against what a Sanctuary dungeon would be; it is as deep as it always was.
 
   
 
-**A Horde dungeon has no stairs.** The way to the next floor is beating the wave in front of you. Clearing the last wave finishes the dungeon.
+**A Horde dungeon has no stairs.** The way to the next floor is beating the wave in front of you.
+
+  
+
+**The last wave is cleared rather than thinned.** The ten percent rule says when the *next* wave spawns, and after the last wave there is no next one. So the last wave has to be killed to the last creature, and killing it finishes the dungeon. The dungeon's boss stands in that last wave, because every dungeon has a boss on its final floor and a Horde dungeon's final floor is its final wave — ending the dungeon at a tenth remaining would let a player beat it with the boss still standing.
 
   
 

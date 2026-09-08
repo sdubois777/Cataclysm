@@ -24,6 +24,7 @@
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
@@ -1564,6 +1565,187 @@ bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
 
 	// AND STILL NO STAIRS on the second wave either.
 	TestNull(TEXT("and still no stairs"), Mode->Stairs.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeLastWaveIsClearedTest,
+	"Cataclysm.DungeonMode.AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeLastWaveIsClearedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE FAULT THIS EXISTS FOR IS A DUNGEON YOU CAN BEAT WITHOUT KILLING ITS
+	// BOSS.** The owner's rule says when the NEXT wave spawns, and after the
+	// last wave there is no next one. Applying the tenth to it anyway would end
+	// the dungeon with a tenth of the wave standing -- and the Gatekeeper is
+	// placed into the last wave like every other creature, because
+	// `FCataclysmFloorBrief::bBossAtTheExit` is true on a dungeon's final floor
+	// and that floor is its final wave.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// **A RUN WITH A REAL DUNGEON IN IT, BECAUSE THE RULE TURNS ON
+	// `IsOnTheLastFloor`**, which reads the EMPIRE dungeon's floor count and
+	// not the game mode's own `TotalFloors` setting. Without a bound dungeon
+	// there is no bottom, the question cannot be asked, and the waves would run
+	// for ever the way pressing Play in `L_Dungeon` does.
+	//
+	// ONE DAY, WHICH IS THE FIRST SURGE. A run begins with an intact empire and
+	// nothing standing on it, so without this there is no dungeon to walk. The
+	// same two lines `CataclysmDungeonCostsDaysTests.cpp` uses, for the same
+	// reason.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("an empire run was made"), Run))
+	{
+		return false;
+	}
+	Run->Begin(/*Seed=*/5150);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"),
+				  Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->SetEmpireRunForTests(Run);
+	Mode->EnemyScale = 0.1f;
+
+	const int32 DungeonId = Run->Dungeons[0].DungeonId;
+	const int32 Floors = Run->Dungeons[0].Floors;
+
+	if (!TestTrue(FString::Printf(TEXT("it has a bottom: %d floors"), Floors),
+				  Floors > 1))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the dungeon was entered"),
+				  Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+
+	// **MADE A HORDE DUNGEON AFTER ENTERING, AND SAID PLAINLY.**
+	// `EnterEmpireDungeon` overwrites the sub-type from the dungeon it binds,
+	// so this has to come after it. Which dungeon a given seed's first surge
+	// rolls is not this test's subject; that a Horde dungeon's LAST wave has to
+	// be cleared is. Searching the map for a real Horde dungeon would make the
+	// test depend on a spawn-weight table that the owner has already changed
+	// twice.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+
+	// STRAIGHT TO THE LAST WAVE, which is the only one this rule is about.
+	if (!TestTrue(TEXT("the last wave was reached"), Mode->GoToFloor(Floors)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the last wave is a wave"), Mode->FloorBrief.bWaveWalksIn);
+	TestTrue(TEXT("and it carries the dungeon's boss"),
+			 Mode->FloorBrief.bBossAtTheExit);
+	TestTrue(TEXT("and the game mode knows it is on the last floor"),
+			 Mode->IsOnTheLastFloor());
+
+	const int32 Spawned = Mode->WaveSpawned;
+	if (!TestTrue(FString::Printf(TEXT("the last wave arrived: %d creatures"),
+								  Spawned),
+				  Spawned > 0))
+	{
+		return false;
+	}
+
+	// **THE MEASUREMENT THAT MAKES THIS TEST MEAN SOMETHING.** An ordinary
+	// wave of this size would be finished at this many still standing.
+	const int32 OrdinaryThreshold =
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(Spawned);
+	if (!TestTrue(FString::Printf(
+					  TEXT("an ordinary wave of %d would be finished with %d "
+						   "still standing, which is above zero so the two "
+						   "rules are distinguishable"),
+					  Spawned, OrdinaryThreshold),
+				  OrdinaryThreshold > 0))
+	{
+		return false;
+	}
+
+	// KILLED DOWN TO THAT THRESHOLD, LEAVING THE BOSS FOR LAST.
+	TArray<ACataclysmEnemyCharacter*> Wave;
+	ACataclysmEnemyCharacter* Boss = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy)
+			&& Enemy->IsA(ACataclysmGatekeeperCharacter::StaticClass()))
+		{
+			Boss = Enemy.Get();
+			continue;
+		}
+		Wave.Add(Enemy.Get());
+	}
+
+	if (!TestNotNull(TEXT("the last wave has a Gatekeeper in it"), Boss))
+	{
+		return false;
+	}
+
+	int32 Killed = 0;
+	while (Killed < Wave.Num() - (OrdinaryThreshold - 1))
+	{
+		if (!TestTrue(TEXT("a creature of the last wave was killed"),
+					  KillOutright(Wave[Killed])))
+		{
+			return false;
+		}
+		++Killed;
+	}
+
+	TestEqual(TEXT("the last wave is down to what would finish an ordinary one"),
+			  Mode->WaveStillAlive(), OrdinaryThreshold);
+	TestFalse(TEXT("and the boss is one of the survivors"),
+			  UCataclysmSkillEffects::IsDead(Boss));
+
+	// **AND THE DUNGEON IS NOT BEATEN.**
+	TestFalse(TEXT("a tenth of the last wave standing does not finish the "
+				   "dungeon"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestTrue(TEXT("and ticking leaves the player in the dungeon"),
+			 Mode->EmpireDungeonId != INDEX_NONE);
+
+	// AND THEN THE REST OF THEM, THE BOSS LAST.
+	while (Killed < Wave.Num())
+	{
+		KillOutright(Wave[Killed]);
+		++Killed;
+	}
+	TestEqual(TEXT("only the boss is left"), Mode->WaveStillAlive(), 1);
+	TestFalse(TEXT("and it still does not finish the dungeon"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	if (!TestTrue(TEXT("the boss was killed"), KillOutright(Boss)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the last wave is cleared"), Mode->WaveStillAlive(), 0);
+	TestTrue(TEXT("and now the dungeon is finished"),
+			 Mode->ShouldTheNextWaveArrive());
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("and clearing it takes the player out of the dungeon"),
+			  Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
 
 	return true;
 }

@@ -584,12 +584,17 @@ public:
 	int32 WaveStillAlive() const;
 
 	/**
-	 * Whether the next wave should arrive now.
+	 * Whether the wave standing is finished, so the next one may arrive.
 	 *
 	 * FALSE ON A FLOOR THAT IS NOT A WAVE, so nothing an ordinary dungeon does
 	 * can reach the wave machinery. False on a wave that put nothing on the
 	 * floor, so an empty arena does not run every wave of the dungeon in one
 	 * frame.
+	 *
+	 * **THE LAST WAVE OF A DUNGEON HAS TO BE CLEARED, NOT THINNED TO A TENTH.**
+	 * Finishing it beats the dungeon, and its Gatekeeper is one of its
+	 * creatures, so a tenth remaining would let a player win with the boss still
+	 * standing. See the reasoning in the `.cpp`.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	bool ShouldTheNextWaveArrive() const;
