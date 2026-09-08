@@ -747,7 +747,7 @@ The six generators designed so far, one per class, each granted by that class's 
 | Saboteur (War) | Placing a trap or gadget, and one of them dealing damage or triggering | Nothing. Fervour keeps its default of not decaying |
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it |
 | Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
-| Ritualist (Demonic) | 1 per second for each imp or thrall held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
+| Ritualist (Demonic) | 1 per second for each minion held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
 
   
 

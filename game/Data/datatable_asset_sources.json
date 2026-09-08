@@ -143,7 +143,7 @@
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 441,
-      "csv_sha256": "087264b0c7900e7dc7f159af9e6b1e347d324f274b16c23c64695942b9a878cd"
+      "csv_sha256": "3c696e0843f5a60841c5ec0e37f5ffaae02eb564aeb6f4207465bdcc8a96de78"
     },
     {
       "asset": "DT_SkillSlots",
