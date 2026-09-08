@@ -21,9 +21,15 @@ proposed and are waiting on the owner.
 
 ### The Ritualist never used the word "minion", and that was mechanical rather than stylistic
 
-Counted across the tree as it landed: "thrall" 11 times, "what you command" 20,
+Counted across the tree as it landed: "thrall" 11 times, "what you command" 21,
 "imp" 13, "everything you command" once, and **"minion" not once**. The only
 match for the letters was inside the keystone name `Dominion`.
+
+**That first figure said 20 until 2026-09-08 and the miscount is worth naming.**
+It was measured over node and capstone-option text only, which is where a
+player reads, and the file holds a 21st in `metadata.description` -- the
+layout note describing how the tree is drawn. A sweep that walks every string
+in the file finds it; one that walks `nodes` does not.
 
 **The game's own stats are named after minions.** `game/Data/Affixes.csv` carries
 three gear affixes — "Increased minion damage", "Increased minion health" and
