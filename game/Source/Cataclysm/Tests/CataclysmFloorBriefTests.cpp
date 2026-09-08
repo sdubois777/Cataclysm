@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorBrief.h"
@@ -51,6 +52,37 @@ namespace CataclysmFloorBriefTest
 
 	/** How many dungeon seeds each sweep tries. */
 	constexpr int32 SweepSeeds = 40;
+
+	/**
+	 * Every dungeon sub-type there is.
+	 *
+	 * READ OFF THE REFLECTED ENUM RATHER THAN LISTED, so a sub-type added later
+	 * is covered by the tests that sweep all of them without anybody
+	 * remembering to come here. `ECataclysmDungeonSubType` carries no `Count`
+	 * member, unlike `ECataclysmFloorLayout` next door, and adding one to a
+	 * `UENUM` that a DataTable column is parsed against is not worth the risk.
+	 *
+	 * THE LAST ENTRY IS SKIPPED. Unreal appends a hidden `_MAX` to every `UENUM`
+	 * and `NumEnums` counts it; treating it as a sub-type would ask the rules
+	 * about a value no dungeon can carry.
+	 */
+	TArray<ECataclysmDungeonSubType> EverySubType()
+	{
+		TArray<ECataclysmDungeonSubType> Out;
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return Out;
+		}
+
+		for (int32 Index = 0; Index + 1 < Reflected->NumEnums(); ++Index)
+		{
+			Out.Add(static_cast<ECataclysmDungeonSubType>(
+				Reflected->GetValueByIndex(Index)));
+		}
+		return Out;
+	}
 
 	/** One modifier, built by hand, with a distinguishable danger score. */
 	FCataclysmDungeonModifier Make(const TCHAR* Key, ECataclysmType Cataclysm,
@@ -157,6 +189,75 @@ namespace CataclysmFloorBriefTest
 			Total += StraightLineCells(Placement.Cell, From);
 		}
 		return Total / static_cast<float>(Population.Enemies.Num());
+	}
+
+	/**
+	 * The mean distance of every creature from the floor's rim, in cells walked.
+	 *
+	 * WALKED AND NOT IN A STRAIGHT LINE, because that is what
+	 * `CataclysmFloorRimDistances` answers and what the placement rule reads. A
+	 * creature at 0 is standing against a wall.
+	 */
+	float MeanRimDistance(const FCataclysmFloorPlan& Plan,
+						  const FCataclysmFloorPopulation& Population)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return 0.0f;
+		}
+
+		const TArray<int32> FromRim = CataclysmFloorRimDistances(Plan);
+
+		float Total = 0.0f;
+		int32 Counted = 0;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			const int32 Index = Plan.IndexOf(Placement.Cell);
+			if (Index == INDEX_NONE || FromRim[Index] == INDEX_NONE)
+			{
+				continue;
+			}
+			Total += static_cast<float>(FromRim[Index]);
+			++Counted;
+		}
+
+		return Counted > 0 ? Total / static_cast<float>(Counted) : 0.0f;
+	}
+
+	/** The mean cell of every creature: where the crowd's weight sits. */
+	FVector2D CentreOfMass(const FCataclysmFloorPopulation& Population)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		FVector2D Total = FVector2D::ZeroVector;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			Total += FVector2D(static_cast<float>(Placement.Cell.X),
+							   static_cast<float>(Placement.Cell.Y));
+		}
+		return Total / static_cast<float>(Population.Enemies.Num());
+	}
+
+	/** The mean cell of every walkable cell: the middle of the floor itself. */
+	FVector2D MiddleOfTheFloor(const FCataclysmFloorPlan& Plan)
+	{
+		FVector2D Total = FVector2D::ZeroVector;
+		int32 Counted = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] != ECataclysmFloorCell::Floor)
+			{
+				continue;
+			}
+			const FIntPoint Cell = Plan.CellAt(Index);
+			Total += FVector2D(static_cast<float>(Cell.X),
+							   static_cast<float>(Cell.Y));
+			++Counted;
+		}
+		return Counted > 0 ? Total / static_cast<float>(Counted) : Total;
 	}
 
 	/**
@@ -892,6 +993,524 @@ bool FCataclysmFloorBriefHordeCrowdTest::RunTest(const FString& Parameters)
 					  "the tightest ordinary floor %.1f"),
 				 WorstWaveSpread, BestOrdinarySpread),
 			 WorstWaveSpread < BestOrdinarySpread);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The project owner's four rules for a Horde dungeon, 2026-09-07. Issue #1467
+//
+// "They should walk in, and the next wave should spawn when there is only 10% or
+// less of the previous wave remaining. In horde dungeons, enemies should also
+// get a much larger aggro range, so they all always run towards the player.
+// Horde dungeons are basically arenas, they should be one big open space with
+// all of the enemies spawning around the outside and rushing you."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeOneArenaTest,
+	"Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeOneArenaTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **THE RULE THAT MAKES BOTH SENTENCES TRUE AT ONCE.** The design says
+	// "Number of floors equals number of enemy waves" and the owner says a Horde
+	// dungeon is "one big open space". A dungeon whose floors are waves into one
+	// arena satisfies both: the floor count is untouched, so the dungeon is
+	// worth what its depth is worth, and there is only ever one space.
+	const FCataclysmDungeonIdentity Waves =
+		Dungeon(ECataclysmDungeonSubType::Horde);
+
+	TestFalse(TEXT("floor 1 of a Horde dungeon carves the arena rather than "
+				   "reusing one"),
+			  FCataclysmDungeonFloorRules::BriefFor(Waves, 1).bSameArenaAsLastFloor);
+
+	int32 SameArena = 0;
+	int32 WalkIn = 0;
+	int32 WaveFloors = 0;
+	for (int32 Floor = 1; Floor <= Waves.TotalFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief =
+			FCataclysmDungeonFloorRules::BriefFor(Waves, Floor);
+
+		SameArena += Brief.bSameArenaAsLastFloor ? 1 : 0;
+		WalkIn += Brief.bWaveWalksIn ? 1 : 0;
+		WaveFloors += Brief.bOneWave ? 1 : 0;
+	}
+
+	// NINETEEN OF THE TWENTY, because floor 1 is the one that carves it.
+	TestEqual(TEXT("every floor of a 20-floor Horde dungeon but the first is "
+				   "the same arena as the one before"),
+			  SameArena, Waves.TotalFloors - 1);
+
+	// AND ALL TWENTY WALK IN, THE FIRST INCLUDED. A first wave that stood
+	// waiting while every later one arrived would read as two dungeons.
+	TestEqual(TEXT("and every one of the twenty walks in"),
+			  WalkIn, Waves.TotalFloors);
+
+	TestEqual(TEXT("and a Horde dungeon of 20 floors is still 20 waves"),
+			  WaveFloors, Waves.TotalFloors);
+
+	// **THE CONTROL, AND IT IS THE HALF THAT MATTERS.** Rule 4 must not leak:
+	// no other sub-type reuses a space, walks a wave in, or is one wave at all.
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	TestTrue(TEXT("the reflected sub-type list found the seven and None"),
+			 All.Num() == 8);
+
+	for (const ECataclysmDungeonSubType SubType : All)
+	{
+		if (SubType == ECataclysmDungeonSubType::Horde)
+		{
+			continue;
+		}
+
+		const FCataclysmDungeonIdentity Other = Dungeon(SubType);
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief =
+				FCataclysmDungeonFloorRules::BriefFor(Other, Floor);
+
+			if (Brief.bSameArenaAsLastFloor || Brief.bWaveWalksIn || Brief.bOneWave)
+			{
+				AddError(FString::Printf(
+					TEXT("sub-type %d got a wave on floor %d: same arena %d, "
+						 "walks in %d, one wave %d"),
+					static_cast<int32>(SubType), Floor,
+					Brief.bSameArenaAsLastFloor ? 1 : 0,
+					Brief.bWaveWalksIn ? 1 : 0, Brief.bOneWave ? 1 : 0));
+				return false;
+			}
+		}
+	}
+
+	// AND A DUNGEON OF ONE FLOOR NEVER REUSES A SPACE, because there is no floor
+	// before the first one for it to be the same as.
+	const FCataclysmDungeonIdentity Shallow =
+		Dungeon(ECataclysmDungeonSubType::Horde, /*DungeonSeed=*/7,
+				/*TotalFloors=*/1);
+	TestFalse(TEXT("a one-floor Horde dungeon carves its arena and reuses "
+				   "nothing"),
+			  FCataclysmDungeonFloorRules::BriefFor(Shallow, 1).bSameArenaAsLastFloor);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeRimTest,
+	"Cataclysm.FloorBrief.AHordeWaveFormsAroundTheOutsideAndAnOrdinaryFloorDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeRimTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **RULE 4, MEASURED.** "All of the enemies spawning around the outside and
+	// rushing you." The measurement is the mean distance of the wave's creatures
+	// from the rim of the floor, against the same measurement on the same floor
+	// populated the ordinary way and on the same floor populated as a GATHERED
+	// wave. Two controls rather than one, because a wave that merely dropped the
+	// spacing rule would also come out clustered -- it would just be clustered
+	// at the far end instead of around the edge.
+	constexpr int32 RimSeeds = 12;
+
+	int32 Measured = 0;
+	float WorstWalkIn = -1.0f;
+	float BestOrdinary = MAX_flt;
+	float BestGathered = MAX_flt;
+	float WorstOffCentre = -1.0f;
+	float BestGatheredOffCentre = MAX_flt;
+
+	for (int32 Seed = 1; Seed <= RimSeeds; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan =
+			Floor(Seed, 2, ECataclysmFloorLayout::Arena);
+
+		// **THE BRIEF COMES FROM THE RULES AND IS NOT BUILT BY HAND.** A test
+		// that set `bWaveWalksIn` itself would prove the population pass honours
+		// a flag and prove nothing about a Horde dungeon carrying it.
+		const FCataclysmFloorBrief WalkIn = FCataclysmDungeonFloorRules::BriefFor(
+			Dungeon(ECataclysmDungeonSubType::Horde), 2);
+		if (!WalkIn.bWaveWalksIn)
+		{
+			AddError(TEXT("a Horde dungeon's floor 2 does not walk its wave in"));
+			return false;
+		}
+
+		FCataclysmFloorBrief Gathered;
+		Gathered.bOneWave = true;
+
+		const FCataclysmFloorPopulation Rim =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, WalkIn);
+		const FCataclysmFloorPopulation Crowd =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, Gathered);
+		const FCataclysmFloorPopulation Spread =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f);
+
+		const float RimMean = MeanRimDistance(Plan, Rim);
+		const float CrowdMean = MeanRimDistance(Plan, Crowd);
+		const float SpreadMean = MeanRimDistance(Plan, Spread);
+
+		if (RimMean >= SpreadMean)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave averages %.2f cells from the "
+					 "rim and an ordinary floor %.2f, so it is not around the "
+					 "outside"), Seed, RimMean, SpreadMean));
+			return false;
+		}
+
+		if (RimMean >= CrowdMean)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave averages %.2f cells from the "
+					 "rim and a GATHERED wave on the same floor %.2f, so it is "
+					 "clustered rather than around the outside"),
+				Seed, RimMean, CrowdMean));
+			return false;
+		}
+
+		// **AND IT HAS NO GATHERING POINT**, which is what says the two kinds of
+		// wave are two placements and not one with a different sort order.
+		if (Rim.WaveSite != FIntPoint(-1, -1))
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: a wave that rings the outside was given a "
+					 "single wave site at (%d, %d)"),
+				Seed, Rim.WaveSite.X, Rim.WaveSite.Y));
+			return false;
+		}
+
+		// AND IT IS STILL ONE CROWD RATHER THAN SEPARATED ENCOUNTERS, which is
+		// the promise `bOneWave` makes and which a walk-in wave must keep too.
+		// Reading `WaveSite` to decide that was the bug this guards.
+		const int32 ClosestRim = ClosestTwoPackSitesWalked(Plan, Rim);
+		if (ClosestRim >= FCataclysmFloorPopulator::LeastCellsBetweenPacks)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave's two closest groups are %d "
+					 "cells apart, which is not closer than the %d an ordinary "
+					 "floor keeps them, so the spacing rule was left on"),
+				Seed, ClosestRim,
+				FCataclysmFloorPopulator::LeastCellsBetweenPacks));
+			return false;
+		}
+
+		// **AND IT RINGS THE ARENA RATHER THAN BUNCHING ALONG ONE EDGE, WHICH
+		// THE MEASUREMENT ABOVE CANNOT SEE.** A wave placed entirely along the
+		// top edge is on the rim too, and would pass every check so far. It was
+		// the first version of this rule: every cell on the rim is at distance
+		// zero, so breaking the tie by cell index took them in row-major order.
+		//
+		// A CROWD THAT RINGS THE FLOOR HAS ITS WEIGHT AT THE MIDDLE OF IT, and
+		// one bunched on one side does not.
+		//
+		// **AN EIGHTH OF THE FLOOR'S WIDTH, AND IT IS NOT ZERO ON PURPOSE.** A
+		// ring is not perfectly even, because `LeastCellsFromEntrance` keeps
+		// every creature eight cells clear of where the player arrives, so the
+		// arc of the rim nearest the entrance is empty and the weight is pulled
+		// away from it. Measured over this sweep the worst is a few cells; a
+		// wave bunched along one edge of a 45-cell floor is about twenty. The
+		// bound sits between the two and is written as a fraction of the floor
+		// so it does not need revisiting when floors change size. The tightest
+		// bound this could take was tried first and it was 2.0 cells, which one
+		// seed of twelve failed at 2.6 for exactly the keep-out reason above.
+		const FVector2D Weight = CentreOfMass(Rim);
+		const FVector2D Middle = MiddleOfTheFloor(Plan);
+		const float OffCentre = FVector2D::Distance(Weight, Middle);
+
+		const float MostOffCentre = static_cast<float>(Plan.Width) / 8.0f;
+
+		if (OffCentre > MostOffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave's weight is at (%.1f, %.1f) "
+					 "and the middle of the floor is (%.1f, %.1f), %.1f cells "
+					 "away and the most allowed is %.1f, so it is bunched on "
+					 "one side rather than ringing the arena"),
+				Seed, Weight.X, Weight.Y, Middle.X, Middle.Y, OffCentre,
+				MostOffCentre));
+			return false;
+		}
+
+		// THE CONTROL FOR THAT ONE. A gathered wave stands at the far end, so
+		// ITS weight is a long way off centre -- which is what says the check
+		// above is measuring something a crowd can fail.
+		const float GatheredOffCentre =
+			FVector2D::Distance(CentreOfMass(Crowd), Middle);
+
+		if (GatheredOffCentre <= OffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: a gathered wave's weight is %.1f cells off "
+					 "centre and the walk-in wave's is %.1f, so the off-centre "
+					 "check cannot tell them apart"),
+				Seed, GatheredOffCentre, OffCentre));
+			return false;
+		}
+
+		WorstWalkIn = FMath::Max(WorstWalkIn, RimMean);
+		BestOrdinary = FMath::Min(BestOrdinary, SpreadMean);
+		BestGathered = FMath::Min(BestGathered, CrowdMean);
+		WorstOffCentre = FMath::Max(WorstOffCentre, OffCentre);
+		BestGatheredOffCentre =
+			FMath::Min(BestGatheredOffCentre, GatheredOffCentre);
+		++Measured;
+	}
+
+	TestEqual(TEXT("every floor in the sweep was measured"), Measured, RimSeeds);
+
+	// THE THREE NUMBERS, SO THE MARGIN IS ON RECORD rather than only the
+	// comparisons, which are per floor.
+	TestTrue(FString::Printf(
+				 TEXT("the loosest walk-in wave averages %.2f cells from the "
+					  "rim, the tightest ordinary floor %.2f and the tightest "
+					  "gathered wave %.2f"),
+				 WorstWalkIn, BestOrdinary, BestGathered),
+			 WorstWalkIn < BestOrdinary && WorstWalkIn < BestGathered);
+
+	// AND THE SAME FOR THE OFF-CENTRE MEASUREMENT, so the margin between a wave
+	// that rings the arena and one gathered at its far end is on record rather
+	// than only the per-floor comparison.
+	TestTrue(FString::Printf(
+				 TEXT("the most off-centre walk-in wave's weight is %.2f cells "
+					  "from the middle of its floor and the least off-centre "
+					  "gathered wave's is %.2f"),
+				 WorstOffCentre, BestGatheredOffCentre),
+			 WorstOffCentre < BestGatheredOffCentre);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefNextWaveThresholdTest,
+	"Cataclysm.FloorBrief.TheNextWaveArrivesWhenATenthOrLessOfTheLastIsStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefNextWaveThresholdTest::RunTest(const FString& Parameters)
+{
+	// **RULE 2, AND THE ROUNDING IS THE WHOLE OF IT.** "The next wave should
+	// spawn when there is only 10% or less of the previous wave remaining."
+	// The two worked examples first.
+	TestEqual(TEXT("a wave of 40 lets the next in at 4 still standing, which is "
+				   "exactly a tenth"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(40), 4);
+
+	TestEqual(TEXT("a wave of 7 has to be finished off, because one survivor of "
+				   "seven is 14.3% and that is not '10% or less'"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(7), 0);
+
+	TestEqual(TEXT("a wave of 10 lets the next in at 1"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(10), 1);
+	TestEqual(TEXT("and a wave of 9 does not"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(9), 0);
+
+	// A WAVE THAT PUT NOTHING ON THE FLOOR IS FINISHED, and a negative count is
+	// not a count. Both answer zero rather than something a comparison would
+	// read as a threshold.
+	TestEqual(TEXT("a wave of nothing is already finished"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(0), 0);
+	TestEqual(TEXT("and a negative count is not a threshold"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(-5), 0);
+
+	// **AND THE PROPERTY THE EXAMPLES ARE INSTANCES OF, over every wave size an
+	// arena floor can produce and well beyond it.** Three things have to hold
+	// for every one of them, and each is a different way to get this wrong.
+	int32 Checked = 0;
+	for (int32 Spawned = 1; Spawned <= 1000; ++Spawned)
+	{
+		const int32 Threshold =
+			FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(Spawned);
+
+		// ONE. The threshold really is "10% or less". A threshold above a tenth
+		// would let the next wave in while more than a tenth was standing.
+		if (static_cast<float>(Threshold)
+			> static_cast<float>(Spawned)
+				* FCataclysmDungeonFloorRules::NextWaveAtFractionRemaining)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d lets the next in at %d standing, which is "
+					 "more than a tenth of it"), Spawned, Threshold));
+			return false;
+		}
+
+		// TWO. It is the LARGEST such number, so the rule is not simply "kill
+		// them all" wearing a fraction. One more would be over a tenth.
+		if (static_cast<float>(Threshold + 1)
+			<= static_cast<float>(Spawned)
+				* FCataclysmDungeonFloorRules::NextWaveAtFractionRemaining)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d lets the next in at %d standing, but %d "
+					 "would still be a tenth or less, so the threshold is too "
+					 "low"), Spawned, Threshold, Threshold + 1));
+			return false;
+		}
+
+		// THREE. **IT CANNOT SOFT LOCK AND IT CANNOT CASCADE.** Never below
+		// zero, which is always reachable because every creature the population
+		// pass places stands somewhere the player can walk to; and never as much
+		// as the wave itself, which would finish every wave the instant it
+		// arrived and spend the whole dungeon's days in one tick.
+		if (Threshold < 0 || Threshold >= Spawned)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d has a threshold of %d, which is outside "
+					 "[0, %d)"), Spawned, Threshold, Spawned));
+			return false;
+		}
+
+		++Checked;
+	}
+
+	TestEqual(TEXT("every wave size from 1 to 1000 was checked"), Checked, 1000);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeAggroTest,
+	"Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeAggroTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **RULE 3, AND THE HALF THAT MATTERS IS THAT IT DOES NOT LEAK.** "In horde
+	// dungeons, enemies should also get a much larger aggro range." A creature's
+	// own notice radius is untouched; the floor it is standing on carries a
+	// multiplier, and every floor of every other dungeon carries one.
+	for (const ECataclysmDungeonSubType SubType : EverySubType())
+	{
+		const FCataclysmDungeonIdentity Any = Dungeon(SubType);
+
+		const float Expected =
+			(SubType == ECataclysmDungeonSubType::Horde)
+				? FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier
+				: 1.0f;
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const float Got = FCataclysmDungeonFloorRules::BriefFor(
+				Any, Floor).SightRadiusMultiplier;
+
+			if (!FMath::IsNearlyEqual(Got, Expected))
+			{
+				AddError(FString::Printf(
+					TEXT("floor %d of sub-type %d multiplies what its creatures "
+						 "notice by %.2f, and it should be %.2f"),
+					Floor, static_cast<int32>(SubType), Got, Expected));
+				return false;
+			}
+		}
+	}
+
+	// AND A DEFAULT-CONSTRUCTED BRIEF -- what every caller that names no dungeon
+	// gets -- leaves it alone. A zero here would be a creature that notices
+	// nothing at all.
+	TestEqual(TEXT("an ordinary floor multiplies what its creatures notice by 1"),
+			  FCataclysmFloorBrief().SightRadiusMultiplier, 1.0f);
+
+	// **AND THE MULTIPLIER IS BIG ENOUGH TO DO WHAT THE RULE SAYS.** "They all
+	// always run towards the player" is only true if the creature that notices
+	// from closest still reaches the far corner of the largest arena that can be
+	// carved. The `static_assert` in the header holds this at compile time; this
+	// states the two numbers so a failure says which one moved.
+	const float Reaches =
+		FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm
+			* FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier;
+
+	TestTrue(FString::Printf(
+				 TEXT("the creature that notices from closest reaches %.0f cm "
+					  "in a Horde dungeon and the biggest arena is %.0f cm "
+					  "corner to corner"),
+				 Reaches, FCataclysmDungeonFloorRules::LargestFloorDiagonalCm),
+			 Reaches >= FCataclysmDungeonFloorRules::LargestFloorDiagonalCm);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefNoticeFloorTest,
+	"Cataclysm.FloorBrief.NoCreatureNoticesFromCloserThanTheHordeRuleAssumes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefNoticeFloorTest::RunTest(const FString& Parameters)
+{
+	// **THE GUARD ON A COPIED NUMBER.**
+	// `FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm` is written
+	// down beside the multiplier so the multiplier can be checked against it,
+	// and it is a copy of figures that live on the creatures. A creature given a
+	// shorter notice radius than this would silently stop reaching across the
+	// arena, and the `static_assert` in the header could not see it because it
+	// checks the copy rather than the creatures.
+	//
+	// EVERY CREATURE THE POPULATOR CAN NAME, so a creature added to the roster
+	// is covered without anyone remembering to come here.
+	int32 Checked = 0;
+	float Closest = MAX_flt;
+	const TCHAR* ClosestName = TEXT("none");
+
+	for (uint8 Which = 0;
+		 Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	{
+		const ECataclysmDungeonCreature Creature =
+			static_cast<ECataclysmDungeonCreature>(Which);
+
+		const TSubclassOf<ACataclysmEnemyCharacter> Class =
+			ACataclysmDungeonGameMode::ClassFor(Creature);
+		if (!Class)
+		{
+			AddError(FString::Printf(TEXT("%s has no character class"),
+									 CataclysmDungeonCreatureName(Creature)));
+			return false;
+		}
+
+		// THE CLASS DEFAULT OBJECT AND NOT A SPAWNED ONE. `SightRadiusCm` is
+		// what each creature overrides with its own constant, and reading it off
+		// the default costs no world and no actor.
+		const ACataclysmEnemyCharacter* Default =
+			Class->GetDefaultObject<ACataclysmEnemyCharacter>();
+		if (!Default)
+		{
+			AddError(FString::Printf(TEXT("%s has no default object"),
+									 CataclysmDungeonCreatureName(Creature)));
+			return false;
+		}
+
+		const float Notices = Default->SightRadiusCm();
+		if (Notices < Closest)
+		{
+			Closest = Notices;
+			ClosestName = CataclysmDungeonCreatureName(Creature);
+		}
+
+		if (Notices < FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm)
+		{
+			AddError(FString::Printf(
+				TEXT("%s notices from %.0f cm, which is closer than the %.0f cm "
+					 "FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm "
+					 "claims is the shortest. Lower that constant and raise "
+					 "HordeSightRadiusMultiplier to match, or this creature will "
+					 "not reach across a Horde arena."),
+				CataclysmDungeonCreatureName(Creature), Notices,
+				FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm));
+			return false;
+		}
+
+		++Checked;
+	}
+
+	TestEqual(TEXT("every designed creature was checked"),
+			  Checked, static_cast<int32>(ECataclysmDungeonCreature::Count));
+
+	// AND THE CONSTANT IS NOT MERELY SAFE, IT IS THE RIGHT NUMBER. A constant
+	// far below every creature would pass the check above and would make the
+	// multiplier bigger than it needs to be for no reason.
+	TestEqual(FString::Printf(
+				  TEXT("the creature that notices from closest is the %s at "
+					   "%.0f cm, which is what the constant says"),
+				  ClosestName, Closest),
+			  Closest,
+			  FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm);
 
 	return true;
 }

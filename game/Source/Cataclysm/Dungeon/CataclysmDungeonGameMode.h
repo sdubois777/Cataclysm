@@ -73,6 +73,23 @@ public:
 
 	virtual void StartPlay() override;
 
+	/**
+	 * Looks at the wave every `SecondsBetweenWaveChecks` and brings the next one
+	 * in when it is down to a tenth.
+	 *
+	 * **THIS IS THE ONLY THING IN THE PROJECT THAT PUTS CREATURES ON A FLOOR
+	 * AFTER IT HAS BEEN BUILT.** Everything else about a floor is decided when
+	 * it is generated; a wave arriving is a thing that happens while the player
+	 * is standing there, so it needs a clock and this game mode had none. That
+	 * is why issue #1467 records the arrival as a new runtime system rather than
+	 * a rule in floor generation.
+	 *
+	 * IT COSTS AN ORDINARY DUNGEON A COMPARISON AND NOTHING ELSE.
+	 * `ShouldTheNextWaveArrive` answers false immediately for a floor that is
+	 * not a wave.
+	 */
+	virtual void Tick(float DeltaSeconds) override;
+
 	// ----------------------------------------------------------------------
 	// Which floor
 	// ----------------------------------------------------------------------
@@ -504,6 +521,109 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TArray<TObjectPtr<ACataclysmEnemyCharacter>> FloorEnemies;
 
+	// ----------------------------------------------------------------------
+	// Waves, for a Horde dungeon. Issue #1467
+	//
+	// THE PROJECT OWNER'S RULES, 2026-09-07, VERBATIM: "They should walk in, and
+	// the next wave should spawn when there is only 10% or less of the previous
+	// wave remaining. In horde dungeons, enemies should also get a much larger
+	// aggro range, so they all always run towards the player. Horde dungeons are
+	// basically arenas, they should be one big open space with all of the
+	// enemies spawning around the outside and rushing you."
+	//
+	// A HORDE DUNGEON IS ONE ARENA AND ITS FLOOR COUNT IS ITS WAVE COUNT.
+	// Going down a floor is the next wave arriving rather than a new space, so
+	// nothing here changes the floor count, the day cost or what the dungeon is
+	// worth. `FCataclysmFloorBrief::bSameArenaAsLastFloor` is the seam that says
+	// so and this is what spends it.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The creatures of the wave that arrived most recently, in the order placed.
+	 *
+	 * A SUBSET OF `FloorEnemies` AND NOT A REPLACEMENT FOR IT. Survivors of
+	 * earlier waves stay in the arena and are still fought; they are still in
+	 * `FloorEnemies` and are no longer in this. What decides when the next wave
+	 * arrives is how much of THIS wave is left, which is what the owner's rule
+	 * says -- "10% or less of the previous wave remaining" is about one wave and
+	 * not about everything standing.
+	 *
+	 * EMPTY IN AN ORDINARY DUNGEON, whose floors hold no waves at all.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	TArray<TObjectPtr<ACataclysmEnemyCharacter>> CurrentWave;
+
+	/**
+	 * How many creatures the current wave put on the floor when it arrived.
+	 *
+	 * RECORDED RATHER THAN COUNTED FROM `CurrentWave`, because that array is
+	 * what is still standing and this is the denominator. Ten percent of "the
+	 * previous wave" is ten percent of what it arrived with, not ten percent of
+	 * what is left of it, which would be a threshold that fell as the player
+	 * killed and could never be reached.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	int32 WaveSpawned = 0;
+
+	/**
+	 * How many waves have arrived in this arena, counted from the first.
+	 *
+	 * ZERO ON A FLOOR THAT IS NOT A WAVE, which is most floors in the game. An
+	 * ordinary dungeon's creatures are not a wave, and counting them as one
+	 * would make this figure mean two different things.
+	 *
+	 * FOR A TEST AND A LOG LINE. "The second wave arrived" is otherwise only
+	 * visible as the floor number changing, which also changes for a dungeon
+	 * that is not a Horde one.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	int32 WavesArrived = 0;
+
+	/** How many of the current wave are still alive. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	int32 WaveStillAlive() const;
+
+	/**
+	 * Whether the wave standing is finished, so the next one may arrive.
+	 *
+	 * FALSE ON A FLOOR THAT IS NOT A WAVE, so nothing an ordinary dungeon does
+	 * can reach the wave machinery. False on a wave that put nothing on the
+	 * floor, so an empty arena does not run every wave of the dungeon in one
+	 * frame.
+	 *
+	 * **THE LAST WAVE OF A DUNGEON HAS TO BE CLEARED, NOT THINNED TO A TENTH.**
+	 * Finishing it beats the dungeon, and its Gatekeeper is one of its
+	 * creatures, so a tenth remaining would let a player win with the boss still
+	 * standing. See the reasoning in the `.cpp`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	bool ShouldTheNextWaveArrive() const;
+
+	/**
+	 * Brings the next wave in when the one standing is down to a tenth.
+	 *
+	 * CALLED FROM `Tick` AND FROM NOTHING ELSE IN THE GAME. It is public so a
+	 * test can call the same function the tick calls rather than a private
+	 * helper written for the test, but the tick is what drives it in play.
+	 *
+	 * THE NEXT WAVE IS THE NEXT FLOOR, so this goes through `GoDownOneFloor`
+	 * exactly as the stairs do. That is what makes a wave cost a day and what
+	 * makes the last wave finish the dungeon, without either rule being written
+	 * down twice.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
+	void BringTheNextWaveIn();
+
+	/**
+	 * How often the wave is looked at, in seconds.
+	 *
+	 * NOT EVERY FRAME, because the answer cannot change faster than the player
+	 * can kill and the count walks the whole wave -- up to 350 creatures on an
+	 * arena floor. A quarter of a second is faster than a player notices and is
+	 * a fortieth of the work of doing it at 120 frames a second.
+	 */
+	static constexpr float SecondsBetweenWaveChecks = 0.25f;
+
 	/**
 	 * Which character class stands in for one of the designed creatures.
 	 *
@@ -661,6 +781,15 @@ protected:
 							ECataclysmDungeonCreature Creature) const;
 
 private:
+	/**
+	 * Seconds since the wave was last looked at.
+	 *
+	 * PRIVATE, unlike the wave state above, because it is bookkeeping for the
+	 * tick and says nothing about the dungeon. A test drives
+	 * `BringTheNextWaveIn` or ticks this actor rather than reading it.
+	 */
+	float SinceWaveCheckSeconds = 0.0f;
+
 	// ----------------------------------------------------------------------
 	// Reaching the empire from a dungeon, issue #1092
 	// ----------------------------------------------------------------------

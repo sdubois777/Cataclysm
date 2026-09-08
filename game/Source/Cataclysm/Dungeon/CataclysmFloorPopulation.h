@@ -101,10 +101,18 @@ struct CATACLYSM_API FCataclysmFloorPopulation
 	int32 Wanted = 0;
 
 	/**
-	 * Where a wave gathers, or `(-1, -1)` on a floor that is not one wave.
+	 * Where a GATHERED wave stands, or `(-1, -1)` when there is not one.
 	 *
-	 * THE WALKABLE CELL FURTHEST FROM THE ENTRANCE, so the wave forms at the
-	 * far end of the arena and the player walks in to meet it rather than
+	 * **IT IS `(-1, -1)` FOR A HORDE FLOOR, WHICH IS NOT A MISSING VALUE.** A
+	 * wave that walks in rings the outside of the floor and has no single point
+	 * to stand at, so there is nothing for this to hold. Use
+	 * `CataclysmFloorRimDistances` to measure where such a wave formed.
+	 * `FCataclysmFloorBrief::bWaveWalksIn` is what tells the two apart, and
+	 * reading this field to decide was the bug that turned the spacing rule back
+	 * on for a walk-in wave.
+	 *
+	 * THE WALKABLE CELL FURTHEST FROM THE ENTRANCE, so a gathered wave forms at
+	 * the far end of the arena and the player walks in to meet it rather than
 	 * arriving inside it. It is the same measurement the floor generator makes
 	 * to decide the walk to the stairs is worth taking, so on an Arena floor the
 	 * wave stands at or near the way down.
@@ -356,10 +364,12 @@ public:
 	 *              to 0, because a negative count is not a floor with anything
 	 *              on it.
 	 * @param Brief what this floor of this dungeon is. Its `bOneWave` gathers
-	 *              the creatures into one crowd instead of spreading them, and
-	 *              its `bBossAtTheExit` stands a Gatekeeper on the way down.
-	 *              The density is not touched by either: a boss is one creature
-	 *              beyond what the density asked for, not one of them.
+	 *              the creatures into one crowd instead of spreading them, its
+	 *              `bWaveWalksIn` forms that crowd around the outside of the
+	 *              floor instead of at its far end, and its `bBossAtTheExit`
+	 *              stands a Gatekeeper on the way down. The density is not
+	 *              touched by any of them: a boss is one creature beyond what
+	 *              the density asked for, not one of them.
 	 */
 	static FCataclysmFloorPopulation Populate(
 		const FCataclysmFloorPlan& Plan, float Scale = 1.0f,

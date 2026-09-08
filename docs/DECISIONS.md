@@ -379,6 +379,159 @@ is reservation and it works. Three were proposed on 2026-09-08 and withdrawn.
 
 ---
 
+## 2026-09-08 — A Horde dungeon is one arena, its waves walk in around the outside, and the next arrives at a tenth
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (a new **Horde Dungeons** section, and
+the Arena bullet in the floor layouts list),
+`game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` and `.cpp` (three new
+fields on `FCataclysmFloorBrief`, three new rules and
+`NextWaveArrivesAtOrBelow`), `game/Source/Cataclysm/Dungeon/CataclysmFloorPlan.h`
+and `.cpp` (`CataclysmFloorRimDistances`),
+`game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.h` and `.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the game
+mode ticks, and holds the wave), `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`
+(`SightRadiusMultiplier`, `NoticesFromCm`),
+`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`. **Applied.**
+Answers issue [#1467](https://github.com/sdubois777/Cataclysm/issues/1467).
+
+### What the project owner said
+
+Asked whether a Horde wave should walk in or stand waiting, they answered the
+question and three more, verbatim:
+
+> "They should walk in, and the next wave should spawn when there is only 10% or
+> less of the previous wave remaining. In horde dungeons, enemies should also get
+> a much larger aggro range, so they all always run towards the player. Horde
+> dungeons are basically arenas, they should be one big open space with all of
+> the enemies spawning around the outside and rushing you."
+
+### The one thing that had to be decided, and it was not in that answer
+
+**"One big open space" and "Number of floors equals number of enemy waves"
+cannot both be true of twenty separate carves.** The design sentence in the
+Dungeon Sub-Types table is an equation between two counts, and issue #1465 read
+it as one wave per floor and twenty floors. The owner's rule 2 needs a NEXT wave
+in the space the player is standing in, and one wave per separate floor has none.
+
+Three readings were put to the owner and they chose the third:
+
+| Reading | What it would mean |
+| :-- | :-- |
+| Several waves per floor | The floor count stops equalling the wave count; the design sentence would have to be rewritten |
+| One wave per floor, unchanged | Rule 2 would be recorded and not built, because a floor with one wave has no next one |
+| **The whole dungeon is one arena** | **Chosen.** Its floor count IS its wave count; a 20-floor Horde dungeon is 20 waves in one space |
+
+**The chosen reading keeps the design sentence exactly as written** and needed no
+change to the Dungeon Sub-Types table. It also keeps the rule #1465 was built to
+protect. `CLAUDE.md` says depth and reward are the same axis, so #1465 rejected
+"one arena of twenty waves" on the grounds that it would make the dungeon one
+floor deep and nineteen twentieths poorer. That does not happen here, because the
+floor count is not touched: the player still descends twenty floors, still spends
+twenty floors' worth of days through `SpendFloorTimeInTheEmpire`, and the dungeon
+is still worth what twenty floors are worth. What changed is only that the twenty
+floors are one carved space rather than twenty.
+
+### The rounding of the ten percent, which is derived rather than chosen
+
+**Down.** The question the rule asks is the largest whole number of survivors
+that is still "10% or less" of what the wave arrived with.
+
+| Wave arrived with | A tenth is | Threshold | Why |
+| :-- | :-- | :-- | :-- |
+| 40 | 4.0 | 4 | four of forty is exactly 10% |
+| 10 | 1.0 | 1 | one of ten is exactly 10% |
+| 9 | 0.9 | 0 | one of nine is 11.1% |
+| 7 | 0.7 | 0 | one of seven is 14.3% |
+
+Rounding to nearest would answer 1 for a wave of seven and let the next wave in
+while more than a tenth of the last was standing, which is not what the owner's
+sentence says. **Rounding down is the only rounding that makes it true.**
+
+**It cannot soft lock.** The threshold is never below zero and never as much as
+the wave itself. Zero survivors is always reachable: the population pass only
+places a creature on a cell it has already proved can be walked to from the
+entrance, so no wave has a last member that cannot be reached and killed.
+
+### The last wave is cleared rather than thinned, and that is a judgement
+
+**The owner's rule says when the NEXT wave spawns.** After the last wave of a
+dungeon there is no next one, so the rule does not reach it and something had to
+be decided.
+
+**Applying the tenth to the last wave as well would let a player beat a dungeon
+without killing its boss.** Every dungeon has a boss on its final floor; a Horde
+dungeon's final floor is its final wave; the Gatekeeper is placed into that wave
+like any other creature. Ending the dungeon with a tenth of the wave standing
+would mean the boss could be one of the survivors, and that universal rule would
+gate nothing.
+
+**So the last wave has to be killed to the last creature.** It cannot lock: the
+population pass only places a creature on a cell it has already proved can be
+walked to from the entrance.
+
+A Horde dungeon with no bottom — pressing Play in `L_Dungeon`, where there is no
+empire dungeon bound — never reaches this and runs waves for ever, which is what
+the same map already does with floors.
+
+### What "the previous wave" counts
+
+**One wave's own creatures, and not everything standing.** Survivors of earlier
+waves stay in the arena and keep fighting, but they are not counted against the
+next wave's threshold. Counting everything alive would stall the dungeon: twenty
+waves each leaving a tenth behind would soon leave more survivors standing than
+a single wave's threshold allows.
+
+### How the larger aggro range reaches the creatures, and why the obvious way does not work
+
+**A multiplier on the floor's brief, applied where the radius is READ.**
+`ACataclysmEnemyCharacter::NoticeRadiusCm` looks like the field to set and is
+not: **five of the seven designed creatures override `SightRadiusCm()` to return
+their own compile-time constant and never read that field** — the Imp, the
+Hellhound, the Succubus, the Corrupted Sentinel and the Gatekeeper. Setting
+`NoticeRadiusCm` on a spawned Imp changes nothing it does.
+
+`ACataclysmCharacterBase::SightRadiusMultiplier` and `NoticesFromCm()` are what
+the controller now asks, so all seven are covered and no creature's own default
+is touched. That is also what keeps the rule from leaking: an Imp in any other
+dungeon carries a multiplier of 1.
+
+**Thirty is derived from the arena rather than picked.** A floor is at most 48
+cells on each axis and a cell is 400 cm, so the largest arena is 19,200 cm each
+way and 27,154 cm corner to corner. The creature that notices from closest does
+so at 1,000 cm. Thirty times that is 30,000 cm, which covers the diagonal. A
+`static_assert` in `CataclysmFloorBrief.h` holds it if the arena grows, and
+`Cataclysm.FloorBrief.NoCreatureNoticesFromCloserThanTheHordeRuleAssumes` holds
+the 1,000 cm figure if a creature is given a shorter one.
+
+### Where "the outside" came from, because nothing could say it before
+
+`CataclysmFloorRimDistances` in `CataclysmFloorPlan.cpp` is new. An arena is
+carved as an ellipse with a wobbled edge, so its outside is not a rectangle and
+cannot be read off the width and the height. A walkable cell is on the rim when
+it has fewer than four walkable orthogonal neighbours, and one breadth-first
+search from the whole rim at once gives every cell its distance from it.
+
+### The genre research this rests on, and what it does not settle
+
+The six sources read for #1465 are recorded under the 2026-09-07 entry "A
+dungeon's sub-type decides what its floors hold". Two of them bear directly here
+and both support the chosen reading:
+
+| Source | What it does |
+| :-- | :-- |
+| Last Epoch, Arena of Champions (Icy Veins, Maxroll) | a fixed number of waves fought in ONE arena, a boss at the end |
+| Last Epoch, Monolith of Fate Arena Echo (Maxroll, Last Epoch Wiki) | one arena, 12 to 18 waves |
+
+**What it does not settle, and these are judgements.** Nothing found states a
+threshold for when the next wave arrives — Last Epoch's arenas wait for the wave
+to be cleared — so the ten percent is the owner's figure and the rounding is
+derived from it. Nothing found states how far an arena's enemies should notice
+from; the multiplier is derived from the size of this game's arena. And that a
+Horde dungeon has no stairs follows from the waves being the way down rather
+than from anything a shipped game does.
+
+---
+
 ## 2026-09-08 — The Ritualist tree uses the game's own word for a minion, and three nodes that needed one named skill equipped are replaced
 
 **Affects:** `docs/Ritualist_Class_Tree_Final.json` and

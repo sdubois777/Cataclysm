@@ -278,6 +278,34 @@ CATACLYSM_API TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPla
 														FIntPoint Start);
 
 /**
+ * How far every cell is from the floor's rim, in cells, walking orthogonally.
+ *
+ * THE RIM IS EVERY WALKABLE CELL THAT TOUCHES SOMETHING THAT IS NOT FLOOR --
+ * solid rock, or the edge of the grid. Those cells are at distance 0 and every
+ * other walkable cell counts its steps to the nearest of them. `INDEX_NONE` for
+ * a solid cell, and for a walkable cell no rim cell can be walked to, which a
+ * built floor does not have.
+ *
+ * WHY IT EXISTS: "AROUND THE OUTSIDE" HAD NO MEANING BEFORE IT. The project
+ * owner's rule for a Horde dungeon is that the enemies spawn around the outside
+ * of the arena and rush inward, and nothing in `FCataclysmFloorPlan` could say
+ * where the outside of a floor was. An arena is carved as an ellipse with a
+ * wobbled edge, so "the outside" is not a rectangle and cannot be read off the
+ * width and the height.
+ *
+ * ONE SEARCH FROM EVERY RIM CELL AT ONCE, not one search per cell. It is the
+ * same breadth-first search `CataclysmFloorDistancesFrom` runs, started with the
+ * whole rim already in the queue, so it costs one sweep of the floor rather than
+ * one per cell.
+ *
+ * IT IS NOT ARENA-SPECIFIC, and that is deliberate. A Halls floor has a rim too
+ * -- every cell against a wall -- so a test can measure the same quantity on a
+ * floor that is not an arena and show the difference is the rule rather than the
+ * layout.
+ */
+CATACLYSM_API TArray<int32> CataclysmFloorRimDistances(const FCataclysmFloorPlan& Plan);
+
+/**
  * What is measurably true about a floor, so "annoying to navigate" can be a test
  * rather than an opinion.
  *

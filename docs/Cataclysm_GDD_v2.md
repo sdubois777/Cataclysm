@@ -3844,7 +3844,7 @@ A floor is **one level of the dungeon**: a single connected space with one entra
 
   - **Halls** — large rectangular rooms joined by corridors two cells wide.
   - **Caverns** — rounded chambers with no straight walls.
-  - **Arena** — one open space. This is what a Horde dungeon's floor is, where a floor is a wave of enemies rather than a layout, and what a boss floor uses.
+  - **Arena** — one open space. This is what a Horde dungeon is carved as, and what a boss floor uses. A Horde dungeon carves one of these and fights all of its waves in it; see **Horde Dungeons** below.
 
   
 
@@ -3990,6 +3990,33 @@ against what a Sanctuary dungeon would be; it is as deep as it always was.
 | Siege | Deals 1% damage to city defenses and population per day while active. Increases in power by 2.5 points per day. Pauses city upgrades. Max 1 per city. |
 | Volatile | Dungeon modifiers change every floor. |
 | Cow Level | Enemies drop ridiculous amounts of loot. Time to complete is doubled and cannot be reduced. |
+
+  
+
+## **Horde Dungeons**
+
+**A Horde dungeon is one arena, and its floor count is its wave count.** A twenty-floor Horde dungeon is twenty waves fought in one open space. The floors are not twenty separate carves; the space is carved once and the waves come to the player in it. Nothing about this reduces the dungeon: it is still twenty floors deep, still worth what twenty floors are worth, and still costs what twenty floors cost to walk. This is what makes the sub-type table's sentence and the four rules below true at the same time.
+
+  
+
+**Four rules decide how a Horde dungeon plays.**
+
+  - **The waves walk in.** Enemies are not standing on the floor when the player arrives. Each wave arrives while the player is in the arena.
+  - **The next wave spawns when 10% or less of the previous wave remains.** It is not on a timer. Ten percent is rounded down, so a wave of forty lets the next in at four still standing and a wave of seven has to be finished off — one survivor of seven is 14.3%, and 14.3% is not "10% or less".
+  - **Enemies have a much larger aggro range in a Horde dungeon**, so they all always run towards the player rather than waiting to be found. Every creature keeps its own notice distance and the arena multiplies it, so a Corrupted Sentinel still notices from further than an Imp does. The multiplier is set from the size of the arena: the creature that notices from closest must still reach the far corner of the largest arena that can be carved.
+  - **The floor is one big open space, and the enemies spawn around its outside and rush inward.** They ring the rim of the arena rather than gathering at one point, so the player cannot walk around the crowd and fight a corner of it.
+
+  
+
+**What is left of a wave keeps fighting.** The tenth that the next wave does not wait for is not removed. Those survivors stay in the arena, so the pressure a player is under builds across the waves rather than resetting with each one.
+
+  
+
+**A Horde dungeon has no stairs.** The way to the next floor is beating the wave in front of you.
+
+  
+
+**The last wave is cleared rather than thinned.** The ten percent rule says when the *next* wave spawns, and after the last wave there is no next one. So the last wave has to be killed to the last creature, and killing it finishes the dungeon. The dungeon's boss stands in that last wave, because every dungeon has a boss on its final floor and a Horde dungeon's final floor is its final wave — ending the dungeon at a tenth remaining would let a player beat it with the boss still standing.
 
   
 
