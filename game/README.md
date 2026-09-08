@@ -156,8 +156,9 @@ by `git add` with no error and no warning. Guarded by
   and stands the player on it. The floor is a grid of four-metre cells carved
   by one of three layout families, drawn as untextured blocks, with a
   navigation mesh over it that a character can path across. Creatures stand on
-  it, the stairs down build the next floor, and the last floor of a dungeon ends
-  with a Gatekeeper. **What `L_Dungeon` still does not have on its own is an
+  it, the stairs down build the next floor — except in a Horde dungeon, which
+  has none and reaches its next floor by the player beating the wave standing in
+  the arena — and the last floor of a dungeon ends with a Gatekeeper. **What `L_Dungeon` still does not have on its own is an
   empire behind it** — no city, no timer, no resolution — so pressing Play
   gives a dungeon ten floors deep with no consequences off it. `L_Sandbox` is
   still where creatures are fought without a floor (issues
@@ -238,9 +239,15 @@ by `git add` with no error and no warning. Guarded by
   dungeon re-draws its dungeon modifiers on every floor, so its creatures are
   worth a different amount on floor 3 than on floor 2. An **Elite** dungeon
   stands a Gatekeeper on every floor's exit rather than only on its last. A
-  **Horde** dungeon carves every floor as one open space and gathers its
-  creatures into one crowd at the far end instead of spreading them out as
-  separate encounters — its floor count is its wave count and is not reduced.
+  **Horde** dungeon is one arena and its floor count is its wave count: it
+  carves one open space and fights every one of its floors as a wave into that
+  same space, so a 20-floor Horde dungeon is 20 waves. Each wave spawns around
+  the outside of the arena and runs at the player, every creature in it notices
+  from thirty times its ordinary distance so all of them come, the next wave
+  arrives when a tenth or less of the last is still standing, and there are no
+  stairs — the way to the next floor is beating the wave. Its floor count, its
+  day cost and what it is worth are all unchanged. The project owner's four
+  rules for it are `docs/Cataclysm_GDD_v2.md`'s **Horde Dungeons** section.
   Every other dungeon keeps a boss on its last floor and nothing else changes.
 
   **Timed alone is still rolled and named and changes nothing**, because it is a
