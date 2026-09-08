@@ -180,14 +180,39 @@ This is fixed here rather than separately because the set draw takes an index
 across the weight 1 options, and an unsorted pool would make which set a seed
 picks vary between runs.
 
-### What this does not decide
+### A set's drawback applies once for the whole set and does not stack
 
-**How the single drawback applies.** Once per equipped piece carrying the set, or
-once while the set is active at all. Nothing applies any enchantment's effect yet
-— confirmed with a control — so the question has had no consequence to date. It
-has a large one when it does: ten pieces of Archon's Aegis applying "movement
-speed reduced by 10%" ten times reaches -100% under the project's rule that
-increases sum. This needs an owner decision before enchantment effects are built.
+**Wearing more pieces of a set does not apply its drawback more times.** The
+project owner ruled it on 2026-09-08, in their words:
+
+> "The set downsides are applied once, for the entire set. It doesn't stack."
+
+**This was recorded here as undecided the day before and is now decided.** The
+alternative was once per equipped piece carrying the set, and the reason it
+mattered is arithmetic rather than taste: ten pieces of Archon's Aegis applying
+"movement speed reduced by 10%" ten times reaches -100% under this project's rule
+that increases sum. A drawback that scales with commitment would make the 10-piece
+threshold unreachable in practice for any set whose drawback is a percentage.
+
+**It joins at the 2-piece threshold**, the same point as the set's first bonus,
+which is the owner's ruling of the same day: *"so you aren't just getting free
+enchantments"*. One piece of a set therefore does nothing and costs nothing, and
+the second turns on the first bonus and the drawback together.
+
+**The owner named the consequence in the same breath, and it is a real one.**
+Their words: *"This does mean that some of those downsides might be too light
+however and we may need to go back and adjust them."* A drawback written to be
+paid once per piece is too cheap when it is paid once in total, and thirteen of
+the fourteen were written before this was settled. That is
+[#1498](https://github.com/sdubois777/Cataclysm/issues/1498) and it is a tuning
+pass against real play rather than a defect.
+
+**Nothing applies any enchantment's effect yet**, confirmed with a control:
+`.Enchantments` is read only by the tool tip, the drop roll, the item struct and
+the tests. So this ruling costs nothing to honour today and constrains whoever
+builds enchantment effects, which is the rest of issue #45.
+
+### What this does not decide
 
 **Counting worn pieces.** Nothing counts how many equipped items carry a set, so
 no threshold turns on yet. That is the rest of issue #45, and it is the same

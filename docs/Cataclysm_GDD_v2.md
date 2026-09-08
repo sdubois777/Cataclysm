@@ -3498,6 +3498,10 @@ A set is an enchantment, not an item. An item that rolls a set enchantment becom
 
   
 
+**A set's drawback is applied once for the whole set and does not stack.** Wearing six pieces of a set does not apply its drawback six times. The project owner ruled it on 2026-09-08: "The set downsides are applied once, for the entire set. It doesn't stack." The alternative would make a percentage drawback unpayable at the 10-piece threshold — ten pieces of Archon's Aegis applying "movement speed reduced by 10%" ten times reaches -100%, because increases sum. **The drawback joins at the 2-piece threshold**, the same point as the set's first bonus, so one piece of a set does nothing and costs nothing and the second turns both on together.
+
+  
+
 **A player builds a set out of their own gear rather than finding fixed set
 pieces.** The project owner ruled this on 2026-09-08: "It's like giving the
 player the ability to build a custom set piece instead of having it be a specific
