@@ -76,20 +76,38 @@ def test_it_says_the_item_base_is_what_decides_the_geometry(document):
         "without saying what does. The item base does. Issue #537.")
 
 
-def test_it_names_the_named_set_exception(document):
-    """A set has an identity of its own, so it may carry bespoke art.
+def test_it_says_a_named_set_costs_no_art(document):
+    """A set is an enchantment, so it needs no model of its own.
 
-    Stated where sets are defined as well as where rarity is, because the cost
-    is per set and should be counted when a set is written.
+    THIS TEST USED TO ASSERT THE OPPOSITE, and it was right to until
+    2026-09-08. While a set was an item that belonged to a named set, a set was
+    the one thing that bought bespoke geometry, and the document had to say so
+    where sets are defined so the art cost was visible when a set was written.
+
+    The project owner ruled on 2026-09-08 that a set is an ENCHANTMENT: an item
+    that rolls it becomes a piece of that set, so a set piece is an ordinary
+    item and the art cost is zero. `docs/DECISIONS.md` records the ruling. At
+    fourteen sets with a 10-piece bonus each, the claim this replaces owed at
+    least 140 models nobody had counted.
     """
-    assert "Named sets are the one exception" in document, (
-        "the design document states the rarity rule without naming the one "
-        "exception. A named set may carry bespoke geometry. Issue #537.")
+    assert "Named sets are not an exception" in document, (
+        "the design document does not say whether a named set costs art. It "
+        "does not: a set is an enchantment and a set piece is an ordinary "
+        "item. Issues #537 and #1495.")
 
-    assert "only itemisation layer that buys bespoke geometry" in document, (
-        "the Set Enchantments section does not say that a set is what buys "
-        "bespoke models, so the art cost of a set is invisible where sets are "
-        "defined. Issue #537.")
+    # THE OLD CLAIM MUST BE GONE FROM THE WHOLE DOCUMENT, not just replaced
+    # where it was found. It was written in two places -- the Item Rarities
+    # section and the Set Enchantments section -- and correcting one and
+    # leaving the other is how the document ends up asserting both.
+    assert "buys bespoke geometry" not in document, (
+        "the design document still says a named set buys bespoke geometry "
+        "somewhere. That followed from a set being an item and the owner ruled "
+        "on 2026-09-08 that it is an enchantment. Issue #1495.")
+
+    assert "models nobody has made" not in document, (
+        "the design document still counts models owed for sets. A set piece is "
+        "an ordinary item carrying a set enchantment and needs no new model. "
+        "Issue #1495.")
 
 
 def test_the_stated_model_count_matches_the_item_bases(document, item_bases):

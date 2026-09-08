@@ -1243,13 +1243,14 @@ float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
 bool UCataclysmDropRoll::EnchantmentSuitsSlot(const FCataclysmEnchantmentRow& Row,
 											  const FString& Slot)
 {
-	// A SET ROW BELONGS TO A DIFFERENT MECHANISM. The design says set positives
-	// and negatives are "paired and guaranteed", so a set is handed out whole
-	// rather than drawn one half at a time.
-	if (Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))
-	{
-		return false;
-	}
+	// A SET ROW USED TO BE REFUSED HERE AND IS NOT ANY MORE. The refusal read
+	// "paired and guaranteed" as meaning some other mechanism hands out a whole
+	// set, and no such mechanism was ever written, so 55 authored rows could not
+	// appear in the game. The project owner ruled on 2026-09-08 that a set IS an
+	// enchantment. A set row still never reaches the ordinary pool -- its Weight
+	// holds a set identifier of 5 to 18, which EnchantmentDrawWeight prices at
+	// zero -- but it now honours a slot tag the same way every other row does,
+	// so that a set written for weapons only would bind. None carries one today.
 
 	// A SLOT TAG BINDS; EVERY OTHER TAG DESCRIBES WHAT THE ENCHANTMENT AFFECTS.
 	// Three rows of 574 carry one. A row with none may appear anywhere, which is
@@ -1297,6 +1298,189 @@ void UCataclysmDropRoll::EnchantmentCandidatesFor(const UDataTable* Table,
 				OutCandidates.Add(Key);
 			}
 		});
+
+	// SORTED SO THE ROLL IS REPRODUCIBLE FROM ITS SEED. Without this the same
+	// seed could give a different enchantment between runs, because the order
+	// the table hands its rows over is not part of the data. RollBase and
+	// RollMaterialTier have said exactly this since they were written; this
+	// function was missing it, so two of the three draws in this file were
+	// reproducible and the third was not.
+	OutCandidates.Sort(FNameLexicalLess());
+}
+
+int32 UCataclysmDropRoll::EnchantmentSetId(const FCataclysmEnchantmentRow& Row)
+{
+	if (!Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))
+	{
+		return 0;
+	}
+
+	// A WHOLE NUMBER ABOVE THE HIGHEST WEIGHT. The Weight column does double
+	// duty on set rows and holds the identifier -- issue #1443. Requiring it
+	// above HighestEnchantmentWeight is what keeps the two meanings apart: a
+	// set row carrying 3 is a fault in the data rather than a set numbered 3,
+	// and is refused here so it cannot silently become one.
+	const float Rounded = FMath::RoundToFloat(Row.Weight);
+	if (!FMath::IsNearlyEqual(Rounded, Row.Weight)
+		|| Rounded <= HighestEnchantmentWeight)
+	{
+		return 0;
+	}
+	return static_cast<int32>(Rounded);
+}
+
+namespace
+{
+	/**
+	 * How many pieces a set row's own text says it needs, or MAX_int32.
+	 *
+	 * READ FROM THE EFFECT because that is where it is written: every one of
+	 * the 42 set positive rows states its threshold as "(N-Piece Bonus)", and
+	 * all 42 parse, measured 2026-09-08. It is only used to order a set's rows
+	 * so the lowest threshold can be the one an item records, so a row that
+	 * does not parse sorts last rather than breaking the draw.
+	 */
+	int32 SetPieceThreshold(const FString& Effect)
+	{
+		int32 Open = INDEX_NONE;
+		if (!Effect.FindChar(TEXT('('), Open))
+		{
+			return MAX_int32;
+		}
+
+		// EVERY '(' IN THE ROW, not just the first, because a set's text can
+		// carry more than one -- "(10s cd)" follows the threshold on several.
+		for (int32 At = Open; At != INDEX_NONE;
+			 At = Effect.Find(TEXT("("), ESearchCase::CaseSensitive,
+							  ESearchDir::FromStart, At + 1))
+		{
+			int32 Digits = At + 1;
+			while (Digits < Effect.Len() && FChar::IsDigit(Effect[Digits]))
+			{
+				++Digits;
+			}
+			if (Digits > At + 1
+				&& Effect.Mid(Digits).StartsWith(TEXT("-Piece Bonus"),
+												 ESearchCase::IgnoreCase))
+			{
+				return FCString::Atoi(*Effect.Mid(At + 1, Digits - At - 1));
+			}
+		}
+		return MAX_int32;
+	}
+}
+
+void UCataclysmDropRoll::EnchantmentSetsFor(
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+	const FString& Slot, TArray<FCataclysmEnchantmentSet>& OutSets)
+{
+	OutSets.Reset();
+	if (!PositiveTable || !NegativeTable)
+	{
+		return;
+	}
+
+	// GATHERED BY IDENTIFIER FIRST AND JUDGED COMPLETE AFTERWARDS, so that a
+	// set missing a half is reported for what it is rather than silently
+	// half-offered.
+	TMap<int32, TArray<TPair<int32, FName>>> PositivesBySet;
+	TMap<int32, TArray<FName>> NegativesBySet;
+
+	PositiveTable->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentSetsFor"),
+		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
+		{
+			const int32 SetId = EnchantmentSetId(Row);
+			if (SetId > 0 && EnchantmentSuitsSlot(Row, Slot))
+			{
+				PositivesBySet.FindOrAdd(SetId).Add(
+					TPair<int32, FName>(SetPieceThreshold(Row.Effect), Key));
+			}
+		});
+
+	NegativeTable->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentSetsFor"),
+		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
+		{
+			const int32 SetId = EnchantmentSetId(Row);
+			if (SetId > 0 && EnchantmentSuitsSlot(Row, Slot))
+			{
+				NegativesBySet.FindOrAdd(SetId).Add(Key);
+			}
+		});
+
+	TArray<int32> SetIds;
+	PositivesBySet.GetKeys(SetIds);
+	SetIds.Sort();
+
+	for (const int32 SetId : SetIds)
+	{
+		TArray<TPair<int32, FName>>& Rows = PositivesBySet[SetId];
+		TArray<FName>* Negatives = NegativesBySet.Find(SetId);
+
+		if (!Negatives || Negatives->Num() == 0)
+		{
+			// NAMED BY IDENTIFIER RATHER THAN BY SET NAME, because the name is
+			// only inside the effect text. Set 15, Shard of Anarchy, is in this
+			// state today and issue #1494 is the drawback being written; adding
+			// that one row is all it takes for this branch to stop firing.
+			//
+			// ONCE PER SET PER RUN, NOT ONCE PER DROP. This function runs for
+			// every item that rolls enchantments. Unguarded, it wrote 214,442
+			// identical lines during one automation run and would write one per
+			// drop in the game, which buries the log it is trying to inform.
+			// A duplicate line if two threads ever reach this together is a
+			// better outcome than a lock on a drop roll.
+			static TSet<int32> AlreadyWarnedMissing;
+			if (!AlreadyWarnedMissing.Contains(SetId))
+			{
+				AlreadyWarnedMissing.Add(SetId);
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("Set %d has %d positive rows and no negative row, so "
+						 "it cannot be paired and guaranteed and is left out of "
+						 "the draw. Write one negative row carrying that set "
+						 "identifier in game/Data/EnchantmentsNegative.csv. "
+						 "This is said once per run."),
+					SetId, Rows.Num());
+			}
+			continue;
+		}
+		if (Negatives->Num() > 1)
+		{
+			Negatives->Sort(FNameLexicalLess());
+
+			// ONCE PER SET PER RUN, for the reason above. No set has a second
+			// negative row today, so this has never fired; it is guarded so
+			// that the day one does, the log says so rather than drowning.
+			static TSet<int32> AlreadyWarnedExtra;
+			if (!AlreadyWarnedExtra.Contains(SetId))
+			{
+				AlreadyWarnedExtra.Add(SetId);
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("Set %d has %d negative rows and a set carries one, so "
+						 "'%s' is used and the rest are ignored. This is said "
+						 "once per run."),
+					SetId, Negatives->Num(), *(*Negatives)[0].ToString());
+			}
+		}
+
+		// BY THRESHOLD, THEN BY NAME. The threshold is what the player meets
+		// them in; the name breaks a tie so two rows that failed to parse still
+		// come out in the same order on every run.
+		Rows.Sort([](const TPair<int32, FName>& A, const TPair<int32, FName>& B)
+		{
+			return A.Key != B.Key ? A.Key < B.Key
+								  : FNameLexicalLess()(A.Value, B.Value);
+		});
+
+		FCataclysmEnchantmentSet Set;
+		Set.SetId = SetId;
+		Set.Negative = (*Negatives)[0];
+		for (const TPair<int32, FName>& Each : Rows)
+		{
+			Set.Positives.Add(Each.Value);
+		}
+		Set.Representative = Set.Positives[0];
+		OutSets.Add(MoveTemp(Set));
+	}
 }
 
 void UCataclysmDropRoll::EnchantmentCandidatesByWeight(
@@ -1431,6 +1615,41 @@ bool UCataclysmDropRoll::RollEnchantments(
 	EnchantmentCandidatesByWeight(PositiveTable, Slot, PositivesByWeight);
 	EnchantmentCandidatesByWeight(NegativeTable, Slot, NegativesByWeight);
 
+	// A SET IS ONE MORE OPTION IN THE WEIGHT 1 BAND, NOT A FIFTH BAND.
+	//
+	// The project owner ruled on 2026-09-08 that sets "should all probably be in
+	// the same bucket as t1 enchantments as they're pretty strong". Two readings
+	// were open: put the sets INTO the weight 1 band, or give sets a fifth band
+	// priced like weight 1. This is the first, for two reasons.
+	//
+	// IT KEEPS THE PUBLISHED LADDER EXACTLY TRUE. `docs/Cataclysm_GDD_v2.md`
+	// states the four shares as 1.2%, 4.7%, 18.8% and 75.3%, and the owner ruled
+	// separately that the ladder does not move. A fifth band renormalises all
+	// four and makes every one of those four numbers slightly wrong; putting
+	// sets inside band 1 leaves all four untouched.
+	//
+	// AND IT IS THE LITERAL READING of "in the same bucket as t1".
+	//
+	// WHAT IT COSTS: the weight 1 band is now shared, so an ordinary weight 1
+	// enchantment is drawn about half as often as before. Measured for a chest
+	// on 2026-09-08: 11 ordinary weight 1 rows against 13 offered sets, so 11 of
+	// 24 rather than 11 of 11. All sets together take about 0.64% of draws and
+	// one named set about 0.049%.
+	//
+	// THE COUNTS ARE PER SLOT AND ARE NOT 12 AND 14. Twelve weight 1 positives
+	// are written, but one carries `Item.Slot.Weapon` and a chest never sees it.
+	// Fourteen sets are written and thirteen are offered, because Shard of
+	// Anarchy has no negative row yet -- issue #1494.
+	//
+	// TO REVERSE IT, give sets their own band: add a fifth entry to the band
+	// arrays priced with EnchantmentDrawWeight(LowestEnchantmentWeight). The
+	// draw below reads `SetBand` rather than assuming the lowest band, so the
+	// change is local.
+	static constexpr int32 SetBand = 0;
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	EnchantmentSetsFor(PositiveTable, NegativeTable, Slot, Sets);
+
 	// NEITHER HALF REPEATS ON ONE PIECE, tracked separately because a positive
 	// and a negative are drawn from different tables and cannot collide.
 	TSet<FName> TakenPositives;
@@ -1444,6 +1663,21 @@ bool UCataclysmDropRoll::RollEnchantments(
 		for (const FName& Row : CandidateRows)
 		{
 			if (!Taken.Contains(Row))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// THE SAME QUESTION FOR SETS, asked separately because a set does not need
+	// a drawback left in the pool the way an ordinary benefit does. It carries
+	// its own, which is what "paired and guaranteed" means.
+	auto HasUntakenSet = [&Sets](const TSet<FName>& Taken)
+	{
+		for (const FCataclysmEnchantmentSet& Each : Sets)
+		{
+			if (!Taken.Contains(Each.Representative))
 			{
 				return true;
 			}
@@ -1475,9 +1709,18 @@ bool UCataclysmDropRoll::RollEnchantments(
 		{
 			bAnyDrawbackAtOrBelow =
 				bAnyDrawbackAtOrBelow || bDrawbackBandHasRow[Band];
+
+			// A SET MAKES ITS BAND SUPPLIABLE ON ITS OWN. Every other benefit
+			// needs a drawback still left at or below its weight to pay for it;
+			// a set brings its own negative row, so it can be offered when the
+			// weight 1 drawbacks are all taken and an ordinary weight 1 benefit
+			// could not be.
+			const bool bSetCanSupply =
+				Band == SetBand && HasUntakenSet(TakenPositives);
 			bBenefitBandCanSupply.Add(
-				HasUntaken(PositivesByWeight[Band], TakenPositives)
-				&& bAnyDrawbackAtOrBelow);
+				(HasUntaken(PositivesByWeight[Band], TakenPositives)
+				 && bAnyDrawbackAtOrBelow)
+				|| bSetCanSupply);
 
 			if (!bBenefitBandCanSupply[Band])
 			{
@@ -1518,29 +1761,92 @@ bool UCataclysmDropRoll::RollEnchantments(
 			BenefitWeight - static_cast<int32>(LowestEnchantmentWeight);
 
 		FCataclysmRolledEnchantment Rolled;
-		Rolled.Positive = DrawEnchantmentInBand(PositivesByWeight[BenefitBand],
-												TakenPositives, Stream);
 
-		// THE DRAWBACK FROM WEIGHT 1 UP TO THE BENEFIT'S WEIGHT, AND NO
-		// FURTHER. This one line is the floor the project owner chose on
-		// 2026-09-07: bands above the benefit's are never offered, so the
-		// drawback matches it or is harsher and can never be milder.
-		TArray<bool> bDrawbackBandCanSupply;
-		bDrawbackBandCanSupply.Reserve(EnchantmentWeightCount);
-		for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+		// A SET AND AN ORDINARY ROW ARE ONE DRAW, NOT TWO. Inside the set band
+		// the options are the ordinary rows that can still be paired plus every
+		// set not already on this piece, and one index is taken across all of
+		// them. So a set is exactly as likely as any one weight 1 enchantment,
+		// which is what "the same bucket as t1" was asked for.
+		const FCataclysmEnchantmentSet* DrawnSet = nullptr;
+		if (BenefitBand == SetBand)
 		{
-			bDrawbackBandCanSupply.Add(Band <= BenefitBand
-									   && bDrawbackBandHasRow[Band]);
+			TArray<FName> Options;
+			if (bDrawbackBandHasRow[SetBand])
+			{
+				for (const FName& Row : PositivesByWeight[SetBand])
+				{
+					if (!TakenPositives.Contains(Row))
+					{
+						Options.Add(Row);
+					}
+				}
+			}
+			const int32 OrdinaryOptions = Options.Num();
+
+			TArray<const FCataclysmEnchantmentSet*> SetOptions;
+			for (const FCataclysmEnchantmentSet& Each : Sets)
+			{
+				if (!TakenPositives.Contains(Each.Representative))
+				{
+					SetOptions.Add(&Each);
+				}
+			}
+
+			const int32 Total = OrdinaryOptions + SetOptions.Num();
+			if (Total > 0)
+			{
+				const int32 Picked = Stream.RandRange(0, Total - 1);
+				if (Picked < OrdinaryOptions)
+				{
+					Rolled.Positive = Options[Picked];
+				}
+				else
+				{
+					DrawnSet = SetOptions[Picked - OrdinaryOptions];
+					Rolled.Positive = DrawnSet->Representative;
+				}
+			}
+		}
+		else
+		{
+			Rolled.Positive = DrawEnchantmentInBand(
+				PositivesByWeight[BenefitBand], TakenPositives, Stream);
 		}
 
-		const int32 DrawbackWeight =
-			DrawEnchantmentWeight(bDrawbackBandCanSupply, Stream);
-		if (DrawbackWeight > 0)
+		if (DrawnSet)
 		{
-			Rolled.Negative = DrawEnchantmentInBand(
-				NegativesByWeight[DrawbackWeight
-					- static_cast<int32>(LowestEnchantmentWeight)],
-				TakenNegatives, Stream);
+			// GUARANTEED, NOT DRAWN. A set carries its own drawback, so it
+			// skips the draw below entirely rather than being priced against
+			// the negative pool. This is the whole of "paired and guaranteed":
+			// the two halves of a set arrive together and are never a random
+			// pairing. The set's other threshold rows are not handed out here
+			// -- they are 6-piece and 10-piece bonuses and belong to whatever
+			// counts equipped pieces, which is not written yet.
+			Rolled.Negative = DrawnSet->Negative;
+		}
+		else
+		{
+			// THE DRAWBACK FROM WEIGHT 1 UP TO THE BENEFIT'S WEIGHT, AND NO
+			// FURTHER. This one line is the floor the project owner chose on
+			// 2026-09-07: bands above the benefit's are never offered, so the
+			// drawback matches it or is harsher and can never be milder.
+			TArray<bool> bDrawbackBandCanSupply;
+			bDrawbackBandCanSupply.Reserve(EnchantmentWeightCount);
+			for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+			{
+				bDrawbackBandCanSupply.Add(Band <= BenefitBand
+										   && bDrawbackBandHasRow[Band]);
+			}
+
+			const int32 DrawbackWeight =
+				DrawEnchantmentWeight(bDrawbackBandCanSupply, Stream);
+			if (DrawbackWeight > 0)
+			{
+				Rolled.Negative = DrawEnchantmentInBand(
+					NegativesByWeight[DrawbackWeight
+						- static_cast<int32>(LowestEnchantmentWeight)],
+					TakenNegatives, Stream);
+			}
 		}
 
 		// BOTH ARE SET, because a benefit weight was only offered once a

@@ -2620,12 +2620,19 @@ types and the rest armour and jewellery slots. Rarity-per-model would multiply
 that by the eight tiers. The base alone determines it, so the number of gear
 models this project has to produce is 55.
 
-**Named sets are the one exception, and they are bought deliberately.** A named
-set may carry bespoke geometry, because a set has an identity of its own rather
-than a roll. That is the same line every game in the genre draws: the procedural
-rarity ladder is colour and effects, and only the named tier gets new art. The
-cost is per set and is stated where sets are defined, so adding a set is a
-decision to fund ten or more models rather than a side effect of a rarity tier.
+**Named sets are not an exception, and 55 is the whole model count.** This
+paragraph used to say that a named set was the one thing that bought bespoke
+geometry, and that adding a set was a decision to fund ten or more models. That
+followed from sets being items. **The project owner ruled on 2026-09-08 that a set
+is an enchantment**, so a set piece is an ordinary item carrying a set
+enchantment and needs no model of its own. Adding a set costs writing, not art.
+The Set Enchantments section states the ruling and `docs/DECISIONS.md` records why.
+
+  
+
+That leaves this project without the exception every game in the genre draws,
+which is a consequence of the set ruling rather than a separate decision: the
+procedural rarity ladder is colour and effects, and here so is the named tier.
 
   
 
@@ -3487,16 +3494,68 @@ Enchantments are organized by the following tag types, with multiple enchantment
 
 ### **Set Enchantments**
 
-Set items are Legendary and above items that belong to a named set. Sets provide 2-piece, 6-piece, and 10-piece bonuses. Unlike generic enchantments, set positive and negative rolls are paired and guaranteed — the set functions as a complete package. Sets are the highest-power itemization option in the game and represent the endgame loot chase.
+A set is an enchantment, not an item. An item that rolls a set enchantment becomes a piece of that named set, and the set's 2-piece, 6-piece and 10-piece bonuses turn on according to how many equipped items carry it. Set positive and negative rolls are paired and guaranteed — a set brings its own drawback rather than drawing one from the ordinary pool. Sets are the highest-power itemization option in the game and represent the endgame loot chase.
 
   
 
-**A named set is the only itemisation layer that buys bespoke geometry**, and
-that is what makes each set expensive. Rarity does not change an item's model;
-the item base does, and a set is the one thing with an identity of its own rather
-than a roll. A set with a 10-piece bonus means ten or more models nobody has
-made. No set is enumerated yet, so nothing is owed today, but the art cost of a
-set should be counted when the set is written rather than when it is built.
+**A player builds a set out of their own gear rather than finding fixed set
+pieces.** The project owner ruled this on 2026-09-08: "It's like giving the
+player the ability to build a custom set piece instead of having it be a specific
+item. It's different than most other set items in the genre, but it prevents them
+from being blatantly overpowered like in d3, or completely useless like in last
+epoch." Diablo II, Diablo III and Last Epoch all make a set an item identity
+instead, so this declines the one shape every shipped game in the genre uses.
+`docs/DECISIONS.md` records the ruling and that the departure is deliberate.
+
+  
+
+**This section used to describe the opposite and it was never built.** It said a
+set item was "a Legendary and above item that belongs to a named set", that a
+named set was the only itemisation layer buying bespoke geometry, and that no set
+was enumerated yet. All three were wrong by 2026-09-08. Fourteen named sets are
+written, and 55 rows of them — 42 positives and 13 negatives — could not appear in
+the game at all, because the draw refused every set row and the mechanism that was
+supposed to hand a set out whole was never written.
+
+  
+
+**A set needs no models of its own.** Rarity does not change an item's model and
+neither does a set: a set piece is an ordinary item carrying a set enchantment.
+That is what removes the art cost the old wording counted, which at fourteen sets
+with a 10-piece bonus each would have been at least 140 models.
+
+  
+
+**Fourteen sets are written**, with identifiers 5 to 18 in the `Weight` column of
+the enchantment sheet — issue #1443 owns moving those into a column of their own.
+They are Archon's Aegis, Tyrant's Chains, Chronomancer's Time-Lock, Mana Weaver,
+Brute's Heart, Spellblade's Will, Demon King's Regalia, Plague Doctor, Starvation,
+Null Emperor, Shard of Anarchy, Divine Retribution, Warlord's Will and Reaper's
+Embrace. Each has three positive rows, one per threshold. Thirteen of the fourteen
+also have the one negative row a set needs; **Shard of Anarchy's has not been
+written**, so that set is left out of the draw until it is, and issue #1494 owns
+it. Adding that single row is all it takes to complete the set.
+
+  
+
+**How often a set is drawn.** A set is one more option in the weight 1 band
+rather than a fifth band beside the four. The owner ruled that sets "should all
+probably be in the same bucket as t1 enchantments as they're pretty strong", and
+putting them inside that band is what keeps the four shares in the weight table
+above exactly true. So the band still takes 1.2% of draws, now shared. Measured
+for a chest on 2026-09-08: 11 ordinary weight 1 rows against 13 offered sets,
+giving all sets together about 0.64% of draws and one named set about 0.049%. The
+counts are per slot — twelve weight 1 positives are written and one of them is
+weapon-only, so a chest sees eleven.
+
+  
+
+**What is not decided.** How the single drawback applies once enchantments affect
+a character at all — once per equipped piece carrying the set, or once while the
+set is active. Nothing applies any enchantment's effect yet, so the question has
+had no consequence to date. It has a large one when it does: ten pieces of
+Archon's Aegis applying "movement speed reduced by 10%" ten times reaches -100%
+under the project's rule that increases sum.
 
   
 
