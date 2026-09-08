@@ -2,6 +2,215 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-08 — The Ritualist tree uses the game's own word for a minion, and three nodes that needed one named skill equipped are replaced
+
+**Affects:** `docs/Ritualist_Class_Tree_Final.json` and
+`docs/Ravager_Class_Tree_Final.json` (the two class passive trees added the day
+before), `docs/Cataclysm_GDD_v2.md` (the Ritualist row of the Class Resource
+Systems generator table), `game/Data/PassiveNodes.csv`,
+`game/Content/Data/DT_PassiveNodes.uasset`,
+`game/Data/datatable_asset_sources.json`,
+`tools/tests/test_class_passive_trees.py`. **Applied.** Opens issues
+[#1479](https://github.com/sdubois777/Cataclysm/issues/1479) and
+[#1480](https://github.com/sdubois777/Cataclysm/issues/1480).
+
+Both trees landed on 2026-09-07 under issue #950. This is the first pass of a
+review the project owner asked for the same day. **The Fervour spending and
+Ravager identity halves of that review are not in this entry**; they were
+proposed and are waiting on the owner.
+
+### The Ritualist never used the word "minion", and that was mechanical rather than stylistic
+
+Counted across the tree as it landed: "thrall" 11 times, "what you command" 20,
+"imp" 13, "everything you command" once, and **"minion" not once**. The only
+match for the letters was inside the keystone name `Dominion`.
+
+**The game's own stats are named after minions.** `game/Data/Affixes.csv` carries
+three gear affixes — "Increased minion damage", "Increased minion health" and
+"Increased minion attack speed" — over the stats `minion_damage`, `minion_health`
+and `minion_attack_speed`. `game/Data/MinionTypes.csv` tags every summoned thing
+`Type.Minion`. The engine class is `ACataclysmMinion`.
+
+So a node reading "+2% increased damage dealt by what you command per point"
+described `minion_damage` without naming it. A player reading that node and the
+affix on their gloves could not tell the two filled the same bucket. That is the
+fault the rewording fixes, and it is the same class of problem as a node saying
+"x1.30" where another says "+30%".
+
+21 nodes and 6 capstone options now say "minion", "Minion Damage", "Minion
+Health" or "Minion Attack Speed".
+
+**"Imp" and "thrall" are kept in the ten places a node means only one of the
+two**, because the two are genuinely different: an imp is summoned, temporary and
+capped at three; a thrall is possessed, permanent and reserves 30 Fervour. A
+collective noun in those places would erase a distinction six other nodes rely
+on. Two node names that said "Imps" while granting a minion-wide stat became
+`Restless` and `Hardy Stock`.
+
+### Three nodes required one named skill to occupy one of six skill slots
+
+`Marked Prey`, `Lasting Mark` and `Hand of the Court` all needed a mark on the
+target. The only weapon skill that marks an enemy is `Quarry`,
+`game/Data/WeaponSkills.csv` row `Demonic_Staff_Support`. A player has six skill
+slots drawn from a pool that a Staff carrying several damage types makes far
+larger than six, so all three nodes rested on the player choosing to slot one
+named skill. **Nothing else in either tree requires a specific skill to be
+equipped.**
+
+Two other things do apply a mark — `Deathmark` in the Berserker tree and
+`Marked Territory` in the Saboteur tree — so the condition was also satisfiable
+by spending points in a second class tree. That widens how it can be met; it does
+not make it a good condition.
+
+**The weapon was not the problem, and the first reading of this said it was.**
+Every source of a Ritualist minion is a Staff skill, so the whole tree already
+requires a Staff and the mark was no narrower a demand on that axis. That
+separate and larger finding is issue #1479.
+
+| Was | Is now |
+| :-- | :-- |
+| `Marked Prey`, +2% increased minion damage per point against a marked enemy | `Set Upon`, the same against enemies you have damaged in the last 2 seconds |
+| `Lasting Mark`, 50 point capstone option, your mark lasts until its target dies | `Shared Blood`, your minions each carry 20% of your Maximum Energy Shield, recharging when yours does |
+| `Hand of the Court`, 100 point capstone option, your mark moves to the enemy you last damaged | `Set the Pack On`, enemies you have damaged in the last 2 seconds take 25% more damage from your minions |
+
+`Set the Pack On` is the shape the project owner asked for. **The magnitude is a
+decision and the owner said the 50% they suggested was not settled.** It is 25%
+because 50% would have made it the largest flat offensive multiplier on any
+capstone option in the game, at the second-highest tier. Measured across all six
+class trees and the empire tree, every other capstone-option multiplier is a rate
+per something — 1% more per debuff, 2% more per enemy struck, 3% more per burning
+enemy, 4% more per minion, 5% more per debuff — and **the only flat one is
+`Standing Apart`'s "25% less damage", which is the sibling option at this same
+tier in this same tree**. Matching it gives a player two comparable numbers to
+weigh. It is still the first flat *offensive* one, which is worth knowing when it
+is tuned.
+
+`Shared Blood` was chosen for the 50 point tier because it and `Cast from Ward`
+pull opposite ways on one stat: one wants a large energy shield kept intact for
+the army, the other wants it burned to pay skill costs. The Ritualist is the only
+class with an energy shield, and `docs/Cataclysm_GDD_v2.md` describes it as
+surviving "behind what it summons", so sharing the shield with the army is the
+most identity-true thing the ward limb could pay into the army limb.
+
+### The Ravager's `Firewalker` opened with a rule that does not exist
+
+It read "Burning ground does not slow you, and enemies standing in yours take 20%
+increased damage from you." Nothing in the game slows the player from standing in
+ground:
+
+- `game/Data/StatusEffects.csv` has no slow that applies to the player. Its
+  `Debuff_Cripple` row is documented in the file as "A player-applied debuff".
+- `UCataclysmGroundZone::Sweep` applies direct damage and at most one named
+  effect, and neither the header nor the implementation mentions speed.
+- The one persistent-zone slow in the project is
+  `Positive_Your_persistent_AOE_zones_also_slow_enemies_with` in
+  `game/Data/EnchantmentsPositive.csv`, which slows **enemies** inside the
+  player's own zones.
+
+The clause is removed. The rest of the option is unchanged.
+
+### `Every Swing Lands` named the wrong attack, and the correction raises a question
+
+It read "Your melee attacks have no maximum target count." Of the 403 rows in
+`game/Data/WeaponSkills.csv`, 9 set a target cap, all at 1, on Shield, Dagger,
+Spear, Fist, Wand and Staff skills. **No Axe or Greataxe skill sets one**, and
+the Greataxe is the Ravager's weapon, so against skills the keystone did nothing.
+
+**The cap is on the basic attack.** `game/Data/ItemBases.csv` gives all nine melee
+weapon bases `MaxTargets=1` in their `BasicShapeParams` column, the Greataxe
+included at `Radius=2.4; Angle=120; MaxTargets=1`.
+`UCataclysmTargeting::Gather` treats 0 as no limit. So removing the cap turns the
+Greataxe basic attack from one enemy into everything in a 2.4 metre, 120 degree
+arc, which is a large change rather than none.
+
+It now reads "Your basic attack strikes every enemy in its arc rather than one."
+
+**That is in tension with a written rule and the rewrite makes the tension
+visible rather than settling it.** `docs/Cataclysm_GDD_v2.md`, under Skill
+Acquisition: "**A basic attack carries no riders.** No burn, no patch of ground,
+no stun, no knockback, and it hits one target. […] The player's basic attack is
+held to the stricter rule because it is the 100% figure every other slot's
+percentage is measured against, so a rider on it would silently move all six of
+the others." The reason given covers riders. It does not obviously cover target
+count, because the other slots' percentages are of weapon damage and hitting more
+enemies does not change the per-hit figure. **Whether a keystone may break that
+rule is with the project owner.** The previous wording was misleading in both
+readings: against skills it did nothing, and against the basic attack it broke a
+written rule without saying so.
+
+### What the genre settles about spending a resource, recorded here because the proposal cites it
+
+The spending half of this review is not applied, but the research is worth
+keeping whatever the owner decides.
+
+**Settled: paying a player for HOLDING a resource is legitimate, and a hoarding
+problem is a missing consumer rather than a bad bonus.** Path of Exile's
+[Rage](https://pathofexile.fandom.com/wiki/Rage) grants attack damage, attack
+speed and movement speed in proportion to how much is held and decays when the
+player stops gaining it; the skill
+[Berserk](https://pathofexile.fandom.com/wiki/Berserk) then consumes Rage while
+active for a larger buff. Both plays are real and they compete for one bar. That
+is the Ravager's `Unspent Ruin` and `Banked Ruin` exactly, and it means those two
+nodes are not the fault.
+
+**Settled: the standard consumer pays out in proportion to what it consumed.**
+Path of Exile's [Discharge](https://pathofexile.fandom.com/wiki/Endurance_charge)
+expends every charge and scales with how many;
+[Immortal Call](https://pathofexile.fandom.com/wiki/Immortal_Call) consumes up to
+five Endurance Charges and scales its duration with the number consumed; Last
+Epoch's [Runic Invocation](https://www.lastepochtools.com/skills/runic_invocation)
+states that the more Runes held before casting, the more powerful the result.
+
+**Settled: a build-and-spend loop is the shape.** Diablo 4's
+[Barbarian](https://diablo4.wiki.fextralife.com/Barbarian+Fury+Skills) generates
+Fury on Basic skills and spends it on Core skills.
+
+**This project's own trees settle more than the genre does.** Three of the six
+class trees already contain Fervour spenders in node prose, in five shapes: dump
+the whole bar on one hit (Berserker `Berserking`), enter a state and drain per
+second (Berserker `Wrath` at 5 per second, `Frenzy` at 8), a flat cost per event
+(Berserker `Cleave` at 5 per extra enemy, Bulwark `Riposte` at 25 per counter,
+Saboteur `Scattershot` at 20 per extra trap), a standing drain to hold a buff
+(Bulwark `Steeled Resolve`), and spending at a moment to empower something
+(Saboteur `Overcharge`). **So no shape needs inventing for the Ravager or the
+Ritualist.**
+
+### What was deliberately not decided
+
+**Whether the Ravager and Ritualist get Fervour spenders, and which.** Proposed
+and waiting on the owner. `docs/Cataclysm_GDD_v2.md` already asserts that "each
+tree grants generators and spenders", and neither of these two trees has one, so
+this is a gap against a stated rule rather than a new feature.
+
+**Whether a thrall's reservation subtracts from the spendable pool.** Still issue
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160). A Ritualist spender
+forces it: under one answer a five-thrall Ritualist has nothing to spend, under
+the other it has the whole pool and reservation costs nothing. Nothing here
+assumes either.
+
+**Whether the Ravager's burning limb should shrink.** The owner said the class is
+over-invested in damage over time. Measured: 11 nodes and 63 points mention
+damage over time or burning, and the burning limb with its keystones is 82 of the
+tree's 440 points. Nothing in this entry changes that.
+
+**Whether the keystone `Conduit` should satisfy the new condition.** `Conduit`
+reads "Damage dealt by your minions counts as damage you dealt, for every effect
+of yours that asks", and both new nodes ask whether you damaged the target in the
+last 2 seconds. So for a build holding `Conduit` the condition is permanently
+true and the 25% multiplier is unconditional. That is left as it stands, because
+a keystone is meant to have large consequences and a Ritualist otherwise has
+little reason to attack in person, but it is recorded rather than left to be
+found during tuning. Scoping the condition to the player's own skills is a
+one-line change if the owner wants it.
+
+**Whether a Ritualist's minion nodes reach a Saboteur's turrets.** Issue #1480.
+`Type.Minion` covers deployables as well as creatures, and the three gear affixes
+are already scoped that way, so this is a question the rewording made visible
+rather than one it created. It has to be settled before issue #1463 authors the
+`Passive Effects` rows.
+
+---
+
 ## 2026-09-07 — The Ravager and Ritualist get passive trees, the Ravager fills Fervour from enemies in reach and the Ritualist from what it commands
 
 **Affects:** `docs/Ravager_Class_Tree_Final.json` and
