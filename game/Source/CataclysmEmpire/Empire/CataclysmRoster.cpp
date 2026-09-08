@@ -1,9 +1,5 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
-// TEMPORARY DELIBERATE COMPILE ERROR. Proving the new build check can
-// actually fail. Removed in the next commit on this branch.
-this line is not valid C++;
-
 #include "Empire/CataclysmRoster.h"
 
 namespace
