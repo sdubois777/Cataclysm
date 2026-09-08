@@ -3517,9 +3517,10 @@ instead, so this declines the one shape every shipped game in the genre uses.
 set item was "a Legendary and above item that belongs to a named set", that a
 named set was the only itemisation layer buying bespoke geometry, and that no set
 was enumerated yet. All three were wrong by 2026-09-08. Fourteen named sets are
-written, and 55 rows of them — 42 positives and 13 negatives — could not appear in
-the game at all, because the draw refused every set row and the mechanism that was
-supposed to hand a set out whole was never written.
+written, and the 55 rows they had then — 42 positives and 13 negatives — could not
+appear in the game at all, because the draw refused every set row and the
+mechanism that was supposed to hand a set out whole was never written. There are
+56 set rows now: the fourteenth drawback was written on 2026-09-08.
 
   
 
@@ -3535,10 +3536,18 @@ the enchantment sheet — issue #1443 owns moving those into a column of their o
 They are Archon's Aegis, Tyrant's Chains, Chronomancer's Time-Lock, Mana Weaver,
 Brute's Heart, Spellblade's Will, Demon King's Regalia, Plague Doctor, Starvation,
 Null Emperor, Shard of Anarchy, Divine Retribution, Warlord's Will and Reaper's
-Embrace. Each has three positive rows, one per threshold. Thirteen of the fourteen
-also have the one negative row a set needs; **Shard of Anarchy's has not been
-written**, so that set is left out of the draw until it is, and issue #1494 owns
-it. Adding that single row is all it takes to complete the set.
+Embrace. Each has three positive rows, one per threshold, and the one negative row
+a set needs. **All fourteen are complete**; Shard of Anarchy's drawback was the
+last written, on 2026-09-08. A set missing either half is left out of the draw
+rather than offered as a bonus with no cost.
+
+  
+
+**Shard of Anarchy's drawback picks the resistance at random**, not by rotating
+through the eight in order. The owner chose random on 2026-09-08. It suits a set
+whose other three effects are all randomness on a clock. **A consequence worth
+knowing: random does not guarantee a cycle**, so the same resistance can be chosen
+twice running and a given resistance is not down exactly one interval in eight.
 
   
 
@@ -3547,19 +3556,26 @@ rather than a fifth band beside the four. The owner ruled that sets "should all
 probably be in the same bucket as t1 enchantments as they're pretty strong", and
 putting them inside that band is what keeps the four shares in the weight table
 above exactly true. So the band still takes 1.2% of draws, now shared. Measured
-for a chest on 2026-09-08: 11 ordinary weight 1 rows against 13 offered sets,
-giving all sets together about 0.64% of draws and one named set about 0.049%. The
-counts are per slot — twelve weight 1 positives are written and one of them is
-weapon-only, so a chest sees eleven.
+for a chest on 2026-09-08: 11 ordinary weight 1 rows against 14 offered sets,
+giving all sets together about 0.66% of draws and one named set about 0.047%. The
+ordinary count is per slot — twelve weight 1 positives are written and one of them
+is weapon-only, so a chest sees eleven and a weapon twelve.
 
   
 
-**What is not decided.** How the single drawback applies once enchantments affect
-a character at all — once per equipped piece carrying the set, or once while the
-set is active. Nothing applies any enchantment's effect yet, so the question has
-had no consequence to date. It has a large one when it does: ten pieces of
-Archon's Aegis applying "movement speed reduced by 10%" ten times reaches -100%
-under the project's rule that increases sum.
+**What is not decided.** Nothing applies any enchantment's effect yet — not one of
+the 574 changes a character's stats — so none of the rules above is implemented.
+They are recorded so that whoever builds enchantment effects does not have to
+re-derive them. That work is the rest of issue #45, and so is counting how many
+equipped items carry a set, which is what turns a threshold on.
+
+  
+
+**This paragraph used to say the drawback rule was undecided**, and it was
+until the owner settled it on 2026-09-08. The ruling is stated above. It was left
+standing here for a few hours after `docs/DECISIONS.md` had already recorded the
+answer, so the document said both things at once; that is why the sentence naming
+it as open is called out rather than quietly deleted.
 
   
 

@@ -194,3 +194,4 @@ Negative_Your_own_ultimate_ability_is_disabled,Your own ultimate ability is disa
 Negative_Your_health_is_reduced_by_10,Your health is reduced by 10%,Set,16.0,Stat.Defense.Life,True
 Negative_Your_movement_speed_is_reduced_by_10_1,Your movement speed is reduced by 10%,Set,17.0,Stat.Utility.Movespeed,True
 Negative_All_of_your_life_regeneration_effects_are_reduce,All of your life regeneration effects are reduced by 50%,Set,18.0,,True
+Negative_Every_5_seconds_one_of_your_resistances_is_redu,"Every 5 seconds, one of your resistances is reduced to 0 until this triggers again",Set,15.0,"Trigger.Timer, Stat.Defense.Resist",True

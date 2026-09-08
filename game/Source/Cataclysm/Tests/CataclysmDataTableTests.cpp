@@ -94,7 +94,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// strictly harmful once block was decided to apply to area damage by
 	// default at full effectiveness.
 	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  379)
-	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  195)
+	// 196, not 195. The project owner wrote Shard of Anarchy's drawback on
+	// 2026-09-08, which was the fourteenth and last set to have one. Before it
+	// that set had three positive rows and no negative, so it could not be
+	// "paired and guaranteed" and was left out of the draw. Issue #1494.
+	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  196)
 	CHECK_TABLE(FCataclysmEnemyModifierRow,     "EnemyModifiers.csv",         79)
 	// 52, not 50. Stun and Knockdown were added for issue #363. Both are hard
 	// stops that section VI of the design document gives three rules to, and
