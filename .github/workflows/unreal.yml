@@ -1,0 +1,115 @@
+name: Unreal
+
+# Compiles the game so a change that does not build cannot merge.
+#
+# WHY THIS EXISTS. Until 2026-09-07 nothing anywhere compiled the C++. The only
+# job that ran was the Python suite in ci.yml, so roughly 1,471 Unreal automation
+# tests existed and not one of them could block a merge. On that day a name
+# collision merged into `development`: every check was green, and it was found
+# when a person tried to build the game forty minutes later. It blocked three
+# sessions until it was repaired. Issues #20 and #1462.
+#
+# A SEPARATE FILE FROM ci.yml ON PURPOSE. This needs its own `paths` filter and
+# its own runner, and ci.yml gates every pull request in the repository. Keeping
+# them apart means a mistake here cannot stop simulation and document work from
+# merging.
+
+on:
+  pull_request:
+    branches: [main, development]
+    # Only what can affect the build. A documents-only or simulation-only change
+    # does not need a compile, and the runner is one machine shared with whoever
+    # is working on it.
+    paths:
+      - "game/**"
+      - ".github/workflows/unreal.yml"
+  push:
+    branches: [main, development]
+    paths:
+      - "game/**"
+      - ".github/workflows/unreal.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: unreal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Game compiles
+    # ---------------------------------------------------------------------
+    # SECURITY. THIS REPOSITORY IS PUBLIC AND THIS RUNNER IS THE PROJECT
+    # OWNER'S OWN MACHINE.
+    #
+    # A self-hosted runner executes whatever a workflow tells it to. Without
+    # this condition, anyone could fork the repository, open a pull request
+    # whose workflow runs arbitrary commands, and have it run here. GitHub's
+    # own documentation recommends against self-hosted runners on public
+    # repositories for that reason.
+    #
+    # TWO INDEPENDENT LOCKS, DELIBERATELY. The repository is also set to
+    # "Require approval for all external contributors" under Settings ->
+    # Actions -> General, which stops a fork's workflow running without the
+    # owner approving it. This condition is the second lock: the job refuses
+    # to run at all unless the pull request comes from a branch in THIS
+    # repository rather than a fork. Either alone would probably do. This one
+    # is worth locking twice.
+    # ---------------------------------------------------------------------
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64, unreal-windows]
+    # A FULL BUILD, NOT AN INCREMENTAL ONE, THE FIRST TIME. The runner starts
+    # from a fresh checkout with no build intermediates, so the first run
+    # compiles everything. Later runs reuse the runner's work directory and are
+    # much shorter. 90 minutes is generous on purpose: a job that fails on its
+    # own timeout teaches nobody anything, and this one does not gate anything
+    # that is waiting.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # WHY THIS CALLS Build.bat RATHER THAN tools/unreal_build.py.
+      #
+      # The wrapper is better and this job used it first. It failed, twice
+      # over, and both failures are properties of a service account rather
+      # than of the wrapper:
+      #
+      #   - `actions/setup-python@v5` could not install an interpreter:
+      #     "setup.ps1 cannot be loaded because running scripts is disabled
+      #     on this system". The runner service account's PowerShell
+      #     execution policy forbids it, and raising that policy is a change
+      #     to the owner's machine rather than to this repository.
+      #   - `shell: pwsh` does not exist here. That is PowerShell 7; this
+      #     machine has Windows PowerShell 5.1.
+      #
+      # So this step uses `cmd`, which is always present, and the engine's
+      # own batch file, which needs no interpreter. It gives up the wrapper's
+      # reporting and keeps the only thing this job is for: a non-zero exit
+      # when the code does not compile.
+      #
+      # -WaitMutex MATTERS AND IS NOT OPTIONAL. One Unreal build runs at a
+      # time per engine install, and this runner shares the engine with
+      # whoever is working on the machine. Without it a build that collides
+      # fails instead of waiting, and this check would go red for a reason
+      # that has nothing to do with the change.
+      # ------------------------------------------------------------------
+      - name: Compile the editor target
+        shell: cmd
+        working-directory: game
+        run: |
+          "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" CataclysmEditor Win64 Development -Project="%CD%\Cataclysm.uproject" -WaitMutex
+
+      # Ends the log with something a person can read at a glance rather than
+      # the tail of a build log. `if: always()` so it still reports after a
+      # failed compile, where knowing what was and was not produced is the
+      # useful part.
+      - name: Say what was built
+        if: always()
+        shell: cmd
+        run: |
+          dir game\Binaries\Win64\UnrealEditor-Cataclysm*.dll 2>nul || echo No Cataclysm module libraries were produced.
