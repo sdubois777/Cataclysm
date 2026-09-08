@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Every Swing Lands",
-        "description": "Your melee attacks have no maximum target count.",
+        "description": "Your basic attack strikes every enemy in its arc rather than one.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1267,7 +1267,7 @@
           },
           {
             "name": "Firewalker",
-            "description": "Burning ground does not slow you, and enemies standing in yours take 20% increased damage from you."
+            "description": "Enemies standing in burning ground you created take 20% increased damage from you."
           },
           {
             "name": "Headlong",

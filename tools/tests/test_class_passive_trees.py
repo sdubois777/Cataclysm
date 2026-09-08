@@ -177,8 +177,23 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: the 2026-08-25 rewrite settled rather than a rule written anywhere: a
 #: conditional bonus on a basic node joins the increases bracket, and only
 #: keystones and capstone options take a separate multiplier.
-STRINGS_CONTAINING_THE_WORD = 42
-STRINGS_USING_IT_AS_A_MAGNITUDE = 27
+#:
+#: BOTH ROSE BY ONE ON 2026-09-07, in the second change to those two trees
+#: that day. ONE STRING IS RESPONSIBLE FOR BOTH, which is why they moved
+#: together: the Ritualist's 100 point capstone option Hand of the Court was
+#: replaced by Set the Pack On, "Enemies you have damaged in the last 2
+#: seconds take 25% more damage from your minions". The option it replaced
+#: contained neither word. Nothing else in that change added or removed one:
+#: the other replacement, Shared Blood, grants energy shield and uses no
+#: magnitude, and the vocabulary rewrite only exchanged "what you command"
+#: for "minion".
+#:
+#: NODES_RELYING_ON_THE_WIDENED_RULE DID NOT MOVE, and that is not an
+#: oversight. It counts NODES rather than strings, and The Third Pact was
+#: already in it for its other option, Standing Apart's "25% less damage".
+#: A second magnitude on a capstone already counted adds nothing to it.
+STRINGS_CONTAINING_THE_WORD = 43
+STRINGS_USING_IT_AS_A_MAGNITUDE = 28
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.

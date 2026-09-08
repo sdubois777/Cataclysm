@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "What you command generates Fervour: 1 per second for each imp or thrall you have, and 5 when one of them dies. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
+        "description": "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -89,7 +89,7 @@
       "data": {
         "kind": "basic",
         "name": "Binding Sigils",
-        "description": "+2% increased Fervour gained from what you command per point.",
+        "description": "+2% increased Fervour gained from your minions per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -133,7 +133,7 @@
       "data": {
         "kind": "basic",
         "name": "Chained Will",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -221,7 +221,7 @@
       "data": {
         "kind": "basic",
         "name": "Deeper Pact",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -243,7 +243,7 @@
       "data": {
         "kind": "basic",
         "name": "Attendant",
-        "description": "+1% increased Spell Damage per point for each imp or thrall you have.",
+        "description": "+1% increased Spell Damage per point for each minion you have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -287,7 +287,7 @@
       "data": {
         "kind": "keystone",
         "name": "Behind the Veil",
-        "description": "Enemies within 10 metres attack what you command rather than you, while you have three or more imps or thralls.",
+        "description": "Enemies within 10 metres attack your minions rather than you, while you have three or more minions.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -309,7 +309,7 @@
       "data": {
         "kind": "keystone",
         "name": "Conduit",
-        "description": "Damage dealt by what you command counts as damage you dealt, for every effect of yours that asks.",
+        "description": "Damage dealt by your minions counts as damage you dealt, for every effect of yours that asks.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Obedience",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -419,7 +419,7 @@
       "data": {
         "kind": "basic",
         "name": "Yoke",
-        "description": "+3% increased health of what you command per point.",
+        "description": "+3% increased Minion Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -441,7 +441,7 @@
       "data": {
         "kind": "basic",
         "name": "Long Servitude",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -462,8 +462,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Marked Prey",
-        "description": "+2% increased damage dealt by what you command per point against a marked enemy.",
+        "name": "Set Upon",
+        "description": "+2% increased Minion Damage per point against enemies you have damaged in the last 2 seconds.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Driven On",
-        "description": "+2% increased attack speed of what you command per point.",
+        "description": "+2% increased Minion Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Held Fast",
-        "description": "+3% increased health of what you command per point.",
+        "description": "+3% increased Minion Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -639,7 +639,7 @@
       "data": {
         "kind": "basic",
         "name": "Brood",
-        "description": "+3% increased health of what you command per point.",
+        "description": "+3% increased Minion Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -660,8 +660,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Restless Imps",
-        "description": "+2% increased attack speed of what you command per point.",
+        "name": "Restless",
+        "description": "+2% increased Minion Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -683,7 +683,7 @@
       "data": {
         "kind": "basic",
         "name": "Sharp Claws",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -705,7 +705,7 @@
       "data": {
         "kind": "basic",
         "name": "Numbers",
-        "description": "+2% increased damage dealt by what you command per point.",
+        "description": "+2% increased Minion Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -770,8 +770,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Hardy Imps",
-        "description": "+3% increased health of what you command per point.",
+        "name": "Hardy Stock",
+        "description": "+3% increased Minion Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -793,7 +793,7 @@
       "data": {
         "kind": "basic",
         "name": "Goaded",
-        "description": "+2% increased attack speed of what you command per point.",
+        "description": "+2% increased Minion Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1263,7 +1263,7 @@
         "options": [
           {
             "name": "Bound Servants",
-            "description": "What you command deals 25% increased damage and has 25% increased health."
+            "description": "Your minions deal 25% increased damage and have 25% increased health."
           },
           {
             "name": "Warded Flesh",
@@ -1301,8 +1301,8 @@
         "isDecision": true,
         "options": [
           {
-            "name": "Lasting Mark",
-            "description": "Your mark lasts until its target dies, however long that takes."
+            "name": "Shared Blood",
+            "description": "Your minions each have 20% of your Maximum Energy Shield as their own, and it recharges when yours does."
           },
           {
             "name": "Fed by the Fallen",
@@ -1340,12 +1340,12 @@
         "isDecision": true,
         "options": [
           {
-            "name": "Hand of the Court",
-            "description": "Your mark moves to the enemy you last damaged, and what you command deals 20% increased damage to a marked enemy."
+            "name": "Set the Pack On",
+            "description": "Enemies you have damaged in the last 2 seconds take 25% more damage from your minions."
           },
           {
             "name": "Shared Ruin",
-            "description": "When an imp or thrall dies, everything within 4 metres takes damage equal to 20% of that creature's maximum health."
+            "description": "When a minion of yours dies, everything within 4 metres takes damage equal to 20% of that minion's maximum health."
           },
           {
             "name": "Standing Apart",
@@ -1384,11 +1384,11 @@
           },
           {
             "name": "Hollow Crown",
-            "description": "Each imp or thrall you have grants you 4% more damage and 4% increased Maximum Energy Shield."
+            "description": "Each minion you have grants you 4% more damage and 4% increased Maximum Energy Shield."
           },
           {
             "name": "Chorus",
-            "description": "Everything you command repeats each skill you cast, dealing 30% of its damage."
+            "description": "Your minions repeat each skill you cast, dealing 30% of its damage."
           }
         ],
         "selectedOption": null,
