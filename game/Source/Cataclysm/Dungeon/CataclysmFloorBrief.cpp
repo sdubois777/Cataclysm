@@ -88,6 +88,63 @@ bool FCataclysmDungeonFloorRules::OneWave(
 	return Dungeon.SubType == ECataclysmDungeonSubType::Horde;
 }
 
+bool FCataclysmDungeonFloorRules::WaveWalksIn(
+	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
+{
+	(void)FloorNumber;
+
+	// EVERY WAVE OF A HORDE DUNGEON WALKS IN, THE FIRST INCLUDED. The owner's
+	// rule names no exception, and a first wave that stood waiting while every
+	// later one arrived would read as two different dungeons.
+	return Dungeon.SubType == ECataclysmDungeonSubType::Horde;
+}
+
+bool FCataclysmDungeonFloorRules::SameArenaAsLastFloor(
+	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
+{
+	// FLOOR 1 CARVES THE ARENA AND THE REST ARE WAVES INTO IT. There is no
+	// floor before the first for it to be the same space as, so the rule is
+	// false there however deep the dungeon is.
+	return Dungeon.SubType == ECataclysmDungeonSubType::Horde && FloorNumber > 1;
+}
+
+float FCataclysmDungeonFloorRules::SightRadiusMultiplierFor(
+	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber)
+{
+	(void)FloorNumber;
+
+	if (Dungeon.SubType == ECataclysmDungeonSubType::Horde)
+	{
+		return HordeSightRadiusMultiplier;
+	}
+
+	// ONE AND NOT ZERO. A multiplier of zero would mean a creature that notices
+	// nothing at all, which is what every other dungeon would get if this
+	// answered with a default-constructed float.
+	return 1.0f;
+}
+
+int32 FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(int32 WaveSpawned)
+{
+	if (WaveSpawned <= 0)
+	{
+		return 0;
+	}
+
+	// FLOORED, WHICH IS WHAT "10% OR LESS REMAINING" MEANS. See the header: for
+	// seven creatures a tenth is 0.7, one survivor is 14.3% of the wave, and
+	// 14.3% is not 10% or less -- so the answer is zero and the wave has to be
+	// finished off. `FloorToInt` on a non-negative number is the same as
+	// truncation, and the guard above is what keeps it non-negative.
+	const int32 Threshold = FMath::FloorToInt(
+		static_cast<float>(WaveSpawned) * NextWaveAtFractionRemaining);
+
+	// NEVER MORE THAN THE WAVE ITSELF. A fraction above 1 would otherwise mean
+	// a wave that is finished the moment it arrives, and every wave of the
+	// dungeon would cascade in one frame.
+	return FMath::Clamp(Threshold, 0, WaveSpawned);
+}
+
 void FCataclysmDungeonFloorRules::ModifiersFor(
 	const FCataclysmDungeonIdentity& Dungeon, int32 FloorNumber,
 	TArray<FName>& OutModifiers, float& OutScore)
@@ -171,6 +228,9 @@ FCataclysmFloorBrief FCataclysmDungeonFloorRules::BriefFor(
 	Brief.Layout = LayoutFor(Dungeon, Floor);
 	Brief.bBossAtTheExit = BossAtTheExit(Dungeon, Floor);
 	Brief.bOneWave = OneWave(Dungeon, Floor);
+	Brief.bWaveWalksIn = WaveWalksIn(Dungeon, Floor);
+	Brief.bSameArenaAsLastFloor = SameArenaAsLastFloor(Dungeon, Floor);
+	Brief.SightRadiusMultiplier = SightRadiusMultiplierFor(Dungeon, Floor);
 	ModifiersFor(Dungeon, Floor, Brief.Modifiers, Brief.ModifierScore);
 
 	return Brief;

@@ -1220,4 +1220,436 @@ bool FCataclysmDungeonModeFirstFloorKeepsTheLevelTest::RunTest(const FString& Pa
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A Horde dungeon's waves, driven the way the game drives them. Issue #1467
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModeTest
+{
+	/**
+	 * Kills one creature outright by writing its health to zero.
+	 *
+	 * WRITTEN RATHER THAN DEALT, so these tests measure the wave rule and not
+	 * the damage pipeline. `UCataclysmSkillEffects::IsDead` reads the same
+	 * attribute `ACataclysmDungeonGameMode::WaveStillAlive` asks about.
+	 *
+	 * @return whether it is dead afterwards. False means the creature had no
+	 *         ability system, which would make a kill count silently wrong.
+	 */
+	bool KillOutright(ACataclysmEnemyCharacter* Enemy)
+	{
+		if (!IsValid(Enemy))
+		{
+			return false;
+		}
+
+		UAbilitySystemComponent* Abilities = Enemy->GetAbilitySystemComponent();
+		if (!Abilities)
+		{
+			return false;
+		}
+
+		Abilities->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+		return UCataclysmSkillEffects::IsDead(Enemy);
+	}
+
+	/** A game mode set up as a Horde dungeon of `Floors` floors on one seed. */
+	ACataclysmDungeonGameMode* SpawnHorde(UWorld* World, int32 Seed, int32 Floors)
+	{
+		ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+		Mode->DungeonSeed = Seed;
+		Mode->TotalFloors = Floors;
+
+		// **A THIN WAVE ON PURPOSE.** An arena at the shipped density holds 73
+		// to 350 creatures and this test spawns and kills every one of them
+		// twice over. A tenth of the density keeps the wave big enough to have
+		// a threshold above zero and small enough to run quickly.
+		Mode->EnemyScale = 0.1f;
+
+		return Mode;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeWavesTest,
+	"Cataclysm.DungeonMode.AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THIS IS THE TEST THAT MATTERS FOR ISSUE #1467, AND WHY IS WORTH SAYING.**
+	// A test that built an `FCataclysmFloorBrief` by hand and asked the
+	// population pass for a wave would prove the pipeline works and would prove
+	// nothing about a Horde dungeon reaching it. This drives the game mode
+	// through the same calls play does -- `GoToFloor`, then `Tick` -- and reads
+	// what came out.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// ---- Rule 4: one big open space --------------------------------------
+
+	ACataclysmDungeonFloor* Arena = Mode->CurrentFloor;
+	if (!TestNotNull(TEXT("it built an arena to fight in"), Arena))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Horde dungeon's floor is one open space"),
+			  static_cast<int32>(Arena->GetPlan().Layout),
+			  static_cast<int32>(ECataclysmFloorLayout::Arena));
+
+	// ---- Rule 1: the wave walks in, around the outside --------------------
+
+	TestEqual(TEXT("the first wave has arrived"), Mode->WavesArrived, 1);
+
+	const int32 FirstWave = Mode->WaveSpawned;
+	if (!TestTrue(FString::Printf(
+					  TEXT("it put a wave on the floor: %d creatures"), FirstWave),
+				  FirstWave > 0))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and every one of them is in the current wave"),
+			  Mode->CurrentWave.Num(), FirstWave);
+	TestEqual(TEXT("and all of them are alive"),
+			  Mode->WaveStillAlive(), FirstWave);
+
+	// **AND THEY SPAWNED AROUND THE OUTSIDE.** Measured against the middle of
+	// the arena rather than asserted: the mean distance of the wave from the rim
+	// must be well under the mean distance of every walkable cell from it, or
+	// the wave is simply spread over the floor.
+	const TArray<int32> FromRim = CataclysmFloorRimDistances(Arena->GetPlan());
+
+	float WaveFromRim = 0.0f;
+	int32 WaveCounted = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->CurrentWave)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		const int32 Index =
+			Arena->GetPlan().IndexOf(Arena->CellOfWorld(Enemy->GetActorLocation()));
+		if (Index == INDEX_NONE || FromRim[Index] == INDEX_NONE)
+		{
+			continue;
+		}
+		WaveFromRim += static_cast<float>(FromRim[Index]);
+		++WaveCounted;
+	}
+	WaveFromRim = WaveCounted > 0 ? WaveFromRim / static_cast<float>(WaveCounted) : 0.0f;
+
+	float FloorFromRim = 0.0f;
+	int32 FloorCounted = 0;
+	for (int32 Index = 0; Index < FromRim.Num(); ++Index)
+	{
+		if (FromRim[Index] == INDEX_NONE)
+		{
+			continue;
+		}
+		FloorFromRim += static_cast<float>(FromRim[Index]);
+		++FloorCounted;
+	}
+	FloorFromRim = FloorCounted > 0 ? FloorFromRim / static_cast<float>(FloorCounted) : 0.0f;
+
+	TestEqual(TEXT("every creature of the wave was found on the floor"),
+			  WaveCounted, FirstWave);
+
+	TestTrue(FString::Printf(
+				 TEXT("the wave stands %.2f cells from the rim on average and "
+					  "the floor's own cells average %.2f, so it is around the "
+					  "outside"), WaveFromRim, FloorFromRim),
+			 WaveFromRim < FloorFromRim);
+
+	// ---- Rule 3: a much larger aggro range, and only here -----------------
+
+	int32 WideEyed = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy)
+			&& FMath::IsNearlyEqual(
+				Enemy->SightRadiusMultiplier,
+				FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier))
+		{
+			++WideEyed;
+		}
+	}
+	TestEqual(TEXT("every creature of the wave notices from the arena's own "
+				   "widened distance"),
+			  WideEyed, FirstWave);
+
+	// AND THAT REACHES THE WHOLE ARENA, which is what "they all always run
+	// towards the player" needs. Measured on a real creature rather than on the
+	// constant, because five of the seven override `SightRadiusCm` and would
+	// have ignored a multiplier written onto `NoticeRadiusCm`.
+	const ACataclysmEnemyCharacter* Any =
+		Mode->CurrentWave.Num() > 0 ? Mode->CurrentWave[0].Get() : nullptr;
+	if (TestNotNull(TEXT("there is a creature to measure"), Any))
+	{
+		const float Across = FCataclysmFloorGenerator::CellSizeCm
+			* FMath::Sqrt(static_cast<float>(
+				Arena->GetPlan().Width * Arena->GetPlan().Width
+					+ Arena->GetPlan().Height * Arena->GetPlan().Height));
+
+		TestTrue(FString::Printf(
+					 TEXT("a creature notices from %.0f cm and the arena is "
+						  "%.0f cm corner to corner"),
+					 Any->NoticesFromCm(), Across),
+				 Any->NoticesFromCm() >= Across);
+
+		// THE CONTROL ON THE SAME CREATURE. Without the multiplier it reaches a
+		// small fraction of the arena, which is what says the multiplier is
+		// doing the work and not the creature's own figure.
+		TestTrue(FString::Printf(
+					 TEXT("and without the arena's multiplier the same creature "
+						  "would notice from only %.0f cm"), Any->SightRadiusCm()),
+				 Any->SightRadiusCm() < Across);
+	}
+
+	// ---- No stairs: the way on is beating the wave ------------------------
+
+	TestNull(TEXT("a Horde dungeon has no stairs, because the way to the next "
+				  "floor is the next wave"),
+			 Mode->Stairs.Get());
+
+	// ---- Rule 2: the next wave arrives at a tenth, and NOT BEFORE ---------
+
+	const int32 Threshold =
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(FirstWave);
+	if (!TestTrue(FString::Printf(
+					  TEXT("a wave of %d has a threshold of %d, which is above "
+						   "zero so 'not yet' and 'now' are distinguishable"),
+					  FirstWave, Threshold),
+				  Threshold > 0))
+	{
+		return false;
+	}
+
+	// **THE CONTROL, AND IT IS THE ONE THAT STOPS THIS TEST BEING A TAUTOLOGY.**
+	// Ticking with the wave standing must do nothing. Without it, a `Tick` that
+	// brought the next wave in unconditionally would pass every check below.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("ticking with the whole wave standing brings nothing in"),
+			  Mode->WavesArrived, 1);
+	TestEqual(TEXT("and leaves the floor where it was"), Mode->ChooseFloorNumber(), 1);
+
+	// KILLED DOWN TO ONE MORE THAN THE THRESHOLD, which is still too many.
+	TArray<ACataclysmEnemyCharacter*> Wave;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		Wave.Add(Enemy.Get());
+	}
+
+	int32 Killed = 0;
+	while (Killed < FirstWave - (Threshold + 1))
+	{
+		if (!TestTrue(TEXT("a creature of the wave was killed"),
+					  KillOutright(Wave[Killed])))
+		{
+			return false;
+		}
+		++Killed;
+	}
+
+	TestEqual(TEXT("the wave is down to one more than its threshold"),
+			  Mode->WaveStillAlive(), Threshold + 1);
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("and one more than a tenth is still too many for the next "
+				   "wave to arrive"),
+			  Mode->WavesArrived, 1);
+
+	// ONE MORE, WHICH REACHES THE THRESHOLD EXACTLY.
+	if (!TestTrue(TEXT("one more creature was killed"),
+				  KillOutright(Wave[Killed])))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wave is down to exactly a tenth"),
+			  Mode->WaveStillAlive(), Threshold);
+
+	// WHAT THE ARENA LOOKED LIKE BEFORE THE NEXT WAVE, so "the same space" can
+	// be a comparison rather than a claim.
+	const FCataclysmFloorPlan Before = Arena->GetPlan();
+	const TArray<ACataclysmEnemyCharacter*> Survivors = [&Mode]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Left;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+			{
+				Left.Add(Enemy.Get());
+			}
+		}
+		return Left;
+	}();
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+
+	// ---- And the next wave walked in, into the same arena -----------------
+
+	TestEqual(TEXT("the second wave has arrived"), Mode->WavesArrived, 2);
+	TestEqual(TEXT("and it is floor 2 of the dungeon, so it cost a floor"),
+			  Mode->ChooseFloorNumber(), 2);
+	TestEqual(TEXT("and the game counted it as a floor descended"),
+			  Mode->FloorsDescended, 1);
+
+	// **THE SAME ARENA, AND THAT IS THE WHOLE OF RULE 4 AT THIS LEVEL.**
+	TestTrue(TEXT("it is the same floor actor"), Mode->CurrentFloor == Arena);
+	TestEqual(TEXT("the arena is the same width"),
+			  Arena->GetPlan().Width, Before.Width);
+	TestEqual(TEXT("and the same height"),
+			  Arena->GetPlan().Height, Before.Height);
+	TestEqual(TEXT("and the entrance has not moved"),
+			  Arena->GetPlan().Entrance.ToString(), Before.Entrance.ToString());
+	TestTrue(TEXT("and every cell of it is unchanged"),
+			 Arena->GetPlan().Cells == Before.Cells);
+
+	// **AND WHAT WAS LEFT OF THE LAST WAVE IS STILL FIGHTING.** The owner's rule
+	// leaves a tenth of it alive on purpose; deleting them would be the game
+	// tidying away enemies the player still has to deal with.
+	int32 StillUp = 0;
+	for (const ACataclysmEnemyCharacter* Survivor : Survivors)
+	{
+		if (IsValid(Survivor) && !UCataclysmSkillEffects::IsDead(Survivor))
+		{
+			++StillUp;
+		}
+	}
+	TestEqual(TEXT("what was left of the first wave is still standing"),
+			  StillUp, Threshold);
+
+	// AND THEY ARE NO LONGER WHAT THE NEXT WAVE IS COUNTED AGAINST, which is
+	// what makes "10% of the previous wave" a question about one wave.
+	for (ACataclysmEnemyCharacter* Survivor : Survivors)
+	{
+		if (Mode->CurrentWave.Contains(Survivor))
+		{
+			AddError(TEXT("a survivor of the first wave was counted as part of "
+						  "the second"));
+			return false;
+		}
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("the second wave put %d creatures on the floor"),
+				 Mode->WaveSpawned),
+			 Mode->WaveSpawned > 0);
+
+	// AND STILL NO STAIRS on the second wave either.
+	TestNull(TEXT("and still no stairs"), Mode->Stairs.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeOrdinaryHasNoWavesTest,
+	"Cataclysm.DungeonMode.AnOrdinaryDungeonGetsNoWavesAndKeepsItsStairs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeOrdinaryHasNoWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE CONTROL FOR THE TEST ABOVE, ON THE SAME SEED.** Everything the wave
+	// machinery does has to be reachable only by a Horde dungeon. Without this,
+	// a `Tick` that advanced the floor whenever the creatures were dead would
+	// pass every check in that test and would quietly break every other dungeon
+	// in the game.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE SAME SEED AND DEPTH AS THE HORDE TEST, and the sub-type left alone.
+	Mode->DungeonSeed = 4242;
+	Mode->TotalFloors = 6;
+	Mode->EnemyScale = 0.1f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an ordinary dungeon counts no waves"), Mode->WavesArrived, 0);
+	TestFalse(TEXT("and its floor is not a wave, so nothing can bring one in"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	// AND IT HAS STAIRS, which is how its player reaches the next floor.
+	TestNotNull(TEXT("an ordinary dungeon has stairs"), Mode->Stairs.Get());
+
+	// ITS CREATURES NOTICE FROM THEIR ORDINARY DISTANCE. Rule 3 must not leak.
+	int32 Widened = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy)
+			&& !FMath::IsNearlyEqual(Enemy->SightRadiusMultiplier, 1.0f))
+		{
+			++Widened;
+		}
+	}
+	TestEqual(TEXT("and no creature of an ordinary dungeon has a widened aggro "
+				   "range"),
+			  Widened, 0);
+
+	// **AND KILLING EVERY CREATURE ON THE FLOOR DOES NOT MOVE IT ON.** An
+	// ordinary floor is left by walking to the stairs, and nothing about an
+	// empty floor should advance it.
+	int32 Killed = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (KillOutright(Enemy.Get()))
+		{
+			++Killed;
+		}
+	}
+	TestTrue(FString::Printf(TEXT("every creature on the floor was killed: %d"),
+							 Killed),
+			 Killed > 0);
+
+	for (int32 Ticks = 0; Ticks < 10; ++Ticks)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 2.0f);
+	}
+
+	TestEqual(TEXT("an emptied ordinary floor does not advance on its own"),
+			  Mode->ChooseFloorNumber(), 1);
+	TestEqual(TEXT("and no floor was descended"), Mode->FloorsDescended, 0);
+	TestEqual(TEXT("and no wave arrived"), Mode->WavesArrived, 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

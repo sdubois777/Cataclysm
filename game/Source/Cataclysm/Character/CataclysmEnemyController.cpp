@@ -134,7 +134,12 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 		return Ordered;
 	}
 
-	const float Sight = Driven->SightRadiusCm();
+	// `NoticesFromCm` AND NOT `SightRadiusCm`, so the floor the creature is
+	// standing on can widen what it notices. A Horde dungeon's arena is up to
+	// 271 metres corner to corner and the creatures in it notice from 10, so
+	// without this the wave that is meant to rush the player would stand where
+	// it spawned until the player walked up to it.
+	const float Sight = Driven->NoticesFromCm();
 	if (Sight <= 0.0f)
 	{
 		return nullptr;

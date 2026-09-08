@@ -58,6 +58,47 @@ SUBTYPE_RULES = {
     "Volatile": "Dungeon modifiers change every floor.",
 }
 
+#: The project owner's four rules for a Horde dungeon, given on 2026-09-07 in
+#: answer to issue #1467, and the phrase in `docs/Cataclysm_GDD_v2.md` that
+#: carries each one.
+#:
+#: WHY THEY ARE GUARDED SEPARATELY FROM THE TABLE ROW ABOVE. The Dungeon
+#: Sub-Types table still says only "Number of floors equals number of enemy
+#: waves", which is true and which the chosen reading keeps exactly as written.
+#: Everything about HOW a Horde dungeon plays is in the **Horde Dungeons**
+#: section instead, and a rule with no sentence behind it is a rule somebody
+#: invented.
+#:
+#: PHRASES RATHER THAN WHOLE SENTENCES, because the design states each rule in
+#: its own words and a whole-sentence match would fail on an edit that changed
+#: nothing about the rule. Each phrase is the part the code depends on.
+HORDE_RULES = {
+    "the waves walk in": "The waves walk in.",
+    "the ten percent trigger":
+        "The next wave spawns when 10% or less of the previous wave remains.",
+    "the rounding": "rounded down",
+    "the larger aggro range": "much larger aggro range",
+    "one open space": "one big open space",
+    "spawning around the outside": "spawn around its outside",
+    "one arena for the whole dungeon":
+        "A Horde dungeon is one arena, and its floor count is its wave count.",
+}
+
+#: The owner's answer, verbatim, as it must appear in the code that implements
+#: it. It is in `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`.
+#:
+#: QUOTED IN THE CODE ON PURPOSE. A reader of the wave machinery can see what it
+#: was built from without opening the design, which is the same reason the three
+#: sub-type sentences above are quoted in `CataclysmFloorBrief.h`.
+OWNER_WORDS = (
+    "They should walk in, and the next wave should spawn when there is only "
+    "10% or less of the previous wave remaining."
+)
+
+#: The file the owner's words and the wave machinery live in.
+WAVE_HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+               / "CataclysmDungeonGameMode.h")
+
 #: The one dungeon modifier built through the same seam, as it appears in the
 #: `Name` column of `game/Data/DungeonModifiers.csv`.
 UNSTABLE_DIMENSIONS = "Chaos_Unstable_Dimensions"
@@ -83,6 +124,21 @@ def flattened(text: str) -> str:
     it looks like it means.
     """
     return re.sub(r"\s+", " ", text)
+
+
+def code_flattened(text: str) -> str:
+    """The same, for C++, with the comment markers taken off each line first.
+
+    **FLATTENING ALONE IS NOT ENOUGH FOR SOURCE AND THE DIFFERENCE IS INVISIBLE
+    UNTIL A QUOTE WRAPS.** A sentence quoted inside a `//` or `/** */` comment is
+    hard-wrapped, and every continuation line begins with `//` or ` * `.
+    Collapsing the whitespace leaves those markers in the middle of the sentence,
+    so a search for it finds nothing and reports the quotation missing when it is
+    there on the screen. It passed for the three sub-type sentences only because
+    each of them happens to fit on one line.
+    """
+    stripped = re.sub(r"(?m)^[ \t]*(?:/\*+|\*/|\*|//)[ \t]?", " ", text)
+    return re.sub(r"\s+", " ", stripped)
 
 
 def design_subtype_rows() -> dict[str, str]:
@@ -152,7 +208,7 @@ class TestTheDesignStillSaysWhatTheRulesWereBuiltFrom:
         # several times over; what has to be there is the sentence the rule
         # implements, so that a reader of the code can see the design without
         # opening the design.
-        text = flattened(read(RULES_HEADER) + " " + read(RULES_SOURCE))
+        text = code_flattened(read(RULES_HEADER) + " " + read(RULES_SOURCE))
 
         for subtype, sentence in SUBTYPE_RULES.items():
             assert sentence in text, (
@@ -168,13 +224,110 @@ class TestTheDesignStillSaysWhatTheRulesWereBuiltFrom:
         # and an empty search and a working one look identical from the outside.
         # This asks the same machinery for a sentence that is deliberately not
         # in either file.
-        text = flattened(read(RULES_HEADER) + " " + read(RULES_SOURCE))
+        text = code_flattened(read(RULES_HEADER) + " " + read(RULES_SOURCE))
         assert "Failing the time limit is treated as dying." not in text, (
             "the Timed sub-type's design sentence has appeared in the floor "
             "rules. Timed is a clock on the run and a reward multiplier; it "
             "does not change what a floor contains and is deliberately not "
             "built through this seam."
         )
+
+
+def horde_section() -> str:
+    """The design's **Horde Dungeons** section, flattened.
+
+    ITS OWN SECTION AND NOT THE WHOLE FILE. Searching the whole document for
+    "one big open space" would also match the sentence in the floor layouts
+    list, so a Horde section deleted outright would still pass.
+    """
+    text = read(DESIGN)
+
+    heading = "## **Horde Dungeons**"
+    start = text.find(heading)
+    if start < 0:
+        pytest.fail(
+            "docs/Cataclysm_GDD_v2.md has no '## **Horde Dungeons**' section. "
+            "The project owner's four rules of 2026-09-07 were written there "
+            "and game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.cpp and "
+            "CataclysmDungeonGameMode.cpp implement them."
+        )
+
+    rest = text[start + len(heading):]
+    end = rest.find("\n## ")
+    return flattened(rest if end < 0 else rest[:end])
+
+
+class TestTheOwnersFourHordeRulesAreInTheDesign:
+    """Issue #1467. CI never builds the C++, so this is the half that runs.
+
+    WHAT IT GUARDS. That the four rules the code implements are still written
+    down as design, and that the code still quotes the answer they came from. It
+    cannot check that the rules behave -- `Cataclysm.FloorBrief.*` and
+    `Cataclysm.DungeonMode.AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena`
+    are for that, and they only run on a developer's machine.
+    """
+
+    def test_the_design_holds_all_four_rules(self):
+        section = horde_section()
+
+        for what, phrase in HORDE_RULES.items():
+            assert flattened(phrase) in section, (
+                f"the design's Horde Dungeons section no longer states {what}: "
+                f"{phrase!r} is not in it. The code in "
+                f"game/Source/Cataclysm/Dungeon/ implements that rule. Change "
+                f"the code to match the design, not this test to match the code."
+            )
+
+    def test_the_sub_type_table_row_is_untouched_by_it(self):
+        # **THE READING THAT WAS CHOSEN KEEPS THIS SENTENCE EXACTLY.** A Horde
+        # dungeon is one arena and its floor count is its wave count, so the
+        # equation still holds. If this row ever has to change, the choice
+        # recorded in docs/DECISIONS.md on 2026-09-07 has been abandoned and
+        # `FCataclysmDungeonFloorRules::SameArenaAsLastFloor` needs rethinking.
+        rows = design_subtype_rows()
+        assert rows.get("Horde") == SUBTYPE_RULES["Horde"], (
+            f"the design's Horde row now reads {rows.get('Horde')!r}. The one "
+            f"arena reading was chosen precisely because it keeps that row as "
+            f"written; see docs/DECISIONS.md, 2026-09-07."
+        )
+
+    def test_the_code_quotes_the_answer_it_was_built_from(self):
+        text = code_flattened(read(WAVE_HEADER))
+
+        assert flattened(OWNER_WORDS) in text, (
+            "game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h no longer "
+            "quotes the project owner's answer that the wave machinery was "
+            f"built from: {OWNER_WORDS!r}."
+        )
+
+    def test_the_search_would_notice_a_rule_that_is_not_there(self):
+        # **THE POSITIVE CONTROL.** An empty section and a working search look
+        # identical from the outside, and a flattening fault would make every
+        # phrase above pass. This asks the same machinery for a rule that is
+        # deliberately not the design: waves on a timer is what the owner's
+        # answer explicitly replaced.
+        section = horde_section()
+        assert "next wave arrives on a timer" not in section, (
+            "the design now says a Horde dungeon's waves arrive on a timer. The "
+            "project owner's rule of 2026-09-07 is that the next wave spawns "
+            "when 10% or less of the previous one remains, and "
+            "FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow implements "
+            "that and nothing else."
+        )
+
+        # AND THE SAME CONTROL ON THE CODE SEARCH, which reads a different file
+        # with a different helper.
+        assert "waves arrive on a timer" not in code_flattened(read(WAVE_HEADER))
+
+    def test_stripping_comment_markers_does_not_invent_a_match(self):
+        # **THE POSITIVE CONTROL FOR `code_flattened` ITSELF.** It rewrites the
+        # text before searching it, so a fault in the rewrite could join two
+        # unrelated lines into a sentence that is not in the file. This checks
+        # it on a string built to span a comment boundary in the wave header --
+        # the words are there, in that order, but with a whole paragraph
+        # between them.
+        text = code_flattened(read(WAVE_HEADER))
+        assert "They should walk in, and the arena" not in text
 
 
 class TestTheModifierBuiltThroughTheSameSeam:

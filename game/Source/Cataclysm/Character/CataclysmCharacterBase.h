@@ -206,6 +206,45 @@ public:
 	/** How far it notices a target, in centimetres. Zero notices nothing. */
 	virtual float SightRadiusCm() const { return 0.0f; }
 
+	/**
+	 * What this character multiplies the distance it notices a target by.
+	 *
+	 * ONE UNLESS THE FLOOR IT IS STANDING ON SAYS OTHERWISE.
+	 * `ACataclysmDungeonGameMode::PopulateFloor` sets it from
+	 * `FCataclysmFloorBrief::SightRadiusMultiplier` as each creature is placed,
+	 * which is how a Horde dungeon's much larger aggro range reaches its
+	 * creatures without any creature's own default being touched.
+	 *
+	 * **HERE AND NOT ON `ACataclysmEnemyCharacter`, BECAUSE THAT IS NOT WHERE
+	 * THE PROBLEM WAS.** `ACataclysmEnemyCharacter::SightRadiusCm` returns its
+	 * `NoticeRadiusCm`, but five of the seven designed creatures OVERRIDE
+	 * `SightRadiusCm` to return their own compile-time constant and never read
+	 * that field at all -- the Imp, the Hellhound, the Succubus, the Corrupted
+	 * Sentinel and the Gatekeeper. Setting `NoticeRadiusCm` on a spawned Imp
+	 * changes nothing it does. A separate multiplier applied where the radius is
+	 * READ works for all seven and cannot be defeated by an override.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Character")
+	float SightRadiusMultiplier = 1.0f;
+
+	/**
+	 * How far it actually notices a target, once its floor's multiplier is
+	 * applied. This is what the controller asks, and `SightRadiusCm` is the
+	 * creature's own figure that it scales.
+	 *
+	 * NOT VIRTUAL, ON PURPOSE. A subclass that overrode this could go back to
+	 * ignoring the multiplier, which is the exact fault the multiplier exists to
+	 * route around.
+	 *
+	 * A NEGATIVE MULTIPLIER IS CLAMPED TO ZERO rather than turned into a
+	 * negative radius, because "notices nothing" is a real answer and a negative
+	 * distance is not.
+	 */
+	float NoticesFromCm() const
+	{
+		return SightRadiusCm() * FMath::Max(0.0f, SightRadiusMultiplier);
+	}
+
 	/** Seconds between one of its attacks and the next. */
 	virtual float SecondsBetweenAttacks() const { return 1.0f; }
 

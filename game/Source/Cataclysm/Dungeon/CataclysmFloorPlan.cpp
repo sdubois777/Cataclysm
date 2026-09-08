@@ -93,6 +93,63 @@ TArray<int32> CataclysmFloorDistancesFrom(const FCataclysmFloorPlan& Plan, FIntP
 	return Distance;
 }
 
+TArray<int32> CataclysmFloorRimDistances(const FCataclysmFloorPlan& Plan)
+{
+	TArray<int32> Distance;
+	Distance.Init(INDEX_NONE, Plan.Cells.Num());
+
+	TArray<int32> Frontier;
+	Frontier.Reserve(Plan.Cells.Num());
+
+	// THE WHOLE RIM GOES INTO THE QUEUE FIRST, which is the only difference
+	// between this and the single-source search above. A breadth-first search
+	// started from many cells at once answers "how far is the nearest of them"
+	// for every cell, in one sweep.
+	//
+	// A CELL IS ON THE RIM WHEN IT HAS FEWER THAN FOUR WALKABLE NEIGHBOURS.
+	// `OrthogonalNeighbours` counts only the four that share an edge and answers
+	// for a cell off the grid as though it were solid, so a walkable cell on the
+	// very edge of the grid is on the rim without needing a separate case.
+	for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+	{
+		if (Plan.Cells[Index] != ECataclysmFloorCell::Floor)
+		{
+			continue;
+		}
+
+		if (Plan.OrthogonalNeighbours(Plan.CellAt(Index)) < 4)
+		{
+			Distance[Index] = 0;
+			Frontier.Add(Index);
+		}
+	}
+
+	for (int32 Read = 0; Read < Frontier.Num(); ++Read)
+	{
+		const int32 Index = Frontier[Read];
+		const FIntPoint Here = Plan.CellAt(Index);
+		const int32 Next = Distance[Index] + 1;
+
+		for (const FIntPoint& Step : CataclysmFloorPlanSteps)
+		{
+			const FIntPoint There = Here + Step;
+			const int32 ThereIndex = Plan.IndexOf(There);
+			if (ThereIndex == INDEX_NONE || Distance[ThereIndex] != INDEX_NONE)
+			{
+				continue;
+			}
+			if (Plan.Cells[ThereIndex] != ECataclysmFloorCell::Floor)
+			{
+				continue;
+			}
+			Distance[ThereIndex] = Next;
+			Frontier.Add(ThereIndex);
+		}
+	}
+
+	return Distance;
+}
+
 FCataclysmFloorQuality CataclysmMeasureFloor(const FCataclysmFloorPlan& Plan)
 {
 	FCataclysmFloorQuality Quality;

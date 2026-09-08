@@ -2,6 +2,7 @@
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
@@ -213,6 +214,38 @@ ACataclysmDungeonGameMode::ACataclysmDungeonGameMode()
 {
 	// The one thing this game mode turns off. See the class comment.
 	bSpawnsSandboxCreatures = false;
+
+	// A GAME MODE THAT TICKS, WHICH THIS ONE DID NOT UNTIL ISSUE #1467. A Horde
+	// dungeon's next wave arrives when the one standing is down to a tenth, and
+	// noticing that is something only a clock can do -- nothing in the project
+	// spawned a creature into a floor after it was built, because nothing was
+	// watching a floor while it was being played.
+	//
+	// `bStartWithTickEnabled` AS WELL AS `bCanEverTick`. An actor with the first
+	// off never gets a tick however the second is set, and a game mode's
+	// defaults are not the same as an ordinary actor's.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+}
+
+void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// NOT EVERY FRAME. See `SecondsBetweenWaveChecks`: counting the wave walks
+	// up to 350 creatures and the answer cannot change faster than a player can
+	// kill one.
+	SinceWaveCheckSeconds += DeltaSeconds;
+	if (SinceWaveCheckSeconds < SecondsBetweenWaveChecks)
+	{
+		return;
+	}
+
+	// SET BACK TO ZERO RATHER THAN HAVING THE INTERVAL TAKEN OFF IT. A frame
+	// long enough to cover several intervals should bring one wave in, not four.
+	SinceWaveCheckSeconds = 0.0f;
+
+	BringTheNextWaveIn();
 }
 
 void ACataclysmDungeonGameMode::StartPlay()
@@ -356,6 +389,19 @@ ACataclysmDungeonFloor* ACataclysmDungeonGameMode::BuildFloor()
 	// what every test of the geometry does. Issue #41.
 	FloorBrief = FCataclysmDungeonFloorRules::BriefFor(
 		DungeonIdentity(), ChooseFloorNumber());
+
+	// **AND A HORDE DUNGEON KEEPS THE ARENA IT ALREADY CARVED.** Its floors are
+	// waves into one open space, so floor 2 is floor 1's geometry with the next
+	// wave walking into it. Re-generating would give the same cells back --
+	// nothing about the arena depends on the floor number for a Horde dungeon --
+	// but it would rebuild the floor actor's meshes underneath a player who is
+	// standing on them, and it would move the entrance and the exit for no
+	// reason. The brief above is still decided first, because the floor number
+	// changed even though the floor did not.
+	if (FloorBrief.bSameArenaAsLastFloor && CurrentFloor->IsBuilt())
+	{
+		return CurrentFloor;
+	}
 
 	FCataclysmFloorRequest Request;
 	Request.DungeonSeed = ChooseSeed();
@@ -518,6 +564,12 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	}
 
 	FloorEnemies.Reset();
+
+	// AND THE WAVE WITH THEM, because every creature in it was one of those.
+	// Left behind it would be a list of destroyed actors, and a wave that had
+	// been cleared away rather than killed would read as one still standing.
+	CurrentWave.Reset();
+	WaveSpawned = 0;
 }
 
 int32 ACataclysmDungeonGameMode::PopulateFloor()
@@ -529,7 +581,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	}
 
 	// FIRST, because this is called again every time the floor is replaced.
-	ClearFloorEnemies();
+	//
+	// **UNLESS THE FLOOR IS NOT BEING REPLACED.** A Horde dungeon's later floors
+	// are waves into the arena the first floor carved, so the creatures already
+	// standing there are the part of the last wave the player did not finish.
+	// Clearing them would delete the enemies the owner's rule deliberately
+	// leaves alive -- the next wave arrives at "10% or less remaining", and the
+	// remainder is meant to still be fighting.
+	if (!FloorBrief.bSameArenaAsLastFloor)
+	{
+		ClearFloorEnemies();
+	}
 
 	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
@@ -542,6 +604,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	const FVector Entrance = CurrentFloor->EntranceWorld();
+
+	// THIS WAVE'S OWN CREATURES, EMPTIED BEFORE IT ARRIVES. What is left of the
+	// wave before stays in `FloorEnemies` and stops being counted here, which is
+	// what makes "10% or less of the previous wave" a question about one wave.
+	CurrentWave.Reset();
 
 	int32 Spawned = 0;
 	for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
@@ -592,9 +659,37 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		Enemy->SetActorLocation(CurrentFloor->WorldOfCell(Placement.Cell)
 			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Enemy)));
 
+		// AND WHAT THIS FLOOR LETS IT NOTICE FROM. One everywhere but a Horde
+		// dungeon, where it is what makes the wave run at the player from the
+		// far side of the arena instead of standing where it spawned.
+		//
+		// SET HERE AND NOT ON THE CREATURE'S OWN DEFAULT, which is the whole
+		// reason it is a multiplier: an Imp in an ordinary dungeon is the same
+		// Imp it always was, and nothing about the class has changed.
+		Enemy->SightRadiusMultiplier = FloorBrief.SightRadiusMultiplier;
+
 		FloorEnemies.Add(Enemy);
+		CurrentWave.Add(Enemy);
 		++Spawned;
 	}
+
+	// WHAT THE WAVE ARRIVED WITH, WHICH IS THE DENOMINATOR OF THE OWNER'S RULE.
+	// Recorded even on a floor that is not a wave, because a floor that stops
+	// being one has to stop carrying the last one's count.
+	WaveSpawned = Spawned;
+
+	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
+	// which is most floors in the game: an ordinary dungeon's creatures are not
+	// a wave and counting them as one would make the figure mean two things.
+	WavesArrived = FloorBrief.bWaveWalksIn
+		? (FloorBrief.bSameArenaAsLastFloor ? WavesArrived + 1 : 1)
+		: 0;
+
+	// AND THE CLOCK STARTS AGAIN. Without this a wave that arrived a fraction
+	// before the next check would be looked at almost immediately, and a wave
+	// that spawned few enough creatures for its threshold to be zero could be
+	// judged finished before the player had swung at it.
+	SinceWaveCheckSeconds = 0.0f;
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("Put %d creatures on the dungeon floor in %d groups: %d Imps, %d "
@@ -602,7 +697,8 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			 "%d Succubi and %d Gatekeepers. The floor has %d walkable cells and "
 			 "the density asked for %d. No creature stands within %d cells of "
 			 "where the player arrives. It is %s, and its modifiers are worth "
-			 "%.1f."),
+			 "%.1f. It is wave %d of this arena, it notices from %.1f times the "
+			 "ordinary distance, and the next wave arrives at %d still alive."),
 		Spawned, Population.PackCount,
 		Population.HowMany(ECataclysmDungeonCreature::Imp),
 		Population.HowMany(ECataclysmDungeonCreature::Hellhound),
@@ -613,12 +709,98 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		Population.HowMany(ECataclysmDungeonCreature::Gatekeeper),
 		CurrentFloor->GetPlan().FloorCount(), Population.Wanted,
 		FCataclysmFloorPopulator::LeastCellsFromEntrance,
-		FloorBrief.bOneWave
-			? TEXT("one wave gathered at the far end")
-			: TEXT("separate encounters spread over the floor"),
-		FloorBrief.ModifierScore);
+		FloorBrief.bWaveWalksIn
+			? TEXT("one wave arriving around the outside")
+			: (FloorBrief.bOneWave
+				? TEXT("one wave gathered at the far end")
+				: TEXT("separate encounters spread over the floor")),
+		FloorBrief.ModifierScore, WavesArrived, FloorBrief.SightRadiusMultiplier,
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(WaveSpawned));
 
 	return Spawned;
+}
+
+// ---------------------------------------------------------------------------
+// Waves, for a Horde dungeon. Issue #1467
+// ---------------------------------------------------------------------------
+
+int32 ACataclysmDungeonGameMode::WaveStillAlive() const
+{
+	int32 Alive = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		// TWO WAYS TO BE GONE AND BOTH COUNT. A creature destroys itself once
+		// its death animation has played, so it stops being valid; between the
+		// killing blow and that moment it is still a valid actor with no health
+		// left. Counting only the first would hold the next wave back for the
+		// length of a death animation, and the wave's last few would each add
+		// their own wait.
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			++Alive;
+		}
+	}
+	return Alive;
+}
+
+bool ACataclysmDungeonGameMode::ShouldTheNextWaveArrive() const
+{
+	// AN ORDINARY DUNGEON NEVER REACHES THE REST OF THIS. Its floors are not
+	// waves, so there is no next one and nothing to count.
+	if (!FloorBrief.bWaveWalksIn)
+	{
+		return false;
+	}
+
+	// A WAVE THAT PUT NOTHING ON THE FLOOR IS NOT A WAVE THAT HAS BEEN BEATEN.
+	// `Cataclysm.DungeonEnemyScale 0` empties a floor, and without this the
+	// whole dungeon's worth of waves would run through in one tick, spending a
+	// day of empire time for each.
+	if (WaveSpawned <= 0)
+	{
+		return false;
+	}
+
+	return WaveStillAlive()
+		<= FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(WaveSpawned);
+}
+
+void ACataclysmDungeonGameMode::BringTheNextWaveIn()
+{
+	if (!ShouldTheNextWaveArrive())
+	{
+		return;
+	}
+
+	const int32 Finished = WavesArrived;
+
+	// THE SAME CALL THE STAIRS MAKE. A wave is a floor, so bringing the next one
+	// in spends a day, moves the floor number, and -- on the last wave --
+	// finishes the dungeon, all without any of those rules being written down a
+	// second time. `GoToFloor` is what leaves the arena standing, because
+	// `FCataclysmFloorBrief::bSameArenaAsLastFloor` is true for every floor of a
+	// Horde dungeon after the first.
+	if (GoDownOneFloor())
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			   TEXT("Wave %d of the arena was down to %d of the %d it arrived "
+					"with, so wave %d walked in."),
+			   Finished, WaveStillAlive(), WaveSpawned, WavesArrived);
+		return;
+	}
+
+	// IT ANSWERED NO, WHICH ON THE LAST WAVE MEANS THE DUNGEON IS BEATEN.
+	// `GoDownOneFloor` clears the dungeon and returns false there. Forgetting
+	// the wave is what stops this being asked again on every tick afterwards,
+	// which would otherwise try to descend out of a dungeon that has already
+	// been left.
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("The last wave of the arena, wave %d, was down to %d of the %d "
+				"it arrived with."),
+		   Finished, WaveStillAlive(), WaveSpawned);
+
+	CurrentWave.Reset();
+	WaveSpawned = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -941,7 +1123,13 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	//
 	// NOT ON THE FIRST FLOOR OF A RUN. There is nothing to clear, and a level
 	// may hold actors somebody placed by hand for the game mode to find.
-	if (bReplacingAFloor)
+	//
+	// AND NOT WHEN THE FLOOR IS THE SAME SPACE IT WAS. A Horde dungeon's next
+	// wave arrives in the arena the player is standing in, so what is lying
+	// there is not left over from a floor that has gone -- it is the loot they
+	// have just been dropped and have not picked up yet. Clearing it would
+	// delete the reward for the wave they have just fought.
+	if (bReplacingAFloor && !FloorBrief.bSameArenaAsLastFloor)
 	{
 		if (UWorld* World = GetWorld())
 		{
@@ -953,22 +1141,38 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	}
 
 	PopulateFloor();
-	PlaceStairs();
+
+	// THE STAIRS, UNLESS THE FLOOR IS A WAVE. A Horde dungeon has none at all:
+	// the way to the next floor is to beat the wave standing in front of you,
+	// and `BringTheNextWaveIn` is what takes it. A flight of stairs in the
+	// middle of an arena would be a second way down that skipped the fight.
+	if (!FloorBrief.bWaveWalksIn)
+	{
+		PlaceStairs();
+	}
 
 	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
 	// they would be placed at the previous floor's entrance.
 	//
 	// NOTHING TO MOVE DURING `StartPlay`, where the pawn does not exist yet and
 	// the caller does this again afterwards.
-	APawn* Moving = PawnToMove;
-	if (!Moving)
+	//
+	// AND NOT AT ALL WHEN THE FLOOR IS THE SAME SPACE IT WAS. A Horde dungeon's
+	// next wave arrives around the player; teleporting them back to the mouth of
+	// the arena between waves would undo the fight they were in the middle of,
+	// and there is no new entrance to put them at because there is no new floor.
+	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
-		const APlayerController* Controller =
-			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-		Moving = Controller ? Controller->GetPawn() : nullptr;
-	}
+		APawn* Moving = PawnToMove;
+		if (!Moving)
+		{
+			const APlayerController* Controller =
+				GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+			Moving = Controller ? Controller->GetPawn() : nullptr;
+		}
 
-	PlaceAtEntrance(Moving);
+		PlaceAtEntrance(Moving);
+	}
 
 	// AND THE SAVE RECORD FOLLOWS. `UCataclysmSaveWriter::SetFloor` has existed
 	// since the save system was built and nothing called it, because nothing

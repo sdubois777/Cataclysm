@@ -277,14 +277,45 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 	// Its own comment says it exists so "a floor reads as a series of encounters
 	// rather than as one crowd that arrives together" -- a wave is that crowd,
 	// so the rule that prevents one does not apply to it.
-	TArray<int32> FromWave;
-	if (Brief.bOneWave)
+	// **AND A WAVE FORMS IN ONE OF TWO PLACES.** Around the outside of the floor
+	// when it walks in, which is the project owner's rule for a Horde dungeon --
+	// "all of the enemies spawning around the outside and rushing you" -- and
+	// gathered at the far end when it does not. Both are one crowd; they differ
+	// in where the crowd is, which is why they are two flags and not one.
+	bool bOrdered = false;
+
+	if (Brief.bOneWave && Brief.bWaveWalksIn)
+	{
+		// NEAREST THE RIM FIRST. The groups are filled in this order, so the
+		// wave fills the outside of the floor and works inward, and a wave
+		// smaller than the rim can hold never reaches the middle at all.
+		//
+		// `CataclysmFloorRimDistances` DEFINES THE OUTSIDE and nothing here
+		// does. An arena is an ellipse with a wobbled edge, so the rim is not
+		// a rectangle and cannot be read off the width and the height.
+		const TArray<int32> FromRim = CataclysmFloorRimDistances(Plan);
+
+		// SORTED BY DISTANCE AND THEN BY CELL INDEX, for the reason the other
+		// ordering below gives: `TArray::Sort` is not stable and a rim is full
+		// of cells that are all at distance zero, so without the tiebreak the
+		// same seed would stop giving the same floor.
+		Candidates.Sort([&FromRim](int32 A, int32 B)
+		{
+			const int32 OutA = FromRim[A] == INDEX_NONE ? MAX_int32 : FromRim[A];
+			const int32 OutB = FromRim[B] == INDEX_NONE ? MAX_int32 : FromRim[B];
+			return (OutA != OutB) ? (OutA < OutB) : (A < B);
+		});
+
+		bOrdered = true;
+	}
+	else if (Brief.bOneWave)
 	{
 		const int32 WaveIndex = CataclysmPopulationWaveSite(FromEntrance);
 		if (WaveIndex != INDEX_NONE)
 		{
 			Out.WaveSite = Plan.CellAt(WaveIndex);
-			FromWave = CataclysmFloorDistancesFrom(Plan, Out.WaveSite);
+			const TArray<int32> FromWave =
+				CataclysmFloorDistancesFrom(Plan, Out.WaveSite);
 
 			// SORTED BY DISTANCE AND THEN BY CELL INDEX, because `TArray::Sort`
 			// is not stable and a floor is full of cells that are equally far
@@ -296,10 +327,12 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 				const int32 FarB = FromWave[B] == INDEX_NONE ? MAX_int32 : FromWave[B];
 				return (FarA != FarB) ? (FarA < FarB) : (A < B);
 			});
+
+			bOrdered = true;
 		}
 	}
 
-	if (Out.WaveSite == FIntPoint(-1, -1))
+	if (!bOrdered)
 	{
 		// SHUFFLED, AND NOT AS A FLOURISH. Taken in index order the candidates run
 		// left to right and top to bottom, so every group would be placed in the top
@@ -313,7 +346,12 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 	/** Cells too close to a group already placed to hold the middle of another. */
 	TSet<int32> Claimed;
 
-	const bool bSpreadOut = Out.WaveSite == FIntPoint(-1, -1);
+	// THE BRIEF AND NOT THE WAVE SITE. It was read off `WaveSite` until the
+	// owner's rule of 2026-09-07 gave a wave a second place to form: a wave that
+	// rings the rim has no single site, so a floor that asked for one would have
+	// had the spacing rule turned back on and would have come out as separate
+	// encounters after all.
+	const bool bSpreadOut = !Brief.bOneWave;
 
 	int32 Placed = 0;
 	for (int32 Which = 0; Which < Candidates.Num() && Placed < Out.Wanted; ++Which)
