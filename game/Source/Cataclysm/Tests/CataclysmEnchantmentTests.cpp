@@ -129,6 +129,66 @@ namespace CataclysmEnchantmentTest
 		Slot.Item = Item;
 		return Slot;
 	}
+
+	/**
+	 * Which weight BAND a drawn row belongs to, 1 to 4.
+	 *
+	 * NOT `FMath::RoundToInt(Row.Weight)`, WHICH IS WRONG FOR A SET ROW. A set
+	 * row carries its set identifier of 5 to 18 in the Weight column -- issue
+	 * #1443 -- so reading the column directly files a set under a band that does
+	 * not exist, and it vanishes from whichever band it should have counted in.
+	 *
+	 * A SET COUNTS AS WEIGHT 1 BECAUSE THAT IS THE BAND IT SITS IN. The project
+	 * owner ruled on 2026-09-08 that sets are drawn "in the same bucket as t1
+	 * enchantments", and RollEnchantments puts them inside band 1 rather than
+	 * beside it, which is what keeps the band's designed 1.2% share true. A set
+	 * drawback counts there too: it is the drawback that arrived with a band 1
+	 * benefit, even though it was guaranteed rather than drawn.
+	 */
+	int32 DrawnBand(const FCataclysmEnchantmentRow& Row)
+	{
+		return UCataclysmDropRoll::EnchantmentSetId(Row) > 0
+			? 1
+			: FMath::RoundToInt(Row.Weight);
+	}
+
+	/** The row an item records for each set, as a set for fast lookup. */
+	TSet<FName> RepresentativesOf(const TArray<FCataclysmEnchantmentSet>& Sets)
+	{
+		TSet<FName> Out;
+		for (const FCataclysmEnchantmentSet& Each : Sets)
+		{
+			Out.Add(Each.Representative);
+		}
+		return Out;
+	}
+
+	/**
+	 * Every set identifier written in one table.
+	 *
+	 * READ THROUGH EnchantmentSetId RATHER THAN OFF THE Weight COLUMN, so the
+	 * tests keep working when issue #1443 moves the identifier into a column of
+	 * its own. Reading the column here would make these tests the thing that
+	 * blocks that move.
+	 */
+	TSet<int32> SetIdsIn(const UDataTable* Table)
+	{
+		TSet<int32> Out;
+		if (!Table)
+		{
+			return Out;
+		}
+		Table->ForeachRow<FCataclysmEnchantmentRow>(TEXT("SetIdsIn"),
+			[&](const FName&, const FCataclysmEnchantmentRow& Row)
+			{
+				const int32 SetId = UCataclysmDropRoll::EnchantmentSetId(Row);
+				if (SetId > 0)
+				{
+					Out.Add(SetId);
+				}
+			});
+		return Out;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -234,12 +294,394 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 				AddError(FString::Printf(
 					TEXT("'%s' is a set row and is in the ordinary draw. Set "
 						 "positives and negatives are paired and guaranteed, so "
-						 "a set is handed out whole rather than half-drawn."),
+						 "a set enters the draw through EnchantmentSetsFor as "
+						 "one option, not as loose rows priced by a Weight "
+						 "column that holds its set identifier."),
 					*Candidate.ToString()));
 				return false;
 			}
 		}
 	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Sets
+//
+// THE DEFECT THESE WERE WRITTEN FOR. 55 authored rows -- 42 positives and 13
+// negatives typed `Set` -- could not appear in the game at all. Nothing granted
+// them and the draw refused them, on the reading that "paired and guaranteed"
+// meant some other mechanism handed a set out whole. No such mechanism was ever
+// written.
+//
+// WHAT A SET IS, ruled by the project owner on 2026-09-08: an enchantment, not
+// an item. "It's like giving the player the ability to build a custom set piece
+// instead of having it be a specific item." An item that rolls Archon's Aegis
+// becomes a piece of it, and wearing two, six or ten such pieces turns on that
+// set's 2-piece, 6-piece and 10-piece bonus.
+//
+// SO A DROP RECORDS MEMBERSHIP AND NOT THE BONUSES. Handing out all three
+// positive rows would give a 10-piece bonus to a player wearing one piece.
+// Counting worn pieces is not written yet, and neither is what any enchantment
+// DOES; both are the rest of issue #45.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentASetCanBeRolled,
+	"Cataclysm.Enchantments.ASetCanBeRolled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentASetCanBeRolled::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+
+	UDataTable* Positive = Positives();
+	UDataTable* Negative = Negatives();
+	if (!Positive || !Negative)
+	{
+		AddError(TEXT("Could not load the enchantment tables from game/Data/."));
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	FDrop::EnchantmentSetsFor(Positive, Negative, TEXT("Chest"), Sets);
+
+	// THE POSITIVE CONTROL. Without it, "a set was rolled" could pass on a
+	// table holding no sets by rolling nothing and finding nothing.
+	if (!TestTrue(TEXT("the data really does hold complete sets to draw"),
+				  Sets.Num() > 0))
+	{
+		return false;
+	}
+
+	const TSet<FName> SetRepresentatives = RepresentativesOf(Sets);
+
+	// ENOUGH DRAWS THAT ZERO WOULD MEAN SOMETHING. A set is about one draw in
+	// 150, so 4,000 pairs expects about 26. Seeded, because an unseeded
+	// sampling test fails once a month and is then ignored.
+	FRandomStream Stream(20260908);
+	int32 SetsSeen = 0;
+	int32 PairsDrawn = 0;
+	for (int32 Item = 0; Item < 4000; ++Item)
+	{
+		TArray<FCataclysmRolledEnchantment> Rolled;
+		if (!FDrop::RollEnchantments(Positive, Negative, TEXT("Chest"), 1,
+									 Stream, Rolled))
+		{
+			AddError(TEXT("A one-enchantment roll on a chest failed."));
+			return false;
+		}
+		for (const FCataclysmRolledEnchantment& Each : Rolled)
+		{
+			++PairsDrawn;
+			if (SetRepresentatives.Contains(Each.Positive))
+			{
+				++SetsSeen;
+			}
+		}
+	}
+
+	// THE DEFECT ITSELF. Before 2026-09-08 this was zero however many were
+	// drawn, because EnchantmentSuitsSlot refused every set row.
+	if (!TestTrue(
+			FString::Printf(
+				TEXT("a set can be rolled (saw %d in %d pairs drawn from %d "
+					 "complete sets)"),
+				SetsSeen, PairsDrawn, Sets.Num()),
+			SetsSeen > 0))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentSetBringsItsOwnDrawback,
+	"Cataclysm.Enchantments.ASetArrivesWithItsOwnDrawbackAndNotADrawnOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentSetBringsItsOwnDrawback::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+
+	UDataTable* Positive = Positives();
+	UDataTable* Negative = Negatives();
+	if (!Positive || !Negative)
+	{
+		AddError(TEXT("Could not load the enchantment tables from game/Data/."));
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	FDrop::EnchantmentSetsFor(Positive, Negative, TEXT("Chest"), Sets);
+	if (!TestTrue(TEXT("the data really does hold complete sets to draw"),
+				  Sets.Num() > 0))
+	{
+		return false;
+	}
+
+	// WHICH DRAWBACK EACH SET OWES, so a wrong pairing is caught by name rather
+	// than by the pair merely being non-empty.
+	TMap<FName, FName> DrawbackFor;
+	for (const FCataclysmEnchantmentSet& Each : Sets)
+	{
+		DrawbackFor.Add(Each.Representative, Each.Negative);
+	}
+
+	FRandomStream Stream(775533);
+	int32 Checked = 0;
+	for (int32 Item = 0; Item < 4000; ++Item)
+	{
+		TArray<FCataclysmRolledEnchantment> Rolled;
+		if (!FDrop::RollEnchantments(Positive, Negative, TEXT("Chest"), 4,
+									 Stream, Rolled))
+		{
+			AddError(TEXT("A four-enchantment roll on a chest failed."));
+			return false;
+		}
+		for (const FCataclysmRolledEnchantment& Each : Rolled)
+		{
+			const FName* Owed = DrawbackFor.Find(Each.Positive);
+			if (!Owed)
+			{
+				continue;
+			}
+			++Checked;
+			if (Each.Negative != *Owed)
+			{
+				AddError(FString::Printf(
+					TEXT("'%s' is a set and arrived with drawback '%s'. A set "
+						 "is paired and guaranteed, so it owes '%s' and never "
+						 "a drawback drawn from the ordinary pool."),
+					*Each.Positive.ToString(), *Each.Negative.ToString(),
+					*Owed->ToString()));
+				return false;
+			}
+		}
+	}
+
+	// THE POSITIVE CONTROL AGAIN, in its own right: a loop that never entered
+	// its body would report every pairing correct.
+	if (!TestTrue(
+			FString::Printf(TEXT("at least one set was drawn to check (%d)"),
+							Checked),
+			Checked > 0))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentSetNeedsBothHalves,
+	"Cataclysm.Enchantments.ASetWithNoDrawbackWrittenIsNotOffered",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentSetNeedsBothHalves::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+
+	UDataTable* Positive = Positives();
+	UDataTable* Negative = Negatives();
+	if (!Positive || !Negative)
+	{
+		AddError(TEXT("Could not load the enchantment tables from game/Data/."));
+		return false;
+	}
+
+	// WRITTEN AGAINST THE RULE AND NOT AGAINST TODAY'S DATA. Set 15, Shard of
+	// Anarchy, has three positive rows and no negative row, in
+	// game/Data/EnchantmentsNegative.csv and in the design workbook alike, and
+	// issue #1494 is that drawback being written. Naming 15 here would make
+	// this test fail on the day the gap is closed, which is exactly backwards.
+	// So it compares the offered sets against the identifiers present in both
+	// tables, and closing the gap moves both sides together.
+	const TSet<int32> WithPositives = SetIdsIn(Positive);
+	const TSet<int32> WithNegatives = SetIdsIn(Negative);
+	const TSet<int32> Complete = WithPositives.Intersect(WithNegatives);
+
+	if (!TestTrue(TEXT("the data really does hold set rows on both sides"),
+				  WithPositives.Num() > 0 && WithNegatives.Num() > 0))
+	{
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	FDrop::EnchantmentSetsFor(Positive, Negative, TEXT("Chest"), Sets);
+
+	TSet<int32> Offered;
+	for (const FCataclysmEnchantmentSet& Each : Sets)
+	{
+		Offered.Add(Each.SetId);
+
+		// EVERY OFFERED SET IS WHOLE. This is the half that would still hold if
+		// the intersection above were computed wrongly.
+		TestTrue(FString::Printf(
+					 TEXT("set %d is offered and carries a drawback"), Each.SetId),
+				 !Each.Negative.IsNone());
+		TestTrue(FString::Printf(
+					 TEXT("set %d is offered and carries positives"), Each.SetId),
+				 Each.Positives.Num() > 0);
+		TestTrue(FString::Printf(
+					 TEXT("set %d records one of its own rows"), Each.SetId),
+				 Each.Positives.Contains(Each.Representative));
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("exactly the sets written on both sides are offered "
+					  "(%d offered, %d complete in the data)"),
+				 Offered.Num(), Complete.Num()),
+			 Offered.Difference(Complete).Num() == 0
+				 && Complete.Difference(Offered).Num() == 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentEverySetIsReachable,
+	"Cataclysm.Enchantments.EveryCompleteSetCanBeDrawnAndNotJustSome",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentEverySetIsReachable::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+
+	UDataTable* Positive = Positives();
+	UDataTable* Negative = Negatives();
+	if (!Positive || !Negative)
+	{
+		AddError(TEXT("Could not load the enchantment tables from game/Data/."));
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	FDrop::EnchantmentSetsFor(Positive, Negative, TEXT("Chest"), Sets);
+	if (!TestTrue(TEXT("the data really does hold complete sets to draw"),
+				  Sets.Num() > 0))
+	{
+		return false;
+	}
+
+	// ONE SET BEING REACHABLE IS NOT ALL OF THEM BEING REACHABLE. A draw that
+	// always picked the first option would pass ASetCanBeRolled and fail here.
+	TMap<FName, int32> SeenByRepresentative;
+	for (const FCataclysmEnchantmentSet& Each : Sets)
+	{
+		SeenByRepresentative.Add(Each.Representative, 0);
+	}
+
+	FRandomStream Stream(4242);
+	for (int32 Item = 0; Item < 30000; ++Item)
+	{
+		TArray<FCataclysmRolledEnchantment> Rolled;
+		if (!FDrop::RollEnchantments(Positive, Negative, TEXT("Chest"), 1,
+									 Stream, Rolled))
+		{
+			AddError(TEXT("A one-enchantment roll on a chest failed."));
+			return false;
+		}
+		for (const FCataclysmRolledEnchantment& Each : Rolled)
+		{
+			if (int32* Count = SeenByRepresentative.Find(Each.Positive))
+			{
+				++(*Count);
+			}
+		}
+	}
+
+	for (const TPair<FName, int32>& Each : SeenByRepresentative)
+	{
+		TestTrue(FString::Printf(TEXT("'%s' was drawn at least once (%d)"),
+								 *Each.Key.ToString(), Each.Value),
+				 Each.Value > 0);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentSetsShareTheWeightOneBand,
+	"Cataclysm.Enchantments.SetsShareTheWeightOneBandRatherThanAddingAFifth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentSetsShareTheWeightOneBand::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentTest;
+
+	UDataTable* Positive = Positives();
+	UDataTable* Negative = Negatives();
+	if (!Positive || !Negative)
+	{
+		AddError(TEXT("Could not load the enchantment tables from game/Data/."));
+		return false;
+	}
+
+	TArray<FCataclysmEnchantmentSet> Sets;
+	FDrop::EnchantmentSetsFor(Positive, Negative, TEXT("Chest"), Sets);
+	TArray<TArray<FName>> ByWeight;
+	FDrop::EnchantmentCandidatesByWeight(Positive, TEXT("Chest"), ByWeight);
+	const int32 OrdinaryWeightOne = ByWeight[0].Num();
+
+	if (!TestTrue(TEXT("there are both sets and ordinary weight 1 rows"),
+				  Sets.Num() > 0 && OrdinaryWeightOne > 0))
+	{
+		return false;
+	}
+
+	const TSet<FName> SetRepresentatives = RepresentativesOf(Sets);
+	TSet<FName> WeightOneRows(ByWeight[0]);
+
+	FRandomStream Stream(90807);
+	int32 SetsSeen = 0;
+	int32 WeightOneSeen = 0;
+	const int32 Draws = 60000;
+	for (int32 Item = 0; Item < Draws; ++Item)
+	{
+		TArray<FCataclysmRolledEnchantment> Rolled;
+		if (!FDrop::RollEnchantments(Positive, Negative, TEXT("Chest"), 1,
+									 Stream, Rolled))
+		{
+			AddError(TEXT("A one-enchantment roll on a chest failed."));
+			return false;
+		}
+		for (const FCataclysmRolledEnchantment& Each : Rolled)
+		{
+			if (SetRepresentatives.Contains(Each.Positive))
+			{
+				++SetsSeen;
+			}
+			else if (WeightOneRows.Contains(Each.Positive))
+			{
+				++WeightOneSeen;
+			}
+		}
+	}
+
+	// THE WHOLE BAND STILL TAKES ITS DESIGNED SHARE. `docs/Cataclysm_GDD_v2.md`
+	// states weight 1 at 1.2% of draws, and putting sets INSIDE that band
+	// rather than beside it is what keeps that number true. A fifth band would
+	// push the band's own share down and every other weight's with it.
+	const float BandShare =
+		static_cast<float>(SetsSeen + WeightOneSeen) / static_cast<float>(Draws);
+	TestTrue(FString::Printf(
+				 TEXT("the weight 1 band still takes about 1.2%% of draws "
+					  "(%.2f%% over %d)"),
+				 BandShare * 100.0f, Draws),
+			 BandShare > 0.008f && BandShare < 0.017f);
+
+	// AND THE BAND IS SHARED IN PROPORTION TO THE OPTIONS IN IT. Uniform inside
+	// the band means a set is exactly as likely as any one weight 1 row, so the
+	// split follows the counts and not a separate frequency.
+	const float ExpectedSetShare = static_cast<float>(Sets.Num())
+		/ static_cast<float>(Sets.Num() + OrdinaryWeightOne);
+	const float ActualSetShare = SetsSeen + WeightOneSeen > 0
+		? static_cast<float>(SetsSeen)
+			/ static_cast<float>(SetsSeen + WeightOneSeen)
+		: 0.0f;
+	TestTrue(FString::Printf(
+				 TEXT("sets take their share of the band by count "
+					  "(expected %.2f, saw %.2f from %d sets and %d rows)"),
+				 ExpectedSetShare, ActualSetShare, Sets.Num(),
+				 OrdinaryWeightOne),
+			 FMath::Abs(ActualSetShare - ExpectedSetShare) < 0.08f);
 
 	return true;
 }
@@ -505,7 +947,7 @@ bool FCataclysmEnchantmentWeightIsApplied::RunTest(const FString&)
 			AddError(TEXT("A drawn row is not in the table."));
 			return false;
 		}
-		++DrawsByWeight.FindOrAdd(FMath::RoundToInt(Row->Weight));
+		++DrawsByWeight.FindOrAdd(DrawnBand(*Row));
 	}
 
 	const int32 Rarest = DrawsByWeight.FindRef(1);
@@ -605,7 +1047,7 @@ bool FCataclysmEnchantmentWeightIsApplied::RunTest(const FString&)
 			AddError(TEXT("A drawn drawback is not in the table."));
 			return false;
 		}
-		++DrawbacksByWeight.FindOrAdd(FMath::RoundToInt(Row->Weight));
+		++DrawbacksByWeight.FindOrAdd(DrawnBand(*Row));
 	}
 
 	CheckShare(TEXT("drawbacks"), 1, DrawbacksByWeight.FindRef(1), 0.0390f, 0.30f);
@@ -687,8 +1129,8 @@ bool FCataclysmEnchantmentDrawbackIsNeverMilder::RunTest(const FString&)
 					return false;
 				}
 
-				const int32 BenefitWeight = FMath::RoundToInt(Benefit->Weight);
-				const int32 DrawbackWeight = FMath::RoundToInt(Drawback->Weight);
+				const int32 BenefitWeight = DrawnBand(*Benefit);
+				const int32 DrawbackWeight = DrawnBand(*Drawback);
 				++PairsChecked;
 				BenefitWeightsSeen.Add(BenefitWeight);
 				if (DrawbackWeight < BenefitWeight)

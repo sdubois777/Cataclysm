@@ -41,6 +41,67 @@ struct CATACLYSM_API FCataclysmAffixCandidate
 
 
 /**
+ * One named set that a drop could make an item a piece of.
+ *
+ * A SET IS AN ENCHANTMENT HERE, NOT AN ITEM. The project owner ruled on
+ * 2026-09-08 that a set is built out of the player's own gear rather than found
+ * as fixed set items: an item that rolls Archon's Aegis becomes a piece of
+ * Archon's Aegis, and wearing two, six or ten such pieces turns on that set's
+ * 2-piece, 6-piece and 10-piece bonus. Diablo II, Diablo III and Last Epoch all
+ * make a set an item identity instead, and `docs/DECISIONS.md` records that
+ * declining that shape was deliberate rather than an oversight.
+ *
+ * SO THE THREE POSITIVE ROWS ARE THRESHOLDS AND NOT THREE THINGS TO HAND OUT.
+ * A drop that granted all three would be giving a 10-piece bonus to a player
+ * wearing one piece. `Representative` is the single row an item records to say
+ * which set it belongs to. NOTHING COUNTS WORN PIECES YET, so no threshold
+ * turns on today; that is the rest of issue #45, and it is the same position
+ * every other enchantment is in.
+ *
+ * WHAT IDENTIFIES A SET IS `SetId`, WHICH LIVES IN THE Weight COLUMN. That
+ * column does double duty on set rows and issue #1443 owns separating it. This
+ * struct is why that separation changes nothing outside the two functions that
+ * read the column: everything downstream takes SetId from here.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmEnchantmentSet
+{
+	GENERATED_BODY()
+
+	/** Which set this is. 5 is Archon's Aegis and 18 is Reaper's Embrace. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 SetId = 0;
+
+	/**
+	 * The positive row an item records to say it is a piece of this set.
+	 *
+	 * THE LOWEST THRESHOLD, so a tool tip naming it describes the bonus the
+	 * player is closest to earning rather than one ten pieces away. Every set
+	 * written states its threshold as "(N-Piece Bonus)" and all 42 rows parse,
+	 * measured 2026-09-08; a set whose rows do not parse falls back to the
+	 * first row name in sorted order so the draw still works.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Representative;
+
+	/** Every positive row of this set, sorted by threshold: 2, 6 then 10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<FName> Positives;
+
+	/**
+	 * The one negative row this set carries.
+	 *
+	 * GUARANTEED RATHER THAN DRAWN, which is what the design means by set
+	 * positives and negatives being "paired and guaranteed". An ordinary
+	 * enchantment draws its drawback from the bands at or below its benefit; a
+	 * set brings its own and skips that draw entirely.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Negative;
+};
+
+
+/**
  * What a drop is: which rarity it rolls, how many sockets it has, and what it is
  * called. Ported from `sim/cataclysm_sim/loot.py` and
  * `sim/cataclysm_sim/naming.py`, which are where the rules were argued out.
@@ -651,14 +712,17 @@ public:
 	/**
 	 * Whether one enchantment row may appear on a gear slot.
 	 *
-	 * TWO RULES, AND ONLY TWO.
+	 * ONE RULE, AND ONLY ONE, SINCE 2026-09-08.
 	 *
-	 * A SET ROW IS NEVER DRAWN HERE. `docs/Cataclysm_GDD_v2.md` says set
-	 * positives and negatives are "paired and guaranteed", so a set belongs to
-	 * a mechanism that hands out a whole set rather than to this draw. The 55
-	 * set rows also carry a set identifier in the Weight column instead of a
-	 * weight, which is issue #1443; excluding them here is correct on the
-	 * design's terms and happens to sidestep that too.
+	 * IT USED TO REFUSE EVERY SET ROW AND NO LONGER DOES. That refusal was
+	 * justified by set positives and negatives being "paired and guaranteed",
+	 * read as meaning a set is handed out whole by some other mechanism. The
+	 * project owner ruled on 2026-09-08 that a set IS an enchantment, so the
+	 * rows belong in this draw after all -- they enter it through
+	 * EnchantmentSetsFor rather than as loose rows, because their Weight column
+	 * holds a set identifier rather than a weight. A set row still never reaches
+	 * the ordinary pool: EnchantmentCandidatesFor drops it because
+	 * EnchantmentDrawWeight prices a weight of 5 to 18 at zero.
 	 *
 	 * A SLOT TAG BINDS AND EVERY OTHER TAG DOES NOT. The project owner ruled on
 	 * 2026-09-07 that an enchantment's tags say what it AFFECTS, not which item
@@ -682,10 +746,56 @@ public:
 	 * OutByWeight[0] holds the weight 1 rows and OutByWeight[3] the weight 4
 	 * rows. Always sized EnchantmentWeightCount, so a band with nothing in it
 	 * is an empty array rather than a missing one.
+	 *
+	 * ORDINARY ROWS ONLY. A set does not sit in a band as a row; it is added to
+	 * the weight 1 band as one draw option by RollEnchantments.
 	 */
 	static void EnchantmentCandidatesByWeight(
 		const UDataTable* Table, const FString& Slot,
 		TArray<TArray<FName>>& OutByWeight);
+
+	/**
+	 * Which named set a row belongs to, or 0 when it belongs to none.
+	 *
+	 * THE SET IDENTIFIER LIVES IN THE Weight COLUMN, which is issue #1443. A
+	 * row typed `Set` carries 5 to 18 there instead of a 1 to 4 weight. This is
+	 * the one place that reads the column that way, so when #1443 gives the
+	 * sheet a `SetId` column of its own only this function changes.
+	 *
+	 * A WHOLE NUMBER ABOVE THE HIGHEST WEIGHT, rather than a range of 5 to 18
+	 * written down here. A fifteenth set gets an identifier of 19 and needs no
+	 * change, and a set row carrying 3 is refused rather than being confused
+	 * with a weight.
+	 *
+	 * NOT A UFUNCTION, for the same reason EnchantmentSuitsSlot is not: it takes
+	 * a data row that this header only forward-declares.
+	 *
+	 * @return the set identifier, or 0 for a row that is not a usable set row
+	 */
+	static int32 EnchantmentSetId(const FCataclysmEnchantmentRow& Row);
+
+	/**
+	 * Every named set a drop on this gear slot could make an item a piece of.
+	 *
+	 * A SET NEEDS BOTH HALVES TO BE OFFERED. Its positive rows say what the
+	 * player earns and its one negative row is the guaranteed cost; a set
+	 * missing either cannot be "paired and guaranteed" and is left out with a
+	 * warning rather than handed out half-formed. Shard of Anarchy, set 15, is
+	 * in exactly that state today -- it has three positives and no negative in
+	 * `game/Data/EnchantmentsNegative.csv` and in the design workbook alike, and
+	 * issue #1494 is the drawback being written. Adding that one row is all it
+	 * takes to complete it; nothing here names the set or works around it.
+	 *
+	 * SORTED BY IDENTIFIER, because a UDataTable is a map and walking one has no
+	 * guaranteed order. Without this the same seed would pick a different set on
+	 * a different run. `RollBase` and `RollMaterialTier` sort for that reason and
+	 * say so; `EnchantmentCandidatesFor` did not until 2026-09-08, which was a
+	 * defect rather than a decision and is fixed alongside this.
+	 */
+	static void EnchantmentSetsFor(const UDataTable* PositiveTable,
+								   const UDataTable* NegativeTable,
+								   const FString& Slot,
+								   TArray<FCataclysmEnchantmentSet>& OutSets);
 
 	/**
 	 * Pick one weight band, 1 to 4, from the bands offered.

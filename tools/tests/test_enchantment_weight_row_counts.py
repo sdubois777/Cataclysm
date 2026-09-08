@@ -44,14 +44,22 @@ Repetition at the common end is what #1458 measured and what the redistribution
 fixed. The rare end needs rows written rather than rows moved, which is that
 issue's first option and was not the one the project owner took.
 
-THE MEASUREMENT MIRRORS THE DRAW, and it has to. `UCataclysmDropRoll` drops a
-row from the pool when its `EnchantmentType` is `Set` -- the design hands a set
-out whole rather than drawing half of one -- and again when its `Weight` is not
-a whole 1 to 4. The 55 set rows carry a set identifier in the `Weight` column
+THE MEASUREMENT MIRRORS THE DRAW, and it has to. `UCataclysmDropRoll` drops a row
+from the ORDINARY pool when its `Weight` is not a whole 1 to 4, which is every
+`Set` row: the 55 of them carry a set identifier of 5 to 18 in that column
 instead of a weight, which is issue
 [#1443](https://github.com/sdubois777/Cataclysm/issues/1443) and is not this
-file's business; excluding them the way the draw does is. Counting them would
-put 42 phantom benefit rows into the bands.
+file's business. Excluding them the way the draw does is. Counting them would put
+42 phantom benefit rows into the bands.
+
+A SET IS DRAWN, JUST NOT AS A LOOSE ROW IN A BAND. Until 2026-09-08 no set could
+be drawn at all: `EnchantmentSuitsSlot` refused every `Set` row on the reading
+that some other mechanism handed a set out whole, and no such mechanism was ever
+written. The project owner ruled that a set IS an enchantment, and
+`EnchantmentSetsFor` now offers each complete set as ONE option inside the weight
+1 band. So the band counts below are still the right measurement -- a set is not
+a row in a band -- but "a set row cannot drop" is no longer true and this file
+must not be read as saying it.
 """
 
 from __future__ import annotations
@@ -199,13 +207,18 @@ def sides(benefit_share, drawback_share) -> list[tuple[str, list[dict], dict]]:
 class TestTheMeasurementMirrorsTheDraw:
     """A count that includes rows the draw never reaches is not a measurement."""
 
-    def test_set_rows_are_excluded(self, sides):
+    def test_set_rows_are_excluded_from_the_bands(self, sides):
         """A filter that excludes nothing is a filter that is not running.
 
-        The design hands a set out whole rather than drawing half of one, so
-        `EnchantmentSuitsSlot` drops every `Set` row. If the sheet stopped
-        spelling the type that way this filter would quietly pass everything
-        through and the bands would gain 55 rows nobody can draw.
+        A set is drawn as ONE option inside the weight 1 band rather than as a
+        loose row in it, so its rows must stay out of these per-band counts. If
+        the sheet stopped spelling the type that way this filter would quietly
+        pass everything through and the bands would gain 55 rows that are not
+        band members.
+
+        THIS IS NOT "A SET CANNOT DROP". It could not until 2026-09-08 and now
+        it can; what stays true is that a set row is not priced by the band
+        counts measured here.
         """
         for name, rows, _ in sides:
             excluded = [row for row in rows
@@ -213,7 +226,7 @@ class TestTheMeasurementMirrorsTheDraw:
             assert excluded, (
                 f"no {name} row has EnchantmentType 'Set', so the exclusion "
                 f"this file shares with "
-                f"UCataclysmDropRoll::EnchantmentSuitsSlot is not being "
+                f"UCataclysmDropRoll::EnchantmentDrawWeight is not being "
                 f"exercised and these counts prove nothing.")
 
     def test_every_row_that_is_not_a_set_can_be_drawn(self, sides):

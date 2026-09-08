@@ -2,6 +2,200 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-08 — A set is an enchantment the player assembles from their own gear, and 55 unreachable rows enter the draw
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and
+`CataclysmDropRoll.cpp` (which decide what a dropped item carries),
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentTests.cpp`,
+`docs/Cataclysm_GDD_v2.md` (the Set Enchantments section). No data file changed
+and no set identifier moved. Issues
+[#1495](https://github.com/sdubois777/Cataclysm/issues/1495),
+[#1496](https://github.com/sdubois777/Cataclysm/issues/1496) and
+[#45](https://github.com/sdubois777/Cataclysm/issues/45).
+
+### The defect
+
+**Fifty-five authored rows could not appear in the game.** 42 positives and 13
+negatives typed `Set` in `game/Data/EnchantmentsPositive.csv` and
+`EnchantmentsNegative.csv` were excluded from the enchantment draw, and no other
+mechanism granted them.
+
+Verified with controls rather than by a bare search, because a null result from a
+broken search reads the same as a real absence:
+
+| Search over `game/Source/` | Files matched |
+| :-- | --: |
+| `UCLASS`, a positive control | 127 |
+| `EnchantmentType` | 3 |
+| a nonsense string, a negative control | 0 |
+
+The three were the data row struct, the draw that excluded set rows, and the test
+asserting they stayed excluded. The same search over `game/Content/` matched two
+files, both the enchantment data tables themselves; all 112 `.uasset` files were
+confirmed present rather than unfetched pointers, so that search was not blind.
+
+### Why they were excluded, and why that reasoning was wrong
+
+`EnchantmentSuitsSlot` refused every set row with this reason:
+
+> A SET ROW BELONGS TO A DIFFERENT MECHANISM. The design says set positives and
+> negatives are "paired and guaranteed", so a set is handed out whole rather than
+> drawn one half at a time.
+
+**No such mechanism was ever written**, and this log said so under "What this does
+not decide" on 2026-09-07: "Set bonuses. Nothing hands out a set, and no item
+belongs to one."
+
+**"Handed out whole" also contradicts the rows.** The three positive rows in a set
+are thresholds, and each says so in its own text:
+
+```
+Archon's Aegis (2-Piece Bonus):  Your block chance is increased by 25%
+Archon's Aegis (6-Piece Bonus):  When you block an attack, you become immune to
+                                 all damage for 3 seconds. (10s cd)
+Archon's Aegis (10-Piece Bonus): When your health falls below 10%, you are
+                                 instantly healed to 100% of your maximum health.
+                                 (10 minute cd)
+```
+
+All 42 set positive rows state a threshold and all 42 parse; every one of the 14
+sets has exactly 2, 6 and 10. Handing all three out from one roll grants a
+10-piece bonus to a player wearing one piece.
+
+### What the owner ruled
+
+Asked whether a set is item identity or an enchantment, the project owner ruled:
+
+> "No, they're enchantments, with piece bonuses. It's like giving the player the
+> ability to build a custom set piece instead of having it be a specific item.
+> It's different than most other set items in the genre, but it prevents them from
+> being blatantly overpowered like in d3, or completely useless like in last
+> epoch."
+
+So an item that rolls a set enchantment becomes a piece of that set, and the
+2-piece, 6-piece and 10-piece bonuses turn on by how many equipped items carry it.
+
+### The genre research, and that this departs from it deliberately
+
+| Game | How sets work |
+| :-- | :-- |
+| Diablo II | A set item is a specific named item on a fixed base. Partial bonuses activate as more pieces are worn. |
+| Diablo III | The same. Named items, bonuses at 2, 4 and 6 pieces. |
+| Last Epoch | The same. Named set items with piece-count bonuses. |
+| Path of Exile | No piece-count sets. Uniques instead. |
+
+**Every comparator that has sets gives the set an item identity.** None roll set
+membership onto an ordinary item. This decision does the thing none of them do,
+and the owner named the two failure modes it is meant to avoid: sets so strong
+nothing else is worth wearing, and sets weak enough to ignore. Recording it as a
+deliberate departure is the point — a later reader must not take it for an
+oversight and "correct" it toward the genre.
+
+**A recommendation was published and withdrawn in the course of this.** Issue
+#1495 first recommended the shape this decision adopts, then withdrew it after the
+genre research above, on the grounds that no shipped game does it. The owner
+overrode that. The research was right about the genre and wrong about what
+followed from it.
+
+### What the old design document said, and why all of it went
+
+The Set Enchantments section described sets as items:
+
+> Set items are Legendary and above items that belong to a named set. … **A named
+> set is the only itemisation layer that buys bespoke geometry** … A set with a
+> 10-piece bonus means ten or more models nobody has made. No set is enumerated
+> yet, so nothing is owed today.
+
+Three things there were wrong by 2026-09-08. Sets are not items. **The art cost
+disappears entirely** — a set piece is an ordinary item carrying a set
+enchantment, and rarity already does not change an item's model. And **fourteen
+sets are enumerated**, in the data and the design workbook, which was #1496; at
+ten models each the old wording owed at least 140 models nobody had counted.
+
+### How often a set is drawn, and which reading of the ruling was taken
+
+The owner's frequency ruling was that sets "should all probably be in the same
+bucket as t1 enchantments as they're pretty strong". Two readings were open and
+this took the first:
+
+| Reading | What it does |
+| :-- | :-- |
+| **Chosen: sets go inside the weight 1 band** | The band still takes 1.2% of draws and is shared between the ordinary weight 1 rows and the sets. |
+| Declined: a fifth band priced like weight 1 | Renormalises all four bands, so 1.2%, 4.7%, 18.8% and 75.3% each become slightly wrong. |
+
+**Keeping the published ladder exactly true is why.** The owner ruled separately
+that the 1/4/16/64 ladder does not move, and the design document states those four
+shares; a fifth band changes every one of them. Putting sets inside band 1 leaves
+all four untouched. It is also the literal reading of "in the same bucket as t1".
+
+**What it costs.** The weight 1 band is shared, so an ordinary weight 1
+enchantment is drawn about half as often as before. Measured for a chest:
+
+| | Count | Share of the weight 1 band | Share of all draws |
+| :-- | --: | --: | --: |
+| Ordinary weight 1 rows | 11 | 45.8% | 0.54% |
+| Named sets offered | 13 | 54.2% | 0.64% |
+| One named set | 1 | 4.2% | 0.049% |
+
+The counts are per slot. Twelve weight 1 positives are written and one carries
+`Item.Slot.Weapon`, so a chest sees eleven; a weapon sees twelve.
+
+**To reverse it**, give sets their own band: add a fifth entry to the band arrays
+priced with `EnchantmentDrawWeight(LowestEnchantmentWeight)`. The draw reads a
+named `SetBand` rather than assuming the lowest band, so the change is local.
+
+### What a drop records
+
+One positive row and one negative row, the same shape every other enchantment
+uses. The positive is the set's **lowest threshold row**, which is a membership
+marker rather than a bonus granted: it names the set, and the 6-piece and 10-piece
+rows are read by whatever counts equipped pieces. The lowest was chosen so a tool
+tip naming it describes the bonus the player is closest to earning.
+
+The negative is **the set's own**, not drawn. That is what "paired and guaranteed"
+means, and it is the one place the ordinary rule that a drawback is drawn from the
+bands at or below the benefit does not apply.
+
+### A set missing either half is not offered
+
+A set needs at least one positive row and one negative row. **Shard of Anarchy,
+set 15, has three positives and no negative** — in `EnchantmentsNegative.csv` and
+in the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` alike, so
+re-exporting cannot produce it. It is left out of the draw with a warning naming
+its identifier, and issue
+[#1494](https://github.com/sdubois777/Cataclysm/issues/1494) is the owner writing
+that drawback. **Adding that one row completes the set with no code change.**
+Nothing names set 15 in code or in a test.
+
+### A separate defect fixed alongside, because this depends on it
+
+`EnchantmentCandidatesFor` did not sort its candidates. `RollBase` and
+`RollMaterialTier` in the same file both do, and both say why: "Without this the
+same seed could give a different material between runs, because the order the
+table hands its rows over is not part of the data." A `UDataTable` is a map. So
+two of the three draws in that file were reproducible from their seed and the
+third was not. It now sorts.
+
+This is fixed here rather than separately because the set draw takes an index
+across the weight 1 options, and an unsorted pool would make which set a seed
+picks vary between runs.
+
+### What this does not decide
+
+**How the single drawback applies.** Once per equipped piece carrying the set, or
+once while the set is active at all. Nothing applies any enchantment's effect yet
+— confirmed with a control — so the question has had no consequence to date. It
+has a large one when it does: ten pieces of Archon's Aegis applying "movement
+speed reduced by 10%" ten times reaches -100% under the project's rule that
+increases sum. This needs an owner decision before enchantment effects are built.
+
+**Counting worn pieces.** Nothing counts how many equipped items carry a set, so
+no threshold turns on yet. That is the rest of issue #45, and it is the same
+position every other enchantment is in: a piece records what it rolled and says so
+in the tool tip, and not one of the 574 changes a character's stats.
+
+---
+
 ## 2026-09-08 — Enchantment rows are redistributed across the four weights, and the ladder is untouched
 
 **Affects:** the Enchantments sheet of `docs/All_Things_Cataclysm.xlsx`,
