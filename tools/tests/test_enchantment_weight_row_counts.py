@@ -34,7 +34,7 @@ they only ever complain about the row counts, which is what #1458 is about.
 THE THIRD IS THE ONE WITH A NUMBER IN IT, and the number is a bound rather than
 a target. A row's flat share is what it would be drawn at if every row on its
 side were equally likely -- one in 337 for benefits, one in 182 for drawbacks.
-The old sheet's worst row sat at 9.05 times flat on the benefit side and 4.69
+The old sheet's worst row sat at 9.06 times flat on the benefit side and 4.69
 times on the drawback side. It now sits at 1.68 and 1.31. Two is a ceiling with
 room to add content under it, not a line the sheet is balanced on.
 
@@ -278,7 +278,7 @@ class TestRowCountsFollowHowOftenTheWeightIsDrawn:
         for slot in SLOTS:
             for name, rows, _ in sides:
                 found = counts_for(rows, slot)
-                for lower, higher in zip(WEIGHTS, WEIGHTS[1:]):
+                for lower, higher in zip(WEIGHTS, WEIGHTS[1:], strict=False):
                     assert found[higher] >= found[lower], (
                         f"on a {slot} weight {higher} holds {found[higher]} "
                         f"{name} rows and weight {lower} holds {found[lower]}, "
@@ -290,7 +290,7 @@ class TestRowCountsFollowHowOftenTheWeightIsDrawn:
         """The repetition bound, which is what a player actually feels.
 
         A row's flat share is one over the number of rows on its side. Before
-        the redistribution the worst benefit row sat at 9.05 times flat.
+        the redistribution the worst benefit row sat at 9.06 times flat.
         """
         for slot in SLOTS:
             for name, rows, share in sides:

@@ -3405,7 +3405,7 @@ Enchantments are tag-based rather than skill-specific, ensuring the loot pool re
 
 So a strong positive is never bought cheaply, and a modest positive can still arrive with a severe drawback — a genuinely cursed low-value item, which happens on about 0.9% of pairs and is intended rather than a leak.
 
-**Why this replaced an earlier rule, so nobody restores it.** This section used to pair the two halves by rolling them independently, while promising in the same sentence that a strong positive was not guaranteed a weak negative. Measured on the 334 positive and 182 negative rows a chest piece can draw, independent rolls gave a weight 1 positive a milder drawback **99.2%** of the time — so the mechanism defeated the goal written beside it. The goal is what survived. `docs/DECISIONS.md` holds the full history.
+**Why this replaced an earlier rule, so nobody restores it.** This section used to pair the two halves by rolling them independently, while promising in the same sentence that a strong positive was not guaranteed a weak negative. Measured on the 334 positive and 182 negative rows a chest piece can draw, as those rows were weighted on 2026-09-07, independent rolls gave a weight 1 positive a milder drawback **99.2%** of the time — so the mechanism defeated the goal written beside it. The goal is what survived. `docs/DECISIONS.md` holds the full history.
 
   
 
@@ -3433,7 +3433,22 @@ So a strong positive is never bought cheaply, and a modest positive can still ar
 
 The weight system governs rarity and balance simultaneously. Weight 1 enchantments are rare and very powerful. Weight 4 enchantments are common and modest. **A weight 1 positive always comes with a weight 1 negative — extremely powerful and extremely costly.** That was described here as a theoretical possibility while the two halves rolled separately; it is now what a weight 1 pair is, because weight 1 is the only weight its drawback may be drawn from.
 
-**How often each weight comes up: 1, 4, 16, 64 for weights 1 to 4**, so a positive's weight is drawn at 1.2%, 4.7%, 18.8% and 75.3%. The project owner ruled the step of four on 2026-09-07. It prices the **weight band**, not the individual row, so the frequencies do not move when rows are added to the sheet. Pricing each row instead — which the first implementation did — made a "Moderate" weight 3 positive and a "Common" weight 4 one equally likely, because four times as many weight 3 rows are written as weight 4 ones and that cancelled the step exactly. The step is a tuning value and is expected to be retuned against real play.
+**How often each weight comes up: 1, 4, 16, 64 for weights 1 to 4**, so a positive's weight is drawn at 1.2%, 4.7%, 18.8% and 75.3%. The project owner ruled the step of four on 2026-09-07. It prices the **weight band**, not the individual row, so the frequencies do not move when rows are added to the sheet. Pricing each row instead — which the first implementation did — made a "Moderate" weight 3 positive and a "Common" weight 4 one equally likely, because four times as many weight 3 rows were written as weight 4 ones and that cancelled the step exactly. The step is a tuning value and is expected to be retuned against real play.
+
+**How many rows are written at each weight follows how often that weight is drawn.** Weight 4 is drawn 64 times as often as weight 1, so it needs at least as much written at it, and until 2026-09-08 it had the least: 28 positive rows carried 75.3% of appearances while 154 rows at weight 2 carried 4.7%. The rows were redistributed under issue [#1458](https://github.com/sdubois777/Cataclysm/issues/1458), moving 376 of them between weights and changing no frequency, no wording and no count of rows. For a chest piece:
+
+| Weight | Share of positives | Positive rows | Share of negatives | Negative rows |
+| :-: | --: | --: | --: | --: |
+| 1 | 1.2% | 11 | 3.9% | 8 |
+| 2 | 4.7% | 53 | 10.9% | 23 |
+| 3 | 18.8% | 119 | 28.5% | 72 |
+| 4 | 75.3% | 151 | 56.7% | 79 |
+
+A weapon draws from three more positive rows, one each at weights 1, 2 and 3.
+
+**A weight is a strength tier, so a row cannot be moved on its count alone.** A positive moved down becomes commoner and also cheaper, because its negative is drawn at its own weight or harsher. Every move made under #1458 was a judgement about what the row does against the four definitions in the table below, and `docs/DECISIONS.md` records the rules used. **Adding a row means picking the weight its effect belongs at**, not the weight that needs filling.
+
+**The positive side is still short of proportionate and that is deliberate.** Row counts exactly proportionate to the draw would be 4, 16, 63 and 254. Reaching 254 at weight 4 would mean calling about a hundred rows "modest effect, minor drawback" that are not, so the remaining gap is closed by writing new weight 4 positives rather than by moving more. The negative side is close to proportionate at 8, 23, 72 and 79 against 7, 20, 52 and 103.
 
 **The negative's weight is then drawn on the same ladder, restricted to the weights the floor allows.** A weight 2 positive takes a weight 2 negative 80% of the time and a weight 1 negative the other 20%. **This distribution is derived from the floor rather than chosen**, and it is not the same as the positive's: every positive tier can reach a weight 1 negative, while only the top tier can reach a weight 1 positive.
 

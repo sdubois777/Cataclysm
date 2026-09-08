@@ -2,6 +2,137 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-08 — Enchantment rows are redistributed across the four weights, and the ladder is untouched
+
+**Affects:** the Enchantments sheet of `docs/All_Things_Cataclysm.xlsx`,
+`game/Data/EnchantmentsPositive.csv`, `game/Data/EnchantmentsNegative.csv`,
+`game/Content/Data/DT_EnchantmentsPositive.uasset`,
+`game/Content/Data/DT_EnchantmentsNegative.uasset`,
+`game/Data/datatable_asset_sources.json`,
+`tools/tests/test_enchantment_weight_row_counts.py`,
+`docs/Cataclysm_GDD_v2.md` (the Enchantment System section). Issue
+[#1458](https://github.com/sdubois777/Cataclysm/issues/1458).
+
+### What was chosen, out of four options
+
+Issue #1458 put four options and the project owner chose **redistribution**:
+move rows between weights so the common tier has more variety and the rare
+tiers are not overstuffed. **Writing more weight 4 rows was available and was
+not chosen. Changing the 1/4/16/64 ladder was available and was not chosen** —
+the steeper option was picked deliberately on 2026-09-07 so that weight 1 is
+genuinely rare, and it stands.
+
+So this entry moves 376 of the 519 drawable rows between weights. It changes no
+frequency, adds no row and deletes none.
+
+### What the problem was, measured
+
+Since [#1457](https://github.com/sdubois777/Cataclysm/pull/1457) the step prices
+the weight **band**, so the four weights come up at 1.2%, 4.7%, 18.8% and 75.3%
+whatever the sheet holds. The sheet held the opposite shape:
+
+| Weight | Share of benefit draws | Benefit rows before | Benefit rows after |
+| :-: | --: | --: | --: |
+| 1 | 1.2% | 39 | **11** |
+| 2 | 4.7% | 154 | **53** |
+| 3 | 18.8% | 113 | **119** |
+| 4 | 75.3% | **28** | **151** |
+
+| Weight | Share of drawback draws | Drawback rows before | Drawback rows after |
+| :-: | --: | --: | --: |
+| 1 | 3.9% | 22 | **8** |
+| 2 | 10.9% | 80 | **23** |
+| 3 | 28.5% | 58 | **72** |
+| 4 | 56.7% | **22** | **79** |
+
+Counts are for a chest piece. A weapon draws from three more benefit rows, which
+after the move land at weights 1, 2 and 3 — one each — giving 12/54/120/151.
+
+**On both sides the band the player met most often was the smallest pool
+written.** Ranked by how often one written row is drawn, the worst case falls
+from 9.06 times the flat rate to 1.68 on the benefit side, and from 4.69 to 1.31
+on the drawback side. "Flat" is what a row would be drawn at if every row on its
+side were equally likely: one in 337, and one in 182.
+
+**Issue #1458 states the benefit-side gap as "about 148 times"; it is 88.0.**
+The figure is `(75.3% ÷ 28) ÷ (4.7% ÷ 154)`. The drawback-side figure of about
+19 on that issue is right. The direction and the size of the problem are
+unaffected; the number is corrected here so it is not quoted on.
+
+### Why rows could not be moved by count alone
+
+**A weight is a strength tier, not only a frequency**, which is the 2026-09-07
+ruling recorded further down this file: the drawback is drawn at the benefit's
+weight or harsher, so a weight 4 benefit is bought with a weight 4 drawback most
+of the time. Moving a row down makes it both commoner **and** cheaper. Every
+move here is a judgement about what the row does, against the design document's
+own four definitions — weight 1 "very powerful effect, severe consequence"
+through weight 4 "modest effect, minor drawback".
+
+Four rules did most of the work, and they are written down because the next
+person adding rows needs the same ones:
+
+1. **A whole-layer multiplier or an extra repetition of everything is weight 1.**
+   "Double your energy shield", "Your spells echo +1 time", "Using your ultimate
+   ability resets all other skill cooldowns", "You have +10 maximum resists".
+   Broad and multiplicative. Twelve rows qualify.
+2. **"Increased" is not "more", so it sits a tier lower than the same number
+   would as a "more".** This project's own pipeline is
+   `(base + flat) x (1 + increases) x more1 x more2`, so an `increased` modifier
+   joins one additive sum a filled passive tree already dominates. It is why
+   "Gain 10%-30% increased health" moved from weight 1 to weight 3 while "Nearby
+   enemies deal 10%-30% less damage to you" stayed at weight 1.
+3. **A condition is a discount.** Boss-only, low-life, stationary, first-hit and
+   one-skill-slot effects move down one tier from where the same effect would sit
+   unconditionally. This is most of what left weight 1: four boss-only rows, two
+   low-life rows and eight rows that only work for a trap or gadget build.
+4. **A small number behind a trigger is weight 4.** Under about 10% on a buff
+   lasting a few seconds, or a restore of a few percent of a pool, is the design
+   document's own "modest effect". This is where most of the old weight 3 band
+   went — 85 of its 114 rows.
+
+**Fifteen rows moved the other way, to a rarer and stronger band.** The clearest
+is "This weapon has 2-4 damage types", which was weight 3 and is now weight 1:
+the design document says a weapon's damage types decide how many class passive
+trees a character may spec into, so that row is the difference between one class
+and up to four. "Your cooldowns are increased by 100%-200%" was a weight 4
+drawback — the "minor" tier — and is now weight 2.
+
+### Redistribution alone does not reach proportionality, and this says so rather than hiding it
+
+**The drawback side essentially arrives.** Proportional counts for 182 rows would
+be 7/20/52/103; it now holds 8/23/72/79, and the worst row sits at 1.31 times
+flat.
+
+**The benefit side does not.** Proportional counts for 337 rows would be
+4/16/63/254. Weight 4 holds 151. Reaching 254 would mean calling about a hundred
+more rows "modest effect, minor drawback" when they are not — rows like "Your
+first hit against each enemy deals 100%-300% bonus damage" and "Every 20 seconds
+all your skill cooldowns are instantly reset". **The remaining gap is content,
+not arrangement**, which is issue #1458's first option and was not the one
+chosen. Nothing was written to close it.
+
+**What that costs a player, in the terms #1458 used.** Inspecting 40 pairs means
+meeting about 30 weight 4 benefits. Drawn from 28 rows, 11.4 of those 30 were a
+line already seen; drawn from 151 rows, 2.7 are. On the drawback side the same
+30 draws fall from 13.5 repeats out of 22 rows to 4.9 out of 79.
+
+### What holds it
+
+`tools/tests/test_enchantment_weight_row_counts.py`. It reads the step out of
+`CataclysmDropRoll.h` rather than holding a second copy, so retuning the ladder
+re-aims it instead of making it lie, and it asserts three things: every band has
+rows written at it; a band drawn more often never holds fewer rows than a band
+drawn less often; and no written row carries more than twice its flat share.
+
+**Proved to fire, five ways**, with `break_and_run` from `tools/prove_guard.py`
+against a `git archive` copy. Emptying the weight 1 band, making weight 4 the
+smaller pool, pushing one row past twice flat, changing the step, and removing
+the set-row exclusion each failed exactly the tests they should and left the
+rest passing.
+
+---
+
 ## 2026-09-08 — The Ravager trades its fire branch for one that wears the enemy down, gets three nodes that use Fervour, and gains the only loadout that breaks the six-socket rule
 
 **Affects:** `docs/Ravager_Class_Tree_Final.json`, `docs/Cataclysm_GDD_v2.md`
@@ -862,6 +993,12 @@ substantially:
 | 3 | 113 | 42.5% | **18.8%** |
 | 4 | 28 | 42.1% | **75.3%** |
 
+**The row counts in that first column are the sheet as it stood on 2026-09-07.**
+They were redistributed the next day, under issue
+[#1458](https://github.com/sdubois777/Cataclysm/issues/1458), to 11, 53, 119 and
+151; the 2026-09-08 entry at the top of this file has the reasoning. The two
+share columns are unaffected, which is the whole point of per-band pricing.
+
 **Where each column comes from, because they are not the same kind of number.**
 The "before" column is a measurement of the shipped behaviour, computed by
 replaying the old rule over the two enchantment CSV files; it reproduces the
@@ -876,15 +1013,20 @@ enough to exclude both wrong answers: per-row pricing would give 36, 580, 1,700
 and 1,684, and a uniform draw over the four bands would give 1,000 each.
 
 **Per row, weights 3 and 4 came out at the same rate.** Four times as many weight
-3 rows are written as weight 4 ones, which cancelled the step between exactly
+3 rows were written as weight 4 ones, which cancelled the step between exactly
 those two rungs. A "Moderate" benefit and a "Common" one were met equally often,
-which no reading of the design supports.
+which no reading of the design supports. **That is no longer the sheet's shape**:
+the 2026-09-08 entry at the top of this file redistributed the rows, and weight 4
+now carries more of them than any other band.
 
 **Per band is what keeps the drawback's draw meaningful.** The drawback is drawn
 from weight 1 up to the benefit's weight, so the pool it comes from changes size
 with every roll — 22 negative rows when the benefit is weight 1, all 182 when it
-is weight 4, a factor of eight. Priced per row, the odds inside that range would
-move with the row counts of whichever bands happened to be in it. Priced per
+is weight 4, a factor of eight. **The redistribution of 2026-09-08 makes those
+two numbers 8 and 182, a factor of 23**; the argument is unchanged and the pair
+of figures is the same sheet at two dates. Priced per row, the odds inside that
+range would move with the row counts of whichever bands happened to be in it.
+Priced per
 band, the same ladder simply renormalises over the weights the floor allows: a
 weight 2 benefit takes a weight 2 drawback 80% of the time and a weight 1
 drawback the other 20%. Per band also decouples the outcome from the sheet:
@@ -971,15 +1113,20 @@ Corruption](https://support.lastepoch.com/hc/en-us/articles/46361996533147-Affix
 
 **Nothing, today — it cannot happen, and that was measured rather than assumed.**
 Every weight has rows on both sides for every one of the eleven gear slots. The
-smallest cell is 22 rows, and an item draws at most four pairs.
+smallest cell is 8 rows, and an item draws at most four pairs.
 
 | Slot | w1 | w2 | w3 | w4 |
 | --- | --: | --: | --: | --: |
-| Every slot except Weapon | 39/22 | 154/80 | 113/58 | 28/22 |
-| Weapon | 40/22 | 155/80 | 114/58 | 28/22 |
+| Every slot except Weapon | 11/8 | 53/23 | 119/72 | 151/79 |
+| Weapon | 12/8 | 54/23 | 120/72 | 151/79 |
 
 Positives/negatives. Ten of the eleven slots have an identical pool; only Weapon
 differs, by the three `Item.Slot.Weapon` rows, all of them positives.
+
+**This table read 39/22, 154/80, 113/58 and 28/22 when the entry was written**,
+and the redistribution of 2026-09-08 moved every figure in it. The smallest cell
+fell from 22 rows to 8, which is still twice the four pairs an item draws, so the
+conclusion above is unchanged.
 
 **The guard is still a decision, because the sheet can change.** A band that
 cannot supply both halves is dropped from the draw and the designed frequencies
@@ -1177,8 +1324,8 @@ set row and carries no slot tag barring it — and applying the 1/4/16/64 step:
 | 4 | 28 | 64 | **42.1%** |
 
 **Weight 3 and weight 4 come out at the same rate, and that is the sheet's row
-counts rather than the ruling.** There are four times as many weight 3 rows
-written as weight 4 ones, which cancels the step between those two rungs almost
+counts rather than the ruling.** There were four times as many weight 3 rows
+written as weight 4 ones, which cancelled the step between those two rungs almost
 exactly. The design document describes weight 3 as "Moderate" and weight 4 as
 "Common", and a player would meet them equally often.
 
@@ -1186,7 +1333,13 @@ exactly. The design document describes weight 3 as "Moderate" and weight 4 as
 weights and that is what was built; how many rows carry each weight is a
 different decision and belongs to whoever writes the sheet. The two ways to
 change it are to write more weight 4 rows or to steepen the step, and neither
-should be guessed at. **Nothing is broken by it** — the ladder still separates
+should be guessed at.
+
+**A third way existed and is the one that was taken**, on 2026-09-08 under issue
+[#1458](https://github.com/sdubois777/Cataclysm/issues/1458): move rows between
+weights, changing no frequency and writing nothing new. The "Rows written" column
+above is therefore the sheet on 2026-09-07 and not the sheet now; it reads 11,
+53, 119 and 151 today. The entry at the top of this file has the reasoning. **Nothing is broken by it** — the ladder still separates
 weight 1 from everything else by a factor of 46, which is the separation the
 ruling was mostly about.
 
