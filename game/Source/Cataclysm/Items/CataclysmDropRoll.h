@@ -780,11 +780,14 @@ public:
 	 * A SET NEEDS BOTH HALVES TO BE OFFERED. Its positive rows say what the
 	 * player earns and its one negative row is the guaranteed cost; a set
 	 * missing either cannot be "paired and guaranteed" and is left out with a
-	 * warning rather than handed out half-formed. Shard of Anarchy, set 15, is
-	 * in exactly that state today -- it has three positives and no negative in
-	 * `game/Data/EnchantmentsNegative.csv` and in the design workbook alike, and
-	 * issue #1494 is the drawback being written. Adding that one row is all it
-	 * takes to complete it; nothing here names the set or works around it.
+	 * warning rather than handed out half-formed.
+	 *
+	 * ALL FOURTEEN SETS ARE COMPLETE AS OF 2026-09-08. Shard of Anarchy, set 15,
+	 * had three positives and no negative until the owner wrote its drawback
+	 * that day, which closed issue #1494. This check is not left over from that:
+	 * a set written from now on will have a window between its positive rows
+	 * landing and its drawback landing, and a set offered in that window would
+	 * be a bonus with no cost. Nothing here names any set.
 	 *
 	 * SORTED BY IDENTIFIER, because a UDataTable is a map and walking one has no
 	 * guaranteed order. Without this the same seed would pick a different set on

@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-08 — The fourteenth set gets its drawback, and it strips one resistance at random
+
+**Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the
+three files generated from it — `game/Data/EnchantmentsNegative.csv`,
+`game/Content/Data/DT_EnchantmentsNegative.uasset` and
+`game/Data/datatable_asset_sources.json`. Also
+`game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `CataclysmDropRoll.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`CataclysmEnchantmentTests.cpp`,
+`tools/tests/test_enchantment_weight_row_counts.py`, and
+`docs/Cataclysm_GDD_v2.md` — all of those for counts that moved rather than for
+behaviour. Issue
+[#1494](https://github.com/sdubois777/Cataclysm/issues/1494).
+
+**No set identifier moved and no existing row changed.**
+
+### The row
+
+Shard of Anarchy, set 15, had three positive rows and no negative one. It was the
+only set in that state, and it was left out of the draw because a set that cannot
+be paired and guaranteed would be a bonus with no cost. The project owner wrote
+its drawback on 2026-09-08:
+
+> Every 5 seconds, one of your resistances is reduced to 0 until this triggers
+> again
+
+**All fourteen sets are now complete and 56 set rows are written**, up from 55.
+
+### The code needed no change to accept it, which is what the check was for
+
+`EnchantmentSetsFor` compares the sets written on the positive side against those
+written on the negative side and offers the intersection. Nothing named set 15 in
+code or in a test — the test that guards this compares offered sets against the
+identifiers present in both tables — so both sides moved together when the row
+landed. The check stays: the next set written will have a window between its
+positive rows landing and its drawback landing, and that is the window it covers.
+
+### The resistance is chosen at random
+
+The drawback text says "one of your resistances" without saying which. The owner
+chose **random** on 2026-09-08, over rotating through the eight in order. It suits
+a set whose other three effects are all randomness on a clock.
+
+**Random does not guarantee a cycle**, and that is worth stating because the cost
+was first reasoned about as though it did: the same resistance can be chosen twice
+running, so a given resistance is not down exactly one interval in eight. There
+are eight damage types and so eight resistances.
+
+**The drawback runs on a 5-second timer while the set's bonuses run on 30-second
+ones**, six times more often. That was noticed rather than missed. It is a number
+to tune against real play, not a shape to argue about now, and it sits alongside
+[#1498](https://github.com/sdubois777/Cataclysm/issues/1498), which is the tuning
+pass over all fourteen drawbacks.
+
+### How the drawback applies is not decided here
+
+It was settled the same day and is recorded in its own entry: applied once for the
+whole set, joining at the 2-piece threshold. Nothing about that is restated here.
+
+### What moved because the fourteenth set became drawable
+
+Re-measured rather than adjusted. For a chest:
+
+| | Before | After |
+| :-- | --: | --: |
+| Ordinary weight 1 rows | 11 | 11 |
+| Named sets offered | 13 | 14 |
+| Options in the weight 1 band | 24 | 25 |
+| All sets, share of all draws | 0.64% | 0.66% |
+| One named set, share of all draws | 0.049% | 0.047% |
+
+The weight 1 band still takes 1.2% of draws; only the split inside it moved. A
+weapon sees 12 ordinary rows rather than 11, so its sets take 0.63%.
+
+`CataclysmDataTableTests.cpp` pinned the negatives table at 195 rows and now pins
+196, with a comment saying why the count moved.
+`tools/tests/test_unreal_pinned_row_counts.py` is what caught the stale pin, and
+it named the file, the pinned number and the actual one.
+
+### The route this took, because an open issue says it is not possible
+
+[#331](https://github.com/sdubois777/Cataclysm/issues/331) says a workbook row
+cannot be finished from a git worktree, because the editor step needs compiled
+modules and "a worktree never has one". **That is true of a fresh worktree and not
+of a built one.** This row was added from a worktree that had already been built
+for a C++ change, and all three steps ran:
+
+```bash
+python tools/generate_datatables.py                                   # workbook -> game/Data/*.csv
+python tools/run_editor_python.py tools/generate_datatable_assets.py  # CSV -> DT_*.uasset
+python -m pytest
+```
+
+The editor step reported exactly the two files expected, with no incidental asset
+re-saves. `tools/run_editor_python.py` checks for the named binary files rather
+than for the checkout being a worktree, so it was already right; only #331's
+description of it was too broad. That is recorded on the issue.
+
+---
+
 ## 2026-09-08 — A set is an enchantment the player assembles from their own gear, and 55 unreachable rows enter the draw
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and

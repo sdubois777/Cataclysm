@@ -1220,7 +1220,7 @@ TArray<FName> UCataclysmDropRoll::RollDamageTypes(
 float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
 {
 	// THE SHEET'S NUMBER MUST BE A WHOLE ONE FROM 1 TO 4. Anything else is a row
-	// this draw cannot price, which today means one of the 55 set rows carrying
+	// this draw cannot price, which today means one of the 56 set rows carrying
 	// a set identifier where a weight belongs -- issue #1443. Those are already
 	// excluded by EnchantmentSuitsSlot, so reaching here with one is a fault in
 	// the data rather than an unlucky roll, and a zero takes the row out of the
@@ -1419,9 +1419,12 @@ void UCataclysmDropRoll::EnchantmentSetsFor(
 		if (!Negatives || Negatives->Num() == 0)
 		{
 			// NAMED BY IDENTIFIER RATHER THAN BY SET NAME, because the name is
-			// only inside the effect text. Set 15, Shard of Anarchy, is in this
-			// state today and issue #1494 is the drawback being written; adding
-			// that one row is all it takes for this branch to stop firing.
+			// only inside the effect text. NO SET IS IN THIS STATE TODAY: set
+			// 15, Shard of Anarchy, was until the owner wrote its drawback on
+			// 2026-09-08, which closed issue #1494. This stays because the next
+			// set written will have a gap between its positives landing and its
+			// drawback landing, and a set half-offered in that window would be
+			// a bonus with no cost.
 			//
 			// ONCE PER SET PER RUN, NOT ONCE PER DROP. This function runs for
 			// every item that rolls enchantments. Unguarded, it wrote 214,442
@@ -1632,14 +1635,13 @@ bool UCataclysmDropRoll::RollEnchantments(
 	//
 	// WHAT IT COSTS: the weight 1 band is now shared, so an ordinary weight 1
 	// enchantment is drawn about half as often as before. Measured for a chest
-	// on 2026-09-08: 11 ordinary weight 1 rows against 13 offered sets, so 11 of
-	// 24 rather than 11 of 11. All sets together take about 0.64% of draws and
-	// one named set about 0.049%.
+	// on 2026-09-08: 11 ordinary weight 1 rows against 14 offered sets, so 11 of
+	// 25 rather than 11 of 11. All sets together take about 0.66% of draws and
+	// one named set about 0.047%.
 	//
-	// THE COUNTS ARE PER SLOT AND ARE NOT 12 AND 14. Twelve weight 1 positives
-	// are written, but one carries `Item.Slot.Weapon` and a chest never sees it.
-	// Fourteen sets are written and thirteen are offered, because Shard of
-	// Anarchy has no negative row yet -- issue #1494.
+	// THE ORDINARY COUNT IS PER SLOT AND IS NOT 12. Twelve weight 1 positives
+	// are written, but one carries `Item.Slot.Weapon` and a chest never sees it,
+	// so a weapon has 12 against 14 and a chest 11 against 14.
 	//
 	// TO REVERSE IT, give sets their own band: add a fifth entry to the band
 	// arrays priced with EnchantmentDrawWeight(LowestEnchantmentWeight). The

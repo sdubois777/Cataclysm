@@ -216,7 +216,7 @@ bool FCataclysmEnchantmentWeightLadder::RunTest(const FString&)
 			  FDrop::EnchantmentDrawWeight(4.0f), 64.0f);
 
 	// A ROW THIS CANNOT PRICE IS TAKEN OUT OF THE DRAW RATHER THAN GUESSED AT.
-	// 5 and 18 are the range the 55 set rows carry a set identifier in, which is
+	// 5 and 18 are the range the 56 set rows carry a set identifier in, which is
 	// issue #1443.
 	TestEqual(TEXT("weight 0 cannot be drawn"),
 			  FDrop::EnchantmentDrawWeight(0.0f), 0.0f);

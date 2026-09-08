@@ -46,7 +46,7 @@ issue's first option and was not the one the project owner took.
 
 THE MEASUREMENT MIRRORS THE DRAW, and it has to. `UCataclysmDropRoll` drops a row
 from the ORDINARY pool when its `Weight` is not a whole 1 to 4, which is every
-`Set` row: the 55 of them carry a set identifier of 5 to 18 in that column
+`Set` row: the 56 of them carry a set identifier of 5 to 18 in that column
 instead of a weight, which is issue
 [#1443](https://github.com/sdubois777/Cataclysm/issues/1443) and is not this
 file's business. Excluding them the way the draw does is. Counting them would put
@@ -96,12 +96,18 @@ def read_rows(path: pathlib.Path) -> list[dict]:
 
 
 def suits_slot(row: dict, slot: str) -> bool:
-    """Mirror `UCataclysmDropRoll::EnchantmentSuitsSlot`.
+    """Mirror `UCataclysmDropRoll::EnchantmentSuitsSlot`, plus the set exclusion.
 
-    A set row never enters this draw. Of the rest, a row carrying one or more
-    `Item.Slot.` tags is restricted to those slots and a row carrying none may
-    appear anywhere -- the project owner's 2026-09-07 ruling that a tag says
-    what an enchantment AFFECTS rather than where it may sit.
+    A row carrying one or more `Item.Slot.` tags is restricted to those slots and
+    a row carrying none may appear anywhere -- the project owner's 2026-09-07
+    ruling that a tag says what an enchantment AFFECTS rather than where it may
+    sit. That part is what the C++ function does.
+
+    THE SET EXCLUSION IS NOT THAT FUNCTION'S ANY MORE. `EnchantmentSuitsSlot`
+    refused every `Set` row until 2026-09-08; now `EnchantmentDrawWeight` is what
+    keeps them out of the ordinary bands, by pricing a weight of 5 to 18 at zero.
+    It is kept here because these are per-band counts and a set is not a member
+    of a band, and `band_of` below would drop them anyway.
     """
     if row["EnchantmentType"].strip().lower() == "set":
         return False
@@ -213,7 +219,7 @@ class TestTheMeasurementMirrorsTheDraw:
         A set is drawn as ONE option inside the weight 1 band rather than as a
         loose row in it, so its rows must stay out of these per-band counts. If
         the sheet stopped spelling the type that way this filter would quietly
-        pass everything through and the bands would gain 55 rows that are not
+        pass everything through and the bands would gain 56 rows that are not
         band members.
 
         THIS IS NOT "A SET CANNOT DROP". It could not until 2026-09-08 and now
