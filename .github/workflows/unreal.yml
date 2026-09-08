@@ -72,29 +72,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # tools/unreal_build.py is Python. The runner's service account may not
-      # have an interpreter on its PATH, so one is installed rather than
-      # assumed.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      # WHY THE WRAPPER RATHER THAN Build.bat DIRECTLY. `Result: Succeeded` is
-      # printed by builds that compiled nothing, and grepping for it alone hides
-      # the reason a build failed. tools/unreal_build.py exits non-zero when the
-      # build fails and reports which files were compiled. Until issue #436 it
-      # had no entry point and every invocation exited 0 having done nothing,
-      # which is why the exit code alone is not trusted here either.
+      # ------------------------------------------------------------------
+      # WHY THIS CALLS Build.bat RATHER THAN tools/unreal_build.py.
+      #
+      # The wrapper is better and this job used it first. It failed, twice
+      # over, and both failures are properties of a service account rather
+      # than of the wrapper:
+      #
+      #   - `actions/setup-python@v5` could not install an interpreter:
+      #     "setup.ps1 cannot be loaded because running scripts is disabled
+      #     on this system". The runner service account's PowerShell
+      #     execution policy forbids it, and raising that policy is a change
+      #     to the owner's machine rather than to this repository.
+      #   - `shell: pwsh` does not exist here. That is PowerShell 7; this
+      #     machine has Windows PowerShell 5.1.
+      #
+      # So this step uses `cmd`, which is always present, and the engine's
+      # own batch file, which needs no interpreter. It gives up the wrapper's
+      # reporting and keeps the only thing this job is for: a non-zero exit
+      # when the code does not compile.
+      #
+      # -WaitMutex MATTERS AND IS NOT OPTIONAL. One Unreal build runs at a
+      # time per engine install, and this runner shares the engine with
+      # whoever is working on the machine. Without it a build that collides
+      # fails instead of waiting, and this check would go red for a reason
+      # that has nothing to do with the change.
+      # ------------------------------------------------------------------
       - name: Compile the editor target
-        shell: pwsh
-        run: python tools/unreal_build.py build
+        shell: cmd
+        working-directory: game
+        run: |
+          "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" CataclysmEditor Win64 Development -Project="%CD%\Cataclysm.uproject" -WaitMutex
 
-      # The step above fails the job on a compile error. This one exists so the
-      # log ends with something a person can read at a glance rather than the
-      # tail of a build log.
+      # Ends the log with something a person can read at a glance rather than
+      # the tail of a build log. `if: always()` so it still reports after a
+      # failed compile, where knowing what was and was not produced is the
+      # useful part.
       - name: Say what was built
         if: always()
-        shell: pwsh
+        shell: cmd
         run: |
-          Get-ChildItem game/Binaries/Win64 -Filter "UnrealEditor-Cataclysm*.dll" -ErrorAction SilentlyContinue |
-            Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+          dir game\Binaries\Win64\UnrealEditor-Cataclysm*.dll 2>nul || echo No Cataclysm module libraries were produced.
