@@ -614,6 +614,78 @@ field on its row struct, and no skill has yet been refused for want of Fervour.
 
 ---
 
+## 2026-09-09 — The strongest application of a lasting effect decides its size
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, the
+helpers that apply damage, damage over time, stuns, pins and named status
+effects, and `game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp`. Issue
+[#1503](https://github.com/sdubois777/Cataclysm/issues/1503).
+
+**NOTHING IS BUILT. This entry records a ruling, not a change.** The code today
+uses the newer application's figure. Everything below describes what it must do
+instead.
+
+### The question, and why it had to be asked
+
+Applying the same lasting effect twice to one target — a pin carrying a
+damage-taken increase, a resistance-cutting curse like Shred — needs a rule for
+which application's figure applies. **There was never a decision.** Until
+2026-09-09 the first application's figure was frozen and no later one could move
+it, and that was an accident: every runtime effect was built under the same
+object name, so a second application destroyed the first and was constructed at
+its address. Pull request
+[#1505](https://github.com/sdubois777/Cataclysm/pull/1505) repaired that
+use-after-free, and repairing it forced a choice, because the accidental
+behaviour could not be kept.
+
+### The three rulings, all made by the project owner on 2026-09-09
+
+**1. The strongest application wins.** A 10% Shred can never overwrite a 30%
+Shred. They were shown the alternative — the most recent application wins, which
+is what the repair produces for free — and chose the strongest over it.
+
+**2. An effect that changes several stats is compared as one whole.** Abyssal
+Aura cuts two resistances, so "stronger" has no single answer when one
+application is larger on one stat and smaller on the other. Add up what each
+application takes across every stat it touches and keep whichever total is
+larger, applying that application entire. The alternative — keeping the best
+value for each stat independently — was refused: it leaves the target carrying a
+mixture of two different applications, which no tooltip can describe and no
+player can predict. **An effect stays one thing that came from one source.**
+
+**3. A weaker application still refreshes the duration.** Its figures are
+refused; its timing is not. Without this, keeping a curse running would require
+landing the strongest source every time, which punishes exactly the rotation a
+player would build on purpose.
+
+### Genre precedent, and it is already half-adopted here
+
+`docs/DECISIONS.md` already records that **Path of Exile's ignite does not stack
+and only the highest-damage one deals damage at a time**, and that this project
+adopted that same game's answer to the neighbouring question on 2026-08-03 — an
+enemy carries at most one stack of any effect. Ruling 1 makes the pair
+consistent rather than introducing a new idea. Rulings 2 and 3 are this
+project's own judgement; no shipped game was found that states either.
+
+### What this does not cover
+
+**Whether "strongest" is measured before or after the target's own resistances.**
+Nobody has raised it and no test depends on it. Settle it when it first matters
+rather than guessing now.
+
+### How it was recorded
+
+The two additional questions were found by the session repairing the crash, which
+noticed the ruling as relayed answered neither. That session declined to write
+this entry, correctly: it heard the ruling from the coordinating session rather
+than from the project owner, and a design decision recorded by someone who did
+not witness it is a claim wearing the authority of the log. The coordinating
+session, which put all three questions to the owner and has their answers, wrote
+it.
+
+
+---
+
 ## 2026-09-08 — The fourteenth set gets its drawback, and it strips one resistance at random
 
 **Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the
