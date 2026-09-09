@@ -361,7 +361,15 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// gameplay attribute behind it, a condition or a scale that does not exist,
 	// or a rule rather than a modifier. Every keystone in both trees is of that
 	// kind, which is the finding issue #939 made about the other trees.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        202)
+	//
+	// AND FOUR MORE FOR THE RITUALIST'S GENERATOR, 202 to 206. Issue #1518.
+	// Two rows on the tree's starting node, `Fervour`, which grants a rate per
+	// minion held and a lump when one dies; and two on `Binding Sigils`, which
+	// increases both. They are four of the 82 above rather than new nodes: the
+	// scale they needed, `minions_held`, and the two stats behind them were
+	// built by that issue, which is why the pass that authored the rest left
+	// them out.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        206)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

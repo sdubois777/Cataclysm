@@ -1085,6 +1085,17 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				Modifier.Scale = ECataclysmStatScale::PerDebuffCarried;
 				Modifier.ScaleStep = Effect->ScaleStep;
 			}
+			else if (Effect->Scale.Equals(TEXT("minions_held"),
+										  ESearchCase::IgnoreCase))
+			{
+				// A COUNT OF WHAT THE CHARACTER COMMANDS. Issue #1518. The
+				// Ritualist's generator grows with it, and
+				// `UCataclysmCommand::ThingsCommandedBy` says what counts as
+				// one -- imps and thralls together, which is what the tree
+				// means by "minion".
+				Modifier.Scale = ECataclysmStatScale::PerMinionHeld;
+				Modifier.ScaleStep = Effect->ScaleStep;
+			}
 			else if (!Effect->Scale.IsEmpty())
 			{
 				// A step of nothing makes `ScaledValue` answer zero.

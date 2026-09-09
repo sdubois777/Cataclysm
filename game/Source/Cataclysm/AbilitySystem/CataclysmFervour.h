@@ -26,17 +26,26 @@ class UAbilitySystemComponent;
  * that writes the maximum from the class stat line. So 23 of the Masochist's 74
  * nodes named a resource that was always zero.
  *
- * THIS BUILDS THE MASOCHIST'S GENERATOR AND NOT THE OTHER THREE. The design
- * gives four classes four different generators:
+ * TWO OF THE SIX GENERATORS ARE HERE AND FOUR ARE NOT. The design gives six
+ * classes six different generators:
  *
  *   Bulwark     taking hits, blocking, killing
- *   Berserker   1 per critical strike
+ *   Berserker   1 per critical strike, emptying on a timer out of combat
  *   Saboteur    placing a trap or gadget, and one of them dealing damage
+ *   Ravager     1 an enemy an attack hits, 1 a second an enemy within 4 metres,
+ *               and decaying at 5 a second once nothing is in reach
  *   Masochist   health lost to damage, and health spent as an ability cost
+ *   Ritualist   1 a second for each minion held, and 5 when one of them dies
  *
- * Only the fourth is here. The other three are different rules rather than
- * different numbers, and each needs its own code in its own place. Issue #950
- * covers the Ravager and the Ritualist, which have no tree at all.
+ * The Masochist's is issue #954 and the Ritualist's is #1518. The four that are
+ * missing are different rules rather than different numbers, and each needs its
+ * own code in its own place.
+ *
+ * THE RAVAGER'S IS THE LARGEST OF THE FOUR LEFT, and not the same work again.
+ * It needs a hook counting what one attack hit and a proximity query, and its
+ * row is the only one of the six that states a DECAY -- nothing in the game
+ * empties Fervour on a timer, which is also why the Berserker's is unbuilt. The
+ * Ritualist's needed none: its row says it keeps the default of not decaying.
  *
  * A SEPARATE CLASS OF STATIC FUNCTIONS, like `UCataclysmDamageCalculation`,
  * `UCataclysmLeech` and `UCataclysmRegeneration`. `FervourFor` below is
@@ -90,6 +99,19 @@ public:
 
 	/** How much Fervour dropping to low health grants. Issue #1069. */
 	static const TCHAR* OnDroppingLowStat;
+
+	/**
+	 * How much Fervour arrives every second FOR EACH MINION held. Issue #1518.
+	 *
+	 * SEPARATE FROM `PerSecondStat` ABOVE ON PURPOSE. The Ritualist's
+	 * `Binding Sigils` node increases "Fervour gained from your minions", and
+	 * one shared stat would carry that increase onto the Masochist's Low Life
+	 * keystone as well, which grants Fervour for being hurt.
+	 */
+	static const TCHAR* FromMinionsStat;
+
+	/** How much Fervour one of the character's minions dying grants. #1518. */
+	static const TCHAR* OnMinionDeathStat;
 
 	/**
 	 * Marks a restoration of health as coming from the character's own
@@ -200,6 +222,34 @@ public:
 	 *         with no such option, for a full bar, and for no class resource set
 	 */
 	static float GainOnDroppingLow(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Add the Fervour this character gains from one of its minions dying, and
+	 * answer what arrived. Issue #1518.
+	 *
+	 * THE RITUALIST'S GENERATOR, SECOND HALF: "and 5 when one of them dies".
+	 * Its starting node is the only source, and `Binding Sigils` increases it.
+	 *
+	 * A FOURTH FUNCTION THAT ADDS A PLAIN COUNT, beside `GainPerSecondStep`,
+	 * `GainForCast` and `GainOnDroppingLow`, and the four differ in what counts
+	 * them. The first is a rate multiplied by the length of a step; the second
+	 * is granted once per cast; the third once per crossing; this once per
+	 * death.
+	 *
+	 * IT DOES NOT DECIDE WHOSE MINION DIED, OR WHETHER IT WAS A MINION.
+	 * `UCataclysmVitalAttributeSet` owns that: it has the dying character in
+	 * hand, asks `UCataclysmCommand::CommanderOf` who was commanding it, and
+	 * calls this with the COMMANDER'S ability system. This is the write to the
+	 * pool, which happens in this file for every route so there is one place
+	 * that clamps it.
+	 *
+	 * @param AbilitySystem  the COMMANDER'S, not the dying minion's. A minion
+	 *                       has no class resource attribute set, so passing its
+	 *                       own would answer zero and nothing would report why
+	 * @return how much Fervour was really added, which is zero for a character
+	 *         with no such node, for a full bar, and for no class resource set
+	 */
+	static float GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

@@ -326,12 +326,26 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * sixth time: two capstone options supply all five, no class line names any
 	 * of them, and no player reads any of them as a stat.
 	 *
+	 * TWENTY-THREE SINCE THE RITUALIST'S GENERATOR. Issue #1518 added two: the
+	 * Fervour gained every second for each minion the character commands, and
+	 * the Fervour gained when one of them dies. Off the sheet for the same
+	 * reasons a seventh time: one passive node supplies both, no class line
+	 * names either, and no player reads either as a stat. What a player reads
+	 * is the node's sentence and the bar itself.
+	 *
+	 * THE FIRST OF THE TWO READS ZERO ON EVERY CHARACTER IN THE GAME, INCLUDING
+	 * A RITUALIST HOLDING THE NODE, and it is still an attribute for the reason
+	 * the conditional ones above are: the stat has to have something behind it
+	 * or `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`
+	 * refuses the row. Its row carries the scale `minions_held`, and a scaled
+	 * bonus is worked out when it is asked for rather than folded in.
+	 *
 	 * THE SHEET STILL DOES NOT MOVE, WHICH IS WHAT THE SECOND ASSERTION BELOW
 	 * IS FOR. It derives the sheet count by subtracting the off-sheet ones, so
 	 * an attribute nobody declared off the sheet is counted as ON it and BOTH
 	 * numbers fail at once. One fix, not two.
 	 */
-	constexpr int32 OffSheetResourceStats = 21;
+	constexpr int32 OffSheetResourceStats = 23;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

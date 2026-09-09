@@ -386,7 +386,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: nothing can express ("while an enemy is within 4 metres"), a scale nothing
 #: counts ("for each enemy your attack hits beyond the first"), or a rule rather
 #: than a modifier, which is every keystone. Issue #1463 lists them one by one.
-AUTHORED_ROWS = 202
+#:
+#: AND TO 206 ON 2026-09-09, when the Ritualist's generator was built. Issue
+#: #1518. Four rows on two nodes: the tree's starting node `Fervour` grants the
+#: rate and the death bonus, and `Binding Sigils` increases both. The rate is
+#: the first row in the sheet to carry the scale `minions_held`, which that
+#: issue added, so it is also the first Fervour generator authored for a class
+#: other than the Masochist.
+AUTHORED_ROWS = 206
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -592,7 +599,13 @@ AUTHORED_ROWS = 202
 #:
 #: THE SIX TREES NOW STAND AT: Masochist 74 of 74, Ravager 34 of 74, Ritualist
 #: 32 of 74, Bulwark 3 of 74, Saboteur 1 of 74, Berserker 0 of 71.
-AUTHORED_NODES = 144
+#:
+#: AND TO 146 ON 2026-09-09, when the Ritualist's generator was built. Issue
+#: #1518. Two more Ritualist nodes grant something: `Fervour`, the tree's
+#: starting node, and `Binding Sigils`. Both needed the new scale `minions_held`
+#: and the two new stats behind it, which is why #1463 left them out rather than
+#: missing them. The Ritualist is now 34 of its 74.
+AUTHORED_NODES = 146
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1064,6 +1077,20 @@ SCALE_WORDS = {
     # increased damage" would find the bonus's own number and pass for the wrong
     # reason.
     "debuffs_carried": (("debuff", "on you"), None, None),
+
+    # A COUNT OF WHAT THE CHARACTER COMMANDS. Issue #1518. The Ritualist's
+    # generator reads it: "1 per second for each minion you have".
+    #
+    # BOTH FRAGMENTS NAME THE MINIONS RATHER THAN THE COUNTING, because "for
+    # each" alone is shared with several scales above. No other scale in this
+    # map is about minions, so the word itself already picks this one out, and
+    # "you have" holds the row to the character's own army.
+    #
+    # A STEP FORM OF `None`, for the reason the debuff and stack counts give:
+    # the sentence says "each minion" and names no step, so the step can only be
+    # 1 and that is asserted instead. Looking for a "1" would find the rate's own
+    # number -- "1 per second" -- and pass for the wrong reason.
+    "minions_held": (("minion", "you have"), None, None),
 }
 
 
@@ -1198,6 +1225,22 @@ VALUE_FORMS = {
     # reason the second gives: these are three stats and a reword of one must
     # not be able to satisfy another's check.
     "fervour_on_dropping_low": "{value:g} Fervour",
+
+    # BOTH HALVES OF THE RITUALIST'S GENERATOR, AND NEITHER PUTS THE WORD
+    # "FERVOUR" AFTER ITS NUMBER. Issue #1518. The node names the resource once
+    # at the front and then states two rules against it: "Your minions generate
+    # Fervour: 1 per second for each minion you have, and 5 when one of them
+    # dies." So the three forms above -- "10 Fervour", "50 Fervour" -- would
+    # find nothing here, and the default percent form would look for "1%" and
+    # "5%" and find nothing either.
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, which is what
+    # keeps the two apart inside one sentence. A bare "{value:g}" would match
+    # either number anywhere in the line, so a workbook that swapped the 1 and
+    # the 5 would still pass. "1 per second" and "5 when one" cannot be
+    # satisfied by each other's rule.
+    "fervour_from_minions": "{value:g} per second",
+    "fervour_on_minion_death": "{value:g} when one",
 
     # A DISTANCE, WHICH IS THE FOURTH FORM AND THE FIRST ONE MEASURED IN SPACE.
     # Issue #1047. Reprisal Wave reads "strikes every enemy within 4 METRES", so
@@ -1421,8 +1464,22 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
         #
         # AND IN THE STAT'S OWN UNITS. Nearly every value is a percentage, and
         # `VALUE_FORMS` names the ones that are not.
-        printed = VALUE_FORMS.get(row["Stat"], "{value:g}%").format(
-            value=abs(value))
+        #
+        # ONLY A `flat` ROW IS READ IN THE STAT'S OWN UNITS. Issue #1518. A
+        # flat row states a quantity of the thing -- "10 Fervour", "4 metres" --
+        # but an `increased` or `more` row is a PERCENTAGE of it whatever the
+        # thing is, and its node writes one: "+2% increased Fervour gained from
+        # your minions per point". Reading that row in the stat's own units
+        # looked for "2 per second" in a sentence that says "+2%".
+        #
+        # IT CHANGES NOTHING ALREADY IN THE SHEET. Measured 2026-09-09: every
+        # stat named in `VALUE_FORMS` before this issue is granted by `flat`
+        # rows only, so this is the branch all of them already took. The
+        # Ritualist's two are the first stats carrying a flat row and an
+        # increase together, which is what uncovered it.
+        form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
+                if row["ValueKind"] == "flat" else "{value:g}%")
+        printed = form.format(value=abs(value))
         assert printed in described, (
             f"{row['Node']}: the workbook grants {printed} of "
             f"{row['Stat']} per point, and the node says:\n"

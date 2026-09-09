@@ -315,6 +315,29 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("fervour_per_second"),
 			 Resource::GetFervourPerSecondAttribute()},
 
+			// AND BOTH HALVES OF THE RITUALIST'S GENERATOR. Issue #1518. Zero
+			// for every class, and the Ritualist tree's starting node is the
+			// only source of either: "1 per second for each minion you have,
+			// and 5 when one of them dies".
+			//
+			// THE RATE IS A SEPARATE STAT FROM `fervour_per_second` ABOVE, so
+			// that tree's `Binding Sigils` node -- "+2% increased Fervour
+			// gained from your minions" -- cannot also increase the Masochist's
+			// Low Life keystone, which grants Fervour for being hurt. One
+			// character can reach all 24 class trees, so holding both is
+			// ordinary.
+			//
+			// THE RATE'S ATTRIBUTE STAYS AT ZERO even for a Ritualist holding
+			// the node, because its row carries the scale `minions_held` and a
+			// scaled bonus is worked out when it is asked for rather than
+			// folded in. The entry is still needed for the reason the two
+			// below give: `ApplyTo` loops over THIS map, and a stat missing
+			// from it is dropped before `StatForSkill` could be asked.
+			{FString(UCataclysmFervour::FromMinionsStat),
+			 Resource::GetFervourFromMinionsAttribute()},
+			{FString(UCataclysmFervour::OnMinionDeathStat),
+			 Resource::GetFervourOnMinionDeathAttribute()},
+
 			// AND BOTH HALVES OF THE LAST DROP. Issue #1051. Zero for every class,
 			// and the first option of the Masochist's The Final Vow is the only
 			// source of either. Both rows carry a health condition, so both

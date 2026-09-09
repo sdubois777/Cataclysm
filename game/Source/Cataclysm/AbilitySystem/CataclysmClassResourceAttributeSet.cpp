@@ -59,6 +59,13 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	InitDebtClearedOnDroppingLow(0.0f);
 	InitFervourOnDroppingLow(0.0f);
 
+	// AND ZERO FOR BOTH OF THE RITUALIST'S. Issue #1518. A character without
+	// that tree's starting node gains nothing from the minions it commands and
+	// nothing when one of them dies, which is what makes that node worth a
+	// point -- the same rule the three rates above follow.
+	InitFervourFromMinions(0.0f);
+	InitFervourOnMinionDeath(0.0f);
+
 	// AND ZERO FOR BOTH OF CARNIVORE'S. Issue #1071. A character without that
 	// option earns Carnage by killing rather than by being hit, and holds no
 	// more than the ten stacks `UCataclysmStacks::CapFor` allows.
@@ -92,6 +99,8 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromMinions);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnMinionDeath);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum);
 }
@@ -144,6 +153,8 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetUnpayableHealthCostBecomesDebtAttribute()
 		|| Attribute == GetDebtClearedOnDroppingLowAttribute()
 		|| Attribute == GetFervourOnDroppingLowAttribute()
+		|| Attribute == GetFervourFromMinionsAttribute()
+		|| Attribute == GetFervourOnMinionDeathAttribute()
 		|| Attribute == GetCarnageFromDamageTakenAttribute()
 		|| Attribute == GetCarnageHasNoMaximumAttribute())
 	{
@@ -230,8 +241,21 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 
 TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetRateAttributes()
 {
+	// THE THREE THE MASOCHIST'S GENERATOR GRANTS, AND THE TWO THE RITUALIST'S
+	// DOES. Issue #1518. This answers "can this character move Fervour at all",
+	// which is what decides whether the bar is drawn, so a class whose generator
+	// grants neither of the health rates has to be represented here or its bar
+	// would never appear.
+	//
+	// `FervourFromMinions` READS ZERO EVEN FOR A RITUALIST HOLDING THE NODE,
+	// because its row carries a scale and a scaled bonus is never folded into an
+	// attribute. `FervourOnMinionDeath` is a plain flat row and reads 5, so it
+	// is the one that actually draws the bar. Both are listed because this is a
+	// question about the character rather than about which read happens to be
+	// non-zero, and a later node granting only the rate should still get a bar.
 	return { GetFervourFromDamageAttribute(), GetFervourFromCostAttribute(),
-			 GetFervourLostToHealingAttribute() };
+			 GetFervourLostToHealingAttribute(), GetFervourFromMinionsAttribute(),
+			 GetFervourOnMinionDeathAttribute() };
 }
 
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ClassResource)
@@ -255,5 +279,7 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromMinions)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnMinionDeath)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum)

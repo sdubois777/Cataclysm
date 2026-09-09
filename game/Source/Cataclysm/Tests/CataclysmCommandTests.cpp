@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -724,6 +726,617 @@ bool FCataclysmVesselstepTradesPlacesTest::RunTest(const FString&)
 		static_cast<float>(Commander.Actor->GetActorLocation().X), ImpWas, 1.0f);
 	TestEqual(TEXT("and the creature is where the caster was"),
 		static_cast<float>(Imp->GetActorLocation().X), CasterWas, 1.0f);
+
+	return true;
+}
+
+// ==========================================================================
+// The Ritualist's Fervour generator
+//
+// WHY THESE ARE HERE AND NOT IN `CataclysmFervourTests.cpp`, which is where
+// every other Fervour rule is checked. Both halves of this generator ask how
+// many minions a character commands, and `UCataclysmCommand::ThingsCommandedBy`
+// answers by walking the real `ACataclysmCharacterBase` actors in the level.
+// That file's test fighter is a bare `AActor` with an ability system bolted on
+// and cannot be commanded or counted. The helpers above build exactly what is
+// needed -- a commander with a Fervour pool, real creatures, and a real minion
+// -- so the tests live beside them.
+//
+// THEY ARE STILL NAMED `Cataclysm.Fervour.*`, so a run narrowed to that group
+// picks them up with the rest of the resource's rules.
+// ==========================================================================
+
+namespace CataclysmCommandTest
+{
+	/**
+	 * Give a commander the Ritualist's starting node: a rate per minion held
+	 * and a lump when one dies.
+	 *
+	 * THE RATE CARRIES THE SCALE AND THE DEATH BONUS DOES NOT, which is the
+	 * whole difference between the two halves. `game/Data/PassiveEffects.csv`
+	 * writes the first with `minions_held` in its Scale column and the second
+	 * with nothing, and this builds the same two modifiers by hand.
+	 */
+	void GiveRitualistGenerator(FScopedCaster& Commander, float PerMinion,
+								float OnDeath, float IncreasePercent = 0.0f)
+	{
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerMinion;
+		Rate.Scale = ECataclysmStatScale::PerMinionHeld;
+		Rate.ScaleStep = 1.0f;
+
+		FCataclysmStatModifier Death;
+		Death.Bucket = ECataclysmStatBucket::Flat;
+		Death.Source = ECataclysmModifierSource::PassiveKeystone;
+		Death.Value = OnDeath;
+
+		FCataclysmStatInputs RateInputs;
+		RateInputs.Base = 0.0f;
+		RateInputs.Modifiers.Add(Rate);
+
+		FCataclysmStatInputs DeathInputs;
+		DeathInputs.Base = 0.0f;
+		DeathInputs.Modifiers.Add(Death);
+
+		// AND `Binding Sigils` ON TOP WHEN A TEST ASKS FOR IT: "+2% increased
+		// Fervour gained from your minions per point", which is an increase on
+		// BOTH halves because both are Fervour gained from minions.
+		if (IncreasePercent != 0.0f)
+		{
+			FCataclysmStatModifier Sigils;
+			Sigils.Bucket = ECataclysmStatBucket::Increased;
+			Sigils.Source = ECataclysmModifierSource::PassiveKeystone;
+			Sigils.Value = IncreasePercent;
+			RateInputs.Modifiers.Add(Sigils);
+			DeathInputs.Modifiers.Add(Sigils);
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::FromMinionsStat), RateInputs);
+		Stats.Add(FName(UCataclysmFervour::OnMinionDeathStat), DeathInputs);
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/**
+	 * Give a commander BOTH generators at once: the Masochist's Low Life
+	 * keystone and the Ritualist's minion rate, with `Binding Sigils` on top.
+	 *
+	 * A CHARACTER IN TWO CLASS TREES, which the 2026-08-25 ruling that every
+	 * class shares one Fervour bar makes ordinary rather than a corner: one
+	 * character can reach all 24 trees. This is what the leak test needs and
+	 * `GiveRitualistGenerator` above cannot build, because `SetStatInputs`
+	 * replaces the whole map rather than adding to it.
+	 */
+	void GiveBothGenerators(FScopedCaster& Commander, float LowLifePerSecond,
+							float PerMinion, float SigilsPercent)
+	{
+		// THE MASOCHIST'S, ON `fervour_per_second`, WITH ITS HEALTH CONDITION.
+		// "While at or below 35% health you gain 10 Fervour per second."
+		FCataclysmStatModifier LowLife;
+		LowLife.Bucket = ECataclysmStatBucket::Flat;
+		LowLife.Source = ECataclysmModifierSource::PassiveKeystone;
+		LowLife.Value = LowLifePerSecond;
+		LowLife.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		LowLife.ConditionValue = 35.0f;
+
+		FCataclysmStatInputs LowLifeInputs;
+		LowLifeInputs.Base = 0.0f;
+		LowLifeInputs.Modifiers.Add(LowLife);
+
+		// AND THE RITUALIST'S, ON ITS OWN STAT, WITH ITS MINION COUNT.
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerMinion;
+		Rate.Scale = ECataclysmStatScale::PerMinionHeld;
+		Rate.ScaleStep = 1.0f;
+
+		FCataclysmStatInputs RateInputs;
+		RateInputs.Base = 0.0f;
+		RateInputs.Modifiers.Add(Rate);
+
+		// `Binding Sigils` GOES ON THE RITUALIST'S STAT AND ONLY ON IT, which
+		// is exactly what the node says and exactly what the leak test checks.
+		if (SigilsPercent != 0.0f)
+		{
+			FCataclysmStatModifier Sigils;
+			Sigils.Bucket = ECataclysmStatBucket::Increased;
+			Sigils.Source = ECataclysmModifierSource::PassiveKeystone;
+			Sigils.Value = SigilsPercent;
+			RateInputs.Modifiers.Add(Sigils);
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::PerSecondStat), LowLifeInputs);
+		Stats.Add(FName(UCataclysmFervour::FromMinionsStat), RateInputs);
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	float FervourOf(const FScopedCaster& Commander)
+	{
+		return Commander.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	}
+
+	void SetFervour(const FScopedCaster& Commander, float Value)
+	{
+		Commander.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			Value);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistRateTest,
+	"Cataclysm.Fervour.MinionsHeldGenerateFervourEverySecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistRateTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S GENERATOR, FIRST HALF. Issue #1518: "1 per second for
+	// each minion you have".
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+
+	// A CHARACTER WITHOUT THE NODE GAINS NOTHING, whatever it commands. Without
+	// this the checks below would pass just as well if every character in the
+	// game gained Fervour for its minions.
+	ACataclysmMinion* First = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!First)
+	{
+		AddError(TEXT("Could not spawn the first minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
+
+	TestEqual(TEXT("a character without the node gains nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	// ONE MINION IS ONE A SECOND.
+	TestEqual(TEXT("one minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+	TestEqual(TEXT("and the bar holds one"), FervourOf(Commander), 1.0f, 0.001f);
+
+	// AND THREE MINIONS ARE THREE A SECOND, WHICH IS THE WHOLE POINT. A build
+	// that read the row without its scale would still grant 1 here, so this is
+	// the check that separates "per minion" from "while you have minions".
+	ACataclysmMinion* Second = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(4 * M, 0, 0), 60.0f, false);
+	ACataclysmMinion* Third = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(5 * M, 0, 0), 60.0f, false);
+	if (!Second || !Third)
+	{
+		AddError(TEXT("Could not spawn the other minions."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Second)) { Second->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Third)) { Third->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three minions grant three a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		3.0f, 0.001f);
+
+	// A THRALL COUNTS ALONGSIDE THEM, because the node says "minion" and the
+	// decision of 2026-09-08 settled that word as covering both an imp and a
+	// thrall. A count that used `ThrallCountOf` would answer 1 here and a count
+	// that only saw summoned things would answer 3.
+	FScopedCreature Taken(World, FVector(6 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Taken.Actor));
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three imps and a thrall grant four a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		4.0f, 0.001f);
+
+	// AND A QUARTER OF A SECOND IS A QUARTER OF IT, which is the step the
+	// character's own job list really runs at.
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a quarter second is a quarter of it"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 0.25f),
+		1.0f, 0.001f);
+
+	// A FULL BAR TAKES NO MORE.
+	SetFervour(Commander, RitualistPool);
+	TestEqual(TEXT("a full bar takes no more"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+	TestEqual(TEXT("and stays full"), FervourOf(Commander), RitualistPool,
+		0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistNoMinionsTest,
+	"Cataclysm.Fervour.ARitualistCommandingNothingGainsNoFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistNoMinionsTest::RunTest(const FString&)
+{
+	// THE CASE A BUILD THAT FORGETS THE COUNT GETS WRONG. Issue #1518. The row
+	// grants 1, and a build that read that 1 without multiplying it by the
+	// minions held would hand a Ritualist standing alone 1 Fervour a second for
+	// ever -- a bar that fills itself from nothing.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	// A CREATURE NOBODY COMMANDS, STANDING RIGHT NEXT TO IT, so a count that
+	// answered "every character nearby" would be caught here rather than
+	// passing for the wrong reason.
+	FScopedCreature Stranger(World, FVector(2 * M, 0, 0));
+
+	TestEqual(TEXT("it commands nothing"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 0);
+
+	TestEqual(TEXT("so a whole second grants nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+	TestEqual(TEXT("and the bar is still empty"), FervourOf(Commander), 0.0f,
+		0.001f);
+
+	// AND STILL NOTHING AFTER A LONG WHILE, so a rate that arrived once rather
+	// than never would be caught.
+	for (int32 Step = 0; Step < 40; ++Step)
+	{
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 0.25f);
+	}
+	TestEqual(TEXT("and nothing after ten seconds of steps"),
+		FervourOf(Commander), 0.0f, 0.001f);
+
+	// AND A MINION THAT HAS DIED STOPS COUNTING. Its body is still in the level
+	// -- a minion is removed on its own lifespan rather than the moment it dies
+	// -- so a count that asked only whether the actor was valid would still
+	// answer 1 and go on paying for a corpse.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a living minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+
+	Imp->HandleDeath();
+	TestTrue(TEXT("and the dead minion is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Imp));
+
+	// THE BODY IS STILL HERE, AND THIS ASSERTION DESCRIBES CURRENT BEHAVIOUR
+	// RATHER THAN ENDORSING IT. Issue #1528. `ACataclysmMinion::HandleDeath`
+	// marks and does not remove, so the lifespan `Spawn` gave the minion is
+	// still what takes it out of the level -- an imp killed a second after
+	// being summoned stands there for the remaining 19 of its 20 seconds.
+	//
+	// IT IS ASSERTED BECAUSE THE GENERATOR HAS TO BE RIGHT WHILE IT HOLDS. The
+	// check below is only meaningful if the corpse is still present to be
+	// counted; without this line a run where the body had been removed would
+	// pass it for the wrong reason.
+	//
+	// IF #1528 REMOVES THE BODY, THIS IS THE LINE THAT CHANGES, and that issue
+	// says so in as many words so whoever changes it knows why it was here.
+	TestTrue(TEXT("its body is still in the level"), IsValid(Imp));
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("but a dead minion grants nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistDeathTest,
+	"Cataclysm.Fervour.AMinionDyingGrantsFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistDeathTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S GENERATOR, SECOND HALF. Issue #1518: "and 5 when one of
+	// them dies".
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+
+	// A CHARACTER WITHOUT THE NODE GAINS NOTHING WHEN ITS MINION DIES.
+	TestEqual(TEXT("a character without the node gains nothing"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 0.0f,
+		0.001f);
+
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	TestEqual(TEXT("a death is worth five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+	TestEqual(TEXT("and the bar holds five"), FervourOf(Commander), 5.0f,
+		0.001f);
+
+	// AND A SECOND DEATH IS ANOTHER FIVE, so a grant that fired once and then
+	// latched would be caught.
+	TestEqual(TEXT("a second death is another five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+	TestEqual(TEXT("and the bar holds ten"), FervourOf(Commander), 10.0f,
+		0.001f);
+
+	// A FULL BAR TAKES NO MORE.
+	SetFervour(Commander, RitualistPool);
+	TestEqual(TEXT("a full bar takes no more"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 0.0f,
+		0.001f);
+
+	// AND A MINION'S OWN ABILITY SYSTEM IS NOT WHERE THE FERVOUR GOES. A minion
+	// has no class resource attribute set, so passing its own answers zero --
+	// which is what makes the call site's job asking WHO commanded the dying
+	// thing rather than granting to it.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("a minion's own ability system gains nothing"),
+		UCataclysmFervour::GainOnMinionDeath(
+			UCataclysmTargeting::AbilitySystemOf(Imp)), 0.0f, 0.001f);
+
+	// AND THE WHOLE ROUTE WORKS: killing the minion by taking its health to
+	// zero pays its COMMANDER, through
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`. This is the
+	// half that proves the call site rather than the arithmetic.
+	SetFervour(Commander, 0.0f);
+	UAbilitySystemComponent* ImpSystem =
+		UCataclysmTargeting::AbilitySystemOf(Imp);
+	if (!ImpSystem)
+	{
+		AddError(TEXT("The minion has no ability system."));
+		return false;
+	}
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+	TestTrue(TEXT("the minion is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Imp));
+	TestEqual(TEXT("and its commander was paid five for it"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	// AND A THRALL DYING PAYS TOO, WHICH IS A DIFFERENT CODE PATH FROM THE IMP
+	// ABOVE AND NOT THE SAME CASE TWICE. `UCataclysmCommand::CommanderOf` finds
+	// a summoned minion's commander through `ACataclysmMinion::Summoner`, and
+	// everything else through `GetOwner()`. A thrall is a subjugated
+	// `ACataclysmEnemyCharacter` rather than a minion, so it takes the second
+	// branch, and only the first was covered until this.
+	//
+	// IT WORKS BECAUSE `Subjugate` OVERWRITES THE OWNER. Unreal's own
+	// `APawn::PossessedBy` sets a pawn's owner to the controller that possessed
+	// it, so a creature's owner is its AI controller until something replaces
+	// it; `Subjugate` calls `SetOwner(Commander)` and does. Without that this
+	// would pay the creature's own controller, which holds no Fervour, and the
+	// bar would not move -- a failure that looks like the generator being
+	// broken rather than like a lookup taking the wrong branch.
+	FScopedCreature Thrall(World, FVector(5 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken as a thrall"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor));
+
+	SetFervour(Commander, 0.0f);
+	UAbilitySystemComponent* ThrallSystem =
+		UCataclysmTargeting::AbilitySystemOf(Thrall.Actor);
+	if (!ThrallSystem)
+	{
+		AddError(TEXT("The thrall has no ability system."));
+		return false;
+	}
+	ThrallSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+	TestTrue(TEXT("the thrall is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Thrall.Actor));
+	TestEqual(TEXT("and its commander was paid five for it as well"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	// AND HURTING THE BODY AGAIN PAYS NOTHING FURTHER. A burn ticking on a
+	// corpse would otherwise pay the commander on every tick, which is what the
+	// Dead tag prevents -- and which `ACataclysmMinion::HandleDeath` had to be
+	// written for, because before it a minion never took that tag.
+	//
+	// A DIFFERENT VALUE RATHER THAN ZERO AGAIN, DELIBERATELY. Writing 0 over 0
+	// may change nothing, and a write that changes nothing may never reach
+	// `PostAttributeBaseChange` at all -- so the check would pass without
+	// having exercised the guard it is named for. Minus ten is a real change to
+	// the base value and the set's own clamp still leaves the current value at
+	// zero, so the death path is entered and refused rather than never entered.
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), -10.0f);
+	TestEqual(TEXT("hurting the body again pays nothing more"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsTest,
+	"Cataclysm.Fervour.BindingSigilsScalesWhatMinionsGenerate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBindingSigilsTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S `Binding Sigils` NODE. Issue #1518: "+2% increased
+	// Fervour gained from your minions per point", over 12 points, so +24% at
+	// full investment.
+	//
+	// BEFORE THIS ISSUE IT INCREASED A RATE THAT DID NOT EXIST, and a player
+	// spending points in it saw nothing and had no way to know why. That is
+	// what this test is for.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// WITHOUT THE NODE, ONE MINION IS ONE A SECOND AND A DEATH IS FIVE. This is
+	// the control the two below are measured against.
+	GiveRitualistGenerator(Commander, 1.0f, 5.0f, /*IncreasePercent=*/0.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("without the node a minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and a death grants five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+
+	// TWELVE POINTS IS +24%, AND IT SCALES THE RATE.
+	GiveRitualistGenerator(Commander, 1.0f, 5.0f, /*IncreasePercent=*/24.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("twelve points make the rate 1.24 a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.24f, 0.001f);
+
+	// AND IT SCALES THE DEATH BONUS TOO, because both halves are Fervour gained
+	// from minions and the node names neither one specifically.
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and make a death worth 6.2"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 6.2f,
+		0.001f);
+
+	// AND IT SCALES WITH THE ARMY RATHER THAN REPLACING IT: three minions at
+	// +24% is three times 1.24 and not 1.24.
+	ACataclysmMinion* Second = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(4 * M, 0, 0), 60.0f, false);
+	ACataclysmMinion* Third = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(5 * M, 0, 0), 60.0f, false);
+	if (!Second || !Third)
+	{
+		AddError(TEXT("Could not spawn the other minions."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Second)) { Second->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Third)) { Third->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three minions at twelve points are 3.72 a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		3.72f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsLeakTest,
+	"Cataclysm.Fervour.BindingSigilsDoesNotTouchTheMasochistsOwnRate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBindingSigilsLeakTest::RunTest(const FString&)
+{
+	// WHY THE RITUALIST'S RATE IS A STAT OF ITS OWN. Issue #1518.
+	//
+	// The obvious build gives the Ritualist's "1 per second for each minion you
+	// have" to the Masochist's existing `fervour_per_second`, which already
+	// carries a per-second rate multiplied by a count. It is fewer moving parts
+	// and it is wrong, because an increase is applied to a STAT: `Binding
+	// Sigils` says "+2% increased Fervour gained from your minions per point",
+	// and on a shared stat its 24% would also raise the Masochist's Low Life
+	// keystone -- 10 Fervour a second for being below 35% health, which has
+	// nothing to do with minions.
+	//
+	// A CHARACTER IN BOTH TREES IS ORDINARY RATHER THAN A CORNER. The 2026-08-25
+	// ruling that every class shares one Fervour bar rests on one character
+	// being able to reach all 24 class trees.
+	//
+	// NOTHING ELSE WOULD CATCH THIS. A test that `Binding Sigils` scales minion
+	// Fervour passes either way, because on a shared stat it scales that too --
+	// along with something it should not touch. This test is the one that fails
+	// if the two rates are ever merged into one stat.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// AT 10% HEALTH, WELL INSIDE LOW LIFE'S 35% THRESHOLD, so the Masochist's
+	// keystone is actually paying out and a leak onto it would show.
+	Commander.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// LOW LIFE ALONE, AND NO MINIONS. Ten a second is what the keystone states.
+	GiveBothGenerators(Commander, /*LowLifePerSecond=*/10.0f,
+					   /*PerMinion=*/1.0f, /*SigilsPercent=*/0.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("Low Life alone grants ten a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND WITH TWELVE POINTS IN `Binding Sigils`, STILL TEN. This is the whole
+	// test. On one shared stat it would read 12.4.
+	GiveBothGenerators(Commander, 10.0f, 1.0f, /*SigilsPercent=*/24.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and twelve points of Binding Sigils leave it at ten"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND THE TWO ADD UP RATHER THAN ONE REPLACING THE OTHER once a minion is
+	// out: ten from being hurt, and 1.24 from one minion at +24%.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a hurt Ritualist-Masochist with one minion gains 11.24"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		11.24f, 0.001f);
+
+	// AND HEALING PAST THE THRESHOLD LEAVES ONLY THE MINION'S SHARE, which
+	// shows the two rates are still answering their own questions.
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 900.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and above 35% health only the minion's 1.24 remains"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.24f, 0.001f);
 
 	return true;
 }

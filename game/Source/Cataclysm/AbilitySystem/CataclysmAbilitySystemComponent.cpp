@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the minions a scaling bonus counts. Issue #1518.
+#include "AbilitySystem/CataclysmCommand.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the health a conditional bonus is judged against. Issue #959.
@@ -490,6 +492,30 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// three debuffs; neither reading can be worked out from the other.
 	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
 	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
+
+	// AND HOW MANY MINIONS THE CHARACTER IS COMMANDING. Issue #1518. The
+	// Ritualist's generator grows with it: "1 per second for each minion you
+	// have".
+	//
+	// ASKED OF THE WORLD RATHER THAN TALLIED, the same shape the thrall cap
+	// already uses. `ThingsCommandedBy` walks what is alive and owned right
+	// now, so a minion that died or expired a moment ago is already gone from
+	// the answer with nothing having run in the meantime. That is the argument
+	// the stack counts above make for themselves, and it is why neither half of
+	// this generator needs a timer or a tally to keep in step.
+	//
+	// IMPS AND THRALLS TOGETHER, WHICH IS WHY IT IS NOT `ThrallCountOf`. That
+	// function deliberately counts only the taken ones, because a reservation
+	// is per thrall. The generator says "minion", which the decision of
+	// 2026-09-08 settled as meaning both.
+	//
+	// THE AVATAR AND NOT THE OWNER. A player's ability system is owned by the
+	// player state, which survives death, while the pawn is what commands
+	// anything. `UCataclysmVitalAttributeSet` makes the same distinction for
+	// the same reason, and asking the owner here would count nothing for every
+	// player in the game.
+	State.MinionsHeld =
+		UCataclysmCommand::ThingsCommandedBy(GetAvatarActor()).Num();
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
 	// A PROPERTY OF THE CHARACTER. Issue #983. The Masochist's Grand Tithe node

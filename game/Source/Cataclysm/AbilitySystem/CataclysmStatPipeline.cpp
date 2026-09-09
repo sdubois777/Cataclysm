@@ -321,6 +321,19 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	// somebody applied that the ability system is already holding.
 	case ECataclysmStatScale::PerDebuffCarried:
 		return StackedValue(Modifier, State.DebuffsCarried);
+
+	// AND THE MINIONS THE CHARACTER IS COMMANDING, COUNTED THE SAME WAY AGAIN.
+	// Issue #1518, the Ritualist's generator: "1 per second for each minion you
+	// have". A minion is a whole thing exactly as a debuff and a stack are, so
+	// the arithmetic is shared for the third time.
+	//
+	// A CHARACTER COMMANDING NOTHING GETS NOTHING, by the same arithmetic and
+	// with no special case: `StackedValue` multiplies by a count of zero. That
+	// is the half of the Ritualist's generator a build is most likely to get
+	// wrong, because a row read without its scale would grant its bare value to
+	// a Ritualist standing alone.
+	case ECataclysmStatScale::PerMinionHeld:
+		return StackedValue(Modifier, State.MinionsHeld);
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

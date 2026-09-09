@@ -339,6 +339,26 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	++AttacksMade;
 }
 
+void ACataclysmMinion::HandleDeath()
+{
+	// THE TAG AND NOTHING ELSE. Issue #1518. Every reader that asks whether a
+	// character is alive asks `UCataclysmSkillEffects::IsDead`, which reads this
+	// tag, and before this override a minion never took it: the base class's
+	// `HandleDeath` is empty and this class did not override it, so a minion at
+	// zero health went on answering "alive" for ever.
+	//
+	// `MarkDead` REFUSES A SECOND TIME, which is what makes a death happen once
+	// however many writes at zero health reach it -- a burn ticking on a body,
+	// two blows in the same frame.
+	//
+	// IT DOES NOT REMOVE THE ACTOR, deliberately, and that is the difference
+	// between this and the enemy's. `Spawn` gave every minion a lifespan and
+	// that is still what takes it out of the level, so the summon cap, the
+	// spawning path and every test that counts minions behave exactly as they
+	// did. Removing the body sooner is a separate change with its own issue.
+	UCataclysmSkillEffects::MarkDead(this);
+}
+
 void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 {
 	if (IsValid(Summoner) && RadiusCm > 0.0f && DamagePercent > 0.0f)

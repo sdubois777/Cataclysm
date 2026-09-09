@@ -15,6 +15,8 @@
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For asking who was commanding a dying creature. Issue #1518.
+#include "AbilitySystem/CataclysmCommand.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -1182,6 +1184,54 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	if (!Character || UCataclysmSkillEffects::IsDead(Character))
 	{
 		return;
+	}
+
+	// WHOEVER WAS COMMANDING THIS THING GAINS FERVOUR FOR LOSING IT.
+	// Issue #1518, the Ritualist's generator: "and 5 when one of them dies".
+	//
+	// BEFORE `HandleDeath` AND NOT AFTER IT, because the enemy's own
+	// `HandleDeath` removes the creature from the level, and
+	// `UCataclysmCommand::CommanderOf` walks the ownership chain of an actor
+	// that would by then be leaving. A thrall is a subjugated
+	// `ACataclysmEnemyCharacter`, so this is the ordinary case rather than a
+	// corner.
+	//
+	// IT RUNS ONCE PER DEATH BECAUSE THE GUARD ABOVE DOES. Health can be
+	// written at zero repeatedly and `IsDead` is what stops the second one, so
+	// this grant inherits that rule rather than keeping a record of its own.
+	// `ACataclysmMinion::HandleDeath` had to be given to it for that to be true
+	// of an imp as well as of a thrall.
+	//
+	// INERT FOR EVERYTHING THAT FOLLOWS NOBODY, which is every creature in the
+	// game but a Ritualist's. `CommanderOf` answers null for an ordinary
+	// monster and the grant is skipped without asking anything else.
+	//
+	// THAT NULL IS A DELIBERATE CHECK RATHER THAN A HAPPY ACCIDENT, AND IT WAS
+	// NOT ALWAYS THERE. Unreal's `APawn::PossessedBy` calls
+	// `SetOwner(NewController)`, so every possessed character has a non-null
+	// owner, and until issue #1517 this function answered every monster's own
+	// AI controller. It now refuses a controller by name.
+	//
+	// THIS CALL SITE WAS CORRECT BEFORE THAT FIX AND IS CORRECT AFTER IT, for
+	// different reasons, which is why the null check below on the ability
+	// system is kept rather than trimmed as redundant. Before the fix the
+	// controller came back and carried no ability system, so the grant returned
+	// on its first line; after it, nothing comes back at all. Neither of those
+	// is a reason to trust the other.
+	//
+	// A THRALL IS THE CASE THAT HAS TO WORK, AND IT DOES BECAUSE `Subjugate`
+	// SETS THE OWNER AFTER POSSESSION HAS ALREADY HAPPENED, so a taken
+	// creature's owner is the character that took it rather than its
+	// controller. That is a different branch of `CommanderOf` from a summoned
+	// imp, which is found through `ACataclysmMinion::Summoner`, and
+	// `AMinionDyingGrantsFervour` covers both.
+	//
+	// THE COMMANDER'S ABILITY SYSTEM, NOT THE DYING THING'S. A minion has no
+	// class resource attribute set, so passing its own would answer zero.
+	if (AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	{
+		UCataclysmFervour::GainOnMinionDeath(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
 	}
 
 	Character->HandleDeath();
