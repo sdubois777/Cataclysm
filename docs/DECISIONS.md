@@ -2,6 +2,109 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-09 — Three enchantments state their rate per 100 armour or per 10 class points, not per point
+
+**Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the
+files generated from it — `game/Data/EnchantmentsPositive.csv`,
+`game/Data/EnchantmentsNegative.csv`, their two DataTable assets under
+`game/Content/Data/` and `game/Data/datatable_asset_sources.json`. Issue
+[#1485](https://github.com/sdubois777/Cataclysm/issues/1485).
+
+**No weight moved and no other row changed.** Issue #1485 records that the
+weights were assigned on what each row is evidently meant to do, so correcting a
+rate does not require the band to move. All three stay at weight 2.
+
+### What was wrong
+
+Three rows stated a rate per single point of a stat that reaches into the
+hundreds or thousands. None could be built as written.
+
+| Row | As written | What that produces |
+| :-- | :-- | :-- |
+| positive, weight 2 | Your retaliation damage is increased by 5%-10% for each point of armor you have | **36,497% to 72,994% increased** at the reference character's 7,299 armour |
+| negative, weight 2 | Your skills deal 5%-10% less damage for every class point spent above 100 | **650% to 1300% less** read as a sum; read as compounding multipliers it leaves **0.13% to 0.0001%** of the character's damage |
+| negative, weight 2 | Each class point above 50 reduces your maximum HP by 0.5%-1% | **90% to 180% of maximum health**, and the top of that range removes more than the character has |
+
+The passive point budget is 230. The Overview of the class passive tree section
+of `docs/Cataclysm_GDD_v2.md` states it: "The per-character point budget is
+230". So the two class point rows are read at 130 and 180 points above their
+thresholds.
+
+### What was decided
+
+The project owner, 2026-09-09, chose these three over a harsher variant and a
+milder one:
+
+| Row | Now reads |
+| :-- | :-- |
+| positive | Your retaliation damage is increased by **2%-4% for every 100 points of armor** you have |
+| negative | Your skills deal **1.5%-2.5% less damage for every 10 class points** spent above 100 |
+| negative | Your maximum HP is reduced by **1.5%-2.5% for every 10 class points** above 50 |
+
+### Where the shape comes from
+
+**Every game in the genre sizes a per-unit rate against the range the driving
+stat actually reaches, and puts a denominator on it when that stat is large.**
+
+| Game | What it does |
+| :-- | :-- |
+| Path of Exile | Strength grants 1% increased melee physical damage **per 5 Strength**. The unique body armour The Iron Fortress restates that as "3% increased Melee Physical Damage **per 10 Strength**" and grants "+1% Chance to Block Attack Damage **per 50 Strength**". |
+| Torchlight Infinite | 0.5% increased damage **per point of Strength**, where Strength stays in the hundreds, and "+1% Armor **for every 24 Strength**" where the ratio needs a denominator. |
+| Last Epoch | 4% increased armour **per point of Strength**, where attributes stay small. |
+| Diablo 4 | Thorns is a flat stat pushed through the ordinary damage multipliers rather than a per-point rate against a rating. |
+
+No shipped game states a whole-percent rate per point of a stat in the
+thousands, which is what all three of these rows did.
+
+**The wording is not an import.** Eight rows across the two enchantment tables
+already use the "for every N" denominator idiom, including "Your damage is
+increased by 0.01%-0.05% permanently for every 1000 enemies killed this run" and
+the Mana Weaver six-piece set bonus's "for every 100 maximum mana".
+
+### How the constants were chosen
+
+**The research settles the shape. The constants are a judgement**, made against
+the rows already written in the same weight band.
+
+**Armour was measured, not assumed.** `sim/cataclysm_sim/reference_build.py`, the
+assembled geared character the project fits its enemy numbers against, holds
+**7,299.42 armour**. A character spending two flat and one increased armour
+affix holds 1,065; one spending fourteen flat and seven increased holds 10,221.
+
+| Armour | 2% a hundred | 4% a hundred |
+| --: | --: | --: |
+| 1,065 | 21% | 43% |
+| 7,299 | 146% | 292% |
+| 10,221 | 204% | 409% |
+
+The comparable row, "Your retaliation damage is increased by 50%-100%", is
+unconditional and sits one band commoner at weight 3. Roughly three times that at
+a normal armour level is what a rarer band buys, and it has to be paid for in
+gear slots. It is also off-class work: the Masochist is the retaliation class and
+`docs/Cataclysm_GDD_v2.md` gives it 55 base armour and describes it as taking
+"retaliation and low armor".
+
+**The damage row lands on its own weight 2 sibling.** At the 230 point cap it is
+13 steps: 19.5% to 32.5% less read as a sum, and 17.8% to 28.0% read as
+compounding multipliers. The plain weight 2 drawback already in the sheet is "You
+deal 20%-35% less damage". Being safe under both readings is deliberate.
+
+**Its positive twin's rate was not copied.** "Each class point spent above 100
+grants 0.5%-1% increased damage" gives 65% to 130% at the cap, and the top of
+that removes more than all of a character's damage when it is read as "less". The
+twin is safe only because "increased" joins an additive sum while "less" is its
+own multiplier. That is the rule in the Stat Calculation section of
+`docs/Cataclysm_GDD_v2.md`.
+
+**The health row sits between the two rows that bracket it.** At the cap it is 18
+steps, so 27% to 45% of maximum health. "Each active minion reduces your maximum
+HP by 3%-6%" is weight 3 and reaches a comparable figure for a summoner, but only
+while minions are alive. "Your maximum HP cannot exceed 40%-60% of its normal
+value" is weight 1 and applies from the first level. This one is unconditional at
+the endgame and free below 50 points, which places it between them.
+
+---
+
 ## 2026-09-08 — The fourteenth set gets its drawback, and it strips one resistance at random
 
 **Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the

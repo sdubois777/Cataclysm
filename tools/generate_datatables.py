@@ -4451,6 +4451,78 @@ def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+#: The enchantment types the sheet may state.
+#:
+#: `Set` takes a row out of the ordinary weight bands, because
+#: `UCataclysmDropRoll::EnchantmentDrawWeight` prices the set identifier of 5 to
+#: 18 that a set row carries in its Weight column at zero. `Generic` leaves the
+#: row in the bands. Nothing else means anything to the game.
+ENCHANTMENT_TYPES = ("Generic", "Set")
+
+#: The tables whose rows carry a type. Named rather than found by pattern, so
+#: the check below knows what it is meant to have inspected.
+ENCHANTMENT_TABLES = ("EnchantmentsPositive", "EnchantmentsNegative")
+
+
+def validate_enchantment_types(tables: dict[str, list[dict]]) -> list[str]:
+    """Every enchantment row states a type the game recognises.
+
+    A BLANK CELL IS THE ONE THAT HIDES, AND ONE WAS BLANK. Issue #1486. A single
+    negative row -- "Your maximum HP cannot exceed 40%-60% of its normal value"
+    -- carried an empty Type where the other 195 said `Generic` or `Set`, and
+    nothing reported it for as long as the sheet existed.
+
+    IT WORKED BY ACCIDENT. The only code that reads the column,
+    `UCataclysmDropRoll::EnchantmentSuitsSlot`, asks whether the value IS `Set`
+    and refuses the row when it is. An empty string is not `Set`, so the row was
+    drawn, which is what the design wants of it. IT BREAKS THE MOMENT ANYTHING
+    ASKS THE QUESTION THE OTHER WAY ROUND. A filter that keeps `Generic`, or a
+    validator that requires a known type, drops that row instead -- one of the
+    eight severe drawbacks written at weight 1, so 12.5% of the weight 1
+    drawback pool would disappear with no failing test anywhere.
+
+    A MISSPELLING FAILS TOO, not only a blank, because `Genric` reads as "not a
+    set" in exactly the way an empty cell does and is just as quiet.
+
+    THE COMPARISON IGNORES CASE, which is what the game does:
+    `EnchantmentSuitsSlot` passes `ESearchCase::IgnoreCase`. A lowercase cell
+    works in the game, so failing generation over one would be this file
+    inventing a rule the game does not have.
+
+    IT REPORTS INSPECTING NOTHING. A check that looked at no rows passes for the
+    same reason a correct sheet does, and from the outside the two are
+    identical. If the enchantment tables stop carrying the column this says so
+    rather than falling silent.
+    """
+    known = {name.casefold() for name in ENCHANTMENT_TYPES}
+    present = [table for table in ENCHANTMENT_TABLES if table in tables]
+    problems = []
+    inspected = 0
+
+    for table in present:
+        for row in tables[table]:
+            if "EnchantmentType" not in row:
+                continue
+            inspected += 1
+            written = str(row["EnchantmentType"]).strip()
+            if written.casefold() in known:
+                continue
+            problems.append(
+                f"{table}/{row['Name']}: EnchantmentType is {written!r}. "
+                f"Every enchantment row must state one of "
+                f"{list(ENCHANTMENT_TYPES)}. A blank or misspelt cell is not "
+                f"'Set', so the draw keeps the row by accident and anything "
+                f"that filters for 'Generic' instead drops it in silence.")
+
+    if present and not inspected:
+        problems.append(
+            f"no row of {present} carries an EnchantmentType column, so this "
+            f"check inspected nothing and would have passed whatever the "
+            f"sheet held. Issue #1486 is the fault it is meant to catch.")
+
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
@@ -4488,6 +4560,7 @@ def main(argv: list[str] | None = None) -> int:
 
     problems = (validate_tags(tables, known_tags(book))
                 + validate_weights(tables)
+                + validate_enchantment_types(tables)
                 + validate_affix_slots(tables)
                 + validate_socket_slots(tables)
                 + validate_enemy_drop_rarities(tables)

@@ -637,7 +637,7 @@ def test_mana_does_not_absorb_damage_by_default():
 
 
 def test_mana_absorbs_damage_over_time_when_the_character_has_built_for_it():
-    """`EnchantmentsPositive.csv` line 202: "DoTs deal damage to your mana pool
+    """`EnchantmentsPositive.csv` line 201: "DoTs deal damage to your mana pool
     first". A positive enchantment, so it is off by default."""
     d = plain(mana=5000.0, mana_absorbs_damage_over_time=True)
     r = dm.resolve(hit(is_damage_over_time=True), d,
