@@ -358,6 +358,28 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("fervour_per_second"),
 		 TEXT("the Masochist's Low Life node, as a flat modifier")},
 
+		// Issue #1518. Both halves of the Ritualist's generator. Zero for every
+		// class, and that tree's starting node is the only source of either:
+		// "1 per second for each minion you have, and 5 when one of them dies".
+		//
+		// THE RATE'S ATTRIBUTE STAYS AT ZERO EVEN FOR A CHARACTER HOLDING THE
+		// NODE, like `fervour_per_second` above but for a different reason. That
+		// one carries a health CONDITION; this one carries the SCALE
+		// `minions_held`, and a scaled bonus is worked out against the minions
+		// actually out at the moment it is asked for -- it would be stale the
+		// moment one was summoned or died. `GainPerSecondStep` asks for it.
+		//
+		// THE DEATH BONUS IS FOLDED IN, unlike the rate beside it, because its
+		// row carries neither a condition nor a scale. That is why
+		// `GainOnMinionDeath` passes the attribute's own value as the fallback
+		// where the rate passes zero, and it is what makes the Fervour bar
+		// appear for a Ritualist that has not summoned anything yet.
+		{TEXT("fervour_from_minions"),
+		 TEXT("the Ritualist's Fervour node, as a flat modifier scaled by the "
+			  "minions held")},
+		{TEXT("fervour_on_minion_death"),
+		 TEXT("the Ritualist's Fervour node, as a flat modifier")},
+
 		// Issue #985. Whether dropping below half health turns damage taken into
 		// Bleeding. Zero for every class, and the Masochist's The Breaking Point
 		// is its only source. Unlike its neighbours above, this row carries no
@@ -607,9 +629,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 	// class table and the map; nothing read this list, so an entry whose stat
 	// had been removed from `StatToAttribute` -- or renamed -- became
 	// unreachable and stayed here stating where a stat that no longer exists
-	// gets its value. There are 52 entries and most are several lines of
+	// gets its value. There are 72 entries and most are several lines of
 	// explanation, so a stale one costs a reader real time and no test run
 	// mentions it.
+	//
+	// THAT FIGURE SAID 52 UNTIL 2026-09-09 AND WAS COUNTED RATHER THAN GUESSED
+	// WHEN IT WAS CORRECTED. It had drifted by eighteen before issue #1518
+	// added the last two, so most of the gap is not that issue's. Nothing
+	// checks this number, which is why it could drift at all; it is prose in a
+	// comment and the loop below counts the list itself.
 	//
 	// FOUND BY A GUARD PROOF RATHER THAN BY READING. Deleting
 	// `bleed_on_crit_chance` from `StatToAttribute` was predicted to fail this
