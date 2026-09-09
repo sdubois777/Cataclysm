@@ -4321,8 +4321,9 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
 #: found by distance to the cursor. A Deployable places machines and searches
 #: for nobody. `UCataclysmSelfBuffSkill` guards both of its radius reads with
 #: `ScaledRadiusCm() > 0.0f`, so a self buff that states no radius simply has no
-#: ring rather than a broken one. Six self buffs, three deployables and three
-#: debuffs state no radius today and all twelve are correct.
+#: ring rather than a broken one. Six self buffs, three deployables, three
+#: debuffs and one flickering movement state no radius today -- thirteen rows --
+#: and all thirteen are correct.
 #:
 #: TWO OF THE FIVE ARE CONDITIONAL, which is why this is a function and not a
 #: set. `Mode=Flicker` returns from `ActivateAbility` before the switch that
