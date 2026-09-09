@@ -105,6 +105,164 @@ the endgame and free below 50 points, which places it between them.
 
 ---
 
+## 2026-09-09 — The Ultimate slot costs 50 Fervour, and a Ritualist holding five thralls will not be able to cast one
+
+**Affects:** `game/Data/SkillSlots.csv`, which states what one use of each skill
+slot costs, and the row struct behind it in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`. Nothing is built yet; this
+records the ruling so the build matches it.
+
+**The ruling, in the project owner's words:** "option 1, and any minions/gadgets
+reserve it."
+
+### What was chosen
+
+**One number: the Ultimate slot costs 50 Fervour, on top of its existing 150
+mana.** Every class can cast an Ultimate, so a shared bar buys a shared spender
+with no per-class authoring, which is what `docs/Cataclysm_GDD_v2.md` already
+promises: a character "can spend it on either tree's abilities".
+
+Two alternatives were put to the owner and refused: 30 Fervour, and charging the
+Aura slot per second as well as the Ultimate per cast.
+
+### It goes on the slot and not on the skill, and that is a correction to issue #1478
+
+Issue [#1478](https://github.com/sdubois777/Cataclysm/issues/1478) proposed a
+Fervour cost column on `game/Data/WeaponSkills.csv` beside its `ManaCost` column.
+**That would have been a second empty column beside an empty one.** Measured
+2026-09-09 across all 403 rows of that file:
+
+| Column | Distinct values across 403 rows |
+| :-- | :-- |
+| `ManaCost` | `-1.0` only |
+| `Cooldown` | `-1.0` only |
+| `CritChancePercent` | `-1.0` only |
+
+`-1` means "take the slot's", which `FCataclysmWeaponSkillRow::ManaCost` states
+in its own comment. The costs live in `game/Data/SkillSlots.csv`, seven rows:
+Basic 0 mana and 6 restored per hit, Heavy 15, Special 40, Support 25, Aura 20
+per second, Ultimate 150, Movement 20. So this is one number in one row rather
+than 403.
+
+### What the genre research settles
+
+**A build-and-spend loop is the shape.** Diablo 4's
+[Barbarian](https://diablo4.wiki.fextralife.com/Barbarian+Fury+Skills) generates
+Fury on Basic skills and spends it on Core skills.
+
+**A spammable spender costs about a fifth to a quarter of the pool.**
+[Fury](https://diablo.fandom.com/wiki/Fury_(resource)) has a base maximum of 100;
+Rend costs 25, Double Swing 25, Hammer of the Ancients 20.
+
+**Paying a player for holding a resource is legitimate, and a hoarding problem is
+a missing consumer rather than a bad bonus.** Path of Exile's
+[Rage](https://pathofexile.fandom.com/wiki/Rage) caps at 50, decays when not
+gained, and grants damage and speed in proportion to what is held; Berserk then
+consumes it.
+
+**A channel drains per second rather than per cast.** Last Epoch's
+[Warpath](https://www.lastepochtools.com/skills/warpath) costs 10 up front and 20
+per second.
+
+### What the research does not settle, which is the judgement
+
+**No shipped game in the genre charges both a mana cost and a second resource on
+the same ordinary skill.** In Diablo 4 Fury *is* the cost and there is no mana; in
+Path of Exile mana is the cost and Rage gates one specific skill. Cataclysm has
+both bars, so the honest reading is that a second resource gates one high-impact
+thing rather than taxing everything. Which slot that is, and the size of the
+number, are this project's judgement and not read off another game.
+
+The Ultimate is the slot the game already gates: 20 second cooldown, 400% damage,
+150 mana. Fifty is half the 100 base pool, which gates the opening of a fight
+rather than the whole of it — a Ravager fighting five enemies refills it well
+inside the 20 second cooldown.
+
+### Why this was needed at all: eighteen nodes were flat bonuses
+
+**Eighteen nodes pay out only when the bar is full**, counted 2026-09-09 over
+every node and capstone option in `game/Data/PassiveNodes.csv` matching any of
+the three wordings the trees use -- "at maximum Fervour", "your Fervour is at
+maximum" and "full Fervour". They are twelve in the Berserker tree, five in the
+Bulwark and one in the Masochist.
+
+**None of the eighteen is in the Ravager or the Ritualist**, and that is worth
+stating because those are the two trees this work is about. The Ravager's own
+stake is different and smaller: two nodes, `Unspent Ruin` and `Banked Ruin`, pay
+out per full 20 and per full 25 Fervour held.
+
+**With nothing draining the bar, every one of the twenty is a flat bonus a few
+seconds into any fight rather than a resource decision.** That is what issue
+#1478 was about, and it is a bigger problem for the Berserker than for either
+tree being authored here.
+
+A comment in `tools/tests/test_passive_effects_match_the_node_text.py` says
+"seventeen nodes across the four trees". That was written before the Ravager and
+Ritualist trees existed and counts two of the three wordings; the figure above
+was re-measured rather than copied.
+
+### The known consequence: a five-thrall Ritualist cannot cast an Ultimate
+
+**The owner decided this with the consequence in front of them, and it is not an
+oversight.** The Ritualist's pool is 150 and each thrall reserves 30, so five
+thralls reserve all of it.
+
+Nothing happens today, because nothing separates available Fervour from total:
+`UCataclysmCommand::HasRoomForAnotherThrall` reads the maximum rather than the
+current value. **The day issue
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160) makes a reservation
+subtract from the spendable pool, a Ritualist holding five thralls will have
+nothing left and will not be able to cast an Ultimate at 50.** Whoever builds
+#1160 should find this entry rather than discover the interaction in play.
+
+### Minions and gadgets reserve Fervour, and that half is a reaffirmation
+
+The second half of the ruling restates the decision of 2026-09-07 rather than
+changing it. Measured 2026-09-09: of the 63 skills in
+`game/Data/WeaponSkills.csv` that have a `Shape` and are therefore built, every
+one whose shape is `Summon` or `Deployable` carries a `FervourReserve` — Bolt
+Turret 5, Ballista 5, Iron Fortress 5, Summon Imp 10, Subjugate 30. **There is no
+gap among built skills.**
+
+**There are ten unbuilt skills the rule will apply to, and nothing recorded that
+until now.** Twenty rows carry a `Type.Minion`, `Type.Summon`, `Type.Deployable`
+or `Type.Trap` tag; five reserve, and of the fifteen that do not, twelve have a
+blank `Shape` and empty `ShapeParams`, which means they are designed and not
+built. Ten of those twelve describe planting something that persists and acts on
+its own: `Gut Wire`, `Impaler`, `Grapple`, `Vanishing Trap`, `Bolt Trap`,
+`Proximity Mine`, `Shield Wall`, `Snare Line`, `Artillery Barrage` and
+`Death by a Thousand Cuts`.
+
+**Which of those counts as a gadget is a judgement and it is recorded as one.**
+The two excluded are `Cavalry Charge`, which triggers traps already on the ground
+and lays none, and `Phalanx Stance`, which buffs gadgets already out. The three
+remaining non-reserving rows are built and correctly do not reserve, because they
+command minions that already exist rather than create any: `Quarry`, `Compel` and
+`Vesselstep`.
+
+**A blank `Shape` is not evidence that a skill is not a gadget**, and reading it
+that way is how this was nearly recorded as "no gap at all". It means the skill
+has no behaviour yet.
+
+### What this does not decide
+
+**Whether anything other than the Ultimate costs Fervour.** The Aura slot is the
+natural second candidate, because it already drains 20 mana per second, so a
+Fervour drain per second would need no new shape. It was offered and not taken.
+
+**Whether the Ritualist gets Fervour spenders. It does not.** Its use of the
+resource is reservation. Three spenders were proposed on 2026-09-08 and
+withdrawn, and this ruling does not revive them.
+
+**How the Ravager's three Fervour spenders interact with this cost.**
+`Set Against It`, `Bought With Ruin` and `Wrung Out` state their own costs and
+need no decision, but nothing has measured a Ravager paying all four at once.
+
+**Nothing here is built.** No column exists on `game/Data/SkillSlots.csv`, no
+field on its row struct, and no skill has yet been refused for want of Fervour.
+
+---
+
 ## 2026-09-08 — The fourteenth set gets its drawback, and it strips one resistance at random
 
 **Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the
