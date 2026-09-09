@@ -145,7 +145,7 @@ Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2,Necrosis stacks reduce e
 Positive_Void_splinter_stacks_detonate_for_50_100_incre,Void splinter stacks detonate for 50%-100% increased damage,Generic,3.0,Keyword.DoT.VoidSplinter,False
 Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh,Void splinter stacks spread to nearby enemies when the afflicted enemy dies,Generic,3.0,"Keyword.DoT.VoidSplinter, Trigger.OnDeath, Type.AOE.PointBlank",False
 Positive_Your_retaliation_damage_is_increased_by_50_100,Your retaliation damage is increased by 50%-100%,Generic,3.0,Stat.Defense.Retaliation,False
-Positive_Your_retaliation_damage_is_increased_by_5_10_f,Your retaliation damage is increased by 5%-10% for each point of armor you have,Generic,2.0,"Stat.Defense.Retaliation, Stat.Defense.Armor",False
+Positive_Your_retaliation_damage_is_increased_by_2_4_fo,Your retaliation damage is increased by 2%-4% for every 100 points of armor you have,Generic,2.0,"Stat.Defense.Retaliation, Stat.Defense.Armor",False
 Positive_Your_retaliation_damage_is_tripled_while_below_3,Your retaliation damage is tripled while below 30% HP,Generic,3.0,"Stat.Defense.Retaliation, Trigger.LowLife",False
 Positive_Retaliation_damage_hits_all_enemies_within_3_5_m,Retaliation damage hits all enemies within 3-5 meters of you,Generic,3.0,"Stat.Defense.Retaliation, Type.AOE.PointBlank",False
 Positive_Each_hit_you_take_increases_your_retaliation_dam,"Each hit you take increases your retaliation damage by 5%-10% for 5 seconds, stacking up to 10 times",Generic,3.0,"Stat.Defense.Retaliation, Trigger.OnHit",False

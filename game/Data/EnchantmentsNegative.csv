@@ -92,7 +92,7 @@ Negative_You_deal_no_retaliation_damage,You deal no retaliation damage,Generic,3
 Negative_Spells_have_a_15_25_chance_to_backfire_dealing,Spells have a 15%-25% chance to backfire dealing half damage to you,Generic,3.0,Type.Spell,True
 Negative_You_start_every_dungeon_floor_at_30_50_of_your,You start every dungeon floor at 30%-50% of your maximum HP,Generic,3.0,"Trigger.LowLife, Stat.Defense.Life",True
 Negative_Every_10_seconds_you_lose_5_10_of_your_current,Every 10 seconds you lose 5%-10% of your current HP,Generic,3.0,"Trigger.Timer, Stat.Defense.Life",True
-Negative_Your_skills_deal_5_10_less_damage_for_every_cl,Your skills deal 5%-10% less damage for every class point spent above 100,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",True
+Negative_Your_skills_deal_1_5_2_5_less_damage_for_every,Your skills deal 1.5%-2.5% less damage for every 10 class points spent above 100,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",True
 Negative_You_deal_20_35_less_damage_to_non_Boss_enemies,You deal 20%-35% less damage to non-Boss enemies,Generic,3.0,"Scope.BossOnly, Stat.Offense.Global",True
 Negative_You_take_15_25_increased_damage_from_Boss_enem,You take 15%-25% increased damage from Boss enemies,Generic,4.0,"Scope.BossOnly, Stat.Defense.Global",True
 Negative_Bleed_effects_applied_to_you_deal_30_50_increa,Bleed effects applied to you deal 30%-50% increased damage,Generic,4.0,Keyword.DoT.Bleed,True
@@ -100,7 +100,7 @@ Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse,You cannot cure or red
 Negative_Melee_damage_you_deal_is_reduced_by_15_30,Melee damage you deal is reduced by 15%-30%,Generic,3.0,"Stat.Defense.Melee, Type.Melee",True
 Negative_Enemies_ignore_10_20_of_your_armor,Enemies ignore 10%-20% of your armor,Generic,4.0,"Stat.Offense.Penetration, Stat.Defense.Armor",True
 Negative_Enemies_ignore_10_20_of_your_resistances,Enemies ignore 10%-20% of your resistances,Generic,4.0,"Stat.Offense.Penetration, Stat.Defense.Resist",True
-Negative_Each_class_point_above_50_reduces_your_maximum_H,Each class point above 50 reduces your maximum HP by 0.5%-1%,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Defense.Life",True
+Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever,Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above 50,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Defense.Life",True
 Negative_Projectiles_deal_10_30_less_damage,Projectiles deal 10-30% less damage,Generic,4.0,Type.Projectile,True
 Negative_Cannot_block,Cannot block,Generic,3.0,Stat.Defense.Block,True
 Negative_Take_10_20_more_damage_from_Boss_enemies,Take 10%-20% more damage from Boss enemies,Generic,4.0,Scope.BossOnly,True
