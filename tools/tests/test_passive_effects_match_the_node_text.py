@@ -364,7 +364,29 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:                           a flag saying Carnage has no maximum, and the 2%
 #:                           more damage a stack is worth, which is two rows
 #:                           because "damage" is two stats in this sheet
-AUTHORED_ROWS = 130
+#:
+#: AND TO 197 ON 2026-09-09, FOR THE RAVAGER AND THE RITUALIST. Issue #1463.
+#: Seventy-two rows on 66 nodes: 37 rows on 34 Ravager nodes and 35 rows on 32
+#: Ritualist ones, five of them on three capstone options. Every one of them is a plain per-point stat modifier the
+#: node's own sentence already states, which is what made them transcribable at
+#: all; the two trees were written with per-point wording on purpose.
+#:
+#: MORE ROWS THAN NODES BECAUSE FOUR NODES STATE TWO STATS. Thick Hide is armour
+#: and maximum health, Closing Ground and Hunter's Pace are movement speed and
+#: attack speed, and Long Stride is one stat but its neighbours are not.
+#:
+#: TWO OF THE 67 CARRY A SCALE, and it is the one scale that already existed.
+#: Unspent Ruin and Banked Ruin read "for every full 20 Fervour you currently
+#: hold" and "for every full 25", which is `class_resource_held` with a step of
+#: 20 and of 25.
+#:
+#: THE REST OF THE TWO TREES IS NOT AUTHORED AND THE REASON IS NOT LAZINESS.
+#: 84 of the 148 nodes need something that does not exist yet: a stat with no
+#: gameplay attribute behind it (every minion node, issue #898), a condition
+#: nothing can express ("while an enemy is within 4 metres"), a scale nothing
+#: counts ("for each enemy your attack hits beyond the first"), or a rule rather
+#: than a modifier, which is every keystone. Issue #1463 lists them one by one.
+AUTHORED_ROWS = 202
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -562,7 +584,15 @@ AUTHORED_ROWS = 130
 #: its 74 nodes authored, Saboteur 1 of 74, and Berserker none of its 71.
 #: Issue #939 measures why most nodes are not stat modifiers under any
 #: authoring scheme, and that reasoning is unchanged.
-AUTHORED_NODES = 78
+#:
+#: AND TO 144 ON 2026-09-09, when the Ravager and the Ritualist got the rows
+#: they could have without new code. Issue #1463. Ravager 34 of its 74 and
+#: Ritualist 32 of its 74, so the share that grants something is 144 of 441
+#: rather than 78 of 441 -- 33% where it was 18%.
+#:
+#: THE SIX TREES NOW STAND AT: Masochist 74 of 74, Ravager 34 of 74, Ritualist
+#: 32 of 74, Bulwark 3 of 74, Saboteur 1 of 74, Berserker 0 of 71.
+AUTHORED_NODES = 144
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -587,11 +617,26 @@ AUTHORED_NODES = 78
 #: Bottom, Ceaseless Penance and Carnivore, the last three of its twelve
 #: options that granted nothing. All twelve now do.
 #:
-#: 12 IS THE MASOCHIST'S WHOLE SHARE OF THIS COUNT. The remaining 24 named
-#: options belong to the Bulwark and the Berserker and are unauthored, which is
-#: part of those trees being unbuilt. If this number rises past 12 without one
-#: of those trees being started, something has been authored by accident.
-AUTHORED_OPTIONS = 12
+#: AND FROM 12 TO 15 ON 2026-09-09, for the three of the Ravager's and the
+#: Ritualist's 24 new options that are plain stat modifiers. Issue #1463.
+#: Warded Flesh and Open Channel are authored in full; Headlong is authored
+#: for its movement speed only, because its second clause needs a "first
+#: attack after moving 5 metres" trigger that does not exist.
+#:
+#: THE OTHER 45 NAMED OPTIONS ARE UNAUTHORED: twelve each on the Bulwark and
+#: the Berserker, eleven on the Ravager and ten on the Ritualist. This said 24
+#: and named two trees until 2026-09-09, which was written before the Ravager
+#: and Ritualist trees existed.
+#:
+#: THE 21 THAT REMAIN ON THOSE TWO TREES ARE UNAUTHORED FOR A REASON RATHER
+#: THAN BY OMISSION. Issue #1463 read all 24. They are rules, triggers or
+#: minion stats -- "You may hold a two-handed weapon in each hand", "Your
+#: minions repeat each skill you cast" -- so authoring them is the C++ half of
+#: that issue and not this sheet.
+#:
+#: If this number rises without one of the four unfinished trees being
+#: started, something has been authored by accident.
+AUTHORED_OPTIONS = 15
 
 #: How many capstone options are named at all, across every tree.
 #:

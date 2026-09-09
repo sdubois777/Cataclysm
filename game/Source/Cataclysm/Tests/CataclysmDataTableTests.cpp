@@ -351,7 +351,17 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// twelve of the Masochist's capstone options now grant something, which the
 	// node count above could never see: a capstone counts as authored the
 	// moment ANY of its three options has a row.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        130)
+	// AND TO 202 FOR THE RAVAGER AND THE RITUALIST. Issue #1463. The two trees
+	// landed on 2026-09-07 with 148 nodes and 24 capstone options between them
+	// and no rows at all, so every one of them was text. Seventy-two rows on 66
+	// of those nodes now: 37 on 34 Ravager nodes and 35 on 32 Ritualist ones,
+	// five of them on three capstone options.
+	//
+	// ONLY THE NODES THAT NEED NO NEW CODE. The other 82 need a stat with no
+	// gameplay attribute behind it, a condition or a scale that does not exist,
+	// or a rule rather than a modifier. Every keystone in both trees is of that
+	// kind, which is the finding issue #939 made about the other trees.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        202)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
