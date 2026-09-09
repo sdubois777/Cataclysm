@@ -842,7 +842,24 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	const bool bStatesAnAmount = Numbers.FlatDamagePerTick > 0.0f
 		|| Numbers.PercentOfHit > 0.0f;
 	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && bStatesAnAmount;
-	if (!Numbers.bUsable)
+
+	// THE WARNING IS NOT `!bUsable`, AND THAT IS THE WHOLE OF ISSUE #1516.
+	// `bUsable` asks whether this row is DAMAGE OVER TIME, and four callers read
+	// it for exactly that, so it is right that Shred's is false and it is left
+	// alone here. Reading it a second way -- as "is this row broken" -- is what
+	// accused five working rows of lacking damage they were never meant to carry.
+	// It fired 16,033 times in the 2026-09-09 Horde session, 56% of all 28,693
+	// lines, 12,284 of them Shred alone.
+	//
+	// A STRENGTH IS THE OTHER WAY A ROW CAN BE WRITTEN, which the comment fifteen
+	// lines above already says: Shred's 10 resistance and Cripple's 30% slow are
+	// applied by `ApplyNamedEffect` and never by the path below.
+	//
+	// A ROW STATING NEITHER STILL WARNS, and that is the half worth keeping. That
+	// row is the one nobody wrote -- Burn had neither until issue #895 -- and a
+	// guard relaxed past this point could not fire at all.
+	const bool bStatesAStrength = Numbers.Strength > 0.0f;
+	if (!Numbers.bUsable && !bStatesAStrength)
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("%s states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
