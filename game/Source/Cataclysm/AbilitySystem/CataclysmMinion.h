@@ -232,7 +232,9 @@ public:
 	 * IT MARKS AND DOES NOT REMOVE. The actor still goes away on the lifespan
 	 * `Spawn` gave it, exactly as before, so nothing about spawning or the
 	 * summon cap changes. A dead minion's body staying in the level until then
-	 * is a separate fault and has its own issue.
+	 * is a separate fault and is issue #1528, which lists what
+	 * `ACataclysmEnemyCharacter::HandleDeath` does that a minion may or may not
+	 * want -- dropping loot and writing the run record are two it should not.
 	 */
 	virtual void HandleDeath() override;
 	//~ End

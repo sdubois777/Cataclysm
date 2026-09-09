@@ -1024,6 +1024,20 @@ bool FCataclysmRitualistNoMinionsTest::RunTest(const FString&)
 	Imp->HandleDeath();
 	TestTrue(TEXT("and the dead minion is recorded as dead"),
 		UCataclysmSkillEffects::IsDead(Imp));
+
+	// THE BODY IS STILL HERE, AND THIS ASSERTION DESCRIBES CURRENT BEHAVIOUR
+	// RATHER THAN ENDORSING IT. Issue #1528. `ACataclysmMinion::HandleDeath`
+	// marks and does not remove, so the lifespan `Spawn` gave the minion is
+	// still what takes it out of the level -- an imp killed a second after
+	// being summoned stands there for the remaining 19 of its 20 seconds.
+	//
+	// IT IS ASSERTED BECAUSE THE GENERATOR HAS TO BE RIGHT WHILE IT HOLDS. The
+	// check below is only meaningful if the corpse is still present to be
+	// counted; without this line a run where the body had been removed would
+	// pass it for the wrong reason.
+	//
+	// IF #1528 REMOVES THE BODY, THIS IS THE LINE THAT CHANGES, and that issue
+	// says so in as many words so whoever changes it knows why it was here.
 	TestTrue(TEXT("its body is still in the level"), IsValid(Imp));
 
 	SetFervour(Commander, 0.0f);
@@ -1113,6 +1127,40 @@ bool FCataclysmRitualistDeathTest::RunTest(const FString&)
 	TestTrue(TEXT("the minion is recorded as dead"),
 		UCataclysmSkillEffects::IsDead(Imp));
 	TestEqual(TEXT("and its commander was paid five for it"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	// AND A THRALL DYING PAYS TOO, WHICH IS A DIFFERENT CODE PATH FROM THE IMP
+	// ABOVE AND NOT THE SAME CASE TWICE. `UCataclysmCommand::CommanderOf` finds
+	// a summoned minion's commander through `ACataclysmMinion::Summoner`, and
+	// everything else through `GetOwner()`. A thrall is a subjugated
+	// `ACataclysmEnemyCharacter` rather than a minion, so it takes the second
+	// branch, and only the first was covered until this.
+	//
+	// IT WORKS BECAUSE `Subjugate` OVERWRITES THE OWNER. Unreal's own
+	// `APawn::PossessedBy` sets a pawn's owner to the controller that possessed
+	// it, so a creature's owner is its AI controller until something replaces
+	// it; `Subjugate` calls `SetOwner(Commander)` and does. Without that this
+	// would pay the creature's own controller, which holds no Fervour, and the
+	// bar would not move -- a failure that looks like the generator being
+	// broken rather than like a lookup taking the wrong branch.
+	FScopedCreature Thrall(World, FVector(5 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken as a thrall"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor));
+
+	SetFervour(Commander, 0.0f);
+	UAbilitySystemComponent* ThrallSystem =
+		UCataclysmTargeting::AbilitySystemOf(Thrall.Actor);
+	if (!ThrallSystem)
+	{
+		AddError(TEXT("The thrall has no ability system."));
+		return false;
+	}
+	ThrallSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+	TestTrue(TEXT("the thrall is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Thrall.Actor));
+	TestEqual(TEXT("and its commander was paid five for it as well"),
 		FervourOf(Commander), 5.0f, 0.001f);
 
 	// AND HURTING THE BODY AGAIN PAYS NOTHING FURTHER. A burn ticking on a

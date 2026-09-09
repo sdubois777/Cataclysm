@@ -1205,9 +1205,31 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// THE COMMANDER'S ABILITY SYSTEM, NOT THE DYING THING'S. A minion has no
 	// class resource attribute set, so passing its own would answer zero.
 	//
-	// INERT FOR EVERYTHING THAT FOLLOWS NOBODY, which is every creature in the
-	// game but a Ritualist's: `CommanderOf` answers null and the grant is
-	// skipped without asking anything else.
+	// INERT FOR EVERYTHING THAT FOLLOWS NOBODY, WHICH IS EVERY CREATURE IN THE
+	// GAME BUT A RITUALIST'S -- BUT NOT BECAUSE `CommanderOf` ANSWERS NULL. It
+	// usually does not. For anything that is not an `ACataclysmMinion` it
+	// answers `GetOwner()`, and Unreal's own `APawn::PossessedBy` sets a pawn's
+	// owner to the controller that possessed it, so an ordinary monster answers
+	// with its own AI controller rather than with nothing.
+	//
+	// WHAT MAKES IT INERT IS THE STEP AFTER. An AI controller carries no
+	// ability system, so `AbilitySystemOf` answers null and
+	// `GainOnMinionDeath` returns on its first line. A player's pawn answers
+	// its player controller and lands in the same place.
+	//
+	// A THRALL IS THE CASE THAT HAS TO WORK, AND IT DOES BECAUSE `Subjugate`
+	// OVERWRITES THE OWNER: it calls `SetOwner(Commander)` on the creature it
+	// takes, which replaces whatever the possession set. That is load-bearing
+	// for more than this -- the comment there records that `TeamOf` walks the
+	// owner chain and `ThingsCommandedBy` finds a thrall by asking who owns it.
+	//
+	// THE WORDING ABOVE USED TO SAY `CommanderOf` ANSWERED NULL HERE. The
+	// behaviour was right and the reason was wrong, which is worse than it
+	// sounds: a later reader trusting it might drop the null check on the
+	// ability system as redundant. The owner-is-the-controller fault is issue
+	// #1525 and is being fixed separately; this call site is correct either
+	// way, because it asks whether the commander can hold Fervour rather than
+	// assuming a non-null answer means a commander.
 	if (AActor* Commander = UCataclysmCommand::CommanderOf(Character))
 	{
 		UCataclysmFervour::GainOnMinionDeath(
