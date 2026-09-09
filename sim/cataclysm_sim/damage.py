@@ -528,7 +528,7 @@ class Defender:
     shield_absorbs_damage_over_time: bool = False
 
     #: Damage over time hits mana before health. From a POSITIVE enchantment,
-    #: `EnchantmentsPositive.csv` line 202, "DoTs deal damage to your mana pool
+    #: `EnchantmentsPositive.csv` line 201, "DoTs deal damage to your mana pool
     #: first" -- so this is off by default and is a mana-stacking build choice.
     mana_absorbs_damage_over_time: bool = False
 
