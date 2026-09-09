@@ -531,4 +531,150 @@ bool FCataclysmBurnHasNumbersTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmSkillShapeTest
+{
+	/**
+	 * True when a radius of zero would leave this row finding nobody.
+	 *
+	 * THE SAME FIVE ANSWERS AS `shape_searches_with_the_radius` IN
+	 * `tools/generate_datatables.py`, AND THE TWO ARE KEPT TOGETHER BY HAND.
+	 * The generator refuses to build a bad row and this refuses to load one, and
+	 * the second is worth having because they can disagree: the CSV and the
+	 * DataTable asset the game actually reads are two files, and a stale asset
+	 * has masked a C++ failure here before.
+	 *
+	 * Each answer is a branch in `CataclysmSkillTemplates.cpp` that hands
+	 * `ScaledRadiusCm()` to a targeting search -- `UCataclysmStrikeSkill::
+	 * SwingOnce`, `UCataclysmProjectileSkill::Land`, `UCataclysmAuraSkill::
+	 * Pulse`, `UCataclysmMovementSkill::ActivateAbility` and
+	 * `UCataclysmSummonSkill::Possess`. The shapes that are absent read no
+	 * radius: a Debuff searches `Range` around the caster and sorts by the
+	 * cursor, a Deployable searches for nobody, and a SelfBuff guards its two
+	 * radius reads with `ScaledRadiusCm() > 0.0f`.
+	 */
+	bool SearchesWithTheRadius(ECataclysmSkillShape Shape,
+							   const FCataclysmSkillShapeParams& Params)
+	{
+		switch (Shape)
+		{
+		case ECataclysmSkillShape::Strike:
+		case ECataclysmSkillShape::Projectile:
+		case ECataclysmSkillShape::Aura:
+			return true;
+
+		// A FLICKER BUILDS ITS CIRCUIT OUT OF `Range` AND RETURNS BEFORE THE
+		// SWITCH THAT READS THE RADIUS, so Everywhere at Once is the one
+		// movement row that needs none.
+		case ECataclysmSkillShape::Movement:
+			return Params.MovementMode != ECataclysmMovementMode::Flicker;
+
+		// A SUMMON ONLY SEARCHES WHEN IT IS TAKING A CREATURE RATHER THAN MAKING
+		// ONE. Summon Imp's radius is read by `Collapse`, which guards it.
+		case ECataclysmSkillShape::Summon:
+			return Params.bPossess;
+
+		default:
+			return false;
+		}
+	}
+}
+
+/**
+ * Every row whose search reads the radius states one greater than zero.
+ *
+ * ISSUE #1519. Subjugate, the Staff's Demonic Ultimate, stated `Range=15` and no
+ * `Radius`. `FCataclysmSkillShapeParams::RadiusCm` defaults to zero, every
+ * branch of `UCataclysmSkillTemplate::ScaledRadiusCm` multiplies that zero, and
+ * `UCataclysmSummonSkill::Possess` hands the result to a collision overlap. The
+ * skill searched a sphere of no size, so it found a target only if the aimed
+ * point happened to land inside a body. It spent its cooldown, dealt no damage
+ * and took nobody, eleven casts running, and logged nothing about why.
+ *
+ * THE FILE COMMENT AT THE TOP OF THIS FILE ALREADY DESCRIBED THE FAILURE and no
+ * test looked for it: "a radius of zero produces a skill that activates, spends
+ * mana, starts its cooldown and hits nothing -- which is indistinguishable from
+ * a skill somebody forgot to finish."
+ *
+ * AND ONE TEST LOOKED AS THOUGH IT SHOULD HAVE CAUGHT IT.
+ * `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth` casts
+ * Subjugate and checks it takes a wounded creature, but it writes its own
+ * parameter string with `Radius=15` in it -- a figure in no row of the real
+ * data. It proved the mechanism and could not see the row, which is why this one
+ * reads the shipped table and nothing else.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetedShapeStatesARadiusTest,
+	"Cataclysm.SkillShape.EveryShapeThatSearchesWithItsRadiusStatesOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTargetedShapeStatesARadiusTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillShapeTest;
+
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!Table)
+	{
+		AddError(TEXT("Could not load the weapon skill table."));
+		return false;
+	}
+
+	int32 Searching = 0;
+	bool bReachedSubjugate = false;
+	TArray<FString> Problems;
+
+	Table->ForeachRow<FCataclysmWeaponSkillRow>(
+		TEXT("FCataclysmTargetedShapeStatesARadiusTest"),
+		[&](const FName& RowName, const FCataclysmWeaponSkillRow& Row)
+		{
+			if (Row.Shape.IsEmpty())
+			{
+				return;
+			}
+
+			const ECataclysmSkillShape Shape =
+				UCataclysmSkillShapes::ShapeFromName(Row.Shape);
+			const FCataclysmSkillShapeParams Params =
+				UCataclysmSkillShapes::ParseParams(Row.ShapeParams);
+
+			if (!SearchesWithTheRadius(Shape, Params))
+			{
+				return;
+			}
+
+			++Searching;
+			if (RowName == FName(TEXT("Demonic_Staff_Ultimate")))
+			{
+				bReachedSubjugate = true;
+			}
+
+			if (Params.RadiusCm <= 0.0f)
+			{
+				Problems.Add(FString::Printf(
+					TEXT("%s is shape '%s', which finds who it hits with its "
+						 "radius, and states a radius of %.0fcm. It would search "
+						 "an area of no size and take nobody."),
+					*RowName.ToString(), *Row.Shape, Params.RadiusCm));
+			}
+		});
+
+	for (const FString& Problem : Problems)
+	{
+		AddError(Problem);
+	}
+
+	// THE WALK HAS TO HAVE REACHED SOMETHING. A test that examined no rows at
+	// all -- an empty table, a parse that failed, a helper that answered false
+	// to everything -- would otherwise report a clean pass, which is the exact
+	// shape of the silence this issue was about.
+	TestTrue(FString::Printf(
+		TEXT("At least thirty rows search with their radius (found %d)"),
+		Searching), Searching >= 30);
+
+	// AND IT HAS TO HAVE REACHED THE ROW THIS ISSUE WAS ABOUT, by name. Without
+	// this the test still passes if `bPossess` stops being read, because a
+	// Subjugate that is no longer classified as searching is simply skipped.
+	TestTrue(TEXT("Subjugate is one of the rows checked"), bReachedSubjugate);
+
+	return Problems.IsEmpty();
+}
+
 #endif // WITH_AUTOMATION_TESTS

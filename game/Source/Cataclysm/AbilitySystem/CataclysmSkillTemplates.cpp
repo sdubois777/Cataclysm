@@ -3029,6 +3029,14 @@ bool UCataclysmSummonSkill::Possess()
 	AActor* Self = Avatar();
 	if (!Self)
 	{
+		// EVERY REFUSAL IN THIS FUNCTION SAYS WHY, INCLUDING THE ONES THAT SHOULD
+		// NOT HAPPEN. Issue #1519: three of the five exits returned false in
+		// silence, so a verbose run and a console command together still could not
+		// say which of them a failing cast took. The two that did log were the two
+		// that were ruled out, which left the real cause unnamed.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' ran with no avatar, so it searched for nothing."),
+			*SkillName);
 		return false;
 	}
 
@@ -3043,6 +3051,17 @@ bool UCataclysmSummonSkill::Possess()
 	{
 		// Nothing where the player pointed. The skill was spent, which is the
 		// same answer every other aimed skill gives for a miss.
+		//
+		// IT NAMES THE SIZE OF THE SPHERE IT SEARCHED, WHICH IS THE WHOLE POINT
+		// OF THE LINE. Issue #1519 was a row that stated no `Radius`, so this
+		// search ran at zero and could only ever find something standing exactly
+		// on the aimed point. A miss and a radius of zero are the same silence
+		// without the number, and telling them apart took a play log, eleven
+		// casts and a reading of the damage lines either side.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' found nothing within %.0fcm of the point it was aimed at, "
+				 "%.0fcm out, so it took nobody."),
+			*SkillName, ScaledRadiusCm(), Params.RangeCm);
 		return false;
 	}
 
@@ -3063,6 +3082,13 @@ bool UCataclysmSummonSkill::Possess()
 		UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!AbilitySystem)
 	{
+		// THE BLOW HAS ALREADY LANDED BY HERE, so this is not a miss: it is a
+		// creature whose health cannot be read at all. Worth naming, because it
+		// looks exactly like the health threshold refusing from outside.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' hit '%s', which has no ability system, so its health could "
+				 "not be read and it could not be taken."),
+			*SkillName, *Target->GetName());
 		return false;
 	}
 
