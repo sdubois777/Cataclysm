@@ -1202,9 +1202,6 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	// `ACataclysmMinion::HandleDeath` had to be given to it for that to be true
 	// of an imp as well as of a thrall.
 	//
-	// THE COMMANDER'S ABILITY SYSTEM, NOT THE DYING THING'S. A minion has no
-	// class resource attribute set, so passing its own would answer zero.
-	//
 	// INERT FOR EVERYTHING THAT FOLLOWS NOBODY, which is every creature in the
 	// game but a Ritualist's. `CommanderOf` answers null for an ordinary
 	// monster and the grant is skipped without asking anything else.
