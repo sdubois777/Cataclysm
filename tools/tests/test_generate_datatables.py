@@ -372,6 +372,83 @@ class TestValidation:
         assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
 
 
+class TestAnEnchantmentRowMustStateAType:
+    """ISSUE #1486. One negative row had an empty Type for as long as the sheet
+    existed and nothing anywhere reported it.
+
+    WHY IT WAS SILENT. `UCataclysmDropRoll::EnchantmentSuitsSlot` decides
+    whether a row is a set by asking whether its type IS `Set`. An empty string
+    is not `Set`, so the blank row was drawn like any other drawback, which is
+    what the design wants of it. The fault only surfaces when something asks the
+    question the other way round -- a filter that keeps `Generic`, or a
+    validator requiring a known type -- and then one of the eight severe
+    drawbacks written at weight 1 vanishes from the pool with nothing failing.
+
+    THE COUNTER-TESTS MATTER AS MUCH AS THE FAULT ONES. A check that reported
+    every row would pass `test_a_blank_type_is_reported` and stop the sheet
+    generating at all, so `Generic`, `Set` and a lowercase spelling each have a
+    test saying they are accepted.
+    """
+
+    @staticmethod
+    def rows(*types: str) -> dict[str, list[dict]]:
+        return {"EnchantmentsNegative": [
+            {"Name": f"Negative_row_{i}", "EnchantmentType": written}
+            for i, written in enumerate(types)]}
+
+    def test_a_blank_type_is_reported(self):
+        """The exact fault. `''` is what the generator produces from an empty
+        cell, because `clean()` turns a `None` into one."""
+        problems = gen.validate_enchantment_types(self.rows(""))
+        assert len(problems) == 1, problems
+        assert "Negative_row_0" in problems[0]
+        assert "EnchantmentType is ''" in problems[0]
+
+    def test_a_cell_holding_only_spaces_is_reported(self):
+        """A cell someone typed a space into looks filled in the spreadsheet."""
+        assert len(gen.validate_enchantment_types(self.rows("   "))) == 1
+
+    def test_a_misspelt_type_is_reported(self):
+        """`Genric` reads as "not a set" exactly the way a blank does."""
+        problems = gen.validate_enchantment_types(self.rows("Genric"))
+        assert len(problems) == 1, problems
+        assert "'Genric'" in problems[0]
+
+    def test_generic_and_set_are_accepted(self):
+        assert gen.validate_enchantment_types(self.rows("Generic", "Set")) == []
+
+    def test_the_comparison_ignores_case(self):
+        """`EnchantmentSuitsSlot` passes `ESearchCase::IgnoreCase`, so a
+        lowercase cell works in the game. Failing generation over one would be
+        this check inventing a rule the game does not have."""
+        assert gen.validate_enchantment_types(self.rows("generic", "SET")) == []
+
+    def test_both_enchantment_tables_are_read(self):
+        """Reading only the negatives would miss a blank on the positive side,
+        and the positives are the larger table of the two."""
+        tables = {"EnchantmentsPositive": [{"Name": "Positive_row",
+                                            "EnchantmentType": ""}]}
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert "EnchantmentsPositive/Positive_row" in problems[0]
+
+    def test_a_table_that_carries_no_type_column_is_reported(self):
+        """A check that inspected nothing passes for the same reason a correct
+        sheet does, and from the outside the two are identical. This is the one
+        that tells them apart."""
+        tables = {"EnchantmentsNegative": [{"Name": "Negative_row"}]}
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert "inspected nothing" in problems[0]
+
+    def test_tables_without_either_enchantment_table_are_left_alone(self):
+        """Every other validator in this file returns nothing for a table set
+        that does not contain its subject, and this one must too, or the
+        fixture workbooks the rest of these tests build would all fail."""
+        assert gen.validate_enchantment_types({}) == []
+        assert gen.validate_enchantment_types({"Affixes": [{"Name": "a"}]}) == []
+
+
 class TestASkillRowCannotNameADamageTypeNobodyHas:
     """ISSUE #579. The Damage Type column of the Weapon Skills sheet was checked
     by nothing at all, one column over from a WeaponType column that has been
@@ -1435,3 +1512,46 @@ class TestAgainstTheRealWorkbook:
         book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
         for name, builder in gen.TABLES.items():
             assert len(builder(book)) > 0, f"{name} produced no rows"
+
+    def enchantment_tables(self) -> dict[str, list[dict]]:
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        return {name: gen.TABLES[name](book)
+                for name in gen.ENCHANTMENT_TABLES}
+
+    def test_every_enchantment_row_in_the_sheet_states_a_type(self):
+        """Issue #1486, against the real sheet rather than a fixture."""
+        assert gen.validate_enchantment_types(self.enchantment_tables()) == []
+
+    def test_blanking_one_real_row_is_caught(self):
+        """THE TEST ABOVE PASSES WHETHER THE CHECK WORKS OR NOT. It says the
+        sheet is clean, which a check that inspected nothing would also say.
+        This one puts the fault back into the real rows and confirms exactly one
+        problem comes out naming exactly that row."""
+        tables = self.enchantment_tables()
+        broken = tables["EnchantmentsNegative"][0]
+        assert broken["EnchantmentType"], (
+            "the first negative row already has no type, so blanking it "
+            "changes nothing and this test proves nothing")
+        broken["EnchantmentType"] = ""
+
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert broken["Name"] in problems[0]
+
+    def test_the_set_rows_are_left_where_the_owner_put_them(self):
+        """A set row's Weight is a set identifier of 5 to 18, not a rarity
+        weight, and the project owner set those deliberately. Nothing in the
+        type check may move one, so this states the counts and the identifiers
+        rather than trusting that."""
+        tables = self.enchantment_tables()
+        expected = {"EnchantmentsPositive": 42, "EnchantmentsNegative": 14}
+        for name, wanted in expected.items():
+            sets = [row for row in tables[name]
+                    if row["EnchantmentType"].strip().casefold() == "set"]
+            assert len(sets) == wanted, (
+                f"{name} holds {len(sets)} set rows, not {wanted}")
+            identifiers = sorted({int(float(row["Weight"])) for row in sets})
+            assert identifiers == list(range(5, 19)), (
+                f"{name} set identifiers are {identifiers}, not 5 to 18")

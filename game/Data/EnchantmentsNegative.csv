@@ -20,7 +20,7 @@ Negative_You_cannot_heal_above_60_of_your_maximum_HP,You cannot heal above 60% o
 Negative_Your_maximum_mana_is_reduced_to_zero,Your maximum mana is reduced to zero,Generic,1.0,Stat.Resource.Mana,True
 Negative_You_cannot_regenerate_mana_through_any_means,You cannot regenerate mana through any means,Generic,2.0,Stat.Resource.Mana,True
 Negative_Enemies_that_have_been_alive_for_more_than_15_se,Enemies that have been alive for more than 15 seconds become immune to your damage until you disengage for 3 seconds,Generic,1.0,Stat.Offense.Global,True
-Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,Your maximum HP cannot exceed 40%-60% of its normal value,,1.0,"Trigger.LowLife, Stat.Defense.Life",True
+Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,Your maximum HP cannot exceed 40%-60% of its normal value,Generic,1.0,"Trigger.LowLife, Stat.Defense.Life",True
 Negative_When_you_apply_a_DOT_1_4_stacks_are_applied_to,"When you apply a DOT, 1-4 stacks are applied to you",Generic,2.0,Keyword.DoT.Generic,True
 Negative_Armor_is_halved_against_ranged_attacks,Armor is halved against ranged attacks,Generic,3.0,Stat.Defense.Armor,True
 Negative_Can_t_regen_your_hp,Can't regen your hp,Generic,2.0,Stat.Defense.Life,True
