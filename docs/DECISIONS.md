@@ -646,8 +646,8 @@ is what the repair produces for free — and chose the strongest over it.
 
 **2. An effect that changes several stats is compared as one whole.** Abyssal
 Aura cuts two resistances, so "stronger" has no single answer when one
-application is larger on one stat and smaller on the other. Add up what each
-application takes across every stat it touches and keep whichever total is
+application is larger on one stat and smaller on the other. Add up the magnitudes
+each application STATES across every stat it touches and keep whichever total is
 larger, applying that application entire. The alternative — keeping the best
 value for each stat independently — was refused: it leaves the target carrying a
 mixture of two different applications, which no tooltip can describe and no
@@ -667,11 +667,33 @@ enemy carries at most one stack of any effect. Ruling 1 makes the pair
 consistent rather than introducing a new idea. Rulings 2 and 3 are this
 project's own judgement; no shipped game was found that states either.
 
-### What this does not cover
+### Measured before the target's resistances, not after
 
-**Whether "strongest" is measured before or after the target's own resistances.**
-Nobody has raised it and no test depends on it. Settle it when it first matters
-rather than guessing now.
+**This entry first left that open. It could not stay open: rulings 1 and 2 as
+first drafted pointed opposite ways, and building either one forces the answer.**
+Ruling 1 says a 10% Shred can never overwrite a 30% one, which compares what an
+application STATES. Ruling 2 first said to add up what each application TAKES,
+which is measured after the running effect has already reduced the resistance.
+
+The session picking the work up found the case where they disagree, and it is an
+ordinary one. A target with 40 Demonic and 40 War resistance takes a 30% Shred:
+it removes 30 and 30, a stated total of 60, leaving 10 and 10. A 50% Shred then
+arrives, and `ApplyNamedEffect` clamps it to what is left, so it would take only
+10 and 10. **Comparing what is taken refuses the 50% Shred in favour of the
+running 30% one** — a genuinely stronger curse doing nothing because a weaker one
+got there first.
+
+**Decision: compare the stated magnitudes, before the target's resistances.** The
+project owner ruled it on 2026-09-09, shown that worked example and the cost. A
+50% Shred beats a 30% Shred whatever state the target is in, and the same two
+skills always resolve the same way.
+
+**The cost was accepted knowingly and whoever builds this will meet it
+immediately.** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`
+clamps each stat against the target's current resistance before any effect object
+exists, so **the stated magnitude is gone by the time a comparison could happen**.
+It has to be carried through. That is a real change rather than reading a
+different field.
 
 ### How it was recorded
 
