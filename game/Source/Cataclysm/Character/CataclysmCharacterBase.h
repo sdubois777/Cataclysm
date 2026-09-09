@@ -289,6 +289,26 @@ public:
 	 */
 	virtual float RoamRadiusCm() const { return 0.0f; }
 
+	/**
+	 * Whether this character stays where it was put instead of walking.
+	 *
+	 * THE DEPLOYED-GADGET HALF OF A DISTINCTION THE DESIGN ALREADY MAKES.
+	 * `docs/Cataclysm_GDD_v2.md`, under "Count applies to summons, not to
+	 * deployables": "A summon spawns at the caster and walks... A deployable
+	 * is placed in a pattern." A bolt turret, a ballista and a spike trap
+	 * all state a move speed of zero in
+	 * `game/Data/MinionTypes.csv` and `ACataclysmMinion::Spawn` turns that
+	 * into this answer; an imp states 4.4 and a mote 5.5, so both answer
+	 * false.
+	 *
+	 * FALSE HERE, WHICH IS THE ANSWER FOR EVERY MONSTER AND FOR THE PLAYER.
+	 * Only a deployed gadget says otherwise.
+	 *
+	 * HERE RATHER THAN ON THE MINION, so the controller can ask any character
+	 * it drives without a cast -- the same arrangement the hooks above use.
+	 */
+	virtual bool StaysWhereItIsPut() const { return false; }
+
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}
 

@@ -127,6 +127,23 @@ enum class ECataclysmBrainAction : uint8
 	 * this is a UENUM and inserting renumbers every value after it.
 	 */
 	Pinned,
+
+	/**
+	 * Nothing hostile in sight, and walking back to whoever commands it.
+	 *
+	 * A SUMMONED CREATURE AND A THRALL, NOT A DEPLOYED GADGET. See
+	 * `FollowCommander` for which is which and where the design says so.
+	 *
+	 * IT COVERS STANDING NEAR THE COMMANDER AS WELL AS WALKING TO IT, the
+	 * same way `Roaming` covers standing at the point it reached. A minion
+	 * already in place is still following; it simply has no distance left to
+	 * close.
+	 *
+	 * Appended, like Roaming, WindingUp, Stunned, Turning, Charging and
+	 * Pinned, because this is a UENUM and inserting renumbers every value
+	 * after it.
+	 */
+	Following,
 };
 
 /**
@@ -156,8 +173,14 @@ enum class ECataclysmBrainAction : uint8
  * ROAMING IS OPT-IN, AND THAT IS THE POINT. A character roams only when its
  * RoamRadiusCm() is above zero, and the default on ACataclysmCharacterBase is
  * zero. So a monster that has not asked to roam still stands still with nothing
- * in sight, exactly as before, and a summoned imp does not wander away from the
- * fight its summoner made it for. Today only the Brute asks.
+ * in sight, exactly as before. Today only the Brute asks.
+ *
+ * THAT SENTENCE USED TO END "and a summoned imp does not wander away from the
+ * fight its summoner made it for", AND ISSUE #1517 REVERSED IT. A minion does
+ * leave the place it was summoned now. Not to wander -- it still does not roam
+ * and roaming is still opt-in -- but to follow whoever summoned it, which is
+ * what FollowCommander below does and what `docs/Cataclysm_GDD_v2.md` means by
+ * "a summon spawns at the caster and walks".
  *
  * WHAT IT DOES NOT DO. It has no memory: it re-picks the nearest target every
  * pass rather than staying with one, so two monsters equally distant can swap
@@ -188,6 +211,24 @@ public:
 	 * make it stop and start.
 	 */
 	static constexpr float ApproachFractionOfReach = 0.8f;
+
+	/**
+	 * How close a commanded creature walks to its commander, in centimetres.
+	 *
+	 * A JUDGEMENT, AND SAID TO BE ONE. None of the four games looked at while
+	 * deciding the shape of following publishes a distance: Path of Exile,
+	 * Last Epoch, Torchlight Infinite and Diablo IV all state that minions
+	 * follow and none states how near. `docs/DECISIONS.md` records that split.
+	 *
+	 * THREE METRES, FROM THE BODIES RATHER THAN FROM NOTHING. Summon Imp puts
+	 * three imps out at once; an imp's capsule radius is 30 cm and the
+	 * player's is 42, so three of them abreast need about two metres of arc
+	 * and three metres of radius leaves it. It is also short enough that an
+	 * imp arriving is inside its own 15 m notice radius of anything the player
+	 * is standing near, so following delivers it into the next fight rather
+	 * than merely near the player.
+	 */
+	static constexpr float FollowDistanceCm = 300.0f;
 
 	/**
 	 * Extra centimetres allowed on the reach test, so that "touching" counts as
@@ -565,6 +606,41 @@ private:
 	 * and a paragraph.
 	 */
 	ECataclysmBrainAction Roam();
+
+	/**
+	 * Walk back to whoever commands this creature, or Idle if nobody does.
+	 *
+	 * WHAT WAS WRONG. A summoned imp with nothing in sight stood where it was
+	 * summoned for the rest of its twenty seconds. The project owner reported
+	 * it on 2026-09-09 playing a Ritualist in a Horde dungeon -- "minions
+	 * aren't following me" -- and issue #1517 is that report. Chasing already
+	 * worked; there was nothing to do between fights.
+	 *
+	 * IT REACHES A THRALL AS WELL AS A MINION, because it asks
+	 * `UCataclysmCommand::CommanderOf`, which answers for both: a minion names
+	 * its summoner and a thrall names its owner. Nothing else in the project
+	 * spawns a character with an owner, so an ordinary monster has no
+	 * commander and reaches `Roam` exactly as it did before.
+	 *
+	 * A DEPLOYED GADGET IS REFUSED, AND THE REFUSAL IS THE POINT. A bolt
+	 * turret, a ballista and a spike trap are the same C++ class as an imp,
+	 * so a follow added without asking would make traps walk.
+	 * `StaysWhereItIsPut` is what separates them and it comes from the type's
+	 * move speed in `game/Data/MinionTypes.csv` rather than from the skill's
+	 * Shape column, for two reasons recorded in `docs/DECISIONS.md`: the thing
+	 * that walks is the creature rather than the skill that placed it, and
+	 * Subjugate is Shape=Summon while creating no minion at all.
+	 *
+	 * TESTING THE FLAG RATHER THAN THE WALK SPEED IS DELIBERATE. A gadget's
+	 * speed is zero, so ordering it to walk would move it nowhere and a test
+	 * that only watched its position could not fail. Refusing here means the
+	 * brain reports `Idle` rather than `Following`, which a test can see.
+	 *
+	 * IT OUTRANKS ROAMING. A creature with somebody to follow has somewhere to
+	 * be, and wandering a circle around where it was summoned instead is what
+	 * this replaces.
+	 */
+	ECataclysmBrainAction FollowCommander(ACataclysmCharacterBase* Driven);
 
 	FTimerHandle ThinkTimer;
 

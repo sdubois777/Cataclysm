@@ -320,6 +320,18 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		// after it is ordered and the character never takes a step. Stopping is
 		// now Roam's business, which does it once on arrival rather than every
 		// pass.
+		//
+		// AND FOLLOWING COMES FIRST, WHICH IS NEW IN ISSUE #1517. A creature
+		// with a commander walks back to it; only one that has nobody to follow
+		// falls through to roaming. Returns Idle when there is no commander or
+		// when this body is a deployed gadget, and the line below then runs
+		// unchanged -- which is every monster in the game.
+		const ECataclysmBrainAction Followed = FollowCommander(Driven);
+		if (Followed != ECataclysmBrainAction::Idle)
+		{
+			return Followed;
+		}
+
 		return Roam();
 	}
 
@@ -1137,13 +1149,88 @@ bool ACataclysmEnemyController::ChooseRoamTarget(FVector& OutTarget) const
 	return true;
 }
 
+ECataclysmBrainAction ACataclysmEnemyController::FollowCommander(
+	ACataclysmCharacterBase* Driven)
+{
+	// A DEPLOYED GADGET IS REFUSED BEFORE ANYTHING ELSE IS ASKED. See the
+	// header for why this tests the flag rather than the walk speed.
+	if (!Driven || Driven->StaysWhereItIsPut())
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// NULL FOR EVERY ORDINARY MONSTER, which is what leaves roaming and
+	// standing still exactly as they were.
+	AActor* Commander = UCataclysmCommand::CommanderOf(Driven);
+	if (!IsValid(Commander))
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// HORIZONTAL DISTANCE, for the reason the chase in Think records: capsule
+	// centres sit at different heights and a 3D distance charges the follow
+	// for a height difference nobody chose.
+	const float Distance = FVector::Dist2D(
+		Driven->GetActorLocation(), Commander->GetActorLocation());
+
+	if (Distance <= FollowDistanceCm)
+	{
+		// CLOSE ENOUGH, SO IT STOPS. Every pass rather than once, for the reason
+		// the stun and pin branches record: StopMovement is not sticky.
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Following;
+		return LastAction;
+	}
+
+	// BACK TO FACING WHERE IT WALKS, the same restoration the chase makes for
+	// the same reason: an ability that turned it on the spot left the movement
+	// component pointed at the controller's rotation. Issue #457.
+	FaceTravelDirection(Driven);
+
+	// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the commander moves --
+	// which in a Horde dungeon is the whole of the problem being fixed.
+	FAIMoveRequest Request(Commander);
+	Request.SetAcceptanceRadius(FollowDistanceCm);
+	Request.SetUsePathfinding(true);
+
+	// BOTH OFF, so the acceptance radius means the distance stated above
+	// rather than that distance plus two capsule radii. MakeChaseMoveRequest
+	// records the measurement that made this matter.
+	Request.SetReachTestIncludesAgentRadius(false);
+	Request.SetReachTestIncludesGoalRadius(false);
+
+	// A STRAIGHT LINE WHEN THERE IS NO NAVIGATION MESH, the same fallback the
+	// chase uses and for the same reason.
+	if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+	{
+		Request.SetUsePathfinding(false);
+		MoveTo(Request);
+	}
+
+	LastAction = ECataclysmBrainAction::Following;
+	return LastAction;
+}
+
 ECataclysmBrainAction ACataclysmEnemyController::Roam()
 {
 	ACataclysmCharacterBase* Driven = Body();
 
 	// NOT A ROAMER, SO THE OLD BEHAVIOUR EXACTLY. Standing still with nothing in
 	// sight is what every character in this project did before roaming existed,
-	// and it is still what a summoned imp and a stationary enemy should do.
+	// and it is still what a monster that has not asked to roam does.
+	//
+	// IT NO LONGER COVERS A SUMMONED IMP, AND THIS COMMENT USED TO SAY IT DID.
+	// Until issue #1517 the sentence above ended "and it is still what a
+	// summoned imp and a stationary enemy should do". That was the defect the
+	// project owner reported on 2026-09-09 rather than the behaviour: an imp
+	// with nothing to fight stood where it was summoned for the rest of its
+	// twenty seconds. `docs/Cataclysm_GDD_v2.md` is the authority against it --
+	// "a summon spawns at the caster and walks" -- and Think now sends a
+	// commanded creature to FollowCommander before this is ever reached.
+	//
+	// WHAT STILL REACHES HERE is a character with nobody to follow, which is
+	// every ordinary monster in the game, and a deployed bolt turret, ballista
+	// or spike trap, which FollowCommander refuses.
 	if (!Driven || Driven->RoamRadiusCm() <= 0.0f)
 	{
 		StopMovement();
