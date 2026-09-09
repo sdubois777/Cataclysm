@@ -11,6 +11,8 @@
 #include "CataclysmTestWorld.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
+#include "Misc/OutputDeviceRedirector.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -348,6 +350,202 @@ CATACLYSM_DOT_TEST(FCataclysmDotMinionTest,
 
 	TestEqual(TEXT("and a blow dealt in the summoner's name takes none of it"),
 		Minions.TotalDamage, 80.0f, 0.01f);
+
+	return true;
+}
+
+
+/**
+ * THE WARNING THAT FIRED 16,033 TIMES. Issue #1516.
+ *
+ * `StatusEffectNumbers` warned whenever `bUsable` was false, and `bUsable` asks
+ * only whether a row is DAMAGE OVER TIME. Five rows carry a `Strength` instead
+ * and are applied by `ApplyNamedEffect`, so all five were accused, on every
+ * application, of lacking damage they were never written to carry. In the Horde
+ * session of 2026-09-09 that was 16,033 of 28,693 log lines -- 56% -- of which
+ * Shred alone wrote 12,284.
+ *
+ * BOTH DIRECTIONS ARE CHECKED AND THE SECOND IS THE ONE THAT MATTERS. Deleting
+ * the warning outright would have passed the first test on its own, so the pair
+ * is the point: a row carrying a strength is quiet, and a row carrying neither a
+ * strength nor a per-tick amount still warns.
+ */
+namespace CataclysmStatusEffectWarningTest
+{
+	/**
+	 * Everything written to the log while this is alive.
+	 *
+	 * MODELLED ON `FScopedLogCapture` IN `CataclysmWeaponSlotsTests.cpp`, and
+	 * for the same reason: a warning does not fail an automation test, because
+	 * `FAutomationTestBase::bElevateLogWarningsToErrors` is false. Reading the
+	 * log is the only way to see whether this one was written at all, so
+	 * `AddExpectedError` is no use here in either direction.
+	 *
+	 * NOTHING IS FILTERED IN `Serialize`, AND THAT ORDER IS DELIBERATE.
+	 * `FOutputDeviceRedirector` buffers lines, so they have to be flushed
+	 * through before anything is counted; deciding on the way in would judge
+	 * lines that had not arrived yet.
+	 */
+	struct FScopedWarningCapture : public FOutputDevice
+	{
+		struct FCapturedLine
+		{
+			FString Text;
+			ELogVerbosity::Type Verbosity = ELogVerbosity::NoLogging;
+			FName Category;
+		};
+
+		FScopedWarningCapture()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FScopedWarningCapture()
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity,
+							   const class FName& Category) override
+		{
+			Lines.Add({ FString(Text), Verbosity, Category });
+		}
+
+		/**
+		 * Every LogCataclysm line at exactly Warning verbosity holding Needle.
+		 *
+		 * CASE-SENSITIVE, because `FString::Contains` is not by default and a
+		 * check that ignored case would pass on text this warning never writes.
+		 */
+		TArray<FString> CataclysmWarningsContaining(const TCHAR* Needle)
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+
+			TArray<FString> Found;
+			for (const FCapturedLine& Line : Lines)
+			{
+				if (Line.Category == FName(TEXT("LogCataclysm"))
+					&& Line.Verbosity == ELogVerbosity::Warning
+					&& Line.Text.Contains(Needle, ESearchCase::CaseSensitive))
+				{
+					Found.Add(Line.Text);
+				}
+			}
+			return Found;
+		}
+
+		TArray<FCapturedLine> Lines;
+	};
+
+	/** The clause the unusable-row warning is built from. */
+	const TCHAR* WarningNeedle =
+		TEXT("must be above zero or nothing is applied");
+
+	/**
+	 * Requested by name rather than declared, matching `UCataclysmTeams` and for
+	 * the same reason: a native declaration would create the tag whether or not
+	 * the design still listed it.
+	 */
+	FGameplayTag TagNamed(const TCHAR* Name)
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(Name), /*ErrorIfNotFound=*/false);
+	}
+}
+
+CATACLYSM_DOT_TEST(FCataclysmStrengthRowIsQuietTest,
+	"Cataclysm.DamageOverTime.ARowStatingAStrengthDoesNotWarnAboutDamageItNeverCarried")
+{
+	using namespace CataclysmStatusEffectWarningTest;
+
+	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
+	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatusEffectNumbers Numbers;
+	TArray<FString> Warned;
+	{
+		FScopedWarningCapture Capture;
+		Numbers = UCataclysmSkillEffects::NumbersForEffectTag(Shred);
+		Warned = Capture.CataclysmWarningsContaining(WarningNeedle);
+	}
+
+	// THE PRECONDITION, AND WITHOUT IT THIS TEST QUIETLY STOPS COVERING ITS OWN
+	// PATH. Give Shred a flat amount per tick and the row becomes usable, no
+	// warning is written for a reason that has nothing to do with issue #1516,
+	// and the check below still passes. These three say the row is still the
+	// shape this test is about.
+	TestEqual(TEXT("Shred states a strength"), Numbers.Strength, 10.0f, 0.001f);
+	TestEqual(TEXT("and no flat amount per tick"),
+		Numbers.FlatDamagePerTick, 0.0f, 0.001f);
+	TestEqual(TEXT("and no percent of the hit"),
+		Numbers.PercentOfHit, 0.0f, 0.001f);
+
+	TestEqual(FString::Printf(
+		TEXT("reading it writes no unusable-row warning, and wrote %d: %s"),
+		Warned.Num(), Warned.Num() > 0 ? *Warned[0] : TEXT("")),
+		Warned.Num(), 0);
+
+	// AND IT IS STILL NOT DAMAGE OVER TIME. `bUsable` gates four callers that
+	// decide whether to apply a per-tick effect -- CataclysmContagion,
+	// CataclysmSkillTemplate, CataclysmVitalAttributeSet and ApplyBurn -- and a
+	// fix that quietened the warning by flipping this flag instead would have
+	// started applying Shred as a damage over time worth zero a tick.
+	TestFalse(TEXT("and is still not usable as damage over time"),
+		Numbers.bUsable);
+
+	return true;
+}
+
+CATACLYSM_DOT_TEST(FCataclysmEmptyRowStillWarnsTest,
+	"Cataclysm.DamageOverTime.ARowStatingNeitherAStrengthNorAnAmountStillWarns")
+{
+	using namespace CataclysmStatusEffectWarningTest;
+
+	// NECROTIC FOG STATES NOTHING AT ALL -- no duration, no strength, no amount
+	// -- which is exactly the row this guard exists for. Burn was in that state
+	// until issue #895 and nothing reported it. A row that is merely not damage
+	// over time is deliberately NOT used here: Madness carries a duration and a
+	// tag and works, and pinning the guard to it would nail down behaviour that
+	// is itself still an open question.
+	const FGameplayTag Fog = TagNamed(TEXT("Status.DoT.NecroticFog"));
+	if (!TestTrue(TEXT("Status.DoT.NecroticFog is a gameplay tag"), Fog.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatusEffectNumbers Numbers;
+	TArray<FString> Warned;
+	{
+		FScopedWarningCapture Capture;
+		Numbers = UCataclysmSkillEffects::NumbersForEffectTag(Fog);
+		Warned = Capture.CataclysmWarningsContaining(WarningNeedle);
+	}
+
+	// THE PRECONDITION AGAIN, and here it is what stops the test passing for the
+	// wrong reason. Give this row a strength and it should fall silent; the test
+	// would then be asserting that a quiet row is loud, and would fail honestly
+	// rather than check nothing.
+	TestEqual(TEXT("Necrotic Fog states no strength"),
+		Numbers.Strength, 0.0f, 0.001f);
+	TestEqual(TEXT("no flat amount per tick"),
+		Numbers.FlatDamagePerTick, 0.0f, 0.001f);
+	TestEqual(TEXT("and no percent of the hit"),
+		Numbers.PercentOfHit, 0.0f, 0.001f);
+
+	TestTrue(TEXT("a row stating none of the three still warns"),
+		Warned.Num() > 0);
 
 	return true;
 }
