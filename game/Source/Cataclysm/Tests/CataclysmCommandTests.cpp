@@ -290,6 +290,24 @@ bool FCataclysmSubjugateTakesTheWeakTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
+	// THIS ROW IS WRITTEN HERE AND IS NOT THE SHIPPED ONE, WHICH IS WHY THIS
+	// TEST PASSED THROUGHOUT ISSUE #1519. `Radius=15` appears in no row of
+	// `game/Data/WeaponSkills.csv`; the real Subjugate stated no radius at all
+	// for seven days, searched a sphere of no size and took nobody, and this
+	// test went on passing because it supplies its own.
+	//
+	// IT IS STILL WRITTEN HERE ON PURPOSE. What this test is for is the
+	// mechanism -- the blow, the threshold, the taking -- and it needs a target
+	// it can reliably find. A headless run has no cursor, so `AimedPointWithin`
+	// returns the full range in the caster's facing direction and the search
+	// lands fifteen metres ahead of a creature standing at three. A radius wide
+	// enough to reach back covers that, and pinning the shipped figure here
+	// instead would make this test fail every time the number was tuned.
+	//
+	// THE SHIPPED ROW IS CHECKED BY
+	// `Cataclysm.SkillShape.EveryShapeThatSearchesWithItsRadiusStatesOne`, which
+	// reads the DataTable and states a radius of nothing is a skill that finds
+	// nobody. Two tests, because the mechanism and the data failed separately.
 	const TCHAR* const Row =
 		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");

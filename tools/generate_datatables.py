@@ -4301,6 +4301,97 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+#: Which shapes find who they hit with the row's `Radius`, and when.
+#:
+#: READ OFF THE ENGINE RATHER THAN GUESSED. Every entry is a branch in
+#: `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` that hands
+#: `ScaledRadiusCm()` to a targeting search:
+#:
+#: | Shape | Where the radius decides who is found |
+#: |---|---|
+#: | Strike | `UCataclysmStrikeSkill::SwingOnce`, the cone it swings through |
+#: | Projectile | `UCataclysmProjectileSkill::Land`, the line it pierces or the circle it lands in |
+#: | Movement | `UCataclysmMovementSkill::ActivateAbility`, the ends of the move or the line along it |
+#: | Summon | `UCataclysmSummonSkill::Possess`, the sphere at the point it was aimed at |
+#: | Aura | `UCataclysmAuraSkill::Pulse`, the ring around the caster |
+#:
+#: THE THREE SHAPES THAT ARE ABSENT ARE ABSENT ON PURPOSE, and the reason
+#: differs for each. `UCataclysmDebuffSkill::ActivateAbility` never reads the
+#: radius at all: it searches `Range` around the caster and then sorts what it
+#: found by distance to the cursor. A Deployable places machines and searches
+#: for nobody. `UCataclysmSelfBuffSkill` guards both of its radius reads with
+#: `ScaledRadiusCm() > 0.0f`, so a self buff that states no radius simply has no
+#: ring rather than a broken one. Six self buffs, three deployables, three
+#: debuffs and one flickering movement state no radius today -- thirteen rows --
+#: and all thirteen are correct.
+#:
+#: TWO OF THE FIVE ARE CONDITIONAL, which is why this is a function and not a
+#: set. `Mode=Flicker` returns from `ActivateAbility` before the switch that
+#: reads the radius -- it builds its circuit out of `Range` instead -- so
+#: Everywhere at Once is the one Movement row that needs none. And a Summon only
+#: searches when it is taking a creature rather than making one: `Possess=1` is
+#: Subjugate, and Summon Imp's radius is read by `Collapse`, which guards it the
+#: way the self buffs do.
+def shape_searches_with_the_radius(shape: str, params: dict[str, str]) -> bool:
+    """True when a radius of zero would make this row find nobody."""
+    if shape in {"Strike", "Projectile", "Aura"}:
+        return True
+    if shape == "Movement":
+        return params.get("Mode") != "Flicker"
+    if shape == "Summon":
+        return params.get("Possess") == "1"
+    return False
+
+
+def validate_targeted_shapes_state_a_radius(
+        tables: dict[str, list[dict]]) -> list[str]:
+    """A row that finds its targets with the radius has to state one.
+
+    ISSUE #1519. Subjugate stated `Range=15` and no `Radius`.
+    `FCataclysmSkillShapeParams::RadiusCm` defaults to zero, every branch of
+    `UCataclysmSkillTemplate::ScaledRadiusCm` multiplies that zero, and the
+    search is a collision overlap, so the Staff's Demonic Ultimate looked for an
+    enemy in a sphere of no size and found one only if the aimed point happened
+    to land inside a body. It spent its cooldown, dealt no damage and took
+    nobody, eleven casts running, and said nothing about why.
+
+    A KEY NOBODY WROTE IS NOT A KEY WRITTEN WRONG, which is the gap this fills.
+    `parse_shape_params` already refuses a misspelled key and a value that is
+    not a number, and its docstring names this very failure -- "a radius of zero
+    hits nothing, so a misspelled `Radiuss` would produce a skill that runs and
+    does nothing". A missing key passes all of that and arrives at the engine as
+    the default.
+
+    A STATED ZERO IS REFUSED TOO. `Radius=0` produces exactly the same skill as
+    no radius at all, so there is nothing to gain by letting a row write it
+    down.
+    """
+    skills = tables.get("WeaponSkills")
+    if not skills:
+        return []
+
+    problems = []
+    for row in skills:
+        if not row["Shape"]:
+            continue
+        where = f"WeaponSkills/{row['Name']}"
+        params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
+        if not shape_searches_with_the_radius(row["Shape"], params):
+            continue
+
+        written = params.get("Radius")
+        if written is None:
+            problems.append(
+                f"{where}: {row['Shape']} finds who it hits with its radius and "
+                f"states none, so it would search an area of no size and hit "
+                f"nobody. Give it a Radius.")
+        elif float(written) <= 0.0:
+            problems.append(
+                f"{where}: {row['Shape']} states Radius={written}, which finds "
+                f"nobody. A radius has to be more than zero.")
+    return problems
+
+
 def validate_affix_percent_agrees(tables: dict[str, list[dict]]) -> list[str]:
     """Two affixes granting one stat must agree on whether it is a percentage.
 
@@ -4591,6 +4682,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
+                + validate_targeted_shapes_state_a_radius(tables)
                 + validate_hybrid_parts(tables)
                 + validate_affix_percent_agrees(tables)
                 + validate_implicit_stats_have_an_affix(tables)
