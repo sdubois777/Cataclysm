@@ -644,14 +644,31 @@ behaviour could not be kept.
 Shred. They were shown the alternative — the most recent application wins, which
 is what the repair produces for free — and chose the strongest over it.
 
-**2. An effect that changes several stats is compared as one whole.** Abyssal
-Aura cuts two resistances, so "stronger" has no single answer when one
-application is larger on one stat and smaller on the other. Add up the magnitudes
-each application STATES across every stat it touches and keep whichever total is
-larger, applying that application entire. The alternative — keeping the best
-value for each stat independently — was refused: it leaves the target carrying a
-mixture of two different applications, which no tooltip can describe and no
-player can predict. **An effect stays one thing that came from one source.**
+**2. An effect that changes several stats is compared as one whole.** Add up the
+magnitudes each application STATES across every stat it touches and keep
+whichever total is larger, applying that application entire. The alternative —
+keeping the best value for each stat independently — was refused: it leaves the
+target carrying a mixture of two different applications, which no tooltip can
+describe and no player can predict. **An effect stays one thing that came from
+one source.**
+
+**THIS RULE HAS NO CASE YET, AND THE EXAMPLE IT WAS DECIDED ON CANNOT HAPPEN.**
+The owner was asked about an application cutting fire by 30 and cold by 10 losing
+to one cutting fire by 10 and cold by 30. **No effect in this game can do that.**
+`ApplyNamedEffect` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` holds a single
+`Size` and applies it to every stat the effect names — `float Size = Magnitude`,
+falling back to the designed strength from the Status Effects sheet. Abyssal Aura
+cuts two resistances by the same amount, not by two amounts.
+
+So for every effect that exists today, "compare the stated magnitudes" and "add
+up the stated magnitude across every stat" give the **same ordering**, and the
+sum is just the magnitude multiplied by the number of stats. **Build it as a sum
+so it is right if per-stat magnitudes are ever added, but do not claim a test
+proves it**: the discriminating case cannot be constructed, so any test written
+for it would pass under both readings. Record it as a rule awaiting a case.
+
+Whether effects are meant to carry per-stat magnitudes later has not been asked.
 
 **3. A weaker application still refreshes the duration.** Its figures are
 refused; its timing is not. Without this, keeping a curse running would require
