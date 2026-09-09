@@ -1115,11 +1115,20 @@ bool FCataclysmRitualistDeathTest::RunTest(const FString&)
 	TestEqual(TEXT("and its commander was paid five for it"),
 		FervourOf(Commander), 5.0f, 0.001f);
 
-	// AND WRITING ITS HEALTH AT ZERO AGAIN PAYS NOTHING FURTHER. A burn ticking
-	// on a body would otherwise pay the commander on every tick.
+	// AND HURTING THE BODY AGAIN PAYS NOTHING FURTHER. A burn ticking on a
+	// corpse would otherwise pay the commander on every tick, which is what the
+	// Dead tag prevents -- and which `ACataclysmMinion::HandleDeath` had to be
+	// written for, because before it a minion never took that tag.
+	//
+	// A DIFFERENT VALUE RATHER THAN ZERO AGAIN, DELIBERATELY. Writing 0 over 0
+	// may change nothing, and a write that changes nothing may never reach
+	// `PostAttributeBaseChange` at all -- so the check would pass without
+	// having exercised the guard it is named for. Minus ten is a real change to
+	// the base value and the set's own clamp still leaves the current value at
+	// zero, so the death path is entered and refused rather than never entered.
 	ImpSystem->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
-	TestEqual(TEXT("and a second write at zero pays nothing more"),
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), -10.0f);
+	TestEqual(TEXT("hurting the body again pays nothing more"),
 		FervourOf(Commander), 5.0f, 0.001f);
 
 	return true;
