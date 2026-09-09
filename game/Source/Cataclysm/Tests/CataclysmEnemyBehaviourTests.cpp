@@ -5,6 +5,8 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// Following is asked through CommanderOf, and the thrall test subjugates.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -543,9 +545,300 @@ bool FCataclysmImpChasesWhatItAttacksTest::RunTest(const FString&)
 	Monster.Actor->SetActorLocation(FVector(50 * M, 0, 0));
 	Summoner.Actor->SetActorLocation(Where + FVector(1 * M, 0, 0));
 
-	TestEqual(TEXT("An imp standing next to its summoner is idle"),
+	// IT REPORTED `Idle` HERE UNTIL ISSUE #1517, AND THAT WAS THE DEFECT
+	// RATHER THAN THE BEHAVIOUR. An imp with nothing to fight stood where it
+	// was summoned for the rest of its twenty seconds, which is what the
+	// project owner reported on 2026-09-09 as "minions aren't following me".
+	// It now walks back to its summoner instead.
+	//
+	// THE CLAIM THIS TEST ACTUALLY MAKES IS THE SECOND ONE, and it is now
+	// asserted directly rather than through `Idle` as a proxy for it. "It
+	// never turns on the character that made it" means it chose no target;
+	// a brain that HAD chosen one could not report `Following`, but saying so
+	// outright survives the next change to what an unoccupied minion does.
+	TestEqual(TEXT("An imp standing next to its summoner follows it"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Following));
+	TestNull(TEXT("and it picked nothing to attack, its summoner included"),
+		Brain->CurrentTarget.Get());
+
+	return true;
+}
+
+/**
+ * A summoned creature walks back to whoever summoned it.
+ *
+ * WHAT WENT WRONG. Issue #1517. Chasing already worked -- the test above
+ * has covered it since issue #163 -- but a minion with nothing in sight
+ * stood still, because `ACataclysmMinion` does not roam and standing still
+ * was what the brain did with a character that does not roam. In a Horde
+ * dungeon the player keeps moving, so three imps killed what was near where
+ * they were torn out of the rift and were then left behind for the rest of
+ * their twenty seconds.
+ *
+ * WHAT IT DOES NOT COVER, for the reason the file header gives: that the
+ * imp arrives. Walking needs a navigation mesh and this world has none.
+ * What is assertable here is the decision, which is the part that was
+ * missing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionFollowsItsSummonerTest,
+	"Cataclysm.AI.ASummonedImpFollowsItsSummonerWithNothingToFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMinionFollowsItsSummonerTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// NOTHING HOSTILE IN THIS WORLD AT ALL to begin with, which is the case
+	// the defect was about. A minion with something to fight already worked.
+	FScopedFighter Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players,
+							/*Health=*/1000.0f, /*AttackDamage=*/100.0f);
+
+	// TEN METRES AWAY, WHICH IS FURTHER THAN IT WILL STAND. The follow
+	// distance is three metres, so this is the case that has to order a walk
+	// rather than the case that is already close enough.
+	const FVector Where(10 * M, 0, 0);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not summon an imp."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE PRECONDITION, ASSERTED RATHER THAN ASSUMED. An imp is a creature
+	// that walks, and the whole of the test below rests on that being what
+	// separates it from a ballista.
+	TestFalse(TEXT("an imp is not something that stays where it is put"),
+		Imp->StaysWhereItIsPut());
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Imp->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("A summoned imp has no controller, so nothing drives it."));
+		return false;
+	}
+
+	TestEqual(TEXT("An imp with nothing to fight walks back to its summoner"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Following));
+
+	// AND IT KEEPS FOLLOWING WHEN THE SUMMONER MOVES, which is the whole of
+	// the report: the player walks on and the imps do not come. Fifty metres
+	// is far outside the imp's own fifteen metre notice radius, so nothing
+	// here is the imp having spotted its summoner as a target.
+	Summoner.Actor->SetActorLocation(FVector(50 * M, 0, 0));
+	TestEqual(TEXT("and it still follows once the summoner has walked away"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Following));
+	TestNull(TEXT("with no target, because there is nothing hostile anywhere"),
+		Brain->CurrentTarget.Get());
+
+	// FIGHTING STILL OUTRANKS FOLLOWING, which is the half that could have
+	// been broken by putting the follow anywhere earlier in the pass. Eight
+	// metres from the imp: inside its notice radius, outside its reach.
+	FScopedFighter Monster(World, Where + FVector(8 * M, 0, 0),
+						   ECataclysmTeam::Monsters,
+						   /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
+
+	TestEqual(TEXT("but something to fight outranks following"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestEqual(TEXT("and the monster is what it went after"),
+		Brain->CurrentTarget.Get(), static_cast<AActor*>(Monster.Actor));
+
+	return true;
+}
+
+/**
+ * A deployed gadget stays where it was put.
+ *
+ * THIS IS THE TEST THAT CATCHES THE NAIVE FIX, and it is the reason issue
+ * #1517 was a design question before it was a code one. A bolt turret, a
+ * ballista and a spike trap are the same C++ class as a summoned imp --
+ * `ACataclysmMinion` -- so a follow added to that class without asking which
+ * of them should walk makes traps walk.
+ *
+ * IT ASSERTS THE DECISION AND NOT THE POSITION, WHICH IS THE POINT. A
+ * ballista's move speed is zero, so ordering it to walk would move it
+ * nowhere: a test that spawned one, ordered a follow and then checked that
+ * it had not moved would pass against the very fix it exists to catch. What
+ * can fail is the brain reporting `Following` rather than `Idle`.
+ *
+ * THE IMP IN IT IS A CONTROL. Without one, a `Idle` here would also be what
+ * a world where following is broken for everything looks like.
+ *
+ * WHERE THE DISTINCTION COMES FROM. `docs/Cataclysm_GDD_v2.md`: "A summon
+ * spawns at the caster and walks... A deployable is placed in a pattern."
+ * It is carried by the `MoveSpeed` column of `game/Data/MinionTypes.csv`,
+ * which is 0.0 for all three machines and above zero for both creatures.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeployableDoesNotFollowTest,
+	"Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeployableDoesNotFollowTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Deployer(World, FVector::ZeroVector, ECataclysmTeam::Players,
+							/*Health=*/1000.0f, /*AttackDamage=*/100.0f);
+
+	// TEN METRES, so both of them are outside the three metre follow distance
+	// and a broken gate would order an actual walk rather than take the
+	// already-close-enough branch.
+	const FVector Where(10 * M, 0, 0);
+
+	ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(
+		Deployer.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false,
+		TEXT("Ballista"));
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Deployer.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false,
+		TEXT("Imp"));
+	if (!Ballista || !Imp)
+	{
+		AddError(TEXT("Could not deploy a ballista or summon an imp."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Ballista)) { Ballista->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE PRECONDITION, ASSERTED FIRST, BECAUSE THE TEST IS WORTHLESS WITHOUT
+	// IT. Both of these are read from the imported DT_MinionTypes asset. If
+	// that asset is older than game/Data/MinionTypes.csv the lookup misses,
+	// both spawn carrying the imp-shaped defaults, and a ballista that stayed
+	// put would be saying nothing at all.
+	if (!TestEqual(TEXT("the ballista was made from the Ballista row"),
+			Ballista->TypeName, FString(TEXT("Ballista")))
+		|| !TestEqual(TEXT("and the imp from the Imp row"),
+			Imp->TypeName, FString(TEXT("Imp"))))
+	{
+		AddError(TEXT("DT_MinionTypes could not supply both rows, so this test "
+					  "cannot tell a deployed gadget from a summoned creature. "
+					  "Run tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	TestTrue(TEXT("a ballista is something that stays where it is put"),
+		Ballista->StaysWhereItIsPut());
+	TestFalse(TEXT("and an imp is not"), Imp->StaysWhereItIsPut());
+
+	ACataclysmEnemyController* GadgetBrain =
+		Cast<ACataclysmEnemyController>(Ballista->GetController());
+	ACataclysmEnemyController* CreatureBrain =
+		Cast<ACataclysmEnemyController>(Imp->GetController());
+	if (!GadgetBrain || !CreatureBrain)
+	{
+		AddError(TEXT("A spawned minion has no controller."));
+		return false;
+	}
+
+	// THE CONTROL FIRST. Ten metres from the same deployer, in the same world,
+	// on the same pass -- so an `Idle` below cannot be following having failed
+	// for everything.
+	TestEqual(TEXT("an imp deployed beside it follows the deployer"),
+		static_cast<int32>(CreatureBrain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Following));
+
+	// AND THE THING THIS TEST IS FOR.
+	TestEqual(TEXT("a ballista stays where it was hammered into the ground"),
+		static_cast<int32>(GadgetBrain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Idle));
+
+	// IT IS STILL A WEAPON, WHICH IS THE OTHER HALF. A refusal to follow that
+	// had accidentally become a refusal to do anything would pass the check
+	// above and be a worse defect than the one being fixed.
+	FScopedFighter Monster(World, Where + FVector(5 * M, 0, 0),
+						   ECataclysmTeam::Monsters,
+						   /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	// Five metres, which is inside a ballista's fifteen metre reach, so it
+	// fires rather than closing.
+	TestEqual(TEXT("but it still fires at what comes into its reach"),
+		static_cast<int32>(GadgetBrain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestEqual(TEXT("and it counted the shot"), Ballista->AttacksMade, 1);
+
+	return true;
+}
+
+/**
+ * A thrall follows the character that took it.
+ *
+ * WHY THIS IS HERE AND NOT ONLY THE MINION TEST. Following is asked through
+ * `UCataclysmCommand::CommanderOf`, which answers for both of the two things
+ * a character commands: a minion names its summoner and a thrall names its
+ * owner. Subjugate's own words are "it fights for you until it dies", and a
+ * thrall left standing where it was taken does not.
+ *
+ * THE SAME CREATURE IS THE CONTROL. It is asked before and after being
+ * taken, so nothing about the arrangement of the world can explain the
+ * difference -- only the subjugation can.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallFollowsItsCommanderTest,
+	"Cataclysm.AI.ASubjugatedEnemyFollowsTheCharacterThatTookIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThrallFollowsItsCommanderTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Commander(World, FVector::ZeroVector, ECataclysmTeam::Players);
+
+	// A HUNDRED METRES APART, so that before it is taken the creature cannot
+	// see the commander at all -- an enemy notices from fifteen metres. That
+	// is what makes the first reading `Idle` rather than `Chasing`, and it is
+	// the same distance the notice radius tests in this file use.
+	FScopedFighter Creature(World, FVector(100 * M, 0, 0), ECataclysmTeam::Monsters);
+
+	ACataclysmEnemyController* Brain = Creature.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned monster has no controller."));
+		return false;
+	}
+
+	TestNull(TEXT("before it is taken it follows nobody"),
+		UCataclysmCommand::CommanderOf(Creature.Actor));
+	TestEqual(TEXT("so with nothing in sight it stands still, as before"),
 		static_cast<int32>(Brain->Think()),
 		static_cast<int32>(ECataclysmBrainAction::Idle));
+
+	if (!TestTrue(TEXT("it can be subjugated"),
+			UCataclysmCommand::Subjugate(Commander.Actor, Creature.Actor)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and afterwards it follows the character that took it"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Following));
 
 	return true;
 }

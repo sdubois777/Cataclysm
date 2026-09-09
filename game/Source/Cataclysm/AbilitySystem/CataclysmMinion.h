@@ -201,6 +201,14 @@ public:
 	virtual float AttackReachCm() const override { return ReachCm; }
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
 	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
+
+	/**
+	 * A DEPLOYED GADGET NEVER WALKS, AND THIS IS WHAT SAYS SO TO THE BRAIN.
+	 * `bStaysWhereItIsPut` was computed by `Spawn` from the type's move speed
+	 * and read by nothing at all until issue #1517 gave a minion something to
+	 * walk toward.
+	 */
+	virtual bool StaysWhereItIsPut() const override { return bStaysWhereItIsPut; }
 	virtual void AttackTarget(AActor* Target) override;
 	//~ End
 

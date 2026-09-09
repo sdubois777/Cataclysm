@@ -2,6 +2,177 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-09 — A summoned creature follows whoever commands it and a deployed gadget never moves, and the two are told apart by the minion's own move speed
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
+`.cpp`, the shared brain that drives every monster and every minion;
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.h`, the base class it
+asks; and `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`, the one class
+that is a summoned imp, a bolt turret, a ballista and a spike trap at once.
+Issue [#1517](https://github.com/sdubois777/Cataclysm/issues/1517).
+
+### What was wrong, which was not what the issue said it was
+
+The project owner reported it on 2026-09-09, playing a Ritualist in a Horde
+dungeon: "Minions aren't following me, at least not the ones made from the staff
+Q." That skill is `Summon Imp`, which puts up to three imps out for 20 seconds
+each.
+
+**Issue #1517 diagnosed it as a minion having no movement code at all, and that
+was a false negative from searching one file.** It searched
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` for `MoveToActor`,
+`AIMoveTo` and `SetActorLocation` and found none, and concluded a minion could
+not close the gap between the 15 metres at which it notices a target and the 3
+metres at which it attacks. The movement is in a different file. A minion is
+possessed by `ACataclysmEnemyController`, which orders the walk, and
+`Cataclysm.AI.ASummonedImpGoesToTheFightRatherThanStandingStill` has asserted
+that an imp chases a monster it can see and cannot reach since issue #163.
+
+**So the notice radius did not need reconsidering either.** The issue asked for
+15 metres of noticing against 3 metres of reach to be made useful or changed. It
+was already useful; chasing is what spends it. No radius was touched.
+
+**What was actually missing is a minion with nothing to fight.**
+`ACataclysmMinion` does not override `RoamRadiusCm()`, so it answers the base
+class's zero, and `ACataclysmEnemyController::Roam` stands still rather than
+wandering when that is zero. There was nothing between fights. In a Horde
+dungeon the player keeps moving, so imps killed what was near where they were
+summoned and were then left where they stood for the rest of their 20 seconds.
+
+**It was a deliberate prior decision and this reverses it.** The comment on that
+branch read: "Standing still with nothing in sight is what every character in
+this project did before roaming existed, and it is still what a summoned imp and
+a stationary enemy should do."
+
+### Why it is a design question first
+
+**The same C++ class is a spike trap, a bolt turret and a summoned imp.** Five
+skills in `game/Data/WeaponSkills.csv` reach it: `Summon Imp`, `Subjugate`,
+`Bolt Turret`, `Ballista` and `Iron Fortress`. Some of those should walk and
+some must never move, so a follow added to the class without asking which is
+which makes traps walk.
+
+### The distinction was already decided, in the design document
+
+`docs/Cataclysm_GDD_v2.md`, in the passage on minion count: "**A summon spawns at
+the caster and walks**, so one more is safe. **A deployable is placed in a
+pattern**: Iron Fortress arranges two ballistae and three spike traps around the
+caster, and adding to a placement pattern is a level design problem as well as a
+balance one."
+
+It is encoded in three places that agree with it and with each other:
+
+| Where | Summoned creature | Deployed gadget |
+| :-- | :-- | :-- |
+| `game/Data/WeaponSkills.csv`, `Shape` | `Summon` — Summon Imp, Subjugate | `Deployable` — Bolt Turret, Ballista, Iron Fortress |
+| the same file, `Tags` | `Type.Summon` | `Type.Deployable` |
+| `game/Data/MinionTypes.csv`, `MoveSpeed` | Imp 4.4, Mote 5.5 | BoltTurret, Ballista, SpikeTrap all 0.0 |
+
+The skill descriptions say the same thing in prose. Bolt Turret "deploys into a
+**stationary** bolt turret". Ballista is "hammer[ed]... into the ground at your
+location". Iron Fortress arranges its five "around your position". Summon Imp
+and Subjugate say only that the thing "fight[s] for you".
+
+### What was decided
+
+**Whether a minion walks is read off its own move speed, not off the skill's
+`Shape` column.** `ACataclysmMinion::Spawn` already turned a move speed of zero
+into a flag named `bStaysWhereItIsPut` under issue #621, and until now nothing
+read that flag. The brain reads it, through a new `StaysWhereItIsPut()` question
+on `ACataclysmCharacterBase` so that no cast is needed — the arrangement the
+five existing hooks on that class already use.
+
+Three reasons, and the second is the one that settles it:
+
+1. **The thing that walks is the creature, not the skill that placed it.** The
+   header on `bStaysWhereItIsPut` already argued this: "the difference between
+   the Summon shape and the Deployable shape is where the thing is placed, and
+   whether it then walks is a property of what was placed."
+2. **`Shape` cannot cover all five skills.** `Subjugate` is `Shape=Summon` and
+   creates no minion at all — `UCataclysmCommand::Subjugate` flips an existing
+   enemy's side, so a thrall is an ordinary enemy character. A rule written on
+   the `Shape` column would already be wrong for one of the five it governs.
+3. **It needs no new column and no regenerated asset.** Stating a move speed is
+   the whole of what a future creature has to do to say whether it walks.
+
+**Following reaches thralls as well as summoned minions.** It asks
+`UCataclysmCommand::CommanderOf`, which answers for both: a minion names its
+summoner and a thrall names its owner. `Subjugate` promises "it fights for you
+until it dies", and a thrall standing where it was taken does not. Nothing else
+in the project spawns a character with an owner, so an ordinary monster has no
+commander and behaves exactly as before.
+
+**Fighting outranks following, and following outranks wandering.** A creature
+that can see something hostile chases it, which is unchanged. Only one with
+nothing in sight follows. Only one with nothing in sight and nobody to follow
+wanders, which today is the Brute alone.
+
+### What this reverses, said outright
+
+**Two comments in the code stated the opposite position and both are corrected
+in the same change.** A written position quietly contradicted is how this
+project keeps finding stale claims months later.
+
+| Where | Used to say | Now says |
+| :-- | :-- | :-- |
+| `CataclysmEnemyController.cpp`, on the branch that stands still | standing still with nothing in sight "is still what a summoned imp and a stationary enemy should do" | that branch is for a character with nobody to follow — an ordinary monster, or a deployed gadget. A commanded creature never reaches it |
+| `CataclysmEnemyController.h`, on roaming being opt-in | roaming being opt-in means "a summoned imp does not wander away from the fight its summoner made it for" | a minion does leave where it was summoned, to follow rather than to wander. Roaming is still opt-in and a minion still does not roam |
+
+**The authority against both is the design document**, which said a summon
+walks before either comment was written.
+
+### What the genre settles, and what it does not
+
+Four shipped games were read before the shape was chosen, as this file's
+standing rule requires.
+
+| Game | What it does |
+| :-- | :-- |
+| Last Epoch | Minions "typically follow their summoner", and "while aggroed they will stop following their summoner and continue to attack enemies" |
+| Path of Exile | The default minion follows the player and attacks what is near the player; the opposite behaviour is opt-in through a support gem. Totems, traps and mines are a separate category, "stationary", and explicitly "not counted as minions" |
+| Torchlight: Infinite | Sentries "are unable to move"; minions "move independently", and a minion left too far behind is teleported to the player |
+| Diablo IV | Necromancer minions follow the player |
+
+**Settled by the research, so not a judgement of this project's:** that a
+follower's resting behaviour is to follow rather than to stand still; that it
+breaks off to fight and resumes following afterwards; and that fixed gadgets are
+a separate category that never moves.
+
+**Not settled by it, so these two are this project's own judgement and are
+labelled as such:**
+
+**How close a follower stands. Three metres.** None of the four publishes a
+distance. Three metres comes from the bodies: Summon Imp puts three imps out at
+once, an imp's collision radius is 30 cm and the player's is 42, so three of them
+abreast need about two metres of arc and three metres of radius leaves it. It is
+also short enough that an imp arriving is within its own 15 metre notice radius
+of anything the player is standing near, so following delivers it into the next
+fight rather than merely near the player.
+
+**What happens to a follower left far behind. Nothing.** The three games differ:
+Torchlight: Infinite teleports it, Path of Exile despawns it, Last Epoch does
+neither. Doing nothing is the smallest change that answers the report, and
+choosing between a teleport and a despawn is worth its own decision rather than
+being settled as a side effect of this one.
+
+### What was deliberately not decided
+
+**Whether a minion should break off a chase when it takes it too far from its
+summoner.** There is no leash on following any more than there is on chasing.
+`ACataclysmEnemyController`'s own header already records the chase half as
+missing and names Path of Exile's break-off-and-return as the precedent; issue
+[#383](https://github.com/sdubois777/Cataclysm/issues/383) holds it. A summoned
+imp can now be led away by a monster at the edge of its notice radius exactly as
+a monster can.
+
+**Whether a straggler is teleported, despawned or neither.** Above.
+
+**Whether a Ritualist holding anything but a Staff gets minions at all.** That is
+issue [#1479](https://github.com/sdubois777/Cataclysm/issues/1479) and is
+untouched here.
+
+---
+
 ## 2026-09-09 — Three enchantments state their rate per 100 armour or per 10 class points, not per point
 
 **Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the

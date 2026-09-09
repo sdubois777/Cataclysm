@@ -10,6 +10,9 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
+// Cast<AController> in CommanderOf needs the whole type, not the forward
+// declaration Pawn.h carries.
+#include "GameFramework/Controller.h"
 #include "EngineUtils.h"
 #include "GameplayTagsManager.h"
 
@@ -153,7 +156,32 @@ AActor* UCataclysmCommand::CommanderOf(const AActor* Follower)
 		return Minion->Summoner;
 	}
 
-	return Follower->GetOwner();
+	AActor* Owner = Follower->GetOwner();
+
+	// A PAWN IS OWNED BY ITS OWN CONTROLLER, AND A CONTROLLER IS NOT A
+	// COMMANDER. `APawn::PossessedBy` calls `SetOwner(NewController)` --
+	// Engine/Source/Runtime/Engine/Private/Pawn.cpp -- so every possessed
+	// character in the level has a non-null owner and almost none of them
+	// follows anybody. Without this, this function answered every ordinary
+	// monster's own AI controller.
+	//
+	// IT WENT UNNOTICED BECAUSE NOTHING ASKED WHETHER THE ANSWER WAS NULL.
+	// `OrderedTargetFor` below passes the answer to `QuarryOf`, which sweeps
+	// the level for an enemy marked by that actor and finds none, so a wrong
+	// answer cost a level sweep per monster per thinking pass rather than a
+	// visible fault. Issue #1517 added the first caller that cares: a
+	// creature with a commander walks back to it, and every monster in the
+	// game walked toward its own controller. Six tests said so.
+	//
+	// A THRALL IS STILL FOUND. `Subjugate` calls `SetOwner(Commander)` after
+	// possession has already happened, so a taken creature's owner is the
+	// character that took it rather than its controller.
+	if (Cast<AController>(Owner))
+	{
+		return nullptr;
+	}
+
+	return Owner;
 }
 
 FGameplayTag UCataclysmCommand::QuarryTag()
