@@ -345,9 +345,36 @@ enforces it.** `UnrealBuildTool.cs` line 446 builds its lock name from the
 location of the UnrealBuildTool assembly -- the engine install path, not the
 project path -- and `BuildMode.cs` line 51 asks for that lock. Every worktree
 uses the same engine, so every build takes the same lock. `tools/unreal_build.py`
-passes `-WaitMutex`, which makes a second build wait rather than fail. **A build
-that appears to hang for minutes is usually waiting for another session's build.
-Do not kill it.**
+passes `-WaitMutex`, which makes a second build wait rather than fail **when the
+other build is another session on this desktop**. **A build that appears to hang
+for minutes is usually waiting for another session's build. Do not kill it.**
+
+**A BUILD CAN ALSO FAIL FOR TWO OTHER REASONS, AND ALL THREE LOOK DIFFERENT.**
+Four sessions spent an afternoon on 2026-09-09 conflating them, partly because
+the paragraph above said contention waits and stopped there.
+
+| What you see | What it is | What to do |
+|---|---|---|
+| It waits, for minutes | Another session on this desktop. `-WaitMutex` working | **Do not kill it** |
+| Fails in about **0.25 seconds** with `UnauthorizedAccessException` on opening `Global\UnrealBuildTool_Mutex_<hash>` | The continuous integration runner is compiling. It is a Windows **service**, so its lock object belongs to another Windows session and this one cannot even open it | **Wait about a minute and retry.** That worked both times it was seen |
+| Fails in about **4.5 seconds** with `Unable to build while Live Coding is active` | The Unreal editor is open and holding the binaries | Close the editor. **If it is the project owner's, ask them** rather than closing it |
+
+**`-WaitMutex` cannot absorb the second one.** The process fails while *opening*
+the named object, before it has anything to wait on. So "real contention waits,
+this failed instantly, therefore it is not contention" is **wrong**, and it was
+stated as a rule three times that day before being disproven.
+
+**THE RUNNER TAKES THE BUILD LOCK AND NOT THE EDITOR LOCK.** So
+`tools/unreal_lock.py status` saying the editor is free does **not** mean the
+machine is free to build, and holding that lock protects nobody from it. The
+runner compiles on every pull request touching `game/`, which means **merging is
+what triggers it** -- the collision is likeliest exactly when somebody has just
+landed work and is trying to move on. Issue #1514 carries that gap.
+
+**NEVER PUT A TIMEOUT ON AN UNREAL BUILD.** Killing the wrapper does not kill the
+compile workers, which Unreal Build Accelerator runs detached; they go on holding
+the mutex after the command has returned. One session did this and was left with
+one of three module libraries built and an hour of diagnosis.
 
 **One session at a time may drive the editor, and nothing enforces that for
 you.** Opening the interactive editor, running `python tools/unreal_build.py
