@@ -444,8 +444,25 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	// Built here rather than authored as an asset for the same reason as the
 	// cost: the duration comes from a generated table, and there is no asset per
 	// slot to put it in.
+	//
+	// ONE NAME PER COOLDOWN APPLIED, RATHER THAN ONE PER SLOT. Issue #1501.
+	// This built every cooldown under `Cooldown_<tag>`, and asking Unreal for an
+	// object whose name is already taken does not give a second object: it
+	// destroys the existing one in place and constructs the new one at its
+	// address. Two characters using the same skill, or one character whose
+	// cooldown was reapplied, each destroyed an effect that was still running on
+	// somebody.
+	//
+	// THIS ONE COULD NOT CRASH THE WAY THE STATUS EFFECTS IN
+	// `UCataclysmSkillEffects` DID, because it carries no attribute modifiers
+	// and so leaves no raw pointers in anyone's attribute aggregator. The object
+	// lifetime was wrong for the same reason and is corrected the same way.
+	UObject* EffectOuter = GetTransientPackage();
 	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(), FName(*FString::Printf(TEXT("Cooldown_%s"), *Tag.ToString())));
+		EffectOuter,
+		MakeUniqueObjectName(
+			EffectOuter, UGameplayEffect::StaticClass(),
+			FName(*FString::Printf(TEXT("Cooldown_%s"), *Tag.ToString()))));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Seconds));
 

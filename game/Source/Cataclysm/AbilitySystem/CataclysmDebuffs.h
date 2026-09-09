@@ -38,11 +38,11 @@ class UAbilitySystemComponent;
  *
  * IT NEEDS NO STATE AND NO TIMER, WHICH IS THE WHOLE SHAPE. A lasting effect
  * already grants its target a gameplay tag for exactly as long as it runs --
- * `MakeSingleStackTagged` in `CataclysmSkillEffects.cpp` attaches one through a
- * `UTargetTagsGameplayEffectComponent` -- so the ability system is already
- * keeping this list up to date and the count is a read of it. An effect that
- * expired a moment ago has already taken its tag off, so the answer is right
- * with nothing having run in the meantime. That is the same argument
+ * `TagAndReplaceAnyExisting` in `CataclysmSkillEffects.cpp` attaches one
+ * through a `UTargetTagsGameplayEffectComponent` -- so the ability system is
+ * already keeping this list up to date and the count is a read of it. An effect
+ * that expired a moment ago has already taken its tag off, so the answer is
+ * right with nothing having run in the meantime. That is the same argument
  * `UCataclysmStacks` makes for its own count.
  *
  * WHAT COUNTS AS A DEBUFF IS AN EXPLICIT LIST AND NOT A JUDGEMENT. See
