@@ -781,6 +781,83 @@ bool FCataclysmDeployableDoesNotFollowTest::RunTest(const FString&)
 }
 
 /**
+ * An ordinary monster follows nobody, and asking costs no sweep of the level.
+ *
+ * THE GUARD FOR ISSUE #1525, WHICH ISSUE #1517 FOUND BY ACCIDENT.
+ * `UCataclysmCommand::CommanderOf` answers "who does this creature follow",
+ * and its own documentation says it returns null for one that follows nobody.
+ * It did not. For anything that is not a summoned minion it returned the
+ * actor's owner, and `APawn::PossessedBy` in the engine's own Pawn.cpp calls
+ * `SetOwner(NewController)` -- so every possessed character in the game was
+ * owned by its own AI controller and the answer was never null.
+ *
+ * WHY NOTHING HAD NOTICED. The only caller passed the answer straight to
+ * `QuarryOf`, which walks every character in the level looking for one this
+ * actor has marked. A controller has marked nothing, so the answer was
+ * correct and the cost was a level-wide sweep per creature per thinking
+ * pass, four times a second. That is invisible in a test and expensive in a
+ * Horde arena, which exists to put a great many creatures in one room.
+ *
+ * WHAT MADE IT VISIBLE. Issue #1517 added the first caller that cares whether
+ * the answer is null: a creature with a commander walks back to it. Every
+ * monster in the game then walked toward its own controller, and six
+ * pre-existing tests in this file said so.
+ *
+ * THE OWNERSHIP IS ASSERTED RATHER THAN ASSUMED. Without that assertion this
+ * test would still pass if a future engine version stopped setting the owner
+ * on possession, and it would then be guarding nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOrdinaryMonsterFollowsNobodyTest,
+	"Cataclysm.AI.AnOrdinaryMonsterFollowsNobodyNotEvenItsOwnController",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOrdinaryMonsterFollowsNobodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Monster(World, FVector::ZeroVector, ECataclysmTeam::Monsters);
+
+	ACataclysmEnemyController* Brain = Monster.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned monster has no controller."));
+		return false;
+	}
+
+	// THE PRECONDITION. This is the thing that made the answer wrong, so a test
+	// that did not state it would quietly stop guarding anything if the engine
+	// changed. A possessed pawn IS owned by its controller.
+	TestEqual(TEXT("a possessed monster is owned by its own AI controller"),
+		Monster.Actor->GetOwner(), static_cast<AActor*>(Brain));
+
+	// AND IT STILL FOLLOWS NOBODY. A controller is not a commander.
+	TestNull(TEXT("and it follows nobody all the same"),
+		UCataclysmCommand::CommanderOf(Monster.Actor));
+
+	// WHICH IS ALSO WHAT KEEPS THE LEVEL SWEEP FROM RUNNING. `OrderedTargetFor`
+	// asks `QuarryOf` about whatever this returns, and `QuarryOf` walks every
+	// character in the level. A null commander is answered without the walk.
+	TestNull(TEXT("so nothing has ordered it onto anything"),
+		UCataclysmCommand::OrderedTargetFor(Monster.Actor));
+
+	// AND THE BEHAVIOUR THAT DEPENDS ON IT. With nothing in sight and nobody to
+	// follow, a monster stands still exactly as it did before issue #1517.
+	TestEqual(TEXT("and with nothing in sight it stands still"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Idle));
+
+	return true;
+}
+
+/**
  * A thrall follows the character that took it.
  *
  * WHY THIS IS HERE AND NOT ONLY THE MINION TEST. Following is asked through
