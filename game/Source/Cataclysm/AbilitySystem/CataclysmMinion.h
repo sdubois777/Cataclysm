@@ -210,6 +210,31 @@ public:
 	 */
 	virtual bool StaysWhereItIsPut() const override { return bStaysWhereItIsPut; }
 	virtual void AttackTarget(AActor* Target) override;
+
+	/**
+	 * Record that this minion has died. Issue #1518.
+	 *
+	 * WITHOUT THIS A MINION WAS NEVER RECORDED AS DEAD AT ALL.
+	 * `ACataclysmCharacterBase::HandleDeath` is empty, the enemy and player
+	 * classes override it, and this one did not -- so a minion whose health
+	 * reached zero ran the inert base, never took the Dead tag, and stayed in
+	 * every list that asks whether it is alive.
+	 *
+	 * WHAT THAT BROKE, WHICH IS WHY IT IS FIXED HERE. Both halves of the
+	 * Ritualist's generator ask about the minions a character commands, and
+	 * `UCataclysmCommand::ThingsCommandedBy` drops a follower by asking
+	 * `UCataclysmSkillEffects::IsDead`. An imp at zero health answered "alive",
+	 * so it went on generating Fervour, and
+	 * `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` -- which uses
+	 * the same tag to run a death once -- would have granted the death bonus
+	 * again on every later write to a corpse's health.
+	 *
+	 * IT MARKS AND DOES NOT REMOVE. The actor still goes away on the lifespan
+	 * `Spawn` gave it, exactly as before, so nothing about spawning or the
+	 * summon cap changes. A dead minion's body staying in the level until then
+	 * is a separate fault and has its own issue.
+	 */
+	virtual void HandleDeath() override;
 	//~ End
 
 protected:

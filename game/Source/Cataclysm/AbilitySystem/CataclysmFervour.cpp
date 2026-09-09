@@ -16,6 +16,10 @@ const TCHAR* UCataclysmFervour::PerSecondStat = TEXT("fervour_per_second");
 const TCHAR* UCataclysmFervour::PerCastStat = TEXT("fervour_per_cast");
 const TCHAR* UCataclysmFervour::OnDroppingLowStat =
 	TEXT("fervour_on_dropping_low");
+const TCHAR* UCataclysmFervour::FromMinionsStat =
+	TEXT("fervour_from_minions");
+const TCHAR* UCataclysmFervour::OnMinionDeathStat =
+	TEXT("fervour_on_minion_death");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -301,14 +305,45 @@ float UCataclysmFervour::GainPerSecondStep(
 	// whose tags could scope it.
 	const float PerSecond = Cataclysm->StatForSkill(
 		FName(PerSecondStat), FGameplayTagContainer(), 0.0f);
-	if (PerSecond <= 0.0f)
+
+	// AND THE RITUALIST'S RATE, WHICH IS PER MINION RATHER THAN FLAT.
+	// Issue #1518: "1 per second for each minion you have".
+	//
+	// A SECOND STAT RATHER THAN A SECOND VALUE OF THE ONE ABOVE, so the
+	// Ritualist's `Binding Sigils` node -- "+2% increased Fervour gained from
+	// your minions" -- cannot reach the Masochist's Low Life keystone, which
+	// grants Fervour for being hurt. One character can reach all 24 class
+	// trees, so a character holding both nodes is ordinary.
+	//
+	// THE MINION COUNT IS NOT MULTIPLIED IN HERE. The row carries the scale
+	// `minions_held`, so `StatForSkill` has already multiplied the rate by how
+	// many minions the character is commanding, counted from the world at the
+	// moment of this call. A Ritualist commanding nothing gets zero out of this
+	// line and no special case is needed to make that true.
+	//
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, and the fallback is zero
+	// for the reason `GainForCast` gives for its own: a scaled bonus is never
+	// folded into a gameplay attribute -- it would be stale the moment a minion
+	// was summoned or died -- so the attribute is zero even for a Ritualist
+	// holding the node, and passing it would be passing zero the long way round.
+	const float PerMinionPerSecond = Cataclysm->StatForSkill(
+		FName(FromMinionsStat), FGameplayTagContainer(), 0.0f);
+
+	// SUMMED RATHER THAN ONE OR THE OTHER, and clamped once below. A character
+	// in both trees, hurt and holding minions, is earning from both rules at
+	// once and should receive both.
+	const float PerSecondAltogether =
+		FMath::Max(0.0f, PerSecond) + FMath::Max(0.0f, PerMinionPerSecond);
+	if (PerSecondAltogether <= 0.0f)
 	{
-		// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN LOW LIFE, and
-		// every character holding it that is not hurt enough for the condition.
+		// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN LOW LIFE OR IN
+		// THE RITUALIST'S STARTING NODE; every character holding Low Life that
+		// is not hurt enough for the condition; and every Ritualist commanding
+		// nothing at all.
 		return 0.0f;
 	}
 
-	const float Wanted = PerSecond * SecondsInStep;
+	const float Wanted = PerSecondAltogether * SecondsInStep;
 
 	const FGameplayAttribute Pool =
 		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
@@ -434,6 +469,66 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 	// this file follows and for the reason they give.
 	const float Change =
 		FMath::Clamp(Before + OnDropping, 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill. That is every enemy, and
+		// it is also every minion -- which matters here, because the caller has
+		// a dying minion in hand and must pass its COMMANDER'S ability system.
+		// Passing the minion's own lands on this line.
+		return 0.0f;
+	}
+
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, the standing rule for
+	// anything a later node might put a condition on. Issue #1518.
+	//
+	// AND THE FALLBACK IS THE ATTRIBUTE, WHICH IS WHAT `GainOnDroppingLow`
+	// PASSES AND NOT WHAT THE PER-SECOND RATE ABOVE DOES. This node's row
+	// carries no condition and no scale, so it IS folded into the attribute,
+	// and passing zero would throw the answer away whenever no stat line has
+	// been recorded -- the ordinary case for an ability system before its first
+	// refresh.
+	//
+	// NO TAGS. A minion dying is not a skill of a particular kind, so there is
+	// nothing for tags to scope.
+	const float OnDeath = Cataclysm->StatForSkill(
+		FName(OnMinionDeathStat), FGameplayTagContainer(),
+		Resource->GetFervourOnMinionDeath());
+	if (OnDeath <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN THE RITUALIST'S
+		// STARTING NODE.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
+	// this file follows and for the reason they give.
+	const float Change =
+		FMath::Clamp(Before + OnDeath, 0.0f, Resource->GetMaxClassResource())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{

@@ -165,6 +165,10 @@ Ravager_basic_d_a1#1,Ravager_basic_d_a1,movement_speed,increased,1.0,,,0.0,,0.0,
 Ravager_basic_d_b1#1,Ravager_basic_d_b1,class_resource,increased,2.0,,,0.0,,0.0,0
 Ravager_basic_d_b2#1,Ravager_basic_d_b2,damage_reduction,increased,1.0,,,0.0,class_resource_held,25.0,0
 Ravager_basic_d_c0#1,Ravager_basic_d_c0,life_leech,increased,1.0,,,0.0,,0.0,0
+Ritualist_basic_spine_000#1,Ritualist_basic_spine_000,fervour_from_minions,flat,1.0,,,0.0,minions_held,1.0,0
+Ritualist_basic_spine_000#2,Ritualist_basic_spine_000,fervour_on_minion_death,flat,5.0,,,0.0,,0.0,0
+Ritualist_basic_spine_003#1,Ritualist_basic_spine_003,fervour_from_minions,increased,2.0,,,0.0,,0.0,0
+Ritualist_basic_spine_003#2,Ritualist_basic_spine_003,fervour_on_minion_death,increased,2.0,,,0.0,,0.0,0
 Ritualist_basic_spine_001#1,Ritualist_basic_spine_001,class_resource,increased,2.0,,,0.0,,0.0,0
 Ritualist_basic_spine_002#1,Ritualist_basic_spine_002,spell_damage,increased,2.0,,,0.0,,0.0,0
 Ritualist_basic_spine_004#1,Ritualist_basic_spine_004,max_energy_shield,increased,3.0,,,0.0,,0.0,0

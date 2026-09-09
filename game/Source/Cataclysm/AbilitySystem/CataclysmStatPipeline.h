@@ -452,6 +452,28 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerDebuffCarried
 		UMETA(DisplayName = "Per Debuff Carried"),
+
+	/**
+	 * Multiplied by how many minions the character is commanding. Issue #1518.
+	 *
+	 * THE RITUALIST'S GENERATOR IS THE FIRST USE: "1 per second for each minion
+	 * you have". A step of 1, so the count is the minions themselves.
+	 *
+	 * IMPS AND THRALLS TOGETHER, WHICH IS WHAT "MINION" MEANS HERE. The
+	 * decision of 2026-09-08 settled the word: an imp is summoned and temporary,
+	 * a thrall is possessed and permanent, and the tree says "minion" wherever
+	 * it means both. `UCataclysmCommand::ThingsCommandedBy` is that list, and it
+	 * is deliberately NOT `ThrallCountOf`, which counts only the taken ones.
+	 *
+	 * COUNTED THE SAME WAY AS A DEBUFF AND A STACK, because a minion is a whole
+	 * thing: there is nothing to divide and nothing to round.
+	 *
+	 * IT READS ZERO WHEN THE CHARACTER COMMANDS NOTHING, which is what makes a
+	 * Ritualist holding no minions gain nothing rather than gain the row's bare
+	 * value. That is the case a build that forgets the count gets wrong.
+	 */
+	PerMinionHeld
+		UMETA(DisplayName = "Per Minion Held"),
 };
 
 /**
@@ -630,6 +652,21 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 DebuffsCarried = 0;
+
+	/**
+	 * How many minions the character is commanding right now. Issue #1518.
+	 *
+	 * IMPS AND THRALLS TOGETHER. `UCataclysmCommand::ThingsCommandedBy` is the
+	 * list and it holds both, which is what the Ritualist tree means by the
+	 * word: the decision of 2026-09-08 kept "imp" and "thrall" only where a node
+	 * means one of the two and says "minion" everywhere it means both.
+	 *
+	 * ZERO IS THE ANSWER FOR EVERY CHARACTER THAT COMMANDS NOTHING, which is
+	 * every character in the game but a Ritualist that has summoned or
+	 * subjugated something. It is a count rather than a measurement, so its
+	 * default is 0 and not the -1 the readings above use to mean "not asked".
+	 */
+	int32 MinionsHeld = 0;
 
 	/**
 	 * What the skill dealing this blow cost, as a percentage of the character's

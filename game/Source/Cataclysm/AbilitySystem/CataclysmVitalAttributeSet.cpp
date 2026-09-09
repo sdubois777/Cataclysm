@@ -15,6 +15,8 @@
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For asking who was commanding a dying creature. Issue #1518.
+#include "AbilitySystem/CataclysmCommand.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -1182,6 +1184,34 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	if (!Character || UCataclysmSkillEffects::IsDead(Character))
 	{
 		return;
+	}
+
+	// WHOEVER WAS COMMANDING THIS THING GAINS FERVOUR FOR LOSING IT.
+	// Issue #1518, the Ritualist's generator: "and 5 when one of them dies".
+	//
+	// BEFORE `HandleDeath` AND NOT AFTER IT, because the enemy's own
+	// `HandleDeath` removes the creature from the level, and
+	// `UCataclysmCommand::CommanderOf` walks the ownership chain of an actor
+	// that would by then be leaving. A thrall is a subjugated
+	// `ACataclysmEnemyCharacter`, so this is the ordinary case rather than a
+	// corner.
+	//
+	// IT RUNS ONCE PER DEATH BECAUSE THE GUARD ABOVE DOES. Health can be
+	// written at zero repeatedly and `IsDead` is what stops the second one, so
+	// this grant inherits that rule rather than keeping a record of its own.
+	// `ACataclysmMinion::HandleDeath` had to be given to it for that to be true
+	// of an imp as well as of a thrall.
+	//
+	// THE COMMANDER'S ABILITY SYSTEM, NOT THE DYING THING'S. A minion has no
+	// class resource attribute set, so passing its own would answer zero.
+	//
+	// INERT FOR EVERYTHING THAT FOLLOWS NOBODY, which is every creature in the
+	// game but a Ritualist's: `CommanderOf` answers null and the grant is
+	// skipped without asking anything else.
+	if (AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	{
+		UCataclysmFervour::GainOnMinionDeath(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
 	}
 
 	Character->HandleDeath();

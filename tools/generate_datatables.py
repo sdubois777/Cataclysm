@@ -3268,6 +3268,26 @@ SCALES = {
     # this is a sanity limit in the shape the stack counts use. Ten distinct
     # harmful effects at once is already far past anything the game can apply.
     "debuffs_carried": (0.0, 10.0, "a number of debuffs"),
+
+    # "for each minion you have" is `minions_held` with a step of 1.
+    # Issue #1518. The Ritualist's generator reads it: "1 per second for each
+    # minion you have".
+    #
+    # IMPS AND THRALLS TOGETHER, WHICH IS WHAT THE TREE MEANS BY "MINION". The
+    # decision of 2026-09-08 settled the word: an imp is summoned, temporary and
+    # capped at three; a thrall is possessed, permanent and reserves 30 Fervour;
+    # and the tree says "minion" wherever a node means both.
+    # `UCataclysmCommand::ThingsCommandedBy` is the list the game counts, and it
+    # is deliberately not `ThrallCountOf`, which counts only the taken ones.
+    #
+    # COUNTED WHOLE THE WAY A DEBUFF AND A STACK ARE, because a minion is a
+    # whole thing: there is nothing to divide and nothing to round.
+    #
+    # THE UPPER BOUND IS A JUDGEMENT IN THE SHAPE THE COUNTS ABOVE USE. What
+    # actually caps an army is the Fervour pool -- a thrall reserves 30 against
+    # the Ritualist's 150, so five -- plus the three imps `MaxActive` allows.
+    # Ten is past any army the game can currently field.
+    "minions_held": (0.0, 10.0, "a number of minions"),
 }
 
 

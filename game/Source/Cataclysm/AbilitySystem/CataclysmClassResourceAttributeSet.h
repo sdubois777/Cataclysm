@@ -32,12 +32,20 @@
  * Saboteur's adds no rule at all. The pool is 100 for every class and 150 for
  * the Ritualist.
  *
- * ONE CLASS'S GENERATOR IS BUILT AND THE OTHER 23 ARE NOT. Issue #954 added the
- * Masochist's, which is the three rates below: health lost to damage and health
- * spent as an ability cost both fill the bar, and healing empties it. The
- * Berserker filling on a critical strike and the Saboteur filling on a trap are
- * different rules, not different values of these, and each needs its own code.
- * `UCataclysmFervour` holds the Masochist's and is where a second one would join.
+ * TWO CLASSES' GENERATORS ARE BUILT AND THE OTHER 22 ARE NOT. Issue #954 added
+ * the Masochist's, which is the three rates below: health lost to damage and
+ * health spent as an ability cost both fill the bar, and healing empties it.
+ * Issue #1518 added the Ritualist's, which is the two further down that count
+ * minions rather than health: `FervourFromMinions` a second for each one held,
+ * and `FervourOnMinionDeath` when one of them dies.
+ *
+ * THE RITUALIST'S IS NOT A DIFFERENT VALUE OF THE THREE RATES, which is why it
+ * has stats of its own. Those three are all per 1% of maximum health, and this
+ * class's generator never reads health at all. The Berserker filling on a
+ * critical strike and the Saboteur filling on a trap are different rules again,
+ * and each needs its own code.
+ *
+ * `UCataclysmFervour` holds both and is where a third would join.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmClassResourceAttributeSet : public UAttributeSet
@@ -479,6 +487,55 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow)
 
 	/**
+	 * Fervour gained every second FOR EACH MINION the character commands.
+	 * Issue #1518.
+	 *
+	 * THE RITUALIST'S GENERATOR, first half: "1 per second for each minion you
+	 * have". Its starting node is its only source and grants 1, and
+	 * `Binding Sigils` increases it by 2% a point.
+	 *
+	 * IT IS NOT `FervourPerSecond`, THOUGH BOTH ARRIVE FROM THE PASSAGE OF
+	 * TIME, and keeping them apart is what makes `Binding Sigils` mean what it
+	 * says. That node reads "+2% increased Fervour gained from your minions",
+	 * and a character in both the Masochist and Ritualist trees would have a
+	 * single shared stat carry that increase onto the Masochist's Low Life
+	 * keystone as well, which grants 10 a second for being hurt and has nothing
+	 * to do with minions. One character can reach all 24 class trees, so that
+	 * overlap is ordinary rather than a corner.
+	 *
+	 * THE ATTRIBUTE READS ZERO EVEN FOR A RITUALIST HOLDING THE NODE, because
+	 * the row carries a scale and a scaled bonus is worked out against the
+	 * character's state at the moment it is asked for, never folded into an
+	 * attribute -- it would be stale the moment a minion was summoned or died.
+	 * `UCataclysmFervour::GainPerSecondStep` asks for it. The attribute exists
+	 * so the stat has something behind it and so the bar can be drawn.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourFromMinions)
+	FGameplayAttributeData FervourFromMinions;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourFromMinions)
+
+	/**
+	 * Fervour gained when one of the character's minions dies. Issue #1518.
+	 *
+	 * THE RITUALIST'S GENERATOR, second half: "and 5 when one of them dies".
+	 * Its starting node is its only source and grants 5, and `Binding Sigils`
+	 * increases it by 2% a point alongside the rate above.
+	 *
+	 * A PLAIN FLAT ROW WITH NO SCALE AND NO CONDITION, unlike the rate above,
+	 * so this one IS folded into the attribute and reads 5 for a Ritualist
+	 * holding the node. That is what makes the Fervour bar appear for a
+	 * Ritualist that has not yet summoned anything.
+	 *
+	 * GRANTED PER DEATH RATHER THAN PER SECOND, which is why it is a separate
+	 * stat from the rate above rather than a value of it. The same distinction
+	 * `FervourOnDroppingLow` and `FervourPerCast` draw against
+	 * `FervourPerSecond`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourOnMinionDeath)
+	FGameplayAttributeData FervourOnMinionDeath;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourOnMinionDeath)
+
+	/**
 	 * Whether taking a hit grants this character a stack of Carnage.
 	 * Issue #1071. Zero for no.
 	 *
@@ -546,6 +603,8 @@ protected:
 	UFUNCTION() void OnRep_UnpayableHealthCostBecomesDebt(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebtClearedOnDroppingLow(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourOnDroppingLow(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourFromMinions(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourOnMinionDeath(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CarnageFromDamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CarnageHasNoMaximum(const FGameplayAttributeData& OldValue);
 };

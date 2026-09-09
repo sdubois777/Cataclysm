@@ -2,6 +2,150 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-09 — The Ritualist's Fervour generator is built, on a new count of what a character commands and two stats of its own
+
+**Affects:** the `Passive Effects` sheet of `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/PassiveEffects.csv` generated from it,
+`game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`,
+`CataclysmClassResourceAttributeSet.h` and `.cpp`, `CataclysmStatPipeline.h`
+and `.cpp`, `CataclysmVitalAttributeSet.cpp`, `CataclysmMinion.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp` and
+`CataclysmPlayerClassStats.cpp`, `tools/generate_datatables.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`. **Applied.** Issue
+[#1518](https://github.com/sdubois777/Cataclysm/issues/1518).
+
+The design has stated this generator since the Class Resource Systems section
+was written, and the entry of 2026-09-07 designed it in full: "1 per second for
+each minion held, and 5 when one of them dies". Nothing was built. The project
+owner played a Ritualist on 2026-09-09 and reported gaining no Fervour for the
+minions they had out, and wondered whether a point spent in the Masochist tree
+first had caused it. It had not. There was nothing to cause.
+
+### It is built on the mechanism the Masochist's generator already uses
+
+The 2026-08-25 entry that built the Masochist's records the shape: a stat, zero
+for every class, granted by a `Passive Effects` row, asked for through the stat
+pipeline rather than read off its attribute, and written to the pool by one
+clamped helper in `UCataclysmFervour`. That entry says each remaining generator
+"is a different rule rather than a different value of these three, and each
+needs its own code". Two pieces of the Ritualist's turned out to need no new
+rule at all.
+
+**The per-second half needed no new mechanism, only a new count.** The Masochist
+already has a rate per second that is multiplied by a count of something: the
+Flagellant keystone, `fervour_per_second` with the scale `debuffs_carried`,
+which reads "Every debuff on you grants 5 Fervour per second". "1 per second for
+each minion you have" is the same sentence with a different count, and
+`UCataclysmFervour::GainPerSecondStep` is already run every step by
+`ACataclysmCharacterBase`. So the work was a ninth scale, `minions_held`, beside
+the eight that existed.
+
+**The death half is the same shape as Rock Bottom**, the Masochist capstone
+option that grants 50 Fervour on dropping low: a plain quantity granted once per
+event, `GainOnMinionDeath` beside `GainOnDroppingLow`.
+
+### The count is of imps and thralls together, and it is not the thrall count
+
+`UCataclysmCommand::ThingsCommandedBy` is what the scale reads.
+`ThrallCountOf` sits beside it and was not used: it deliberately counts only the
+taken ones, because a reservation is stated per thrall. The node says "minion",
+and the decision of 2026-09-08 settled that word — an imp is summoned and
+temporary, a thrall is possessed and permanent, and the tree says "minion"
+wherever a node means both.
+
+### Two new stats rather than a second value of `fervour_per_second`
+
+`fervour_from_minions` and `fervour_on_minion_death`. Reusing the Masochist's
+`fervour_per_second` for the rate would have been fewer moving parts and it
+would have made `Binding Sigils` mean something it does not say.
+
+That node reads "+2% increased Fervour gained from your minions per point". An
+increase is applied to a stat, so on a shared stat those 24% at full investment
+would also increase the Masochist's Low Life keystone, which grants 10 Fervour a
+second for being below 35% health and has nothing to do with minions. **A
+character in both trees is ordinary rather than a corner:** the 2026-08-25
+ruling that every class shares one Fervour bar rests on one character being able
+to reach all 24 class trees. It is the same class of fault the 2026-09-08 entry
+fixed when it found nodes describing `minion_damage` without naming it.
+
+**`Binding Sigils` increases both halves.** "Fervour gained from your minions"
+names neither the rate nor the death bonus specifically, and both are Fervour
+gained from minions, so it is authored as two increase rows on one node — the
+shape the Masochist's own starting node uses, which is three rows.
+
+### A minion was never recorded as dead, and both halves needed it to be
+
+`ACataclysmCharacterBase::HandleDeath` is empty; the enemy and player classes
+override it and `ACataclysmMinion` did not. So an imp whose health reached zero
+ran the inert base, never took the Dead tag, and went on answering "alive" to
+everything that asked.
+
+**That broke both halves rather than one.** `ThingsCommandedBy` drops a follower
+by asking `UCataclysmSkillEffects::IsDead`, so a dead imp would have gone on
+generating Fervour; and `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`
+uses the same tag to run a death once, so the death bonus would have been paid
+again on every later write to a corpse's health — a burn ticking on a body.
+
+`ACataclysmMinion::HandleDeath` now marks it dead **and does not remove it**.
+The actor still goes away on the lifespan `Spawn` gave it, so the summon cap,
+the spawning path and every test that counts minions behave exactly as before. A
+dead minion's body staying in the level until then is a separate fault with its
+own issue.
+
+### A stat's own units are read for a flat row and not for an increase
+
+`tools/tests/test_passive_effects_match_the_node_text.py` checks that a row's
+number appears in the node's English sentence, in the stat's own units where
+`VALUE_FORMS` names them — "10 Fervour", "4 metres". It read those units for
+every row of the stat, and the two rows here are the first stats in the sheet
+carrying a flat row and an increase together, which uncovered it: `Binding
+Sigils` says "+2%" and the check looked for "2 per second".
+
+An `increased` or `more` row is a percentage of the thing whatever the thing is,
+and its node writes one. Measured 2026-09-09: every stat named in `VALUE_FORMS`
+before this issue is granted by flat rows only, so the change moves nothing
+already in the sheet.
+
+**And neither of these two sentences puts the word "Fervour" after its number.**
+The node names the resource once at the front — "Your minions generate Fervour:
+1 per second for each minion you have, and 5 when one of them dies" — so the
+forms carry the words that follow each number instead, "1 per second" and "5
+when one". A bare number would have been satisfied by a workbook that swapped
+the 1 and the 5.
+
+### What this does not do
+
+**Nothing drains the bar, so a Ritualist holding minions will fill it and sit
+full.** That is not this change's to fix and it is worth stating plainly. The
+Ritualist's use of Fervour is reservation, which is issue
+[#1160](https://github.com/sdubois777/Cataclysm/issues/1160) and is not built:
+nothing separates available Fervour from the total, and
+`UCataclysmCommand::HasRoomForAnotherThrall` reads the maximum rather than the
+current value. The Ultimate slot costing 50 Fervour, ruled on 2026-09-09, is the
+other consumer and is not built either.
+
+**Generation had to be the half that landed first.** Reservation alone would
+subtract from a pool that never fills, leaving a Ritualist at zero permanently
+and worse off than before; and #1160 weighs two shapes and picks neither, so it
+is waiting on a decision that this was not.
+
+**The Ravager's generator is still not built**, and it is the last of the six.
+It is a larger piece of work than this one rather than the same work again: "1
+for each enemy an attack hits, and 1 per second for every enemy within 4 metres"
+needs a hook counting what one attack hit and a proximity query, and its
+emptying rule — "decays at 5 per second after 3 seconds with no enemy within 4
+metres" — needs a decay mechanism that nothing in the game has. The Berserker's
+decay is unbuilt for the same reason. The Ritualist's own emptying rule is, in
+the design's word, "Nothing", which is why this one needed none.
+
+**The sizes are the design's and were not re-tuned.** 1 per second per minion
+and 5 per death are what the 2026-09-07 entry chose, and it labelled every
+number in both new trees "a starting value chosen to sit in the range the four
+existing trees use, not a tuned one".
+
+---
+
 ## 2026-09-09 — A summoned creature follows whoever commands it and a deployed gadget never moves, and the two are told apart by the minion's own move speed
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
