@@ -24,13 +24,17 @@
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
+#include "Empire/CataclysmDungeonKind.h"
+#include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/Class.h"
 
 /**
  * Tests for the game mode that puts a player on a generated dungeon floor.
@@ -391,6 +395,134 @@ namespace CataclysmDungeonModeTest
 		IConsoleVariable* Variable = nullptr;
 		float Previous = 0.0f;
 	};
+
+	/**
+	 * The same for a console variable holding a name rather than a number.
+	 *
+	 * A THIRD TYPE RATHER THAN A TEMPLATE, for the reason `FScopedConsoleFloat`
+	 * gives above and one more: `IConsoleVariable::GetString` on a number
+	 * variable answers with the number spelled out, so a guard that read the
+	 * wrong one would restore "2" into a variable expecting a sub-type's name
+	 * and quietly leave every later test asking for a dungeon nothing matches.
+	 */
+	struct FScopedConsoleString
+	{
+		FScopedConsoleString(const TCHAR* Name, const TCHAR* Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleString()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
+
+	/**
+	 * Every dungeon sub-type there is, read off the reflected enum.
+	 *
+	 * THE SAME SHAPE AS `EverySubType` IN `CataclysmFloorBriefTests.cpp` and
+	 * for the same two reasons written there: a sub-type added later is covered
+	 * without anybody remembering to come here, and the last entry is skipped
+	 * because Unreal appends a hidden `_MAX` that `NumEnums` counts.
+	 */
+	TArray<ECataclysmDungeonSubType> EverySubType()
+	{
+		TArray<ECataclysmDungeonSubType> Out;
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return Out;
+		}
+
+		for (int32 Index = 0; Index + 1 < Reflected->NumEnums(); ++Index)
+		{
+			Out.Add(static_cast<ECataclysmDungeonSubType>(
+				Reflected->GetValueByIndex(Index)));
+		}
+		return Out;
+	}
+
+	/** What the reflected enum calls one sub-type, for a message or a lookup. */
+	FString NameOf(ECataclysmDungeonSubType SubType)
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		return Reflected
+			? Reflected->GetNameStringByValue(static_cast<int64>(SubType))
+			: FString();
+	}
+
+	/** What the editor shows for one sub-type, which is not always its name. */
+	FString DisplayNameOf(ECataclysmDungeonSubType SubType)
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		return Reflected
+			? Reflected->GetDisplayNameTextByValue(static_cast<int64>(SubType)).ToString()
+			: FString();
+	}
+
+	/** One dungeon modifier, built by hand, with a danger nothing shares. */
+	FCataclysmDungeonModifier ModifierNamed(const TCHAR* Key, float Danger)
+	{
+		FCataclysmDungeonModifier Modifier;
+		Modifier.RowKey = FName(Key);
+		Modifier.ModifierName = FName(Key);
+		Modifier.Cataclysm = ECataclysmType::War;
+		Modifier.Danger = Danger;
+		return Modifier;
+	}
+
+	/**
+	 * Twenty modifiers for a floor to draw from.
+	 *
+	 * TWENTY, so a tier 4 dungeon drawing four of them has 4,845 sets to land
+	 * on and two floors drawing the same four is a coincidence rather than the
+	 * only thing the pool can produce. The same size and the same reasoning as
+	 * `Pool` in `CataclysmFloorBriefTests.cpp`.
+	 *
+	 * NAMED SO THAT NOTHING HERE COLLIDES WITH A DUNGEON'S OWN MODIFIER LIST,
+	 * which is what lets a test say "this floor re-drew" without depending on
+	 * what the draw gave.
+	 */
+	TArray<FCataclysmDungeonModifier> ModifierPoolOfTwenty()
+	{
+		TArray<FCataclysmDungeonModifier> Out;
+		for (int32 Index = 0; Index < 20; ++Index)
+		{
+			Out.Add(ModifierNamed(*FString::Printf(TEXT("PoolModifier_%02d"), Index),
+								  static_cast<float>(Index + 1)));
+		}
+		return Out;
+	}
+
+	/**
+	 * A floor's modifiers as one string, in a fixed order.
+	 *
+	 * SORTED, so that two floors carrying the same four modifiers in a
+	 * different order count as the same set rather than as a change.
+	 */
+	FString SortedKeysOf(const TArray<FName>& Keys)
+	{
+		TArray<FString> Names;
+		for (const FName& Key : Keys)
+		{
+			Names.Add(Key.ToString());
+		}
+		Names.Sort();
+		return FString::Join(Names, TEXT(","));
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSeedControlTest,
@@ -591,6 +723,556 @@ bool FCataclysmDungeonModeLayoutControlTest::RunTest(const FString& Parameters)
 			static_cast<int32>(ECataclysmFloorLayout::Count));
 		TestEqual(TEXT("and the count itself is not a layout"),
 				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE SETTING IS SIEGE AND NOT NONE ON PURPOSE. None is what an unset
+	// control falls back to, what a default-constructed game mode carries and
+	// what a failed lookup would leave behind, so a test whose setting was None
+	// could not tell "the setting decided" from "nothing happened at all".
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Siege;
+
+	// AN EMPTY NAME MEANS "USE THE SETTING". The four controls above this one
+	// spell that as 0 or -1; a name has an emptiness of its own and does not
+	// need a number standing in for one.
+	//
+	// CLEARING IT IS ASKED FOR FROM A NAME THAT IS ALREADY SET, and that is
+	// deliberate. Writing an empty name over a variable that is already empty
+	// would pass whether clearing worked or did nothing at all, which is the
+	// shape of a check that cannot fail.
+	{
+		FScopedConsoleString Typed(TEXT("Cataclysm.DungeonSubType"), TEXT("Horde"));
+		if (!TestEqual(TEXT("a name typed at the console decides"),
+					   static_cast<uint8>(Mode->ChooseSubType()),
+					   static_cast<uint8>(ECataclysmDungeonSubType::Horde)))
+		{
+			return false;
+		}
+
+		{
+			FScopedConsoleString Cleared(TEXT("Cataclysm.DungeonSubType"), TEXT(""));
+			TestEqual(TEXT("clearing it hands the decision back to the setting"),
+					  static_cast<uint8>(Mode->ChooseSubType()),
+					  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+		}
+
+		TestEqual(TEXT("and putting the name back makes it decide again"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+
+	// AND WITH THE VARIABLE LEFT ALONE ENTIRELY, which is also what every scope
+	// above has to have restored it to.
+	TestEqual(TEXT("with nothing typed at all, the setting decides"),
+			  static_cast<uint8>(Mode->ChooseSubType()),
+			  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+
+	// EVERY SUB-TYPE CAN BE ASKED FOR BY ITS OWN NAME, read off the reflected
+	// enum rather than listed here, so a ninth sub-type is covered the day it
+	// is declared. That is the whole failure this issue is: a sub-type that
+	// exists in the enum and cannot be reached from anywhere.
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	if (!TestEqual(TEXT("the reflected enum holds the eight designed sub-types"),
+				   All.Num(), 8))
+	{
+		return false;
+	}
+
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Name = NameOf(SubType);
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Name);
+		TestEqual(*FString::Printf(TEXT("\"%s\" is asked for and answered"), *Name),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(SubType));
+	}
+
+	// NONE IS A REAL ANSWER AND NOT THE SAME AS TYPING NOTHING. It is the
+	// sub-type most dungeons have, so somebody comparing a Horde floor against
+	// an ordinary one has to be able to ask for the ordinary one while the
+	// setting says Siege.
+	{
+		FScopedConsoleString Ordinary(TEXT("Cataclysm.DungeonSubType"), TEXT("None"));
+		TestEqual(TEXT("asking for None beats a setting that says Siege"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::None));
+	}
+
+	// LETTER CASE DOES NOT MATTER, because the lookup goes through `FName`.
+	// Somebody typing at a console is not going to reproduce the capitals.
+	{
+		FScopedConsoleString Shouted(TEXT("Cataclysm.DungeonSubType"), TEXT("HORDE"));
+		TestEqual(TEXT("HORDE in capitals is Horde"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+	{
+		FScopedConsoleString Quiet(TEXT("Cataclysm.DungeonSubType"), TEXT("volatile"));
+		TestEqual(TEXT("volatile in lower case is Volatile"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Volatile));
+	}
+
+	// AND BY THE NAME THE EDITOR SHOWS, WHICH IS NOT ALWAYS THE SAME STRING.
+	// `CowLevel` carries `UMETA(DisplayName = "Cow Level")`, and Unreal puts a
+	// space into any run-together name it shows even where no such meta exists,
+	// so somebody reading a sub-type off a details panel and typing what they
+	// see is typing something the enum does not literally contain. Every shown
+	// name is accepted, which is what dropping spaces before the lookup buys.
+	//
+	// THE STRINGS THE CONTROL PRINTS WHEN IT REFUSES A NAME ARE THE IDENTIFIERS
+	// IT WAS GIVEN BY THE SAME REFLECTED ENUM, and the loop above this one
+	// asserts every one of those is accepted. Between the two loops, every name
+	// the control names in its own error message is a name it takes.
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Shown = DisplayNameOf(SubType);
+		if (Shown.IsEmpty())
+		{
+			continue;
+		}
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Shown);
+		TestEqual(*FString::Printf(TEXT("the shown name \"%s\" is accepted"), *Shown),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(SubType));
+	}
+
+	// AND ONE OF THOSE SHOWN NAMES REALLY DOES DIFFER FROM ITS IDENTIFIER, or
+	// the loop above compared eight strings with themselves and proved nothing.
+	// This is the sub-type the design writes as two words.
+	TestEqual(TEXT("the Cow Level sub-type is shown with a space in it"),
+			  DisplayNameOf(ECataclysmDungeonSubType::CowLevel),
+			  FString(TEXT("Cow Level")));
+	TestEqual(TEXT("while its identifier has none"),
+			  NameOf(ECataclysmDungeonSubType::CowLevel),
+			  FString(TEXT("CowLevel")));
+
+	// A WORD THAT IS NOT A SUB-TYPE LEAVES THE SETTING DECIDING. It cannot be
+	// clamped the way an out-of-range layout number is, because there is no
+	// number to clamp; what it must not do is answer None, which would look
+	// like an ordinary dungeon and read as the control being ignored.
+	//
+	// THE TWO REFUSALS BELOW EACH WRITE A WARNING TO THE LOG, and neither has
+	// to be declared with `AddExpectedError`. A warning does not fail an
+	// automation test: `FAutomationTestBase::bElevateLogWarningsToErrors` is
+	// false, which `CataclysmSaveFloorTests.cpp` records for the same reason.
+	{
+		FScopedConsoleString Nonsense(TEXT("Cataclysm.DungeonSubType"), TEXT("Marmalade"));
+		TestEqual(TEXT("a word that is not a sub-type falls back to the setting"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+	}
+
+	// AND NEITHER IS THE HIDDEN MAXIMUM ENTRY. It is the one wrong answer the
+	// lookup could give that would read as a right one: a real entry with a
+	// real index, which would be accepted and then handed to the floor rules as
+	// a value no dungeon can carry.
+	//
+	// ITS NAME IS READ OFF THE ENUM RATHER THAN WRITTEN HERE, and that is the
+	// difference between this test proving something and proving nothing. The
+	// entry is not emitted by Unreal's header tool -- the generated file lists
+	// only the eight declared sub-types -- it is added when the enum registers,
+	// by `UEnum::SetEnums`, which builds the name from the enumerators' common
+	// prefix. For this enum that prefix comes out empty, so the entry is stored
+	// as "ECataclysmDungeonSubType::_MAX" and comes back from
+	// `GetNameStringByIndex` with the namespace stripped, as "_MAX". Neither is
+	// the "ECataclysmDungeonSubType_MAX" somebody would guess, and a guessed
+	// name is refused for being unknown, which looks exactly like this guard
+	// working while leaving it untested.
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!TestNotNull(TEXT("the sub-type enum is reflected"), Reflected))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("the enum carries one entry more than the eight sub-types"),
+				  Reflected->NumEnums(), All.Num() + 1);
+
+		const FString Hidden = Reflected->GetNameStringByIndex(Reflected->NumEnums() - 1);
+
+		// THE LOOKUP REALLY DOES FIND IT, which is what makes the refusal below
+		// worth asserting. Without this line a name the enum could not resolve
+		// at all would produce the same fallback and the guard would be untested.
+		TestEqual(TEXT("the reflected enum finds the hidden entry by that name"),
+				  Reflected->GetIndexByNameString(Hidden), Reflected->NumEnums() - 1);
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Hidden);
+		TestEqual(*FString::Printf(TEXT("the hidden entry %s is refused as a sub-type"),
+								   *Hidden),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeReachesTheFloorTest,
+	"Cataclysm.DungeonMode.TheSubTypeAskedForReachesTheFloorThatIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeReachesTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE OTHER THREE CONTROLS ARE PINNED WHERE THEY MEAN "USE THE SETTING".
+	// Console variables are global and this suite runs in one process, so a
+	// layout or a floor number left behind by an earlier test would decide two
+	// of the assertions below and they would be measuring that instead. Zero is
+	// "use the setting" for the seed and the floor, and minus one is for the
+	// layout, which is why they are not the same number.
+	const FScopedConsoleInt SeedControl(TEXT("Cataclysm.DungeonSeed"), 0);
+	const FScopedConsoleInt FloorControl(TEXT("Cataclysm.DungeonFloor"), 0);
+	const FScopedConsoleInt LayoutControl(TEXT("Cataclysm.DungeonLayout"), -1);
+
+	// A GAME MODE PER SUB-TYPE AND NOT ONE REUSED. A Horde floor is kept rather
+	// than re-carved -- that is what `bSameArenaAsLastFloor` does -- so a second
+	// `BuildFloor` on the same game mode can answer with the floor the first one
+	// built and prove nothing about the second sub-type.
+	const auto FreshMode = [&World](ACataclysmDungeonGameMode*& Out) -> bool
+	{
+		Out = SpawnMode(World);
+		if (!Out)
+		{
+			return false;
+		}
+
+		// SAID OUT LOUD RATHER THAN LEFT AT THE DEFAULTS, so that what the
+		// assertions below mean does not move when a default does.
+		Out->DungeonSeed = 1;
+		Out->FloorNumber = 1;
+		Out->TotalFloors = 10;
+		Out->Layout = ECataclysmFloorLayout::Halls;
+		Out->DungeonSubType = ECataclysmDungeonSubType::None;
+		return true;
+	};
+
+	// THE CONTROL. With nothing typed, floor 1 of an ordinary ten-floor dungeon
+	// is halls, is not one wave, and has no boss at its exit. Every assertion
+	// below is a departure from this floor, so without it they would only show
+	// that a floor has some shape.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("an ordinary game mode spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Untouched(TEXT("Cataclysm.DungeonSubType"), TEXT(""));
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built an ordinary floor"), Floor))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("an ordinary floor is carved by the layout setting"),
+				  static_cast<uint8>(Floor->GetPlan().Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Halls));
+		TestFalse(TEXT("an ordinary floor's creatures are not one wave"),
+				  Mode->FloorBrief.bOneWave);
+		TestFalse(TEXT("nothing walks in around the outside of it"),
+				  Mode->FloorBrief.bWaveWalksIn);
+		TestFalse(TEXT("and floor 1 of ten has no boss at its exit"),
+				  Mode->FloorBrief.bBossAtTheExit);
+	}
+
+	// HORDE, TYPED AT THE CONSOLE, BUILDS THE ARENA. This is the work that
+	// merged in #1490 and that nobody could look at: one open space, the
+	// creatures one wave, and that wave walking in around the outside.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("a game mode for the Horde floor spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Horde(TEXT("Cataclysm.DungeonSubType"), TEXT("Horde"));
+
+		TestEqual(TEXT("the dungeon being built carries the sub-type asked for"),
+				  static_cast<uint8>(Mode->DungeonIdentity().SubType),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("a Horde floor is one arena"),
+				  static_cast<uint8>(Floor->GetPlan().Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Arena));
+		TestTrue(TEXT("its creatures are one wave"), Mode->FloorBrief.bOneWave);
+		TestTrue(TEXT("and that wave walks in around the outside"),
+				 Mode->FloorBrief.bWaveWalksIn);
+
+		// IT WAS THE CONSOLE AND NOT THE SETTINGS. Both of the settings that
+		// could have produced this floor are still where the control left them,
+		// so the arena came from the typed name and nothing else.
+		TestEqual(TEXT("the sub-type setting is still None"),
+				  static_cast<uint8>(Mode->DungeonSubType),
+				  static_cast<uint8>(ECataclysmDungeonSubType::None));
+		TestEqual(TEXT("and the layout setting still says halls"),
+				  static_cast<uint8>(Mode->Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Halls));
+
+		// AND ENEMY SCORE READS THE SAME SUB-TYPE THE FLOOR WAS BUILT FROM.
+		// `UCataclysmEnemyScore::ScoreThisFloor` takes it from here, so a game
+		// mode that carved an arena and reported no sub-type would pay the
+		// wrong experience for every creature standing in it.
+		TestEqual(TEXT("the run reports the sub-type it is walking"),
+				  static_cast<uint8>(Mode->RunDungeonSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+
+	// ELITE, TYPED AT THE CONSOLE, PUTS A BOSS AT FLOOR 1'S EXIT. The control
+	// above showed that floor 1 of ten ordinarily has none, so this is the
+	// sub-type doing it and not the last floor of the dungeon.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("a game mode for the Elite floor spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Elite(TEXT("Cataclysm.DungeonSubType"), TEXT("Elite"));
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("every floor of an Elite dungeon has a boss at its exit"),
+				 Mode->FloorBrief.bBossAtTheExit);
+		TestEqual(TEXT("and the run reports it as Elite"),
+				  static_cast<uint8>(Mode->RunDungeonSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Elite));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeVolatileTest,
+	"Cataclysm.DungeonMode.AskingForVolatileChangesTheModifiersEveryFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeVolatileTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE TIER IS PINNED AT THE CONSOLE'S OWN PRIORITY AND NOT SET ON THE GAME
+	// MODE, and that is the whole of the trap issue #1470 records. How many
+	// modifiers a Volatile floor draws is the tier times one, and the tier is
+	// read through `ACataclysmGameMode::DifficultyTierFor`, which prefers the
+	// `Cataclysm.DifficultyTier` console variable whenever it is above zero.
+	// `CataclysmDroppedItemTests.cpp` writes that variable at console priority,
+	// and `Cataclysm.Drop` sorts before `Cataclysm.DungeonMode`, so in a full
+	// suite run the variable is already set when this test starts and the game
+	// mode's own tier field would be ignored. Writing it here at the same
+	// priority is what makes this test say the same thing alone and in a full
+	// run.
+	const CataclysmTestWorld::FScopedDifficultyTier Tier(4);
+	if (!TestTrue(TEXT("the difficulty tier console variable exists"), Tier.Found()))
+	{
+		return false;
+	}
+
+	// AND SO ARE THE TWO OTHER CONTROLS THAT WOULD OTHERWISE DECIDE WHICH FLOOR
+	// IS BUILT. Both take 0 to mean "use the game mode's setting", which is what
+	// this test needs, and neither is restored by anything outside its own test.
+	const FScopedConsoleInt SeedControl(TEXT("Cataclysm.DungeonSeed"), 0);
+	const FScopedConsoleInt FloorControl(TEXT("Cataclysm.DungeonFloor"), 0);
+
+	/**
+	 * A game mode carrying a pool to draw from and a dungeon list that shares
+	 * no name with it.
+	 *
+	 * THE DUNGEON'S OWN MODIFIERS ARE NOT DRAWN FROM THE POOL, deliberately and
+	 * unlike the arrangement in `CataclysmFloorBriefTests.cpp`. It makes "this
+	 * floor re-drew" a statement that cannot come out true or false by luck: a
+	 * floor carrying "TheDungeonsOwn" did not re-draw, and a floor carrying
+	 * anything else did.
+	 */
+	const auto ModeWithAPool = [&World](ACataclysmDungeonGameMode*& Out) -> bool
+	{
+		Out = SpawnMode(World);
+		if (!Out)
+		{
+			return false;
+		}
+
+		Out->DungeonSeed = 1;
+		Out->FloorNumber = 1;
+		Out->TotalFloors = 20;
+		Out->Layout = ECataclysmFloorLayout::Halls;
+		Out->DungeonSubType = ECataclysmDungeonSubType::None;
+		Out->DungeonModifiers = { FName(TEXT("TheDungeonsOwn")) };
+		Out->DungeonModifierScore = 100.0f;
+		Out->DungeonModifierPool = ModifierPoolOfTwenty();
+		return true;
+	};
+
+	// SIX FLOORS AND NOT TWO. Two floors drawing differently is what a rule that
+	// re-drew exactly once would also produce, so counting how many different
+	// sets six floors carry is what separates "changes every floor" from
+	// "changed once". The ordinary dungeon in the same shape is the control.
+	const int32 HowManyFloors = 6;
+
+	const auto SetsOverTheFloors =
+		[&ModeWithAPool, HowManyFloors](
+			const TCHAR* Typed, TSet<FString>& OutSets, int32& OutKeptItsOwn) -> bool
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!ModeWithAPool(Mode))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), Typed);
+
+		OutKeptItsOwn = 0;
+		for (int32 FloorNumber = 1; FloorNumber <= HowManyFloors; ++FloorNumber)
+		{
+			Mode->FloorNumber = FloorNumber;
+			if (!Mode->BuildFloor())
+			{
+				return false;
+			}
+
+			OutSets.Add(SortedKeysOf(Mode->FloorBrief.Modifiers));
+			if (Mode->FloorBrief.Modifiers == Mode->DungeonModifiers)
+			{
+				++OutKeptItsOwn;
+			}
+		}
+		return true;
+	};
+
+	// THE CONTROL, FIRST. With nothing typed the dungeon has no sub-type, so
+	// every one of its floors carries the modifiers the dungeon itself drew.
+	// Without this, "the Volatile floors differed" could be something the floor
+	// pipeline does to every dungeon.
+	TSet<FString> OrdinarySets;
+	int32 OrdinaryKeptItsOwn = 0;
+	if (!TestTrue(TEXT("six floors of an ordinary dungeon were built"),
+				  SetsOverTheFloors(TEXT(""), OrdinarySets, OrdinaryKeptItsOwn)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an ordinary dungeon carries one modifier set over six floors"),
+			  OrdinarySets.Num(), 1);
+	TestEqual(TEXT("and it is the dungeon's own on every one of them"),
+			  OrdinaryKeptItsOwn, HowManyFloors);
+
+	// AND NOW THE SAME DUNGEON WITH VOLATILE TYPED AT THE CONSOLE. Nothing else
+	// about the game mode differs: same seed, same length, same pool, same
+	// sub-type setting of None.
+	TSet<FString> VolatileSets;
+	int32 VolatileKeptItsOwn = 0;
+	if (!TestTrue(TEXT("six floors of a Volatile dungeon were built"),
+				  SetsOverTheFloors(TEXT("Volatile"), VolatileSets, VolatileKeptItsOwn)))
+	{
+		return false;
+	}
+
+	// EVERY FLOOR DREW AGAIN, which is the part of this that does not depend on
+	// what the draw happened to give. A floor that had not re-drawn would be
+	// carrying "TheDungeonsOwn", and none of them is.
+	TestEqual(TEXT("no Volatile floor kept the dungeon's own modifier list"),
+			  VolatileKeptItsOwn, 0);
+
+	// AND WHAT THEY DREW CHANGES FROM FLOOR TO FLOOR, which is the design
+	// sentence: "Dungeon modifiers change every floor." Four modifiers out of a
+	// pool of twenty is 4,845 possible sets, so six floors landing on one set is
+	// not something a working re-draw does; one set is what a re-draw that never
+	// advanced its stream would give, and that is the failure worth catching.
+	TestTrue(*FString::Printf(
+				 TEXT("six Volatile floors carried %d different modifier sets, "
+					  "which is more than the one an ordinary dungeon carries"),
+				 VolatileSets.Num()),
+			 VolatileSets.Num() > 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeHelpNamesThemAllTest,
+	"Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeHelpNamesThemAllTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// WHY THIS TEST EXISTS. The lookup reads the reflected enum and cannot go
+	// stale, but the help text a person sees when they type the variable's name
+	// with no value is a list written out by hand. A ninth sub-type accepted by
+	// the control and missing from its help is this issue in miniature: it
+	// works and nobody knows it is there.
+	IConsoleObject* Control =
+		IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.DungeonSubType"));
+	if (!TestNotNull(TEXT("the sub-type control is registered"), Control))
+	{
+		return false;
+	}
+
+	const FString Help = Control->GetHelp() ? Control->GetHelp() : TEXT("");
+	if (!TestTrue(TEXT("it has help text to read"), !Help.IsEmpty()))
+	{
+		return false;
+	}
+
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	if (!TestTrue(TEXT("the reflected enum holds sub-types to check for"),
+				  All.Num() > 0))
+	{
+		return false;
+	}
+
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Name = NameOf(SubType);
+		TestTrue(*FString::Printf(
+					 TEXT("the help text names %s, which the control accepts"),
+					 *Name),
+				 Help.Contains(Name, ESearchCase::CaseSensitive));
 	}
 
 	return true;

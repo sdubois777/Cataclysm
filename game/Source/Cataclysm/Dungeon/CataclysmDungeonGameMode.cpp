@@ -18,6 +18,7 @@
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
 #include "Player/CataclysmGameInstance.h"
@@ -27,6 +28,7 @@
 #include "Misc/DateTime.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/Class.h"
 
 namespace
 {
@@ -106,6 +108,164 @@ namespace
 		GCataclysmDungeonLayoutOverride,
 		TEXT("Which layout family carves the floor. -1 uses the game mode's own "
 			 "setting, 0 Halls, 1 Caverns, 2 Arena."),
+		ECVF_Default);
+
+	/**
+	 * Which sub-type the dungeon is. An empty name uses the setting.
+	 *
+	 * WITHOUT THIS, THREE SUB-TYPES COULD NOT BE REACHED IN PLAY AT ALL. The
+	 * sub-type is an `EditDefaultsOnly` property and `L_Dungeon` uses this game
+	 * mode directly with no Blueprint subclass, so there was nowhere to set it
+	 * from: Horde, Elite and Volatile were built and unreachable. Issue #1502.
+	 *
+	 * A NAME RATHER THAN A NUMBER, unlike the four controls above, and the
+	 * reason is not taste. `ECataclysmDungeonSubType`'s own comment says "a
+	 * saved dungeon or a data table row that stores one of these stores the
+	 * number", so its numbers exist to be written to disk. The names are what
+	 * the design document, the issues and this log all call these things, and
+	 * a person typing 6 for Volatile is a person who had to look it up.
+	 *
+	 * LOOKED UP THROUGH THE REFLECTED ENUM AND NOT THROUGH A TABLE WRITTEN HERE.
+	 * A table would be a second copy of the eight sub-types, which is the
+	 * arrangement `ECataclysmDungeonSubType`'s own comment says this repository
+	 * has been bitten by, and it would go stale in silence: a ninth sub-type
+	 * would be added, nothing would fail, and it simply would not be reachable,
+	 * which is this issue happening a second time.
+	 */
+	static FString GCataclysmDungeonSubTypeOverride;
+
+	/**
+	 * Every sub-type's name, in the order they are declared, for the log.
+	 *
+	 * THE LAST ENTRY IS SKIPPED. Every `UENUM` gains a hidden maximum entry
+	 * that `NumEnums` counts. It is added when the enum registers, by
+	 * `UEnum::SetEnums`, and NOT by Unreal's header tool -- the generated file
+	 * for this enum lists only the eight declared sub-types, so looking there
+	 * suggests no such entry exists. `EverySubType` in
+	 * `Tests/CataclysmFloorBriefTests.cpp` skips it for the same reason.
+	 */
+	FString DungeonGameModeSubTypeNames()
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return FString();
+		}
+
+		TArray<FString> Names;
+		for (int32 Index = 0; Index + 1 < Reflected->NumEnums(); ++Index)
+		{
+			Names.Add(Reflected->GetNameStringByIndex(Index));
+		}
+
+		return FString::Join(Names, TEXT(", "));
+	}
+
+	/**
+	 * The sub-type named at the console, or nothing when there is no usable
+	 * name there.
+	 *
+	 * NOTHING COVERS TWO CASES AND THEY ARE DELIBERATELY THE SAME ANSWER:
+	 * nobody has typed anything, and somebody typed a word that is not a
+	 * sub-type. Both mean the game mode's own setting decides, which is what
+	 * every other control in this file does when it is not asked for anything.
+	 * Which of the two happened is said in the log rather than in the return.
+	 *
+	 * SPACES ARE DROPPED BEFORE THE LOOKUP, so the one sub-type whose editor
+	 * name is two words -- `CowLevel`, shown as "Cow Level" -- can be typed
+	 * either way. The match ignores letter case because `FName` does.
+	 */
+	TOptional<ECataclysmDungeonSubType> DungeonGameModeSubTypeAskedFor()
+	{
+		FString Asked = GCataclysmDungeonSubTypeOverride;
+		Asked.ReplaceInline(TEXT(" "), TEXT(""));
+
+		if (Asked.IsEmpty())
+		{
+			return TOptional<ECataclysmDungeonSubType>();
+		}
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return TOptional<ECataclysmDungeonSubType>();
+		}
+
+		const int32 Index = Reflected->GetIndexByNameString(Asked);
+
+		// THE HIDDEN `_MAX` IS NOT A SUB-TYPE, and it is the one wrong answer
+		// this lookup can give that would read as a right one: it is a real
+		// entry with a real index, so it would be accepted and then handed to
+		// the floor rules as a value no dungeon can carry.
+		if (Index == INDEX_NONE || Index + 1 >= Reflected->NumEnums())
+		{
+			return TOptional<ECataclysmDungeonSubType>();
+		}
+
+		return static_cast<ECataclysmDungeonSubType>(
+			Reflected->GetValueByIndex(Index));
+	}
+
+	/**
+	 * Says in the log what the sub-type control did with what was typed.
+	 *
+	 * WHEN IT IS TYPED AND NOT WHEN A FLOOR IS BUILT. A person types a name at
+	 * the console and then presses Play, and a mistyped name that said nothing
+	 * until the floor appeared would look exactly like the fault this control
+	 * was written to remove: asking for a Horde dungeon and walking an ordinary
+	 * one. Saying it here puts the answer on the line after the question.
+	 *
+	 * IT NAMES THE SUB-TYPES IT TAKES WHEN IT REFUSES ONE, read off the same
+	 * reflected enum the lookup uses, so the complaint cannot list a different
+	 * set from the one that would have been accepted.
+	 */
+	void DungeonGameModeSubTypeChanged(IConsoleVariable* Variable)
+	{
+		(void)Variable;
+
+		const FString Asked = GCataclysmDungeonSubTypeOverride;
+		if (Asked.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Log,
+				TEXT("Cataclysm.DungeonSubType was cleared, so the game mode's "
+					 "own sub-type setting decides again."));
+			return;
+		}
+
+		const TOptional<ECataclysmDungeonSubType> Chosen =
+			DungeonGameModeSubTypeAskedFor();
+		if (!Chosen.IsSet())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Cataclysm.DungeonSubType does not know \"%s\", so the "
+					 "game mode's own setting still decides. The sub-types it "
+					 "takes are: %s."),
+				*Asked, *DungeonGameModeSubTypeNames());
+			return;
+		}
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		const FString Understood = Reflected
+			? Reflected->GetNameStringByValue(static_cast<int64>(Chosen.GetValue()))
+			: Asked;
+
+		UE_LOG(LogCataclysm, Log,
+			TEXT("Cataclysm.DungeonSubType is %s, asked for as \"%s\". Every "
+				 "dungeon floor built from now on is a floor of a %s dungeon."),
+			*Understood, *Asked, *Understood);
+	}
+
+	static FAutoConsoleVariableRef CVarCataclysmDungeonSubType(
+		TEXT("Cataclysm.DungeonSubType"),
+		GCataclysmDungeonSubTypeOverride,
+		TEXT("Which sub-type the dungeon is, by name: None, Timed, Horde, "
+			 "Siege, CowLevel, Elite, Volatile, Sacrificial. Letter case does "
+			 "not matter and \"Cow Level\" may be typed with its space. Horde "
+			 "is one arena walked as waves, Elite stands a boss at every "
+			 "floor's exit, and Volatile draws new modifiers on every floor. "
+			 "Type None for an ordinary dungeon, or \"\" to hand the choice "
+			 "back to the game mode's own setting."),
+		FConsoleVariableDelegate::CreateStatic(&DungeonGameModeSubTypeChanged),
 		ECVF_Default);
 
 	/**
@@ -336,6 +496,22 @@ ECataclysmFloorLayout ACataclysmDungeonGameMode::ChooseLayout() const
 	return Layout;
 }
 
+ECataclysmDungeonSubType ACataclysmDungeonGameMode::ChooseSubType() const
+{
+	// NAMED RATHER THAN CLAMPED, unlike the layout control above. A number out
+	// of range has to be caught here because casting it would carve nothing; a
+	// name that is not a sub-type cannot become one in the first place, so the
+	// lookup answers with nothing set and the setting decides.
+	const TOptional<ECataclysmDungeonSubType> Asked =
+		DungeonGameModeSubTypeAskedFor();
+	if (Asked.IsSet())
+	{
+		return Asked.GetValue();
+	}
+
+	return DungeonSubType;
+}
+
 float ACataclysmDungeonGameMode::ChooseEnemyScale() const
 {
 	if (GCataclysmDungeonEnemyScaleOverride >= 0.0f)
@@ -355,7 +531,7 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	FCataclysmDungeonIdentity Dungeon;
 	Dungeon.DungeonSeed = ChooseSeed();
 	Dungeon.TotalFloors = ChooseTotalFloors();
-	Dungeon.SubType = DungeonSubType;
+	Dungeon.SubType = ChooseSubType();
 	Dungeon.Layout = ChooseLayout();
 	Dungeon.DifficultyTier = DifficultyTierFor(this);
 	Dungeon.Modifiers = DungeonModifiers;

@@ -406,6 +406,27 @@ public:
 	ECataclysmFloorLayout ChooseLayout() const;
 
 	/**
+	 * The sub-type that will actually be used, console variable included.
+	 *
+	 * WHAT MAKES HORDE, ELITE AND VOLATILE REACHABLE. The `DungeonSubType`
+	 * setting is `EditDefaultsOnly` and `L_Dungeon` uses this class with no
+	 * Blueprint subclass, so before `Cataclysm.DungeonSubType` existed there
+	 * was no way to ask for one of them in play at all. Issue #1502.
+	 *
+	 * A NAME AT THE CONSOLE, NOT A NUMBER, unlike the layout control above.
+	 * `Cataclysm.DungeonSubType Horde` is what the console takes, in any
+	 * letter case and with or without the space in "Cow Level". A name that is
+	 * not a sub-type leaves the setting deciding and says so in the log.
+	 *
+	 * THE CONSOLE WINS OVER `EnterEmpireDungeon`, the same as the seed and the
+	 * layout controls do. Walking a dungeon off the empire map with a sub-type
+	 * typed at the console gives the typed one, which is what a control for
+	 * looking at a sub-type has to do to be worth having.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
+	ECataclysmDungeonSubType ChooseSubType() const;
+
+	/**
 	 * How dense the floor's creatures will be, console variable included.
 	 *
 	 * BELOW ZERO AT THE CONSOLE MEANS "USE THE SETTING", not zero, because zero
@@ -735,9 +756,20 @@ public:
 		return DungeonType;
 	}
 
+	/**
+	 * What sub-type the run is walking. Read by Enemy Score.
+	 *
+	 * `ChooseSubType` RATHER THAN `DungeonSubType`, for the same reason
+	 * `RunTotalFloors` above answers with `ChooseTotalFloors`: the console can
+	 * move it, and this is read together with what the floor was built from.
+	 * `UCataclysmEnemyScore::ScoreThisFloor` takes the sub-type from here and
+	 * adds its weight to every creature on the floor, so a game mode that had
+	 * carved a Horde arena and reported no sub-type would pay the wrong
+	 * experience for everything standing in it. Issue #1502.
+	 */
 	virtual ECataclysmDungeonSubType RunDungeonSubType() const override
 	{
-		return DungeonSubType;
+		return ChooseSubType();
 	}
 
 	/**
