@@ -42,7 +42,72 @@
 namespace
 {
 	/**
-	 * Make an effect refresh rather than stack, and grant a tag while it lasts.
+	 * A gameplay effect built for this one application, under a name that can
+	 * collide with nothing.
+	 *
+	 * THE UNIQUE NAME IS THE WHOLE POINT AND IT IS NOT COSMETIC. Issue #1501.
+	 * Every effect built at run time in this file used to be given a FIXED name
+	 * in the transient package -- `CataclysmStatus_Pinned`, and one name per tag
+	 * for the others. Asking Unreal for an object whose name is already taken
+	 * does not produce a second object. `StaticAllocateObject` destroys the
+	 * existing one in place, calling `Obj->~UObject()`, and constructs the new
+	 * one at the same address, under a comment reading "Replace an existing
+	 * object without affecting the original's address or index".
+	 *
+	 * WHAT THAT DESTROYED, AND WHY IT CRASHED SOMEWHERE ELSE ENTIRELY. When a
+	 * lasting effect carrying attribute modifiers is applied to somebody, the
+	 * engine keeps RAW POINTERS into that effect's `Modifiers` array: it hands
+	 * `&ModInfo.SourceTags` and `&ModInfo.TargetTags` to the target's attribute
+	 * aggregator, which holds them as bare `const FGameplayTagRequirements*` and
+	 * owns nothing. Building the next effect freed that array while an earlier
+	 * target's aggregator still pointed into it. Nothing read those pointers
+	 * until an attribute was recalculated -- so the game crashed on whoever next
+	 * changed a piece of gear or spent a passive point, at a different invalid
+	 * address each time, which is what said it was freed memory rather than a
+	 * missing check.
+	 *
+	 * THE READABLE PART OF THE NAME IS KEPT, so a log line or a debugger still
+	 * says which effect this is. `MakeUniqueObjectName` puts a number after it.
+	 *
+	 * IT COSTS ONE TRANSIENT OBJECT PER APPLICATION, where reusing one name cost
+	 * none. That is the ordinary way to build a gameplay effect at run time and
+	 * garbage collection is what clears them. The cheaper version was cheap
+	 * because it was wrong.
+	 */
+	UGameplayEffect* MakeRuntimeEffect(const FString& Purpose)
+	{
+		UObject* Outer = GetTransientPackage();
+		return NewObject<UGameplayEffect>(
+			Outer,
+			MakeUniqueObjectName(Outer, UGameplayEffect::StaticClass(),
+								 FName(*Purpose)));
+	}
+
+	/**
+	 * Grant a tag for as long as this effect lasts, and take off whatever was
+	 * granting that tag already.
+	 *
+	 * ONE EFFECT PER TAG PER TARGET IS THE DESIGN'S RULE: a second burn
+	 * refreshes the first rather than adding a second. Issue #1062.
+	 *
+	 * IT USED TO HAPPEN BY ACCIDENT AND NOW HAPPENS ON PURPOSE. Issue #1501.
+	 * The engine decides whether two effects stack by comparing
+	 * `ActiveEffect.Spec.Def == Spec.Def`, a raw pointer comparison, and every
+	 * application being rebuilt at one address is what used to make that true.
+	 * That address reuse is the fault which crashed the game, so the rule it was
+	 * quietly carrying has to be kept some other way. Removing what is already
+	 * there is that way, and it is what `ReleasePin` and the Succubus aura
+	 * already do to take an effect off.
+	 *
+	 * CALL IT AFTER THE MAGNITUDES ARE WORKED OUT AND IMMEDIATELY BEFORE THE
+	 * EFFECT IS APPLIED, which is what all four callers do. Removing any earlier
+	 * would change the numbers: `ApplyNamedEffect` reads the target's CURRENT
+	 * resistance to decide how much of it to take, and taking the old effect off
+	 * first would hand it the unreduced figure.
+	 *
+	 * THE STACKING FIELDS BELOW ARE STILL SET THOUGH THEY NO LONGER DECIDE
+	 * ANYTHING HERE, because they state the intent and would still hold if two
+	 * applications ever came to share one definition again.
 	 *
 	 * WHY THE DEPRECATION IS SUPPRESSED HERE AND NOT WORKED AROUND. Unreal 5.7
 	 * deprecated writing UGameplayEffect::StackingType directly and offers
@@ -55,12 +120,22 @@ namespace
 	 * and it is aggregated by TARGET rather than by source so that two
 	 * characters burning the same enemy still produce one burn.
 	 */
-	void MakeSingleStackTagged(UGameplayEffect* Effect, const FGameplayTag& EffectTag)
+	void TagAndReplaceAnyExisting(UGameplayEffect* Effect,
+								  const FGameplayTag& EffectTag,
+								  AActor* Target)
 	{
 		if (!Effect || !EffectTag.IsValid())
 		{
 			return;
 		}
+
+		// WHATEVER WAS ALREADY GRANTING THIS TAG COMES OFF FIRST, so the effect
+		// about to be applied is the only one. Taking it off is also what
+		// unregisters its modifiers from the target's attribute aggregators,
+		// which is the half that matters here: an effect left registered is an
+		// effect whose tag requirements are still being read on every
+		// recalculation.
+		UCataclysmSkillEffects::RemoveEffectsGranting(Target, EffectTag);
 
 		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		Effect->StackingType = EGameplayEffectStackingType::AggregateByTarget;
@@ -454,8 +529,7 @@ bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
 	// this from being a hit: the vital attribute set only runs the mitigation
 	// order when the Damage attribute changes, and handles the Health attribute
 	// changing with a clamp and a death check.
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(), FName(TEXT("CataclysmHealthLoss")));
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmHealthLoss"));
 	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
 
 	const int32 Index = Effect->Modifiers.Num();
@@ -493,8 +567,7 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 	// UCataclysmDamageCalculation::Resolve -- evasion, block, armor, resistance,
 	// flat reduction, mana, energy shield, health, in that order. Nothing here
 	// decides how much of it lands.
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(), FName(TEXT("CataclysmSkillHit")));
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmSkillHit"));
 	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
 
 	const int32 Index = Effect->Modifiers.Num();
@@ -972,24 +1045,26 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 
 	// ONE NAME PER EFFECT AND NOT ONE FOR ALL OF THEM. Issue #1062. This was a
 	// constant, `CataclysmDamageOverTime`, so every damage over time effect in
-	// the game was built under one name -- and with `MakeSingleStackTagged`
-	// below setting AggregateByTarget and a stack limit of one, the single-stack
-	// rule then applied ACROSS different effects instead of within one. Setting
-	// a character alight while it was bleeding replaced the bleed, and both
+	// the game was built under one name -- and with the stacking helper below
+	// setting AggregateByTarget and a stack limit of one, the single-stack rule
+	// then applied ACROSS different effects instead of within one. Setting a
+	// character alight while it was bleeding replaced the bleed, and both
 	// applications reported success.
 	//
-	// THE RULE THE STACK LIMIT IS FOR IS UNCHANGED. Two applications of the same
-	// effect still share one name, so a second burn refreshes the first rather
-	// than adding a second, which is what the design requires of everything a
-	// player applies.
+	// AND SINCE ISSUE #1501, ONE NAME PER APPLICATION RATHER THAN PER EFFECT.
+	// Two applications sharing a name is what destroyed a running effect's
+	// modifiers and crashed the game; `MakeRuntimeEffect` above gives the full
+	// account. The rule that a second burn refreshes the first rather than
+	// adding a second is unchanged, and is now kept by
+	// `TagAndReplaceAnyExisting` taking the existing effect off, rather than by
+	// two applications happening to land on one object.
 	//
 	// `ApplyTagForDuration` ALREADY DID THIS, and it is why a character can carry
 	// three separate tagged effects and could not carry two burns. That function
 	// is where the shape below is copied from.
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(),
-		FName(*FString::Printf(TEXT("CataclysmDamageOverTime_%s"),
-							   *EffectTag.ToString())));
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmDamageOverTime_%s"),
+						*EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
 	// attacker's three stats above have decided what it deals and how often.
@@ -1018,7 +1093,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	Modifier.ModifierOp = EGameplayModOp::Additive;
 	Modifier.ModifierMagnitude = FScalableFloat(Numbers.DamagePerTick);
 
-	MakeSingleStackTagged(Effect, EffectTag);
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
@@ -1810,8 +1885,7 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(), FName(TEXT("CataclysmStatus_Pinned")));
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmStatus_Pinned"));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	Effect->DurationMagnitude =
 		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
@@ -1833,7 +1907,7 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	Modifier.ModifierOp = EGameplayModOp::Additive;
 	Modifier.ModifierMagnitude = FScalableFloat(DamageTakenIncrease);
 
-	MakeSingleStackTagged(Effect, Pinned);
+	TagAndReplaceAnyExisting(Effect, Pinned, Target);
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
@@ -1897,14 +1971,13 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 		return false;
 	}
 
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(),
-		FName(*FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString())));
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	Effect->DurationMagnitude =
 		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
 
-	MakeSingleStackTagged(Effect, EffectTag);
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
@@ -2100,9 +2173,8 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		return false;
 	}
 
-	UGameplayEffect* Effect = NewObject<UGameplayEffect>(
-		GetTransientPackage(),
-		FName(*FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString())));
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	Effect->DurationMagnitude =
 		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
@@ -2146,7 +2218,7 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
 	}
 
-	MakeSingleStackTagged(Effect, EffectTag);
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);

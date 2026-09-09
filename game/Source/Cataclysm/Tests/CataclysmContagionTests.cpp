@@ -1029,11 +1029,12 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionTwoDamageOverTimesTest,
 	 * debuff.
 	 *
 	 * WHAT WAS WRONG. `UCataclysmSkillEffects::ApplyDamageOverTime` built every
-	 * effect under one name, `CataclysmDamageOverTime`, while
-	 * `MakeSingleStackTagged` set a stack limit of one aggregated by target. The
-	 * single-stack rule -- which is right, and is the design's own -- therefore
-	 * applied ACROSS different effects instead of within one: setting a
-	 * character alight while it was bleeding replaced the bleed, and both
+	 * effect under one name, `CataclysmDamageOverTime`, while the helper that
+	 * grants an effect's tag -- `TagAndReplaceAnyExisting`, which was called
+	 * `MakeSingleStackTagged` at the time -- set a stack limit of one aggregated
+	 * by target. The single-stack rule, which is right and is the design's own,
+	 * therefore applied ACROSS different effects instead of within one: setting
+	 * a character alight while it was bleeding replaced the bleed, and both
 	 * applications reported success.
 	 *
 	 * IT IS HERE RATHER THAN IN `CataclysmDebuffTests.cpp` because that file's

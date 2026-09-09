@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -206,6 +207,80 @@ namespace CataclysmDebuffTest
 		AActor* Actor = nullptr;
 		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
 	};
+
+	/**
+	 * The gameplay effect definitions behind every effect running on a
+	 * component. Issue #1501.
+	 *
+	 * THE DEFINITION AND NOT THE ACTIVE EFFECT, because the fault these are for
+	 * is about how long a definition object lives: two effects that should have
+	 * been two objects were one, and building the second destroyed the first.
+	 *
+	 * AN EMPTY QUERY MATCHES EVERYTHING. `FGameplayEffectQuery::Matches` fails a
+	 * filter only when that filter was set, so a default query returns the whole
+	 * list rather than nothing.
+	 */
+	TArray<const UGameplayEffect*> EffectDefinitionsOn(
+		const UAbilitySystemComponent* AbilitySystem)
+	{
+		TArray<const UGameplayEffect*> Definitions;
+		if (!AbilitySystem)
+		{
+			return Definitions;
+		}
+
+		for (const FActiveGameplayEffectHandle& Handle :
+				 AbilitySystem->GetActiveEffects(FGameplayEffectQuery()))
+		{
+			Definitions.Add(AbilitySystem->GetGameplayEffectCDO(Handle));
+		}
+		return Definitions;
+	}
+
+	/** How many gameplay effects are running on a component at all. */
+	int32 EffectCountOn(const UAbilitySystemComponent* AbilitySystem)
+	{
+		return EffectDefinitionsOn(AbilitySystem).Num();
+	}
+
+	/**
+	 * The definition behind the one effect on a component, or null when it
+	 * carries none or more than one.
+	 *
+	 * NULL RATHER THAN THE FIRST OF SEVERAL, so a test that expected one effect
+	 * and found two says so instead of quietly reading whichever came first.
+	 */
+	const UGameplayEffect* SoleEffectDefinitionOn(
+		const UAbilitySystemComponent* AbilitySystem)
+	{
+		const TArray<const UGameplayEffect*> Definitions =
+			EffectDefinitionsOn(AbilitySystem);
+		return Definitions.Num() == 1 ? Definitions[0] : nullptr;
+	}
+
+	/**
+	 * What an effect's single modifier states, at level one.
+	 *
+	 * A NEGATIVE ANSWER MEANS THE QUESTION DID NOT APPLY: no effect, or not
+	 * exactly one modifier, or a magnitude that is not a plain number. Every
+	 * effect these tests build states one plain number, so a negative answer
+	 * here is a failure rather than a value.
+	 */
+	float SoleModifierMagnitudeOf(const UGameplayEffect* Effect)
+	{
+		if (!Effect || Effect->Modifiers.Num() != 1)
+		{
+			return -1.0f;
+		}
+
+		float Magnitude = -1.0f;
+		if (!Effect->Modifiers[0].ModifierMagnitude
+				 .GetStaticMagnitudeIfPossible(1.0f, Magnitude))
+		{
+			return -1.0f;
+		}
+		return Magnitude;
+	}
 }
 
 #define CATACLYSM_DEBUFF_TEST(TestClass, TestName) \
@@ -823,6 +898,365 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffHoldRefusalsTest,
 		Debuffs::HoldStep(Character.Actor, 0.25f), 0);
 	TestEqual(TEXT("and its debuff's time left did not move"),
 		Character.RemainingOn(Bleed), 30.0f, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A gameplay effect built at run time must outlive the next one built like it
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinLeavesTheFirstAloneTest,
+	"Cataclysm.Debuffs.PinningASecondTargetLeavesTheFirstPinsEffectAlone")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * Issue #1501, the crash that ended two of the project owner's sessions on
+	 * 2026-09-08. Both callstacks ended in `SetNumericAttributeBase` at
+	 * `CataclysmPlayerClassStats.cpp:947`, reached from two different player
+	 * actions, and read a different invalid address each time.
+	 *
+	 * WHAT WAS WRONG. Every gameplay effect this project builds at run time was
+	 * given a FIXED object name in one shared outer -- `ApplyPin` asked for
+	 * `NewObject<UGameplayEffect>(GetTransientPackage(), "CataclysmStatus_Pinned")`
+	 * every time it pinned anything. Asking Unreal for an object whose name is
+	 * already taken does not produce a second object. `StaticAllocateObject` in
+	 * `UObjectGlobals.cpp` destroys the existing one in place -- it calls
+	 * `Obj->~UObject()` -- and constructs the new one at the same address,
+	 * under a comment reading "Replace an existing object without affecting the
+	 * original's address or index".
+	 *
+	 * WHY THAT CRASHED SOMEWHERE ELSE ENTIRELY. When a lasting effect carrying
+	 * attribute modifiers is applied, the engine keeps RAW POINTERS into that
+	 * effect's `Modifiers` array: `GameplayEffect.cpp` hands
+	 * `&ModInfo.SourceTags` and `&ModInfo.TargetTags` to the target's attribute
+	 * aggregator, which stores them as bare `const FGameplayTagRequirements*`
+	 * and owns nothing. Destroying the effect freed that array while the first
+	 * target's aggregator still pointed into it. Nothing read those pointers
+	 * until an attribute was recalculated -- and recalculating is what
+	 * `SetNumericAttributeBase` does, so the crash landed on whoever next
+	 * clicked a passive node or changed a piece of gear.
+	 *
+	 * WHY PINNING IS THE CASE THAT REACHES IT SOONEST. A pinning skill pins
+	 * every target its blow landed on, one after another, in the loop
+	 * `UCataclysmSkillTemplate` runs over its targets. So the second pin
+	 * follows the first inside one skill activation, and the Spear's Skewer
+	 * holds a whole line at once.
+	 *
+	 * WHAT IS ASSERTED, AND WHY IT IS NOT THE CRASH. A test that reads the freed
+	 * memory does not fail reliably: the allocator usually hands the same block
+	 * straight back, the read succeeds, and the test proves nothing. What is
+	 * asserted instead is the condition the crash needs -- two pins must be two
+	 * separate effect objects, and each target's effect must still describe that
+	 * target's own pin. Both of those failed before the fix, every run.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier First(World);
+	const FScopedCarrier Second(World);
+
+	// TWO DIFFERENT SIZES, so each target's effect can be told from the other's
+	// by what it says rather than by where it sits. Thirty is the Spear's
+	// Impale, which is the only row that states a figure.
+	constexpr float FirstIncrease = 30.0f;
+	constexpr float SecondIncrease = 10.0f;
+
+	if (!TestTrue(TEXT("the first target is pinned"),
+			Effects::ApplyPin(Attacker.Actor, First.Actor,
+							  /*DurationSeconds=*/10.0f, FirstIncrease)))
+	{
+		return false;
+	}
+
+	const UGameplayEffect* FirstPin =
+		SoleEffectDefinitionOn(First.AbilitySystem);
+	if (!TestNotNull(TEXT("and it carries exactly one gameplay effect"),
+					 FirstPin))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the second target is pinned"),
+			Effects::ApplyPin(Attacker.Actor, Second.Actor,
+							  /*DurationSeconds=*/10.0f, SecondIncrease)))
+	{
+		return false;
+	}
+
+	const UGameplayEffect* SecondPin =
+		SoleEffectDefinitionOn(Second.AbilitySystem);
+	if (!TestNotNull(TEXT("and so does the second target"), SecondPin))
+	{
+		return false;
+	}
+
+	// THE WHOLE TEST. Before issue #1501 these two were one object: the second
+	// call destroyed the first effect and was built at its address, so the
+	// first target's attribute aggregator was left pointing into freed memory.
+	TestTrue(TEXT("the two pins are two separate gameplay effect objects"),
+			 FirstPin != SecondPin);
+
+	// AND THE SAME FAULT READ FROM THE OTHER SIDE. With one shared object the
+	// first target's effect described the second target's pin, because there
+	// was only ever one set of modifiers and the newer application wrote it.
+	TestEqual(TEXT("the first target's pin still states its own increase"),
+			  SoleModifierMagnitudeOf(FirstPin), FirstIncrease, 0.01f);
+	TestEqual(TEXT("and the second target's pin states its own"),
+			  SoleModifierMagnitudeOf(SecondPin), SecondIncrease, 0.01f);
+
+	// AND BOTH TARGETS ACTUALLY TAKE WHAT THEIR OWN PIN SAYS. The Damage Taken
+	// stat reads 100 when nothing has touched it, and
+	// `UCataclysmDamageCalculation` divides it by 100, so a target pinned by
+	// Impale reads 130 and takes 1.3 times what it otherwise would.
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+	TestEqual(TEXT("the first target takes its own increase"),
+			  First.AbilitySystem->GetNumericAttribute(Taken),
+			  100.0f + FirstIncrease, 0.01f);
+	TestEqual(TEXT("and the second takes its own"),
+			  Second.AbilitySystem->GetNumericAttribute(Taken),
+			  100.0f + SecondIncrease, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmRecalculatingWhileTwoArePinnedTest,
+	"Cataclysm.Debuffs.RecalculatingAStatWhileTwoTargetsArePinnedKeepsBothPins")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The path issue #1501 crashed on, walked deliberately.
+	 *
+	 * `SetNumericAttributeBase` is not a plain write. It sets the attribute
+	 * aggregator's base value, which makes the engine re-evaluate every
+	 * modifier standing on that attribute, which reads the tag requirements
+	 * each modifier was registered with. Those are the pointers the old code
+	 * left dangling. `UCataclysmPlayerClassStats::ApplyTo` calls it once per
+	 * stat, which is why any full recalculation -- spending a passive point,
+	 * changing a piece of gear -- was enough to crash the game.
+	 *
+	 * THIS IS NOT THE TEST THAT FAILED BEFORE THE FIX, and saying so matters.
+	 * Reading freed memory is not reliably a crash: the block is usually handed
+	 * straight back by the allocator and the read succeeds. The test above is
+	 * the one that failed every run. This one holds the path itself, so that a
+	 * later change that breaks the evaluation is caught here rather than by the
+	 * project owner.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier First(World);
+	const FScopedCarrier Second(World);
+
+	constexpr float FirstIncrease = 30.0f;
+	constexpr float SecondIncrease = 10.0f;
+
+	TestTrue(TEXT("the first target is pinned"),
+		Effects::ApplyPin(Attacker.Actor, First.Actor,
+						  /*DurationSeconds=*/10.0f, FirstIncrease));
+	TestTrue(TEXT("and then the second"),
+		Effects::ApplyPin(Attacker.Actor, Second.Actor,
+						  /*DurationSeconds=*/10.0f, SecondIncrease));
+
+	// THE RECALCULATION, ON THE VERY STAT BOTH PINS MODIFY. Writing the base
+	// back to the value it already held is enough: the write is what forces the
+	// re-evaluation, not the value changing.
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+	First.AbilitySystem->SetNumericAttributeBase(Taken, 100.0f);
+	Second.AbilitySystem->SetNumericAttributeBase(Taken, 100.0f);
+
+	TestEqual(TEXT("the first target still takes its own increase afterwards"),
+			  First.AbilitySystem->GetNumericAttribute(Taken),
+			  100.0f + FirstIncrease, 0.01f);
+	TestEqual(TEXT("and the second still takes its own"),
+			  Second.AbilitySystem->GetNumericAttribute(Taken),
+			  100.0f + SecondIncrease, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// One effect at a time per target, which the repair must not cost
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinOnOneTargetTest,
+	"Cataclysm.Debuffs.PinningOneTargetTwiceStillLeavesItOnePin")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The half of issue #1501 that is easy to break while fixing the other.
+	 *
+	 * The design requires that a second application of the same effect refresh
+	 * the first rather than add a second. Until this fix that happened by
+	 * accident: the engine compares `ActiveEffect.Spec.Def == Spec.Def`, a raw
+	 * pointer comparison, and rebuilding the object at the same address is what
+	 * made it true. Giving each effect its own name -- which is what stops the
+	 * crash -- also stops those pointers matching, so the rule now has to be
+	 * kept deliberately.
+	 *
+	 * COUNTED AS EFFECTS AND NOT AS TAGS, which is the whole point of the test.
+	 * `UCataclysmDebuffs::CountOn` counts distinct tags, so two pins running at
+	 * once would still count as one debuff and nothing would report it. What
+	 * would be wrong is two effects both adding to Damage Taken, so the stat is
+	 * asserted as well as the count.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Held(World);
+
+	TestTrue(TEXT("the target is pinned"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/10.0f, /*Increase=*/30.0f));
+	TestEqual(TEXT("and carries one effect"),
+			  EffectCountOn(Held.AbilitySystem), 1);
+
+	TestTrue(TEXT("the same target is pinned again"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/10.0f, /*Increase=*/10.0f));
+
+	// ONE, NOT TWO. A second pin replaces the first rather than joining it.
+	TestEqual(TEXT("and still carries exactly one effect"),
+			  EffectCountOn(Held.AbilitySystem), 1);
+
+	TestTrue(TEXT("and is still pinned"),
+			 Effects::HasTag(Held.Actor, Effects::PinnedTag()));
+
+	// THE FIGURE THE SECOND PIN CARRIES IS NOT ASSERTED HERE. Which of two
+	// pins' increases should win is a separate question with its own test
+	// below, and it is not part of the rule this one is for.
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinAppliesItsOwnIncreaseTest,
+	"Cataclysm.Debuffs.PinningATargetAgainAppliesTheNewerPinsIncrease")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * Which of two applications of one effect decides the figure.
+	 *
+	 * THIS IS A CHANGE OF BEHAVIOUR AND NOT ONLY A REPAIR, so it is written
+	 * down rather than left to be discovered. Measured on 2026-09-09 against
+	 * the code as it stood before issue #1501 was fixed: pinning a target for
+	 * 30% and then for 10% left it taking 30%. The first application's figure
+	 * was frozen and no later one could move it -- the engine caches the
+	 * evaluated figure in the target's attribute aggregator when the effect
+	 * first lands, and refreshing a stack does not recompute it.
+	 *
+	 * NOTHING IN THE DESIGN STATED EITHER ANSWER. The old behaviour was a
+	 * consequence of how the effects were built rather than a decision, and
+	 * replacing the effect -- which is what stops the crash -- necessarily
+	 * makes the newer application's figure the one that applies. Issue #1503
+	 * puts the question to the project owner: whether the newer pin should win,
+	 * as it now does, or the stronger one.
+	 *
+	 * IT DOES NOT AFFECT DAMAGE OVER TIME, which never had the fault: a burn's
+	 * per-tick figure lives on the applied spec rather than in an attribute
+	 * aggregator, and was already replaced by a later application.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Held(World);
+
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+
+	TestTrue(TEXT("the target is pinned for thirty per cent"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/10.0f, /*Increase=*/30.0f));
+	TestEqual(TEXT("and takes that much more"),
+			  Held.AbilitySystem->GetNumericAttribute(Taken), 130.0f, 0.01f);
+
+	TestTrue(TEXT("and is then pinned for ten"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/10.0f, /*Increase=*/10.0f));
+
+	// TEN, NOT THIRTY. Before the repair this read 130: the first pin's figure
+	// stood and the second could not move it.
+	TestEqual(TEXT("and now takes the newer pin's increase"),
+			  Held.AbilitySystem->GetNumericAttribute(Taken), 110.0f, 0.01f);
+
+	// AND A STRONGER PIN AFTER A WEAKER ONE MOVES IT THE OTHER WAY, which is
+	// the half that says the figure is being recomputed rather than simply
+	// falling to whichever is smaller.
+	TestTrue(TEXT("and is then pinned for fifty"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/10.0f, /*Increase=*/50.0f));
+	TestEqual(TEXT("and takes that much more"),
+			  Held.AbilitySystem->GetNumericAttribute(Taken), 150.0f, 0.01f);
+	TestEqual(TEXT("and still carries exactly one effect"),
+			  EffectCountOn(Held.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmSecondBleedOnOneTargetTest,
+	"Cataclysm.Debuffs.BleedingOneTargetTwiceStillLeavesItOneBleed")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The same rule for the other path that applies a lasting effect.
+	 *
+	 * `ApplyDamageOverTime` is periodic, so it registers no attribute modifiers
+	 * and cannot crash the way the pin did. It shares the fixed-name fault and
+	 * the accidental stacking that came with it, so it has to be held to the
+	 * same rule: a second bleed refreshes the first rather than adding a second
+	 * one ticking alongside it. Issue #1062 states that rule; the test it added
+	 * counts tags, and two bleeds at once would still count as one tag.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Bleeding(World);
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("a bleed is applied"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Bleeding.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/10.0f, Bleed));
+	TestEqual(TEXT("and the target carries one effect"),
+			  EffectCountOn(Bleeding.AbilitySystem), 1);
+
+	TestTrue(TEXT("and then a second bleed"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Bleeding.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/10.0f, Bleed));
+	TestEqual(TEXT("and it still carries exactly one"),
+			  EffectCountOn(Bleeding.AbilitySystem), 1);
+	TestTrue(TEXT("and is still bleeding"), Bleeding.IsBleeding());
 
 	return true;
 }
