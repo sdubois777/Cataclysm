@@ -80,7 +80,7 @@ or if a sheet is added or removed without this table changing.
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Note |
-| Passive Effects | 130 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name |
+| Passive Effects | 202 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
