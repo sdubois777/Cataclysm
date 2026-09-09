@@ -114,6 +114,42 @@ forms carry the words that follow each number instead, "1 per second" and "5
 when one". A bare number would have been satisfied by a workbook that swapped
 the 1 and the 5.
 
+### What was checked
+
+The full Unreal automation suite, not a narrowed run: **1501 tests performed,
+1501 succeeded, 0 failed**, with 36 reporting they skipped part of what they
+check, which is the Paragon character art that no worktree has. The baseline on
+`development` is 1,496 with nothing failing, so any failure would have been this
+change's.
+
+Five new tests, confirmed by name in `game/Saved/Logs/Cataclysm.log` rather than
+read off a total. The whole `Cataclysm.Fervour` group is 17 and all 17 pass, so
+the twelve that were there before still hold.
+
+**Two guard proofs, and the second is the one worth recording.** The first
+replaces the live minion count with a fixed 1 -- the naive implementation -- and
+four tests fail, including the one for a Ritualist commanding nothing. The
+second empties `ACataclysmMinion::HandleDeath` and two tests fail.
+
+That second proof exists because the tests could not otherwise settle the claim
+the prerequisite rests on. They show a minion IS recorded as dead, on a branch
+that has the handler; they do not show it is NOT recorded as dead without one.
+Two sessions had established that by reading, from opposite ends, and neither by
+a run. **If something else already marked a minion dead, both readings were
+wrong and the handler was dead weight.** Nothing else does.
+
+**One fault was found by a peer session rather than by this work**, and it is
+worth naming because the behaviour was right while the stated reason was wrong.
+`UCataclysmCommand::CommanderOf` answers `GetOwner()` for anything that is not a
+minion, and Unreal's `APawn::PossessedBy` sets a pawn's owner to its controller,
+so an ordinary monster answers with its own AI controller rather than with
+nothing -- issue #1525. The death call site is inert for such a creature anyway,
+because an AI controller carries no ability system, but its comment said
+`CommanderOf` answered null. **It also meant a whole branch of that lookup was
+untested**: the end-to-end test killed a summoned imp, which resolves through
+`ACataclysmMinion::Summoner`, while a thrall takes the `GetOwner()` branch. A
+thrall dying is now covered too.
+
 ### What this does not do
 
 **Nothing drains the bar, so a Ritualist holding minions will fill it and sit
