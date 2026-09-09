@@ -799,6 +799,61 @@ namespace CataclysmCommandTest
 		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
 	}
 
+	/**
+	 * Give a commander BOTH generators at once: the Masochist's Low Life
+	 * keystone and the Ritualist's minion rate, with `Binding Sigils` on top.
+	 *
+	 * A CHARACTER IN TWO CLASS TREES, which the 2026-08-25 ruling that every
+	 * class shares one Fervour bar makes ordinary rather than a corner: one
+	 * character can reach all 24 trees. This is what the leak test needs and
+	 * `GiveRitualistGenerator` above cannot build, because `SetStatInputs`
+	 * replaces the whole map rather than adding to it.
+	 */
+	void GiveBothGenerators(FScopedCaster& Commander, float LowLifePerSecond,
+							float PerMinion, float SigilsPercent)
+	{
+		// THE MASOCHIST'S, ON `fervour_per_second`, WITH ITS HEALTH CONDITION.
+		// "While at or below 35% health you gain 10 Fervour per second."
+		FCataclysmStatModifier LowLife;
+		LowLife.Bucket = ECataclysmStatBucket::Flat;
+		LowLife.Source = ECataclysmModifierSource::PassiveKeystone;
+		LowLife.Value = LowLifePerSecond;
+		LowLife.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		LowLife.ConditionValue = 35.0f;
+
+		FCataclysmStatInputs LowLifeInputs;
+		LowLifeInputs.Base = 0.0f;
+		LowLifeInputs.Modifiers.Add(LowLife);
+
+		// AND THE RITUALIST'S, ON ITS OWN STAT, WITH ITS MINION COUNT.
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerMinion;
+		Rate.Scale = ECataclysmStatScale::PerMinionHeld;
+		Rate.ScaleStep = 1.0f;
+
+		FCataclysmStatInputs RateInputs;
+		RateInputs.Base = 0.0f;
+		RateInputs.Modifiers.Add(Rate);
+
+		// `Binding Sigils` GOES ON THE RITUALIST'S STAT AND ONLY ON IT, which
+		// is exactly what the node says and exactly what the leak test checks.
+		if (SigilsPercent != 0.0f)
+		{
+			FCataclysmStatModifier Sigils;
+			Sigils.Bucket = ECataclysmStatBucket::Increased;
+			Sigils.Source = ECataclysmModifierSource::PassiveKeystone;
+			Sigils.Value = SigilsPercent;
+			RateInputs.Modifiers.Add(Sigils);
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::PerSecondStat), LowLifeInputs);
+		Stats.Add(FName(UCataclysmFervour::FromMinionsStat), RateInputs);
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
 	float FervourOf(const FScopedCaster& Commander)
 	{
 		return Commander.AbilitySystem->GetNumericAttribute(
@@ -1144,6 +1199,87 @@ bool FCataclysmBindingSigilsTest::RunTest(const FString&)
 	TestEqual(TEXT("three minions at twelve points are 3.72 a second"),
 		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
 		3.72f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsLeakTest,
+	"Cataclysm.Fervour.BindingSigilsDoesNotTouchTheMasochistsOwnRate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBindingSigilsLeakTest::RunTest(const FString&)
+{
+	// WHY THE RITUALIST'S RATE IS A STAT OF ITS OWN. Issue #1518.
+	//
+	// The obvious build gives the Ritualist's "1 per second for each minion you
+	// have" to the Masochist's existing `fervour_per_second`, which already
+	// carries a per-second rate multiplied by a count. It is fewer moving parts
+	// and it is wrong, because an increase is applied to a STAT: `Binding
+	// Sigils` says "+2% increased Fervour gained from your minions per point",
+	// and on a shared stat its 24% would also raise the Masochist's Low Life
+	// keystone -- 10 Fervour a second for being below 35% health, which has
+	// nothing to do with minions.
+	//
+	// A CHARACTER IN BOTH TREES IS ORDINARY RATHER THAN A CORNER. The 2026-08-25
+	// ruling that every class shares one Fervour bar rests on one character
+	// being able to reach all 24 class trees.
+	//
+	// NOTHING ELSE WOULD CATCH THIS. A test that `Binding Sigils` scales minion
+	// Fervour passes either way, because on a shared stat it scales that too --
+	// along with something it should not touch. This test is the one that fails
+	// if the two rates are ever merged into one stat.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// AT 10% HEALTH, WELL INSIDE LOW LIFE'S 35% THRESHOLD, so the Masochist's
+	// keystone is actually paying out and a leak onto it would show.
+	Commander.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// LOW LIFE ALONE, AND NO MINIONS. Ten a second is what the keystone states.
+	GiveBothGenerators(Commander, /*LowLifePerSecond=*/10.0f,
+					   /*PerMinion=*/1.0f, /*SigilsPercent=*/0.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("Low Life alone grants ten a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND WITH TWELVE POINTS IN `Binding Sigils`, STILL TEN. This is the whole
+	// test. On one shared stat it would read 12.4.
+	GiveBothGenerators(Commander, 10.0f, 1.0f, /*SigilsPercent=*/24.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and twelve points of Binding Sigils leave it at ten"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND THE TWO ADD UP RATHER THAN ONE REPLACING THE OTHER once a minion is
+	// out: ten from being hurt, and 1.24 from one minion at +24%.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a hurt Ritualist-Masochist with one minion gains 11.24"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		11.24f, 0.001f);
+
+	// AND HEALING PAST THE THRESHOLD LEAVES ONLY THE MINION'S SHARE, which
+	// shows the two rates are still answering their own questions.
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 900.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and above 35% health only the minion's 1.24 remains"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.24f, 0.001f);
 
 	return true;
 }
