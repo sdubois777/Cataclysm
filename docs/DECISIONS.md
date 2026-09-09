@@ -13159,14 +13159,30 @@ player would notice.
 
 **The deciding argument is a consequence of re-applying that has nothing to do
 with duration.** Re-applying a damage over time effect resets its TICK clock as
-well as its duration — that is `EGameplayEffectStackingPeriodPolicy`, and
-`MakeSingleStackTagged` in `CataclysmSkillEffects.cpp` sets the stack policy
-these effects use. The per-character step runs every 0.25 seconds and a burn
+well as its duration. The per-character step runs every 0.25 seconds and a burn
 ticks every second, so under that reading every burn and bleed on the character
 would deal it no damage at all while the option was holding them. That is an
 immunity the sentence does not grant, and it would be worth far more than the
 option says — to a class that is paid for each debuff it carries, an option that
 also made those debuffs harmless is not a trade.
+
+**HOW THAT RESET HAPPENS CHANGED ON 2026-09-09. THE PROPERTY DID NOT, AND THIS
+DECISION IS UNAFFECTED.** Until then it was
+`EGameplayEffectStackingPeriodPolicy`: a second application stacked onto the
+running effect, and the default policy, `ResetOnSuccessfulApplication`, discarded
+its progress towards the next tick. Issue #1501 gave each application its own
+effect object, because sharing one object name was destroying a running effect
+and crashing the game. `TagAndReplaceAnyExisting` in `CataclysmSkillEffects.cpp`
+— the function this entry called `MakeSingleStackTagged` when it was written —
+now removes the running effect and applies a new one. A new effect schedules a
+new tick timer when it is applied and cannot inherit the old one's tick phase,
+so re-applying still resets the tick clock: because the old effect is gone,
+rather than because a stacking policy discards its progress.
+
+That is established by reading the code path and NOT by a test. The test world's
+clock does not advance, so nothing in the suite observes a tick period elapsing.
+Anyone rebuilding this option should confirm it in a running game before relying
+on it.
 
 **Genre precedent, and it points the same way.** Path of Exile models this on
 the DEFENDER as an expiration rate rather than as a re-application. Its map

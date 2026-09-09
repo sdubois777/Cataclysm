@@ -1161,12 +1161,24 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinAppliesItsOwnIncreaseTest,
 	 * evaluated figure in the target's attribute aggregator when the effect
 	 * first lands, and refreshing a stack does not recompute it.
 	 *
-	 * NOTHING IN THE DESIGN STATED EITHER ANSWER. The old behaviour was a
-	 * consequence of how the effects were built rather than a decision, and
-	 * replacing the effect -- which is what stops the crash -- necessarily
-	 * makes the newer application's figure the one that applies. Issue #1503
-	 * puts the question to the project owner: whether the newer pin should win,
-	 * as it now does, or the stronger one.
+	 * NOTHING IN THE DESIGN STATED EITHER ANSWER when this was written. The old
+	 * behaviour was a consequence of how the effects were built rather than a
+	 * decision, and replacing the effect -- which is what stops the crash --
+	 * necessarily makes the newer application's figure the one that applies.
+	 *
+	 * THE PROJECT OWNER HAS SINCE RULED THAT THE STRONGEST APPLICATION SHOULD
+	 * WIN, so a 10% Shred never overwrites a 30% one. Issue #1503 carries that
+	 * ruling. THIS TEST RECORDS WHAT THE CODE DOES TODAY AND NOT WHAT IT SHOULD
+	 * DO, and saying so is the point of this paragraph: a reader who met this
+	 * test first must not take it as the design's answer.
+	 *
+	 * EXACTLY ONE ASSERTION BELOW CHANGES when the ruling is built: the one
+	 * reading "and now takes the newer pin's increase", which expects 110 and
+	 * would expect 130, because the 30% pin is the stronger and would stand.
+	 * The 50% pin that follows it is stronger than either, so its assertion
+	 * reads 150 under both rules and is not evidence of which rule is in
+	 * force. That is worth knowing before anyone reads a green run here as
+	 * agreement with the ruling.
 	 *
 	 * IT DOES NOT AFFECT DAMAGE OVER TIME, which never had the fault: a burn's
 	 * per-tick figure lives on the applied spec rather than in an attribute
