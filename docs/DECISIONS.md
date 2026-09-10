@@ -614,6 +614,117 @@ field on its row struct, and no skill has yet been refused for want of Fervour.
 
 ---
 
+## 2026-09-09 — The strongest application of a lasting effect decides its size
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, the
+helpers that apply damage, damage over time, stuns, pins and named status
+effects, and `game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp`. Issue
+[#1503](https://github.com/sdubois777/Cataclysm/issues/1503).
+
+**NOTHING IS BUILT. This entry records a ruling, not a change.** The code today
+uses the newer application's figure. Everything below describes what it must do
+instead.
+
+### The question, and why it had to be asked
+
+Applying the same lasting effect twice to one target — a pin carrying a
+damage-taken increase, a resistance-cutting curse like Shred — needs a rule for
+which application's figure applies. **There was never a decision.** Until
+2026-09-09 the first application's figure was frozen and no later one could move
+it, and that was an accident: every runtime effect was built under the same
+object name, so a second application destroyed the first and was constructed at
+its address. Pull request
+[#1505](https://github.com/sdubois777/Cataclysm/pull/1505) repaired that
+use-after-free, and repairing it forced a choice, because the accidental
+behaviour could not be kept.
+
+### The three rulings, all made by the project owner on 2026-09-09
+
+**1. The strongest application wins.** A 10% Shred can never overwrite a 30%
+Shred. They were shown the alternative — the most recent application wins, which
+is what the repair produces for free — and chose the strongest over it.
+
+**2. An effect that changes several stats is compared as one whole.** Add up the
+magnitudes each application STATES across every stat it touches and keep
+whichever total is larger, applying that application entire. The alternative —
+keeping the best value for each stat independently — was refused: it leaves the
+target carrying a mixture of two different applications, which no tooltip can
+describe and no player can predict. **An effect stays one thing that came from
+one source.**
+
+**THIS RULE HAS NO CASE YET, AND THE EXAMPLE IT WAS DECIDED ON CANNOT HAPPEN.**
+The owner was asked about an application cutting fire by 30 and cold by 10 losing
+to one cutting fire by 10 and cold by 30. **No effect in this game can do that.**
+`ApplyNamedEffect` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` holds a single
+`Size` and applies it to every stat the effect names — `float Size = Magnitude`,
+falling back to the designed strength from the Status Effects sheet. Abyssal Aura
+cuts two resistances by the same amount, not by two amounts.
+
+So for every effect that exists today, "compare the stated magnitudes" and "add
+up the stated magnitude across every stat" give the **same ordering**, and the
+sum is just the magnitude multiplied by the number of stats. **Build it as a sum
+so it is right if per-stat magnitudes are ever added, but do not claim a test
+proves it**: the discriminating case cannot be constructed, so any test written
+for it would pass under both readings. Record it as a rule awaiting a case.
+
+Whether effects are meant to carry per-stat magnitudes later has not been asked.
+
+**3. A weaker application still refreshes the duration.** Its figures are
+refused; its timing is not. Without this, keeping a curse running would require
+landing the strongest source every time, which punishes exactly the rotation a
+player would build on purpose.
+
+### Genre precedent, and it is already half-adopted here
+
+`docs/DECISIONS.md` already records that **Path of Exile's ignite does not stack
+and only the highest-damage one deals damage at a time**, and that this project
+adopted that same game's answer to the neighbouring question on 2026-08-03 — an
+enemy carries at most one stack of any effect. Ruling 1 makes the pair
+consistent rather than introducing a new idea. Rulings 2 and 3 are this
+project's own judgement; no shipped game was found that states either.
+
+### Measured before the target's resistances, not after
+
+**This entry first left that open. It could not stay open: rulings 1 and 2 as
+first drafted pointed opposite ways, and building either one forces the answer.**
+Ruling 1 says a 10% Shred can never overwrite a 30% one, which compares what an
+application STATES. Ruling 2 first said to add up what each application TAKES,
+which is measured after the running effect has already reduced the resistance.
+
+The session picking the work up found the case where they disagree, and it is an
+ordinary one. A target with 40 Demonic and 40 War resistance takes a 30% Shred:
+it removes 30 and 30, a stated total of 60, leaving 10 and 10. A 50% Shred then
+arrives, and `ApplyNamedEffect` clamps it to what is left, so it would take only
+10 and 10. **Comparing what is taken refuses the 50% Shred in favour of the
+running 30% one** — a genuinely stronger curse doing nothing because a weaker one
+got there first.
+
+**Decision: compare the stated magnitudes, before the target's resistances.** The
+project owner ruled it on 2026-09-09, shown that worked example and the cost. A
+50% Shred beats a 30% Shred whatever state the target is in, and the same two
+skills always resolve the same way.
+
+**The cost was accepted knowingly and whoever builds this will meet it
+immediately.** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`
+clamps each stat against the target's current resistance before any effect object
+exists, so **the stated magnitude is gone by the time a comparison could happen**.
+It has to be carried through. That is a real change rather than reading a
+different field.
+
+### How it was recorded
+
+The two additional questions were found by the session repairing the crash, which
+noticed the ruling as relayed answered neither. That session declined to write
+this entry, correctly: it heard the ruling from the coordinating session rather
+than from the project owner, and a design decision recorded by someone who did
+not witness it is a claim wearing the authority of the log. The coordinating
+session, which put all three questions to the owner and has their answers, wrote
+it.
+
+
+---
+
 ## 2026-09-08 — The fourteenth set gets its drawback, and it strips one resistance at random
 
 **Affects:** the `Enchantments` sheet of `docs/All_Things_Cataclysm.xlsx` and the
