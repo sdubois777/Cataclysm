@@ -467,6 +467,35 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/**
+	 * Put the model at `BodyMeshPath` on this character's mesh component, if it
+	 * has none yet. Issue #1542.
+	 *
+	 * FOR `PreRegisterAllComponents`, WHICH RUNS BEFORE ANY OF THE ACTOR'S
+	 * COMPONENTS REGISTER. A component attached to a bone or socket of the mesh
+	 * -- the Brute's held rock, the player's two weapons -- works out where it is
+	 * when it registers, by asking the mesh where that bone or socket is. A mesh
+	 * with no model cannot answer, and the engine logs "GetSocketInfoByName(...):
+	 * No SkeletalMesh for Component" each time it is asked. Counted on
+	 * 2026-09-10, while the model arrived only in BeginPlay: 5,260 of those for
+	 * 1,728 Brutes in one run, and four for each of the player's two sockets in
+	 * each of the two runs counted.
+	 *
+	 * ONLY THE MODEL. Everything else a character does with its body -- where the
+	 * mesh sits on the capsule, its animation, its clips -- stays in BeginPlay.
+	 * BeginPlay still calls SetSkeletalMesh with the same model, and
+	 * USkeletalMeshComponent::SetSkeletalMesh returns at once for the mesh it
+	 * already holds.
+	 *
+	 * ONLY IN A GAME WORLD -- a game, a Play-In-Editor session, a test world. An
+	 * editor level is left alone, so that a character placed in one is not saved
+	 * with a hard reference to its art.
+	 *
+	 * NOTHING HAPPENS WHEN THE MODEL IS NOT THERE, as on any checkout without the
+	 * art pack. BeginPlay's own load says so in the log.
+	 */
+	void WearBodyBeforeComponentsRegister(const TCHAR* BodyMeshPath);
+
+	/**
 	 * Set by `PlayAttackAnimation` in whichever class overrides it, and read
 	 * back through `SecondsUntilTheSwingConnects`. Issue #1133.
 	 *
