@@ -693,10 +693,14 @@ public:
 	 *   a node's own wait     The Breaking Point's and Rock Bottom's cooldowns
 	 *                         and the intervals of the Unstable Aura's nova and
 	 *                         Beacon of Despair, for the same reason
-	 *   every other skill     one that is not a self buff puts nothing on its
-	 *                         caster -- an aura helps allies and never the one
-	 *                         casting it -- so ending it would change what a
-	 *                         player's minions carry, which nobody has ruled on
+	 *   every other skill     one that is not a self buff leaves nothing on its
+	 *                         caster for a respawn to clear. An aura's damage
+	 *                         bonus goes to allies and never to the one casting
+	 *                         it, so ending an aura would change what a player's
+	 *                         minions carry, which nobody has ruled on. An aura
+	 *                         whose row states `HealthFromHitTaken` also gives
+	 *                         its caster health when the caster is hit, and it
+	 *                         is left running like the rest
 	 *
 	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, BECAUSE NONE OF IT IS
 	 * BUILT. The ruling ends five such effects at death -- Blood Price, Withering
