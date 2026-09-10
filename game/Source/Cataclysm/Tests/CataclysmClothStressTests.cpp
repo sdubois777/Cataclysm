@@ -306,4 +306,107 @@ bool FCataclysmClothStressCounts::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A batch can be one creature alone, and a batch of no creatures is nothing.
+ *
+ * WHY ONE CREATURE ALONE MATTERS. The Brute was the first suspect for issue
+ * #1545 because its model is attached late, and a run of Brutes alone is what
+ * tests that suspicion. A run of Wardens and Succubi alone is what tests the
+ * other way round.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClothStressOneCreature,
+	"Cataclysm.ClothStress.ABatchCanBeOneCreatureAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClothStressOneCreature::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TArray<TSubclassOf<ACataclysmEnemyCharacter>> WardensOnly = {
+		ACataclysmAbyssalWardenCharacter::StaticClass() };
+
+	const TArray<ACataclysmEnemyCharacter*> Batch =
+		CataclysmClothStress::SpawnBatch(World, FVector::ZeroVector, 3,
+										 /*Seed=*/9, WardensOnly);
+	if (!TestEqual(TEXT("three asked for, three spawned"), Batch.Num(), 3))
+	{
+		return false;
+	}
+
+	for (const ACataclysmEnemyCharacter* Creature : Batch)
+	{
+		TestTrue(FString::Printf(TEXT("%s is an Abyssal Warden"), *Creature->GetName()),
+			Creature->IsA<ACataclysmAbyssalWardenCharacter>());
+	}
+
+	TestEqual(TEXT("a batch of no creatures spawns nothing"),
+		CataclysmClothStress::SpawnBatch(World, FVector::ZeroVector, 3,
+			/*Seed=*/9, TArray<TSubclassOf<ACataclysmEnemyCharacter>>()).Num(), 0);
+
+	return true;
+}
+
+/**
+ * Clearing the level kills every enemy except the ones kept, and only once.
+ *
+ * WHAT IT IS FOR. A run clears the level at the start of every cycle, so a
+ * creature the level spawned after the run began does not walk up to the player
+ * and start a fight. The run's own creatures are the ones kept.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClothStressClearsOthers,
+	"Cataclysm.ClothStress.ClearingTheLevelKillsEveryEnemyButTheOnesKept",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClothStressClearsOthers::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmEnemyCharacter* Stranger = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(5000.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Params);
+	if (!TestNotNull(TEXT("an enemy the run did not spawn"), Stranger))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Batch =
+		CataclysmClothStress::SpawnBatch(World, FVector::ZeroVector, 2, /*Seed=*/4);
+	if (!TestEqual(TEXT("two of the run's own"), Batch.Num(), 2))
+	{
+		return false;
+	}
+
+	const TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Kept =
+		CataclysmClothStressTest::Held(Batch);
+
+	TestEqual(TEXT("one enemy is cleared"),
+		CataclysmClothStress::KillEveryOtherEnemy(World, Kept), 1);
+	TestTrue(TEXT("and it is the one the run did not spawn"),
+		UCataclysmSkillEffects::IsDead(Stranger));
+
+	for (const ACataclysmEnemyCharacter* Creature : Batch)
+	{
+		TestFalse(FString::Printf(TEXT("%s, kept, is alive"), *Creature->GetName()),
+			UCataclysmSkillEffects::IsDead(Creature));
+	}
+
+	TestEqual(TEXT("clearing again kills nobody, because the dead are skipped"),
+		CataclysmClothStress::KillEveryOtherEnemy(World, Kept), 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

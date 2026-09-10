@@ -64,15 +64,15 @@ namespace
 }
 
 TArray<ACataclysmEnemyCharacter*> CataclysmClothStress::SpawnBatch(
-	UWorld* World, const FVector& Centre, int32 Count, int32 Seed)
+	UWorld* World, const FVector& Centre, int32 Count, int32 Seed,
+	const TArray<TSubclassOf<ACataclysmEnemyCharacter>>& Classes)
 {
 	TArray<ACataclysmEnemyCharacter*> Spawned;
-	if (!World || Count <= 0)
+	if (!World || Count <= 0 || Classes.IsEmpty())
 	{
 		return Spawned;
 	}
 
-	const TArray<TSubclassOf<ACataclysmEnemyCharacter>> Classes = CreatureClasses();
 	FRandomStream Stream(Seed);
 	Spawned.Reserve(Count);
 
@@ -116,6 +116,12 @@ TArray<ACataclysmEnemyCharacter*> CataclysmClothStress::SpawnBatch(
 	return Spawned;
 }
 
+TArray<ACataclysmEnemyCharacter*> CataclysmClothStress::SpawnBatch(
+	UWorld* World, const FVector& Centre, int32 Count, int32 Seed)
+{
+	return SpawnBatch(World, Centre, Count, Seed, CreatureClasses());
+}
+
 int32 CataclysmClothStress::KillAll(
 	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>>& Creatures)
 {
@@ -142,6 +148,35 @@ int32 CataclysmClothStress::KillAll(
 
 	Creatures.Reset();
 	return Killed;
+}
+
+int32 CataclysmClothStress::KillEveryOtherEnemy(
+	UWorld* World, const TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>>& Keep)
+{
+	if (!World)
+	{
+		return 0;
+	}
+
+	// COLLECTED BEFORE ANY OF THEM DIES, because a death spawns loot into the
+	// level being walked.
+	TArray<ACataclysmEnemyCharacter*> Others;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Enemy = *It;
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+			&& !Keep.Contains(Enemy))
+		{
+			Others.Add(Enemy);
+		}
+	}
+
+	for (ACataclysmEnemyCharacter* Enemy : Others)
+	{
+		Enemy->HandleDeath();
+	}
+
+	return Others.Num();
 }
 
 CataclysmClothStress::FClothCount CataclysmClothStress::CountCloth(
@@ -200,6 +235,7 @@ namespace
 	struct FClothStressRun
 	{
 		TWeakObjectPtr<UWorld> World;
+		TArray<TSubclassOf<ACataclysmEnemyCharacter>> Classes;
 		int32 PerCycle = 0;
 		float SecondsPerCycle = 0.0f;
 		bool bChurnDetail = false;
@@ -207,6 +243,7 @@ namespace
 		int32 Cycle = 0;
 		int32 Frame = 0;
 		int32 TotalSpawned = 0;
+		int32 OthersCleared = 0;
 		float SecondsIntoCycle = 0.0f;
 		double StartedAt = 0.0;
 
@@ -234,6 +271,29 @@ namespace
 		}
 
 		return FVector::ZeroVector;
+	}
+
+	/** The creatures a run takes in turn, named for the log. */
+	FString NamesOf(const TArray<TSubclassOf<ACataclysmEnemyCharacter>>& Classes)
+	{
+		TArray<FString> Names;
+		for (const TSubclassOf<ACataclysmEnemyCharacter>& Class : Classes)
+		{
+			if (Class == ACataclysmBruteCharacter::StaticClass())
+			{
+				Names.Add(TEXT("Brute"));
+			}
+			else if (Class == ACataclysmAbyssalWardenCharacter::StaticClass())
+			{
+				Names.Add(TEXT("Abyssal Warden"));
+			}
+			else if (Class == ACataclysmSuccubusCharacter::StaticClass())
+			{
+				Names.Add(TEXT("Succubus"));
+			}
+		}
+
+		return FString::Join(Names, TEXT(", "));
 	}
 
 	/**
@@ -281,23 +341,32 @@ namespace
 		}
 	}
 
-	void BeginCycle(FClothStressRun& Run, UWorld& World)
+	/** Clear the level of everything that is not the run's, then spawn a batch.
+	 *  Answers how many other enemies were cleared. */
+	int32 BeginCycle(FClothStressRun& Run, UWorld& World)
 	{
 		++Run.Cycle;
 		Run.SecondsIntoCycle = 0.0f;
 
+		const int32 Cleared =
+			CataclysmClothStress::KillEveryOtherEnemy(&World, Run.Alive);
+		Run.OthersCleared += Cleared;
+		SweepDrops(World);
+
 		const TArray<ACataclysmEnemyCharacter*> Batch =
 			CataclysmClothStress::SpawnBatch(&World, CentreIn(World),
-											 Run.PerCycle, /*Seed=*/Run.Cycle);
+											 Run.PerCycle, /*Seed=*/Run.Cycle,
+											 Run.Classes);
 		for (ACataclysmEnemyCharacter* Creature : Batch)
 		{
 			Run.Alive.Add(Creature);
 		}
 
 		Run.TotalSpawned += Batch.Num();
+		return Cleared;
 	}
 
-	void FinishCycle(FClothStressRun& Run, UWorld& World)
+	void FinishCycle(FClothStressRun& Run)
 	{
 		// COUNTED BEFORE THE KILLING, while the cloth has had the whole cycle to
 		// simulate.
@@ -307,13 +376,13 @@ namespace
 		UE_LOG(LogCataclysm, Log,
 			TEXT("Cloth stress cycle %d: %d creatures alive, %d wear a model with "
 				 "cloth, %d have cloth switched on, %d are handing the renderer "
-				 "cloth data. %d spawned in %.0f s so far."),
+				 "cloth data. %d spawned and %d other enemies cleared in %.0f s "
+				 "so far."),
 			Run.Cycle, Count.Creatures, Count.WearingClothModels,
 			Count.ClothSwitchedOn, Count.CarryingClothData, Run.TotalSpawned,
-			FPlatformTime::Seconds() - Run.StartedAt);
+			Run.OthersCleared, FPlatformTime::Seconds() - Run.StartedAt);
 
 		CataclysmClothStress::KillAll(Run.Alive);
-		SweepDrops(World);
 	}
 
 	bool TickRun(float DeltaSeconds)
@@ -349,7 +418,7 @@ namespace
 
 		if (Run.SecondsIntoCycle >= Run.SecondsPerCycle)
 		{
-			FinishCycle(Run, *World);
+			FinishCycle(Run);
 			BeginCycle(Run, *World);
 		}
 
@@ -378,13 +447,15 @@ namespace
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmClothStress(
 	TEXT("Cataclysm.Debug.ClothStress"),
-	TEXT("Reproduce issue #1545, the renderer's cloth check. Kills every enemy in "
-		 "the level, then repeatedly spawns Brutes, Abyssal Wardens and Succubi "
-		 "around the player with no brain and kills them a few seconds later, "
-		 "writing one log line a cycle and throwing away the loot. "
+	TEXT("Reproduce issue #1545, the renderer's cloth check. Every cycle it kills "
+		 "every other enemy in the level, spawns Brutes, Abyssal Wardens and "
+		 "Succubi around the player with no brain, and kills them a few seconds "
+		 "later, writing one log line a cycle and throwing away the loot. "
 		 "Cataclysm.Debug.ClothStress [creatures per cycle, default 24] [seconds "
-		 "per cycle, default 3] [lod]. `lod` puts every creature on a different "
-		 "level of detail every frame. Cataclysm.Debug.ClothStress stop ends it."),
+		 "per cycle, default 3] [lod] [brute] [warden] [succubus]. `lod` puts "
+		 "every creature on a different level of detail every frame. Naming "
+		 "creatures spawns only those; naming none spawns all three. "
+		 "Cataclysm.Debug.ClothStress stop ends it."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -411,6 +482,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmClothStress(
 			int32 PerCycle = DefaultPerCycle;
 			float SecondsPerCycle = DefaultSecondsPerCycle;
 			bool bChurnDetail = false;
+			bool bBrute = false;
+			bool bWarden = false;
+			bool bSuccubus = false;
 			int32 NumbersRead = 0;
 
 			for (const FString& Arg : Args)
@@ -418,6 +492,18 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmClothStress(
 				if (Arg.Equals(TEXT("lod"), ESearchCase::IgnoreCase))
 				{
 					bChurnDetail = true;
+				}
+				else if (Arg.Equals(TEXT("brute"), ESearchCase::IgnoreCase))
+				{
+					bBrute = true;
+				}
+				else if (Arg.Equals(TEXT("warden"), ESearchCase::IgnoreCase))
+				{
+					bWarden = true;
+				}
+				else if (Arg.Equals(TEXT("succubus"), ESearchCase::IgnoreCase))
+				{
+					bSuccubus = true;
 				}
 				else if (Arg.IsNumeric())
 				{
@@ -433,53 +519,57 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmClothStress(
 				}
 			}
 
+			// NAMING NONE MEANS ALL THREE, in CreatureClasses' order either way.
+			TArray<TSubclassOf<ACataclysmEnemyCharacter>> Classes;
+			if (!bBrute && !bWarden && !bSuccubus)
+			{
+				Classes = CataclysmClothStress::CreatureClasses();
+			}
+			else
+			{
+				if (bBrute)
+				{
+					Classes.Add(ACataclysmBruteCharacter::StaticClass());
+				}
+				if (bWarden)
+				{
+					Classes.Add(ACataclysmAbyssalWardenCharacter::StaticClass());
+				}
+				if (bSuccubus)
+				{
+					Classes.Add(ACataclysmSuccubusCharacter::StaticClass());
+				}
+			}
+
 			// ONE AT A TIME. A second start replaces the first rather than
 			// running beside it.
 			StopRun(TEXT("replaced by a new run"));
 
-			// THE LEVEL'S OWN ENEMIES GO FIRST, so nothing with a brain attacks
-			// the player while the run lasts. Collected before any of them dies,
-			// because a death spawns loot into the level being walked.
-			TArray<ACataclysmEnemyCharacter*> AlreadyHere;
-			for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
-			{
-				AlreadyHere.Add(*It);
-			}
-
-			int32 Cleared = 0;
-			for (ACataclysmEnemyCharacter* Enemy : AlreadyHere)
-			{
-				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
-				{
-					Enemy->HandleDeath();
-					++Cleared;
-				}
-			}
-			SweepDrops(*World);
-
 			GClothStressRun = MakeUnique<FClothStressRun>();
 			FClothStressRun& Run = *GClothStressRun;
 			Run.World = World;
+			Run.Classes = Classes;
 			Run.PerCycle = PerCycle;
 			Run.SecondsPerCycle = SecondsPerCycle;
 			Run.bChurnDetail = bChurnDetail;
 			Run.StartedAt = FPlatformTime::Seconds();
 
-			BeginCycle(Run, *World);
+			const int32 Cleared = BeginCycle(Run, *World);
 			Run.Ticker = FTSTicker::GetCoreTicker().AddTicker(
 				TEXT("CataclysmClothStress"), 0.0f,
 				[](float DeltaSeconds) { return TickRun(DeltaSeconds); });
 
 			UE_LOG(LogCataclysm, Log,
-				TEXT("Cloth stress started: %d creatures every %.1f s around %s, "
-					 "level of detail changed every frame: %s. Killed %d enemies "
-					 "that were already in the level."),
-				PerCycle, SecondsPerCycle, *CentreIn(*World).ToCompactString(),
+				TEXT("Cloth stress started: %d creatures (%s) every %.1f s around "
+					 "%s, level of detail changed every frame: %s. Killed %d "
+					 "enemies that were already in the level."),
+				PerCycle, *NamesOf(Classes), SecondsPerCycle,
+				*CentreIn(*World).ToCompactString(),
 				bChurnDetail ? TEXT("yes") : TEXT("no"), Cleared);
 
-			Ar.Logf(TEXT("Cloth stress started: %d creatures every %.1f s. "
+			Ar.Logf(TEXT("Cloth stress started: %d creatures (%s) every %.1f s. "
 						 "Cataclysm.Debug.ClothStress stop ends it."),
-					PerCycle, SecondsPerCycle);
+					PerCycle, *NamesOf(Classes), SecondsPerCycle);
 		}));
 
 #endif // !UE_BUILD_SHIPPING

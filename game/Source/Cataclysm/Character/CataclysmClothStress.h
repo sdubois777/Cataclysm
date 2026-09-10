@@ -25,19 +25,22 @@ class UWorld;
  * check. Issue #559 records the same limit for particle effects. This has to run
  * in a game that draws.
  *
- * WHAT IT DOES. `Cataclysm.Debug.ClothStress` kills every enemy already in the
- * level, so nothing attacks the player while it runs, then repeats one cycle
- * until it is stopped or its world ends:
+ * WHAT IT DOES. `Cataclysm.Debug.ClothStress` repeats one cycle until it is
+ * stopped or its world ends:
  *
- *   1. spawn a batch of those three creatures in a ring around the player,
- *      taking them in turn, with no brain, so they stand and animate;
- *   2. with `lod`, force each of them to a different level of detail every
+ *   1. kill every enemy in the level that is not one of its own, so nothing
+ *      with a brain attacks the player while it runs. Every cycle rather than
+ *      once, because a level can spawn creatures after a run has started;
+ *   2. spawn a batch of cloth creatures in a ring around the player, taking the
+ *      ones asked for in turn -- all three, or any of `brute`, `warden` and
+ *      `succubus` -- with no brain, so they stand and animate;
+ *   3. with `lod`, force each of them to a different level of detail every
  *      frame. Each level of detail has its own pair of cloth buffers, created
  *      by the first two cloth updates at that level. Reading the engine found
  *      that the second of those updates switches to a buffer that does not
  *      exist yet and creates it a moment later, which is the one gap found in
  *      which the renderer's check could fail;
- *   3. after the cycle's seconds, write one log line counting what the living
+ *   4. after the cycle's seconds, write one log line counting what the living
  *      creatures carry, then kill them through ACataclysmEnemyCharacter::
  *      HandleDeath, the path a real death takes, so their death clips play and
  *      their bodies are removed the way a fight removes them.
@@ -86,12 +89,19 @@ namespace CataclysmClothStress
 	CATACLYSM_API TArray<TSubclassOf<ACataclysmEnemyCharacter>> CreatureClasses();
 
 	/**
-	 * Spawn `Count` creatures in a ring around `Centre`, with no brain.
+	 * Spawn `Count` creatures in a ring around `Centre`, with no brain, taking
+	 * `Classes` in turn.
 	 *
 	 * @param Seed  decides where on the ring each one stands, so the same seed
 	 *              puts the same creatures in the same places.
 	 * @return the creatures that spawned, in the order they were asked for.
+	 *         Nothing when `Classes` is empty.
 	 */
+	CATACLYSM_API TArray<ACataclysmEnemyCharacter*> SpawnBatch(
+		UWorld* World, const FVector& Centre, int32 Count, int32 Seed,
+		const TArray<TSubclassOf<ACataclysmEnemyCharacter>>& Classes);
+
+	/** The same, taking all three of CreatureClasses in turn. */
 	CATACLYSM_API TArray<ACataclysmEnemyCharacter*> SpawnBatch(
 		UWorld* World, const FVector& Centre, int32 Count, int32 Seed);
 
@@ -103,6 +113,16 @@ namespace CataclysmClothStress
 	 */
 	CATACLYSM_API int32 KillAll(
 		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>>& Creatures);
+
+	/**
+	 * Kill every living enemy in `World` that is not in `Keep`, through its own
+	 * death path.
+	 *
+	 * @return how many were killed.
+	 */
+	CATACLYSM_API int32 KillEveryOtherEnemy(
+		UWorld* World,
+		const TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>>& Keep);
 
 	/** Count what the living creatures in `Creatures` carry. */
 	CATACLYSM_API FClothCount CountCloth(
