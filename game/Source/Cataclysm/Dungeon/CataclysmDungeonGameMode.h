@@ -84,9 +84,14 @@ public:
 	 * is why issue #1467 records the arrival as a new runtime system rather than
 	 * a rule in floor generation.
 	 *
-	 * IT COSTS AN ORDINARY DUNGEON A COMPARISON AND NOTHING ELSE.
-	 * `ShouldTheNextWaveArrive` answers false immediately for a floor that is
-	 * not a wave.
+	 * ON AN ORDINARY DUNGEON IT DOES ALMOST NOTHING. Nothing is ever waiting to
+	 * arrive there, and `ShouldTheNextWaveArrive` answers false immediately for
+	 * a floor that is not a wave.
+	 *
+	 * AND EVERY FRAME IT PUTS DOWN MORE OF A WAVE THAT IS STILL ARRIVING. Issue
+	 * #1544: a wave is put on the floor `WaveCreaturesPerFrame` creatures a
+	 * frame rather than all at once. That part does not wait for
+	 * `SecondsBetweenWaveChecks`.
 	 */
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -529,7 +534,13 @@ public:
 	 * standing in mid-air, or inside the new floor's rock, still hunting the
 	 * player.
 	 *
-	 * @return how many were spawned
+	 * A WAVE THAT WALKS IN IS NOT ALL PUT DOWN HERE. Issue #1544. This decides
+	 * every creature of the wave and puts the first `WaveCreaturesPerFrame` of
+	 * them on the floor; `Tick` puts down the rest, the same number a frame, and
+	 * `CreaturesStillArriving` says how many are still to come.
+	 *
+	 * @return how many this call put on the floor: every creature of an ordinary
+	 *         floor, or the first few of a wave that walks in
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	int32 PopulateFloor();
@@ -575,7 +586,12 @@ public:
 	TArray<TObjectPtr<ACataclysmEnemyCharacter>> CurrentWave;
 
 	/**
-	 * How many creatures the current wave put on the floor when it arrived.
+	 * How many creatures the current wave has put on the floor.
+	 *
+	 * IT GROWS WHILE THE WAVE ARRIVES AND STOPS WHEN ALL OF IT HAS. Issue #1544
+	 * puts a wave down a few creatures a frame, and `ShouldTheNextWaveArrive`
+	 * does not judge a wave until `CreaturesStillArriving` is zero, so the rule
+	 * this is the denominator of only ever reads the finished count.
 	 *
 	 * RECORDED RATHER THAN COUNTED FROM `CurrentWave`, because that array is
 	 * what is still standing and this is the denominator. Ten percent of "the
@@ -644,6 +660,46 @@ public:
 	 * a fortieth of the work of doing it at 120 frames a second.
 	 */
 	static constexpr float SecondsBetweenWaveChecks = 0.25f;
+
+	/**
+	 * How many of an arriving wave's creatures are put on the floor in one frame.
+	 *
+	 * WHAT WAS WRONG, ISSUE #1544. A wave put every one of its creatures on the
+	 * floor in the frame it arrived. In the project owner's Horde session on
+	 * 2026-09-10 that was 139 creatures in one frame, in each of four waves, and
+	 * in the two waves that arrived during play rather than when play began, the
+	 * spawning alone took 176 ms and 163 ms of that frame by the log's own
+	 * timestamps: about 1.2 ms a creature. It also possessed every creature in
+	 * one frame, which is what lined up their thinking.
+	 * `ACataclysmEnemyController::FirstThinkDelaySeconds` is the direct fix for
+	 * that, and this is the other half.
+	 *
+	 * FOUR, AND IT IS A JUDGEMENT. At about 1.2 ms a creature, four adds about
+	 * 5 ms to each frame while a wave arrives, against 16.7 ms for a whole frame
+	 * at 60 frames a second, and a wave of 139 takes 35 frames: a little under
+	 * 0.6 seconds at 60 frames a second. Eight would halve the time and double
+	 * the cost per frame. The design does not say how fast a wave appears, and a
+	 * wave forms around the outside of an arena up to 271 metres across, so the
+	 * player sees it come in from the edges either way.
+	 *
+	 * HOW MANY ARRIVE AND WHERE ARE UNCHANGED. The population pass decides every
+	 * creature and its cell when the wave begins, exactly as before, and this
+	 * decides only which frame each one appears in.
+	 *
+	 * ONLY A WAVE THAT WALKS IN. An ordinary floor's creatures are put down while
+	 * the floor is built, all at once, as they always were.
+	 */
+	static constexpr int32 WaveCreaturesPerFrame = 4;
+
+	/**
+	 * How many of the current wave's creatures have still to arrive.
+	 *
+	 * ZERO ONCE THE WHOLE WAVE IS ON THE FLOOR, and always zero on a floor whose
+	 * creatures are not a wave that walks in. Read by tests, and by
+	 * `ShouldTheNextWaveArrive`, which will not judge a wave until all of it has
+	 * arrived.
+	 */
+	int32 CreaturesStillArriving() const { return WaveStillToArrive.Num(); }
 
 	/**
 	 * Which character class stands in for one of the designed creatures.
@@ -821,6 +877,55 @@ private:
 	 * `BringTheNextWaveIn` or ticks this actor rather than reading it.
 	 */
 	float SinceWaveCheckSeconds = 0.0f;
+
+	/**
+	 * The arriving wave's creatures that are not on the floor yet, in the order
+	 * the population pass placed them, so the first placed is the first to
+	 * arrive. Issue #1544; see `WaveCreaturesPerFrame`.
+	 *
+	 * PLAIN DATA, NOT A `UPROPERTY`, for the reason `FloorBrief` gives: a
+	 * placement holds no object, and Unreal's header tool refuses a `UPROPERTY`
+	 * of an unreflected struct.
+	 */
+	TArray<FCataclysmEnemyPlacement> WaveStillToArrive;
+
+	/**
+	 * What the arriving wave's creatures notice from, as a multiple of their own
+	 * distance, taken when the wave began arriving.
+	 *
+	 * TAKEN THEN AND NOT READ OFF `FloorBrief` LATER, because the brief belongs
+	 * to the floor being stood on, and a new floor's brief is written before its
+	 * creatures are put down. A wave still arriving when the next one is brought
+	 * in finishes with the figure it began with.
+	 */
+	float ArrivingSightRadiusMultiplier = 1.0f;
+
+	/**
+	 * Puts up to `WaveCreaturesPerFrame` more of the arriving wave on the floor,
+	 * and returns how many it put down.
+	 *
+	 * CALLED FROM `Tick` EVERY FRAME, and from `PopulateFloor` in the frame a
+	 * wave begins, so a wave's first creatures appear in the frame it arrives.
+	 *
+	 * ALWAYS SHORTENS THE QUEUE, or empties it when there is no floor to put
+	 * anything on, so a loop that calls it until nothing is left always ends.
+	 *
+	 * PRIVATE ON PURPOSE. A test drives `Tick`, which is what drives this in
+	 * play; a test that called this directly would prove the spawning and not
+	 * that anything in the game ever does it.
+	 */
+	int32 ContinueTheWaveArriving();
+
+	/**
+	 * Spawns one placed creature on the current floor and gives it everything
+	 * the floor decides about it: its designed numbers, its rarity, its standing
+	 * height and what it notices from. Null when it could not be spawned.
+	 *
+	 * ONE FUNCTION FOR BOTH WAYS A CREATURE ARRIVES -- all of an ordinary floor
+	 * at once, and a wave a few at a time -- so the two cannot drift apart.
+	 */
+	ACataclysmEnemyCharacter* SpawnPlacedCreature(
+		const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier);
 
 	// ----------------------------------------------------------------------
 	// Reaching the empire from a dungeon, issue #1092

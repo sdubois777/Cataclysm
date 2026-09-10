@@ -170,6 +170,12 @@ enum class ECataclysmBrainAction : uint8
  * does not change that fast. The same reasoning already applies to
  * ACataclysmGroundZone's sweep.
  *
+ * AND NOT EVERY CREATURE IN THE SAME FRAME. Until issue #1543 every controller
+ * waited exactly one interval for its first pass, so creatures made together
+ * thought together for the rest of their lives, and a Horde wave of 139 cost
+ * about 170 ms of timer work in one frame, four times a second.
+ * `FirstThinkDelaySeconds` gives each controller its own first pass.
+ *
  * ROAMING IS OPT-IN, AND THAT IS THE POINT. A character roams only when its
  * RoamRadiusCm() is above zero, and the default on ACataclysmCharacterBase is
  * zero. So a monster that has not asked to roam still stands still with nothing
@@ -202,6 +208,61 @@ public:
 
 	/** Seconds between one pass of the thinking and the next. */
 	static constexpr float ThinkIntervalSeconds = 0.25f;
+
+	/**
+	 * How long after it is possessed a controller has its FIRST thinking pass,
+	 * given how many possessions any enemy controller made before it.
+	 *
+	 * WHAT WAS WRONG, ISSUE #1543. Every controller used to wait exactly
+	 * `ThinkIntervalSeconds` for its first pass. A Horde wave possessed all 139
+	 * of its creatures in one frame, so all 139 first thought in the same frame,
+	 * and a looping timer keeps that timing for as long as the creature lives:
+	 * from then on they thought together, four times a second. A frame-time
+	 * capture of the project owner's Horde session on 2026-09-10 has 32 frames
+	 * with over 100 ms of timer work in them, a median of 250 ms apart, and the
+	 * timer work was 90% of the game thread's time in those frames.
+	 *
+	 * SPREAD ACROSS ONE INTERVAL BY THE GOLDEN RATIO, NOT DRAWN AT RANDOM. The
+	 * fraction of the interval is the fractional part of the count times
+	 * 0.618..., which spreads any run of consecutive counts evenly across the
+	 * interval, wherever the run starts.
+	 * `Cataclysm.AI.AWholeWavesFirstThinksSpreadEvenlyFromAnyStartingCount`
+	 * checks that for a wave of 139. A random draw would bunch, and it would take
+	 * numbers from the random stream other systems draw from, so every test that
+	 * spawns a creature would change what the next roll in that test comes out
+	 * as.
+	 *
+	 * ONLY THE FIRST PASS MOVES. The timer still repeats every
+	 * `ThinkIntervalSeconds`, so `PassesForWindUp` and the Brute's
+	 * `LandsAtSecondsFor`, which both count whole passes from the pass that began
+	 * a wind-up, mean what they meant. Unreal keeps a looping timer's timing by
+	 * adding the interval to the time it was due rather than to the time it ran
+	 * (`FTimerManager::Tick`, engine 5.8), so the spread lasts the creature's
+	 * whole life.
+	 *
+	 * ABOVE ZERO AND AT MOST ONE INTERVAL. A count of zero gets exactly one
+	 * interval, which is the delay every creature had before.
+	 *
+	 * STATIC AND PUBLIC so a test can check the arithmetic at the size of a real
+	 * wave without spawning one.
+	 */
+	static float FirstThinkDelaySeconds(uint32 PossessionsBefore);
+
+	/**
+	 * Seconds until this controller's next thinking pass, as the world's timer
+	 * manager has it scheduled, or -1 when none is scheduled. Read by tests.
+	 *
+	 * READ FROM THE TIMER MANAGER RATHER THAN RECORDED HERE, so that a test
+	 * checks the schedule the engine will act on and not a number that only
+	 * says what was asked for.
+	 */
+	float SecondsUntilNextThink() const;
+
+	/**
+	 * How often the thinking timer repeats, from the world's timer manager, or
+	 * -1 when there is no timer. Read by tests.
+	 */
+	float SecondsBetweenThinks() const;
 
 	/**
 	 * How near the target the walk aims for, as a fraction of the attack reach.

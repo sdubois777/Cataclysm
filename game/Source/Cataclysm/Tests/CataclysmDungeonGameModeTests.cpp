@@ -1960,6 +1960,30 @@ namespace CataclysmDungeonModeTest
 
 		return Mode;
 	}
+
+	/**
+	 * Ticks the game mode a frame at a time until the arriving wave is all on
+	 * the floor, and returns how many frames that took, or -1 if it never
+	 * finished.
+	 *
+	 * THROUGH `Tick`, THE WAY PLAY DOES IT. Issue #1544 puts a wave down a few
+	 * creatures a frame rather than all at once, so a test that reads the whole
+	 * wave has to let it arrive first. Ticking is what the game does, so these
+	 * tests still drive the calls play makes.
+	 */
+	int32 LetTheWaveArrive(ACataclysmDungeonGameMode* Mode)
+	{
+		constexpr float OneFrame = 1.0f / 60.0f;
+		for (int32 Frames = 0; Frames <= 1000; ++Frames)
+		{
+			if (Mode->CreaturesStillArriving() == 0)
+			{
+				return Frames;
+			}
+			Mode->Tick(OneFrame);
+		}
+		return -1;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeWavesTest,
@@ -1990,6 +2014,15 @@ bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
 	}
 
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// **AND THE WAVE IS LET FINISH ARRIVING, BY TICKING.** Issue #1544 puts a
+	// wave down a few creatures a frame, and everything below reads the whole of
+	// it. `Cataclysm.DungeonMode.AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne`
+	// is the test of the arriving itself.
+	if (!TestTrue(TEXT("the first wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
 	{
 		return false;
 	}
@@ -2214,6 +2247,13 @@ bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and every cell of it is unchanged"),
 			 Arena->GetPlan().Cells == Before.Cells);
 
+	// **AND THE SECOND WAVE IS LET FINISH ARRIVING TOO**, for the reason the
+	// first one was: the checks below read what it put on the floor.
+	if (!TestTrue(TEXT("the second wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+
 	// **AND WHAT WAS LEFT OF THE LAST WAVE IS STILL FIGHTING.** The owner's rule
 	// leaves a tenth of it alive on purpose; deleting them would be the game
 	// tidying away enemies the player still has to deal with.
@@ -2247,6 +2287,168 @@ bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
 
 	// AND STILL NO STAIRS on the second wave either.
 	TestNull(TEXT("and still no stairs"), Mode->Stairs.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeWaveArrivesOverFramesTest,
+	"Cataclysm.DungeonMode.AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeWaveArrivesOverFramesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **WHAT THIS GUARDS, AND IT FAILS ON THE CODE BEFORE ISSUE #1544.** A wave
+	// used to put every one of its creatures on the floor in the frame it
+	// arrived: 139 of them in the project owner's session on 2026-09-10, at
+	// about 1.2 ms each by the log's timestamps. Driven the way play drives it,
+	// through `GoToFloor` and then `Tick`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A QUARTER OF THE SHIPPED DENSITY, rather than the tenth the other Horde
+	// tests use, so the wave is several times what one frame puts down and the
+	// arriving has frames to be counted over.
+	Mode->EnemyScale = 0.25f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonFloor* Arena = Mode->CurrentFloor;
+	if (!TestNotNull(TEXT("it built an arena"), Arena))
+	{
+		return false;
+	}
+
+	// **THE WAVE THE FLOOR DECIDED, ASKED FOR A SECOND TIME.** The population
+	// pass takes only the plan, the density and the brief, and draws from the
+	// floor's own seed, so asking again gives the same creatures on the same
+	// cells. "How many arrive and where" is compared against this.
+	const FCataclysmFloorPopulation Planned = FCataclysmFloorPopulator::Populate(
+		Arena->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+	const int32 Whole = Planned.Enemies.Num();
+	const int32 PerFrame = ACataclysmDungeonGameMode::WaveCreaturesPerFrame;
+
+	if (!TestTrue(FString::Printf(
+					  TEXT("the wave is %d creatures, more than two frames' worth "
+						   "at %d a frame, so spreading it can be seen"),
+					  Whole, PerFrame),
+				  Whole > 2 * PerFrame))
+	{
+		return false;
+	}
+
+	// ---- The frame the wave arrives in ------------------------------------
+
+	const int32 InTheFirstFrame = Mode->CurrentWave.Num();
+
+	// **THE ASSERTION THAT FAILS ON THE OLD CODE**, where this read `Whole`.
+	TestTrue(FString::Printf(
+				 TEXT("the frame the wave arrives in puts %d of its %d creatures on "
+					  "the floor, not all of them"), InTheFirstFrame, Whole),
+			 InTheFirstFrame < Whole);
+	TestEqual(TEXT("and it puts exactly one frame's worth down"),
+			  InTheFirstFrame, PerFrame);
+	TestEqual(TEXT("and says how many are still to come"),
+			  Mode->CreaturesStillArriving(), Whole - InTheFirstFrame);
+	TestEqual(TEXT("and it is counted as the first wave from the frame it begins"),
+			  Mode->WavesArrived, 1);
+
+	// **A WAVE STILL ARRIVING IS NOT A WAVE THAT HAS BEEN BEATEN.** Kill every
+	// creature that has arrived so far. Judged only on what is standing, that
+	// is none of the wave left, and the next wave would come in on top of the
+	// rest of this one.
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (!TestTrue(TEXT("an arrived creature was killed"), KillOutright(Enemy.Get())))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("everything that has arrived is dead"), Mode->WaveStillAlive(), 0);
+	TestFalse(TEXT("and still the wave is not finished, because it has not all "
+				   "arrived"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	// ---- Frame by frame ----------------------------------------------------
+
+	constexpr float OneFrame = 1.0f / 60.0f;
+	int32 Frames = 1;
+	while (Mode->CreaturesStillArriving() > 0)
+	{
+		const int32 BeforeThisFrame = Mode->CurrentWave.Num();
+		Mode->Tick(OneFrame);
+		const int32 ThisFrame = Mode->CurrentWave.Num() - BeforeThisFrame;
+		++Frames;
+
+		if (ThisFrame < 1 || ThisFrame > PerFrame)
+		{
+			AddError(FString::Printf(
+				TEXT("frame %d put %d creatures down; each frame has to put down "
+					 "at least one and at most %d"), Frames, ThisFrame, PerFrame));
+			return false;
+		}
+		if (Frames > Whole + 1)
+		{
+			AddError(TEXT("the wave was still arriving after more frames than it "
+						  "has creatures"));
+			return false;
+		}
+	}
+
+	TestEqual(FString::Printf(TEXT("a wave of %d at %d a frame took %d frames"),
+							  Whole, PerFrame, Frames),
+			  Frames, FMath::DivideAndRoundUp(Whole, PerFrame));
+
+	// AND THE NEXT WAVE DID NOT COME IN WHILE IT DID. Those frames crossed the
+	// quarter-second wave check more than once.
+	TestEqual(TEXT("no second wave arrived while the first was still arriving"),
+			  Mode->WavesArrived, 1);
+
+	// ---- How many arrived, and where ---------------------------------------
+
+	TestEqual(TEXT("every creature the wave decided on arrived"),
+			  Mode->CurrentWave.Num(), Whole);
+	TestEqual(TEXT("and the wave counts all of them"), Mode->WaveSpawned, Whole);
+
+	const int32 Compared = FMath::Min(Whole, Mode->CurrentWave.Num());
+	for (int32 Index = 0; Index < Compared; ++Index)
+	{
+		const ACataclysmEnemyCharacter* Enemy = Mode->CurrentWave[Index].Get();
+		const FCataclysmEnemyPlacement& Placement = Planned.Enemies[Index];
+		if (!IsValid(Enemy))
+		{
+			AddError(FString::Printf(TEXT("creature %d of the wave is gone"), Index));
+			return false;
+		}
+
+		// IN ORDER, ON ITS OWN CELL, AND AS ITS OWN KIND OF CREATURE.
+		const FIntPoint Cell = Arena->CellOfWorld(Enemy->GetActorLocation());
+		if (Cell != Placement.Cell
+			|| !Enemy->IsA(ACataclysmDungeonGameMode::ClassFor(Placement.Creature)))
+		{
+			AddError(FString::Printf(
+				TEXT("creature %d arrived on cell %s as %s; the wave placed a %s on "
+					 "cell %s"),
+				Index, *Cell.ToString(), *Enemy->GetClass()->GetName(),
+				CataclysmDungeonCreatureName(Placement.Creature),
+				*Placement.Cell.ToString()));
+			return false;
+		}
+	}
 
 	return true;
 }
@@ -2340,6 +2542,14 @@ bool FCataclysmDungeonModeHordeLastWaveIsClearedTest::RunTest(const FString& Par
 			 Mode->FloorBrief.bBossAtTheExit);
 	TestTrue(TEXT("and the game mode knows it is on the last floor"),
 			 Mode->IsOnTheLastFloor());
+
+	// **LET IT FINISH ARRIVING FIRST.** Issue #1544 puts a wave down a few
+	// creatures a frame, and what is counted below is the whole wave, its
+	// Gatekeeper included.
+	if (!TestTrue(TEXT("the last wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
 
 	const int32 Spawned = Mode->WaveSpawned;
 	if (!TestTrue(FString::Printf(TEXT("the last wave arrived: %d creatures"),
@@ -2666,6 +2876,15 @@ bool FCataclysmDungeonModeOrdinaryHasNoWavesTest::RunTest(const FString& Paramet
 	}
 
 	TestEqual(TEXT("an ordinary dungeon counts no waves"), Mode->WavesArrived, 0);
+
+	// **AND ITS CREATURES ARE ALL PUT DOWN AT ONCE**, while the floor is built.
+	// Issue #1544 spreads only a wave that walks in. An ordinary floor keeps
+	// what it always did, and nothing is left arriving for `Tick` to put down.
+	TestEqual(TEXT("an ordinary floor leaves nothing still arriving"),
+			  Mode->CreaturesStillArriving(), 0);
+	TestTrue(FString::Printf(TEXT("and its creatures are already on the floor: %d"),
+							 Mode->FloorEnemies.Num()),
+			 Mode->FloorEnemies.Num() > 0);
 	TestFalse(TEXT("and its floor is not a wave, so nothing can bring one in"),
 			  Mode->ShouldTheNextWaveArrive());
 

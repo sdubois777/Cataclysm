@@ -2,6 +2,96 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-10 — A Horde wave's thinking and its arrival are spread across frames
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and
+`.cpp`, `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmAbyssalWardenCharacter.h` and `.cpp`,
+and their tests in `CataclysmWindUpTimingTests.cpp`,
+`CataclysmDungeonGameModeTests.cpp` and `CataclysmAbyssalWardenTests.cpp`.
+**Applied.** Issues [#1543](https://github.com/sdubois777/Cataclysm/issues/1543)
+and [#1544](https://github.com/sdubois777/Cataclysm/issues/1544). The cost that
+remains is issue [#1547](https://github.com/sdubois777/Cataclysm/issues/1547).
+
+The project owner called Horde arena performance "the biggest issue" after a
+playtest on 2026-09-10. A csvprofile capture of that session has 32 frames with
+over 100 ms of timer work, a median of 249 ms apart, with 139 enemy controllers
+alive, and the timer work was 90% of the game thread's time in those frames. The
+session log shows each wave's 139 creatures created in one frame. Both files are
+preserved in `.claude/crash-evidence-2026-09-10/` in the main checkout.
+
+These are engineering decisions, not design rules. `docs/Cataclysm_GDD_v2.md`
+says nothing about when a creature first thinks or how fast a wave appears, and
+the owner's four Horde rules are unchanged.
+
+### Each creature's first thinking pass falls at a different point of the interval
+
+Every enemy controller used to wait exactly one interval, 0.25 seconds, before
+its first pass, so creatures possessed in the same frame thought in the same
+frame for the rest of their lives.
+`ACataclysmEnemyController::FirstThinkDelaySeconds` now places each possession's
+first pass at a fraction of the interval taken from a golden-ratio sequence: the
+fractional part of the number of possessions made so far, times 0.618.
+
+**Not a random draw, for two reasons.** Consecutive values of the sequence spread
+evenly wherever they start; `Cataclysm.AI.AWholeWavesFirstThinksSpreadEvenlyFromAnyStartingCount`
+checks, from eight starting counts, that 139 of them put no more than 11 first
+passes into one frame at 60 frames a second, where an even share is 9.3. And the
+sequence takes nothing from the random stream that other systems draw from, so a
+test that spawns a creature does not change what the next roll in that test
+comes out as.
+
+**Only the first pass moves.** The timer still repeats every 0.25 seconds.
+Wind-ups counted in passes (`PassesForWindUp`) and the Brute's clip timing
+(`LandsAtSecondsFor`) count from the pass that began a wind-up, so they are
+unchanged. Unreal adds a looping timer's interval to the time it was due rather
+than to the time it ran, so the spread lasts for the creature's life.
+
+### A wave that walks in arrives four creatures a frame
+
+`ACataclysmDungeonGameMode::WaveCreaturesPerFrame` is 4, **a judgement**. The
+session log's timestamps put the spawning at about 1.2 ms a creature in the two
+waves that arrived during play, 176 ms and 163 ms for 139 creatures. So four a
+frame adds about 5 ms to a frame, and a wave of 139 takes 35 frames, a little
+under 0.6 seconds at 60 frames a second. Eight would halve the time and double
+the cost per frame.
+
+- **How many creatures arrive and where they stand are unchanged.** The
+  population pass still decides every creature and its cell when the wave begins;
+  only the frame each one appears in is new.
+- **A wave is not judged finished until all of it has arrived**, so killing the
+  first few as they appear cannot bring the next wave in on top of the rest.
+- **An ordinary floor is unchanged.** Its creatures are put down all at once,
+  while the floor is built.
+
+### The Abyssal Warden looks for its missing animation Blueprint once per world
+
+`ABP_AbyssalWarden` has never been authored, issue #387, and each of a wave's
+nine Wardens looked for it and printed a warning. Now the first Warden in a world
+looks and warns, and the others do not. **Once per world rather than once per
+editor session**, so a Blueprint authored between two presses of Play is found on
+the second.
+
+### What this does not do
+
+**It spreads the timer work and does not reduce it.** The capture's timer work
+was 552 ms of every second of play. The rest of the game thread took a median
+17 ms a frame, and the game thread is what limits the frame rate there. Spread
+evenly, the same work gives frames of about 38 ms, about 26 frames a second,
+against the capture's 25.4. The owner should see even frames in place of three
+quick frames and one of about 190 ms, and not a higher frame rate. The pull
+request lists what the next capture should show.
+
+**What makes a pass cost so much is issue #1547.** Timed in a test world without
+the Paragon art, almost all of a pass is the search for the nearest target, and
+in a Horde arena that search returns every creature in the arena, so its cost
+doubles when the wave doubles. The capture implies passes fifteen times as
+expensive as the test world's, and that difference is not measured. The new
+csvprofile figure `Exclusive/GameThread/EnemyTargetSearch` is there to measure
+it.
+
+---
+
 ## 2026-09-10 — Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the player
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, in section II under Ending a Run and

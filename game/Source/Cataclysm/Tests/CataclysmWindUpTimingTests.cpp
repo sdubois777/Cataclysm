@@ -271,4 +271,189 @@ bool FCataclysmTheMarkerLastsAsLongAsTheWindUpReallyDoes::RunTest(const FString&
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// When a creature's first thinking pass comes. Issue #1543
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmCreaturesPossessedTogetherThinkApart,
+	"Cataclysm.AI.CreaturesPossessedInTheSameFrameDoNotAllThinkInTheSameFrame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreaturesPossessedTogetherThinkApart::RunTest(const FString&)
+{
+	using namespace CataclysmWindUpTimingTest;
+
+	// **WHAT THIS GUARDS, AND IT FAILS ON THE CODE BEFORE ISSUE #1543.** Every
+	// controller used to schedule its first pass exactly one interval after it
+	// was possessed, so creatures possessed in one frame all had their first
+	// pass in one frame -- and every pass after it, because the timer repeats.
+	// A capture of the project owner's Horde session showed a wave of 139 doing
+	// that four times a second, about 170 ms of timer work each time.
+	//
+	// IT READS THE ENGINE'S OWN SCHEDULE. `SecondsUntilNextThink` asks the
+	// world's timer manager when this controller's timer will next fire, so what
+	// is checked is what the engine will do rather than a number the controller
+	// wrote down about itself. A world made for a test is never ticked, so each
+	// timer is still waiting for its first pass when it is read.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// TWENTY, ALL POSSESSED IN THIS ONE FRAME. The clock never moves in this
+	// test and one test runs inside one frame, so every spawn below happens in
+	// the same frame, which is what a wave did.
+	constexpr int32 HowMany = 20;
+	const float Interval = ACataclysmEnemyController::ThinkIntervalSeconds;
+
+	TArray<float> FirstThinks;
+	for (int32 Index = 0; Index < HowMany; ++Index)
+	{
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(3.0f * M * static_cast<float>(Index), 0.0f, 0.0f),
+			FRotator::ZeroRotator);
+		ACataclysmEnemyController* Brain = Creature
+			? Cast<ACataclysmEnemyController>(Creature->GetController()) : nullptr;
+		if (!TestNotNull(FString::Printf(TEXT("creature %d has a controller"), Index),
+				Brain))
+		{
+			return false;
+		}
+
+		const float FirstThink = Brain->SecondsUntilNextThink();
+		if (!TestTrue(FString::Printf(
+				TEXT("creature %d has its first pass %.4f s after it was possessed, "
+					 "which is later than now and no later than one %.2f s "
+					 "interval"), Index, FirstThink, Interval),
+				FirstThink > 0.0f && FirstThink <= Interval + UE_KINDA_SMALL_NUMBER))
+		{
+			return false;
+		}
+
+		// ONLY THE FIRST PASS MOVES. Wind-ups are counted in whole passes and the
+		// Brute sizes its clips to them, so once it has started the timer must
+		// still repeat every interval.
+		TestEqual(FString::Printf(TEXT("and creature %d then thinks every %.2f s"),
+				Index, Interval),
+			Brain->SecondsBetweenThinks(), Interval);
+
+		FirstThinks.Add(FirstThink);
+	}
+
+	// **THE ASSERTION THAT FAILS ON THE OLD CODE.** Put into frames at 60 frames
+	// a second, the first passes must not pile into one frame. Fifteen frames
+	// make one interval, so twenty spread evenly would be one or two to a
+	// frame. The old delay put all twenty into the same frame.
+	constexpr float Frame = 1.0f / 60.0f;
+	TMap<int32, int32> PerFrame;
+	for (const float FirstThink : FirstThinks)
+	{
+		++PerFrame.FindOrAdd(FMath::CeilToInt(FirstThink / Frame));
+	}
+	int32 Busiest = 0;
+	for (const TPair<int32, int32>& Entry : PerFrame)
+	{
+		Busiest = FMath::Max(Busiest, Entry.Value);
+	}
+	TestTrue(FString::Printf(
+			TEXT("at 60 frames a second the busiest frame holds %d of the %d first "
+				 "passes, and no more than 3 is allowed"), Busiest, HowMany),
+		Busiest <= 3);
+
+	// AND THEY COVER THE WHOLE INTERVAL rather than one part of it. Each quarter
+	// of the interval should hold about a quarter of them.
+	int32 PerQuarter[4] = { 0, 0, 0, 0 };
+	for (const float FirstThink : FirstThinks)
+	{
+		++PerQuarter[FMath::Clamp(
+			FMath::CeilToInt(FirstThink / (Interval / 4.0f)) - 1, 0, 3)];
+	}
+	for (int32 Quarter = 0; Quarter < 4; ++Quarter)
+	{
+		TestTrue(FString::Printf(
+				TEXT("quarter %d of the interval holds %d of the %d first passes, "
+					 "and between 3 and 7 is allowed"),
+				Quarter + 1, PerQuarter[Quarter], HowMany),
+			PerQuarter[Quarter] >= 3 && PerQuarter[Quarter] <= 7);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAWholeWaveSpreadsFromAnyCount,
+	"Cataclysm.AI.AWholeWavesFirstThinksSpreadEvenlyFromAnyStartingCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAWholeWaveSpreadsFromAnyCount::RunTest(const FString&)
+{
+	// THE SIZE OF A REAL WAVE, WITHOUT SPAWNING ONE. The test above drives the
+	// possession a wave makes. This checks the arithmetic for the 139 creatures
+	// of the owner's session, starting from counts spread across the whole range
+	// the possession counter holds -- the counter is shared by every controller
+	// in the process, so a wave can start from any of them -- including a start
+	// just below where the counter wraps back to zero.
+	const float Interval = ACataclysmEnemyController::ThinkIntervalSeconds;
+	constexpr int32 Wave = 139;
+	constexpr float Frame = 1.0f / 60.0f;
+
+	TestEqual(TEXT("a count of zero waits one whole interval, as every creature "
+				   "did before issue #1543"),
+		ACataclysmEnemyController::FirstThinkDelaySeconds(0u), Interval);
+
+	const uint32 Starts[] = { 0u, 1u, 138u, 1000u, 65535u, 123456789u,
+							  2147483647u, 4294967200u };
+	for (const uint32 Start : Starts)
+	{
+		TMap<int32, int32> PerFrame;
+		int32 PerQuarter[4] = { 0, 0, 0, 0 };
+		for (int32 Index = 0; Index < Wave; ++Index)
+		{
+			// UNSIGNED, so a start near the top wraps back through zero the way
+			// the counter itself does.
+			const float Delay = ACataclysmEnemyController::FirstThinkDelaySeconds(
+				Start + static_cast<uint32>(Index));
+			if (Delay <= 0.0f || Delay > Interval + UE_KINDA_SMALL_NUMBER)
+			{
+				AddError(FString::Printf(
+					TEXT("from count %u, creature %d has its first pass %.6f s "
+						 "away, which is not inside one %.2f s interval"),
+					Start, Index, Delay, Interval));
+				return false;
+			}
+			++PerFrame.FindOrAdd(FMath::CeilToInt(Delay / Frame));
+			++PerQuarter[FMath::Clamp(
+				FMath::CeilToInt(Delay / (Interval / 4.0f)) - 1, 0, 3)];
+		}
+
+		int32 Busiest = 0;
+		for (const TPair<int32, int32>& Entry : PerFrame)
+		{
+			Busiest = FMath::Max(Busiest, Entry.Value);
+		}
+
+		// 139 SPREAD EVENLY OVER FIFTEEN FRAMES IS 9.3 A FRAME. The old delay
+		// put all 139 into one.
+		TestTrue(FString::Printf(
+				TEXT("from count %u, the busiest frame at 60 frames a second holds "
+					 "%d of a wave of %d, and no more than 11 is allowed"),
+				Start, Busiest, Wave),
+			Busiest <= 11);
+
+		for (int32 Quarter = 0; Quarter < 4; ++Quarter)
+		{
+			TestTrue(FString::Printf(
+					TEXT("from count %u, quarter %d of the interval holds %d of "
+						 "%d, and between 30 and 40 is allowed"),
+					Start, Quarter + 1, PerQuarter[Quarter], Wave),
+				PerQuarter[Quarter] >= 30 && PerQuarter[Quarter] <= 40);
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
