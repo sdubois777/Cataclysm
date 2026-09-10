@@ -8,7 +8,9 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -1154,11 +1156,11 @@ CATACLYSM_TEST(FCataclysmRespawnRemovesTimedEffectsTest,
 }
 
 /**
- * A skill's cooldown is not cleared by a respawn. A judgement rather than the
- * owner's words: `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` says why.
+ * A skill's cooldown is cleared by a respawn. The project owner's answer of
+ * 2026-09-10, which `docs/DECISIONS.md` records. Issue #1535.
  */
-CATACLYSM_TEST(FCataclysmRespawnKeepsCooldownsTest,
-	"Cataclysm.Death.ARespawnLeavesASkillsCooldownRunning")
+CATACLYSM_TEST(FCataclysmRespawnClearsCooldownsTest,
+	"Cataclysm.Death.ARespawnClearsASkillsCooldown")
 {
 	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
@@ -1211,10 +1213,10 @@ CATACLYSM_TEST(FCataclysmRespawnKeepsCooldownsTest,
 
 		Player->Revive();
 
-		TestTrue(TEXT("and standing back up left it running too"),
+		TestFalse(TEXT("and standing back up cleared it"),
 			UCataclysmSkillEffects::HasTag(Player, Cooldown));
-		TestEqual(TEXT("with the same time left on it"),
-			CataclysmDeathTest::SecondsLeftOn(System, Cooldown), Left, 0.01f);
+		TestEqual(TEXT("so no time is left on it"),
+			CataclysmDeathTest::SecondsLeftOn(System, Cooldown), 0.0f, 0.01f);
 	}
 
 	World->DestroyWorld(false);
@@ -1333,8 +1335,8 @@ CATACLYSM_TEST(FCataclysmRespawnClosesWindowsTest,
 		Promised.SecondsLeft = 3.0f;
 		System->AddLeechPayment(Promised);
 
-		// AND THREE PASSIVE NODES' OWN WAITS, which a respawn keeps. The fourth
-		// wait, The Breaking Point's, was started by the conversion above.
+		// AND THREE PASSIVE NODES' OWN WAITS, which a respawn clears as well. The
+		// fourth wait, The Breaking Point's, was started by the conversion above.
 		System->NoteNovaReleased(5.0f);
 		System->NoteAuraApplied(3.0f);
 		System->NoteLowHealthReliefTaken(30.0f);
@@ -1349,6 +1351,15 @@ CATACLYSM_TEST(FCataclysmRespawnClosesWindowsTest,
 		TestEqual(TEXT("and one hit's leech is owed"),
 			System->GetLeechPayments().Num(), 1);
 
+		// AND EACH WAIT IS HOLDING ITS NODE BACK, without which the four
+		// assertions after the respawn would pass on a character that had never
+		// had to wait at all.
+		TestFalse(TEXT("The Breaking Point has to wait"),
+			System->MayStartDamageConversion());
+		TestFalse(TEXT("so does the Unstable Aura's nova"), System->MayReleaseNova());
+		TestFalse(TEXT("so does Beacon of Despair"), System->MayApplyAura());
+		TestFalse(TEXT("and so does Rock Bottom"), System->MayTakeLowHealthRelief());
+
 		Player->Revive();
 
 		TestTrue(TEXT("no health cost counts as recent any more"),
@@ -1362,12 +1373,14 @@ CATACLYSM_TEST(FCataclysmRespawnClosesWindowsTest,
 		TestEqual(TEXT("and no leech is left to pay out"),
 			System->GetLeechPayments().Num(), 0);
 
-		// THE WAITS ARE KEPT, for the reason a skill's cooldown is.
-		TestFalse(TEXT("The Breaking Point still has to wait"),
+		// AND THE WAITS ARE CLEARED TOO. The project owner's answer of
+		// 2026-09-10: a passive node's cooldowns and intervals go at a respawn,
+		// as a skill's cooldown does.
+		TestTrue(TEXT("The Breaking Point may start again at once"),
 			System->MayStartDamageConversion());
-		TestFalse(TEXT("so does the Unstable Aura's nova"), System->MayReleaseNova());
-		TestFalse(TEXT("so does Beacon of Despair"), System->MayApplyAura());
-		TestFalse(TEXT("and so does Rock Bottom"), System->MayTakeLowHealthRelief());
+		TestTrue(TEXT("so may the Unstable Aura's nova"), System->MayReleaseNova());
+		TestTrue(TEXT("so may Beacon of Despair"), System->MayApplyAura());
+		TestTrue(TEXT("and so may Rock Bottom"), System->MayTakeLowHealthRelief());
 	}
 
 	World->DestroyWorld(false);
@@ -1636,6 +1649,183 @@ CATACLYSM_TEST(FCataclysmRevivingTheLivingClearsNothingTest,
 			300.0f, 0.01f);
 		TestTrue(TEXT("and it still carries the curse"),
 			UCataclysmSkillEffects::HasTag(Player, Curse));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A sword Buried Fire left standing comes back when its owner dies, and the
+ * burning ground it stood in stays. The project owner's answer of 2026-09-10,
+ * which `docs/DECISIONS.md` records. Issue #1535.
+ *
+ * READ AT THE DEATH RATHER THAN AT THE RESPAWN, because that is when the answer
+ * says it happens. Until then the sword stood over the body for the rest of its
+ * ten seconds.
+ */
+CATACLYSM_TEST(FCataclysmDeathReturnsAPlantedSwordTest,
+	"Cataclysm.Death.APlantedSwordComesBackWhenItsOwnerDiesAndItsFireStays")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+
+	// INSIDE THE SWORD'S FOUR METRES, ON PURPOSE. An eruption would catch the
+	// creature that kills the player, so its health is one of the two things
+	// that say nothing erupted.
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(200.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// A WEAPON'S DAMAGE, WHICH A PLAYER WITH NOTHING EQUIPPED DOES NOT HAVE.
+		// Without it the burning ground would deal nothing and so would never be
+		// left, and an eruption would deal nothing and so could not be seen.
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+		// THE ROW EXACTLY AS game/Data/WeaponSkills.csv WRITES IT, which is the
+		// text `CataclysmSkillTemplateTests.cpp` plants with.
+		UCataclysmStrikeSkill* Plant =
+			CataclysmDeathTest::GrantSkill<UCataclysmStrikeSkill>(
+				Player, ECataclysmAbilitySlot::Special,
+				TEXT("Radius=4; Angle=360; Burn=1; GroundRadius=4; "
+					 "GroundDuration=10; GroundPercent=10.0; MoreDamagePer=12; "
+					 "ScalingSource=Second; DisarmsUntilRecalled=1"),
+				TEXT("Buried Fire"), TEXT(""));
+		if (!TestNotNull(TEXT("the skill is granted"), Plant))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		TestTrue(TEXT("the skill is used"), CataclysmDeathTest::Activate(Player, Plant));
+
+		// THE SWORD GOES IN WHEN THE SWING CONNECTS, AND THAT WAIT IS A TIMER. A
+		// player spawned here plays the Mannequin's attack clip, so the swing has
+		// not connected when `Activate` returns, and a test world is never ticked.
+		// `PlantTheWeapon` is what the swing does when it connects, and it is
+		// public so a test can drive it. A checkout with no animation assets
+		// plants at once and skips this.
+		if (!ACataclysmPlantedWeapon::HeldBy(Player))
+		{
+			Plant->PlantTheWeapon();
+		}
+		const ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::HeldBy(Player);
+		if (!TestNotNull(TEXT("and the sword is left standing in the ground"), Sword))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		const TWeakObjectPtr<ACataclysmGroundZone> Fire = Sword->Fire;
+		TestTrue(TEXT("in ground that burns"),
+			Fire.IsValid() && Fire->DamagePerTick > 0.0f);
+		TestTrue(TEXT("and the skill runs for as long as it stands"),
+			Plant->IsActive());
+		const float KillerHealth = CataclysmDeathTest::HealthOf(Killer);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		TestNull(TEXT("the sword came back when it did"),
+			ACataclysmPlantedWeapon::HeldBy(Player));
+		TestFalse(TEXT("so the skill is over"), Plant->IsActive());
+
+		// THE FIRE STAYS, which is the design's rule that a player's burning
+		// ground is not removed when the player who left it dies.
+		if (TestTrue(TEXT("the ground it stood in is still there"), Fire.IsValid()))
+		{
+			TestTrue(TEXT("and still burning"), Fire->DamagePerTick > 0.0f);
+		}
+
+		// AND NOTHING ERUPTED. The eruption is what pulling the sword free buys,
+		// and a death is not a pull.
+		TestEqual(TEXT("the skill recorded no eruption"), Plant->Erupted, 0.0f);
+		TestEqual(TEXT("so the creature beside the sword lost nothing"),
+			CataclysmDeathTest::HealthOf(Killer), KillerHealth, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A sword whose swing has not yet connected when its owner dies is never
+ * planted. The project owner's answer of 2026-09-10, that the sword returns at
+ * its owner's death, applied to a sword that has not reached the ground yet.
+ * Issue #1535.
+ *
+ * THE SWING IS A TIMER, AND THE TIMER IS WHAT HAS TO GO. Buried Fire plants its
+ * sword when its swing connects, and `UCataclysmSkillTemplate::
+ * WhenTheSwingConnects` waits for that on a timer. A test world never runs its
+ * timers, but the timer manager can still say whether one is set, and a timer
+ * still set after the death would plant the sword for a dead player as soon as
+ * the world ran it.
+ */
+CATACLYSM_TEST(FCataclysmDeathStopsAPendingPlantTest,
+	"Cataclysm.Death.ASwordNotYetPlantedWhenItsOwnerDiesIsNeverPlanted")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(1500.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// THE SAME ROW AND THE SAME WEAPON DAMAGE AS THE TEST ABOVE, so a plant
+		// that did happen would leave the same sword in the same burning ground.
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		UCataclysmStrikeSkill* Plant =
+			CataclysmDeathTest::GrantSkill<UCataclysmStrikeSkill>(
+				Player, ECataclysmAbilitySlot::Special,
+				TEXT("Radius=4; Angle=360; Burn=1; GroundRadius=4; "
+					 "GroundDuration=10; GroundPercent=10.0; MoreDamagePer=12; "
+					 "ScalingSource=Second; DisarmsUntilRecalled=1"),
+				TEXT("Buried Fire"), TEXT(""));
+		if (!TestNotNull(TEXT("the skill is granted"), Plant))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		TestTrue(TEXT("the skill is used"), CataclysmDeathTest::Activate(Player, Plant));
+
+		// THE CONTROL, WITHOUT WHICH THIS TEST PROVES NOTHING. A player spawned
+		// here plays the Mannequin's attack clip, so the swing has not connected
+		// yet: its timer is set and nothing is in the ground. A checkout with no
+		// animation assets would plant at once, and this fails there rather than
+		// passing without having tested anything.
+		TestTrue(TEXT("the swing is still waiting to connect"),
+			Plant->IsWaitingForTheSwingToConnect());
+		TestNull(TEXT("so nothing is in the ground yet"),
+			ACataclysmPlantedWeapon::HeldBy(Player));
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		TestFalse(TEXT("dying stopped the swing, so it cannot plant the sword later"),
+			Plant->IsWaitingForTheSwingToConnect());
+		TestFalse(TEXT("and ended the skill"), Plant->IsActive());
+		TestNull(TEXT("and nothing is in the ground"),
+			ACataclysmPlantedWeapon::HeldBy(Player));
 	}
 
 	World->DestroyWorld(false);

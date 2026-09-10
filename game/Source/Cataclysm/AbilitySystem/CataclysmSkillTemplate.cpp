@@ -240,6 +240,16 @@ float UCataclysmSkillTemplate::SecondsUntilTheSwingConnects() const
 	return Character ? Character->SecondsUntilTheSwingConnects() : 0.0f;
 }
 
+bool UCataclysmSkillTemplate::IsWaitingForTheSwingToConnect() const
+{
+	// ACTIVE INCLUDES A TIMER THAT HAS NOT STARTED COUNTING. A timer set in a
+	// world whose timer manager has not run since is pending, and
+	// `FTimerManager::IsTimerActive` answers true for it, which is what lets a
+	// test world that never ticks ask this at all.
+	const UWorld* World = GetWorld();
+	return World && World->GetTimerManager().IsTimerActive(SwingTimer);
+}
+
 void UCataclysmSkillTemplate::WhenTheSwingConnects(TFunction<void()> Blow)
 {
 	if (!Blow)
