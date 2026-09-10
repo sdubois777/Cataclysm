@@ -190,10 +190,11 @@ public:
 	 *
 	 * IT REACHES ONLY `UCataclysmRegeneration::TopUp`, which is the one place
 	 * health regeneration and life leech both restore health.
-	 * `ACataclysmPlayerCharacter::Respawn` writes health back directly rather
+	 * `ACataclysmPlayerCharacter::Revive` writes health back directly rather
 	 * than healing, so a respawn is not capped -- a respawn is a new life
-	 * rather than healing, and issue #956 is the open question about what else
-	 * that direct write should and should not do.
+	 * rather than healing. What else a respawn does was decided afterwards: it
+	 * empties the class resource (issue #956) and clears everything temporary
+	 * on the character (issues #1535 and #1013).
 	 *
 	 * HEALTH ONLY. The node says health, and mana and the energy shield go
 	 * through the same function.

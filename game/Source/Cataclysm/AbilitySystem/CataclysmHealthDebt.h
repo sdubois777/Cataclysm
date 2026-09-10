@@ -36,16 +36,22 @@ class UAbilitySystemComponent;
  * checked by passing numbers in rather than by building a character, a world and
  * an effect spec for every case.
  *
- * THREE PLACES TOUCH IT AND NO MORE.
+ * FIVE PLACES TOUCH IT AND NO MORE.
  *
- *   deferring  `UCataclysmSkillTemplate::PayHealthCost`, which is the one place
- *              a health cost is worked out. It also extends an outstanding debt
- *              there, because paying is what extends it.
- *   settling   `ACataclysmCharacterBase::RegenerationStep`, the per-character
- *              timer that already runs regeneration and leech. The lethal check
- *              The Reckoning needs runs on the same step.
- *   clearing   `ACataclysmEnemyCharacter::HandleDeath`, which already reaches
- *              the player to grant experience for the kill
+ *   deferring   `UCataclysmSkillTemplate::PayHealthCost`, which is the one place
+ *               a health cost is worked out. It also extends an outstanding debt
+ *               there, because paying is what extends it.
+ *   settling    `ACataclysmCharacterBase::RegenerationStep`, the per-character
+ *               timer that already runs regeneration and leech. The lethal check
+ *               The Reckoning needs runs on the same step.
+ *   clearing    `ACataclysmEnemyCharacter::HandleDeath`, which already reaches
+ *               the player to grant experience for the kill. The Reckoning only.
+ *   dropping    `UCataclysmLowHealthRelief`, when health falls below a fifth.
+ *               Rock Bottom only. Issue #1069.
+ *   respawning  `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds`, from
+ *               `ACataclysmPlayerCharacter::Revive`. Every character, The
+ *               Reckoning included, which is the project owner's ruling of
+ *               2026-09-10. Issue #1013.
  *
  * IT NEEDS NO TIMER OF ITS OWN, which is why settling is a third job on that
  * step rather than a fourth timer. A debt falling due a fraction of a second

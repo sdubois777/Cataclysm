@@ -224,7 +224,8 @@ public:
 	virtual void HandleDeath() override;
 
 	/**
-	 * Undo the death: clear the mark, refill, and stand up at the player start.
+	 * Undo the death: clear the mark, clear everything temporary on the
+	 * character, refill, and stand up at the player start. Issue #1535.
 	 *
 	 * Public so a test can run it without waiting out a timer, and so the moment
 	 * of coming back is one function rather than a lambda inside the timer.

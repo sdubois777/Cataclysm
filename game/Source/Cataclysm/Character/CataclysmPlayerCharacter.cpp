@@ -903,6 +903,9 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	// something the ability system is still working through. Releasing input is
 	// what stops a new one starting. A skill already in flight finishing after
 	// its caster died is the rule a projectile already fired follows too.
+	//
+	// A SELF BUFF STILL RUNNING WHEN THE CHARACTER STANDS BACK UP IS ENDED THEN,
+	// by `Revive`, which does not run inside that callback. Issue #1535.
 	if (APlayerController* Driver = Cast<APlayerController>(GetController()))
 	{
 		DisableInput(Driver);
@@ -1004,6 +1007,42 @@ void ACataclysmPlayerCharacter::Revive()
 		SetActorLocationAndRotation(RespawnLocation, RespawnRotation,
 									/*bSweep=*/false, nullptr,
 									ETeleportType::TeleportPhysics);
+	}
+
+	// EVERYTHING TEMPORARY ON THE CHARACTER GOES, AND IT GOES BEFORE THE REFILL.
+	// Issues #1535 and #1013, the project owner's ruling of 2026-09-10: the
+	// passive tree, equipment, and anything that says it is permanent keep
+	// working, and every temporary buff, debuff and stack is cleared, the health
+	// debt with them. `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` lists
+	// what that removes and what it keeps.
+	//
+	// NOTHING ELSE WOULD DO IT. A player's ability system is on the player state,
+	// which survives the death, so a stack, a curse or a debt held there is still
+	// held when the character stands up. Issue #1535 found Infernal Brand's
+	// stacks surviving that way, so the first hit after a respawn could set off a
+	// brand built up before the death.
+	//
+	// BEFORE THE REFILL, BECAUSE THE REFILL READS THE MAXIMUMS. An effect that
+	// lowered one -- Withering Touch's row describes one -- would otherwise be
+	// refilled to the lowered figure and then lifted, and the character would
+	// stand up short of full.
+	//
+	// AFTER `ClearDead` HAS REFUSED A CHARACTER THAT WAS NOT DEAD, for the reason
+	// the refill is after it: run on the living, this would be a free cleanse.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		const FCataclysmWhatDeathEnded Ended = Cataclysm->ClearWhatDeathEnds();
+
+		// AT `Log` AND NOT `Verbose`, like the death line in `HandleDeath` and for
+		// its reason: a respawn is rare, and what it cleared is what somebody
+		// reading a play session after a death needs to know.
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("%s stood back up. The respawn removed %d timed effects and "
+					"%d stacks, cleared %.0f health owed, and ended %d running "
+					"buffs. Cooldowns were kept."),
+			   *GetName(), Ended.TimedEffects, Ended.Stacks, Ended.HealthOwed,
+			   Ended.BuffsEnded);
 	}
 
 	// THE THREE VITALS COME BACK FULL, NOT PARTIAL. No document says what a player
