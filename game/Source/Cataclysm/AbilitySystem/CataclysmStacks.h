@@ -55,9 +55,13 @@ class UCataclysmAbilitySystemComponent;
  *   Infernal Brand     `UCataclysmEnemyModifiers::BrandOnHit`, for a blow that
  *                      took health, from a creature carrying that modifier
  *
- * AND ONE PLACE SPENDS. `NoteInfernalBrand` empties the brand through
- * `UCataclysmAbilitySystemComponent::ClearStacks` when it explodes. Issue
- * #1534. Every other kind leaves only when its window runs out.
+ * AND TWO PLACES EMPTY A COUNT, both through
+ * `UCataclysmAbilitySystemComponent::ClearStacks`. `NoteInfernalBrand` empties
+ * the brand when it explodes, issue #1534. `UCataclysmAbilitySystemComponent::
+ * ClearWhatDeathEnds` empties every kind when a player stands back up after
+ * dying: the project owner ruled on 2026-09-10 that a death clears every stack,
+ * including the three a Masochist earns through passive nodes, issue #1535.
+ * Short of those two, a stack leaves only when its window runs out.
  */
 UENUM(BlueprintType)
 enum class ECataclysmStackKind : uint8

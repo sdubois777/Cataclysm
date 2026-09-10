@@ -8,6 +8,9 @@
 #include "AbilitySystem/CataclysmCommand.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -847,6 +850,126 @@ void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
 	// with nothing before it looks at the clock.
 	StackCounts[Index] = 0;
 	StackGrantedAtSeconds[Index] = 0.0f;
+}
+
+FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
+{
+	FCataclysmWhatDeathEnded Ended;
+
+	// THE RUNNING SELF BUFFS FIRST, AND ENDED RATHER THAN STRIPPED. Their own
+	// `EndAbility` takes the bonus back and stops their repeating timers.
+	// Removing the modifier from the list instead would leave the skill running,
+	// and Butcher's Heat puts its bonus straight back on at the next kill.
+	//
+	// COLLECTED FIRST AND CANCELLED AFTER, because cancelling changes the list
+	// being walked.
+	TArray<FGameplayAbilitySpecHandle> RunningBuffs;
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.IsActive()
+			&& Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		{
+			RunningBuffs.Add(Spec.Handle);
+		}
+	}
+	for (const FGameplayAbilitySpecHandle& Handle : RunningBuffs)
+	{
+		CancelAbilityHandle(Handle);
+	}
+	Ended.BuffsEnded = RunningBuffs.Num();
+
+	// EVERY TIMED GAMEPLAY EFFECT BUT A SKILL'S COOLDOWN. Nothing permanent is at
+	// risk here: every effect that can reach a player today is built at run time
+	// with a duration or is instant, and the passive tree and gear are written
+	// as attribute values rather than applied as effects.
+	//
+	// A COOLDOWN IS KNOWN BY THE TAG IT GRANTS, and the tags are asked of the one
+	// function that names them rather than spelled here, so a slot added later
+	// is kept as well. The skill bar finds a cooldown by the same tag.
+	//
+	// THE DURATION IS CHECKED TOO, THOUGH NOTHING TODAY IS INFINITE, so that an
+	// effect somebody later makes permanent is kept rather than cleared.
+	FGameplayTagContainer Cooldowns;
+	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+	{
+		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+		if (Cooldown.IsValid())
+		{
+			Cooldowns.AddTag(Cooldown);
+		}
+	}
+
+	FGameplayEffectQuery Temporary;
+	Temporary.CustomMatchDelegate.BindLambda(
+		[&Cooldowns](const FActiveGameplayEffect& Effect)
+		{
+			if (!Effect.Spec.Def
+				|| Effect.Spec.Def->DurationPolicy
+					   != EGameplayEffectDurationType::HasDuration)
+			{
+				return false;
+			}
+
+			FGameplayTagContainer Granted;
+			Effect.Spec.GetAllGrantedTags(Granted);
+			return !Granted.HasAny(Cooldowns);
+		});
+
+	for (const FActiveGameplayEffectHandle& Handle : GetActiveEffects(Temporary))
+	{
+		if (RemoveActiveGameplayEffect(Handle))
+		{
+			++Ended.TimedEffects;
+		}
+	}
+
+	// EVERY STACK OF EVERY KIND, through `ClearStacks`, the one function that
+	// empties a count. Counted first through `Held`, so the log line says how
+	// many were standing rather than how many had already lapsed.
+	for (int32 Index = 0; Index < UCataclysmStacks::KindCount; ++Index)
+	{
+		const ECataclysmStackKind Kind = static_cast<ECataclysmStackKind>(Index);
+		Ended.Stacks += UCataclysmStacks::Held(this, Kind);
+		ClearStacks(Kind);
+	}
+
+	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
+	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
+	// same ruling: every character, The Reckoning included. That keystone's debt
+	// "is cleared by killing an enemy and never by time", which says what clears
+	// it in play and does not say it survives a death.
+	const FGameplayAttribute Owed =
+		UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+	if (HasAttributeSetForAttribute(Owed))
+	{
+		Ended.HealthOwed = FMath::Max(0.0f, GetNumericAttribute(Owed));
+		SetNumericAttributeBase(Owed, 0.0f);
+	}
+	ClearHealthDebtDue();
+
+	// THE WINDOWS A RECENT EVENT OPENED, back to the "never" every character
+	// starts with. Each is a bonus or a protection that lasts a few seconds after
+	// something happened, which is a temporary buff by another name. The health
+	// cost timestamp's own comment already said that carrying it across a respawn
+	// "would only let a character keep a window it did not earn".
+	LastHealthCostAtSeconds = -1.0f;
+	LastForeignDamageAtSeconds = -1.0f;
+	DamageToBleedingUntilSeconds = -1.0f;
+	DisplacementCount = 0;
+	LastDisplacedAtSeconds = -1.0f;
+
+	// THE WAITS BESIDE THEM ARE KEPT, for the reason a skill's cooldown is: The
+	// Breaking Point's `DamageToBleedingNextAllowedSeconds`, Rock Bottom's
+	// `LowHealthReliefNextAllowedSeconds`, and the nova's and the aura's
+	// intervals. Emptying them would hand a player a node's effect back for
+	// dying.
+
+	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
+	// payment promised by a hit before the death would resume paying out after
+	// the respawn.
+	LeechPayments.Reset();
+
+	return Ended;
 }
 
 float UCataclysmAbilitySystemComponent::ExtendHealthDebtDueBy(

@@ -19,6 +19,28 @@
 struct FGameplayTag;
 
 /**
+ * What `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` took away when a
+ * player stood back up after dying. Issue #1535.
+ *
+ * READ FOR ONE LOG LINE, which is what lets somebody reading a play session see
+ * what a death cleared without having to reproduce it.
+ */
+struct FCataclysmWhatDeathEnded
+{
+	/** Timed gameplay effects removed. A skill's cooldown is never one of them. */
+	int32 TimedEffects = 0;
+
+	/** Stacks that were standing, every kind added together. */
+	int32 Stacks = 0;
+
+	/** Health that was owed and is not any more. */
+	float HealthOwed = 0.0f;
+
+	/** Self buffs that were still running and were ended. */
+	int32 BuffsEnded = 0;
+};
+
+/**
  * The project's ability system component.
  *
  * Exists as a subclass from the start so that behaviour common to every actor
@@ -140,10 +162,11 @@ public:
 	// list is what an aggregated attribute would be if the engine could scope by
 	// the ability being used.
 	//
-	// WHAT PUTS THINGS IN IT. Today only a skill's own self buff, which adds on
-	// activation and removes when its duration expires. Gear, gems and passive
-	// keystones will add to the same list; issue #166 is the first thing that
-	// needed a route into it at all.
+	// WHAT PUTS THINGS IN IT. Two kinds of skill, and each takes back what it put
+	// in: a self buff adds to its own caster while it runs, and an aura adds to
+	// the allies standing inside it. Issue #166 is the first thing that needed a
+	// route into it at all. Gear and spent passive points do not use it; they
+	// reach a character through the stat line, which is `StatInputs` below.
 
 	/**
 	 * Add a modifier and get a handle that takes it away again.
@@ -625,6 +648,71 @@ public:
 	 * zeros every character starts with.
 	 */
 	void ClearStacks(ECataclysmStackKind Kind);
+
+	/**
+	 * Clear everything temporary on this character, because it died and is
+	 * standing back up. Issues #1535 and #1013.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-09-10, which `docs/DECISIONS.md`
+	 * records: the passive tree, equipment, and anything that says it is
+	 * permanent keep working, and every temporary buff, debuff and stack is
+	 * cleared. Stacks earned through a passive node go with the rest -- the node
+	 * stays and they build again from zero -- and so does the health debt, for
+	 * every character, The Reckoning included.
+	 *
+	 * ALL OF IT IS HELD ON THIS COMPONENT, which for a player is on the player
+	 * state and so survives the death. That is why none of it went away before.
+	 *
+	 * WHAT IT CLEARS:
+	 *
+	 *   running self buffs    ended through their own `EndAbility`, which takes
+	 *                         the bonus back and stops their repeating timers
+	 *   timed effects         every gameplay effect with a duration: damage over
+	 *                         time, curses, a stun and the stun immunity after
+	 *                         it, a pin, a resistance cut, the untargetable window
+	 *   stacks                every kind, through `ClearStacks`, so a kind added
+	 *                         later is cleared with no change here
+	 *   the health debt       what is owed and when it falls due
+	 *   recent-event windows  the seconds after a health cost and after foreign
+	 *                         damage, The Breaking Point's conversion, and the
+	 *                         count that halves a second knockback
+	 *   leech not yet paid    it would otherwise pay out after the respawn
+	 *
+	 * WHAT IT KEEPS, AND WHY:
+	 *
+	 *   the stat line         class, gear, and spent passive and attribute
+	 *                         points. None of it is a gameplay effect: it is
+	 *                         written as attribute values and `StatInputs`,
+	 *                         which nothing here touches
+	 *   a skill's cooldown    a judgement, because the ruling does not mention
+	 *                         one. A cooldown is not a buff, a debuff or a stack,
+	 *                         and emptying it would hand a player their skills
+	 *                         back for dying; "Keeping the bar through a death
+	 *                         gives a player a reason to die" is why a respawn
+	 *                         empties Fervour
+	 *   a node's own wait     The Breaking Point's and Rock Bottom's cooldowns
+	 *                         and the intervals of the Unstable Aura's nova and
+	 *                         Beacon of Despair, for the same reason
+	 *   every other skill     one that is not a self buff leaves nothing on its
+	 *                         caster for a respawn to clear. An aura's damage
+	 *                         bonus goes to allies and never to the one casting
+	 *                         it, so ending an aura would change what a player's
+	 *                         minions carry, which nobody has ruled on. An aura
+	 *                         whose row states `HealthFromHitTaken` also gives
+	 *                         its caster health when the caster is hit, and it
+	 *                         is left running like the rest
+	 *
+	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, BECAUSE NONE OF IT IS
+	 * BUILT. The ruling ends five such effects at death -- Blood Price, Withering
+	 * Touch, Nihil's Embrace and two 10-piece set bonuses -- and all five exist
+	 * only as rows in `game/Data/`. One built as a timed effect is cleared here
+	 * with no change; one built any other way has to be added.
+	 *
+	 * `ACataclysmPlayerCharacter::Revive` IS THE ONE CALLER, and it calls this
+	 * before it refills the vitals, so an effect that lowered a maximum is gone
+	 * before the maximum is read.
+	 */
+	FCataclysmWhatDeathEnded ClearWhatDeathEnds();
 
 	/**
 	 * Record that this character has just taken damage of a Cataclysm type
