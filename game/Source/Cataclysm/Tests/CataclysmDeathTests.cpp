@@ -4,8 +4,16 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -16,7 +24,11 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
+#include "GameplayEffect.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Player/CataclysmPlayerState.h"
 
 /**
@@ -746,6 +758,884 @@ CATACLYSM_TEST(FCataclysmRevivingTheLivingDoesNothingTest,
 
 		TestEqual(TEXT("and reviving the living does not heal it"),
 			CataclysmDeathTest::HealthOf(Player), Wounded, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A respawn clears everything temporary. Issues #1535 and #1013
+// --------------------------------------------------------------------------
+//
+// THE PROJECT OWNER'S RULING OF 2026-09-10, which `docs/DECISIONS.md` records:
+// the passive tree, equipment, and anything that says it is permanent keep
+// working, and every temporary buff, debuff and stack is cleared. That covers
+// stacks earned through a passive node, and the Masochist's health debt for
+// every character, The Reckoning included.
+//
+// EVERY TEST HERE CHECKS AFTER THE DEATH AND BEFORE THE REVIVE, the pattern
+// `ARespawnEmptiesTheClassResource` above set, so something dying cleared on its
+// own cannot make an assertion about `Revive` pass.
+//
+// AND FOUR OF THEM CHECK WHAT MUST SURVIVE. A clear that removed too much -- a
+// skill's cooldown, the passive tree, what is worn, or anything at all on a
+// character that was not dead -- would pass every test of the first kind.
+
+namespace CataclysmDeathTest
+{
+	/** This project's ability system on an actor, or null. */
+	static UCataclysmAbilitySystemComponent* CataclysmSystemOf(const AActor* Actor)
+	{
+		return Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+	}
+
+	/** One attribute's current value, or -1 with no ability system. */
+	static float AttributeOf(const AActor* Actor, const FGameplayAttribute& Attribute)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(Attribute) : -1.0f;
+	}
+
+	/** A tag by name, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag TagNamed(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name),
+												/*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * A player a controller has possessed, which is what puts the real class
+	 * stat line on it. `SpawnPlayer` above drives the client path and leaves the
+	 * attribute sets' placeholder numbers, which is enough for everything except
+	 * the passive tree and gear, whose whole point is that they move a real stat
+	 * line.
+	 *
+	 * THE SAME HELPER `CataclysmPassiveTreeTests.cpp` USES, and for its reason:
+	 * `AController::Possess` rather than `APawn::PossessedBy`, because only the
+	 * first tells the controller which pawn it has.
+	 */
+	static ACataclysmPlayerCharacter* SpawnPossessedPlayer(UWorld* World)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Actor = World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!State || !Controller || !Actor)
+		{
+			return nullptr;
+		}
+
+		Controller->SetPlayerState(State);
+		Controller->Possess(Actor);
+		return Actor;
+	}
+
+	/**
+	 * A skill template granted into a slot and given a row's parameters, the way
+	 * `CataclysmSkillTemplateTests.cpp` grants one to its fighters.
+	 */
+	template <typename TSkill>
+	static TSkill* GrantSkill(ACataclysmPlayerCharacter* Player,
+							  ECataclysmAbilitySlot Slot, const FString& ParamText,
+							  const FString& Name, const FString& TagCell)
+	{
+		UCataclysmAbilitySystemComponent* System = CataclysmSystemOf(Player);
+		if (!System)
+		{
+			return nullptr;
+		}
+
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			TSkill::StaticClass(), Slot, /*Level=*/100, Player);
+		FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+		TSkill* Skill = Spec ? Cast<TSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = Name;
+			Skill->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Skill;
+	}
+
+	/** Use a granted skill, as its key would. */
+	static bool Activate(ACataclysmPlayerCharacter* Player, UGameplayAbility* Skill)
+	{
+		UCataclysmAbilitySystemComponent* System = CataclysmSystemOf(Player);
+		return System && Skill
+			&& System->TryActivateAbility(Skill->GetCurrentAbilitySpecHandle(),
+										  /*bAllowRemoteActivation=*/false);
+	}
+
+	/** The longest time left on anything granting this tag, or zero. */
+	static float SecondsLeftOn(const UAbilitySystemComponent* System,
+							   const FGameplayTag& Tag)
+	{
+		float Longest = 0.0f;
+		for (const float Left : System->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(Tag))))
+		{
+			Longest = FMath::Max(Longest, Left);
+		}
+		return Longest;
+	}
+}
+
+/** Every kind of stack a character held when it died is gone when it stands up. */
+CATACLYSM_TEST(FCataclysmRespawnClearsEveryStackTest,
+	"Cataclysm.Death.ARespawnClearsEveryKindOfStack")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// EVERY KIND, TAKEN FROM THE ENUMERATION RATHER THAN LISTED, so a kind
+		// added later is covered without anybody remembering it here. Three are a
+		// Masochist's own and come from passive nodes -- Sanguine Momentum,
+		// Bloodlust and Carnage -- and the ruling clears those too: the node stays
+		// and the stacks build again from zero. The fourth, Infernal Brand, is a
+		// debuff a creature puts on the player, and a brand kept through a death
+		// is what issue #1535 was filed about.
+		//
+		// TWO OF EACH, so that "the next one is the first" below can tell a count
+		// that was emptied from one that was merely left alone.
+		for (int32 Index = 0; Index < UCataclysmStacks::KindCount; ++Index)
+		{
+			const ECataclysmStackKind Kind = static_cast<ECataclysmStackKind>(Index);
+			for (int32 Grant = 0; Grant < 2; ++Grant)
+			{
+				System->GrantStack(Kind, UCataclysmStacks::WindowSecondsFor(Kind),
+								   UCataclysmStacks::CapFor(Kind));
+			}
+		}
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		// STILL STANDING ON THE CORPSE. At least two rather than exactly two,
+		// because taking damage grants Bloodlust and the killing blow may add one.
+		for (int32 Index = 0; Index < UCataclysmStacks::KindCount; ++Index)
+		{
+			const ECataclysmStackKind Kind = static_cast<ECataclysmStackKind>(Index);
+			TestTrue(*FString::Printf(TEXT("dying on its own left its %s standing"),
+									  UCataclysmStacks::NameOf(Kind)),
+					 UCataclysmStacks::Held(System, Kind) >= 2);
+		}
+
+		Player->Revive();
+		TestFalse(TEXT("it stood back up"), UCataclysmSkillEffects::IsDead(Player));
+
+		for (int32 Index = 0; Index < UCataclysmStacks::KindCount; ++Index)
+		{
+			const ECataclysmStackKind Kind = static_cast<ECataclysmStackKind>(Index);
+			TestEqual(*FString::Printf(TEXT("standing back up cleared its %s"),
+									   UCataclysmStacks::NameOf(Kind)),
+					  UCataclysmStacks::Held(System, Kind), 0);
+
+			// AND THEY BUILD AGAIN FROM ZERO, which is the ruling's own words.
+			System->GrantStack(Kind, UCataclysmStacks::WindowSecondsFor(Kind),
+							   UCataclysmStacks::CapFor(Kind));
+			TestEqual(*FString::Printf(TEXT("and its next %s is the first"),
+									   UCataclysmStacks::NameOf(Kind)),
+					  UCataclysmStacks::Held(System, Kind), 1);
+		}
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** A character that died owing health stands back up owing nothing. #1013. */
+CATACLYSM_TEST(FCataclysmRespawnClearsTheHealthDebtTest,
+	"Cataclysm.Death.ARespawnClearsTheHealthDebt")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		const FGameplayAttribute Owed =
+			UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+
+		// DEFERRED THROUGH THE REAL FUNCTION, so the amount and the time it falls
+		// due are written the way Deferred Payment writes them, and then pushed
+		// out once the way Rolling Debt pushes one.
+		UCataclysmHealthDebt::Defer(System, 300.0f);
+		System->ExtendHealthDebtDueBy(/*Seconds=*/1.0f, /*MostAltogether=*/3.0f);
+		TestEqual(TEXT("it owes the deferred cost"),
+			CataclysmDeathTest::AttributeOf(Player, Owed), 300.0f, 0.01f);
+		TestTrue(TEXT("and the debt has a time to fall due"),
+			System->HealthDebtDueAt() >= 0.0f);
+		TestEqual(TEXT("which has been pushed out once"),
+			System->HealthDebtExtensionApplied(), 1.0f, 0.01f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		// ISSUE #1013 AS IT WAS FILED: a character that dies owing health still
+		// owes it.
+		TestEqual(TEXT("dying on its own did not clear the debt"),
+			CataclysmDeathTest::AttributeOf(Player, Owed), 300.0f, 0.01f);
+		TestTrue(TEXT("or the time it falls due"),
+			System->HealthDebtDueAt() >= 0.0f);
+
+		Player->Revive();
+
+		TestEqual(TEXT("standing back up cleared what was owed"),
+			CataclysmDeathTest::AttributeOf(Player, Owed), 0.0f, 0.01f);
+		TestTrue(TEXT("and forgot when it would have fallen due"),
+			System->HealthDebtDueAt() < 0.0f);
+		TestFalse(TEXT("so nothing is due"), System->IsHealthDebtDue());
+		TestEqual(TEXT("and the next debt has its whole Rolling Debt allowance"),
+			System->HealthDebtExtensionApplied(), 0.0f, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** The same for a character carrying The Reckoning. Issue #1013. */
+CATACLYSM_TEST(FCataclysmRespawnClearsTheReckoningsDebtTest,
+	"Cataclysm.Death.ARespawnClearsTheHealthDebtUnderTheReckoningToo")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		const FGameplayAttribute Owed =
+			UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute();
+
+		// THE RECKONING'S FLAG, written as its one node writes it: a flat 1. Its
+		// debt "is cleared by killing an enemy and never by time", which says what
+		// clears it in play and does not say it survives a death, so the ruling
+		// clears it with everybody else's. A respawn that cleared a debt only by
+		// the rules a kill or a timer follows would miss exactly this character.
+		System->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetHealthDebtClearedOnlyByAKillAttribute(),
+			1.0f);
+		TestTrue(TEXT("the character carries The Reckoning"),
+			UCataclysmHealthDebt::IsClearedOnlyByAKill(System));
+
+		UCataclysmHealthDebt::Defer(System, 300.0f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+		TestEqual(TEXT("dying on its own did not clear the debt"),
+			CataclysmDeathTest::AttributeOf(Player, Owed), 300.0f, 0.01f);
+
+		Player->Revive();
+
+		TestEqual(TEXT("standing back up cleared it anyway"),
+			CataclysmDeathTest::AttributeOf(Player, Owed), 0.0f, 0.01f);
+		TestTrue(TEXT("and forgot when it would have fallen due"),
+			System->HealthDebtDueAt() < 0.0f);
+
+		// THE KEYSTONE ITSELF IS KEPT. It is part of the passive tree; only the
+		// debt it built up was temporary.
+		TestTrue(TEXT("while the character still carries The Reckoning"),
+			UCataclysmHealthDebt::IsClearedOnlyByAKill(System));
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** Every timed effect on a character when it died is gone when it stands up. */
+CATACLYSM_TEST(FCataclysmRespawnRemovesTimedEffectsTest,
+	"Cataclysm.Death.ARespawnRemovesEveryTimedEffectOnTheCharacter")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// ONE OF EACH KIND OF TIMED EFFECT A CREATURE LEAVES ON A PLAYER, each put
+		// on by the function the game uses: a burn, which is damage over time; a
+		// curse, which is a tag held for a duration; and a stun, which leaves stun
+		// immunity behind it. Each lasts longer than the three second respawn
+		// delay, so in the running game each would still be on the character when
+		// it stood up.
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+		const FGameplayTag Curse =
+			CataclysmDeathTest::TagNamed(TEXT("Status.Debuff.Cripple"));
+		const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+		const FGameplayTag StunImmune = UCataclysmSkillEffects::StunImmuneTag();
+		if (!TestTrue(TEXT("the vocabulary has all four tags"),
+				Burn.IsValid() && Curse.IsValid() && Stunned.IsValid()
+				&& StunImmune.IsValid()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		TestTrue(TEXT("a burn lands"), UCataclysmSkillEffects::ApplyBurn(
+			Killer, Player, 100.0f, /*bScalesWithInstigator=*/true,
+			/*bBurnIsDesigned=*/true));
+		TestTrue(TEXT("a curse lands"), UCataclysmSkillEffects::ApplyTagForDuration(
+			Killer, Player, Curse, 30.0f));
+		TestTrue(TEXT("a stun lands"), UCataclysmSkillEffects::ApplyStun(
+			Killer, Player, 2.0f, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		TestTrue(TEXT("the burn is still on the corpse"),
+			UCataclysmSkillEffects::HasTag(Player, Burn));
+		TestTrue(TEXT("so is the curse"), UCataclysmSkillEffects::HasTag(Player, Curse));
+		TestTrue(TEXT("so is the stun"),
+			UCataclysmSkillEffects::HasTag(Player, Stunned));
+		TestTrue(TEXT("and the stun immunity"),
+			UCataclysmSkillEffects::HasTag(Player, StunImmune));
+
+		Player->Revive();
+
+		TestFalse(TEXT("standing back up put the burn out"),
+			UCataclysmSkillEffects::HasTag(Player, Burn));
+		TestFalse(TEXT("lifted the curse"),
+			UCataclysmSkillEffects::HasTag(Player, Curse));
+		TestFalse(TEXT("ended the stun"),
+			UCataclysmSkillEffects::HasTag(Player, Stunned));
+		TestFalse(TEXT("and the stun immunity with it"),
+			UCataclysmSkillEffects::HasTag(Player, StunImmune));
+		TestEqual(TEXT("so it carries no debuff at all"),
+			UCataclysmDebuffs::CountOnActor(Player), 0);
+		TestEqual(TEXT("and no timed effect of any kind is left on it"),
+			System->GetNumActiveGameplayEffects(), 0);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A skill's cooldown is not cleared by a respawn. A judgement rather than the
+ * owner's words: `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` says why.
+ */
+CATACLYSM_TEST(FCataclysmRespawnKeepsCooldownsTest,
+	"Cataclysm.Death.ARespawnLeavesASkillsCooldownRunning")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+
+	// FAR OUTSIDE THE SWING'S FOUR METRES, so the skill used below cannot touch
+	// the creature that is about to kill the player.
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(1500.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// A REAL SKILL, USED THE WAY ITS KEY USES IT, so the cooldown on the
+		// character is the effect `UCataclysmGameplayAbility::ApplyCooldown`
+		// builds rather than one made here to look like it.
+		UCataclysmStrikeSkill* Strike =
+			CataclysmDeathTest::GrantSkill<UCataclysmStrikeSkill>(
+				Player, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+				TEXT("Molten Cleave"), TEXT("Element.Demonic"));
+		if (!TestNotNull(TEXT("the skill is granted"), Strike))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// LONGER THAN ANYTHING HERE, and stated rather than read off the Heavy
+		// slot's row, so the test does not move when that number does.
+		Strike->CooldownOverride = 30.0f;
+		TestTrue(TEXT("the skill is used"),
+			CataclysmDeathTest::Activate(Player, Strike));
+
+		const FGameplayTag Cooldown =
+			UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
+		TestTrue(TEXT("and it is waiting to be used again"),
+			UCataclysmSkillEffects::HasTag(Player, Cooldown));
+		const float Left = CataclysmDeathTest::SecondsLeftOn(System, Cooldown);
+		TestTrue(TEXT("with time left on it"), Left > 0.0f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+		TestTrue(TEXT("dying left the cooldown running"),
+			UCataclysmSkillEffects::HasTag(Player, Cooldown));
+
+		Player->Revive();
+
+		TestTrue(TEXT("and standing back up left it running too"),
+			UCataclysmSkillEffects::HasTag(Player, Cooldown));
+		TestEqual(TEXT("with the same time left on it"),
+			CataclysmDeathTest::SecondsLeftOn(System, Cooldown), Left, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** A self buff still running when its caster died is ended when it stands up. */
+CATACLYSM_TEST(FCataclysmRespawnEndsASelfBuffTest,
+	"Cataclysm.Death.ARespawnEndsASelfBuffThatWasStillRunning")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Alight = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(-300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("something to set alight"), Alight)
+		&& TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		// SOMETHING BURNING INSIDE FIFTEEN METRES, because Burning Wrath is worth
+		// "4% more fire damage for every enemy currently burning within 15
+		// meters" and grants nothing with none. The same arrangement
+		// `Cataclysm.Skills.ABuffsIncreaseIsTakenAwayWhenTheBuffEnds` uses.
+		UCataclysmSkillEffects::ApplyBurn(Player, Alight, 100.0f,
+			/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+
+		UCataclysmSelfBuffSkill* Buff =
+			CataclysmDeathTest::GrantSkill<UCataclysmSelfBuffSkill>(
+				Player, ECataclysmAbilitySlot::Support,
+				TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"),
+				TEXT("Burning Wrath"), TEXT("Element.Demonic"));
+		if (!TestNotNull(TEXT("the buff is granted"), Buff))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		TestTrue(TEXT("the buff is used"), CataclysmDeathTest::Activate(Player, Buff));
+		TestEqual(TEXT("and puts one modifier on the character"),
+			System->GetStatModifiers().Num(), 1);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		// NOT ENDED BY THE DEATH, AND THAT IS DELIBERATE. `HandleDeath` runs
+		// inside the effect that dealt the killing blow and does not cancel
+		// abilities from there, so the buff runs on into the respawn unless
+		// something ends it then.
+		TestTrue(TEXT("dying on its own did not end the buff"), Buff->IsActive());
+		TestEqual(TEXT("so its modifier is still on the corpse"),
+			System->GetStatModifiers().Num(), 1);
+
+		Player->Revive();
+
+		TestFalse(TEXT("standing back up ended the buff"), Buff->IsActive());
+		TestEqual(TEXT("and took its modifier away"),
+			System->GetStatModifiers().Num(), 0);
+		TestEqual(TEXT("so it reports granting nothing"), Buff->GrantedIncrease, 0.0f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The windows a recent event opened are shut when a character stands up, and
+ * the waits beside them are not.
+ */
+CATACLYSM_TEST(FCataclysmRespawnClosesWindowsTest,
+	"Cataclysm.Death.ARespawnClosesTheWindowsARecentEventOpened")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		// OPENED ON THE CORPSE RATHER THAN BEFORE THE DEATH, and that is the one
+		// departure from the pattern above. An open Breaking Point conversion
+		// turns the damage a character takes into Bleeding, so opened first it
+		// would have turned the killing blow into a bleed and the character would
+		// not have died. What is measured is the same either way: what `Revive`
+		// does to a window that is open when it runs.
+		//
+		// EACH ONE OPENED THROUGH THE CALL THE GAME MAKES WHEN THE EVENT HAPPENS.
+		System->NoteHealthCostPaid();
+		System->NoteForeignDamageTaken();
+		System->NoteDamageConversionStarted(/*WindowSeconds=*/4.0f,
+											/*CooldownSeconds=*/10.0f);
+		System->TakeNextDisplacementShare();
+
+		FCataclysmLeechPayment Promised;
+		Promised.Pool = ECataclysmLeechPool::Health;
+		Promised.Remaining = 50.0f;
+		Promised.SecondsLeft = 3.0f;
+		System->AddLeechPayment(Promised);
+
+		// AND THREE PASSIVE NODES' OWN WAITS, which a respawn keeps. The fourth
+		// wait, The Breaking Point's, was started by the conversion above.
+		System->NoteNovaReleased(5.0f);
+		System->NoteAuraApplied(3.0f);
+		System->NoteLowHealthReliefTaken(30.0f);
+
+		TestTrue(TEXT("a health cost counts as recent"),
+			System->SecondsSinceHealthCostPaid() >= 0.0f);
+		TestTrue(TEXT("so does foreign damage"),
+			System->SecondsSinceForeignDamageTaken() >= 0.0f);
+		TestTrue(TEXT("damage is being turned into Bleeding"),
+			System->IsConvertingDamageToBleeding());
+		TestEqual(TEXT("one shove is counted"), System->DisplacementsInWindow(), 1);
+		TestEqual(TEXT("and one hit's leech is owed"),
+			System->GetLeechPayments().Num(), 1);
+
+		Player->Revive();
+
+		TestTrue(TEXT("no health cost counts as recent any more"),
+			System->SecondsSinceHealthCostPaid() < 0.0f);
+		TestTrue(TEXT("nor any foreign damage"),
+			System->SecondsSinceForeignDamageTaken() < 0.0f);
+		TestFalse(TEXT("damage is no longer turned into Bleeding"),
+			System->IsConvertingDamageToBleeding());
+		TestEqual(TEXT("the next shove moves it the whole distance"),
+			System->DisplacementsInWindow(), 0);
+		TestEqual(TEXT("and no leech is left to pay out"),
+			System->GetLeechPayments().Num(), 0);
+
+		// THE WAITS ARE KEPT, for the reason a skill's cooldown is.
+		TestFalse(TEXT("The Breaking Point still has to wait"),
+			System->MayStartDamageConversion());
+		TestFalse(TEXT("so does the Unstable Aura's nova"), System->MayReleaseNova());
+		TestFalse(TEXT("so does Beacon of Despair"), System->MayApplyAura());
+		TestFalse(TEXT("and so does Rock Bottom"), System->MayTakeLowHealthRelief());
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A timed effect that lowered a maximum is lifted before the refill, so the
+ * character stands up at its whole maximum.
+ */
+CATACLYSM_TEST(FCataclysmRespawnFillsToTheWholeMaximumTest,
+	"Cataclysm.Death.ARespawnFillsHealthToAMaximumATimedEffectHadLowered")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const float WholeMaximum = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+
+		// A STAND-IN FOR WITHERING TOUCH, WHICH IS NOT BUILT. That dungeon
+		// modifier's row describes a debuff that "reduces your max HP and max
+		// mana", and the ruling ends it at death with everything else limited to
+		// a dungeon. No effect that is built lowers a maximum, so this one is made
+		// here: a timed effect taking two fifths off maximum health.
+		UObject* Outer = GetTransientPackage();
+		UGameplayEffect* Lowering = NewObject<UGameplayEffect>(
+			Outer, MakeUniqueObjectName(Outer, UGameplayEffect::StaticClass(),
+										FName(TEXT("DeathTest_LowerMaximumHealth"))));
+		Lowering->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Lowering->DurationMagnitude =
+			FGameplayEffectModifierMagnitude(FScalableFloat(60.0f));
+		FGameplayModifierInfo& Cut = Lowering->Modifiers.AddDefaulted_GetRef();
+		Cut.Attribute = MaxHealth;
+		Cut.ModifierOp = EGameplayModOp::Additive;
+		Cut.ModifierMagnitude = FScalableFloat(-WholeMaximum * 0.4f);
+		System->ApplyGameplayEffectToSelf(Lowering, /*Level=*/1.0f,
+										  System->MakeEffectContext());
+
+		const float Lowered = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+		TestEqual(TEXT("the effect took two fifths off maximum health"),
+			Lowered, WholeMaximum * 0.6f, 0.01f);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+		TestEqual(TEXT("and the maximum is still lowered on the corpse"),
+			CataclysmDeathTest::AttributeOf(Player, MaxHealth), Lowered, 0.01f);
+
+		Player->Revive();
+
+		TestEqual(TEXT("standing back up lifted the effect"),
+			CataclysmDeathTest::AttributeOf(Player, MaxHealth), WholeMaximum, 0.01f);
+
+		// THE ASSERTION THE ORDER IN `Revive` IS FOR. Refilled before the effect
+		// came off, health would stand at the lowered figure under a maximum that
+		// had gone back up.
+		TestEqual(TEXT("and filled health to the whole maximum, not the lowered one"),
+			CataclysmDeathTest::HealthOf(Player), WholeMaximum, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** What the passive tree grants works the same after a respawn as before it. */
+CATACLYSM_TEST(FCataclysmRespawnKeepsThePassiveTreeTest,
+	"Cataclysm.Death.ARespawnKeepsWhatThePassiveTreeGrants")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPossessedPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	ACataclysmPlayerState* State =
+		Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+
+	if (TestNotNull(TEXT("a possessed player"), Player)
+		&& TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with a player state"), State))
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Armour =
+			UCataclysmCombatAttributeSet::GetArmorAttribute();
+		const float HealthBefore = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+		const float ArmourBefore = CataclysmDeathTest::AttributeOf(Player, Armour);
+
+		// THE NODE `Cataclysm.Passives.SpendingAPointRaisesMaximumHealthWithNothing
+		// ElseTouched` spends into, through the same call: Pain Tolerance, behind
+		// the Masochist root, which raises maximum health and armour.
+		const FName Root(TEXT("Masochist_basic_spine_000"));
+		const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
+		const int32 Points = 10;
+
+		FString Reason;
+		if (!TestTrue(TEXT("the root takes a point"),
+				State->SpendPassivePoint(Root, Reason)))
+		{
+			AddError(Reason);
+		}
+		for (int32 Point = 0; Point < Points; ++Point)
+		{
+			if (!State->SpendPassivePoint(PainTolerance, Reason))
+			{
+				AddError(FString::Printf(
+					TEXT("point %d into Pain Tolerance was refused: %s"),
+					Point + 1, *Reason));
+				break;
+			}
+		}
+
+		const float TreeHealth = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+		const float TreeArmour = CataclysmDeathTest::AttributeOf(Player, Armour);
+		TestTrue(*FString::Printf(TEXT("the points raised maximum health: %.1f to %.1f"),
+								  HealthBefore, TreeHealth),
+				 TreeHealth > HealthBefore);
+		TestTrue(*FString::Printf(TEXT("and armour: %.1f to %.1f"),
+								  ArmourBefore, TreeArmour),
+				 TreeArmour > ArmourBefore);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		Player->Revive();
+
+		TestEqual(TEXT("the tree's maximum health survived the respawn"),
+			CataclysmDeathTest::AttributeOf(Player, MaxHealth), TreeHealth, 0.01f);
+		TestEqual(TEXT("and so did its armour"),
+			CataclysmDeathTest::AttributeOf(Player, Armour), TreeArmour, 0.01f);
+		TestEqual(TEXT("the character came back filled to the raised maximum"),
+			CataclysmDeathTest::HealthOf(Player), TreeHealth, 0.01f);
+		TestEqual(TEXT("and every point is still on the node"),
+			State->GetPassiveAllocation().PointsIn(PainTolerance), Points);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/** What worn gear grants works the same after a respawn as before it. */
+CATACLYSM_TEST(FCataclysmRespawnKeepsWornGearTest,
+	"Cataclysm.Death.ARespawnKeepsWhatWornGearGrants")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPossessedPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+	UCataclysmEquipmentComponent* Equipment =
+		Player ? Player->GetEquipment() : nullptr;
+
+	if (TestNotNull(TEXT("a possessed player"), Player)
+		&& TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System)
+		&& TestNotNull(TEXT("and something to wear things"), Equipment))
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const float Bare = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+
+		// A HELM CARRYING ONE PERFECTLY ROLLED FLAT MAXIMUM HEALTH AFFIX, the item
+		// `Cataclysm.Equipment.WearingAnItemRaisesTheAttributeAndRemovingItLowersIt`
+		// wears.
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledAffix Health;
+		Health.Affix = FName(TEXT("Stat_Flat_maximum_health"));
+		Health.Tier = UCataclysmItemValues::MaxAffixTier;
+		Health.Roll = 1.0f;
+		Helm.Affixes.Add(Health);
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		TestEqual(TEXT("the helm goes on and nothing comes off"),
+			static_cast<int32>(Equipment->Equip(Helm, Removed, AlsoRemoved, Slot)),
+			static_cast<int32>(ECataclysmEquipResult::Equipped));
+
+		// REFRESHED HERE AS WELL AS BY THE CHARACTER'S OWN HANDLER, so this does
+		// not depend on the equipment broadcast having reached one.
+		Equipment->RefreshAttributes(System);
+
+		const float Wearing = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
+		TestTrue(*FString::Printf(TEXT("wearing it raised maximum health: %.1f to %.1f"),
+								  Bare, Wearing),
+				 Wearing > Bare);
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		Player->Revive();
+
+		TestEqual(TEXT("the helm's maximum health survived the respawn"),
+			CataclysmDeathTest::AttributeOf(Player, MaxHealth), Wearing, 0.01f);
+		TestEqual(TEXT("and the character came back filled to it"),
+			CataclysmDeathTest::HealthOf(Player), Wearing, 0.01f);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * `Revive` on a character that is not dead clears nothing, for the reason it
+ * heals nothing: otherwise it would be a free cleanse for anything that called
+ * it by mistake.
+ */
+CATACLYSM_TEST(FCataclysmRevivingTheLivingClearsNothingTest,
+	"Cataclysm.Death.RevivingSomethingThatIsNotDeadClearsNothing")
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Curser = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a curser"), Curser)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		const ECataclysmStackKind Brand = ECataclysmStackKind::InfernalBrand;
+		System->GrantStack(Brand, UCataclysmStacks::WindowSecondsFor(Brand),
+						   UCataclysmStacks::CapFor(Brand));
+		UCataclysmHealthDebt::Defer(System, 300.0f);
+		const FGameplayTag Curse =
+			CataclysmDeathTest::TagNamed(TEXT("Status.Debuff.Cripple"));
+		TestTrue(TEXT("a curse lands"), UCataclysmSkillEffects::ApplyTagForDuration(
+			Curser, Player, Curse, 30.0f));
+
+		TestFalse(TEXT("it is alive"), UCataclysmSkillEffects::IsDead(Player));
+
+		Player->Revive();
+
+		TestEqual(TEXT("its stack is still standing"),
+			UCataclysmStacks::Held(System, Brand), 1);
+		TestEqual(TEXT("it still owes"),
+			CataclysmDeathTest::AttributeOf(Player,
+				UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute()),
+			300.0f, 0.01f);
+		TestTrue(TEXT("and it still carries the curse"),
+			UCataclysmSkillEffects::HasTag(Player, Curse));
 	}
 
 	World->DestroyWorld(false);
