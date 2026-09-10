@@ -21,6 +21,8 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/ScopeExit.h"
+#include "Misc/PackageName.h"
+#include "UObject/SoftObjectPath.h"
 
 /**
  * Tests for the Abyssal Warden, the mini-boss of the Demonic vertical slice.
@@ -2055,6 +2057,109 @@ bool FCataclysmWardenChargeStopsAtAWall::RunTest(const FString&)
 		EndedOffTheFloorCm, 0.0, 0.01);
 	TestEqual(TEXT("and at the height it set off at, not on top of the wall"),
 		Ran.EndedAtZ, StartedAtZ, 0.01);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWardenLooksForItsBlueprintOncePerWorld,
+	"Cataclysm.Warden.ItLooksForItsMissingAnimationBlueprintOncePerWorldNotOncePerWarden",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWardenLooksForItsBlueprintOncePerWorld::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWardenTest;
+
+	// **WHAT THIS GUARDS. Issue #1544.** Every Warden used to ask the asset
+	// system for its animation Blueprint, which has never been authored, and
+	// print a warning when it was not there. A Horde wave brings nine, so the
+	// frame each wave arrived in held nine failed lookups and nine copies of the
+	// warning.
+	//
+	// THE CASE IT CANNOT CHECK IS THE BLUEPRINT EXISTING, and it says so rather
+	// than passing. Once #387 authors it there is no failed lookup to repeat.
+	const FString BlueprintPackage =
+		FSoftClassPath(ACataclysmAbyssalWardenCharacter::AnimationBlueprintPath)
+			.GetLongPackageName();
+	if (FPackageName::DoesPackageExist(BlueprintPackage))
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, FString::Printf(
+			TEXT("SKIPPED: %s exists now, so there is no failed lookup to "
+				 "repeat. The behaviour this checks was NOT verified on this "
+				 "machine."), *BlueprintPackage));
+		return true;
+	}
+
+	// ONE WARNING PER WORLD, AND THERE ARE TWO WORLDS BELOW. Declared before
+	// anything is spawned, because a warning is matched against this list at
+	// the moment it is printed.
+	AddExpectedError(TEXT("Abyssal Warden animation Blueprint not found"),
+		EAutomationExpectedErrorFlags::Contains, 2);
+
+	// READ BEFORE ANY WARDEN EXISTS. Where the Paragon Grux pack is present,
+	// spawning a Warden runs `ResolveBody` from `BeginPlay`, and that reaches the
+	// lookup by itself; where the pack is absent, `ResolveBody` stops at the
+	// missing mesh and only the calls below reach it. Counting from here gives
+	// the same answer both ways.
+	const int32 Before = ACataclysmAbyssalWardenCharacter::AnimationBlueprintLookupsSoFar;
+
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { TearDown(World); };
+
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			ACataclysmAbyssalWardenCharacter* Warden =
+				SpawnWarden(World, FVector(500.0f * static_cast<float>(Index), 0.0f, 0.0f));
+			if (!TestNotNull(FString::Printf(TEXT("Warden %d spawned"), Index), Warden))
+			{
+				return false;
+			}
+
+			TestFalse(FString::Printf(
+					TEXT("Warden %d binds no Blueprint, because there is none"), Index),
+				Warden->ResolveAnimationBlueprint(Warden->GetMesh()));
+
+			// AND EVERY ONE STILL GETS THE FALLBACK, which is what lets its swing
+			// and its roar be seen. Asking once must not mean that only the
+			// first Warden is set up.
+			TestEqual(FString::Printf(TEXT("Warden %d plays single clips instead"), Index),
+				static_cast<int32>(Warden->GetMesh()->GetAnimationMode()),
+				static_cast<int32>(EAnimationMode::AnimationSingleNode));
+		}
+
+		// **THE ASSERTION THAT FAILS ON THE CODE BEFORE ISSUE #1544**, where
+		// every Warden asked and this reads 3.
+		TestEqual(TEXT("three Wardens in one world asked for the missing Blueprint once"),
+			ACataclysmAbyssalWardenCharacter::AnimationBlueprintLookupsSoFar - Before, 1);
+	}
+
+	// **THE CONTROL: A NEW WORLD ASKS AGAIN.** Remembering the Blueprint as
+	// missing for the whole editor session would pass the check above too, and
+	// it would ignore a Blueprint authored between two presses of Play until the
+	// editor was restarted. A new play session is a new world.
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a second world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { TearDown(World); };
+
+		ACataclysmAbyssalWardenCharacter* Warden = SpawnWarden(World, FVector::ZeroVector);
+		if (!TestNotNull(TEXT("a Warden in the second world"), Warden))
+		{
+			return false;
+		}
+		Warden->ResolveAnimationBlueprint(Warden->GetMesh());
+
+		TestEqual(TEXT("and a Warden in a second world asks once more"),
+			ACataclysmAbyssalWardenCharacter::AnimationBlueprintLookupsSoFar - Before, 2);
+	}
 
 	return true;
 }

@@ -744,7 +744,37 @@ public:
 	 */
 	void UpdateLoopingAnimation();
 
+	/**
+	 * Binds the animation Blueprint to the mesh, or sets up the single-clip
+	 * fallback when there is none. Returns true when a Blueprint was bound.
+	 *
+	 * A MISSING BLUEPRINT IS LOOKED FOR ONCE PER WORLD, NOT ONCE PER WARDEN.
+	 * Issue #1544. A Horde wave brings nine Wardens, and in the project owner's
+	 * session on 2026-09-10 each of them asked the asset system for this missing
+	 * asset and printed a warning saying so: nine lookups and nine warnings in
+	 * the frame of every wave. The first Warden in a world now asks and warns,
+	 * and every later one in that world takes the fallback without asking.
+	 *
+	 * PER WORLD, NOT ONCE FOR THE WHOLE EDITOR SESSION. The Blueprint is still
+	 * owed -- #387 -- and it has to be authored by hand in the editor. Remembered
+	 * for the whole session, a Blueprint authored after one press of Play would
+	 * be ignored by every later press until the editor was restarted. A new play
+	 * session is a new world, so it asks again once.
+	 *
+	 * PUBLIC SO A TEST CAN REACH IT. Where the Paragon Grux pack is absent --
+	 * every worktree, and the build server -- `ResolveBody` stops at the missing
+	 * mesh before it gets here, so a test that only spawned Wardens would never
+	 * exercise this there.
+	 */
+	bool ResolveAnimationBlueprint(class USkeletalMeshComponent* MeshComponent);
+
+	/**
+	 * How many times any Warden has asked the asset system for
+	 * `AnimationBlueprintPath` in this process. Read by tests, which compare it
+	 * before and after.
+	 */
+	static int32 AnimationBlueprintLookupsSoFar;
+
 private:
 	void PlayAttackAnimation();
-	bool ResolveAnimationBlueprint(class USkeletalMeshComponent* MeshComponent);
 };

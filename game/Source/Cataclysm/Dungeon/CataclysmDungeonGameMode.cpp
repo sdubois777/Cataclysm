@@ -392,6 +392,12 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// EVERY FRAME, UNLIKE THE CHECK BELOW. Issue #1544. Putting a few of an
+	// arriving wave's creatures down in each frame is the whole point, so this
+	// cannot wait a quarter of a second between turns. On a floor with nothing
+	// arriving it costs one test of an empty array.
+	ContinueTheWaveArriving();
+
 	// NOT EVERY FRAME. See `SecondsBetweenWaveChecks`: counting the wave walks
 	// up to 350 creatures and the answer cannot change faster than a player can
 	// kill one.
@@ -752,6 +758,11 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	// been cleared away rather than killed would read as one still standing.
 	CurrentWave.Reset();
 	WaveSpawned = 0;
+
+	// AND WHATEVER OF IT HAD NOT ARRIVED YET. Issue #1544. Those creatures were
+	// placed on the floor that is being cleared away, and putting them down
+	// afterwards would stand them on whatever replaces it.
+	WaveStillToArrive.Reset();
 }
 
 int32 ACataclysmDungeonGameMode::PopulateFloor()
@@ -774,6 +785,20 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	{
 		ClearFloorEnemies();
 	}
+	else
+	{
+		// A WAVE STILL ARRIVING FINISHES ARRIVING BEFORE THE NEXT ONE BEGINS.
+		// Issue #1544. In play this cannot happen, because
+		// `ShouldTheNextWaveArrive` refuses a wave that has not all arrived. But
+		// `GoToFloor` can be called directly, which a test does, and the
+		// creatures still waiting belong to a wave the population pass has
+		// already decided. Dropping them would change how many that wave
+		// brought.
+		while (!WaveStillToArrive.IsEmpty())
+		{
+			ContinueTheWaveArriving();
+		}
+	}
 
 	// THE BRIEF IS WHAT MAKES A DUNGEON'S SUB-TYPE REACH ITS CREATURES. It puts
 	// a Gatekeeper on the exit of a boss floor and gathers a Horde dungeon's
@@ -781,84 +806,47 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
 		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
 
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	const FVector Entrance = CurrentFloor->EntranceWorld();
-
 	// THIS WAVE'S OWN CREATURES, EMPTIED BEFORE IT ARRIVES. What is left of the
 	// wave before stays in `FloorEnemies` and stops being counted here, which is
 	// what makes "10% or less of the previous wave" a question about one wave.
 	CurrentWave.Reset();
 
+	// WHAT THE WAVE HAS PUT ON THE FLOOR, WHICH ONCE ALL OF IT HAS ARRIVED IS THE
+	// DENOMINATOR OF THE OWNER'S RULE. Counted up as creatures arrive rather than
+	// set once, because since issue #1544 a wave arrives over several frames;
+	// `ShouldTheNextWaveArrive` does not judge a wave until all of it has
+	// arrived, so the rule only ever reads the finished count. Recorded even on a
+	// floor that is not a wave, because a floor that stops being one has to stop
+	// carrying the last one's count.
+	WaveSpawned = 0;
+
 	int32 Spawned = 0;
-	for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+	if (FloorBrief.bWaveWalksIn)
 	{
-		const TSubclassOf<ACataclysmEnemyCharacter> Class = ClassFor(Placement.Creature);
-		if (!Class)
-		{
-			continue;
-		}
-
-		// RAISED BY ITS OWN CAPSULE'S HALF HEIGHT, read from the class rather
-		// than assumed, because the six creatures placed here range from 87.95
-		// to 114 cm and none of them is the base enemy's 80. Putting a capsule's
-		// middle on the walking surface buries its lower half in the ground,
-		// which is the same fault `PlaceAtEntrance` above exists to avoid for the
-		// player.
-		const FVector Where = CurrentFloor->WorldOfCell(Placement.Cell)
-			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
-
-		// FACING THE WAY THE PLAYER WILL COME FROM, flattened so nothing leans
-		// back to look up a slope. It costs nothing and it means a group reads as
-		// waiting rather than as six creatures pointing in six directions.
-		FVector Toward = Entrance - Where;
-		Toward.Z = 0.0f;
-		const FRotator Facing = Toward.IsNearlyZero()
-			? FRotator::ZeroRotator : Toward.Rotation();
-
-		ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
-			Class, Where, Facing, SpawnParams);
-		if (!Enemy)
-		{
-			continue;
-		}
-
-		ApplyDesignedStats(Enemy, Placement.Creature);
-
-		// PLACED AGAIN NOW ITS SIZE IS KNOWN. `Where` above was raised by the
-		// half height of the CLASS, which is the creature at Common. Since
-		// issue #849 a rarer creature is bigger, and ApplyDesignedStats is what
-		// decides its rarity -- so until it has run there is no way to know how
-		// far to raise it. A capsule grows from its middle, so getting this
-		// wrong buries a Boss 4.6 metres into the floor, which is what
-		// Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt found.
-		//
-		// HERE RATHER THAN IN SetRarityStep, because that setter cannot tell a
-		// creature being placed from one being restored from a save, whose
-		// height already accounts for its size. Its own comment says so.
-		Enemy->SetActorLocation(CurrentFloor->WorldOfCell(Placement.Cell)
-			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Enemy)));
-
-		// AND WHAT THIS FLOOR LETS IT NOTICE FROM. One everywhere but a Horde
-		// dungeon, where it is what makes the wave run at the player from the
-		// far side of the arena instead of standing where it spawned.
-		//
-		// SET HERE AND NOT ON THE CREATURE'S OWN DEFAULT, which is the whole
-		// reason it is a multiplier: an Imp in an ordinary dungeon is the same
-		// Imp it always was, and nothing about the class has changed.
-		Enemy->SightRadiusMultiplier = FloorBrief.SightRadiusMultiplier;
-
-		FloorEnemies.Add(Enemy);
-		CurrentWave.Add(Enemy);
-		++Spawned;
+		// A WAVE THAT WALKS IN ARRIVES A FEW CREATURES A FRAME. Issue #1544; see
+		// `WaveCreaturesPerFrame`. Every creature and its cell are decided now,
+		// as before. The first few are put down in this frame and `Tick` puts
+		// down the rest.
+		WaveStillToArrive = Population.Enemies;
+		ArrivingSightRadiusMultiplier = FloorBrief.SightRadiusMultiplier;
+		Spawned = ContinueTheWaveArriving();
 	}
-
-	// WHAT THE WAVE ARRIVED WITH, WHICH IS THE DENOMINATOR OF THE OWNER'S RULE.
-	// Recorded even on a floor that is not a wave, because a floor that stops
-	// being one has to stop carrying the last one's count.
-	WaveSpawned = Spawned;
+	else
+	{
+		// AN ORDINARY FLOOR'S CREATURES ARE PUT DOWN ALL AT ONCE, while the floor
+		// is being built, as they always were.
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			if (ACataclysmEnemyCharacter* Enemy =
+					SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
+			{
+				FloorEnemies.Add(Enemy);
+				CurrentWave.Add(Enemy);
+				++Spawned;
+			}
+		}
+		WaveSpawned = Spawned;
+	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
 	// which is most floors in the game: an ordinary dungeon's creatures are not
@@ -873,15 +861,23 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// judged finished before the player had swung at it.
 	SinceWaveCheckSeconds = 0.0f;
 
+	// WHAT THE WHOLE WAVE WILL BE ONCE IT HAS ARRIVED. The same as `Spawned` on
+	// an ordinary floor, which puts everything down at once.
+	const int32 StillToArrive = WaveStillToArrive.Num();
+	const int32 Arriving = Spawned + StillToArrive;
+
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("Put %d creatures on the dungeon floor in %d groups: %d Imps, %d "
+		TEXT("Put %d creatures on the dungeon floor now and %d more arrive over "
+			 "the next %d frames, %d in all, in %d groups: %d Imps, %d "
 			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels, "
 			 "%d Succubi and %d Gatekeepers. The floor has %d walkable cells and "
 			 "the density asked for %d. No creature stands within %d cells of "
 			 "where the player arrives. It is %s, and its modifiers are worth "
 			 "%.1f. It is wave %d of this arena, it notices from %.1f times the "
 			 "ordinary distance, and the next wave arrives at %d still alive."),
-		Spawned, Population.PackCount,
+		Spawned, StillToArrive,
+		FMath::DivideAndRoundUp(StillToArrive, WaveCreaturesPerFrame),
+		Arriving, Population.PackCount,
 		Population.HowMany(ECataclysmDungeonCreature::Imp),
 		Population.HowMany(ECataclysmDungeonCreature::Hellhound),
 		Population.HowMany(ECataclysmDungeonCreature::Brute),
@@ -897,14 +893,135 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				? TEXT("one wave gathered at the far end")
 				: TEXT("separate encounters spread over the floor")),
 		FloorBrief.ModifierScore, WavesArrived, FloorBrief.SightRadiusMultiplier,
-		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(WaveSpawned));
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(Arriving));
 
 	return Spawned;
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
+	const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier)
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return nullptr;
+	}
+
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ClassFor(Placement.Creature);
+	if (!Class)
+	{
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY ITS OWN CAPSULE'S HALF HEIGHT, read from the class rather
+	// than assumed, because the six creatures placed here range from 87.95
+	// to 114 cm and none of them is the base enemy's 80. Putting a capsule's
+	// middle on the walking surface buries its lower half in the ground,
+	// which is the same fault `PlaceAtEntrance` above exists to avoid for the
+	// player.
+	const FVector Where = CurrentFloor->WorldOfCell(Placement.Cell)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+
+	// FACING THE WAY THE PLAYER WILL COME FROM, flattened so nothing leans
+	// back to look up a slope. It costs nothing and it means a group reads as
+	// waiting rather than as six creatures pointing in six directions.
+	FVector Toward = CurrentFloor->EntranceWorld() - Where;
+	Toward.Z = 0.0f;
+	const FRotator Facing = Toward.IsNearlyZero()
+		? FRotator::ZeroRotator : Toward.Rotation();
+
+	ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
+		Class, Where, Facing, SpawnParams);
+	if (!Enemy)
+	{
+		return nullptr;
+	}
+
+	ApplyDesignedStats(Enemy, Placement.Creature);
+
+	// PLACED AGAIN NOW ITS SIZE IS KNOWN. `Where` above was raised by the
+	// half height of the CLASS, which is the creature at Common. Since
+	// issue #849 a rarer creature is bigger, and ApplyDesignedStats is what
+	// decides its rarity -- so until it has run there is no way to know how
+	// far to raise it. A capsule grows from its middle, so getting this
+	// wrong buries a Boss 4.6 metres into the floor, which is what
+	// Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt found.
+	//
+	// HERE RATHER THAN IN SetRarityStep, because that setter cannot tell a
+	// creature being placed from one being restored from a save, whose
+	// height already accounts for its size. Its own comment says so.
+	Enemy->SetActorLocation(CurrentFloor->WorldOfCell(Placement.Cell)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOf(Enemy)));
+
+	// AND WHAT THIS FLOOR LETS IT NOTICE FROM. One everywhere but a Horde
+	// dungeon, where it is what makes the wave run at the player from the
+	// far side of the arena instead of standing where it spawned.
+	//
+	// SET HERE AND NOT ON THE CREATURE'S OWN DEFAULT, which is the whole
+	// reason it is a multiplier: an Imp in an ordinary dungeon is the same
+	// Imp it always was, and nothing about the class has changed.
+	//
+	// PASSED IN RATHER THAN READ OFF `FloorBrief`, so a wave still arriving
+	// when a new floor's brief is written keeps the figure it began with. See
+	// `ArrivingSightRadiusMultiplier`.
+	Enemy->SightRadiusMultiplier = SightRadiusMultiplier;
+
+	return Enemy;
 }
 
 // ---------------------------------------------------------------------------
 // Waves, for a Horde dungeon. Issue #1467
 // ---------------------------------------------------------------------------
+
+int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
+{
+	if (WaveStillToArrive.IsEmpty())
+	{
+		return 0;
+	}
+
+	// NO FLOOR TO STAND THEM ON, SO NONE OF THEM ARRIVE. The queue is emptied
+	// rather than kept, which is what lets a loop that calls this until nothing
+	// is left always end.
+	if (!GetWorld() || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		WaveStillToArrive.Reset();
+		return 0;
+	}
+
+	const int32 ThisFrame = FMath::Min(WaveCreaturesPerFrame, WaveStillToArrive.Num());
+	int32 Arrived = 0;
+	for (int32 Index = 0; Index < ThisFrame; ++Index)
+	{
+		// ONE THAT FAILS TO SPAWN IS DROPPED RATHER THAN TRIED AGAIN, which is
+		// what putting a whole floor down at once has always done with one.
+		if (ACataclysmEnemyCharacter* Enemy = SpawnPlacedCreature(
+				WaveStillToArrive[Index], ArrivingSightRadiusMultiplier))
+		{
+			FloorEnemies.Add(Enemy);
+			CurrentWave.Add(Enemy);
+			++WaveSpawned;
+			++Arrived;
+		}
+	}
+
+	// FROM THE FRONT, so creatures arrive in the order the population pass
+	// placed them.
+	WaveStillToArrive.RemoveAt(0, ThisFrame, EAllowShrinking::No);
+
+	if (WaveStillToArrive.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("The arriving wave is all on the floor: %d creatures."),
+			WaveSpawned);
+	}
+
+	return Arrived;
+}
 
 int32 ACataclysmDungeonGameMode::WaveStillAlive() const
 {
@@ -930,6 +1047,16 @@ bool ACataclysmDungeonGameMode::ShouldTheNextWaveArrive() const
 	// AN ORDINARY DUNGEON NEVER REACHES THE REST OF THIS. Its floors are not
 	// waves, so there is no next one and nothing to count.
 	if (!FloorBrief.bWaveWalksIn)
+	{
+		return false;
+	}
+
+	// A WAVE STILL ARRIVING HAS NOT BEEN BEATEN, even when every creature of it
+	// that has arrived so far is dead. Issue #1544. The threshold is a tenth of
+	// what the wave arrives with, and that is not known until all of it has:
+	// judged early, a wave whose first few were killed as they appeared would
+	// count as finished and bring the next wave in on top of the rest of it.
+	if (!WaveStillToArrive.IsEmpty())
 	{
 		return false;
 	}

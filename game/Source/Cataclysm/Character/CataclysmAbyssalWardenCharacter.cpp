@@ -661,6 +661,25 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 	return true;
 }
 
+namespace
+{
+	/**
+	 * The world in which the Warden's animation Blueprint was last found to be
+	 * missing. Every later Warden in that world takes the fallback without asking
+	 * the asset system again. Issue #1544; see `ResolveAnimationBlueprint` in the
+	 * header.
+	 *
+	 * WEAK, so that a world which has been destroyed cannot be mistaken for a new
+	 * one that happens to be made in the same place in memory.
+	 *
+	 * NAMED FOR THIS FILE, because Unreal compiles a module's `.cpp` files
+	 * together and two file-scope names that match would collide.
+	 */
+	TWeakObjectPtr<const UWorld> GCataclysmWardenBlueprintMissingIn;
+}
+
+int32 ACataclysmAbyssalWardenCharacter::AnimationBlueprintLookupsSoFar = 0;
+
 bool ACataclysmAbyssalWardenCharacter::ResolveAnimationBlueprint(
 	USkeletalMeshComponent* MeshComponent)
 {
@@ -669,23 +688,45 @@ bool ACataclysmAbyssalWardenCharacter::ResolveAnimationBlueprint(
 		return false;
 	}
 
-	UClass* AnimationClass =
-		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+	// ASKED ONCE PER WORLD WHEN IT IS MISSING, NOT ONCE PER WARDEN. Issue #1544.
+	// A Warden with no world is always asked for, which never happens in play.
+	const UWorld* World = GetWorld();
+	const bool bKnownMissingHere =
+		World != nullptr && GCataclysmWardenBlueprintMissingIn.Get() == World;
+
+	UClass* AnimationClass = nullptr;
+	if (!bKnownMissingHere)
+	{
+		++AnimationBlueprintLookupsSoFar;
+		AnimationClass =
+			FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+	}
 
 	if (!AnimationClass)
 	{
-		// EXPECTED TODAY, NOT AN ERROR. No ABP_AbyssalWarden has been authored:
-		// one has to be built by hand in the editor, because Unreal's Python
-		// exposes no way to connect two animation graph pins. The creature
-		// still fights and its attacks are still visible, through the
-		// single-clip mode set below; what is lost is blending, so it slides
-		// rather than steps while walking. Issue #387 is that work.
-		UE_LOG(LogCataclysm, Warning,
-			TEXT("Abyssal Warden animation Blueprint not found at %s, so it "
-				 "will play single clips instead of blending. Its swing and "
-				 "its roar are still visible; its walk will slide. See "
-				 "game/docs/enemy-source-assets.md."),
-			AnimationBlueprintPath);
+		if (!bKnownMissingHere)
+		{
+			if (World)
+			{
+				GCataclysmWardenBlueprintMissingIn = World;
+			}
+
+			// EXPECTED TODAY, NOT AN ERROR. No ABP_AbyssalWarden has been
+			// authored: one has to be built by hand in the editor, because
+			// Unreal's Python exposes no way to connect two animation graph
+			// pins. The creature still fights and its attacks are still
+			// visible, through the single-clip mode set below; what is lost is
+			// blending, so it slides rather than steps while walking. Issue #387
+			// is that work.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Abyssal Warden animation Blueprint not found at %s, so it "
+					 "will play single clips instead of blending. Its swing and "
+					 "its roar are still visible; its walk will slide. See "
+					 "game/docs/enemy-source-assets.md. Said once per world: "
+					 "the other Abyssal Wardens in this world do not look for "
+					 "it again."),
+				AnimationBlueprintPath);
+		}
 
 		// SAID OUTRIGHT RATHER THAN LEFT AT THE DEFAULT. A skeletal mesh
 		// component starts in single-node mode, so this line changes nothing

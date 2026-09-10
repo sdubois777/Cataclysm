@@ -17,6 +17,35 @@
 #include "Navigation/PathFollowingComponent.h"
 #include "TimerManager.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "ProfilingDebugging/CsvProfiler.h"
+
+// WHAT A CSV PROFILE CAPTURE RECORDS OF THE THINKING. Issue #1543. The capture of
+// the project owner's Horde session showed a wave's thinking landing in one
+// frame, and could not show what inside a pass cost the time, because nothing
+// here was named to the profiler. Three figures are now:
+// `CataclysmAI/ThinkPasses`, how many passes the timer ran in a frame;
+// `CataclysmAI/Think`, how long all the passes in that frame took together; and
+// `Exclusive/GameThread/EnemyTargetSearch`, how much of that was the search for
+// the nearest target. Nothing is recorded unless a capture is running, and a
+// build without the profiler compiles them out.
+CSV_DEFINE_CATEGORY(CataclysmAI, true);
+
+namespace
+{
+	/**
+	 * How many times any enemy controller has taken over a pawn in this process.
+	 * Each possession takes the next count, and the count is what spreads first
+	 * thinking passes across the interval. See `FirstThinkDelaySeconds` in the
+	 * header.
+	 *
+	 * NAMED FOR THIS FILE, because Unreal compiles a module's `.cpp` files
+	 * together and two file-scope names that match would collide.
+	 *
+	 * WRAPPING IS HARMLESS. It is unsigned, so after 4294967295 it goes back to
+	 * 0, and the spread holds from any count.
+	 */
+	uint32 GCataclysmEnemyControllerPossessions = 0;
+}
 
 ACataclysmEnemyController::ACataclysmEnemyController()
 {
@@ -51,11 +80,51 @@ void ACataclysmEnemyController::OnPossess(APawn* InPawn)
 
 	if (UWorld* World = GetWorld())
 	{
+		// STAGGERED RATHER THAN ONE INTERVAL FOR EVERYONE. Issue #1543. See
+		// `FirstThinkDelaySeconds` in the header for what the old delay did to a
+		// Horde wave, and why the spread is a golden-ratio sequence rather than a
+		// random draw.
 		World->GetTimerManager().SetTimer(
-			ThinkTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { Think(); }),
+			ThinkTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				// COUNTED IN A CSV PROFILE CAPTURE as `CataclysmAI/ThinkPasses`,
+				// the number of passes the timer ran in each frame. It is what
+				// shows whether a wave still thinks all in one frame. Nothing
+				// is recorded unless a capture is running.
+				CSV_CUSTOM_STAT(CataclysmAI, ThinkPasses, 1,
+								ECsvCustomStatOp::Accumulate);
+				Think();
+			}),
 			ThinkIntervalSeconds, /*bLoop=*/true,
-			/*InFirstDelay=*/ThinkIntervalSeconds);
+			/*InFirstDelay=*/FirstThinkDelaySeconds(
+				GCataclysmEnemyControllerPossessions++));
 	}
+}
+
+float ACataclysmEnemyController::FirstThinkDelaySeconds(uint32 PossessionsBefore)
+{
+	// FIBONACCI HASHING. 2654435769 is 2 to the 32nd divided by the golden
+	// ratio. The multiplication wraps at 2 to the 32nd, so the product divided
+	// by 2 to the 32nd is the fractional part of PossessionsBefore times
+	// 0.6180339887..., worked out exactly in whole numbers.
+	const uint32 Spread = PossessionsBefore * 2654435769u;
+	const double Fraction = static_cast<double>(Spread) / 4294967296.0;
+
+	// ONE MINUS IT, so the delay is never zero and a count of zero gets the
+	// whole interval, which is the delay every creature had before issue #1543.
+	return ThinkIntervalSeconds * static_cast<float>(1.0 - Fraction);
+}
+
+float ACataclysmEnemyController::SecondsUntilNextThink() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimerManager().GetTimerRemaining(ThinkTimer) : -1.0f;
+}
+
+float ACataclysmEnemyController::SecondsBetweenThinks() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimerManager().GetTimerRate(ThinkTimer) : -1.0f;
 }
 
 void ACataclysmEnemyController::OnUnPossess()
@@ -148,6 +217,13 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	// Nearest first, one result. FindEnemiesInSphere already sorts by distance
 	// and already asks UCataclysmTeams which side everything is on, so this does
 	// not repeat either.
+	//
+	// TIMED ON ITS OWN IN A CSV PROFILE CAPTURE, as
+	// `Exclusive/GameThread/EnemyTargetSearch`. Issue #1543 asks why one pass
+	// costs about 1.2 ms in a Horde arena, and there this search is a sphere
+	// that covers the whole arena, because `NoticesFromCm` is thirty times the
+	// ordinary distance.
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnemyTargetSearch);
 	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
 		GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
 
@@ -156,6 +232,10 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 
 ECataclysmBrainAction ACataclysmEnemyController::Think()
 {
+	// EVERY PASS IN A FRAME, TOGETHER, in a CSV profile capture, as
+	// `CataclysmAI/Think`. See the category at the top of this file.
+	CSV_SCOPED_TIMING_STAT(CataclysmAI, Think);
+
 	ACataclysmCharacterBase* Driven = Body();
 	if (!Driven)
 	{
