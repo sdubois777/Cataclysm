@@ -124,6 +124,7 @@ const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::SanguineMomentum:	return TEXT("Sanguine Momentum");
 	case ECataclysmStackKind::Bloodlust:		return TEXT("Bloodlust");
 	case ECataclysmStackKind::Carnage:			return TEXT("Carnage");
+	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
 	default:									return TEXT("(unknown)");
 	}
 }
@@ -188,11 +189,20 @@ bool UCataclysmStacks::NoteInfernalBrand(
 	// and what stops the explosion firing on every hit once the fifth stack
 	// has landed. The row says the explosion consumes all stacks.
 	//
-	// CLEARED BY GRANTING A STACK OF ZERO LENGTH, because that is the one way
-	// this mechanism has of forgetting: a window applied when the count is
-	// ASKED FOR rather than when it would expire means a count with no window
-	// left reads as nothing.
-	AbilitySystem->GrantStack(Kind, /*WindowSeconds=*/0.0f, /*Cap=*/0);
+	// SPENT BEFORE `true` IS RETURNED, AND THAT ORDER MATTERS. The caller deals
+	// the explosion's damage next, and it reaches the target as a blow of its
+	// own, which comes back through `UCataclysmEnemyModifiers::BrandOnHit`. A
+	// count still at five when it arrived would explode again from inside the
+	// first explosion. `BrandOnHit` also refuses to let the explosion brand at
+	// all; either one alone is enough to stop that chain.
+	//
+	// BY `ClearStacks`, NOT BY A GRANT. Issue #1534. This line used to be
+	// `GrantStack(Kind, 0.0f, 0)`, on the reasoning, written here, that a
+	// stack with no window left reads as nothing. `GrantStack` refuses a cap of
+	// zero before it looks at anything else, so the call did nothing and the
+	// count stayed at five. On 2026-09-10 that killed the project owner's
+	// character ten times in 57 seconds.
+	AbilitySystem->ClearStacks(Kind);
 
 	return true;
 }

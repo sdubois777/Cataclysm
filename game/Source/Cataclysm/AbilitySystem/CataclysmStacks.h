@@ -43,14 +43,21 @@ class UCataclysmAbilitySystemComponent;
  * by passing numbers in rather than by building a character, a world and an
  * effect spec for every case.
  *
- * THREE PLACES GRANT AND NO MORE, one per kind:
+ * FOUR PLACES GRANT AND NO MORE:
  *
  *   Sanguine Momentum  `UCataclysmSkillTemplate::PayHealthCost`, the one place
  *                      a health cost is worked out
  *   Blood Offering     `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`,
- *                      the one place a resolved hit is known about
+ *                      the one place a resolved hit is known about, which also
+ *                      grants Carnage to a character holding Carnivore
  *   Carnage            `ACataclysmEnemyCharacter::HandleDeath`, which already
  *                      reaches the player to grant experience for the kill
+ *   Infernal Brand     `UCataclysmEnemyModifiers::BrandOnHit`, for a blow that
+ *                      took health, from a creature carrying that modifier
+ *
+ * AND ONE PLACE SPENDS. `NoteInfernalBrand` empties the brand through
+ * `UCataclysmAbilitySystemComponent::ClearStacks` when it explodes. Issue
+ * #1534. Every other kind leaves only when its window runs out.
  */
 UENUM(BlueprintType)
 enum class ECataclysmStackKind : uint8
@@ -222,6 +229,11 @@ public:
 
 	/**
 	 * One more Infernal Brand on whatever was just hit.
+	 *
+	 * THE STACKS ARE SPENT BEFORE THIS RETURNS TRUE, through
+	 * `UCataclysmAbilitySystemComponent::ClearStacks`. Issue #1534. The caller
+	 * deals the explosion next, and that damage arrives as a blow of its own,
+	 * so it has to find the count at zero rather than at five.
 	 *
 	 * @return true when this stack was the fifth, so the caller should
 	 *         explode it. The stacks are spent here, so a caller that

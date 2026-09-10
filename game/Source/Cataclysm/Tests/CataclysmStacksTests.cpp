@@ -591,4 +591,115 @@ bool FCataclysmInfernalBrandSpentOnceTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Removing stacks, and the grant that cannot
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearStacksTest,
+	"Cataclysm.Stacks.ClearingAKindEmptiesItAndNoOtherKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearStacksTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534. Until `ClearStacks` existed nothing could remove a stack: a
+	// count left only when its window ran out, and the one caller that had to
+	// spend one wrote a grant that did nothing instead.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Cleared = ECataclysmStackKind::Carnage;
+	constexpr ECataclysmStackKind Kept = ECataclysmStackKind::Bloodlust;
+
+	for (int32 Grant = 0; Grant < 3; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Cleared,
+										 Stacks::WindowSecondsFor(Cleared),
+										 Stacks::CapFor(Cleared));
+	}
+	for (int32 Grant = 0; Grant < 2; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Kept, Stacks::WindowSecondsFor(Kept),
+										 Stacks::CapFor(Kept));
+	}
+
+	// HELD BEFORE THE CLEAR, so the checks after it cannot pass on grants that
+	// never landed.
+	TestEqual(TEXT("three Carnage stacks before the clear"),
+			  Holder.Held(Cleared), 3);
+	TestEqual(TEXT("and two Bloodlust"), Holder.Held(Kept), 2);
+
+	Holder.AbilitySystem->ClearStacks(Cleared);
+
+	TestEqual(TEXT("clearing Carnage leaves none"), Holder.Held(Cleared), 0);
+
+	// AND ONLY THAT KIND. A clear that emptied every kind would pass the check
+	// above.
+	TestEqual(TEXT("and leaves Bloodlust as it was"), Holder.Held(Kept), 2);
+
+	// AND THE NEXT GRANT STARTS AGAIN AT ONE, not at four.
+	Holder.AbilitySystem->GrantStack(Cleared, Stacks::WindowSecondsFor(Cleared),
+									 Stacks::CapFor(Cleared));
+	TestEqual(TEXT("a grant after a clear holds one"), Holder.Held(Cleared), 1);
+
+	// CLEARING A KIND THAT HOLDS NOTHING, OR ONE OUT OF RANGE, TOUCHES NOTHING
+	// ELSE.
+	Holder.AbilitySystem->ClearStacks(ECataclysmStackKind::SanguineMomentum);
+	Holder.AbilitySystem->ClearStacks(ECataclysmStackKind::Count);
+	TestEqual(TEXT("clearing other kinds left Carnage alone"),
+			  Holder.Held(Cleared), 1);
+	TestEqual(TEXT("and Bloodlust too"), Holder.Held(Kept), 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZeroCapGrantTest,
+	"Cataclysm.Stacks.AGrantWithACapOfZeroChangesNothingAndSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmZeroCapGrantTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534 WAS A CALLER READING A CAP OF ZERO AS "CLEAR" AND `GrantStack`
+	// READING IT AS "GRANT NOTHING", with nothing to say that the two
+	// disagreed. The refusal stays. What this pins is that a zero cap neither
+	// clears nor grants, and that the refusal is no longer silent.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Kind = ECataclysmStackKind::Bloodlust;
+	const float Window = Stacks::WindowSecondsFor(Kind);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, Stacks::CapFor(Kind));
+	Holder.AbilitySystem->GrantStack(Kind, Window, Stacks::CapFor(Kind));
+	TestEqual(TEXT("two stacks to start with"), Holder.Held(Kind), 2);
+
+	// ONE WARNING FOR EACH OF THE TWO REFUSALS BELOW, AND EXACTLY THAT MANY.
+	// This test fails if either warning is missing.
+	AddExpectedError(TEXT("which grants nothing and removes nothing"),
+		EAutomationExpectedErrorFlags::Contains, 2);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, /*Cap=*/0);
+	TestEqual(TEXT("a cap of zero does not clear them"), Holder.Held(Kind), 2);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, /*Cap=*/-1);
+	TestEqual(TEXT("and nor does a negative one"), Holder.Held(Kind), 2);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
