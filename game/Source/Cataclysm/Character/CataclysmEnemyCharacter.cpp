@@ -126,6 +126,33 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 		PlaceholderBody->SetStaticMesh(CylinderMesh.Object);
 	}
 
+	// NO ENEMY SIMULATES CLOTH. Issue #1545. Three of the Paragon models the
+	// creatures wear carry cloth -- Rampage on the Brute, SM_Countess on the
+	// Succubus and GruxMolten on the Abyssal Warden -- and with it simulating,
+	// Unreal 5.8 stopped the editor in a Horde fight with "Assertion failed:
+	// bPrevious" at GPUSkinVertexFactory.cpp line 1348: the renderer found a
+	// cloth model's current simulated-cloth buffer missing.
+	// Cataclysm.Debug.ClothStress reproduces it in a few minutes.
+	//
+	// WHY SWITCHING IT OFF STOPS IT. The renderer keeps two cloth buffers for a
+	// model, and the check that failed is inside the two-buffer path, which it
+	// enters only once it has been handed cloth data for that model. With both
+	// switches below, USkeletalMeshComponent::
+	// GetUpdateClothSimulationData_AnyThread hands it an empty map every frame,
+	// so that path is never entered.
+	//
+	// BOTH SWITCHES, FOR DIFFERENT REASONS. bAllowClothActors off means no cloth
+	// simulation is ever created for the mesh, which is also what stops a Horde
+	// arena simulating cloth on dozens of creatures every frame.
+	// bDisableClothSimulation on is what that renderer call reads, so it holds
+	// even if something creates a simulation later.
+	//
+	// WHAT IT COSTS, approved by the project owner on 2026-09-10: the cloth on
+	// those three creatures follows their animation instead of swinging. See
+	// docs/DECISIONS.md.
+	GetMesh()->bAllowClothActors = false;
+	GetMesh()->bDisableClothSimulation = true;
+
 	// EVERY ENEMY TICKS, BECAUSE A CHARGE ADVANCES PER FRAME.
 	// `ACataclysmCharacterBase` turns ticking off, and AdvanceCharge cannot be
 	// driven by the brain instead: the brain thinks four times a second and a

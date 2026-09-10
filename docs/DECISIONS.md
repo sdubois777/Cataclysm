@@ -2,6 +2,53 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-10 — No enemy simulates cloth
+
+**Affects:** the enemy base class, the constructor of `ACataclysmEnemyCharacter`
+in `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`. **Built** in
+the pull request for issue
+[#1545](https://github.com/sdubois777/Cataclysm/issues/1545).
+
+The project owner made this ruling on 2026-09-10, answering the coordinating
+session. The question:
+
+> To stop the crash, the fix turns off cloth simulation on enemy models, so the
+> cloth on Brutes, Abyssal Wardens and Succubi moves rigidly with their animation
+> instead of swinging. Is that OK?
+
+The answer:
+
+> Yes, turn it off.
+
+**Why.** The owner's Horde playtest on 2026-09-10 stopped the editor with
+"Assertion failed: bPrevious" at `GPUSkinVertexFactory.cpp` line 1348, in the
+renderer's handling of a skinned model's simulated cloth. Three models the
+enemies wear carry cloth: Rampage (the Brute), SM_Countess (the Succubus) and
+GruxMolten (the Abyssal Warden). The console command
+`Cataclysm.Debug.ClothStress` reproduced the same failure in a game that draws,
+with Brutes alone, 216 seconds after it started; with cloth off, the same command
+ran for 916 seconds without it. The renderer runs the code that failed only for
+a model it has been handed cloth data for, and with cloth off the engine hands it
+none. A Horde arena also has no use for simulating cloth on dozens of creatures
+at once, which costs every frame.
+
+**What it costs.** The cloth on those three creatures moves with their animation
+instead of swinging. No other enemy and not the player changes: no other model
+the game uses carries cloth.
+
+**How.** Both of the engine's switches are set on every enemy's mesh.
+`bAllowClothActors` off means no cloth simulation is created for it.
+`bDisableClothSimulation` on is what the engine reads before it hands the
+renderer any cloth data, so none reaches the renderer even if something creates
+a simulation later.
+
+### Sources
+
+No shipped game was researched for this. It works around a fault in the engine,
+and the visible cost is the project owner's ruling.
+
+---
+
 ## 2026-09-10 — A Horde wave's thinking and its arrival are spread across frames
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.h` and

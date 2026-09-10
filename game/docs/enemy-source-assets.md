@@ -37,6 +37,24 @@ Six free Paragon packs, imported 2026-08-07, 17.31 GB total.
 | The Gatekeeper | `Sevarog` | 85,163 | 155 |
 | The Hellhound | `IggyScorch`, the Scorch half | 92,562 | 198 |
 
+### Three of these models carry cloth, and no enemy simulates it
+
+`Rampage`, `SM_Countess` and `GruxMolten` each carry a cloth asset: their
+`.uasset` name tables contain `ClothConfig`, `ClothConstraintSetup` and
+`ClothCollisionData`, read on 2026-09-10. None of the other four models does,
+and neither does the player's `SKM_Manny_Simple`.
+
+**Searching a model for `ClothingAssetCommon` finds nothing** in any of these
+packs, so that string is not the way to tell whether a model carries cloth.
+
+**Every enemy has cloth switched off**, in the `ACataclysmEnemyCharacter`
+constructor, so the cloth parts of the Brute, the Succubus and the Abyssal
+Warden move with their animation rather than swinging. With cloth simulating,
+the renderer crashed the editor during a Horde run, issue
+[#1545](https://github.com/sdubois777/Cataclysm/issues/1545). The project
+owner's ruling is in `docs/DECISIONS.md` under the 2026-09-10 heading "No enemy
+simulates cloth".
+
 ## How big each one actually is
 
 Reference-pose bounds read from each skeletal mesh through the editor, in
