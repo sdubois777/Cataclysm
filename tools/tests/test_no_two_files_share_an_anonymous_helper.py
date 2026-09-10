@@ -45,6 +45,18 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE_ROOT = REPO_ROOT / "game" / "Source"
 
+#: C++ keywords that are followed by a parenthesis, and so can take the place of a
+#: function's name in the shape below. `else if (Ready)` with its brace on the
+#: next line reads as a function called `if` returning `else`.
+#:
+#: IT FAILED THIS CHECK ON 2026-09-10. Issue #1545's reproduction command,
+#: `CataclysmClothStress.cpp`, put two `else if` branches inside an anonymous
+#: namespace, `CataclysmFloorGenerator.cpp` already had one, and the check
+#: reported a helper named `if` defined in both. No function can be named after a
+#: keyword, so refusing them loses nothing, and a rename could never have fixed
+#: that failure.
+KEYWORDS = ("if", "for", "while", "switch", "catch", "return")
+
 #: A function definition at the top level of a block: a return type, a name, an
 #: argument list, and an opening brace on the same line or the next.
 #:
@@ -55,6 +67,7 @@ SOURCE_ROOT = REPO_ROOT / "game" / "Source"
 FUNCTION = re.compile(
     r"^[ \t]*(?:static\s+|inline\s+|constexpr\s+)*"
     r"[A-Za-z_][\w:<>,*&\s]*?[\s*&]"
+    r"(?!(?:" + "|".join(KEYWORDS) + r")\b)"
     r"([A-Za-z_]\w*)\s*\([^;]*?\)\s*(?:const\s*)?\{",
     re.MULTILINE)
 
@@ -123,6 +136,27 @@ def test_the_search_finds_something_to_look_at():
         "Either the project stopped using them, or the FUNCTION pattern in this "
         "file stopped matching what they look like. Either way the duplicate "
         "check below is now checking nothing.")
+
+
+def test_a_statement_is_not_mistaken_for_a_helper():
+    """`else if (...)` and its brace are not a function called `if`.
+
+    THE SECOND HALF IS WHAT MAKES THE FIRST MEAN ANYTHING. A pattern that matched
+    nothing at all would pass the first half, so a real helper laid out the same
+    way -- its brace on the next line, indented inside a namespace -- must still
+    be found.
+    """
+    statement = "\t\t\telse if (Class == ACataclysmSuccubusCharacter::StaticClass())\n\t\t\t{\n"
+    helper = "\tFString ClipPathIn(const TCHAR* Folder, const TCHAR* Name)\n\t{\n"
+
+    assert [match.group(1) for match in FUNCTION.finditer(statement)] == [], (
+        "The FUNCTION pattern takes an `else if` statement for a helper "
+        "definition, so any two files with an `else if` inside an anonymous "
+        "namespace fail the duplicate check with a helper named `if`. See the "
+        "note on KEYWORDS.")
+    assert [match.group(1) for match in FUNCTION.finditer(helper)] == ["ClipPathIn"], (
+        "The FUNCTION pattern no longer finds a helper written with its brace "
+        "on the next line, which is how this project writes them.")
 
 
 def test_no_two_files_in_one_module_define_the_same_private_helper():
