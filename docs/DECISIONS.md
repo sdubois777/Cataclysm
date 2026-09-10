@@ -90,6 +90,8 @@ expensive as the test world's, and that difference is not measured. The new
 csvprofile figure `Exclusive/GameThread/EnemyTargetSearch` is there to measure
 it.
 
+---
+
 ## 2026-09-10 — Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the player
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, in section II under Ending a Run and
