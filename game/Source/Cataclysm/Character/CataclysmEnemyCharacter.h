@@ -563,6 +563,26 @@ public:
 	float CharmLastAppliedAt = -1.0f;
 
 	/**
+	 * Whether this creature's Infernal Brand is exploding at this moment.
+	 * Issue #1534.
+	 *
+	 * TRUE ONLY WHILE `UCataclysmEnemyModifiers::BrandOnHit` DEALS THE
+	 * EXPLOSION, which is one function call: the explosion is an instant blow,
+	 * resolved inside the call that applies it. What it stops is the explosion
+	 * branding its own target. The explosion is an ordinary blow from this
+	 * creature, so the target's attribute set hands it straight back to
+	 * `BrandOnHit`, and without this it would add a stack to the count it had
+	 * just spent.
+	 *
+	 * ON THE CREATURE RATHER THAN ON THE BLOW. Retaliation solves the same kind
+	 * of loop with a flag in `FCataclysmHitDelivery`, but that flag has to cross
+	 * to the defender as a gameplay tag and be read back there. Only this
+	 * creature's own `BrandOnHit` ever needs to know, and it is on the stack
+	 * while the answer matters.
+	 */
+	bool bInfernalBrandExploding = false;
+
+	/**
 	 * Writes the attribute changes this creature's modifiers ask for.
 	 *
 	 * CALLED LAST BY `ApplyStartingAttributes`, SO THEY WIN. Every write in that
