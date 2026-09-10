@@ -1406,9 +1406,9 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandThroughHitsTest,
 	using namespace CataclysmEnemyModifierTest;
 
 	// ISSUE #1534, THE WAY THE PROJECT OWNER MET IT: a Horde arena on
-	// 2026-09-10 in which their character kept dying the moment it could act.
-	// Their log shows each death followed, in the same millisecond, by a burst
-	// of explosions all naming ONE creature.
+	// 2026-09-10 in which their character died ten times in 57 seconds. Their
+	// log shows each death followed, within four milliseconds, by a burst of 4
+	// to 28 explosions all naming ONE creature.
 	//
 	// ONE HIT CAN SET OFF A WHOLE BURST. The explosion is dealt as an ordinary
 	// blow from the creature, so it reaches
