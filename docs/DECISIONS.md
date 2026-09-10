@@ -2,6 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-10 — A respawn clears cooldowns as well, a running aura keeps running, and a planted sword returns at death while its fire stays
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+where `ClearWhatDeathEnds` runs when a player stands back up, and
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, where
+`MarkDead` runs at the moment of death. Built with this entry, for issue
+[#1535](https://github.com/sdubois777/Cataclysm/issues/1535).
+
+The entry below, that a death clears everything temporary on the player, was
+built by pull request
+[#1546](https://github.com/sdubois777/Cataclysm/pull/1546). Building it raised
+four cases that ruling did not name. The coordinating session put them to the
+project owner, who answered on 2026-09-10, and posted the answers on #1535:
+
+| Question | Owner's answer |
+| :-- | :-- |
+| Skill cooldowns through a respawn | Cleared at death |
+| Passive node cooldowns and timed intervals | Cleared at death |
+| Running auras | Kept. This includes the aura whose row states `HealthFromHitTaken`, which keeps giving its caster health when hit for the rest of its duration |
+| A sword planted by Buried Fire when its owner dies | The sword returns; the burning ground stays |
+
+**How the question was put.** "Which should a respawn KEEP? Anything unticked is
+cleared." The reason for keeping cooldowns was shown beside that option:
+"Clearing them would give your skills back for dying. That is the same reason
+your ruling empties Fervour." The owner ticked only running auras. Both kinds of
+cooldown are therefore cleared, a choice made with that reason in front of them.
+Do not reverse it on that ground.
+
+**The passive node waits** are The Breaking Point's 10 second cooldown, Rock
+Bottom's 30 second cooldown, and the intervals at which the Unstable Aura
+releases a nova and Beacon of Despair applies its debuff.
+
+**The burning ground staying agrees with a rule the design already states.**
+`docs/Cataclysm_GDD_v2.md`, on the Hellhound's burning trail: "a player's
+burning ground is not removed when the player who left it dies". Buried Fire's
+patch is a separate actor with its own lifespan, so it burns on at the heat it
+had reached when the sword came back. Nothing erupts: the eruption is what
+pulling the sword free buys.
+
+**When each happens.** The cooldowns are cleared when the character stands back
+up, with everything else a respawn clears. The sword comes back at the moment of
+death, beside the other things a death ends at once, such as a swing being held.
+
+**A sword not yet in the ground is never planted.** Buried Fire plants its sword
+when its swing connects, which in play is a moment after the key is pressed. The
+skill is cancelled at the death whether or not the sword is in the ground yet, so
+a swing that has not connected never does: no sword is planted and, as for any
+skill cancelled before its swing connects, no burning ground is left. Whether any
+other blow still waiting for its swing should land after its owner dies is issue
+[#1549](https://github.com/sdubois777/Cataclysm/issues/1549).
+
+### Sources
+
+No shipped game was researched. These are the project owner's answers about this
+game's own death rules, and they are recorded as answers.
+
+---
+
 ## 2026-09-10 — No enemy simulates cloth
 
 **Affects:** the enemy base class, the constructor of `ACataclysmEnemyCharacter`

@@ -193,6 +193,17 @@ public:
 	FGameplayTag ElementTag() const;
 
 	/**
+	 * Whether a blow is waiting for its swing to connect: `WhenTheSwingConnects`
+	 * set its timer, and the timer has neither run nor been cleared.
+	 *
+	 * Public so a test can ask. A test world never runs its timers, but the
+	 * timer manager still reports one that is set, including one that has not
+	 * started counting. Issue #1535.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
+	bool IsWaitingForTheSwingToConnect() const;
+
+	/**
 	 * The stat saying this character's skills cost no health at all.
 	 * Issue #1051. Zero for no.
 	 *

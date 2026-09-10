@@ -120,10 +120,12 @@ public:
 	 *
 	 * THE ONE PLACE THE SWORD IS DESTROYED, so a character cannot be left
 	 * fighting unarmed by a skill that ended for a reason nobody thought of --
-	 * dying during the ten seconds, a cancel, or the window running out. The
-	 * eruption happens before this and separately; reaching here with a sword
-	 * still standing means it was never pulled free, and the row's own answer to
-	 * that is below.
+	 * dying during the ten seconds, a cancel, or the window running out. Dying
+	 * reaches here through `ReturnTheWeapon`, which
+	 * `UCataclysmSkillEffects::MarkDead` calls; the burning ground the sword
+	 * stood in is not touched. The eruption happens before this and separately;
+	 * reaching here with a sword still standing means it was never pulled free,
+	 * and the row's own answer to that is below.
 	 */
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle,
 							const FGameplayAbilityActorInfo* ActorInfo,
@@ -177,6 +179,44 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	void LetTheWindowClose();
+
+	/**
+	 * The running skill that plants this character's weapon, or null. Issue
+	 * #1535.
+	 *
+	 * FROM THE MOMENT IT IS USED, NOT ONLY WHILE THE SWORD STANDS. Buried Fire
+	 * is active from the key press until the sword comes back, and for the
+	 * first part of that its swing has not connected and nothing is in the
+	 * ground yet. This finds it in both parts.
+	 *
+	 * THE SAME SHAPE AS `HeldSwingOn` BELOW, and for its reason: asking the
+	 * running abilities finds it without anything having been registered.
+	 */
+	static UCataclysmStrikeSkill* PlantingSkillOn(const AActor* Who);
+
+	/**
+	 * Bring a planted weapon back without erupting, or stop a swing that has
+	 * not planted it yet, and end the skill.
+	 *
+	 * THE PROJECT OWNER'S ANSWER OF 2026-09-10: a sword planted by Buried Fire
+	 * returns when its owner dies, and the burning ground it stands in stays.
+	 * `UCataclysmSkillEffects::MarkDead` is the caller. Ending the skill is what
+	 * returns the sword, because `EndAbility` is the one place it leaves the
+	 * ground; the burning ground is a separate actor and is left burning.
+	 * Ending the skill also stops a swing that has not connected yet, whose
+	 * timer would otherwise plant the sword afterwards:
+	 * `UGameplayAbility::EndAbility` clears every timer bound to the ability.
+	 * It is cancelled rather than ended, as `BreakTheHold` is.
+	 *
+	 * NOTHING ERUPTS, for the reason `LetTheWindowClose` gives: the eruption is
+	 * what pulling the sword free buys.
+	 *
+	 * Public so a test can drive it, which is the same reason `BreakTheHold` is.
+	 *
+	 * @param Why  what brought it back, for the log
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	void ReturnTheWeapon(const FString& Why);
 
 	// ----------------------------------------------------------------------
 	// Backswing and The Whole Weight -- the two Strikes that are held

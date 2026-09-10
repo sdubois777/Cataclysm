@@ -878,48 +878,57 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	Ended.BuffsEnded = RunningBuffs.Num();
 
-	// EVERY TIMED GAMEPLAY EFFECT BUT A SKILL'S COOLDOWN. Nothing permanent is at
-	// risk here: every effect that can reach a player today is built at run time
-	// with a duration or is instant, and the passive tree and gear are written
-	// as attribute values rather than applied as effects.
+	// EVERY TIMED GAMEPLAY EFFECT, A SKILL'S COOLDOWN INCLUDED. Nothing permanent
+	// is at risk here: every effect that can reach a player today is built at run
+	// time with a duration or is instant, and the passive tree and gear are
+	// written as attribute values rather than applied as effects.
 	//
-	// A COOLDOWN IS KNOWN BY THE TAG IT GRANTS, and the tags are asked of the one
-	// function that names them rather than spelled here, so a slot added later
-	// is kept as well. The skill bar finds a cooldown by the same tag.
+	// COOLDOWNS GO WITH THE REST, WHICH IS THE PROJECT OWNER'S ANSWER OF
+	// 2026-09-10, recorded in `docs/DECISIONS.md`. They are counted apart for the
+	// log line, known by the tag each grants, and the tags are asked of the one
+	// function that names them -- the tag the skill bar reads -- rather than
+	// spelled here.
 	//
-	// THE DURATION IS CHECKED TOO, THOUGH NOTHING TODAY IS INFINITE, so that an
+	// THE DURATION IS CHECKED, THOUGH NOTHING TODAY IS INFINITE, so that an
 	// effect somebody later makes permanent is kept rather than cleared.
-	FGameplayTagContainer Cooldowns;
+	FGameplayTagContainer CooldownTags;
 	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
 	{
 		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
 		if (Cooldown.IsValid())
 		{
-			Cooldowns.AddTag(Cooldown);
+			CooldownTags.AddTag(Cooldown);
 		}
 	}
 
-	FGameplayEffectQuery Temporary;
-	Temporary.CustomMatchDelegate.BindLambda(
-		[&Cooldowns](const FActiveGameplayEffect& Effect)
+	FGameplayEffectQuery Timed;
+	Timed.CustomMatchDelegate.BindLambda(
+		[](const FActiveGameplayEffect& Effect)
 		{
-			if (!Effect.Spec.Def
-				|| Effect.Spec.Def->DurationPolicy
-					   != EGameplayEffectDurationType::HasDuration)
-			{
-				return false;
-			}
-
-			FGameplayTagContainer Granted;
-			Effect.Spec.GetAllGrantedTags(Granted);
-			return !Granted.HasAny(Cooldowns);
+			return Effect.Spec.Def != nullptr
+				&& Effect.Spec.Def->DurationPolicy
+					   == EGameplayEffectDurationType::HasDuration;
 		});
 
-	for (const FActiveGameplayEffectHandle& Handle : GetActiveEffects(Temporary))
+	for (const FActiveGameplayEffectHandle& Handle : GetActiveEffects(Timed))
 	{
+		// ASKED BEFORE IT GOES, because an effect that has been removed can no
+		// longer say what it granted.
+		bool bCooldown = false;
+		if (const FActiveGameplayEffect* Effect = GetActiveGameplayEffect(Handle))
+		{
+			FGameplayTagContainer Granted;
+			Effect->Spec.GetAllGrantedTags(Granted);
+			bCooldown = Granted.HasAny(CooldownTags);
+		}
+
 		if (RemoveActiveGameplayEffect(Handle))
 		{
 			++Ended.TimedEffects;
+			if (bCooldown)
+			{
+				++Ended.Cooldowns;
+			}
 		}
 	}
 
@@ -958,11 +967,15 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	DisplacementCount = 0;
 	LastDisplacedAtSeconds = -1.0f;
 
-	// THE WAITS BESIDE THEM ARE KEPT, for the reason a skill's cooldown is: The
-	// Breaking Point's `DamageToBleedingNextAllowedSeconds`, Rock Bottom's
-	// `LowHealthReliefNextAllowedSeconds`, and the nova's and the aura's
-	// intervals. Emptying them would hand a player a node's effect back for
-	// dying.
+	// AND THE WAITS PASSIVE NODES KEEP, BY THE SAME ANSWER AS THE COOLDOWNS: The
+	// Breaking Point's cooldown, Rock Bottom's cooldown, and the intervals of the
+	// Unstable Aura's nova and Beacon of Despair. Back to "never" as well, so the
+	// first of each after the respawn is allowed at once, as it is for a
+	// character that has never had one.
+	DamageToBleedingNextAllowedSeconds = -1.0f;
+	LowHealthReliefNextAllowedSeconds = -1.0f;
+	NovaNextAllowedSeconds = -1.0f;
+	AuraNextAllowedSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
 	// payment promised by a hit before the death would resume paying out after

@@ -1013,8 +1013,10 @@ void ACataclysmPlayerCharacter::Revive()
 	// Issues #1535 and #1013, the project owner's ruling of 2026-09-10: the
 	// passive tree, equipment, and anything that says it is permanent keep
 	// working, and every temporary buff, debuff and stack is cleared, the health
-	// debt with them. `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` lists
-	// what that removes and what it keeps.
+	// debt with them. The owner's answers of the same day add both kinds of
+	// cooldown, a skill's and a passive node's.
+	// `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` lists what that
+	// removes and what it keeps.
 	//
 	// NOTHING ELSE WOULD DO IT. A player's ability system is on the player state,
 	// which survives the death, so a stack, a curse or a debt held there is still
@@ -1038,11 +1040,11 @@ void ACataclysmPlayerCharacter::Revive()
 		// its reason: a respawn is rare, and what it cleared is what somebody
 		// reading a play session after a death needs to know.
 		UE_LOG(LogCataclysm, Log,
-			   TEXT("%s stood back up. The respawn removed %d timed effects and "
-					"%d stacks, cleared %.0f health owed, and ended %d running "
-					"buffs. Cooldowns were kept."),
-			   *GetName(), Ended.TimedEffects, Ended.Stacks, Ended.HealthOwed,
-			   Ended.BuffsEnded);
+			   TEXT("%s stood back up. The respawn removed %d timed effects, %d "
+					"of them cooldowns, and %d stacks, cleared %.0f health owed, "
+					"and ended %d running buffs."),
+			   *GetName(), Ended.TimedEffects, Ended.Cooldowns, Ended.Stacks,
+			   Ended.HealthOwed, Ended.BuffsEnded);
 	}
 
 	// THE THREE VITALS COME BACK FULL, NOT PARTIAL. No document says what a player
