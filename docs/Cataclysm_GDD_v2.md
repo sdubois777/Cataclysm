@@ -429,6 +429,12 @@ equipped items. The run continues.
 
   
 
+**Dying in an ordinary dungeon also resolves that dungeon,** at once, and its
+consequence lands on its city. The run still continues. Dungeon Basics in
+section VIII has the rule.
+
+  
+
 ### **What Dying Does at the Moment It Happens**
 
 The penalty above is what dying costs. This is what dying *is*, for a character
@@ -456,6 +462,16 @@ projectile outlives whoever fired it.
 and none is withheld. What a death costs is measured in the world — days off the
 empire clock, and equipment in the two harder modes — and not on the character,
 which is the same reasoning that makes an ordinary death continue the run.
+
+  
+
+**A death clears everything temporary on the character.** Every temporary buff,
+debuff and stack goes, including a stack built up through a passive node and the
+Masochist's health debt. What the passive tree and equipment grant keeps working,
+and so does anything that says it is permanent, unless it lasts only for the
+dungeon: a death ends the character's time in that dungeon, so an effect limited
+to it ends there. Ruled by the project owner on 2026-09-10; `docs/DECISIONS.md`
+lists every data row that says permanent and what the ruling does with it.
 
   
 
@@ -3902,6 +3918,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell**, which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
+  - **Dying in an ordinary dungeon also resolves it at once**, however many days its resolve timer had left, and its consequence lands on its city: the dungeon's forces, emboldened by the death, attack the city while the player revives. The days above are still paid. A Quest dungeon and a Dungeon City never resolve, so this does not reach them, and what dying in one does is undecided. Ruled by the project owner on 2026-09-10; `docs/DECISIONS.md` has the reasoning.
   - Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and retaken Dungeon Cities do not: a Quest dungeon is the win condition itself, and retaking your own city is recovery rather than progress. **Pursuing the win condition therefore never makes the final fight harder**, and a player who clears the map meets a deeper boss than one who beelines the objectives. Settled with the project owner on 2026-09-06.
   - **The Last Stand takes none of that growth.** When the Cataclysm reaches the capital the fight is built from its own bonuses alone — see the Last Stand section — because adding earned growth on top would punish a player twice for the same run. That fight is won once in 54 by deliberate design and the figure was chosen on purpose. Settled the same day.
 

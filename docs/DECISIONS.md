@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-10 — Dying in an ordinary dungeon resolves it at once, and a death clears everything temporary on the player
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, in section II under Ending a Run and
+What Dying Does at the Moment It Happens, and in section VIII under Dungeon
+Basics. **Recorded, not built.** Clearing on death is issue
+[#1535](https://github.com/sdubois777/Cataclysm/issues/1535), which carries the
+health debt of issue [#1013](https://github.com/sdubois777/Cataclysm/issues/1013)
+with it. A death resolving its dungeon belongs to the dungeon runtime, issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+The project owner made these rulings on 2026-09-10, answering questions put by
+the coordinating session while it diagnosed a playtest in which Infernal Brand
+killed the player on every respawn, issue
+[#1534](https://github.com/sdubois777/Cataclysm/issues/1534). The owner's words
+are quoted wherever the words decide something.
+
+### A death clears everything temporary on the player
+
+> dying should clear everything on the player that it's granted through the
+> passive tree or equipment. And only if it says it's permanent, temporary
+> buffs/debuffs should go away
+
+Read literally, the first sentence clears what the passive tree and equipment
+grant, and the second contradicts it. So it was not recorded as written. It was
+put back to the owner as three questions, and all three answers were confirmed:
+
+| Question | Answer |
+| :-- | :-- |
+| What survives a death | The passive tree, equipment, and anything that says it is permanent keep working. Every temporary buff, debuff and stack is cleared |
+| Stacks earned through a passive node: Bloodlust, Carnage, Sanguine Momentum | Cleared. The node stays, and the stacks build again from zero |
+| The Masochist's health debt | Cleared, for every character, The Reckoning included |
+
+**The Reckoning is not an exception.** Issue #1013 called its debt "permanent".
+The node's own text, `Masochist_keystone_bt_kA` in `game/Data/PassiveNodes.csv`,
+says "the debt is cleared by killing an enemy and never by time". That says what
+clears the debt in play and that no timer does. It does not say the debt survives
+a death, so the rule clears it, which is the option #1013 recommended.
+
+**Read the meaning, not the word.** `Berserker_capstone_200` "permanently adds
+one additional chain target for the remainder of the Frenzy duration". That ends
+with the Frenzy, which is a temporary buff and clears on death.
+
+**Equipment that Hardcore or Heretic drops on death takes its effects with it.**
+The ruling is about what the character is still wearing when it stands up.
+
+This agrees with the rule that a respawn empties Fervour, whose reason was
+"Keeping the bar through a death gives a player a reason to die."
+
+### Anything that lasts only for the dungeon ends at death, however it is worded
+
+The first ruling kept everything that says it is permanent, and five rows say so
+only within one dungeon. The owner ruled on the first of them:
+
+> blood price should clear as well, since in the real game that dungeon would
+> resolve on death and you wouldn't respawn in it
+
+and confirmed that the same reason covers all five:
+
+| Row | What it says |
+| :-- | :-- |
+| `Demonic_Blood_Price` | A dungeon modifier: "a permanent, uncleansable stack of bleed each time" |
+| `Famine_Withering_Touch` | A debuff "permanent for the duration of the dungeon" |
+| `Void_The_Nihil_s_Embrace` | "your resistances are slowly and permanently reduced" |
+| `Positive_Shard_of_Anarchy_10_Piece` | A set bonus "permanent for the rest of the dungeon" |
+| `Positive_Divine_Retribution_10_Piece` | The same, for another set |
+
+**The last two are bonuses, so a death takes something the player earned.** That
+follows from the reason, and it was confirmed knowing it.
+
+The question arose only because the player currently stands back up where they
+died, which the owner described as not how the real game works. Section VIII's
+Dungeon Basics already says a death "respawns the player at the capital".
+
+**Every data row that says permanent,** read on 2026-09-10: 28 across five files
+in `game/Data/`.
+
+| Outcome | Rows | What they are |
+| :-- | :-- | :-- |
+| Kept | 17 | The 12 capstone rows "The choice is permanent"; `Saboteur_basic_gadget_mid_005`, evasion permanently 0%; three enchantment bonuses (damage per unique Cataclysm boss defeated, a damage increase, and maximum health per 1,000 kills this run); the enchantment drawback "permanently slowed" |
+| Ends at death, limited to the dungeon | 5 | The five rows in the table above |
+| Ends with the Frenzy | 1 | `Berserker_capstone_200` |
+| Outside the ruling, not on the player | 5 | Two gadget damage bonuses, the Subjugate thrall, the enemy buff in `Void_The_Blackest_Shadow`, and the dungeon-wide `Chaos_Reality_Twister` |
+
+### Dying in an ordinary dungeon resolves it at once
+
+Asked what "resolve" meant, the owner answered:
+
+> Yes, dying in a dungeon causes it to resolve, regardless of the remaining time
+> you would have had. The logic is, the forces arrayed against you in that
+> dungeon are inspired from your death and surge forth, attacking this city while
+> you're busy reviving.
+
+**This changes the design rather than clarifying it.** Until now a dungeon
+resolved only when its resolve timer ran out, and a death cost days and sent the
+player home with the dungeon still on the map. The code follows the old rule: the
+only caller of `UCataclysmEmpireRun::ResolveDungeon` is the day advance, for the
+dungeons whose timers have reached zero. Nothing in the code connects a player's
+death to a dungeon or to the empire yet, the death penalty's days included.
+
+**The death penalty is unchanged.** The days in the lethality mode table are still
+paid. The ruling adds the resolution and does not replace the penalty.
+
+| Where the player dies | What happens |
+| :-- | :-- |
+| An ordinary dungeon, `ECataclysmDungeonType::Basic`, the only type whose `Resolves()` is true | It resolves at once and its consequence lands on its city |
+| A Quest dungeon | Not asked. A Quest dungeon never resolves; it refreshes and may move, so the ruling has no meaning there as it stands |
+| A Dungeon City, `ECataclysmDungeonType::FallenCity` | Not asked. It does not resolve either |
+| The Cataclysm boss dungeon, or the Last Stand | Unchanged: dying there ends the run |
+| Co-operative play, when one of several players dies | Not asked. Section VIII's multiplayer rules fail a run only when every player is dead and call a single death "a setback rather than an ending". They are left as they are |
+
+**Building this will end the respawn-in-place the owner uses to playtest.** A
+switch that keeps the player in the level for testing is worth building with it.
+
+### Sources
+
+No shipped game was researched for these. They are the project owner's rulings
+on this game's own death and dungeon rules rather than a formula or a mechanic
+proposed here, and they are recorded as rulings.
+
+---
+
 ## 2026-09-09 — The Ritualist's Fervour generator is built, on a new count of what a character commands and two stats of its own
 
 **Affects:** the `Passive Effects` sheet of `docs/All_Things_Cataclysm.xlsx` and
