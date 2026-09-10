@@ -596,8 +596,35 @@ public:
 	 *
 	 * A LAPSED COUNT RESTARTS AT ONE rather than continuing. A character that
 	 * let its stacks run out and then earned another has one, not six.
+	 *
+	 * A CAP OF ZERO OR LESS GRANTS NOTHING, REMOVES NOTHING, AND LOGS A WARNING.
+	 * Issue #1534. Infernal Brand once passed a cap of zero meaning "clear the
+	 * count"; this function read it as "grant nothing", as it always had, and
+	 * returned without a word. The count stayed at five and the brand exploded
+	 * on every hit after the fifth. The warning is what stops the two readings
+	 * disagreeing in silence again. To remove stacks, call `ClearStacks`.
 	 */
 	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap);
+
+	/**
+	 * Remove every stack of a kind, as if none had ever been granted.
+	 * Issue #1534.
+	 *
+	 * THE ONLY WAY TO REMOVE STACKS. `GrantStack` never does, whatever it is
+	 * passed, and otherwise a stack leaves only when its window runs out.
+	 *
+	 * A FUNCTION OF ITS OWN RATHER THAN A CAP OF ZERO MEANING "CLEAR". That
+	 * would have made the one wrong call right, but every grant passes
+	 * `UCataclysmStacks::CapFor` or `CapForOn`, and `CapFor` answers zero for a
+	 * kind it does not know, on purpose, so that such a kind "grants nothing
+	 * rather than growing without bound". Under that reading every grant of such
+	 * a kind would silently empty it instead: the same disagreement between a
+	 * caller and this component, moved somewhere else.
+	 *
+	 * NEEDS NO CLOCK, unlike a grant. The count and its timestamp go back to the
+	 * zeros every character starts with.
+	 */
+	void ClearStacks(ECataclysmStackKind Kind);
 
 	/**
 	 * Record that this character has just taken damage of a Cataclysm type
@@ -875,6 +902,9 @@ protected:
 	 * is what shows it while playing.
 	 *
 	 * ONE TIMESTAMP PER KIND, NOT ONE PER STACK. See `GrantStack`.
+	 *
+	 * TWO FUNCTIONS WRITE THEM AND NOTHING ELSE DOES: `GrantStack` adds a stack
+	 * and `ClearStacks` empties a kind. Issue #1534.
 	 *
 	 * A COUNT OF NOTHING NEEDS NO SENTINEL TIMESTAMP, which is why both start at
 	 * zero and neither carries the negative "never" the timestamps above use.

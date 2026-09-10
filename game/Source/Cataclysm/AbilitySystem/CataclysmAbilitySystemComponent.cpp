@@ -792,8 +792,23 @@ void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 												  int32 Cap)
 {
 	const int32 Index = static_cast<int32>(Kind);
-	if (Index < 0 || Index >= UCataclysmStacks::KindCount || Cap <= 0)
+	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
 	{
+		return;
+	}
+
+	// A CAP OF NOTHING GRANTS NOTHING, AND NOW SAYS SO. Issue #1534. The refusal
+	// is as old as this function; the silence was the fault. Infernal Brand
+	// passed a cap of zero meaning "clear the count", was refused without a
+	// word, and exploded on every hit after the fifth. Stacks are removed by
+	// `ClearStacks`, never by a grant.
+	if (Cap <= 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("%s was asked to grant a stack of %s with a cap of %d, which "
+					"grants nothing and removes nothing. Stacks are removed by "
+					"ClearStacks."),
+			   *GetNameSafe(GetOwner()), UCataclysmStacks::NameOf(Kind), Cap);
 		return;
 	}
 
@@ -816,6 +831,22 @@ void UCataclysmAbilitySystemComponent::GrantStack(ECataclysmStackKind Kind,
 	// AND THE WHOLE LOT'S EXPIRY MOVES WITH IT. See the header for why this is
 	// one timestamp per kind rather than one per stack.
 	StackGrantedAtSeconds[Index] = World->GetTimeSeconds();
+}
+
+void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
+{
+	const int32 Index = static_cast<int32>(Kind);
+	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
+	{
+		return;
+	}
+
+	// BACK TO WHAT A CHARACTER THAT NEVER EARNED ONE HOLDS, timestamp and all,
+	// so a cleared kind cannot be told apart from one never touched. The next
+	// grant starts again at one, because `StacksHeld` answers a count of zero
+	// with nothing before it looks at the clock.
+	StackCounts[Index] = 0;
+	StackGrantedAtSeconds[Index] = 0.0f;
 }
 
 float UCataclysmAbilitySystemComponent::ExtendHealthDebtDueBy(

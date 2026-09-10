@@ -522,4 +522,184 @@ bool FCataclysmCarnivoreNoMaximumTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Infernal Brand: a debuff that explodes at five and is spent by exploding
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalBrandSpentOnceTest,
+	"Cataclysm.Stacks.InfernalBrandExplodesOnceAtFiveAndStartsCountingAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalBrandSpentOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534. The row says "When the brand reaches 5 stacks, it explodes",
+	// and the explosion consumes every stack. The line meant to spend them
+	// granted a stack with a cap of zero, which `GrantStack` refuses without a
+	// word, so the count stayed at five and every later brand exploded again.
+	//
+	// THE COUNT ON ITS OWN. Whether a real hit reaches it, and whether the
+	// explosion's own damage adds a brand back, is
+	// `Cataclysm.EnemyModifiers.InfernalBrandExplodesOnceForEveryFiveHitsThatLand`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Kind = ECataclysmStackKind::InfernalBrand;
+
+	// TEN BRANDS INSIDE ONE WINDOW, recording which exploded and what was held
+	// after each. Compared as one line rather than asserted one brand at a
+	// time, so a failure prints the whole pattern: a count stuck at five and a
+	// count that never reaches five fail differently, and the difference is
+	// the diagnosis.
+	TArray<FString> Exploded;
+	TArray<FString> HeldAfter;
+	int32 ExplodedInFirstSix = 0;
+	for (int32 Brand = 1; Brand <= 10; ++Brand)
+	{
+		if (Stacks::NoteInfernalBrand(Holder.AbilitySystem))
+		{
+			Exploded.Add(FString::FromInt(Brand));
+			ExplodedInFirstSix += Brand <= 6 ? 1 : 0;
+		}
+		HeldAfter.Add(FString::FromInt(Holder.Held(Kind)));
+	}
+
+	// SIX BRANDS EXPLODE ONCE, which is the check the issue asks for.
+	TestEqual(TEXT("six brands explode exactly once"), ExplodedInFirstSix, 1);
+
+	// AND TEN EXPLODE TWICE, ON THE FIFTH AND THE TENTH. The second explosion
+	// is what says the count started again rather than stopping for good: a
+	// brand that never exploded a second time would pass the check above.
+	TestEqual(TEXT("the brands that exploded, of ten"),
+			  FString::Join(Exploded, TEXT(" ")), FString(TEXT("5 10")));
+
+	// AND AN EXPLOSION HAS SPENT EVERY STACK BY THE TIME IT IS REPORTED, so the
+	// sixth brand holds one. Spent before `true` comes back is the order that
+	// matters: the caller deals the explosion's damage next, and that damage
+	// arrives at the target as a hit of its own.
+	TestEqual(TEXT("the stacks held after each of the ten brands"),
+			  FString::Join(HeldAfter, TEXT(" ")),
+			  FString(TEXT("1 2 3 4 0 1 2 3 4 0")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Removing stacks, and the grant that cannot
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearStacksTest,
+	"Cataclysm.Stacks.ClearingAKindEmptiesItAndNoOtherKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearStacksTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534. Until `ClearStacks` existed nothing could remove a stack: a
+	// count left only when its window ran out, and the one caller that had to
+	// spend one wrote a grant that did nothing instead.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Cleared = ECataclysmStackKind::Carnage;
+	constexpr ECataclysmStackKind Kept = ECataclysmStackKind::Bloodlust;
+
+	for (int32 Grant = 0; Grant < 3; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Cleared,
+										 Stacks::WindowSecondsFor(Cleared),
+										 Stacks::CapFor(Cleared));
+	}
+	for (int32 Grant = 0; Grant < 2; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Kept, Stacks::WindowSecondsFor(Kept),
+										 Stacks::CapFor(Kept));
+	}
+
+	// HELD BEFORE THE CLEAR, so the checks after it cannot pass on grants that
+	// never landed.
+	TestEqual(TEXT("three Carnage stacks before the clear"),
+			  Holder.Held(Cleared), 3);
+	TestEqual(TEXT("and two Bloodlust"), Holder.Held(Kept), 2);
+
+	Holder.AbilitySystem->ClearStacks(Cleared);
+
+	TestEqual(TEXT("clearing Carnage leaves none"), Holder.Held(Cleared), 0);
+
+	// AND ONLY THAT KIND. A clear that emptied every kind would pass the check
+	// above.
+	TestEqual(TEXT("and leaves Bloodlust as it was"), Holder.Held(Kept), 2);
+
+	// AND THE NEXT GRANT STARTS AGAIN AT ONE, not at four.
+	Holder.AbilitySystem->GrantStack(Cleared, Stacks::WindowSecondsFor(Cleared),
+									 Stacks::CapFor(Cleared));
+	TestEqual(TEXT("a grant after a clear holds one"), Holder.Held(Cleared), 1);
+
+	// CLEARING A KIND THAT HOLDS NOTHING, OR ONE OUT OF RANGE, TOUCHES NOTHING
+	// ELSE.
+	Holder.AbilitySystem->ClearStacks(ECataclysmStackKind::SanguineMomentum);
+	Holder.AbilitySystem->ClearStacks(ECataclysmStackKind::Count);
+	TestEqual(TEXT("clearing other kinds left Carnage alone"),
+			  Holder.Held(Cleared), 1);
+	TestEqual(TEXT("and Bloodlust too"), Holder.Held(Kept), 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZeroCapGrantTest,
+	"Cataclysm.Stacks.AGrantWithACapOfZeroChangesNothingAndSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmZeroCapGrantTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534 WAS A CALLER READING A CAP OF ZERO AS "CLEAR" AND `GrantStack`
+	// READING IT AS "GRANT NOTHING", with nothing to say that the two
+	// disagreed. The refusal stays. What this pins is that a zero cap neither
+	// clears nor grants, and that the refusal is no longer silent.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Kind = ECataclysmStackKind::Bloodlust;
+	const float Window = Stacks::WindowSecondsFor(Kind);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, Stacks::CapFor(Kind));
+	Holder.AbilitySystem->GrantStack(Kind, Window, Stacks::CapFor(Kind));
+	TestEqual(TEXT("two stacks to start with"), Holder.Held(Kind), 2);
+
+	// ONE WARNING FOR EACH OF THE TWO REFUSALS BELOW, AND EXACTLY THAT MANY.
+	// This test fails if either warning is missing.
+	AddExpectedError(TEXT("which grants nothing and removes nothing"),
+		EAutomationExpectedErrorFlags::Contains, 2);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, /*Cap=*/0);
+	TestEqual(TEXT("a cap of zero does not clear them"), Holder.Held(Kind), 2);
+
+	Holder.AbilitySystem->GrantStack(Kind, Window, /*Cap=*/-1);
+	TestEqual(TEXT("and nor does a negative one"), Holder.Held(Kind), 2);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

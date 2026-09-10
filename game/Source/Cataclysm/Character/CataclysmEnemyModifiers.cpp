@@ -490,9 +490,20 @@ float UCataclysmEnemyModifiers::CrowdControlResistancePercent(
 
 float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 {
-	const ACataclysmEnemyCharacter* Enemy =
-		Cast<ACataclysmEnemyCharacter>(Attacker);
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
 	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, InfernalBrandRow))
+	{
+		return 0.0f;
+	}
+
+	// THE EXPLOSION IS NOT A HIT THAT BRANDS. Issue #1534. It is dealt further
+	// down as an ordinary blow from this creature, so the target's attribute
+	// set calls this function again from inside it. Branding there would put a
+	// stack back onto the count the explosion had just spent, where the row
+	// says the explosion consumes them all, and the next explosion would come
+	// one hit early. Refused before the tag as well as the count, so the
+	// explosion does not refresh the brand's visible status either.
+	if (Enemy->bInfernalBrandExploding)
 	{
 		return 0.0f;
 	}
@@ -539,6 +550,12 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 	{
 		return 0.0f;
 	}
+
+	// WHILE IT RESOLVES, THIS CREATURE IS MARKED AS EXPLODING, so the call the
+	// blow makes back into this function is refused at the top. The guard puts
+	// the flag back when this function returns, and the blow has resolved by
+	// then: the effect carrying it is instant.
+	TGuardValue<bool> Exploding(Enemy->bInfernalBrandExploding, true);
 
 	// AN ORDINARY DIRECT BLOW. The damage TYPE is not a parameter here: it is
 	// read off the instigator when the hit resolves, which is what makes the
