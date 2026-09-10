@@ -5,10 +5,12 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -1329,6 +1331,184 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernoChargeTest,
 	}
 
 	TestTrue(TEXT("and one carrying it charges"), Charger->IsCharging());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Infernal Brand, through the hits that build it
+// ---------------------------------------------------------------------------
+
+namespace CataclysmEnemyModifierTest
+{
+	/**
+	 * Something to be hit that none of its own defences protects: an ability
+	 * system on a plain actor, with no armour, evasion, block or reduction, and
+	 * no energy shield to take a blow before health does.
+	 *
+	 * A PLAIN ACTOR RATHER THAN A PLAYER, ON PURPOSE. The Infernal Brand test
+	 * below was written to fail against the code of issue #1534, and against
+	 * that code its target dies. A player's death writes a save file and stands
+	 * the character back up on a timer; a plain actor's does nothing, because
+	 * `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` acts only on a
+	 * character. The brand reads nothing that differs between the two: it asks
+	 * for an ability system and a blow that took health.
+	 */
+	struct FBareTarget
+	{
+		FBareTarget(UWorld* World, float Health)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers on purpose: AddAttributeSetSubobject is a template
+			// and a TObjectPtr deduces the wrapper rather than the set.
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			NewCombat->SetArmor(0.0f);
+			NewCombat->SetEvasion(0.0f);
+			NewCombat->SetBlockChance(0.0f);
+			NewCombat->SetDamageReduction(0.0f);
+			NewVitals->SetMaxEnergyShield(0.0f);
+			NewVitals->SetEnergyShield(0.0f);
+			NewVitals->SetMaxHealth(Health);
+			NewVitals->SetHealth(Health);
+
+			Vitals = NewVitals;
+		}
+
+		~FBareTarget()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+		UCataclysmVitalAttributeSet* Vitals = nullptr;
+	};
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandThroughHitsTest,
+	"Cataclysm.EnemyModifiers.InfernalBrandExplodesOnceForEveryFiveHitsThatLand")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #1534, THE WAY THE PROJECT OWNER MET IT: a Horde arena on
+	// 2026-09-10 in which their character kept dying the moment it could act.
+	// Their log shows each death followed, in the same millisecond, by a burst
+	// of explosions all naming ONE creature.
+	//
+	// ONE HIT CAN SET OFF A WHOLE BURST. The explosion is dealt as an ordinary
+	// blow from the creature, so it reaches
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` like any other
+	// blow, and that calls `BrandOnHit` again. With the count stuck at five the
+	// second call explodes too, and the third, until the target has no health
+	// left for a blow to take. `BrandOnHit` writes each explosion's log line
+	// after its damage returns, which is why the death is printed first.
+	//
+	// SO THE HITS HERE GO THROUGH THE DAMAGE PIPELINE, NOT STRAIGHT INTO
+	// `BrandOnHit`. A loop calling the rule would count its own calls and never
+	// see the explosions nested inside them.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature to do the branding"), Brander))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Own = Brander->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the creature has an ability system"), Own))
+	{
+		return false;
+	}
+
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+
+	// THE EXPLOSION IS FIVE OF THE CREATURE'S OWN HITS, so a hundred attack
+	// damage makes an explosion of five hundred.
+	constexpr float AttackDamage = 100.0f;
+	Own->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), AttackDamage);
+	const float Explosion =
+		AttackDamage * UCataclysmEnemyModifiers::InfernalBrandExplosionHits;
+
+	// TWO THOUSAND HEALTH, AND BOTH ENDS OF THAT NUMBER MATTER. Ten hits and the
+	// two explosions they should cause take 1,010 of it, so the target lives
+	// through a correct run. And a chain of explosions ends when there is no
+	// health left for a blow to take, so against the broken code it is at most
+	// five deep here -- where a target with a million health would make it two
+	// thousand deep, and a run that crashes measures nothing.
+	FBareTarget Target(World, 2'000.0f);
+
+	TArray<FString> ExplosionsPerHit;
+	TArray<FString> HeldAfter;
+	float HealthLostToTheFifth = 0.0f;
+
+	for (int32 Hit = 1; Hit <= 10; ++Hit)
+	{
+		const uint32 BlowsBefore = Target.AbilitySystem->GetResolvedHitStamp();
+		const float HealthBefore = Target.Vitals->GetHealth();
+
+		// ONE POINT OF DAMAGE, SO THE HITS THEMSELVES ARE NEGLIGIBLE and a large
+		// loss of health can only be an explosion.
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Target.Actor,
+												  /*Damage=*/1.0f,
+												  FCataclysmHitDelivery());
+
+		// EVERY BLOW THAT REACHES THE TARGET MOVES THIS STAMP BY ONE -- this
+		// hit, and each explosion it set off inside itself -- so what is left
+		// after taking away the hit is the number of explosions.
+		const int32 Blows = static_cast<int32>(
+			Target.AbilitySystem->GetResolvedHitStamp() - BlowsBefore);
+		ExplosionsPerHit.Add(FString::FromInt(Blows - 1));
+		HeldAfter.Add(FString::FromInt(UCataclysmStacks::Held(
+			Target.AbilitySystem, ECataclysmStackKind::InfernalBrand)));
+
+		if (Hit == 5)
+		{
+			HealthLostToTheFifth = HealthBefore - Target.Vitals->GetHealth();
+		}
+	}
+
+	// ONE EXPLOSION FOR EVERY FIVE HITS, ON THE FIFTH AND THE TENTH.
+	TestEqual(TEXT("explosions set off by each of ten hits"),
+			  FString::Join(ExplosionsPerHit, TEXT(" ")),
+			  FString(TEXT("0 0 0 0 1 0 0 0 0 1")));
+
+	// AND AN EXPLOSION LEAVES NO BRAND BEHIND IT. The row says the explosion
+	// consumes all stacks. A blow that brands as it explodes would leave one,
+	// and the second explosion would then come on the ninth hit, not the tenth.
+	TestEqual(TEXT("brands held after each of ten hits"),
+			  FString::Join(HeldAfter, TEXT(" ")),
+			  FString(TEXT("1 2 3 4 0 1 2 3 4 0")));
+
+	// AND THE EXPLOSION IS REAL DAMAGE, AT ITS DESIGNED SIZE. Without this the
+	// counts above would pass for an explosion that dealt nothing.
+	TestEqual(TEXT("the fifth hit cost its own point and one explosion"),
+			  HealthLostToTheFifth, 1.0f + Explosion, 0.01f);
+	TestEqual(TEXT("and ten hits cost ten points and two explosions"),
+			  Target.Vitals->GetHealth(),
+			  2'000.0f - 10.0f - 2.0f * Explosion, 0.01f);
 
 	return true;
 }

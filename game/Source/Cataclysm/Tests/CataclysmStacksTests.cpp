@@ -522,4 +522,73 @@ bool FCataclysmCarnivoreNoMaximumTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Infernal Brand: a debuff that explodes at five and is spent by exploding
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalBrandSpentOnceTest,
+	"Cataclysm.Stacks.InfernalBrandExplodesOnceAtFiveAndStartsCountingAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalBrandSpentOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1534. The row says "When the brand reaches 5 stacks, it explodes",
+	// and the explosion consumes every stack. The line meant to spend them
+	// granted a stack with a cap of zero, which `GrantStack` refuses without a
+	// word, so the count stayed at five and every later brand exploded again.
+	//
+	// THE COUNT ON ITS OWN. Whether a real hit reaches it, and whether the
+	// explosion's own damage adds a brand back, is
+	// `Cataclysm.EnemyModifiers.InfernalBrandExplodesOnceForEveryFiveHitsThatLand`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Kind = ECataclysmStackKind::InfernalBrand;
+
+	// TEN BRANDS INSIDE ONE WINDOW, recording which exploded and what was held
+	// after each. Compared as one line rather than asserted one brand at a
+	// time, so a failure prints the whole pattern: a count stuck at five and a
+	// count that never reaches five fail differently, and the difference is
+	// the diagnosis.
+	TArray<FString> Exploded;
+	TArray<FString> HeldAfter;
+	int32 ExplodedInFirstSix = 0;
+	for (int32 Brand = 1; Brand <= 10; ++Brand)
+	{
+		if (Stacks::NoteInfernalBrand(Holder.AbilitySystem))
+		{
+			Exploded.Add(FString::FromInt(Brand));
+			ExplodedInFirstSix += Brand <= 6 ? 1 : 0;
+		}
+		HeldAfter.Add(FString::FromInt(Holder.Held(Kind)));
+	}
+
+	// SIX BRANDS EXPLODE ONCE, which is the check the issue asks for.
+	TestEqual(TEXT("six brands explode exactly once"), ExplodedInFirstSix, 1);
+
+	// AND TEN EXPLODE TWICE, ON THE FIFTH AND THE TENTH. The second explosion
+	// is what says the count started again rather than stopping for good: a
+	// brand that never exploded a second time would pass the check above.
+	TestEqual(TEXT("the brands that exploded, of ten"),
+			  FString::Join(Exploded, TEXT(" ")), FString(TEXT("5 10")));
+
+	// AND AN EXPLOSION HAS SPENT EVERY STACK BY THE TIME IT IS REPORTED, so the
+	// sixth brand holds one. Spent before `true` comes back is the order that
+	// matters: the caller deals the explosion's damage next, and that damage
+	// arrives at the target as a hit of its own.
+	TestEqual(TEXT("the stacks held after each of the ten brands"),
+			  FString::Join(HeldAfter, TEXT(" ")),
+			  FString(TEXT("1 2 3 4 0 1 2 3 4 0")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
