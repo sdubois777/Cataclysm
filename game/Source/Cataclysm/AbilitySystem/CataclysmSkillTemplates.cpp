@@ -733,6 +733,75 @@ void UCataclysmStrikeSkill::LetTheWindowClose()
 			   GetCurrentActivationInfo(), true, false);
 }
 
+UCataclysmStrikeSkill* UCataclysmStrikeSkill::PlantingSkillOn(const AActor* Who)
+{
+	// NOT ONLY WHILE THE SWORD STANDS. The skill runs from the moment it is used,
+	// and for the first part of that its swing has not connected: nothing is in
+	// the ground yet, and a timer is waiting to plant it. Asking first whether a
+	// sword is in the ground would miss exactly that part, and a player who died
+	// in it would have the sword planted after the death. Issue #1535.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		// THE ROW THAT PLANTS, WHILE IT RUNS. `DisarmsUntilRecalled` is what
+		// makes a Strike leave its weapon behind, and the skill stays active from
+		// the moment it is used until the weapon comes back.
+		UCataclysmStrikeSkill* Running =
+			Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance());
+		if (Running && Running->Params.bDisarmsUntilRecalled)
+		{
+			return Running;
+		}
+	}
+
+	return nullptr;
+}
+
+void UCataclysmStrikeSkill::ReturnTheWeapon(const FString& Why)
+{
+	if (const ACataclysmPlantedWeapon* Sword =
+			ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was ended by %s after %.0f seconds, so the weapon came "
+				 "back and nothing erupted. Its burning ground stays."),
+			*SkillName, *Why, Sword->SecondsPlanted());
+	}
+	else
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was ended by %s before its swing connected, so nothing "
+				 "was planted."),
+			*SkillName, *Why);
+	}
+
+	// CANCELLED RATHER THAN ENDED, as `BreakTheHold` does, so anything watching
+	// for an interrupted skill agrees with what happened.
+	//
+	// ENDING IT AT ALL IS WHAT STOPS A SWING THAT HAS NOT CONNECTED YET.
+	// `UGameplayAbility::EndAbility` clears every timer bound to the ability
+	// while the console variable `AbilitySystem.ClearAbilityTimers` is on, which
+	// it is by default, and the swing's timer is bound to it.
+	// `UCataclysmSkillTemplate::EndAbility` clears that one again for a cancel.
+	// A guard proof that ended the skill without cancelling it found the timer
+	// cleared all the same. `EndAbility` takes a sword already in the ground out
+	// of it either way.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), /*bReplicateEndAbility=*/true,
+			   /*bWasCancelled=*/true);
+}
+
 void UCataclysmStrikeSkill::InputPressed(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -831,6 +900,17 @@ void UCataclysmStrikeSkill::EndAbility(
 	// actor is the whole of it: `ACataclysmPlantedWeapon::EndPlay` fills the
 	// hands again and `HeldBy` stops finding it, which is what the refused skills
 	// ask.
+	//
+	// THE DEATH IS `UCataclysmSkillEffects::MarkDead` CALLING `ReturnTheWeapon`,
+	// AND UNTIL ISSUE #1535 NOTHING DID. This comment named a death that no code
+	// handled: `MarkDead` broke only a swing being held, and the sword stayed in
+	// the ground until its window closed. The project owner answered on
+	// 2026-09-10 that the sword returns when its owner dies.
+	//
+	// THE BURNING GROUND IS NOT TOUCHED HERE. It is a separate actor with its own
+	// lifespan, and the owner's same answer keeps it burning, which is the
+	// design's rule that "a player's burning ground is not removed when the
+	// player who left it dies".
 	//
 	// BEHIND THE ROW'S OWN FLAG, so that the other 21 Strike rows in the sheet do
 	// not search the level for a sword every time they finish a swing. `HeldBy`

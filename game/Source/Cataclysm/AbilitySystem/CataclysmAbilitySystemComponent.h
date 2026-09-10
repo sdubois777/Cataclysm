@@ -27,8 +27,11 @@ struct FGameplayTag;
  */
 struct FCataclysmWhatDeathEnded
 {
-	/** Timed gameplay effects removed. A skill's cooldown is never one of them. */
+	/** Timed gameplay effects removed, a skill's cooldown among them. */
 	int32 TimedEffects = 0;
+
+	/** How many of those were a skill's cooldown. */
+	int32 Cooldowns = 0;
 
 	/** Stacks that were standing, every kind added together. */
 	int32 Stacks = 0;
@@ -669,14 +672,21 @@ public:
 	 *                         the bonus back and stops their repeating timers
 	 *   timed effects         every gameplay effect with a duration: damage over
 	 *                         time, curses, a stun and the stun immunity after
-	 *                         it, a pin, a resistance cut, the untargetable window
+	 *                         it, a pin, a resistance cut, the untargetable
+	 *                         window, and a skill's cooldown
 	 *   stacks                every kind, through `ClearStacks`, so a kind added
 	 *                         later is cleared with no change here
 	 *   the health debt       what is owed and when it falls due
 	 *   recent-event windows  the seconds after a health cost and after foreign
 	 *                         damage, The Breaking Point's conversion, and the
 	 *                         count that halves a second knockback
+	 *   a node's own wait     The Breaking Point's and Rock Bottom's cooldowns
+	 *                         and the intervals of the Unstable Aura's nova and
+	 *                         Beacon of Despair
 	 *   leech not yet paid    it would otherwise pay out after the respawn
+	 *
+	 * BOTH KINDS OF COOLDOWN ARE THE PROJECT OWNER'S ANSWER OF 2026-09-10, which
+	 * `docs/DECISIONS.md` records beside the ruling above.
 	 *
 	 * WHAT IT KEEPS, AND WHY:
 	 *
@@ -684,23 +694,17 @@ public:
 	 *                         points. None of it is a gameplay effect: it is
 	 *                         written as attribute values and `StatInputs`,
 	 *                         which nothing here touches
-	 *   a skill's cooldown    a judgement, because the ruling does not mention
-	 *                         one. A cooldown is not a buff, a debuff or a stack,
-	 *                         and emptying it would hand a player their skills
-	 *                         back for dying; "Keeping the bar through a death
-	 *                         gives a player a reason to die" is why a respawn
-	 *                         empties Fervour
-	 *   a node's own wait     The Breaking Point's and Rock Bottom's cooldowns
-	 *                         and the intervals of the Unstable Aura's nova and
-	 *                         Beacon of Despair, for the same reason
+	 *   running auras         the owner's answer of the same day. An aura's
+	 *                         damage bonus goes to allies and never to the one
+	 *                         casting it; an aura whose row states
+	 *                         `HealthFromHitTaken` also gives its caster health
+	 *                         when the caster is hit, and is kept like the rest
 	 *   every other skill     one that is not a self buff leaves nothing on its
-	 *                         caster for a respawn to clear. An aura's damage
-	 *                         bonus goes to allies and never to the one casting
-	 *                         it, so ending an aura would change what a player's
-	 *                         minions carry, which nobody has ruled on. An aura
-	 *                         whose row states `HealthFromHitTaken` also gives
-	 *                         its caster health when the caster is hit, and it
-	 *                         is left running like the rest
+	 *                         caster for a respawn to clear. A sword Buried Fire
+	 *                         left in the ground is not handled here: it comes
+	 *                         back at the moment of death, in
+	 *                         `UCataclysmSkillEffects::MarkDead`, and its burning
+	 *                         ground stays
 	 *
 	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, BECAUSE NONE OF IT IS
 	 * BUILT. The ruling ends five such effects at death -- Blood Price, Withering

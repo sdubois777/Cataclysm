@@ -1596,6 +1596,32 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 		Held->BreakTheHold(TEXT("death"));
 	}
 
+	// AND A WEAPON THIS CHARACTER LEFT STANDING IN THE GROUND COMES BACK, for the
+	// fifth time for the same reasons and at the same moment. The Greatsword's
+	// Buried Fire leaves the sword planted for up to ten seconds, and the project
+	// owner answered on 2026-09-10 that it returns when its owner dies and that
+	// the burning ground it stands in stays. Issue #1535.
+	//
+	// ENDING THE SKILL IS WHAT BRINGS IT BACK, because
+	// `UCataclysmStrikeSkill::EndAbility` is the one place the sword leaves the
+	// ground and the hands are filled again. The burning ground is a separate
+	// actor with its own lifespan and is not touched. Nothing erupts: the
+	// eruption is what pulling the sword free buys, and a death is not a pull.
+	//
+	// AND A SWORD NOT IN THE GROUND YET IS NEVER PLANTED. The skill is found from
+	// the moment it is used, and ending it clears the timer of a swing that has
+	// not connected, which would otherwise plant the sword after the death.
+	// Whether any other blow still waiting for its swing should land after its
+	// owner dies is issue #1549.
+	//
+	// INERT FOR EVERY CHARACTER NOT USING BURIED FIRE, which is all of them but a
+	// Greatsword holder part way through it: it costs a walk over the dying
+	// character's own running abilities, the same walk `HeldSwingOn` makes.
+	if (UCataclysmStrikeSkill* Planter = UCataclysmStrikeSkill::PlantingSkillOn(Actor))
+	{
+		Planter->ReturnTheWeapon(TEXT("death"));
+	}
+
 	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
 	// granted for a duration and this one must never expire on its own. A
 	// duration effect with an infinite duration would do the same thing with
