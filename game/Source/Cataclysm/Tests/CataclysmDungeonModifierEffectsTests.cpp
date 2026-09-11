@@ -1,0 +1,648 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "Dungeon/CataclysmFloorBrief.h"
+#include "Engine/DataTable.h"
+#include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
+#include "Interface/CataclysmFloorModifierPanelLayout.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * What the dungeon modifiers do on a floor. Issue #41.
+ *
+ * WHAT THESE COVER. Starvation and Dehydration, the first two of the 117 rows of
+ * `game/Data/DungeonModifiers.csv` to change anything a player can see; the
+ * console variable that puts chosen modifiers on the dungeon being played; and
+ * what the floor panel says about each modifier, the ones that do nothing
+ * included.
+ *
+ * THE CHAIN IS WALKED TO THE END, NOT STOPPED AT THE NUMBERS. A rule that
+ * computed the right share and never reached a character's maximum health would
+ * pass every test of the share. So the stat tests build a character, refresh its
+ * stats through the equipment component the way the game does, and read the
+ * attribute back.
+ *
+ * WHAT IS NOT COVERED, said plainly: that `ApplyFloorRulesToPlayer` finds the
+ * player and shows the panel. A test world has no player controller, which
+ * `Tests/CataclysmTestWorld.h` records, so the finding and the panel are two
+ * calls nothing here reaches. `ApplyFloorRulesTo`, which does the work, is.
+ */
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName Starvation(TEXT("Famine_Starvation"));
+	const FName Dehydration(TEXT("Famine_Dehydration"));
+	const FName EdictOfSilence(TEXT("Celestial_Edict_of_Silence"));
+
+	/**
+	 * A character holding every attribute set a real one holds, and equipment.
+	 *
+	 * THE SAME SHAPE AS THE EQUIPMENT TESTS' OWN, for the reason they give:
+	 * `UCataclysmPlayerClassStats::ApplyTo` skips any stat whose set is missing,
+	 * so a character holding only the vital set would take a path no real
+	 * character takes.
+	 */
+	struct FModifierTestCharacter
+	{
+		explicit FModifierTestCharacter(UWorld* InWorld)
+		{
+			Actor = InWorld->SpawnActor<AActor>();
+			check(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers, not TObjectPtr: AddAttributeSetSubobject deduces its
+			// type from the argument and would deduce the wrapper.
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmPrimaryAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmCombatAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmResistanceAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmClassResourceAttributeSet>(Actor));
+
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			Equipment = NewObject<UCataclysmEquipmentComponent>(Actor);
+			Equipment->RegisterComponent();
+		}
+
+		~FModifierTestCharacter()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		float Read(const FGameplayAttribute& Attribute) const
+		{
+			return AbilitySystem->GetNumericAttribute(Attribute);
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+		UCataclysmEquipmentComponent* Equipment = nullptr;
+	};
+
+	/**
+	 * A string console variable set the way a person at the console sets it,
+	 * and emptied again afterwards.
+	 *
+	 * AT THE CONSOLE'S PRIORITY, because Unreal discards a write from a lower
+	 * priority than the last one, and a test that set it any lower would pass
+	 * alone and do nothing in a full run after somebody typed at the console.
+	 */
+	struct FScopedConsoleString
+	{
+		FScopedConsoleString(const TCHAR* Name, const TCHAR* Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			Set(Value);
+		}
+
+		~FScopedConsoleString()
+		{
+			Set(TEXT(""));
+		}
+
+		void Set(const TCHAR* Value)
+		{
+			if (Variable)
+			{
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	/** The one dungeon-rule modifier on a stat in a character's stored inputs. */
+	const FCataclysmStatModifier* DungeonRuleOn(
+		const UCataclysmAbilitySystemComponent* AbilitySystem, const TCHAR* Stat)
+	{
+		const FCataclysmStatInputs* Inputs = AbilitySystem->GetStatInputs(FName(Stat));
+		if (!Inputs)
+		{
+			return nullptr;
+		}
+		for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+		{
+			if (Modifier.Source == ECataclysmModifierSource::DungeonRule)
+			{
+				return &Modifier;
+			}
+		}
+		return nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsShareTest,
+	"Cataclysm.DungeonModifierEffects.EachFloorTakesOnePercentUpToSixty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsShareTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// EVERY BOUNDARY THE RULE HAS: nothing before the first floor, one share on
+	// it, the cap reached exactly, and held there however deep the dungeon goes.
+	struct FCase
+	{
+		int32 Floor;
+		float Expected;
+	};
+	const FCase Cases[] = {
+		{0, 0.0f}, {1, 1.0f}, {2, 2.0f}, {10, 10.0f}, {59, 59.0f},
+		{60, 60.0f}, {61, 60.0f}, {150, 60.0f},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		TestEqual(FString::Printf(TEXT("Starvation has taken %.0f%% by floor %d"),
+								  Case.Expected, Case.Floor),
+				  Effects::ShareTakenOnFloor(Effects::StarvationPercentPerFloor,
+											 Effects::StarvationMostPercent,
+											 Case.Floor),
+				  Case.Expected, 0.001f);
+
+		TestEqual(FString::Printf(TEXT("Dehydration has taken %.0f%% by floor %d"),
+								  Case.Expected, Case.Floor),
+				  Effects::ShareTakenOnFloor(Effects::DehydrationPercentPerFloor,
+											 Effects::DehydrationMostPercent,
+											 Case.Floor),
+				  Case.Expected, 0.001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsOnlyTheFloorsTest,
+	"Cataclysm.DungeonModifierEffects.OnlyTheModifiersOnTheFloorTakeAnything",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsOnlyTheFloorsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestTrue(TEXT("a floor carrying nothing takes nothing"),
+			 Effects::PlayerEffectsFor({}, 30).IsEmpty());
+
+	// A MODIFIER WITH NO RULE TAKES NOTHING EITHER, which is what "does nothing"
+	// on the floor panel has to mean.
+	TestTrue(TEXT("a floor carrying only an unbuilt modifier takes nothing"),
+			 Effects::PlayerEffectsFor({EdictOfSilence}, 30).IsEmpty());
+
+	const FCataclysmPlayerFloorEffects Starved = Effects::PlayerEffectsFor({Starvation}, 30);
+	TestEqual(TEXT("Starvation takes health"), Starved.MaxHealthLessPercent, 30.0f, 0.001f);
+	TestEqual(TEXT("and energy shield by the same share"),
+			  Starved.MaxEnergyShieldLessPercent, 30.0f, 0.001f);
+	TestEqual(TEXT("and no mana"), Starved.MaxManaLessPercent, 0.0f, 0.001f);
+
+	const FCataclysmPlayerFloorEffects Parched = Effects::PlayerEffectsFor({Dehydration}, 30);
+	TestEqual(TEXT("Dehydration takes mana"), Parched.MaxManaLessPercent, 30.0f, 0.001f);
+	TestEqual(TEXT("and no health"), Parched.MaxHealthLessPercent, 0.0f, 0.001f);
+	TestEqual(TEXT("and no energy shield"), Parched.MaxEnergyShieldLessPercent, 0.0f, 0.001f);
+
+	// BOTH AT ONCE, IN ANY ORDER, AND PAST BOTH CAPS.
+	const FCataclysmPlayerFloorEffects Both =
+		Effects::PlayerEffectsFor({EdictOfSilence, Dehydration, Starvation}, 75);
+	TestEqual(TEXT("both on floor 75: health held at 60%"),
+			  Both.MaxHealthLessPercent, 60.0f, 0.001f);
+	TestEqual(TEXT("energy shield held at 60%"), Both.MaxEnergyShieldLessPercent, 60.0f, 0.001f);
+	TestEqual(TEXT("mana held at 60%"), Both.MaxManaLessPercent, 60.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsLessTest,
+	"Cataclysm.DungeonModifierEffects.TheyTakeAShareOfTheFinishedMaximumNotOfTheIncreases",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsLessTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		Effects::StatModifiersFor(Effects::PlayerEffectsFor({Starvation}, 10));
+
+	TestEqual(TEXT("Starvation touches two stats"), Modifiers.Num(), 2);
+	TestFalse(TEXT("and not mana"), Modifiers.Contains(FName(TEXT("max_mana"))));
+
+	for (const TCHAR* Stat : {TEXT("max_health"), TEXT("max_energy_shield")})
+	{
+		const TArray<FCataclysmStatModifier>* On = Modifiers.Find(FName(Stat));
+		if (!TestNotNull(FString::Printf(TEXT("a modifier on %s"), Stat), On)
+			|| !TestEqual(FString::Printf(TEXT("exactly one on %s"), Stat), On->Num(), 1))
+		{
+			continue;
+		}
+
+		const FCataclysmStatModifier& Modifier = (*On)[0];
+		TestTrue(FString::Printf(TEXT("%s: in the More bucket"), Stat),
+				 Modifier.Bucket == ECataclysmStatBucket::More);
+		TestTrue(FString::Printf(TEXT("%s: from a dungeon rule"), Stat),
+				 Modifier.Source == ECataclysmModifierSource::DungeonRule);
+		TestEqual(FString::Printf(TEXT("%s: 10%% less on floor 10"), Stat),
+				  Modifier.Value, -10.0f, 0.001f);
+		TestTrue(FString::Printf(TEXT("%s: for every skill, not a scoped one"), Stat),
+				 Modifier.RequiredTags.IsEmpty());
+	}
+
+	// **THE POINT OF THE LESS BUCKET, MEASURED.** A base of 100 carrying +200%
+	// increased from gear is 300. Ten per cent LESS of that is 270; ten points
+	// taken out of the increases instead would be 290, a 3.3% loss where the row
+	// says 10%. The pipeline refusing a More from this source would give 300.
+	FCataclysmStatModifier Gear;
+	Gear.Bucket = ECataclysmStatBucket::Increased;
+	Gear.Source = ECataclysmModifierSource::GearAffix;
+	Gear.Value = 200.0f;
+
+	TArray<FCataclysmStatModifier> Line = {Gear};
+	Line.Append(Modifiers.FindChecked(FName(TEXT("max_health"))));
+
+	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
+		100.0f, Line, FGameplayTagContainer(), FCataclysmStatConditions());
+	TestEqual(TEXT("a tenth of the finished 300, not ten points of the increases"),
+			  Result.Final, 270.0f, 0.01f);
+	TestEqual(TEXT("and nothing was refused"), Result.RejectedMoreCount, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsReachTheCharacterTest,
+	"Cataclysm.DungeonModifierEffects.StarvationLowersThePlayersMaximumsAndLeavingGivesThemBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsReachTheCharacterTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FModifierTestCharacter Character(World);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+
+	const float BareHealth = Character.Read(Vital::GetMaxHealthAttribute());
+	const float BareShield = Character.Read(Vital::GetMaxEnergyShieldAttribute());
+	const float BareMana = Character.Read(Vital::GetMaxManaAttribute());
+	if (!TestTrue(TEXT("the character has health to lose"), BareHealth > 0.0f)
+		|| !TestTrue(TEXT("and mana to lose"), BareMana > 0.0f))
+	{
+		return false;
+	}
+
+	// FLOOR 10 OF A STARVATION DUNGEON.
+	TestTrue(TEXT("the rule reached the character"),
+			 Effects::ApplyToCharacter(Effects::PlayerEffectsFor({Starvation}, 10),
+									   Character.AbilitySystem, Character.Equipment));
+
+	TestEqual(TEXT("maximum health is 10% less on floor 10"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth * 0.9f, 0.01f);
+	TestEqual(TEXT("maximum mana is untouched by Starvation"),
+			  Character.Read(Vital::GetMaxManaAttribute()), BareMana, 0.01f);
+	TestEqual(TEXT("maximum energy shield is 10% less, whatever it was"),
+			  Character.Read(Vital::GetMaxEnergyShieldAttribute()), BareShield * 0.9f, 0.01f);
+
+	// THE SHIELD LINE ABOVE IS EXACT EVEN FOR A CLASS WITH NO SHIELD, where 0.9
+	// of nothing is nothing. So the rule's arrival on that stat is checked in the
+	// stored inputs as well, which a class with no shield still records.
+	const FCataclysmStatModifier* OnShield =
+		DungeonRuleOn(Character.AbilitySystem, TEXT("max_energy_shield"));
+	if (TestNotNull(TEXT("the shield's stat line carries the dungeon rule"), OnShield))
+	{
+		TestEqual(TEXT("as 10% less"), OnShield->Value, -10.0f, 0.001f);
+	}
+
+	// NOW DEHYDRATION ALONE: the health comes back and the mana goes.
+	Effects::ApplyToCharacter(Effects::PlayerEffectsFor({Dehydration}, 10),
+							  Character.AbilitySystem, Character.Equipment);
+	TestEqual(TEXT("health is back when Starvation is not on the floor"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth, 0.01f);
+	TestEqual(TEXT("maximum mana is 10% less under Dehydration"),
+			  Character.Read(Vital::GetMaxManaAttribute()), BareMana * 0.9f, 0.01f);
+
+	// AND LEAVING GIVES EVERYTHING BACK EXACTLY.
+	Effects::ApplyToCharacter(FCataclysmPlayerFloorEffects(),
+							  Character.AbilitySystem, Character.Equipment);
+	TestEqual(TEXT("health restored exactly"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth, 0.01f);
+	TestEqual(TEXT("mana restored exactly"),
+			  Character.Read(Vital::GetMaxManaAttribute()), BareMana, 0.01f);
+	TestEqual(TEXT("energy shield restored exactly"),
+			  Character.Read(Vital::GetMaxEnergyShieldAttribute()), BareShield, 0.01f);
+	TestNull(TEXT("and no dungeon rule is left on the health line"),
+			 DungeonRuleOn(Character.AbilitySystem, TEXT("max_health")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsSurviveARefreshTest,
+	"Cataclysm.DungeonModifierEffects.ARefreshForAnyOtherReasonKeepsTheFloorsRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsSurviveARefreshTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FModifierTestCharacter Character(World);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	const float BareHealth = Character.Read(Vital::GetMaxHealthAttribute());
+
+	Effects::ApplyToCharacter(Effects::PlayerEffectsFor({Starvation}, 20),
+							  Character.AbilitySystem, Character.Equipment);
+
+	// THE REFRESH A HELMET CHANGE, A LEVEL GAINED OR A POINT SPENT WOULD RUN.
+	// None of them knows a dungeon exists, so if the floor's rule lived anywhere
+	// but where this refresh looks, it would be dropped here.
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+
+	TestEqual(TEXT("still 20% less after a refresh made for another reason"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth * 0.8f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsFollowTheFloorTest,
+	"Cataclysm.DungeonModifierEffects.TheGameModeFollowsTheFloorBeingStoodOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsFollowTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	FModifierTestCharacter Character(World);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	const float BareHealth = Character.Read(Vital::GetMaxHealthAttribute());
+
+	// A STARVATION DUNGEON, WALKED FROM FLOOR 5 TO FLOOR 6.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 5;
+	if (!TestNotNull(TEXT("floor 5 was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("floor 5 carries Starvation"), Mode->FloorBrief.Modifiers.Contains(Starvation));
+	TestTrue(TEXT("the floor's rules reached the character"),
+			 Mode->ApplyFloorRulesTo(Character.AbilitySystem, Character.Equipment));
+	TestEqual(TEXT("5% less on floor 5"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth * 0.95f, 0.01f);
+
+	Mode->FloorNumber = 6;
+	Mode->BuildFloor();
+	Mode->ApplyFloorRulesTo(Character.AbilitySystem, Character.Equipment);
+	TestEqual(TEXT("6% less on floor 6, not 5% and not 11%"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth * 0.94f, 0.01f);
+
+	// LEAVING EMPTIES THE BRIEF, AND THE RULE GOES WITH IT.
+	Mode->LeaveEmpireDungeon();
+	Mode->ApplyFloorRulesTo(Character.AbilitySystem, Character.Equipment);
+	TestEqual(TEXT("everything back after leaving the dungeon"),
+			  Character.Read(Vital::GetMaxHealthAttribute()), BareHealth, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsTypedNamesTest,
+	"Cataclysm.DungeonModifierEffects.TypedNamesAreReadAsKeysOrNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsTypedNamesTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load, so nothing below checked "
+					  "anything. It is generated from game/Data/DungeonModifiers.csv."));
+		return false;
+	}
+
+	// A NAME IN LOWER CASE, A KEY, A NAME TYPED WITH A STRAIGHT APOSTROPHE WHERE
+	// THE DESIGN HAS A CURLY ONE, A WORD THAT IS NOTHING, AND A REPEAT IN CAPITALS.
+	TArray<FString> NotUnderstood;
+	const TArray<FName> Keys = UCataclysmDungeonModifierTable::KeysNamedBy(
+		TEXT(" starvation , Famine_Dehydration, Heaven's Quake, nonsense, STARVATION "),
+		Table, NotUnderstood);
+
+	if (!TestEqual(TEXT("three modifiers were understood, the repeat once"), Keys.Num(), 3))
+	{
+		return false;
+	}
+
+	// CASE-SENSITIVE ON PURPOSE. Unreal's string tests ignore case by default,
+	// and the point here is that the table's own spelling comes back.
+	TestTrue(TEXT("a name finds its row key, in the table's spelling"),
+			 Keys[0].ToString().Equals(TEXT("Famine_Starvation"), ESearchCase::CaseSensitive));
+	TestTrue(TEXT("a key finds itself"),
+			 Keys[1].ToString().Equals(TEXT("Famine_Dehydration"), ESearchCase::CaseSensitive));
+	TestTrue(TEXT("a straight apostrophe finds the curly one"),
+			 Keys[2].ToString().Equals(TEXT("Celestial_Heaven_s_Quake"), ESearchCase::CaseSensitive));
+
+	if (TestEqual(TEXT("one piece was not a modifier"), NotUnderstood.Num(), 1))
+	{
+		TestEqual(TEXT("and it is the one that was nonsense"), NotUnderstood[0],
+				  FString(TEXT("nonsense")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsConsoleTest,
+	"Cataclysm.DungeonModifierEffects.TheConsoleCanPutModifiersOnTheDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsConsoleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE DUNGEON'S OWN DRAW, WHICH THE CONSOLE REPLACES.
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->DungeonModifierScore = 20.0f;
+
+	FScopedConsoleString Forced(TEXT("Cataclysm.DungeonModifiers"),
+								TEXT("Starvation, Famine_Dehydration"));
+	if (!TestNotNull(TEXT("Cataclysm.DungeonModifiers is registered"), Forced.Variable))
+	{
+		return false;
+	}
+
+	Mode->BuildFloor();
+	TestEqual(TEXT("the floor carries what was typed, in the order typed"),
+			  Mode->FloorBrief.Modifiers,
+			  TArray<FName>({Starvation, Dehydration}));
+
+	// THE DANGER SCORES OF WHAT WAS TYPED, READ FROM THE TABLE: Starvation 20,
+	// Dehydration 15. The dungeon's own 20 would be wrong in both directions.
+	TestEqual(TEXT("and is worth what those two are worth"),
+			  Mode->FloorBrief.ModifierScore, 35.0f, 0.001f);
+
+	// A WORD THAT NAMES NOTHING HANDS THE CHOICE BACK, as every other control in
+	// the dungeon game mode does when it is not asked for anything real.
+	Forced.Set(TEXT("nonsense"));
+	Mode->BuildFloor();
+	TestEqual(TEXT("nonsense leaves the dungeon's own modifiers"),
+			  Mode->FloorBrief.Modifiers, TArray<FName>({EdictOfSilence}));
+
+	Forced.Set(TEXT(""));
+	Mode->BuildFloor();
+	TestEqual(TEXT("and so does clearing it"),
+			  Mode->FloorBrief.Modifiers, TArray<FName>({EdictOfSilence}));
+	TestEqual(TEXT("with the dungeon's own score"),
+			  Mode->FloorBrief.ModifierScore, 20.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsPanelTest,
+	"Cataclysm.DungeonModifierEffects.ThePanelMarksTheOnesThatDoNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Layout = UCataclysmFloorModifierPanelLayout;
+
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load."));
+		return false;
+	}
+
+	const FName UnstableDimensions(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
+	const FName NotARow(TEXT("Not_A_Row"));
+
+	const TArray<FCataclysmFloorModifierLine> Lines =
+		Layout::LinesFor({Starvation, EdictOfSilence, UnstableDimensions, NotARow}, Table);
+	if (!TestEqual(TEXT("one line per modifier"), Lines.Num(), 4))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a built one is named plainly"), Layout::NameLineFor(Lines[0]),
+			  FString(TEXT("Starvation")));
+	TestTrue(TEXT("with its row's own words"),
+			 Lines[0].Description.Contains(TEXT("reduced by 1%")));
+
+	TestTrue(TEXT("an unbuilt one says it does nothing"),
+			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Edict of Silence"))
+				 && Layout::NameLineFor(Lines[1]).Contains(TEXT("not built yet")));
+	TestTrue(TEXT("a partly built one says so"),
+			 Layout::NameLineFor(Lines[2]).Contains(TEXT("partly built")));
+	TestTrue(TEXT("a key that is not a row is shown as what it is"),
+			 !Lines[3].bIsARow
+				 && Layout::NameLineFor(Lines[3]).StartsWith(TEXT("Not_A_Row"))
+				 && Layout::NameLineFor(Lines[3]).Contains(TEXT("not a row")));
+
+	TestEqual(TEXT("the heading counts them"), Layout::HeadingFor(5, 4),
+			  FString(TEXT("Floor 5: 4 dungeon modifiers")));
+	TestEqual(TEXT("in the singular for one"), Layout::HeadingFor(1, 1),
+			  FString(TEXT("Floor 1: 1 dungeon modifier")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsRealRowsTest,
+	"Cataclysm.DungeonModifierEffects.EveryRuleNamesARowOfTheTable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsRealRowsTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load."));
+		return false;
+	}
+
+	// A RULE KEYED BY A NAME THAT IS NOT A ROW NEVER FIRES, and nothing else
+	// would say so: the floor would simply never carry it.
+	const TArray<FName> Keys = UCataclysmDungeonModifierEffects::KeysWithARule();
+	TestTrue(TEXT("some rules exist"), Keys.Num() > 0);
+	for (const FName Key : Keys)
+	{
+		TestNotNull(FString::Printf(TEXT("%s is a row of the table"), *Key.ToString()),
+					UCataclysmDungeonModifierTable::FindRow(Table, Key));
+		TestTrue(FString::Printf(TEXT("%s is marked as having something built"),
+								 *Key.ToString()),
+				 UCataclysmDungeonModifierEffects::BuiltStateOf(Key)
+					 != ECataclysmModifierBuilt::NotBuilt);
+	}
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

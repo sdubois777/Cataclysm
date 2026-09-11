@@ -333,6 +333,32 @@ public:
 	}
 
 	/**
+	 * What the dungeon floor this character is standing on does to its stat
+	 * line. Issue #41.
+	 *
+	 * HELD HERE AND NOT ON THE DUNGEON, because
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` is the one place every
+	 * source of a character's stats is gathered, and it is run from several
+	 * places -- a helmet changed, a level gained, a point spent -- none of which
+	 * knows a dungeon exists. Holding the floor's modifiers where that function
+	 * already looks is what stops each of those refreshes quietly dropping them.
+	 *
+	 * WRITTEN BY `UCataclysmDungeonModifierEffects::ApplyToCharacter` when a
+	 * floor begins, and emptied when the player leaves the dungeon. Keyed by the
+	 * character-sheet stat name, like every other modifier map.
+	 */
+	void SetDungeonStatModifiers(TMap<FName, TArray<FCataclysmStatModifier>>&& Modifiers)
+	{
+		DungeonStatModifiers = MoveTemp(Modifiers);
+	}
+
+	/** What `SetDungeonStatModifiers` last wrote. Empty outside a dungeon. */
+	const TMap<FName, TArray<FCataclysmStatModifier>>& GetDungeonStatModifiers() const
+	{
+		return DungeonStatModifiers;
+	}
+
+	/**
 	 * What one stat is worth to a skill carrying these tags. Issue #943.
 	 *
 	 * WHY A SKILL HAS TO ASK RATHER THAN READ THE ATTRIBUTE. The gameplay
@@ -855,6 +881,20 @@ protected:
 	 * replicated attribute. A hit is resolved on the authority.
 	 */
 	TMap<FName, FCataclysmStatInputs> StatInputs;
+
+	/**
+	 * What the dungeon floor being stood on adds to the stat line. Issue #41.
+	 *
+	 * A THIRD LIST, NEITHER OF THE TWO ABOVE. Unlike `StatModifiers` it is not a
+	 * skill's buff and is never revoked piecemeal; unlike `StatInputs` it is not
+	 * the finished line but one of the sources that line is built from, beside
+	 * gear and the passive tree. `SetDungeonStatModifiers` says why it is kept
+	 * here rather than on the dungeon.
+	 *
+	 * NOT REPLICATED, for the reason `StatInputs` is not: the numbers it changes
+	 * are replicated attributes already.
+	 */
+	TMap<FName, TArray<FCataclysmStatModifier>> DungeonStatModifiers;
 
 	/**
 	 * Leech promised and not yet paid, one entry per hit. Issue #895.

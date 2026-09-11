@@ -3,6 +3,7 @@
 #include "Items/CataclysmEquipmentComponent.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
@@ -596,6 +597,24 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 					UCataclysmPassiveTree::LoadNodeTable(),
 					UCataclysmPassiveTree::LoadEffectTable(), Carried);
 			}
+		}
+	}
+
+	// AND THE DUNGEON FLOOR BEING STOOD ON, since issue #41. Starvation takes a
+	// share of maximum health and shield and Dehydration a share of maximum
+	// mana, each as a Less multiplier on the finished figure.
+	//
+	// READ FROM THE ABILITY SYSTEM RATHER THAN ASKED OF THE DUNGEON, so that this
+	// refresh keeps them whatever called it. `UCataclysmDungeonModifierEffects::
+	// ApplyToCharacter` puts them there when a floor begins; everywhere outside a
+	// dungeon the map is empty and nothing is added.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat :
+			 Cataclysm->GetDungeonStatModifiers())
+		{
+			Modifiers.FindOrAdd(Stat.Key).Append(Stat.Value);
 		}
 	}
 

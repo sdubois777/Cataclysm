@@ -261,26 +261,36 @@ by `git add` with no error and no warning. Guarded by
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
 
-  **Every dungeon carries dungeon modifiers, and not one of them does
-  anything.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
+  **Every dungeon carries dungeon modifiers, and two of the 117 change the
+  player.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
   difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
   modifiers of every Cataclysm the run is facing. The sum of their danger scores
   is the dungeon's Modifier Score, which
   `ACataclysmDungeonGameMode::EnterEmpireDungeon` carries over when the player
-  walks in, and which makes every creature on every floor worth more. Before
-  this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in the
-  game had ever read, and the Modifier Score was a hard-coded zero.
+  walks in, and which makes every creature on every floor worth more experience
+  — and nothing else yet. The design says it should make them harder too, and
+  on 2026-09-11 the project owner kept that: creature health and damage are to
+  follow the enemy score on every floor, which is issue
+  [#1569](https://github.com/sdubois777/Cataclysm/issues/1569).
+  Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
+  the game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **One modifier of the 117 does something on a floor, and the other 116 are a
-  name and a number.** No modifier in the table makes a floor go dark, drops
-  fire from a ceiling or resurrects an enemy. The one that was built is
+  **Three modifiers of the 117 do something on a floor, and the other 114 are a
+  name and a number.** `UCataclysmDungeonModifierEffects` in
+  `game/Source/Cataclysm/Dungeon/` holds the two that change the player:
+  Starvation takes 1% of maximum health and energy shield a floor, up to 60%,
+  and Dehydration 1% of maximum mana a floor, up to 60%. Both reach the player
+  through the stat line that gear and the passive tree already use. The third is
   `Chaos_Unstable_Dimensions`, "Unstable Dimensions": every floor of a dungeon
-  carrying it draws one extra modifier of its own, which is what its row says.
-  It was built through `FCataclysmDungeonFloorRules`, the same seam three
-  dungeon sub-types use, to show that the seam is not only for sub-types — a
-  sub-type replaces a floor's modifier list and this one adds to it. The
-  remaining 116 are unbuilt in that sense, and the only thing they do is make
-  creatures score higher. Three further gaps are open.
+  carrying it draws one extra modifier of its own. It was built through
+  `FCataclysmDungeonFloorRules`, the same seam three dungeon sub-types use, and
+  it is only part of what its row says — the row asks for a new modifier on
+  every enemy, and what it draws is another dungeon modifier. No modifier in the
+  table yet makes a floor go dark, drops fire from a ceiling or resurrects an
+  enemy. A panel in the top right corner of the screen lists the modifiers in
+  force on a floor and marks the ones that do nothing yet, and
+  `Cataclysm.DungeonModifiers` puts chosen modifiers on the dungeon being
+  played, by row key or by name. Three further gaps are open.
   The one Generic modifier, the Corrupted Stalker, is deliberately never drawn —
   the project owner ruled it is granted separately — and nothing grants it, which
   is issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308). A

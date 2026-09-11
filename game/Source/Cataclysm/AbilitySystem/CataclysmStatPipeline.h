@@ -65,6 +65,21 @@ enum class ECataclysmModifierSource : uint8
 	 * those three rather than with the affix pool.
 	 */
 	SkillBuff		UMETA(DisplayName = "Skill Buff"),
+
+	/**
+	 * A rule of the dungeon floor the character is standing on. Issue #41.
+	 *
+	 * Starvation's "each floor the players's maximum hp and energy shield are
+	 * reduced by 1%" is one: `UCataclysmDungeonModifierEffects` turns it into a
+	 * Less multiplier on the finished maximum, and it is held and dropped at
+	 * runtime as the player moves between floors.
+	 *
+	 * MAY GRANT MORE, AND IN PRACTICE GRANTS LESS. Every row of the dungeon
+	 * modifier table is authored rather than rolled, so it sits with the
+	 * authored sources above rather than with the affix pool, whose readability
+	 * rule is what forbids More.
+	 */
+	DungeonRule		UMETA(DisplayName = "Dungeon Rule"),
 };
 
 /**

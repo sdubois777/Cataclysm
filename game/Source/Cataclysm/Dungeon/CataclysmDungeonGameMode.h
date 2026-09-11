@@ -516,6 +516,49 @@ public:
 	FCataclysmFloorBrief FloorBrief;
 
 	// ----------------------------------------------------------------------
+	// What the floor's modifiers do to the player. Issue #41
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The modifiers a floor of this dungeon starts from, and their danger.
+	 *
+	 * `Cataclysm.DungeonModifiers` FIRST, WHEN IT NAMES AT LEAST ONE ROW, and the
+	 * dungeon's own otherwise. The console variable exists so a modifier can be
+	 * tried in `L_Dungeon` without starting an empire run, which is the only
+	 * other way a dungeon gets any -- and the owner's playtests never start one.
+	 * The floor rules then treat a typed list exactly as they treat a drawn one,
+	 * so a Volatile dungeon still re-draws.
+	 *
+	 * @param OutScore the sum of their danger scores, for the enemy score model
+	 */
+	TArray<FName> ChooseModifiers(float& OutScore) const;
+
+	/**
+	 * Puts what the floor's modifiers do on one character and works its stats
+	 * out again. Starvation and Dehydration, today.
+	 *
+	 * TAKES THE TWO COMPONENTS RATHER THAN A PAWN, so a test can hand it a
+	 * character built by hand: a test world has no player controller and so no
+	 * player to find. `ApplyFloorRulesToPlayer` is the finding.
+	 *
+	 * @return whether the character's stats were worked out again
+	 */
+	bool ApplyFloorRulesTo(class UCataclysmAbilitySystemComponent* AbilitySystem,
+						   class UCataclysmEquipmentComponent* Equipment) const;
+
+	/**
+	 * The same for the first player's character, then the floor panel, then one
+	 * line in the log saying what the floor carries.
+	 *
+	 * CALLED WHENEVER THE FLOOR CHANGES -- at the end of `GoToFloor`, after
+	 * `StartPlay` has a pawn to find, and after `LeaveEmpireDungeon` has emptied
+	 * the brief -- so the rules follow the floor being stood on and never the one
+	 * before it. A Horde dungeon's waves are its floors, so each wave applies
+	 * them again.
+	 */
+	void ApplyFloorRulesToPlayer();
+
+	// ----------------------------------------------------------------------
 	// Putting creatures on it
 	// ----------------------------------------------------------------------
 
