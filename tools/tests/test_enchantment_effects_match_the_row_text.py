@@ -25,7 +25,10 @@ WHAT IS ASSERTED HERE.
     every condition value appears in those words too
     an effect in the `more` bucket is on a sentence worded as a multiplier, and
       one in the `increased` bucket on a sentence worded as an increase
-    a negative value is on a sentence that takes something away
+    a negative value is on a sentence that takes something away, or, on
+      crowd_control_resistance alone, on one saying the effect lasts longer
+    a sentence stating no number is excused from the checks that need one
+      only while docs/DECISIONS.md records the number chosen for it
     the two enchantment tables state as many ranges as were measured, which
       holds the generator's reader and the game's reader to one answer
     the coverage is what it is measured to be, so it only moves deliberately
@@ -64,23 +67,52 @@ MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "twice": 100.0,
 
 #: A sentence worded as a multiplier, which is what the `more` bucket is for.
 MULTIPLIER = re.compile(
-    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved)\b",
+    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed)\b",
     re.IGNORECASE)
 
 #: A sentence worded as an increase, which is the `increased` bucket.
 INCREASE = re.compile(
-    r"\b(increase|increased|reduced|faster|slower|longer|larger)\b",
+    r"\b(increase|increased|reduced|faster|slower|longer|larger|gain|lose)\b",
     re.IGNORECASE)
 
 #: A sentence that takes something away, which is where a negative value goes.
-TAKING = re.compile(r"\b(less|reduced|lose|slower|shorter|halved)\b",
+TAKING = re.compile(r"\b(less|reduced|lose|slower|shorter|halved|slowed)\b",
                     re.IGNORECASE)
+
+#: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
+#: in docs/DECISIONS.md. "Gain 20%-50% movespeed" and "Lose 5%-15% attack speed"
+#: are this genre's wording for an increase and a reduction, and "You are
+#: permanently slowed by 10%-20%" is a multiplier that takes speed away. Adding
+#: them loosens the three patterns above, which is why the decision is written
+#: down rather than only made here.
+
+#: A stat on which a negative value makes what the character suffers last
+#: LONGER, so its sentence says "longer" rather than a word that takes away.
+#: "CC effects applied to you last 40%-70% longer" is a negative
+#: `crowd_control_resistance`. Accepted on this stat only: on a duration, a
+#: negative value beside "longer" would be a sign error, and is still refused.
+LONGER_WHEN_NEGATIVE = {"crowd_control_resistance"}
+LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
+
+#: Enchantments whose sentence states no number, so the number was chosen under
+#: the project owner's delegation of 2026-09-11 and recorded as a labelled
+#: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
+#: the number, or an increase word, in the sentence, and from nothing else.
+#: `test_every_judged_number_is_still_needed` keeps this list honest.
+JUDGED_NUMBERS = {
+    # "Your retaliation damage scales with your current HP percentage -- the
+    # lower your HP the higher the retaliation": 1% increased retaliation
+    # damage for every 2% of maximum health missing.
+    "Positive_Your_retaliation_damage_scales_with_your_current",
+}
 
 #: How many rows are written, and over how many enchantments. Pinned so that
 #: the coverage only moves when somebody means it to, and says so in
 #: `docs/DECISIONS.md` at the same time.
-AUTHORED_ROWS = 7
-AUTHORED_ENCHANTMENTS = 7
+#: Seven rows over seven enchantments until 2026-09-11, when the ranged
+#: enchantments' rows were written.
+AUTHORED_ROWS = 64
+AUTHORED_ENCHANTMENTS = 56
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -130,6 +162,12 @@ def words_of(row: dict, enchantments: dict[str, dict]) -> str:
     return enchantments[row["Enchantment"]]["Effect"]
 
 
+def takes_something_away(stat: str, words: str) -> bool:
+    """Whether a negative value belongs on these words for this stat."""
+    return bool(TAKING.search(words)) or (
+        stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words)))
+
+
 def test_every_effect_names_an_enchantment_that_exists(effects, enchantments):
     missing = sorted(r["Name"] for r in effects
                      if r["Enchantment"] not in enchantments)
@@ -173,6 +211,8 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         value = float(row["ValueLow"])
         if value != float(row["ValueHigh"]):
             continue
+        if row["Enchantment"] in JUDGED_NUMBERS:
+            continue
         text = words_of(row, enchantments)
         words = {word.lower() for word in re.findall(r"[A-Za-z]+", text)}
         said = abs(value) in numbers_in(outside_ranges(text)) or any(
@@ -208,6 +248,7 @@ def test_an_increased_row_is_worded_as_an_increase(effects, enchantments):
     wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
              for r in effects
              if r["ValueKind"] == "increased"
+             and r["Enchantment"] not in JUDGED_NUMBERS
              and not INCREASE.search(words_of(r, enchantments))]
     assert not wrong, (
         "these rows are in the increased bucket and their sentence does not "
@@ -219,8 +260,21 @@ def test_a_negative_value_is_on_words_that_take_something_away(effects,
     wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
              for r in effects
              if float(r["ValueLow"]) < 0
-             and not TAKING.search(words_of(r, enchantments))]
+             and not takes_something_away(r["Stat"], words_of(r, enchantments))]
     assert not wrong, "; ".join(wrong)
+
+
+def test_longer_excuses_a_negative_value_on_one_stat_only():
+    """The one widening this file allows, checked on made-up rows so that no
+    change to the real tables can hide a mistake in it. A negative
+    crowd_control_resistance makes crowd control last longer; a negative
+    value beside "longer" on a duration is a sign error and stays refused."""
+    assert takes_something_away(
+        "crowd_control_resistance", "CC effects applied to you last 40%-70% longer")
+    assert not takes_something_away(
+        "debuff_duration_taken", "Debuffs on you last 20%-30% longer")
+    assert not takes_something_away(
+        "crowd_control_resistance", "CC effects applied to you are 40%-70% stronger")
 
 
 def test_the_tables_state_the_measured_number_of_ranges(enchantments):
@@ -239,3 +293,14 @@ def test_the_coverage_is_what_it_is_measured_to_be(effects):
         f"{len(effects)} effect rows, pinned at {AUTHORED_ROWS}. Change the "
         f"pin and the entry in docs/DECISIONS.md that states it together.")
     assert len({r["Enchantment"] for r in effects}) == AUTHORED_ENCHANTMENTS
+
+def test_every_judged_number_is_still_needed(effects, enchantments):
+    """An excuse that outlives its reason hides a real mismatch. Each name in
+    JUDGED_NUMBERS must still have a row, and its sentence must still state no
+    number; once the words gain one, the row is checked like every other."""
+    written = {r["Enchantment"] for r in effects}
+    for name in sorted(JUDGED_NUMBERS):
+        assert name in written, f"{name} is excused but has no effect row"
+        assert not numbers_in(enchantments[name]["Effect"]), (
+            f"{name}'s words now state a number, so it needs no excuse: "
+            f"{enchantments[name]['Effect']!r}")
