@@ -17,12 +17,48 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "UObject/SoftObjectPath.h"
 
 ACataclysmCharacterBase::ACataclysmCharacterBase()
 {
 	PrimaryActorTick.bCanEverTick = false;
+}
+
+void ACataclysmCharacterBase::WearBodyBeforeComponentsRegister(const TCHAR* BodyMeshPath)
+{
+	// ONLY IN A GAME WORLD: a game, a Play-In-Editor session, a test world. An
+	// editor level is left as it was. A character placed in one and given its
+	// model here would carry the model into the level file whenever the level
+	// was saved, and for the Brute that is a hard reference to art git does not
+	// carry -- the thing its soft path exists to avoid.
+	const UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent || !BodyMeshPath || MeshComponent->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+
+	// THE SAME LOAD BeginPlay DOES. With the art present, the first character of
+	// each kind in a session now loads the asset here instead of in BeginPlay,
+	// and every later call finds it already loaded. Without the art both calls
+	// fail. The engine reports a missing asset only a couple of times a session
+	// however often it is asked -- 2 "Failed to find object" lines for 8,848
+	// Hellhounds spawned without their pack, counted on 2026-09-10 -- so the
+	// second attempt should add nothing to such a checkout's log.
+	if (USkeletalMesh* Body =
+			Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad()))
+	{
+		MeshComponent->SetSkeletalMesh(Body);
+	}
 }
 
 void ACataclysmCharacterBase::BeginPlay()

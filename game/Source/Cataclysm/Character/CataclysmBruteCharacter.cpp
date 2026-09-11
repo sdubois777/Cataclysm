@@ -261,9 +261,14 @@ ACataclysmBruteCharacter::ACataclysmBruteCharacter()
 	GetCharacterMovement()->RotationRate =
 		FRotator(0.0f, DesignedTurnRateDegreesPerSecond, 0.0f);
 
-	// THE ROCK IT TEARS OUT AND CARRIES. Attached to the prop bone here rather
+	// THE ROCK IT TEARS OUT AND CARRIES. Attached to the hand bone here rather
 	// than at the moment of the throw, so that there is nothing to spawn on the
 	// frame an attack starts. Hidden until the wind-up asks for it.
+	//
+	// THE BONE IS ASKED FOR WHEN THE ROCK REGISTERS, and in a game world
+	// PreRegisterAllComponents has put the model on by then. A mesh with no
+	// model has no bones to give, and the engine warns each time it is asked.
+	// Issue #1542.
 	//
 	// NO COLLISION. It is held, not thrown -- the thing that is thrown is an
 	// ACataclysmProjectile with its own sweep -- so a colliding mesh in the
@@ -279,6 +284,17 @@ void ACataclysmBruteCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	ResolveBody(/*bIncludeAnimation=*/true);
+}
+
+void ACataclysmBruteCharacter::PreRegisterAllComponents()
+{
+	Super::PreRegisterAllComponents();
+
+	// BEFORE THE ROCK REGISTERS. CarriedRock hangs from `hand_r` from the
+	// constructor on, and until issue #1542 the mesh had no model before
+	// BeginPlay, so registering the rock asked an empty mesh for the bone:
+	// 5,260 warnings for 1,728 Brutes in one run on 2026-09-10.
+	WearBodyBeforeComponentsRegister(BodyMeshPath);
 }
 
 void ACataclysmBruteCharacter::Tick(float DeltaSeconds)

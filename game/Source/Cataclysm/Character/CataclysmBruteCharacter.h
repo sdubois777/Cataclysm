@@ -47,6 +47,14 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/**
+	 * Puts the Rampage model on the mesh before any component registers. Issue
+	 * #1542. CarriedRock hangs from the mesh's `hand_r` bone, and registering it
+	 * asks the mesh where that bone is. See
+	 * ACataclysmCharacterBase::WearBodyBeforeComponentsRegister.
+	 */
+	virtual void PreRegisterAllComponents() override;
+
+	/**
 	 * Hits the target, and plays the swing that goes with it.
 	 *
 	 * OVERRIDDEN HERE RATHER THAN DRIVEN FROM THE CONTROLLER so that the
@@ -1256,12 +1264,14 @@ public:
 	/**
 	 * Where the art comes from.
 	 *
-	 * SOFT PATHS, RESOLVED IN BeginPlay, NOT ConstructorHelpers. The Paragon
-	 * packs are excluded from git by .gitignore, so on a fresh clone, in CI, and
-	 * in every other worktree these assets are absent. A constructor-time
-	 * FObjectFinder miss fires during module load and is noisy; a soft load in
-	 * BeginPlay can warn once and fall back to the placeholder cylinder, which
-	 * is what this does.
+	 * SOFT PATHS, RESOLVED AFTER CONSTRUCTION, NOT ConstructorHelpers. The
+	 * Paragon packs are excluded from git by .gitignore, so on a fresh clone, in
+	 * CI, and in every other worktree these assets are absent. A
+	 * constructor-time FObjectFinder miss fires during module load and is noisy;
+	 * a soft load later can warn once and fall back to the placeholder cylinder,
+	 * which is what this does. The model is put on in PreRegisterAllComponents,
+	 * before the rock asks for its hand bone (issue #1542), and everything else
+	 * is resolved in BeginPlay.
 	 */
 	static const TCHAR* BodyMeshPath;
 

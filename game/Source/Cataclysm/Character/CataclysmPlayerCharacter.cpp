@@ -187,25 +187,27 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// equipped, which is the state every character was permanently in before.
 	Equipment = CreateDefaultSubobject<UCataclysmEquipmentComponent>(TEXT("Equipment"));
 
-	// THE BODY IS PUT ON IN BeginPlay, NOT HERE. Issue #1124. What used to be
-	// here was a cylinder and a cone from /Engine/BasicShapes, found with
+	// THE BODY IS PUT ON AFTER CONSTRUCTION, NOT HERE. Issue #1124. What used to
+	// be here was a cylinder and a cone from /Engine/BasicShapes, found with
 	// ConstructorHelpers because they are engine content and cost nothing to
-	// reference. The Mannequin is project content and is loaded by path at
-	// BeginPlay instead, so that the class default object built during module
-	// startup does not drag a 15 MB skeletal mesh in with it. See ResolveBody.
+	// reference. The Mannequin is project content and is loaded by path instead,
+	// so that the class default object built during module startup does not drag
+	// a 15 MB skeletal mesh in with it. In a game world PreRegisterAllComponents
+	// puts the model on, and ResolveBody does the rest in BeginPlay.
 	//
 	// THE MESH COMPONENT ITSELF ALREADY EXISTS. `ACharacter` creates one in its
 	// own constructor and `GetMesh()` returns it; nothing here has to make one.
-	// It is empty until ResolveBody puts a mesh on it.
+	// It is empty until the model is put on.
 
 	// WHAT IS HELD IN EACH HAND. Issue #1125. Empty until something is
 	// equipped, and attached to the mesh's hand sockets rather than to the
 	// capsule so that they follow the animation instead of floating beside it.
 	//
-	// ATTACHED IN THE CONSTRUCTOR AND FILLED LATER. A socket name is resolved
-	// when the skeletal mesh arrives, so naming one that does not exist yet is
-	// correct rather than early: until it appears the component simply follows
-	// the component it is attached to.
+	// ATTACHED IN THE CONSTRUCTOR AND FILLED LATER. Naming a socket here is safe
+	// because nothing asks for it yet. It is asked for when these two register,
+	// and in a game world PreRegisterAllComponents has put the model on by then:
+	// a mesh with no model cannot answer, and the engine warns each time it is
+	// asked. Issue #1542.
 	RightHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
 		TEXT("RightHandWeapon"));
 	RightHandWeapon->SetupAttachment(GetMesh(),
@@ -621,6 +623,18 @@ float ACataclysmPlayerCharacter::PlayDeathAnimation()
 	MeshComponent->SetPlayRate(1.0f);
 
 	return Clip->GetPlayLength();
+}
+
+void ACataclysmPlayerCharacter::PreRegisterAllComponents()
+{
+	Super::PreRegisterAllComponents();
+
+	// BEFORE THE WEAPONS REGISTER. RightHandWeapon and LeftHandWeapon hang from
+	// the HandGrip sockets from the constructor on, and until issue #1542 the
+	// mesh had no model before BeginPlay, so registering them asked an empty
+	// mesh for both sockets: four warnings for each socket in each of the two
+	// runs counted on 2026-09-10.
+	WearBodyBeforeComponentsRegister(BodyMeshPath);
 }
 
 void ACataclysmPlayerCharacter::BeginPlay()

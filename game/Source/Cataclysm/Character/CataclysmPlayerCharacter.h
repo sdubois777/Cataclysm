@@ -183,6 +183,14 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/**
+	 * Puts the Mannequin model on the mesh before any component registers.
+	 * Issue #1542. RightHandWeapon and LeftHandWeapon hang from the mesh's
+	 * HandGrip sockets, and registering them asks the mesh where those are. See
+	 * ACataclysmCharacterBase::WearBodyBeforeComponentsRegister.
+	 */
+	virtual void PreRegisterAllComponents() override;
+
+	/**
 	 * Moves the camera nearer or further by whole wheel notches.
 	 *
 	 * Positive zooms in, which is what a wheel pushed forward reports and what
