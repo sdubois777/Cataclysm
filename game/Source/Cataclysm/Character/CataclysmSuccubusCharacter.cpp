@@ -49,6 +49,10 @@ const TCHAR* ACataclysmSuccubusCharacter::AttackAnimationName =
 // they cannot tell apart from an ordinary attack.
 const TCHAR* ACataclysmSuccubusCharacter::CastAnimationName = TEXT("Cast");
 
+// WHAT SOULFIRE IS, as gameplay tags. Issue #666. See the header.
+const TCHAR* ACataclysmSuccubusCharacter::SoulfireTags =
+	TEXT("Type.Spell, Type.Projectile");
+
 // ONE DEATH, THE FEWEST IN THE PROJECT along with the Brute's. Measured
 // 2026-08-20 at 1.6667 seconds, inside
 // UCataclysmEnemyDeath::LongestCorpseSeconds.
@@ -381,9 +385,12 @@ void ACataclysmSuccubusCharacter::UseEnemyAbility(
 		// this creature has not had.
 		const FVector From = GetActorLocation();
 
-		// NO TAGS, WHICH IS WHAT EVERY ENEMY PROJECTILE PASSES TODAY. Tags scope
-		// the caster's own stat modifiers, and an enemy carries none.
-		const FGameplayTagContainer NoTags;
+		// WHAT SOULFIRE IS, from the header's tag list. Issue #666. Until then
+		// every enemy projectile but the Brute's rock was fired with no tags, so
+		// its hit could not say it came from range or that it was a spell. The
+		// list carries no area tag, so it is still a direct hit that can be evaded.
+		const FGameplayTagContainer SoulfireShotTags =
+			UCataclysmSkillShapes::TagsFromCell(SoulfireTags);
 
 		// AIMED WHERE IT WAS MARKED. AimedAt is where the target stood when the
 		// wind-up began, so a player who stepped out of the lane is not hit --
@@ -394,7 +401,7 @@ void ACataclysmSuccubusCharacter::UseEnemyAbility(
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SoulfireRadiusCm,
 			SoulfireSpeedCmPerSecond, SoulfirePierce, /*bInReturns=*/false,
-			SoulfireDamagePercent, NoTags, /*bInBurns=*/false);
+			SoulfireDamagePercent, SoulfireShotTags, /*bInBurns=*/false);
 		return;
 	}
 

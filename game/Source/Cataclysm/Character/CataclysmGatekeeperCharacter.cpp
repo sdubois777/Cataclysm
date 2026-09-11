@@ -82,6 +82,10 @@ const TCHAR* ACataclysmGatekeeperCharacter::CleaveTags =
 const TCHAR* ACataclysmGatekeeperCharacter::SoulHarvestTags =
 	TEXT("Type.AOE.PointBlank, Type.Strike, Type.Melee");
 
+// WHAT SOULFALL IS, as gameplay tags. Issue #666. See the header.
+const TCHAR* ACataclysmGatekeeperCharacter::SoulfallTags =
+	TEXT("Type.Projectile, Type.Ranged");
+
 /**
  * Seconds between the boss's swings, for tuning one while playing.
  */
@@ -434,9 +438,13 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 		// animation threw it overhead; the same question is open here.
 		const FVector From = GetActorLocation();
 
-		// NO TAGS, WHICH IS WHAT EVERY ENEMY PROJECTILE PASSES TODAY. Tags scope
-		// the caster's own stat modifiers, and an enemy carries none.
-		const FGameplayTagContainer NoTags;
+		// WHAT SOULFALL IS, from the header's tag list. Issue #666. Until then
+		// every enemy projectile but the Brute's rock was fired with no tags, so
+		// its hit could not say it came from range. The list carries no area tag,
+		// so the shot's own hit is still a direct one; the burning ground it
+		// leaves is a separate thing.
+		const FGameplayTagContainer SoulfallShotTags =
+			UCataclysmSkillShapes::TagsFromCell(SoulfallTags);
 
 		// A FLIGHT TIME AND NO SPEED AT ALL, so it lobs. A ballistic shot has no
 		// single speed -- slowest at the top of its arc, fastest as it lands --
@@ -445,7 +453,7 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 		LastGoutLobbed = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SoulfallRadiusCm, /*InSpeed=*/0.0f,
 			SoulfallPierce, /*bInReturns=*/false, SoulfallDamagePercent,
-			NoTags, /*bInBurns=*/true, /*InBodyMesh=*/nullptr,
+			SoulfallShotTags, /*bInBurns=*/true, /*InBodyMesh=*/nullptr,
 			SoulfallFlightSecondsFor(AimedAt));
 
 		// AND THE GROUND IT LANDS ON KEEPS BURNING. This is what the ability is

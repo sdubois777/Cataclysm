@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — Damage taken from one source is a condition on the hit, and a hit records whether it is melee, ranged or a spell
+
+**Affects:** `FCataclysmBlowContext` and `FCataclysmStatConditions::Blow` in
+`CataclysmStatPipeline.h`; four conditions, `hit_is_melee_attack`,
+`hit_is_ranged_attack`, `hit_is_spell` and `opponent_is_boss`, in
+`ECataclysmStatCondition`, `NamedStatConditions` and `CONDITIONS` in
+`tools/generate_datatables.py`; `UCataclysmAbilitySystemComponent::StatForSkill`
+and `CurrentConditions`; `FCataclysmHitDelivery` and `FCataclysmIncomingHit`,
+which gain `bIsRanged` and `bIsSpell`, and `bFromBoss` on the second;
+`UCataclysmSkillEffects::ApplyHit`, `ApplyTypedSpec`, `IsRanged` and `SpellTag`;
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`;
+`UCataclysmDamageCalculation::Resolve`; the Corrupted Sentinel's two shots, the
+Gatekeeper's Soulfall and the Succubus's Soulfire; the Damage Calculation
+section of `docs/Cataclysm_GDD_v2.md`. Issue #666, for epic #45.
+
+**The project owner's ruling, 2026-09-11,** relayed by the coordinating session:
+"Each is its own 'more' or 'less' multiplier on damage taken, used only for hits
+from that source. The 75% cap on flat damage reduction does not limit it, and
+like every 'less' it can remove at most 99% of the damage. Hits will need to
+record whether they are ranged or a spell; today they record only melee."
+
+**The project owner's answer on which enemy attacks are spells, 2026-09-11,**
+relayed by the coordinating session: "not sure, probably all of the succubus
+attacks right? As a spellcaster type?" The owner's words include "not sure", so
+this answer may change. It is built this way:
+
+- **Every ability of the Succubus is a spell.** Soulfire is her only ability
+  that hits. It sends `Type.Spell, Type.Projectile`, so it is also ranged. Her
+  curse, Wither the Living, applies a status and deals no damage, and her aura,
+  Dominion, buffs her allies. Neither is a hit, so no condition about a hit
+  reads them.
+- **Every other enemy ability is an attack.** `game/Data/EnemyArchetypes.csv`
+  describes the Succubus as a "Ranged caster" and no other archetype as a
+  caster.
+- **The Gatekeeper's Soulfall stays an attack,** sending `Type.Projectile,
+  Type.Ranged`. That follows the owner's own reason: `EnemyArchetypes.csv`
+  calls the Gatekeeper a "Multi-phase towering demon", not a caster. The
+  coordinating session has told the owner. Making it a spell would change one
+  tag.
+
+| Piece | What it does |
+| :-- | :-- |
+| The hit's facts | A hit records, as three separate facts, whether it was struck in melee, came from range and was a spell, and whether the creature that threw it is a boss. `ApplyHit` reads the first three off the skill's tags, and `ApplyTypedSpec` carries them to the defender as tags on the damage effect: the route `Type.Melee` has taken since #1032. A projectile is ranged. |
+| The blow context | `FCataclysmBlowContext` holds the four facts. The damage taken step in `Resolve` passes the hit's facts into `StatForSkill`. Every other caller passes nothing, and every fact is then false. |
+| The conditions | "You take 20%-40% less damage from spells" becomes `damage_taken`, "more", -20 to -40, with `hit_is_spell`. |
+| The enemies' shots | The Corrupted Sentinel's Siege Bolt and Brimstone Mortar and the Gatekeeper's Soulfall send `Type.Projectile, Type.Ranged`, and the Succubus's Soulfire sends `Type.Spell, Type.Projectile`. Before this, every enemy projectile but the Brute's rock was fired with no tags at all. |
+
+**Why there is no new stat.** `damage_taken` already goes through the three
+buckets, and `Resolve` already asks the defender for it afresh on every hit
+(#1022, #1026). So a "less" row on it is already a multiplier of its own, which
+the 75% cap on `damage_reduction` never reaches. Only the hit's own facts were
+missing from the conditions. The Demonic trees session reached the same
+conclusion from the other side.
+
+**Labelled judgements,** made under the owner's delegation of 2026-09-11 unless
+marked:
+
+1. **An attack is a hit that is not a spell.** The rows say "melee attacks",
+   "ranged attacks" and "spells", and Path of Exile draws the line the same way.
+   maxroll's damage guide: "Each skill gem has tags below its name that tell you
+   if it's an attack or spell", and "Freezing Pulse is a spell that is affected
+   by Spell, Projectile and Cold Damage modifiers"
+   ([maxroll](https://maxroll.gg/poe/getting-started/damage-for-beginners)). A
+   player on the Path of Exile forum, not a staff member, says projectile damage
+   "applies to both Spells and Attacks"
+   ([forum thread 657491](https://www.pathofexile.com/forum/view-thread/657491)).
+   So a spell that fires a projectile meets `hit_is_spell` and not
+   `hit_is_ranged_attack`. Two Demonic weapon skills, the heavy Wand and Staff,
+   are that shape. **On the owner's review list.**
+2. **Three facts rather than one kind of delivery,** because one value cannot
+   describe a spell that fires a projectile. The dungeon modifier session had
+   proposed one kind per hit; the coordinating session chose the three facts.
+3. **A projectile is ranged.** The vocabulary's own words: `Type.Projectile` is
+   "Skills that fire a traveling entity" and `Type.Ranged` is "Any ranged skill
+   regardless of delivery method".
+4. **A boss is what `ACataclysmEnemyCharacter::IsBoss` says:** the Boss and
+   Cataclysm Boss rarities, and not a Herald. The rows do not say whether a
+   Herald counts. It is the line the stun rule already uses.
+5. **Only a hit meets these conditions.** A damage over time tick answers no to
+   all four. The owner's words are "used only for hits from that source", and a
+   tick is not a hit, which is why it can neither be evaded nor critically strike.
+
+**Not in this change.**
+
+- **The rows themselves.** They wait for the workbook pull request, as the
+  ranged rows do.
+- **Three rows that need two conditions at once,** where a modifier holds one:
+  "You take 15%-25% more damage from melee attacks while moving", "While
+  stationary you take 20%-35% increased damage from ranged attacks" and "You
+  take 20%-35% increased damage from melee attacks while your HP is above 75%".
+  The first two also need a moving state.
+- **"You take 15%-25% more damage from enemies that are currently CC'd",** which
+  needs the attacker's state read at the hit.
+- **The opponent's distance.** The Demonic trees session adds it to
+  `FCataclysmBlowContext` in its step 4.
+- **The attacker's side.** `AttackDamageIncreasesForSkill` and
+  `AttackDamageMoreForSkill` do not take the blow context, because nothing here
+  needs them to.
+
+---
+
 ## 2026-09-11 — An item keeps where inside each enchantment range it rolled, and the hover text and the stat read the same number
 
 **Affects:** `FCataclysmRolledEnchantment`, which gains `PositiveRoll` and

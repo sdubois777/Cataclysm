@@ -69,6 +69,10 @@ namespace
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
+		{ TEXT("hit_is_melee_attack"),          ECataclysmStatCondition::HitIsMeleeAttack },
+		{ TEXT("hit_is_ranged_attack"),         ECataclysmStatCondition::HitIsRangedAttack },
+		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
+		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
 	};
 
 	struct FNamedStatScale
@@ -241,6 +245,24 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.ClassResourceHeld >= 0.0f
 			&& State.ClassResourceMaximum > 0.0f
 			&& State.ClassResourceHeld >= State.ClassResourceMaximum;
+
+	case ECataclysmStatCondition::HitIsMeleeAttack:
+		// NO THRESHOLD, SO `Value` IS NOT READ, and nothing to refuse as unknown.
+		// Issue #666. A caller with no blow in hand leaves every fact false, and
+		// a bonus for being hit in melee is correctly withheld from it, the same
+		// argument `WhileBleeding` makes. An attack is a hit that is not a spell.
+		return State.Blow.bIsMelee && !State.Blow.bIsSpell;
+
+	case ECataclysmStatCondition::HitIsRangedAttack:
+		// THE SAME TWO RULES AS ABOVE. A projectile has already been counted as
+		// ranged where the blow was built, so this reads one fact rather than two.
+		return State.Blow.bIsRanged && !State.Blow.bIsSpell;
+
+	case ECataclysmStatCondition::HitIsSpell:
+		return State.Blow.bIsSpell;
+
+	case ECataclysmStatCondition::OpponentIsBoss:
+		return State.Blow.bOpponentIsBoss;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved

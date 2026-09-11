@@ -87,6 +87,18 @@ public:
 	 */
 	enum : int32 { BrimstoneMortarAbility = 0, SiegeBoltAbility = 1 };
 
+	/**
+	 * What the two shots ARE, as gameplay tags. Issue #666.
+	 *
+	 * BOTH ARE PROJECTILES FIRED FROM RANGE, written the way a skill row's Tags
+	 * cell is and parsed by the same code, as the Brute's thrown rock is. Until
+	 * issue #666 both were fired with no tags at all, so a hit from this creature
+	 * could not say it came from range, and "you take 10%-30% more damage from
+	 * ranged attacks" never reached it.
+	 */
+	static const TCHAR* SiegeBoltTags;
+	static const TCHAR* BrimstoneMortarTags;
+
 	virtual float AttackReachCm() const override { return SiegeBoltRangeCm; }
 	virtual float SightRadiusCm() const override { return SentinelNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return SentinelRoamRadiusCm; }

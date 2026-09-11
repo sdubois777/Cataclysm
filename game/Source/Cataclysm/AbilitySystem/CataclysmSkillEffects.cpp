@@ -308,11 +308,33 @@ float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* Abil
 		UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
 }
 
+FGameplayTag UCataclysmSkillEffects::SpellTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(SpellTagName), /*ErrorIfNotFound=*/false);
+}
+
 bool UCataclysmSkillEffects::IsSpell(const FGameplayTagContainer& SkillTags)
 {
-	const FGameplayTag Spell = UGameplayTagsManager::Get().RequestGameplayTag(
-		FName(SpellTagName), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Spell = SpellTag();
 	return Spell.IsValid() && SkillTags.HasTag(Spell);
+}
+
+bool UCataclysmSkillEffects::IsRanged(const FGameplayTagContainer& SkillTags)
+{
+	// EITHER TAG, BECAUSE A PROJECTILE IS RANGED. Issue #666. The vocabulary
+	// declares `Type.Projectile` as "Skills that fire a traveling entity" and
+	// `Type.Ranged` as "Any ranged skill regardless of delivery method". Most
+	// projectile skills carry only the first; the Brute's rock carries both.
+	for (const FGameplayTag& Tag : { UCataclysmDamageCalculation::RangedTag(),
+									 UCataclysmDamageCalculation::ProjectileTag() })
+	{
+		if (Tag.IsValid() && SkillTags.HasTag(Tag))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
@@ -638,6 +660,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			Arrived.bIsMelee || (Melee.IsValid() && SkillTags.HasTag(Melee));
 	}
 
+	// AND WHETHER IT CAME FROM RANGE OR WAS A SPELL, read and combined the same
+	// way. Issue #666. A projectile is ranged: see `IsRanged`. Nothing here asks
+	// whether a ranged hit is also a spell; the conditions that read these do.
+	Arrived.bIsRanged = Arrived.bIsRanged || IsRanged(SkillTags);
+	Arrived.bIsSpell = Arrived.bIsSpell || IsSpell(SkillTags);
+
 	// AND THE SKILL'S OWN DAMAGE TYPE GOES WITH IT, so the bolt and the burst
 	// can be drawn in it. Only for colour: see the field's declaration. Set here
 	// and not by each caller because this is the one place every damaging skill
@@ -871,6 +899,24 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		if (Melee.IsValid())
 		{
 			Spec.AddDynamicAssetTag(Melee);
+		}
+	}
+	// AND FROM RANGE, AND AS A SPELL: the same journey, for the same reason.
+	// Issue #666. One tag says ranged, whichever of the two the skill carried.
+	if (Delivery.bIsRanged)
+	{
+		const FGameplayTag Ranged = UCataclysmDamageCalculation::RangedTag();
+		if (Ranged.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Ranged);
+		}
+	}
+	if (Delivery.bIsSpell)
+	{
+		const FGameplayTag Spell = UCataclysmSkillEffects::SpellTag();
+		if (Spell.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Spell);
 		}
 	}
 	if (Delivery.bCannotCriticallyStrike)

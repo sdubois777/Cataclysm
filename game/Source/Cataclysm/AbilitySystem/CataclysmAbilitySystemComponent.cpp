@@ -296,7 +296,7 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 
 float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
-	float SkillHealthCostPercent) const
+	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -315,7 +315,7 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// design's own words on it.
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
-			   CurrentConditions(SkillHealthCostPercent)).Final;
+			   CurrentConditions(SkillHealthCostPercent, Blow)).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
@@ -383,7 +383,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 }
 
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
-	float SkillHealthCostPercent) const
+	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -569,6 +569,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// patch of ground -- leaves it at -1 and the condition refuses, which is the
 	// same rule the readings above follow.
 	State.SkillHealthCostPercent = SkillHealthCostPercent;
+
+	// AND WHAT THE BLOW BEING TAKEN IS, the second reading that is not a
+	// property of the character. Issue #666. Passed through unchanged: only the
+	// damage taken lookup has a hit in hand, and every other caller's facts are
+	// all false, which the four conditions reading them refuse.
+	State.Blow = Blow;
 
 	return State;
 }

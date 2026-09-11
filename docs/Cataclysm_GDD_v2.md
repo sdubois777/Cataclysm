@@ -1538,6 +1538,28 @@ one stat and it goes through the same three buckets as everything else, so a
 character with a 20% more and a 25% less takes 1.20 × 0.75 of a hit rather than
 0.95 of one.
 
+**Damage taken from one source is a damage taken modifier that asks about the
+hit.** "You take 20% less damage from spells" is a `damage_taken` row in the
+"more" bucket at -20 with the condition `hit_is_spell`, so it multiplies only a
+hit that is a spell. It is not damage reduction: the 75% cap belongs to the flat
+damage reduction stat alone and does not reach it, and like every "less" it
+removes at most 99% of a hit. Each such row is a multiplier of its own, so a
+character at the 75% cap who takes 50% less damage from spells takes
+0.25 × 0.5 = 12.5% of a spell. A row that says "increased" instead joins the
+additive sum, as above. The four tags `Stat.Defense.Global`,
+`Stat.Defense.Melee`, `Stat.Defense.Spell` and `Stat.Defense.Ranged` on the
+workbook's Tags sheet sort these rows; they are not four stats. Ruled by the
+project owner on 2026-09-11 (issue #666).
+
+**A hit records three facts: whether it was struck in melee, whether it came
+from range, and whether it was a spell.** A projectile counts as ranged. An
+attack is any hit that is not a spell, so "melee attacks" and "ranged attacks"
+leave out a spell even when the spell fires a projectile, which is where Path of
+Exile draws the line. "Damage from Boss enemies" asks whether the attacker is a
+Boss or a Cataclysm Boss; a Herald is not one. **Only a hit meets these
+conditions.** A damage over time tick is not a hit, and the character sheet,
+which has no hit to ask about, shows none of them.
+
   
 
 **A critical strike is not one of these nine steps.** The nine are what the

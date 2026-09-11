@@ -386,10 +386,18 @@ public:
 	 * sheet and for any caller that does not have one, and it refuses the
 	 * condition. Every caller that existed before that issue passes nothing and
 	 * gets exactly what it got before.
+	 *
+	 * AND A CONDITION ABOUT THE BLOW BEING TAKEN, since issue #666. `Blow` says
+	 * whether the hit is melee, ranged or a spell and whether the attacker is a
+	 * boss. Only the damage taken lookup in `UCataclysmDamageCalculation::Resolve`
+	 * has a hit in hand and passes one. Every other caller passes nothing, every
+	 * fact is false, and it gets exactly what it got before.
 	 */
 	float StatForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
 					   float Fallback,
-					   float SkillHealthCostPercent = -1.0f) const;
+					   float SkillHealthCostPercent = -1.0f,
+					   const FCataclysmBlowContext& Blow =
+						   FCataclysmBlowContext()) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -399,12 +407,15 @@ public:
 	 * it and most callers should use that instead.
 	 *
 	 * @param SkillHealthCostPercent  what the skill in hand cost, as a share of
-	 *        maximum health, or -1 for no skill in hand. It is the one reading
-	 *        here that is not a property of the character, which is why it is
-	 *        passed in rather than read. Issue #983.
+	 *        maximum health, or -1 for no skill in hand. Like `Blow`, it is not
+	 *        a property of the character, which is why it is passed in rather
+	 *        than read. Issue #983.
+	 * @param Blow  what the blow being taken is, for the four conditions that
+	 *        ask about it. Only the damage taken lookup has one. Issue #666.
 	 */
 	FCataclysmStatConditions CurrentConditions(
-		float SkillHealthCostPercent = -1.0f) const;
+		float SkillHealthCostPercent = -1.0f,
+		const FCataclysmBlowContext& Blow = FCataclysmBlowContext()) const;
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.

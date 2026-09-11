@@ -754,4 +754,17 @@ public:
 	 */
 	static const TCHAR* CleaveTags;
 	static const TCHAR* SoulHarvestTags;
+
+	/**
+	 * What Soulfall IS, as gameplay tags. Issue #666.
+	 *
+	 * A PROJECTILE FIRED FROM RANGE, written the way a skill row's Tags cell is,
+	 * as the Brute's thrown rock is. Until issue #666 it was fired with no tags,
+	 * so its hit could not say it came from range.
+	 *
+	 * AN ATTACK, NOT A SPELL, which is the recommendation put to the project
+	 * owner: the Succubus's Soulfire is the one enemy spell. The coordinating
+	 * session was asked to put this lobbed shot to the owner as well.
+	 */
+	static const TCHAR* SoulfallTags;
 };
