@@ -1501,10 +1501,10 @@ class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
     A row names an enchantment by the row name an item stores, repeats its
-    words, and states one stat, one bucket and one value. Four kinds of row are
-    refused, and each is a mistake a person editing the sheet can make: a name
-    that matches nothing, words that no longer match the enchantment, a set
-    row, and a range.
+    words, and states one stat, one bucket and a value or a range. Four kinds
+    of row are refused, and each is a mistake a person editing the sheet can
+    make: a name that matches nothing, words that no longer match the
+    enchantment, a set row, and a range the words do not state in that order.
     """
 
     ENCHANTMENTS = [
@@ -1516,6 +1516,10 @@ class TestEnchantmentEffects:
          "Set", 5, "Stat.Defense.Block", None,
          "Your movement speed is reduced by 10%", "Set", 5,
          "Stat.Utility.Movespeed"],
+        ["Your block chance is increased by 10%-20%", "Generic", 3,
+         "Stat.Defense.Block", None,
+         "Your attack speed is reduced by 20%-35%", "Generic", 3,
+         "Stat.Offense.Speed"],
     ]
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
@@ -1596,18 +1600,62 @@ class TestEnchantmentEffects:
         with pytest.raises(gen.DataError, match="is a set row"):
             gen.enchantment_effects(book)
 
-    def test_a_range_is_refused_until_the_owner_rules_on_ranges(self,
-                                                               tmp_path):
+    BLOCK = "Positive_Your_block_chance_is_increased_by_10_20"
+    BLOCK_WORDS = "Your block chance is increased by 10%-20%"
+    SLOWER = "Negative_Your_attack_speed_is_reduced_by_20_35"
+    SLOWER_WORDS = "Your attack speed is reduced by 20%-35%"
+
+    def test_a_range_its_words_state_is_kept(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+            "Stat": "block_chance", "Value Kind": "increased",
+            "Value Low": 10, "Value High": 20})]))
+
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (10.0, 20.0)
+
+    def test_a_drawback_range_carries_its_sign_in_the_sentences_order(
+            self, tmp_path):
+        """"Reduced by 20%-35%" is -20 at the lowest roll and -35 at the
+        highest, so the top roll gives the larger reduction the hover text
+        shows."""
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": self.SLOWER, "Effect": self.SLOWER_WORDS,
+            "Stat": "attack_speed", "Value Kind": "increased",
+            "Value Low": -20, "Value High": -35})]))
+
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (-20.0, -35.0)
+
+    def test_a_range_its_words_do_not_state_is_refused(self, tmp_path):
         book = self.book(tmp_path, [self.row({"Value Low": 10,
                                               "Value High": 30})])
-        with pytest.raises(gen.DataError, match="states a range"):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
             gen.enchantment_effects(book)
 
-    def test_a_high_value_below_the_low_is_refused(self, tmp_path):
-        book = self.book(tmp_path, [self.row({"Value Low": 30,
-                                              "Value High": 10})])
-        with pytest.raises(gen.DataError, match="below its low value"):
+    def test_a_range_written_backwards_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({
+            "Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+            "Stat": "block_chance", "Value Kind": "increased",
+            "Value Low": 20, "Value High": 10})])
+        with pytest.raises(gen.DataError, match="do not state in that order"):
             gen.enchantment_effects(book)
+
+    def test_a_range_with_two_signs_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({
+            "Enchantment": self.SLOWER, "Effect": self.SLOWER_WORDS,
+            "Stat": "attack_speed", "Value Kind": "increased",
+            "Value Low": 20, "Value High": -35})])
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(book)
+
+    def test_the_ranges_in_a_sentence_are_read_as_written(self):
+        assert gen.enchantment_ranges(
+            "a 20%-35% slow for 2-4 seconds") == [(20.0, 35.0), (2.0, 4.0)]
+        assert gen.enchantment_ranges(
+            "for every 100,000 - 500,000 kills") == [(100000.0, 500000.0)]
+        assert gen.enchantment_ranges("You lose 1-4% max resistances") == \
+            [(1.0, 4.0)]
+        assert gen.enchantment_ranges(
+            "Archon's Aegis (2-Piece Bonus): increased by 25%") == []
 
     def test_an_unknown_condition_is_refused(self, tmp_path):
         book = self.book(tmp_path, [self.row({"Condition": "while_dancing",

@@ -373,8 +373,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 
 	// SEVEN ROWS, AND THEY ARE THE FIRST. Issue #45. Only the enchantments whose
 	// sentence states one number and needs nothing the game lacks. Most
-	// sentences state a range, and how a range becomes one number on one item is
-	// a question to the project owner, so their rows wait for the answer.
+	// sentences state a range. Since 2026-09-11 an item keeps where inside a
+	// range it rolled, but the rows for those sentences are not written yet.
 	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",      7)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.

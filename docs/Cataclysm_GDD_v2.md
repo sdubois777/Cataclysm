@@ -3448,6 +3448,10 @@ So a strong positive is never bought cheaply, and a modest positive can still ar
 
   
 
+**A range rolls once, when the enchantment is put on the item, and the item keeps it.** Ruled by the project owner on 2026-09-11: "When an enchantment is put on an item, it rolls a value evenly inside its range and keeps it, and the hover text shows it. Upgrading the item from +0 to +10 does not change it." 385 of the 575 enchantments state a range such as "10%-30%". Every value the range can be written as is equally likely, at the precision it is written in, so "10%-30%" gives any whole number from 10 to 30. The hover text shows that number in place of the range, and the character's stat receives the same number. Each half of an enchantment rolls once, so a half that states two ranges rolls high or low on both together. `docs/DECISIONS.md` holds the reasoning.
+
+  
+
 |  |  |
 | :-: | :-: |
 | **UNIQUE PER CHARACTER** | Each enchantment can only appear once across all of a player's equipped gear. You cannot equip the same enchantment on multiple pieces. This prevents degenerate stacking of powerful effects (e.g. equipping '50% increased HP' on every ring slot), keeps the power ceiling consistent, and makes build assembly a genuine puzzle — players must find a complementary set of enchantments rather than farming one great roll repeatedly. |

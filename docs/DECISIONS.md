@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — An item keeps where inside each enchantment range it rolled, and the hover text and the stat read the same number
+
+**Affects:** `FCataclysmRolledEnchantment`, which gains `PositiveRoll` and
+`NegativeRoll`, and `UCataclysmItemValues::EnchantmentValue`,
+`EnchantmentTextAtRoll` and `EnchantmentRanges`, in
+`game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp`;
+`UCataclysmDropRoll::RollEnchantments`;
+`UCataclysmItemTooltip::EnchantmentLines`;
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto`; and
+`enchantment_effects` and `enchantment_ranges` in
+`tools/generate_datatables.py`. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45).
+
+### What was missing
+
+385 of the 575 enchantment rows state a range, such as "10%-30%", and an item
+stored only which two rows it drew. So no item had a number for any of those
+rows, and the Enchantment Effects sheet refused every range.
+
+### The ruling this builds
+
+The project owner ruled on 2026-09-11, in the entry below: "When an enchantment
+is put on an item, it rolls a value evenly inside its range and keeps it, and
+the hover text shows it. Upgrading the item from +0 to +10 does not change it."
+
+| Piece | What it does |
+| :-- | :-- |
+| An item's enchantment record | Carries two saved numbers from 0 to 1, `PositiveRoll` and `NegativeRoll`: where inside each half's range this item rolled. |
+| The drop | Sets both when it draws the pair. They come from a second random stream, seeded from where the item's stream has got to, so every other seeded draw is where it was. |
+| `EnchantmentValue` | Turns a range's two ends and a roll into one number. |
+| `EnchantmentTextAtRoll` | Writes the sentence with each range replaced by that number, which is what the hover text shows. |
+| `AccumulateEnchantmentsInto` | Gives the character the same number. |
+| The generator | Accepts a range only when the enchantment's own words state it: the first number as Value Low and the second as Value High, with the row's sign. |
+
+### Judgements, each labelled as one
+
+The owner's words settle that the roll is even and kept, and that upgrading
+does not change it. **Each item below is a judgement**, made under the owner's
+delegation of 2026-09-11, and the owner reviews them with the others.
+
+- **Every written value is equally likely.** "10%-30%" is the 21 whole numbers
+  from 10 to 30, each with a twenty-first of the rolls. Rounding a continuous
+  draw instead would give each end half the share of every value between them.
+  This is how "evenly" is read.
+- **A value keeps the precision its range is written in.** "0.5-1" rolls in
+  tenths, and "100,000 - 500,000" in whole numbers with its commas kept.
+- **One roll per half.** Five sentences state two ranges, and both read the
+  half's one roll. That keeps a save to one number per half, which is the cost
+  the owner was shown when choosing this rule.
+- **A roll of 1 is the second number of the range, with the row's sign.**
+  "Reduced by 30%-50%" at the top roll is a 50% reduction, which is what the
+  hover text shows. An item built in code, or loaded from a save written
+  before the field existed, has a roll of 1, which is also the default of an
+  affix's roll.
+- **A benefit carried by two pieces applies once, at the higher roll,** until
+  equipping the duplicate is refused. The result then does not depend on which
+  piece was put on first.
+
+**What the research did and did not settle.** Every game checked rolls once and
+keeps the value; the sources are in the entry below. How values are spread
+inside a range is not stated by any source that could be read. The Path of
+Exile forum thread on how modifiers roll holds only player speculation; the
+Craft of Exile basics page says only that a Divine Orb rerolls values "within
+the actual value range of the mod tier"; and Last Epoch's support article on
+affixes refused an automated read. So the equal share for each written value
+is a judgement and not a finding.
+
+### What is not in this change
+
+- **No effect rows for the ranged sentences.** The Enchantment Effects sheet
+  still holds seven rows. The 54 rows the plan on #45 expected wait for the
+  design workbook, whose edits the coordinating session sequences between
+  sessions.
+- **A roll never changes after the drop.** The design says a player "can also
+  apply one afterwards"; nothing applies an enchantment after the drop yet,
+  and when something does it will roll the same way.
+
+---
+
 ## 2026-09-11 — The owner's answers on enchantment ranges, stagger, stacks and damage taken by source, and the judgements delegated to the enchantment session
 
 **Affects:** how the rows of `game/Data/EnchantmentsPositive.csv` and
@@ -186,7 +265,7 @@ has to be read again before its numbers are trusted.
 | Refused | Why |
 | :-- | :-- |
 | A set row | A set's rows apply by how many worn pieces carry the set, and the sheet cannot say how many pieces a row needs yet. The set bonus pull request adds that. |
-| A stated range, such as "10%-30%" | The owner answered on 2026-09-11 that a range rolls once, evenly, when the enchantment is put on an item, and that the item keeps the value (the entry above). Storing that roll on the item is the next pull request of #45, so until it lands every row states one value. |
+| A stated range, such as "10%-30%" | The owner answered on 2026-09-11 that a range rolls once, evenly, when the enchantment is put on an item, and that the item keeps the value (the entry above). Storing that roll on the item is the next pull request of #45, and its own entry in this log records how the roll is stored and read. |
 | A condition or scale the game cannot judge | The same rule the Passive Effects sheet follows, and the same names |
 
 ### How a worn enchantment applies
