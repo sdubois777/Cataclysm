@@ -382,7 +382,32 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
-	if (!GameMode || GameMode->SpawnBrutes() == 0)
+	if (!GameMode)
+	{
+		AddError(TEXT("Could not spawn the game mode."));
+		return false;
+	}
+
+	// SPAWNED AT COMMON, AND THIS TEST FAILED WITHOUT IT. Issues #1449 and #1552.
+	//
+	// Left at -1 this setting means "roll one", and a rolled creature draws
+	// modifiers: one at Elite, three at Herald. The draw is seeded from the
+	// creature's object index (#888), so what this Brute drew depended on which
+	// tests had run first. On 2026-09-11 two full-suite runs of one binary rolled
+	// a Herald and then an Elite, and both drew Generic_Shielder. Reading the
+	// code, #1552 gives the reason that fails here: a spawner draws modifiers
+	// after the last call that applies stats, so there is no shield for the
+	// first blow, and the SetArmour call below applies the stats and fills the
+	// shield before the second. The second blow was absorbed whole both times --
+	// "(29.08 against 0.00)" and "(33.92 against 0.00)" -- which reads as armour
+	// doing nothing.
+	//
+	// A COMMON CREATURE DRAWS NO MODIFIERS, because the count is the rarity step
+	// itself (`UCataclysmEnemyModifiers::CountForRarityStep`). The sibling test
+	// `TheDesignedCreaturesSpawnWithArmour` has pinned the same way since #886.
+	GameMode->BruteRarityStep = 0;
+
+	if (GameMode->SpawnBrutes() == 0)
 	{
 		AddError(TEXT("Could not spawn a Brute."));
 		return false;
@@ -398,6 +423,15 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Attacker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	// AND IT REALLY IS COMMON, WITH NOTHING DRAWN. Read back off the actor
+	// rather than trusted, so a pin that stopped working says so here instead of
+	// turning the comparison below into one between two different creatures.
+	if (!TestEqual(TEXT("The Brute spawned Common"), Brute->RarityStep, 0)
+		|| !TestEqual(TEXT("and drew no modifiers"), Brute->ModifierRows.Num(), 0))
+	{
+		return false;
+	}
 
 	UAbilitySystemComponent* AbilitySystem =
 		UCataclysmTargeting::AbilitySystemOf(Brute);
@@ -418,6 +452,23 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// NOTHING BUT ARMOUR MAY DECIDE THE BLOW. Evasion and block are rolled in the
+	// defender from the unseeded global random stream (#1449), and
+	// `ApplyDirectDamage` offers no way to pin either roll:
+	// `UCataclysmVitalAttributeSet` hands `UCataclysmDamageCalculation::Resolve`
+	// -1 for both. At a chance of zero neither can happen, because a roll is
+	// compared as `Roll < chance` and is never below zero. So the chances are
+	// asserted, since the rolls cannot be pinned.
+	if (!TestEqual(TEXT("and cannot evade a blow"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute()), 0.0f)
+		|| !TestEqual(TEXT("or block one"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetBlockChanceAttribute()), 0.0f))
+	{
+		return false;
+	}
+
 	// THE SAME HIT, TWICE. Small against the creature's health so neither
 	// application is clamped by the health remaining.
 	constexpr float Blow = 50.0f;
@@ -428,6 +479,16 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 		- AbilitySystem->GetNumericAttribute(Health);
 
 	Brute->SetArmour(0.0f);
+
+	// AND NO SHIELD WAITING FOR THE SECOND BLOW. SetArmour re-applies the whole
+	// stat block, which is where the shield in #1552 arrived. A Common Brute has
+	// none, and this says so rather than assuming it.
+	if (!TestEqual(TEXT("and it has no shield to absorb the second blow"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()), 0.0f))
+	{
+		return false;
+	}
 
 	const float BeforeBare = AbilitySystem->GetNumericAttribute(Health);
 	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Brute, Blow);
