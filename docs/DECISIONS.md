@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — The owner's answers on enchantment ranges, stagger, stacks and damage taken by source, and the judgements delegated to the enchantment session
+
+**Affects:** how the rows of `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentsNegative.csv` are read, and the pull requests of issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45) that follow the
+Enchantment Effects sheet (the entry below). Nothing in the game changes with
+this entry; each ruling is built by the pull request named beside it. Row ids
+count data rows from 1 in each file: P001 is the first row of
+`EnchantmentsPositive.csv` and N001 the first of `EnchantmentsNegative.csv`.
+
+### The owner's answers of 2026-09-11
+
+The enchantment session put ten questions to the project owner, each with genre
+sources, and the coordinating session relayed the answers. The owner answered
+four of them the recommended way. The quoted words are the option text the owner
+chose.
+
+| Question | The owner's answer | Where it is built |
+| :-- | :-- | :-- |
+| Which number a stated range gives. 385 of the 575 rows state a range. | "When an enchantment is put on an item, it rolls a value evenly inside its range and keeps it, and the hover text shows it. Upgrading the item from +0 to +10 does not change it." | The next pull request of #45, which stores the roll on the item |
+| What "stagger" is. Ten rows treat it as a state with a duration. | "A knockback, pull or knockdown also leaves the target Staggered for 1 second. The ten enchantments apply that state, check for it, or make it last longer." | A pull request of #45 that builds the timed Staggered state once, for every system to use |
+| The one-stack rule, [#913](https://github.com/sdubois777/Cataclysm/issues/913) | "Keep the rule. The enchantment session drafts new wording for those enchantments, and you review it later with the other drafted wording." | #913 |
+| Damage taken from one source, [#666](https://github.com/sdubois777/Cataclysm/issues/666) | "Each is its own 'more' or 'less' multiplier on damage taken, used only for hits from that source. The 75% cap on flat damage reduction does not limit it, and like every 'less' it can remove at most 99% of the damage. Hits will need to record whether they are ranged or a spell; today they record only melee." | A pull request of #45 that builds the per-source multiplier and the hit record once, for every system to use |
+
+**The options the owner did not choose:**
+
+- For ranges: upgrades raise the value (3.52 times at +10), every item gets the
+  top of the range, or every item gets the middle.
+- For stagger: it means the existing Stun, or the ten rows are rewritten.
+- For the one-stack rule: bleed and poison may stack, which would reopen the
+  ailment numbers of [#904](https://github.com/sdubois777/Cataclysm/issues/904).
+- For damage taken from one source: it joins flat damage reduction, under the
+  75% cap.
+
+**The genre evidence the recommendations rested on:**
+
+- **Ranges.** Every game checked rolls once per drop and keeps the value. Path
+  of Exile rerolls a unique's values only with a Divine Orb
+  (poedb.tw/us/Divine_Orb). Last Epoch keeps a unique's rolls when it is
+  upgraded (maxroll.gg/last-epoch/resources/legendary-items-crafting-guide).
+  Torchlight Infinite states ranges on legendary gear, which Corrosion rerolls
+  (tlidb.com/en/Legendary_Gear). Diablo IV's aspects have ranges
+  (maxroll.gg/d4/wiki/legendary-aspects). **An even spread across the range is
+  a judgement**: Diablo IV deliberately pushes rolls upward (patch 2.1).
+- **Stagger.** Diablo IV fills a boss's stagger bar from crowd control and then
+  leaves the boss helpless for a time (game8.co/games/Diablo-4/archives/410475).
+  Path of Exile 2's Heavy Stun is a helpless state lasting several seconds
+  (poe2db.tw/us/Heavy_Stun). Neither documents a duration, so **1 second is a
+  judgement**.
+
+### Traps are a separate feature, for later
+
+The owner ruled on 2026-09-11 that traps are a feature of their own and come
+later. The 34 rows that need a trap wait for it, and the other 541 go ahead.
+Issue [#1561](https://github.com/sdubois777/Cataclysm/issues/1561) lists the 34
+rows and the seven questions a trap mechanic has to answer.
+
+### Settled by the design itself: what "the same enchantment" means
+
+`docs/Cataclysm_GDD_v2.md` says "You cannot equip the same enchantment on
+multiple pieces", and #45 says this "is enforced at equip time with a clear
+message". The design's own example, in the UNIQUE PER CHARACTER table, is a
+benefit: "50% increased HP" equipped on every ring slot. So:
+
+- The same enchantment means **the same benefit row**. Two items that share only
+  a drawback may both be worn, and both drawbacks apply.
+- A duplicate is **refused at equip**, with a message naming the enchantment and
+  the worn item that already carries it.
+- Set pieces share one row by design, so the rule does not apply to them.
+
+Diablo IV's shape, which allows the duplicate and shows it greyed out
+(eu.forums.blizzard.com/en/d4/t/warning-you-can-only-have-1/4269), is the
+fallback if refusing it gets in the way of swapping gear.
+
+### Judgements made under the owner's delegation
+
+On 2026-09-11 the owner delegated two things to the sessions, both to be chosen
+from genre research: the numbers a row does not state, and the wording of rows
+that are vague or contradict each other. **Every item below is a judgement, not
+an owner decision.** The owner reviews them in batches.
+
+- **"Allies" means the player's own minions until co-op exists.** Six rows name
+  allies, and the only allies in the game are the player's minions.
+- **The two kill counters.** P001, "This weapon has 5-20% more damage for every
+  100,000-500,000 kills", counts the weapon's own kills, stored on the item,
+  because it says "This weapon". N003, "You lose 1-4% max resistances for every
+  100,000 - 500,000 kills", counts the character's lifetime kills. Nothing
+  measures how many kills a player makes in an hour, so whether either threshold
+  is ever reached is unknown.
+- **"Cooldowns are increased by X%" lowers the cooldown recovery rate,** so that
+  the cooldown lasts (1 + X%) as long. Path of Exile and Last Epoch both divide
+  a cooldown by (1 + recovery rate) and write a penalty as reduced cooldown
+  recovery rate (poedb.tw/us/Second_Wind_Support). This game already divides a
+  cooldown the same way.
+- **Every equipped item carrying a set's enchantment counts as one piece of that
+  set.** Diablo II and III count two identical set rings as one piece, because
+  there a set piece is one fixed item. Here a set is an enchantment on ordinary
+  items, so two different rings that carry it are two pieces.
+- **N146, "When you die all your buffs are removed", is kept.** Since 2026-09-10
+  death clears every temporary effect except running auras, so what the row adds
+  is that running auras also end at death.
+
+**Numbers the rows leave out:**
+
+| What the row leaves out | Chosen | Why |
+| :-- | :-- | :-- |
+| "Nearby" or "close range" with no number (20 rows) | 5 m | The genre has no fixed number. Path of Exile's developers say "nearby" is set per effect (pathofexile.com/forum/view-thread/1586914), and Diablo IV's "Close" is about melee range (game8.co/games/Diablo-4/archives/421541). 5 m is this design's own figure for "near you", in Brute's Heart and Demon King's Regalia. |
+| A window with no stated time | 3 s | The duration the rows state most often, in 20 rows |
+| "Quick succession" (P079) | 3 s | P174 says "consecutive blocks within 3 seconds" |
+| An internal cooldown on a trigger that states none | 0.25 s for a trigger fired by a hit dealt or taken (critical strike, hit, block, evade); none for kills, deaths, timers and resource events | Path of Exile: Cast when Damage Taken 0.25 s, Cast On Critical Strike 0.15 s (poedb.tw). Diablo IV applies unstated limits of about 0.7 s (maxroll.gg/d4/resources/lucky-hit-mechanics). |
+| "Low mana" (N113) | 35% of maximum | Path of Exile 2 and Diablo IV put "low" at 35% (poe2db.tw/us/Low_life; Diablo IV's Injured status). The Last Epoch figure, also 35%, is unverified. |
+| An execute (P177) | Never kills a Boss or a Cataclysm Boss | Diablo IV's execute excludes elites, and Path of Exile 2 lowers the threshold to 5% for unique monsters (game8.co/games/Path-of-Exile-2/archives/498739) |
+| The strength of a slow when a row gives only its duration (P294) | 30% | The fixed strength of the existing Cripple slow |
+| A zone that names no effect (P077, P095, P157) | The same share of the skill's damage as the skill's own ground zone | No genre source. It reuses the skill's own number rather than inventing one. |
+| Tyrant's Minion and the Warhound (P342, P375) | An Imp's stats | No genre source. A stand-in until the two creatures are designed. |
+| Smite and explosion damage (P372, P211) | A nova at 100% of weapon damage | P097 states that figure for its own nova |
+| The random buff and debuff pools (P368, N050, N145, N158) | Every buff and debuff in `game/Data/StatusEffects.csv` that the game can apply | No genre source. It needs nothing new built. |
+| "Cast a random number of times" (P370) | 1 to 3 | No genre source |
+| Spellslinger and Dervish (P354) | 5 stacks, each lasting 5 s | No genre source. 5 s is the duration Mana Surge states in P348, a Mana Weaver set bonus. |
+| "The max" in "each class point above the max" (N106) | The 230-point budget | `docs/Cataclysm_GDD_v2.md`: "The per-character point budget is 230" |
+| "Block value" (P151) | The damage a block stopped | No genre source. The game has no stat named block value. |
+| "Disengage for 3 seconds" (N021) | 3 s without dealing damage to that enemy | No genre source. It reads the row's own 3 seconds as time spent not hitting that enemy. |
+
+**Still to come:**
+
+- Drafted wording for the 16 rows that break the one-stack rule (#913), and for
+  P116, P122, N131, P201 and N075. P116 contradicts N081 about regeneration in
+  combat, and the other four describe class resource decay, shared movement
+  cooldowns and buffs from allies, none of which exists. The drafts go to the
+  owner for review before any of them is written into the design workbook.
+- What happens to class points granted by gear (P005 and P040) when the item
+  comes off. It waits until the work reaches those two rows.
+
+---
+
 ## 2026-09-11 — An enchantment's numbers are written in an Enchantment Effects sheet, and the first seven change a character's stats
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx`, which gains an Enchantment Effects
@@ -42,7 +177,7 @@ has to be read again before its numbers are trusted.
 | Refused | Why |
 | :-- | :-- |
 | A set row | A set's rows apply by how many worn pieces carry the set, and the sheet cannot say how many pieces a row needs yet. The set bonus pull request adds that. |
-| A stated range, such as "10%-30%" | How a range becomes one number on one item is a question put to the project owner on #45. Every row states one value until it is answered. |
+| A stated range, such as "10%-30%" | The owner answered on 2026-09-11 that a range rolls once, evenly, when the enchantment is put on an item, and that the item keeps the value (the entry above). Storing that roll on the item is the next pull request of #45, so until it lands every row states one value. |
 | A condition or scale the game cannot judge | The same rule the Passive Effects sheet follows, and the same names |
 
 ### How a worn enchantment applies
@@ -50,10 +185,10 @@ has to be read again before its numbers are trusted.
 - **A benefit applies once, however many worn pieces carry it.** The design says
   an enchantment "can only appear once across all of a player's equipped gear",
   to prevent "degenerate stacking of powerful effects". Nothing refuses the
-  second piece at equip time yet; that waits for the owner's answer on what
-  counts as "the same enchantment" and what equipping a duplicate does. Until
-  then this keeps the rule's purpose true. **It is a judgement, and it is one
-  line to change** once the owner answers.
+  second piece at equip time yet. The entry above settles that "the same
+  enchantment" means the same benefit row and that a duplicate is refused at
+  equip with a message. Until the pull request that refuses it lands, counting
+  the benefit once keeps the rule's purpose true.
 - **A drawback applies for every worn piece carrying it.** Nothing here may make
   a cost smaller than the items say.
 - **A set row grants nothing on its own piece, on either side.** The row an item
@@ -66,7 +201,7 @@ has to be read again before its numbers are trusted.
 
 Only the enchantments whose sentence states one number and needs nothing the
 game lacks. Of the 61 rows the plan on #45 expected this change to make work,
-54 state a range and wait for the owner.
+54 state a range and wait for the pull request that stores a roll on the item.
 
 | Enchantment | Stat | Bucket | Value |
 | :-- | :-- | :-- | --: |
