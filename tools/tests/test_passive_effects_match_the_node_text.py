@@ -393,7 +393,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: the first row in the sheet to carry the scale `minions_held`, which that
 #: issue added, so it is also the first Fervour generator authored for a class
 #: other than the Masochist.
-AUTHORED_ROWS = 206
+#:
+#: AND TO 208 ON 2026-09-11, for two Ritualist nodes that needed no new code.
+#: Issue #1515. `Attendant` grants spell damage for each minion held, through
+#: the scale `minions_held` that #1518 added, and `Room for One More` grants a
+#: flat 30 maximum Fervour. Both stats and the scale already existed.
+AUTHORED_ROWS = 208
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -605,7 +610,10 @@ AUTHORED_ROWS = 206
 #: starting node, and `Binding Sigils`. Both needed the new scale `minions_held`
 #: and the two new stats behind it, which is why #1463 left them out rather than
 #: missing them. The Ritualist is now 34 of its 74.
-AUTHORED_NODES = 146
+#:
+#: AND TO 148 ON 2026-09-11, for the same two rows' nodes, `Attendant` and
+#: `Room for One More`. Issue #1515. The Ritualist is now 36 of its 74.
+AUTHORED_NODES = 148
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1252,6 +1260,14 @@ VALUE_FORMS = {
     # still says 4 fails this check, where a constant in C++ could disagree with
     # the sentence for ever and nothing would notice.
     "retaliation_radius_metres": "{value:g} metre",
+
+    # A PLAIN COUNT OF MAXIMUM FERVOUR. Issue #1515. `class_resource` is the
+    # size of the class's resource pool, and until 2026-09-11 every row on it
+    # was an `increased` row, which is read as a percentage whatever the stat.
+    # Room for One More is the first `flat` one: "+30 maximum Fervour, which is
+    # one further thrall at the 30 a thrall reserves". A flat maximum on a
+    # resource with another name would need its own form, and should get one.
+    "class_resource": "{value:g} maximum Fervour",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
