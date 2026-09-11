@@ -1700,6 +1700,54 @@ CATACLYSM_TEST(FCataclysmGearStunJoinsTheBluntPoolTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmTickNeverRollsTheBluntStunTest,
+	"Cataclysm.DamageType.ATickOfDamageOverTimeNeverRollsABluntWeaponsStun")
+{
+	// A TICK IS NOT A HIT, and the chance to stun is a chance to apply an effect
+	// on a hit. Issue #899. A weapon's sub-type is read off the actor the damage
+	// is credited to, so until then a tick of damage over time from a character
+	// holding a blunt weapon rolled that weapon's 10%, if the tick took a tenth
+	// of the target's maximum health.
+	//
+	// THE ROLL IS PINNED AT ZERO, so any chance at all stuns. 500 against 1,000
+	// health clears the tenth easily, and the control is the same blow as an
+	// ordinary hit, which does stun.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	// ONE BLOW OF 500 FROM A FIST AT A FRESH DEFENDER, delivered this way.
+	const auto Stuns = [World](const FCataclysmHitDelivery& Delivery)
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Vitals->SetMaxHealth(1'000.0f);
+		Defender.Vitals->SetHealth(1'000.0f);
+
+		CataclysmDamageTypeTest::FScopedArmedAttacker Blunt(World, TEXT("Fist"));
+		Blunt.Actor->SetAttackDamage(500.0f);
+
+		UCataclysmSkillEffects::ApplyHit(Blunt.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Delivery);
+		return UCataclysmSkillEffects::IsStunned(Defender.Actor);
+	};
+
+	TestTrue(TEXT("an ordinary blow from a blunt weapon stuns at a roll of 0"),
+		Stuns(FCataclysmHitDelivery()));
+
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	TestFalse(TEXT("and a tick of damage over time from the same weapon does not"),
+		Stuns(Tick));
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 
