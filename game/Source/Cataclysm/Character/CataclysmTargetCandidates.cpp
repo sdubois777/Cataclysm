@@ -8,6 +8,12 @@
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "ProfilingDebugging/CsvProfiler.h"
+
+// THE CATEGORY THE THINKING IS RECORDED UNDER, defined in
+// CataclysmEnemyController.cpp, so that a capture shows the rebuilds beside the
+// thinking passes and the time they took.
+CSV_DECLARE_CATEGORY_EXTERN(CataclysmAI);
 
 UCataclysmTargetCandidates* UCataclysmTargetCandidates::In(const UWorld* World)
 {
@@ -18,17 +24,17 @@ void UCataclysmTargetCandidates::Initialize(FSubsystemCollectionBase& Collection
 {
 	Super::Initialize(Collection);
 
-	// A SPAWN OR A DESTRUCTION MARKS THE LISTS OUT OF DATE, AND THAT IS ALL IT
-	// DOES. Nothing is added or removed here: the next search rebuilds the lists
-	// by asking the world, so there is one way a character gets into them.
+	// A SPAWN MARKS THE LISTS OUT OF DATE, AND THAT IS ALL IT DOES. Nothing is
+	// added here: the next search rebuilds the lists by asking the world, so there
+	// is one way a character gets into them.
+	//
+	// A DESTRUCTION MARKS NOTHING. See the class comment: the entry of a destroyed
+	// character reads as nothing, so removing a body costs no rebuild.
 	if (UWorld* World = GetWorld())
 	{
 		SpawnedHandle = World->AddOnActorSpawnedHandler(
 			FOnActorSpawned::FDelegate::CreateUObject(
-				this, &UCataclysmTargetCandidates::NoteActorArrivedOrLeft));
-		DestroyedHandle = World->AddOnActorDestroyedHandler(
-			FOnActorDestroyed::FDelegate::CreateUObject(
-				this, &UCataclysmTargetCandidates::NoteActorArrivedOrLeft));
+				this, &UCataclysmTargetCandidates::NoteCharacterSpawned));
 	}
 }
 
@@ -37,7 +43,6 @@ void UCataclysmTargetCandidates::Deinitialize()
 	if (UWorld* World = GetWorld())
 	{
 		World->RemoveOnActorSpawnedHandler(SpawnedHandle);
-		World->RemoveOnActorDestroyedHandler(DestroyedHandle);
 	}
 
 	Sides.Reset();
@@ -46,11 +51,11 @@ void UCataclysmTargetCandidates::Deinitialize()
 	Super::Deinitialize();
 }
 
-void UCataclysmTargetCandidates::NoteActorArrivedOrLeft(AActor* Actor)
+void UCataclysmTargetCandidates::NoteCharacterSpawned(AActor* Actor)
 {
-	// ONLY A CHARACTER IS LISTED, so only a character can make the lists wrong. A
-	// Horde fight spawns projectiles, burning ground and loot all the time, and
-	// none of those should cost a rebuild.
+	// ONLY A CHARACTER IS LISTED, so only a character's spawn can make the lists
+	// wrong. A Horde fight spawns projectiles, burning ground and loot all the
+	// time, and none of those should cost a rebuild.
 	if (Cast<ACataclysmCharacterBase>(Actor))
 	{
 		++Changes;
@@ -98,6 +103,7 @@ void UCataclysmTargetCandidates::BuildTheListsIfStale()
 	BuiltAtSeconds = Seconds;
 	BuiltAtChanges = Changes;
 	++ListsBuilt;
+	CSV_CUSTOM_STAT(CataclysmAI, TargetListRebuilds, 1, ECsvCustomStatOp::Accumulate);
 
 	// EMPTIED RATHER THAN THROWN AWAY, so a side keeps its place and its memory
 	// from one frame to the next.
@@ -190,6 +196,8 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 		{
 			++LookedAt;
 
+			// A DESTROYED CHARACTER READS AS NOTHING HERE, which is why removing
+			// one needs no rebuild.
 			ACataclysmCharacterBase* Candidate = Entry.Get();
 			if (!Candidate || Candidate == Searcher)
 			{

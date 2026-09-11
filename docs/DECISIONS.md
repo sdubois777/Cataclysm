@@ -32,9 +32,12 @@ characters by side, with each side's maddened characters listed again:
 
 The lists are rebuilt by asking the world, not kept up to date. That happens at
 the first search in a new frame or after the world clock moves, and at the first
-search after a character is spawned or destroyed or a listed character gains or
-loses Madness. The last two keep the lists right when a test changes the world
-between two searches without moving the clock, which many creature tests do.
+search after a character is spawned or a listed character gains or loses
+Madness. The last two keep the lists right when a test changes the world between
+two searches without moving the clock, which many creature tests do. A destroyed
+character needs no rebuild: its entry reads as nothing, so the bodies removed
+during a big fight cost nothing extra. A csvprofile capture counts the rebuilds
+in each frame as `CataclysmAI/TargetListRebuilds`.
 
 **What it does not change.** `FindEnemiesInSphere` itself, and its 36 other call
 sites in 15 files: player skills, enemy abilities, minions, enemy modifiers and

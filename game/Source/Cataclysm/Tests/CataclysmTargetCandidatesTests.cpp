@@ -554,14 +554,16 @@ bool FCataclysmTheTargetListsAreNeverOutOfDate::RunTest(const FString&)
 	TestEqual(TEXT("because its spawn rebuilt the lists"),
 		Candidates->ListsBuiltSoFar(), Built + 1);
 
-	// A DEPARTURE. It would be refused as invalid from a stale list as well, so
-	// the rebuild is what this checks.
+	// A DEPARTURE, WHICH NEEDS NO REBUILD. The entry of a destroyed character
+	// reads as nothing and the search passes over it. A big fight removes bodies
+	// too often for each removal to cost a rebuild, so this checks both halves:
+	// the answer is right, and nothing was rebuilt to get it.
 	Built = Candidates->ListsBuiltSoFar();
 	Arrival->Destroy();
-	TestNull(TEXT("a character destroyed since the last search is gone from the next"),
+	TestNull(TEXT("a character destroyed since the last search is not chosen by the next"),
 		Brain->ChooseTarget());
-	TestEqual(TEXT("because its destruction rebuilt the lists"),
-		Candidates->ListsBuiltSoFar(), Built + 1);
+	TestEqual(TEXT("and removing it cost no rebuild"),
+		Candidates->ListsBuiltSoFar(), Built);
 
 	// MADNESS, on the monster's own side.
 	Built = Candidates->ListsBuiltSoFar();

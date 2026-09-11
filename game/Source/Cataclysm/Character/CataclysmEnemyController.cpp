@@ -23,12 +23,15 @@
 // WHAT A CSV PROFILE CAPTURE RECORDS OF THE THINKING. Issue #1543. The capture of
 // the project owner's Horde session showed a wave's thinking landing in one
 // frame, and could not show what inside a pass cost the time, because nothing
-// here was named to the profiler. Three figures are now:
+// here was named to the profiler. Four figures are now:
 // `CataclysmAI/ThinkPasses`, how many passes the timer ran in a frame;
-// `CataclysmAI/Think`, how long all the passes in that frame took together; and
+// `CataclysmAI/Think`, how long all the passes in that frame took together,
+// which a capture writes as `CataclysmAI/GameThread/Think`;
 // `Exclusive/GameThread/EnemyTargetSearch`, how much of that was the search for
-// the nearest target. Nothing is recorded unless a capture is running, and a
-// build without the profiler compiles them out.
+// the nearest target; and `CataclysmAI/TargetListRebuilds`, how many times that
+// search's lists were rebuilt in the frame, recorded in
+// CataclysmTargetCandidates.cpp for issue #1547. Nothing is recorded unless a
+// capture is running, and a build without the profiler compiles them out.
 CSV_DEFINE_CATEGORY(CataclysmAI, true);
 
 namespace

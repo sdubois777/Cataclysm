@@ -51,12 +51,23 @@ struct FCataclysmSideCandidates
  * characters, at the first search after anything they depend on could have
  * changed:
  * - a new frame, or the world clock moving;
- * - a character spawned or destroyed, which the world reports;
+ * - a character spawned, which the world reports;
  * - a listed character gaining or losing Madness, which its ability system
  *   reports.
  * The last two are what let a test call `Think` twice without the clock moving
  * and still see what it did in between. `UCataclysmCommand`'s header records why
  * the project prefers asking the world over keeping a register.
+ *
+ * A DESTROYED CHARACTER NEEDS NO REBUILD. Its entry reads as nothing from the
+ * moment it is destroyed, the search passes over it, and the next frame's lists
+ * leave it out. A big fight removes bodies all the time, and a rebuild for each
+ * removal would make the cost of the lists grow with the fighting.
+ *
+ * COUNTED IN A CSV PROFILE CAPTURE, as `CataclysmAI/TargetListRebuilds`: how many
+ * times the lists were built in a frame. One in every frame in which anything
+ * searches, and more only when a character is spawned, or gains or loses
+ * Madness, between two searches in the same frame. Nothing is recorded unless a
+ * capture is running.
  *
  * WHAT THE SPHERE DID DIFFERENTLY.
  * - IT COUNTED EVERY PAWN-TYPE BODY, and this counts a character's capsule. With
@@ -110,7 +121,7 @@ public:
 private:
 	void BuildTheListsIfStale();
 	void WatchForMadnessOn(ACataclysmCharacterBase* Character, const FGameplayTag& Madness);
-	void NoteActorArrivedOrLeft(AActor* Actor);
+	void NoteCharacterSpawned(AActor* Actor);
 	void NoteMadnessChanged(const FGameplayTag Tag, int32 NewCount);
 
 	/**
@@ -135,5 +146,4 @@ private:
 	int32 LookedAt = 0;
 
 	FDelegateHandle SpawnedHandle;
-	FDelegateHandle DestroyedHandle;
 };
