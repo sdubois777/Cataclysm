@@ -55,15 +55,46 @@ namespace
 	 * modifier to the skill in the CHARACTER'S OWN hand, and the character here
 	 * is being hit rather than swinging. An empty container is the honest reading
 	 * and it is what the character sheet passes for the same stat.
+	 *
+	 * A BLOW, FOR THE ONE STEP THAT ASKS ABOUT THE HIT. Issue #666. The damage
+	 * taken step passes the hit's facts, so "you take 20% less damage from
+	 * spells" can ask about this hit. Every other step passes nothing.
 	 */
 	float DefenderStat(const UAbilitySystemComponent* Defender,
-					   const TCHAR* Stat, float FromAttribute)
+					   const TCHAR* Stat, float FromAttribute,
+					   const FCataclysmBlowContext& Blow = FCataclysmBlowContext())
 	{
 		const UCataclysmAbilitySystemComponent* Asking =
 			Cast<const UCataclysmAbilitySystemComponent>(Defender);
-		return Asking ? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
-											 FromAttribute)
-					  : FromAttribute;
+		return Asking
+			? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
+								   FromAttribute,
+								   /*SkillHealthCostPercent=*/-1.0f, Blow)
+			: FromAttribute;
+	}
+
+	/**
+	 * The facts about a hit that a damage taken modifier may ask about.
+	 * Issue #666.
+	 *
+	 * ONLY A HIT HAS THEM. A damage over time tick is not a hit -- the reason it
+	 * can neither be evaded nor critically strike -- so it answers no to every
+	 * one, and "you take 20% less damage from spells" does not shrink a burn a
+	 * spell left behind. The project owner's words: "used only for hits from
+	 * that source".
+	 */
+	FCataclysmBlowContext BlowOf(const FCataclysmIncomingHit& Hit)
+	{
+		FCataclysmBlowContext Blow;
+		if (Hit.bIsDamageOverTime)
+		{
+			return Blow;
+		}
+		Blow.bIsMelee = Hit.bIsMelee;
+		Blow.bIsRanged = Hit.bIsRanged;
+		Blow.bIsSpell = Hit.bIsSpell;
+		Blow.bOpponentIsBoss = Hit.bFromBoss;
+		return Blow;
 	}
 
 	/**
@@ -136,6 +167,9 @@ const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
 const TCHAR* UCataclysmDamageCalculation::AreaDamageTagName = TEXT("Type.AOE");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTagName = TEXT("Keyword.DoT");
 const TCHAR* UCataclysmDamageCalculation::MeleeTagName = TEXT("Type.Melee");
+const TCHAR* UCataclysmDamageCalculation::RangedTagName = TEXT("Type.Ranged");
+const TCHAR* UCataclysmDamageCalculation::ProjectileTagName =
+	TEXT("Type.Projectile");
 const TCHAR* UCataclysmDamageCalculation::NoCriticalStrikeTagName =
 	TEXT("Keyword.NoCrit");
 const TCHAR* UCataclysmDamageCalculation::NoPenetrationTagName =
@@ -181,6 +215,16 @@ FGameplayTag UCataclysmDamageCalculation::DamageOverTimeTag()
 FGameplayTag UCataclysmDamageCalculation::MeleeTag()
 {
 	return TagNamed(MeleeTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::RangedTag()
+{
+	return TagNamed(RangedTagName);
+}
+
+FGameplayTag UCataclysmDamageCalculation::ProjectileTag()
+{
+	return TagNamed(ProjectileTagName);
 }
 
 FGameplayTag UCataclysmDamageCalculation::NoCriticalStrikeTag()
@@ -564,9 +608,15 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// Communion of Pain grants it. A NEGATIVE would turn a hit into healing,
 		// which no sentence in the design asks for, so the floor is here rather
 		// than left to the sum of a future set of reductions.
+		//
+		// THE HIT'S OWN FACTS GO WITH IT, for a modifier that asks about the hit:
+		// "you take 20% less damage from spells". Issue #666. A row that says
+		// "less" or "more" is a multiplier of its own, so the 75% cap on damage
+		// reduction above does not reach it, and like every "less" it removes at
+		// most 99% of the hit.
 		Damage *= FMath::Max(0.0f,
 			DefenderStat(Defender, DamageTakenStat,
-						 Combat->GetDamageTaken())) / 100.0f;
+						 Combat->GetDamageTaken(), BlowOf(Hit))) / 100.0f;
 
 		if (Hit.bIsDamageOverTime)
 		{

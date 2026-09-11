@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the shots an enemy fires carrying their tags into the air. Issue #666.
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -13,8 +15,10 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
@@ -62,6 +66,16 @@ namespace CataclysmEnemyTagTest
 		  ACataclysmGatekeeperCharacter::CleaveTags },
 		{ TEXT("the Gatekeeper's Soul Harvest"),
 		  ACataclysmGatekeeperCharacter::SoulHarvestTags },
+		// THE THREE SHOTS, ADDED BY ISSUE #666, which gave them tags at all.
+		// Until then each was fired with an empty list, so none could be here.
+		{ TEXT("the Corrupted Sentinel's Siege Bolt"),
+		  ACataclysmCorruptedSentinelCharacter::SiegeBoltTags },
+		{ TEXT("the Corrupted Sentinel's Brimstone Mortar"),
+		  ACataclysmCorruptedSentinelCharacter::BrimstoneMortarTags },
+		{ TEXT("the Succubus's Soulfire"),
+		  ACataclysmSuccubusCharacter::SoulfireTags },
+		{ TEXT("the Gatekeeper's Soulfall"),
+		  ACataclysmGatekeeperCharacter::SoulfallTags },
 	};
 
 	/**
@@ -82,7 +96,7 @@ namespace CataclysmEnemyTagTest
 	 *
 	 * WHY THIS IS PINNED PER ABILITY RATHER THAN DERIVED FROM THE STRIKE TAG.
 	 * Deriving it would assert that the code agrees with itself. What is worth
-	 * guarding is the DECISION -- that these six are melee and that one is not --
+	 * guarding is the DECISION -- that these six are melee and the five shots are not --
 	 * so a creature added later has to be listed here on purpose.
 	 */
 	struct FMeleeExpectation
@@ -106,6 +120,15 @@ namespace CataclysmEnemyTagTest
 		  ACataclysmGatekeeperCharacter::SoulHarvestTags, true },
 		{ TEXT("the Brute's thrown rock"),
 		  ACataclysmBruteCharacter::RockThrowTags, false },
+		// AND THE THREE SHOTS ISSUE #666 GAVE TAGS TO. None of them is melee.
+		{ TEXT("the Corrupted Sentinel's Siege Bolt"),
+		  ACataclysmCorruptedSentinelCharacter::SiegeBoltTags, false },
+		{ TEXT("the Corrupted Sentinel's Brimstone Mortar"),
+		  ACataclysmCorruptedSentinelCharacter::BrimstoneMortarTags, false },
+		{ TEXT("the Succubus's Soulfire"),
+		  ACataclysmSuccubusCharacter::SoulfireTags, false },
+		{ TEXT("the Gatekeeper's Soulfall"),
+		  ACataclysmGatekeeperCharacter::SoulfallTags, false },
 	};
 
 	/** How many names a cell lists, counted without asking the tag manager. */
@@ -447,6 +470,136 @@ CATACLYSM_TEST(FCataclysmEnemyMeleeAbilitiesSaySoTest,
 				Ability.What),
 			bMelee, bStrikes);
 	}
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmEnemyShotsAreRangedTest,
+	"Cataclysm.EnemyTags.AnEnemysShotsAreRangedAndOnlySoulfireIsASpell")
+{
+	using namespace CataclysmEnemyTagTest;
+
+	// WHICH ENEMY ABILITIES STRIKE FROM RANGE, AND WHICH ARE SPELLS. Issue #666.
+	// Pinned per ability for the reason the melee list is: what is worth guarding
+	// is the decision, so a creature added later has to be listed here on
+	// purpose. That Soulfire is the one spell is the project owner's question,
+	// built as recommended until they answer.
+	struct FSourceExpectation
+	{
+		const TCHAR* What;
+		const TCHAR* Cell;
+		bool bIsRanged;
+		bool bIsSpell;
+	};
+	static const FSourceExpectation Expectations[] = {
+		{ TEXT("an enemy's basic attack"),
+		  ACataclysmEnemyCharacter::BasicAttackTags, false, false },
+		{ TEXT("a charge"), ACataclysmEnemyCharacter::ChargeTags, false, false },
+		{ TEXT("the Brute's stomp"), ACataclysmBruteCharacter::StompTags, false, false },
+		{ TEXT("the Brute's thrown rock"),
+		  ACataclysmBruteCharacter::RockThrowTags, true, false },
+		{ TEXT("the Abyssal Warden's molten roar"),
+		  ACataclysmAbyssalWardenCharacter::MoltenRoarTags, false, false },
+		{ TEXT("the Gatekeeper's Dread Cleave"),
+		  ACataclysmGatekeeperCharacter::CleaveTags, false, false },
+		{ TEXT("the Gatekeeper's Soul Harvest"),
+		  ACataclysmGatekeeperCharacter::SoulHarvestTags, false, false },
+		{ TEXT("the Gatekeeper's Soulfall"),
+		  ACataclysmGatekeeperCharacter::SoulfallTags, true, false },
+		{ TEXT("the Corrupted Sentinel's Siege Bolt"),
+		  ACataclysmCorruptedSentinelCharacter::SiegeBoltTags, true, false },
+		{ TEXT("the Corrupted Sentinel's Brimstone Mortar"),
+		  ACataclysmCorruptedSentinelCharacter::BrimstoneMortarTags, true, false },
+		{ TEXT("the Succubus's Soulfire"),
+		  ACataclysmSuccubusCharacter::SoulfireTags, true, true },
+	};
+
+	// EVERY LIST IN THE GAME HAS AN ANSWER HERE, or one added to the list at the
+	// top of this file without a decision would pass unnoticed.
+	TestEqual(TEXT("every ability tag list in the game has an expectation here"),
+		static_cast<int32>(UE_ARRAY_COUNT(Expectations)),
+		static_cast<int32>(UE_ARRAY_COUNT(EveryAbility)));
+
+	for (const FSourceExpectation& Expect : Expectations)
+	{
+		const FGameplayTagContainer Tags = FShapes::TagsFromCell(Expect.Cell);
+		TestEqual(*FString::Printf(TEXT("%s strikes from range"), Expect.What),
+			UCataclysmSkillEffects::IsRanged(Tags), Expect.bIsRanged);
+		TestEqual(*FString::Printf(TEXT("%s is a spell"), Expect.What),
+			UCataclysmSkillEffects::IsSpell(Tags), Expect.bIsSpell);
+	}
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmEnemyShotsCarryTheirTagsTest,
+	"Cataclysm.EnemyTags.AnEnemysShotsCarryTheirTagsIntoTheAir")
+{
+	// THE LISTS ARE ONLY WORDS UNTIL A SHOT CARRIES THEM. Every shot below was
+	// fired with an empty list until issue #666, and a creature that went back
+	// to one would still pass every test above. What a projectile carries is
+	// what `UCataclysmSkillEffects::ApplyHit` reads when it lands.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmEnemyCharacter* Target = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(800.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Params);
+	ACataclysmCorruptedSentinelCharacter* Sentinel =
+		World->SpawnActor<ACataclysmCorruptedSentinelCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator, Params);
+	ACataclysmSuccubusCharacter* Succubus =
+		World->SpawnActor<ACataclysmSuccubusCharacter>(
+			FVector(0.0f, 3000.0f, 0.0f), FRotator::ZeroRotator, Params);
+	ACataclysmGatekeeperCharacter* Gatekeeper =
+		World->SpawnActor<ACataclysmGatekeeperCharacter>(
+			FVector(0.0f, -3000.0f, 0.0f), FRotator::ZeroRotator, Params);
+	if (!TestNotNull(TEXT("a target"), Target)
+		|| !TestNotNull(TEXT("a Corrupted Sentinel"), Sentinel)
+		|| !TestNotNull(TEXT("a Succubus"), Succubus)
+		|| !TestNotNull(TEXT("a Gatekeeper"), Gatekeeper))
+	{
+		return false;
+	}
+	Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	const auto Carries = [this](const ACataclysmProjectile* Shot, const TCHAR* What,
+								const TCHAR* Cell)
+	{
+		if (!TestNotNull(*FString::Printf(TEXT("%s fired a projectile"), What), Shot))
+		{
+			return;
+		}
+		TestTrue(*FString::Printf(TEXT("%s carries its own tags (%s)"), What, Cell),
+			Shot->FiringSkillTags().HasAllExact(UCataclysmSkillShapes::TagsFromCell(Cell)));
+	};
+
+	const FVector Aim = Target->GetActorLocation();
+
+	Sentinel->UseEnemyAbility(ACataclysmCorruptedSentinelCharacter::SiegeBoltAbility,
+							  Target, Aim);
+	Carries(Sentinel->LastShotFired.Get(), TEXT("the Siege Bolt"),
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltTags);
+
+	Sentinel->UseEnemyAbility(
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarAbility, Target, Aim);
+	Carries(Sentinel->LastShotFired.Get(), TEXT("the Brimstone Mortar"),
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarTags);
+
+	Succubus->UseEnemyAbility(ACataclysmSuccubusCharacter::SoulfireAbility, Target, Aim);
+	Carries(Succubus->LastShotFired.Get(), TEXT("Soulfire"),
+		ACataclysmSuccubusCharacter::SoulfireTags);
+
+	Gatekeeper->UseEnemyAbility(ACataclysmGatekeeperCharacter::SoulfallAbility,
+								Target, Aim);
+	Carries(Gatekeeper->LastGoutLobbed.Get(), TEXT("Soulfall"),
+		ACataclysmGatekeeperCharacter::SoulfallTags);
 
 	return true;
 }

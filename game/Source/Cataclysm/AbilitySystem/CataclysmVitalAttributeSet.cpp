@@ -316,16 +316,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bCannotBeEvaded =
 					UCataclysmEnemyModifiers::AttacksCannotBeDodged(
 						Striker->ModifierRows);
+
+				// AND WHETHER THAT CREATURE IS A BOSS, for "you take 20%-40% less
+				// damage from Boss enemies". Issue #666. The same creature and the
+				// same cast, so a blow from anything but an enemy is not a boss's.
+				Hit.bFromBoss = Striker->IsBoss();
 			}
 
-			// AND WHETHER IT WAS STRUCK IN MELEE. Issue #1032. Read here beside
-			// the other two because it comes from the same place: a tag the
-			// ability that threw the blow put on the effect. Nothing in
-			// `Resolve` reads it -- melee is not a mitigation layer -- and what
-			// asks about it is the rule further down this function that gives
-			// Mutilation Mastery its chance to apply Bleeding.
+			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.
+			// Issues #1032 and #666. Read here beside the other two because they
+			// come from the same place: tags the ability that threw the blow put
+			// on the effect. Mutilation Mastery's chance to apply Bleeding further
+			// down this function asks about melee, and `Resolve` hands all three
+			// to the damage taken lookup, for a modifier that asks about the hit.
 			Hit.bIsMelee =
 				AssetTags.HasTag(UCataclysmDamageCalculation::MeleeTag());
+			Hit.bIsRanged =
+				AssetTags.HasTag(UCataclysmDamageCalculation::RangedTag());
+			Hit.bIsSpell = UCataclysmSkillEffects::IsSpell(AssetTags);
 
 			// WHETHER THIS BLOW MAY IGNORE ANY OF THE DEFENDER'S ARMOUR OR
 			// RESISTANCE. Read up here rather than beside the first thing that

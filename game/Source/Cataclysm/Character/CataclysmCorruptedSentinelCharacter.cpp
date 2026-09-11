@@ -14,6 +14,12 @@
 #include "GameplayTagContainer.h"
 #include "UObject/SoftObjectPath.h"
 
+// WHAT THE TWO SHOTS ARE, as gameplay tags. Issue #666. See the header.
+const TCHAR* ACataclysmCorruptedSentinelCharacter::SiegeBoltTags =
+	TEXT("Type.Projectile, Type.Ranged");
+const TCHAR* ACataclysmCorruptedSentinelCharacter::BrimstoneMortarTags =
+	TEXT("Type.Projectile, Type.Ranged");
+
 // THE SIEGE LANE MINION. The Imp is played by the MELEE lane minion out of the
 // same pack; they are separate meshes on separate skeletons, so the two
 // creatures share a folder and nothing else.
@@ -259,9 +265,14 @@ void ACataclysmCorruptedSentinelCharacter::UseEnemyAbility(
 	// the four weapon bones are not animated by its firing clips at all.
 	const FVector From = GetActorLocation();
 
-	// NO TAGS, WHICH IS WHAT EVERY ENEMY PROJECTILE PASSES TODAY. Tags scope the
-	// caster's own stat modifiers, and an enemy carries none.
-	const FGameplayTagContainer NoTags;
+	// WHAT EACH SHOT IS, from the header's two tag lists. Issue #666. Until then
+	// every enemy projectile but the Brute's rock was fired with no tags, so a hit
+	// from this creature could not say it came from range. Neither list carries an
+	// area tag, so both shots are still direct hits that can be evaded.
+	const FGameplayTagContainer BoltTags =
+		UCataclysmSkillShapes::TagsFromCell(SiegeBoltTags);
+	const FGameplayTagContainer MortarTags =
+		UCataclysmSkillShapes::TagsFromCell(BrimstoneMortarTags);
 
 	if (Index == SiegeBoltAbility)
 	{
@@ -275,7 +286,7 @@ void ACataclysmCorruptedSentinelCharacter::UseEnemyAbility(
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SiegeBoltRadiusCm,
 			SiegeBoltSpeedCmPerSecond, SiegeBoltPierce, /*bInReturns=*/false,
-			SiegeBoltDamagePercent, NoTags, /*bInBurns=*/false);
+			SiegeBoltDamagePercent, BoltTags, /*bInBurns=*/false);
 		return;
 	}
 
@@ -289,7 +300,7 @@ void ACataclysmCorruptedSentinelCharacter::UseEnemyAbility(
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, BrimstoneMortarRadiusCm, /*InSpeed=*/0.0f,
 			BrimstoneMortarPierce, /*bInReturns=*/false,
-			BrimstoneMortarDamagePercent, NoTags, /*bInBurns=*/false,
+			BrimstoneMortarDamagePercent, MortarTags, /*bInBurns=*/false,
 			/*InBodyMesh=*/nullptr, BrimstoneMortarFlightSecondsFor(AimedAt));
 		return;
 	}

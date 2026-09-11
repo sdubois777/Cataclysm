@@ -3169,6 +3169,31 @@ CONDITIONS = {
     # That one is a points threshold and this one is not, so reusing this with a
     # value would give a Ritualist the wrong answer.
     "class_resource_at_maximum": None,
+
+    # "You take 20%-40% less damage from spells" is `hit_is_spell`, and it takes
+    # no value. Issue #666. The other two name the rows' other sources.
+    #
+    # THE FIRST CONDITIONS THAT ASK ABOUT THE BLOW BEING TAKEN rather than the
+    # character taking it. A hit records three separate facts -- melee, ranged
+    # and spell -- and `UCataclysmDamageCalculation::Resolve` hands them to the
+    # damage taken lookup, so these hold only for a hit from that source. The
+    # character sheet has no hit in hand and shows none of them.
+    #
+    # AN ATTACK IS A HIT THAT IS NOT A SPELL. The rows say "melee attacks",
+    # "ranged attacks" and "spells", and Path of Exile draws the line the same
+    # way: a skill is an attack or a spell, and projectile is a separate tag
+    # either kind can carry. So a spell that fires a projectile meets
+    # `hit_is_spell` and not `hit_is_ranged_attack`. `docs/DECISIONS.md` has the
+    # sources.
+    "hit_is_melee_attack": None,
+    "hit_is_ranged_attack": None,
+    "hit_is_spell": None,
+
+    # "You take 20%-40% less damage from Boss enemies" is `opponent_is_boss`,
+    # and it takes no value. Issue #666. A boss is what
+    # `ACataclysmEnemyCharacter::IsBoss` says: the Boss and Cataclysm Boss
+    # rarities, and not a Herald, which is the line the stun rule already uses.
+    "opponent_is_boss": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
