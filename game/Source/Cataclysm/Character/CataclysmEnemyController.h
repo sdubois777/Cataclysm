@@ -166,8 +166,8 @@ enum class ECataclysmBrainAction : uint8
  *
  * IT THINKS ON A TIMER, NOT ON TICK. Four times a second. A dungeon floor can
  * hold a great many monsters, and asking "who is nearest" sixty times a second
- * for each of them is a sphere overlap per monster per frame for an answer that
- * does not change that fast. The same reasoning already applies to
+ * for each of them is a search per monster per frame for an answer that does
+ * not change that fast. The same reasoning already applies to
  * ACataclysmGroundZone's sweep.
  *
  * AND NOT EVERY CREATURE IN THE SAME FRAME. Until issue #1543 every controller
@@ -522,8 +522,11 @@ public:
 	 *
 	 * Nearest rather than chosen. Which side something is on is
 	 * UCataclysmTeams's question, and it is what makes a maddened monster's
-	 * neighbours legal targets: Madness makes an actor hostile to everything, so
-	 * this search starts returning them without knowing anything about Madness.
+	 * neighbours legal targets: Madness makes an actor hostile to everything.
+	 *
+	 * SEARCHED FROM UCataclysmTargetCandidates's LISTS, NOT A PHYSICS SPHERE,
+	 * since issue #1547. They list Madness beside the sides for the reason above:
+	 * a maddened creature is a target for its own side as well.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|AI")
 	AActor* ChooseTarget() const;

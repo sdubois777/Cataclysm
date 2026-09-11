@@ -2,6 +2,94 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — A creature's target search looks at lists of what it could attack, not at every body in range
+
+**Affects:** `ACataclysmEnemyController::ChooseTarget` in
+`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`, and the new
+`game/Source/Cataclysm/Character/CataclysmTargetCandidates.h` and `.cpp` it now
+asks. Built with this entry, for issue
+[#1547](https://github.com/sdubois777/Cataclysm/issues/1547).
+
+**What was measured.** The project owner's Horde capture of 2026-09-10, taken on
+commit aa452f1 and posted on #1547, held the frame rate at 2.5 to 2.7 frames a
+second for four to five seconds after each wave arrived. A creature's target
+search was 94% of the time spent thinking. One search cost 1.35 ms with 125 to
+149 creatures thinking and 1.53 ms with 150 to 174, and in the two slowdowns the
+searches took 809 and 855 ms of every second of game time. The search was a
+physics sphere query, `UCataclysmTargeting::FindEnemiesInSphere`, and a Horde
+arena's notice distance is thirty times the ordinary one, so the sphere held the
+whole arena: every search returned every creature and refused all but the few on
+the player's side.
+
+**The decision.** A creature's search starts from lists of the level's
+characters by side, with each side's maddened characters listed again:
+
+- a creature that is not maddened looks at every other side, at characters with
+  no side, and at the maddened characters of its own side;
+- a maddened creature looks at everyone;
+- the answer is the nearest candidate that `UCataclysmTargeting::IsHostileTo`
+  accepts, asked live, which is the test the sphere applied.
+
+The lists are rebuilt by asking the world, not kept up to date. That happens at
+the first search in a new frame or after the world clock moves, and at the first
+search after a character is spawned or a listed character gains or loses
+Madness. The last two keep the lists right when a test changes the world between
+two searches without moving the clock, which many creature tests do. A destroyed
+character needs no rebuild: its entry reads as nothing, so the bodies removed
+during a big fight cost nothing extra. A csvprofile capture counts the rebuilds
+in each frame as `CataclysmAI/TargetListRebuilds`.
+
+**What it does not change.** `FindEnemiesInSphere` itself, and its 36 other call
+sites in 15 files: player skills, enemy abilities, minions, enemy modifiers and
+projectiles. The notice distances. Which target is chosen, apart from four cases
+that the class comment on `UCataclysmTargetCandidates` spells out:
+
+- the sphere counted every pawn-type body and the lists count a character's
+  capsule, so with the art loaded the two can disagree by about a body's width at
+  the edge of an ordinary floor's 10 to 15 metre notice distance. A Horde arena's
+  notice distance is wider than the arena, so there it cannot arise;
+- the sphere could also find an actor that is not a character but carries an
+  ability system and a pawn-type body. Nothing in the game is one;
+- a side changed part way through a frame, which only taking a thrall does, is
+  seen at the latest in the next frame;
+- two candidates at exactly the same distance may be chosen between the other
+  way.
+
+`Cataclysm.AI.TheTargetListsChooseWhatTheSphereChose` runs both searches side by
+side in every arrangement the plan on #1547 lists and requires the same answer.
+
+**What the research settles, and what is a judgement.** Settled by two shipped
+games and by the engine: a creature's target search should start from the list
+of what its side can attack, not from every body in range. A judgement for this
+game: rebuilding the lists by asking the world rather than keeping a register,
+which is the project's standing preference recorded in `UCataclysmCommand`'s
+header, and accepting up to one frame's delay for a thrall.
+
+### Sources
+
+Researched on 2026-09-10 from published sources; the full list is on #1547.
+
+- Valve's NextBot, the bot framework in the public Source SDK: a bot considers
+  only players and other bots as things it might see
+  ([NextBotVisionInterface.cpp](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/server/NextBot/NextBotVisionInterface.cpp)).
+  Inferred to be Left 4 Dead's AI system: the file's author gave Valve's
+  [Left 4 Dead AI talk](https://steamcdn-a.akamaihd.net/apps/valve/2009/ai_systems_of_l4d_mike_booth.pdf).
+- Vermintide 2, read from a community decompilation rather than Fatshark's own
+  release: a monster's candidates come only from the opposing side's list of
+  players and bots
+  ([target_selection_utils.lua](https://github.com/Aussiemon/Vermintide-2-Source-Code/blob/master/scripts/unit_extensions/human/ai_player_unit/target_selection_utils.lua)).
+- Unreal's own sight sense pairs each listener with each registered target,
+  filtered by team, and never queries the world. Read in the engine's 5.8 source,
+  AISense_Sight.cpp in the AI module.
+- Robert Nystrom, *Game Programming Patterns*: units looking for a nearby enemy
+  test pairs in proportion to the square of their number, and a grid limits the
+  tests to the units nearby
+  ([Spatial Partition](https://gameprogrammingpatterns.com/spatial-partition.html)).
+  A grid is the next step only if maddened crowds turn out to be common and
+  costly.
+
+---
+
 ## 2026-09-10 — A respawn clears cooldowns as well, a running aura keeps running, and a planted sword returns at death while its fire stays
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,

@@ -10,6 +10,7 @@
 // The charge lives on the enemy subclass rather than the shared base, so the
 // brain has to know about it to ask whether one is running. Issue #499.
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmTargetCandidates.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -22,12 +23,15 @@
 // WHAT A CSV PROFILE CAPTURE RECORDS OF THE THINKING. Issue #1543. The capture of
 // the project owner's Horde session showed a wave's thinking landing in one
 // frame, and could not show what inside a pass cost the time, because nothing
-// here was named to the profiler. Three figures are now:
+// here was named to the profiler. Four figures are now:
 // `CataclysmAI/ThinkPasses`, how many passes the timer ran in a frame;
-// `CataclysmAI/Think`, how long all the passes in that frame took together; and
+// `CataclysmAI/Think`, how long all the passes in that frame took together,
+// which a capture writes as `CataclysmAI/GameThread/Think`;
 // `Exclusive/GameThread/EnemyTargetSearch`, how much of that was the search for
-// the nearest target. Nothing is recorded unless a capture is running, and a
-// build without the profiler compiles them out.
+// the nearest target; and `CataclysmAI/TargetListRebuilds`, how many times that
+// search's lists were rebuilt in the frame, recorded in
+// CataclysmTargetCandidates.cpp for issue #1547. Nothing is recorded unless a
+// capture is running, and a build without the profiler compiles them out.
 CSV_DEFINE_CATEGORY(CataclysmAI, true);
 
 namespace
@@ -214,16 +218,24 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 		return nullptr;
 	}
 
-	// Nearest first, one result. FindEnemiesInSphere already sorts by distance
-	// and already asks UCataclysmTeams which side everything is on, so this does
-	// not repeat either.
+	// NEAREST FIRST, ONE RESULT, FROM LISTS OF THE CHARACTERS IT COULD ATTACK.
+	// Issue #1547. This used to ask `FindEnemiesInSphere`, a physics sphere that
+	// in a Horde arena covers the whole arena and returned every creature in it,
+	// and the owner's capture of 2026-09-10 measured that at 94% of the time
+	// spent thinking. `UCataclysmTargetCandidates` says what it does instead, and
+	// the few cases in which its answer can differ from the sphere's.
 	//
 	// TIMED ON ITS OWN IN A CSV PROFILE CAPTURE, as
-	// `Exclusive/GameThread/EnemyTargetSearch`. Issue #1543 asks why one pass
-	// costs about 1.2 ms in a Horde arena, and there this search is a sphere
-	// that covers the whole arena, because `NoticesFromCm` is thirty times the
-	// ordinary distance.
+	// `Exclusive/GameThread/EnemyTargetSearch`, the figure the sphere was measured
+	// by, so captures from before and after the change compare directly.
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnemyTargetSearch);
+	if (UCataclysmTargetCandidates* Candidates = UCataclysmTargetCandidates::In(GetWorld()))
+	{
+		return Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
+	}
+
+	// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
+	// asks the sphere, which answers the same question more slowly.
 	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
 		GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
 
