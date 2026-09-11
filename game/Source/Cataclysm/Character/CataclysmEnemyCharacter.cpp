@@ -1127,6 +1127,21 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 		   *GetName(), *DamageType.ToString(), RarityStep, Drawn.Num(),
 		   Drawn.Num() == 1 ? TEXT("") : TEXT("s"),
 		   *FString::Join(Names, TEXT(", ")));
+
+	// AND WHAT IT DREW BECOMES STATS NOW, BECAUSE NOTHING LATER DOES IT. Issue
+	// #1552. Every spawner calls this after its last setter -- all fifteen of
+	// them, eight in the sandbox and seven on a dungeon floor -- and until this
+	// line nothing after the draw turned a modifier into a stat. A creature that
+	// drew Shielder spawned with no shield, and one that drew Titanic Resolve
+	// with its ordinary health, until something happened to call a setter again.
+	//
+	// THE SAME CALL EVERY SETTER ENDS WITH, for the reason `SetHealth` gives:
+	// the order a spawner does these things in must not matter. It refills
+	// health and shield to the new maximums, which is right for a creature that
+	// has only just been spawned, and a spawner is the only caller. It is not
+	// reached when nothing was drawn, so a Common creature, which draws none, is
+	// not touched here.
+	ApplyStartingAttributes();
 }
 
 void ACataclysmEnemyCharacter::ApplyStartingAttributes()
