@@ -2,6 +2,8 @@
 
 #include "Character/CataclysmEnemyController.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For announcing a creature's ability as a skill used. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -940,6 +942,12 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	Driven->UseEnemyAbility(Landing, CurrentTarget.Get(), WindUpAimedAt);
 	++AbilitiesUsed;
 
+	// AND ANNOUNCED AS A SKILL USED, which nothing else does for a creature: no
+	// creature ability goes through the skill template's `CommitAndBegin`.
+	// Issue #41, slice 4. Here and in `UseAbilitiesOn`, the two places a
+	// creature's ability begins.
+	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Landing);
+
 	// AN ABILITY THAT LANDS COUNTS AS AN ATTACK FOR THE ATTACK INTERVAL.
 	//
 	// WHAT THIS FIXED, reported from a play session on 2026-08-08 as the slam
@@ -1154,6 +1162,8 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	Driven->UseEnemyAbility(Chosen, Target,
 							AimPointFor(Driven, Target, Abilities[Chosen]));
 	++AbilitiesUsed;
+	// Announced as a skill used. See `ContinueWindUp`. Issue #41, slice 4.
+	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Chosen);
 
 	LastAction = ECataclysmBrainAction::Attacking;
 	return LastAction;

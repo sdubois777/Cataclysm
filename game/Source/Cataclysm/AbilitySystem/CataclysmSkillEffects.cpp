@@ -15,6 +15,8 @@
 // For a weapon left in a creature that tears free when it dies. The Axe's
 // Harrower is the only thing that buries one.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
+// For announcing a death to whatever listens. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCurseSpread.h"
 // For a line of creatures run through by one spear, which comes apart when any
 // one of them dies. The Spear's Skewer is the only thing that binds one.
@@ -781,6 +783,25 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
 
+	// AND THE ACTOR THAT DEALT IT, WHEN THAT IS NOT THE INSTIGATOR. Issue #41,
+	// slice 4. A minion's blow is dealt in its summoner's name, so the
+	// instigator and the causer above are both the summoner. The source object
+	// is read by the hit and death notices and by nothing that works out
+	// damage, so all eight places in `UCataclysmVitalAttributeSet` that read the
+	// causer behave exactly as they did.
+	if (AActor* Dealer = Delivery.DealtBy.Get())
+	{
+		Context.AddSourceObject(Dealer);
+	}
+
+	// AND THE SKILL THAT DEALT IT, on the context's own field for one. Issue
+	// #41, slice 4. Read by the hit and death notices, from the instance: see
+	// `FCataclysmHitDelivery::Skill`. Nothing that works out damage reads it.
+	if (const UGameplayAbility* Skill = Delivery.Skill.Get())
+	{
+		Context.SetAbility(Skill);
+	}
+
 	// THE STAMP IS READ BEFORE AND AFTER, AND THAT IS THE WHOLE MECHANISM.
 	// Issue #1156. The effect above is Instant, so the defender's
 	// `PostGameplayEffectExecute` runs inside `ApplyTypedSpec` and records what
@@ -1285,7 +1306,7 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	AActor* Instigator, AActor* Target, float DamagePerTick,
 	float DurationSeconds, const FGameplayTag& EffectTag,
-	bool bScalesWithInstigator)
+	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill)
 {
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
@@ -1404,6 +1425,18 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
+	// AND WHAT DEALT IT, for the reason `ApplyDirectDamage` gives: a minion's
+	// burn is applied in its summoner's name. Issue #41, slice 4.
+	if (DealtBy)
+	{
+		Context.AddSourceObject(DealtBy);
+	}
+	// AND THE SKILL THAT APPLIED IT, so the notice of every tick can name it.
+	// See `ApplyDirectDamage`. Issue #41, slice 4.
+	if (Skill)
+	{
+		Context.SetAbility(Skill);
+	}
 	// Typed the same way a direct hit is. A burn left by an enemy is that
 	// enemy's damage type, so the player's resistance to it applies to every
 	// tick and not only to the blow that started it.
@@ -1432,7 +1465,8 @@ FGameplayTag UCataclysmSkillEffects::BurnTag()
 bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   float HitDamage,
 									   bool bScalesWithInstigator,
-									   bool bBurnIsDesigned)
+									   bool bBurnIsDesigned, AActor* DealtBy,
+									   const UGameplayAbility* Skill)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
 	if (!Burn.bUsable)
@@ -1493,7 +1527,7 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 	return ApplyDamageOverTime(Instigator, Target,
 							   Burn.DamagePerTickAgainst(HitDamage),
 							   Burn.DurationSeconds, BurnTag(),
-							   bScalesWithInstigator);
+							   bScalesWithInstigator, DealtBy, Skill);
 }
 
 FGameplayTag UCataclysmSkillEffects::StunnedTag()
@@ -1918,6 +1952,13 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// more moving parts and one more way to get the duration wrong. What takes
 	// it off again is ClearDead below, called deliberately.
 	System->AddLooseGameplayTag(Dead);
+
+	// AND THE DEATH IS ANNOUNCED, AFTER THE TAG. Issue #41, slice 4. Here for
+	// the reason every hook above gives: this is the one place a death is
+	// recorded for the player and for every creature, however it died. After
+	// the tag, so a listener already sees a corpse; and because the top of this
+	// function refuses a character already dead, a death is announced once.
+	UCataclysmCombatEvents::NoteDeath(Actor);
 	return true;
 }
 

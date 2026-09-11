@@ -2,6 +2,161 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — One world subsystem announces every hit, death and skill used, and a blow says whether it was melee, ranged or a spell
+
+**Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h`
+and `.cpp` and `CataclysmHitKind.h`; `CataclysmDamageCalculation.h` and `.cpp`,
+`CataclysmSkillEffects.h` and `.cpp`, `CataclysmVitalAttributeSet.cpp`,
+`CataclysmSkillTemplate.cpp`, `CataclysmMinion.cpp` and
+`CataclysmAbilitySystemComponent.h` and `.cpp` beside them;
+`game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`; the new
+`game/Source/Cataclysm/Tests/CataclysmCombatEventsTests.cpp`; and
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+**Applied.** Issue [#41](https://github.com/sdubois777/Cataclysm/issues/41), the
+fourth slice of making the 117 dungeon modifiers do what their rows say. No
+modifier uses it yet.
+
+**Why it was needed.** Many rows react to a kill, a hit or a skill used, and
+nothing in the game said when one happened. Four rows of
+`game/Data/DungeonModifiers.csv`:
+
+- Dead Rising: "Enemies have a chance to revive after being killed."
+- Hellfire: "Enemies have a chance to explode in hellfire when killed."
+- Wild Magic: "Casting a skill has a 5% chance to trigger the effect of a random
+  different skill from your class tree."
+- Contagious Touch: "When you hit an enemy, you take a percentage of their total
+  health as damage for every stack of the debuff."
+
+The enchantments of issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45) and the Demonic passive
+trees' rewards on a kill need the same notices.
+
+**What was there before.** No hit or death notice existed. The game's five
+multicast delegates were `FCataclysmProjectileFinished` (a projectile finishing),
+`FCataclysmStairsTaken` (the stairs being taken), `FCataclysmChoiceClicked` and
+`FCataclysmChoiceHovered` (a choice button), and `FOnEquipmentChanged` (the
+equipment changing). The new subsystem sits beside them and replaces none. Every
+existing reaction to a hit (leech, retaliation, the Living Pyre's return,
+Infernal Brand, Beguiling) is a direct call in `UCataclysmVitalAttributeSet`, and
+each stays where it is.
+
+### What is built
+
+| Notice | Sent from | When |
+| :-- | :-- | :-- |
+| `OnHit` | `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on the character the blow landed on | For every blow once its damage is worked out, evaded and blocked blows and damage-over-time ticks included |
+| `OnDeath` | `UCataclysmSkillEffects::MarkDead`, the one place a death is recorded | Once for each death. A blow on a character already dead sends nothing |
+| `OnSkillUsed` | `UCataclysmSkillTemplate::CommitAndBegin`, and the two places `ACataclysmEnemyController` starts a creature's ability | When the skill has been paid for. All eight skill shapes and the basic attack go through `CommitAndBegin` |
+
+- A hit notice names the character the blow is credited to, the actor that dealt
+  it, the target, the kind of blow, what landed, what reached health, whether it
+  was a critical strike, blocked, evaded, damage over time or area damage, the
+  distance between the two in metres, and the tags the effect carried and
+  granted.
+- A death notice names the victim, the character credited with the kill, the
+  actor that dealt the last blow, that blow's kind, whether it was damage over
+  time, the seconds since it landed, and its tags.
+- A skill-used notice names the user, the skill, its tags, its slot and where the
+  user stood.
+
+### Seven decisions
+
+1. **A world subsystem rather than a component on each character.** The
+   coordinating session approved this on 2026-09-11. A floor rule that reacts to
+   every death binds once to the subsystem, instead of to each creature as it
+   spawns. `UCataclysmTargetCandidates` is an existing subsystem of the same
+   shape.
+2. **Nothing is built when nothing listens.** Each sender checks that its
+   delegate has a listener before it builds a notice. A notice is a plain C++
+   struct, built once and passed by const reference. Its tag containers are
+   pointers to the effect's own tags and are valid only while it is being sent,
+   so an ordinary blow copies no tags. The cost is measured below.
+3. **Each blow has one kind: a spell first, then melee, then ranged, and
+   otherwise other.** `UCataclysmDamageCalculation::HitKindOf` holds the order. A
+   projectile counts as ranged, and a spell that flies is a spell. The order was
+   agreed with the enchantment session on 2026-09-11, whose multiplier on damage
+   taken from one kind of attack is the other reader. The kind reaches the
+   target because `ApplyTypedSpec` now adds `Type.Spell` or `Type.Ranged` to the
+   damage effect's tags, as it already added `Type.Melee`. Nothing on the
+   defending side read either tag from an effect before this, so no blow
+   resolves differently. `UCataclysmSkillEffects::IsSpell` reads the attacker's
+   skill tags, not the effect's.
+4. **A minion's kill is credited to its summoner, and the notice names the
+   minion as the actor that dealt it.** Approved by the coordinating session.
+   This follows today's placeholder minion model, issue
+   [#340](https://github.com/sdubois777/Cataclysm/issues/340). The minion is
+   recorded as the effect context's source object, on its blows and on its
+   burns. The effect's causer stays the summoner, because eight places in
+   `UCataclysmVitalAttributeSet` read the causer to decide how a blow resolves,
+   and this slice changes how no blow resolves. Whether a listener counts a
+   minion's kill as the player's own is left to that listener; the notice names
+   both actors so that it can choose.
+5. **A damage-over-time tick is a blow.** It is announced and kept as the
+   character's last blow, so a bleed kill names whoever applied the bleed. The
+   ailment is found among the tags the effect grants the target
+   (`Keyword.DoT.Bleed`, not the bare `Keyword.DoT` the effect itself carries),
+   because `ApplyDamageOverTime` grants the ailment's tag instead of carrying it.
+   A death notice's killing tags hold both.
+6. **Only the skill-used notice carries the skill's name.** A hit or death
+   notice cannot say which skill made the blow, because the damage effect does
+   not know: `UCataclysmSkillEffects::ApplyHit` is handed the skill's tags and
+   not its name. A listener that needs the skill that killed pairs the two
+   notices itself.
+7. **A death that did not come from a blow still names the last attacker on
+   record.** `UCataclysmSkillEffects::ReduceHealthDirectly` removes health
+   without a hit, and a console command can set health directly. Such a death
+   names the character whose blow was last on record, if any. A listener tells
+   the two apart by `SecondsSinceLastBlow`, which is -1 when no blow is on
+   record, and by the killing tags, which are empty unless the last blow
+   brought health to zero.
+
+One addition exists only for tests.
+`UCataclysmAbilitySystemComponent::ExecutePeriodicEffectsGrantingForTests` runs
+one tick of a running damage-over-time effect at once, because a test world
+never ticks and the engine's `ExecutePeriodicEffect` is protected.
+
+### What no test covers, and why
+
+- **The creature brain's two calls**, in
+  `ACataclysmEnemyController::ContinueWindUp` and `UseAbilitiesOn`, need a whole
+  fight to drive.
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+  checks from the source that both are still there.
+- **A refused press.** `UGameplayAbility::CanActivateAbility` checks the cost and
+  the cooldown before any of the skill's own code runs, so a refused press never
+  reaches `CommitAndBegin`. No change inside `CommitAndBegin` could make one
+  announce, so a test of it could not fail.
+
+### What it costs
+
+Measured by `Cataclysm.CombatEvents.TheCostOfNoticesAcrossAHordeSizedCrowd` in
+two runs of that test group alone on 2026-09-11, with 350 creatures, the most
+`game/Source/Cataclysm/Dungeon/CataclysmFloorPopulation.h` states for an arena.
+Within each run the two blow cases were each timed twice, and the table gives the
+faster timing.
+
+| Case | First run | Second run |
+| :-- | --: | --: |
+| 1,400 blows, nobody listening | 20.3 ms, 14.51 microseconds each | 20.6 ms, 14.74 microseconds each |
+| 1,400 blows, three listeners | 20.8 ms, 14.86 microseconds each | 20.9 ms, 14.95 microseconds each |
+| 350 burn ticks, three listeners | 5.1 ms, 14.50 microseconds each | 3.8 ms, 10.82 microseconds each |
+
+The three listeners added 0.35 microseconds a blow in the first run and 0.21 in
+the second. Two timings of the same case in the same run differed by as much as
+8.4 ms, which is 6.0 microseconds a blow: the second run timed the blows with
+nobody listening at 20.6 ms and at 29.0 ms. The cost of the notices is much
+smaller than the difference between two timings of the same thing. These figures
+come from one development machine and are not a frame budget.
+
+### Sources
+
+No genre research settles any of this. It is how one part of this game's code
+tells another that a hit, a death or a skill use happened, and no formula is
+involved. The one ordering choice, the hit kind's, came from the enchantment
+session.
+
+---
+
 ## 2026-09-11 — A named set's bonuses turn on by how many worn pieces carry it, and four sets get their rows
 
 **Affects:** `UCataclysmItemModifiers::AccumulateEnchantmentsInto` in

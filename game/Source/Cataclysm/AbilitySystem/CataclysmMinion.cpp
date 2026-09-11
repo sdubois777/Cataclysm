@@ -56,10 +56,18 @@ namespace
 	 * reaches its summoner through exactly three channels and this is not one of
 	 * them. Issue #676.
 	 */
-	FCataclysmHitDelivery MinionDelivery(bool bIsArea)
+	FCataclysmHitDelivery MinionDelivery(ACataclysmMinion* Minion, bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = bIsArea;
+
+		// AND THE MINION IS NAMED AS WHAT DEALT IT, though the blow stays the
+		// summoner's. Issue #41, slice 4. It goes on the effect as the source
+		// object, which the hit and death notices read to say a minion struck
+		// and which none of the rules that work out damage reads, so every
+		// exclusion below works exactly as it did. Credit for a kill stays
+		// with the summoner, under today's placeholder minion model, #340.
+		Delivery.DealtBy = Minion;
 		Delivery.bCannotCriticallyStrike = true;
 		Delivery.bCannotPenetrate = true;
 		Delivery.bCarriesNoWeaponSubType = true;
@@ -321,7 +329,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
-		MinionDelivery(/*bIsArea=*/false), &Resolved);
+		MinionDelivery(this, /*bIsArea=*/false), &Resolved);
 
 	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
 	// same reason its blow takes no critical strike, no penetration, no weapon
@@ -340,7 +348,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	{
 		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
-										  /*bBurnIsDesigned=*/true);
+										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 	}
 
 	++AttacksMade;
@@ -379,7 +387,7 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 			// above is a single blow and stays evadable. Issue #513.
 			const float Dealt = UCataclysmSkillEffects::ApplyHit(
 				Summoner, Target, DamagePercent, FGameplayTagContainer(),
-				MinionDelivery(/*bIsArea=*/true));
+				MinionDelivery(this, /*bIsArea=*/true));
 			// Designed, for the reason the melee attack above records.
 			//
 			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area
@@ -392,7 +400,7 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 				UCataclysmSkillEffects::ApplyBurn(
 					Summoner, Target, Dealt,
 					/*bScalesWithInstigator=*/false,
-					/*bBurnIsDesigned=*/true);
+					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 			}
 		}
 	}

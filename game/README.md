@@ -302,6 +302,17 @@ by `git add` with no error and no warning. Guarded by
   one, and `docs/DECISIONS.md` records what was rejected alongside it. Issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41).
 
+  **A dungeon modifier can now react to a hit, a death or a skill used, and
+  none does yet.** `UCataclysmCombatEvents`, a world subsystem in
+  `game/Source/Cataclysm/AbilitySystem/`, sends `OnHit` once a blow's damage is
+  worked out on the character it landed on, `OnDeath` when a death is recorded,
+  and `OnSkillUsed` when a skill is paid for or a creature starts an ability. A
+  death names the character credited with it and, for a minion's kill, the
+  minion that dealt it. A blow says whether it was melee, ranged, a spell or
+  none of those. Nothing is built when nothing listens. `docs/DECISIONS.md`
+  records what each notice carries. Issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
   **A dungeon can still have no sub-type; nothing a surge creates has one.** One
   entered outside the empire has none. A Siege rolled for a city that already
   holds one is spread across the other six sub-types in proportion to their

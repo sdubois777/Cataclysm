@@ -1091,7 +1091,7 @@ void UCataclysmProjectileSkill::ActivateAbility(
 			Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
 			GetDamagePercent(), SkillTags, Params.bBurns,
 			/*InBodyMesh=*/nullptr, FlightSeconds,
-			CritChancePercent, LastHealthCostPercentOfMaximum);
+			CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
 
 		if (!InFlight)
 		{
@@ -1331,7 +1331,7 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		Params.SpeedCmPerSecond, Params.Pierce, Params.bReturns,
 		GetDamagePercent(), SkillTags, Params.bBurns,
 		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
-		CritChancePercent, LastHealthCostPercentOfMaximum);
+		CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
 
 	// NOTHING IS HOOKED TO ITS FINISH, unlike a single throw. Thirty axes are in
 	// the air at once and the ability must not end when the first of them lands;
@@ -1991,7 +1991,8 @@ void UCataclysmSelfBuffSkill::RepeatTick()
 		if (Params.bBurns
 			&& UCataclysmSkillEffects::ApplyBurn(Self, Nearby, /*HitDamage=*/0.0f,
 												 /*bScalesWithInstigator=*/true,
-												 /*bBurnIsDesigned=*/true))
+												 /*bBurnIsDesigned=*/true,
+												 /*DealtBy=*/nullptr, /*Skill=*/this))
 		{
 			++LastRepeatLit;
 		}
@@ -2104,7 +2105,8 @@ void UCataclysmSelfBuffSkill::NoteBlowTaken(AActor* Striker, bool bWasMelee,
 	// is what a Masochist's own nodes can read.
 	if (UCataclysmSkillEffects::ApplyBurn(Self, Striker, /*HitDamage=*/0.0f,
 										  /*bScalesWithInstigator=*/true,
-										  /*bBurnIsDesigned=*/true))
+										  /*bBurnIsDesigned=*/true,
+										  /*DealtBy=*/nullptr, /*Skill=*/this))
 	{
 		++AttackersLit;
 
@@ -2170,6 +2172,7 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 		{
 			AActor* Self = Avatar();
 			FCataclysmHitDelivery Delivery;
+			Delivery.Skill = this;
 			if (Self && UCataclysmSkillEffects::ApplyDirectDamage(
 					Self, Target, Spend, Delivery))
 			{

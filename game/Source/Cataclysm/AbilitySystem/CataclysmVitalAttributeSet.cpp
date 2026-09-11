@@ -20,6 +20,9 @@
 #include "AbilitySystem/CataclysmAilments.h"
 // For asking who was commanding a dying creature. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
+// For announcing each blow, and keeping it as the target's last, so a death
+// can say who dealt it. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -788,6 +791,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// what reached health, which is what this leaves behind.
 			const float ToHealth = Outcome.DealtToHealth - TurnedIntoBleeding;
 
+			// ANNOUNCED HERE, WHERE THE BLOW'S WHOLE OUTCOME IS KNOWN, AND BEFORE
+			// HEALTH IS WRITTEN. Issue #41, slice 4. Every resolved blow reaches
+			// this line, evaded and blocked ones included. The death the write
+			// below may cause reads the record this leaves, so it must come
+			// first. `NoteBlow` builds nothing when nothing listens.
+			UCataclysmCombatEvents::NoteBlow(
+				Data, Hit, Outcome, AssetTags,
+				/*bLethal=*/ToHealth > 0.0f && ToHealth >= GetHealth());
+
 			if (ToHealth > 0.0f)
 			{
 				SetHealth(FMath::Clamp(GetHealth() - ToHealth,
@@ -1024,7 +1036,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							GetOwningActor(), Bleed.FlatDamagePerTick,
 							Bleed.DurationSeconds,
 							UCataclysmDebuffs::BleedTag(),
-							/*bScalesWithInstigator=*/true);
+							/*bScalesWithInstigator=*/true,
+							/*DealtBy=*/Cast<AActor>(
+								Data.EffectSpec.GetContext().GetSourceObject()),
+							/*Skill=*/Data.EffectSpec.GetContext()
+								.GetAbilityInstance_NotReplicated());
 					}
 				}
 			}
