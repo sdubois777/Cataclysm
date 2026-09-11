@@ -121,6 +121,10 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 			Blow.DealtBy = DealtBy;
 			Blow.Skill = Context.GetAbilityInstance_NotReplicated();
 			Blow.bDamageOverTime = Hit.bIsDamageOverTime;
+			Blow.bIsMelee = Hit.bIsMelee;
+			Blow.bIsRanged = Hit.bIsRanged;
+			Blow.bIsSpell = Hit.bIsSpell;
+			Blow.bFromBoss = Hit.bFromBoss;
 			Blow.WorldSeconds = World ? World->GetTimeSeconds() : 0.0;
 
 			// THE TAGS ONLY FOR THE BLOW THAT KILLS. See `FCataclysmLastBlow`.
@@ -156,6 +160,10 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	Notice.bEvaded = Outcome.bEvaded;
 	Notice.bDamageOverTime = Hit.bIsDamageOverTime;
 	Notice.bArea = Hit.bIsArea;
+	Notice.bIsMelee = Hit.bIsMelee;
+	Notice.bIsRanged = Hit.bIsRanged;
+	Notice.bIsSpell = Hit.bIsSpell;
+	Notice.bFromBoss = Hit.bFromBoss;
 	Notice.DistanceMetres = CombatEventsMetresBetween(DealtBy, Target);
 	Notice.Location = Target->GetActorLocation();
 	Notice.EffectTags = &EffectTags;
@@ -198,6 +206,10 @@ void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
 			Notice.KillingSkillTags = &Skill->SkillTags;
 		}
 		Notice.bByDamageOverTime = Blow.bDamageOverTime;
+		Notice.bIsMelee = Blow.bIsMelee;
+		Notice.bIsRanged = Blow.bIsRanged;
+		Notice.bIsSpell = Blow.bIsSpell;
+		Notice.bFromBoss = Blow.bFromBoss;
 		Notice.SecondsSinceLastBlow =
 			static_cast<float>(World->GetTimeSeconds() - Blow.WorldSeconds);
 		Notice.KillingTags = &Blow.KillingTags;

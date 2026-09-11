@@ -356,6 +356,132 @@ bool FCataclysmCombatEventsHitNotice::RunTest(const FString&)
 
 // ---------------------------------------------------------------------------
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsHitFacts,
+	"Cataclysm.CombatEvents.AHitSaysWhetherItWasMeleeRangedOrASpellAndWhetherABossDealtIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCombatEventsHitFacts::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// THE FOUR FACTS ARE ISSUE #666'S AND THE NOTICES COPY THEM. A spell that
+	// fires a projectile is both a spell and ranged, which is why they are three
+	// facts and not one kind.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Attacker = MakeArmed(World);
+	ACataclysmEnemyCharacter* Target =
+		SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1000000.0f);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// AND SPELL DAMAGE, because a spell is scaled by it, and a blow that deals
+	// nothing is never applied and so never announced.
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), 100.0f);
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	struct FCase
+	{
+		const TCHAR* What;
+		const TCHAR* Tags;
+		bool bMelee;
+		bool bRanged;
+		bool bSpell;
+	};
+	const FCase Cases[] = {
+		{TEXT("a melee blow"), TEXT("Type.Melee"), true, false, false},
+		{TEXT("a projectile"), TEXT("Type.Projectile"), false, true, false},
+		{TEXT("a ranged attack"), TEXT("Type.Ranged"), false, true, false},
+		{TEXT("a spell"), TEXT("Type.Spell"), false, false, true},
+		{TEXT("a spell that flies"), TEXT("Type.Spell, Type.Projectile"), false, true, true},
+		{TEXT("a blow of no kind"), TEXT(""), false, false, false},
+	};
+	for (const FCase& Case : Cases)
+	{
+		const int32 Was = Heard.Hits.Num();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f, TagsListed(Case.Tags));
+		if (!TestEqual(FString::Printf(TEXT("%s sends one notice"), Case.What),
+					   Heard.Hits.Num(), Was + 1))
+		{
+			continue;
+		}
+		const FCataclysmHitNotice& Hit = Heard.Hits.Last();
+		TestEqual(FString::Printf(TEXT("%s: melee"), Case.What), Hit.bIsMelee, Case.bMelee);
+		TestEqual(FString::Printf(TEXT("%s: ranged"), Case.What), Hit.bIsRanged, Case.bRanged);
+		TestEqual(FString::Printf(TEXT("%s: spell"), Case.What), Hit.bIsSpell, Case.bSpell);
+		TestFalse(FString::Printf(TEXT("%s: no boss dealt it"), Case.What), Hit.bFromBoss);
+	}
+
+	// A BOSS'S BLOW SAYS SO, AND A HERALD'S, ONE RUNG BELOW, DOES NOT. A boss is
+	// what `ACataclysmEnemyCharacter::IsBoss` says, set the way #666's own test
+	// sets it. Their target is on the players' side.
+	ACataclysmEnemyCharacter* Guarded =
+		SpawnCreatureAt(World, FVector(0.0f, 4.0f * M, 0.0f), 1000000.0f);
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCreatureAt(World, FVector(2.0f * M, 4.0f * M, 0.0f), 1000000.0f);
+	ACataclysmEnemyCharacter* Herald =
+		SpawnCreatureAt(World, FVector(-2.0f * M, 4.0f * M, 0.0f), 1000000.0f);
+	if (!TestNotNull(TEXT("a creature on the players' side"), Guarded)
+		|| !TestNotNull(TEXT("a boss"), Boss) || !TestNotNull(TEXT("a Herald"), Herald))
+	{
+		return false;
+	}
+	Guarded->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Herald->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	Boss->SetAttackDamage(100.0f);
+	Herald->SetAttackDamage(100.0f);
+	TestTrue(TEXT("the first boss rung is a boss"), Boss->IsBoss());
+	TestFalse(TEXT("and the rung below it is not"), Herald->IsBoss());
+
+	const int32 BeforeBoss = Heard.Hits.Num();
+	UCataclysmSkillEffects::ApplyHit(Boss, Guarded, 100.0f, TagsNamed({TEXT("Type.Melee")}));
+	UCataclysmSkillEffects::ApplyHit(Herald, Guarded, 100.0f, TagsNamed({TEXT("Type.Melee")}));
+	const int32 FromBoss = Heard.HitFrom(Boss, BeforeBoss, /*bDamageOverTime=*/false);
+	const int32 FromHerald = Heard.HitFrom(Herald, BeforeBoss, /*bDamageOverTime=*/false);
+	if (TestTrue(TEXT("the boss's blow was announced"), FromBoss != INDEX_NONE))
+	{
+		TestTrue(TEXT("and says a boss dealt it"), Heard.Hits[FromBoss].bFromBoss);
+	}
+	if (TestTrue(TEXT("the Herald's blow was announced"), FromHerald != INDEX_NONE))
+	{
+		TestFalse(TEXT("and does not say a boss dealt it"), Heard.Hits[FromHerald].bFromBoss);
+	}
+
+	// AND A DEATH CARRIES THE KILLING BLOW'S FACTS: a spell, here.
+	if (UCataclysmAbilitySystemComponent* TargetSystem = SystemOf(Target))
+	{
+		TargetSystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	}
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+									 TagsNamed({TEXT("Type.Spell")}));
+	if (TestEqual(TEXT("the spell killed the target"), Heard.Deaths.Num(), 1))
+	{
+		TestTrue(TEXT("and the death says the killing blow was a spell"),
+				 Heard.Deaths[0].bIsSpell);
+		TestFalse(TEXT("and not melee"), Heard.Deaths[0].bIsMelee);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsNoListener,
 	"Cataclysm.CombatEvents.NothingIsSentWhenNothingListens",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

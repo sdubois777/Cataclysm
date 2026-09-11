@@ -73,6 +73,18 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bArea = false;
 
 	/**
+	 * Whether the blow was a melee attack, a ranged attack or a spell, and
+	 * whether a boss dealt it, copied from `FCataclysmIncomingHit`, which issue
+	 * #666 fills from the effect's tags and its causer. A spell that fires a
+	 * projectile is both a spell and ranged. A damage-over-time tick is none of
+	 * the first three.
+	 */
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
+
+	/**
 	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
 	 * missing. The number the enchantment and Demonic tree sessions call the
 	 * opponent's distance, which is the same from either side of the blow.
@@ -137,6 +149,12 @@ struct CATACLYSM_API FCataclysmDeathNotice
 
 	bool bByDamageOverTime = false;
 
+	/** The same four facts, for the last blow on record. See `FCataclysmHitNotice`. */
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
+
 	/**
 	 * Seconds between the last blow on record and the death, or -1 when there is
 	 * none. A death that did not come from a blow -- health written directly, a
@@ -199,6 +217,10 @@ struct CATACLYSM_API FCataclysmLastBlow
 	/** The skill that dealt it, if one did. Weak, so it keeps no skill alive. */
 	TWeakObjectPtr<const UGameplayAbility> Skill;
 	bool bDamageOverTime = false;
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
 
 	/** World time of the blow. Negative means no blow is on record. */
 	double WorldSeconds = -1.0;
