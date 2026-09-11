@@ -1264,14 +1264,18 @@ field on its row struct, and no skill has yet been refused for want of Fervour.
 
 ## 2026-09-09 — The strongest application of a lasting effect decides its size
 
-**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, the
-helpers that apply damage, damage over time, stuns, pins and named status
-effects, and `game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp`. Issue
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` and
+`.h`, the helpers that apply damage, damage over time, stuns, pins and named
+status effects, and `game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp`. Issue
 [#1503](https://github.com/sdubois777/Cataclysm/issues/1503).
 
-**NOTHING IS BUILT. This entry records a ruling, not a change.** The code today
-uses the newer application's figure. Everything below describes what it must do
-instead.
+**BUILT ON 2026-09-11 FOR PINS, NAMED STATUS EFFECTS AND DAMAGE OVER TIME,** the
+three paths that apply a lasting figure. Damage over time is included because the
+coordinating session decided on 2026-09-11 that the ruling covers it. It read two
+things in this entry: the "Affects" line, which names the helpers that apply
+damage over time, and the precedent, Path of Exile's ignite. The section "How it
+was built" at the end of this entry says what changed, and the section after it
+describes a fault the work corrected.
 
 ### The question, and why it had to be asked
 
@@ -1359,6 +1363,87 @@ clamps each stat against the target's current resistance before any effect objec
 exists, so **the stated magnitude is gone by the time a comparison could happen**.
 It has to be carried through. That is a real change rather than reading a
 different field.
+
+### How it was built, on 2026-09-11
+
+In `ApplyPin`, `ApplyNamedEffect` and `ApplyDamageOverTime`, in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`.
+`ApplyTagForDuration` is unchanged. An effect that is only a tag, such as Madness
+or a stun, states no figure to compare, so the newest application still replaces
+the running one.
+
+**What an application stated travels on the effect itself.** It is a set-by-caller
+number that no modifier reads, under the plain name `Cataclysm.StatedMagnitude`.
+- For a pin, it is the damage taken increase.
+- For a named effect, it is the figure summed over the stats the effect touches on
+  this target, which is ruling 2.
+- For damage over time, it is the damage a second: the damage one tick deals
+  divided by the seconds between ticks. Both come after the attacker's own three
+  damage-over-time stats and before the target's resistances.
+
+**A judgement: damage over time is compared by damage a second.** The coordinating
+session asked for this reading to be labelled as one.
+- It is per second rather than per tick, because the attacker's frequency stat
+  makes the same damage a tick worth more each second.
+- It is not the total, because how long an effect runs is refreshed separately
+  under ruling 3.
+- The precedent is the one this entry cites. In Path of Exile only one ignite
+  deals damage at a time, the strongest. The 2026-08-04 entry on the Demonic
+  skills and Burn records the sources, the Path of Exile wiki and Mobalytics on
+  ignite.
+
+It is a plain name rather than a registered gameplay tag, because every
+registered tag is generated from the Tags sheet of `docs/All_Things_Cataclysm.xlsx`.
+
+**A new application is compared with the running one before anything is sized.**
+- **If the running one stated more,** the new one's figures are refused. The
+  running effect's start is moved so that it has at least the new application's
+  duration left, using `ModifyActiveEffectStartTime`, and the engine then sets its
+  expiry timer again.
+- **Otherwise,** the running one is taken off first. The new one is sized against
+  the target as it stands without it, then applied entire.
+- **A tie goes to the newer application.**
+
+**A judgement that the rulings do not state: a refresh never shortens an effect.**
+A weaker application lasting less time than the running one has left changes
+nothing. Ruling 3's own reason is keeping an effect running, and cutting it short
+would work against that. I found no shipped game that states this case either way.
+
+**A pin stating no increase states zero.**
+- Only the Spear's Impale states an increase. Nail Down, Skewer, Thicket and the
+  terrain hold in `CataclysmTerrain.cpp` pin a target without one.
+- Before this change, any of those four landing on an impaled target took
+  Impale's increase off it, because granting the bare tag removed whatever
+  already granted it.
+- A target that cannot hold the increase at all is still given the bare tag,
+  which carries no statement. On such a target the newest pin replaces the
+  running one, as before. No figure can differ there, only the time left.
+
+### A fault this corrected, found while building it
+
+`ApplyNamedEffect` sized a new application against the target's resistance while
+the running application was still on it, and only then took the running one off.
+So applying the same Shred again gave the target resistance back.
+
+**This entry's worked example did not show it.** The example rejected comparing
+what each Shred takes, because that would refuse the 50% Shred in favour of the
+running 30% one. The code at the time did something different from either rule:
+the 50% Shred replaced the 30% one, but was sized against the 10 that was left.
+
+Measured on 2026-09-11, with the tests in
+`game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp` run against the code before
+the change:
+
+| Applied to a target at 40 resistance | Before | Ruled |
+|---|---:|---:|
+| A 30 Shred, then the same 30 Shred again | 30 | 10 |
+| A 30 Shred, then a 50 Shred | 30 | 0 |
+| A 30 Shred, then a 10 Shred | 30 | 10 |
+| A 25 Abyssal Aura on Demonic and War, then a 10 one | 30 and 30 | 15 and 15 |
+| A 30% pin, then a 10% pin (Damage Taken reads 100 unpinned) | 110 | 130 |
+| A 30% pin, then a pin stating no increase | 100 | 130 |
+
+The same tests assert the "Ruled" column, and they pass once the change is built.
 
 ### How it was recorded
 
