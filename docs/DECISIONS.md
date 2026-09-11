@@ -72,9 +72,15 @@ is a judgement and not a finding.
 ### What is not in this change
 
 - **No effect rows for the ranged sentences.** The Enchantment Effects sheet
-  still holds seven rows. The 54 rows the plan on #45 expected wait for the
-  design workbook, whose edits the coordinating session sequences between
-  sessions.
+  still holds seven rows. Of the 61 rows the plan on #45 expected the first
+  pull request to make work, 51 state a range, and they wait for the design
+  workbook, whose edits the coordinating session sequences between sessions.
+  The other three state no range: the two healing ceilings, left out for the
+  reason the entry for the Enchantment Effects sheet gives, and P031, "Your
+  retaliation damage scales with your current HP percentage — the lower your
+  HP the higher the retaliation", which states no number and needs one chosen
+  under the owner's delegation. **Earlier texts said 54 rows state a range.
+  54 is the count of rows not yet written, and 51 of them state a range.**
 - **A roll never changes after the drop.** The design says a player "can also
   apply one afterwards"; nothing applies an enchantment after the drop yet,
   and when something does it will roll the same way.
@@ -289,7 +295,10 @@ has to be read again before its numbers are trusted.
 
 Only the enchantments whose sentence states one number and needs nothing the
 game lacks. Of the 61 rows the plan on #45 expected this change to make work,
-54 state a range and wait for the pull request that stores a roll on the item.
+51 state a range and wait for the pull request that stores a roll on the item.
+The other three state no range: the two healing ceilings below, and P031,
+which states no number. **This paragraph said 54 until 2026-09-11. 54 is the
+count of rows not yet written, and 51 of them state a range.**
 
 | Enchantment | Stat | Bucket | Value |
 | :-- | :-- | :-- | --: |
