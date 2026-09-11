@@ -1998,3 +1998,90 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	int32 Option = 0;
 };
+
+/**
+ * What one enchantment grants: one stat, one bucket, one value. Source: the
+ * Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`. Issue #45.
+ *
+ * THE SHAPE OF FCataclysmPassiveEffectRow ABOVE, AND FOR THE SAME REASON. An
+ * enchantment says what it does in a sentence written for a player and carries
+ * no stat, no bucket and no number a machine can read, so those are written in
+ * a sheet beside it. The passive trees' numbers are written the same way, which
+ * the project owner chose on 2026-08-25.
+ *
+ * AN ENCHANTMENT WITH NO ROW GRANTS NOTHING, and that is the ordinary case. A
+ * row is written for an enchantment once the game has what its sentence needs.
+ *
+ * SEVERAL ROWS MAY NAME THE SAME ENCHANTMENT, and all of them apply, so one
+ * sentence can move two stats. The row name is the enchantment with `#1`, `#2`
+ * and so on after it.
+ *
+ * `tools/generate_datatables.py` REFUSES THREE KINDS OF ROW when it writes the
+ * file: one naming an enchantment that does not exist or whose words it does
+ * not repeat exactly, one naming a set row, and one stating a range.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEnchantmentEffectRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/**
+	 * The enchantment: a row name in `game/Data/EnchantmentsPositive.csv` or
+	 * `EnchantmentsNegative.csv`, which is what an item stores.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Enchantment;
+
+	/** A stat name as `game/Data/ClassStats.csv` and `Attributes.csv` spell it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Stat;
+
+	/**
+	 * Which of the three buckets the value lands in: `flat`, `increased` or
+	 * `more`, read off the sentence's own wording. A "less" is a negative
+	 * `more`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString ValueKind;
+
+	/**
+	 * The value: percentage points for `increased` and `more`, and the stat's
+	 * own units for `flat`.
+	 *
+	 * TWO COLUMNS, BECAUSE MOST SENTENCES STATE A RANGE. How a range such as
+	 * "10%-30%" becomes one number on one item is a question for the project
+	 * owner, and until it is answered the generator refuses a row whose two
+	 * values differ. So every row today carries one value in both.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ValueLow = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ValueHigh = 0.0f;
+
+	/** Tags a skill must carry for this to apply to it. Empty applies to all. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString RequiredTags;
+
+	/**
+	 * A state of the character this only applies in, or empty for always.
+	 * The names are `CONDITIONS` in `tools/generate_datatables.py`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Condition;
+
+	/** What the condition compares against. A percentage for health. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ConditionValue = 0.0f;
+
+	/**
+	 * A state of the character this bonus's size grows with, or empty for a
+	 * fixed one. The names are `SCALES` in `tools/generate_datatables.py`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Scale;
+
+	/** How large one whole step of that state is, in the state's own units. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ScaleStep = 0.0f;
+};

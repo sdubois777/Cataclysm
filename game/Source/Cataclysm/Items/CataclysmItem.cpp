@@ -516,6 +516,218 @@ const UDataTable* UCataclysmItemModifiers::LoadBaseTable()
 	return Table;
 }
 
+const TCHAR* UCataclysmItemModifiers::EnchantmentEffectTableAssetPath =
+	TEXT("/Game/Data/DT_EnchantmentEffects.DT_EnchantmentEffects");
+
+const UDataTable* UCataclysmItemModifiers::LoadEnchantmentEffectTable()
+{
+	const UDataTable* Table =
+		LoadObject<UDataTable>(nullptr, EnchantmentEffectTableAssetPath);
+	if (!Table)
+	{
+		// Loudly, and naming both scripts, for the reason LoadBaseTable gives.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from game/Data/"
+				 "EnchantmentEffects.csv, which tools/generate_datatables.py "
+				 "produces from the Enchantment Effects sheet of "
+				 "docs/All_Things_Cataclysm.xlsx."),
+			EnchantmentEffectTableAssetPath);
+	}
+	return Table;
+}
+
+namespace
+{
+	/**
+	 * Whether a row of an enchantment table belongs to a set.
+	 *
+	 * BY ITS TYPE, rather than by its set identifier.
+	 * `UCataclysmDropRoll::EnchantmentSetId` answers 0 for a set row whose
+	 * identifier cannot be read, and that row must still not be treated as an
+	 * ordinary enchantment here. The type is also the column the generator
+	 * checks when it refuses an effect on a set row.
+	 */
+	bool IsSetEnchantmentRow(const UDataTable* Table, FName Row)
+	{
+		const FCataclysmEnchantmentRow* Found = Table
+			? Table->FindRow<FCataclysmEnchantmentRow>(
+				  Row, TEXT("IsSetEnchantmentRow"), /*bWarnIfMissing=*/false)
+			: nullptr;
+		return Found
+			&& Found->EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase);
+	}
+
+	/**
+	 * The modifier one effect row grants, or false when this build cannot read
+	 * the row's condition or scale.
+	 *
+	 * A ROW THIS BUILD CANNOT READ GRANTS NOTHING, on either side of an
+	 * enchantment. Applying it with the condition dropped would make a benefit
+	 * hold all the time or a drawback's condition vanish. The generator refuses
+	 * every such name, so only a hand-edited CSV can reach this, and granting
+	 * nothing is the answer that errs in neither direction.
+	 */
+	bool EnchantmentModifierFor(const FCataclysmEnchantmentEffectRow& Effect,
+								FCataclysmStatModifier& Out)
+	{
+		Out = FCataclysmStatModifier();
+		Out.Source = ECataclysmModifierSource::Enchantment;
+
+		// THE LOW VALUE, WHICH IS THE ONLY ONE. The generator refuses a row whose
+		// two values differ until the project owner rules how a stated range
+		// becomes one number on one item, so they are equal on every row this
+		// build can load.
+		Out.Value = Effect.ValueLow;
+
+		if (Effect.ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
+		{
+			Out.Bucket = ECataclysmStatBucket::More;
+		}
+		else if (Effect.ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
+		{
+			Out.Bucket = ECataclysmStatBucket::Flat;
+		}
+		else
+		{
+			Out.Bucket = ECataclysmStatBucket::Increased;
+		}
+
+		TArray<FString> Tags;
+		Effect.RequiredTags.ParseIntoArray(Tags, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Tag : Tags)
+		{
+			Tag.TrimStartAndEndInline();
+			if (!Tag.IsEmpty())
+			{
+				Out.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(
+					FName(*Tag), /*ErrorIfNotFound=*/false));
+			}
+		}
+
+		if (!Effect.Condition.IsEmpty())
+		{
+			if (!UCataclysmStatPipeline::ConditionNamed(Effect.Condition,
+														Out.Condition))
+			{
+				return false;
+			}
+			Out.ConditionValue = Effect.ConditionValue;
+		}
+
+		if (!Effect.Scale.IsEmpty())
+		{
+			if (!UCataclysmStatPipeline::ScaleNamed(Effect.Scale, Out.Scale))
+			{
+				return false;
+			}
+			Out.ScaleStep = Effect.ScaleStep;
+		}
+
+		return true;
+	}
+}
+
+int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+	const TArray<FCataclysmItem>& Worn, const UDataTable* EffectTable,
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable)
+{
+	// ALL THREE TABLES OR NOTHING. The loaders report a missing table loudly, so
+	// it is not reported a second time here.
+	if (!EffectTable || !PositiveTable || !NegativeTable)
+	{
+		return 0;
+	}
+
+	// EVERY EFFECT ROW GROUPED BY THE ENCHANTMENT IT IS ABOUT, READ ONCE, and
+	// sorted by stat so one enchantment's rows come back in the same order every
+	// time. A DataTable keeps its rows in a map, and a map's order is not part of
+	// the data. `UCataclysmPassiveTree::EffectsByNode` does the same for a node.
+	TMap<FName, TArray<const FCataclysmEnchantmentEffectRow*>> EffectsFor;
+	for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
+	{
+		const FCataclysmEnchantmentEffectRow* Effect =
+			reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+		if (Effect && !Effect->Enchantment.IsEmpty())
+		{
+			EffectsFor.FindOrAdd(FName(*Effect->Enchantment)).Add(Effect);
+		}
+	}
+	for (TPair<FName, TArray<const FCataclysmEnchantmentEffectRow*>>& Pair :
+		 EffectsFor)
+	{
+		Pair.Value.Sort([](const FCataclysmEnchantmentEffectRow& Left,
+						   const FCataclysmEnchantmentEffectRow& Right)
+		{
+			return Left.Stat < Right.Stat;
+		});
+	}
+
+	int32 Added = 0;
+	auto Grant = [&Totals, &EffectsFor, &Added](FName Enchantment)
+	{
+		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
+			EffectsFor.Find(Enchantment);
+		if (!Effects)
+		{
+			// MOST ENCHANTMENTS ARE HERE, AND IT IS NOT A FAULT. A row is written
+			// for an enchantment once the game has what its sentence needs.
+			return;
+		}
+
+		for (const FCataclysmEnchantmentEffectRow* Effect : *Effects)
+		{
+			FCataclysmStatModifier Modifier;
+			if (!EnchantmentModifierFor(*Effect, Modifier))
+			{
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("Enchantment '%s' names the condition '%s' or the "
+							"scale '%s', which this build does not know, so the "
+							"row grants nothing. Regenerate "
+							"game/Data/EnchantmentEffects.csv from the workbook."),
+					   *Effect->Enchantment, *Effect->Condition, *Effect->Scale);
+				continue;
+			}
+			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
+			++Added;
+		}
+	};
+
+	// A BENEFIT ONCE HOWEVER MANY PIECES CARRY IT, AND A DRAWBACK FOR EVERY
+	// PIECE. The header says why each.
+	TSet<FName> BenefitsGranted;
+	for (const FCataclysmItem& Item : Worn)
+	{
+		if (Item.Base.IsNone())
+		{
+			continue;
+		}
+
+		for (const FCataclysmRolledEnchantment& Rolled : Item.Enchantments)
+		{
+			if (!Rolled.Positive.IsNone()
+				&& !IsSetEnchantmentRow(PositiveTable, Rolled.Positive))
+			{
+				bool bAlreadyGranted = false;
+				BenefitsGranted.Add(Rolled.Positive, &bAlreadyGranted);
+				if (!bAlreadyGranted)
+				{
+					Grant(Rolled.Positive);
+				}
+			}
+
+			if (!Rolled.Negative.IsNone()
+				&& !IsSetEnchantmentRow(NegativeTable, Rolled.Negative))
+			{
+				Grant(Rolled.Negative);
+			}
+		}
+	}
+
+	return Added;
+}
+
 float UCataclysmItemModifiers::WeaponDamageForType(
 	const UDataTable* BaseTable, const FString& WeaponType, int32 GearLevel)
 {

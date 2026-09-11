@@ -49,8 +49,9 @@ class UTextBlock;
  *     nothing in the game computes that sum at all, so there is no figure to
  *     show. Issue #1251.
  *   - **Its armour penetration row reads zero for every character.** Nothing in
- *     `game/Data/` grants the stat; the three enchantments that would are
- *     blocked on enchantments existing. The row is shown anyway because the
+ *     `game/Data/` grants the stat; the three enchantments that would state
+ *     ranges, and a range cannot be written until the project owner rules how
+ *     it becomes one number on one item (#45). The row is shown anyway because the
  *     design lists it among the 46. Issue #1252.
  *   - **It does not show where a stat came from.** A player can read that they
  *     have 40% critical strike chance and not which piece of gear supplied it.

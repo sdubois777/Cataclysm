@@ -38,6 +38,84 @@ bool UCataclysmStatPipeline::CanGrantMore(ECataclysmModifierSource Source)
 	}
 }
 
+namespace
+{
+	/**
+	 * Every condition and scale name a data sheet may use. Issue #45.
+	 *
+	 * THE SPELLINGS ARE `CONDITIONS` AND `SCALES` IN
+	 * `tools/generate_datatables.py`, and
+	 * `tools/tests/test_stat_condition_names_match_the_engine.py` reads these
+	 * two tables out of this file and fails if either differs from the
+	 * generator's. Keep one entry per line in this shape, which is what that test
+	 * reads.
+	 */
+	struct FNamedStatCondition
+	{
+		const TCHAR* Name;
+		ECataclysmStatCondition Condition;
+	};
+
+	const FNamedStatCondition NamedStatConditions[] = {
+		{ TEXT("health_at_or_below"),           ECataclysmStatCondition::HealthAtOrBelowPercent },
+		{ TEXT("health_below"),                 ECataclysmStatCondition::HealthBelowPercent },
+		{ TEXT("health_above"),                 ECataclysmStatCondition::HealthAbovePercent },
+		{ TEXT("seconds_after_health_cost"),    ECataclysmStatCondition::WithinSecondsOfHealthCost },
+		{ TEXT("seconds_after_foreign_damage"), ECataclysmStatCondition::WithinSecondsOfForeignDamage },
+		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
+		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
+		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
+	};
+
+	struct FNamedStatScale
+	{
+		const TCHAR* Name;
+		ECataclysmStatScale Scale;
+	};
+
+	const FNamedStatScale NamedStatScales[] = {
+		{ TEXT("health_missing"),      ECataclysmStatScale::PerPercentOfMaximumHealthMissing },
+		{ TEXT("class_resource_held"), ECataclysmStatScale::PerPointOfClassResourceHeld },
+		{ TEXT("health_owed"),         ECataclysmStatScale::PerPercentOfMaximumHealthOwed },
+		{ TEXT("life_leech"),          ECataclysmStatScale::PerPercentOfLifeLeech },
+		{ TEXT("momentum_stacks"),     ECataclysmStatScale::PerStackOfSanguineMomentum },
+		{ TEXT("bloodlust_stacks"),    ECataclysmStatScale::PerStackOfBloodlust },
+		{ TEXT("carnage_stacks"),      ECataclysmStatScale::PerStackOfCarnage },
+		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
+		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
+	};
+}
+
+bool UCataclysmStatPipeline::ConditionNamed(const FString& Name,
+											ECataclysmStatCondition& OutCondition)
+{
+	// IGNORING CASE, as the passive tree's own reading does, so the two answer
+	// alike for a sheet cell typed with a capital.
+	for (const FNamedStatCondition& Each : NamedStatConditions)
+	{
+		if (Name.Equals(Each.Name, ESearchCase::IgnoreCase))
+		{
+			OutCondition = Each.Condition;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmStatPipeline::ScaleNamed(const FString& Name,
+										ECataclysmStatScale& OutScale)
+{
+	for (const FNamedStatScale& Each : NamedStatScales)
+	{
+		if (Name.Equals(Each.Name, ESearchCase::IgnoreCase))
+		{
+			OutScale = Each.Scale;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 										   float Value,
 										   const FCataclysmStatConditions& State)

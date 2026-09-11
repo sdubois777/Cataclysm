@@ -1,0 +1,8 @@
+Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,RequiredTags,Condition,ConditionValue,Scale,ScaleStep
+Positive_Double_your_energy_shield#1,Positive_Double_your_energy_shield,max_energy_shield,more,100.0,100.0,,,0.0,,0.0
+Positive_Double_your_life_leech#1,Positive_Double_your_life_leech,life_leech,more,100.0,100.0,,,0.0,,0.0
+Positive_Retaliation_damage_applies_to_all_enemies_within#1,Positive_Retaliation_damage_applies_to_all_enemies_within,retaliation_radius_metres,flat,3.0,3.0,,,0.0,,0.0
+Positive_Increase_your_auras_AOE_by_100#1,Positive_Increase_your_auras_AOE_by_100,area_of_effect,increased,100.0,100.0,Slot.Aura,,0.0,,0.0
+Positive_Your_retaliation_damage_is_tripled_while_below_3#1,Positive_Your_retaliation_damage_is_tripled_while_below_3,retaliation,more,200.0,200.0,,health_below,30.0,,0.0
+Negative_DoTs_deal_double_damage_to_you#1,Negative_DoTs_deal_double_damage_to_you,damage_over_time_taken,more,100.0,100.0,,,0.0,,0.0
+Negative_You_have_20_less_hp#1,Negative_You_have_20_less_hp,max_health,more,-20.0,-20.0,,,0.0,,0.0

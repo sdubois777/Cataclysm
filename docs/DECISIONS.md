@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — An enchantment's numbers are written in an Enchantment Effects sheet, and the first seven change a character's stats
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx`, which gains an Enchantment Effects
+sheet; `game/Data/EnchantmentEffects.csv` and its DataTable asset;
+`tools/generate_datatables.py` (`enchantment_effects`,
+`validate_enchantment_effects`); `tools/generate_datatable_assets.py`;
+`FCataclysmEnchantmentEffectRow` in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`;
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto` and
+`LoadEnchantmentEffectTable` in `game/Source/Cataclysm/Items/CataclysmItem.h`
+and `.cpp`; `UCataclysmEquipmentComponent::GatherModifiers`; and
+`UCataclysmStatPipeline::ConditionNamed` and `ScaleNamed`. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45).
+
+### What was wrong, measured
+
+**All 575 enchantment rows did nothing in play.** An item stored which two rows
+it rolled, and the only code reading that field was the hover text, the drop roll
+and the automation tests. A search for member reads of `.Enchantments` across
+`game/Source` found exactly those; the same search for `.Affixes` found 16 files,
+and a search for a made-up name found none.
+
+### The decision: one sheet, in the shape the passive trees already use
+
+An enchantment says what it does in a sentence and carries no stat, no bucket
+and no number a machine can read. Its numbers are now written in an Enchantment
+Effects sheet of the design workbook, one stat effect per row, in the shape of
+the Passive Effects sheet. The project owner chose that sheet on 2026-08-25 as
+the place a passive node's numbers live, and an enchantment is the same problem.
+
+A row names its enchantment by the row name an item stores, and repeats the
+enchantment's words in an `Effect` column that must match them exactly. The
+generator refuses a row whose words differ, so an enchantment that is reworded
+has to be read again before its numbers are trusted.
+
+**Three kinds of row are refused for now:**
+
+| Refused | Why |
+| :-- | :-- |
+| A set row | A set's rows apply by how many worn pieces carry the set, and the sheet cannot say how many pieces a row needs yet. The set bonus pull request adds that. |
+| A stated range, such as "10%-30%" | How a range becomes one number on one item is a question put to the project owner on #45. Every row states one value until it is answered. |
+| A condition or scale the game cannot judge | The same rule the Passive Effects sheet follows, and the same names |
+
+### How a worn enchantment applies
+
+- **A benefit applies once, however many worn pieces carry it.** The design says
+  an enchantment "can only appear once across all of a player's equipped gear",
+  to prevent "degenerate stacking of powerful effects". Nothing refuses the
+  second piece at equip time yet; that waits for the owner's answer on what
+  counts as "the same enchantment" and what equipping a duplicate does. Until
+  then this keeps the rule's purpose true. **It is a judgement, and it is one
+  line to change** once the owner answers.
+- **A drawback applies for every worn piece carrying it.** Nothing here may make
+  a cost smaller than the items say.
+- **A set row grants nothing on its own piece, on either side.** The row an item
+  records for a set is the set's lowest threshold row, so granting it per piece
+  would hand one piece the two-piece bonus. The set's drawback applies once for
+  the whole set from the second piece, which is the owner's ruling of
+  2026-09-08.
+
+### The seven rows, and the reading each takes
+
+Only the enchantments whose sentence states one number and needs nothing the
+game lacks. Of the 61 rows the plan on #45 expected this change to make work,
+54 state a range and wait for the owner.
+
+| Enchantment | Stat | Bucket | Value |
+| :-- | :-- | :-- | --: |
+| Double your energy shield | `max_energy_shield` | more | +100 |
+| Double your life leech | `life_leech` | more | +100 |
+| Retaliation damage applies to all enemies within 3 meters when you are hit | `retaliation_radius_metres` | flat | 3 |
+| Increase your auras AOE by 100% | `area_of_effect`, scoped to `Slot.Aura` | increased | +100 |
+| Your retaliation damage is tripled while below 30% HP | `retaliation`, while health is strictly below 30% | more | +200 |
+| DoTs deal double damage to you | `damage_over_time_taken` | more | +100 |
+| You have 20% less hp. | `max_health` | more | -20 |
+
+The readings are the project's existing wording rule, stated in section IV of
+the design document. "Increased" and "reduced" are the increases bucket. "More",
+"less", "double" and "tripled" are the more bucket, so "double" is +100% and
+"tripled" +200%. "Below 30%" is strictly below, which is `health_below` rather
+than `health_at_or_below`, as issue #1051 settled for the passive trees.
+
+### What was left out on purpose
+
+- **The two healing ceilings,** "You cannot heal above 60% of your maximum HP"
+  and "You cannot be healed above 75%". Written as `healing_ceiling_reduction`
+  they would add, giving a ceiling of 35% to a character wearing both. The
+  ruling of 2026-08-17 on the critical strike ceiling says the strictest
+  ceiling wins, so they wait for the pull request that builds the ceilings.
+- **The passive tree's own list of condition names.**
+  `UCataclysmPassiveTree::AccumulateInto` still reads condition and scale names
+  through its own chain, while an enchantment reads them through
+  `UCataclysmStatPipeline::ConditionNamed` and `ScaleNamed`. Moving the passive
+  tree onto the shared lookup waits for the passive-tree work on another branch
+  to merge, so that the two edits do not collide.
+  `tools/tests/test_stat_condition_names_match_the_engine.py` holds the shared
+  lookup to the generator's `CONDITIONS` and `SCALES`, so the two cannot drift.
+
+---
+
 ## 2026-09-11 — A creature's target search looks at lists of what it could attack, not at every body in range
 
 **Affects:** `ACataclysmEnemyController::ChooseTarget` in

@@ -128,8 +128,10 @@ enum class ECataclysmEquipResult : uint8
  * This component holds the items, hands them to the first two, and hands the
  * result to the last two. It computes nothing about what an affix is worth.
  *
- * WHAT IT DOES NOT DO. Gear levelling, sockets and gems (#46). Enchantments
- * (#45). Tooltips (#733). Potions. Moving items around the bag. It also does not
+ * WHAT IT DOES NOT DO. Gear levelling, sockets and gems (#46). Set bonuses,
+ * which need the worn pieces counted (#45); every other enchantment's effect is
+ * gathered here since that issue. Tooltips (#733). Potions. Moving items around
+ * the bag. It also does not
  * decide what the player sees; `UCataclysmEquipmentScreen` does that, for the
  * same reason `UCataclysmInventoryScreen` is separate from its widget -- the
  * automation test command passes `-nullrhi`, so nothing that reaches the screen

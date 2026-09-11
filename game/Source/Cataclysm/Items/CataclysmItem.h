@@ -115,9 +115,10 @@ struct CATACLYSM_API FCataclysmRolledEnchantment
  *
  * WHAT IS NOT HERE. Rarity, because it is computed from the contents. The affix
  * values, because they depend on the upgrade level and the base. Which gem sits
- * in a socket, which is issue #46. What an enchantment DOES, which is the rest of
- * issue #45: a piece now records which enchantments it carries and says so in the
- * tool tip, and not one of the 574 changes a character's stats yet.
+ * in a socket, which is issue #46. What an enchantment DOES, which is
+ * `UCataclysmItemModifiers::AccumulateEnchantmentsInto` reading
+ * `game/Data/EnchantmentEffects.csv` since issue #45: an enchantment with no row
+ * there still changes nothing.
  *
  * EVERY FIELD ON THIS STRUCT AND ON FCataclysmRolledAffix IS MARKED `SaveGame`,
  * and it has to be, one field at a time. An item is persisted inside a character
@@ -539,6 +540,50 @@ public:
 
 	/** The item base table, or null with the reason logged. */
 	static const UDataTable* LoadBaseTable();
+
+	/** Where the imported enchantment effect table lives. Issue #45. */
+	static const TCHAR* EnchantmentEffectTableAssetPath;
+
+	/** The enchantment effect table, or null with the reason logged. */
+	static const UDataTable* LoadEnchantmentEffectTable();
+
+	/**
+	 * Every modifier the enchantments on these worn items grant, merged into a
+	 * character's running totals. Issue #45.
+	 *
+	 * WHAT A ROW GRANTS IS IN `game/Data/EnchantmentEffects.csv`, and an
+	 * enchantment with no row there grants nothing. Every modifier here comes
+	 * from the Enchantment source, which the pipeline lets into the "more"
+	 * bucket.
+	 *
+	 * A BENEFIT APPLIES ONCE, HOWEVER MANY WORN PIECES CARRY IT. The design:
+	 * "Each enchantment can only appear once across all of a player's equipped
+	 * gear", to prevent "degenerate stacking of powerful effects". Nothing
+	 * refuses the second piece at equip time yet; that is a separate change
+	 * waiting on the project owner. So this is what keeps the rule's purpose true
+	 * until then.
+	 *
+	 * A DRAWBACK APPLIES FOR EVERY WORN PIECE CARRYING IT. Nothing here may make
+	 * a cost smaller than the items say. Whether two pieces may share a drawback
+	 * at all is part of the same question to the owner.
+	 *
+	 * A SET ROW GRANTS NOTHING HERE, on either side. A set's bonuses turn on by
+	 * how many worn pieces carry the set, and its drawback applies once for the
+	 * whole set. Applying either per piece would hand a single piece its set's
+	 * two-piece bonus, because the row an item records for a set is its lowest
+	 * threshold row.
+	 *
+	 * ALL THREE TABLES ARE NEEDED. Without the two enchantment tables a set row
+	 * cannot be told from any other, so a missing one grants nothing at all.
+	 *
+	 * @return how many modifiers were added
+	 */
+	static int32 AccumulateEnchantmentsInto(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+		const TArray<FCataclysmItem>& Worn,
+		const UDataTable* EffectTable,
+		const UDataTable* PositiveTable,
+		const UDataTable* NegativeTable);
 
 	/**
 	 * What a weapon of this TYPE supplies as attack damage.

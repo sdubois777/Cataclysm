@@ -1019,6 +1019,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static float DisplayedRateReduction(const FCataclysmStatBreakdown& Breakdown);
 
+	/**
+	 * The condition a data sheet names, or false for a name this build does not
+	 * know. Issue #45.
+	 *
+	 * THE NAMES ARE `CONDITIONS` IN `tools/generate_datatables.py`, which refuses
+	 * any other when a sheet is written, and
+	 * `tools/tests/test_stat_condition_names_match_the_engine.py` fails if this
+	 * file's list and that one ever differ. So a condition added there and not
+	 * here is caught when the tests run, rather than a row granting nothing with
+	 * only a log line to say so.
+	 *
+	 * NOT YET WHAT THE PASSIVE TREE READS THROUGH. `UCataclysmPassiveTree::
+	 * AccumulateInto` still carries its own chain of the same names. Moving it
+	 * onto this waits for the passive-tree work on another branch to merge, so
+	 * the two edits do not collide.
+	 */
+	static bool ConditionNamed(const FString& Name,
+							   ECataclysmStatCondition& OutCondition);
+
+	/**
+	 * The scale a data sheet names, or false for a name this build does not
+	 * know. Issue #45. The names are `SCALES` in `tools/generate_datatables.py`,
+	 * held to this file's list by the same test as `ConditionNamed`.
+	 */
+	static bool ScaleNamed(const FString& Name, ECataclysmStatScale& OutScale);
+
 private:
 	/** Shared by Evaluate and EvaluateRate; they differ only in the last step. */
 	static FCataclysmStatBreakdown Accumulate(float Base,
