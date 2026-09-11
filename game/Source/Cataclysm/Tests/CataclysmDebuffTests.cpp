@@ -17,6 +17,8 @@
 #include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
+// For driving a periodic effect's ticks inside a test. See `RunClock` below.
+#include "TimerManager.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -295,6 +297,37 @@ namespace CataclysmDebuffTest
 			return -1.0f;
 		}
 		return Magnitude;
+	}
+
+	/**
+	 * Move this world's clock forward and fire every timer that falls due in
+	 * that time, including the ticks of a periodic gameplay effect.
+	 *
+	 * WHY THE FRAME COUNTER IS MOVED BY HAND. `FTimerManager::Tick` returns at
+	 * once if it has already run in the current engine frame: it compares
+	 * `LastTickedFrame` with `GFrameCounter`. The engine's frame loop does not
+	 * run inside a synchronous automation test body, which
+	 * `CataclysmSaveWriterTests.cpp` records for the same counter. So each step
+	 * advances the counter first, or only the first step would do anything.
+	 *
+	 * THE CLOCK AND THE TIMERS TOGETHER. The ability system works out how long
+	 * an effect has left from `UWorld::GetTimeSeconds`, and its ticks come from
+	 * the timer manager, which keeps a time of its own. Moving one without the
+	 * other would expire an effect that had never ticked, or tick one that had
+	 * run out.
+	 *
+	 * IN SMALL STEPS, so that no step covers more than one tick interval and
+	 * events arrive in the order a real run would see them.
+	 */
+	void RunClock(UWorld* World, float Seconds, float Step = 0.05f)
+	{
+		const int32 Steps = FMath::CeilToInt(Seconds / Step);
+		for (int32 Index = 0; Index < Steps; ++Index)
+		{
+			++GFrameCounter;
+			World->TimeSeconds += Step;
+			World->GetTimerManager().Tick(Step);
+		}
 	}
 }
 
@@ -1740,6 +1773,159 @@ CATACLYSM_DEBUFF_TEST(FCataclysmFasterBleedTest,
 			  15.0f, 0.01f);
 	TestEqual(TEXT("in exactly one effect"),
 			  EffectCountOn(Target.AbilitySystem), 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A tie refreshes the running application rather than replacing it.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmEqualBleedKeepsTickingTest,
+	"Cataclysm.Debuffs.ABleedAppliedAgainAtTheSameStrengthStillTicks")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * A bleed applied again at the same strength, sooner than it ticks, must
+	 * still deal damage.
+	 *
+	 * FOUND BY THE COORDINATING SESSION READING #1570, before anything was run.
+	 * A tie went to the newer application, which took the running effect off
+	 * and applied a new one. A new damage-over-time effect first ticks one full
+	 * interval after it lands, so every equal application restarted that
+	 * interval. A skill or a gear chance applying the same bleed on hits closer
+	 * together than the interval would never deal damage at all. Measured on
+	 * 2026-09-11 against the code before the change: the bleed applied again
+	 * took 0 in 4.2 seconds, while the control below passed.
+	 *
+	 * THE CONTROL IS THE FIRST TARGET. A bleed applied once and left alone must
+	 * deal its ticks on this clock. Without that, the second target's result
+	 * would say nothing about the tie, only that the clock does not tick
+	 * effects.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier LeftAlone(World);
+	const FScopedCarrier AppliedAgain(World);
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	// A BLEED OF 10 A TICK ON EACH, then the same bleed on the second target
+	// again every 0.6 seconds for 4.2 seconds. The interval between ticks is a
+	// second when nothing has raised the attacker's frequency, so that is 0.6
+	// of an interval between applications.
+	TestTrue(TEXT("a bleed of 10 a tick lands on the first target"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, LeftAlone.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/10.0f, Bleed));
+	TestTrue(TEXT("and on the second"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, AppliedAgain.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/10.0f, Bleed));
+	for (int32 Again = 0; Again < 6; ++Again)
+	{
+		RunClock(World, 0.6f);
+		Effects::ApplyDamageOverTime(Attacker.Actor, AppliedAgain.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/10.0f, Bleed);
+	}
+	RunClock(World, 0.6f);
+
+	// FOUR TICKS FALL DUE IN 4.2 SECONDS, at one, two, three and four, each 10
+	// on a target with no defences. At least 30 is asked for, so a tick falling
+	// on the edge of the last step cannot decide the result.
+	const float LeftTook =
+		1'000.0f - LeftAlone.AbilitySystem->GetNumericAttribute(Health);
+	const float AgainTook =
+		1'000.0f - AppliedAgain.AbilitySystem->GetNumericAttribute(Health);
+
+	// PRINTED EVERY RUN, because a check that passes writes nothing to the log,
+	// and these two figures are the evidence the decisions entry quotes.
+	AddInfo(FString::Printf(
+		TEXT("In 4.2 seconds the bleed left alone took %.0f and the bleed "
+			 "applied again took %.0f."), LeftTook, AgainTook));
+
+	TestTrue(FString::Printf(
+		TEXT("the control: a bleed left alone ticked, and %.0f was taken"),
+		LeftTook),
+		LeftTook >= 30.0f - 0.01f);
+	TestTrue(FString::Printf(
+		TEXT("a bleed applied again at the same strength still ticked, and "
+			 "%.0f was taken"), AgainTook),
+		AgainTook >= 30.0f - 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(AppliedAgain.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmEqualApplicationNeverShortensTest,
+	"Cataclysm.Debuffs.AnEqualApplicationStatingLessTimeLeavesTheRunningTimeAlone")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * A tie refreshes the running application rather than replacing it, for
+	 * pins and named effects as well as damage over time.
+	 *
+	 * THE ONE PLACE THE TWO READINGS DIFFER FOR AN EFFECT THAT DOES NOT TICK. A
+	 * replacement takes the new application's duration whatever it is, so an
+	 * equal one stating two seconds cuts a running nine-second effect to two. A
+	 * refresh never shortens, which is the judgement the 2026-09-09 entry of
+	 * `docs/DECISIONS.md` already applies to a weaker application.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
+	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+
+	const FScopedCarrier Pinned(World);
+	TestTrue(TEXT("a target is pinned for thirty per cent for nine seconds"),
+		Effects::ApplyPin(Attacker.Actor, Pinned.Actor,
+						  /*DurationSeconds=*/9.0f, /*Increase=*/30.0f));
+	TestTrue(TEXT("and again for thirty per cent for two"),
+		Effects::ApplyPin(Attacker.Actor, Pinned.Actor,
+						  /*DurationSeconds=*/2.0f, /*Increase=*/30.0f));
+	TestEqual(TEXT("the pin keeps its nine seconds"),
+			  Pinned.RemainingOn(Effects::PinnedTag()), 9.0f, 0.01f);
+
+	const FScopedCarrier Shredded(World, /*bResists=*/true);
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	Shredded.AbilitySystem->SetNumericAttributeBase(Demonic, 40.0f);
+	TestTrue(TEXT("a Demonic Shred of thirty lands for nine seconds"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Shredded.Actor, Shred,
+								  /*DurationSeconds=*/9.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestTrue(TEXT("and the same Shred for two"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Shredded.Actor, Shred,
+								  /*DurationSeconds=*/2.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("the Shred keeps its nine seconds"),
+			  Shredded.RemainingOn(Shred), 9.0f, 0.01f);
+	TestEqual(TEXT("and the target is still at 10"),
+			  Shredded.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
 
 	return true;
 }

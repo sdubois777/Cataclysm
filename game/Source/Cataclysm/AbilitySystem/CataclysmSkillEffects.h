@@ -875,9 +875,9 @@ public:
 	 *
 	 * THE STRONGEST APPLICATION WINS. Issue #1503. A second application of the
 	 * same effect on the same target replaces the running one only if it deals
-	 * at least as much damage a second, after the attacker's own stats. A
-	 * weaker one leaves the running one alone and only refreshes how long it
-	 * runs, never shortening it.
+	 * more damage a second, after the attacker's own stats. An equal or weaker
+	 * one leaves the running one alone and only refreshes how long it runs,
+	 * never shortening it, so the running one's ticks carry on.
 	 *
 	 * @param DamagePerTick  what ONE tick deals before the attacker's stats
 	 * @param DurationSeconds  before the attacker's duration stat
@@ -925,10 +925,10 @@ public:
 	 * THE STRONGEST APPLICATION WINS, which the project owner ruled on
 	 * 2026-09-09. Issue #1503. Two applications of one effect on one target
 	 * are compared by what each STATES, summed over the stats it touches and
-	 * before the target's resistances. A weaker one leaves the running one's
-	 * figures alone and only refreshes how long it runs, never shortening it.
-	 * The winner is sized against the target without the application it
-	 * replaces.
+	 * before the target's resistances. A weaker or equal one leaves the running
+	 * one's figures alone and only refreshes how long it runs, never shortening
+	 * it. A stronger one is sized against the target without the application
+	 * it replaces.
 	 *
 	 * WHICH RESISTANCE IT REDUCES COMES FROM THE SKILL, not from the effect.
 	 * Anathema reads "Demonic resistance cut by 40%" and carries
@@ -1234,10 +1234,10 @@ public:
 	 * lets it keep attacking, and `ACataclysmPlayerController` refuses movement
 	 * input and allows skills.
 	 *
-	 * A SECOND PIN ON A TARGET ALREADY PINNED MORE STRONGLY leaves that pin's
-	 * increase standing and only refreshes how long it runs, never shortening
-	 * it. The project owner ruled on 2026-09-09 that the strongest application
-	 * of a lasting effect wins. Issue #1503.
+	 * A SECOND PIN ON A TARGET ALREADY PINNED AT LEAST AS STRONGLY leaves that
+	 * pin's increase standing and only refreshes how long it runs, never
+	 * shortening it. The project owner ruled on 2026-09-09 that the strongest
+	 * application of a lasting effect wins. Issue #1503.
 	 *
 	 * @param DamageTakenIncrease  percentage points added to the target's Damage
 	 *                             Taken stat for as long as the pin lasts, or
