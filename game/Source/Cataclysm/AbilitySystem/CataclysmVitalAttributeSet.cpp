@@ -15,6 +15,9 @@
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the Bleeding a melee critical strike may apply. Issue #1032.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For every chance to apply an ailment a blow carried, a blunt weapon's stun
+// among them. Issue #899.
+#include "AbilitySystem/CataclysmAilments.h"
 // For asking who was commanding a dying creature. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
 // For turning health lost to damage into Fervour. Issue #954.
@@ -895,7 +898,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
-			// A BLUNT WEAPON MAY STUN WHAT IT HITS. Issue #639, and the last
+			// A BLUNT WEAPON MAY STUN WHAT IT HITS. The roll is further down,
+			// after the two enemy modifiers, and since issue #899 it is one pool
+			// with the chance to stun from gear. Issue #639, and the last
 			// of the four sub-types to be built. Its effect is the only one that
 			// is not damage, which is why it is here rather than inside Resolve:
 			// a stun goes through UCataclysmSkillEffects::ApplyStun, which
@@ -941,22 +946,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 															 Striker);
 			}
 
-			if (Hit.bIsBlunt && Outcome.DealtToHealth > 0.0f)
+			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,
+			// AND A BLUNT WEAPON'S STUN IS ONE OF THEM. Issue #899. The chances
+			// were worked out on the attacker's side, where the skill's tags were
+			// in hand, and they arrive on the effect.
+			// `UCataclysmAilments::RollOnLandedBlow` holds every rule about them:
+			// the tenth of maximum health, nothing on a blow that killed, and one
+			// pool for a blunt weapon's 10% and the chance to stun from gear.
+			//
+			// NOT FOR A TICK OF DAMAGE OVER TIME. A tick carries no chance of its
+			// own. Until #899 a tick of damage over time applied by a character
+			// holding a blunt weapon could roll that weapon's stun, if the tick
+			// took a tenth of the target's maximum health, because the sub-type
+			// is read off the actor the damage is credited to. The chance to stun
+			// is a chance to apply an effect on a hit, and a tick is not a hit.
+			if (!Hit.bIsDamageOverTime)
 			{
-				const float Total = UCataclysmDamageCalculation::BluntStunChance;
-
-				float Chance = 0.0f;
-				float Seconds = 0.0f;
-				UCataclysmDamageCalculation::StunApplication(Total, Chance,
-															 Seconds);
-
-				if (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance)
-				{
-					UCataclysmSkillEffects::ApplyStun(
-						Data.EffectSpec.GetContext().GetEffectCauser(),
-						GetOwningActor(), Seconds, Outcome.DealtToHealth,
-						/*bStunIsDesigned=*/false);
-				}
+				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
+					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt);
 			}
 
 			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.

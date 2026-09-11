@@ -442,6 +442,29 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("bleed_on_crit_chance"),
 		 TEXT("the Masochist's Mutilation Mastery node, as a flat modifier")},
 
+		// Issue #899. The chance to apply each ailment on a hit. Zero for every
+		// class, and no class line names one. The eleven Ailment affixes of
+		// `game/Data/Affixes.csv` grant them as flat modifiers, and a passive
+		// node or an enchantment row naming one adds to the same stat.
+		{TEXT("bleed_chance"), TEXT("the Chance to bleed affix, as a flat modifier")},
+		{TEXT("poison_chance"),
+		 TEXT("the Chance to poison affix, as a flat modifier")},
+		{TEXT("disease_chance"),
+		 TEXT("the Chance to disease affix, as a flat modifier")},
+		{TEXT("void_splinter_chance"),
+		 TEXT("the Chance to apply void splinter affix, as a flat modifier")},
+		{TEXT("necrosis_chance"),
+		 TEXT("the Chance to necrose affix, as a flat modifier")},
+		{TEXT("burn_chance"), TEXT("the Chance to burn affix, as a flat modifier")},
+		{TEXT("madness_chance"),
+		 TEXT("the Chance to madden affix, as a flat modifier")},
+		{TEXT("cripple_chance"),
+		 TEXT("the Chance to cripple affix, as a flat modifier")},
+		{TEXT("weaken_chance"),
+		 TEXT("the Chance to weaken affix, as a flat modifier")},
+		{TEXT("shred_chance"), TEXT("the Chance to shred affix, as a flat modifier")},
+		{TEXT("stun_chance"), TEXT("the Chance to stun affix, as a flat modifier")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,

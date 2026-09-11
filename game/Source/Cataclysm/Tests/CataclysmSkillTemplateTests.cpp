@@ -7891,9 +7891,11 @@ bool FCataclysmIncidentalBurnNeedsTheThresholdTest::RunTest(const FString&)
 	//
 	// NOTHING PASSES `bBurnIsDesigned=false` IN THE GAME TODAY, which is why
 	// this drives `ApplyBurn` directly. Every caller reads a row or a minion
-	// type, and all of them are designed. The eleven ailment affixes of issue
-	// #899 are what will use the other branch, and this is what says that branch
-	// works before they arrive.
+	// type, and all of them are designed. The ailment affixes of issue #899 did
+	// not take this branch when they arrived: `UCataclysmAilments` applies the
+	// same tenth-of-maximum-health threshold once for every ailment, before it
+	// knows which of them landed. A gem or an enemy modifier setting something
+	// alight is what would use it.
 	using namespace CataclysmSkillTest;
 
 	UWorld* World = MakeWorld();

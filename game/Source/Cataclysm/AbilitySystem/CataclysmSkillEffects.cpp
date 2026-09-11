@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the chances to apply an ailment that a blow carries. Issue #899.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For the resistance a Shred reduces. The per-type slot is picked by
 // UCataclysmDamageCalculation::ResistanceAttributeFor and the generic one is
@@ -682,6 +684,23 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 			UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags));
 	}
 
+	// AND WHAT THE ATTACKER HAS A CHANCE TO APPLY WITH IT. Issue #899. Worked
+	// out here because this is the one place a blow is built holding the
+	// skill's own tags, so a chance scoped to melee, or conditioned on the
+	// attacker's health, counts when it holds. The defender rolls them once it
+	// knows what the blow did: `UCataclysmAilments::RollOnLandedBlow`.
+	//
+	// ADDED TO WHATEVER THE CALLER PUT THERE, because the design sums every
+	// source of a chance: "The chance summed is the total across every source".
+	if (!Arrived.bCarriesNoAilmentChance && !Arrived.bIsDamageOverTime)
+	{
+		for (const TPair<FName, float>& Chance : UCataclysmAilments::ChancesFor(
+				 Source, SkillTags, Delivery.SkillHealthCostPercent))
+		{
+			Arrived.AilmentChances.FindOrAdd(Chance.Key) += Chance.Value;
+		}
+	}
+
 	// THE FIGURE IS WHAT WAS SENT AND THE OUT PARAMETER IS WHAT BECAME OF IT.
 	// Issue #1156. Keeping the return value as the sent figure is deliberate:
 	// every caller uses it to scale a rider, and a rider scaled by what got
@@ -992,6 +1011,21 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 									 StatedMagnitude);
 	}
 
+	// AND THE ATTACKER'S CHANCE TO APPLY EACH AILMENT, as more numbers under
+	// plain names. Issue #899. `UCataclysmAilments::RollOnLandedBlow` reads them
+	// on the defender's side once the blow has resolved. A tick of damage over
+	// time and a blow that may carry none write none, whatever is in the map.
+	if (!Delivery.bCarriesNoAilmentChance && !Delivery.bIsDamageOverTime)
+	{
+		for (const TPair<FName, float>& Chance : Delivery.AilmentChances)
+		{
+			if (Chance.Value > 0.0f)
+			{
+				Spec.SetSetByCallerMagnitude(Chance.Key, Chance.Value);
+			}
+		}
+	}
+
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
 }
 
@@ -1069,7 +1103,18 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	// row is the one nobody wrote -- Burn had neither until issue #895 -- and a
 	// guard relaxed past this point could not fire at all.
 	const bool bStatesAStrength = Numbers.Strength > 0.0f;
-	if (!Numbers.bUsable && !bStatesAStrength)
+
+	// AND A ROW THAT IS ONLY ITS TAG IS THE THIRD WAY. Issue #899. Madness states
+	// a duration and nothing else, because `UCataclysmTeams` reads its tag and
+	// there is no number to apply, which `ApplyNamedEffect` says in terms. It
+	// warned all the same, and the chance to madden reads its row on every blow
+	// that lands it, so this would have fired on every one. A damage over time
+	// row still has to state an amount, and a row stating no duration still
+	// warns: the Necrotic Fog row, which
+	// `ARowStatingNeitherAStrengthNorAnAmountStillWarns` reads.
+	const bool bIsOnlyATag = Numbers.DurationSeconds > 0.0f
+		&& !Row->EffectKind.Equals(TEXT("DoT"), ESearchCase::IgnoreCase);
+	if (!Numbers.bUsable && !bStatesAStrength && !bIsOnlyATag)
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("%s states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
@@ -2338,9 +2383,9 @@ namespace
 	 * Demonic and War resistance, which no single-attribute answer could say.
 	 *
 	 * TWO EFFECTS WITH A STRENGTH ARE DELIBERATELY NOT IN THE COLUMN. Cripple's
-	 * slow and Weaken's damage reduction are applied by their own code today,
-	 * and moving them onto this path is separate work rather than a thing to do
-	 * in passing: doing it here would apply each of them twice.
+	 * slow is applied by its own code: an enemy's speed reads its tag (issue
+	 * #1152), so moving it onto this path would apply it twice. Weaken's damage
+	 * reduction is applied by nothing yet, and building it is separate work.
 	 */
 	TArray<FGameplayAttribute> CataclysmStatsMovedByEffect(
 		const UDataTable* StatusEffectTable, const FGameplayTag& EffectTag,

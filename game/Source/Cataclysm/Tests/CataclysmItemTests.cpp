@@ -1290,13 +1290,9 @@ bool FCataclysmEveryAffixGrantsSomething::RunTest(const FString& Parameters)
 		TEXT("EveryAffixInTheDataGrantsSomething"),
 		[&](const FName& Key, const FCataclysmAffixRow& Row)
 		{
-			// AN AILMENT AFFIX GRANTS A CHANCE AT AN EFFECT AND NOT A STAT, so
-			// it correctly produces no modifier and is not a failure. It is
-			// applied where the hit is resolved.
-			if (Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
-			{
-				return;
-			}
+			// AN AILMENT AFFIX IS NO LONGER SKIPPED. Its chance has been a flat
+			// modifier on a stat since issue #899, so it has to add one here like
+			// any other affix. This said it "correctly produces no modifier".
 
 			// A ring takes almost every affix in the pool and is not two-handed,
 			// so nothing here is doubled and the figures are the plain ones.
@@ -1359,6 +1355,74 @@ bool FCataclysmEveryAffixGrantsSomething::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("the hybrid affixes were checked, %d of them"),
 							 HybridsChecked),
 		HybridsChecked >= 13);
+
+	return true;
+}
+
+/**
+ * AN AILMENT AFFIX GRANTS ITS CHANCE, AND A TWO-HANDED WEAPON DOUBLES IT. Issue
+ * #899.
+ *
+ * THE FIGURE IS THE DESIGN DOCUMENT'S, "Chance to bleed | 15%" at the top tier,
+ * on a fully upgraded piece. Until #899 the affix granted no modifier at all.
+ *
+ * AND THE DOUBLING IS THE DESIGN DOCUMENT'S TOO: "A two-handed weapon multiplies
+ * both its implicit values and every affix rolled on it by 2." The tooltip
+ * printed the doubled chance already. The simulation does not double it, which
+ * is issue #1575.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAilmentAffixGrantsItsChance,
+	"Cataclysm.Items.AnAilmentAffixGrantsItsChanceAndATwoHandedWeaponDoublesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAilmentAffixGrantsItsChance::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!Bases || !Affixes)
+	{
+		AddError(TEXT("could not load ItemBases.csv or Affixes.csv"));
+		return false;
+	}
+
+	// ONE PIECE CARRYING ONE TOP-TIER CHANCE TO BLEED, and what it grants.
+	const auto ChanceToBleedOn = [this, Bases, Affixes](const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		Item.GearLevel = UCataclysmItemValues::MaxGearLevel;
+
+		FCataclysmRolledAffix Rolled;
+		Rolled.Affix = FName(TEXT("Ailment_Chance_to_bleed"));
+		Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+		Rolled.Roll = 1.0f;
+		Item.Affixes.Add(Rolled);
+
+		float Total = 0.0f;
+		const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+			UCataclysmItemModifiers::ModifiersFor(Item, Bases, Affixes);
+		if (const TArray<FCataclysmStatModifier>* OnBleed =
+				Modifiers.Find(FName(TEXT("bleed_chance"))))
+		{
+			for (const FCataclysmStatModifier& Each : *OnBleed)
+			{
+				TestTrue(FString::Printf(TEXT("the chance on %s is a flat modifier"),
+										 Base),
+					Each.Bucket == ECataclysmStatBucket::Flat);
+				Total += Each.Value;
+			}
+		}
+		return Total;
+	};
+
+	TestEqual(TEXT("a top-tier Chance to bleed on a +10 ring grants 15"),
+		ChanceToBleedOn(TEXT("Ring_Band")), 15.0f, 0.01f);
+
+	TestEqual(TEXT("and on a +10 Greatsword, which is two-handed, 30"),
+		ChanceToBleedOn(TEXT("Weapon_Greatsword")),
+		15.0f * UCataclysmItemValues::TwoHandedMultiplier, 0.01f);
 
 	return true;
 }
