@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the melee tag a melee weapon's basic attack carries. Issue #999.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmUndesignedSkill.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -785,6 +787,107 @@ bool FCataclysmBasicAttackTest::RunTest(const FString& Parameters)
 		UCataclysmWeaponSkills::BasicAttackFor(nullptr, TEXT("Dagger"));
 	TestEqual(TEXT("no table means no basic attack rather than a crash"),
 		NoTable.Slot, ECataclysmAbilitySlot::None);
+
+	return true;
+}
+
+/**
+ * A melee weapon's basic attack is a melee attack, and a ranged weapon's is not.
+ *
+ * THE PROJECT OWNER'S RULING OF 2026-08-26, ISSUE #999: a strike is what melee
+ * means for a weapon skill. Every Weapon Skills row carrying `Type.Strike` was
+ * given `Type.Melee` then, and the basic attack has no row there, so it has to be
+ * given the tag where it is built, from its own base's `BasicShape`.
+ *
+ * BOTH DIRECTIONS, because each catches a different mistake. A melee weapon's
+ * basic attack without the tag misses every melee-scoped bonus, which is what
+ * happened until this test existed; a ranged one carrying it would take them all.
+ *
+ * READ FROM THE TABLE RATHER THAN LISTED HERE, like the test above, so a weapon
+ * added to the workbook is covered without editing this test.
+ *
+ * AND THE TAG HAS TO REACH THE GRANTED ABILITY, because that is what a hit reads
+ * it from, so it is checked on an equipped weapon as well.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBasicAttackMeleeTagTest,
+	"Cataclysm.WeaponSlots.AMeleeWeaponsBasicAttackIsAMeleeAttackAndARangedOnesIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBasicAttackMeleeTagTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+	if (!TestTrue(TEXT("Type.Melee is a registered tag"), Melee.IsValid()))
+	{
+		return false;
+	}
+
+	TArray<FString> Armed;
+	Bases->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("FCataclysmBasicAttackMeleeTagTest"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (!Row.WeaponType.IsEmpty() && !Row.BasicShape.IsEmpty())
+			{
+				Armed.AddUnique(Row.WeaponType);
+			}
+		});
+
+	int32 Strikes = 0;
+	int32 Others = 0;
+	for (const FString& Weapon : Armed)
+	{
+		const FCataclysmWeaponSkill Basic =
+			UCataclysmWeaponSkills::BasicAttackFor(Bases, Weapon);
+		const bool bStrike = Basic.Shape == ECataclysmSkillShape::Strike;
+		++(bStrike ? Strikes : Others);
+
+		TestEqual(FString::Printf(TEXT("the %s's basic attack %s melee"), *Weapon,
+								  bStrike ? TEXT("is") : TEXT("is not")),
+			Basic.Tags.HasTagExact(Melee), bStrike);
+	}
+
+	// BOTH KINDS WERE SEEN, or one of the two directions above checked nothing.
+	// Nine weapons swing and four fire, in game/Data/ItemBases.csv.
+	TestEqual(TEXT("nine weapons' basic attacks are strikes"), Strikes, 9);
+	TestEqual(TEXT("and four fire something"), Others, 4);
+
+	// THE TAG REACHES THE ABILITY THAT IS GRANTED AND FIRES.
+	UWorld* World = CataclysmWeaponSlotsTest::MakeWorld();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	CataclysmWeaponSlotsTest::FScopedWeaponFixture Fixture(World);
+	Fixture.Slots->EquipWeaponType(TEXT("Dagger"));
+
+	const FGameplayTag SlotTag =
+		CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack);
+	bool bFound = false;
+	for (const FGameplayAbilitySpec& Spec :
+			Fixture.AbilitySystem->GetActivatableAbilities())
+	{
+		const UCataclysmSkillTemplate* Template =
+			Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (!Template || !Template->SkillTags.HasTagExact(SlotTag))
+		{
+			continue;
+		}
+		bFound = true;
+		TestTrue(TEXT("a Dagger's granted basic attack carries Type.Melee"),
+			Template->SkillTags.HasTagExact(Melee));
+	}
+	TestTrue(TEXT("a Dagger grants a basic attack ability"), bFound);
 
 	return true;
 }

@@ -12,6 +12,9 @@
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For a real basic attack's own tags, from the function that grants it.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Items/CataclysmItem.h"
 #include "AbilitySystemComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -230,6 +233,63 @@ CATACLYSM_MELEE_BLEED_TEST(FCataclysmMeleeCritBleedsTest,
 		// writing a tag. `UCataclysmDebuffs::CountOn` reads what really landed.
 		TestEqual(TEXT("and carries exactly one debuff for it"),
 			Debuffs::CountOn(Defender.AbilitySystem), 1);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_MELEE_BLEED_TEST(FCataclysmBasicAttackBleedsTest,
+	"Cataclysm.MeleeBleed.AMeleeWeaponsBasicAttackCanCauseBleedingAndARangedOnesCannot")
+{
+	using namespace CataclysmMeleeBleedTest;
+
+	// A REAL BASIC ATTACK'S OWN TAGS, from the function that grants it, rather
+	// than a container this test writes. Until a melee weapon's basic attack
+	// carried `Type.Melee`, the attack a player makes most could never be a melee
+	// critical strike, so Mutilation Mastery never applied Bleeding from it.
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!TestNotNull(TEXT("the item base table loads"), Bases))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill Fist =
+		UCataclysmWeaponSkills::BasicAttackFor(Bases, TEXT("Fist"));
+	const FCataclysmWeaponSkill Wand =
+		UCataclysmWeaponSkills::BasicAttackFor(Bases, TEXT("Wand"));
+	if (!TestEqual(TEXT("a Fist grants a basic attack"), Fist.Slot,
+				   ECataclysmAbilitySlot::BasicAttack)
+		|| !TestEqual(TEXT("and so does a Wand"), Wand.Slot,
+					  ECataclysmAbilitySlot::BasicAttack))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	{
+		const FScopedFighter Attacker(World);
+		const FScopedFighter Punched(World);
+		const FScopedFighter Zapped(World);
+		MakeAMutilator(Attacker);
+
+		// 0 ALWAYS CRITICALLY STRIKES, because every chance above zero beats it.
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCrits(0.0f);
+
+		Effects::ApplyHit(Attacker.Actor, Punched.Actor, 100.0f, Fist.Tags);
+		TestTrue(TEXT("a Fist's basic attack, critically striking, makes what it "
+					  "hit bleed"),
+			Punched.IsBleeding());
+
+		// AND A RANGED WEAPON'S DOES NOT, which is the half a tag added to every
+		// basic attack would fail: a Wand's bolt is not a melee blow.
+		Effects::ApplyHit(Attacker.Actor, Zapped.Actor, 100.0f, Wand.Tags);
+		TestFalse(TEXT("a Wand's basic attack, critically striking, does not"),
+			Zapped.IsBleeding());
 	}
 
 	World->DestroyWorld(false);

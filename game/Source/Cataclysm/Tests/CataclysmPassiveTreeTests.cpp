@@ -45,6 +45,9 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For an enemy with no defences, to land a real character's attack on.
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
@@ -3657,6 +3660,163 @@ bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString
 	TestEqual(TEXT("and so is the damage taken"),
 			  DamageAHitDeals(AbilitySystem, 400.0f, false),
 			  TakenEmpty, TakenEmpty * 0.001f);
+
+	return true;
+}
+
+namespace CataclysmPassiveTest
+{
+	/**
+	 * An enemy to land a real character's attack on, with nothing that mitigates.
+	 *
+	 * ITS DEFENCES ARE REMOVED AFTER IT HAS BEGUN PLAY, because an enemy applies
+	 * its archetype's armour, resistance and energy shield then, and the test
+	 * using it measures what the character sent rather than what the enemy
+	 * stopped. `CataclysmConditionalDamageTests.cpp` strips the same things.
+	 */
+	ACataclysmEnemyCharacter* SpawnUndefendedEnemy(UWorld* World)
+	{
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		UAbilitySystemComponent* AbilitySystem =
+			Enemy ? Enemy->GetAbilitySystemComponent() : nullptr;
+		if (!AbilitySystem)
+		{
+			return nullptr;
+		}
+
+		using Combat = UCataclysmCombatAttributeSet;
+		using Vital = UCataclysmVitalAttributeSet;
+		AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			Combat::GetDamageReductionAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(Combat::GetEvasionAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			Combat::GetBlockChanceAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			Vital::GetMaxEnergyShieldAttribute(), 0.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			Vital::GetEnergyShieldAttribute(), 0.0f);
+
+		// DEEP ENOUGH THAT NO HIT HERE KILLS IT, so every hit is measured in full
+		// rather than cut short at the health it has left.
+		AbilitySystem->SetNumericAttributeBase(
+			Vital::GetMaxHealthAttribute(), 1'000'000.0f);
+		AbilitySystem->SetNumericAttributeBase(
+			Vital::GetHealthAttribute(), 1'000'000.0f);
+		return Enemy;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCommunionOfPainAttackOnARealCharacterTest,
+	"Cataclysm.Passives.CommunionOfPainsMoreDamageReachesARealCharactersAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Communion of Pain's "you deal 20% more damage", delivered by a real attack.
+ *
+ * `CommunionOfPainCutsBothWaysForARealCharacterAtFullFervour` above reads the
+ * damage through `StatForSkill`, which runs the stat pipeline over every
+ * modifier and so reports the fifth whether or not a hit ever carries it. A hit
+ * worked out only the increases again, not the "more" multipliers, so that test
+ * passed while an attack at full Fervour dealt exactly what one a point short of
+ * full did. This one lands the attack.
+ *
+ * ONE POINT SHORT OF FULL IS THE COMPARISON, as in the test above, because it is
+ * the closest state in which the condition does not hold.
+ */
+bool FCataclysmPassiveCommunionOfPainAttackOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	// A CRITICAL STRIKE ON ONE OF THE TWO ATTACKS AND NOT THE OTHER would read as
+	// the node being worth half again what it says.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	// COMMUNION OF PAIN'S ONE POINT, through the real allocation and the real
+	// effect table, so the rows the workbook authored are what is measured.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Masochist_keystone_spine_001")), 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	ACataclysmEnemyCharacter* Enemy = SpawnUndefendedEnemy(World);
+	if (!TestNotNull(TEXT("an enemy to attack"), Enemy))
+	{
+		return false;
+	}
+	UAbilitySystemComponent* EnemySystem = Enemy->GetAbilitySystemComponent();
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	// ONE ATTACK AT THE CHARACTER'S FULL WEAPON DAMAGE, and what it took off.
+	const auto AttackLands = [&]
+	{
+		const float Before = EnemySystem->GetNumericAttribute(Health);
+		UCataclysmSkillEffects::ApplyHit(Character, Enemy,
+										 /*DamagePercent=*/100.0f,
+										 FGameplayTagContainer());
+		return Before - EnemySystem->GetNumericAttribute(Health);
+	};
+
+	const float Maximum =
+		AbilitySystem->GetNumericAttribute(Resource::GetMaxClassResourceAttribute());
+	if (!TestTrue(TEXT("the class resource has a maximum above one"),
+				  Maximum > 1.0f))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   Maximum - 1.0f);
+	const float ShortOfFull = AttackLands();
+
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   Maximum);
+	const float AtFull = AttackLands();
+
+	if (!TestTrue(FString::Printf(TEXT("both attacks landed (%.1f, %.1f)"),
+								  ShortOfFull, AtFull),
+				  ShortOfFull > 0.0f && AtFull > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("at full Fervour the attack deals a fifth more, and dealt %.3f times"),
+		AtFull / ShortOfFull),
+		AtFull / ShortOfFull, 1.20f, 0.001f);
 
 	return true;
 }

@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+// For the melee tag a basic attack that is a strike carries. Issue #999.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -258,6 +260,32 @@ FCataclysmWeaponSkill UCataclysmWeaponSkills::BasicAttackFor(
 			// component is what knows which type is equipped.
 			Basic.Tags.AddTag(
 				CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::BasicAttack));
+
+			// AND A STRIKE IS A MELEE ATTACK. The project owner ruled on
+			// 2026-08-26, under issue #999, that a strike is what melee means for
+			// a weapon skill, and every row of the Weapon Skills sheet carrying
+			// `Type.Strike` was given `Type.Melee` then. The basic attack has no
+			// row there, so it was the one strike left out, and it is the attack a
+			// player makes most. game/Data/ItemBases.csv gives every melee weapon
+			// `BasicShape=Strike` and every ranged one `Projectile`, so the shape
+			// decides it here. Issue #944 proposed exactly this.
+			//
+			// WITHOUT IT NO MELEE-SCOPED BONUS REACHED THE BASIC ATTACK. A hit is
+			// melee only when its skill carries the tag -- `ApplyHit` reads it off
+			// the skill's own tags -- so the Masochist's Carnage and Blood Offering,
+			// both scoped to `Type.Melee`, never reached it, and Mutilation
+			// Mastery's Bleeding on a melee critical strike never came from it.
+			//
+			// `Type.Strike` IS NOT ADDED. Nothing has asked for it, and every tag
+			// added changes which gear reaches a skill, so it waits for a reason.
+			if (Basic.Shape == ECataclysmSkillShape::Strike)
+			{
+				const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+				if (Melee.IsValid())
+				{
+					Basic.Tags.AddTag(Melee);
+				}
+			}
 
 			FString Error;
 			Basic.Params = UCataclysmSkillShapes::ParseParams(
