@@ -128,10 +128,19 @@ an owner decision.** The owner reviews them in batches.
 **Still to come:**
 
 - Drafted wording for the 16 rows that break the one-stack rule (#913), and for
-  P116, P122, N131, P201 and N075. P116 contradicts N081 about regeneration in
-  combat, and the other four describe class resource decay, shared movement
-  cooldowns and buffs from allies, none of which exists. The drafts go to the
-  owner for review before any of them is written into the design workbook.
+  P116, P201 and N075. P116 contradicts N081 about regeneration in combat. P201
+  frees movement abilities from a shared cooldown, although a character holds
+  one. N075 blocks buffs from allies, although no ally gives buffs. The drafts
+  go to the owner for review before any of them is written into the design
+  workbook.
+- **P122 and N131 are kept as written.** P122 says the class resource does not
+  decay out of combat, and N131 that it decays twice as fast. Nothing decays
+  Fervour today, but the design gives the Berserker's generator a decay out of
+  combat and the Ravager's a decay once nothing is in reach
+  (`game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h`). So both rows have
+  something to act on once either generator is built. This corrects the
+  recommendation sent to the owner, which said nothing decays the class
+  resource and that both rows should be rewritten.
 - What happens to class points granted by gear (P005 and P040) when the item
   comes off. It waits until the work reaches those two rows.
 
