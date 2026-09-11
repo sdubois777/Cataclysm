@@ -873,6 +873,12 @@ public:
 	 * rate, which is the same form the design gives cooldown reduction: "Damage
 	 * over time frequency uses the same form, because it is also a rate."
 	 *
+	 * THE STRONGEST APPLICATION WINS. Issue #1503. A second application of the
+	 * same effect on the same target replaces the running one only if it deals
+	 * at least as much damage a second, after the attacker's own stats. A
+	 * weaker one leaves the running one alone and only refreshes how long it
+	 * runs, never shortening it.
+	 *
 	 * @param DamagePerTick  what ONE tick deals before the attacker's stats
 	 * @param DurationSeconds  before the attacker's duration stat
 	 * @param EffectTag    granted for the duration, and what makes it one stack
@@ -912,12 +918,17 @@ public:
 	 * "reduces the affected enemy's resistance by 10 for 6 seconds", and until
 	 * this the tag went on and the resistance did not move.
 	 *
-	 * ONLY SHRED CARRIES A STAT TODAY, and the mapping from an effect to the
-	 * attribute it moves is written in the .cpp rather than in the sheet.
-	 * `game/Data/StatusEffects.csv` has a `Strength` column and no column saying
-	 * what the strength is OF, so a second effect wanting one is the point at
-	 * which that column should be added rather than a second name written into
-	 * C++. Issue #1144.
+	 * WHICH STATS IT MOVES IS THE `MovesStat` COLUMN of
+	 * `game/Data/StatusEffects.csv`, since issue #1144: Shred's resistance of
+	 * the attacker's element, and Abyssal Aura's Demonic and War resistance.
+	 *
+	 * THE STRONGEST APPLICATION WINS, which the project owner ruled on
+	 * 2026-09-09. Issue #1503. Two applications of one effect on one target
+	 * are compared by what each STATES, summed over the stats it touches and
+	 * before the target's resistances. A weaker one leaves the running one's
+	 * figures alone and only refreshes how long it runs, never shortening it.
+	 * The winner is sized against the target without the application it
+	 * replaces.
 	 *
 	 * WHICH RESISTANCE IT REDUCES COMES FROM THE SKILL, not from the effect.
 	 * Anathema reads "Demonic resistance cut by 40%" and carries
@@ -941,6 +952,22 @@ public:
 								 float DurationSeconds,
 								 float Magnitude = 0.0f,
 								 FName DamageType = NAME_None);
+
+	/**
+	 * The name what a lasting effect STATED travels under, on the effect
+	 * itself, as a set-by-caller number that no modifier reads. Issue #1503.
+	 *
+	 * `ApplyPin`, `ApplyNamedEffect` and `ApplyDamageOverTime` compare a new
+	 * application with the running one by what each stated. What the running
+	 * one took has been clamped against the target and cannot answer that.
+	 *
+	 * A PLAIN NAME AND NOT A GAMEPLAY TAG. Gameplay tags are registered in
+	 * `game/Config/Tags/CataclysmTags.ini`, which is generated from the Tags
+	 * sheet of `docs/All_Things_Cataclysm.xlsx`, so a new tag would be a
+	 * workbook edit. A set-by-caller number can be keyed by a plain name, and
+	 * nothing is ever scoped by this one.
+	 */
+	static const TCHAR* StatedMagnitudeDataName;
 
 	/**
 	 * Copy every debuff this actor carries onto each of these others.
@@ -1207,6 +1234,11 @@ public:
 	 * lets it keep attacking, and `ACataclysmPlayerController` refuses movement
 	 * input and allows skills.
 	 *
+	 * A SECOND PIN ON A TARGET ALREADY PINNED MORE STRONGLY leaves that pin's
+	 * increase standing and only refreshes how long it runs, never shortening
+	 * it. The project owner ruled on 2026-09-09 that the strongest application
+	 * of a lasting effect wins. Issue #1503.
+	 *
 	 * @param DamageTakenIncrease  percentage points added to the target's Damage
 	 *                             Taken stat for as long as the pin lasts, or
 	 *                             zero for none. The Spear's Impale states 30:
@@ -1470,10 +1502,16 @@ private:
 	 *
 	 * Every path that damages anything goes through here, so there is one place
 	 * a hit's properties are attached and one place they can be forgotten.
+	 *
+	 * @param StatedMagnitude  what a lasting application stated, carried on the
+	 *                         effect under `StatedMagnitudeDataName` when it is
+	 *                         zero or more. Damage over time passes its damage
+	 *                         a second; a direct blow passes nothing. #1503.
 	 */
 	static void ApplyTypedSpec(UGameplayEffect* Effect,
 							   const FGameplayEffectContextHandle& Context,
 							   UAbilitySystemComponent* Defender,
 							   const AActor* Attacker,
-							   const FCataclysmHitDelivery& Delivery);
+							   const FCataclysmHitDelivery& Delivery,
+							   float StatedMagnitude = -1.0f);
 };

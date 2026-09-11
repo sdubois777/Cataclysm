@@ -99,11 +99,17 @@ namespace
 	 * there is that way, and it is what `ReleasePin` and the Succubus aura
 	 * already do to take an effect off.
 	 *
-	 * CALL IT AFTER THE MAGNITUDES ARE WORKED OUT AND IMMEDIATELY BEFORE THE
-	 * EFFECT IS APPLIED, which is what all four callers do. Removing any earlier
-	 * would change the numbers: `ApplyNamedEffect` reads the target's CURRENT
-	 * resistance to decide how much of it to take, and taking the old effect off
-	 * first would hand it the unreduced figure.
+	 * CALLED IMMEDIATELY BEFORE THE EFFECT IS APPLIED, by all four callers. The
+	 * two that apply a figure, `ApplyPin` and `ApplyNamedEffect`, have already
+	 * taken the running application off by then. Since issue #1503 they compare
+	 * the two applications first and size the winner against the target without
+	 * the one it replaces, so for them nothing is left here to remove.
+	 *
+	 * THIS PARAGRAPH USED TO SAY THE OPPOSITE: that removing any earlier would
+	 * hand `ApplyNamedEffect` the unreduced resistance. The unreduced figure was
+	 * the right one. Sizing a new Shred against the resistance the running Shred
+	 * had already cut, and then giving that cut back, is what made applying the
+	 * same Shred again raise the target's resistance.
 	 *
 	 * THE STACKING FIELDS BELOW ARE STILL SET THOUGH THEY NO LONGER DECIDE
 	 * ANYTHING HERE, because they state the intent and would still hold if two
@@ -151,10 +157,130 @@ namespace
 		Granted.Added.AddTag(EffectTag);
 		TagsComponent.SetAndApplyTargetTagChanges(Granted);
 	}
+
+	/**
+	 * The application of an effect already running on a target, and what it
+	 * stated. Issue #1503.
+	 *
+	 * WHAT IT STATED RATHER THAN WHAT IT TOOK. The project owner ruled on
+	 * 2026-09-09 that two applications are compared by the magnitudes they
+	 * state, before the target's resistances: "A 50% Shred beats a 30% Shred
+	 * whatever state the target is in". What an application took has already
+	 * been clamped against the target, so what it stated travels on the effect
+	 * beside it, as a set-by-caller number that no modifier reads.
+	 */
+	struct FRunningApplication
+	{
+		FActiveGameplayEffectHandle Handle;
+		float Stated = 0.0f;
+		/** Negative when the effect never runs out. */
+		float SecondsLeft = 0.0f;
+		bool bFound = false;
+	};
+
+	/**
+	 * The strongest application granting this tag on this target, if any.
+	 *
+	 * AN EFFECT CARRYING NO STATEMENT STATED NOTHING. That is anything granted
+	 * by `ApplyTagForDuration`, a pin holding a target without an increase
+	 * among them, and it loses to an application stating anything at all.
+	 */
+	FRunningApplication RunningApplicationOf(const UAbilitySystemComponent* Defender,
+											 const FGameplayTag& EffectTag)
+	{
+		FRunningApplication Running;
+		if (!Defender || !EffectTag.IsValid())
+		{
+			return Running;
+		}
+
+		FGameplayTagContainer Granted;
+		Granted.AddTag(EffectTag);
+
+		const UWorld* World = Defender->GetWorld();
+		const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+		for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granted)))
+		{
+			const FActiveGameplayEffect* Active =
+				Defender->GetActiveGameplayEffect(Handle);
+			if (!Active)
+			{
+				continue;
+			}
+
+			const float Stated = FMath::Max(0.0f,
+				Active->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::StatedMagnitudeDataName),
+					/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/0.0f));
+			if (!Running.bFound || Stated > Running.Stated)
+			{
+				Running.Handle = Handle;
+				Running.Stated = Stated;
+				Running.SecondsLeft = Active->GetTimeRemaining(Now);
+				Running.bFound = true;
+			}
+		}
+		return Running;
+	}
+
+	/**
+	 * Keep the running application going for at least this long. Issue #1503.
+	 *
+	 * THE THIRD RULING OF 2026-09-09: "A weaker application still refreshes the
+	 * duration. Its figures are refused; its timing is not." The running effect
+	 * is moved rather than rebuilt, so its figures, its instigator and its
+	 * handle all stay as they were.
+	 *
+	 * NEVER SHORTER, WHICH IS A JUDGEMENT THE RULING DOES NOT STATE. A weaker
+	 * application lasting less than the running one has left changes nothing.
+	 * The ruling's reason is keeping an effect running, and cutting one short
+	 * would work against that. `docs/DECISIONS.md` records the judgement.
+	 *
+	 * BY MOVING ITS START, which is the one lever the engine offers on a running
+	 * effect. `ModifyActiveEffectStartTime` shifts the start, and
+	 * `FActiveGameplayEffectsContainer::CheckDuration` then sets the expiry
+	 * timer again from the new end.
+	 */
+	void RefreshRunningApplication(UAbilitySystemComponent* Defender,
+								   const FRunningApplication& Running,
+								   float SecondsOnTarget)
+	{
+		if (!Defender || !Running.bFound || Running.SecondsLeft < 0.0f)
+		{
+			return;
+		}
+
+		const float Longer = SecondsOnTarget - Running.SecondsLeft;
+		if (Longer > 0.0f)
+		{
+			Defender->ModifyActiveEffectStartTime(Running.Handle, Longer);
+		}
+	}
+
+	/**
+	 * Apply an effect built for one application, carrying what it stated.
+	 * Issue #1503.
+	 */
+	void ApplyStating(UGameplayEffect* Effect, UAbilitySystemComponent* Source,
+					  UAbilitySystemComponent* Defender, AActor* Instigator,
+					  float Stated)
+	{
+		FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+		Context.AddInstigator(Instigator, Instigator);
+
+		FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+		Spec.SetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::StatedMagnitudeDataName), Stated);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+	}
 }
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
+const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
+	TEXT("Cataclysm.StatedMagnitude");
 
 const TCHAR* UCataclysmSkillEffects::StatusEffectTableAssetPath =
 	TEXT("/Game/Data/DT_StatusEffects.DT_StatusEffects");
@@ -677,7 +803,8 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 											 const FGameplayEffectContextHandle& Context,
 											 UAbilitySystemComponent* Defender,
 											 const AActor* Attacker,
-											 const FCataclysmHitDelivery& Delivery)
+											 const FCataclysmHitDelivery& Delivery,
+											 float StatedMagnitude)
 {
 	// BUILT AS A SPEC RATHER THAN HANDED TO ApplyGameplayEffectToSelf, purely so
 	// a tag can be put on it. That overload builds the spec itself and gives no
@@ -808,6 +935,15 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 		{
 			Spec.SetSetByCallerMagnitude(CritChanceKey, Delivery.CritChancePercent);
 		}
+	}
+
+	// WHAT A LASTING APPLICATION STATED, for the next application of the same
+	// effect on this target to be compared with. Issue #1503. Only damage over
+	// time passes one here; a direct blow passes none and carries nothing.
+	if (StatedMagnitude >= 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(StatedMagnitudeDataName),
+									 StatedMagnitude);
 	}
 
 	Defender->ApplyGameplayEffectSpecToSelf(Spec);
@@ -1088,6 +1224,34 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		return false;
 	}
 
+	// THE STRONGEST APPLICATION WINS HERE TOO. Issue #1503. The project owner's
+	// 2026-09-09 ruling lists "the helpers that apply damage, damage over time,
+	// stuns, pins and named status effects" among what it affects, and its
+	// precedent is Path of Exile's ignite, where only the strongest one deals
+	// damage. A weaker bleed, poison, burn, disease or necrosis leaves a
+	// stronger running one alone and only refreshes how long it runs.
+	//
+	// COMPARED BY DAMAGE A SECOND, WHICH IS A JUDGEMENT, and `docs/DECISIONS.md`
+	// records it. What an application states is the damage one tick deals and
+	// how often it ticks, both after the attacker's own three stats and before
+	// the target's resistances, which meet every tick alike. Per second rather
+	// than per tick, because the frequency stat makes the same damage a tick
+	// worth more each second. Not the total, because how long it runs is
+	// refreshed separately under the third ruling.
+	const float Stated = Numbers.DamagePerTick / Numbers.SecondsPerTick;
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && Running.Stated > Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s at %.1f a second, and the running one at "
+				 "%.1f a second stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
 	// ONE NAME PER EFFECT AND NOT ONE FOR ALL OF THEM. Issue #1062. This was a
 	// constant, `CataclysmDamageOverTime`, so every damage over time effect in
 	// the game was built under one name -- and with the stacking helper below
@@ -1152,7 +1316,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// shield stacking. Issue #513.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
-	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;
 }
@@ -1939,6 +2103,29 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
+	// THE STRONGEST APPLICATION WINS, which the project owner ruled on
+	// 2026-09-09. Issue #1503. A pin arriving on a target already held by a
+	// stronger one leaves that pin's increase standing and only refreshes how
+	// long it runs. A pin stating no increase states zero, so it can never take
+	// Impale's increase away, which it did while every pin replaced the last.
+	//
+	// A TARGET THAT CANNOT HOLD THE INCREASE is given the bare tag below, which
+	// carries no statement, so on such a target the newest pin replaces the
+	// running one as before. No figure can differ there, only the time left.
+	const float Stated = FMath::Max(0.0f, DamageTakenIncrease);
+	const FRunningApplication Running = RunningApplicationOf(Defender, Pinned);
+	if (Running.bFound && Running.Stated > Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s pinned %s again stating %.0f%%, and the running pin's "
+				 "%.0f%% stands."),
+			*GetNameSafe(Instigator), *GetNameSafe(Target), Stated,
+			Running.Stated);
+		return true;
+	}
+
 	// THE TAG ALONE WHEN THE SKILL STATES NO MAGNITUDE, which is three of the
 	// four rows that pin: Nail Down, Skewer and Thicket all hold a target still
 	// and say nothing about what it then takes. Only Impale states 30.
@@ -1979,10 +2166,7 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	Modifier.ModifierMagnitude = FScalableFloat(DamageTakenIncrease);
 
 	TagAndReplaceAnyExisting(Effect, Pinned, Target);
-
-	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
-	Context.AddInstigator(Instigator, Instigator);
-	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	ApplyStating(Effect, Source, Defender, Instigator, Stated);
 
 	UE_LOG(LogCataclysm, Verbose,
 		TEXT("%s pinned %s for %.1fs, and it takes %.0f%% more damage while "
@@ -2216,6 +2400,35 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		Size = NumbersForEffectTag(EffectTag).Strength;
 	}
 
+	// THE STRONGEST APPLICATION WINS, which the project owner ruled on
+	// 2026-09-09. Issue #1503, and `docs/DECISIONS.md` carries all three parts.
+	// Two applications are compared by what they STATE, before the target's
+	// resistances, and an effect naming several stats is compared as one whole:
+	// its figure summed over the stats it touches. A weaker application leaves
+	// the running one's figures alone and only refreshes how long it runs.
+	const float Stated =
+		FMath::Max(0.0f, Size) * static_cast<float>(Held.Num());
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && Running.Stated > Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s stating %.0f, and the running one stating "
+				 "%.0f stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
+	// AND THE ONE IT REPLACES COMES OFF BEFORE IT IS SIZED, so it is sized
+	// against the target as it stands without it. Sizing it first, against the
+	// resistance the running one had already cut, is what made applying the
+	// same Shred again raise the target's resistance: measured on 2026-09-11
+	// before this change, a target at 40 cut to 10 by a 30 Shred read 30 after
+	// the same Shred landed again.
+	RemoveEffectsGranting(Target, EffectTag);
+
 	// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states outright.
 	// The other half of that sentence -- the excess lengthening the effect
 	// instead of being discarded -- is not built, and #1144 carries it.
@@ -2230,13 +2443,11 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		Most = FMath::Max(Most, Defender->GetNumericAttribute(Stat));
 	}
 
+	// NOTHING LEFT TO TAKE STILL APPLIES THE EFFECT, with no modifier on it.
+	// The tag goes on because carrying the curse is what a second skill asking
+	// "is it shredded?" reads. The statement goes on because the next
+	// application is compared with what this one stated, whatever it took.
 	Size = FMath::Clamp(Size, 0.0f, Most);
-	if (Size <= 0.0f)
-	{
-		// Nothing left to take. The tag still goes on, because carrying the
-		// curse is what a second skill asking "is it shredded?" reads.
-		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
-	}
 
 	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
 	if (OnTarget <= 0.0f)
@@ -2282,23 +2493,18 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		Cut.Add(FString::Printf(TEXT("%s by %.0f"), *Stat.GetName(), Taken));
 	}
 
-	if (Effect->Modifiers.IsEmpty())
-	{
-		// Every named stat was already at nothing. The tag still goes on, for
-		// the reason the branch above gives.
-		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
-	}
-
+	// EVERY NAMED STAT ALREADY AT NOTHING leaves the effect with no modifier, and
+	// it still goes on, for the reason given where it is sized above.
 	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+	ApplyStating(Effect, Source, Defender, Instigator, Stated);
 
-	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
-	Context.AddInstigator(Instigator, Instigator);
-	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
-
+	const FString CutText = Cut.IsEmpty()
+		? FString(TEXT("nothing"))
+		: FString::Join(Cut, TEXT(", "));
 	UE_LOG(LogCataclysm, Verbose,
-		TEXT("%s applied %s to %s for %.1fs, cutting %s."),
+		TEXT("%s applied %s to %s for %.1fs stating %.0f, cutting %s."),
 		*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
-		OnTarget, *FString::Join(Cut, TEXT(", ")));
+		OnTarget, Stated, *CutText);
 
 	return true;
 }

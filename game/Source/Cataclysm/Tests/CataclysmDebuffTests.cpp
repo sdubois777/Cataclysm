@@ -10,6 +10,8 @@
 // Issue #1033.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For a target whose resistance a Shred or an Abyssal Aura cuts. Issue #1503.
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "GameplayEffect.h"
@@ -53,7 +55,12 @@ namespace CataclysmDebuffTest
 	/** An actor with an ability system, which is all a tag needs to sit on. */
 	struct FScopedCarrier
 	{
-		explicit FScopedCarrier(UWorld* World)
+		/**
+		 * @param bResists  also give it the eight per-type resistances, for the
+		 *                  tests at the end of this file that cut one. Issue
+		 *                  #1503.
+		 */
+		explicit FScopedCarrier(UWorld* World, bool bResists = false)
 		{
 			Actor = World->SpawnActor<AActor>();
 			check(Actor);
@@ -74,6 +81,14 @@ namespace CataclysmDebuffTest
 			UCataclysmCombatAttributeSet* NewCombat =
 				NewObject<UCataclysmCombatAttributeSet>(Actor);
 			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+
+			// AND THE RESISTANCES ONLY WHEN ASKED. Every test above the ones for
+			// issue #1503 was written against a carrier holding none.
+			if (bResists)
+			{
+				AbilitySystem->AddAttributeSetSubobject(
+					NewObject<UCataclysmResistanceAttributeSet>(Actor));
+			}
 
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
@@ -1145,44 +1160,35 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinOnOneTargetTest,
 	return true;
 }
 
-CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinAppliesItsOwnIncreaseTest,
-	"Cataclysm.Debuffs.PinningATargetAgainAppliesTheNewerPinsIncrease")
+CATACLYSM_DEBUFF_TEST(FCataclysmStrongerPinStandsTest,
+	"Cataclysm.Debuffs.PinningATargetAgainKeepsTheStrongerPinsIncrease")
 {
 	using namespace CataclysmDebuffTest;
 
 	/**
-	 * Which of two applications of one effect decides the figure.
+	 * Which of two applications of one effect decides the figure. Issue #1503.
 	 *
-	 * THIS IS A CHANGE OF BEHAVIOUR AND NOT ONLY A REPAIR, so it is written
-	 * down rather than left to be discovered. Measured on 2026-09-09 against
-	 * the code as it stood before issue #1501 was fixed: pinning a target for
-	 * 30% and then for 10% left it taking 30%. The first application's figure
-	 * was frozen and no later one could move it -- the engine caches the
-	 * evaluated figure in the target's attribute aggregator when the effect
-	 * first lands, and refreshing a stack does not recompute it.
+	 * THE STRONGER ONE. The project owner ruled on 2026-09-09 that the strongest
+	 * application of a lasting effect wins: "A 10% Shred can never overwrite a
+	 * 30% Shred." `docs/DECISIONS.md` carries the ruling. A pin carrying a
+	 * damage taken increase is the same kind of effect, so a 10% pin arriving on
+	 * a target pinned for 30% leaves the 30% standing.
 	 *
-	 * NOTHING IN THE DESIGN STATED EITHER ANSWER when this was written. The old
-	 * behaviour was a consequence of how the effects were built rather than a
-	 * decision, and replacing the effect -- which is what stops the crash --
-	 * necessarily makes the newer application's figure the one that applies.
+	 * THREE ANSWERS HAVE BEEN MEASURED ON THIS TEST, AND ONLY THE LAST WAS
+	 * CHOSEN. Before issue #1501 the first application's figure was frozen,
+	 * because every application was built at one address, and the target read
+	 * 130. The crash repair in #1505 made the newer application's figure apply,
+	 * and it read 110. The ruling makes it 130 again, now as a decision rather
+	 * than as a consequence of how the effects were built.
 	 *
-	 * THE PROJECT OWNER HAS SINCE RULED THAT THE STRONGEST APPLICATION SHOULD
-	 * WIN, so a 10% Shred never overwrites a 30% one. Issue #1503 carries that
-	 * ruling. THIS TEST RECORDS WHAT THE CODE DOES TODAY AND NOT WHAT IT SHOULD
-	 * DO, and saying so is the point of this paragraph: a reader who met this
-	 * test first must not take it as the design's answer.
+	 * THE 50% PIN THAT FOLLOWS READS 150 UNDER BOTH OF THE LAST TWO RULES,
+	 * because 50 is the strongest and also the newest. It is kept as the half
+	 * that says a stronger application replaces a weaker one, rather than the
+	 * first one standing for ever. It is not evidence of which rule is in force.
 	 *
-	 * EXACTLY ONE ASSERTION BELOW CHANGES when the ruling is built: the one
-	 * reading "and now takes the newer pin's increase", which expects 110 and
-	 * would expect 130, because the 30% pin is the stronger and would stand.
-	 * The 50% pin that follows it is stronger than either, so its assertion
-	 * reads 150 under both rules and is not evidence of which rule is in
-	 * force. That is worth knowing before anyone reads a green run here as
-	 * agreement with the ruling.
-	 *
-	 * IT DOES NOT AFFECT DAMAGE OVER TIME, which never had the fault: a burn's
-	 * per-tick figure lives on the applied spec rather than in an attribute
-	 * aggregator, and was already replaced by a later application.
+	 * WHETHER THE RULING ALSO REACHES DAMAGE OVER TIME IS NOT DECIDED. A burn's
+	 * per-tick figure lives on the applied effect rather than in an attribute,
+	 * and a later application still replaces it.
 	 */
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
@@ -1206,14 +1212,12 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondPinAppliesItsOwnIncreaseTest,
 		Effects::ApplyPin(Attacker.Actor, Held.Actor,
 						  /*DurationSeconds=*/10.0f, /*Increase=*/10.0f));
 
-	// TEN, NOT THIRTY. Before the repair this read 130: the first pin's figure
-	// stood and the second could not move it.
-	TestEqual(TEXT("and now takes the newer pin's increase"),
-			  Held.AbilitySystem->GetNumericAttribute(Taken), 110.0f, 0.01f);
+	// THIRTY, NOT TEN. The weaker pin's figure is refused.
+	TestEqual(TEXT("and still takes the stronger pin's increase"),
+			  Held.AbilitySystem->GetNumericAttribute(Taken), 130.0f, 0.01f);
 
-	// AND A STRONGER PIN AFTER A WEAKER ONE MOVES IT THE OTHER WAY, which is
-	// the half that says the figure is being recomputed rather than simply
-	// falling to whichever is smaller.
+	// AND A STRONGER PIN MOVES IT UP, which is the half that says the stronger
+	// application wins rather than whichever arrived first.
 	TestTrue(TEXT("and is then pinned for fifty"),
 		Effects::ApplyPin(Attacker.Actor, Held.Actor,
 						  /*DurationSeconds=*/10.0f, /*Increase=*/50.0f));
@@ -1269,6 +1273,473 @@ CATACLYSM_DEBUFF_TEST(FCataclysmSecondBleedOnOneTargetTest,
 	TestEqual(TEXT("and it still carries exactly one"),
 			  EffectCountOn(Bleeding.AbilitySystem), 1);
 	TestTrue(TEXT("and is still bleeding"), Bleeding.IsBleeding());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The strongest application wins. Issue #1503.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_DEBUFF_TEST(FCataclysmWeakerPinRefreshesTest,
+	"Cataclysm.Debuffs.AWeakerPinRefreshesTheStrongerPinsDurationAndNeverShortensIt")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The third of the project owner's rulings of 2026-09-09, from
+	 * `docs/DECISIONS.md`: "A weaker application still refreshes the duration.
+	 * Its figures are refused; its timing is not." Without it, keeping an effect
+	 * running would need its strongest source every time.
+	 *
+	 * NEVER SHORTER, WHICH THE RULING DOES NOT SAY AND IS A JUDGEMENT. A weaker
+	 * application lasting less than the running one has left leaves the running
+	 * one's time alone. The ruling's own reason is keeping an effect running,
+	 * and cutting one short would work against that. The same entry records the
+	 * judgement.
+	 *
+	 * THE CLOCK DOES NOT MOVE IN THIS WORLD, so a fresh effect's remaining time
+	 * is its whole duration, and any other figure means something moved it.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+
+	// A STRONG PIN WITH TWO SECONDS TO RUN, THEN A WEAK ONE STATING NINE.
+	const FScopedCarrier Soon(World);
+	TestTrue(TEXT("a target is pinned for thirty per cent for two seconds"),
+		Effects::ApplyPin(Attacker.Actor, Soon.Actor,
+						  /*DurationSeconds=*/2.0f, /*Increase=*/30.0f));
+	TestTrue(TEXT("and then for ten per cent for nine seconds"),
+		Effects::ApplyPin(Attacker.Actor, Soon.Actor,
+						  /*DurationSeconds=*/9.0f, /*Increase=*/10.0f));
+	TestEqual(TEXT("it still takes the stronger pin's increase"),
+			  Soon.AbilitySystem->GetNumericAttribute(Taken), 130.0f, 0.01f);
+	TestEqual(TEXT("and has the weaker pin's nine seconds left"),
+			  Soon.RemainingOn(Effects::PinnedTag()), 9.0f, 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(Soon.AbilitySystem), 1);
+
+	// AND THE OTHER WAY ROUND: A STRONG PIN WITH NINE SECONDS TO RUN, THEN A
+	// WEAK ONE STATING TWO.
+	const FScopedCarrier Later(World);
+	TestTrue(TEXT("another target is pinned for thirty per cent for nine seconds"),
+		Effects::ApplyPin(Attacker.Actor, Later.Actor,
+						  /*DurationSeconds=*/9.0f, /*Increase=*/30.0f));
+	TestTrue(TEXT("and then for ten per cent for two seconds"),
+		Effects::ApplyPin(Attacker.Actor, Later.Actor,
+						  /*DurationSeconds=*/2.0f, /*Increase=*/10.0f));
+	TestEqual(TEXT("it still takes the stronger pin's increase"),
+			  Later.AbilitySystem->GetNumericAttribute(Taken), 130.0f, 0.01f);
+	TestEqual(TEXT("and keeps its own nine seconds rather than the two"),
+			  Later.RemainingOn(Effects::PinnedTag()), 9.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmPinWithoutIncreaseTest,
+	"Cataclysm.Debuffs.APinStatingNoIncreaseLeavesTheIncreaseOfOneThatDoes")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * Only one pin in the game states an increase, and the others must not take
+	 * it away.
+	 *
+	 * The Spear's Impale states that a pinned target takes 30% more damage. Nail
+	 * Down, Skewer, Thicket and the terrain hold in `CataclysmTerrain.cpp` pin a
+	 * target and state nothing. A pin stating nothing states zero, which is
+	 * weaker than a pin stating 30, so under the 2026-09-09 ruling it cannot
+	 * replace Impale's. It still refreshes the duration, which is the ruling's
+	 * third part.
+	 *
+	 * A pin stating nothing is granted as a bare tag, and granting a tag takes
+	 * off whatever already grants it. So before this change, holding an impaled
+	 * target with any of the other four took Impale's increase off it.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Held(World);
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+
+	TestTrue(TEXT("the target is pinned for thirty per cent for three seconds"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/3.0f, /*Increase=*/30.0f));
+	TestTrue(TEXT("and then held for eight seconds by a pin stating nothing"),
+		Effects::ApplyPin(Attacker.Actor, Held.Actor,
+						  /*DurationSeconds=*/8.0f, /*Increase=*/0.0f));
+
+	TestEqual(TEXT("it still takes the first pin's increase"),
+			  Held.AbilitySystem->GetNumericAttribute(Taken), 130.0f, 0.01f);
+	TestEqual(TEXT("for the eight seconds the second pin states"),
+			  Held.RemainingOn(Effects::PinnedTag()), 8.0f, 0.01f);
+	TestTrue(TEXT("and it is still pinned"),
+			 Effects::HasTag(Held.Actor, Effects::PinnedTag()));
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmShredAgainTest,
+	"Cataclysm.Debuffs.ShreddingATargetAgainDoesNotGiveItsResistanceBack")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The same Shred twice leaves the target where the first one put it.
+	 *
+	 * FOUND BY READING WHILE BUILDING ISSUE #1503. `ApplyNamedEffect` worked
+	 * out how much resistance a new Shred takes while the running Shred was
+	 * still on the target, and only then took the running one off. Measured on
+	 * 2026-09-11 before the change: a target at 40, cut to 10 by a 30 Shred,
+	 * was cut again by min(30, 10) = 10, given the first 30 back, and read 30.
+	 * Applying the same curse again undid two thirds of it.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
+	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Target(World, /*bResists=*/true);
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	Target.AbilitySystem->SetNumericAttributeBase(Demonic, 40.0f);
+
+	TestTrue(TEXT("a Demonic Shred of thirty lands"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/6.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and takes the target's Demonic resistance from 40 to 10"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
+
+	TestTrue(TEXT("the same Shred lands again"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/6.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and the target is still at 10"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
+	TestEqual(TEXT("carrying exactly one effect"),
+			  EffectCountOn(Target.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmStrongerShredTest,
+	"Cataclysm.Debuffs.AStrongerShredReplacesAWeakerOneAgainstTheWholeResistance")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The worked example in the 2026-09-09 entry of `docs/DECISIONS.md`, on one
+	 * resistance rather than two. Issue #1503.
+	 *
+	 * A target at 40 takes a 30 Shred and is left at 10. A 50 Shred then states
+	 * more, so it wins. It is sized against the 40 the target has without the
+	 * Shred it replaces, not against the 10 left after it, so it takes all 40.
+	 * The entry: "A 50% Shred beats a 30% Shred whatever state the target is
+	 * in."
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
+	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Target(World, /*bResists=*/true);
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	Target.AbilitySystem->SetNumericAttributeBase(Demonic, 40.0f);
+
+	TestTrue(TEXT("a Demonic Shred of thirty lands"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/6.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and leaves the target at 10"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
+
+	TestTrue(TEXT("a Demonic Shred of fifty lands"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/6.0f, /*Magnitude=*/50.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and takes all 40, leaving nothing"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 0.0f, 0.01f);
+	TestEqual(TEXT("carrying exactly one effect"),
+			  EffectCountOn(Target.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmWeakerShredTest,
+	"Cataclysm.Debuffs.AWeakerShredLeavesTheStrongerFigureAndRefreshesItsDuration")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The owner's own example, "A 10% Shred can never overwrite a 30% Shred",
+	 * with the third ruling beside it. Issue #1503.
+	 *
+	 * The 30 Shred has two seconds to run when a 10 Shred arrives stating six.
+	 * The target stays at 10, and the 30 Shred now has six seconds to run.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Shred = TagNamed(TEXT("Status.Debuff.Shred"));
+	if (!TestTrue(TEXT("Status.Debuff.Shred is a gameplay tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Target(World, /*bResists=*/true);
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	Target.AbilitySystem->SetNumericAttributeBase(Demonic, 40.0f);
+
+	TestTrue(TEXT("a Demonic Shred of thirty lands for two seconds"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/2.0f, /*Magnitude=*/30.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and leaves the target at 10"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
+
+	TestTrue(TEXT("a Demonic Shred of ten lands stating six seconds"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Shred,
+								  /*DurationSeconds=*/6.0f, /*Magnitude=*/10.0f,
+								  FName(TEXT("Demonic"))));
+	TestEqual(TEXT("and the target is still at 10"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 10.0f, 0.01f);
+	TestEqual(TEXT("and the stronger Shred has the weaker one's six seconds left"),
+			  Target.RemainingOn(Shred), 6.0f, 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(Target.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmWeakerAuraTest,
+	"Cataclysm.Debuffs.AWeakerAbyssalAuraLeavesBothOfTheStrongerOnesCuts")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * An effect cutting two resistances keeps the stronger application whole.
+	 * Issue #1503.
+	 *
+	 * Abyssal Aura cuts Demonic and War resistance together. The second
+	 * 2026-09-09 ruling compares two applications of such an effect by the sum
+	 * of what each states across its stats, and applies the winner entire.
+	 *
+	 * THIS DOES NOT PROVE THE SUM, and the entry says no test can. Every effect
+	 * in the game states one figure for all of its stats, so the sum is that
+	 * figure times the number of stats, and comparing sums orders two
+	 * applications exactly as comparing the figures does. What this proves is
+	 * that the weaker application changes neither stat, rather than one of them.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Aura = TagNamed(TEXT("Status.Debuff.AbyssalAura"));
+	if (!TestTrue(TEXT("Status.Debuff.AbyssalAura is a gameplay tag"),
+				  Aura.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+	const FScopedCarrier Target(World, /*bResists=*/true);
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	const FGameplayAttribute War =
+		UCataclysmResistanceAttributeSet::GetWarResistanceAttribute();
+	Target.AbilitySystem->SetNumericAttributeBase(Demonic, 40.0f);
+	Target.AbilitySystem->SetNumericAttributeBase(War, 40.0f);
+
+	TestTrue(TEXT("an aura cutting twenty five lands"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Aura,
+								  /*DurationSeconds=*/2.0f, /*Magnitude=*/25.0f));
+	TestEqual(TEXT("and leaves Demonic at 15"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 15.0f, 0.01f);
+	TestEqual(TEXT("and War at 15"),
+			  Target.AbilitySystem->GetNumericAttribute(War), 15.0f, 0.01f);
+
+	TestTrue(TEXT("an aura cutting ten lands"),
+		Effects::ApplyNamedEffect(Attacker.Actor, Target.Actor, Aura,
+								  /*DurationSeconds=*/2.0f, /*Magnitude=*/10.0f));
+	TestEqual(TEXT("and Demonic is still at 15"),
+			  Target.AbilitySystem->GetNumericAttribute(Demonic), 15.0f, 0.01f);
+	TestEqual(TEXT("and War is still at 15"),
+			  Target.AbilitySystem->GetNumericAttribute(War), 15.0f, 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(Target.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmWeakerBleedTest,
+	"Cataclysm.Debuffs.AWeakerBleedLeavesTheStrongerOneAndOnlyLengthensIt")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * The strongest application wins for damage over time as well. Issue #1503.
+	 *
+	 * The 2026-09-09 entry of `docs/DECISIONS.md` lists the helpers that apply
+	 * damage over time among what it affects, and its precedent is Path of
+	 * Exile's ignite, where only the strongest one deals damage. The
+	 * coordinating session decided on 2026-09-11 that it covers bleeds,
+	 * poisons, burns, diseases and necrosis.
+	 *
+	 * READ OFF THE RUNNING EFFECT'S ONE MODIFIER, which is the damage one tick
+	 * deals. Nothing ticks in this world, so the figure on the effect is the
+	 * evidence of which application is running.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+
+	// A STRONG BLEED WITH TWO SECONDS TO RUN, THEN A WEAK ONE STATING NINE.
+	const FScopedCarrier Soon(World);
+	TestTrue(TEXT("a bleed of 20 a tick lands for two seconds"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Soon.Actor,
+									 /*DamagePerTick=*/20.0f,
+									 /*DurationSeconds=*/2.0f, Bleed));
+	TestTrue(TEXT("and then one of 10 a tick for nine"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Soon.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/9.0f, Bleed));
+	TestEqual(TEXT("the running bleed still deals 20 a tick"),
+			  SoleModifierMagnitudeOf(SoleEffectDefinitionOn(Soon.AbilitySystem)),
+			  20.0f, 0.01f);
+	TestEqual(TEXT("and has the weaker one's nine seconds left"),
+			  Soon.RemainingOn(Bleed), 9.0f, 0.01f);
+
+	// A WEAK ONE STATING LESS TIME THAN THE STRONG ONE HAS LEFT CHANGES NOTHING,
+	// AND A STRONGER ONE THEN REPLACES IT.
+	const FScopedCarrier Later(World);
+	TestTrue(TEXT("a bleed of 20 a tick lands for nine seconds"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Later.Actor,
+									 /*DamagePerTick=*/20.0f,
+									 /*DurationSeconds=*/9.0f, Bleed));
+	TestTrue(TEXT("and then one of 10 a tick for two"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Later.Actor,
+									 /*DamagePerTick=*/10.0f,
+									 /*DurationSeconds=*/2.0f, Bleed));
+	TestEqual(TEXT("it still deals 20 a tick"),
+			  SoleModifierMagnitudeOf(SoleEffectDefinitionOn(Later.AbilitySystem)),
+			  20.0f, 0.01f);
+	TestEqual(TEXT("and keeps its own nine seconds rather than the two"),
+			  Later.RemainingOn(Bleed), 9.0f, 0.01f);
+
+	TestTrue(TEXT("a bleed of 30 a tick lands for three seconds"),
+		Effects::ApplyDamageOverTime(Attacker.Actor, Later.Actor,
+									 /*DamagePerTick=*/30.0f,
+									 /*DurationSeconds=*/3.0f, Bleed));
+	TestEqual(TEXT("and replaces it, dealing 30 a tick"),
+			  SoleModifierMagnitudeOf(SoleEffectDefinitionOn(Later.AbilitySystem)),
+			  30.0f, 0.01f);
+	TestEqual(TEXT("for its own three seconds"),
+			  Later.RemainingOn(Bleed), 3.0f, 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(Later.AbilitySystem), 1);
+
+	return true;
+}
+
+CATACLYSM_DEBUFF_TEST(FCataclysmFasterBleedTest,
+	"Cataclysm.Debuffs.TwoBleedsAreComparedByTheDamageEachDealsASecond")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * Damage over time is compared by the damage it deals each second, which is
+	 * a judgement. Issue #1503, and `docs/DECISIONS.md` records it.
+	 *
+	 * Per second rather than per tick, because the attacker's Damage over Time
+	 * Frequency makes the same damage a tick worth more each second. Not by the
+	 * total, because how long it runs is refreshed separately under the third
+	 * ruling.
+	 *
+	 * THE CASE WHERE THE TWO READINGS DISAGREE. The second bleed deals less a
+	 * tick and ticks twice as often, so it deals 30 for every 20 the first
+	 * deals. Compared per tick it would lose; compared per second it wins.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Bleed = Debuffs::BleedTag();
+	if (!TestTrue(TEXT("the vocabulary has the bleed tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Slow(World);
+	const FScopedCarrier Fast(World);
+	// TWICE THE FREQUENCY, SO HALF THE GAP BETWEEN TICKS. The stat reads 100
+	// when nothing has raised it, which is what the class line gives.
+	Fast.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(), 200.0f);
+	const FScopedCarrier Target(World);
+
+	TestTrue(TEXT("a bleed of 20 a tick lands"),
+		Effects::ApplyDamageOverTime(Slow.Actor, Target.Actor,
+									 /*DamagePerTick=*/20.0f,
+									 /*DurationSeconds=*/5.0f, Bleed));
+	TestTrue(TEXT("and then one of 15 a tick from an attacker ticking twice as often"),
+		Effects::ApplyDamageOverTime(Fast.Actor, Target.Actor,
+									 /*DamagePerTick=*/15.0f,
+									 /*DurationSeconds=*/5.0f, Bleed));
+
+	TestEqual(TEXT("the faster bleed replaced the slower one"),
+			  SoleModifierMagnitudeOf(SoleEffectDefinitionOn(Target.AbilitySystem)),
+			  15.0f, 0.01f);
+	TestEqual(TEXT("in exactly one effect"),
+			  EffectCountOn(Target.AbilitySystem), 1);
 
 	return true;
 }
