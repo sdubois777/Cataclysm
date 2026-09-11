@@ -939,6 +939,11 @@ public:
 	 *
 	 * ONE STACK ONLY, refreshed rather than added to, as the design requires of
 	 * every player-applied effect.
+	 *
+	 * AND A SHORTER APPLICATION NEVER CUTS A LONGER ONE SHORT. Issue #1576. An
+	 * effect that is only a tag has no figure but its duration, so the longer of
+	 * two applications wins: a shorter one changes nothing, and a longer one
+	 * extends the running one to its own length.
 	 */
 	static bool ApplyTagForDuration(AActor* Instigator, AActor* Target,
 									const FGameplayTag& EffectTag,

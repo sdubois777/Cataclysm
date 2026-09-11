@@ -496,10 +496,10 @@ int32 ACataclysmSuccubusCharacter::PulseDominion()
 
 	for (AActor* Ally : Inside)
 	{
-		// REFRESHED RATHER THAN STACKED. ApplyTagForDuration builds a
-		// single-stack effect, so a second application replaces the first
-		// instead of adding to it, which is what the design requires of every
-		// effect in the game.
+		// REFRESHED RATHER THAN STACKED. ApplyTagForDuration keeps one effect
+		// per tag, so a second application extends the first to its own
+		// length instead of adding to it, which is what the design requires of
+		// every effect in the game. Issue #1576.
 		if (UCataclysmSkillEffects::ApplyTagForDuration(
 				this, Ally, Effect, DominionGrantSeconds))
 		{

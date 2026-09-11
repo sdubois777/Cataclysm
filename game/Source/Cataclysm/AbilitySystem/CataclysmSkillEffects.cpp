@@ -2280,6 +2280,27 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 		return false;
 	}
 
+	// AN EFFECT THAT IS ONLY A TAG IS COMPARED BY HOW LONG IT LASTS. Issue #1576,
+	// a judgement the coordinating session approved on 2026-09-11 for the
+	// owner's review list. It states no other figure, so the stronger of two
+	// applications is the one that lasts longer: a shorter one changes nothing,
+	// and a longer one extends the running one to its own length. That is the
+	// owner's ruling of 2026-09-09, that the strongest application wins and
+	// never cuts the running one short, applied to an effect whose only figure
+	// is its duration. Until then this replaced the running effect every time,
+	// so a 7.5 second Madness from a chance to madden past 100% was cut to 3
+	// seconds by a later ordinary one.
+	//
+	// A REFRESH MOVES ONLY THE RUNNING EFFECT'S START, the refresh `ApplyPin`,
+	// `ApplyNamedEffect` and `ApplyDamageOverTime` already use. The tag is never
+	// taken off and put back, so nothing waiting for it to end sees it end.
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound)
+	{
+		RefreshRunningApplication(Defender, Running, OnTarget);
+		return true;
+	}
+
 	UGameplayEffect* Effect = MakeRuntimeEffect(
 		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;

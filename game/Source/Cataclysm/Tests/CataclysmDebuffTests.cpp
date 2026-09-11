@@ -1930,6 +1930,61 @@ CATACLYSM_DEBUFF_TEST(FCataclysmEqualApplicationNeverShortensTest,
 	return true;
 }
 
+CATACLYSM_DEBUFF_TEST(FCataclysmTagOnlyEffectKeepsTheLongerTest,
+	"Cataclysm.Debuffs.ATagOnlyEffectKeepsTheLongerOfTwoApplications")
+{
+	using namespace CataclysmDebuffTest;
+
+	/**
+	 * An effect that is only a tag is compared by how long it lasts. Issue
+	 * #1576, a judgement the coordinating session approved on 2026-09-11.
+	 *
+	 * MADNESS IS THE CASE THAT MADE IT MATTER. Its row says "Magnitude extends
+	 * the duration", so a chance to madden past 100% applies it for longer than
+	 * three seconds, and until this a later ordinary application replaced it and
+	 * cut it back.
+	 *
+	 * THE FIRST HALF IS THE ONE THAT CAN FAIL. A replacement takes the newer
+	 * application's duration, so 7.5 seconds and then 3 left 3. The second half
+	 * passes either way, and says what a longer application does.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayTag Madness = TagNamed(TEXT("Status.Debuff.Madness"));
+	if (!TestTrue(TEXT("Status.Debuff.Madness is a gameplay tag"), Madness.IsValid()))
+	{
+		return false;
+	}
+
+	const FScopedCarrier Attacker(World);
+
+	{
+		const FScopedCarrier Maddened(World);
+		TestTrue(TEXT("a Madness lands for 7.5 seconds"),
+			Effects::ApplyTagForDuration(Attacker.Actor, Maddened.Actor, Madness,
+										 7.5f));
+		TestTrue(TEXT("and one for 3 seconds reports that it applied"),
+			Effects::ApplyTagForDuration(Attacker.Actor, Maddened.Actor, Madness,
+										 3.0f));
+		TestEqual(TEXT("the Madness keeps its 7.5 seconds"),
+				  Maddened.RemainingOn(Madness), 7.5f, 0.01f);
+	}
+
+	{
+		const FScopedCarrier Maddened(World);
+		Effects::ApplyTagForDuration(Attacker.Actor, Maddened.Actor, Madness, 3.0f);
+		Effects::ApplyTagForDuration(Attacker.Actor, Maddened.Actor, Madness, 7.5f);
+		TestEqual(TEXT("a longer Madness extends a shorter one to 7.5 seconds"),
+				  Maddened.RemainingOn(Madness), 7.5f, 0.01f);
+	}
+
+	return true;
+}
+
 #undef CATACLYSM_DEBUFF_TEST
 
 #endif // WITH_AUTOMATION_TESTS

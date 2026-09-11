@@ -1760,10 +1760,25 @@ different field.
 ### How it was built, on 2026-09-11
 
 In `ApplyPin`, `ApplyNamedEffect` and `ApplyDamageOverTime`, in
-`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`.
-`ApplyTagForDuration` is unchanged. An effect that is only a tag, such as Madness
-or a stun, states no figure to compare, so the newest application still replaces
-the running one.
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, and since issue
+[#1576](https://github.com/sdubois777/Cataclysm/issues/1576) in
+`ApplyTagForDuration` as well.
+
+**An effect that is only a tag is compared by how long it lasts.** It was left out
+at first: an effect such as Madness or a stun states no figure, so the newest
+application replaced the running one. The on-hit ailment roll
+([#899](https://github.com/sdubois777/Cataclysm/issues/899)) gave Madness a figure,
+because its row says "Magnitude extends the duration", and a later ordinary
+Madness then cut a 7.5 second one to 3.
+
+**A judgement**, approved by the coordinating session on 2026-09-11 and on the
+owner's review list: for an effect whose only figure is its duration, the stronger
+application is the one that lasts longer.
+- A shorter application changes nothing.
+- A longer one extends the running one to its own length, by the same start-time
+  refresh the other three use, so the tag is never taken off and put back.
+- A stun is not affected in practice, because a stunned target cannot be stunned
+  again for five seconds and the longest stun is three.
 
 **What an application stated travels on the effect itself.** It is a set-by-caller
 number that no modifier reads, under the plain name `Cataclysm.StatedMagnitude`.
