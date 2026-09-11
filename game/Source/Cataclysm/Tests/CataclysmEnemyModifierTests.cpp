@@ -18,6 +18,8 @@
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Player/CataclysmPlayerState.h"
@@ -851,6 +853,11 @@ CATACLYSM_MODIFIER_TEST(FCataclysmGenericModifiersReachACreatureTest,
 	// THE ANSWERS ABOVE DO NOT SAY THE GAME EVER ASKS, which is the failure this
 	// project has shipped before. This spawns a real creature and reads the
 	// attributes back off it.
+	//
+	// IT CALLS `ApplyStartingAttributes` ITSELF, SO IT PROVES THE RULE AND NOT
+	// THAT A SPAWNER REACHES IT. That call is the step every spawner skipped
+	// until issue #1552. `AFloorCreatureThatDrawsShielderSpawnsWithItsShield`
+	// spawns through one and calls nothing afterwards.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -912,6 +919,233 @@ CATACLYSM_MODIFIER_TEST(FCataclysmGenericModifiersReachACreatureTest,
 			  ASC->GetNumericAttribute(Regen), Health * 0.02f, 0.01f);
 	TestEqual(TEXT("nor the shield"),
 			  ASC->GetNumericAttribute(MaxShield), Health * 0.5f, 0.01f);
+
+	return true;
+}
+
+namespace CataclysmEnemyModifierTest
+{
+	/**
+	 * A seed whose one-modifier draw for this Cataclysm type is exactly
+	 * `Wanted`, or 0 when none of the first 20,000 is.
+	 *
+	 * SEARCHED FOR RATHER THAN WRITTEN DOWN. A row added to the table moves what
+	 * every seed draws, and a seed typed in here would then quietly hand the
+	 * creature something else. The draw asked for is the one
+	 * `ACataclysmEnemyCharacter::DrawModifiersForRarity` makes for an Elite that
+	 * carries nothing yet: one modifier, from a stream seeded with exactly this
+	 * number.
+	 */
+	int32 SeedThatDraws(FName CataclysmType, FName Wanted)
+	{
+		for (int32 Seed = 1; Seed <= 20000; ++Seed)
+		{
+			FRandomStream Stream(Seed);
+			const TArray<FName> Drawn = UCataclysmEnemyModifiers::Draw(
+				Table(), CataclysmType, 1, Stream, TArray<FName>());
+			if (Drawn.Num() == 1 && Drawn[0] == Wanted)
+			{
+				return Seed;
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * An Imp given its stats the way a dungeon floor gives them, as an Elite
+	 * whose one modifier is `Wanted`.
+	 *
+	 * THE FLOOR'S OWN TWO STEPS, IN ITS OWN ORDER.
+	 * `ACataclysmDungeonGameMode::SpawnPlacedCreature` spawns the class for the
+	 * creature's kind and then calls `ApplyDesignedStats`, which sets the
+	 * creature's figures, then its rarity, then draws its modifiers. Only the
+	 * seed is set in between, and a seed changes what is drawn, not when.
+	 *
+	 * Null, with the reason added to the test, when it cannot be arranged.
+	 */
+	ACataclysmEnemyCharacter* FloorImpThatDraws(FAutomationTestBase& Test,
+		UWorld* World, ACataclysmDungeonGameMode* GameMode, FName Wanted,
+		const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Imp = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmDungeonGameMode::ClassFor(ECataclysmDungeonCreature::Imp),
+			Where, FRotator::ZeroRotator);
+		if (!Imp)
+		{
+			Test.AddError(TEXT("Could not spawn an Imp."));
+			return nullptr;
+		}
+
+		const int32 Seed = SeedThatDraws(Imp->DamageType, Wanted);
+		if (Seed == 0)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("No seed up to 20,000 draws %s for an Imp."),
+				*Wanted.ToString()));
+			return nullptr;
+		}
+		Imp->SetModifierSeedForTests(Seed);
+
+		// AN ELITE, which draws exactly one modifier, so the seed decides which.
+		GameMode->ImpRarityStep = 1;
+		GameMode->ApplyDesignedStats(Imp, ECataclysmDungeonCreature::Imp);
+		return Imp;
+	}
+
+	/** Whether this creature carries exactly one modifier, and it is `Wanted`. */
+	bool DrewOnly(const ACataclysmEnemyCharacter* Enemy, FName Wanted)
+	{
+		return Enemy && Enemy->ModifierRows.Num() == 1
+			&& Enemy->ModifierRows[0] == Wanted;
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmFloorCreatureDrawsShielderTest,
+	"Cataclysm.EnemyModifiers.AFloorCreatureThatDrawsShielderSpawnsWithItsShield")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #1552, AND THE PROOF IT ASKS FOR. A spawner gives a creature its
+	// figures, then its rarity, then draws its modifiers, and the draw came after
+	// the last call that turns modifiers into stats. So a creature that drew
+	// Shielder spawned with no shield at all. The test above passed anyway,
+	// because it calls `ApplyStartingAttributes` itself, which is the step the
+	// spawners never took.
+	//
+	// **THIS TEST MUST NEVER CALL A SETTER, OR `ApplyStartingAttributes`, AFTER
+	// `ApplyDesignedStats`.** Either would supply the missing step, and the test
+	// would then pass whether the spawner takes it or not.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* GameMode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("a dungeon game mode"), GameMode))
+	{
+		return false;
+	}
+
+	const FName Shielder(UCataclysmEnemyModifiers::ShielderRow);
+	ACataclysmEnemyCharacter* Imp =
+		FloorImpThatDraws(*this, World, GameMode, Shielder, FVector::ZeroVector);
+	if (!Imp)
+	{
+		return false;
+	}
+
+	// IT REALLY IS AN ELITE CARRYING SHIELDER AND NOTHING ELSE. Read back off
+	// the creature rather than trusted, so a seed that stopped drawing Shielder
+	// says so here instead of as a shield of the wrong size below.
+	if (!TestEqual(TEXT("the Imp is an Elite"), Imp->RarityStep, 1)
+		|| !TestTrue(TEXT("and drew Shielder and nothing else"),
+					 DrewOnly(Imp, Shielder)))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* ASC = Imp->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the Imp has an ability system"), ASC))
+	{
+		return false;
+	}
+
+	const float MaxHealth = ASC->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	TestTrue(TEXT("it has health for the shield to be a share of"),
+			 MaxHealth > 0.0f);
+
+	// HALF ITS MAXIMUM HEALTH, which is Shielder's row, on top of whatever
+	// shield its kind carries of its own. The Imp's own share is zero.
+	const float Expected = MaxHealth * (Imp->EnergyShieldFraction + 0.5f);
+	TestEqual(TEXT("it spawned with Shielder's maximum shield"),
+			  ASC->GetNumericAttribute(
+				  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()),
+			  Expected, 0.01f);
+	TestEqual(TEXT("and with that shield full"),
+			  ASC->GetNumericAttribute(
+				  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()),
+			  Expected, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmFloorCreatureDrawsTitanicResolveTest,
+	"Cataclysm.EnemyModifiers.AFloorCreatureThatDrawsTitanicResolveSpawnsWithMoreHealth")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// THE SAME FAULT, FOR THE MODIFIER THAT RAISES MAXIMUM HEALTH. Issue #1552.
+	// Titanic Resolve is half again the health, and a creature that drew it
+	// spawned with its ordinary health. It is compared with an Imp spawned the
+	// same way that drew Shielder, which changes no health, so the comparison
+	// needs no figure the game mode keeps to itself.
+	//
+	// **THIS TEST MUST NEVER CALL A SETTER, OR `ApplyStartingAttributes`, AFTER
+	// `ApplyDesignedStats`**, for the reason the test above gives.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* GameMode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("a dungeon game mode"), GameMode))
+	{
+		return false;
+	}
+
+	const FName Titanic(UCataclysmEnemyModifiers::TitanicResolveRow);
+	const FName Shielder(UCataclysmEnemyModifiers::ShielderRow);
+
+	// THE CONTROL IS ONE ONLY IF SHIELDER CHANGES NO HEALTH, which is asked of
+	// the rule rather than assumed.
+	TestEqual(TEXT("Shielder changes no health"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Shielder}), 1.0f,
+			  0.001f);
+	TestEqual(TEXT("and Titanic Resolve is half again"),
+			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Titanic}), 1.5f,
+			  0.001f);
+
+	ACataclysmEnemyCharacter* Titan = FloorImpThatDraws(
+		*this, World, GameMode, Titanic, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Control = FloorImpThatDraws(
+		*this, World, GameMode, Shielder, FVector(500.0f, 0.0f, 0.0f));
+	if (!Titan || !Control
+		|| !TestTrue(TEXT("one Imp drew Titanic Resolve and nothing else"),
+					 DrewOnly(Titan, Titanic))
+		|| !TestTrue(TEXT("and the other drew Shielder and nothing else"),
+					 DrewOnly(Control, Shielder)))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* TitanASC = Titan->GetAbilitySystemComponent();
+	const UAbilitySystemComponent* ControlASC =
+		Control->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("the first Imp has an ability system"), TitanASC)
+		|| !TestNotNull(TEXT("and so does the second"), ControlASC))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float ControlHealth = ControlASC->GetNumericAttribute(MaxHealth);
+	TestTrue(TEXT("the control Imp has health"), ControlHealth > 0.0f);
+
+	TestEqual(TEXT("the Imp that drew Titanic Resolve spawned with half again the health"),
+			  TitanASC->GetNumericAttribute(MaxHealth), ControlHealth * 1.5f,
+			  0.01f);
+	TestEqual(TEXT("and at full health"),
+			  TitanASC->GetNumericAttribute(
+				  UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			  ControlHealth * 1.5f, 0.01f);
 
 	return true;
 }

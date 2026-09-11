@@ -394,13 +394,16 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
 	// modifiers: one at Elite, three at Herald. The draw is seeded from the
 	// creature's object index (#888), so what this Brute drew depended on which
 	// tests had run first. On 2026-09-11 two full-suite runs of one binary rolled
-	// a Herald and then an Elite, and both drew Generic_Shielder. Reading the
-	// code, #1552 gives the reason that fails here: a spawner draws modifiers
-	// after the last call that applies stats, so there is no shield for the
-	// first blow, and the SetArmour call below applies the stats and fills the
-	// shield before the second. The second blow was absorbed whole both times --
-	// "(29.08 against 0.00)" and "(33.92 against 0.00)" -- which reads as armour
-	// doing nothing.
+	// a Herald and then an Elite, and both drew Generic_Shielder. The reason was
+	// #1552: a spawner drew modifiers after the last call that applied stats, so
+	// there was no shield for the first blow, and the SetArmour call below
+	// applied the stats and filled the shield before the second. The second blow
+	// was absorbed whole both times -- "(29.08 against 0.00)" and "(33.92
+	// against 0.00)" -- which reads as armour doing nothing.
+	//
+	// STILL PINNED NOW THAT #1552 IS FIXED. A Brute that draws Shielder now
+	// carries its shield from the start, so neither blow would reach its health,
+	// and the comparison below would fail for that reason instead.
 	//
 	// A COMMON CREATURE DRAWS NO MODIFIERS, because the count is the rarity step
 	// itself (`UCataclysmEnemyModifiers::CountForRarityStep`). The sibling test
