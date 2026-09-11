@@ -484,19 +484,6 @@ public:
 	static constexpr int32 ModifierDrawSalt = 0x30D1;
 
 	/**
-	 * Tops `ModifierRows` up to the count this creature's rung carries.
-	 *
-	 * CALLED FROM `SetRarityStep`, WHICH IS THE ONLY PLACE A RUNG IS SET and is
-	 * already the place the stat block is re-applied for the same reason: a
-	 * spawner sets these on the lines after `SpawnActor` in whatever order suits
-	 * it, and the order must not matter.
-	 *
-	 * SAFE TO CALL TWICE, and it has to be, because a spawner may set the rung
-	 * more than once. It only ever adds up to the shortfall, so a second call
-	 * with the same rung adds nothing and a call raising the rung adds the
-	 * difference.
-	 */
-	/**
 	 * Draws the modifiers this creature's rung carries, into `ModifierRows`.
 	 *
 	 * **CALLED BY A SPAWNER AND NOT BY `SetRarityStep`, AND THAT WAS A BUG

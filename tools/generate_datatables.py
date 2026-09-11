@@ -3598,14 +3598,16 @@ def enchantment_effects(book) -> list[dict]:
     A ROW HERE IS OPTIONAL. An enchantment with no row grants nothing, which is
     what every enchantment did before this sheet existed.
 
-    TWO KINDS OF ROW ARE REFUSED FOR NOW, each for a stated reason:
+    TWO KINDS OF ROW ARE REFUSED, each for a stated reason:
 
       a set row        a set's rows apply by how many worn pieces carry the
                        set, and this sheet cannot say how many pieces a row
                        needs yet
-      a stated range   how a range such as "10%-30%" becomes one number on one
-                       item is a question put to the project owner on issue
-                       #45, so every row states one value until it is answered
+      a range the      the owner ruled on 2026-09-11 that an enchantment rolls
+      words do not     a value evenly inside its range, and the game shows that
+      state            number in place of the range, so the two values must be
+                       a range the sentence states: its first number as Value
+                       Low and its second as Value High, with the row's sign
 
     A ROW NAME IS THE ENCHANTMENT WITH `#1`, `#2` AND SO ON AFTER IT, as in
     `Passive Effects`, so one enchantment can grant two stats. No enchantment
@@ -3666,17 +3668,24 @@ def enchantment_effects(book) -> list[dict]:
         low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
         high_text = clean(_cell(raw, headers, "Value High"))
         high = number(high_text, "Value High", index) if high_text else low
-        if high < low:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} has a high value of "
-                f"{high:g}, below its low value of {low:g}.")
         if high != low:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} states a range, "
-                f"{low:g} to {high:g}. How a stated range becomes one number "
-                f"on one item is a question put to the project owner on issue "
-                f"#45, so every row here states one value until it is "
-                f"answered.")
+            # A RANGE IS ONE THE SENTENCE STATES, IN ITS ORDER AND WITH ONE
+            # SIGN. The owner ruled on 2026-09-11 that an enchantment rolls a
+            # value evenly inside its range, and the game shows that number in
+            # place of the range in the sentence, so a row whose two ends are
+            # not that range would give the character one number and the
+            # player another. "Low" is the value at the lowest roll and "high"
+            # at the highest, so "reduced by 30%-50%" is -30 and -50.
+            stated = enchantment_ranges(words[name])
+            if (low < 0) != (high < 0) or (abs(low), abs(high)) not in stated:
+                written = ", ".join(f"{a:g} to {b:g}" for a, b in stated)
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states the "
+                    f"range {low:g} to {high:g}, which its words "
+                    f"{words[name]!r} do not state in that order. The ranges "
+                    f"they state: {written or 'none'}. Write the first number "
+                    f"as Value Low and the second as Value High, both with "
+                    f"the row's sign.")
 
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Enchantment Effects", index, name)
@@ -3717,6 +3726,27 @@ def enchantment_effects(book) -> list[dict]:
     if not out:
         raise DataError("the Enchantment Effects sheet is empty")
     return out
+
+
+#: A range in an enchantment's sentence: two numbers joined by a hyphen, each
+#: with an optional percent sign, and optional spaces around the hyphen. A
+#: number may carry thousands commas and a decimal part. This is the reading
+#: `UCataclysmItemValues::EnchantmentRanges` makes in the game, and
+#: `tools/tests/test_enchantment_effects_match_the_row_text.py` holds the two
+#: to one count of the ranges in the two enchantment tables.
+_ENCHANTMENT_NUMBER = r"(?:\d[\d,]*\d|\d)(?:\.\d+)?"
+ENCHANTMENT_RANGE = re.compile(
+    rf"(?<![\d.,])({_ENCHANTMENT_NUMBER})%? *- *({_ENCHANTMENT_NUMBER})%?")
+
+
+def enchantment_ranges(text: str) -> list[tuple[float, float]]:
+    """Every range an enchantment's sentence states, as (first, second).
+
+    "Your block chance is increased by 10%-20%" gives [(10.0, 20.0)]. A hyphen
+    that does not sit between two numbers, as in "2-Piece", is not a range.
+    """
+    return [(float(first.replace(",", "")), float(second.replace(",", "")))
+            for first, second in ENCHANTMENT_RANGE.findall(text)]
 
 
 def item_base_flat_stats(item_bases: list[dict] | None) -> set[str]:

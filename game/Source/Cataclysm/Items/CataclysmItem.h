@@ -93,8 +93,8 @@ struct CATACLYSM_API FCataclysmRolledAffix
  * WHY ROW NAMES RATHER THAN THE TEXT. The same reason FCataclysmRolledAffix
  * stores which affix rather than what it grants: the effect wording lives in
  * `game/Data/EnchantmentsPositive.csv` and `EnchantmentsNegative.csv` and is one
- * answer for every item that rolled it. What belongs to the item is only which
- * two rows it drew.
+ * answer for every item that rolled it. What belongs to the item is which two
+ * rows it drew, and where inside each row's stated range it rolled.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmRolledEnchantment
@@ -108,6 +108,38 @@ struct CATACLYSM_API FCataclysmRolledEnchantment
 	/** Row name in the EnchantmentsNegative table. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	FName Negative;
+
+	/**
+	 * Where inside the positive row's stated range this item rolled: 0 is the
+	 * first number the sentence states and 1 the second.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-09-11: "When an enchantment is put on
+	 * an item, it rolls a value evenly inside its range and keeps it, and the
+	 * hover text shows it. Upgrading the item from +0 to +10 does not change
+	 * it." So this is set once, by `UCataclysmDropRoll::RollEnchantments`, and
+	 * nothing afterwards moves it. `UCataclysmItemValues::EnchantmentValue`
+	 * turns it into the number.
+	 *
+	 * STORED RATHER THAN THE NUMBER IT GIVES, as FCataclysmRolledAffix::Roll
+	 * is, so that a range retuned in the workbook moves every item that rolled
+	 * it rather than leaving each one holding a number the sheet no longer
+	 * states.
+	 *
+	 * ONE ROLL FOR THE WHOLE HALF. Five sentences state two ranges, and both
+	 * read this one number, so "a 20%-35% slow for 2-4 seconds" rolls a strong
+	 * slow together with a long one. That keeps a save to one number per half,
+	 * which is the cost the owner was shown when choosing this rule.
+	 *
+	 * 1 BY DEFAULT, THE TOP OF THE RANGE, which is FCataclysmRolledAffix::Roll's
+	 * default too. An item built in code, or loaded from a save written before
+	 * this field existed, therefore states the second number of each range.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float PositiveRoll = 1.0f;
+
+	/** The same as PositiveRoll, for the negative row. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float NegativeRoll = 1.0f;
 };
 
 /**
@@ -398,6 +430,60 @@ public:
 							   bool bTwoHanded = false);
 
 	/**
+	 * One enchantment number: where a roll lands inside a stated range.
+	 *
+	 * `From` is the value at a roll of 0 and `To` the value at a roll of 1:
+	 * the first and second numbers of the range the sentence states, each
+	 * carrying the row's sign. So "reduced by 30%-50%" is From -30 and To -50,
+	 * and the top roll is the larger reduction, which is what the hover text
+	 * says.
+	 *
+	 * EVERY WRITTEN VALUE IS EQUALLY LIKELY. This is how the project owner's
+	 * "rolls a value evenly inside its range" is read. The range is cut into
+	 * the values it can be written as, at the precision of its two ends --
+	 * "10%-30%" is the 21 whole numbers 10 to 30, and "0.5-1" the six tenths
+	 * 0.5 to 1 -- and the roll picks one of them, each with an equal share.
+	 * Rounding a continuous draw instead would give each end half the chance
+	 * of every value between them.
+	 *
+	 * NOT SCALED BY THE UPGRADE LEVEL, which is the second half of the same
+	 * ruling, and why this takes no gear level where AffixValue does.
+	 *
+	 * A RANGE OF ONE VALUE, which is every row whose sentence states a single
+	 * number, gives that number whatever the roll.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float EnchantmentValue(float From, float To, float Roll);
+
+	/**
+	 * An enchantment's sentence with every range in it replaced by the number
+	 * this roll gives, for the hover text. "Your block chance is increased by
+	 * 10%-20%" at a roll of 1 reads "Your block chance is increased by 20%".
+	 *
+	 * THE SAME NUMBER THE STAT RECEIVES. The number comes from EnchantmentValue
+	 * given the two ends as the sentence writes them, and
+	 * `tools/generate_datatables.py` refuses an effect row whose two values are
+	 * not a range that sentence states, so what the player reads and what the
+	 * character gets cannot differ.
+	 *
+	 * A RANGE IS TWO NUMBERS JOINED BY A HYPHEN, each with an optional percent
+	 * sign, with optional spaces around the hyphen. All 390 ranges in the two
+	 * enchantment tables are written that way, measured on 2026-09-11. A
+	 * number may carry thousands commas, as in "100,000 - 500,000", and the
+	 * number that replaces it keeps them. A hyphen that does not sit between
+	 * two numbers, as in "2-Piece", is left alone.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static FString EnchantmentTextAtRoll(const FString& Effect, float Roll);
+
+	/**
+	 * Every range an enchantment's sentence states, as the first and second
+	 * number of each, in the order the sentence gives them. These are the
+	 * ranges EnchantmentTextAtRoll replaces.
+	 */
+	static TArray<FVector2D> EnchantmentRanges(const FString& Effect);
+
+	/**
 	 * What an item carrying this many enchantments and affixes IS.
 	 *
 	 * The definition of rarity, not a lookup on a stored field. Returns false
@@ -556,16 +642,18 @@ public:
 	 * from the Enchantment source, which the pipeline lets into the "more"
 	 * bucket.
 	 *
-	 * A BENEFIT APPLIES ONCE, HOWEVER MANY WORN PIECES CARRY IT. The design:
-	 * "Each enchantment can only appear once across all of a player's equipped
-	 * gear", to prevent "degenerate stacking of powerful effects". Nothing
-	 * refuses the second piece at equip time yet; that is a separate change
-	 * waiting on the project owner. So this is what keeps the rule's purpose true
-	 * until then.
+	 * A BENEFIT APPLIES ONCE, HOWEVER MANY WORN PIECES CARRY IT, AT THE HIGHER
+	 * OF THEIR ROLLS. The design: "Each enchantment can only appear once across
+	 * all of a player's equipped gear", to prevent "degenerate stacking of
+	 * powerful effects". `docs/DECISIONS.md` settled on 2026-09-11 that the
+	 * same benefit on a second piece is refused at equip with a message, and
+	 * nothing refuses it yet. Until something does, this keeps the rule's
+	 * purpose true, and takes the higher roll so that the result does not
+	 * depend on which piece was put on first.
 	 *
-	 * A DRAWBACK APPLIES FOR EVERY WORN PIECE CARRYING IT. Nothing here may make
-	 * a cost smaller than the items say. Whether two pieces may share a drawback
-	 * at all is part of the same question to the owner.
+	 * A DRAWBACK APPLIES FOR EVERY WORN PIECE CARRYING IT, each at its own
+	 * roll. Nothing here may make a cost smaller than the items say, and two
+	 * pieces that share only a drawback may both be worn.
 	 *
 	 * A SET ROW GRANTS NOTHING HERE, on either side. A set's bonuses turn on by
 	 * how many worn pieces carry the set, and its drawback applies once for the

@@ -179,9 +179,13 @@ public:
 	 * are plain strings, and everything that draws them draws one colour -- so
 	 * the word is what does it.
 	 *
-	 * THE SHEET'S OWN WORDING, UNCHANGED. There is nothing to compute. An
-	 * enchantment has one value rather than seven tiers and a roll band, so
-	 * unlike an affix there is no number to resolve against the upgrade level.
+	 * THE SHEET'S OWN WORDING, WITH EACH RANGE REPLACED BY THIS ITEM'S NUMBER.
+	 * The project owner ruled on 2026-09-11 that an enchantment "rolls a value
+	 * evenly inside its range and keeps it, and the hover text shows it".
+	 * `UCataclysmItemValues::EnchantmentTextAtRoll` writes the number, and it is
+	 * the number the character's stat receives. Unlike an affix's, it is not
+	 * scaled by the upgrade level: the same ruling says upgrading does not
+	 * change it.
 	 *
 	 * @return no lines when neither row can be looked up, which is what an item
 	 *         loaded from a save written before enchantments were stored gives

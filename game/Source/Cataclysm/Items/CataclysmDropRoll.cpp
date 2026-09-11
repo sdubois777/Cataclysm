@@ -1332,6 +1332,13 @@ int32 UCataclysmDropRoll::EnchantmentSetId(const FCataclysmEnchantmentRow& Row)
 namespace
 {
 	/**
+	 * A fixed number mixed into the seed of the stream that rolls where each
+	 * enchantment lands inside its range. Any fixed number would do; this one
+	 * only keeps that stream from starting where the item's own stream stands.
+	 */
+	constexpr uint32 EnchantmentValueStreamSalt = 0x6E63A11Du;
+
+	/**
 	 * How many pieces a set row's own text says it needs, or MAX_int32.
 	 *
 	 * READ FROM THE EFFECT because that is where it is written: every one of
@@ -1866,6 +1873,27 @@ bool UCataclysmDropRoll::RollEnchantments(
 			OutRolled.Reset();
 			return false;
 		}
+
+		// WHERE IN EACH HALF'S RANGE THIS ITEM LANDS, FROM A STREAM OF ITS OWN.
+		// The project owner ruled on 2026-09-11 that an enchantment "rolls a
+		// value evenly inside its range and keeps it". The two rolls come from a
+		// second stream seeded from where the item's stream has got to, and not
+		// from the item's stream itself. Drawing them from the item's stream would
+		// move every draw after this one: the next enchantment pair on this item,
+		// and every later gear item the same kill drops, because
+		// CataclysmDroppedItem.cpp rolls all of a kill's gear from one stream.
+		// RollItem's last two draws follow the rule that a new draw must not
+		// change what an existing seed produces, and this keeps it.
+		//
+		// NO TEST CHECKS THIS. A guard proof on 2026-09-11 drew the benefit's roll
+		// from the item's stream instead, and all 1,570 automation tests still
+		// passed. `UCataclysmItemValues::EnchantmentValue` turns each roll into its
+		// number.
+		FRandomStream Values(static_cast<int32>(HashCombineFast(
+			static_cast<uint32>(Stream.GetCurrentSeed()),
+			EnchantmentValueStreamSalt)));
+		Rolled.PositiveRoll = Values.GetFraction();
+		Rolled.NegativeRoll = Values.GetFraction();
 
 		TakenPositives.Add(Rolled.Positive);
 		TakenNegatives.Add(Rolled.Negative);

@@ -892,11 +892,17 @@ public:
 		return FloorBrief.ModifierScore;
 	}
 
-protected:
-
 	/**
 	 * Gives one spawned creature the health, armour and attack damage its design
-	 * calls for, and rolls its rarity.
+	 * calls for, rolls its rarity, and draws its modifiers.
+	 *
+	 * PUBLIC SO A TEST CAN GIVE ONE CREATURE ITS STATS THE WAY A FLOOR DOES.
+	 * `SpawnPlacedCreature` spawns a creature and then calls this, and a test
+	 * that could reach it only through a whole floor could not choose what the
+	 * creature draws. Issue #1552 was a fault in the last step this takes: the
+	 * draw came after every call that turns modifiers into stats.
+	 * `Cataclysm.EnemyModifiers.AFloorCreatureThatDrawsShielderSpawnsWithItsShield`
+	 * seeds the draw and then calls this. It was protected until then.
 	 *
 	 * THE SAME FIGURES THE SANDBOX USES, read from the same settings on
 	 * `ACataclysmGameMode`, so a Brute in a dungeon and a Brute in the sandbox
