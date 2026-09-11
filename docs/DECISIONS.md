@@ -22,7 +22,11 @@ the first slice of making the 117 dungeon modifiers do what their rows say.
 - none did what its row says;
 - one, Unstable Dimensions, did part of it;
 - a modifier's only effect in play was to raise the experience a kill grants
-  (issue [#1558](https://github.com/sdubois777/Cataclysm/issues/1558)).
+  (issue [#1558](https://github.com/sdubois777/Cataclysm/issues/1558), closed on
+  2026-09-11 when the project owner kept the design, as relayed by the
+  coordinating session: creature health and damage are to follow the enemy
+  score on every floor, which is issue
+  [#1569](https://github.com/sdubois777/Cataclysm/issues/1569)).
 
 The measurement and the plan are on #41.
 

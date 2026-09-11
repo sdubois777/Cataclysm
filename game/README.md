@@ -268,8 +268,10 @@ by `git add` with no error and no warning. Guarded by
   is the dungeon's Modifier Score, which
   `ACataclysmDungeonGameMode::EnterEmpireDungeon` carries over when the player
   walks in, and which makes every creature on every floor worth more experience
-  — and nothing else, although the design says it should make them harder,
-  which is issue [#1558](https://github.com/sdubois777/Cataclysm/issues/1558).
+  — and nothing else yet. The design says it should make them harder too, and
+  on 2026-09-11 the project owner kept that: creature health and damage are to
+  follow the enemy score on every floor, which is issue
+  [#1569](https://github.com/sdubois777/Cataclysm/issues/1569).
   Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
   the game had ever read, and the Modifier Score was a hard-coded zero.
 
