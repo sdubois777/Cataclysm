@@ -1231,6 +1231,13 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// damage. A weaker bleed, poison, burn, disease or necrosis leaves a
 	// stronger running one alone and only refreshes how long it runs.
 	//
+	// AND SO DOES AN EQUAL ONE, WHICH MATTERS MOST HERE. A replacement is a new
+	// effect, and a new one first ticks a whole interval after it lands, so an
+	// equal application landing sooner than that restarted the interval.
+	// Measured on 2026-09-11: the same bleed applied again every 0.6 of its
+	// interval dealt nothing in 4.2 seconds. A refresh moves only the running
+	// effect's start, so its ticks carry on.
+	//
 	// COMPARED BY DAMAGE A SECOND, WHICH IS A JUDGEMENT, and `docs/DECISIONS.md`
 	// records it. What an application states is the damage one tick deals and
 	// how often it ticks, both after the attacker's own three stats and before
@@ -1240,7 +1247,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// refreshed separately under the third ruling.
 	const float Stated = Numbers.DamagePerTick / Numbers.SecondsPerTick;
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
-	if (Running.bFound && Running.Stated > Stated)
+	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
 			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds));
@@ -2105,8 +2112,9 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 
 	// THE STRONGEST APPLICATION WINS, which the project owner ruled on
 	// 2026-09-09. Issue #1503. A pin arriving on a target already held by a
-	// stronger one leaves that pin's increase standing and only refreshes how
-	// long it runs. A pin stating no increase states zero, so it can never take
+	// stronger or equal one leaves that pin's increase standing and only
+	// refreshes how long it runs, never shortening it. A pin stating no
+	// increase states zero, so it can never take
 	// Impale's increase away, which it did while every pin replaced the last.
 	//
 	// A TARGET THAT CANNOT HOLD THE INCREASE is given the bare tag below, which
@@ -2114,7 +2122,7 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	// running one as before. No figure can differ there, only the time left.
 	const float Stated = FMath::Max(0.0f, DamageTakenIncrease);
 	const FRunningApplication Running = RunningApplicationOf(Defender, Pinned);
-	if (Running.bFound && Running.Stated > Stated)
+	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
 			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
@@ -2404,12 +2412,13 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	// 2026-09-09. Issue #1503, and `docs/DECISIONS.md` carries all three parts.
 	// Two applications are compared by what they STATE, before the target's
 	// resistances, and an effect naming several stats is compared as one whole:
-	// its figure summed over the stats it touches. A weaker application leaves
-	// the running one's figures alone and only refreshes how long it runs.
+	// its figure summed over the stats it touches. A weaker or equal
+	// application leaves the running one's figures alone and only refreshes how
+	// long it runs, never shortening it.
 	const float Stated =
 		FMath::Max(0.0f, Size) * static_cast<float>(Held.Num());
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
-	if (Running.bFound && Running.Stated > Stated)
+	if (Running.bFound && Running.Stated >= Stated)
 	{
 		RefreshRunningApplication(Defender, Running,
 			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds));
