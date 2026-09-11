@@ -45,12 +45,23 @@ namespace CataclysmSaveRecordTest
 		Affix.Tier = 5;
 		Affix.Roll = 0.75f;
 
+		// AN ENCHANTMENT WITH BOTH ROLLS AWAY FROM THEIR DEFAULT OF 1, so a roll
+		// that did not reach the file would come back as 1 and be noticed.
+		FCataclysmRolledEnchantment Enchantment;
+		Enchantment.Positive =
+			FName(TEXT("Positive_Your_block_chance_is_increased_by_10_20"));
+		Enchantment.Negative =
+			FName(TEXT("Negative_Your_attack_speed_is_reduced_by_20_35"));
+		Enchantment.PositiveRoll = 0.25f;
+		Enchantment.NegativeRoll = 0.625f;
+
 		FCataclysmCarriedSlot Gear;
 		Gear.Item.Base = FName(TEXT("Circlet"));
 		Gear.Item.GearLevel = 7;
 		Gear.Item.Sockets = 2;
 		Gear.Item.Residue = 4.25f;
 		Gear.Item.Affixes.Add(Affix);
+		Gear.Item.Enchantments.Add(Enchantment);
 		Record->CarriedSlots.Add(Gear);
 
 		FCataclysmCarriedSlot Material;
@@ -322,6 +333,26 @@ bool FCataclysmSaveWritesOnlyMarkedFields::RunTest(const FString&)
 	TestEqual(TEXT("the affix's name survived two levels of nesting"),
 		Affix->GetStringField(TEXT("Affix")), FString(TEXT("PrefixLifeFlat")));
 
+	// AND THE TWO ENCHANTMENT ROLLS, which are the newest fields on an item and
+	// would be dropped with no error if either lost its SaveGame flag.
+	const TArray<TSharedPtr<FJsonValue>>* Enchantments = nullptr;
+	if (!(*Item)->TryGetArrayField(TEXT("Enchantments"), Enchantments)
+		|| Enchantments->Num() != 1)
+	{
+		AddError(TEXT("the carried item's enchantment did not reach the file"));
+		return false;
+	}
+	const TSharedPtr<FJsonObject> Enchantment = (*Enchantments)[0]->AsObject();
+	if (!Enchantment.IsValid())
+	{
+		AddError(TEXT("the enchantment in the file is not an object"));
+		return false;
+	}
+	TestEqual(TEXT("the benefit roll reached the file"),
+		static_cast<float>(Enchantment->GetNumberField(TEXT("PositiveRoll"))), 0.25f);
+	TestEqual(TEXT("the drawback roll reached the file"),
+		static_cast<float>(Enchantment->GetNumberField(TEXT("NegativeRoll"))), 0.625f);
+
 	return true;
 }
 
@@ -411,6 +442,19 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 	}
 	TestEqual(TEXT("the affix's tier came back"), Read->CarriedSlots[0].Item.Affixes[0].Tier, 5);
 	TestEqual(TEXT("the affix's roll came back"), Read->CarriedSlots[0].Item.Affixes[0].Roll, 0.75f);
+
+	// WHERE EACH HALF OF AN ENCHANTMENT ROLLED. The project owner ruled on
+	// 2026-09-11 that an item keeps its enchantment's roll, so a save that lost
+	// it would change the item.
+	if (Read->CarriedSlots[0].Item.Enchantments.Num() != 1)
+	{
+		AddError(TEXT("the gear's enchantment did not come back"));
+		return false;
+	}
+	TestEqual(TEXT("the enchantment's benefit roll came back"),
+		Read->CarriedSlots[0].Item.Enchantments[0].PositiveRoll, 0.25f);
+	TestEqual(TEXT("the enchantment's drawback roll came back"),
+		Read->CarriedSlots[0].Item.Enchantments[0].NegativeRoll, 0.625f);
 
 	TestEqual(TEXT("the material's name came back"), Read->CarriedSlots[1].Material,
 		FName(TEXT("Whispering_Ash")));

@@ -1214,9 +1214,14 @@ bool FCataclysmEnchantmentTooltipStatesBothHalves::RunTest(const FString&)
 		return false;
 	}
 
+	// THE BENEFIT STATES A RANGE, "Additional 100%-300% crit multiplier", AND
+	// ROLLED AT ITS BOTTOM. Since 2026-09-11 an item keeps where inside a range
+	// it rolled and the tool tip shows that number, so the roll is stated here
+	// rather than left at its default.
 	FCataclysmRolledEnchantment Rolled;
 	Rolled.Positive = TEXT("Positive_Additional_100_300_crit_multiplier");
 	Rolled.Negative = TEXT("Negative_You_have_no_armor");
+	Rolled.PositiveRoll = 0.0f;
 
 	// THE ROWS EXIST, checked rather than assumed. A renamed row would otherwise
 	// make this test pass by producing no lines and finding nothing wrong.
@@ -1241,8 +1246,11 @@ bool FCataclysmEnchantmentTooltipStatesBothHalves::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("the positive is the sheet's own wording, unmarked"),
-			  Lines[0], PositiveRow->Effect);
+	// THE POSITIVE IS THE SHEET'S WORDING WITH THE ITEM'S NUMBER IN PLACE OF ITS
+	// RANGE, and unmarked. The negative states no range, so it reads exactly as
+	// the sheet writes it.
+	TestEqual(TEXT("the positive states the item's number, unmarked"),
+			  Lines[0], FString(TEXT("Additional 100% crit multiplier")));
 	TestEqual(TEXT("the negative is marked as a drawback"), Lines[1],
 			  FString(UCataclysmItemTooltip::DrawbackPrefix)
 				  + NegativeRow->Effect);

@@ -2018,7 +2018,8 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
  *
  * `tools/generate_datatables.py` REFUSES THREE KINDS OF ROW when it writes the
  * file: one naming an enchantment that does not exist or whose words it does
- * not repeat exactly, one naming a set row, and one stating a range.
+ * not repeat exactly, one naming a set row, and one stating a range that its
+ * enchantment's words do not state.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmEnchantmentEffectRow : public FTableRowBase
@@ -2045,17 +2046,22 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	FString ValueKind;
 
 	/**
-	 * The value: percentage points for `increased` and `more`, and the stat's
-	 * own units for `flat`.
+	 * The value at the lowest roll: percentage points for `increased` and
+	 * `more`, and the stat's own units for `flat`.
 	 *
-	 * TWO COLUMNS, BECAUSE MOST SENTENCES STATE A RANGE. How a range such as
-	 * "10%-30%" becomes one number on one item is a question for the project
-	 * owner, and until it is answered the generator refuses a row whose two
-	 * values differ. So every row today carries one value in both.
+	 * THE TWO COLUMNS ARE THE TWO ENDS OF THE RANGE THE SENTENCE STATES, IN THE
+	 * SENTENCE'S ORDER AND WITH THIS ROW'S SIGN. "Reduced by 30%-50%" is
+	 * ValueLow -30 and ValueHigh -50, so the highest roll gives the larger
+	 * reduction, which is what the hover text reads. "Low" and "high" name the
+	 * roll, not the size of the number. A row whose sentence states one number
+	 * carries it in both. Where each item's roll landed is on
+	 * FCataclysmRolledEnchantment, and `UCataclysmItemValues::EnchantmentValue`
+	 * turns the two ends and the roll into one number.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ValueLow = 0.0f;
 
+	/** The value at the highest roll. See ValueLow. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ValueHigh = 0.0f;
 

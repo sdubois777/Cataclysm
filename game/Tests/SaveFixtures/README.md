@@ -195,6 +195,19 @@ both to add a field the record had gained:
   It is stored rather than recomputed on load because the danger scores live in
   a DataTable the empire module may not read.
 
+`Run_v1.json` was edited an eleventh time on 2026-09-11, for issue #45:
+
+- `PositiveRoll` and `NegativeRoll` on the enchantment its ground item
+  carries, because an item now keeps where inside each enchantment's stated
+  range it rolled. The project owner ruled that an enchantment "rolls a value
+  evenly inside its range and keeps it".
+
+  **They hold 0.25 and 0.625 rather than the default of 1**, for the reason
+  `Bosses` holds 4: a fixture carrying a field's default cannot show that the
+  value survives a round trip rather than being re-defaulted on load. The two
+  differ from each other, so one written into the other would be noticed, and
+  both are exact in binary.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 

@@ -137,7 +137,9 @@
 					"Enchantments": [
 						{
 							"Positive": "Positive_Additional_100_300_crit_multiplier",
-							"Negative": "Negative_You_have_no_armor"
+							"Negative": "Negative_You_have_no_armor",
+							"PositiveRoll": 0.25,
+							"NegativeRoll": 0.625
 						}
 					],
 					"Sockets": 0,

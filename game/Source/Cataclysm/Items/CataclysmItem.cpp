@@ -104,6 +104,262 @@ float UCataclysmItemValues::WorstMultiplier()
 		 / GearLevelMultiplier(MaxGearLevel);
 }
 
+// ---------------------------------------------------------------------------
+// Enchantment values
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/**
+	 * How many decimal places a stated number needs: 0, 1 or 2.
+	 *
+	 * READ OFF THE VALUE RATHER THAN ITS TEXT, so an effect row's two floats and
+	 * a sentence's two numbers give the same answer, and the hover text and the
+	 * stat therefore cut a range into the same values. No enchantment states a
+	 * number finer than a hundredth, so anything finer counts as two places.
+	 */
+	int32 EnchantmentDecimalPlaces(float Value)
+	{
+		for (int32 Places = 0; Places < 2; ++Places)
+		{
+			const float Scaled =
+				FMath::Abs(Value) * FMath::Pow(10.0f, static_cast<float>(Places));
+			if (FMath::IsNearlyEqual(Scaled, FMath::RoundToFloat(Scaled), 1.0e-3f))
+			{
+				return Places;
+			}
+		}
+		return 2;
+	}
+
+	/** One number as an enchantment's sentence writes it. */
+	struct FEnchantmentNumberText
+	{
+		/** Where its first digit is. */
+		int32 Start = 0;
+
+		/** One past its last character, the percent sign included. */
+		int32 End = 0;
+
+		float Value = 0.0f;
+		bool bPercent = false;
+		bool bCommas = false;
+	};
+
+	/**
+	 * The number starting exactly at `At`: digits, which may be grouped by
+	 * commas, an optional decimal part, then an optional percent sign. False
+	 * when `At` does not hold a digit.
+	 */
+	bool ReadEnchantmentNumber(const FString& Text, int32 At,
+							   FEnchantmentNumberText& Out)
+	{
+		if (!Text.IsValidIndex(At) || !FChar::IsDigit(Text[At]))
+		{
+			return false;
+		}
+
+		FString Digits;
+		bool bCommas = false;
+		int32 Cursor = At;
+		while (Text.IsValidIndex(Cursor))
+		{
+			if (FChar::IsDigit(Text[Cursor]))
+			{
+				Digits.AppendChar(Text[Cursor]);
+				++Cursor;
+			}
+			// A COMMA IS PART OF THE NUMBER ONLY WHEN A DIGIT FOLLOWS IT, so the
+			// comma in "life, mana" ends the number before it.
+			else if (Text[Cursor] == TEXT(',') && Text.IsValidIndex(Cursor + 1)
+					 && FChar::IsDigit(Text[Cursor + 1]))
+			{
+				bCommas = true;
+				++Cursor;
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		// SO IS A DECIMAL POINT, so the full stop ending "20% less hp." is not.
+		if (Text.IsValidIndex(Cursor + 1) && Text[Cursor] == TEXT('.')
+			&& FChar::IsDigit(Text[Cursor + 1]))
+		{
+			Digits.AppendChar(TEXT('.'));
+			++Cursor;
+			while (Text.IsValidIndex(Cursor) && FChar::IsDigit(Text[Cursor]))
+			{
+				Digits.AppendChar(Text[Cursor]);
+				++Cursor;
+			}
+		}
+
+		Out.Start = At;
+		Out.Value = FCString::Atof(*Digits);
+		Out.bCommas = bCommas;
+		Out.bPercent = Text.IsValidIndex(Cursor) && Text[Cursor] == TEXT('%');
+		Out.End = Out.bPercent ? Cursor + 1 : Cursor;
+		return true;
+	}
+
+	/**
+	 * The first range at or after `From`: a number, optional spaces, a hyphen,
+	 * optional spaces and a number. False when none is left.
+	 */
+	bool FindEnchantmentRange(const FString& Text, int32 From,
+							  FEnchantmentNumberText& OutFirst,
+							  FEnchantmentNumberText& OutSecond)
+	{
+		int32 At = From;
+		while (At < Text.Len())
+		{
+			// THE START OF A NUMBER, NOT ITS MIDDLE: a digit with no digit, comma
+			// or decimal point directly before it.
+			const bool bStartsNumber = FChar::IsDigit(Text[At])
+				&& !(At > 0 && (FChar::IsDigit(Text[At - 1])
+								|| Text[At - 1] == TEXT(',')
+								|| Text[At - 1] == TEXT('.')));
+			FEnchantmentNumberText First;
+			if (!bStartsNumber || !ReadEnchantmentNumber(Text, At, First))
+			{
+				++At;
+				continue;
+			}
+
+			int32 Cursor = First.End;
+			while (Text.IsValidIndex(Cursor) && Text[Cursor] == TEXT(' '))
+			{
+				++Cursor;
+			}
+
+			FEnchantmentNumberText Second;
+			bool bRange = Text.IsValidIndex(Cursor) && Text[Cursor] == TEXT('-');
+			if (bRange)
+			{
+				++Cursor;
+				while (Text.IsValidIndex(Cursor) && Text[Cursor] == TEXT(' '))
+				{
+					++Cursor;
+				}
+				bRange = ReadEnchantmentNumber(Text, Cursor, Second);
+			}
+			if (bRange)
+			{
+				OutFirst = First;
+				OutSecond = Second;
+				return true;
+			}
+			At = First.End;
+		}
+		return false;
+	}
+
+	/**
+	 * A value written the way its sentence writes numbers: as many decimal
+	 * places as the range needs and no trailing zeros, with thousands commas
+	 * when the sentence used them.
+	 */
+	FString EnchantmentNumberAsWritten(float Value, int32 Places, bool bCommas)
+	{
+		FString Text = Places <= 0 ? FString::Printf(TEXT("%.0f"), Value)
+					 : Places == 1 ? FString::Printf(TEXT("%.1f"), Value)
+								   : FString::Printf(TEXT("%.2f"), Value);
+		if (Places > 0)
+		{
+			while (Text.EndsWith(TEXT("0")))
+			{
+				Text.LeftChopInline(1);
+			}
+			if (Text.EndsWith(TEXT(".")))
+			{
+				Text.LeftChopInline(1);
+			}
+		}
+
+		if (bCommas)
+		{
+			int32 Point = INDEX_NONE;
+			if (!Text.FindChar(TEXT('.'), Point))
+			{
+				Point = Text.Len();
+			}
+			const int32 FirstDigit = Text.StartsWith(TEXT("-")) ? 1 : 0;
+			for (int32 At = Point - 3; At > FirstDigit; At -= 3)
+			{
+				Text.InsertAt(At, TEXT(','));
+			}
+		}
+		return Text;
+	}
+}
+
+float UCataclysmItemValues::EnchantmentValue(float From, float To, float Roll)
+{
+	const int32 Places = FMath::Max(EnchantmentDecimalPlaces(From),
+									EnchantmentDecimalPlaces(To));
+	const float Scale = FMath::Pow(10.0f, static_cast<float>(Places));
+	const int32 Steps = FMath::RoundToInt(FMath::Abs(To - From) * Scale);
+	if (Steps <= 0)
+	{
+		return From;
+	}
+
+	// STEPS + 1 WRITTEN VALUES, EACH OWNING AN EQUAL SHARE OF THE ROLL. A roll
+	// of exactly 1 would fall past the last share, so it is held in the last
+	// one, which is where the default of 1 is meant to land.
+	const int32 Index = FMath::Min(
+		FMath::FloorToInt(FMath::Clamp(Roll, 0.0f, 1.0f)
+						  * static_cast<float>(Steps + 1)),
+		Steps);
+	const float Direction = To >= From ? 1.0f : -1.0f;
+	const float Value = From + Direction * static_cast<float>(Index) / Scale;
+
+	// ROUNDED TO THE RANGE'S OWN PRECISION, so that five tenths added to 0.5
+	// come to 1 rather than to 1.0000001.
+	return FMath::RoundToFloat(Value * Scale) / Scale;
+}
+
+TArray<FVector2D> UCataclysmItemValues::EnchantmentRanges(const FString& Effect)
+{
+	TArray<FVector2D> Ranges;
+	FEnchantmentNumberText First;
+	FEnchantmentNumberText Second;
+	int32 From = 0;
+	while (FindEnchantmentRange(Effect, From, First, Second))
+	{
+		Ranges.Add(FVector2D(First.Value, Second.Value));
+		From = Second.End;
+	}
+	return Ranges;
+}
+
+FString UCataclysmItemValues::EnchantmentTextAtRoll(const FString& Effect,
+													 float Roll)
+{
+	FString Out;
+	FEnchantmentNumberText First;
+	FEnchantmentNumberText Second;
+	int32 Copied = 0;
+	while (FindEnchantmentRange(Effect, Copied, First, Second))
+	{
+		const int32 Places = FMath::Max(EnchantmentDecimalPlaces(First.Value),
+										EnchantmentDecimalPlaces(Second.Value));
+		Out += Effect.Mid(Copied, First.Start - Copied);
+		Out += EnchantmentNumberAsWritten(
+			EnchantmentValue(First.Value, Second.Value, Roll), Places,
+			First.bCommas || Second.bCommas);
+		if (First.bPercent || Second.bPercent)
+		{
+			Out.AppendChar(TEXT('%'));
+		}
+		Copied = Second.End;
+	}
+	Out += Effect.Mid(Copied);
+	return Out;
+}
+
 float UCataclysmItemValues::AffixValue(float TopValue, float Floor,
 									   int32 Tier, float Roll,
 									   int32 GearLevel, bool bTwoHanded)
@@ -569,16 +825,17 @@ namespace
 	 * nothing is the answer that errs in neither direction.
 	 */
 	bool EnchantmentModifierFor(const FCataclysmEnchantmentEffectRow& Effect,
-								FCataclysmStatModifier& Out)
+								float Roll, FCataclysmStatModifier& Out)
 	{
 		Out = FCataclysmStatModifier();
 		Out.Source = ECataclysmModifierSource::Enchantment;
 
-		// THE LOW VALUE, WHICH IS THE ONLY ONE. The generator refuses a row whose
-		// two values differ until the project owner rules how a stated range
-		// becomes one number on one item, so they are equal on every row this
-		// build can load.
-		Out.Value = Effect.ValueLow;
+		// WHERE THIS ITEM'S ROLL LANDS INSIDE THE ROW'S RANGE, which for a row
+		// stating one number is that number whatever the roll. The hover text
+		// asks the same function with the same two ends, so the character gets
+		// the number the player reads.
+		Out.Value = UCataclysmItemValues::EnchantmentValue(Effect.ValueLow,
+														   Effect.ValueHigh, Roll);
 
 		if (Effect.ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
 		{
@@ -665,7 +922,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	}
 
 	int32 Added = 0;
-	auto Grant = [&Totals, &EffectsFor, &Added](FName Enchantment)
+	auto Grant = [&Totals, &EffectsFor, &Added](FName Enchantment, float Roll)
 	{
 		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
 			EffectsFor.Find(Enchantment);
@@ -679,7 +936,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 		for (const FCataclysmEnchantmentEffectRow* Effect : *Effects)
 		{
 			FCataclysmStatModifier Modifier;
-			if (!EnchantmentModifierFor(*Effect, Modifier))
+			if (!EnchantmentModifierFor(*Effect, Roll, Modifier))
 			{
 				UE_LOG(LogCataclysm, Warning,
 					   TEXT("Enchantment '%s' names the condition '%s' or the "
@@ -694,9 +951,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 		}
 	};
 
-	// A BENEFIT ONCE HOWEVER MANY PIECES CARRY IT, AND A DRAWBACK FOR EVERY
-	// PIECE. The header says why each.
-	TSet<FName> BenefitsGranted;
+	// A BENEFIT ONCE HOWEVER MANY PIECES CARRY IT, AT THE HIGHER OF THEIR
+	// ROLLS, AND A DRAWBACK FOR EVERY PIECE AT ITS OWN. The header says why
+	// each. The benefits are gathered first and granted afterwards, so that the
+	// higher roll is used whichever piece comes first in the list.
+	TArray<FName> BenefitOrder;
+	TMap<FName, float> HighestBenefitRoll;
 	for (const FCataclysmItem& Item : Worn)
 	{
 		if (Item.Base.IsNone())
@@ -709,20 +969,28 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			if (!Rolled.Positive.IsNone()
 				&& !IsSetEnchantmentRow(PositiveTable, Rolled.Positive))
 			{
-				bool bAlreadyGranted = false;
-				BenefitsGranted.Add(Rolled.Positive, &bAlreadyGranted);
-				if (!bAlreadyGranted)
+				if (float* Highest = HighestBenefitRoll.Find(Rolled.Positive))
 				{
-					Grant(Rolled.Positive);
+					*Highest = FMath::Max(*Highest, Rolled.PositiveRoll);
+				}
+				else
+				{
+					HighestBenefitRoll.Add(Rolled.Positive, Rolled.PositiveRoll);
+					BenefitOrder.Add(Rolled.Positive);
 				}
 			}
 
 			if (!Rolled.Negative.IsNone()
 				&& !IsSetEnchantmentRow(NegativeTable, Rolled.Negative))
 			{
-				Grant(Rolled.Negative);
+				Grant(Rolled.Negative, Rolled.NegativeRoll);
 			}
 		}
+	}
+
+	for (const FName& Benefit : BenefitOrder)
+	{
+		Grant(Benefit, HighestBenefitRoll[Benefit]);
 	}
 
 	return Added;
