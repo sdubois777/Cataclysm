@@ -369,7 +369,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// scale they needed, `minions_held`, and the two stats behind them were
 	// built by that issue, which is why the pass that authored the rest left
 	// them out.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        206)
+	//
+	// AND TO 208 FOR ATTENDANT AND ROOM FOR ONE MORE. Issue #1515. Two more of
+	// the 82 above, and neither needed new code: Attendant's scale,
+	// `minions_held`, arrived with #1518, and Room for One More is a flat 30 on
+	// `class_resource`, which always existed.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        208)
 
 	// SEVEN ROWS, AND THEY ARE THE FIRST. Issue #45. Only the enchantments whose
 	// sentence states one number and needs nothing the game lacks. Most

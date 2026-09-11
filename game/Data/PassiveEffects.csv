@@ -205,3 +205,5 @@ Ritualist_capstone_25#1,Ritualist_capstone_25,max_energy_shield,increased,40.0,,
 Ritualist_capstone_25#2,Ritualist_capstone_25,energy_shield_regen,increased,20.0,,,0.0,,0.0,2
 Ritualist_capstone_25#3,Ritualist_capstone_25,class_resource,increased,20.0,,,0.0,,0.0,3
 Ritualist_capstone_25#4,Ritualist_capstone_25,mana_regen,increased,20.0,,,0.0,,0.0,3
+Ritualist_basic_spine_010#1,Ritualist_basic_spine_010,spell_damage,increased,1.0,,,0.0,minions_held,1.0,0
+Ritualist_keystone_spine_001#1,Ritualist_keystone_spine_001,class_resource,flat,30.0,,,0.0,,0.0,0
