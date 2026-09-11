@@ -30,7 +30,7 @@ the hover text shows it. Upgrading the item from +0 to +10 does not change it."
 | Piece | What it does |
 | :-- | :-- |
 | An item's enchantment record | Carries two saved numbers from 0 to 1, `PositiveRoll` and `NegativeRoll`: where inside each half's range this item rolled. |
-| The drop | Sets both when it draws the pair. They come from a second random stream, seeded from where the item's stream has got to, so every other seeded draw is where it was. |
+| The drop | Sets both when it draws the pair. They come from a second random stream, seeded from where the item's stream has got to, so every other seeded draw is where it was. No test checks that: a guard proof that drew the benefit's roll from the item's own stream passed all 1,570 automation tests. |
 | `EnchantmentValue` | Turns a range's two ends and a roll into one number. |
 | `EnchantmentTextAtRoll` | Writes the sentence with each range replaced by that number, which is what the hover text shows. |
 | `AccumulateEnchantmentsInto` | Gives the character the same number. |

@@ -1878,10 +1878,17 @@ bool UCataclysmDropRoll::RollEnchantments(
 		// The project owner ruled on 2026-09-11 that an enchantment "rolls a
 		// value evenly inside its range and keeps it". The two rolls come from a
 		// second stream seeded from where the item's stream has got to, and not
-		// from the item's stream itself: drawing them from it would move every
-		// draw after this one, and the seeded drop tests expect those draws where
-		// they are. `UCataclysmItemValues::EnchantmentValue` turns each roll into
-		// its number.
+		// from the item's stream itself. Drawing them from the item's stream would
+		// move every draw after this one: the next enchantment pair on this item,
+		// and every later gear item the same kill drops, because
+		// CataclysmDroppedItem.cpp rolls all of a kill's gear from one stream.
+		// RollItem's last two draws follow the rule that a new draw must not
+		// change what an existing seed produces, and this keeps it.
+		//
+		// NO TEST CHECKS THIS. A guard proof on 2026-09-11 drew the benefit's roll
+		// from the item's stream instead, and all 1,570 automation tests still
+		// passed. `UCataclysmItemValues::EnchantmentValue` turns each roll into its
+		// number.
 		FRandomStream Values(static_cast<int32>(HashCombineFast(
 			static_cast<uint32>(Stream.GetCurrentSeed()),
 			EnchantmentValueStreamSalt)));
