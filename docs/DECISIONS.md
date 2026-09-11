@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — Starvation and Dehydration take a share of a maximum each floor, and a floor's dungeon modifiers are listed on screen
+
+**Affects:** the new `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`
+and `.cpp`; `CataclysmDungeonGameMode.h` and `.cpp` and
+`CataclysmDungeonModifierTable.h` and `.cpp` beside it;
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` and
+`CataclysmAbilitySystemComponent.h`;
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`; the new
+`game/Source/Cataclysm/Interface/CataclysmFloorModifierPanel.h` and `.cpp` and
+`CataclysmFloorModifierPanelLayout.h` and `.cpp`;
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`; and
+`tools/generate_interface_assets.py` with the `WBP_FloorModifiers` asset it
+writes. **Applied.** Issue [#41](https://github.com/sdubois777/Cataclysm/issues/41),
+the first slice of making the 117 dungeon modifiers do what their rows say.
+
+**What was measured first.** On 2026-09-11 every row of
+`game/Data/DungeonModifiers.csv` was checked against the code:
+- none did what its row says;
+- one, Unstable Dimensions, did part of it;
+- a modifier's only effect in play was to raise the experience a kill grants
+  (issue [#1558](https://github.com/sdubois777/Cataclysm/issues/1558)).
+
+The measurement and the plan are on #41.
+
+### What is built
+
+| Row | Its words | What happens |
+| :-- | :-- | :-- |
+| Starvation | "Each floor the players's maximum hp and energy shield are reduced by 1%. Up to 60%." | Maximum health and maximum energy shield are 1% less for each floor, floor 1 included, and never more than 60% less |
+| Dehydration | "Each floor the player's maximum resource is reduced by 1%." | Maximum mana is 1% less for each floor, and never more than 60% less |
+
+Two tools come with them.
+
+- **`Cataclysm.DungeonModifiers`** puts chosen modifiers on the dungeon being
+  played. It takes row keys or names, separated by commas. The owner's playtests
+  start in `L_Dungeon` with `Cataclysm.DungeonSubType`. They never go through
+  `Cataclysm.EnterDungeon`, the only other way a dungeon gets modifiers, so no
+  floor the owner had played ever carried one.
+- **A panel in the top right corner** lists the modifiers in force on the floor,
+  with each row's description, and marks the ones that do nothing yet.
+
+### Four judgements
+
+1. **A Less multiplier on the finished maximum, not a negative increase.** The row
+   says "reduced by 1%. Up to 60%". This game's stat pipeline sums increases
+   before it multiplies. So ten points taken out of the increases would take
+   about 3% from a character carrying +200% increased health, and 10% from one
+   carrying none. A cap of 60% of the pool means one thing only if the share is
+   a share of the pool. Path of Exile weakens a player on a map the same way,
+   with "less": its map modifier "Players have (25-35)% less defences". That
+   wording is quoted from Maxroll's map-rolling guide, because the Path of Exile
+   wikis refused access on 2026-09-11.
+2. **Floor 1 already counts.** "Each floor" includes the first, so floor N
+   carries N%.
+3. **Dehydration stops at 60%.** Its row states no cap. Without one, a 100-floor
+   dungeon would take all of a character's mana, so it stops where its sister
+   row, Starvation, stops. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+   fails if the row ever states a cap of its own.
+4. **"Maximum resource" is maximum mana.** Mana is what every class's skills are
+   paid from. A class resource such as Fervour starts empty and builds up in a
+   fight, so a share of its maximum takes nothing a player had.
+
+   For a character whose mana pool became health (the Masochist's Water to
+   Blood), less mana means less health converted.
+
+### Three answers built on the recommended option, while the owner's are awaited
+
+The coordinating session approved building on these three on 2026-09-11. It put
+them to the owner as "building on the recommended option unless you say
+otherwise". **They are not the owner's words.**
+
+- The modifiers are built by shared mechanism across all eight Cataclysms, not
+  one Cataclysm at a time.
+- Every row stays in the equal-chance draw while most do nothing, and the panel
+  marks the ones that do nothing.
+- In a Horde dungeon, whose floors are its waves, a rule worded "each floor"
+  applies once per wave.
+
+### How the rules reach the player
+
+The floor's rules use the stat line that gear and the passive tree already feed.
+
+1. `UCataclysmDungeonModifierEffects::ApplyToCharacter` stores the floor's Less
+   multipliers on the character's ability system.
+2. `UCataclysmEquipmentComponent::RefreshAttributes`, which gathers every source
+   of a character's stats, adds them in.
+
+So a later refresh made for any other reason, such as a helmet changed or a
+level gained, keeps them.
+
+A new modifier source, `ECataclysmModifierSource::DungeonRule`, is allowed a More
+multiplier, and so a Less one, as the other authored sources are.
+
+A rule of this kind is worked out again from the floor number each time a floor
+begins. It needs no saved state, and a loaded save gives the same answer.
+
+### Sources
+
+- Path of Exile map modifiers, from
+  [Maxroll: How to Roll Maps](https://maxroll.gg/poe/getting-started/how-to-roll-maps).
+- Diablo IV Nightmare Dungeon affixes, from the
+  [Diablo 4 Wiki](https://diablo4.wiki.fextralife.com/Dungeon+Affixes) and
+  [Icy Veins](https://www.icy-veins.com/d4/guides/nightmare-dungeon-guide/).
+  These were read for the modifier plan as a whole. None of them lowers a
+  player's maximums floor by floor, so they settle nothing here.
+
+---
+
 ## 2026-09-11 — The owner's answers on enchantment ranges, stagger, stacks and damage taken by source, and the judgements delegated to the enchantment session
 
 **Affects:** how the rows of `game/Data/EnchantmentsPositive.csv` and

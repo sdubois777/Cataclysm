@@ -25,6 +25,10 @@ bool UCataclysmStatPipeline::CanGrantMore(ECataclysmModifierSource Source)
 	// A skill's own buff is authored the way those three are, not rolled, so
 	// the readability rule below does not apply to it.
 	case ECataclysmModifierSource::SkillBuff:
+
+	// So is a dungeon modifier's rule, and Starvation's share of a maximum is a
+	// Less multiplier on the finished figure. Issue #41.
+	case ECataclysmModifierSource::DungeonRule:
 		return true;
 
 	// An ordinary affix is flat or increased and never more. That is what keeps
