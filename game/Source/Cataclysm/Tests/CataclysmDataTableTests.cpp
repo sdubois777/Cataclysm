@@ -376,11 +376,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// `class_resource`, which always existed.
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        208)
 
-	// SEVEN ROWS, AND THEY ARE THE FIRST. Issue #45. Only the enchantments whose
-	// sentence states one number and needs nothing the game lacks. Most
-	// sentences state a range. Since 2026-09-11 an item keeps where inside a
-	// range it rolled, but the rows for those sentences are not written yet.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",      7)
+	// SIXTY-FOUR ROWS OVER FIFTY-SIX ENCHANTMENTS. Issue #45. The first seven
+	// state one number each. The other fifty-seven, written on 2026-09-11 once
+	// an item kept where inside a range it rolled, are forty-eight ranged
+	// enchantments and P031, whose number was chosen under the owner's
+	// delegation. A sentence about damage is two rows, attack and spell.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     64)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

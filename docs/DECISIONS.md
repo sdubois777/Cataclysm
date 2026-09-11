@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — The ranged enchantments get their effect rows, each rolling its own number
+
+**Affects:** the Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`
+(57 new rows, 64 in all), `game/Data/EnchantmentEffects.csv`,
+`DT_EnchantmentEffects`, the word lists and counts in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, the
+`EnchantmentEffects.csv` count in `CataclysmDataTableTests.cpp`, and the sheet
+table in `docs/README.md`. Issue #45.
+
+**What this does.** 48 enchantments whose sentence states a range, and P031,
+whose sentence states no number, now change a character's stats. Each range is
+written the way its sentence states it: the first number as Value Low, the
+second as Value High, both with the row's sign. Each item rolls its own number
+inside the range, as the entry on range rolls records. A sentence about "damage"
+becomes two rows, attack damage and spell damage.
+
+**The coordinating session's rulings, 2026-09-11:**
+
+- **The four rows scoped to a skill tag are written now:** melee, ranged and
+  spell damage, and spell area (P123, P124, P152, P295). Until #944 gives skills
+  their tags, each reaches only the skills that already carry its tag.
+- **"gain", "lose" and "slowed" join the wording test's word lists,** as the
+  second judgement below.
+- **N053, "CC effects applied to you last 40%-70% longer", is written by hand**
+  as `crowd_control_resistance`, flat, -40 to -70: a negative resistance makes
+  crowd control last longer.
+- **Left out, and waiting:**
+  - N022, "Your maximum HP cannot exceed 40%-60% of its normal value", which
+    needs the ceiling that keeps the strictest value, per the ruling of
+    2026-08-17;
+  - N109, "Your minions have 20%-50% less hp", because minion health reaches no
+    minion yet;
+  - P250, "When your class resource is full, your movement speed is increased by
+    15%-30%", because movement speed is not recalculated when the class
+    resource changes;
+  - the two rows reducing healing received, which wait for the dungeon modifier
+    session's `health_recovery`.
+
+**Labelled judgements,** under the owner's delegation of 2026-09-11:
+
+1. **P031's number: 1% increased retaliation damage for every 2% of maximum
+   health missing.** The sentence states the shape, "the lower your HP the
+   higher the retaliation", and no number. The rate is the one the Masochist
+   capstone option already uses for damage (`Masochist_capstone_100`, 1% per
+   2% missing), so a character near death gains about 50%. In the genre, Last
+   Epoch's Lich mastery has a passive that a forum thread calls "Increased
+   damage per missing life"; the thread itself could not be read, so only its
+   title is evidence. It is a prototype number, to be tuned in play. The wording
+   test names P031 as an exception to its two checks that need a number or an
+   increase word in the sentence, and fails if the exception stops being needed.
+2. **"gain" and "lose" mark an increase and a reduction, and "slowed" marks a
+   multiplier that takes something away.** "Gain 20%-50% movespeed" and "Lose
+   5%-15% attack speed" are this genre's wording for increases and reductions,
+   and a slow is a multiplier on movement speed. Adding the words loosens the
+   wording test, which is why it is recorded here.
+3. **"longer" is accepted beside a negative value on `crowd_control_resistance`
+   and on no other stat.** On a duration, a negative value beside "longer" would
+   be a sign error, and the test still refuses it.
+
+**Not in this change.**
+
+- The rows that name a source, such as "You take 20%-40% less damage from
+  spells", which wait for #1578.
+- The set rows, which wait for set counting.
+- The 19 rewordings drafted for the owner's review.
+
+---
+
 ## 2026-09-11 — An item keeps where inside each enchantment range it rolled, and the hover text and the stat read the same number
 
 **Affects:** `FCataclysmRolledEnchantment`, which gains `PositiveRoll` and
