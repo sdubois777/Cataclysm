@@ -250,6 +250,21 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 				  SkillTags, SkillHealthCostPercent));
 }
 
+float UCataclysmSkillEffects::MoreForSkill(
+	const UAbilitySystemComponent* Source,
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+	// AN ABILITY SYSTEM THIS PROJECT DID NOT MAKE RECORDS NO STAT LINE, and 1
+	// is the right answer for it: its attribute is then the whole of the hit,
+	// exactly as it was before this existed.
+	return Cataclysm
+		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent)
+		: 1.0f;
+}
+
 float UCataclysmSkillEffects::DamageAgainstTypeOf(
 	const UAbilitySystemComponent* Source, const AActor* Target)
 {
@@ -443,8 +458,21 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Conditional = DamageAgainstTypeOf(Source, Target)
 		+ UCataclysmDebuffs::DamageAgainstSharedDebuff(Source, Target);
 
+	// AND THE "MORE" MULTIPLIERS ARE WORKED OUT AGAIN AS THE INCREASES ARE.
+	// `MoreForSkill` is 1 for a character whose "more" modifiers on attack
+	// damage are all unconditional, because those are already in the attribute.
+	// It is larger than 1 by exactly the ones the attribute could not carry,
+	// which depend on the skill or on the character's state: Communion of
+	// Pain's 20% more at full Fervour, Doctrine of Pain's 4% more for each
+	// debuff. Before this line none of them reached an attack.
+	//
+	// ON THE WEAPON'S PART AND NOT ON THE SPELL DAMAGE ADDED BELOW. That part
+	// comes from `SpellDamageOf`, which asks for spell damage in full and so
+	// already carries spell damage's own "more" multipliers. Multiplying it by
+	// attack damage's as well would count a node that grants both twice.
 	const float BeforeIncreases =
-		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
+		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent)
 		: 0.0f;

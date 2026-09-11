@@ -285,6 +285,37 @@ public:
 		float SkillHealthCostPercent = -1.0f) const;
 
 	/**
+	 * How much larger one skill's hit should be than the attack-damage
+	 * attribute already makes it, from "more" multipliers alone.
+	 *
+	 * A MULTIPLIER, AND 1 MEANS NO CHANGE. It is the product of every "more"
+	 * modifier on attack damage worked out for this skill and this character's
+	 * state, divided by the same product worked out the way the attribute was:
+	 * with no skill in hand and nothing known about the character. The two
+	 * differ by exactly the "more" modifiers that carry a condition, a scale or
+	 * a required tag.
+	 *
+	 * THE HALF `AttackDamageIncreasesForSkill` NEVER HAD. That one lets a hit
+	 * count an increase the attribute could not carry, and nothing did the same
+	 * for a "more" multiplier, so an attack-damage "more" that depended on the
+	 * skill or the character's state reached no hit at all. Seven Masochist
+	 * nodes and capstone options carry one: Communion of Pain, Doctrine of Pain,
+	 * The Reckoning, Carnage, Carnivore, Vessel Unbroken and Doctrine Made
+	 * Flesh. Their spell-damage rows were never affected, because spell damage
+	 * is asked for in full.
+	 *
+	 * BOTH PRODUCTS COME FROM ONE RECORDED LIST, so a character whose "more"
+	 * modifiers are all unconditional gets exactly 1 and hits for what it did
+	 * before this existed.
+	 *
+	 * 1 WHEN NOTHING WAS RECORDED for attack damage, which is every enemy and a
+	 * player before its first stat refresh.
+	 */
+	float AttackDamageMoreForSkill(
+		const FGameplayTagContainer& SkillTags,
+		float SkillHealthCostPercent = -1.0f) const;
+
+	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
 	 *
 	 * FOR A CALLER THAT WANTS THE WHOLE BREAKDOWN. Most callers want a number

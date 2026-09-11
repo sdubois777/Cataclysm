@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the melee tag, which scopes one of the "more" modifiers below.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Bloodlust stack that taking damage builds. Issue #1003.
 #include "AbilitySystem/CataclysmStacks.h"
@@ -642,6 +644,298 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageBelowAThresholdTest,
 	// nothing else.
 	TestEqual(TEXT("and a skill that is not a spell takes none of it"),
 		HealthLostTo(Attacker, Target, FGameplayTagContainer()), 0.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// "More" damage that depends on the skill in hand or the character's state.
+//
+// THE INCREASES BRACKET WAS REOPENED FOR A HIT BY ISSUE #958, AND THE "MORE"
+// MULTIPLIERS WERE NOT. `ApplyHit` took the stored increases out of the
+// attack-damage attribute and put the per-skill ones back in, and did nothing of
+// the kind for a "more" multiplier. So an attack-damage "more" carrying a
+// condition, a scale or a required tag reached no hit at all, and seven
+// Masochist nodes and capstone options carry one.
+//
+// ONE TEST FOR EACH OF THE THREE THINGS THE ATTRIBUTE CANNOT CARRY: a
+// condition, a required tag and a scale. The first also carries an
+// unconditional "more", which the attribute DOES carry, to show it is not
+// counted a second time.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty per cent more, at or below 35% of maximum health. */
+	FCataclysmStatModifier MoreWhenWounded()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Modifier.ConditionValue = 35.0f;
+		return Modifier;
+	}
+
+	/** Forty per cent more all the time, the size of Exsanguinate's. */
+	FCataclysmStatModifier MoreAllTheTime()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 40.0f;
+		return Modifier;
+	}
+
+	/** Fifty per cent increased from gear, all the time. */
+	FCataclysmStatModifier IncreasedFromGear()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 50.0f;
+		return Modifier;
+	}
+
+	/** Thirty per cent more for a melee skill only, the shape of Carnage's. */
+	FCataclysmStatModifier MoreForMelee()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 30.0f;
+		Modifier.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+		return Modifier;
+	}
+
+	/** Two per cent more for every whole 5% of maximum health missing. */
+	FCataclysmStatModifier MorePerHealthMissing()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 2.0f;
+		Modifier.Scale = ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+		Modifier.ScaleStep = 5.0f;
+		return Modifier;
+	}
+
+	/** Records these modifiers as the attacker's attack-damage stat line. */
+	void RecordAttackDamage(FCaster& Attacker,
+							const TArray<FCataclysmStatModifier>& Modifiers)
+	{
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers = Modifiers;
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("attack_damage")), Inputs);
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.MoreDamageThatDependsOnHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE ATTRIBUTE AS `UCataclysmPlayerClassStats::ApplyTo` WOULD WRITE IT for a
+	// weapon of 1000, fifty per cent increased from gear and forty per cent more
+	// all the time: 1000 x 1.5 x 1.4 = 2100, with the remembered increases at
+	// 0.5. The twenty per cent that applies only when wounded is not in it,
+	// because ApplyTo judges every condition as unknown and so refuses it.
+	Attacker.Combat->SetAttackDamage(2'100.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.5f);
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	// WITH NOTHING RECORDED THE HIT IS THE ATTRIBUTE'S, which is what every
+	// attack dealt before "more" multipliers were worked out again at the hit.
+	const float FromTheAttribute =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	RecordAttackDamage(Attacker, {FlatFromGear(1'000.0f), IncreasedFromGear(),
+								  MoreAllTheTime(), MoreWhenWounded()});
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// THE UNCONDITIONAL "MORE" IS NOT COUNTED TWICE. It is already inside the
+	// 2100, so recording it must leave an unwounded attacker's hit exactly
+	// where the attribute put it.
+	TestEqual(FString::Printf(
+		TEXT("unwounded, the hit is still the attribute's %.1f, and was %.1f"),
+		FromTheAttribute, AtFullHealth),
+		AtFullHealth, FromTheAttribute, FromTheAttribute * 0.001f);
+
+	// WOUNDED, AND NOTHING ELSE CHANGED.
+	Attacker.Vitals->SetHealth(30.0f);
+	const float AtLowHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  FromTheAttribute, AtFullHealth, AtLowHealth),
+				  FromTheAttribute > 0.0f && AtFullHealth > 0.0f
+				  && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded attacker deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.001f);
+
+	// AND BACK AGAIN, which is what "worked out at the hit and never stored"
+	// means.
+	Attacker.Vitals->SetHealth(100.0f);
+	TestEqual(TEXT("and loses it again on healing past the threshold"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer()),
+		AtFullHealth, AtFullHealth * 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageForATaggedSkillTest,
+	"Cataclysm.ConditionalDamage.MoreDamageScopedToATagReachesOnlyTheSkillsCarryingIt")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	// A MISSING TAG WOULD LEAVE THE MODIFIER UNSCOPED, which reaches every skill,
+	// and the comparison below would then read as the scoping failing.
+	const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+	if (!TestTrue(TEXT("the melee tag is declared"), Melee.IsValid()))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// A WEAPON OF 1000 AND NOTHING ELSE THE ATTRIBUTE CARRIES. The melee "more"
+	// is not in it, because ApplyTo has no skill in hand.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	const float WithNothingRecorded =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	RecordAttackDamage(Attacker, {FlatFromGear(1'000.0f), MoreForMelee()});
+
+	FGameplayTagContainer MeleeSkill;
+	MeleeSkill.AddTag(Melee);
+
+	const float NotMelee =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	const float FromMelee = HealthLostTo(Attacker, Target, MeleeSkill);
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  WithNothingRecorded, NotMelee, FromMelee),
+				  WithNothingRecorded > 0.0f && NotMelee > 0.0f
+				  && FromMelee > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("a melee skill deals 30%% more, and dealt %.3f times"),
+		FromMelee / NotMelee),
+		FromMelee / NotMelee, 1.30f, 0.001f);
+
+	// AND A SKILL WITHOUT THE TAG IS UNTOUCHED, which is the half a modifier that
+	// lost its tag on the way would fail.
+	TestEqual(TEXT("a skill without the tag deals what it did with nothing recorded"),
+		NotMelee, WithNothingRecorded, WithNothingRecorded * 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageGrowsWithMissingHealthTest,
+	"Cataclysm.ConditionalDamage.MoreDamageThatGrowsWithMissingHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// A WEAPON OF 1000 AND NOTHING ELSE THE ATTRIBUTE CARRIES. A scaled "more"
+	// is not in it: with nothing known about the character it is worth nothing.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	RecordAttackDamage(Attacker,
+					   {FlatFromGear(1'000.0f), MorePerHealthMissing()});
+
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+	const float Unhurt = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// HALF THE HEALTH GONE IS TEN WHOLE STEPS OF 5%, so twenty per cent more.
+	Attacker.Vitals->SetHealth(50.0f);
+	const float HalfGone = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// TWELVE PER CENT GONE IS TWO WHOLE STEPS, not two and two fifths, so four
+	// per cent more. Steps are counted whole and rounded down.
+	Attacker.Vitals->SetHealth(88.0f);
+	const float TwelveGone =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  Unhurt, HalfGone, TwelveGone),
+				  Unhurt > 0.0f && HalfGone > 0.0f && TwelveGone > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("half the health gone deals 20%% more, and dealt %.3f times"),
+		HalfGone / Unhurt),
+		HalfGone / Unhurt, 1.20f, 0.001f);
+	TestEqual(FString::Printf(
+		TEXT("twelve per cent gone deals 4%% more, and dealt %.3f times"),
+		TwelveGone / Unhurt),
+		TwelveGone / Unhurt, 1.04f, 0.001f);
 
 	return true;
 }

@@ -345,6 +345,43 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   .SumOfIncreases / 100.0f;
 }
 
+float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
+	const FGameplayTagContainer& SkillTags,
+	float SkillHealthCostPercent) const
+{
+	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
+	// gives: a name that did not match would fall back in silence and read as a
+	// character with no "more" multipliers rather than as a fault.
+	const FCataclysmStatInputs* Inputs =
+		StatInputs.Find(FName(UCataclysmItemModifiers::AttackDamageStat));
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, SO THE ATTRIBUTE IS THE WHOLE ANSWER. Ordinary for an
+		// enemy, whose attack damage is written straight onto the attribute, and
+		// for a player before its first stat refresh.
+		return 1.0f;
+	}
+
+	// WHAT THE ATTRIBUTE WAS BUILT WITH, WORKED OUT AGAIN RATHER THAN
+	// REMEMBERED. `UCataclysmPlayerClassStats::ApplyTo` folds in the "more"
+	// multipliers it can judge with no skill in hand and nothing known about the
+	// character, which is exactly this call. Taking it from the same list as the
+	// product below means the two cannot disagree: a character whose "more"
+	// modifiers are all unconditional divides a product by itself.
+	const float Folded = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		FCataclysmStatConditions()).MoreMultiplier;
+
+	// AND WHAT THIS SKILL, AT THIS INSTANT, SHOULD CARRY.
+	const float Applying = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, SkillTags,
+		CurrentConditions(SkillHealthCostPercent)).MoreMultiplier;
+
+	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
+	// "less" at -99 per cent, so a product of them cannot reach zero.
+	return Applying / FMath::Max(Folded, UE_SMALL_NUMBER);
+}
+
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	float SkillHealthCostPercent) const
 {

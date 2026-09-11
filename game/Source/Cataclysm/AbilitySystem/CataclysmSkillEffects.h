@@ -815,6 +815,24 @@ public:
 								   const FGameplayTagContainer& SkillTags,
 								   float SkillHealthCostPercent = -1.0f);
 
+	/**
+	 * How much larger an attack should be than its attack-damage attribute
+	 * makes it, from "more" multipliers that depend on the skill or the state.
+	 *
+	 * A MULTIPLIER, AND 1 MEANS NO CHANGE. It is 1 for an ability system this
+	 * project did not make, and for any character whose "more" modifiers on
+	 * attack damage are all unconditional, because those are already inside the
+	 * attribute. `UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill`
+	 * says what it is worked out from.
+	 *
+	 * THE "MORE" HALF OF `IncreasesForSkill`. That one lets a hit count an
+	 * increase the attribute could not carry. Until this existed nothing did the
+	 * same for a "more" multiplier.
+	 */
+	static float MoreForSkill(const UAbilitySystemComponent* Source,
+							  const FGameplayTagContainer& SkillTags,
+							  float SkillHealthCostPercent = -1.0f);
+
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;
 	static const TCHAR* AuraAreaTagName;
