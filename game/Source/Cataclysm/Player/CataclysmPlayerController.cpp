@@ -30,6 +30,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "Cataclysm.h"
+#include "Interface/CataclysmFloorModifierPanel.h"
 
 ACataclysmPlayerController::ACataclysmPlayerController()
 {
@@ -40,6 +41,63 @@ ACataclysmPlayerController::ACataclysmPlayerController()
 
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Default;
+}
+
+void ACataclysmPlayerController::ShowFloorModifiers(const TArray<FName>& RowKeys,
+													 int32 FloorNumber)
+{
+	// NOTHING ON THE FLOOR, NOTHING ON THE SCREEN. Every floor walked in the
+	// sandbox carries no modifiers, and a panel reading "0 dungeon modifiers" on
+	// all of them would be noise over the game.
+	if (RowKeys.IsEmpty())
+	{
+		if (FloorModifierPanel && FloorModifierPanel->IsInViewport())
+		{
+			FloorModifierPanel->RemoveFromParent();
+		}
+		return;
+	}
+
+	// ONLY THE MACHINE THE PLAYER IS SITTING AT HAS A SCREEN TO DRAW ON.
+	if (!IsLocalPlayerController())
+	{
+		return;
+	}
+
+	if (!FloorModifierPanel)
+	{
+		const TSubclassOf<UCataclysmFloorModifierPanel> Class =
+			FloorModifierPanelClass.LoadSynchronous();
+		if (!Class)
+		{
+			// ONCE, AND IT SAYS WHAT TO RUN, for the reason every screen's soft
+			// class is resolved on demand: the asset is generated, and a checkout
+			// that has not run the generator does not have it.
+			static bool bSaidSo = false;
+			if (!bSaidSo)
+			{
+				bSaidSo = true;
+				UE_LOG(LogCataclysm, Warning,
+					TEXT("The floor's dungeon modifiers cannot be shown: "
+						 "WBP_FloorModifiers does not exist. Run "
+						 "python tools/run_editor_python.py "
+						 "tools/generate_interface_assets.py"));
+			}
+			return;
+		}
+
+		FloorModifierPanel = CreateWidget<UCataclysmFloorModifierPanel>(this, Class);
+		if (!FloorModifierPanel)
+		{
+			return;
+		}
+	}
+
+	FloorModifierPanel->SetFloorModifiers(RowKeys, FloorNumber);
+	if (!FloorModifierPanel->IsInViewport())
+	{
+		FloorModifierPanel->AddToViewport();
+	}
 }
 
 void ACataclysmPlayerController::BeginPlay()

@@ -103,4 +103,27 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Dungeon")
 	static FString NameOf(FName RowKey);
+
+	/**
+	 * The row keys a person typed, in the order typed, and what was not a row.
+	 *
+	 * FOR `Cataclysm.DungeonModifiers`, which puts chosen modifiers on the
+	 * dungeon being played so one can be tried without starting an empire run.
+	 * The owner walks dungeons from `L_Dungeon` with `Cataclysm.DungeonSubType`
+	 * and not through `Cataclysm.EnterDungeon`, so without this no dungeon they
+	 * play carries a modifier at all. Issue #41.
+	 *
+	 * BY ROW KEY OR BY NAME, so `Famine_Starvation` and `starvation` are the same
+	 * request. Separated by commas, because modifier names contain spaces --
+	 * "Edict of Silence". Letter case does not matter, and a straight apostrophe
+	 * matches the curly one (U+2019) the design wrote in Heaven's Quake.
+	 *
+	 * A NAME TYPED TWICE IS ONE MODIFIER, because a dungeon never carries the
+	 * same modifier twice (`UCataclysmDungeonModifierRules::Draw`).
+	 *
+	 * @param OutNotUnderstood each piece that named no row, as typed
+	 */
+	static TArray<FName> KeysNamedBy(const FString& Typed,
+									 const UDataTable* DungeonModifierTable,
+									 TArray<FString>& OutNotUnderstood);
 };

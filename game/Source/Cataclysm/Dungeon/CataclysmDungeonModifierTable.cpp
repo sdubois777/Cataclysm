@@ -128,3 +128,89 @@ FString UCataclysmDungeonModifierTable::NameOf(FName RowKey)
 	// something.
 	return Row != nullptr ? Row->ModifierName : RowKey.ToString();
 }
+
+namespace
+{
+	/**
+	 * A modifier's name as it is compared with what was typed.
+	 *
+	 * THE CURLY APOSTROPHE BECOMES A STRAIGHT ONE. The design workbook wrote
+	 * Heaven's Quake with a right single quotation mark, U+2019, and a keyboard
+	 * types U+0027, so a person who typed the name as it reads would otherwise be
+	 * told it is not one. Case is left to the comparison.
+	 */
+	FString DungeonModifierTableComparable(const FString& Text)
+	{
+		FString Out = Text.TrimStartAndEnd();
+
+		// WRITTEN AS AN ESCAPE, NOT AS THE CHARACTER, so the literal means U+2019
+		// whatever encoding the compiler reads this file in.
+		Out.ReplaceInline(TEXT("\u2019"), TEXT("'"));
+		return Out;
+	}
+}
+
+TArray<FName> UCataclysmDungeonModifierTable::KeysNamedBy(
+	const FString& Typed, const UDataTable* DungeonModifierTable,
+	TArray<FString>& OutNotUnderstood)
+{
+	TArray<FName> Keys;
+	OutNotUnderstood.Reset();
+
+	TArray<FString> Pieces;
+	Typed.ParseIntoArray(Pieces, TEXT(","), /*InCullEmpty=*/true);
+
+	for (const FString& Raw : Pieces)
+	{
+		const FString Piece = DungeonModifierTableComparable(Raw);
+		if (Piece.IsEmpty())
+		{
+			continue;
+		}
+
+		FName Found = NAME_None;
+
+		// A ROW KEY FIRST. `FName` compares without regard to case, so
+		// `famine_starvation` finds `Famine_Starvation`.
+		if (FindRow(DungeonModifierTable, FName(*Piece)) != nullptr)
+		{
+			// THE TABLE'S OWN SPELLING OF THE KEY, not the one typed, so a
+			// comparison against a key written elsewhere in the game is exact.
+			DungeonModifierTable->ForeachRow<FCataclysmDungeonModifierRow>(
+				TEXT("UCataclysmDungeonModifierTable::KeysNamedBy"),
+				[&Found, &Piece](const FName& Key, const FCataclysmDungeonModifierRow&)
+				{
+					if (Found.IsNone() && Key == FName(*Piece))
+					{
+						Found = Key;
+					}
+				});
+		}
+
+		// THEN A NAME, as the design writes it.
+		if (Found.IsNone() && DungeonModifierTable != nullptr)
+		{
+			DungeonModifierTable->ForeachRow<FCataclysmDungeonModifierRow>(
+				TEXT("UCataclysmDungeonModifierTable::KeysNamedBy"),
+				[&Found, &Piece](const FName& Key, const FCataclysmDungeonModifierRow& Row)
+				{
+					if (Found.IsNone()
+						&& DungeonModifierTableComparable(Row.ModifierName)
+							   .Equals(Piece, ESearchCase::IgnoreCase))
+					{
+						Found = Key;
+					}
+				});
+		}
+
+		if (Found.IsNone())
+		{
+			OutNotUnderstood.Add(Piece);
+			continue;
+		}
+
+		Keys.AddUnique(Found);
+	}
+
+	return Keys;
+}

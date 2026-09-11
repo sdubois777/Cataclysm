@@ -2,8 +2,15 @@
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
@@ -269,6 +276,108 @@ namespace
 		ECVF_Default);
 
 	/**
+	 * Which dungeon modifiers the dungeon being played carries, by row key or by
+	 * name, separated by commas. Empty uses the dungeon's own. Issue #41.
+	 *
+	 * WITHOUT THIS NO DUNGEON THE OWNER PLAYS CARRIES A MODIFIER. A dungeon gets
+	 * modifiers only when `EnterEmpireDungeon` copies them off an empire dungeon,
+	 * and the owner's playtests press Play in `L_Dungeon` and set
+	 * `Cataclysm.DungeonSubType` instead. Their six saved play logs of 2026-09-08
+	 * to 2026-09-10 hold no dungeon modifier key at all.
+	 *
+	 * READ WHEN A FLOOR IS BUILT, like every other control in this file, so typing
+	 * it and then `Cataclysm.DungeonFloor 2` puts the modifiers on floor 2.
+	 */
+	static FString GCataclysmDungeonModifiersOverride;
+
+	/**
+	 * The row keys typed at the console, in the order typed, or none when nothing
+	 * typed names a row.
+	 *
+	 * NONE COVERS TWO CASES AND THEY GET THE SAME ANSWER, as they do for the
+	 * sub-type control: nothing typed, and only words that name no modifier.
+	 * Both mean the dungeon's own modifiers decide.
+	 */
+	TArray<FName> DungeonGameModeModifiersAskedFor(TArray<FString>& OutNotUnderstood)
+	{
+		OutNotUnderstood.Reset();
+		if (GCataclysmDungeonModifiersOverride.TrimStartAndEnd().IsEmpty())
+		{
+			return {};
+		}
+
+		return UCataclysmDungeonModifierTable::KeysNamedBy(
+			GCataclysmDungeonModifiersOverride,
+			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+			OutNotUnderstood);
+	}
+
+	/**
+	 * A modifier's name and how much of it is built, for the log: "Starvation
+	 * (Built)", "Edict of Silence (Not built yet)".
+	 */
+	FString DungeonGameModeModifierNameAndState(FName Key)
+	{
+		return FString::Printf(
+			TEXT("%s (%s)"), *UCataclysmDungeonModifierTable::NameOf(Key),
+			*UEnum::GetDisplayValueAsText(
+				UCataclysmDungeonModifierEffects::BuiltStateOf(Key)).ToString());
+	}
+
+	/**
+	 * Says in the log what the modifier control did with what was typed.
+	 *
+	 * WHEN IT IS TYPED AND NOT WHEN A FLOOR IS BUILT, for the reason the sub-type
+	 * control gives: a mistyped name that said nothing until the floor appeared
+	 * would look exactly like the modifier doing nothing.
+	 */
+	void DungeonGameModeModifiersChanged(IConsoleVariable* Variable)
+	{
+		(void)Variable;
+
+		TArray<FString> NotUnderstood;
+		const TArray<FName> Keys = DungeonGameModeModifiersAskedFor(NotUnderstood);
+
+		for (const FString& Piece : NotUnderstood)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("Cataclysm.DungeonModifiers does not know \"%s\". Type row "
+					 "keys or names from game/Data/DungeonModifiers.csv, "
+					 "separated by commas."),
+				*Piece);
+		}
+
+		if (Keys.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Log,
+				TEXT("Cataclysm.DungeonModifiers names no dungeon modifier, so every "
+					 "dungeon floor built from now on carries the dungeon's own."));
+			return;
+		}
+
+		TArray<FString> Names;
+		for (const FName Key : Keys)
+		{
+			Names.Add(DungeonGameModeModifierNameAndState(Key));
+		}
+
+		UE_LOG(LogCataclysm, Log,
+			TEXT("Cataclysm.DungeonModifiers is %s. Every dungeon floor built from "
+				 "now on carries these instead of the dungeon's own."),
+			*FString::Join(Names, TEXT(", ")));
+	}
+
+	static FAutoConsoleVariableRef CVarCataclysmDungeonModifiers(
+		TEXT("Cataclysm.DungeonModifiers"),
+		GCataclysmDungeonModifiersOverride,
+		TEXT("Which dungeon modifiers the dungeon carries, by row key or by name "
+			 "from game/Data/DungeonModifiers.csv, separated by commas, for "
+			 "example: Starvation, Dehydration. Read when a floor is built. Type "
+			 "\"\" to hand the choice back to the dungeon's own modifiers."),
+		FConsoleVariableDelegate::CreateStatic(&DungeonGameModeModifiersChanged),
+		ECVF_Default);
+
+	/**
 	 * How dense the floor's creatures are. Below 0 uses the game mode's setting.
 	 *
 	 * BELOW ZERO RATHER THAN ZERO MEANS "USE THE SETTING", unlike the seed and
@@ -440,6 +549,11 @@ void ACataclysmDungeonGameMode::StartPlay()
 	{
 		PlaceAtEntrance(Controller->GetPawn());
 	}
+
+	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
+	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
+	// Issue #41.
+	ApplyFloorRulesToPlayer();
 }
 
 int32 ACataclysmDungeonGameMode::ChooseSeed(int64 Entropy) const
@@ -540,8 +654,10 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	Dungeon.SubType = ChooseSubType();
 	Dungeon.Layout = ChooseLayout();
 	Dungeon.DifficultyTier = DifficultyTierFor(this);
-	Dungeon.Modifiers = DungeonModifiers;
-	Dungeon.ModifierScore = DungeonModifierScore;
+	// THE CONSOLE'S MODIFIERS WHEN IT NAMES ANY, AND THE DUNGEON'S OWN OTHERWISE.
+	// See `ChooseModifiers`. Everything downstream -- a Volatile re-draw, the
+	// Unstable Dimensions extra, the enemy score -- treats the two the same.
+	Dungeon.Modifiers = ChooseModifiers(Dungeon.ModifierScore);
 	Dungeon.ModifierPool = DungeonModifierPool;
 	return Dungeon;
 }
@@ -1404,6 +1520,99 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifiers.Reset();
 	DungeonModifierPool.Reset();
 	FloorBrief = FCataclysmFloorBrief();
+
+	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
+	// this takes Starvation's and Dehydration's share back off the player's
+	// maximums and hides the floor panel.
+	ApplyFloorRulesToPlayer();
+}
+
+TArray<FName> ACataclysmDungeonGameMode::ChooseModifiers(float& OutScore) const
+{
+	TArray<FString> NotUnderstood;
+	const TArray<FName> Asked = DungeonGameModeModifiersAskedFor(NotUnderstood);
+	if (Asked.IsEmpty())
+	{
+		OutScore = DungeonModifierScore;
+		return DungeonModifiers;
+	}
+
+	// THE TYPED MODIFIERS' OWN DANGER, read from the table the way the empire
+	// draw reads it, so a creature on a floor carrying typed modifiers is worth
+	// what the same floor carrying drawn ones would be.
+	const UDataTable* Table = UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	OutScore = 0.0f;
+	for (const FName Key : Asked)
+	{
+		if (const FCataclysmDungeonModifierRow* Row =
+				UCataclysmDungeonModifierTable::FindRow(Table, Key))
+		{
+			OutScore += Row->Weight;
+		}
+	}
+
+	return Asked;
+}
+
+bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
+	UCataclysmAbilitySystemComponent* AbilitySystem,
+	UCataclysmEquipmentComponent* Equipment) const
+{
+	// THE FLOOR'S LIST AND THE FLOOR'S NUMBER, both from the brief. The floor's
+	// list rather than the dungeon's, so a Volatile dungeon that re-draws
+	// Starvation onto one floor starves the player on that floor only; and the
+	// brief's number, which for a Horde dungeon is the wave.
+	return UCataclysmDungeonModifierEffects::ApplyToCharacter(
+		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
+			FloorBrief.Modifiers, FloorBrief.FloorNumber),
+		AbilitySystem, Equipment);
+}
+
+void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
+{
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+
+	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay`, whose pawn is made
+	// later by the parent's login. `StartPlay` calls this again once it exists.
+	if (ACataclysmPlayerCharacter* Player =
+			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr)
+	{
+		ApplyFloorRulesTo(
+			Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()),
+			Player->GetEquipment());
+	}
+
+	if (ACataclysmPlayerController* Cataclysm = Cast<ACataclysmPlayerController>(Controller))
+	{
+		Cataclysm->ShowFloorModifiers(FloorBrief.Modifiers, FloorBrief.FloorNumber);
+	}
+
+	// ONE LINE PER FLOOR THAT CARRIES ANY, so a playtest log says what the
+	// player was walking through. The six logs read for issue #41's measurement
+	// could not say, because nothing wrote it.
+	if (FloorBrief.Modifiers.IsEmpty())
+	{
+		return;
+	}
+
+	TArray<FString> Names;
+	for (const FName Key : FloorBrief.Modifiers)
+	{
+		Names.Add(DungeonGameModeModifierNameAndState(Key));
+	}
+
+	const FString OnThePlayer = UCataclysmDungeonModifierEffects::Describe(
+		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
+			FloorBrief.Modifiers, FloorBrief.FloorNumber));
+	const FString Tail = OnThePlayer.IsEmpty()
+		? FString()
+		: FString::Printf(TEXT(" On the player: %s."), *OnThePlayer);
+
+	UE_LOG(LogCataclysm, Log,
+		TEXT("Floor %d carries %d dungeon modifier(s) worth %.0f danger: %s.%s"),
+		FloorBrief.FloorNumber, FloorBrief.Modifiers.Num(), FloorBrief.ModifierScore,
+		*FString::Join(Names, TEXT(", ")), *Tail);
 }
 
 bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
@@ -1555,6 +1764,13 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 			Writer->SetFloor(DungeonName, FloorNumber);
 		}
 	}
+
+	// AND THE NEW FLOOR'S MODIFIERS REACH THE PLAYER, and the panel says what
+	// they are. LAST, after the brief is decided and the player is stood on the
+	// floor, so a rule worded "each floor" follows the floor being stood on and
+	// never the one before it. A Horde dungeon's next wave comes through here
+	// too, so its rules apply per wave. Issue #41.
+	ApplyFloorRulesToPlayer();
 
 	return true;
 }

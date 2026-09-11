@@ -12,6 +12,8 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_CharacterSheet      the character sheet, issues #1233 and #50
     WBP_CityScreen          one city: what it is worth, what is standing on it,
                             and what it can build, issue #42
+    WBP_FloorModifiers      the dungeon modifiers in force on the floor being
+                            walked, and which of them do nothing yet, issue #41
 
 WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
 puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
@@ -484,6 +486,74 @@ def make_city_screen():
     log("created {}/{}".format(INTERFACE_DIR, CITY_ASSET))
 
 
+FLOOR_PANEL_PARENT = "CataclysmFloorModifierPanel"
+FLOOR_PANEL_ASSET = "WBP_FloorModifiers"
+
+
+def pin_to_the_top_right(widget, width, height, inset=24.0):
+    """Anchor a canvas child to the top right corner, at a fixed size.
+
+    THE SECOND PIECE OF GEOMETRY THIS SCRIPT SETS, AND THE REASON IS THE SAME
+    AS THE FIRST'S. `fill_the_screen` exists because a canvas child defaults to
+    a 100 by 100 box in the top left corner. A panel that is drawn over the game
+    while it is played must not fill the screen either, or it covers the floor
+    the player is walking, so this one is pinned to a corner instead.
+
+    THROUGH `layout_data`, for the reason `fill_the_screen` gives. `offsets`
+    holds the position and then the size when the anchors are a single point,
+    and an alignment of (1, 0) makes that position the panel's own top right
+    corner, so the inset is measured from the screen's edge.
+    """
+    slot = widget.get_editor_property("slot")
+    layout = slot.get_editor_property("layout_data")
+    layout.set_editor_property(
+        "anchors", unreal.Anchors(unreal.Vector2D(1.0, 0.0),
+                                  unreal.Vector2D(1.0, 0.0)))
+    layout.set_editor_property(
+        "offsets", unreal.Margin(-inset, inset, width, height))
+    layout.set_editor_property("alignment", unreal.Vector2D(1.0, 0.0))
+    slot.set_editor_property("layout_data", layout)
+
+
+def make_floor_modifier_panel():
+    """The dungeon modifiers in force on the floor being walked, issue #41."""
+    parent = parent_class(FLOOR_PANEL_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, FLOOR_PANEL_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, FLOOR_PANEL_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, FLOOR_PANEL_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(FLOOR_PANEL_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    pin_to_the_top_right(backdrop, width=440.0, height=360.0)
+    backdrop.set_editor_property("padding", unreal.Margin(16.0, 12.0, 16.0, 12.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    heading = add(blueprint, unreal.TextBlock, "HeadingLabel", "Body")
+    set_text(heading, "Dungeon modifiers", size=18)
+
+    # ONE NAME LINE AND ONE DESCRIPTION LINE PER MODIFIER, made at run time by
+    # UCataclysmFloorModifierPanel. A scroll box, because a Sacrificial dungeon
+    # at difficulty tier 8 carries sixteen modifiers and their descriptions do
+    # not fit a corner of the screen.
+    rows = add(blueprint, unreal.ScrollBox, "ModifierBox", "Body")
+    fill_remaining_height(rows)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            FLOOR_PANEL_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, FLOOR_PANEL_ASSET))
+
+
 def main():
     # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
     # a screen made before it exists would load nothing on its first press.
@@ -493,6 +563,7 @@ def main():
     make_empire_map()
     make_character_sheet()
     make_city_screen()
+    make_floor_modifier_panel()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     log("done")
 

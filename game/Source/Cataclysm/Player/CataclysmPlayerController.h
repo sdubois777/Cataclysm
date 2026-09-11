@@ -14,6 +14,7 @@ class UCataclysmCharacterCreationWidget;
 class UCataclysmCharacterSheetWidget;
 class UCataclysmCityScreenWidget;
 class UCataclysmEmpireMapWidget;
+class UCataclysmFloorModifierPanel;
 class UCataclysmInputConfig;
 class UCataclysmInventoryWidget;
 class UCataclysmPassiveTreeWidget;
@@ -56,6 +57,21 @@ public:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void OnUnPossess() override;
+
+	/**
+	 * Shows the dungeon modifiers in force on the floor being walked, or hides
+	 * the panel when there are none. Issue #41.
+	 *
+	 * CALLED BY THE DUNGEON GAME MODE WHENEVER A FLOOR BEGINS, not opened by a
+	 * key. A modifier changes the floor the player is standing on, so what it
+	 * says has to be on the screen while that floor is played rather than behind
+	 * a menu. The panel never takes a click, so it cannot get in the way of
+	 * click-to-move.
+	 *
+	 * @param RowKeys     `FCataclysmFloorBrief::Modifiers`. Empty hides the panel
+	 * @param FloorNumber counted from 1
+	 */
+	void ShowFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber);
 
 	/**
 	 * Put the game into the one input mode it plays in.
@@ -557,6 +573,23 @@ private:
 	 */
 	UPROPERTY()
 	TObjectPtr<UCataclysmCityScreenWidget> CityScreen = nullptr;
+
+	/** Which Widget Blueprint the floor's modifier panel is. Soft, for the reason
+	 *  the character creator's is. Issue #41. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmFloorModifierPanel> FloorModifierPanelClass =
+		TSoftClassPtr<UCataclysmFloorModifierPanel>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_FloorModifiers.WBP_FloorModifiers_C")));
+
+	/**
+	 * The floor's modifier panel, once a floor carrying modifiers has been
+	 * walked.
+	 *
+	 * ONE WIDGET FOR EVERY FLOOR, told what the floor carries each time one
+	 * begins, for the reason the city screen is one widget for 25 cities.
+	 */
+	UPROPERTY()
+	TObjectPtr<UCataclysmFloorModifierPanel> FloorModifierPanel = nullptr;
 
 	/** Where the last cursor hit landed, in world space. */
 	FVector CachedDestination = FVector::ZeroVector;
