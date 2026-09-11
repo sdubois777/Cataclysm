@@ -482,8 +482,8 @@ CATACLYSM_TEST(FCataclysmEnemyShotsAreRangedTest,
 	// WHICH ENEMY ABILITIES STRIKE FROM RANGE, AND WHICH ARE SPELLS. Issue #666.
 	// Pinned per ability for the reason the melee list is: what is worth guarding
 	// is the decision, so a creature added later has to be listed here on
-	// purpose. That Soulfire is the one spell is the project owner's question,
-	// built as recommended until they answer.
+	// purpose. That Soulfire is the one spell follows the project owner's answer
+	// of 2026-09-11 that every Succubus ability is a spell: it is her only hit.
 	struct FSourceExpectation
 	{
 		const TCHAR* What;

@@ -107,10 +107,11 @@ public:
 	 *
 	 * AND A SPELL, THE ONLY ENEMY ABILITY THAT IS ONE. No enemy ability was
 	 * tagged as a spell, so "you take 20%-40% less damage from spells" reached
-	 * nothing. The project owner has been asked which enemy attacks are spells,
-	 * and the recommendation, built until the owner says otherwise, is this one
-	 * and no other. It carries `Type.Spell, Type.Projectile`, the tags the heavy
-	 * Wand and Staff skills carry: a spell, and ranged, and not a ranged attack.
+	 * nothing. The project owner's answer of 2026-09-11 is that every Succubus
+	 * ability is a spell, "As a spellcaster type", and Soulfire is the only one
+	 * of hers that hits. It carries `Type.Spell, Type.Projectile`, the tags the
+	 * heavy Wand and Staff skills carry: a spell, and ranged, and not a ranged
+	 * attack.
 	 */
 	static const TCHAR* SoulfireTags;
 

@@ -13,15 +13,34 @@ and `CurrentConditions`; `FCataclysmHitDelivery` and `FCataclysmIncomingHit`,
 which gain `bIsRanged` and `bIsSpell`, and `bFromBoss` on the second;
 `UCataclysmSkillEffects::ApplyHit`, `ApplyTypedSpec`, `IsRanged` and `SpellTag`;
 `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`;
-`UCataclysmDamageCalculation::Resolve`; the Corrupted Sentinel's two shots and
-the Succubus's Soulfire; the Damage Calculation section of
-`docs/Cataclysm_GDD_v2.md`. Issue #666, for epic #45.
+`UCataclysmDamageCalculation::Resolve`; the Corrupted Sentinel's two shots, the
+Gatekeeper's Soulfall and the Succubus's Soulfire; the Damage Calculation
+section of `docs/Cataclysm_GDD_v2.md`. Issue #666, for epic #45.
 
 **The project owner's ruling, 2026-09-11,** relayed by the coordinating session:
 "Each is its own 'more' or 'less' multiplier on damage taken, used only for hits
 from that source. The 75% cap on flat damage reduction does not limit it, and
 like every 'less' it can remove at most 99% of the damage. Hits will need to
 record whether they are ranged or a spell; today they record only melee."
+
+**The project owner's answer on which enemy attacks are spells, 2026-09-11,**
+relayed by the coordinating session: "not sure, probably all of the succubus
+attacks right? As a spellcaster type?" The owner's words include "not sure", so
+this answer may change. It is built this way:
+
+- **Every ability of the Succubus is a spell.** Soulfire is her only ability
+  that hits. It sends `Type.Spell, Type.Projectile`, so it is also ranged. Her
+  curse, Wither the Living, applies a status and deals no damage, and her aura,
+  Dominion, buffs her allies. Neither is a hit, so no condition about a hit
+  reads them.
+- **Every other enemy ability is an attack.** `game/Data/EnemyArchetypes.csv`
+  describes the Succubus as a "Ranged caster" and no other archetype as a
+  caster.
+- **The Gatekeeper's Soulfall stays an attack,** sending `Type.Projectile,
+  Type.Ranged`. That follows the owner's own reason: `EnemyArchetypes.csv`
+  calls the Gatekeeper a "Multi-phase towering demon", not a caster. The
+  coordinating session has told the owner. Making it a spell would change one
+  tag.
 
 | Piece | What it does |
 | :-- | :-- |
@@ -64,13 +83,6 @@ marked:
 5. **Only a hit meets these conditions.** A damage over time tick answers no to
    all four. The owner's words are "used only for hits from that source", and a
    tick is not a hit, which is why it can neither be evaded nor critically strike.
-6. **Soulfire is a spell, and no other enemy ability is. This is the owner's
-   question, answered provisionally.** No enemy ability was tagged as a spell, so
-   the rows about spells reached nothing. The coordinating session put the
-   recommendation to the owner and said to build it unless the owner says
-   otherwise. The Gatekeeper's Soulfall, a lobbed shot that sets the ground
-   where it lands burning, is therefore an attack. The coordinating session was
-   asked to put it to the owner as a second candidate.
 
 **Not in this change.**
 
