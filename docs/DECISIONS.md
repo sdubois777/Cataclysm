@@ -1620,13 +1620,32 @@ It is a plain name rather than a registered gameplay tag, because every
 registered tag is generated from the Tags sheet of `docs/All_Things_Cataclysm.xlsx`.
 
 **A new application is compared with the running one before anything is sized.**
-- **If the running one stated more,** the new one's figures are refused. The
-  running effect's start is moved so that it has at least the new application's
-  duration left, using `ModifyActiveEffectStartTime`, and the engine then sets its
-  expiry timer again.
-- **Otherwise,** the running one is taken off first. The new one is sized against
-  the target as it stands without it, then applied entire.
-- **A tie goes to the newer application.**
+- **If the running one stated at least as much,** the new one's figures are
+  refused. The running effect's start is moved so that it has at least the new
+  application's duration left, using `ModifyActiveEffectStartTime`, and the
+  engine then sets its expiry timer again.
+- **If the new one stated more,** the running one is taken off first. The new
+  one is sized against the target as it stands without it, then applied entire.
+
+**A tie refreshes the running application rather than replacing it.** Until
+2026-09-11 this entry said a tie went to the newer application. The coordinating
+session found, by reading the code, what that did to damage over time, and a test
+then measured it against the code as it stood:
+- A replacement is a new effect, and a new damage-over-time effect first ticks a
+  whole interval after it lands. So an equal application landing sooner than that
+  restarted the interval.
+- A bleed applied again at the same strength every 0.6 of its interval dealt
+  nothing in 4.2 seconds. The same bleed applied once and left alone, on the same
+  clock, dealt at least the 30 the test requires.
+- An equal pin, and an equal Shred, each stating 2 seconds, cut a running
+  9-second one to 2.
+
+A refresh moves only the running effect's start, so its ticks carry on and it is
+never shortened. The on-hit ailment roll would make equal applications common,
+because a gear chance applies the same effect hit after hit. The two tests are
+`ABleedAppliedAgainAtTheSameStrengthStillTicks` and
+`AnEqualApplicationStatingLessTimeLeavesTheRunningTimeAlone`, in
+`game/Source/Cataclysm/Tests/CataclysmDebuffTests.cpp`.
 
 **A judgement that the rulings do not state: a refresh never shortens an effect.**
 A weaker application lasting less time than the running one has left changes
