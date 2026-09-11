@@ -45,40 +45,64 @@ Two tools come with them.
 
 ### Four judgements
 
+These were made under the delegation recorded in the next section. Each is a
+judgement, not a design statement, and the owner reviews it with the others.
+
 1. **A Less multiplier on the finished maximum, not a negative increase.** The row
    says "reduced by 1%. Up to 60%". This game's stat pipeline sums increases
    before it multiplies. So ten points taken out of the increases would take
    about 3% from a character carrying +200% increased health, and 10% from one
    carrying none. A cap of 60% of the pool means one thing only if the share is
    a share of the pool. Path of Exile weakens a player on a map the same way,
-   with "less": its map modifier "Players have (25-35)% less defences". That
-   wording is quoted from Maxroll's map-rolling guide, because the Path of Exile
-   wikis refused access on 2026-09-11.
+   with "less", for example "Players have (25-35%) less defences".
+
+   **That wording was not read on a page as the page wrote it.** It comes from
+   Maxroll's map-rolling guide, fetched with WebFetch, which returns a written
+   summary of a page rather than its text, so the exact wording is the
+   summary's. The Path of Exile wikis refused access on 2026-09-11, and
+   poedb.tw's map page and poe.re's map list returned no modifier text when
+   fetched.
 2. **Floor 1 already counts.** "Each floor" includes the first, so floor N
    carries N%.
 3. **Dehydration stops at 60%.** Its row states no cap. Without one, a 100-floor
    dungeon would take all of a character's mana, so it stops where its sister
    row, Starvation, stops. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
    fails if the row ever states a cap of its own.
-4. **"Maximum resource" is maximum mana.** Mana is what every class's skills are
-   paid from. A class resource such as Fervour starts empty and builds up in a
-   fight, so a share of its maximum takes nothing a player had.
+4. **"Maximum resource" is maximum mana, not Fervour.** The game has two pools
+   the words could mean:
+   - mana, `MaxMana` in
+     `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` line 112,
+     which every class's skills are paid from (`UCataclysmGameplayAbility::CheckCost`);
+   - Fervour, `MaxClassResource` in `CataclysmClassResourceAttributeSet.h`
+     line 67, whose header calls it "the one resource every class shares" and
+     whose data name is `class_resource`.
+
+   Mana was chosen because it is a reserve the player carries into a floor, as
+   the health and shield Starvation takes are. Fervour is not: it starts empty
+   and is built up in play (`CataclysmPlayerClassStats.h` lines 175-177, "THE
+   CLASS RESOURCE IS DELIBERATELY NOT FILLED"). Taking a share of its maximum
+   would lower a ceiling the player builds towards rather than take something
+   they arrived with. Fervour is the alternative if the owner prefers it.
 
    For a character whose mana pool became health (the Masochist's Water to
    Blood), less mana means less health converted.
 
-### Three answers built on the recommended option, while the owner's are awaited
+### The owner's answers of 2026-09-11, relayed by the coordinating session
 
-The coordinating session approved building on these three on 2026-09-11. It put
-them to the owner as "building on the recommended option unless you say
-otherwise". **They are not the owner's words.**
+The coordinating session put the modifier plan's questions to the project owner
+and relayed the answers on 2026-09-11. **They are the owner's decisions. The
+wording here is the coordinator's relay, not the owner's own words.**
 
-- The modifiers are built by shared mechanism across all eight Cataclysms, not
-  one Cataclysm at a time.
-- Every row stays in the equal-chance draw while most do nothing, and the panel
-  marks the ones that do nothing.
-- In a Horde dungeon, whose floors are its waves, a rule worded "each floor"
-  applies once per wave.
+- **Question 1, the order.** The modifiers are built by shared mechanism across
+  all eight Cataclysms, not one Cataclysm at a time.
+- **Question 2, the draw.** Every row stays in the equal-chance draw while most do
+  nothing, and the floor panel marks the ones that do nothing.
+- **Question 4, Horde dungeons.** In a Horde dungeon, whose floors are its waves,
+  a rule worded "each floor" applies once per wave.
+- **Question 7, delegation.** The session building the modifiers chooses the
+  numbers the rows do not state, and drafts rules for the rows too vaguely
+  worded to build. It does so from genre research, labels each as a judgement in
+  this file with its sources, and the owner reviews them in batches.
 
 ### How the rules reach the player
 

@@ -159,9 +159,9 @@ public:
 	 * judgement, recorded with the others.
 	 *
 	 * A HORDE DUNGEON TAKES IT PER WAVE, because a Horde dungeon's floors are its
-	 * waves: floor 12 of one is its twelfth wave. That was the recommended answer
-	 * to question 4 of the modifier plan, built on 2026-09-11 while the owner's
-	 * own answer is outstanding.
+	 * waves: floor 12 of one is its twelfth wave. The project owner chose that on
+	 * 2026-09-11, answering question 4 of the modifier plan; the coordinating
+	 * session relayed it.
 	 *
 	 * @param PercentPerFloor what one floor takes, in percent
 	 * @param MostPercent     the most it takes, however deep

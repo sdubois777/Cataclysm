@@ -57,9 +57,10 @@ struct CATACLYSM_API FCataclysmFloorModifierLine
  * could not tell which modifiers a floor carried, and 116 of the 117 did nothing
  * a player could see.
  *
- * IT SAYS WHICH ONES DO NOTHING. The coordinating session's answer to question 2
- * of the modifier plan, on 2026-09-11, was that every row stays in the draw and
- * the unbuilt ones are marked on this panel. `NameLineFor` is where the mark is.
+ * IT SAYS WHICH ONES DO NOTHING. The project owner's answer to question 2 of the
+ * modifier plan, on 2026-09-11 and relayed by the coordinating session, was that
+ * every row stays in the draw and the unbuilt ones are marked on this panel.
+ * `NameLineFor` is where the mark is.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmFloorModifierPanelLayout : public UObject
