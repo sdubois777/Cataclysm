@@ -1032,6 +1032,15 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 									 StatedMagnitude);
 	}
 
+	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
+	// Splinter carries. Issue #915. The target turns it into the tick's damage
+	// from the health it has when the tick lands.
+	if (Delivery.ShareOfCurrentHealth >= 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ShareOfCurrentHealthDataName),
+									 Delivery.ShareOfCurrentHealth);
+	}
+
 	// AND THE ATTACKER'S CHANCE TO APPLY EACH AILMENT, as more numbers under
 	// plain names. Issue #899. `UCataclysmAilments::RollOnLandedBlow` reads them
 	// on the defender's side once the blow has resolved. A tick of damage over
@@ -1103,7 +1112,7 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	// flat 20 a second; all are a per-tick amount this path can apply. A percent
 	// of the target's current health is deliberately NOT accepted: it is a
 	// different amount every tick, so it cannot be resolved to the one fixed
-	// figure this path needs.
+	// figure this path needs, and `ApplyShareOfHealthOverTime` applies it instead.
 	const bool bStatesAnAmount = Numbers.FlatDamagePerTick > 0.0f
 		|| Numbers.PercentOfHit > 0.0f;
 	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && bStatesAnAmount;
@@ -1135,7 +1144,16 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	// `ARowStatingNeitherAStrengthNorAnAmountStillWarns` reads.
 	const bool bIsOnlyATag = Numbers.DurationSeconds > 0.0f
 		&& !Row->EffectKind.Equals(TEXT("DoT"), ESearchCase::IgnoreCase);
-	if (!Numbers.bUsable && !bStatesAStrength && !bIsOnlyATag)
+
+	// AND A SHARE OF THE TARGET'S CURRENT HEALTH IS THE FOURTH. Issue #915. Void
+	// Splinter's row states a duration and 1% of current health, and
+	// `ApplyShareOfHealthOverTime` applies exactly that. `bUsable` stays false
+	// for it, because the fixed-amount path cannot apply it, and the chance to
+	// apply it reads this row on every blow that lands it.
+	const bool bStatesAShareOfHealth = Numbers.DurationSeconds > 0.0f
+		&& Numbers.PercentOfCurrentHealth > 0.0f;
+	if (!Numbers.bUsable && !bStatesAStrength && !bIsOnlyATag
+		&& !bStatesAShareOfHealth)
 	{
 		UE_LOG(LogCataclysm, Warning,
 			TEXT("%s states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
@@ -1447,6 +1465,130 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// shield stacking. Issue #513.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
+
+	return true;
+}
+
+const TCHAR* UCataclysmSkillEffects::ShareOfCurrentHealthDataName =
+	TEXT("Cataclysm.ShareOfCurrentHealth");
+
+float UCataclysmSkillEffects::ShareOfHealthTick(float Share, float Health,
+												float MaxHealth, bool bIsBoss)
+{
+	if (Share <= 0.0f || Health <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Amount = Share * Health;
+	if (!bIsBoss)
+	{
+		return Amount;
+	}
+
+	// A BOSS IS NEVER TAKEN BELOW HALF ITS MAXIMUM HEALTH BY IT, checked on
+	// every tick, so a tick that would cross the line stops at it and every
+	// tick after that deals nothing. Issue #915. The owner asked for bosses to
+	// be protected, and the form and the number are a judgement the
+	// coordinating session approved on 2026-09-11: Diablo 2's Static Field
+	// stops at 50% of a monster's health in Hell, and Grim Dawn instead gives
+	// bosses a high resistance to damage of this kind. `docs/DECISIONS.md`
+	// carries why a floor and not a resistance.
+	//
+	// BEFORE THE TARGET'S DEFENCES, as that approval states. Armour and
+	// resistance then take their part of what is left, so they only keep a
+	// boss further above the line. A stat making the boss take more damage can
+	// carry the one tick that reaches the line past it, by that increase, and
+	// every tick after that deals nothing.
+	const float Floor = BossFloorShareOfMaxHealth * MaxHealth;
+	return FMath::Clamp(Health - Floor, 0.0f, Amount);
+}
+
+bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+	AActor* Instigator, AActor* Target, float SharePerTick,
+	float DurationSeconds, const FGameplayTag& EffectTag)
+{
+	if (SharePerTick <= 0.0f || DurationSeconds <= 0.0f || !EffectTag.IsValid())
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// TWO OF THE ATTACKER'S THREE DAMAGE OVER TIME STATS, AND NOT THE THIRD. The
+	// project owner's answer on #915: the damage stat does not raise the share,
+	// and frequency and duration still apply. `DamageOverTimeNumbers` would
+	// multiply the share by the damage stat, so the two kept here are read the
+	// way it reads them.
+	const float FrequencyScale = AsMultiplier(
+		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute());
+	if (FrequencyScale <= 0.0f)
+	{
+		return false;
+	}
+	const float SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
+	const float Duration = DurationSeconds * AsMultiplier(
+		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute());
+
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
+	// other lasting effect. Issue #1033. A duration taken to nothing applies
+	// nothing, rather than an effect the engine would treat as lasting for ever.
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, Duration);
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE STRONGEST APPLICATION WINS, BY SHARE A SECOND, the comparison
+	// `ApplyDamageOverTime` makes by damage a second. Issue #1503. An equal or
+	// weaker one only refreshes how long the running one lasts and never
+	// shortens it, so the running one's ticks carry on.
+	const float Stated = SharePerTick / SecondsPerTick;
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && Running.Stated >= Stated)
+	{
+		RefreshRunningApplication(Defender, Running, OnTarget);
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s at %.3f of current health a second, and "
+				 "the running one at %.3f stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmShareOfHealth_%s"), *EffectTag.ToString()));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+	Effect->Period = FScalableFloat(SecondsPerTick);
+	Effect->bExecutePeriodicEffectOnApplication = false;
+
+	// A DAMAGE OF ONE, WHICH THE TARGET REPLACES ON EVERY TICK. The periodic
+	// modifier is what makes a tick reach the target's
+	// `UCataclysmVitalAttributeSet` at all, and the share carried on the effect
+	// is what that set turns into the tick's real damage, from the health it has
+	// at that moment.
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(1.0f);
+
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsDamageOverTime = true;
+	Delivery.ShareOfCurrentHealth = SharePerTick;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;

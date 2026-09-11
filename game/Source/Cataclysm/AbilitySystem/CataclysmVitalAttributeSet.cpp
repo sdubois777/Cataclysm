@@ -213,7 +213,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 	if (Data.EvaluatedData.Attribute == GetDamageAttribute())
 	{
-		const float LocalDamage = GetDamage();
+		// A TICK OF VOID SPLINTER STATES A SHARE OF THIS CHARACTER'S HEALTH AND
+		// NOT AN AMOUNT, and the amount is worked out here, from the health it
+		// has now. Issue #915. The effect carries a damage of one only so that a
+		// tick arrives at all; an effect carrying no share keeps its own damage.
+		// `ShareOfHealthTick` holds the rule that a boss is never taken below
+		// half its maximum health by it, applied before resistance.
+		const float ShareOfCurrentHealth = Data.EffectSpec.GetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::ShareOfCurrentHealthDataName),
+			/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/-1.0f);
+		const ACataclysmEnemyCharacter* AsEnemy =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		const float LocalDamage = ShareOfCurrentHealth >= 0.0f
+			? UCataclysmSkillEffects::ShareOfHealthTick(ShareOfCurrentHealth,
+				GetHealth(), GetMaxHealth(), AsEnemy && AsEnemy->IsBoss())
+			: GetDamage();
 		SetDamage(0.0f);
 
 		if (LocalDamage > 0.0f)

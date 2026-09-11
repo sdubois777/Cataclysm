@@ -2,6 +2,107 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — Void Splinter takes a share of the target's current health on each tick, and never takes a boss below half its maximum
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`,
+with `CataclysmVitalAttributeSet.cpp`, `CataclysmAilments.h` and `.cpp` and
+`CataclysmContagion.h` and `.cpp` beside them; and their tests. **Applied.** Issue
+[#915](https://github.com/sdubois777/Cataclysm/issues/915).
+
+### What was missing
+
+`game/Data/StatusEffects.csv` gives Void Splinter "1% of current HP per second over 4
+seconds", and nothing applied it. Every other damage over time works out one fixed
+amount a tick when it lands, and a share of current health is a different amount on
+every tick. A worn "Chance to apply void splinter" affix granted its stat, and the
+roll built for #899 left it out.
+
+### The owner's answer
+
+The project owner answered #915 on 2026-09-11, through the coordinating session:
+- The damage over time damage stat does not raise the 1%.
+- Damage over time frequency and duration still apply.
+- A chance above 100% still multiplies the percentage, under the 2026-08-03 rule.
+- Bosses are protected. The form of the protection, a floor or a resistance, and its
+  number were left to this session, to be recorded here with sources.
+
+### What is built
+
+- `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` applies a share of current
+  health for a duration. It reads the attacker's frequency and duration stats the way
+  `ApplyDamageOverTime` does, and not its damage stat.
+- The share travels on the effect as a set-by-caller number named
+  `Cataclysm.ShareOfCurrentHealth`, a plain name for the reason
+  `StatedMagnitudeDataName` gives. The effect's own damage is one, only so that each
+  tick reaches the target.
+- The target's `UCataclysmVitalAttributeSet` replaces that one with the share times the
+  health it has when the tick lands. From there the tick goes through the same steps
+  of `UCataclysmDamageCalculation::Resolve` as any other tick of damage over time.
+- The strongest application wins, measured by share a second, as
+  `ApplyDamageOverTime` measures damage a second (#1503). An equal or weaker one
+  refreshes the running one's duration and never shortens it.
+- The ailment roll applies it at the row's 1% times the magnitude, for the row's 4
+  seconds, so 250% takes 2.5% a tick.
+
+### The judgement: a boss is held at half its maximum health
+
+**A judgement, approved by the coordinating session on 2026-09-11.**
+
+- **A floor.** A tick that would take a boss below half its maximum health stops at
+  that line, and a tick against a boss already below it deals nothing.
+- **Why a floor and not a resistance.** The two shipped games the owner was shown
+  protect bosses in the two ways. Diablo 2's Static Field "will not take a monster
+  below 33% health in Nightmare and 50% in Hell"
+  ([diablo2.io](https://diablo2.io/skills/static-field-t4165.html)). Grim Dawn gives
+  "Hero and Boss Monsters ... a high resistance to this damage type"
+  ([Grim Dawn's combat guide](https://www.grimdawn.com/guide/gameplay/combat/)). A
+  resistance lowers every tick by the same share, so how much of a boss it takes
+  still grows with how long the fight lasts. A floor states how much of a boss the
+  effect can ever take, whatever the fight.
+- **Why half.** It is Diablo 2's figure at its highest difficulty. The research
+  settles that a floor is a shape a shipped game uses; the number for this game is
+  the judgement.
+- **Before the target's defences.** Armour and resistance take their part of what is
+  left, so they only keep a boss further above the line. A stat making the boss take
+  more damage can carry the one tick that reaches the line past it, by that increase,
+  and every tick after that deals nothing.
+- **Which creatures.** Those `ACataclysmEnemyCharacter::IsBoss` answers yes for: the
+  Boss and Cataclysm Boss rarities, rung 4 and up. A Herald, one rung below, is not
+  protected. It is the line the rule that a boss cannot be stunned already uses.
+
+### Two changes to neighbouring behaviour
+
+- **The status effect table no longer warns about Void Splinter's row.** It states a
+  duration and a share of current health and no amount a tick, and the chance to
+  apply it reads the row on every blow that lands it. `bUsable` stays false for it,
+  so no caller asking for a fixed amount a tick applies it as one worth nothing.
+- **A Void Splinter passed on by `UCataclysmContagion` takes its share of health.**
+  Empathic Link passes a dying enemy's debuffs to another, and a creature can now die
+  carrying Void Splinter. `SpreadOne` chose the applier by whether the row states an
+  amount a tick, so a share of health fell through to the tag alone and would have
+  dealt nothing.
+
+### What this does not do
+
+- The enemy modifier All Consuming, "Inflict the player with 2 stacks of void
+  splinter when hit", is not built. Its two stacks are on the player, where one
+  application per target is the rule for every effect a player applies.
+- Three enchantment rows name Void Splinter stacks. They belong to the session
+  building enchantments.
+- No skill applies Void Splinter.
+
+### Tested
+
+Issue #915's pull request carries the results. The tests:
+- five in the new `game/Source/Cataclysm/Tests/CataclysmVoidSplinterTests.cpp`;
+- `AShareOfCurrentHealthRowDoesNotWarn` in `CataclysmDamageOverTimeTests.cpp`;
+- `ASpreadVoidSplinterTakesItsShareOfHealth` in `CataclysmContagionTests.cpp`;
+- and three tests in `CataclysmAilmentTests.cpp` that now include Void Splinter:
+  `EveryAilmentIsJoinedUpAcrossTheGame`, `EachAilmentAppliesWhatItsStatusRowSays` and
+  `AChancePastCertaintyAppliesTheAilmentHarder`.
+
+---
+
 ## 2026-09-12 — A landed knockback, pull or knockdown leaves the target Staggered for a second, and the state does not stop it acting
 
 **Affects:** `ApplyStagger`, `StaggeredTag`, `IsStaggered` and `StaggerSeconds`
@@ -443,7 +544,7 @@ is issue [#1565](https://github.com/sdubois777/Cataclysm/issues/1565).
 | Shred | `ApplyNamedEffect` at the row's 10 times the magnitude, cutting the one generic resistance an enemy holds |
 | Cripple | Its tag, for the row's 4 seconds. An enemy's speed reads it at the row's 30% (#1152). A magnitude above 1 changes nothing until Cripple's magnitude is built |
 | Weaken | Its tag, for the row's 5 seconds. **It changes nothing yet:** no code reduces an enemy's damage for it |
-| Void Splinter | Nothing yet. A worn affix grants the stat, and the roll leaves it out until the effect is built, under the owner's answer of 2026-09-11 on #915 |
+| Void Splinter | Nothing, when this entry was written: the roll left it out until the effect was built. The entry above builds it |
 
 The figures are the rows of `game/Data/StatusEffects.csv`. **A search of
 `game/Source/Cataclysm` found no code for the rest of what three of those rows

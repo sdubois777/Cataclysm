@@ -1809,7 +1809,7 @@ Bleed, poison, disease, void splinter and the other effects a player can inflict
 
   
 
-**Void Splinter is the one exception, and it is deliberate.** It states a share of the target's current health rather than a flat amount, which makes it the ailment that scales with how much health the target has rather than with anything the attacker did. That is what it is for.
+**Void Splinter is the one exception, and it is deliberate.** It states a share of the target's current health rather than a flat amount, which makes it the ailment that scales with how much health the target has rather than with anything the attacker did. That is what it is for. The damage over time damage stat does not raise that share, while frequency and duration do, and bosses are protected from it: it never takes a boss below half its maximum health. The project owner decided the first and asked for the protection on 2026-09-11 (#915); the half is a judgement `docs/DECISIONS.md` records with its sources.
 
   
 
@@ -1917,7 +1917,7 @@ The chance summed is the total across every source: affixes, gems, keystones and
 
   
 
-**Three of the six conditions are not built yet.** Bleed's movement gate, disease's spread on death and Necrosis's healing denial are all stated here and in the DoTs sheet and nothing implements them; they are issues #918, #919 and #920. Void Splinter is not implemented either, and issue #915 records that the damage over time stats multiply its percentage in a way that needs a decision first.
+**Three of the six conditions are not built yet.** Bleed's movement gate, disease's spread on death and Necrosis's healing denial are all stated here and in the DoTs sheet and nothing implements them; they are issues #918, #919 and #920. Void Splinter is built, under the project owner's answer on issue #915.
 
   
 

@@ -171,11 +171,30 @@ namespace CataclysmAilmentTest
 		 */
 		float StatedOn(const TCHAR* TagName) const
 		{
+			return CarriedOn(TagName, UCataclysmSkillEffects::StatedMagnitudeDataName);
+		}
+
+		/**
+		 * The share of current health a tick of the running application takes,
+		 * as a fraction, or -1. Only Void Splinter carries one. Issue #915.
+		 */
+		float ShareOn(const TCHAR* TagName) const
+		{
+			return CarriedOn(TagName,
+				UCataclysmSkillEffects::ShareOfCurrentHealthDataName);
+		}
+
+		/**
+		 * The largest number any application granting the tag carries under
+		 * this name, or -1.
+		 */
+		float CarriedOn(const TCHAR* TagName, const TCHAR* DataName) const
+		{
 			const FGameplayTag Tag = TagNamed(TagName);
-			float Stated = -1.0f;
+			float Carried = -1.0f;
 			if (!Tag.IsValid())
 			{
-				return Stated;
+				return Carried;
 			}
 
 			for (const FActiveGameplayEffectHandle& Handle :
@@ -186,12 +205,11 @@ namespace CataclysmAilmentTest
 				if (const FActiveGameplayEffect* Active =
 						AbilitySystem->GetActiveGameplayEffect(Handle))
 				{
-					Stated = FMath::Max(Stated, Active->Spec.GetSetByCallerMagnitude(
-						FName(UCataclysmSkillEffects::StatedMagnitudeDataName),
-						/*WarnIfNotFound=*/false, -1.0f));
+					Carried = FMath::Max(Carried, Active->Spec.GetSetByCallerMagnitude(
+						FName(DataName), /*WarnIfNotFound=*/false, -1.0f));
 				}
 			}
-			return Stated;
+			return Carried;
 		}
 
 		TObjectPtr<AActor> Actor = nullptr;
@@ -299,17 +317,11 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentJoinsTest,
 								 *Name, Each.TagName),
 			TagNamed(Each.TagName).IsValid());
 
-		// AND ITS ROW STATES A DURATION, as every ailment's does. Void Splinter
-		// is left out: its row is damage over time with no per-tick amount this
-		// path can apply, so reading it warns, and nothing reads it until the
-		// effect is built.
-		if (Each.Shape != ECataclysmAilmentShape::NotBuilt)
-		{
-			TestTrue(FString::Printf(TEXT("%s's row %s states a duration"),
-									 *Name, Each.StatusRow),
-				UCataclysmSkillEffects::StatusEffectNumbers(Each.StatusRow, *Name)
-					.DurationSeconds > 0.0f);
-		}
+		// AND ITS ROW STATES A DURATION, as every ailment's does.
+		TestTrue(FString::Printf(TEXT("%s's row %s states a duration"),
+								 *Name, Each.StatusRow),
+			UCataclysmSkillEffects::StatusEffectNumbers(Each.StatusRow, *Name)
+				.DurationSeconds > 0.0f);
 	}
 
 	TestEqual(TEXT("no two ailments share a stat"), Stats.Num(), Every.Num());
@@ -463,8 +475,8 @@ CATACLYSM_AILMENT_TEST(FCataclysmEachAilmentAppliesItsRowTest,
 			Defender.AllResistance(), Expected, 0.01f);
 	}
 
-	// VOID SPLINTER IS NOT BUILT, and a chance to apply it applies nothing
-	// rather than something else. Issue #915.
+	// VOID SPLINTER STATES A SHARE OF CURRENT HEALTH AND NOT DAMAGE A SECOND, so
+	// its row's 1% is read off the effect as the share it carries. Issue #915.
 	const FCataclysmAilmentKind* Splinter = KindOf(TEXT("Void Splinter"));
 	if (TestNotNull(TEXT("Void Splinter is an ailment"), Splinter))
 	{
@@ -475,8 +487,16 @@ CATACLYSM_AILMENT_TEST(FCataclysmEachAilmentAppliesItsRowTest,
 		const FScopedFighter Defender(World);
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
 
-		TestEqual(TEXT("a certain chance to apply void splinter applies nothing yet"),
-			UCataclysmDebuffs::CountOn(Defender.AbilitySystem), 0);
+		TestTrue(TEXT("a certain chance to apply void splinter applies it"),
+			Defender.Carries(Splinter->TagName));
+		TestEqual(TEXT("Void Splinter runs for its row's 4 seconds"),
+			Defender.SecondsLeftOn(Splinter->TagName), 4.0f, 0.05f);
+		TestEqual(TEXT("taking its row's 1% of current health a tick"),
+			Defender.ShareOn(Splinter->TagName), 0.01f, 0.0001f);
+
+		// AND ONLY ITS OWN, as for every row above.
+		TestEqual(TEXT("and it is the one debuff the defender carries"),
+			UCataclysmDebuffs::CountOn(Defender.AbilitySystem), 1);
 	}
 	return true;
 }
@@ -561,6 +581,27 @@ CATACLYSM_AILMENT_TEST(FCataclysmChancePastCertaintyTest,
 
 		TestEqual(TEXT("250% to cripple still lasts the row's four seconds"),
 			Defender.SecondsLeftOn(Cripple->TagName), 4.0f, 0.05f);
+	}
+
+	{
+		// AND VOID SPLINTER'S MAGNITUDE RAISES ITS SHARE, which the design
+		// document's table says of its damage and the owner's answer on #915
+		// keeps: 250% takes 2.5% of current health a tick, for the row's own four
+		// seconds.
+		const FCataclysmAilmentKind* Splinter = KindOf(TEXT("Void Splinter"));
+		if (TestNotNull(TEXT("Void Splinter is an ailment"), Splinter))
+		{
+			const FScopedFighter Attacker(World);
+			Attacker.ArmFor(1'000.0f);
+			Attacker.SetChance(*Splinter, 250.0f);
+			const FScopedFighter Defender(World);
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+			TestEqual(TEXT("250% to splinter takes 2.5% of current health a tick"),
+				Defender.ShareOn(Splinter->TagName), 0.025f, 0.0001f);
+			TestEqual(TEXT("for the row's four seconds, no longer"),
+				Defender.SecondsLeftOn(Splinter->TagName), 4.0f, 0.05f);
+		}
 	}
 	return true;
 }

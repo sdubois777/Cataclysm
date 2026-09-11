@@ -17,8 +17,6 @@
 #include "GameplayEffect.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
-// For driving a periodic effect's ticks inside a test. See `RunClock` below.
-#include "TimerManager.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -299,36 +297,9 @@ namespace CataclysmDebuffTest
 		return Magnitude;
 	}
 
-	/**
-	 * Move this world's clock forward and fire every timer that falls due in
-	 * that time, including the ticks of a periodic gameplay effect.
-	 *
-	 * WHY THE FRAME COUNTER IS MOVED BY HAND. `FTimerManager::Tick` returns at
-	 * once if it has already run in the current engine frame: it compares
-	 * `LastTickedFrame` with `GFrameCounter`. The engine's frame loop does not
-	 * run inside a synchronous automation test body, which
-	 * `CataclysmSaveWriterTests.cpp` records for the same counter. So each step
-	 * advances the counter first, or only the first step would do anything.
-	 *
-	 * THE CLOCK AND THE TIMERS TOGETHER. The ability system works out how long
-	 * an effect has left from `UWorld::GetTimeSeconds`, and its ticks come from
-	 * the timer manager, which keeps a time of its own. Moving one without the
-	 * other would expire an effect that had never ticked, or tick one that had
-	 * run out.
-	 *
-	 * IN SMALL STEPS, so that no step covers more than one tick interval and
-	 * events arrive in the order a real run would see them.
-	 */
-	void RunClock(UWorld* World, float Seconds, float Step = 0.05f)
-	{
-		const int32 Steps = FMath::CeilToInt(Seconds / Step);
-		for (int32 Index = 0; Index < Steps; ++Index)
-		{
-			++GFrameCounter;
-			World->TimeSeconds += Step;
-			World->GetTimerManager().Tick(Step);
-		}
-	}
+	/** Moves the world's clock. In `CataclysmTestWorld.h` since issue #915,
+	 *  because the Void Splinter tests measure ticks too. */
+	using CataclysmTestWorld::RunClock;
 }
 
 #define CATACLYSM_DEBUFF_TEST(TestClass, TestName) \

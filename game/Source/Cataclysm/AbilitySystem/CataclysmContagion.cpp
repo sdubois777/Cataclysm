@@ -77,6 +77,16 @@ bool UCataclysmContagion::SpreadOne(AActor* Instigator, AActor* Target,
 			Instigator, Target, Numbers.FlatDamagePerTick, Duration, EffectTag);
 	}
 
+	// A SHARE OF THE TARGET'S CURRENT HEALTH IS DAMAGE OVER TIME TOO, with an
+	// applier of its own. Issue #915. Void Splinter's is the one row stating
+	// one. Before it was built this fell through to the tag alone, which would
+	// have spread a Void Splinter that dealt nothing.
+	if (Numbers.PercentOfCurrentHealth > 0.0f)
+	{
+		return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(Instigator, Target,
+			Numbers.PercentOfCurrentHealth / 100.0f, Duration, EffectTag);
+	}
+
 	return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
 													   EffectTag, Duration);
 }

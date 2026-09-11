@@ -400,8 +400,6 @@ public:
 	FGameplayAttributeData DiseaseChance;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DiseaseChance)
 
-	/** Granted by its affix and rolled by nothing until Void Splinter is built.
-	 *  Issue #915. */
 	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_VoidSplinterChance)
 	FGameplayAttributeData VoidSplinterChance;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, VoidSplinterChance)

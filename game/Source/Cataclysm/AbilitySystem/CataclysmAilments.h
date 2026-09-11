@@ -44,9 +44,9 @@ enum class ECataclysmAilmentShape : uint8
 	/** Stun, which shares one roll with a blunt weapon's own 10%. */
 	Stun,
 
-	/** Void Splinter. A worn affix grants its chance and nothing rolls it,
-	 *  until the change that builds the effect itself. Issue #915. */
-	NotBuilt,
+	/** Void Splinter: the row's share of the target's current health on each
+	 *  tick, times the magnitude, for the row's duration. Issue #915. */
+	ShareOfCurrentHealth,
 };
 
 /**
@@ -148,8 +148,6 @@ public:
 	 * ASKED FOR RATHER THAN READ, through `StatForSkill`, so a row requiring a
 	 * tag or a state counts when it holds. The attribute is the fallback, which
 	 * is what an enemy and a character before its first refresh answer.
-	 *
-	 * VOID SPLINTER IS LEFT OUT, because nothing applies it yet.
 	 */
 	static TMap<FName, float> ChancesFor(const UAbilitySystemComponent* Attacker,
 										 const FGameplayTagContainer& SkillTags,
@@ -184,9 +182,8 @@ public:
 
 	/**
 	 * Apply one ailment at a magnitude, as its row of
-	 * `game/Data/StatusEffects.csv` says. Stun and Void Splinter apply nothing
-	 * here: the first is applied by `RollOnLandedBlow`'s pool and the second is
-	 * not built.
+	 * `game/Data/StatusEffects.csv` says. Stun applies nothing here, because
+	 * `RollOnLandedBlow`'s pool applies it.
 	 *
 	 * @param Magnitude  one for a chance up to 100%, and the chance divided by
 	 *                   100 past it

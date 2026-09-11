@@ -80,7 +80,9 @@ public:
 	 * effect and goes through `ApplyDamageOverTime`; a row with a duration and no
 	 * amount is a debuff whose magnitude this project has no hook for yet and
 	 * goes through `ApplyTagForDuration`, which is what that function exists for.
-	 * Six rows are the first kind and five are the second.
+	 * Six rows are the first kind and five are the second. A row stating a share
+	 * of the target's current health, which only Void Splinter's does, goes
+	 * through `ApplyShareOfHealthOverTime`. Issue #915.
 	 *
 	 * THE TAG IT GRANTS IS THE ONE PASSED IN, not one worked out from the row.
 	 * The two are the same effect under different branches -- `Status.DoT.Bleed` and

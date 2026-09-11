@@ -159,7 +159,7 @@ differently:
 |---|---|---|
 | `FlatDamagePerTick` | the attacker's three damage over time stats only | Bleed, Poison, Disease, Burn, Necrosis |
 | `PercentOfHit` | those stats **and** the hit, so it multiplies twice | nothing, as of 2026-08-24 |
-| `PercentOfCurrentHealth` | the target's health, not the attacker at all | Void Splinter |
+| `PercentOfCurrentHealth` | the target's current health, and two of the attacker's three damage over time stats: frequency and duration | Void Splinter |
 
 `PercentOfHit` was Burn's base until 2026-08-24, when the project owner moved the
 ailments to a flat amount. `DECISIONS.md` carries the measurement: a hit grows
@@ -186,8 +186,12 @@ reporting an error, and a number cannot be misspelled.
   whose scaling stops dead instead of rolling over into something else.
 - **A `PercentOfCurrentHealth` effect cannot go through the ordinary damage over
   time path**, which resolves one fixed amount per tick up front. A share of
-  current health is a different amount every tick. That is part of why nothing
-  implements Void Splinter; issue #915 carries the rest.
+  current health is a different amount every tick, so
+  `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` carries the share on the
+  effect and the target works out each tick from the health it has then. The
+  damage over time damage stat does not raise the share, and a boss is never
+  taken below half its maximum health by it. Issue #915; `DECISIONS.md` carries
+  why.
 - **The order is the schema.** Inserting a column anywhere but the end silently
   re-reads every column after it, and a duration arriving as a strength would
   produce no error. Append only — which is why the most-used base sits in column
