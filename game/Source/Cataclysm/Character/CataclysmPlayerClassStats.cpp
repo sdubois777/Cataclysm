@@ -577,8 +577,9 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// dropped before it can reach the attribute. Nothing in
 			// `game/Data/` names the stat yet, so no behaviour changes today and
 			// what changes is that it now can. Issue #1252 carries the rest:
-			// the three enchantments that are meant to grant it are blocked on
-			// enchantments existing at all, which is issue #45.
+			// enchantments grant stats since issue #45, and the three meant to
+			// grant this one state ranges, which cannot be written until the
+			// project owner rules how a range becomes one number on one item.
 			{TEXT("armor_penetration"), Combat::GetArmorPenetrationAttribute()},
 
 			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},

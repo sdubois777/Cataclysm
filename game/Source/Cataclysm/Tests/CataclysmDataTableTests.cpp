@@ -371,6 +371,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// them out.
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        206)
 
+	// SEVEN ROWS, AND THEY ARE THE FIRST. Issue #45. Only the enchantments whose
+	// sentence states one number and needs nothing the game lacks. Most
+	// sentences state a range, and how a range becomes one number on one item is
+	// a question to the project owner, so their rows wait for the answer.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",      7)
+
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
 	// needs a row, including the three that draw nothing on purpose -- a base
@@ -548,6 +554,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
+		{ TEXT("DT_EnchantmentEffects"),    TEXT("EnchantmentEffects.csv") },
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
 		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
 		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },

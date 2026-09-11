@@ -1497,6 +1497,174 @@ class TestAPassiveNodeCanGrantSeveralStats:
         assert "no passive node is called Ghost" in problems[0]
 
 
+class TestEnchantmentEffects:
+    """What an enchantment grants, read from the Enchantment Effects sheet. #45.
+
+    A row names an enchantment by the row name an item stores, repeats its
+    words, and states one stat, one bucket and one value. Four kinds of row are
+    refused, and each is a mistake a person editing the sheet can make: a name
+    that matches nothing, words that no longer match the enchantment, a set
+    row, and a range.
+    """
+
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["Double your energy shield", "Generic", 1, "Stat.Defense.EnergyShield",
+         None, "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ["Archon's Aegis (2-Piece Bonus): Your block chance is increased by 25%",
+         "Set", 5, "Stat.Defense.Block", None,
+         "Your movement speed is reduced by 10%", "Set", 5,
+         "Stat.Utility.Movespeed"],
+    ]
+    HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
+              "Value High", "Required Tags", "Condition", "Condition Value",
+              "Scale", "Scale Step"]
+    SHIELD = "Positive_Double_your_energy_shield"
+    SHIELD_WORDS = "Double your energy shield"
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "enchantment_effects.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER] + rows}))
+
+    def row(self, changes=None):
+        values = {"Enchantment": self.SHIELD, "Effect": self.SHIELD_WORDS,
+                  "Stat": "max_energy_shield", "Value Kind": "more",
+                  "Value Low": 100}
+        values.update(changes or {})
+        return [values.get(column) for column in self.HEADER]
+
+    def test_a_row_becomes_one_csv_row(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row()]))
+
+        assert out == [{
+            "Name": f"{self.SHIELD}#1", "Enchantment": self.SHIELD,
+            "Stat": "max_energy_shield", "ValueKind": "more",
+            "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
+            "Condition": "", "ConditionValue": 0.0, "Scale": "",
+            "ScaleStep": 0.0}]
+
+    def test_two_stats_on_one_enchantment_both_survive(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [
+            self.row(),
+            self.row({"Stat": "max_health", "Value Kind": "increased",
+                      "Value Low": 5}),
+        ]))
+
+        assert [r["Name"] for r in out] == [f"{self.SHIELD}#1",
+                                            f"{self.SHIELD}#2"]
+
+    def test_a_drawback_can_be_named(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": "Negative_You_have_20_less_hp",
+            "Effect": "You have 20% less hp.", "Stat": "max_health",
+            "Value Low": -20})]))
+
+        assert out[0]["Enchantment"] == "Negative_You_have_20_less_hp"
+        assert out[0]["ValueLow"] == -20.0
+
+    def test_a_condition_is_carried_across(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Condition": "health_below", "Condition Value": 30})]))
+
+        assert (out[0]["Condition"], out[0]["ConditionValue"]) == \
+            ("health_below", 30.0)
+
+    def test_an_enchantment_that_does_not_exist_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Enchantment": "Positive_Ghost"})])
+        with pytest.raises(gen.DataError, match="no enchantment is called"):
+            gen.enchantment_effects(book)
+
+    def test_words_that_disagree_with_the_enchantment_are_refused(self,
+                                                                  tmp_path):
+        """A reworded enchantment must be read again before its numbers are
+        trusted, so a stale copy of its words is refused."""
+        book = self.book(tmp_path, [self.row({
+            "Effect": "Triple your energy shield"})])
+        with pytest.raises(gen.DataError, match="must agree"):
+            gen.enchantment_effects(book)
+
+    def test_a_set_row_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({
+            "Enchantment": "Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc",
+            "Effect": "Archon's Aegis (2-Piece Bonus): Your block chance is "
+                      "increased by 25%",
+            "Stat": "block_chance", "Value Kind": "increased",
+            "Value Low": 25})])
+        with pytest.raises(gen.DataError, match="is a set row"):
+            gen.enchantment_effects(book)
+
+    def test_a_range_is_refused_until_the_owner_rules_on_ranges(self,
+                                                               tmp_path):
+        book = self.book(tmp_path, [self.row({"Value Low": 10,
+                                              "Value High": 30})])
+        with pytest.raises(gen.DataError, match="states a range"):
+            gen.enchantment_effects(book)
+
+    def test_a_high_value_below_the_low_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Value Low": 30,
+                                              "Value High": 10})])
+        with pytest.raises(gen.DataError, match="below its low value"):
+            gen.enchantment_effects(book)
+
+    def test_an_unknown_condition_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Condition": "while_dancing",
+                                              "Condition Value": 3})])
+        with pytest.raises(gen.DataError, match="cannot judge"):
+            gen.enchantment_effects(book)
+
+    def test_a_value_beside_a_condition_that_compares_nothing_is_refused(
+            self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Condition": "while_bleeding",
+                                              "Condition Value": 5})])
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            gen.enchantment_effects(book)
+
+    def test_an_unknown_scale_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Scale": "moons_held",
+                                              "Scale Step": 1})])
+        with pytest.raises(gen.DataError, match="cannot judge"):
+            gen.enchantment_effects(book)
+
+    def test_a_bad_value_kind_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Value Kind": "sideways"})])
+        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+            gen.enchantment_effects(book)
+
+    def test_the_same_stat_twice_on_one_enchantment_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row(), self.row()])
+        with pytest.raises(gen.DataError, match="same stat twice"):
+            gen.enchantment_effects(book)
+
+    def test_the_validator_reports_a_stat_nothing_supplies(self):
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X", "Stat": "ghost_stat",
+             "ValueKind": "increased", "RequiredTags": ""}],
+            "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "'ghost_stat' is not a stat" in problems[0]
+
+    def test_a_flat_row_supplies_its_own_stat(self):
+        """The retaliation radius has no class line and no attribute; the flat
+        row in this sheet is what supplies it, as a flat passive row does."""
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X",
+             "Stat": "retaliation_radius_metres", "ValueKind": "flat",
+             "RequiredTags": ""}]}
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+    def test_the_validator_reports_an_undeclared_tag(self):
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X", "Stat": "armor",
+             "ValueKind": "increased", "RequiredTags": "Not.A.Tag"}],
+            "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, {"Slot.Aura"})
+        assert problems == ["EnchantmentEffects/X#1: undefined tag Not.A.Tag"]
+
+
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):
         if not gen.WORKBOOK.is_file():

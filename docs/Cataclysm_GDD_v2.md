@@ -3579,8 +3579,10 @@ is weapon-only, so a chest sees eleven and a weapon twelve.
 
   
 
-**What is not decided.** Nothing applies any enchantment's effect yet — not one of
-the 574 changes a character's stats — so none of the rules above is implemented.
+**What is not built yet.** Since 2026-09-11 an enchantment outside a set changes a
+character's stats when the Enchantment Effects sheet of the design workbook states
+what it grants, but a set row grants nothing yet, so none of the rules above is
+implemented.
 They are recorded so that whoever builds enchantment effects does not have to
 re-derive them. That work is the rest of issue #45, and so is counting how many
 equipped items carry a set, which is what turns a threshold on.

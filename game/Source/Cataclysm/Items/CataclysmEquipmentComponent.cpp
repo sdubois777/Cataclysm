@@ -440,6 +440,15 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmEquipmentComponent::Gather
 		UCataclysmItemModifiers::AccumulateInto(Totals, Item, BaseTable, AffixTable);
 	}
 
+	// AND WHAT THE WORN ENCHANTMENTS GRANT, since issue #45. After the loop
+	// rather than inside it, because a benefit applies once however many pieces
+	// carry it, and only a pass over every worn item can know that. Before this,
+	// a piece recorded its enchantments and none of them changed anything.
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+		Totals, Slots, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable());
+
 	return Totals;
 }
 

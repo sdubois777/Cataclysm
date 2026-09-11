@@ -32,10 +32,10 @@
  * the rule, and it is the one test here that could not pass before the rule
  * existed. It also fails an exact match, which was offered and rejected.
  *
- * WHAT IS NOT TESTED HERE BECAUSE IT DOES NOT EXIST. What an enchantment DOES.
- * Not one of the 574 changes a character's stats; the rest of issue #45.
- * Uniqueness across all WORN gear is also absent -- the rule enforced below is
- * the narrower one that neither half repeats on a single piece.
+ * WHAT IS NOT TESTED HERE. What an enchantment DOES, which is tested in
+ * CataclysmEnchantmentEffectTests.cpp since issue #45. Uniqueness across all
+ * WORN gear is not enforced at equip time -- the rule enforced below is the
+ * narrower one that neither half repeats on a single piece.
  *
  * EVERY DRAW IS SEEDED. An unseeded sampling test fails once a month and is then
  * ignored.

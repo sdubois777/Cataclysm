@@ -3495,6 +3495,205 @@ def passive_effects(book) -> list[dict]:
     return out
 
 
+def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
+                         who: str) -> tuple[str, float, str, float]:
+    """A row's condition, its value, its scale and its step, checked.
+
+    THE SAME RULES `passive_effects` APPLIES, AND FOR THE SAME REASONS. A
+    condition the game cannot judge would be applied with no condition, and a
+    scale it cannot judge would be worth nothing, so both are refused here and
+    the error names what the game does know.
+
+    `passive_effects` STILL CARRIES ITS OWN COPY OF THESE CHECKS. Moving it onto
+    this helper waits until the passive-tree work on another branch has merged,
+    so that the two edits do not collide in this file. Both copies read the same
+    `CONDITIONS` and `SCALES`, so the names cannot differ between them.
+    """
+    condition = clean(_cell(raw, headers, "Condition")).lower()
+    if condition and condition not in CONDITIONS:
+        raise DataError(
+            f"{sheet} row {index}: {who} names the condition {condition!r}, "
+            f"which the game cannot judge. Known: "
+            f"{', '.join(sorted(CONDITIONS))}.")
+
+    condition_value = 0.0
+    if condition and CONDITIONS[condition] is None:
+        written = clean(_cell(raw, headers, "Condition Value"))
+        if written:
+            raise DataError(
+                f"{sheet} row {index}: {who} carries the condition "
+                f"{condition!r} and a condition value of {written!r}. That "
+                f"condition compares nothing, so the value would be ignored. "
+                f"Leave the column empty.")
+    elif condition:
+        condition_value = number(_cell(raw, headers, "Condition Value"),
+                                 "Condition Value", index)
+        low, high, units = CONDITIONS[condition]
+        if not low <= condition_value <= high:
+            raise DataError(
+                f"{sheet} row {index}: {who} has a condition value of "
+                f"{condition_value}, and {condition!r} takes {units} between "
+                f"{low:g} and {high:g}.")
+
+    scale = clean(_cell(raw, headers, "Scale")).lower()
+    if scale and scale not in SCALES:
+        raise DataError(
+            f"{sheet} row {index}: {who} names the scale {scale!r}, which the "
+            f"game cannot judge. Known: {', '.join(sorted(SCALES))}.")
+
+    scale_step = 0.0
+    if scale:
+        scale_step = number(_cell(raw, headers, "Scale Step"), "Scale Step",
+                            index)
+        low, high, units = SCALES[scale]
+        if scale_step <= 0.0 or not low <= scale_step <= high:
+            raise DataError(
+                f"{sheet} row {index}: {who} has a scaling step of "
+                f"{scale_step}, and {scale!r} takes {units} above 0 and up to "
+                f"{high:g}. A step of nothing is worth nothing at every state.")
+
+    return condition, condition_value, scale, scale_step
+
+
+def enchantment_effects(book) -> list[dict]:
+    """What an enchantment grants, one stat effect per row. Issue #45.
+
+    AN ENCHANTMENT SAYS WHAT IT DOES IN ENGLISH AND THIS SAYS IT IN NUMBERS. The
+    Enchantments sheet carries a sentence written for a player -- "Double your
+    energy shield" -- and no stat name, no bucket and no value. This sheet is
+    where those are written, in the shape of the `Passive Effects` sheet, which
+    the project owner chose on 2026-08-25 as the place a node's numbers live.
+
+    A ROW NAMES ITS ENCHANTMENT BY THE ROW NAME AN ITEM STORES, and repeats the
+    enchantment's own words in an `Effect` column that has to match them
+    exactly. The name is what the game reads; the words are what a person
+    editing the sheet reads. Requiring both means an enchantment that is
+    reworded has to be read again here before its numbers are trusted.
+
+    A ROW HERE IS OPTIONAL. An enchantment with no row grants nothing, which is
+    what every enchantment did before this sheet existed.
+
+    TWO KINDS OF ROW ARE REFUSED FOR NOW, each for a stated reason:
+
+      a set row        a set's rows apply by how many worn pieces carry the
+                       set, and this sheet cannot say how many pieces a row
+                       needs yet
+      a stated range   how a range such as "10%-30%" becomes one number on one
+                       item is a question put to the project owner on issue
+                       #45, so every row states one value until it is answered
+
+    A ROW NAME IS THE ENCHANTMENT WITH `#1`, `#2` AND SO ON AFTER IT, as in
+    `Passive Effects`, so one enchantment can grant two stats. No enchantment
+    row name can contain a number sign, because `row_name` keeps only letters,
+    digits and underscores.
+    """
+    rows = list(book["Enchantment Effects"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Enchantment Effects")
+
+    # EVERY ENCHANTMENT THIS SHEET MAY NAME, with its words and its type, read
+    # by the same function that writes the two enchantment CSVs. So a name here
+    # is checked against exactly the name an item stores.
+    words: dict[str, str] = {}
+    types: dict[str, str] = {}
+    for negative in (False, True):
+        for row in enchantments(book, negative=negative):
+            words[row["Name"]] = row["Effect"]
+            types[row["Name"]] = row["EnchantmentType"]
+
+    out = []
+    counts: dict[str, int] = {}
+    for index, raw in enumerate(rows[1:], start=2):
+        name = clean(_cell(raw, headers, "Enchantment"))
+        if not name:
+            continue
+
+        if name not in words:
+            raise DataError(
+                f"Enchantment Effects row {index}: no enchantment is called "
+                f"{name!r}. Use the row name game/Data/EnchantmentsPositive.csv "
+                f"or game/Data/EnchantmentsNegative.csv gives it.")
+
+        said = clean(_cell(raw, headers, "Effect"))
+        if said != words[name]:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is written here as "
+                f"{said!r} and in the Enchantments sheet as {words[name]!r}. "
+                f"The two must agree, so that an enchantment that is reworded "
+                f"is read again before its numbers are trusted.")
+
+        if types[name].casefold() == "set":
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is a set row. A "
+                f"set's rows apply by how many worn pieces carry the set, and "
+                f"this sheet cannot say how many pieces a row needs yet.")
+
+        stat = clean(_cell(raw, headers, "Stat"))
+        if not stat:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names no stat")
+
+        kind = clean(_cell(raw, headers, "Value Kind")).lower()
+        if kind not in ("flat", "increased", "more"):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has value kind "
+                f"{kind!r}, which is not flat, increased or more")
+
+        low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
+        high_text = clean(_cell(raw, headers, "Value High"))
+        high = number(high_text, "Value High", index) if high_text else low
+        if high < low:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} has a high value of "
+                f"{high:g}, below its low value of {low:g}.")
+        if high != low:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states a range, "
+                f"{low:g} to {high:g}. How a stated range becomes one number "
+                f"on one item is a question put to the project owner on issue "
+                f"#45, so every row here states one value until it is "
+                f"answered.")
+
+        condition, condition_value, scale, scale_step = _condition_and_scale(
+            raw, headers, "Enchantment Effects", index, name)
+
+        counts[name] = counts.get(name, 0) + 1
+        out.append({
+            "Name": f"{name}#{counts[name]}",
+            "Enchantment": name,
+            "Stat": stat,
+            "ValueKind": kind,
+            "ValueLow": low,
+            "ValueHigh": high,
+            "RequiredTags": clean(_cell(raw, headers, "Required Tags")),
+            "Condition": condition,
+            "ConditionValue": condition_value,
+            "Scale": scale,
+            "ScaleStep": scale_step,
+        })
+
+    # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
+    # DOUBLE HELPING, unless the two are conditioned or scaled differently. The
+    # rule and its reasons are the ones `passive_effects` states for a node.
+    pairs: dict[tuple, int] = {}
+    for row in out:
+        key = (row["Enchantment"], row["Stat"], row["Condition"],
+               row["ConditionValue"], row["Scale"], row["ScaleStep"])
+        pairs[key] = pairs.get(key, 0) + 1
+    twice = sorted(key for key, count in pairs.items() if count > 1)
+    if twice:
+        listed = ", ".join(f"{key[0]} granting {key[1]}" for key in twice)
+        raise DataError(
+            f"the Enchantment Effects sheet grants the same stat twice on one "
+            f"enchantment, under the same condition and scale: {listed}. Two "
+            f"rows for one enchantment are for two different stats, or for the "
+            f"same stat under different conditions or scales; anything else is "
+            f"a duplicated row.")
+
+    if not out:
+        raise DataError("the Enchantment Effects sheet is empty")
+    return out
+
+
 def item_base_flat_stats(item_bases: list[dict] | None) -> set[str]:
     """The stats an item base supplies as a flat implicit.
 
@@ -3760,6 +3959,70 @@ def validate_passive_effects(tables: dict[str, list[dict]],
 
     return problems
 
+
+def _stats_with_a_base(tables: dict[str, list[dict]]) -> set[str]:
+    """Every stat a class line, an attribute, an item base or the engine supplies.
+
+    THE SET `validate_passive_effects` BUILDS, LESS THAT SHEET'S OWN FLAT ROWS.
+    That function still builds it inline; moving it onto this helper waits for
+    the passive-tree work on another branch to merge, for the reason
+    `_condition_and_scale` gives.
+    """
+    class_rows = tables.get("ClassStats")
+    attribute_rows = tables.get("Attributes")
+    return (({row["Stat"] for row in class_rows} if class_rows else set())
+            | ({row["Stat"] for row in attribute_rows}
+               if attribute_rows else set())
+            | item_base_flat_stats(tables.get("ItemBases"))
+            | item_base_column_stats(tables.get("ItemBases"))
+            | set(ENGINE_SUPPLIED_BASES))
+
+
+def validate_enchantment_effects(tables: dict[str, list[dict]],
+                                 known: set[str]) -> list[str]:
+    """Every enchantment effect names a stat something supplies, and real tags.
+
+    BOTH FAIL SILENTLY WITHOUT THIS, as they do for a passive effect: an increase
+    on a stat nothing supplies multiplies a base of zero, and a required tag
+    nobody declared matches no skill, so the modifier applies to nothing.
+
+    A `flat` ROW IN THIS SHEET SUPPLIES ITS OWN STAT, for the reason
+    `validate_passive_effects` gives: the complaint is an increase with no base,
+    and a flat row is a base. "Retaliation damage applies to all enemies within
+    3 meters" is the case: nothing else supplies the retaliation radius.
+
+    WHICH ENCHANTMENT A ROW NAMES, AND WHETHER ITS WORDS AGREE, IS CHECKED WHEN
+    THE SHEET IS READ, in `enchantment_effects`, because that is where the
+    Enchantments sheet is in hand.
+
+    WHAT STILL CATCHES A STAT WITH NO ATTRIBUTE BEHIND IT IS THE ENGINE SIDE.
+    `Cataclysm.Enchantments.EveryStatAnEnchantmentGrantsHasAnAttributeBehindIt`
+    fails on it, which matters because `UCataclysmPlayerClassStats::ApplyTo`
+    drops such a stat in silence.
+    """
+    effects = tables.get("EnchantmentEffects")
+    if not effects:
+        return []
+
+    stats = _stats_with_a_base(tables) | {
+        row["Stat"] for row in effects
+        if str(row["ValueKind"]).lower() == "flat"}
+
+    problems = []
+    for row in effects:
+        if row["Stat"] not in stats:
+            problems.append(
+                f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is not a "
+                f"stat any class line, attribute, item base or engine base "
+                f"supplies, and no flat row in this sheet supplies it either")
+
+        for tag in (t.strip() for t in str(row["RequiredTags"]).split(",")):
+            if tag and tag not in known:
+                problems.append(
+                    f"EnchantmentEffects/{row['Name']}: undefined tag {tag}")
+
+    return problems
+
 TABLES = {
     "DungeonModifiers": dungeon_modifiers,
     "WeaponSkills": weapon_skills,
@@ -3782,6 +4045,7 @@ TABLES = {
     "MinionScaling": minion_scaling,
     "Attributes": attributes,
     "PassiveEffects": passive_effects,
+    "EnchantmentEffects": enchantment_effects,
     "SkillSlots": skill_slots,
     "ElementVisuals": element_visuals,
     "WeaponMeshes": weapon_meshes,
@@ -4687,7 +4951,8 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_affix_percent_agrees(tables)
                 + validate_implicit_stats_have_an_affix(tables)
                 + validate_element_visuals(tables, declared_tags(book))
-                + validate_passive_effects(tables, known_tags(book)))
+                + validate_passive_effects(tables, known_tags(book))
+                + validate_enchantment_effects(tables, known_tags(book)))
     if problems:
         print(f"FAIL: {len(problems)} validation problem(s):", file=sys.stderr)
         for line in problems[:40]:
