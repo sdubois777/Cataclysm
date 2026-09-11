@@ -76,6 +76,28 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsMelee = false;
 
 	/**
+	 * The blow came from range. Issue #666.
+	 *
+	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, beside `bIsMelee` and combined
+	 * with whatever the caller said the same way. `IsRanged` accepts
+	 * `Type.Ranged` or `Type.Projectile`, because a projectile is ranged, and
+	 * `ApplyTypedSpec` puts `Type.Ranged` on the damage effect so the defender can
+	 * read it. "You take 10%-30% more damage from ranged attacks" is what asks.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bIsRanged = false;
+
+	/**
+	 * The blow was a spell. Issue #666.
+	 *
+	 * SET FROM `Type.Spell` ON THE SKILL IN `ApplyHit`, which is `IsSpell`, and
+	 * carried to the defender as that tag. "You take 20%-40% less damage from
+	 * spells" is what asks.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bIsSpell = false;
+
+	/**
 	 * This blow may not critically strike, whatever the attacker's chance is.
 	 *
 	 * FOR A SUMMONED MINION. A minion's damage is dealt in its summoner's name,
@@ -741,6 +763,19 @@ public:
 
 	/** `Type.Spell`. See IsSpell. */
 	static const TCHAR* SpellTagName;
+
+	/** `Type.Spell`, or an invalid tag if the vocabulary has lost it. #666. */
+	static FGameplayTag SpellTag();
+
+	/**
+	 * Whether this skill strikes from range. Issue #666.
+	 *
+	 * `Type.Ranged` or `Type.Projectile`, because a projectile is ranged. It says
+	 * nothing about whether the skill is also a spell: the condition asking about
+	 * a ranged ATTACK is what refuses a spell. See
+	 * `ECataclysmStatCondition::HitIsRangedAttack`.
+	 */
+	static bool IsRanged(const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * The attacker's increased damage against this target's own damage type.

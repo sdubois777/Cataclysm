@@ -98,6 +98,23 @@ public:
 	 */
 	enum : int32 { WitherTheLivingAbility = 0, SoulfireAbility = 1 };
 
+	/**
+	 * What Soulfire IS, as gameplay tags. Issue #666.
+	 *
+	 * A PROJECTILE FIRED FROM RANGE, written the way a skill row's Tags cell is,
+	 * as the Brute's thrown rock is. Until issue #666 it was fired with no tags,
+	 * so its hit could not say it came from range.
+	 *
+	 * AND A SPELL, THE ONLY ENEMY ABILITY THAT IS ONE. No enemy ability was
+	 * tagged as a spell, so "you take 20%-40% less damage from spells" reached
+	 * nothing. The project owner's answer of 2026-09-11 is that every Succubus
+	 * ability is a spell, "As a spellcaster type", and Soulfire is the only one
+	 * of hers that hits. It carries `Type.Spell, Type.Projectile`, the tags the
+	 * heavy Wand and Staff skills carry: a spell, and ranged, and not a ranged
+	 * attack.
+	 */
+	static const TCHAR* SoulfireTags;
+
 	virtual float AttackReachCm() const override { return SoulfireRangeCm; }
 	virtual float SightRadiusCm() const override { return SuccubusNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return SuccubusRoamRadiusCm; }

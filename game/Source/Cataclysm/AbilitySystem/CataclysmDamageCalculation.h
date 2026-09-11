@@ -154,14 +154,40 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 * it: six of the seven enemy abilities since issue #1020, and 27 rows of
 	 * `game/Data/WeaponSkills.csv` including every Fist skill the Masochist uses.
 	 *
-	 * `Resolve` DOES NOT READ IT, and no arithmetic depends on it. Melee is not
-	 * a mitigation layer; what asks about it is a rule that fires when a blow
-	 * lands, which is `UCataclysmVitalAttributeSet`'s job rather than this one's.
-	 * Mutilation Mastery is the first: "Your melee critical strikes have a 5%
-	 * chance per point to apply Bleeding."
+	 * MELEE IS NOT A MITIGATION LAYER, and `Resolve` only hands this on. Since
+	 * issue #666 it passes it, with the two below, to the damage taken lookup,
+	 * for a modifier that asks about the hit. The first rule that asked about it
+	 * fires when a blow lands, which is `UCataclysmVitalAttributeSet`'s job:
+	 * Mutilation Mastery, "Your melee critical strikes have a 5% chance per point
+	 * to apply Bleeding."
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsMelee = false;
+
+	/**
+	 * Whether the blow came from range. Issue #666.
+	 *
+	 * READ FROM `Type.Ranged` ON THE EFFECT, the way `bIsMelee` is read from
+	 * `Type.Melee`. `UCataclysmSkillEffects::ApplyHit` sets it for a skill
+	 * carrying `Type.Ranged` or `Type.Projectile`, because a projectile is
+	 * ranged, and `ApplyTypedSpec` puts the one tag on the spec.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsRanged = false;
+
+	/** Whether the blow was a spell: `Type.Spell` on the effect. Issue #666. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsSpell = false;
+
+	/**
+	 * Whether the creature that threw the blow is a boss. Issue #666.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER, the creature the Perfect Aim check already
+	 * reads, with `ACataclysmEnemyCharacter::IsBoss`. A blow from anything that
+	 * is not an enemy creature is not from a boss.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromBoss = false;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
@@ -435,6 +461,17 @@ public:
 	static const TCHAR* MeleeTagName;
 
 	/**
+	 * The tags that say a blow came from range. Issue #666.
+	 *
+	 * `Type.Ranged` is "Any ranged skill regardless of delivery method" and
+	 * `Type.Projectile` is "Skills that fire a traveling entity". A skill carrying
+	 * either is ranged, and only `Type.Ranged` is put on the damage effect.
+	 * `UCataclysmSkillEffects::IsRanged` is the one place that reads both.
+	 */
+	static const TCHAR* RangedTagName;
+	static const TCHAR* ProjectileTagName;
+
+	/**
 	 * The tag that says a hit may not critically strike, whoever threw it.
 	 *
 	 * `Keyword.NoCrit`. IT EXISTS FOR SUMMONED MINIONS. A minion's blow is dealt
@@ -572,6 +609,12 @@ public:
 
 	/** `Type.Melee`, or an invalid tag if the vocabulary has lost it. #1032. */
 	static FGameplayTag MeleeTag();
+
+	/** `Type.Ranged`, or an invalid tag if the vocabulary has lost it. #666. */
+	static FGameplayTag RangedTag();
+
+	/** `Type.Projectile`, or an invalid tag if the vocabulary lost it. #666. */
+	static FGameplayTag ProjectileTag();
 
 	/** `Keyword.NoCrit`, or an invalid tag if the vocabulary has lost it. */
 	static FGameplayTag NoCriticalStrikeTag();

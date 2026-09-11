@@ -296,6 +296,63 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ClassResourceAtMaximum
 		UMETA(DisplayName = "Class Resource At Maximum"),
+
+	/**
+	 * The blow being taken is a melee attack: struck in melee, and not a spell.
+	 * Issue #666. "You take 15%-30% less damage from melee attacks" is a row.
+	 *
+	 * THE FIRST FOUR PREDICATES THAT ASK ABOUT THE BLOW rather than the
+	 * character. They read `FCataclysmStatConditions::Blow`, which only the
+	 * damage taken lookup in `UCataclysmDamageCalculation::Resolve` fills in.
+	 * Every other caller, the character sheet included, has no blow in hand and
+	 * is refused, the same as a character that is not Bleeding is refused
+	 * `WhileBleeding`.
+	 *
+	 * AN ATTACK IS A HIT THAT IS NOT A SPELL, which is where Path of Exile draws
+	 * the line: a skill is an attack or a spell, and melee and projectile are
+	 * further tags either can carry. No skill in the game is both melee and a
+	 * spell today; the rule is here so the three predicates agree on what an
+	 * attack is.
+	 *
+	 * `ConditionValue` IS UNUSED by all four, as it is by `WhileBleeding`, and
+	 * `tools/generate_datatables.py` refuses a value on a row carrying one.
+	 */
+	HitIsMeleeAttack
+		UMETA(DisplayName = "Hit Is Melee Attack"),
+
+	/**
+	 * The blow being taken is a ranged attack: from range, and not a spell.
+	 * Issue #666. "You take 10%-30% more damage from ranged attacks" is a row.
+	 *
+	 * A PROJECTILE COUNTS AS RANGED. The vocabulary says `Type.Projectile` is
+	 * "Skills that fire a traveling entity" and `Type.Ranged` is "Any ranged
+	 * skill regardless of delivery method"; `UCataclysmSkillEffects::IsRanged`
+	 * accepts either.
+	 *
+	 * A SPELL THAT FIRES A PROJECTILE IS NOT A RANGED ATTACK, because the row
+	 * says "attacks". It meets `HitIsSpell` instead. Two Demonic weapon skills,
+	 * the heavy Wand and Staff, are that shape.
+	 */
+	HitIsRangedAttack
+		UMETA(DisplayName = "Hit Is Ranged Attack"),
+
+	/**
+	 * The blow being taken is a spell: `Type.Spell` on the skill that threw it.
+	 * Issue #666. "You take 20%-40% less damage from spells" is a row.
+	 */
+	HitIsSpell
+		UMETA(DisplayName = "Hit Is Spell"),
+
+	/**
+	 * Whoever is on the other side of the blow is a boss. Issue #666.
+	 *
+	 * "You take 20%-40% less damage from Boss enemies" is a row, so for the
+	 * damage taken lookup the other side is the attacker. A boss is what
+	 * `ACataclysmEnemyCharacter::IsBoss` says: the Boss and Cataclysm Boss
+	 * rarities. A Herald is below that line, the same line the stun rule uses.
+	 */
+	OpponentIsBoss
+		UMETA(DisplayName = "Opponent Is Boss"),
 };
 
 /**
@@ -489,6 +546,49 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerMinionHeld
 		UMETA(DisplayName = "Per Minion Held"),
+};
+
+/**
+ * What one blow is, for a condition that asks about the blow being taken rather
+ * than the character taking it. Issue #666.
+ *
+ * PASSED IN RATHER THAN READ. Everything else in `FCataclysmStatConditions` is a
+ * property of the character and is read off it; this is a property of the one
+ * hit landing, so two hits an instant apart answer it differently.
+ * `UCataclysmDamageCalculation::Resolve` builds one from the hit it is resolving
+ * and hands it to the damage taken lookup, the only caller with a hit in hand.
+ *
+ * FALSE IS THE ONLY "NOTHING" THESE NEED, the argument `bIsBleeding` makes. A
+ * caller with no blow and a blow from no such source both answer no, and a
+ * bonus for being hit by a spell is correctly withheld from both.
+ *
+ * THREE FACTS RATHER THAN ONE KIND OF DELIVERY, because a hit can be two of them
+ * at once: a spell that fires a projectile is a spell and is ranged. The
+ * predicates, not this struct, decide what "an attack" is.
+ *
+ * THE OPPONENT'S DISTANCE IS NOT HERE YET. When the passive trees add it, it
+ * belongs here, with -1 meaning unknown, the way `SkillHealthCostPercent` works.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmBlowContext
+{
+	GENERATED_BODY()
+
+	/** Struck in melee: `Type.Melee` on the damage effect. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsMelee = false;
+
+	/** From range: `Type.Ranged` on the damage effect, which a projectile sets. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsRanged = false;
+
+	/** A spell: `Type.Spell` on the damage effect. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsSpell = false;
+
+	/** The character on the other side of the blow is a boss. See `IsBoss`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsBoss = false;
 };
 
 /**
@@ -702,6 +802,18 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SkillHealthCostPercent = -1.0f;
+
+	/**
+	 * What the blow being taken is. Issue #666.
+	 *
+	 * THE SECOND READING HERE THAT IS NOT A STATE OF THE CHARACTER, after the
+	 * skill's cost above, and passed in for the same reason. Only the damage
+	 * taken lookup in `UCataclysmDamageCalculation::Resolve` has a hit in hand;
+	 * every other caller leaves every fact false, and the four predicates that
+	 * read it refuse. See `FCataclysmBlowContext`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FCataclysmBlowContext Blow;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
