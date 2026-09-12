@@ -353,6 +353,84 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OpponentIsBoss
 		UMETA(DisplayName = "Opponent Is Boss"),
+
+	/**
+	 * The character moved in the last sample. Issue #41, slice 2.
+	 *
+	 * "While moving you deal 15%-30% increased damage" is a row. MOVING MEANS A
+	 * CHANGE OF POSITION, whatever caused it: walking, a movement skill that
+	 * travels, a charge, a shove or a pull. An instant relocation -- a blink, a
+	 * recall, a position swap, a Flicker, the Phasewalker modifier, the placement
+	 * of the player at a floor's start -- is not moving and adds no distance.
+	 *
+	 * `ConditionValue` IS UNUSED, as it is by `WhileBleeding`.
+	 */
+	WhileMoving
+		UMETA(DisplayName = "While Moving"),
+
+	/**
+	 * The character did not move in the last sample. Issue #41, slice 2.
+	 *
+	 * "While stationary you take 15%-30% less damage" is a row.
+	 *
+	 * NOT THE NEGATION OF `WhileMoving`, because a caller with no character must
+	 * be refused by both. The predicate asks for a character first.
+	 *
+	 * NOT A DELAY EITHER. A row wanting the character to have stood still for a
+	 * while wants `StationaryForSeconds` below.
+	 *
+	 * `ConditionValue` IS UNUSED.
+	 */
+	WhileStationary
+		UMETA(DisplayName = "While Stationary"),
+
+	/**
+	 * The character has not moved for AT LEAST THAT LONG. Issue #41, slice 2.
+	 *
+	 * "After remaining stationary for 3 seconds" and "while you have not moved in
+	 * the last 2 seconds" are rows.
+	 *
+	 * `ConditionValue` IS SECONDS AND THE COMPARISON IS AT LEAST: three seconds
+	 * of standing still meets a threshold of three.
+	 *
+	 * AN INSTANT RELOCATION RESETS THIS CLOCK though it adds no distance. That is
+	 * a judgement recorded in `docs/DECISIONS.md`: a teleport is not movement, but
+	 * a bonus that builds up while standing still should not survive one.
+	 */
+	StationaryForSeconds
+		UMETA(DisplayName = "Stationary For Seconds"),
+
+	/**
+	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
+	 * its own last attack. Issue #41, slice 2.
+	 *
+	 * "Your first melee attack after moving 5 metres deals 50% increased damage"
+	 * is a row. `ConditionValue` IS METRES and the comparison is at least.
+	 *
+	 * "FIRST" IS THE RESET RATHER THAN A FLAG, which is why this is a condition
+	 * and not an event. The distance is counted since the character's own last
+	 * attack and copied onto the blow when the skill is paid for, so the first
+	 * attack after moving five metres reads five or more and the next reads about
+	 * nothing.
+	 *
+	 * NEGATIVE MEANS NO BLOW IS IN HAND, the way `SkillHealthCostPercent` does.
+	 */
+	MetresMovedBeforeAttack
+		UMETA(DisplayName = "Metres Moved Before Attack"),
+
+	/**
+	 * The character has not attacked for AT LEAST THAT LONG. Issue #41, slice 2.
+	 *
+	 * "While you have not attacked in the last 3 seconds" is a row.
+	 * `ConditionValue` IS SECONDS and the comparison is at least.
+	 *
+	 * ITS OWN ATTACK, NOT A BLOW IT TOOK, which `WithinSecondsOfForeignDamage`
+	 * already covers. Every attack a character makes resets it, creatures and
+	 * minions included, so the reading means the same thing on both sides of a
+	 * fight. That is a judgement recorded in `docs/DECISIONS.md`.
+	 */
+	NotAttackedForSeconds
+		UMETA(DisplayName = "Not Attacked For Seconds"),
 };
 
 /**
@@ -814,6 +892,58 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FCataclysmBlowContext Blow;
+
+	/**
+	 * Whether the character moved in the last sample. Issue #41, slice 2.
+	 *
+	 * FALSE IS THE ONLY "NOTHING" THIS NEEDS, the argument `bIsBleeding` makes: a
+	 * caller with no character and a character standing still both answer no, and
+	 * a bonus for moving is correctly withheld from both. `WhileStationary` cannot
+	 * be this field negated, for that reason, and asks the clock below for a
+	 * character first.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsMoving = false;
+
+	/**
+	 * Seconds since the character last moved, or zero while it is moving.
+	 * Issue #41, slice 2.
+	 *
+	 * NEGATIVE MEANS THERE IS NO CHARACTER TO READ, which is the character sheet
+	 * and a test passing plain numbers. A character's clock starts when it spawns,
+	 * so one that has never moved reads the seconds since it spawned rather than
+	 * -1, and "stationary for 3 seconds" is true of it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMoved = -1.0f;
+
+	/**
+	 * Seconds since the character last attacked. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK, not a blow it took. Negative means there is no character to
+	 * read, and a character that has not attacked since it spawned reads the
+	 * seconds since then.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceOwnAttack = -1.0f;
+
+	/**
+	 * How far the character moved before the blow in hand, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * THE THIRD READING HERE THAT IS NOT A STATE OF THE CHARACTER, after the
+	 * skill's cost and the blow's facts, and passed in for the same reason: it is
+	 * measured when the skill is paid for and carried on the blow, so two blows an
+	 * instant apart from one character can hold different values.
+	 *
+	 * NEGATIVE MEANS NO BLOW IS IN HAND. Zero is a real reading and means the
+	 * character had not moved since its own last attack.
+	 *
+	 * NOT THE DISTANCE TO THE OPPONENT, which `FCataclysmBlowContext` above is
+	 * promised and which the hit notice already carries under that name.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresMovedBeforeBlow = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
