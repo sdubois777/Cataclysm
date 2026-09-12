@@ -910,7 +910,19 @@ bool FCataclysmModifierMarchBeatTest::RunTest(const FString& Parameters)
 	Mode->FloorNumber = 1;
 	Mode->BuildFloor();
 	Player.Walk(0.0f);
+
+	// THE BASELINE IS TAKEN AFTER A BEAT HAS ALREADY RUN ON THE NEW FLOOR, and
+	// this is the correction to a first version of this test that failed.
+	// Changing the floor applies its rules, Starvation lowers maximum health, and
+	// the stat refresh that follows moves the health attribute -- upwards here,
+	// by 3.83 -- so a baseline read on the line after `BuildFloor` captures a
+	// number that is still settling. The test then reported the rule taking
+	// NEGATIVE damage. Reading it after one beat measures what the beat does and
+	// nothing else, which is the only thing this assertion is about.
+	CataclysmTestWorld::RunClock(World, 10.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	const float OnAnotherFloor = Player.Read(Vital::GetHealthAttribute());
+
 	CataclysmTestWorld::RunClock(World, 10.0f);
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	TestEqual(TEXT("a floor without Forced March takes nothing"),
@@ -1002,8 +1014,21 @@ bool FCataclysmModifierCleanseTest::RunTest(const FString& Parameters)
 	// A BOSS'S DEATH GIVES EVERY POINT BACK AND GRANTS THE REWARD. Killed with a
 	// real blow so the announcement travels the path the game uses, through
 	// UCataclysmSkillEffects::MarkDead.
+	//
+	// SPAWNED WITH COLLISION HANDLING SET, and this is the correction to a first
+	// version that failed. The Common above is still standing, creatures carry a
+	// capsule, and the default handling refuses a spawn whose place is blocked --
+	// so `SpawnActor` answered null and the test reported "a boss spawned" as the
+	// failure, which names the symptom and not the cause. Asking the engine to
+	// adjust the location says what the test actually needs: a boss somewhere,
+	// not a boss at one exact point. A larger distance chosen by eye would work
+	// today and break when somebody changes a capsule radius.
+	FActorSpawnParameters BossSpawn;
+	BossSpawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
-		FVector(700.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, BossSpawn);
 	if (!TestNotNull(TEXT("a boss spawned"), Boss))
 	{
 		return false;
