@@ -509,10 +509,39 @@ bool FCataclysmTargetDistanceMinionTest::RunTest(const FString&)
 		SpawnCreatureAt(World, FVector(0.0f, 2.0f * M, 0.0f), 1'000'000.0f);
 	ACataclysmEnemyCharacter* FarControl =
 		SpawnCreatureAt(World, FVector(7.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	// A SECOND SUMMONER WITH NO DISTANCE ROW AT ALL, AND ITS OWN MINION. This
+	// pair is the measuring stick, and the test was WRONG WITHOUT IT.
+	//
+	// The first version compared the subject minion's near blow against its own
+	// far blow and asserted they were equal. A guard proof case then folded the
+	// unknown-distance guard into the comparison, which makes -1 count as within
+	// any threshold -- so BOTH of that minion's blows earned the bonus, stayed
+	// equal to each other, and the test passed. The case fired on nothing.
+	//
+	// Two blows compared against each other cannot see a fault that lifts them
+	// both. This pair can: it earns nothing under any of these faults, because
+	// its summoner has no row to earn.
+	//
+	// BOTH SUMMONERS STAND AT THE ORIGIN, because an actor built by `MakeArmed`
+	// has no root component and cannot be moved, so the two are identical in
+	// every way except the stat line -- which is what makes the comparison mean
+	// something. Their minions and targets are placed apart so no spawn is
+	// displaced by another's collision.
+	FArmedActor Plain = MakeArmed(World);
+	ACataclysmMinion* PlainImp = Plain.Actor
+		? ACataclysmMinion::Spawn(Plain.Actor, FVector(0.0f, 1.0f * M, 0.0f),
+								  /*Lifetime=*/20.0f, /*bBurns=*/false)
+		: nullptr;
+	ACataclysmEnemyCharacter* PlainStruck =
+		SpawnCreatureAt(World, FVector(0.0f, 3.0f * M, 0.0f), 1'000'000.0f);
+
 	if (!TestNotNull(TEXT("a minion"), Imp)
 		|| !TestNotNull(TEXT("a creature for the minion to strike"), Struck)
 		|| !TestNotNull(TEXT("one for the summoner to strike"), Control)
-		|| !TestNotNull(TEXT("and one across the room"), FarControl))
+		|| !TestNotNull(TEXT("and one across the room"), FarControl)
+		|| !TestNotNull(TEXT("a summoner with no distance row"), Plain.Actor)
+		|| !TestNotNull(TEXT("its minion"), PlainImp)
+		|| !TestNotNull(TEXT("and a creature for that minion"), PlainStruck))
 	{
 		return false;
 	}
@@ -564,6 +593,23 @@ bool FCataclysmTargetDistanceMinionTest::RunTest(const FString&)
 	TestEqual(TEXT("A MINION DEALS THE SAME INSIDE THE THRESHOLD AS OUTSIDE IT, "
 				   "so it earned none of the summoner's distance bonus"),
 			  MinionDealt, MinionDealtFar, 0.01f);
+
+	// AND THE SAME AS A MINION WHOSE SUMMONER HAS NO SUCH ROW AT ALL. This is the
+	// assertion that survives a fault lifting both of the blows above together,
+	// which the line above cannot see. The two summoners are identical but for
+	// the stat line, so the two minions must deal the same.
+	const float BeforePlain = HealthOf(PlainStruck);
+	PlainImp->AttackTarget(PlainStruck);
+	const float PlainDealt = BeforePlain - HealthOf(PlainStruck);
+	if (!TestTrue(TEXT("the other minion's blow landed"), PlainDealt > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(*FString::Printf(
+				  TEXT("AND THE SAME AS A MINION WHOSE SUMMONER CARRIES NO "
+					   "DISTANCE ROW: %.2f against %.2f"),
+				  MinionDealt, PlainDealt),
+			  MinionDealt, PlainDealt, 0.01f);
 
 	return true;
 }
