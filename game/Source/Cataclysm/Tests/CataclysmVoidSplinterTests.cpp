@@ -600,6 +600,96 @@ CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterBossTakingMoreTest,
 	return true;
 }
 
+CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterResistedBossTest,
+	"Cataclysm.VoidSplinter.ABossWithResistanceStaysAboveHalfBecauseTheFloorComesFirst")
+{
+	using namespace CataclysmVoidSplinterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// WHAT THE FIRST OF THE TWO CHECKS DECIDES ON ITS OWN. The floor is worked
+	// out BEFORE the target's defences, so a boss's resistance then takes its
+	// part of a tick that has already been held to the line, and the boss
+	// approaches half without ever arriving. Were the floor checked only after
+	// the defences, the whole tick would be resisted and then capped, and the
+	// boss would land exactly on half instead.
+	//
+	// WITHOUT THIS TEST, BREAKING THE FIRST CHECK CHANGED NOTHING ANY TEST
+	// MEASURED, because the second check holds the same line. A guard proof on
+	// 2026-09-12 fired on nothing at all, which is what this test answers.
+	//
+	// THE ARITHMETIC, at 10,000 health, 50% resistance and 30% a tick: with both
+	// checks the boss sits at about 5,143 after six ticks; with the first one
+	// gone it is exactly 5,000 by the fifth. The two are 143 apart, which no
+	// tolerance here can blur.
+	ACataclysmEnemyCharacter* Boss = SpawnCreature(World,
+		ACataclysmEnemyCharacter::FirstBossRarityStep, FVector(1'200.0f, 0.0f, 0.0f));
+	ON_SCOPE_EXIT
+	{
+		if (IsValid(Boss))
+		{
+			Boss->Destroy();
+		}
+	};
+	if (!TestNotNull(TEXT("a boss"), Boss))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* BossSystem =
+		UCataclysmTargeting::AbilitySystemOf(Boss);
+	if (!TestNotNull(TEXT("its ability system"), BossSystem))
+	{
+		return false;
+	}
+	BossSystem->SetNumericAttributeBase(
+		UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+
+	// THE PRECONDITIONS. Without the resistance this test is the boss test
+	// above; without the rung it is a test about nothing.
+	TestTrue(TEXT("rung 4 is a boss"), Boss->IsBoss());
+	TestEqual(TEXT("it starts at 10,000"),
+		HealthOf(BossSystem), StartingHealth, 0.01f);
+	TestEqual(TEXT("and resists half of what reaches it"),
+		BossSystem->GetNumericAttribute(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute()),
+		50.0f, 0.01f);
+
+	const FSplinterFighter Attacker(World);
+	TestTrue(TEXT("a Void Splinter of 30% a tick lands on it"),
+		UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+			Attacker.Actor, Boss, 0.3f, 10.0f, SplinterTag()));
+
+	for (int32 Step = 0; Step < 60; ++Step)
+	{
+		CataclysmTestWorld::RunClock(World, 0.1f);
+	}
+
+	const float Left = HealthOf(BossSystem);
+	const float Half = StartingHealth * 0.5f;
+	AddInfo(FString::Printf(
+		TEXT("In six seconds the resisted boss fell to %.0f, and half of its "
+			 "maximum is %.0f."), Left, Half));
+
+	// STRICTLY ABOVE HALF, AND BY MORE THAN A ROUNDING. 100 is well inside the
+	// 143 that separates the two orders and well outside anything the clock's
+	// step could account for.
+	TestTrue(FString::Printf(
+		TEXT("a resisted boss is still above half, at %.0f"), Left),
+		Left > Half + 100.0f);
+
+	// AND IT IS REALLY FALLING, so the test cannot pass because nothing landed.
+	TestTrue(FString::Printf(TEXT("and it did take damage, down from 10,000 to %.0f"),
+							 Left),
+		Left < StartingHealth - 1'000.0f);
+	return true;
+}
+
 #undef CATACLYSM_VOID_SPLINTER_TEST
 
 #endif // WITH_AUTOMATION_TESTS
