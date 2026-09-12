@@ -2,6 +2,246 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — Healing received is one stat covering every route that restores health, and Death's Embrace builds it up while a player lingers on a floor
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h` and `.cpp`,
+`CataclysmRegeneration.cpp` and `CataclysmSkillTemplates.cpp` beside them;
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`;
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` and
+`CataclysmDungeonGameMode.h` and `.cpp`; and the tests beside them.
+**Applied.** Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41), the fifth slice of
+making the 117 dungeon modifiers do what their rows say.
+
+### What was missing
+
+Nothing in the game could reduce the health that healing restores. One row of
+`game/Data/DungeonModifiers.csv` is about exactly that and did nothing:
+
+| Row | Its words |
+| :-- | :-- |
+| `Death_Death_s_Embrace`, weight 10.0 | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." |
+
+**The row states no number at all**, and three more rows in the same file wait on
+the same stat — Necrotic Ground's "reduces your healing effectiveness by 50%
+while standing in it", Withered Ground's 80%, and the enchantment rows
+`Negative_Healing_effects_on_you_are_reduced_by_30_50`,
+`Negative_Healing_effects_are_reduced_by_50_75` and
+`Positive_Disease_effects_reduce_enemy_healing_by_50_100`.
+
+**A healing CEILING already existed and is a different thing.**
+`HealingCeilingReduction`, from issue
+[#988](https://github.com/sdubois777/Cataclysm/issues/988), caps how HIGH healing
+may take a character. It cannot express "healing restores less", and the
+difference matters to a player: someone at half health under a 50% reduction is
+healed half as fast and may still reach full.
+
+### The owner's ruling on scope
+
+**"Healing received" covers everything that restores health** — health
+regeneration, life leech and direct healing alike — chosen from three options put
+to the project owner. The third option was "everything, and reword the
+enchantment rows in the same pass"; they chose the first, so the rewording is
+deferred and recorded as issue
+[#1609](https://github.com/sdubois777/Cataclysm/issues/1609). Until it happens,
+three enchantment rows quietly do more than their words say, and the rows that
+name regeneration or leech ALONE are narrower modifiers that stack with the broad
+one.
+
+### What is built
+
+**One new stat, `healing_received_reduction`**, holding percentage points taken
+off each amount of health restored:
+
+    restored = offered × (100 − clamp(reduction, 0, 100)) ÷ 100
+
+It is modelled on the healing ceiling, which is the closest existing thing: a
+share of a hundred held inside it, set by something other than gear, read where
+health is restored. **A reduction rather than a multiplier**, which is the
+ceiling's own argument repeated because it holds here too — a stat holding the
+multiplier would need 0 to mean "no change", which reads as "no healing at all",
+and two sources of it would sum in the flat bucket and cancel the effect. Written
+as a reduction, the default of 0 means no change with no sentinel, and two curses
+stack in the restrictive direction, which is what a player expects two curses to
+do.
+
+**Health only**, like the ceiling and for its reason: mana and the energy shield
+come through the same function, and a stat named for healing that silently cut
+mana would make one word mean two things ten lines apart. **Reducing the
+regeneration RATES of any pool needs no new stat at all** — a Less multiplier on
+`health_regen` or `mana_regen` reaches it through the stat pipeline, the way
+Starvation already works on `max_health`. That is what Withered Ground's
+"recovery (regen/leech)" wants, and it is why that row is not this stat's
+business.
+
+**It works on any character rather than the player alone**, because "Disease
+effects reduce enemy healing" needs it to.
+
+**Death's Embrace reads it on the quarter-second beat**: one stack every ten
+seconds spent on the floor, each taking ten percentage points off healing, up to
+five stacks, and the stairs clear them.
+
+### Health is restored in THREE places, and the count was wrong until this slice
+
+This is the part worth reading twice. The reduction had to be applied wherever
+health arrives, so the sites were enumerated — and the enumeration on record was
+wrong:
+
+| Route | Reads the ceiling? | Reads the reduction? |
+| :-- | :-- | :-- |
+| `UCataclysmRegeneration::TopUp` — health regeneration and life leech | yes | **yes** |
+| `UCataclysmAuraSkill::NoteBlowTaken` — the Fist Ultimate Living Pyre | no, [#1607](https://github.com/sdubois777/Cataclysm/issues/1607) | **yes** |
+| Sacrifice — an enemy devours an ally for a quarter of its maximum health | no | no, [#1611](https://github.com/sdubois777/Cataclysm/issues/1611) |
+
+**The sentence that caused it is exactly true**: "`TopUp` is the one place health
+regeneration and life leech both restore health." It was read twice as "the one
+place health is restored", which is what produced issues
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607) and
+[#1608](https://github.com/sdubois777/Cataclysm/issues/1608), and it nearly
+shipped a curse that Living Pyre ignored — silently, and in the player's favour.
+The third route was found by re-deriving the count from every
+`ApplyModToAttribute` and `SetNumericAttributeBase` in the module rather than
+trusting the sentence.
+
+**The reduction is applied at each site rather than in a shared helper, and that
+is deliberate.** A helper would carry the healing ceiling too, and Living Pyre
+escaping the ceiling is a separate open question. Writing one would have decided
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607) in passing.
+
+**Sacrifice is left alone on purpose**, not overlooked: it writes a BASE value
+with `SetNumericAttributeBase` where the other two modify the current value with
+`ApplyModToAttribute`. Whether healing should write a base value at all is a real
+question and it interacts with
+[#1607](https://github.com/sdubois777/Cataclysm/issues/1607), so it is filed
+rather than folded in.
+
+**And the awkward consequence, stated rather than left to be discovered: the
+reason this stat works on any character is not yet served.** It was built that
+way for the enchantment row
+`Positive_Disease_effects_reduce_enemy_healing_by_50_100`, "Disease effects
+reduce enemy healing by 50%-100%". A creature devouring its pack-mate is the
+clearest enemy self-heal in the game, and it is on the one route that does not
+read the stat. **So that row still cannot be written, and the reason has changed
+rather than gone away** — from "the stat only works on the player" to "one of
+three routes that restore health does not read it". Building it for any character
+was still right, because it is cheap now and expensive to retrofit, but it does
+not finish that row.
+[#1611](https://github.com/sdubois777/Cataclysm/issues/1611) is what does.
+
+### One applier for every rule that works on the beat
+
+`UCataclysmDungeonModifierEffects::ApplyToCharacter` replaces the **whole** set of
+dungeon stat modifiers. Slice 2's `StepNihilsEmbrace` assembled its own
+`FCataclysmPlayerFloorEffects` and set only the two resistance fields, which was
+correct while it was the only rule working on the beat.
+
+**A second such rule written the same way zeroes the first's field every time it
+applies**, so on a floor carrying both they undo each other four times a second
+and which one survives depends on the order they are called in. So the per-beat
+state stays on the game mode and one `ApplyChangingFloorEffects` assembles all of
+it; no rule builds a partial set of effects any more. Nothing about either rule
+on its own reveals this, which is why the test for it puts both rules and
+Starvation on one floor and asserts all three survive.
+
+### Three judgements, all of them numbers
+
+Death's Embrace states no number, so every figure is a judgement made under the
+standing arrangement that a session takes a number the design leaves open from
+genre research and records it here for the owner's review. **None is a design
+statement.** `test_deaths_embrace_states_no_number_of_its_own` fails if the row
+ever states one of its own, at which point these stop being judgements.
+
+1. **A stack reduces healing received by 10 percentage points, and five is the
+   most**, so 50% at worst. Fifty per cent sits inside Path of Exile's published
+   range for map modifiers and below its top, which suits a row whose danger
+   weight is 10 where the heaviest rows in the set are 15. **Not 60**: that is the
+   top of the published range, and this is not the harshest recovery row in the
+   set — Necrotic Ground states its own 50% and Withered Ground its own 80%, and
+   the data fixes both rather than leaving them to judgement.
+2. **Five stacks is this project's own cap**, matching Forced March, so a player
+   reads the two alike.
+3. **A stack arrives every 10 seconds**, so the cap is reached after fifty. This
+   is the one figure with no precedent anywhere: no game found publishes an
+   interval at which a healing-reduction stack arrives, so it rests on the row's
+   own word "periodically" and on what a floor lasts. Fifty seconds is about one
+   floor's fighting, which fits a row whose stacks "reset when entering a new
+   floor" — a player who clears briskly never sees the cap, and one who lingers
+   does.
+
+### What the genre settles here, and what it does not
+
+**Path of Exile publishes a range for exactly this, on MAP modifiers**, which are
+the closest thing in the genre to a dungeon modifier: from "10% less Recovery
+Rate" to "60% less Recovery Rate of Life and Energy Shield" on the Smothering
+variants, with items at "(20—30)% reduced Recovery rate of Life and Energy
+Shield" and keystones at "50% less Life Regeneration Rate"
+([poedb.tw](https://poedb.tw/us/Recovery)).
+
+**THAT WORDING IS THE FETCH TOOL'S SUMMARY, NOT THE PAGE'S TEXT.** The tool
+returns a written summary of a page rather than the page, which is the same
+caveat the 2026-09-11 entry records for its own Maxroll citation.
+
+**Diablo IV supplied nothing.** Three searches and one fetch found no dungeon
+affix that reduces healing; the affix page returned navigation only.
+
+**So the research settles the SIZE and not the CADENCE.** The range 10–60% is
+real evidence that a recovery penalty of this size is shipped and survivable. The
+interval between stacks is genuinely specific to this game and is a judgement,
+labelled as one above rather than presented as derived.
+
+### These numbers are expected to need tuning, and here is the honest reason
+
+The one comparable lever anywhere with published figures — a World of Warcraft
+dungeon affix adding a small share of maximum health per stack — **was retuned
+twice in eleven days by its own developers**, which the entry below already
+records for Forced March. The same argument applies to all three figures here:
+they are dials to be settled against real play rather than decisions to be argued
+to a conclusion first.
+
+### The flat bucket, which is new for a dungeon rule
+
+Every dungeon rule before this took a share of a stat that already had a value —
+maximum health, a resistance — so a Less multiplier said what it meant.
+`healing_received_reduction` is **zero for every class**, and a multiplier on zero
+is zero however large it is, so Death's Embrace adds percentage points in the flat
+bucket instead. `DungeonModifierEffectsAddFlat` is the third of the three helpers
+and exists only for that reason.
+
+The stat name is registered in `UCataclysmPlayerClassStats::StatToAttribute`
+because that map's second pass iterates **itself** rather than the stats a class
+declares, so a name in it is resolved on every refresh even with no class base —
+and a stat a rule grants that the map does not name reaches no attribute at all
+and reports nothing.
+
+### A beat is not quite a quarter of a second, and that is now written down
+
+The rules on this beat measure time in beats. `ACataclysmDungeonGameMode::Tick`
+sets its accumulator back to zero rather than subtracting the interval —
+deliberately, because "a frame long enough to cover several intervals should bring
+one wave in, not four" — so below four frames a second one beat covers more than
+a quarter of a second and these rules run slow. It is in the player's favour,
+Forced March's per-beat share has the same property, and the fix belongs in the
+rules rather than in the beat because the wave arrival needs the zeroing it has.
+Issue [#1613](https://github.com/sdubois777/Cataclysm/issues/1613).
+
+**So "fifty seconds to the cap" means fifty seconds of beats.** At a playable
+frame rate the two are the same thing.
+
+### What the player cannot see yet
+
+**The floor panel says "healing 30% less" and nothing says which stack they are
+on.** `Describe` reports the reduction as what the player loses rather than as a
+stack count, because the panel is read by someone deciding whether to go on and
+"healing 30% less" answers that where "3 stacks of Embrace of Death" does not.
+But the row names a debuff, and there is no debuff icon, no stack counter and no
+moment at which the game says a stack has arrived. The rule's existence is
+visible; its state is not — the same gap issue
+[#1591](https://github.com/sdubois777/Cataclysm/issues/1591) records for slice 2,
+and it is recorded rather than left unsaid.
+
+---
+
 ## 2026-09-12 — The owner's answers on the skill slot count, regeneration in combat, an armour row's stacking, and what Reaper's Embrace restores
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, changed in six places by this entry.
