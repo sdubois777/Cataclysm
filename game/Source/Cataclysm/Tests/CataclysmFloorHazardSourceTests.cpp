@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
@@ -306,8 +307,8 @@ bool FCataclysmFloorHazardSourceLivesForOneFloor::RunTest(const FString&)
 
 	// ONE PER FLOOR. A second hazard on the same floor must be dealt in the same
 	// name, or two hazards on one floor would be two different attackers.
-	TestEqual(TEXT("and asking again gives the same one, not a second"),
-		ACataclysmFloorHazardSource::ForFloor(World), First);
+	TestTrue(TEXT("and asking again gives the same one, not a second"),
+		ACataclysmFloorHazardSource::ForFloor(World) == First);
 
 	UCataclysmFloorContents::ClearTheFloor(*World);
 
@@ -320,8 +321,8 @@ bool FCataclysmFloorHazardSourceLivesForOneFloor::RunTest(const FString&)
 	ACataclysmFloorHazardSource* Next =
 		ACataclysmFloorHazardSource::ForFloor(World);
 	TestNotNull(TEXT("and the next floor makes its own"), Next);
-	TestNotEqual(TEXT("which is a different actor from the last floor's"),
-		Next, First);
+	TestTrue(TEXT("which is a different actor from the last floor's"),
+		Next != First);
 
 	return true;
 }

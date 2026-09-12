@@ -131,6 +131,14 @@ private:
 	 * and amplifies enemy stats. A hazard serving those has to search for
 	 * everyone and then branch per target, so this decides which way round the
 	 * branch reads and not who is affected.
+	 *
+	 * AND THE SEARCH CANNOT MAKE THAT BRANCH FOR A HAZARD, WHICH IS WHY THE
+	 * HAZARD HAS TO. `UCataclysmTargeting::Gather` takes a `bEveryone` path,
+	 * and on that path it never consults attitude at all: it asks only that the
+	 * actor is valid, carries an ability system and is not dead. So a hazard
+	 * searching with `FindEveryoneInLine` is handed both sides mixed together
+	 * and must sort them itself. The side recorded here is what it sorts them
+	 * against.
 	 */
 	FGenericTeamId TeamId;
 };
