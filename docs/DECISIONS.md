@@ -2,6 +2,174 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — An attacker can read how far away its target is, and two named sets become the fifth and sixth that do anything
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillEffects.h`
+and `.cpp`, `CataclysmMinion.cpp`; the Enchantment Effects sheet of
+`docs/All_Things_Cataclysm.xlsx` and `game/Data/EnchantmentEffects.csv` generated
+from it; `tools/generate_datatables.py`; and the table of held sets below, which
+loses two rows. Issue
+[#1596](https://github.com/sdubois777/Cataclysm/issues/1596). **Applied.**
+
+### What was missing
+
+Nothing let the character dealing a blow read how far away its target was. Two
+named sets were written and unbuildable because of it:
+
+| Row | What it says |
+| :-- | :-- |
+| Brute's Heart, 2-piece | "You gain 25% increased damage against enemies that are within 5 meters of you" |
+| Demon King's Regalia, 2-piece | "You deal 25% more damage to enemies that are within 5 meters of you." |
+
+The reading built the day before, `attacker_beyond_metres`, is the DEFENDER asking
+how far away the character hitting it stood. It cannot serve these: the structure
+describing a blow reaches exactly one lookup, the defender's damage-taken step.
+That was counted rather than read off a comment — 33 calls of
+`UCataclysmAbilitySystemComponent::StatForSkill` outside tests, and exactly one
+passes a blow.
+
+### A per-blow number and an ordinary condition, not a value added in code
+
+`target_within_metres` holds when the target stood at most N metres away.
+**At or within, because both rows write "within 5 meters"**, so a target at
+exactly 5 metres earns the bonus. That is the opposite boundary from
+`attacker_beyond_metres`, whose node writes "more than", and the two sit next to
+each other in the enumeration so the difference is read rather than assumed. The
+project already keeps `health_at_or_below` and `health_below` apart for this
+reason.
+
+**THE ISSUE ASKED FOR A DIFFERENT SHAPE AND IT WAS WRONG.** It proposed a third
+term beside `DamageAgainstTypeOf` in `UCataclysmSkillEffects::ApplyHit` — a value
+computed in code and added into the increases sum. **That cannot express the
+second row.** Brute's Heart says "25% increased damage" and Demon King's Regalia
+says "25% more damage"; the pipeline is
+`(base + flat) x (1 + sum of increases) x product of more`, and the whole reason
+it carries three buckets is that those two words differ. A term added into one
+sum would have built the first row and silently mis-built the second, which looks
+correct on a fresh character and wrong on an invested one.
+
+**The route used instead already carried two facts of exactly this kind.** Both
+attacker-side lookups, `AttackDamageIncreasesForSkill` and
+`AttackDamageMoreForSkill`, already take the skill's health cost and the metres
+the character moved before the blow, and `FCataclysmStatConditions` already held
+the second with the same "−1 means not known" convention. The target distance is
+a third number of that shape. It serves both buckets, carries its threshold in
+the row rather than in code, and respects a modifier's required tags.
+
+`UCataclysmSkillEffects::ApplyHit` measures it once with
+`UCataclysmTargeting::MetresBetween`, which the previous change made the one
+definition of the distance between two actors, and passes it to the attacker's
+attack damage in both buckets and to its spell damage. Zero is a real distance,
+because two characters can stand on one spot, so the unknown guard is written out
+rather than folded into the comparison. **Folding it would be worse here than for
+the "beyond" predicate:** −1 is at or within every threshold a sheet may write, so
+every distance-conditioned row would hold on every blow that knew nothing.
+
+### The distance is the constraint and the melee tag is not honoured — the owner's ruling
+
+**This is a ruling by the project owner on 2026-09-12, not a judgement by the
+sessions doing the work.** Both enchantment rows carry a `Scope.MeleeOnly` tag.
+The owner was given three options — the distance alone, honour the melee tag as
+well, or shorten the threshold below melee reach — and chose the distance alone.
+**Any attack type earns the bonus when the target is within 5 metres, so a ranged
+or spell build has to close the distance to get it.**
+
+The measurements that made it a real question, taken the same day: the longest
+melee weapon shape in `game/Data/ItemBases.csv` reaches 3.3 metres, enemies
+default to 2 metres, and specific creatures use 90 centimetres. Eight melee-tagged
+skills state a reach beyond 5 metres, up to 14, but those are movement skills
+whose stated range is how far the character travels before striking, so the
+distance at the moment of the blow is still short.
+
+**So the condition is meaningful today and would be nearly vacuous if that scope
+tag were ever honoured** — every blow it could apply to would be inside 5 metres.
+Nothing in the game reads any scope tag except `Scope.Global`; that gap, across
+seven distinct tags and 46 occurrences, is issue
+[#1620](https://github.com/sdubois777/Cataclysm/issues/1620). The two rows
+therefore leave their required tags empty, and a test asserts that they are empty,
+so filling them in later is a visible change rather than one noticed in play.
+
+### A minion's blow earns none of it, and the number it would have read was defensible
+
+A minion strikes with the SUMMONER as the attacker, so every attacker-side reading
+reaches its blow unless something stops it. A distance measured there is the
+summoner's distance to the minion's target.
+
+**That number is defensible by the row's own words.** "Enemies within 5 meters of
+you" asks where the wearer stands, so a minion striking something twenty metres
+from the player would correctly earn nothing, and one striking something three
+metres away arguably should. The refusal does not rest on the number being wrong.
+
+**It rests on the genre, which is unambiguous.** A player's conditional damage
+bonus should not reach a minion's blow at all. Path of Exile treats a minion's
+actions as separate from its summoner's and general player damage modifiers do not
+apply unless they mention minions
+(<https://pathofexile.fandom.com/wiki/Minion>). Last Epoch's own support
+documentation says a character's modifiers "will not apply unless minions are
+specified"
+(<https://support.lastepoch.com/hc/en-us/articles/46361899830555-Minions>, and
+<https://maxroll.gg/last-epoch/resources/damage-explained>).
+
+So a minion's blow reports −1 and the predicate refuses. It is the seventh
+exclusion on that blow, beside no critical strike, no penetration, no weapon
+sub-type, no leech, no retaliation and no ailment chance. **It is stated rather
+than left to happen:** a row scoped to a skill tag already cannot match a minion's
+blow, because that blow passes an empty tag container — but that is a coincidence,
+not a safeguard, and it would disappear the moment a minion's blow carried its
+skill's tags.
+
+### Six rows, not four, and the reason is the ruling above
+
+The bonus rows say "damage", not "attack damage". With the melee restriction ruled
+out, each set gets two bonus rows — attack damage and spell damage — so a spell
+build can earn it as the ruling says. Four rows would have reintroduced through
+the implementation a restriction the design had just removed.
+
+| Set | Row | Stat | Kind | Value | Condition |
+| :-- | :-- | :-- | :-- | --: | :-- |
+| Brute's Heart (9) | 2-piece bonus | `attack_damage` | increased | 25 | `target_within_metres` 5 |
+| Brute's Heart (9) | 2-piece bonus | `spell_damage` | increased | 25 | `target_within_metres` 5 |
+| Brute's Heart (9) | drawback | `damage_taken` | more | 10 | none |
+| Demon King's Regalia (11) | 2-piece bonus | `attack_damage` | **more** | 25 | `target_within_metres` 5 |
+| Demon King's Regalia (11) | 2-piece bonus | `spell_damage` | **more** | 25 | `target_within_metres` 5 |
+| Demon King's Regalia (11) | drawback | `damage_taken` | more | 20 | `hit_is_ranged_attack` |
+
+**Each set is written whole**, which is the rule stated above the table of held
+sets: a set's first bonus and its drawback turn on at the same threshold, so one
+half alone would be a bonus with no cost. Neither drawback needed anything new —
+"You take 10% more damage from all sources" needs no condition at all, and "Ranged
+attacks deal 20% more damage to you" needs only the ranged flag a hit has carried
+since [#1578](https://github.com/sdubois777/Cataclysm/pull/1578).
+
+### What this is worth to a player, stated correctly
+
+**Four of the fourteen named sets did something before this; six do now.** The four
+were Archon's Aegis (5), Mana Weaver (8), Divine Retribution (16) and Warlord's
+Will (17); Brute's Heart (9) and Demon King's Regalia (11) join them. Rows
+belonging to a set go from 8 of 81 to 14 of 87.
+
+**An earlier draft of this entry and two messages about it said no set worked at
+all — "0 of 81".** That was false and is recorded here because the figure was
+repeated with emphasis before it was checked. It came from filtering the effect
+rows with `"Set" in row["Enchantment"]`, a column that holds names like
+`Positive_Brute_s_Heart_2_Piece_Bonus_...` while the type lives in a different
+file. The filter matched nothing and returned a clean zero that read as a
+measurement. What caught it was
+`tools/tests/test_enchantment_effects_match_the_row_text.py` failing on its pinned
+`SETS_THAT_WORK`, in a file this change had to touch anyway.
+
+### The table of held sets loses two rows in this change
+
+Two rows of that table said Brute's Heart and Demon King's Regalia were waiting
+for a reading they now have. **A stale claim in the authoritative design record is
+a live falsehood**, so the heading goes from ten sets to eight and those two rows
+are deleted here rather than left for later work. The cost is a second conflict
+region in the file every rebase already conflicts on, which is a known and mapped
+cost; a table that tells the next reader two sets are still blocked is not.
+
+---
+
 ## 2026-09-12 — Healing received is one stat covering every route that restores health, and Death's Embrace builds it up while a player lingers on a floor
 
 **Affects:**
@@ -1265,7 +1433,7 @@ base.
 | Divine Retribution (16) | `max_energy_shield`, increased, 25 | `max_health`, increased, -10 |
 | Warlord's Will (17) | `armor`, increased, 25 | `movement_speed`, increased, -10 |
 
-**Ten sets are held, and each waits for something its own rows need.** A set is
+**Eight sets are held, and each waits for something its own rows need.** A set is
 written whole or not at all, so a set whose bonus cannot be built does not get
 its drawback either, and the other way round.
 
@@ -1273,9 +1441,7 @@ its drawback either, and the other way round.
 | :-- | :-- |
 | Tyrant's Chains (6) | minion stats reaching a minion. Its bonus is minion damage and its drawback minion maximum health, and nothing in the game reads `minion_damage`. |
 | Chronomancer's Time-Lock (7) | the duration of the debuffs a player applies, and of the buffs they apply to themselves. Only the duration of debuffs applied to the player exists. |
-| Brute's Heart (9) | how far away the target is, read by the ATTACKER. Its bonus is increased damage against enemies within 5 metres. The blow context cannot serve it: of the 33 calls of `StatForSkill` outside tests, exactly one passes a blow, and that one supplies the defender's damage taken. The attacker-side route is [#1596](https://github.com/sdubois777/Cataclysm/issues/1596). |
 | Spellblade's Will (10) | a hit that triggers another ability. Its bonus is a chance on melee attacks to trigger an ability with a cooldown. |
-| Demon King's Regalia (11) | the same attacker-side reading as Brute's Heart, for its bonus only. Its drawback, "Ranged attacks deal 20% more damage to you", needs nothing new, because a hit already records whether it was ranged; it is held only by the whole-set rule stated above this table. |
 | Plague Doctor (12) | a reading of "direct damage" for its drawback. Its bonus, damage over time dealing more damage, is ready; the drawback would be two rows, attack damage and spell damage, and that reading was left to the pull request that writes it. |
 | Starvation (13) | the flags for having no regeneration. Its bonus, leech, is ready; its drawback is "You have no health/mana/es regen". |
 | Null Emperor (14) | a silence state, which does not exist, and a flag disabling the player's own ultimate. |

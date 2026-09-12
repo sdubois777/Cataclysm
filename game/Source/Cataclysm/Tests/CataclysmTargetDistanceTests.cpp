@@ -171,6 +171,42 @@ namespace CataclysmTargetDistanceTest
 		System->SetStatInputs(MoveTemp(Inputs));
 	}
 
+	/**
+	 * A SPELL damage stat line, conditioned the same way, and the attribute
+	 * behind it.
+	 *
+	 * A SEPARATE LOOKUP FROM ATTACK DAMAGE, which is why it needs its own test.
+	 * `UCataclysmSkillEffects::SpellDamageOf` asks for `spell_damage` through its
+	 * own call and receives its own copy of the per-blow facts.
+	 */
+	void GiveSpellLine(UCataclysmAbilitySystemComponent* System,
+					   float ConditionalIncrease, float ThresholdMetres)
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), 100.0f);
+
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = ECataclysmStatBucket::Increased;
+		Conditional.Source = ECataclysmModifierSource::Enchantment;
+		Conditional.Value = ConditionalIncrease;
+		Conditional.Condition = ECataclysmStatCondition::TargetWithinMetres;
+		Conditional.ConditionValue = ThresholdMetres;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("spell_damage")));
+		Line.Base = 100.0f;
+		Line.Modifiers = {Conditional};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	FGameplayTagContainer Spell()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Type.Spell"))));
+		return Tags;
+	}
+
 	/** A blow that may not critically strike, so two hits can be compared. */
 	FCataclysmHitDelivery NoCritical()
 	{
@@ -329,6 +365,84 @@ bool FCataclysmTargetDistanceBucketsTest::RunTest(const FString&)
 	TestTrue(TEXT("SO THE TWO BUCKETS ARE NOT INTERCHANGEABLE, which is why this "
 				  "reading is a condition on a row rather than a term in code"),
 			 AsMultiplier > AsIncrease + 0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetDistanceSpellTest,
+	"Cataclysm.TargetDistance.ASpellEarnsItTooBecauseTheMeleeScopeIsNotHonoured",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A SPELL earns the bonus, which is the project owner's ruling of 2026-09-12
+ * written as a test.
+ *
+ * Both enchantment rows carry a `Scope.MeleeOnly` tag. Nothing in the game reads
+ * it, and the owner ruled that the DISTANCE is the constraint: any attack type
+ * earns the bonus when the target is within 5 metres, so a ranged or spell build
+ * has to close the distance rather than being shut out. That is why each set was
+ * given a spell damage row beside its attack damage one.
+ *
+ * A SEPARATE LOOKUP, WHICH IS WHY THIS TEST EXISTS AT ALL.
+ * `UCataclysmSkillEffects::SpellDamageOf` asks for `spell_damage` through its own
+ * call, so the per-blow distance has to arrive there separately. Without this
+ * test, the line carrying it could be deleted and every other test here would
+ * still pass -- which is precisely what happened on the change before this one,
+ * where a proof case fired on nothing three times.
+ *
+ * IT ASSERTS THE DIRECTION AND NOT A RATIO. The spell's part is added as flat
+ * damage beside the weapon's part, so the near-to-far ratio depends on the
+ * weapon, which is not what this test is about. The magnitude is covered by
+ * `ANearTargetTakesMoreAndAFarOneTakesNormalDamage` and by the buckets test.
+ */
+bool FCataclysmTargetDistanceSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetDistanceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Caster = MakeArmed(World);
+	ACataclysmEnemyCharacter* Near =
+		SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Far =
+		SpawnCreatureAt(World, FVector(7.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a caster"), Caster.Actor)
+		|| !TestNotNull(TEXT("a target up close"), Near)
+		|| !TestNotNull(TEXT("a target across the room"), Far))
+	{
+		return false;
+	}
+
+	GiveSpellLine(Caster.AbilitySystem, 25.0f, 5.0f);
+
+	const auto Cast = [&](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Caster.Actor, Target, 100.0f, Spell(),
+										 NoCritical(), &Resolved);
+		return Resolved;
+	};
+
+	const FCataclysmDamageResult OnNear = Cast(Near);
+	const FCataclysmDamageResult OnFar = Cast(Far);
+
+	if (!TestTrue(TEXT("both spells landed"),
+				  OnNear.DealtToHealth > 0.0f && OnFar.DealtToHealth > 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("neither was evaded, and a spell should not be"),
+			  OnNear.bEvaded || OnFar.bEvaded);
+
+	TestTrue(*FString::Printf(
+				 TEXT("a spell on the near target dealt more: %.1f against %.1f"),
+				 OnNear.DealtToHealth, OnFar.DealtToHealth),
+			 OnNear.DealtToHealth > OnFar.DealtToHealth);
 
 	return true;
 }
