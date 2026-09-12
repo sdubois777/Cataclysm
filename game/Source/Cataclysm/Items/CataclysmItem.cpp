@@ -6,6 +6,7 @@
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Items/CataclysmDropRoll.h"
 
 namespace
 {
@@ -844,6 +845,34 @@ namespace
 	}
 
 	/**
+	 * Which named set a benefit row makes an item a piece of, or 0 for none.
+	 *
+	 * THE BENEFIT IS WHAT MARKS A PIECE. A drop that makes an item a piece of a
+	 * set records that set's lowest threshold row as the benefit and the set's
+	 * own drawback beside it, so the benefit alone says which set the piece
+	 * belongs to. Issue #45.
+	 */
+	int32 SetOfBenefit(const UDataTable* PositiveTable, FName Row)
+	{
+		const FCataclysmEnchantmentRow* Found = PositiveTable
+			? PositiveTable->FindRow<FCataclysmEnchantmentRow>(
+				  Row, TEXT("SetOfBenefit"), /*bWarnIfMissing=*/false)
+			: nullptr;
+		return Found ? UCataclysmDropRoll::EnchantmentSetId(*Found) : 0;
+	}
+
+	/**
+	 * The roll every set row is granted at.
+	 *
+	 * A SET ROW STATES ONE NUMBER, so the roll cannot change what it grants:
+	 * `EnchantmentValue` returns that number at every roll. No item records a
+	 * roll for a set's 6-piece or 10-piece row, because a piece records only the
+	 * lowest threshold row, which is why the generator refuses a range on a set
+	 * row rather than leaving the question open.
+	 */
+	constexpr float SetRowRoll = 1.0f;
+
+	/**
 	 * The modifier one effect row grants, or false when this build cannot read
 	 * the row's condition or scale.
 	 *
@@ -986,6 +1015,14 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	// higher roll is used whichever piece comes first in the list.
 	TArray<FName> BenefitOrder;
 	TMap<FName, float> HighestBenefitRoll;
+
+	// AND HOW MANY WORN ITEMS CARRY EACH NAMED SET. Issue #45. A set's rows turn
+	// on by that count rather than per piece, so the loop below counts a set's
+	// pieces where it grants an ordinary benefit. An item is ONE piece of a set
+	// however many of its enchantment slots carry that set, which is why the
+	// sets on one item are gathered before they are counted.
+	TMap<int32, int32> PiecesBySet;
+
 	for (const FCataclysmItem& Item : Worn)
 	{
 		if (Item.Base.IsNone())
@@ -993,6 +1030,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			continue;
 		}
 
+		TSet<int32> SetsOnThisItem;
 		for (const FCataclysmRolledEnchantment& Rolled : Item.Enchantments)
 		{
 			if (!Rolled.Positive.IsNone()
@@ -1008,6 +1046,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					BenefitOrder.Add(Rolled.Positive);
 				}
 			}
+			else if (const int32 SetId = SetOfBenefit(PositiveTable, Rolled.Positive))
+			{
+				SetsOnThisItem.Add(SetId);
+			}
 
 			if (!Rolled.Negative.IsNone()
 				&& !IsSetEnchantmentRow(NegativeTable, Rolled.Negative))
@@ -1015,11 +1057,52 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				Grant(Rolled.Negative, Rolled.NegativeRoll);
 			}
 		}
+
+		for (const int32 SetId : SetsOnThisItem)
+		{
+			++PiecesBySet.FindOrAdd(SetId);
+		}
 	}
 
 	for (const FName& Benefit : BenefitOrder)
 	{
 		Grant(Benefit, HighestBenefitRoll[Benefit]);
+	}
+
+	// A SET'S ROWS, ONCE ITS WORN PIECES ARE COUNTED. Issue #45, on the owner's
+	// rules of 2026-09-08: a set's bonuses turn on by how many equipped items
+	// carry it, and its drawback applies once for the whole set, joining at the
+	// first bonus's threshold.
+	//
+	// EVERY THRESHOLD AT OR BELOW THE COUNT, so ten pieces hold the 2-piece,
+	// 6-piece and 10-piece bonuses together rather than the highest one alone.
+	// That is a labelled judgement of 2026-09-11 in `docs/DECISIONS.md`: no
+	// design text says a lower bonus turns off, and Diablo III writes its
+	// 6-piece bonuses to work with what the lower ones grant.
+	//
+	// A SET WITH NO DRAWBACK ROW GRANTS NOTHING, because `EveryEnchantmentSet`
+	// leaves it out. Never a bonus without its cost.
+	if (!PiecesBySet.IsEmpty())
+	{
+		TArray<FCataclysmEnchantmentSet> Sets;
+		UCataclysmDropRoll::EveryEnchantmentSet(PositiveTable, NegativeTable, Sets);
+		for (const FCataclysmEnchantmentSet& Set : Sets)
+		{
+			const int32* Pieces = PiecesBySet.Find(Set.SetId);
+			if (!Pieces || Set.Thresholds.IsEmpty() || *Pieces < Set.Thresholds[0])
+			{
+				continue;
+			}
+
+			for (int32 Index = 0; Index < Set.Positives.Num(); ++Index)
+			{
+				if (*Pieces >= Set.Thresholds[Index])
+				{
+					Grant(Set.Positives[Index], SetRowRoll);
+				}
+			}
+			Grant(Set.Negative, SetRowRoll);
+		}
 	}
 
 	return Added;

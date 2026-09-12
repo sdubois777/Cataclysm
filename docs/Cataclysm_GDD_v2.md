@@ -3544,6 +3544,18 @@ A set is an enchantment, not an item. An item that rolls a set enchantment becom
 
   
 
+**A bonus at a higher threshold adds to the ones below it.** Ten pieces of a set hold its 2-piece, 6-piece and 10-piece bonuses together, rather than the 10-piece bonus alone. No design text said either way until 2026-09-11, when this was chosen as a labelled judgement: Diablo III writes its 6-piece bonuses to work with what its lower ones grant, and maxroll's Last Epoch guide says a set's further bonuses need more pieces worn rather than replacing the earlier ones.
+
+  
+
+**Where the counting happens.** `UCataclysmItemModifiers::AccumulateEnchantmentsInto` counts the worn items carrying each set, grants every row of that set whose threshold the count reaches, and grants the set's drawback once. An item is one piece of a set however many of its enchantment slots carry that set, and an item carrying two different sets is a piece of each. A set with no drawback row written grants nothing at all, which is the same rule the drop follows when it declines to offer one.
+
+  
+
+**Four of the fourteen sets do something today**: Archon's Aegis, Mana Weaver, Divine Retribution and Warlord's Will, each through its 2-piece bonus and its drawback. Every 6-piece and 10-piece row states something the game cannot do yet, and the other ten sets wait for what their own rows need. `docs/DECISIONS.md` lists each set and what it waits for.
+
+  
+
 **A player builds a set out of their own gear rather than finding fixed set
 pieces.** The project owner ruled this on 2026-09-08: "It's like giving the
 player the ability to build a custom set piece instead of having it be a specific

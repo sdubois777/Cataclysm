@@ -32,7 +32,8 @@
  *
  * WHAT AN ENCHANTMENT GRANTS IS IN `game/Data/EnchantmentEffects.csv`, written
  * in the Enchantment Effects sheet of the design workbook. These tests read the
- * real file, except the one that needs a row the generator refuses to write.
+ * real file. The thresholds a set's rows turn on at are tested with tables made
+ * up for the purpose, in CataclysmEnchantmentSetTests.cpp.
  *
  * ONE MODIFIER CANNOT SHOW WHICH BUCKET IT IS IN, because `(base) x 0.8` and
  * `(base) x (1 - 0.2)` are the same number. The test on a worn item therefore
@@ -352,7 +353,7 @@ bool FCataclysmEnchantmentEffectOncePerCharacterTest::RunTest(
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentEffectSetPieceTest,
-	"Cataclysm.Enchantments.ASetPieceGrantsNothingUntilItsPiecesAreCounted",
+	"Cataclysm.Enchantments.OnePieceOfASetGrantsNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEnchantmentEffectSetPieceTest::RunTest(const FString& Parameters)
@@ -365,52 +366,28 @@ bool FCataclysmEnchantmentEffectSetPieceTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THE GENERATOR REFUSES TO WRITE AN EFFECT ON A SET ROW, so the real file has
-	// none and cannot show what the game does with one. This fixture writes one
-	// on each side of a real set, and one ordinary row as the control that proves
-	// the fixture itself is read.
+	// ONE PIECE IS BELOW EVERY THRESHOLD OF ITS SET, so it grants neither the
+	// set's two-piece bonus nor the set's drawback. The row an item records for
+	// a set is that set's lowest threshold row, so granting it per piece would
+	// hand a single piece the two-piece bonus, and the drawback -- which the
+	// owner ruled applies once for the whole set -- would apply per piece.
 	//
-	// WHY A SET ROW MUST GRANT NOTHING PER PIECE. The row an item records for a
-	// set is the set's lowest threshold row, its two-piece bonus. Applied per
-	// piece, one piece would carry the two-piece bonus, and the set's drawback
-	// -- which the owner ruled applies once for the whole set -- would apply for
-	// every piece.
-	UDataTable* Fixture = NewObject<UDataTable>();
-	Fixture->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
-	const FString Csv =
-		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
-					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep\n"))
-		+ FString::Printf(TEXT("%s#1,%s,block_chance,increased,25,25,,,0,,0\n"),
-						  SetMarker, SetMarker)
-		+ FString::Printf(TEXT("%s#1,%s,movement_speed,increased,-10,-10,,,0,,0\n"),
-						  SetDrawback, SetDrawback)
-		+ FString::Printf(TEXT("%s#1,%s,max_energy_shield,more,100,100,,,0,,0\n"),
-						  ShieldBenefit, ShieldBenefit);
-	const TArray<FString> Problems = Fixture->CreateTableFromCSVString(Csv);
-	if (!TestEqual(TEXT("the fixture reads without problems"), Problems.Num(), 0))
-	{
-		for (const FString& Problem : Problems)
-		{
-			AddError(Problem);
-		}
-		return false;
-	}
-
-	FTables WithSetRows = Tables;
-	WithSetRows.Effects = Fixture;
-
+	// THE REAL ROWS, both sides. Archon's Aegis is one of the four sets whose
+	// rows are written, so this reads what the game reads. What two pieces and
+	// more grant is in CataclysmEnchantmentSetTests.cpp.
 	int32 Added = 0;
 	const FTotals FromSet = Gather(
-		WithSetRows, {Carrying(TEXT("Head_Helm"), SetMarker, SetDrawback)}, Added);
+		Tables, {Carrying(TEXT("Head_Helm"), SetMarker, SetDrawback)}, Added);
 	TestEqual(TEXT("a set piece grants nothing on its own"), Added, 0);
 	TestEqual(TEXT("and touches no stat"), FromSet.Num(), 0);
 
-	// THE CONTROL: the same fixture, an ordinary row, one modifier.
+	// THE CONTROL: an ordinary benefit from the same table does grant, so the
+	// zero above is the set rule rather than a table nothing was read from.
 	int32 ControlAdded = 0;
-	Gather(WithSetRows,
+	Gather(Tables,
 		   {Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect)},
 		   ControlAdded);
-	TestEqual(TEXT("while an ordinary row in the same fixture does grant"),
+	TestEqual(TEXT("while an ordinary row in the same table does grant"),
 			  ControlAdded, 1);
 
 	return true;

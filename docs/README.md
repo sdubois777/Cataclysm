@@ -82,7 +82,7 @@ or if a sheet is added or removed without this table changing.
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Note |
 | Passive Effects | 208 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
-| Enchantment Effects | 64 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step |
+| Enchantment Effects | 72 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking

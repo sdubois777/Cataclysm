@@ -1377,9 +1377,17 @@ namespace
 	}
 }
 
-void UCataclysmDropRoll::EnchantmentSetsFor(
+/**
+ * Every named set whose rows `Allowed` accepts, sorted by identifier.
+ *
+ * THE BODY OF BOTH EnchantmentSetsFor, which asks about one gear slot, and
+ * EveryEnchantmentSet, which asks about none. Issue #45. One body is what keeps
+ * the drop and the worn-piece count agreeing about what a set is.
+ */
+static void GatherEnchantmentSets(
 	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
-	const FString& Slot, TArray<FCataclysmEnchantmentSet>& OutSets)
+	TFunctionRef<bool(const FCataclysmEnchantmentRow&)> Allowed,
+	TArray<FCataclysmEnchantmentSet>& OutSets)
 {
 	OutSets.Reset();
 	if (!PositiveTable || !NegativeTable)
@@ -1396,8 +1404,8 @@ void UCataclysmDropRoll::EnchantmentSetsFor(
 	PositiveTable->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentSetsFor"),
 		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
 		{
-			const int32 SetId = EnchantmentSetId(Row);
-			if (SetId > 0 && EnchantmentSuitsSlot(Row, Slot))
+			const int32 SetId = UCataclysmDropRoll::EnchantmentSetId(Row);
+			if (SetId > 0 && Allowed(Row))
 			{
 				PositivesBySet.FindOrAdd(SetId).Add(
 					TPair<int32, FName>(SetPieceThreshold(Row.Effect), Key));
@@ -1407,8 +1415,8 @@ void UCataclysmDropRoll::EnchantmentSetsFor(
 	NegativeTable->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentSetsFor"),
 		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
 		{
-			const int32 SetId = EnchantmentSetId(Row);
-			if (SetId > 0 && EnchantmentSuitsSlot(Row, Slot))
+			const int32 SetId = UCataclysmDropRoll::EnchantmentSetId(Row);
+			if (SetId > 0 && Allowed(Row))
 			{
 				NegativesBySet.FindOrAdd(SetId).Add(Key);
 			}
@@ -1445,10 +1453,11 @@ void UCataclysmDropRoll::EnchantmentSetsFor(
 				AlreadyWarnedMissing.Add(SetId);
 				UE_LOG(LogCataclysm, Warning,
 					TEXT("Set %d has %d positive rows and no negative row, so "
-						 "it cannot be paired and guaranteed and is left out of "
-						 "the draw. Write one negative row carrying that set "
-						 "identifier in game/Data/EnchantmentsNegative.csv. "
-						 "This is said once per run."),
+						 "it cannot be paired and guaranteed. It is left out of "
+						 "the draw, and worn pieces of it grant nothing. Write "
+						 "one negative row carrying that set identifier in "
+						 "game/Data/EnchantmentsNegative.csv. This is said once "
+						 "per run."),
 					SetId, Rows.Num());
 			}
 			continue;
@@ -1487,10 +1496,31 @@ void UCataclysmDropRoll::EnchantmentSetsFor(
 		for (const TPair<int32, FName>& Each : Rows)
 		{
 			Set.Positives.Add(Each.Value);
+			Set.Thresholds.Add(Each.Key);
 		}
 		Set.Representative = Set.Positives[0];
 		OutSets.Add(MoveTemp(Set));
 	}
+}
+
+void UCataclysmDropRoll::EnchantmentSetsFor(
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+	const FString& Slot, TArray<FCataclysmEnchantmentSet>& OutSets)
+{
+	GatherEnchantmentSets(PositiveTable, NegativeTable,
+		[&Slot](const FCataclysmEnchantmentRow& Row)
+		{
+			return EnchantmentSuitsSlot(Row, Slot);
+		},
+		OutSets);
+}
+
+void UCataclysmDropRoll::EveryEnchantmentSet(
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+	TArray<FCataclysmEnchantmentSet>& OutSets)
+{
+	GatherEnchantmentSets(PositiveTable, NegativeTable,
+		[](const FCataclysmEnchantmentRow&) { return true; }, OutSets);
 }
 
 void UCataclysmDropRoll::EnchantmentCandidatesByWeight(
@@ -1829,8 +1859,9 @@ bool UCataclysmDropRoll::RollEnchantments(
 			// the negative pool. This is the whole of "paired and guaranteed":
 			// the two halves of a set arrive together and are never a random
 			// pairing. The set's other threshold rows are not handed out here
-			// -- they are 6-piece and 10-piece bonuses and belong to whatever
-			// counts equipped pieces, which is not written yet.
+			// -- they are 6-piece and 10-piece bonuses, and they turn on where
+			// the worn pieces are counted, in
+			// UCataclysmItemModifiers::AccumulateEnchantmentsInto.
 			Rolled.Negative = DrawnSet->Negative;
 		}
 		else

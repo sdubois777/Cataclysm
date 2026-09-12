@@ -88,7 +88,7 @@ struct CATACLYSM_API FCataclysmRolledAffix
  * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which is the rest of that sentence:
  * "Positives and negatives roll independently -- a strong positive is not
  * guaranteed to come with a weak negative." The pools are different sizes, 379
- * and 195, so they could not be paired in the data even if the design wanted it.
+ * and 196, so they could not be paired in the data even if the design wanted it.
  *
  * WHY ROW NAMES RATHER THAN THE TEXT. The same reason FCataclysmRolledAffix
  * stores which affix rather than what it grants: the effect wording lives in
@@ -655,11 +655,22 @@ public:
 	 * roll. Nothing here may make a cost smaller than the items say, and two
 	 * pieces that share only a drawback may both be worn.
 	 *
-	 * A SET ROW GRANTS NOTHING HERE, on either side. A set's bonuses turn on by
-	 * how many worn pieces carry the set, and its drawback applies once for the
-	 * whole set. Applying either per piece would hand a single piece its set's
-	 * two-piece bonus, because the row an item records for a set is its lowest
-	 * threshold row.
+	 * A SET ROW GRANTS NOTHING PER PIECE. Granting one per piece would hand a
+	 * single piece its set's two-piece bonus, because the row an item records
+	 * for a set is that set's lowest threshold row. The worn pieces of each set
+	 * are counted instead, and then:
+	 *
+	 *   - every bonus row of that set whose threshold the count reaches is
+	 *     granted, so ten pieces hold the 2-piece, 6-piece and 10-piece bonuses
+	 *     together;
+	 *   - the set's drawback is granted once for the whole set, joining at the
+	 *     first bonus's threshold, which is the owner's ruling of 2026-09-08;
+	 *   - a set with no drawback row grants nothing at all, because
+	 *     `UCataclysmDropRoll::EveryEnchantmentSet` leaves it out. Never a
+	 *     bonus without its cost.
+	 *
+	 * AN ITEM IS ONE PIECE OF A SET however many of its enchantment slots carry
+	 * that set, and an item carrying two different sets is a piece of each.
 	 *
 	 * ALL THREE TABLES ARE NEEDED. Without the two enchantment tables a set row
 	 * cannot be told from any other, so a missing one grants nothing at all.

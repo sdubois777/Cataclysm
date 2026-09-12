@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — A named set's bonuses turn on by how many worn pieces carry it, and four sets get their rows
+
+**Affects:** `UCataclysmItemModifiers::AccumulateEnchantmentsInto` in
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` and `.h`;
+`FCataclysmEnchantmentSet` and the new `UCataclysmDropRoll::EveryEnchantmentSet`
+in `CataclysmDropRoll.h` and `.cpp`; `enchantment_effects` in
+`tools/generate_datatables.py`; the Enchantment Effects sheet of
+`docs/All_Things_Cataclysm.xlsx` (8 new rows, 72 in all),
+`game/Data/EnchantmentEffects.csv` and `DT_EnchantmentEffects`; the new
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentSetTests.cpp`; the counts in
+`CataclysmDataTableTests.cpp`, `docs/README.md` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; the Set
+Enchantments section of `docs/Cataclysm_GDD_v2.md`. Issue #45.
+
+**The project owner's rules, 2026-09-08,** which this builds. A set is an
+enchantment rather than an item: "It's like giving the player the ability to
+build a custom set piece instead of having it be a specific item." An item that
+rolls a set becomes a piece of it, and the set's 2-piece, 6-piece and 10-piece
+bonuses turn on by how many equipped items carry it. "The set downsides are
+applied once, for the entire set. It doesn't stack", and the drawback joins at
+the first bonus's threshold, "so you aren't just getting free enchantments".
+
+| Piece | What it does |
+| :-- | :-- |
+| Counting the pieces | `AccumulateEnchantmentsInto` already sees every worn item at once. It counts the items carrying each set, by the set identifier on the benefit row each piece records. An item is one piece of a set however many of its enchantment slots carry that set, and an item carrying two different sets is a piece of each. |
+| Granting the rows | Every bonus row of a set whose threshold the count reaches, and the set's drawback once. Below the first threshold a set grants nothing at all, which is what one piece has always done. |
+| One grouping of a set's rows | `EveryEnchantmentSet` is `EnchantmentSetsFor` without the gear slot, and both are one function. So the drop and the character's stats cannot disagree about which rows a set has, which threshold each needs, or which row is its drawback. A set with no drawback row is left out of both: never a bonus without its cost. |
+| The sheet | The generator no longer refuses a set row. It refuses a range on one, and refuses half a set: rows for a set's first bonus without its drawback, or the other way round. |
+
+**Four sets are written, eight rows.** Each is its 2-piece bonus and its
+drawback. Every row states one number, and the stat each names already had a
+base.
+
+| Set | 2-piece bonus | Drawback |
+| :-- | :-- | :-- |
+| Archon's Aegis (5) | `block_chance`, increased, 25 | `movement_speed`, increased, -10 |
+| Mana Weaver (8) | `max_mana`, increased, 20 | `mana_regen`, increased, -50 |
+| Divine Retribution (16) | `max_energy_shield`, increased, 25 | `max_health`, increased, -10 |
+| Warlord's Will (17) | `armor`, increased, 25 | `movement_speed`, increased, -10 |
+
+**Ten sets are held, and each waits for something its own rows need.** A set is
+written whole or not at all, so a set whose bonus cannot be built does not get
+its drawback either, and the other way round.
+
+| Set | What it waits for |
+| :-- | :-- |
+| Tyrant's Chains (6) | minion stats reaching a minion. Its bonus is minion damage and its drawback minion maximum health, and nothing in the game reads `minion_damage`. |
+| Chronomancer's Time-Lock (7) | the duration of the debuffs a player applies, and of the buffs they apply to themselves. Only the duration of debuffs applied to the player exists. |
+| Brute's Heart (9) | how far away the target is. Its bonus is increased damage against enemies within 5 metres. The Demonic trees session adds that reading to the blow context. |
+| Spellblade's Will (10) | a hit that triggers another ability. Its bonus is a chance on melee attacks to trigger an ability with a cooldown. |
+| Demon King's Regalia (11) | the same distance reading as Brute's Heart, for both halves. |
+| Plague Doctor (12) | a reading of "direct damage" for its drawback. Its bonus, damage over time dealing more damage, is ready; the drawback would be two rows, attack damage and spell damage, and that reading was left to the pull request that writes it. |
+| Starvation (13) | the flags for having no regeneration. Its bonus, leech, is ready; its drawback is "You have no health/mana/es regen". |
+| Null Emperor (14) | a silence state, which does not exist, and a flag disabling the player's own ultimate. |
+| Shard of Anarchy (15) | timed random buffs and debuffs, and a timed loss of a random resistance. Neither pool nor timer exists. |
+| Reaper's Embrace (18) | a stat for life recovered from all sources. The dungeon modifier session's slice 5 adds `health_recovery`. |
+
+**Labelled judgements,** made under the owner's delegation of 2026-09-11 and
+approved by the coordinating session:
+
+1. **A bonus at a higher threshold adds to the ones below it.** Ten pieces hold
+   the 2-piece, 6-piece and 10-piece bonuses together. No design text says a
+   lower bonus turns off. Diablo III writes its 6-piece bonuses to work with
+   what its lower ones grant: Immortal King's Call's 6-piece bonus only applies
+   while both skills its 2-piece and 4-piece bonuses extend are active
+   ([icy-veins](https://www.icy-veins.com/d3/sets/immortal-kings-call)).
+   maxroll's Last Epoch gear guide says a set's further bonuses need more pieces
+   worn, rather than replacing the earlier ones
+   ([maxroll](https://maxroll.gg/last-epoch/resources/gear-walkthrough)). Last
+   Epoch's own support article on sets refused an automated read.
+2. **A set row states one number, and the generator refuses a range on one.** An
+   item records only the set's lowest threshold row, so nothing records a roll
+   for a 6-piece or 10-piece row. Without this the game would have to pick a
+   roll for a row no item rolled.
+3. **"You gain 10% more life from all sources" (P377) means life recovered, not
+   maximum life.** "Gain ... from all sources" is how the genre words healing
+   received from every source, and it pairs with the set's own drawback, "All of
+   your life regeneration effects are reduced by 50%". **The reading not
+   chosen** was 10% more maximum health, which an earlier pass had recorded and
+   which would have made the set buildable today. It is on the owner's review
+   list.
+
+**What is not in this change.**
+
+- **The 6-piece and 10-piece rows of the four written sets.** Each states
+  something the game cannot do yet: a shield-break nova, an aura granting
+  stacks, a summoned creature, and skills refreshing on a block.
+- **The equip-time refusal of a duplicate enchantment.** Set pieces are exempt
+  from it by design, and nothing refuses a duplicate yet.
+- **Which sets a drop offers.** That was already built; this change reads the
+  pieces a character wears.
+
+---
+
 ## 2026-09-11 — A chance to apply an ailment is worked out where the blow is struck and rolled where it lands
 
 **Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and
