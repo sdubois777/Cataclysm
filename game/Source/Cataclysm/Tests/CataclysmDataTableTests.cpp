@@ -402,7 +402,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// has ever had were written: six, being the 2-piece bonus and the drawback of
 	// Brute's Heart and of Demon King's Regalia. Before them, 0 of the 81 rows
 	// belonged to a set, so every set bonus in the game granted nothing.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     87)
+	// AND 87 UNTIL LATER THE SAME DAY, when the two enchantments about staggered
+	// characters got three rows between them. Issue #45. THREE FOR TWO, because
+	// "Staggered enemies take 20%-35% increased damage from all sources" is the
+	// wearer's own damage across its types and so is an `attack_damage` row and a
+	// `spell_damage` row, while "Staggered enemies deal 15%-30% increased damage
+	// to you" is damage the wearer takes and is `damage_taken` alone.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     90)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
