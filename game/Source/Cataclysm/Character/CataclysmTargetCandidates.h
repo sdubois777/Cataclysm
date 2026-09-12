@@ -107,6 +107,37 @@ public:
 	AActor* NearestHostile(const ACataclysmCharacterBase* Searcher,
 						   const FVector& Origin, float RadiusCm);
 
+	/**
+	 * How far away each hostile character within `Metres` is, in metres, for a
+	 * passive row that counts the enemies near a character. Issue #1597.
+	 *
+	 * HERE RATHER THAN IN THE STAT PIPELINE, because the lists this walks are
+	 * private to this class and the alternative is a second walk of the level's
+	 * characters. A second implementation of "which characters are near this one"
+	 * is how two answers to one question drift apart.
+	 *
+	 * DISTANCES RATHER THAN A COUNT, so one walk serves every radius a character's
+	 * rows ask for. Three radii appear in the authored rows -- 3, 4 and 8 metres --
+	 * and a count would need one walk each. The caller counts the entries inside
+	 * its own radius.
+	 *
+	 * CENTRE TO CENTRE, AND THAT IS DELIBERATELY NOT WHAT `NearestHostile` ABOVE
+	 * USES. That one asks whether a character's CAPSULE reaches into a sphere, and
+	 * this class's header records that the two can disagree by about a body's
+	 * width. This uses the same arithmetic as
+	 * `UCataclysmTargeting::MetresBetween`, which is the one definition in the
+	 * game of how far apart two actors are, so a node reading "within 4 metres"
+	 * and any other distance the game reports for the same pair agree exactly.
+	 *
+	 * THE TWO ANSWER DIFFERENT QUESTIONS, which is why the difference is
+	 * acceptable: a creature choosing whom to attack cares whether it can reach a
+	 * body, and a passive row counting enemies near a character is a number a
+	 * player reads off a sentence.
+	 */
+	void HostileDistancesWithinMetres(const ACataclysmCharacterBase* Searcher,
+									  const FVector& Origin, float Metres,
+									  TArray<float>& OutMetres);
+
 	/** How many list entries the last search looked at. Read by tests. */
 	int32 LookedAtByTheLastSearch() const { return LookedAt; }
 
