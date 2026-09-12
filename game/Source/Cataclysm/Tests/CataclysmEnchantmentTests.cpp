@@ -323,8 +323,9 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 //
 // SO A DROP RECORDS MEMBERSHIP AND NOT THE BONUSES. Handing out all three
 // positive rows would give a 10-piece bonus to a player wearing one piece.
-// Counting worn pieces is not written yet, and neither is what any enchantment
-// DOES; both are the rest of issue #45.
+// `UCataclysmItemModifiers::AccumulateEnchantmentsInto` counts the worn pieces
+// and turns each row on at its own threshold; the tests for that are in
+// CataclysmEnchantmentSetTests.cpp. The tests here are about the draw alone.
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentASetCanBeRolled,

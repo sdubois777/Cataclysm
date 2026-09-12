@@ -54,9 +54,9 @@ struct CATACLYSM_API FCataclysmAffixCandidate
  * SO THE THREE POSITIVE ROWS ARE THRESHOLDS AND NOT THREE THINGS TO HAND OUT.
  * A drop that granted all three would be giving a 10-piece bonus to a player
  * wearing one piece. `Representative` is the single row an item records to say
- * which set it belongs to. NOTHING COUNTS WORN PIECES YET, so no threshold
- * turns on today; that is the rest of issue #45, and it is the same position
- * every other enchantment is in.
+ * which set it belongs to. `UCataclysmItemModifiers::AccumulateEnchantmentsInto`
+ * counts the worn pieces and turns each row on at its threshold, reading the
+ * thresholds from `Thresholds` below. Issue #45.
  *
  * WHAT IDENTIFIES A SET IS `SetId`, WHICH LIVES IN THE Weight COLUMN. That
  * column does double duty on set rows and issue #1443 owns separating it. This
@@ -87,6 +87,17 @@ struct CATACLYSM_API FCataclysmEnchantmentSet
 	/** Every positive row of this set, sorted by threshold: 2, 6 then 10. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
 	TArray<FName> Positives;
+
+	/**
+	 * How many worn pieces each row of `Positives` needs, in the same order.
+	 *
+	 * READ FROM EACH ROW'S OWN "(N-Piece Bonus)". A row whose text states no
+	 * threshold holds MAX_int32, so it sorts last and no number of pieces turns
+	 * it on. The first entry is also where the set's drawback joins: the owner
+	 * ruled on 2026-09-08 that it joins at the set's first bonus.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<int32> Thresholds;
 
 	/**
 	 * The one negative row this set carries.
@@ -799,6 +810,21 @@ public:
 								   const UDataTable* NegativeTable,
 								   const FString& Slot,
 								   TArray<FCataclysmEnchantmentSet>& OutSets);
+
+	/**
+	 * Every named set, whatever gear slot its rows suit. Issue #45.
+	 *
+	 * THE SAME GROUPING AS EnchantmentSetsFor, WITHOUT THE SLOT. Counting worn
+	 * pieces asks what a set is, not whether a drop on one slot could offer it,
+	 * and a piece already worn is a piece whatever slot its rows name. Both read
+	 * one function, so the drop and the character's stats cannot disagree about
+	 * which rows a set has, which threshold each needs, or which drawback it
+	 * carries. A set with no negative row is left out here as well, so worn
+	 * pieces of it grant nothing: never a bonus without its cost.
+	 */
+	static void EveryEnchantmentSet(const UDataTable* PositiveTable,
+									const UDataTable* NegativeTable,
+									TArray<FCataclysmEnchantmentSet>& OutSets);
 
 	/**
 	 * Pick one weight band, 1 to 4, from the bands offered.

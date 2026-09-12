@@ -1501,10 +1501,11 @@ class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
     A row names an enchantment by the row name an item stores, repeats its
-    words, and states one stat, one bucket and a value or a range. Four kinds
+    words, and states one stat, one bucket and a value or a range. Five kinds
     of row are refused, and each is a mistake a person editing the sheet can
     make: a name that matches nothing, words that no longer match the
-    enchantment, a set row, and a range the words do not state in that order.
+    enchantment, a range the words do not state in that order, a range on a set
+    row, and half a set.
     """
 
     ENCHANTMENTS = [
@@ -1516,6 +1517,9 @@ class TestEnchantmentEffects:
          "Set", 5, "Stat.Defense.Block", None,
          "Your movement speed is reduced by 10%", "Set", 5,
          "Stat.Utility.Movespeed"],
+        ["Archon's Aegis (6-Piece Bonus): Your block value is doubled",
+         "Set", 5, "Stat.Defense.Block", None,
+         "You cannot block", "Generic", 2, "Stat.Defense.Block"],
         ["Your block chance is increased by 10%-20%", "Generic", 3,
          "Stat.Defense.Block", None,
          "Your attack speed is reduced by 20%-35%", "Generic", 3,
@@ -1590,14 +1594,77 @@ class TestEnchantmentEffects:
         with pytest.raises(gen.DataError, match="must agree"):
             gen.enchantment_effects(book)
 
-    def test_a_set_row_is_refused(self, tmp_path):
-        book = self.book(tmp_path, [self.row({
-            "Enchantment": "Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc",
-            "Effect": "Archon's Aegis (2-Piece Bonus): Your block chance is "
-                      "increased by 25%",
-            "Stat": "block_chance", "Value Kind": "increased",
-            "Value Low": 25})])
-        with pytest.raises(gen.DataError, match="is a set row"):
+    # A SET'S ROWS, AND THE RULE THAT THEY ARE WRITTEN WHOLE OR NOT AT ALL. A
+    # set's first bonus and its drawback turn on together at the same threshold,
+    # which the project owner ruled on 2026-09-08, so writing one without the
+    # other would be a bonus with no cost or a cost with no bonus.
+    SET_BONUS = "Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc"
+    SET_BONUS_WORDS = ("Archon's Aegis (2-Piece Bonus): Your block chance is "
+                       "increased by 25%")
+    SET_SIX_WORDS = "Archon's Aegis (6-Piece Bonus): Your block value is doubled"
+    SET_DRAWBACK = "Negative_Your_movement_speed_is_reduced_by_10"
+    SET_DRAWBACK_WORDS = "Your movement speed is reduced by 10%"
+
+    def set_bonus(self, changes=None):
+        values = {"Enchantment": self.SET_BONUS, "Effect": self.SET_BONUS_WORDS,
+                  "Stat": "block_chance", "Value Kind": "increased",
+                  "Value Low": 25}
+        values.update(changes or {})
+        return self.row(values)
+
+    def set_drawback(self):
+        return self.row({"Enchantment": self.SET_DRAWBACK,
+                         "Effect": self.SET_DRAWBACK_WORDS,
+                         "Stat": "movement_speed", "Value Kind": "increased",
+                         "Value Low": -10})
+
+    def set_six_piece(self):
+        return self.row({"Enchantment": gen.row_name("Positive",
+                                                     self.SET_SIX_WORDS[:48]),
+                         "Effect": self.SET_SIX_WORDS, "Stat": "block_chance",
+                         "Value Kind": "more", "Value Low": 100})
+
+    def test_a_whole_set_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(
+            tmp_path, [self.set_bonus(), self.set_drawback()]))
+
+        assert [row["Enchantment"] for row in out] == [self.SET_BONUS,
+                                                       self.SET_DRAWBACK]
+        assert [row["ValueLow"] for row in out] == [25.0, -10.0]
+
+    def test_a_set_bonus_without_its_drawback_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.set_bonus()])
+        with pytest.raises(gen.DataError, match="its drawback"):
+            gen.enchantment_effects(book)
+
+    def test_a_set_drawback_without_its_first_bonus_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.set_drawback()])
+        with pytest.raises(gen.DataError, match="its first bonus"):
+            gen.enchantment_effects(book)
+
+    def test_a_higher_threshold_without_the_first_bonus_is_refused(self,
+                                                                   tmp_path):
+        """A player only ever reaches the 6-piece bonus through pieces that
+        already meet the 2-piece threshold, so writing it alone is the same
+        fault as writing half a set."""
+        book = self.book(tmp_path, [self.set_six_piece(), self.set_drawback()])
+        with pytest.raises(gen.DataError, match="its first bonus"):
+            gen.enchantment_effects(book)
+
+    def test_a_whole_set_with_a_higher_threshold_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(
+            tmp_path,
+            [self.set_bonus(), self.set_six_piece(), self.set_drawback()]))
+
+        assert len(out) == 3
+
+    def test_a_range_on_a_set_row_is_refused(self, tmp_path):
+        """An item records only a set's lowest threshold row, so nothing
+        records a roll for the 6-piece or 10-piece row."""
+        book = self.book(tmp_path, [
+            self.set_bonus({"Value Low": 20, "Value High": 30}),
+            self.set_drawback()])
+        with pytest.raises(gen.DataError, match="states one number"):
             gen.enchantment_effects(book)
 
     BLOCK = "Positive_Your_block_chance_is_increased_by_10_20"

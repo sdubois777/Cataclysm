@@ -857,6 +857,48 @@ def enchantments(book, negative: bool) -> list[dict]:
     return unique(out, f"Enchantments ({'negative' if negative else 'positive'})")
 
 
+#: How many pieces a set's bonus row says it needs, read from its own words.
+#: This is the reading `SetPieceThreshold` makes in
+#: `game/Source/Cataclysm/Items/CataclysmDropRoll.cpp`.
+SET_PIECE_THRESHOLD = re.compile(r"\((\d+)-Piece Bonus", re.IGNORECASE)
+
+#: The highest ordinary enchantment weight. A set row's Weight column carries
+#: the set's identifier instead, which is why an identifier must be above this.
+#: `UCataclysmDropRoll::HighestEnchantmentWeight` is the same number.
+HIGHEST_ENCHANTMENT_WEIGHT = 4
+
+#: What a bonus row whose words state no threshold is sorted by: no count of
+#: worn pieces reaches it. The game uses MAX_int32 for the same reason.
+UNREACHABLE_THRESHOLD = 10 ** 9
+
+
+def enchantment_set_id(row: dict) -> int:
+    """Which named set an enchantment row belongs to, or 0 for none.
+
+    THE IDENTIFIER LIVES IN THE Weight COLUMN, which is issue #1443: a row typed
+    `Set` carries 5 to 18 there instead of a 1 to 4 weight. This is the reading
+    `UCataclysmDropRoll::EnchantmentSetId` makes. Anything that is not a whole
+    number above the highest weight answers 0, so a set row carrying 3 is a
+    fault in the data rather than a set numbered 3.
+    """
+    if row["EnchantmentType"].casefold() != "set":
+        return 0
+    weight = float(row["Weight"])
+    if not weight.is_integer() or weight <= HIGHEST_ENCHANTMENT_WEIGHT:
+        return 0
+    return int(weight)
+
+
+def set_piece_threshold(words: str) -> int | None:
+    """How many worn pieces a set bonus's own words ask for, or None.
+
+    "Archon's Aegis (2-Piece Bonus): ..." asks for two. A row that states no
+    threshold answers None; the game reads the same text the same way.
+    """
+    found = SET_PIECE_THRESHOLD.search(words)
+    return int(found.group(1)) if found else None
+
+
 def enemy_modifiers(book) -> list[dict]:
     """A matrix: one column per Cataclysm, each cell "Name: Description"."""
     rows = list(book["Enemy Modifiers"].iter_rows(values_only=True))
@@ -3598,16 +3640,20 @@ def enchantment_effects(book) -> list[dict]:
     A ROW HERE IS OPTIONAL. An enchantment with no row grants nothing, which is
     what every enchantment did before this sheet existed.
 
-    TWO KINDS OF ROW ARE REFUSED, each for a stated reason:
+    THREE KINDS OF ROW ARE REFUSED, each for a stated reason:
 
-      a set row        a set's rows apply by how many worn pieces carry the
-                       set, and this sheet cannot say how many pieces a row
-                       needs yet
       a range the      the owner ruled on 2026-09-11 that an enchantment rolls
       words do not     a value evenly inside its range, and the game shows that
       state            number in place of the range, so the two values must be
                        a range the sentence states: its first number as Value
                        Low and its second as Value High, with the row's sign
+      a range on a     no item records a roll for a set's 6-piece or 10-piece
+      set row          row, because a piece records only the set's lowest
+                       threshold row, so each of a set's rows states one number
+      half a set       a set's first bonus and its drawback turn on together at
+                       the same threshold, so a set is written whole or not at
+                       all: one half alone would be a bonus with no cost, or a
+                       cost with no bonus
 
     A ROW NAME IS THE ENCHANTMENT WITH `#1`, `#2` AND SO ON AFTER IT, as in
     `Passive Effects`, so one enchantment can grant two stats. No enchantment
@@ -3622,10 +3668,28 @@ def enchantment_effects(book) -> list[dict]:
     # is checked against exactly the name an item stores.
     words: dict[str, str] = {}
     types: dict[str, str] = {}
+
+    # AND EVERY SET'S ROWS, GATHERED BY IDENTIFIER. The check at the end refuses
+    # half a set, and to do that it has to know which of a set's bonus rows
+    # comes first and which row is that set's drawback.
+    bonuses: dict[int, list[tuple[int, str]]] = {}
+    drawbacks: dict[int, list[str]] = {}
+
     for negative in (False, True):
         for row in enchantments(book, negative=negative):
             words[row["Name"]] = row["Effect"]
             types[row["Name"]] = row["EnchantmentType"]
+
+            set_id = enchantment_set_id(row)
+            if not set_id:
+                continue
+            if negative:
+                drawbacks.setdefault(set_id, []).append(row["Name"])
+            else:
+                threshold = set_piece_threshold(row["Effect"])
+                bonuses.setdefault(set_id, []).append(
+                    (UNREACHABLE_THRESHOLD if threshold is None else threshold,
+                     row["Name"]))
 
     out = []
     counts: dict[str, int] = {}
@@ -3648,12 +3712,6 @@ def enchantment_effects(book) -> list[dict]:
                 f"The two must agree, so that an enchantment that is reworded "
                 f"is read again before its numbers are trusted.")
 
-        if types[name].casefold() == "set":
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} is a set row. A "
-                f"set's rows apply by how many worn pieces carry the set, and "
-                f"this sheet cannot say how many pieces a row needs yet.")
-
         stat = clean(_cell(raw, headers, "Stat"))
         if not stat:
             raise DataError(
@@ -3668,6 +3726,18 @@ def enchantment_effects(book) -> list[dict]:
         low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
         high_text = clean(_cell(raw, headers, "Value High"))
         high = number(high_text, "Value High", index) if high_text else low
+
+        # CHECKED BEFORE THE RANGE BELOW, so that a range on a set row is
+        # reported for what it is rather than as a range its words do not
+        # state.
+        if types[name].casefold() == "set" and high != low:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is a set row stating "
+                f"the range {low:g} to {high:g}. Each of a set's rows states "
+                f"one number: an item records only the set's lowest threshold "
+                f"row, so nothing records a roll for the 6-piece or 10-piece "
+                f"row and a range could not be read back.")
+
         if high != low:
             # A RANGE IS ONE THE SENTENCE STATES, IN ITS ORDER AND WITH ONE
             # SIGN. The owner ruled on 2026-09-11 that an enchantment rolls a
@@ -3722,6 +3792,44 @@ def enchantment_effects(book) -> list[dict]:
             f"rows for one enchantment are for two different stats, or for the "
             f"same stat under different conditions or scales; anything else is "
             f"a duplicated row.")
+
+    # A SET IS WRITTEN WHOLE OR NOT AT ALL. A set's first bonus and its drawback
+    # turn on together, at the same threshold, which is the owner's ruling of
+    # 2026-09-08. So a set written here without its drawback would be a bonus
+    # with no cost, and one written without its first bonus a cost with no
+    # bonus. A 6-piece or 10-piece row without the first bonus is the same
+    # fault: a player only ever reaches it through pieces that already meet the
+    # first threshold.
+    #
+    # THE DRAWBACK IS THE FIRST IN SORTED ORDER, which is the row
+    # `UCataclysmDropRoll::EnchantmentSetsFor` gives the set when a set has more
+    # than one. No set has a second drawback row today.
+    written = {row["Enchantment"] for row in out}
+    for set_id in sorted(set(bonuses) | set(drawbacks)):
+        ordered = sorted(bonuses.get(set_id, []))
+        named = sorted(drawbacks.get(set_id, []))
+        touched = sorted({name for _, name in ordered if name in written}
+                         | {name for name in named if name in written})
+        if not touched:
+            continue
+
+        missing = []
+        if not ordered:
+            missing.append("a bonus row in the Enchantments sheet")
+        elif ordered[0][1] not in written:
+            missing.append(f"its first bonus, {ordered[0][1]}")
+        if not named:
+            missing.append("a drawback row in the Enchantments sheet")
+        elif named[0] not in written:
+            missing.append(f"its drawback, {named[0]}")
+
+        if missing:
+            raise DataError(
+                f"the Enchantment Effects sheet writes {', '.join(touched)} for "
+                f"set {set_id} but not {' and '.join(missing)}. A set is "
+                f"written whole or not at all: its first bonus and its drawback "
+                f"turn on together at the same threshold, so half a set would "
+                f"be a bonus with no cost, or a cost with no bonus.")
 
     if not out:
         raise DataError("the Enchantment Effects sheet is empty")

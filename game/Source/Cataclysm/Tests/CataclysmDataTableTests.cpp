@@ -376,12 +376,17 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// `class_resource`, which always existed.
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        208)
 
-	// SIXTY-FOUR ROWS OVER FIFTY-SIX ENCHANTMENTS. Issue #45. The first seven
-	// state one number each. The other fifty-seven, written on 2026-09-11 once
+	// SEVENTY-TWO ROWS OVER SIXTY-FOUR ENCHANTMENTS. Issue #45. The first seven
+	// state one number each. The next fifty-seven, written on 2026-09-11 once
 	// an item kept where inside a range it rolled, are forty-eight ranged
 	// enchantments and P031, whose number was chosen under the owner's
 	// delegation. A sentence about damage is two rows, attack and spell.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     64)
+	//
+	// AND EIGHT FOR FOUR NAMED SETS, the same day: each set's 2-piece bonus and
+	// its drawback, for Archon's Aegis, Mana Weaver, Divine Retribution and
+	// Warlord's Will. The other ten sets are held, each waiting for something
+	// its rows need, which `docs/DECISIONS.md` lists set by set.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     72)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

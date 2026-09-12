@@ -15,7 +15,10 @@ place, and that is what this file checks.
 WHAT IS ASSERTED HERE.
 
     every effect names an enchantment that exists
-    no effect is written on a set row yet
+    a set with any effect row is written whole: its first bonus and its
+      drawback, which turn on together at the same threshold
+    the sets written are the ones counted here, so a set only starts working
+      when somebody means it to
     a row stating a range states one its enchantment's words state, in their
       order and with one sign, because the game shows the item's number in
       place of that range
@@ -110,9 +113,16 @@ JUDGED_NUMBERS = {
 #: the coverage only moves when somebody means it to, and says so in
 #: `docs/DECISIONS.md` at the same time.
 #: Seven rows over seven enchantments until 2026-09-11, when the ranged
-#: enchantments' rows were written.
-AUTHORED_ROWS = 64
-AUTHORED_ENCHANTMENTS = 56
+#: enchantments' rows were written, and 64 over 56 until the four buildable
+#: sets got their eight rows.
+AUTHORED_ROWS = 72
+AUTHORED_ENCHANTMENTS = 64
+
+#: The named sets whose rows are written, by the identifier their Weight column
+#: carries: Archon's Aegis, Mana Weaver, Divine Retribution and Warlord's Will.
+#: The other ten wait for what their rows need, and `docs/DECISIONS.md` says
+#: what each one waits for.
+SETS_THAT_WORK = [5, 8, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -177,13 +187,58 @@ def test_every_effect_names_an_enchantment_that_exists(effects, enchantments):
         f"older than the workbook.")
 
 
-def test_no_effect_is_written_on_a_set_row_yet(effects, enchantments):
-    """A set row applies by how many worn pieces carry the set, which nothing
-    counts yet. Written here, it would be applied per piece."""
-    on_sets = sorted(r["Name"] for r in effects
-                     if enchantments[r["Enchantment"]]["EnchantmentType"]
-                     .casefold() == "set")
-    assert not on_sets, f"{on_sets} are effects on set rows"
+def set_rows(enchantments: dict[str, dict]):
+    """Each set's bonus rows, sorted by threshold, and its drawback rows."""
+    bonuses: dict[int, list[tuple[int, str]]] = {}
+    drawbacks: dict[int, list[str]] = {}
+    for name, row in enchantments.items():
+        set_id = gen.enchantment_set_id(row)
+        if not set_id:
+            continue
+        if row["IsNegative"] == "True":
+            drawbacks.setdefault(set_id, []).append(name)
+        else:
+            threshold = gen.set_piece_threshold(row["Effect"])
+            bonuses.setdefault(set_id, []).append(
+                (gen.UNREACHABLE_THRESHOLD if threshold is None else threshold,
+                 name))
+    return ({set_id: sorted(rows) for set_id, rows in bonuses.items()},
+            {set_id: sorted(rows) for set_id, rows in drawbacks.items()})
+
+
+def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
+    """A set's first bonus and its drawback turn on together, at the same
+    threshold, which the project owner ruled on 2026-09-08. So a set written by
+    halves would be a bonus with no cost, or a cost with no bonus. The generator
+    refuses that; this holds the file it wrote to the same rule."""
+    written = {row["Enchantment"] for row in effects}
+    bonuses, drawbacks = set_rows(enchantments)
+
+    half = []
+    for set_id in sorted(set(bonuses) | set(drawbacks)):
+        ordered, named = bonuses.get(set_id, []), drawbacks.get(set_id, [])
+        if not ({name for _, name in ordered} | set(named)) & written:
+            continue
+        if not ordered or ordered[0][1] not in written:
+            half.append(f"set {set_id} has no effect on its first bonus")
+        if not named or named[0] not in written:
+            half.append(f"set {set_id} has no effect on its drawback")
+    assert not half, "; ".join(half)
+
+
+def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
+    """Four of the fourteen sets have their rows written: Archon's Aegis (5),
+    Mana Weaver (8), Divine Retribution (16) and Warlord's Will (17). The other
+    ten wait for what their rows need, which `docs/DECISIONS.md` lists set by
+    set. This moves only when somebody means it to."""
+    written = {row["Enchantment"] for row in effects}
+    bonuses, drawbacks = set_rows(enchantments)
+    working = sorted(
+        set_id for set_id in set(bonuses) | set(drawbacks)
+        if ({name for _, name in bonuses.get(set_id, [])}
+            | set(drawbacks.get(set_id, []))) & written)
+
+    assert working == SETS_THAT_WORK
 
 
 def test_a_range_is_one_the_words_state(effects, enchantments):

@@ -63,3 +63,11 @@ Negative_You_lose_10_20_movespeed#1,Negative_You_lose_10_20_movespeed,movement_s
 Negative_Lose_5_15_attack_speed#1,Negative_Lose_5_15_attack_speed,attack_speed,increased,-5.0,-15.0,,,0.0,,0.0
 Negative_You_have_10_20_less_chance_to_evade#1,Negative_You_have_10_20_less_chance_to_evade,evasion,more,-10.0,-20.0,,,0.0,,0.0
 Positive_Your_retaliation_damage_scales_with_your_current#1,Positive_Your_retaliation_damage_scales_with_your_current,retaliation,increased,1.0,1.0,,,0.0,health_missing,2.0
+Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc#1,Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc,block_chance,increased,25.0,25.0,,,0.0,,0.0
+Negative_Your_movement_speed_is_reduced_by_10#1,Negative_Your_movement_speed_is_reduced_by_10,movement_speed,increased,-10.0,-10.0,,,0.0,,0.0
+Positive_Mana_Weaver_2_Piece_Bonus_Your_maximum_mana_i#1,Positive_Mana_Weaver_2_Piece_Bonus_Your_maximum_mana_i,max_mana,increased,20.0,20.0,,,0.0,,0.0
+Negative_All_mana_regeneration_effects_are_reduced_by_50#1,Negative_All_mana_regeneration_effects_are_reduced_by_50,mana_regen,increased,-50.0,-50.0,,,0.0,,0.0
+Positive_Divine_Retribution_2_Piece_Bonus_Your_energy#1,Positive_Divine_Retribution_2_Piece_Bonus_Your_energy,max_energy_shield,increased,25.0,25.0,,,0.0,,0.0
+Negative_Your_health_is_reduced_by_10#1,Negative_Your_health_is_reduced_by_10,max_health,increased,-10.0,-10.0,,,0.0,,0.0
+Positive_Warlord_s_Will_2_Piece_Bonus_Your_armor_is_in#1,Positive_Warlord_s_Will_2_Piece_Bonus_Your_armor_is_in,armor,increased,25.0,25.0,,,0.0,,0.0
+Negative_Your_movement_speed_is_reduced_by_10_1#1,Negative_Your_movement_speed_is_reduced_by_10_1,movement_speed,increased,-10.0,-10.0,,,0.0,,0.0
