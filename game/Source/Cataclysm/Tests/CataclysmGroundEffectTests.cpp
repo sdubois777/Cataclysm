@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
@@ -541,6 +542,251 @@ bool FCataclysmGroundZoneIsDrawnWithItsOwnSize::RunTest(const FString& Parameter
 	TestEqual(TEXT("the round zone kept its radius"), Pool->RadiusCm, RadiusCm,
 			  0.01f);
 	TestEqual(TEXT("and the long one kept its far end"), Line->FarEnd, End, 1.0f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A patch that lasts until the floor ends
+// --------------------------------------------------------------------------
+
+/**
+ * A floor-lasting patch is drawn for a real length of time, not for nothing.
+ *
+ * THIS IS THE TEST THE WHOLE FEATURE DEPENDS ON. A patch that lasts the floor
+ * has no life span, so `GetLifeSpan()` is zero, and drawing it for zero seconds
+ * would leave it sweeping, damaging and cursing correctly while being
+ * invisible. Every other assertion about it would pass. Issue #1153 was that
+ * exact failure for every patch in the game and nothing caught it for weeks.
+ *
+ * IT READS WHAT WAS ASKED FOR, because nothing else is visible: the automation
+ * run passes -nullrhi and Niagara makes no component at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPatchIsDrawnForARealTime,
+	"Cataclysm.Effects.APatchThatLastsTheFloorIsDrawnForARealLengthOfTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPatchIsDrawnForARealTime::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	const int32 Before = UCataclysmGroundEffect::TimesAsked;
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, FVector::ZeroVector, FVector::ZeroVector, /*HalfWidthCm=*/4.0f * M,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a floor-lasting patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("it says it lasts the floor"), Patch->bLastsTheFloor);
+
+	// NO LIFE SPAN AT ALL, which is what makes the floor the thing that ends it.
+	TestEqual(TEXT("and it has no life span of its own"),
+		Patch->GetLifeSpan(), 0.0f, 0.001f);
+
+	TestEqual(TEXT("it asked to be drawn"),
+		UCataclysmGroundEffect::TimesAsked, Before + 1);
+
+	// THE ASSERTION THAT MATTERS. Zero here is an invisible hazard.
+	TestEqual(TEXT("and it asked for a real length of time, not its zero life span"),
+		UCataclysmGroundEffect::LastDuration,
+		ACataclysmGroundZone::FloorDrawSeconds, 0.001f);
+
+	TestTrue(TEXT("which is more than nothing"),
+		UCataclysmGroundEffect::LastDuration > 0.0f);
+
+	return true;
+}
+
+/**
+ * A floor-lasting patch keeps asking to be drawn while it lives.
+ *
+ * ONE DRAWING IS NOT ENOUGH AND THAT IS THE POINT. The components a patch asks
+ * for are not attached to it and destroy themselves after the time they were
+ * given, so a patch drawn once for three seconds is invisible from the fourth
+ * second onward while still burning whatever stands in it.
+ *
+ * THE PERIOD IS SHORTER THAN THE DRAWING ON PURPOSE, so the drawings overlap
+ * rather than meet. This test would still pass if the two were equal, which is
+ * why the reason lives on the constants where someone tidying them will read
+ * it -- a flicker of one frame every three seconds is not something an
+ * automation test can see.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPatchKeepsAskingToBeDrawn,
+	"Cataclysm.Effects.APatchThatLastsTheFloorKeepsAskingToBeDrawn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPatchKeepsAskingToBeDrawn::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, FVector::ZeroVector, FVector::ZeroVector, /*HalfWidthCm=*/4.0f * M,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a floor-lasting patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it has asked for no redrawings yet"), Patch->RedrawsAsked, 0);
+
+	const int32 AskedAfterTheFirstDrawing = UCataclysmGroundEffect::TimesAsked;
+
+	// LONG ENOUGH FOR SEVERAL PERIODS, so this measures a repeating timer rather
+	// than one that happened to fire once.
+	CataclysmTestWorld::RunClock(World, 8.0f);
+
+	TestTrue(FString::Printf(
+			TEXT("it asked to be drawn again while it lived (%d times)"),
+			Patch->RedrawsAsked),
+		Patch->RedrawsAsked >= 2);
+
+	TestTrue(TEXT("and those reached the drawing system"),
+		UCataclysmGroundEffect::TimesAsked > AskedAfterTheFirstDrawing);
+
+	// STILL THERE. Eight seconds is longer than the longest stated ground
+	// duration in the sheet, which is ten, and far longer than the three a
+	// single drawing lasts. A patch that lasts the floor outlives both.
+	TestTrue(TEXT("and the patch itself is still in the world"), IsValid(Patch));
+
+	return true;
+}
+
+/**
+ * Leaving the floor is what ends a floor-lasting patch.
+ *
+ * WITHOUT THIS THE FEATURE IS A LEAK. A patch with no life span that nothing
+ * destroys would burn on every later floor of the run. The thing that ends it
+ * is `UCataclysmFloorContents::ClearTheFloor`, which is why no duration had to
+ * be invented and why the spawn function states none.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPatchEndsWithTheFloor,
+	"Cataclysm.Effects.LeavingTheFloorIsWhatEndsAPatchThatLastsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPatchEndsWithTheFloor::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, FVector::ZeroVector, FVector::ZeroVector, /*HalfWidthCm=*/4.0f * M,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a floor-lasting patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	// ASSERTED BEFORE CLEARING, so "gone afterwards" cannot be true because it
+	// was never there.
+	if (!TestTrue(TEXT("it is in the world to begin with"), IsValid(Patch)))
+	{
+		return false;
+	}
+
+	UCataclysmFloorContents::ClearTheFloor(*World);
+
+	TestFalse(TEXT("and leaving the floor takes it"), IsValid(Patch));
+
+	return true;
+}
+
+/**
+ * The two spawn functions that take a duration still refuse a bad one.
+ *
+ * THE NEW FUNCTION WAS ADDED BESIDE THEM RATHER THAN BY CHANGING THEM, and this
+ * is what says so. A patch with a stated duration of zero is a row whose data
+ * is wrong, and it is refused; a patch with no duration at all is a deliberate
+ * thing a different function makes. Removing either refusal would make the
+ * first indistinguishable from the second.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedPatchesStillRefuseNoDuration,
+	"Cataclysm.Effects.APatchWithAStatedDurationOfNothingIsStillRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTimedPatchesStillRefuseNoDuration::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	TestNull(TEXT("a round patch stating no duration is refused"),
+		ACataclysmGroundZone::Spawn(Source, FVector::ZeroVector,
+									/*RadiusCm=*/4.0f * M, /*Duration=*/0.0f,
+									/*DamagePerTick=*/10.0f));
+
+	TestNull(TEXT("and so is a long one"),
+		ACataclysmGroundZone::SpawnAlong(Source, FVector::ZeroVector,
+										 FVector(5.0f * M, 0.0f, 0.0f),
+										 /*HalfWidthCm=*/1.0f * M,
+										 /*Duration=*/0.0f,
+										 /*DamagePerTick=*/10.0f));
+
+	// AND THE NEW ONE MAKES A PATCH FROM THE SAME ARGUMENTS MINUS THE DURATION,
+	// which is what makes the two refusals above a decision rather than an
+	// inability.
+	TestNotNull(TEXT("while a patch that lasts the floor needs no duration"),
+		ACataclysmGroundZone::SpawnForTheFloor(
+			Source, FVector::ZeroVector, FVector::ZeroVector,
+			/*HalfWidthCm=*/4.0f * M, /*DamagePerTick=*/10.0f));
+
+	// A WIDTH OF NOTHING IS STILL REFUSED BY THE NEW ONE. It drops the duration
+	// check and keeps every other.
+	TestNull(TEXT("but a patch with no width is still refused"),
+		ACataclysmGroundZone::SpawnForTheFloor(
+			Source, FVector::ZeroVector, FVector::ZeroVector,
+			/*HalfWidthCm=*/0.0f, /*DamagePerTick=*/10.0f));
 
 	return true;
 }

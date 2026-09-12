@@ -85,6 +85,42 @@ public:
 											bool bBurnsEveryone = false);
 
 	/**
+	 * Put one in the world that lasts until the player leaves the floor.
+	 *
+	 * IT TAKES NO DURATION, AND THAT IS THE WHOLE DIFFERENCE. Five of the eight
+	 * dungeon modifiers that want a hazard state no duration at all -- Withered
+	 * Ground, Necrotic Ground, Leech Spores, Hallowed Groundfall and Plague
+	 * Harbingers -- because the design means them to last the floor. Issue
+	 * #1605.
+	 *
+	 * SO IT NEVER CALLS `SetLifeSpan`, AND NOTHING ELSE HAD TO CHANGE FOR
+	 * THAT TO WORK. `UCataclysmFloorContents::ClearTheFloor` already destroys
+	 * every zone in the world when the player leaves a floor, so the floor
+	 * ending is what ends this. The alternative considered was a very large
+	 * duration, which would be a false number sitting in the data for a reader
+	 * to find and believe.
+	 *
+	 * BESIDE `Spawn` AND `SpawnAlong` RATHER THAN CHANGING EITHER. Both refuse
+	 * a non-positive duration and both still do; no existing caller behaves
+	 * differently because this exists.
+	 *
+	 * @param bAffectsEveryone  whether it acts on whatever is standing in it
+	 *                          rather than only the owner's enemies. A floor
+	 *                          hazard owned by an
+	 *                          `ACataclysmFloorHazardSource` wants this when its
+	 *                          row does one thing to the player and another to
+	 *                          creatures in the same patch, which four of the
+	 *                          eight rows do.
+	 * @return the patch, or null if the width is not positive
+	 */
+	static ACataclysmGroundZone* SpawnForTheFloor(AActor* Owner,
+												  const FVector& Start,
+												  const FVector& End,
+												  float HalfWidthCm,
+												  float DamagePerTick,
+												  bool bAffectsEveryone = false);
+
+	/**
 	 * Whether it burns whatever is standing in it, including its own owner.
 	 *
 	 * **NOTHING SETS THIS. It is false for every zone in the game.** The
@@ -173,6 +209,63 @@ public:
 	/** Seconds between one sweep of who is standing in it and the next. */
 	static constexpr float TickSeconds = 1.0f;
 
+	/**
+	 * How long ONE DRAWING of a floor-lasting patch is told to last.
+	 *
+	 * THREE SECONDS BECAUSE THAT IS THE SHORTEST GROUND DURATION ALREADY IN THE
+	 * DATA, and the number is a bound rather than a preference. The visual
+	 * components a patch asks for are not attached to it -- see
+	 * `UCataclysmGroundEffect::PlayFor` -- so they keep playing after the patch
+	 * is destroyed, including after a floor change. That is issue #1660 and it
+	 * happens today for timed patches, whose stated durations run from 3 to 10
+	 * seconds.
+	 *
+	 * DRAWING FOR THREE MEANS A FLOOR-LASTING PATCH LEAVES AT MOST WHAT THE
+	 * MILDEST TIMED ONE ALREADY LEAVES, and under a third of the worst. So this
+	 * cannot make #1660 worse, which is checkable rather than asserted.
+	 *
+	 * IT DOES NOT REMOVE THE OVERHANG. The floor transition is immediate --
+	 * `BuildFloor`, `ClearTheFloor`, `PopulateFloor` and `PlaceStairs` run in
+	 * one pass and the player is teleported in the same one, and there is no
+	 * fade or level load anywhere in this module to hide it behind. The
+	 * leftover is visible and bounded, not hidden. Removing it is #1660.
+	 */
+	static constexpr float FloorDrawSeconds = 3.0f;
+
+	/**
+	 * How often a floor-lasting patch asks to be drawn again.
+	 *
+	 * SHORTER THAN `FloorDrawSeconds` ON PURPOSE, AND TIDYING THE TWO TO MATCH
+	 * REINTRODUCES A FLICKER. A drawing that lasts three seconds, re-asked every
+	 * three, has the old one ending as the new one begins: any timer jitter, or
+	 * simply the order things tick in, leaves a frame with nothing drawn, and a
+	 * patch that blinks out once every three seconds is a bug a player would
+	 * report. Asking early means the two overlap briefly instead.
+	 *
+	 * IT DOES NOT WEAKEN THE BOUND ABOVE. What can outlive a floor change is one
+	 * DRAWING, so the overhang is bounded by `FloorDrawSeconds`. A shorter
+	 * period only ever closes the gap between drawings; it never extends how
+	 * long one of them lasts.
+	 */
+	static constexpr float FloorRedrawSeconds = 2.5f;
+
+	/** Whether it lasts until the floor ends rather than for a stated time. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	bool bLastsTheFloor = false;
+
+	/**
+	 * How many times it has asked to be drawn again. Read by tests.
+	 *
+	 * THE ONLY THING A TEST CAN SEE ABOUT ANY OF THIS. No automation test in
+	 * this project can observe a drawn effect: the run passes `-nullrhi` and
+	 * Niagara creates no component when `FApp::CanEverRender()` is false. So a
+	 * hazard that stopped asking would be invisible in play and silent in the
+	 * suite, and this counter plus `UCataclysmGroundEffect::TimesAsked` is what
+	 * makes the redraw assertable at all.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	int32 RedrawsAsked = 0;
+
 	/** How wide it is, in centimetres. Its radius when round, half its width when long. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float RadiusCm = 0.0f;
@@ -251,6 +344,17 @@ protected:
 	TObjectPtr<USceneComponent> Anchor;
 
 private:
-	/** Its lifetime is SetLifeSpan; only the sweep needs a timer of its own. */
+	/**
+	 * Ask to be drawn again, so a floor-lasting patch does not go invisible.
+	 *
+	 * ONLY A FLOOR-LASTING PATCH RUNS THIS. A timed one is drawn once, for its
+	 * whole life span, exactly as before.
+	 */
+	void Redraw();
+
+	/** A timed patch's lifetime is SetLifeSpan; the sweep needs its own timer. */
 	FTimerHandle SweepTimer;
+
+	/** Only a floor-lasting patch uses this. See `Redraw`. */
+	FTimerHandle RedrawTimer;
 };
