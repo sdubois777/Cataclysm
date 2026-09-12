@@ -6,6 +6,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmGroundEffect.generated.h"
 
+class UNiagaraComponent;
+
 /**
  * What a patch of burning ground looks like.
  *
@@ -148,8 +150,12 @@ public:
 	 * @param Duration     how many seconds the zone burns for.
 	 * @param DamageType   the leaf of the owner's `Element.*` tag, or NAME_None.
 	 *
-	 * Returns how many components were spawned, which is zero in every
-	 * automation test and whenever the effect type's scalability refuses them.
+	 * Returns the components it spawned, which is empty in every automation
+	 * test and whenever the effect type's scalability refuses them.
+	 *
+	 * IT RETURNED A COUNT UNTIL ISSUE #1660, and a count is not enough to end
+	 * them with. A caller cut short rather than finishing its own life has to
+	 * be able to say which drawings were its own.
 	 *
 	 * THE COMPONENTS ARE NOT ATTACHED TO THE ZONE and they clean themselves up.
 	 * A ground zone ends by `SetLifeSpan` destroying the actor, and a component
@@ -157,7 +163,45 @@ public:
 	 * vanish rather than burn out. They are spawned unattached with
 	 * `bAutoDestroy` so each finishes its own life.
 	 */
-	static int32 PlayFor(const UObject* WorldContextObject, const FVector& Start,
-						 const FVector& FarEnd, float RadiusCm, float Duration,
-						 FName DamageType);
+	static TArray<TWeakObjectPtr<UNiagaraComponent>> PlayFor(
+		const UObject* WorldContextObject, const FVector& Start,
+		const FVector& FarEnd, float RadiusCm, float Duration,
+		FName DamageType);
+
+	/**
+	 * End drawings a caller asked for, before they would end themselves.
+	 *
+	 * WHY THIS EXISTS AT ALL. The components above are spawned unattached and
+	 * destroy themselves after the time they were given, which is right for a
+	 * patch that finishes its own life -- the fire burns out rather than
+	 * vanishing. It is wrong for a patch cut short, because the components do
+	 * not know that happened and go on drawing where the patch used to be. On a
+	 * floor change that is a place with nothing in it. Issue #1660.
+	 *
+	 * IT TAKES WEAK POINTERS BECAUSE THE CALLER DOES NOT OWN THEM. The engine
+	 * outers each component to the world settings actor and each destroys
+	 * itself, so one may already be gone. That is the ordinary case rather than
+	 * an error, and a raw pointer would dangle every time a drawing finished on
+	 * its own schedule.
+	 *
+	 * @return how many were still there to end
+	 */
+	static int32 EndFor(const TArray<TWeakObjectPtr<UNiagaraComponent>>& Drawings);
+
+	/**
+	 * How many times a caller has asked for its drawings to end.
+	 *
+	 * FOR THE REASON `TimesAsked` EXISTS, AND IT IS THE SAME REASON. No test
+	 * here can see a Niagara component, so it cannot see one end either. What a
+	 * test can see is that the ask was made, and **the ask is the part that was
+	 * missing**: before issue #1660 nothing ever decided to end these.
+	 *
+	 * COUNTED BEFORE ANYTHING CAN REFUSE, so an empty list still records that a
+	 * caller decided to end its drawings. Under the automation run's -nullrhi
+	 * the list is always empty, and the decision is still the thing under test.
+	 */
+	static int32 TimesEndAsked;
+
+	/** How many drawings the last ask covered. Read by tests. */
+	static int32 LastEndCount;
 };

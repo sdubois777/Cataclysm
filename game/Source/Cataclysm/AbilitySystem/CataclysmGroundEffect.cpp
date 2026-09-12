@@ -21,6 +21,8 @@ const FName UCataclysmGroundEffect::DurationParameter(
 	CataclysmEffectParameterNames::Duration);
 
 int32 UCataclysmGroundEffect::TimesAsked = 0;
+int32 UCataclysmGroundEffect::TimesEndAsked = 0;
+int32 UCataclysmGroundEffect::LastEndCount = 0;
 
 FVector UCataclysmGroundEffect::LastStart = FVector::ZeroVector;
 FVector UCataclysmGroundEffect::LastFarEnd = FVector::ZeroVector;
@@ -84,11 +86,12 @@ int32 UCataclysmGroundEffect::HowManyAlong(float LengthCm, float RadiusCm)
 	return FMath::Clamp(Gaps + 1, 1, MostCopies);
 }
 
-int32 UCataclysmGroundEffect::PlayFor(const UObject* WorldContextObject,
-									  const FVector& Start,
-									  const FVector& FarEnd, float RadiusCm,
-									  float Duration, FName DamageType)
+TArray<TWeakObjectPtr<UNiagaraComponent>> UCataclysmGroundEffect::PlayFor(
+	const UObject* WorldContextObject, const FVector& Start,
+	const FVector& FarEnd, float RadiusCm, float Duration, FName DamageType)
 {
+	TArray<TWeakObjectPtr<UNiagaraComponent>> Drawn;
+
 	// COUNTED FIRST, BEFORE ANYTHING CAN REFUSE. See the declaration: this and
 	// the four values below are the only things an automation test can observe
 	// about this function.
@@ -105,20 +108,20 @@ int32 UCataclysmGroundEffect::PlayFor(const UObject* WorldContextObject,
 
 	if (!WorldContextObject)
 	{
-		return 0;
+		return Drawn;
 	}
 
 	UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(
 		WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr;
 	if (!World)
 	{
-		return 0;
+		return Drawn;
 	}
 
 	UNiagaraSystem* System = CataclysmLoadGroundSystem();
 	if (!System)
 	{
-		return 0;
+		return Drawn;
 	}
 
 	FLinearColor Primary;
@@ -133,7 +136,6 @@ int32 UCataclysmGroundEffect::PlayFor(const UObject* WorldContextObject,
 	const FVector Along = FarEnd - Start;
 	const int32 HowMany = HowManyAlong(static_cast<float>(Along.Size()), RadiusCm);
 
-	int32 Spawned = 0;
 	for (int32 Which = 0; Which < HowMany; ++Which)
 	{
 		// EVENLY FROM ONE END TO THE OTHER, both ends included. With one copy
@@ -170,8 +172,44 @@ int32 UCataclysmGroundEffect::PlayFor(const UObject* WorldContextObject,
 		Component->SetVariableFloat(DurationParameter, Duration);
 
 		Component->Activate(/*bReset=*/true);
-		++Spawned;
+
+		// KEPT AS A WEAK POINTER BECAUSE THE CALLER DOES NOT OWN IT. It is
+		// outered to the world settings actor and destroys itself when its time
+		// is up, so it may be gone before anyone looks again.
+		Drawn.Add(Component);
 	}
 
-	return Spawned;
+	return Drawn;
+}
+
+int32 UCataclysmGroundEffect::EndFor(
+	const TArray<TWeakObjectPtr<UNiagaraComponent>>& Drawings)
+{
+	// COUNTED FIRST, BEFORE ANYTHING CAN REFUSE, for the reason the counter in
+	// PlayFor is counted first: no test here can see a Niagara component, so
+	// the ask is the only observable part -- and the ask is what was missing.
+	++TimesEndAsked;
+	LastEndCount = Drawings.Num();
+
+	int32 Ended = 0;
+	for (const TWeakObjectPtr<UNiagaraComponent>& Weak : Drawings)
+	{
+		UNiagaraComponent* Component = Weak.Get();
+		if (!IsValid(Component))
+		{
+			// ALREADY GONE IS THE ORDINARY CASE. A drawing that finished its own
+			// life destroyed itself, which is exactly what it is meant to do.
+			continue;
+		}
+
+		// AT ONCE RATHER THAN LETTING IT FINISH. Deactivate would let the
+		// particles already alive play out, which is the burning-out behaviour
+		// that is right for a patch ending on its own schedule and wrong here:
+		// the caller has been cut short, and on a floor change everything else
+		// on that floor went in the same instant.
+		Component->DestroyComponent();
+		++Ended;
+	}
+
+	return Ended;
 }

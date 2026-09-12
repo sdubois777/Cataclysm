@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
 #include "Components/SceneComponent.h"
+#include "NiagaraComponent.h"
 #include "Engine/World.h"
 // For walking the level's patches to answer whether a character is standing in
 // one of its own. Issue #1162.
@@ -169,9 +170,9 @@ void ACataclysmGroundZone::BeginPlay()
 	// correctly while being invisible, which reads as working and is not.
 	const float DrawSeconds = bLastsTheFloor ? FloorDrawSeconds : GetLifeSpan();
 
-	UCataclysmGroundEffect::PlayFor(this, GetActorLocation(), FarEnd, RadiusCm,
-									DrawSeconds,
-									UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
+	Drawings = UCataclysmGroundEffect::PlayFor(
+		this, GetActorLocation(), FarEnd, RadiusCm, DrawSeconds,
+		UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
 
 	if (UWorld* World = GetWorld())
 	{
@@ -199,9 +200,18 @@ void ACataclysmGroundZone::BeginPlay()
 
 void ACataclysmGroundZone::Redraw()
 {
-	UCataclysmGroundEffect::PlayFor(this, GetActorLocation(), FarEnd, RadiusCm,
-									FloorDrawSeconds,
-									UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
+	// THE ONES THAT HAVE ALREADY FINISHED ARE DROPPED FIRST. A patch lasting a
+	// whole floor redraws every few seconds, and without this the list would
+	// grow for as long as the floor lasts while almost every entry in it points
+	// at a drawing that ended long ago.
+	Drawings.RemoveAll([](const TWeakObjectPtr<UNiagaraComponent>& Weak)
+	{
+		return !Weak.IsValid();
+	});
+
+	Drawings.Append(UCataclysmGroundEffect::PlayFor(
+		this, GetActorLocation(), FarEnd, RadiusCm, FloorDrawSeconds,
+		UCataclysmSkillEffects::DamageTypeOf(GetOwner())));
 
 	// COUNTED SO A TEST CAN SEE IT. Nothing else about a drawing is observable
 	// under the automation run's -nullrhi, so without this a patch that stopped
@@ -263,6 +273,36 @@ void ACataclysmGroundZone::Sweep()
 
 	LastSweepCount = Inside.Num();
 	++TicksElapsed;
+}
+
+void ACataclysmGroundZone::LifeSpanExpired()
+{
+	// RECORDED BEFORE THE BASE DESTROYS THIS, because the base call is what
+	// reaches EndPlay, and EndPlay is where the flag is read.
+	bExpiredNaturally = true;
+
+	Super::LifeSpanExpired();
+}
+
+void ACataclysmGroundZone::EndPlay(const EEndPlayReason::Type Reason)
+{
+	// A PATCH THAT FINISHED ITS OWN LIFE LEAVES ITS DRAWINGS ALONE, which is
+	// the whole of the recorded decision to spawn them detached: the fire burns
+	// out rather than vanishing at the instant the actor goes.
+	//
+	// ANYTHING ELSE ENDS THEM. See the header: this is "expired, or anything
+	// else", not "floor change or expiry". A patch cut short leaves fire
+	// burning where it used to be, and on a floor change that is a place with
+	// nothing in it, because everything else on that floor went in the same
+	// instant. Issue #1660.
+	if (!bExpiredNaturally)
+	{
+		UCataclysmGroundEffect::EndFor(Drawings);
+	}
+
+	Drawings.Reset();
+
+	Super::EndPlay(Reason);
 }
 
 void ACataclysmGroundZone::AlsoApply(FGameplayTag EffectTag, float Seconds,

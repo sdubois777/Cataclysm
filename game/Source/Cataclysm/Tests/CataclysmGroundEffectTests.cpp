@@ -791,4 +791,193 @@ bool FCataclysmTimedPatchesStillRefuseNoDuration::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Ending the drawings when a patch is cut short
+// --------------------------------------------------------------------------
+
+/**
+ * A patch that finishes its own life leaves its drawings to finish theirs.
+ *
+ * THIS IS HALF OF A PAIR AND NEITHER HALF MEANS ANYTHING ALONE. The drawings
+ * are spawned unattached on purpose so that a timed patch's fire burns out
+ * rather than vanishing at the instant the actor goes. This asserts that
+ * decision still holds. The test below asserts the opposite case.
+ *
+ * WHAT IS OBSERVABLE IS THE ASK, NOT THE DRAWINGS. No test here can see a
+ * Niagara component -- the run passes -nullrhi and the engine creates none --
+ * so `TimesEndAsked` records that a patch decided to end its drawings. The
+ * decision is what was missing before issue #1660: nothing ever made one.
+ *
+ * THE PATCH IS ASSERTED GONE, not assumed. If the life span had not run out,
+ * "no ask was made" would be true for a reason that has nothing to do with
+ * the rule under test, and this would pass having measured nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExpiredPatchLeavesItsDrawings,
+	"Cataclysm.Effects.APatchThatFinishesItsOwnLifeLeavesItsDrawingsAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmExpiredPatchLeavesItsDrawings::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
+		Source, FVector::ZeroVector, /*RadiusCm=*/4.0f * M, /*Duration=*/2.0f,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a timed patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	const int32 AsksBefore = UCataclysmGroundEffect::TimesEndAsked;
+
+	// PAST ITS TWO SECONDS, so the life span timer runs out and the engine
+	// destroys it through LifeSpanExpired.
+	CataclysmTestWorld::RunClock(World, 3.0f);
+
+	if (!TestFalse(TEXT("its life span ran out and it is gone"), IsValid(Patch)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and it did not ask for its drawings to end"),
+		UCataclysmGroundEffect::TimesEndAsked, AsksBefore);
+
+	return true;
+}
+
+/**
+ * A patch cut short by a floor change ends its drawings.
+ *
+ * THE OTHER HALF OF THE PAIR, AND THE DEFECT ITSELF. Before issue #1660 the
+ * drawings kept playing after the patch was destroyed, in a place with nothing
+ * in it -- every floor is built at the world origin and the floor actor is
+ * reused, so floor 5 occupies the coordinates floor 1 did.
+ *
+ * THE DURATION IS LONG ENOUGH THAT IT CANNOT EXPIRE during this test. If it
+ * could, the ask might come from the expiry path and the test would prove the
+ * opposite of what it says.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCutShortPatchEndsItsDrawings,
+	"Cataclysm.Effects.APatchCutShortByAFloorChangeEndsItsDrawings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCutShortPatchEndsItsDrawings::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
+		Source, FVector::ZeroVector, /*RadiusCm=*/4.0f * M, /*Duration=*/60.0f,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a timed patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	const int32 AsksBefore = UCataclysmGroundEffect::TimesEndAsked;
+
+	UCataclysmFloorContents::ClearTheFloor(*World);
+
+	if (!TestFalse(TEXT("leaving the floor took it"), IsValid(Patch)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and it asked for its drawings to end"),
+		UCataclysmGroundEffect::TimesEndAsked, AsksBefore + 1);
+
+	return true;
+}
+
+/**
+ * A patch that lasts the floor can only ever end the second way.
+ *
+ * IT HAS NO LIFE SPAN, so there is no expiry for it to take. That makes it the
+ * case where the rule matters most: every ending it can have is one where the
+ * drawings must go with it.
+ *
+ * THE FIRST HALF IS WHAT MAKES THE SECOND MEAN SOMETHING. Running the clock
+ * well past the longest stated ground duration and finding it still there,
+ * with no ask made, is what shows the ask below came from the floor change
+ * rather than from time passing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPatchAlwaysEndsItsDrawings,
+	"Cataclysm.Effects.APatchThatLastsTheFloorCanOnlyEndTheSecondWay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPatchAlwaysEndsItsDrawings::RunTest(const FString&)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Source = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("something to own it"), Source))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, FVector::ZeroVector, FVector::ZeroVector, /*HalfWidthCm=*/4.0f * M,
+		/*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a floor-lasting patch was left in the world"), Patch))
+	{
+		return false;
+	}
+
+	const int32 AsksBefore = UCataclysmGroundEffect::TimesEndAsked;
+
+	// FIFTEEN SECONDS IS PAST THE LONGEST STATED GROUND DURATION, which is ten.
+	// A timed patch would have gone by now; this one has no life span to run
+	// out, so nothing has cut it short and nothing should have been asked.
+	CataclysmTestWorld::RunClock(World, 15.0f);
+
+	if (!TestTrue(TEXT("time alone does not end it"), IsValid(Patch)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and nothing has asked for its drawings to end"),
+		UCataclysmGroundEffect::TimesEndAsked, AsksBefore);
+
+	UCataclysmFloorContents::ClearTheFloor(*World);
+
+	TestFalse(TEXT("leaving the floor takes it"), IsValid(Patch));
+
+	TestEqual(TEXT("and that is when it asks for its drawings to end"),
+		UCataclysmGroundEffect::TimesEndAsked, AsksBefore + 1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

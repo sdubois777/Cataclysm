@@ -9,6 +9,8 @@
 #include "GameFramework/Actor.h"
 #include "CataclysmGroundZone.generated.h"
 
+class UNiagaraComponent;
+
 /**
  * A patch of burning ground that hurts what stands in it, then goes away.
  *
@@ -330,6 +332,34 @@ protected:
 	virtual void BeginPlay() override;
 
 	/**
+	 * Called only when a life span runs out, which is what makes it useful.
+	 *
+	 * IT IS THE ONLY WAY TO TELL THE TWO ENDINGS APART. A patch whose life
+	 * span expires and a patch destroyed by something else both arrive at
+	 * `EndPlay` with the reason `Destroyed`, so the reason cannot separate
+	 * them. `AActor::LifeSpanExpired` is virtual and the engine calls it from
+	 * the life span timer and from nowhere else, so overriding it records the
+	 * one case where the drawings should be left to finish.
+	 */
+	virtual void LifeSpanExpired() override;
+
+	/**
+	 * End the drawings unless this patch finished its own life. Issue #1660.
+	 *
+	 * THE RULE IS "EXPIRED, OR ANYTHING ELSE", NOT "FLOOR CHANGE OR EXPIRY",
+	 * AND THAT IS DELIBERATE. A floor change is the case that was reported, but
+	 * a patch cut short for any other reason has the same problem: its owner
+	 * dies, a level is torn down, something calls Destroy. The recorded reason
+	 * for leaving drawings detached is about a timed effect finishing its own
+	 * life and says nothing about one cut short. A patch that disappears
+	 * leaving fire burning where it was is the bug in every one of those cases.
+	 *
+	 * So do not add a second condition narrowing this to floor changes. There
+	 * is one case where the drawings are left alone and it is the expiry above.
+	 */
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+
+	/**
 	 * An empty root so the actor has a position at all.
 	 *
 	 * NOT DECORATION. An actor whose components are all non-scene components has
@@ -354,6 +384,29 @@ private:
 
 	/** A timed patch's lifetime is SetLifeSpan; the sweep needs its own timer. */
 	FTimerHandle SweepTimer;
+
+	/**
+	 * The drawings this patch asked for, so it can end them if it is cut short.
+	 *
+	 * WEAK, BECAUSE THIS PATCH DOES NOT OWN THEM. The engine outers each
+	 * component to the world settings actor and each destroys itself when its
+	 * time is up, so one being gone already is the ordinary case rather than an
+	 * error -- and a raw pointer would dangle every time a drawing finished on
+	 * its own schedule.
+	 *
+	 * NOT A `UPROPERTY`, because Unreal Header Tool refuses a container of weak
+	 * pointers as a Blueprint type and a weak pointer needs no garbage
+	 * collection tracking of its own. `ACataclysmTerrain::InsideLastSweep`
+	 * carries the same note for the same reason.
+	 *
+	 * EMPTY IN EVERY AUTOMATION TEST. Niagara makes no component when
+	 * `FApp::CanEverRender()` is false and the run passes -nullrhi, so what a
+	 * test sees is the decision to end them rather than the ending.
+	 */
+	TArray<TWeakObjectPtr<UNiagaraComponent>> Drawings;
+
+	/** Whether a life span ran out, rather than something else ending it. */
+	bool bExpiredNaturally = false;
 
 	/** Only a floor-lasting patch uses this. See `Redraw`. */
 	FTimerHandle RedrawTimer;
