@@ -119,6 +119,258 @@ recording that would read as settled a month from now.
 
 ---
 
+## 2026-09-12 — Counting the enemies standing near a character, and why the reading is a list of distances rather than a count
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`; `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp`; `game/Source/Cataclysm/Character/CataclysmTargetCandidates.h` and
+`.cpp`; and `game/Source/Cataclysm/Tests/CataclysmEnemiesInReachTests.cpp`.
+**Applied, except the data rows, which are named at the end and are not in this
+change.**
+Issue [#1597](https://github.com/sdubois777/Cataclysm/issues/1597).
+
+### What the class is, and why this reading is its central one
+
+`docs/Cataclysm_GDD_v2.md` on the Ravager: "the fastest movement so it is always
+in contact... A frontline aggressor that cannot close is not one." Its Fervour
+generator, in the same document's table of six, is "1 for each enemy an attack
+hits, and 1 per second for every enemy within 4 metres", decaying "after 3
+seconds with no enemy within 4 metres, so losing contact empties it".
+
+**So "how many enemies are standing near me" is not one node's question, it is
+the class's.** [#1597](https://github.com/sdubois777/Cataclysm/issues/1597) names
+ten rows that ask it.
+
+### Two shapes serve them, and one would not
+
+| What a row says | Shape |
+| :-- | :-- |
+| "while an enemy is within 4 metres" | condition `enemies_in_reach_at_least`, value 1 |
+| "while three or more enemies are within 4 metres" | the same condition, value 3 |
+| "2% more damage for each enemy within 4 metres" | scale `enemies_in_reach` |
+
+The first two are one condition because the first is a special case of the
+second, not because they were merged for convenience. The third is a different
+question — a condition decides whether a bonus applies, a scale decides how large
+it is when it does — and a row may carry both.
+
+`ECataclysmStatScale` already carried `PerDebuffCarried` and `PerMinionHeld`, so
+a count of nearby enemies is the third scale of that kind rather than a new idea.
+
+### The radius belongs to the row, and a new field carries it
+
+**The problem is arithmetic.** A condition carries one number, and "three or more
+enemies within four metres" is two of them. A scale row has it from the other
+side: `ScaleStep` holds how many enemies one step is worth, so the radius has
+nowhere to go. Hence `FCataclysmStatModifier::ReachMetres`, defaulting to -1.
+
+**A single project-wide radius would have been convenient now and wrong later,
+and the genre says so directly.** Path of Exile's developers state that "nearby"
+is not a specific measurement and the radius varies by effect: 40 units for
+Ascendancy auras, 75 for a "while a Rare or Unique enemy is nearby" crafted
+modifier, 85 on unique items, 120 on the Conduit keystone. Last Epoch uses a
+single short radius of about 5 metres, the ring drawn round its training dummy.
+Two shipped games, two answers, so the shape is the one that can express both.
+
+- <https://www.pathofexile.com/forum/view-thread/1586914>
+- <https://pathofexile.fandom.com/wiki/Distance>
+- <https://forum.lastepoch.com/t/nearby-and-a-tape-measure/27660>
+
+**Measured from `game/Data/PassiveNodes.csv` rather than from the issue:** nine of
+the ten rows state 4 metres for the clause in question and one states 8. Across
+the whole of the passive data the radii are 3, 4, 8 and "melee range", which is
+what settles the question against a fixed constant.
+
+**A trap for anyone re-counting those distances.** A raw tally over the same ten
+node rows finds 4 nine times, 8 once and **5** once. The 5 is not a radius: it
+belongs to a different option on the same capstone, `Ravager_capstone_25` option
+3, "your first melee attack after moving 5 metres", which is a distance the
+character MOVED. A capstone row carries all three of its options' text, so a
+distance found in a node row is not necessarily the distance of the clause being
+read.
+
+### The reading is a list of distances, and it is taken at most once per lookup
+
+`UCataclysmTargetCandidates::HostileDistancesWithinMetres` returns how far away
+each hostile character within a radius is.
+
+**On that class rather than in the pipeline**, because the lists it walks are
+private to it and the alternative is a second walk of the level's characters. A
+second implementation of "which characters are near this one" is how two answers
+to one question drift apart.
+
+**Distances rather than a count**, so one walk serves every radius a character's
+rows ask for. A count would need a walk each; this walks once at the widest reach
+any row asks for, and each row then counts the entries inside its own.
+
+**Centre to centre, and that is deliberately not what `NearestHostile` on the
+same class uses.** That one asks whether a character's CAPSULE reaches into a
+sphere, and the class comment records that the two can disagree by about a body's
+width with the art loaded. This uses the arithmetic of
+`UCataclysmTargeting::MetresBetween`, the one definition in the game of how far
+apart two actors are, so a node reading "within 4 metres" and any other distance
+the game reports for the same pair agree exactly. **The two answer different
+questions:** a creature choosing whom to attack cares whether it can reach a
+body; a passive row counting enemies is a number a player reads off a sentence.
+
+**Nothing is walked unless a row asks.**
+`UCataclysmAbilitySystemComponent::WithEnemiesInReach` scans the rows about to be
+evaluated, takes the widest `ReachMetres` among those that ask, and walks nothing
+at all when none does. That is almost every stat lookup in the game and some of
+them run on every hit, so the cost of the rows that ask must not be paid by the
+rows that do not.
+
+**The cost argument is not hypothetical.** The entry of 2026-09-11 records the
+project owner's Horde capture: the physics sphere query this work would otherwise
+have reached for took 809 and 855 ms of every second of game time in the two
+slowdowns after a wave arrived, holding the frame rate at 2.5 to 2.7 frames a
+second.
+
+### Two ways a row can be authored wrong, and both grant nothing
+
+- **A row whose reach was never authored** carries -1 and counts nobody.
+- **A row asking for "at least nought enemies"** is true of an empty room, and
+  refuses rather than holding.
+
+**Both refuse in the direction that is visible.** A row authored wrong then reads
+as a node granting nothing, which a player notices, rather than as a node
+granting everything, which a player does not and which is in their favour. The
+generator refuses both on import; this is what happens if one reaches the game
+anyway.
+
+### The count is not capped — the project owner's ruling of 2026-09-12
+
+**What was put to them.** A bonus of so much per nearby enemy grows with the wave,
+and the owner's own Horde capture measured 125 to 174 creatures thinking at once.
+Three options went up: a cap of ten counted enemies stated in the node text, no
+cap, or diminishing returns. **The recommendation was the cap of ten**, labelled a
+judgement rather than presented as derived, because the research settled nothing
+here: searches across Path of Exile, Last Epoch and Diablo IV returned general
+damage-scaling material and nothing on whether any of them caps a per-nearby-enemy
+bonus.
+
+**The owner ruled no cap at all**, against that recommendation, and the design
+record already agreed with them. `docs/Cataclysm_GDD_v2.md`: "**Multiplicative
+sources are not capped because they cannot reach immunity.** Every factor removes
+a share of what is left, so the product never reaches zero however many are
+stacked." And: "A single source removing 100% would be exact immunity, so no
+source may state that, but there is no bound on how many may combine."
+
+**The ruling covers six nodes across three trees**, not this one row. Written out
+so the next reader can re-derive it rather than trust it: the set is every node
+whose bonus GROWS with a count of nearby enemies, which is the only set a cap
+would affect.
+
+| Tree | Node | Radius |
+| :-- | :-- | :-- |
+| Ravager | `basic_spine_000` — 1 Fervour per second per enemy | 4 m |
+| Ravager | `keystone_d_kB` — 2% more damage for each enemy | 4 m |
+| Ravager | `capstone_25` option 1 — 3% increased Armor and Attack Damage each | 4 m |
+| Berserker | `twoh_016` — +8% melee damage per point for each enemy draining Fervour | melee range |
+| Berserker | `capstone_50` option — +5% movement speed for each enemy | melee range |
+| Bulwark | `basic_ic_t3_002` — +2% damage reduction per point for each enemy, multiplicative | 3 m |
+
+**Two of the six state their radius as "melee range" and this change cannot carry
+them.** `ReachMetres` holds a number and nothing in `game/Data/` defines that
+phrase as one. Where a skill's "melee range" IS given a number it is not the same
+number twice: `Demonic_Greataxe_Ultimate` says "all enemies within melee range"
+and authors it as `Radius=3.5`, while the creature-side reach constant
+`DesignedMeleeReachCm` is 90 cm. So those two rows need a decision of their own
+before they can be authored, and it is a decision about what the phrase means
+rather than about this mechanism.
+
+**A seventh node grows with a filtered count and is deliberately outside the six.**
+`Ravager_keystone_c_kC` grants Fervour per **Crippled** enemy within 4 metres. It
+is blocked on the filter rather than on the cap, and is named in the not-covered
+table below.
+
+**Two facts given to the owner with the question were wrong, and both overstated
+the case for capping.** The scope was put to them as twenty-two nodes across five
+trees, which is the count of nodes MENTIONING enemies within a distance rather
+than nodes whose bonus grows with the count; the true figure is the six above. And
+the Bulwark node was described as stacking toward immunity, which the quotation
+above says is impossible in terms and which names those ten multiplicative nodes
+specifically. **The owner ruled no cap anyway**, so the ruling stands on a weaker
+case than it was given, not a stronger one. Recorded because a decision is only
+re-examinable if the reasoning behind it is what actually happened. The coordinating
+session that supplied both figures corrected them with the owner and asked for this
+paragraph.
+
+### A conditional row only reaches a stat whose consumer asks the pipeline
+
+**This is the finding worth more than the rows that produced it.** Two of
+[#1597](https://github.com/sdubois777/Cataclysm/issues/1597)'s ten rows —
+`Ravager_basic_spine_006` and `Ravager_keystone_spine_003` — say a character
+cannot be stunned, slowed or knocked back while an enemy is within 4 metres. The
+stat exists and the generator accepts it: five passive rows in
+`game/Data/PassiveEffects.csv` already grant `crowd_control_resistance`, and
+`UCataclysmSkillEffects::AfterCrowdControlResistance` treats 100 as immunity. So
+the sentence looks authorable.
+
+**It is not.** That function reads the ATTRIBUTE —
+`Combat->GetCrowdControlResistance()` — and never calls `StatForSkill`. The
+attribute is built by `UCataclysmPlayerClassStats` with an empty condition state,
+deliberately, because a character-sheet figure cannot depend on what is happening
+this instant. A conditional row on that stat would therefore be worth nothing,
+silently.
+
+**So which stats can carry a condition is a property of the CONSUMER, not of the
+stat.** `armor` and `damage_taken` can, because `CataclysmDamageCalculation.cpp`
+asks the pipeline for both through its `DefenderStat` helper at the moment of the
+hit. `crowd_control_resistance` cannot. Nothing in the data, the generator or the
+stat name says which is which.
+
+**The same shape was found in a second place while checking this.**
+`UCataclysmSkillEffects::ModifiedDamage` runs the pipeline over every runtime stat
+modifier with an empty condition state, on a live damage path used by retaliation
+and three skill-template sites. It costs nothing today — the only two places that
+add a runtime modifier both add unconditional ones — and it is a trap set for the
+first conditional one anybody writes.
+
+### What this change unblocks, which is a different count from the cap's
+
+**Five Ravager nodes fully, and one in part.** The cap's six above is the set
+whose bonus grows with a count; this is the set of
+[#1597](https://github.com/sdubois777/Cataclysm/issues/1597)'s rows that these two
+shapes can express, thresholds included. The two overlap and neither contains the
+other.
+
+| Node | What it says |
+| :-- | :-- |
+| `Ravager_basic_spine_003` | +2% increased Attack Damage per point while an enemy is within 4 metres |
+| `Ravager_basic_d_a0` | the same sentence, in another branch |
+| `Ravager_keystone_a_kA` | 15% less damage taken while three or more enemies are within 4 metres |
+| `Ravager_keystone_d_kB` | 2% more damage for each enemy within 4 metres |
+| `Ravager_capstone_25` option 1 | 3% increased Armor and 3% increased Attack Damage per enemy within 4 metres |
+
+`Ravager_basic_spine_000` gets its per-second half: `fervour_per_second` scaled by
+the count is authorable. The row also states an attack-hit half and a decay, and
+`CataclysmFervour.h` records both as absent from the game.
+
+### Named as not covered, so the next reader does not re-derive it
+
+| Row | Why |
+| :-- | :-- |
+| `Ravager_keystone_c_kC` | counts only **Crippled** enemies; a plain count will not serve it |
+| `Ravager_keystone_d_kC` | needs a Fervour decay mechanism, which `CataclysmFervour.h` records as absent |
+| `Ravager_basic_spine_006`, `Ravager_keystone_spine_003` | immunity while an enemy is near, and the consumer reads the attribute — the section above |
+| `Ravager_keystone_b_kC` | "Your melee attacks reach 2 metres further than the skill states" is a skill's own reach, not a count of who is inside one |
+| `Berserker_twoh_016`, `Berserker_capstone_50` option | radius stated as "melee range", which is not a number |
+
+### The data rows are not in this change
+
+The rows live in the 'Passive Effects' sheet of `docs/All_Things_Cataclysm.xlsx`,
+and carrying them needs a `ReachMetres` column in that sheet, in
+`tools/generate_datatables.py`, in `game/Data/PassiveEffects.csv` and on
+`FCataclysmPassiveEffectRow`. A new COLUMN is more disruptive to a concurrent
+editor of that workbook than new rows are, which is the reason it is held back
+rather than bundled here. That is its
+own piece of work and it waits for the workbook. **Until it lands, every node in
+the tables above still grants nothing**, and this entry describes a mechanism with
+no data behind it yet.
+
+---
+
 ## 2026-09-12 — Two characters reach one stagger's duration and their scalars multiply, and a stagger can be refused by the target's health without refusing the shove
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
