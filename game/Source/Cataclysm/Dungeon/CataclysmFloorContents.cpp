@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/World.h"
@@ -66,6 +67,23 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World)
 	// and the last floor's fight is over.
 	Destroyed += FloorContentsDestroyEvery<ACataclysmProjectile>(World);
 	Destroyed += FloorContentsDestroyEvery<ACataclysmGroundZone>(World);
+
+	// AND THE TERRAIN A SKILL RAISED, WHICH WAS MISSED WHEN THE LINE ABOVE WAS
+	// WRITTEN. Issue #1647. `ACataclysmTerrain` was in neither list -- not
+	// swept, and not named in the header's list of what is deliberately kept --
+	// which is what made it an omission rather than a decision.
+	//
+	// A WALL IS THE WORST OF THE FOUR KINDS TO LEAVE BEHIND. The other three are
+	// swept zones that pin or floor whoever stands in them, and a wall is solid
+	// geometry built with `SetCanEverAffectNavigation(true)`. One surviving a
+	// floor change is an obstacle in the new floor's pathfinding that nothing in
+	// that floor's generation knows about.
+	//
+	// BESIDE THE BURNING GROUND RATHER THAN AT THE END, because the two are the
+	// pair a skill leaves on the floor and a reader comparing them should find
+	// them together. Comparing them is what found this gap.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmTerrain>(World);
+
 	Destroyed += FloorContentsDestroyEvery<ACataclysmTelegraphMarker>(World);
 
 	// AND WHOSE NAME THE FLOOR'S HAZARDS WERE DEALT IN, LAST OF ALL. A floor
