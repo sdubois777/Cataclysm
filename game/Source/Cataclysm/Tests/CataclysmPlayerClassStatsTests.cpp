@@ -643,6 +643,27 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("carnage_has_no_maximum"),
 		 TEXT("the Masochist's The Final Vow node, second option, as a flat "
 			  "modifier")},
+
+		// Issue #45. The two stats a STAGGERING character carries: how long a
+		// stagger it applies runs, at 100 for normal, and how far the health
+		// ceiling above which it cannot stagger is lowered, at 0 for no ceiling.
+		//
+		// NO CLASS LINE MAY NAME EITHER. A class whose every member staggered
+		// for longer would fold an enchantment's whole effect into the class,
+		// and one whose every member could not stagger a healthy enemy would
+		// hand out a drawback nobody chose.
+		//
+		// THE FIRST HAS A BASE OF 100 ALL THE SAME, from `EngineSuppliedBases`
+		// and not from a class line. Without it the stat resolves to zero, every
+		// stagger is scaled to nothing and refused, and no player staggers
+		// anything -- which is what happened before that entry was added.
+		{TEXT("stagger_duration"),
+		 TEXT("the enchantment that lengthens the stagger effects this character "
+			  "applies, as an increased modifier over a base of 100 supplied by "
+			  "EngineSuppliedBases")},
+		{TEXT("stagger_health_ceiling_reduction"),
+		 TEXT("the enchantment that refuses to stagger an enemy above half "
+			  "health, as a flat modifier")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)

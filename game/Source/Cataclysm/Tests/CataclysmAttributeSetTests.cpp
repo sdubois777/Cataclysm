@@ -270,7 +270,27 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// a number. RAISING THIS IS WHAT KEEPS THE SHEET AT 46 -- the sheet figure
 	// is derived by subtracting the off-sheet stats, so a new attribute nobody
 	// declares off the sheet is counted as on it.
-	constexpr int32 OffSheetCombatStats = 29;
+	//
+	// THIRTY-ONE SINCE THE TWO STATS A STAGGERING CHARACTER CARRIES, issue #45:
+	// how long a stagger this character applies runs, and the health above which
+	// it cannot stagger at all. Both meet the rule for the sixteenth and
+	// seventeenth times -- no affix grants either, nothing scales either, no
+	// class differs on either, and one enchantment is each one's only source.
+	//
+	// A BASE OF 100 DOES NOT PUT THE FIRST ONE ON THE SHEET. It has one, from
+	// `UCataclysmPlayerClassStats::EngineSuppliedBases`, and so do `damage_taken`
+	// and `damage_over_time_taken` which are already counted here. The
+	// disqualifier in that rule is a baseline a CLASS LINE states and classes
+	// differ on, which is why the five stats on the `Default` line fail the rule
+	// while these do not.
+	//
+	// NEITHER IS `debuff_duration_taken` UNDER ANOTHER NAME, the mistake
+	// available here and the same one the entry above warns about for a
+	// different pair. That one lengthens every timed effect put ON this
+	// character. `stagger_duration` lengthens a stagger this character applies to
+	// SOMEONE ELSE. Both scale one stagger, from opposite ends, and they
+	// multiply.
+	constexpr int32 OffSheetCombatStats = 31;
 
 	/**
 	 * How far healing may take the character, and how much of each amount
