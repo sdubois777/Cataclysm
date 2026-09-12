@@ -1219,7 +1219,29 @@ TREE_ARCHITECT_AS_DESIGNED = EmpireTree(
     #: `Unyielding Defense`, multiplied in once per active Cataclysm type.
     city_damage_mult_per_type=0.995 ** 5,
     city_health_mult=5.90,
-    resolve_bonus_days=13.0,
+    #: `Strategic Reserve` alone: "+1 Day to all dungeon Resolution Timers per
+    #: point", 10 points, and the only resolution-timer node in the Architect
+    #: quadrant that applies to every city.
+    #:
+    #: THIS WAS 13.0 UNTIL ISSUE #1409, and 13.0 was neither scenario's answer.
+    #: It was `Strategic Reserve` plus `Emergency Shelters`, whose own text says
+    #: "+3 Days to Resolution Timers FOR OUTPOSTS" -- while `Border Patrol`, an
+    #: Outposts-only node of the same shape worth 5, was left out. So the preset
+    #: counted one Outposts-only node and excluded the other, for one city.
+    #:
+    #: THE SCENARIO DECIDES IT, AND THE PRESET ALREADY STATES ITS SCENARIO TWICE.
+    #: A Sanctuary next to the Pillar. `city_health_mult` above says so in terms
+    #: and excludes `Fortified Gates` for exactly this reason. Under that
+    #: scenario the answer is 10.0; under an Outpost scenario it would be 18.0,
+    #: which is `Strategic Reserve` 10 plus `Emergency Shelters` 3 plus `Border
+    #: Patrol` 5. This is a consistency correction inside a scenario the project
+    #: had already chosen, not a balance decision.
+    #:
+    #: THE OTHER THREE TIMER NODES ARE CORRECTLY ABSENT. `Bastion Spirit` scales
+    #: with points spent in the Explorer tree and a pure Architect build spends
+    #: none; `Martial Law` is conditional on city health during the run; and
+    #: `Scorched Earth` is an action a player takes, not a passive.
+    resolve_bonus_days=10.0,
 )
 
 # Alternative: delete every flat day-reduction node and move that power onto

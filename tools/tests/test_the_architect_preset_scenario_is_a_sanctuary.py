@@ -1,28 +1,32 @@
 """Every field of the Architect preset is read for the same city: a Sanctuary.
 
-WHY THIS FILE EXISTS. `TREE_ARCHITECT_AS_DESIGNED.resolve_bonus_days` is 13.0,
-and 13 is 10 from `Strategic Reserve` -- which applies to every city -- plus 3
+WHY THIS FILE EXISTS. `TREE_ARCHITECT_AS_DESIGNED.resolve_bonus_days` was 13.0,
+and 13 was 10 from `Strategic Reserve` -- which applies to every city -- plus 3
 from `Emergency Shelters`, whose own text says "for Outposts". The preset's
 scenario is a Sanctuary. Issues #1409 and #1413.
 
-**THE VALUE IS NOT CORRECTED HERE AND THIS FILE PINS THE WRONG ONE ON PURPOSE.**
-Two reasons, and the first is the deciding one:
+**THAT VALUE IS NOW CORRECTED, TO 10.0, AND THIS FILE WAS UPDATED WITH IT RATHER
+THAN DELETED.** It pinned the wrong number on purpose while the correction was
+out of scope, and it said in terms what to change when the correction landed:
+turn the pinning assertion into `Strategic Reserve` alone, and turn the
+`Border Patrol` check into one covering both Outposts-only nodes. Both were
+done. Nothing here was removed to make the change pass, which is the point
+issue #1319 made when it did the same for the inert city-health lever: **the
+change that fixes a defect must not be mistakable for a change that did
+nothing.**
 
-  * **Correcting it was outside the scope this work was given.** The change that
-    brought this file in was asked to establish coverage and add tests, not to
-    move preset values, and `sim/cataclysm_sim/config.py` was explicitly out of
-    bounds. The defect was found, written up in full with its evidence, and left
-    for issue #1409 to carry. Finding something and deliberately not fixing it,
-    said out loud, is a whole outcome.
-  * **Changing it moves balance figures already on record.** A resolution timer
-    three days longer than it should be gives the player three extra days on
-    every dungeon in the Architect sweep, so section 7 of `sim/experiments.py`
-    owes a re-run that this work did not do.
+WHY THE CORRECTION WAS NOT A BALANCE DECISION. 13.0 was neither scenario's
+answer. A Sanctuary gives 10.0, `Strategic Reserve` alone. An Outpost gives
+18.0, which adds `Emergency Shelters` at 3 and `Border Patrol` at 5. The preset
+held one Outposts-only node and excluded the other, for one city, and its other
+two fields already state the Sanctuary scenario -- `city_health_mult` excludes
+`Fortified Gates` for exactly that reason. So the answer followed from the
+scenario the project had already chosen.
 
-Pinning the current number and saying it is expected to change is this project's
-own pattern for the situation. Issue #1319 did the same for the inert
-city-health lever and gave the reason: **the change that fixes it cannot then be
-mistaken for a change that did nothing.**
+WHAT THE CORRECTION COST. A resolution timer three days longer than it should be
+gave the player three extra days on every dungeon in the Architect sweep, so
+every section 7 figure measured at 13.0 became historical. The pull request that
+landed the correction re-ran that sweep and reported what moved.
 
 **NOTHING READ THE FIELD'S VALUE AT ALL.** `resolve_bonus_days` appears five
 times in the repository -- its declaration, `EmpireTree.describe`, the two
@@ -265,42 +269,52 @@ class TestTheResolutionTimerIsStrategicReserveAlone:
         """What the preset SHOULD hold, derived from the graph. 10.0."""
         assert worth(nodes, "Strategic Reserve") == pytest.approx(10.0)
 
-    def test_the_preset_does_not_follow_the_rule_yet(self, nodes, preset):
-        """**PINNED ON PURPOSE. EXPECTED TO FAIL WHEN ISSUE #1409 LANDS.**
+    def test_the_preset_now_follows_the_rule(self, nodes, preset):
+        """**THIS TEST PINNED THE DEFECT UNTIL ISSUE #1409 LANDED**, and it is
+        updated rather than deleted, which is what its own instructions asked
+        for: it exists so the correction cannot be mistaken for a change that
+        did nothing.
 
-        The preset holds `Strategic Reserve` plus `Emergency Shelters`, and
-        `Emergency Shelters` says "for Outposts" while the preset models a
-        Sanctuary. That is the defect.
+        What it asserted until then: that the preset held `Strategic Reserve`
+        plus `Emergency Shelters`, because `Emergency Shelters` says "for
+        Outposts" while the preset models a Sanctuary. That was the defect. The
+        preset now holds `Strategic Reserve` alone.
 
-        When #1409 lands, change this to
-        `== pytest.approx(worth(nodes, "Strategic Reserve"))` and turn
-        `test_it_still_leaves_out_the_other_outposts_only_timer` into a check
-        that neither Outposts-only node is counted. **Do not delete this test to
-        make that change pass** -- it exists so the correction cannot be
-        mistaken for a change that did nothing.
+        THE EXPECTED VALUE IS STILL DERIVED FROM THE GRAPH AND NOT WRITTEN HERE.
+        `worth(nodes, "Strategic Reserve")` reads
+        `docs/Empire_Development_Tree_Final.json`, so a reworded node fails this
+        rather than being absorbed by a hard-coded 10.
         """
         assert preset.resolve_bonus_days == pytest.approx(
-            worth(nodes, "Strategic Reserve")
-            + worth(nodes, "Emergency Shelters")), (
+            worth(nodes, "Strategic Reserve")), (
             f"the Architect preset adds {preset.resolve_bonus_days} days to "
-            "every resolution timer, and the two nodes it was built from give "
-            f"{worth(nodes, 'Strategic Reserve') + worth(nodes, 'Emergency Shelters')}. "
-            "If this is now `Strategic Reserve` alone, issue #1409 has landed "
-            "and this test needs updating with it.")
+            "every resolution timer. The only timer node in the Architect "
+            "quadrant that applies to a Sanctuary is `Strategic Reserve`, worth "
+            f"{worth(nodes, 'Strategic Reserve')}. Issue #1409.")
 
-    def test_it_still_leaves_out_the_other_outposts_only_timer(
-            self, nodes, preset):
-        """`Border Patrol` is worth +5 and says "for Outposts", exactly as
-        `Emergency Shelters` does. It is correctly left out. The defect is that
-        the other one is in, not that this one is missing."""
-        counted = (worth(nodes, "Strategic Reserve")
-                   + worth(nodes, "Emergency Shelters"))
+    def test_neither_outposts_only_timer_node_is_counted(self, nodes, preset):
+        """`Emergency Shelters` at +3 and `Border Patrol` at +5 both say "for
+        Outposts" and the preset models a Sanctuary, so neither belongs.
+
+        BOTH ARE CHECKED, NOT ONLY THE ONE THAT WAS WRONG. Until issue #1409
+        this test checked only that `Border Patrol` was absent, because
+        `Emergency Shelters` was present and the defect was that it was. With
+        the correction landed, the rule applies to both and so does the check --
+        otherwise re-adding the node that was just removed would pass.
+        """
+        alone = worth(nodes, "Strategic Reserve")
+        for node in ("Emergency Shelters", "Border Patrol"):
+            added = worth(nodes, node)
+            assert preset.resolve_bonus_days != pytest.approx(alone + added), (
+                f"the Architect preset now counts `{node}`, which says "
+                f"{OUTPOSTS_ONLY!r}. The preset models a Sanctuary, so no "
+                "Outposts-only node belongs in it. Issue #1409.")
         assert preset.resolve_bonus_days != pytest.approx(
-            counted + worth(nodes, "Border Patrol")), (
-            "the Architect preset now counts `Border Patrol` as well, which "
-            f"says {OUTPOSTS_ONLY!r}. The preset models a Sanctuary, so the "
-            "answer is to remove `Emergency Shelters`, not to add this. "
-            "Issue #1409.")
+            alone + worth(nodes, "Emergency Shelters")
+            + worth(nodes, "Border Patrol")), (
+            "the Architect preset counts both Outposts-only timer nodes, which "
+            "is the Outpost scenario's answer of 18.0 in a preset whose other "
+            "two fields state a Sanctuary. Issue #1409.")
 
 
 class TestTheSameRuleHoldsForCityHealth:

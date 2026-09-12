@@ -2,6 +2,137 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — The Architect preset's resolution-timer bonus is Strategic Reserve alone, which is 10 days and not 13
+
+**Affects:** `TREE_ARCHITECT_AS_DESIGNED.resolve_bonus_days` in
+`sim/cataclysm_sim/config.py`, and
+`tools/tests/test_the_architect_preset_scenario_is_a_sanctuary.py`, which pinned
+the old value on purpose and is updated rather than deleted. Issue
+[#1409](https://github.com/sdubois777/Cataclysm/issues/1409). **Applied.**
+
+**This is derived from the preset's own stated scenario, not a judgement.** No
+number was chosen. The scenario was already written into the preset twice, and
+reading it settles which nodes belong.
+
+### The four resolution-timer nodes in the Architect quadrant, and what each is worth
+
+Read out of `docs/Empire_Development_Tree_Final.json`.
+
+| node | points | its own text | applies to | in the old 13? | in the new 10? |
+| :-- | --: | :-- | :-- | :-: | :-: |
+| Strategic Reserve | 10 | "+1 Day to **all** dungeon Resolution Timers per point" | every city | yes, +10 | **yes, +10** |
+| Emergency Shelters | 1 | "+3 Days to Resolution Timers **for Outposts**" | Outposts only | **yes, +3** | **no** |
+| Border Patrol | 5 | "+1 day to Resolution Timer **for Outposts** per point" | Outposts only | no | no |
+| Bastion Spirit | 15 | "+1 Day per 20 points spent in the Explorer tree" | nothing, in a pure Architect build | no | no |
+
+Two more exist and are correctly absent from both: `Martial Law` is conditional
+on city health during the run, and `Scorched Earth` is an action a player takes
+rather than a passive the tree grants.
+
+### Why 13 was neither scenario's answer
+
+**13 counted one Outposts-only node and excluded the other, for the same city.**
+`Emergency Shelters` says "for Outposts" and was counted; `Border Patrol` says
+"for Outposts", is the same shape, and was not.
+
+The preset states its scenario twice in its own comments: **a Sanctuary next to
+the Pillar.** The comment on `city_health_mult` says so in terms and excludes
+`Fortified Gates` for exactly this reason — that node grants +8% per point across
+8 points but only "for Outposts".
+
+So:
+
+- Under the Sanctuary the preset already claims: **10.0**, `Strategic Reserve`
+  alone.
+- Under an Outpost: **18.0**, adding `Emergency Shelters` at 3 and `Border
+  Patrol` at 5.
+- **13.0 is neither.**
+
+### It is the third time in this shape
+
+- Issue [#1288](https://github.com/sdubois777/Cataclysm/issues/1288): a factor of
+  0.25 in `city_damage_mult` that matched no node at all.
+- Issue [#1319](https://github.com/sdubois777/Cataclysm/issues/1319): 6.54x
+  corrected to 5.90x, because the first count "matched node descriptions for a
+  percentage without reading which tier each node applies to". `Fortified Gates`
+  is the node it wrongly included.
+- This one. `Emergency Shelters` is the node wrongly included.
+
+Issue #1288 examined this very constant on 2026-09-05 and called it clean — "By
+contrast `resolve_bonus_days=13.0` does trace cleanly". **The arithmetic in that
+claim was right and it skipped reading which city tier each node applies to.**
+Checking that numbers add up is not checking that the things being added apply to
+the same case.
+
+### What moved in the balance sweep
+
+Measured 2026-09-12 on `4d59ef5`. **Section 7 of `sim/experiments.py`, run twice
+against one shared calibration**, with the Architect preset swapped between the
+two runs and nothing else changed. `experiments.batch` seeds every campaign as
+`Simulation(cfg, seed=seed0 + i)`, so a result depends on its configuration and
+its index and not on how many campaigns ran before it.
+
+**The control passed**: all 10 unchanged preset-and-tier cells are identical
+between the two runs, so the difference below is the constant and nothing else.
+
+At tier 1, 150 campaigns per cell:
+
+| | at 13.0 | at 10.0 | change |
+| :-- | --: | --: | --: |
+| win rate | 34% | 28% | **-6** |
+| loss rate | 53% | 57% | +4 |
+| win minus loss | -19 | -29 | -10 |
+| no result at the day cap | 13% | 15% | +2 |
+| objectives of 8 | 7.2 | 7.1 | -0.1 |
+| cities lost | 0.1 | 0.1 | 0 |
+| floors cleared | 882 | 887 | +5 |
+
+Against the `No tree` row the verdict does not change — the preset is still
+BETTER — but the margin roughly halves, from +14.7 points to +8.7 against a
+per-pair tolerance of about 5.
+
+**No ordering changed, and one gap became unresolvable.** At 13.0 the Architect
+preset sat 7 points above `Proposed budget`; at 10.0 it sits 1 point above it.
+Section 7 states that the smallest gap it can resolve at 150 campaigns per cell
+is 5.8 points, so those two presets are now indistinguishable where they were
+previously just separable. **That is issue
+[#1643](https://github.com/sdubois777/Cataclysm/issues/1643)**, filed rather than
+fixed here: whether those two ways to play actually differ is a question for a
+larger sample, and rebalancing a preset is a design question rather than a
+consistency one.
+
+**The 6-point move is itself only just resolvable at this sample size.** It sits
+a little above the 5.8-point floor that section states for itself. It is reported
+as measured rather than as established.
+
+**Tier 8 says nothing about this.** Both runs give a 0% win rate there, and the
+section prints its own reason: 82% of the preset's campaigns at 13.0 and 79% at
+10.0 reach the day cap with no outcome at all, so there is no win rate to
+compare. **Two zeros are a non-result and not a finding that the change had no
+effect at high difficulty.**
+
+### How to read the six points, which is the whole argument for landing this
+
+**The preset did not get worse. Its measured advantage stopped being inflated.**
+
+Those six points of win rate were being produced by three extra days on every
+resolution timer, and those three days came from a node the preset should never
+have counted. A figure that was partly an artefact of a mistake is not a figure
+the correction takes away; it is a figure that was never earned.
+
+That is why the sweep was not what decided this. **13.0 is neither scenario's
+answer, and a committed test already pinned it as wrong**, so the question was
+never whether to correct it. The sweep was run to say what the correction costs
+in the reported numbers, and now it does.
+
+### What this does not do
+
+It does not re-derive the preset's other three fields, and it does not make
+either lever apply per city tier. Both levers still multiply every tier alike,
+which `city_damage_mult`'s own comment already records as a simplification.
+
+---
+
 ## 2026-09-12 — An attacker can read how far away its target is, and two named sets become the fifth and sixth that do anything
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
