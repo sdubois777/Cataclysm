@@ -431,6 +431,35 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	NotAttackedForSeconds
 		UMETA(DisplayName = "Not Attacked For Seconds"),
+
+	/**
+	 * Whoever is on the other side of the blow stood MORE than `ConditionValue`
+	 * metres away when it landed.
+	 *
+	 * THE FIRST PREDICATE HERE THAT COMPARES A DISTANCE. Standing Apart is the
+	 * node: "You take 25% less damage from enemies more than 6 metres away from
+	 * you", which is the Ritualist's 100-point capstone third option.
+	 *
+	 * FOR THE DAMAGE TAKEN LOOKUP, SO THE OTHER SIDE IS THE ATTACKER, exactly as
+	 * `OpponentIsBoss` above. A row wanting the reverse -- the ATTACKER asking
+	 * how far away its target is, which Brute's Heart and Demon King's Regalia
+	 * both need -- cannot use this and is
+	 * https://github.com/sdubois777/Cataclysm/issues/1596. The blow context
+	 * reaches only the defender's damage taken lookup, which was established by
+	 * counting every call of `StatForSkill`: 33 outside tests, and exactly one
+	 * passes a blow.
+	 *
+	 * STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". A character
+	 * standing at exactly 6 metres is not more than 6 metres away, so it takes
+	 * full damage. That is the same boundary `SkillHealthCostAbovePercent` and
+	 * `HealthAbovePercent` draw and for the same reason.
+	 *
+	 * AN UNKNOWN DISTANCE REFUSES, which is what -1 means. A damage over time
+	 * tick reports -1 deliberately, so this predicate grants nothing for a tick.
+	 * `docs/DECISIONS.md` carries that judgement and what it costs the player.
+	 */
+	OpponentBeyondMetres
+		UMETA(DisplayName = "Opponent Beyond Metres"),
 };
 
 /**
@@ -644,8 +673,10 @@ enum class ECataclysmStatScale : uint8
  * at once: a spell that fires a projectile is a spell and is ranged. The
  * predicates, not this struct, decide what "an attack" is.
  *
- * THE OPPONENT'S DISTANCE IS NOT HERE YET. When the passive trees add it, it
- * belongs here, with -1 meaning unknown, the way `SkillHealthCostPercent` works.
+ * AND ONE READING THAT IS A NUMBER RATHER THAN A FACT, added when the passive
+ * trees needed it: how far apart the two characters stood. It uses -1 for
+ * unknown, the way `SkillHealthCostPercent` does and for the same reason -- zero
+ * is a real reading, because two characters can stand on the same spot.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmBlowContext
@@ -667,6 +698,28 @@ struct CATACLYSM_API FCataclysmBlowContext
 	/** The character on the other side of the blow is a boss. See `IsBoss`. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bOpponentIsBoss = false;
+
+	/**
+	 * Metres from the character that dealt this blow to the one taking it, or
+	 * -1 when it is not known.
+	 *
+	 * THE ONE FIELD HERE THAT A PREDICATE COMPARES A NUMBER AGAINST. The four
+	 * above are facts and answer no when unknown; this answers "refuse" when
+	 * unknown, which is the same direction by a different route.
+	 *
+	 * A DAMAGE OVER TIME TICK REPORTS -1 AND IT IS A CHOICE, not a limitation.
+	 * `docs/DECISIONS.md` carries the judgement and its consequence. The short
+	 * version: the creature that applied the effect usually still has a position
+	 * when the tick fires, and `UCataclysmCombatEvents` reports a real distance
+	 * for ticks today, but that creature may have walked away or died, so the
+	 * number would describe something that is not striking.
+	 *
+	 * MEASURED BY `UCataclysmTargeting::MetresBetween`, which is also what the
+	 * blow announcement uses. One definition, so a passive row and the combat
+	 * log cannot disagree about one strike.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float OpponentDistanceMetres = -1.0f;
 };
 
 /**

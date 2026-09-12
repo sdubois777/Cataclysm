@@ -98,6 +98,16 @@ UAbilitySystemComponent* UCataclysmTargeting::AbilitySystemOf(const AActor* Acto
 	return UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor);
 }
 
+float UCataclysmTargeting::MetresBetween(const AActor* From, const AActor* To)
+{
+	if (!From || !To)
+	{
+		return -1.0f;
+	}
+	return FVector::Dist(From->GetActorLocation(), To->GetActorLocation())
+		/ 100.0f;
+}
+
 bool UCataclysmTargeting::MatchesAttitude(const AActor* Actor, const AActor* Instigator,
 										  ETeamAttitude::Type Wanted)
 {

@@ -374,7 +374,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// the 82 above, and neither needed new code: Attendant's scale,
 	// `minions_held`, arrived with #1518, and Room for One More is a flat 30 on
 	// `class_resource`, which always existed.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        208)
+	// 209 SINCE STANDING APART WAS BUILT. The Ritualist's 100-point capstone
+	// third option, "You take 25% less damage from enemies more than 6 metres
+	// away from you", had no row at all until a character could read how far
+	// away the enemy hitting it stood.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        209)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

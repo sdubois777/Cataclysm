@@ -1670,6 +1670,65 @@ bool FCataclysmPassiveSharedConditionTableTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDistanceConditionTest,
+	"Cataclysm.Passives.ADistanceConditionReachesAPassiveModifierCarryingItsThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `attacker_beyond_metres` reaches a modifier AND keeps its number.
+ *
+ * THE OPPOSITE ASSERTION FROM THE TEST ABOVE, and that is why it is its own
+ * test. `hit_is_spell` must come out with NO value, because it compares nothing;
+ * this one must come out carrying 6, because the whole predicate is a
+ * comparison. A build that copied the value for every condition would pass the
+ * first and a build that copied it for none would pass neither, so the pair
+ * catches both mistakes.
+ *
+ * SIX METRES IS THE NODE'S OWN THRESHOLD. Standing Apart, the Ritualist's
+ * 100-point capstone third option, reads "You take 25% less damage from enemies
+ * more than 6 metres away from you", and `game/Data/PassiveEffects.csv` carries
+ * exactly that row.
+ */
+bool FCataclysmPassiveDistanceConditionTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveConditionTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	UDataTable* EffectTable = MakeOneRow(*this, TEXT("damage_taken"),
+										 TEXT("attacker_beyond_metres"), TEXT("6"));
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Taken =
+		Modifiers.Find(FName(TEXT("damage_taken")));
+	if (!TestNotNull(TEXT("the node granted damage taken"), Taken)
+		|| !TestEqual(TEXT("exactly one"), Taken->Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and it carries the distance condition"),
+			  static_cast<int32>((*Taken)[0].Condition),
+			  static_cast<int32>(ECataclysmStatCondition::OpponentBeyondMetres));
+	TestTrue(TEXT("and it is not left unconditional"),
+			 (*Taken)[0].Condition != ECataclysmStatCondition::Always);
+	TestEqual(TEXT("carrying the threshold the row states, because it compares one"),
+			  (*Taken)[0].ConditionValue, 6.0f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEveryConditionNameTest,
 	"Cataclysm.Passives.EveryConditionNameASheetMayWriteReachesAPassiveModifier",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

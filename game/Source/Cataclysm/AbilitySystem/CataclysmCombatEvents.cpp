@@ -45,16 +45,6 @@ namespace
 		return Cast<UCataclysmSkillTemplate>(Context.GetAbilityInstance_NotReplicated());
 	}
 
-	/** Metres between two actors, or -1 when either is missing. */
-	float CombatEventsMetresBetween(const AActor* From, const AActor* To)
-	{
-		if (!From || !To)
-		{
-			return -1.0f;
-		}
-		return FVector::Dist(From->GetActorLocation(), To->GetActorLocation())
-			/ 100.0f;
-	}
 }
 
 bool FCataclysmHitNotice::HasTag(const FGameplayTag& Tag) const
@@ -164,7 +154,12 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	Notice.bIsRanged = Hit.bIsRanged;
 	Notice.bIsSpell = Hit.bIsSpell;
 	Notice.bFromBoss = Hit.bFromBoss;
-	Notice.DistanceMetres = CombatEventsMetresBetween(DealtBy, Target);
+	// THE SHARED READING, NOT A COPY KEPT HERE. Until this was moved, this file
+	// held its own `CombatEventsMetresBetween` and the passive tree had no
+	// distance at all. Adding one to the hit would have made two definitions of
+	// the same measurement, and a passive row and this announcement could then
+	// have disagreed about one strike. Issue #1581 was that fault one layer up.
+	Notice.DistanceMetres = UCataclysmTargeting::MetresBetween(DealtBy, Target);
 	Notice.Location = Target->GetActorLocation();
 	Notice.EffectTags = &EffectTags;
 	Notice.GrantedTags = Hit.bIsDamageOverTime ? &Granted : nullptr;

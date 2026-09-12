@@ -106,6 +106,23 @@ namespace CataclysmDamageBySourceTest
 		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
 	};
 
+	/**
+	 * The same, for a condition that compares a number. -25 at 6 metres is
+	 * Standing Apart: "You take 25% less damage from enemies more than 6 metres
+	 * away from you".
+	 */
+	FCataclysmStatModifier RowAtThreshold(ECataclysmStatCondition Condition,
+										  float Value, float Threshold)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		Modifier.ConditionValue = Threshold;
+		return Modifier;
+	}
+
 	/** One "more" row on damage taken, with a condition. -50 is 50% less. */
 	FCataclysmStatModifier Row(ECataclysmStatCondition Condition, float Value)
 	{
@@ -585,6 +602,84 @@ bool FCataclysmDamageBySourceTagsExistTest::RunTest(const FString& Parameters)
 	TestNotEqual(TEXT("and ranged and projectile are two tags"),
 		UCataclysmDamageCalculation::RangedTag(),
 		UCataclysmDamageCalculation::ProjectileTag());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceDistanceTest,
+	"Cataclysm.DamageBySource.ADistantAttackerTakesLessThroughTheWholePipeline",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Standing Apart, through the real damage pipeline rather than through a
+ * predicate on its own.
+ *
+ * WHY THIS EXISTS BESIDE THE TWO TESTS THAT ALREADY COVER THE CONDITION. Those
+ * ask `ConditionHolds` directly, and one asks what a row's modifier carries.
+ * Both would still pass if the distance never reached a hit at all. This is the
+ * only test that resolves a real hit and reads what arrived, so it is the one
+ * that fails if the reading is dropped anywhere between the hit being built and
+ * the damage taken step asking for it.
+ *
+ * FOUR READINGS, AND THE THREE THAT CHANGE NOTHING ARE THE POINT. A test that
+ * only showed the distant case would pass against a build that reduced every
+ * hit.
+ */
+bool FCataclysmDamageBySourceDistanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+
+	// THE NODE'S OWN NUMBERS: 25% less damage, beyond 6 metres.
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ RowAtThreshold(ECataclysmStatCondition::OpponentBeyondMetres,
+						 -25.0f, 6.0f) });
+
+	// A HIT OF 400 WITH NO DISTANCE ON IT AT ALL, which is what every hit in the
+	// game carried before this reading existed. It must take the whole 400.
+	FCataclysmIncomingHit Unknown = HitOf(true, false, false);
+	const float Full = Defender.Taken(Unknown);
+	TestEqual(TEXT("a hit with no distance on it takes the whole four hundred"),
+		Full, 400.0f, 0.01f);
+
+	// FROM BEYOND SIX METRES, A QUARTER LESS. This is the only reading here that
+	// changes, and it is the sentence the node writes.
+	FCataclysmIncomingHit FromAfar = Unknown;
+	FromAfar.OpponentDistanceMetres = 10.0f;
+	TestEqual(TEXT("and one from ten metres takes three hundred"),
+		Defender.Taken(FromAfar), 300.0f, 0.01f);
+
+	// FROM INSIDE SIX METRES, NOTHING CHANGES.
+	FCataclysmIncomingHit FromClose = Unknown;
+	FromClose.OpponentDistanceMetres = 2.0f;
+	TestEqual(TEXT("and one from two metres takes the whole four hundred"),
+		Defender.Taken(FromClose), 400.0f, 0.01f);
+
+	// AND EXACTLY ON THE THRESHOLD, NOTHING CHANGES, because the node writes
+	// "more than". A character standing at precisely six metres is not beyond
+	// six. `Cataclysm.StatPipeline.ADistanceThresholdIsStrictAndAnUnknownDistanceRefuses`
+	// checks the same boundary on the predicate alone; this checks a player
+	// standing there really does take the full hit.
+	FCataclysmIncomingHit OnTheLine = Unknown;
+	OnTheLine.OpponentDistanceMetres = 6.0f;
+	TestEqual(TEXT("and one from exactly six metres takes the whole four hundred"),
+		Defender.Taken(OnTheLine), 400.0f, 0.01f);
+
+	// AND A TICK FROM TEN METRES TAKES THE WHOLE FOUR HUNDRED, which is the
+	// judgement `docs/DECISIONS.md` records rather than a limitation: a tick
+	// hands a row no distance, so the row grants nothing for it.
+	FCataclysmIncomingHit Tick = FromAfar;
+	Tick.bIsDamageOverTime = true;
+	TestEqual(TEXT("a tick from ten metres is not reduced at all"),
+		Defender.Taken(Tick), 400.0f, 0.01f);
 
 	return true;
 }

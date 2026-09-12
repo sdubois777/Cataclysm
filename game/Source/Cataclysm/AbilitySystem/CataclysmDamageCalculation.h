@@ -7,6 +7,13 @@
 // mitigation order reads that slot and the Wand's Shred writes it.
 #include "AttributeSet.h"
 #include "GameplayTagContainer.h"
+// For FCataclysmBlowContext, which `BlowContextFor` below RETURNS BY VALUE, so a
+// forward declaration is not enough -- the type has to be complete here.
+//
+// SAFE IN ONE DIRECTION ONLY, AND THIS IS THAT DIRECTION. CataclysmStatPipeline.h
+// includes CoreMinimal.h, GameplayTagContainer.h and its own generated header,
+// and nothing from this file, so there is no cycle to create.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "CataclysmDamageCalculation.generated.h"
 
 class UAbilitySystemComponent;
@@ -190,6 +197,28 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bFromBoss = false;
+
+	/**
+	 * Metres from the character that dealt this blow to the one taking it, or
+	 * -1 when it is not known.
+	 *
+	 * THE FIRST FIELD HERE THAT IS A POSITION RATHER THAN A PROPERTY OF THE
+	 * BLOW, and it is here for the same reason the four above are: `Resolve` is
+	 * handed the defender's ability system and nothing else, so anything the
+	 * defender's stats need to know about the other side has to ride on the hit.
+	 *
+	 * -1 RATHER THAN ZERO FOR "NOT KNOWN". Zero is a real reading, because two
+	 * characters can stand on the same spot. `SkillHealthCostPercent` uses the
+	 * same convention and says so.
+	 *
+	 * FILLED IN ONE PLACE, `UCataclysmVitalAttributeSet`, which is the only
+	 * place in the game that builds one of these and which has both characters
+	 * in hand. It measures with `UCataclysmTargeting::MetresBetween`, the same
+	 * function `UCataclysmCombatEvents` reports a blow's distance with, so a
+	 * passive row and the combat log cannot disagree about one strike.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float OpponentDistanceMetres = -1.0f;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
@@ -832,6 +861,28 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float CombinedMoreDamageReduction(const TArray<float>& Factors);
+
+	/**
+	 * What a damage taken modifier may ask about this hit.
+	 *
+	 * THE ONE PLACE THE ANSWER IS DECIDED, and `Resolve` calls it for the damage
+	 * taken lookup, which is the only lookup in the game that has a hit in hand.
+	 *
+	 * A DAMAGE OVER TIME TICK ANSWERS NOTHING TO EVERY QUESTION: false to the
+	 * four facts and -1 to the distance. That is deliberate and it is a
+	 * judgement rather than a limitation -- `docs/DECISIONS.md` carries it with
+	 * what it costs the player. The short version: a tick is not a hit, so "you
+	 * take 20% less damage from spells" must not shrink a burn a spell left
+	 * behind, and the creature that lit the fire may have walked away, so a
+	 * distance measured when the tick fires describes something that is not
+	 * striking.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT DIRECTLY. It was a file-local helper until a
+	 * test needed to assert what a tick hands a passive row. Building the answer
+	 * by hand in the test instead would have asserted that a structure the test
+	 * filled holds what the test put in it, which proves nothing about this.
+	 */
+	static FCataclysmBlowContext BlowContextFor(const FCataclysmIncomingHit& Hit);
 
 	/**
 	 * Run one hit through the whole order against a character's attribute sets.

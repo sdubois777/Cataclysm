@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A character can read how far away the enemy hitting it stood, and a damage over time tick reports no distance at all
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.h` and `.cpp`,
+`CataclysmStatPipeline.h` and `.cpp`, `CataclysmDamageCalculation.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp` and `CataclysmCombatEvents.cpp`; the Passive
+Effects sheet of `docs/All_Things_Cataclysm.xlsx` and the file generated from it;
+and their tests. **Applied.**
+
+### What was missing
+
+The Ritualist's 100-point capstone third option, Standing Apart, reads "You take
+25% less damage from enemies more than 6 metres away from you". Nothing in the
+game could answer how far away the enemy was, so the option had no row at all.
+
+### One measurement, not two
+
+`UCataclysmTargeting::MetresBetween` is the only place that measures the distance
+between two characters. It answers −1 when either is missing and metres
+otherwise.
+
+**It was moved there rather than written twice, and that is the decision.** The
+calculation already existed, privately, inside `UCataclysmCombatEvents`, which
+reports every blow's distance to its listeners. Adding a second copy for the
+passive tree would have let the two drift, and a passive row and the combat log
+could then have disagreed about one strike.
+
+**That is not a hypothetical risk.** The change merged hours earlier the same day,
+issue [#1581](https://github.com/sdubois777/Cataclysm/issues/1581), was exactly
+this fault one layer up: the passive tree kept its own list of condition names
+beside the stat pipeline's, nothing held the two equal, and four names drifted
+out of one of them unnoticed for weeks. A test now asserts that one blow reports
+the same distance through a passive row and through the blow announcement. With
+one definition it passes trivially, which is the point: it fails the moment
+somebody writes a second.
+
+### The reading is the defender's, and that is a real limit
+
+`attacker_beyond_metres` holds when the character that dealt the blow stood more
+than N metres away. **Strictly more than**, because the node writes "more than",
+so a character at exactly 6 metres takes full damage — the same boundary
+`skill_health_cost_above` draws.
+
+**It serves the defender only, and this does NOT unblock the two item sets that
+are waiting on a distance.** Brute's Heart (set 9) and Demon King's Regalia (set
+11) both need the *attacker* reading how far away its *target* is: their 2-piece
+bonuses are "you gain 25% increased damage against enemies that are within 5
+meters of you" and "you deal 25% more damage to enemies that are within 5 meters
+of you". That is a different route, recorded as issue
+[#1596](https://github.com/sdubois777/Cataclysm/issues/1596).
+
+**Why it cannot be the same route, measured rather than assumed.** The structure
+describing a blow reaches exactly one lookup: the defender's damage-taken step.
+Every call of `UCataclysmAbilitySystemComponent::StatForSkill` in `game/Source`
+was counted — 33 outside tests, and exactly **one** passes a blow context, inside
+`DefenderStat` in `CataclysmDamageCalculation.cpp`. The other 32, including every
+attacker-side lookup, pass nothing. So a distance placed there is readable by the
+defender's own stats and by nothing else in the game.
+
+### A damage over time tick reports −1, and a row reading it grants nothing
+
+A damage-over-time tick reports its distance as −1, meaning unknown, and a
+passive row that reads the distance grants nothing for that tick. **This is a
+judgement made by the sessions doing this work and not a ruling by the project
+owner.** It is a choice rather than a limitation: the creature that applied the
+effect usually still has a position at tick time, and the hit-announcement path
+reports a true distance for ticks today. We choose not to read it, because that
+creature may have walked away or died, so the number would describe something
+that is not striking. −1 is also the convention the structure already uses for
+the skill's health cost, and it matches the four facts already there, which are
+all false for a tick.
+
+The consequence: the Ritualist's 100-point capstone third option, "You take 25%
+less damage from enemies more than 6 metres away from you", will not reduce
+damage-over-time ticks. Only direct hits.
+
+### One labelled judgement about the range a sheet may write
+
+`CONDITIONS` in `tools/generate_datatables.py` refuses a threshold outside the
+range it records for each condition. For this one the range is **0 to 100
+metres**, and that upper bound is a judgement rather than a figure read off
+anything.
+
+Nothing in the design states a distance beyond which a character cannot be hit,
+and the largest distance any authored row names is 10 metres. A hundred is well
+past anything a skill reaches, so a threshold above it would be a row nothing
+could ever satisfy — which is the failure worth refusing, rather than a designer
+writing 7 where they meant 6.
+
+### Sources
+
+None. No genre research applies: this is a rule about what an engine does with a
+measurement it can and cannot honestly take, not about how a mechanic should
+feel. The numbers in the node — 25% and 6 metres — are the project owner's, from
+the tree as authored.
+
+---
+
 ## 2026-09-12 — A character knows whether it is moving, Forced March damages one that stands still, and The Nihil's Embrace takes resistance as it walks
 
 **Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmMovement.h` and
@@ -776,9 +873,9 @@ its drawback either, and the other way round.
 | :-- | :-- |
 | Tyrant's Chains (6) | minion stats reaching a minion. Its bonus is minion damage and its drawback minion maximum health, and nothing in the game reads `minion_damage`. |
 | Chronomancer's Time-Lock (7) | the duration of the debuffs a player applies, and of the buffs they apply to themselves. Only the duration of debuffs applied to the player exists. |
-| Brute's Heart (9) | how far away the target is. Its bonus is increased damage against enemies within 5 metres. The Demonic trees session adds that reading to the blow context. |
+| Brute's Heart (9) | how far away the target is, read by the ATTACKER. Its bonus is increased damage against enemies within 5 metres. The blow context cannot serve it: of the 33 calls of `StatForSkill` outside tests, exactly one passes a blow, and that one supplies the defender's damage taken. The attacker-side route is [#1596](https://github.com/sdubois777/Cataclysm/issues/1596). |
 | Spellblade's Will (10) | a hit that triggers another ability. Its bonus is a chance on melee attacks to trigger an ability with a cooldown. |
-| Demon King's Regalia (11) | the same distance reading as Brute's Heart, for both halves. |
+| Demon King's Regalia (11) | the same attacker-side reading as Brute's Heart, for its bonus only. Its drawback, "Ranged attacks deal 20% more damage to you", needs nothing new, because a hit already records whether it was ranged; it is held only by the whole-set rule stated above this table. |
 | Plague Doctor (12) | a reading of "direct damage" for its drawback. Its bonus, damage over time dealing more damage, is ready; the drawback would be two rows, attack damage and spell damage, and that reading was left to the pull request that writes it. |
 | Starvation (13) | the flags for having no regeneration. Its bonus, leech, is ready; its drawback is "You have no health/mana/es regen". |
 | Null Emperor (14) | a silence state, which does not exist, and a flag disabling the player's own ultimate. |

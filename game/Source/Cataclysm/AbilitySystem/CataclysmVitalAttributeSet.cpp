@@ -343,6 +343,28 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bFromBoss = Striker->IsBoss();
 			}
 
+			// AND HOW FAR APART THE TWO CHARACTERS STOOD, for "You take 25% less
+			// damage from enemies more than 6 metres away from you".
+			//
+			// HERE, BECAUSE THIS IS THE ONLY PLACE IN THE GAME THAT BUILDS ONE OF
+			// THESE and it is the only place with both characters in hand.
+			// `UCataclysmDamageCalculation::Resolve` is handed the defender's
+			// ability system and nothing else, so a position cannot reach it any
+			// other way.
+			//
+			// THE CAUSER RATHER THAN THE INSTIGATOR, which is the same actor the
+			// two checks above read. For a minion's blow the causer is the minion
+			// and the instigator is its summoner, and the distance a row means is
+			// to the thing that struck.
+			//
+			// THE SHARED MEASUREMENT, NOT A SECOND COPY. `UCataclysmCombatEvents`
+			// reports the same number to every listener using this same function,
+			// so a passive row and the combat log cannot disagree about one
+			// strike. It answers -1 when either actor is missing, and every
+			// predicate reading a distance refuses a negative one.
+			Hit.OpponentDistanceMetres = UCataclysmTargeting::MetresBetween(
+				Data.EffectSpec.GetContext().GetEffectCauser(), GetOwningActor());
+
 			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.
 			// Issues #1032 and #666. Read here beside the other two because they
 			// come from the same place: tags the ability that threw the blow put

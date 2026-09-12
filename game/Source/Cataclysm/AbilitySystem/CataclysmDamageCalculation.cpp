@@ -85,16 +85,7 @@ namespace
 	 */
 	FCataclysmBlowContext BlowOf(const FCataclysmIncomingHit& Hit)
 	{
-		FCataclysmBlowContext Blow;
-		if (Hit.bIsDamageOverTime)
-		{
-			return Blow;
-		}
-		Blow.bIsMelee = Hit.bIsMelee;
-		Blow.bIsRanged = Hit.bIsRanged;
-		Blow.bIsSpell = Hit.bIsSpell;
-		Blow.bOpponentIsBoss = Hit.bFromBoss;
-		return Blow;
+		return UCataclysmDamageCalculation::BlowContextFor(Hit);
 	}
 
 	/**
@@ -161,6 +152,29 @@ namespace
 
 		return Total;
 	}
+}
+
+FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
+	const FCataclysmIncomingHit& Hit)
+{
+	FCataclysmBlowContext Blow;
+	if (Hit.bIsDamageOverTime)
+	{
+		return Blow;
+	}
+	Blow.bIsMelee = Hit.bIsMelee;
+	Blow.bIsRanged = Hit.bIsRanged;
+	Blow.bIsSpell = Hit.bIsSpell;
+	Blow.bOpponentIsBoss = Hit.bFromBoss;
+
+	// AND HOW FAR APART THE TWO STOOD. A tick returned above with everything at
+	// its default, so it keeps -1 here and every predicate reading a distance
+	// refuses it. That is a judgement rather than a limitation -- the creature
+	// that applied the effect usually still has a position, and
+	// `UCataclysmCombatEvents` reports one for ticks -- and `docs/DECISIONS.md`
+	// carries it with what it costs the player.
+	Blow.OpponentDistanceMetres = Hit.OpponentDistanceMetres;
+	return Blow;
 }
 
 const TCHAR* UCataclysmDamageCalculation::ElementTagPrefix = TEXT("Element.");
