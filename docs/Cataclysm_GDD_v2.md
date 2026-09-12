@@ -1511,7 +1511,7 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 
 | Step | What happens |
 | :-: | :-- |
-| 1. Evasion | Direct attacks only. An evaded hit stops here and does nothing. |
+| 1. Evasion | Direct attacks only. An evaded hit stops here and does nothing. A tick of damage over time is not a direct attack and is never evaded. |
 | 2. Block | Removes 50% of what remains. Applies to area damage as well. |
 | 3. Armor | Reduces damage by `armor / (armor + K)`, where K is 800 × the difficulty tier, capped at 75%. |
 | 4. Resistance | The attacker's Penetration and any Overwhelm are subtracted first, then the result is capped at 70%. |

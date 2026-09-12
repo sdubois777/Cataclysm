@@ -101,7 +101,9 @@ struct CATACLYSM_API FCataclysmIncomingHit
 
 	/**
 	 * Bleed, poison, burn and the rest. Routed differently: an energy shield
-	 * does not absorb it, though it does still restart the shield's recharge.
+	 * does not absorb it, though it does still restart the shield's recharge,
+	 * and it is never evaded, because a tick is not a direct attack.
+	 * Issue #1584.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsDamageOverTime = false;

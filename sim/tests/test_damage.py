@@ -40,6 +40,25 @@ def test_evasion_does_nothing_against_area_damage():
     assert r.dealt_to_health == pytest.approx(1000.0)
 
 
+def test_a_tick_of_damage_over_time_is_never_evaded():
+    """Issue #1584. Evasion is for direct attacks and a tick is not one. The
+    test above is the control: the same defender evades a direct blow."""
+    d = plain(evasion=100.0)
+    r = dm.resolve(hit(is_damage_over_time=True), d, force_block=False)
+    assert not r.evaded
+    assert r.dealt_to_health == pytest.approx(1000.0)
+
+
+def test_the_average_damage_taken_counts_no_evasion_for_a_tick():
+    """`average_damage_taken` averages over the evasion roll rather than
+    rolling it, so it has to make the same exception. Issue #1584."""
+    d = plain(evasion=50.0)
+    tick = dm.average_damage_taken(hit(is_damage_over_time=True), d)
+    blow = dm.average_damage_taken(hit(), d)
+    assert tick == pytest.approx(1000.0)
+    assert blow == pytest.approx(500.0)
+
+
 def test_a_block_removes_exactly_half_the_hit():
     d = plain()
     blocked = dm.resolve(hit(), d, force_evade=False, force_block=True)

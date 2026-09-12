@@ -238,6 +238,39 @@ CATACLYSM_TEST(FCataclysmEvasionTest, "Cataclysm.Damage.EvasionAvoidsDirectAttac
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmTickEvasionTest,
+	"Cataclysm.Damage.ATickOfDamageOverTimeIsNeverEvaded")
+{
+	// ISSUE #1584. Evasion is for direct attacks, which the design's damage
+	// table says in those words, and a tick of damage over time is not one.
+	// Until this, a defender's evasion was rolled against every tick, so an
+	// Imp's 25% stopped about a quarter of the bleed on it.
+	UWorld* World = CataclysmDamageTest::MakeWorld();
+	{
+		const CataclysmDamageTest::FScopedDefender D(World);
+		D.Combat->SetEvasion(100.0f);
+
+		FCataclysmIncomingHit Direct;
+		Direct.Damage = 1000.0f;
+
+		// THE CONTROL, AND WITHOUT IT THIS TEST WOULD PASS AGAINST A BUILD THAT
+		// HAD SWITCHED EVASION OFF ALTOGETHER. The same defender at the same
+		// roll evades a direct blow.
+		TestTrue(TEXT("a direct blow at this roll is evaded"),
+			D.Resolve(Direct, 1, /*EvasionRoll=*/0.0f).bEvaded);
+
+		FCataclysmIncomingHit Tick = Direct;
+		Tick.bIsDamageOverTime = true;
+		const FCataclysmDamageResult Landed =
+			D.Resolve(Tick, 1, /*EvasionRoll=*/0.0f);
+		TestFalse(TEXT("a tick of damage over time is not evaded"),
+			Landed.bEvaded);
+		TestEqual(TEXT("and it lands in full"), Landed.DealtToHealth, 1000.0f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmBlockTest, "Cataclysm.Damage.BlockRemovesHalfAndAppliesToArea")
 {
 	UWorld* World = CataclysmDamageTest::MakeWorld();

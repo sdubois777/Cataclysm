@@ -11,7 +11,8 @@ can be looked at rather than argued about.
 WHAT IS ALREADY DECIDED AND IS NOT UP FOR DEBATE HERE:
 
     Evasion avoids an attack completely, but only a direct attack. Area damage
-    lands regardless. Soft cap 60%, exceedable.
+    lands regardless, and so does every tick of damage over time, which is not a
+    hit at all. Soft cap 60%, exceedable.
 
     Block is a chance, and a block removes 50% of the hit rather than preventing
     it. It applies to area damage as well as direct attacks. No cap.
@@ -708,8 +709,12 @@ def resolve(attacker: Attacker, defender: Defender,
                           after_reduction=0.0, absorbed_by_shield=0.0,
                           dealt_to_health=0.0)
 
-    # 1. Evasion. Direct attacks only; area damage lands regardless.
-    if not attacker.is_area:
+    # 1. Evasion. Direct attacks only; area damage lands regardless, and so does
+    # every tick of damage over time. A tick is not a direct attack: the design's
+    # damage table gives evasion to direct attacks only, and its paragraph on
+    # critical strikes cites Last Epoch that a damage over time effect is not a
+    # hit and so cannot be dodged. Issue #1584.
+    if not attacker.is_area and not attacker.is_damage_over_time:
         evaded = (force_evade if force_evade is not None
                   else rng.uniform(0, 100) < defender.evasion)
         if evaded:
@@ -897,7 +902,7 @@ def hits_to_kill(attacker: Attacker, defender: Defender,
         unblocked = resolve(attacker, state, force_evade=False, force_block=False)
         bc = min(100.0, defender.block_chance) / 100.0
         absorbed = bc * blocked.absorbed_by_shield + (1 - bc) * unblocked.absorbed_by_shield
-        if not attacker.is_area:
+        if not attacker.is_area and not attacker.is_damage_over_time:
             absorbed *= 1.0 - min(100.0, defender.evasion) / 100.0
 
         if taken <= 0 and absorbed <= 0:
@@ -914,7 +919,9 @@ def average_damage_taken(attacker: Attacker, defender: Defender) -> float:
 
     Useful for comparing builds without sampling thousands of hits.
     """
-    evade_chance = 0.0 if attacker.is_area else min(100.0, defender.evasion) / 100.0
+    # A tick of damage over time is never evaded either. Issue #1584.
+    evade_chance = (0.0 if attacker.is_area or attacker.is_damage_over_time
+                    else min(100.0, defender.evasion) / 100.0)
     block_chance = min(100.0, defender.block_chance) / 100.0
 
     blocked = resolve(attacker, defender, force_evade=False, force_block=True)
