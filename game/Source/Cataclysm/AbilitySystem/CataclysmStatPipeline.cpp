@@ -78,6 +78,7 @@ namespace
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
 		{ TEXT("metres_moved_before_attack"),   ECataclysmStatCondition::MetresMovedBeforeAttack },
 		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
+		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
 	};
 
 	struct FNamedStatScale
@@ -344,6 +345,26 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character to read and refuses.
 		return State.SecondsSinceOwnAttack >= 0.0f
 			&& State.SecondsSinceOwnAttack >= Value;
+	case ECataclysmStatCondition::OpponentBeyondMetres:
+		// STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". Standing
+		// Apart reads "You take 25% less damage from enemies more than 6 metres
+		// away from you", so a character standing at exactly 6 metres takes full
+		// damage. The same boundary `SkillHealthCostAbovePercent` draws above.
+		//
+		// A NEGATIVE READING IS "NOT KNOWN" AND REFUSES, and unlike the health
+		// readings this one really can be zero: two characters can stand on the
+		// same spot, so zero is a real distance and cannot also mean "no
+		// answer". A damage over time tick reports -1 deliberately, which is why
+		// this grants nothing for a tick; `docs/DECISIONS.md` carries that
+		// judgement.
+		//
+		// THE GUARD CANNOT BE FOLDED INTO THE COMPARISON, for the reason
+		// `HealthAbovePercent` gives: -1 is below every threshold a sheet may
+		// write, so it would refuse by accident rather than on purpose, and a
+		// threshold of -2 would then pass. Saying it outright is what keeps this
+		// correct whatever the sheet holds.
+		return State.Blow.OpponentDistanceMetres >= 0.0f
+			&& State.Blow.OpponentDistanceMetres > Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved

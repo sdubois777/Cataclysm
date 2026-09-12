@@ -71,6 +71,35 @@ public:
 						 const FVector& Point, float HalfWidthCm);
 
 	/**
+	 * Metres between two actors, or -1 when either is missing.
+	 *
+	 * HERE RATHER THAN IN EITHER CALLER, AND THAT IS THE WHOLE POINT. Two places
+	 * ask how far apart the two sides of one blow stood:
+	 * `UCataclysmCombatEvents` reports it to every listener, and
+	 * `UCataclysmVitalAttributeSet` puts it on the hit so a passive row can read
+	 * it. If they held separate copies they could drift, and a node and the
+	 * combat log would then disagree about one strike.
+	 *
+	 * THAT IS NOT A HYPOTHETICAL. Issue #1581 was exactly this fault one layer
+	 * up: the passive tree kept its own list of condition names beside the stat
+	 * pipeline's, nothing held the two equal, and four names drifted out of one
+	 * of them unnoticed. One definition is the answer there and here.
+	 *
+	 * -1 RATHER THAN ZERO FOR "NOT KNOWN", the convention
+	 * `FCataclysmStatConditions::SkillHealthCostPercent` uses. Zero is a real
+	 * reading -- two characters can stand on the same spot -- so it cannot also
+	 * mean "no answer". Every predicate that reads a distance refuses a negative
+	 * one.
+	 *
+	 * MEASURED IN THREE DIMENSIONS, which is what the callers already did before
+	 * this was shared, so moving it changed no number. `IsInCone` and `IsInLine`
+	 * above work in the horizontal plane only, and say why; this does not, and
+	 * the difference is deliberate rather than an oversight.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Targeting")
+	static float MetresBetween(const AActor* From, const AActor* To);
+
+	/**
 	 * Every enemy within RadiusCm of Origin, nearest first.
 	 *
 	 * @param MaxTargets  zero means no limit

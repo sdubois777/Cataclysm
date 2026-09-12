@@ -3283,6 +3283,30 @@ CONDITIONS = {
     # distance any row states is five, and a floor is not a hundred metres of
     # walking between two attacks.
     "metres_moved_before_attack": (0.0, 100.0, "a number of metres"),
+    # "You take 25% less damage from enemies more than 6 metres away from you"
+    # is `attacker_beyond_metres` with 6. Standing Apart, the Ritualist's
+    # 100-point capstone third option, is the node.
+    #
+    # NAMED FOR THE ATTACKER RATHER THAN THE OPPONENT, unlike the row above,
+    # and the difference is worth the inconsistency. `opponent_is_boss` reads
+    # the same from either side of a blow; a distance does not. This one is the
+    # DEFENDER reading how far away the character hitting it stood, and a row
+    # wanting the reverse -- the attacker reading how far away its target is,
+    # which Brute's Heart and Demon King's Regalia both need -- is a different
+    # mechanism entirely, because the blow context reaches only the damage
+    # taken lookup. Issue #1596. Naming this one "opponent" would invite a
+    # designer to write it on an attacker's row and get nothing.
+    #
+    # STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". A character at
+    # exactly 6 metres takes full damage, the same boundary
+    # `skill_health_cost_above` draws.
+    #
+    # THE UPPER BOUND IS 100 METRES, which is a judgement rather than a figure
+    # read off anything. Nothing in the design states a distance beyond which a
+    # character cannot be hit, and the largest distance any authored row names
+    # is 10 metres. A hundred is well past anything a skill reaches, so a
+    # threshold above it would be a row nothing could ever satisfy.
+    "attacker_beyond_metres": (0.0, 100.0, "a distance in metres"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

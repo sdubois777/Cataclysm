@@ -192,6 +192,14 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** A blow landed from this many metres away. Negative is not known. */
+	FCataclysmStatConditions StruckFrom(float Metres)
+	{
+		FCataclysmStatConditions State;
+		State.Blow.OpponentDistanceMetres = Metres;
+		return State;
+	}
+
 	/** An increase that applies only inside a window after foreign damage. */
 	FCataclysmStatModifier IncreasedAfterForeignDamage(float Value, float Seconds)
 	{
@@ -1607,6 +1615,80 @@ bool FCataclysmPipelineSkillCostConditionTest::RunTest(const FString& Parameters
 		IncreasedAboveSkillCost(24.0f, 10.0f), IncreasedBelowHealth(24.0f, 20.0f) };
 	TestEqual(TEXT("both apply and sum into one increases bracket"),
 		FPipeline::Evaluate(100.0f, Pair, NoTags, Both).Final, 148.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineDistanceThresholdTest,
+	"Cataclysm.StatPipeline.ADistanceThresholdIsStrictAndAnUnknownDistanceRefuses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * How far away the character that struck stood, as a predicate.
+ *
+ * STANDING APART IS THE NODE, the Ritualist's 100-point capstone third option:
+ * "You take 25% less damage from enemies more than 6 metres away from you."
+ *
+ * STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than", so a character at
+ * exactly 6 metres takes full damage. That is the same boundary
+ * `SkillHealthCostAbovePercent` and `HealthBelowPercent` draw, and the reason is
+ * the same: a sentence saying "more than" and a predicate saying "at least"
+ * differ at exactly one distance, which is the distance a player will stand at.
+ *
+ * ZERO IS A REAL READING HERE AND THAT MAKES IT UNLIKE EVERY PREDICATE ABOVE.
+ * Two characters can stand on the same spot, so zero cannot also mean "no
+ * answer", which is why the unknown value is -1 and why the guard is written out
+ * rather than folded into the comparison. A threshold of -2 with a folded guard
+ * would let an unknown distance pass.
+ */
+bool FCataclysmPipelineDistanceThresholdTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	const ECataclysmStatCondition Beyond =
+		ECataclysmStatCondition::OpponentBeyondMetres;
+
+	// THE BOUNDARY, IN THREE LINES. Six metres is the node's own threshold.
+	TestFalse(TEXT("a character struck from exactly six metres is not beyond six"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(6.0f)));
+	TestTrue(TEXT("and one struck from a hair further is"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(6.1f)));
+	TestFalse(TEXT("and one struck from a hair nearer is not"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(5.9f)));
+
+	// WELL INSIDE AND WELL OUTSIDE, so the test says the predicate is a
+	// comparison rather than something that happens to answer at the boundary.
+	TestTrue(TEXT("a blow from twenty metres is beyond six"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(20.0f)));
+	TestFalse(TEXT("and a blow from arm's reach is not"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(1.0f)));
+
+	// ZERO IS A REAL DISTANCE, NOT AN ABSENT ONE. Two characters standing on one
+	// spot are nought metres apart, and the predicate must answer "no, that is
+	// not beyond six" rather than refuse as though it knew nothing.
+	TestFalse(TEXT("nought metres is a real reading and is not beyond six"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(0.0f)));
+	TestTrue(TEXT("and nought metres IS beyond a threshold below it"),
+		FPipeline::ConditionHolds(Beyond, -1.0f, StruckFrom(0.0f)));
+
+	// AN UNKNOWN DISTANCE REFUSES, WHATEVER THE THRESHOLD. -1 is what a caller
+	// with no blow in hand carries -- the character sheet, every lookup that is
+	// not the damage taken step -- and what a damage over time tick carries
+	// deliberately. `docs/DECISIONS.md` records that judgement.
+	//
+	// THE SECOND LINE IS THE ONE THAT MATTERS. A threshold below zero is
+	// nonsense a sheet cannot write, but if the guard were folded into the
+	// comparison rather than written out, -1 would be "beyond -2" and an unknown
+	// distance would pass. This is the case that catches that mistake.
+	TestFalse(TEXT("an unknown distance refuses an ordinary threshold"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, StruckFrom(-1.0f)));
+	TestFalse(TEXT("and refuses a threshold below it, which a folded guard would not"),
+		FPipeline::ConditionHolds(Beyond, -2.0f, StruckFrom(-1.0f)));
+
+	// AND A CALLER THAT BUILT NO BLOW AT ALL REFUSES, which is the default the
+	// struct carries and what every lookup but the damage taken step passes.
+	TestFalse(TEXT("a state with no blow in it refuses"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, FCataclysmStatConditions()));
 
 	return true;
 }

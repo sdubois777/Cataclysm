@@ -14,6 +14,11 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+// For judging a distance condition the way a passive row's modifier would.
+#include "AbilitySystem/CataclysmStatPipeline.h"
+// For the one measurement of how far apart two characters stand, which this
+// file's announcement and a passive row both read.
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -351,6 +356,349 @@ bool FCataclysmCombatEventsHitNotice::RunTest(const FString&)
 	TestTrue(TEXT("and a blow no skill dealt names no skill"), Hit.SkillName.IsNone());
 	TestFalse(TEXT("and points at no skill's tags"), Heard.HitHadSkillTags[0]);
 	TestEqual(TEXT("and the world counted one"), static_cast<int32>(Events->HitsSent()), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsOneDistance,
+	"Cataclysm.CombatEvents.OneBlowReportsOneDistanceToEveryReaderOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One blow, one distance, however it is read.
+ *
+ * WHY THIS EXISTS WHEN IT PASSES TRIVIALLY. There is one definition of the
+ * measurement, `UCataclysmTargeting::MetresBetween`, so the two readings cannot
+ * differ today and this test cannot fail today. That is the point: it fails the
+ * moment somebody writes a second definition, which is the fault it guards
+ * against rather than a fault it detects now.
+ *
+ * IT IS NOT A HYPOTHETICAL FAULT. Issue #1581 was exactly this shape one layer
+ * up: the passive tree kept its own list of condition names beside the stat
+ * pipeline's, nothing held the two equal, four names drifted out of one of them,
+ * and every test passed for weeks. The lesson recorded there was that a second
+ * copy needs a test holding it to the first, and this is that test written
+ * before the second copy exists rather than after it has already drifted.
+ *
+ * THE TWO READERS. `UCataclysmCombatEvents` reports the distance to every
+ * listener, and `UCataclysmVitalAttributeSet` puts it on the hit so a passive
+ * row can compare it. Both are driven here by one real blow.
+ */
+bool FCataclysmCombatEventsOneDistance::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Attacker = MakeArmed(World);
+
+	// SEVEN METRES, CHOSEN SO THE NODE'S OWN THRESHOLD DECIDES SOMETHING. Standing
+	// Apart asks for more than six, so a blow from seven is one the condition
+	// holds for and a blow from five is not. A distance either side of the
+	// threshold would prove the reading arrived; a distance on neither side would
+	// prove only that a number arrived.
+	ACataclysmEnemyCharacter* Target =
+		SpawnCreatureAt(World, FVector(7.0f * M, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("the world has the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+									 TagsNamed({TEXT("Type.Melee")}));
+
+	if (!TestEqual(TEXT("one blow sends one hit notice"), Heard.Hits.Num(), 1))
+	{
+		return false;
+	}
+
+	// WHAT THE ANNOUNCEMENT REPORTED.
+	const float Announced = Heard.Hits[0].DistanceMetres;
+	TestEqual(TEXT("the announcement says seven metres"), Announced, 7.0f, 0.05f);
+
+	// AND WHAT THE SHARED MEASUREMENT ANSWERS FOR THE SAME TWO ACTORS, which is
+	// what the hit carries to a passive row. Asking it directly rather than
+	// reading the hit back is deliberate: the hit is built inside the target's
+	// attribute set and is not kept anywhere a test can reach after the blow
+	// resolves, so this is the same function the fill uses, on the same pair.
+	const float ForTheRow =
+		UCataclysmTargeting::MetresBetween(Attacker.Actor, Target);
+
+	TestEqual(TEXT("and a passive row would read the same number"),
+			  ForTheRow, Announced, 0.001f);
+
+	// AND THE MEASUREMENT'S OWN RULE FOR A MISSING ACTOR, which is what makes a
+	// tick and a caller with nothing in hand refuse rather than read as nought.
+	TestEqual(TEXT("a missing attacker reads as not known"),
+			  UCataclysmTargeting::MetresBetween(nullptr, Target), -1.0f, 0.001f);
+	TestEqual(TEXT("and a missing target does too"),
+			  UCataclysmTargeting::MetresBetween(Attacker.Actor, nullptr), -1.0f,
+			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsRealBlowCarriesItsDistance,
+	"Cataclysm.CombatEvents.ARealBlowFromAcrossTheRoomIsSoftenedAndOneUpCloseIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The whole chain, driven by a real blow between two real characters.
+ *
+ * WHY THIS EXISTS, AND IT IS THE ONLY TEST OF THE FIVE BESIDE IT THAT COULD HAVE
+ * CAUGHT WHAT THEY WERE WRITTEN FOR. Every other test of this reading hands the
+ * distance over itself: it builds an `FCataclysmIncomingHit`, sets
+ * `OpponentDistanceMetres` by hand, and resolves it. That exercises the
+ * condition and the damage step and never the line in
+ * `UCataclysmVitalAttributeSet` that puts the distance on the hit in the first
+ * place. A proof case that broke that line failed NOTHING, three times running,
+ * which is how the gap was found.
+ *
+ * SO THE DISTANCE HERE IS NEVER WRITTEN BY THE TEST. It comes from where the two
+ * characters are standing, measured by the game, carried on the hit the game
+ * builds, and read by a modifier the way a passive row's would be.
+ *
+ * TWO BLOWS, NOT ONE, because a single reduced blow would pass against a build
+ * that softened every hit. Seven metres is beyond the six-metre threshold and
+ * two metres is inside it, so the same attacker, the same weapon and the same
+ * row must give two different answers.
+ */
+bool FCataclysmCombatEventsRealBlowCarriesItsDistance::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+	using Calc = UCataclysmDamageCalculation;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// STANDING APART'S OWN NUMBERS: a quarter less damage, beyond six metres.
+	// Recorded the way `UCataclysmPlayerClassStats::ApplyTo` records a real
+	// player's stat line, which is what the damage taken step asks for on every
+	// blow.
+	const auto SoftenBeyondSixMetres =
+		[](UCataclysmAbilitySystemComponent* System)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::More;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = -25.0f;
+			Row.Condition = ECataclysmStatCondition::OpponentBeyondMetres;
+			Row.ConditionValue = 6.0f;
+
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Taken =
+				Inputs.FindOrAdd(FName(Calc::DamageTakenStat));
+			Taken.Base = Calc::NormalDamageTaken;
+			Taken.Modifiers = {Row};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+
+	// THE ATTACKER STANDS AT THE ORIGIN AND CANNOT BE MOVED, which is what makes
+	// the target's position the whole of the distance. `MakeArmed` says why.
+	FArmedActor Attacker = MakeArmed(World);
+	ACataclysmEnemyCharacter* FarAway =
+		SpawnCreatureAt(World, FVector(7.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* UpClose =
+		SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("a target across the room"), FarAway)
+		|| !TestNotNull(TEXT("a target up close"), UpClose))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* FarSystem = SystemOf(FarAway);
+	UCataclysmAbilitySystemComponent* CloseSystem = SystemOf(UpClose);
+	if (!TestNotNull(TEXT("the far target holds an ability system"), FarSystem)
+		|| !TestNotNull(TEXT("and the near one does"), CloseSystem))
+	{
+		return false;
+	}
+	SoftenBeyondSixMetres(FarSystem);
+	SoftenBeyondSixMetres(CloseSystem);
+
+	// ONE BLOW EACH, THROUGH THE FUNCTION EVERY BLOW IN THE GAME GOES THROUGH.
+	//
+	// A CRITICAL STRIKE WOULD MAKE THE RATIO BELOW RANDOM, so it is forbidden
+	// here, the way `CataclysmDamageBySourceTests.cpp` forbids it wherever it
+	// compares two real hits. EVASION AND BLOCKING HAVE NO FLAG TO SWITCH OFF, so
+	// both are read back off the resolved hit rather than assumed away: if either
+	// ever begins to fire, this test names which one instead of reporting a ratio
+	// nobody can account for.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotCriticallyStrike = true;
+
+	const auto Strike = [&](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+			TagsNamed({TEXT("Type.Melee")}), Delivery, &Resolved);
+		return Resolved;
+	};
+
+	// WHAT REACHED HEALTH, READ OFF THE HIT rather than from the creature's
+	// health before and after, so nothing else that touches health on a
+	// blow can be mistaken for the reduction being measured.
+	const FCataclysmDamageResult Far = Strike(FarAway);
+	const FCataclysmDamageResult Close = Strike(UpClose);
+	const float FarTook = Far.DealtToHealth;
+	const float CloseTook = Close.DealtToHealth;
+
+	if (!TestTrue(TEXT("both blows landed"), FarTook > 0.0f && CloseTook > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("neither blow was evaded"), !Far.bEvaded && !Close.bEvaded);
+	TestTrue(TEXT("neither blow was blocked"), !Far.bBlocked && !Close.bBlocked);
+	TestTrue(TEXT("neither blow critically struck"),
+			 !Far.bWasCritical && !Close.bWasCritical);
+
+	// THE TARGET UP CLOSE TOOK MORE, WHICH IS THE WHOLE ASSERTION. Stated as a
+	// ratio rather than two absolute figures because the weapon damage, the
+	// difficulty tier and the creature's own armour all sit in between, and none
+	// of them is what this test is about.
+	TestTrue(*FString::Printf(
+				 TEXT("a blow from seven metres is softened: %.1f taken against "
+					  "%.1f from two metres"),
+				 FarTook, CloseTook),
+			 FarTook < CloseTook);
+	TestEqual(TEXT("and softened by the quarter the row states"),
+			  FarTook / CloseTook, 0.75f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsTickHasNoDistance,
+	"Cataclysm.CombatEvents.ATickCarriesNoDistanceToAPassiveRowEvenThoughOneIsAnnounced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A damage over time tick announces a distance and gives a passive row none.
+ *
+ * THIS IS THE TEST FOR A JUDGEMENT, NOT FOR A LIMITATION, and the two halves of
+ * the assertion are what make that visible. `docs/DECISIONS.md` records the
+ * decision: a tick reports its distance as -1 to any row reading it, so a row
+ * like Standing Apart grants nothing for a tick. The reason is that the creature
+ * which lit the fire may have walked away or died, so a distance measured when
+ * the tick fires describes something that is not striking.
+ *
+ * THE FIRST HALF PROVES THE POSITION IS STILL THERE. The announcement carries a
+ * real distance for this tick, because the burning minion is still standing. If
+ * a later change made the announcement report -1 as well, this test fails and
+ * whoever reads it learns that the judgement's premise no longer holds -- which
+ * is the moment to revisit it rather than to quietly agree with it.
+ *
+ * THE SECOND HALF PROVES THE ROW GETS NOTHING. `BlowOf` returns early for a tick
+ * with every field at its default, so the blow context a row reads carries -1
+ * and every distance predicate refuses.
+ */
+bool FCataclysmCombatEventsTickHasNoDistance::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Summoner = MakeArmed(World);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("a summoner"), Summoner.Actor))
+	{
+		return false;
+	}
+
+	// A MINION THAT BURNS WHAT IT HITS, WHICH IS THIS FILE'S OWN WAY OF SETTING A
+	// TICK RUNNING. Three metres from the origin, and what it sets alight stands
+	// at four, so the two are one metre apart when the tick fires and the
+	// announced distance is a real number rather than nought.
+	ACataclysmMinion* Burner = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/true);
+	ACataclysmEnemyCharacter* Kindling =
+		SpawnCreatureAt(World, FVector(4.0f * M, 0.0f, 0.0f), 1000000.0f);
+	UCataclysmAbilitySystemComponent* KindlingSystem = SystemOf(Kindling);
+	if (!TestNotNull(TEXT("a minion that burns what it hits"), Burner)
+		|| !TestNotNull(TEXT("something to set alight"), KindlingSystem))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	Burner->AttackTarget(Kindling);
+	const int32 BeforeTick = Heard.Hits.Num();
+	if (!TestEqual(TEXT("the blow set one burn running"),
+				   KindlingSystem->ExecutePeriodicEffectsGrantingForTests(
+					   TagNamed(TEXT("Keyword.DoT.Burn"))), 1)
+		|| !TestEqual(TEXT("and one tick of it sent one hit notice"),
+					  Heard.Hits.Num(), BeforeTick + 1))
+	{
+		return false;
+	}
+
+	const FCataclysmHitNotice& Tick = Heard.Hits.Last();
+	if (!TestTrue(TEXT("the notice is for a tick"), Tick.bDamageOverTime))
+	{
+		return false;
+	}
+
+	// THE ANNOUNCEMENT HAS A REAL DISTANCE, because the minion that lit the fire
+	// is still standing one metre from what it set alight.
+	TestEqual(TEXT("the announcement says one metre, so a position was available"),
+			  Tick.DistanceMetres, 1.0f, 0.05f);
+
+	// AND A ROW READING A DISTANCE GETS NOTHING FROM THIS TICK. Built the way the
+	// damage taken lookup builds one, which is the only caller that ever has a
+	// hit in hand.
+	FCataclysmIncomingHit AsATick;
+	AsATick.Damage = 100.0f;
+	AsATick.bIsDamageOverTime = true;
+	AsATick.OpponentDistanceMetres = Tick.DistanceMetres;
+
+	const FCataclysmBlowContext ForARow =
+		UCataclysmDamageCalculation::BlowContextFor(AsATick);
+	TestEqual(TEXT("a tick hands a row no distance at all"),
+			  ForARow.OpponentDistanceMetres, -1.0f, 0.001f);
+	TestFalse(TEXT("so Standing Apart grants nothing for it"),
+			  UCataclysmStatPipeline::ConditionHolds(
+				  ECataclysmStatCondition::OpponentBeyondMetres, 6.0f,
+				  [&ForARow]
+				  {
+					  FCataclysmStatConditions State;
+					  State.Blow = ForARow;
+					  return State;
+				  }()));
+
+	// AND THE SAME HIT WITHOUT THE TICK FLAG DOES CARRY IT, which is what says
+	// the refusal above is about being a tick rather than about the number.
+	FCataclysmIncomingHit AsABlow = AsATick;
+	AsABlow.bIsDamageOverTime = false;
+	TestEqual(TEXT("the same distance on a direct blow reaches a row"),
+			  UCataclysmDamageCalculation::BlowContextFor(AsABlow)
+				  .OpponentDistanceMetres,
+			  Tick.DistanceMetres, 0.001f);
 
 	return true;
 }

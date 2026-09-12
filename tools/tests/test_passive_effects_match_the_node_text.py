@@ -398,7 +398,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Issue #1515. `Attendant` grants spell damage for each minion held, through
 #: the scale `minions_held` that #1518 added, and `Room for One More` grants a
 #: flat 30 maximum Fervour. Both stats and the scale already existed.
-AUTHORED_ROWS = 208
+#: AND TO 209 ON 2026-09-12, for the Ritualist's 100-point capstone third
+#: option, `Standing Apart`: "You take 25% less damage from enemies more than 6
+#: metres away from you". It is the first row in the sheet to carry the
+#: condition `attacker_beyond_metres`, because until that day nothing in the
+#: game could answer how far away the character that struck had stood. One row,
+#: one node, and the stat it moves already existed.
+AUTHORED_ROWS = 209
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -613,7 +619,13 @@ AUTHORED_ROWS = 208
 #:
 #: AND TO 148 ON 2026-09-11, for the same two rows' nodes, `Attendant` and
 #: `Room for One More`. Issue #1515. The Ritualist is now 36 of its 74.
-AUTHORED_NODES = 148
+#: AND TO 149 ON 2026-09-12, for the Ritualist's 100-point capstone, whose
+#: third option `Standing Apart` was built: "You take 25% less damage from
+#: enemies more than 6 metres away from you". It needed a reading that did not
+#: exist until that day -- how far away the character that struck had stood --
+#: which is why it was among the unauthored rather than among the missed. The
+#: Ritualist is now 37 of its 74.
+AUTHORED_NODES = 149
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -655,9 +667,21 @@ AUTHORED_NODES = 148
 #: minions repeat each skill you cast" -- so authoring them is the C++ half of
 #: that issue and not this sheet.
 #:
+#: AND 16 ON 2026-09-12, when the Ritualist's 100-point capstone third option,
+#: `Standing Apart`, was built: "You take 25% less damage from enemies more than
+#: 6 metres away from you". It is the first of the 21 that were unauthored on
+#: those two trees to be finished, and it was unauthored for exactly the reason
+#: recorded above -- it needed a reading that did not exist, in this case how far
+#: away the character that struck had stood.
+#:
+#: THE OTHER TWO OPTIONS OF THAT SAME CAPSTONE ARE STILL UNAUTHORED. `Set the
+#: Pack On` needs "enemies you have damaged in the last 2 seconds", and `Shared
+#: Ruin` needs a burst when a minion dies. Both are triggers rather than
+#: modifiers, so neither is this sheet's work.
+#:
 #: If this number rises without one of the four unfinished trees being
 #: started, something has been authored by accident.
-AUTHORED_OPTIONS = 15
+AUTHORED_OPTIONS = 16
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -919,6 +943,20 @@ CONDITION_WORDS = {
     # reset, which happens because the tally restarts at every attack the
     # character makes.
     "metres_moved_before_attack": ("after moving", "{value:g} metre"),
+    # THE FIRST PREDICATE THAT COMPARES A DISTANCE. Standing Apart, the
+    # Ritualist's 100-point capstone third option, reads "You take 25% less
+    # damage from enemies more than 6 metres away from you" and is the only node
+    # in the game that asks how far away the character hitting it stood.
+    #
+    # "more than" IS REQUIRED AND IT IS THE WHOLE GUARD. The predicate is
+    # strictly greater than, so a character at exactly the threshold takes full
+    # damage. A node reworded to "at least" while the row kept this name would be
+    # worth something different at exactly that distance, which is the drift this
+    # check exists to catch -- the same argument `skill_health_cost_above` makes.
+    #
+    # THE VALUE FORM CARRIES NO PERCENT SIGN, unlike every entry above, because
+    # the number is a distance rather than a share of anything.
+    "attacker_beyond_metres": ("more than", "{value:g} metre"),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a
