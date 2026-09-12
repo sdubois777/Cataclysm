@@ -935,9 +935,9 @@ private:
 	 * check gives: a quarter of a second is faster than a player notices, and a
 	 * timer per rule is one more thing to cancel.
 	 *
-	 * BOTH RULES ACT ON THE PLAYER ALONE, so this does not grow with a Horde's
-	 * crowd: it is two tests of the floor's modifier list on a floor carrying
-	 * neither.
+	 * ALL THREE RULES ACT ON THE PLAYER ALONE, so this does not grow with a Horde's
+	 * crowd: it is three tests of the floor's modifier list on a floor carrying
+	 * none of them.
 	 */
 	void StepFloorRulesThatChange();
 
@@ -954,6 +954,34 @@ private:
 	 */
 	void StepNihilsEmbrace(class ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Death's Embrace: the stacks the time on this floor has earned, and what
+	 * they take off the player's healing. Issue #41, slice 5.
+	 */
+	void StepDeathsEmbrace(class ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Put every floor effect on the player, the beat-driven ones included.
+	 * Issue #41, slice 5.
+	 *
+	 * ONE APPLIER FOR EVERY RULE, AND THAT IS NOT TIDINESS.
+	 * `UCataclysmDungeonModifierEffects::ApplyToCharacter` replaces the whole set
+	 * of dungeon stat modifiers, so a rule that assembled its own effects and
+	 * applied them would zero every field it did not know about. With one such
+	 * rule that is invisible; with two on one floor they undo each other four
+	 * times a second, and which survives depends on the order they are called in.
+	 * Slice 2 had one and slice 5 is the second, so the shape is fixed here.
+	 *
+	 * THE FLOOR'S OWN RULES COME FROM `PlayerEffectsFor` AND THE REST FROM THIS
+	 * OBJECT'S FIELDS, which is the whole contract: anything worked out on the
+	 * beat is held on the game mode, and this is the only place that reads all of
+	 * it at once.
+	 */
+	void ApplyChangingFloorEffects(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * A death anywhere on the floor, for The Nihil's Embrace's cleanse.
@@ -995,6 +1023,37 @@ private:
 	 */
 	float ResistanceLessApplied = 0.0f;
 	float ResistanceMoreApplied = 0.0f;
+
+	/**
+	 * How long the player has been on this floor, counted in beats, and the
+	 * stacks of Embrace of Death that time has been turned into. Issue #41,
+	 * slice 5.
+	 *
+	 * COUNTED IN BEATS RATHER THAN TAKEN OFF THE WORLD CLOCK, so it measures
+	 * time the game actually ran on this floor. A subtraction from world time
+	 * would count a paused game, and that difference is exactly the thing a
+	 * player would call unfair.
+	 *
+	 * WHICH MAKES A BEAT WORTH A QUARTER OF A SECOND ONLY ABOVE FOUR FRAMES A
+	 * SECOND, and that is stated rather than hidden: the beat is zeroed rather
+	 * than decremented, deliberately, so a long frame yields one beat however
+	 * long it was. Below that rate the stacks arrive slower than every ten
+	 * seconds. It is in the player's favour, Forced March's per-beat share has
+	 * the same property, and issue #1613 carries the fix -- which belongs in the
+	 * rules, because the wave arrival needs the zeroing it has.
+	 *
+	 * THE COUNT IS KEPT AS WELL AS THE CLOCK because it is what a beat compares
+	 * against to decide whether anything moved, the same argument the two
+	 * resistance fields above make. A stack arrives every ten seconds and the
+	 * beat runs four times a second, so forty beats in forty-one do nothing.
+	 *
+	 * BOTH GO BACK TO NOTHING ON A NEW FLOOR, which the row states outright:
+	 * "Stacks reset when entering a new floor." Forgetting only the clock would
+	 * leave the player at whatever they had reached; forgetting only the count
+	 * would re-apply it on the next beat.
+	 */
+	float DeathsEmbraceSecondsOnFloor = 0.0f;
+	int32 DeathsEmbraceStacksApplied = 0;
 
 	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order

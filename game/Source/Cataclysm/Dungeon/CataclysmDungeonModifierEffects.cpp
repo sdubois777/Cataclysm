@@ -9,6 +9,8 @@
 
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
 const TCHAR* UCataclysmDungeonModifierEffects::DehydrationKey = TEXT("Famine_Dehydration");
+const TCHAR* UCataclysmDungeonModifierEffects::DeathsEmbraceKey =
+	TEXT("Death_Death_s_Embrace");
 const TCHAR* UCataclysmDungeonModifierEffects::ForcedMarchKey =
 	TEXT("War_Forced_March");
 const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
@@ -32,6 +34,8 @@ namespace
 	const TCHAR* const DungeonModifierEffectsMaxHealthStat = TEXT("max_health");
 	const TCHAR* const DungeonModifierEffectsMaxEnergyShieldStat = TEXT("max_energy_shield");
 	const TCHAR* const DungeonModifierEffectsMaxManaStat = TEXT("max_mana");
+	const TCHAR* const DungeonModifierEffectsHealingReceivedStat =
+		TEXT("healing_received_reduction");
 
 	/**
 	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
@@ -72,15 +76,49 @@ namespace
 
 		DungeonModifierEffectsAddMultiplier(Into, FName(Stat), -LessPercent);
 	}
+
+	/**
+	 * One flat addition from a dungeon rule, or nothing for a value of nothing.
+	 *
+	 * FLAT AND NOT A MULTIPLIER, WHICH IS THE WHOLE REASON THIS EXISTS. The two
+	 * above scale a stat that already has a value: maximum health, a resistance.
+	 * A stat that is zero for every class cannot be moved by scaling it, and
+	 * `healing_received_reduction` is exactly that -- a reduction nobody carries
+	 * until something applies one. The flat bucket adds to the base before
+	 * anything multiplies, in the stat's own units, which here are percentage
+	 * points.
+	 *
+	 * A DUNGEON RULE MAY USE ANY BUCKET. The pipeline refuses gear the More
+	 * bucket and this is not gear; `ECataclysmModifierSource::DungeonRule` is
+	 * the same source the two above declare.
+	 */
+	void DungeonModifierEffectsAddFlat(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
 }
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
 {
-	// FOUR ARE BUILT, AND THE LAST TWO WERE ADDED BY ISSUE #41'S SLICE 2. Forced
-	// March and The Nihil's Embrace do everything their rows describe, including
-	// that row's cleanse on a high tier enemy's defeat, so neither is "partly".
+	// FIVE ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, and
+	// slice 5 Death's Embrace. Each does everything its row describes -- The
+	// Nihil's Embrace including its cleanse on a high tier enemy's defeat, and
+	// Death's Embrace including the reset on a new floor -- so none is "partly".
 	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
-		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey))
+		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
+		|| RowKey == FName(DeathsEmbraceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -156,6 +194,34 @@ float UCataclysmDungeonModifierEffects::NihilsEmbraceResistanceLost(
 	return FMath::Min(Points, NihilsEmbraceMostResistancePercent);
 }
 
+int32 UCataclysmDungeonModifierEffects::DeathsEmbraceStacksAfter(
+	float SecondsOnFloor)
+{
+	if (SecondsOnFloor < DeathsEmbraceSecondsPerStack
+		|| DeathsEmbraceSecondsPerStack <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHOLE STACKS, COUNTED DOWN. A player eleven seconds into a floor carries
+	// one and not one and a tenth: the row calls them stacks of a debuff, and a
+	// fractional stack is not a thing a player could be shown.
+	const int32 Stacks = FMath::FloorToInt(
+		SecondsOnFloor / DeathsEmbraceSecondsPerStack);
+	return FMath::Min(Stacks, DeathsEmbraceMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
+	int32 Stacks)
+{
+	// CLAMPED HERE AS WELL AS IN THE COUNT ABOVE, because this is public and a
+	// caller holding a stack count from somewhere else must not be able to ask
+	// for more than the cap. The attribute clamps at a hundred too, so three
+	// things would have to be wrong at once for a player to be unhealable.
+	return FMath::Clamp(Stacks, 0, DeathsEmbraceMostStacks)
+		* DeathsEmbracePercentPerStack;
+}
+
 FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 	const TArray<FName>& FloorModifiers, int32 FloorNumber)
 {
@@ -217,6 +283,16 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 											Effects.ResistanceMorePercent);
 	}
 
+	// AND DEATH'S EMBRACE, ON THE STAT THAT SAYS HOW MUCH HEALING ARRIVES. Issue
+	// #41, slice 5. One stat rather than eight, because the reduction is read at
+	// each site that restores health rather than being spread over pools.
+	//
+	// FLAT, AND SEE `DungeonModifierEffectsAddFlat` FOR WHY: this stat is zero
+	// for every class, so there is nothing for a multiplier to scale.
+	DungeonModifierEffectsAddFlat(Modifiers,
+								  DungeonModifierEffectsHealingReceivedStat,
+								  Effects.HealingReceivedLessPercent);
+
 	return Modifiers;
 }
 
@@ -274,6 +350,16 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% more"),
 									Effects.ResistanceMorePercent));
+	}
+
+	// AND DEATH'S EMBRACE. Issue #41, slice 5. Said as what the player loses
+	// rather than as a stack count, because the floor panel is read by someone
+	// deciding whether to go on and "healing 30% less" answers that where "3
+	// stacks of Embrace of Death" does not.
+	if (Effects.HealingReceivedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("healing %.0f%% less"),
+									Effects.HealingReceivedLessPercent));
 	}
 	return FString::Join(Clauses, TEXT(", "));
 }
