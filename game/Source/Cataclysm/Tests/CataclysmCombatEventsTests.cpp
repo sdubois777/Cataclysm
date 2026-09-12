@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1082,6 +1083,92 @@ bool FCataclysmCombatEventsProjectileSkill::RunTest(const FString&)
 			  Heard.Hits[Blow].SkillName.ToString(), FString(TEXT("Hurled Ember")));
 	TestTrue(TEXT("and pointing at that skill's own tags"),
 			 Heard.HitSkillTags[Blow].HasTagExact(TagNamed(TEXT("Type.Projectile"))));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsRolledAilment,
+	"Cataclysm.CombatEvents.AnAilmentGearRollsOnASkillsBlowNamesTheSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCombatEventsRolledAilment::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// A CHANCE FROM WORN GEAR, ROLLED WHEN A SKILL'S BLOW LANDS. The chance is
+	// the gear's, but the skill's blow is what rolled it, so every tick of the
+	// ailment names the skill. That is a judgement the coordinating session
+	// approved on 2026-09-11, recorded in `docs/DECISIONS.md`. #1579 builds the
+	// roll; `UCataclysmAilments::Apply` hands the skill on.
+	const FCataclysmAilmentKind* Bleed = UCataclysmAilments::KindNamed(TEXT("Bleed"));
+	if (!TestNotNull(TEXT("Bleed is an ailment"), Bleed))
+	{
+		return false;
+	}
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Caster = MakeArmed(World);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("a caster"), Caster.Actor))
+	{
+		return false;
+	}
+
+	// A BLOW WORTH MORE THAN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the least
+	// that rolls an ailment from gear, and a certain chance to bleed.
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1000.0f);
+	Caster.AbilitySystem->SetNumericAttributeBase(Bleed->Attribute(), 100.0f);
+
+	FGameplayAbilitySpecHandle Handle;
+	UCataclysmStrikeSkill* Skill = GrantNamedSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::BasicAttack, TEXT("Opening Cut"),
+		TEXT("Item.Weapon.Sword, Type.Strike"), TEXT("Radius=2.4; Angle=120; MaxTargets=1"),
+		Handle);
+	ACataclysmEnemyCharacter* Target =
+		SpawnCreatureAt(World, FVector(1.0f * M, 0.0f, 0.0f), 5000.0f);
+	UCataclysmAbilitySystemComponent* TargetSystem = SystemOf(Target);
+	if (!TestNotNull(TEXT("a skill"), Skill)
+		|| !TestNotNull(TEXT("a target"), TargetSystem))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	if (!TestTrue(TEXT("the skill started"),
+				  Caster.AbilitySystem->TryActivateAbility(
+					  Handle, /*bAllowRemoteActivation=*/false)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the target took the blow and lived"),
+			  UCataclysmSkillEffects::IsDead(Target));
+
+	const FGameplayTag BleedTag = TagNamed(Bleed->TagName);
+	const int32 BeforeTick = Heard.Hits.Num();
+	if (!TestEqual(TEXT("the blow rolled one bleed from the gear"),
+				   TargetSystem->ExecutePeriodicEffectsGrantingForTests(BleedTag), 1)
+		|| !TestEqual(TEXT("and one tick of it was announced"),
+					  Heard.Hits.Num(), BeforeTick + 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the tick is damage over time"), Heard.Hits.Last().bDamageOverTime);
+	TestEqual(TEXT("and names the skill whose blow rolled it"),
+			  Heard.Hits.Last().SkillName.ToString(), FString(TEXT("Opening Cut")));
 
 	return true;
 }
