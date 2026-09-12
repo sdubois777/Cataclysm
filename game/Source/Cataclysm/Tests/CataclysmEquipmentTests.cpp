@@ -1538,13 +1538,8 @@ bool FCataclysmEveryAffixStatHasAnAttribute::RunTest(const FString& Parameters)
 		TEXT("EveryStatAnAffixGrantsHasAnAttributeBehindIt"),
 		[&](const FName& Key, const FCataclysmAffixRow& Row)
 		{
-			// AN AILMENT AFFIX GRANTS NO STAT AND THAT IS CORRECT. Whether
-			// anything ever applies the ailment is issue #899 and a different
-			// question from this one.
-			if (Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
-			{
-				return;
-			}
+			// AN AILMENT AFFIX IS NO LONGER SKIPPED. Its chance has been a stat
+			// since issue #899, so it needs an attribute behind it like any other.
 
 			++Checked;
 			bool bWholeAffixReaches = true;
@@ -1667,9 +1662,10 @@ bool FCataclysmEveryAffixReachesTheCharacter::RunTest(const FString& Parameters)
 	{
 		FName Key;
 		int32 Breadth = 0;
-		bool bIsAilment = false;
 	};
 
+	// EVERY AFFIX, THE ELEVEN AILMENT AFFIXES INCLUDED, since issue #899 made
+	// their chances stats. They were skipped here until then.
 	TArray<FAffixUnderTest> Pool;
 	Affixes->ForeachRow<FCataclysmAffixRow>(
 		TEXT("EveryAffixInTheDataReachesTheCharacter"),
@@ -1678,8 +1674,6 @@ bool FCataclysmEveryAffixReachesTheCharacter::RunTest(const FString& Parameters)
 			FAffixUnderTest Entry;
 			Entry.Key = Key;
 			Entry.Breadth = Row.Breadth;
-			Entry.bIsAilment =
-				Row.AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase);
 			Pool.Add(Entry);
 		});
 
@@ -1689,11 +1683,6 @@ bool FCataclysmEveryAffixReachesTheCharacter::RunTest(const FString& Parameters)
 
 	for (const FAffixUnderTest& Entry : Pool)
 	{
-		if (Entry.bIsAilment)
-		{
-			continue;
-		}
-
 		const TSet<FString> Granted =
 			StatsGrantedBy(HeadBase, Entry.Key, Entry.Breadth, Bases, Affixes);
 

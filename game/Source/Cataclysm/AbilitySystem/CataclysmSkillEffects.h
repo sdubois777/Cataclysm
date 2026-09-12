@@ -176,7 +176,7 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	/**
 	 * This blow provokes no retaliation from what it strikes.
 	 *
-	 * FOR A SUMMONED MINION, and the only one of its five exclusions that
+	 * FOR A SUMMONED MINION, and the only one of its six exclusions that
 	 * protects the summoner rather than the target. Retaliation is dealt back to
 	 * whoever the hit was credited to, and a minion's blow is credited to its
 	 * summoner, so without this a Ritualist standing at range would take damage
@@ -188,6 +188,18 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	bool bCannotBeRetaliatedAgainst = false;
+
+	/**
+	 * This blow carries no chance to apply an ailment. Issue #899.
+	 *
+	 * FOR A SUMMONED MINION, the sixth of its exclusions. `ApplyHit` works out
+	 * a blow's chances from its attacker, and a minion's blow is dealt in its
+	 * summoner's name, so without this every imp would carry its summoner's
+	 * chance to bleed from gear. The design names it among what does not cross:
+	 * "A minion does not take the summoner's ... chance to apply an ailment".
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCarriesNoAilmentChance = false;
 
 	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
@@ -236,6 +248,24 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	float SkillHealthCostPercent = -1.0f;
+
+	/**
+	 * The attacker's chance to apply each ailment with this blow, in percent,
+	 * keyed by the name it travels under on the damage effect. Issue #899.
+	 *
+	 * HERE FOR THE REASON THE TWO FIGURES ABOVE ARE. The chances belong to the
+	 * attacker and are worked out with the skill's tags, which `ApplyHit` holds
+	 * and the defender never sees, so they have to travel with the blow.
+	 *
+	 * `ApplyHit` FILLS IT, adding to whatever a caller put here, because the
+	 * design sums every source of a chance. A tick of damage over time and a
+	 * blow marked `bCarriesNoAilmentChance` carry none of it, whatever is here.
+	 *
+	 * EMPTY IS THE ORDINARY CASE: every enemy, every minion, and every character
+	 * with no chance to apply anything. `UCataclysmAilments` names the keys.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	TMap<FName, float> AilmentChances;
 
 	/**
 	 * The `Element.*` tag of the skill dealing this blow, for colour only.
@@ -582,8 +612,10 @@ public:
 	 *                   defender's mitigation. Ignored when the burn is designed
 	 * @param bBurnIsDesigned  true when the skill's own row states it burns.
 	 *                   `Params.bBurns` is exactly that, so every caller that
-	 *                   reads a skill row passes it. A gem, an affix or an
-	 *                   enemy modifier passes false
+	 *                   reads a skill row passes it. A gem or an enemy modifier
+	 *                   would pass false. A chance to burn from gear does not
+	 *                   come here: `UCataclysmAilments::RollOnLandedBlow` applies
+	 *                   the same threshold once for every ailment. Issue #899
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
@@ -939,6 +971,11 @@ public:
 	 *
 	 * ONE STACK ONLY, refreshed rather than added to, as the design requires of
 	 * every player-applied effect.
+	 *
+	 * AND A SHORTER APPLICATION NEVER CUTS A LONGER ONE SHORT. Issue #1576. An
+	 * effect that is only a tag has no figure but its duration, so the longer of
+	 * two applications wins: a shorter one changes nothing, and a longer one
+	 * extends the running one to its own length.
 	 */
 	static bool ApplyTagForDuration(AActor* Instigator, AActor* Target,
 									const FGameplayTag& EffectTag,

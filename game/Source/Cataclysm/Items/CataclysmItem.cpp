@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Items/CataclysmItem.h"
+// For the stat an Ailment affix's chance is kept under. Issue #899.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -673,9 +675,36 @@ void UCataclysmItemModifiers::AccumulateInto(
 		ECataclysmStatBucket Bucket;
 		if (!BucketFromKind(Affix->ValueKind, Bucket))
 		{
-			// An ailment affix grants a chance to apply an effect rather than a
-			// stat, so it is not a modifier at all. It is applied where the hit
-			// is resolved.
+			// AN AILMENT AFFIX GRANTS A CHANCE, AND SINCE ISSUE #899 THE CHANCE IS
+			// A STAT. This said the chance was "applied where the hit is
+			// resolved", and nothing applied it there or anywhere else, so eleven
+			// affixes did nothing. It is a flat modifier on the stat
+			// `UCataclysmAilments` keeps that ailment's chance under, and
+			// `UCataclysmAilments::RollOnLandedBlow` rolls it when a blow lands.
+			//
+			// DOUBLED ON A TWO-HANDED WEAPON LIKE EVERY OTHER AFFIX. The design
+			// document: "A two-handed weapon multiplies both its implicit values
+			// and every affix rolled on it by 2." The tooltip already printed the
+			// doubled figure. The simulation does not double it, which is #1575.
+			if (Affix->AffixKind.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
+			{
+				if (const FCataclysmAilmentKind* Kind =
+						UCataclysmAilments::KindNamed(Affix->Ailment))
+				{
+					Add(FName(Kind->Stat), ECataclysmStatBucket::Flat,
+						ECataclysmModifierSource::GearAffix,
+						UCataclysmItemValues::AffixValue(
+							Affix->TopValue, Affix->Floor, Rolled.Tier,
+							Rolled.Roll, Item.GearLevel, bTwoHanded));
+				}
+				else
+				{
+					UE_LOG(LogCataclysm, Warning,
+						TEXT("The ailment affix %s names '%s', which is no ailment "
+							 "the game knows, so it grants nothing."),
+						*Affix->AffixName, *Affix->Ailment);
+				}
+			}
 			continue;
 		}
 

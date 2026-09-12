@@ -375,8 +375,10 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 * untyped source cuts the generic All Resistance.
 	 *
 	 * EMPTY IS THE ORDINARY ANSWER, and it means one of two things: the effect
-	 * moves no stat at all, or its own code applies it. Cripple and Weaken are
-	 * the second case today and moving them onto this column is separate work.
+	 * moves no stat at all, or its own code applies it. Cripple is the second
+	 * case: an enemy's speed reads its tag (issue #1152). Weaken is meant to be,
+	 * and no code reduces an enemy's damage for it yet. Moving either onto this
+	 * column is separate work.
 	 *
 	 * EVERY NAME IS CHECKED WHEN THE TABLE IS GENERATED, so a misspelling stops
 	 * `tools/generate_datatables.py` with the sheet and row rather than reaching

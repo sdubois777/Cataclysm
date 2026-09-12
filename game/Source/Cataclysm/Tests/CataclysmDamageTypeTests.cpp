@@ -1612,6 +1612,142 @@ CATACLYSM_TEST(FCataclysmBluntWeaponCanStunTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmGearStunJoinsTheBluntPoolTest,
+	"Cataclysm.DamageType.AChanceToStunFromGearJoinsABluntWeaponsTen")
+{
+	// ONE POOL. The project owner settled on 2026-08-16 (issue #298) that a
+	// blunt weapon's own 10% and the chance to stun an affix grants are added
+	// and rolled once, and issue #899 built the second half. The roll is pinned
+	// through `Cataclysm.AilmentRoll`, which is what issue #1034 said this rule
+	// could not be tested without.
+	//
+	// A ROLL OF 99.9 LANDS ONLY A TOTAL OF 100 OR MORE, so each case below says
+	// whether the two halves were added: 90 from gear stuns with a blunt weapon
+	// and not with a slashing one, and a blunt weapon alone does not.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+	const CataclysmTestWorld::FScopedAilmentRoll AlmostNever(99.9f);
+
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute StunChance =
+		UCataclysmCombatAttributeSet::GetStunChanceAttribute();
+
+	// ONE BLOW OF 500 FROM A FRESH ATTACKER AT A FRESH DEFENDER, so no case meets
+	// another's five second immunity window. Answers how long the defender is
+	// stunned for, or zero.
+	const auto SecondsStunnedBy = [World, &StunChance](const TCHAR* WeaponType,
+													   float ChanceFromGear,
+													   float DefenderMaxHealth)
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Vitals->SetMaxHealth(DefenderMaxHealth);
+		Defender.Vitals->SetHealth(DefenderMaxHealth);
+
+		CataclysmDamageTypeTest::FScopedArmedAttacker Attacker(World, WeaponType);
+		Attacker.Actor->SetAttackDamage(500.0f);
+		if (UAbilitySystemComponent* Armed =
+				UCataclysmTargeting::AbilitySystemOf(Attacker.Actor))
+		{
+			Armed->SetNumericAttributeBase(StunChance, ChanceFromGear);
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+		float Longest = 0.0f;
+		const FGameplayTag Stunned = UCataclysmSkillEffects::StunnedTag();
+		if (Stunned.IsValid())
+		{
+			for (const float Seconds :
+					Defender.AbilitySystem->GetActiveEffectsTimeRemaining(
+						FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+							FGameplayTagContainer(Stunned))))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+		}
+		return Longest;
+	};
+
+	using FCalc = UCataclysmDamageCalculation;
+
+	TestEqual(TEXT("90 from gear and a blunt weapon's 10 make 100, which stuns "
+				   "for the incidental 0.75 seconds"),
+		SecondsStunnedBy(TEXT("Fist"), 90.0f, 1'000.0f),
+		FCalc::IncidentalStunSeconds, 0.01f);
+
+	TestEqual(TEXT("a blunt weapon's 10 alone does not beat the roll"),
+		SecondsStunnedBy(TEXT("Fist"), 0.0f, 1'000.0f), 0.0f, 0.01f);
+
+	TestEqual(TEXT("and 90 from gear with a slashing weapon makes only 90"),
+		SecondsStunnedBy(TEXT("Axe"), 90.0f, 1'000.0f), 0.0f, 0.01f);
+
+	// PAST CERTAINTY THE STUN GROWS LONGER, up to the cap: 390 and 10 are four
+	// times certainty, which is three seconds.
+	TestEqual(TEXT("390 from gear and the blunt 10 stun for the longest stun"),
+		SecondsStunnedBy(TEXT("Fist"), 390.0f, 1'000.0f),
+		FCalc::LongestStunSeconds, 0.01f);
+
+	// AND A BLOW TAKING LESS THAN A TENTH OF THE TARGET'S MAXIMUM HEALTH NEVER
+	// STUNS, however large the chance. 500 is a twentieth of 10,000.
+	TestEqual(TEXT("a blow taking a twentieth of maximum health does not stun"),
+		SecondsStunnedBy(TEXT("Fist"), 390.0f, 10'000.0f), 0.0f, 0.01f);
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmTickNeverRollsTheBluntStunTest,
+	"Cataclysm.DamageType.ATickOfDamageOverTimeNeverRollsABluntWeaponsStun")
+{
+	// A TICK IS NOT A HIT, and the chance to stun is a chance to apply an effect
+	// on a hit. Issue #899. A weapon's sub-type is read off the actor the damage
+	// is credited to, so until then a tick of damage over time from a character
+	// holding a blunt weapon rolled that weapon's 10%, if the tick took a tenth
+	// of the target's maximum health.
+	//
+	// THE ROLL IS PINNED AT ZERO, so any chance at all stuns. 500 against 1,000
+	// health clears the tenth easily, and the control is the same blow as an
+	// ordinary hit, which does stun.
+	const CataclysmDamageTypeTest::FScopedNoCriticalStrikes NoCrits;
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	// ONE BLOW OF 500 FROM A FIST AT A FRESH DEFENDER, delivered this way.
+	const auto Stuns = [World](const FCataclysmHitDelivery& Delivery)
+	{
+		CataclysmDamageTypeTest::FScopedCombatant Defender(World);
+		Defender.Vitals->SetMaxHealth(1'000.0f);
+		Defender.Vitals->SetHealth(1'000.0f);
+
+		CataclysmDamageTypeTest::FScopedArmedAttacker Blunt(World, TEXT("Fist"));
+		Blunt.Actor->SetAttackDamage(500.0f);
+
+		UCataclysmSkillEffects::ApplyHit(Blunt.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Delivery);
+		return UCataclysmSkillEffects::IsStunned(Defender.Actor);
+	};
+
+	TestTrue(TEXT("an ordinary blow from a blunt weapon stuns at a roll of 0"),
+		Stuns(FCataclysmHitDelivery()));
+
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	TestFalse(TEXT("and a tick of damage over time from the same weapon does not"),
+		Stuns(Tick));
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 

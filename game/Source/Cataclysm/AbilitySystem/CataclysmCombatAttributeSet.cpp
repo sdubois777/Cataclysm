@@ -70,6 +70,21 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// Issue #1032. The Masochist's Mutilation Mastery is its only source.
 	InitBleedOnCritChance(0.0f);
 
+	// ZERO, AND IT STAYS ZERO FOR A CHARACTER WEARING NO AILMENT AFFIX AND
+	// HOLDING NO ROW THAT NAMES ONE. Issue #899. The chance to apply each
+	// ailment on a hit.
+	InitBleedChance(0.0f);
+	InitPoisonChance(0.0f);
+	InitDiseaseChance(0.0f);
+	InitVoidSplinterChance(0.0f);
+	InitNecrosisChance(0.0f);
+	InitBurnChance(0.0f);
+	InitMadnessChance(0.0f);
+	InitCrippleChance(0.0f);
+	InitWeakenChance(0.0f);
+	InitShredChance(0.0f);
+	InitStunChance(0.0f);
+
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
 	// source, and zero is the ordinary case.
@@ -169,6 +184,17 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownSkipChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedOnCritChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PoisonChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DiseaseChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, VoidSplinterChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NecrosisChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BurnChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MadnessChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShredChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StunChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -213,6 +239,12 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
 	}
+
+	// THE ELEVEN CHANCES TO APPLY AN AILMENT ARE NOT IN THAT LIST, ON PURPOSE.
+	// Issue #899. Past certainty an ailment's chance becomes magnitude, so 250 is
+	// a real answer and a larger one than 100, and clamping it would throw away
+	// what the design says the excess is for. They take the floor of zero below
+	// with everything else.
 
 	if (Attribute == GetMaxCritChanceAttribute())
 	{
@@ -300,6 +332,12 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
 		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
 		GetCooldownSkipChanceAttribute(), GetBleedOnCritChanceAttribute(),
+		GetBleedChanceAttribute(), GetPoisonChanceAttribute(),
+		GetDiseaseChanceAttribute(), GetVoidSplinterChanceAttribute(),
+		GetNecrosisChanceAttribute(), GetBurnChanceAttribute(),
+		GetMadnessChanceAttribute(), GetCrippleChanceAttribute(),
+		GetWeakenChanceAttribute(), GetShredChanceAttribute(),
+		GetStunChanceAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -342,6 +380,17 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedOnCritChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PoisonChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DiseaseChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, VoidSplinterChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NecrosisChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BurnChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MadnessChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShredChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StunChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
