@@ -166,6 +166,7 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	Blow.bIsRanged = Hit.bIsRanged;
 	Blow.bIsSpell = Hit.bIsSpell;
 	Blow.bOpponentIsBoss = Hit.bFromBoss;
+	Blow.bOpponentIsStaggered = Hit.bFromStaggered;
 
 	// AND HOW FAR APART THE TWO STOOD. A tick returned above with everything at
 	// its default, so it keeps -1 here and every predicate reading a distance

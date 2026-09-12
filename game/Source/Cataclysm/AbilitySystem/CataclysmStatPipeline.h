@@ -503,6 +503,24 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetWithinMetres
 		UMETA(DisplayName = "Target Within Metres"),
+
+	/**
+	 * Whoever is on the other side of the blow is staggered. Issue #45.
+	 *
+	 * "Staggered enemies deal 15%-30% increased damage to you" is a row, so for
+	 * the damage taken lookup the other side is the attacker. Staggered is the
+	 * `State.Staggered` tag that a landed knockback, pull or knockdown leaves
+	 * for a second, and `UCataclysmSkillEffects::IsStaggered` is what answers.
+	 *
+	 * NOT LIMITED TO ENEMY CREATURES, unlike `OpponentIsBoss` above, and that is
+	 * why the two facts are read in different places. A boss is a creature
+	 * rarity, so that one can only come from an enemy creature and is read
+	 * inside a cast to that class. The Staggered state lands on anything a
+	 * displacement moves, the player included, so reading this one inside that
+	 * cast would leave it false for every blow a player throws.
+	 */
+	OpponentIsStaggered
+		UMETA(DisplayName = "Opponent Is Staggered"),
 };
 
 /**
@@ -763,6 +781,13 @@ struct CATACLYSM_API FCataclysmBlowContext
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float OpponentDistanceMetres = -1.0f;
+
+	/**
+	 * The character on the other side of the blow is staggered. Issue #45.
+	 * See `UCataclysmSkillEffects::IsStaggered`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsStaggered = false;
 };
 
 /**
@@ -1433,7 +1458,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a thirteenth, which is the drift that put the passive tree eight
+	 * adds a twenty-first, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -1442,8 +1467,10 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * SIX OF THE TWELVE COMPARE NOTHING: `WhileBleeding`,
-	 * `ClassResourceAtMaximum` and the four that ask what kind of blow this is.
+	 * NINE OF THE TWENTY COMPARE NOTHING: `WhileBleeding`,
+	 * `ClassResourceAtMaximum`, the three that ask what kind of blow this is,
+	 * the two that ask whether whoever threw it is a boss or staggered, and the
+	 * two that ask whether the character is moving or standing still.
 	 * Each says so in its own comment above, and
 	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
 	 * one, so there is no number to carry across.

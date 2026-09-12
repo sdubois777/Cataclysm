@@ -358,6 +358,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Hit.bFromBoss = Striker->IsBoss();
 			}
 
+			// AND WHETHER WHOEVER THREW IT IS STAGGERED, for "Staggered enemies
+			// deal 15%-30% increased damage to you". Issue #45.
+			//
+			// OUTSIDE THE CAST ABOVE, DELIBERATELY. A boss is a creature rarity,
+			// so that fact can only come from an enemy creature and is read
+			// inside it. The Staggered state is left by a knockback, pull or
+			// knockdown on anything it moves, the player included, so reading
+			// this inside that cast would leave it false for every blow a player
+			// throws -- silently, and the row would never fire.
+			Hit.bFromStaggered = UCataclysmSkillEffects::IsStaggered(
+				Data.EffectSpec.GetContext().GetEffectCauser());
+
 			// AND HOW FAR APART THE TWO CHARACTERS STOOD, for "You take 25% less
 			// damage from enemies more than 6 metres away from you".
 			//

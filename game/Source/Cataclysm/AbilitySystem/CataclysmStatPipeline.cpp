@@ -73,6 +73,7 @@ namespace
 		{ TEXT("hit_is_ranged_attack"),         ECataclysmStatCondition::HitIsRangedAttack },
 		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
 		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
@@ -138,10 +139,11 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsRangedAttack:
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
+	case ECataclysmStatCondition::OpponentIsStaggered:
 	case ECataclysmStatCondition::WhileMoving:
 	case ECataclysmStatCondition::WhileStationary:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the eight says
+		// nothing for a number to be compared against. Each of the nine says
 		// so in its own comment in the header.
 		//
 		// THE LAST TWO ARE ISSUE #41'S SLICE 2: whether the character moved in
@@ -318,6 +320,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::OpponentIsBoss:
 		return State.Blow.bOpponentIsBoss;
+
+	case ECataclysmStatCondition::OpponentIsStaggered:
+		// THE SAME TWO RULES AS THE BLOW PREDICATES ABOVE. Issue #45. A caller
+		// with no blow in hand leaves this false, and a drawback that costs the
+		// character something only while its attacker is staggered is correctly
+		// withheld from a character sheet that has no attacker at all.
+		return State.Blow.bOpponentIsStaggered;
 
 	case ECataclysmStatCondition::WhileMoving:
 		// NO THRESHOLD, SO `Value` IS NOT READ. A caller with no character leaves

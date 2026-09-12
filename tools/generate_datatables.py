@@ -3253,6 +3253,16 @@ CONDITIONS = {
     # rarities, and not a Herald, which is the line the stun rule already uses.
     "opponent_is_boss": None,
 
+    # "Staggered enemies deal 15%-30% increased damage to you" is
+    # `opponent_is_staggered`, and it takes no value. Issue #45. Staggered is the
+    # `State.Staggered` tag a landed knockback, pull or knockdown leaves for a
+    # second, and `UCataclysmSkillEffects::IsStaggered` is what answers.
+    #
+    # NOT LIMITED TO ENEMY CREATURES, unlike `opponent_is_boss` above. A boss is
+    # a creature rarity; the Staggered state lands on anything a displacement
+    # moves, the player included.
+    "opponent_is_staggered": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #
