@@ -1190,10 +1190,12 @@ public:
 	/**
 	 * Hold a target still for a duration, honouring the anti-stun-lock rules.
 	 *
-	 * THE THIRD RULE IS NOT CHECKED HERE, because it cannot be. "A boss cannot
-	 * be stunned at all" needs a boss, and no boss concept exists anywhere in
-	 * game/Source -- no flag, no class, no tag. Issue #395 covers adding one.
-	 * Until it exists this function would have nothing to ask.
+	 * THE THIRD RULE IS CHECKED, AND THIS COMMENT SAID IT COULD NOT BE. "A boss
+	 * cannot be stunned at all" needed a boss, and none existed when this was
+	 * written. Issue #395 added `ACataclysmEnemyCharacter::IsBoss`, and the
+	 * implementation has refused to stun a boss ever since, under the heading
+	 * "RULE THREE: A BOSS CANNOT BE STUNNED AT ALL". The comment was left behind
+	 * and is corrected here.
 	 *
 	 * @param DamageDealt       the damage this hit actually did, after the
 	 *                          defender's mitigation. Ignored when the stun is
@@ -1282,6 +1284,55 @@ public:
 	 */
 	static bool ApplyKnockback(AActor* Instigator, AActor* Target,
 							   float DistanceCm);
+
+	// --- Stagger ----------------------------------------------------------
+	//
+	// WHAT A STAGGER IS HERE, answered by the project owner on 2026-09-11: "A
+	// knockback, pull or knockdown also leaves the target Staggered for 1
+	// second." Asked whether a staggered target can still act, the owner
+	// answered yes. So it is not a hard stop, it takes none of the
+	// anti-stun-lock rules, and it needs none of its own: it is a state that
+	// other effects read.
+	//
+	// ELEVEN ENCHANTMENTS ASK FOR IT, nine benefits and two drawbacks, which
+	// apply it, lengthen it, check for it or restrict it. None of them is
+	// written yet. This is the state they will read.
+
+	/**
+	 * How long a landed knockback, pull or knockdown leaves a target staggered.
+	 *
+	 * ONE SECOND IS THE OWNER'S NUMBER, given in the answer above. The genre
+	 * states no duration for a stagger: Diablo IV fills a boss's stagger bar
+	 * from crowd control and then leaves it helpless, and Path of Exile 2's
+	 * Heavy Stun is a helpless state lasting several seconds. Neither is this,
+	 * because neither lets the target act.
+	 */
+	static constexpr float StaggerSeconds = 1.0f;
+
+	/**
+	 * Leave a target staggered for a second.
+	 *
+	 * IT DOES NOT STOP THE TARGET ACTING. That is the owner's answer of
+	 * 2026-09-11 and what separates it from a stun and from a knockdown.
+	 * Nothing reads this tag to refuse an action, and nothing should without
+	 * another answer.
+	 *
+	 * CALLED WHERE A DISPLACEMENT LANDS, by `ApplyKnockback`, `ApplyPull` and
+	 * `ApplyKnockdown`. A shove an immunity refused, or one that crowd control
+	 * resistance took to nothing, leaves no stagger, because those answer false
+	 * and never reach this.
+	 *
+	 * A LAUNCH DOES NOT STAGGER. The owner named three verbs and a launch is
+	 * not one of them, so it is left out rather than read in. `docs/DECISIONS.md`
+	 * records that as a judgement, with what it would take to change it.
+	 *
+	 * @param Seconds  how long, defaulting to `StaggerSeconds`. The target's own
+	 *                 debuff duration stat still applies, as it does to every
+	 *                 timed effect in this file.
+	 * @return whether the target was left staggered
+	 */
+	static bool ApplyStagger(AActor* Instigator, AActor* Target,
+							 float Seconds = StaggerSeconds);
 
 	// --- Forced movement --------------------------------------------------
 	//
@@ -1616,6 +1667,18 @@ public:
 
 	/** The State.Pinned tag, or an invalid tag if the vocabulary lacks it. */
 	static FGameplayTag PinnedTag();
+
+	/** The State.Staggered tag, or an invalid tag if the vocabulary lacks it. */
+	static FGameplayTag StaggeredTag();
+
+	/**
+	 * Whether a knockback, pull or knockdown has left this actor staggered.
+	 *
+	 * IT ANSWERS A QUESTION AND STOPS NOTHING, unlike `IsStunned` and
+	 * `IsKnockedDown`, which the controllers read to refuse an action.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsStaggered(const AActor* Actor);
 
 private:
 	/** Where the imported status effect table lives. */

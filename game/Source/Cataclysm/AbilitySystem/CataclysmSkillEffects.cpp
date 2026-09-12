@@ -1557,6 +1557,12 @@ FGameplayTag UCataclysmSkillEffects::PinnedTag()
 		FName(TEXT("State.Pinned")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmSkillEffects::StaggeredTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Staggered")), /*ErrorIfNotFound=*/false);
+}
+
 bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
 {
 	return HasTag(Actor, StunnedTag());
@@ -1570,6 +1576,11 @@ bool UCataclysmSkillEffects::IsKnockedDown(const AActor* Actor)
 bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
 {
 	return HasTag(Actor, PinnedTag());
+}
+
+bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
+{
+	return HasTag(Actor, StaggeredTag());
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()
@@ -1776,6 +1787,16 @@ namespace
 	}
 }
 
+bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
+										  float Seconds)
+{
+	// A TAG HELD FOR A DURATION, which is the shape every timed state in this
+	// file takes. `ApplyTagForDuration` also lets the target's own debuff
+	// duration stat lengthen it, which is what the Masochist branch pays for,
+	// and keeps the longer of two applications rather than cutting one short.
+	return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Seconds);
+}
+
 bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 											float DistanceCm)
 {
@@ -1795,7 +1816,16 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
-	return CataclysmDisplace(Target, Away.GetSafeNormal() * DistanceCm);
+	if (!CataclysmDisplace(Target, Away.GetSafeNormal() * DistanceCm))
+	{
+		return false;
+	}
+
+	// AND A SHOVE THAT LANDED LEAVES THE TARGET STAGGERED, which is the owner's
+	// answer of 2026-09-11. A shove an immunity refused, or one crowd control
+	// resistance took to nothing, returned above and staggers nothing.
+	ApplyStagger(Instigator, Target);
+	return true;
 }
 
 bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
@@ -1828,7 +1858,16 @@ bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
 	const float Gap = Toward.Size();
 	const float Move = DistanceCm > 0.0f ? FMath::Min(DistanceCm, Gap) : Gap;
 
-	return CataclysmDisplace(Target, Toward.GetSafeNormal() * Move);
+	if (!CataclysmDisplace(Target, Toward.GetSafeNormal() * Move))
+	{
+		return false;
+	}
+
+	// AND A PULL THAT LANDED LEAVES THE TARGET STAGGERED, the second of the
+	// three verbs the owner named. A drag is this function applied after the
+	// caster has moved, so it staggers too.
+	ApplyStagger(Instigator, Target);
+	return true;
 }
 
 bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
@@ -2211,6 +2250,12 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 
 	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
 						StunImmunityWindowSeconds);
+
+	// AND A KNOCKDOWN LEAVES THE TARGET STAGGERED, the third verb the owner
+	// named on 2026-09-11. Its second runs inside the knockdown's two to three,
+	// and it stops nothing the knockdown does not already stop: what reads the
+	// stagger is a separate question from what the knockdown refuses.
+	ApplyStagger(Instigator, Target);
 
 	return true;
 }
