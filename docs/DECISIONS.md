@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A floor hazard needs an actor to be dealt in the name of, because every route that applies an effect refuses a source with no ability system
+
+**Affects:** the new
+`game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` and `.cpp`;
+`ClearTheFloor` and its header contract in
+`game/Source/Cataclysm/Dungeon/CataclysmFloorContents.cpp` and `.h`; and the new
+`game/Source/Cataclysm/Tests/CataclysmFloorHazardSourceTests.cpp`. Applied.
+Issue #1605.
+
+**What it is for.** Eight dungeon modifiers want a patch of the floor that lasts,
+knows who is standing in it, and does something to them. A floor rule has no
+caster, so the first question is what owns one. The obvious answer is the dungeon
+game mode, and it does not work.
+
+### Every route that applies anything refuses a source with no ability system
+
+`ApplyDirectDamage`, `ApplyNamedEffect`, `ApplyPin` and `ApplyTagForDuration` in
+`CataclysmSkillEffects.cpp` all open with the same two lines — the source's
+ability system component and the target's — and refuse if either is missing.
+`UCataclysmTargeting::AbilitySystemOf` answers through
+`UAbilitySystemGlobals::GetAbilitySystemComponentFromActor`, and a game mode has
+nothing for it to find.
+
+**The trap is `ApplyNamedEffect`,** and it was nearly recorded here the wrong way
+round. When the effect moves no stats, or when the source has no ability system,
+it falls back to `ApplyTagForDuration` — which reads as "at least the bare tag
+still lands". It does not. That function repeats the identical refusal, so the
+fallback fails for exactly the reason that sent you to it.
+
+So a hazard owned by the game mode would spawn, sweep, find everyone standing in
+it, and do nothing whatever to any of them, while every part of that read as
+working. A floor reporting the modifier as built is worse than reporting it
+unbuilt.
+
+**AND THIS IS THE REAL REASON FLOOR HAZARDS ARE THE EXPENSIVE SHAPE.** The five
+dungeon modifiers already built are cheap because they set stat-pipeline
+modifiers — `ECataclysmModifierSource::DungeonRule` in
+`CataclysmDungeonModifierEffects.cpp` — and the stat pipeline needs no instigator
+at all. A hazard has to act on whoever is standing in it, through the effects
+system, which is where the requirement bites. The cost difference between what is
+built and what is not is this one fact.
+
+### The cheaper owner is ruled out by the design, not by taste
+
+Letting the creature that left a hazard own it is the obvious economy, and two of
+the eight rows make it impossible. **Withered Ground leaves "patches of Barren
+Earth on death" and Leech Spores explodes "from their corpse".** Both place a
+hazard at the instant its would-be owner dies. An owner that must be alive cannot
+serve either, and `ACataclysmGroundZone::Sweep` returns early when its owner is
+gone.
+
+Recorded because without it somebody proposes the cheap option again, and its
+failure is not visible from the class — it is visible only from two modifier rows.
+
+### An actor that does nothing, one per floor
+
+`ACataclysmFloorHazardSource` has no mesh, no tick and no behaviour. It carries an
+ability system component and a side, and it is the instigator on every hazard the
+floor creates. Its header leads with why an empty actor exists, because that is
+the first question a reader will have.
+
+**No attribute sets, deliberately.** `UCataclysmDamageCalculation` reads the
+DEFENDER's combat attributes and not the source's, so a hazard deals what its
+modifier row states rather than what a caster's stats would make of it. That is
+right for a floor rule, which has no gear, passives or buffs to scale by.
+
+**Found or made on first use, and destroyed with the floor's other contents,
+rather than spawned when the floor is built.** The same lifetime for one file
+changed instead of two: `ACataclysmDungeonGameMode::BuildFloor` is untouched. It
+is found by walking the world rather than by keeping a pointer, which is what
+`RegenerationScaleFor` and the planted weapon's `HeldBy` already do and for the
+reason they give — a pointer needs clearing on every way a floor can end, and
+there are more of those than anyone remembers.
+
+### Its side is stated, and the side alone does not decide who is affected
+
+Monsters, written down rather than left to the default.
+`FGenericTeamId::NoTeam` would not make a hazard neutral: `UCataclysmTeams`
+records that having no side means hostile to everything, which would have a
+floor's hazards burning the creatures that floor spawned.
+
+**But the side does not carry the behaviour, and that is the part that reads
+wrong if it is not said.** Four of the eight rows do one thing to the player and
+the opposite to creatures standing in the same patch — Necrotic Ground damages
+the player and regenerates enemies, Hallowed Groundfall burns the player and
+empowers enemies, Leech Spores drains the player to heal enemies, Plague
+Harbingers damages the player and amplifies enemy stats. A hazard serving those
+searches for everyone and branches per target.
+
+**The search cannot make that branch.** `UCataclysmTargeting::Gather`'s
+`bEveryone` path never consults attitude at all: it asks only that the actor is
+valid, carries an ability system and is not dead. So a hazard is handed both
+sides mixed together and must sort them itself, and the recorded side is what it
+sorts them against.
+
+### The damage gate was examined per row and needs no change
+
+`ACataclysmGroundZone::Sweep` begins by returning when its damage is not
+positive, so a zone that deals nothing sweeps nothing. It was proposed that this
+be relaxed so a hazard could apply an effect without damage, and that would have
+invalidated the reason given in the entry of 2026-09-02 for keeping burning
+ground and terrain as separate actors.
+
+**Read against all eight rows, nothing requires it.** Six state damage so it
+passes unchanged; Withered Ground's recovery reduction runs through
+`RegenerationScaleFor`, which walks the world's zones calling `Covers()` and
+never enters `Sweep()`; and Grasping Tentacles' grab is a pin on entry, which
+`ACataclysmTerrain`'s Thicket already does. **The 2026-09-02 split stands, for
+the reason it gives.** Recorded because a question examined and closed with no
+change leaves no trace, and the next person reopens it.
+
+### The scope figure was wrong and the eight need two classes
+
+The work was started on a count of roughly twenty rows wanting a floor hazard.
+Reading each row rather than matching keywords gives eight, which is the figure
+issue #1605 already carried. Of the other rows grouped with them, five want a
+buff radius carried by a creature that moves with it, which a static patch cannot
+serve — issue #1648 — and at least two want an area that moves, which neither
+existing actor can do, since both fix their two ends at spawn — issue #1649.
+
+**And the eight themselves need two classes, not one.** Seven build on
+`ACataclysmGroundZone`; Grasping Tentacles' grab belongs on `ACataclysmTerrain`'s
+Thicket. A ninth row proposed for this work, Anti-Magic Zones, is a refusal of
+ability activation and belongs on the Pit's existing refusal pattern. So "eight
+floor hazards" names work in two places.
+
+### Evidence
+
+    Build: Succeeded - 53 actions, 43 files compiled
+    Tests: 4 tests performed, 4 succeeded, 0 failed
+
+The four are in `CataclysmFloorHazardSourceTests.cpp`. **The first is the failure
+itself, kept rather than deleted once it was fixed**, so that an empty actor is
+not later judged pointless. It asserts both that the sweep found exactly one
+character and that the character's health did not move: without the first, "took
+no damage" has two possible causes and only one of them is the fault. The second
+test is the same call with only the owner different, and its passing is what
+proves health can fall in that arrangement at all.
+
+---
+
 ## 2026-09-12 — "Enemies take increased damage from all sources" is the wearer's own damage across its types, and the staggered pair reads from both ends
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
@@ -233,7 +374,6 @@ broken. Issue
 [#1591](https://github.com/sdubois777/Cataclysm/issues/1591) stays open for the
 general problem of every floor rule's state being invisible; that notice will not
 be a fix for it.
-
 
 ---
 
