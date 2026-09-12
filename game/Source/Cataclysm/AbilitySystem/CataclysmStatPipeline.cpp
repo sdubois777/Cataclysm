@@ -136,9 +136,16 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsRangedAttack:
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
+	case ECataclysmStatCondition::WhileMoving:
+	case ECataclysmStatCondition::WhileStationary:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the six says so
-		// in its own comment in the header.
+		// nothing for a number to be compared against. Each of the eight says
+		// so in its own comment in the header.
+		//
+		// THE LAST TWO ARE ISSUE #41'S SLICE 2: whether the character moved in
+		// the last sample, and whether it did not. Its other three movement
+		// conditions DO compare a number -- a wait in seconds or a distance in
+		// metres -- so they belong under the default below and not here.
 		return false;
 
 	case ECataclysmStatCondition::Always:

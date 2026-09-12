@@ -916,10 +916,11 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				}
 
 				// AND THE NUMBER IT COMPARES, FOR THE PREDICATES THAT COMPARE
-				// ONE. Six of the twelve compare nothing -- being Bleeding, the
-				// class resource being full, and the four that ask what kind of
-				// blow this is -- and a value copied onto one of those is a
-				// number the predicate was never meant to have.
+				// ONE. Eight of the seventeen compare nothing -- being Bleeding,
+				// the class resource being full, the four that ask what kind of
+				// blow this is, and the two of issue #41's slice 2 that ask
+				// whether the character is moving -- and a value copied onto one
+				// of those is a number the predicate was never meant to have.
 				// `ConditionTakesAValue` is the single statement of which are
 				// which; this file used to say it by copying the value in six
 				// branches and not in two.

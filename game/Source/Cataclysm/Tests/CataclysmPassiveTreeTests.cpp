@@ -1520,8 +1520,8 @@ namespace CataclysmPassiveConditionTest
 	 * DELIBERATELY A SECOND COPY OF THAT LIST. Asking
 	 * `UCataclysmStatPipeline::ConditionTakesAValue` what to expect would make
 	 * the test agree with the code by construction and pass whatever the code
-	 * said. Writing the six out means a change to either one has to be made in
-	 * both places on purpose.
+	 * said. Writing the eight out means a change to either one has to be made
+	 * in both places on purpose.
 	 */
 	bool ComparesNothing(const FString& Name)
 	{
@@ -1530,7 +1530,11 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("hit_is_melee_attack")
 			|| Name == TEXT("hit_is_ranged_attack")
 			|| Name == TEXT("hit_is_spell")
-			|| Name == TEXT("opponent_is_boss");
+			|| Name == TEXT("opponent_is_boss")
+			// ISSUE #41'S SLICE 2. The other three movement conditions compare
+			// a number, so they are deliberately absent.
+			|| Name == TEXT("while_moving")
+			|| Name == TEXT("while_stationary");
 	}
 }
 
