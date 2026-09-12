@@ -9,12 +9,14 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "GameplayTagContainer.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/FileHelper.h"
@@ -56,6 +58,22 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* SetMarker =
 		TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
 	const TCHAR* SetDrawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+
+	/**
+	 * The drawback that locks a slot. Issue #41, and the lock's first source.
+	 *
+	 * "You cannot use movement abilities while stationary for more than 2
+	 * seconds", which the Enchantment Effects sheet writes as the `skill_locked`
+	 * stat, flat, 1, required tag `Slot.Movement`, condition
+	 * `stationary_for_seconds` with 2.
+	 *
+	 * NOT THE ENCHANTMENT THE ISSUE NAMED. `Negative_Your_own_ultimate_ability_is_
+	 * disabled` is the Null Emperor set's drawback, and a set is written whole or
+	 * not at all, so writing it would demand that set's first bonus -- a chance to
+	 * silence an ENEMY, which is a mechanism this game has not got.
+	 */
+	const TCHAR* SlotLockDrawback =
+		TEXT("Negative_You_cannot_use_movement_abilities_while_stationa");
 
 	/** A real affix granting increased maximum health, top value 12. */
 	const TCHAR* IncreasedHealthAffix = TEXT("Stat_Increased_maximum_health");
@@ -172,7 +190,7 @@ namespace CataclysmEnchantmentEffectTest
 			}
 		}
 		for (const TCHAR* Name :
-			 {HealthDrawback, DrawbackWithNoEffect, SetDrawback})
+			 {HealthDrawback, DrawbackWithNoEffect, SetDrawback, SlotLockDrawback})
 		{
 			if (!Out.Negative->FindRow<FCataclysmEnchantmentRow>(
 					FName(Name), TEXT("LoadAll"), /*bWarnIfMissing=*/false))
@@ -707,6 +725,184 @@ bool FCataclysmEnchantmentEffectSourceRowTest::RunTest(const FString& Parameters
 	// Without this the loop above passes having worn nothing at all.
 	TestEqual(TEXT("nine rows that name a source are written"),
 			  static_cast<int32>(UE_ARRAY_COUNT(SourceRows)), 9);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentEffectLockTest,
+	"Cataclysm.Enchantments.AWornLockReachesOnlyTheSlotAndTheStateItNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentEffectLockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE ROUTE GEAR REALLY TAKES, WHICH IS THE HALF THE LOCK HAD NO TEST FOR.
+	// `Cataclysm.Skills.ALockedSkillIsRefusedAndAnUnlockedOneIsNot` sets the lock
+	// by calling `SetStatInputs` itself. That writes the very map `StatForSkill`
+	// reads, so it never runs `ApplyTo` and never consults `StatToAttribute()`,
+	// and it would pass with the attribute and the name-to-attribute entry both
+	// absent. It proves the refusal; this proves there is a way to cause one.
+	//
+	// WHY THE MAP ENTRY IS LOAD-BEARING AND NOT BOOKKEEPING. `ApplyTo` records a
+	// stat's inputs inside a lambda called from two loops, both over
+	// `StatToAttribute()`, and there is no pass over the modifier map. A stat
+	// missing from it has its modifiers gathered and then dropped, and
+	// `StatForSkill` answers its fallback for ever. The second gate is the
+	// attribute's SET: the loop skips any stat whose set the component does not
+	// hold, which is why the lock needed an attribute as well as a name.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE TAGS ARE READ OFF REAL SKILL ROWS AND NOT TYPED HERE. A lock whose
+	// required tag no skill carries is a lock scoped to the empty set, and it
+	// would read as a lock that does not work at all. Two tests that both TYPE
+	// `Slot.Movement` agree with each other rather than with the game; these
+	// containers are whatever `game/Data/WeaponSkills.csv` says a movement skill
+	// and a heavy skill hold, parsed the way `EnchantmentModifierFor` parses the
+	// row's own required tags.
+	const UDataTable* Skills =
+		LoadCsv<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
+	if (!TestNotNull(TEXT("the weapon skill table reads"), Skills))
+	{
+		return false;
+	}
+
+	const FGameplayTag MovementTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Slot.Movement")));
+	if (!TestTrue(TEXT("Slot.Movement is a registered tag"), MovementTag.IsValid()))
+	{
+		return false;
+	}
+
+	FGameplayTagContainer MovementSkillTags;
+	FGameplayTagContainer HeavySkillTags;
+	int32 MovementRows = 0;
+	for (const TPair<FName, uint8*>& Row : Skills->GetRowMap())
+	{
+		const auto* Skill =
+			reinterpret_cast<const FCataclysmWeaponSkillRow*>(Row.Value);
+		if (!Skill)
+		{
+			continue;
+		}
+
+		FGameplayTagContainer Held;
+		TArray<FString> Names;
+		Skill->Tags.ParseIntoArray(Names, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Held.AddTag(Tag);
+			}
+		}
+
+		if (Held.HasTag(MovementTag))
+		{
+			++MovementRows;
+			if (MovementSkillTags.IsEmpty())
+			{
+				MovementSkillTags = Held;
+			}
+		}
+		else if (HeavySkillTags.IsEmpty()
+				 && Held.HasTag(FGameplayTag::RequestGameplayTag(
+						FName(TEXT("Slot.Heavy")))))
+		{
+			HeavySkillTags = Held;
+		}
+	}
+
+	// Without these the reads below ask about empty containers, and a modifier
+	// that requires a tag refuses an empty container, so every figure would be
+	// zero and the test would pass having measured nothing.
+	if (!TestTrue(FString::Printf(
+			TEXT("the data holds movement skills carrying Slot.Movement: %d"),
+			MovementRows), MovementRows > 0))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("and a heavy skill to compare against"),
+				   HeavySkillTags.IsEmpty()))
+	{
+		return false;
+	}
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Stat = FName(UCataclysmSkillSlots::LockedStat);
+
+	// STANDING STILL HAS TO BE STARTED. `SecondsSinceMoved` answers -1 for a
+	// character that has never moved and `ConditionHolds` refuses an unknown
+	// reading, so a character that has stood perfectly still since it was spawned
+	// is not stationary as far as the condition is concerned. `NoteDidNotMove` is
+	// the first sample, and its own comment says that is when standing still
+	// begins.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 3.0f);
+
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("a character wearing nothing has no lock on its movement skill"),
+			  ASC->StatForSkill(Stat, MovementSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE DRAWBACK, PAIRED WITH A BENEFIT THAT HAS NO EFFECT ROW, so the lock is
+	// the only thing this item changes.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Boots_Sabatons"), BenefitWithNoEffect, SlotLockDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestTrue(TEXT("the worn drawback locks a movement skill"),
+			 ASC->StatForSkill(Stat, MovementSkillTags, 0.0f) > 0.0f);
+
+	// AND NOTHING ELSE. The row scopes itself to one slot, and the other five
+	// slots are what say so.
+	TestEqual(TEXT("and leaves a heavy skill alone"),
+			  ASC->StatForSkill(Stat, HeavySkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE CHARACTER SHEET SHOWS NO LOCK EITHER, which is the same reading with no
+	// skill in hand. A scoped modifier must not apply to a bare stat, or the
+	// sheet would claim a character whose every skill works is locked.
+	TestEqual(TEXT("and shows nothing with no skill in hand"),
+			  ASC->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.001f);
+
+	// THE CONDITION IS JUDGED AT THE MOMENT OF THE ASK, not when the gear was put
+	// on. One step taken is enough: the reading is seconds since the character
+	// last moved, and it has just moved.
+	ASC->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("a step taken unlocks the movement skill at once"),
+			  ASC->StatForSkill(Stat, MovementSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// AND STANDING STILL AGAIN LOCKS IT AGAIN, WITH NO REFRESH BETWEEN. That is
+	// what makes this a condition rather than a state written onto the character:
+	// nothing was applied or removed between these two reads.
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	TestTrue(TEXT("and standing still again locks it, with no refresh between"),
+			 ASC->StatForSkill(Stat, MovementSkillTags, 0.0f) > 0.0f);
+
+	// AND TAKING THE BOOTS OFF GIVES IT BACK, which says the lock came from the
+	// item rather than from anything the character did.
+	Wearer.Equipment->Unequip(Slot, Removed);
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and taking the boots off leaves the skill free"),
+			  ASC->StatForSkill(Stat, MovementSkillTags, 0.0f), 0.0f, 0.001f);
+
 	return true;
 }
 

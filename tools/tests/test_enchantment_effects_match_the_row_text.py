@@ -97,6 +97,22 @@ TAKING = re.compile(r"\b(less|reduced|lose|slower|shorter|halved|slowed)\b",
 LONGER_WHEN_NEGATIVE = {"crowd_control_resistance"}
 LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 
+#: Stats whose value is a yes or a no rather than a quantity, so the sentence
+#: states no number for it and should not. `skill_locked` above zero means the
+#: character's skills are refused; the sentence says what happens and the 1 says
+#: that it happens. Issues #41 and #1628.
+#:
+#: NOT THE SAME THING AS `JUDGED_NUMBERS` BELOW, which is for a sentence stating
+#: no number at all, where somebody chose a magnitude. The skill lock's sentence
+#: does state a number -- "2 seconds" -- and that number is its CONDITION value,
+#: which `test_every_condition_value_appears_in_the_words_too` checks like any
+#: other. Only the 1 is exempt, and only on these stats.
+#:
+#: `test_every_flag_stat_row_states_one` keeps this honest: a row on one of these
+#: stats states 1 and nothing else, so the exemption cannot grow to cover a
+#: magnitude nobody wrote down.
+FLAG_STATS = {"skill_locked"}
+
 #: Enchantments whose sentence states no number, so the number was chosen under
 #: the project owner's delegation of 2026-09-11 and recorded as a labelled
 #: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
@@ -286,6 +302,8 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
             continue
         if row["Enchantment"] in JUDGED_NUMBERS:
             continue
+        if row["Stat"] in FLAG_STATS:
+            continue
         text = words_of(row, enchantments)
         words = {word.lower() for word in re.findall(r"[A-Za-z]+", text)}
         said = abs(value) in numbers_in(outside_ranges(text)) or any(
@@ -366,6 +384,29 @@ def test_the_coverage_is_what_it_is_measured_to_be(effects):
         f"{len(effects)} effect rows, pinned at {AUTHORED_ROWS}. Change the "
         f"pin and the entry in docs/DECISIONS.md that states it together.")
     assert len({r["Enchantment"] for r in effects}) == AUTHORED_ENCHANTMENTS
+
+def test_every_flag_stat_row_states_one(effects):
+    """A stat whose value is a yes states 1, so the exemption above cannot come
+    to cover a magnitude the sentence does not mention."""
+    wrong = [f"{r['Name']}: {r['ValueLow']} to {r['ValueHigh']}"
+             for r in effects
+             if r["Stat"] in FLAG_STATS
+             and (float(r["ValueLow"]) != 1.0
+                  or float(r["ValueHigh"]) != 1.0)]
+    assert not wrong, (
+        "these rows are on an on-or-off stat and state something other than 1, "
+        "so they are excused the check that a value appears in its words while "
+        "carrying a magnitude: " + "; ".join(wrong))
+
+
+def test_every_flag_stat_is_still_used(effects):
+    """An exemption that outlives its reason hides a real mismatch, which is the
+    argument `test_every_judged_number_is_still_needed` makes below."""
+    written = {r["Stat"] for r in effects}
+    unused = sorted(FLAG_STATS - written)
+    assert not unused, (
+        f"{unused} are excused the value-in-words check and no row grants them")
+
 
 def test_every_judged_number_is_still_needed(effects, enchantments):
     """An excuse that outlives its reason hides a real mismatch. Each name in

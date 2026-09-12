@@ -85,6 +85,26 @@ One row: `skill_locked`, `flat`, **1**, required tag `Slot.Movement`, condition
 carries `Scope.WhileStationary`, so writing both would scope the lock to the empty
 set. It would read as a lock that does not work rather than as a row written wrong.
 
+**THE COVERAGE THIS TAKES THE SHEET TO IS 88 ROWS OVER 78 ENCHANTMENTS**, from 87
+over 77. `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` in
+`tools/tests/test_enchantment_effects_match_the_row_text.py` pin those two figures so
+that the coverage only moves when somebody means it to, and that check asks for this
+log to be changed in the same breath. The 88th row is the first in the file to take a
+skill away rather than change a number.
+
+**AND THE VALUE 1 IS EXEMPT FROM ONE CHECK, NARROWLY AND WITH ITS OWN GUARD.** That
+same file requires a single value to appear in its enchantment's own words, because a
+value the sentence does not state would show the player one number and give the
+character another. The 1 here means "yes" and the sentence rightly states no 1, so
+`skill_locked` is named in a new `FLAG_STATS` set and excused that one check.
+
+**NOT `JUDGED_NUMBERS`, which is the existing exemption and would have been the wrong
+one.** That list is for a sentence stating no number at all, where somebody chose a
+magnitude under the owner's delegation of 2026-09-11. This sentence does state a
+number -- "2 seconds" -- and that number is the row's CONDITION value, which is
+checked like any other. Two new tests keep the new exemption honest: a row on such a
+stat must state 1 and nothing else, and a stat in the set must still have a row.
+
 ### One judgement, and it is about sequencing rather than about a number
 
 **Nothing in this row needed a figure chosen.** It states its slot, its predicate and
