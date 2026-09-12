@@ -263,7 +263,14 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * `sim/cataclysm_sim/affixes.py` keeps them apart from the sheet's stats in
 	 * the same way, as an `AilmentAffix` rather than a `StatAffix`.
 	 */
-	constexpr int32 OffSheetCombatStats = 28;
+	//
+	// TWENTY-NINE SINCE ISSUE #41'S SLICE 3 ADDED THE SKILL LOCK, which is off
+	// the sheet by the same argument: no affix grants it, nothing scales it, it
+	// has no baseline, and a player sees their skills refuse rather than reading
+	// a number. RAISING THIS IS WHAT KEEPS THE SHEET AT 46 -- the sheet figure
+	// is derived by subtracting the off-sheet stats, so a new attribute nobody
+	// declares off the sheet is counted as on it.
+	constexpr int32 OffSheetCombatStats = 29;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

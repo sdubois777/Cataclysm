@@ -658,6 +658,31 @@ public:
 	FGameplayAttributeData DebuffsDoNotExpire;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DebuffsDoNotExpire)
 
+	/**
+	 * Above zero means this character's skills cannot be used. Issue #41,
+	 * slice 3a's stat given somewhere to live.
+	 *
+	 * IT IS NOT READ FROM HERE. `UCataclysmSkillTemplate::CanActivateAbility`
+	 * asks `StatForSkill` for `UCataclysmSkillSlots::LockedStat`, with the
+	 * skill's own tags, so a lock can be scoped to one slot or to everything.
+	 * This attribute exists because the stat pipeline will not record a stat
+	 * the name-to-attribute map does not name -- `UCataclysmPlayerClassStats`
+	 * resolves only the stats in that map -- so without it the lock is
+	 * unreachable by any route rather than merely unused.
+	 *
+	 * ZERO FOR EVERY CLASS, like the flag above it. Its sources are an
+	 * enchantment scoped to the Ultimate slot and, later, the dungeon modifier
+	 * Edict of Silence unscoped. No class line may name it: a class whose every
+	 * member could not use their skills is not a class.
+	 *
+	 * OFF THE CHARACTER SHEET, for the reason the healing reduction is: no affix
+	 * grants it, nothing scales it, it has no baseline, and a player sees their
+	 * skills refuse rather than reading a number.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_SkillLocked)
+	FGameplayAttributeData SkillLocked;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, SkillLocked)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_NovaDamageOfMissingHealth)
 	FGameplayAttributeData NovaDamageOfMissingHealth;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
@@ -817,6 +842,7 @@ protected:
 	UFUNCTION() void OnRep_RetaliationLeeches(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDurationTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffsDoNotExpire(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_SkillLocked(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AuraDebuffDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffSpreadChance(const FGameplayAttributeData& OldValue);
