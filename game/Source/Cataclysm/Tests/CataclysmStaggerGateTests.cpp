@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -104,6 +105,94 @@ namespace CataclysmStaggerGateTest
 		}
 		return Longest;
 	}
+
+	/**
+	 * A character whose stats have been RESOLVED FROM THE CLASS TABLE, which is
+	 * the path a player takes and a spawned creature does not.
+	 *
+	 * WHY THIS EXISTS AND WHY THE OTHER TESTS HERE CANNOT REPLACE IT. Every other
+	 * test in this file writes an attribute directly onto a spawned creature. A
+	 * creature's attributes never go through `UCataclysmPlayerClassStats::ApplyTo`,
+	 * so they keep whatever the attribute set's constructor stated, and
+	 * `StatForSkill` answers with that value as its fallback. A player's do go
+	 * through it, `ApplyTo` writes the RESOLVED value over the constructor's, and
+	 * `StatForSkill` answers from the recorded stat line instead. Those are two
+	 * different routes through `ApplyStagger`, and the tests above take only the
+	 * first.
+	 *
+	 * A PLAIN ACTOR IS ENOUGH. `UCataclysmTargeting::AbilitySystemOf` goes through
+	 * `UAbilitySystemGlobals`, which falls back to finding the component on the
+	 * actor when the actor implements no interface.
+	 *
+	 * ONLY TWO ATTRIBUTE SETS, unlike the fuller fixture in
+	 * `CataclysmPlayerClassStatsTests.cpp`. `ApplyTo` skips any attribute whose set
+	 * the component does not hold, and a stagger reads combat stats off the
+	 * applier and health off the target. A test asserting every mapped stat was
+	 * written would need the others; this one does not.
+	 */
+	struct FResolvedApplier
+	{
+		explicit FResolvedApplier(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+
+			// Raw pointers rather than TObjectPtr: `AddAttributeSetSubobject` is a
+			// template and deduces its type from the argument, so a TObjectPtr
+			// would deduce the wrapper instead of the attribute set. The fuller
+			// fixture records the same reason.
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+		}
+
+		~FResolvedApplier()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		/**
+		 * Resolve this character's stats the way a real player's are resolved.
+		 *
+		 * `StartingClassName` AND NOT `UCataclysmClassStats::DefaultClassName`.
+		 * The header warns about exactly this pair: the second is the shared line
+		 * a class inherits from when it states nothing of its own and carries no
+		 * defensive layer, while the first is the class a player actually plays
+		 * as. They were the same string until 2026-08-24, and every character
+		 * played in that time had no armour, no resistance, no block and no
+		 * leech. Issue #806. This test is about a player, so it takes the
+		 * player's line.
+		 *
+		 * `DefaultLevel` RATHER THAN A TYPED 20, because it is a placeholder the
+		 * console can change and a copied number here would outlive it.
+		 */
+		bool ResolveFromTheClassTable()
+		{
+			const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+			if (!Table)
+			{
+				return false;
+			}
+			UCataclysmPlayerClassStats::ApplyTo(
+				AbilitySystem, Table,
+				UCataclysmPlayerClassStats::StartingClassName,
+				UCataclysmPlayerClassStats::DefaultLevel);
+			return true;
+		}
+
+		TObjectPtr<AActor> Actor = nullptr;
+		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
+	};
 }
 
 // EVERY TEST OPENS THE NAMESPACE INSIDE ITS OWN BODY, because this module is
@@ -361,6 +450,81 @@ bool FCataclysmStaggerGateDurationTest::RunTest(const FString&)
 					   "would give %.2f"),
 				  Both, Normal * 2.5f),
 			  Both, Normal * 3.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStaggerGateResolvedApplierTest,
+	"Cataclysm.StaggerGate.ACharacterWhoseStatsCameFromTheClassTableStillStaggers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character whose stats were resolved from the class table still staggers.
+ *
+ * THIS TEST EXISTS BECAUSE THE FOUR ABOVE IT ALL PASSED WHILE THE FEATURE WAS
+ * BROKEN FOR EVERY PLAYER. `stagger_duration` has no line in
+ * `game/Data/ClassStats.csv`, so `UCataclysmClassStats::BaseFor` answers zero
+ * for it; `UCataclysmPlayerClassStats::ApplyTo` then wrote that zero over the
+ * 100 the attribute set's constructor states, `ApplyStagger` scaled by zero and
+ * refused, and no player staggered anything. The repair is an entry in
+ * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+ *
+ * WHY THE EXISTING BASE TEST IS NOT ENOUGH ON ITS OWN.
+ * `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter` walks the
+ * entries that ARE in that map. Delete the stagger entry and it walks one fewer
+ * and passes, so it cannot see the entry go missing -- which is exactly how the
+ * defect would come back. This test fails when the entry is absent, because it
+ * asks for the behaviour rather than for the list.
+ *
+ * IT SETS NO STAT. Every other test in this file writes an attribute by hand,
+ * which is the fallback route. This one takes the resolved route and asserts the
+ * ordinary, unmodified outcome: a stagger of the normal length.
+ */
+bool FCataclysmStaggerGateResolvedApplierTest::RunTest(const FString&)
+{
+	using namespace CataclysmStaggerGateTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FResolvedApplier Applier(World);
+	if (!TestTrue(TEXT("the class stats table loaded"),
+				  Applier.ResolveFromTheClassTable()))
+	{
+		return false;
+	}
+
+	// THE BASE ARRIVED. Checked before the stagger so a failure says which half
+	// broke: a wrong duration here means the base never reached the character,
+	// and a wrong duration below means it reached it and `ApplyStagger` misread
+	// it. Without the repair this reads 0 rather than 100.
+	TestEqual(TEXT("the resolved character holds the normal stagger duration"),
+			  Applier.AbilitySystem->GetNumericAttribute(
+				  UCataclysmCombatAttributeSet::GetStaggerDurationAttribute()),
+			  UCataclysmSkillEffects::NormalStaggerDuration, 0.01f);
+
+	ACataclysmEnemyCharacter* Target =
+		SpawnGateCreature(World, FVector(200.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("target"), Target))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the stagger landed"),
+				  UCataclysmSkillEffects::ApplyStagger(Applier.Actor, Target))
+		|| !TestTrue(TEXT("and the target carries the state"),
+					 UCataclysmSkillEffects::IsStaggered(Target)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and it lasts the second it always lasted"),
+			  LongestEffectOn(Target),
+			  UCataclysmSkillEffects::StaggerSeconds, 0.01f);
 
 	return true;
 }
