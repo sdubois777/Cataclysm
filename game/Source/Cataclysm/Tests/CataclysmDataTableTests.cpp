@@ -413,7 +413,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// movement abilities while stationary for more than 2 seconds", granting
 	// `skill_locked` scoped to `Slot.Movement` under the condition
 	// `stationary_for_seconds`. Issues #41 and #1628.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     91)
+	// AND 93 SINCE THE TWO STATS A STAGGERING CHARACTER CARRIES, later the same
+	// day: `stagger_duration`, how long a stagger this character applies runs,
+	// and `stagger_health_ceiling_reduction`, the health above which it cannot
+	// stagger at all. One row each. Issue #45.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     93)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

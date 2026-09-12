@@ -145,8 +145,14 @@ JUDGED_NUMBERS = {
 #: day: "You cannot use movement abilities while stationary for more than 2
 #: seconds" is the first row in this file to take a skill away rather than change
 #: a number. Issues #41 and #1628.
-AUTHORED_ROWS = 91
-AUTHORED_ENCHANTMENTS = 80
+#:
+#: AND 93 OVER 82 SINCE THE TWO STAGGER STATS A STAGGERING CHARACTER CARRIES,
+#: later the same day: "Stagger effects you apply last 50%-100% longer" and "You
+#: cannot stagger enemies above 50% HP". ONE ROW EACH, so both numbers move by
+#: two -- unlike the three-rows-for-two-enchantments entry above, where one
+#: enchantment needed a row per damage type. Issue #45.
+AUTHORED_ROWS = 93
+AUTHORED_ENCHANTMENTS = 82
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
