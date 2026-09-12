@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A patch of ground can last until the player leaves the floor, and drawing one needs two separate numbers rather than one
+
+**Affects:** `SpawnForTheFloor`, `FloorDrawSeconds`, `FloorRedrawSeconds`,
+`bLastsTheFloor`, `RedrawsAsked` and `Redraw` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp`, and four
+new tests in `game/Source/Cataclysm/Tests/CataclysmGroundEffectTests.cpp`.
+Applied. Issue #1605.
+
+**What it is for.** Five of the eight dungeon modifiers that want a floor hazard
+state no duration at all — Withered Ground, Necrotic Ground, Leech Spores,
+Hallowed Groundfall and Plague Harbingers — because the design means them to last
+the floor. Nothing in the game could make one. The other three state a duration
+and were already possible.
+
+### Nothing had to be relaxed, and that was not the plan
+
+The work began on the premise that a patch had to be given a very large duration,
+or that `ACataclysmGroundZone`'s refusal of a non-positive duration had to be
+relaxed. **Both were wrong and there was a third option.**
+`UCataclysmFloorContents::ClearTheFloor` already destroys every patch in the
+world when the player leaves a floor, so a patch that never calls `SetLifeSpan`
+lasts exactly until the floor ends. `SpawnForTheFloor` sits beside `Spawn` and
+`SpawnAlong` rather than altering either; both still refuse a non-positive
+duration and no existing caller behaves differently.
+
+A large number would have been a false figure sitting in the data for a later
+reader to find and believe.
+
+### A patch with no life span would have been invisible
+
+`BeginPlay` draws a patch by passing its own life span to
+`UCataclysmGroundEffect::PlayFor`. A patch with no life span reports zero, so it
+would sweep, damage and curse correctly **while being invisible** — every
+assertion about it passing. Issue #1153 was that exact failure for every patch in
+the game and nothing caught it for weeks.
+
+So a floor-lasting patch is drawn for a stated length of time and asks again on a
+timer.
+
+### TWO QUANTITIES, NOT ONE, AND THEY ARE BOUNDED BY DIFFERENT THINGS
+
+This was first written as a single number used twice, which was a mistake worth
+recording because the two are bounded by different things and a later reader
+tuning one would reach for the wrong lever.
+
+| Quantity | What it controls | What bounds it |
+| :-- | :-- | :-- |
+| **`FloorDrawSeconds` = 3** — how long one drawn instance lasts | **the overhang**, because one instance is what keeps playing after the patch is destroyed | derived: the mildest overhang the game already produces |
+| **`FloorRedrawSeconds` = 2.5** — how often a new instance starts | **continuity**, whether the patch is drawn at every moment | must be shorter than the duration, or there are gaps |
+
+**The duration is derived rather than chosen.** The visual components a patch asks
+for are not attached to it, so they keep playing after it is destroyed, including
+across a floor change — that is issue #1660 and it **already happens today** for
+timed patches. The twelve skill rows that leave ground state durations from 3 to
+10 seconds, read out of the `ShapeParams` column of
+`game/Data/WeaponSkills.csv`, where the value is packed rather than having a
+column of its own. Drawing for 3 seconds means a floor-lasting patch leaves at
+most what the mildest timed one already leaves, and under a third of the worst.
+**So this cannot make #1660 worse, and that is checkable rather than asserted.**
+
+**The period is a judgement.** It must be under the duration; how far under is not
+derivable from anything measured. Too close and the instances meet rather than
+overlap; much shorter and the drawing work repeats for no gain.
+
+**The period is deliberately shorter than the duration, and making them equal
+reintroduces a flicker.** With both at 3, the previous instance ends as the next
+begins, and timer jitter or simply tick order leaves a frame with nothing drawn —
+a patch blinking out once every 3 seconds. That is stated on the constants
+themselves, because the obvious tidy-up is to make two nearby numbers match.
+
+**A longer period does not lengthen the overhang.** The overhang is set by the
+duration, because one instance is what outlives the actor. A longer period
+produces gaps instead. This is written down because the opposite was said during
+the design and is the wrong lever to reach for.
+
+### The overhang is bounded, not removed, and it is visible
+
+**The floor transition is immediate.** `BuildFloor`, `ClearTheFloor`,
+`PopulateFloor` and `PlaceStairs` run in one synchronous pass and the player is
+teleported in the same one. A search of the whole game module for `fadein`,
+`fadeout`, `startcamerafade`, `setmanualcamerafade`, `openlevel`,
+`loadstreamlevel` and `seamlesstravel` returns nothing outside tests.
+
+**So there is no transition to hide leftover drawing behind.** It is visible on
+the first frame of the new floor, bounded at 3 seconds and no worse than what
+already happens. Removing it is issue #1660 and this change is not it.
+
+### What the genre research settled, and what it did not
+
+| Question | Answer | Source |
+| :-- | :-- | :-- |
+| Is a persistent area-wide ground patch a shipped shape? | Yes | Path of Exile map modifiers — patches of burning, desecrated, chilled and shocked ground |
+| Are dungeon-wide hazards usually permanent or periodic? | Periodic | Diablo 4 — Volcanic flames "periodically erupt", Blood Blisters spawn on a kill, Drifting Shades are mobile |
+| Do persistent ground effects carry finite stated durations? | Yes | Last Epoch — Frost Wall "persists for 6 seconds" |
+| Is a visual outliving its source a known defect? | Yes, shipped and fixed | Last Epoch patch note on ground indicators "lingering after it died" |
+| **How should cleanup work when one area actor is reused for successive floors?** | **Not settled** | — |
+
+**The last row is why the answer above is a judgement and is labelled one.**
+Neither shipped game has this problem, for opposite reasons: a Path of Exile map
+is one contiguous area discarded wholesale when the player leaves and never
+returned to, and Diablo 4's hazards are periodic so nothing persists to leak.
+**This project rebuilds one floor actor at the world origin for every floor, so
+floor 5 occupies the coordinates floor 1 did** — which is what lets a detached
+effect play in a place that has nothing there. No shipped game found reuses areas
+that way.
+
+Sources: [Nightmare Dungeons in Diablo 4 — Maxroll](https://maxroll.gg/d4/resources/nightmare-dungeons),
+[Last Epoch patch notes — Maxroll](https://maxroll.gg/last-epoch/news/last-epoch-patch-1-4-4-notes),
+[Area has patches of desecrated ground — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/1995813).
+
+### The test that makes this enforceable
+
+**No automation test in this project can see a drawn effect.** The run passes
+`-nullrhi` and Niagara creates no component when `FApp::CanEverRender()` is false
+— confirmed at `CreateNiagaraSystem` line 71 in the engine's own
+`NiagaraFunctionLibrary.cpp`. So an invisible hazard would be silent in the suite
+as well as in play.
+
+What is observable is what a caller *asked for*.
+`UCataclysmGroundEffect::LastDuration` records it, and the first test asserts the
+patch asked for a real length of time rather than for its zero life span.
+`RedrawsAsked` counts the repeats, and the second test runs the clock past
+several periods and asserts they happened. **Without those two, a hazard that
+drew nothing would pass every other assertion about it.**
+
+---
+
 ## 2026-09-12 — A floor hazard needs an actor to be dealt in the name of, because every route that applies an effect refuses a source with no ability system
 
 **Affects:** the new
