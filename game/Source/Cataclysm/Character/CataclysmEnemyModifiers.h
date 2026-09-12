@@ -374,6 +374,34 @@ public:
 	 */
 	static constexpr float AuraPulseIntervalSeconds = 1.0f;
 
+	/**
+	 * What one pulse of a medic's aura restores, as a percentage of each
+	 * ally's own maximum health.
+	 *
+	 * FIVE PERCENT, AND IT IS A JUDGEMENT RATHER THAN A DERIVED FIGURE. The
+	 * Field Medic row states no rate at all -- only that the medic "constantly
+	 * heals all other enemies in a large radius" and that this "forces the
+	 * player to prioritize a non-threatening enemy".
+	 *
+	 * THE GENRE OFFERS NO FIGURE TO TAKE. Diablo 4's affix list has nothing
+	 * that continuously heals other monsters; its nearest is Life Link, which
+	 * shares one pool between enemies rather than healing them. So there was
+	 * no shipped number to read off and this was reasoned instead.
+	 *
+	 * WHAT GOVERNS IT, IN BOTH DIRECTIONS. It has to be large enough that
+	 * ignoring the medic changes a fight, or the row's stated purpose fails.
+	 * It has to be small enough that a pack does not become unkillable --
+	 * **and that is the binding constraint, because one medic heals every
+	 * ally in range at once.** With four creatures nearby, five percent each
+	 * is twenty percent of a creature's health restored across the pack every
+	 * second. The per-target figure is modest precisely because the pack
+	 * multiplies it.
+	 *
+	 * IT WANTS TUNING AGAINST PLAY and is not claimed to be right. What is
+	 * claimed is that it is in the range where the row's purpose can work.
+	 */
+	static constexpr float MedicHealPercentOfMaximumPerPulse = 5.0f;
+
 	// ----------------------------------------------------------------------
 	// What the carried modifiers do to a creature's stats
 	// ----------------------------------------------------------------------
@@ -505,6 +533,35 @@ public:
 	 * @return how many targets were touched. Zero when nothing was due
 	 */
 	static int32 AuraStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Heal this creature's living allies within the aura radius.
+	 *
+	 * WHAT ASKS FOR IT. The Field Medic dungeon modifier: "An elite 'Medic'
+	 * enemy is present on each floor. It does not attack, but constantly heals
+	 * all other enemies in a large radius." Issue #1648.
+	 *
+	 * THE CALLER DECIDES WHICH CREATURE IS A MEDIC, AND THAT IS DELIBERATE.
+	 * `AuraStep` beside this gates on a creature's own modifier rows, read
+	 * from `game/Data/EnemyModifiers.csv`. A medic is a **dungeon** modifier,
+	 * from a different file and a different system, so no row on the creature
+	 * says it is one. Putting the gate in the caller keeps the knowledge where
+	 * it lives rather than teaching this file about dungeon rules.
+	 *
+	 * IT SHARES THE ONE AURA CLOCK ON THE CREATURE, so a creature carrying
+	 * both this and a modifier aura pulses both together rather than at two
+	 * different moments. One creature, one pulse.
+	 *
+	 * ALLIES AND NOT ITSELF. `FindAlliesInSphere` excludes the instigator,
+	 * which is what the row asks for -- "all **other** enemies".
+	 *
+	 * @param Character   the medic. Anything that is not a living creature
+	 *                    heals nobody
+	 * @param StepSeconds how long since the last step, for the pulse clock
+	 * @return how many allies were healed this call, which is zero on every
+	 *         step between pulses
+	 */
+	static int32 HealAlliesStep(AActor* Character, float StepSeconds);
 
 	/**
 	 * Whether a row belongs to a Cataclysm a creature of this one may draw.

@@ -1747,4 +1747,289 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandThroughHitsTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A medic heals its allies
+// ---------------------------------------------------------------------------
+
+namespace CataclysmMedicTest
+{
+	/** One full second of the per-character step, which runs four times a second. */
+	static int32 OneSecondOfSteps(AActor* Medic)
+	{
+		int32 Healed = 0;
+		for (int32 Step = 0; Step < 4; ++Step)
+		{
+			Healed += UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f);
+		}
+		return Healed;
+	}
+
+	/** A creature with a stated maximum, wounded to a stated current. */
+	static ACataclysmEnemyCharacter* WoundedCreature(UWorld* World,
+													const FVector& Where,
+													float Maximum, float Current)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+														FRotator::ZeroRotator);
+		if (Creature == nullptr)
+		{
+			return nullptr;
+		}
+
+		// SetHealth SETS BOTH, which is why the wound is a second step: its own
+		// header says setting the current alone is clamped to the old maximum.
+		Creature->SetHealth(Maximum);
+		Creature->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+
+		if (UAbilitySystemComponent* ASC = Creature->GetAbilitySystemComponent())
+		{
+			ASC->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
+		}
+		return Creature;
+	}
+
+	static float HealthOf(const AActor* Who)
+	{
+		const UAbilitySystemComponent* ASC =
+			UCataclysmTargeting::AbilitySystemOf(Who);
+		return ASC ? ASC->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsAWoundedAllyTest,
+	"Cataclysm.EnemyModifiers.AMedicHealsAWoundedAllyStandingNearIt")
+{
+	using namespace CataclysmMedicTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Medic =
+		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+	ACataclysmEnemyCharacter* Ally =
+		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
+	if (!TestNotNull(TEXT("a medic"), Medic)
+		|| !TestNotNull(TEXT("a wounded ally"), Ally))
+	{
+		return false;
+	}
+
+	// ROOM TO HEAL INTO, asserted rather than assumed. TopUp is clamped to the
+	// maximum, so an ally already at full would gain nothing and this would
+	// pass against a rule that healed nobody.
+	if (!TestEqual(TEXT("the ally starts wounded"), HealthOf(Ally), 200.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const int32 Healed = OneSecondOfSteps(Medic);
+
+	TestEqual(TEXT("one pulse healed one ally"), Healed, 1);
+
+	// FIVE PERCENT OF THE ALLY'S OWN MAXIMUM, which is 25 of its 500.
+	TestEqual(TEXT("and it gained five percent of its own maximum"),
+			  HealthOf(Ally), 225.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicDoesNotHealItselfTest,
+	"Cataclysm.EnemyModifiers.AMedicDoesNotHealItself")
+{
+	using namespace CataclysmMedicTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE ROW SAYS "ALL OTHER ENEMIES", and FindAlliesInSphere excludes the
+	// instigator, so this asserts a property of the search rather than of a
+	// rule written here. It is worth a test because a medic that healed itself
+	// would be far harder to kill than the row intends.
+	ACataclysmEnemyCharacter* Medic =
+		WoundedCreature(World, FVector::ZeroVector, 500.0f, 200.0f);
+	ACataclysmEnemyCharacter* Ally =
+		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
+	if (!TestNotNull(TEXT("a wounded medic"), Medic)
+		|| !TestNotNull(TEXT("a wounded ally"), Ally))
+	{
+		return false;
+	}
+
+	OneSecondOfSteps(Medic);
+
+	TestEqual(TEXT("the medic healed nobody into itself"),
+			  HealthOf(Medic), 200.0f, 0.01f);
+
+	// AND THE ALLY DID GAIN, which is what says the pulse happened at all.
+	// Without this, a medic that healed nothing whatsoever would pass.
+	TestEqual(TEXT("while the ally beside it was healed"),
+			  HealthOf(Ally), 225.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsNeitherFarNorHostileTest,
+	"Cataclysm.EnemyModifiers.AMedicHealsNeitherTheDistantNorTheOtherSide")
+{
+	using namespace CataclysmMedicTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Medic =
+		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+
+	// JUST INSIDE AND JUST OUTSIDE THE SIX METRES, so this measures the radius
+	// rather than some much larger difference.
+	ACataclysmEnemyCharacter* Near =
+		WoundedCreature(World, FVector(500.0f, 0.0f, 0.0f), 500.0f, 200.0f);
+	ACataclysmEnemyCharacter* Far =
+		WoundedCreature(World, FVector(900.0f, 0.0f, 0.0f), 500.0f, 200.0f);
+
+	// THE OTHER SIDE, STANDING AS CLOSE AS THE ONE THAT IS HEALED. Distance is
+	// therefore not what separates them, which is the whole point of the case.
+	ACataclysmEnemyCharacter* Hostile =
+		WoundedCreature(World, FVector(0.0f, 500.0f, 0.0f), 500.0f, 200.0f);
+	if (!TestNotNull(TEXT("a medic"), Medic) || !TestNotNull(TEXT("a near ally"), Near)
+		|| !TestNotNull(TEXT("a far ally"), Far)
+		|| !TestNotNull(TEXT("someone on the other side"), Hostile))
+	{
+		return false;
+	}
+	Hostile->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+
+	const int32 Healed = OneSecondOfSteps(Medic);
+
+	TestEqual(TEXT("exactly one of the three was healed"), Healed, 1);
+	TestEqual(TEXT("the one inside six metres gained"),
+			  HealthOf(Near), 225.0f, 0.01f);
+	TestEqual(TEXT("the one outside it did not"),
+			  HealthOf(Far), 200.0f, 0.01f);
+	TestEqual(TEXT("and the other side did not, though it stood as close"),
+			  HealthOf(Hostile), 200.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmDeadMedicHealsNobodyTest,
+	"Cataclysm.EnemyModifiers.ADeadMedicHealsNobody")
+{
+	using namespace CataclysmMedicTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THIS IS WHAT MAKES KILLING THE MEDIC THE ANSWER, which is the row's
+	// stated purpose: it "forces the player to prioritize a non-threatening
+	// enemy". A dead medic that kept healing would defeat that entirely.
+	//
+	// AND IT IS WHY NO DEATH HOOK WAS WRITTEN. The aura ends with the creature
+	// because nothing pulses for a dead one -- the opposite of a floor hazard,
+	// which must outlive the death that created it. Issue #1605.
+	ACataclysmEnemyCharacter* Medic =
+		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+	ACataclysmEnemyCharacter* Ally =
+		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
+	if (!TestNotNull(TEXT("a medic"), Medic)
+		|| !TestNotNull(TEXT("a wounded ally"), Ally))
+	{
+		return false;
+	}
+
+	// ASSERTED ALIVE FIRST, so "healed nobody" below cannot be true because the
+	// medic was never able to heal anybody in this world at all.
+	if (!TestEqual(TEXT("it heals while it lives"), OneSecondOfSteps(Medic), 1))
+	{
+		return false;
+	}
+
+	const float AfterOnePulse = HealthOf(Ally);
+
+	Medic->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("the medic is dead"),
+				  UCataclysmSkillEffects::IsDead(Medic)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and now it heals nobody"), OneSecondOfSteps(Medic), 0);
+	TestEqual(TEXT("the ally gained nothing further"),
+			  HealthOf(Ally), AfterOnePulse, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsOncePerPulseTest,
+	"Cataclysm.EnemyModifiers.AMedicHealsOncePerPulseAndNotOnEveryStep")
+{
+	using namespace CataclysmMedicTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Medic =
+		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+	ACataclysmEnemyCharacter* Ally =
+		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 100.0f);
+	if (!TestNotNull(TEXT("a medic"), Medic)
+		|| !TestNotNull(TEXT("a wounded ally"), Ally))
+	{
+		return false;
+	}
+
+	// THREE OF THE FOUR STEPS IN A SECOND, so the accumulated time is 0.75 and
+	// the pulse is not yet due. Without this the aura could be healing four
+	// times a second and every other test here would still pass.
+	for (int32 Step = 0; Step < 3; ++Step)
+	{
+		UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f);
+	}
+
+	TestEqual(TEXT("nothing is healed before the second is up"),
+			  HealthOf(Ally), 100.0f, 0.01f);
+
+	// THE FOURTH STEP COMPLETES THE SECOND.
+	TestEqual(TEXT("the fourth step pulses"),
+			  UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f), 1);
+	TestEqual(TEXT("and it healed once, not four times"),
+			  HealthOf(Ally), 125.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicStepIsSafeTest,
+	"Cataclysm.EnemyModifiers.TheMedicStepRefusesAnythingThatIsNotACreature")
+{
+	// THE SAME REFUSAL THE AURA STEP MAKES, for the same reason: whatever calls
+	// this may hand it a player, or a null from a torn-down world.
+	TestEqual(TEXT("a null actor heals nobody"),
+			  UCataclysmEnemyModifiers::HealAlliesStep(nullptr, 0.25f), 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
