@@ -1481,6 +1481,287 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The one table of condition names, read by the passive tree. Issue #1581.
+//
+// A TABLE OF ONE ROW PER CASE, RATHER THAN MORE ROWS IN THE FIXTURE ABOVE. That
+// fixture is read by a dozen tests which count modifiers and read values off
+// named stats, so a row added to it for one case moves what another case
+// measures. A table holding only the row under test cannot.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPassiveConditionTest
+{
+	/** One effect row on `Ravager_low`, the fixture node that holds 8 points. */
+	UDataTable* MakeOneRow(FAutomationTestBase& Test, const TCHAR* Stat,
+						   const TCHAR* Condition, const TCHAR* Value)
+	{
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
+
+		const TArray<FString> Problems = Table->CreateTableFromCSVString(
+			FString::Printf(
+				TEXT("Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,")
+				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option\r\n")
+				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0\r\n"),
+				Stat, Condition, Value));
+
+		for (const FString& Problem : Problems)
+		{
+			Test.AddError(Problem);
+		}
+		return Problems.Num() == 0 ? Table : nullptr;
+	}
+
+	/**
+	 * The six predicates that compare nothing, written out here rather than
+	 * asked of the function under test.
+	 *
+	 * DELIBERATELY A SECOND COPY OF THAT LIST. Asking
+	 * `UCataclysmStatPipeline::ConditionTakesAValue` what to expect would make
+	 * the test agree with the code by construction and pass whatever the code
+	 * said. Writing the six out means a change to either one has to be made in
+	 * both places on purpose.
+	 */
+	bool ComparesNothing(const FString& Name)
+	{
+		return Name == TEXT("while_bleeding")
+			|| Name == TEXT("class_resource_at_maximum")
+			|| Name == TEXT("hit_is_melee_attack")
+			|| Name == TEXT("hit_is_ranged_attack")
+			|| Name == TEXT("hit_is_spell")
+			|| Name == TEXT("opponent_is_boss");
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnknownConditionTest,
+	"Cataclysm.Passives.APassiveRowNamingAConditionThisBuildCannotJudgeGrantsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A condition name the build cannot judge grants nothing at all. Issue #1581.
+ *
+ * WHAT IT USED TO DO, AND WHY IT WAS THE WORST AVAILABLE ANSWER. The name was
+ * logged and the modifier was then applied with NO condition, so a row nobody
+ * could judge became a bonus that held all the time. That is silent, and it is
+ * in the player's favour, which is the combination that survives playtesting.
+ *
+ * THE CONTROL IS ASSERTED FIRST AND IT IS NOT DECORATION. Without it this test
+ * would pass just as well against a build that granted nothing for EVERY row,
+ * which is the obvious way to break the fix.
+ */
+bool FCataclysmPassiveUnknownConditionTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveConditionTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	if (!NodeTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	// THE CONTROL. A name this build does know grants its modifier.
+	UDataTable* Known = MakeOneRow(*this, TEXT("crit_chance"),
+								   TEXT("health_at_or_below"), TEXT("20"));
+	if (!Known)
+	{
+		return false;
+	}
+
+	TMap<FName, TArray<FCataclysmStatModifier>> FromKnown;
+	TestEqual(TEXT("a row this build can judge adds one modifier"),
+			  UCataclysmPassiveTree::AccumulateInto(FromKnown, Allocation,
+													NodeTable, Known, Demonic),
+			  1);
+	TestTrue(TEXT("and it is the stat the row names"),
+			 FromKnown.Contains(FName(TEXT("crit_chance"))));
+
+	// AND THE ROW NOBODY CAN JUDGE. The name is written to be one nothing will
+	// ever add: the point is that it is absent from the shared table.
+	UDataTable* Unknown = MakeOneRow(*this, TEXT("crit_chance"),
+									 TEXT("no_such_condition_exists"),
+									 TEXT("20"));
+	if (!Unknown)
+	{
+		return false;
+	}
+
+	TMap<FName, TArray<FCataclysmStatModifier>> FromUnknown;
+	TestEqual(TEXT("a row naming a condition this build cannot judge adds "
+				   "nothing"),
+			  UCataclysmPassiveTree::AccumulateInto(FromUnknown, Allocation,
+													NodeTable, Unknown,
+													Demonic),
+			  0);
+	TestFalse(TEXT("and the stat it named was not granted"),
+			  FromUnknown.Contains(FName(TEXT("crit_chance"))));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSharedConditionTableTest,
+	"Cataclysm.Passives.AConditionOnlyTheSharedTableKnewNowReachesAPassiveModifier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `hit_is_spell` reaches a passive modifier. Issue #1581.
+ *
+ * THE NAME IS CHOSEN BECAUSE IT IS THE EXACT GAP. Issue #1578 added four names
+ * to `CONDITIONS` in the generator and to the stat pipeline's table, and not to
+ * the chain this function used to carry. Both tests that hold the names
+ * together read the generator and the pipeline, so all of them passed while a
+ * passive row naming one of the four would have been granted with no condition.
+ *
+ * AND IT CARRIES NO VALUE, which is the second half of the same row. This is
+ * one of the six predicates that compare nothing, so a build copying the value
+ * across would hand it a threshold it has no meaning for.
+ */
+bool FCataclysmPassiveSharedConditionTableTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveConditionTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	// A VALUE IS WRITTEN INTO THE ROW ON PURPOSE. The generator refuses to write
+	// one beside a predicate that compares nothing, so the only way to find out
+	// whether this reader would copy it is to hand it one.
+	UDataTable* EffectTable = MakeOneRow(*this, TEXT("spell_damage"),
+										 TEXT("hit_is_spell"), TEXT("7"));
+	if (!NodeTable || !EffectTable)
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											Demonic);
+
+	const TArray<FCataclysmStatModifier>* Spell =
+		Modifiers.Find(FName(TEXT("spell_damage")));
+	if (!TestNotNull(TEXT("the node granted spell damage"), Spell)
+		|| !TestEqual(TEXT("exactly one"), Spell->Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("three per point times eight points"), (*Spell)[0].Value,
+			  24.0f);
+	TestEqual(TEXT("and it carries the spell condition"),
+			  static_cast<int32>((*Spell)[0].Condition),
+			  static_cast<int32>(ECataclysmStatCondition::HitIsSpell));
+	TestTrue(TEXT("and it is not left unconditional"),
+			 (*Spell)[0].Condition != ECataclysmStatCondition::Always);
+	TestEqual(TEXT("carrying no value, because it compares nothing"),
+			  (*Spell)[0].ConditionValue, 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEveryConditionNameTest,
+	"Cataclysm.Passives.EveryConditionNameASheetMayWriteReachesAPassiveModifier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every name a data sheet may write reaches a passive modifier. Issue #1581.
+ *
+ * THE TEST THAT KEEPS THE LISTS FROM PARTING AGAIN, and it is the reason
+ * `AllConditionNames` exists. Naming the conditions by hand here would pass for
+ * ever after somebody adds a thirteenth, which is exactly how the passive tree
+ * came to be four names behind without any test noticing.
+ *
+ * THE NAMES COME FROM THE ENGINE'S OWN TABLE, and `CONDITIONS` in
+ * `tools/generate_datatables.py` is held equal to that table by
+ * `tools/tests/test_stat_condition_names_match_the_engine.py`. So the two
+ * together say every name the generator may write is one a passive row can
+ * carry.
+ *
+ * AND THE VALUE RULE FOR EACH, which is the other half of reading a condition.
+ * Every row here is handed a value of 7; the six predicates that compare
+ * nothing must come out with none, and the rest must carry it.
+ */
+bool FCataclysmPassiveEveryConditionNameTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmPassiveConditionTest;
+
+	UDataTable* NodeTable = MakeNodeTable(*this);
+	if (!NodeTable)
+	{
+		return false;
+	}
+
+	TArray<FString> Names;
+	UCataclysmStatPipeline::AllConditionNames(Names);
+
+	// WITHOUT THIS, AN EMPTY LIST WOULD MAKE THE LOOP BELOW ASSERT NOTHING and
+	// the test would pass having checked no name at all.
+	if (!TestTrue(TEXT("the shared table names at least twelve conditions"),
+				  Names.Num() >= 12))
+	{
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_low")), 8);
+
+	for (const FString& Name : Names)
+	{
+		// THE NAME RESOLVES THROUGH THE SHARED READER AT ALL.
+		ECataclysmStatCondition Resolved = ECataclysmStatCondition::Always;
+		if (!TestTrue(*FString::Printf(TEXT("%s resolves through ConditionNamed"),
+									   *Name),
+					  UCataclysmStatPipeline::ConditionNamed(Name, Resolved)))
+		{
+			continue;
+		}
+
+		UDataTable* EffectTable = MakeOneRow(*this, TEXT("armor"), *Name,
+											 TEXT("7"));
+		if (!EffectTable)
+		{
+			return false;
+		}
+
+		const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+			UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable,
+												EffectTable, Demonic);
+
+		const TArray<FCataclysmStatModifier>* Armour =
+			Modifiers.Find(FName(TEXT("armor")));
+		if (!TestNotNull(*FString::Printf(TEXT("%s granted its modifier"), *Name),
+						 Armour)
+			|| !TestEqual(*FString::Printf(TEXT("%s granted exactly one"), *Name),
+						  Armour->Num(), 1))
+		{
+			continue;
+		}
+
+		TestEqual(*FString::Printf(TEXT("%s reached the modifier as itself"),
+								   *Name),
+				  static_cast<int32>((*Armour)[0].Condition),
+				  static_cast<int32>(Resolved));
+		TestTrue(*FString::Printf(TEXT("%s did not come out unconditional"),
+								  *Name),
+				 (*Armour)[0].Condition != ECataclysmStatCondition::Always);
+
+		const float Expected = ComparesNothing(Name) ? 0.0f : 7.0f;
+		TestEqual(*FString::Printf(TEXT("%s carries the value it should"), *Name),
+				  (*Armour)[0].ConditionValue, Expected);
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveScaleReachesTheModifierTest,
 	"Cataclysm.Passives.ANodesScaleReachesTheModifierItGrants",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

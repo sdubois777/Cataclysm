@@ -110,6 +110,47 @@ bool UCataclysmStatPipeline::ConditionNamed(const FString& Name,
 	return false;
 }
 
+void UCataclysmStatPipeline::AllConditionNames(TArray<FString>& OutNames)
+{
+	OutNames.Reset();
+	OutNames.Reserve(UE_ARRAY_COUNT(NamedStatConditions));
+	for (const FNamedStatCondition& Each : NamedStatConditions)
+	{
+		OutNames.Add(Each.Name);
+	}
+}
+
+bool UCataclysmStatPipeline::ConditionTakesAValue(
+	ECataclysmStatCondition Condition)
+{
+	switch (Condition)
+	{
+	case ECataclysmStatCondition::WhileBleeding:
+	case ECataclysmStatCondition::ClassResourceAtMaximum:
+	case ECataclysmStatCondition::HitIsMeleeAttack:
+	case ECataclysmStatCondition::HitIsRangedAttack:
+	case ECataclysmStatCondition::HitIsSpell:
+	case ECataclysmStatCondition::OpponentIsBoss:
+		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
+		// nothing for a number to be compared against. Each of the six says so
+		// in its own comment in the header.
+		return false;
+
+	case ECataclysmStatCondition::Always:
+		// NO CONDITION AT ALL, SO NO VALUE EITHER. A modifier that applies
+		// always compares nothing by definition, and saying so here keeps a
+		// caller from copying a stray number onto an unconditional modifier.
+		return false;
+
+	default:
+		// EVERY THRESHOLD AND EVERY TIMED WINDOW. The default is this way round
+		// deliberately: a condition added to the enumerator and forgotten here
+		// keeps its value rather than silently losing it, and a value on a
+		// predicate that ignores it is the harmless direction of the two.
+		return true;
+	}
+}
+
 bool UCataclysmStatPipeline::ScaleNamed(const FString& Name,
 										ECataclysmStatScale& OutScale)
 {
