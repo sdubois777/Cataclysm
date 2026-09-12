@@ -855,6 +855,21 @@ bool FCataclysmHealingReceivedTest::RunTest(const FString&)
 				   "nothing"),
 			  Read(Player, Vital::GetHealthAttribute()), 500.0f, 0.01f);
 
+	// AND A NEGATIVE VALUE RESTORES THE PLAIN AMOUNT RATHER THAN MORE THAN IT,
+	// which is the half of the site's clamp that can actually be observed.
+	// Without a floor at zero a curse on healing would HEAL its victim harder
+	// than no curse at all. The upper bound cannot be caught by a test here,
+	// because a reduction past a hundred makes the gain negative and the
+	// `Gain <= 0` return above catches it before the arithmetic can do harm --
+	// so the assertion above passes either way, and this one does not.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), -50.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a negative reduction restores the plain amount, not more"),
+			  Read(Player, Vital::GetHealthAttribute()), 200.0f, 0.01f);
+
 	// AND THE TWO STATS COMPOSE. A reduction of fifty and a ceiling reduction of
 	// fifty: the ceiling is 500, the amount offered is halved, and a character
 	// on 100 offered 5000 stops at the ceiling rather than anywhere else.

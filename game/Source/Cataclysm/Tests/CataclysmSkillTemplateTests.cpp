@@ -11580,6 +11580,18 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 	TestEqual(TEXT("and takes no health either"),
 		Caster.Health(), 50000.0f, 0.01f);
 
+	// AND A NEGATIVE VALUE RETURNS THE ROW'S PLAIN FIGURE RATHER THAN MORE.
+	// This is the half of the clamp that can be observed here: without a floor
+	// at zero, a curse on healing would make the pyre return MORE than an
+	// uncursed one. The assertion above cannot catch the upper bound, because
+	// `FMath::Clamp(Wanted, 0.0f, ...)` below already floors a negative amount
+	// at nothing, so it passes with or without the clamp on the stat.
+	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), -100.0f);
+	const float Negative = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a negative reduction returns the plain 100, not more"),
+		Negative, 100.0f, 0.01f);
+
 	return true;
 }
 
