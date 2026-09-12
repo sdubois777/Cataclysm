@@ -365,6 +365,78 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BleedOnCritChance)
 
 	/**
+	 * THE CHANCE TO APPLY EACH AILMENT ON A HIT, IN PERCENT. Issue #899.
+	 *
+	 * ELEVEN, ONE PER AILMENT, named as `UCataclysmAilments::Kinds` names them.
+	 * The eleven Ailment affixes of `game/Data/Affixes.csv` grant them as flat
+	 * modifiers, and a passive node or an enchantment row naming one adds to the
+	 * same stat, because the design sums every source: "The chance summed is the
+	 * total across every source: affixes, gems, keystones and enchantments
+	 * alike."
+	 *
+	 * NOT CLAMPED TO A HUNDRED, unlike the other chances in this set. Chance past
+	 * certainty becomes magnitude -- 250 applies the ailment on every hit at 2.5
+	 * times -- so a figure above 100 is a real and larger answer.
+	 * `UCataclysmAilments::Application` does the splitting.
+	 *
+	 * NOT ON THE CHARACTER SHEET. The design document says of these affixes that
+	 * they "grant no number on the character sheet; what they grant is a chance".
+	 *
+	 * THEY BELONG TO WHOEVER SWUNG, like `BleedOnCritChance` above, and they are
+	 * asked for through `StatForSkill` rather than read, so a row scoped to melee
+	 * counts only for a melee skill. The attribute is the fallback.
+	 *
+	 * ZERO FOR EVERY CLASS AND EVERY ENEMY.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_BleedChance)
+	FGameplayAttributeData BleedChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BleedChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_PoisonChance)
+	FGameplayAttributeData PoisonChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, PoisonChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_DiseaseChance)
+	FGameplayAttributeData DiseaseChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DiseaseChance)
+
+	/** Granted by its affix and rolled by nothing until Void Splinter is built.
+	 *  Issue #915. */
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_VoidSplinterChance)
+	FGameplayAttributeData VoidSplinterChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, VoidSplinterChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_NecrosisChance)
+	FGameplayAttributeData NecrosisChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NecrosisChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_BurnChance)
+	FGameplayAttributeData BurnChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BurnChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_MadnessChance)
+	FGameplayAttributeData MadnessChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MadnessChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_CrippleChance)
+	FGameplayAttributeData CrippleChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CrippleChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_WeakenChance)
+	FGameplayAttributeData WeakenChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, WeakenChance)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_ShredChance)
+	FGameplayAttributeData ShredChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShredChance)
+
+	/** Added to a blunt weapon's own 10% and rolled as one chance. The project
+	 *  owner, 2026-08-16. */
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_StunChance)
+	FGameplayAttributeData StunChance;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, StunChance)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -729,6 +801,17 @@ protected:
 	UFUNCTION() void OnRep_CooldownReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CooldownSkipChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_BleedOnCritChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_BleedChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_PoisonChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_DiseaseChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_VoidSplinterChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_NecrosisChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_BurnChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MadnessChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CrippleChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_WeakenChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ShredChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_StunChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

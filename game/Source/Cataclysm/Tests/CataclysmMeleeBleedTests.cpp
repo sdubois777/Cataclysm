@@ -51,7 +51,9 @@
  * made at all. Both ends are decided without the roll. What is NOT covered is
  * that a chance of 40 makes a bleed happen about 40% of the time; a test of that
  * would either be statistical or would have to pin a roll that cannot be pinned.
- * Issue #1034 is the same gap on the blunt weapon stun, which copies this shape.
+ * Issue #1034 was the same gap on the blunt weapon stun. That roll can be pinned
+ * since issue #899 made it one pool with the chance to stun from gear, under
+ * `Cataclysm.AilmentRoll`. This one still cannot.
  *
  * EVERY NEGATIVE DIRECTION HAS ITS OWN TEST, and they are the ones that matter.
  * A build that dropped any one of the three conditions would still pass a test

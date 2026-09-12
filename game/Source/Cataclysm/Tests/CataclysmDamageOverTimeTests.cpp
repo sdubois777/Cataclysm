@@ -508,6 +508,52 @@ CATACLYSM_DOT_TEST(FCataclysmStrengthRowIsQuietTest,
 	return true;
 }
 
+CATACLYSM_DOT_TEST(FCataclysmTagOnlyRowIsQuietTest,
+	"Cataclysm.DamageOverTime.ARowThatIsOnlyItsTagDoesNotWarn")
+{
+	using namespace CataclysmStatusEffectWarningTest;
+
+	// MADNESS STATES A DURATION AND NOTHING ELSE, and that is a whole row: its
+	// tag is the effect, which `UCataclysmTeams` reads. Issue #899. The chance to
+	// madden reads this row on every blow that lands it, so the warning used to
+	// fire on each of them. The test after this one is why a row stating no
+	// duration still warns.
+	const FGameplayTag Madness = TagNamed(TEXT("Status.Debuff.Madness"));
+	if (!TestTrue(TEXT("Status.Debuff.Madness is a gameplay tag"),
+				  Madness.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatusEffectNumbers Numbers;
+	TArray<FString> Warned;
+	{
+		FScopedWarningCapture Capture;
+		Numbers = UCataclysmSkillEffects::NumbersForEffectTag(Madness);
+		Warned = Capture.CataclysmWarningsContaining(WarningNeedle);
+	}
+
+	// THE PRECONDITION: the row is still the shape this test is about, a
+	// duration with no strength and no amount.
+	TestEqual(TEXT("Madness lasts three seconds"), Numbers.DurationSeconds,
+		3.0f, 0.001f);
+	TestEqual(TEXT("and states no strength"), Numbers.Strength, 0.0f, 0.001f);
+	TestEqual(TEXT("and no flat amount per tick"),
+		Numbers.FlatDamagePerTick, 0.0f, 0.001f);
+
+	TestEqual(FString::Printf(
+		TEXT("reading it writes no unusable-row warning, and wrote %d: %s"),
+		Warned.Num(), Warned.Num() > 0 ? *Warned[0] : TEXT("")),
+		Warned.Num(), 0);
+
+	// AND IT IS STILL NOT DAMAGE OVER TIME, for the reason the Shred test above
+	// gives.
+	TestFalse(TEXT("and is still not usable as damage over time"),
+		Numbers.bUsable);
+
+	return true;
+}
+
 CATACLYSM_DOT_TEST(FCataclysmEmptyRowStillWarnsTest,
 	"Cataclysm.DamageOverTime.ARowStatingNeitherAStrengthNorAnAmountStillWarns")
 {
@@ -515,10 +561,8 @@ CATACLYSM_DOT_TEST(FCataclysmEmptyRowStillWarnsTest,
 
 	// NECROTIC FOG STATES NOTHING AT ALL -- no duration, no strength, no amount
 	// -- which is exactly the row this guard exists for. Burn was in that state
-	// until issue #895 and nothing reported it. A row that is merely not damage
-	// over time is deliberately NOT used here: Madness carries a duration and a
-	// tag and works, and pinning the guard to it would nail down behaviour that
-	// is itself still an open question.
+	// until issue #895 and nothing reported it. A row that is only its tag, such
+	// as Madness, has been quiet since issue #899, and the test above says so.
 	const FGameplayTag Fog = TagNamed(TEXT("Status.DoT.NecroticFog"));
 	if (!TestTrue(TEXT("Status.DoT.NecroticFog is a gameplay tag"), Fog.IsValid()))
 	{

@@ -2,6 +2,135 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-11 — A chance to apply an ailment is worked out where the blow is struck and rolled where it lands
+
+**Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and
+`.cpp`; `CataclysmSkillEffects.h` and `.cpp`, `CataclysmVitalAttributeSet.cpp`,
+`CataclysmCombatAttributeSet.h` and `.cpp` and `CataclysmMinion.cpp` beside them;
+`game/Source/Cataclysm/Items/CataclysmItem.cpp`;
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`; and their tests.
+**Applied.** Issue [#899](https://github.com/sdubois777/Cataclysm/issues/899).
+
+### What was missing
+
+Eleven gear affixes read "Chance to bleed", "Chance to stun" and so on, and none of
+them did anything. `UCataclysmItemModifiers::AccumulateInto` skipped them with a
+comment saying they were "applied where the hit is resolved", and nothing applied
+them there or anywhere else.
+
+### What is built
+
+**Eleven stats, one per ailment,** each a chance in percent: `bleed_chance`,
+`poison_chance`, `disease_chance`, `void_splinter_chance`, `necrosis_chance`,
+`madness_chance`, `cripple_chance`, `weaken_chance`, `shred_chance`, `burn_chance`
+and `stun_chance`.
+- Each is a gameplay attribute, zero for every class and every enemy.
+- A worn Ailment affix is a flat modifier on the stat its `Ailment` column names.
+- The enchantment session's rows add to the same stats. The names were agreed with
+  it.
+- **They are not on the character sheet.** The design document says the Ailment
+  affixes "grant no number on the character sheet; what they grant is a chance".
+- **They are not clamped to 100,** because chance past certainty becomes magnitude.
+
+**The chance is worked out on the attacker's side and rolled on the defender's
+side.**
+- `ApplyHit` is the only place that holds the skill's full tags. It asks
+  `StatForSkill` for each chance with those tags and the character's state, so a
+  row scoped to melee or carrying a condition counts when it holds.
+- Each chance above zero travels on the damage effect as a set-by-caller number,
+  under a plain name such as `Cataclysm.AilmentChance.Bleed`. Plain names and not
+  gameplay tags, because gameplay tags are registered in
+  `game/Config/Tags/CataclysmTags.ini`, which is generated from the workbook's Tags
+  sheet.
+- The defender's `UCataclysmVitalAttributeSet` hands the resolved blow to
+  `UCataclysmAilments::RollOnLandedBlow`, which rolls each chance once.
+- A console setting, `Cataclysm.AilmentRoll`, pins every roll the way
+  `Cataclysm.CritRoll` pins the critical strike roll. The tests use it.
+
+**Whoever the blow is credited to applies what lands:** the effect context's
+instigator, whose chances these are. For every blow sent through `ApplyHit`, that is
+also the actor that struck.
+
+**What carries no chance:**
+- A minion's blow. Its delivery sets the new `bCarriesNoAilmentChance` beside the
+  five exclusions it already sets, because the design names "chance to apply an
+  ailment" among what does not cross from a summoner.
+- A tick of damage over time, and so a burning patch of ground.
+- Retaliation, which is not sent through `ApplyHit`.
+- Anything an enemy does, because no enemy holds these stats.
+
+### The rules it applies, all decided before
+
+| Rule | Where it was decided |
+| :-- | :-- |
+| Chance above 100% multiplies the effect: 250% applies at 2.5 times | The owner, 2026-08-03 |
+| A blunt weapon's 10% chance to stun and the affix's chance to stun are one pool | The owner, 2026-08-16 (#298) |
+| An ailment that does not come from the skill's own row needs the blow to have taken a tenth of the target's maximum health | The owner, 2026-09-02 (#917) |
+| An evaded blow applies no ailment | The owner, 2026-09-04, widened on 2026-09-05 |
+| The strongest application of a lasting effect wins | The owner, 2026-09-09, built in #1570 and #1574, and extended to an effect that is only a tag by the judgement recorded in that entry for #1576 |
+| A two-handed weapon doubles every affix rolled on it | The design document, "A Two-Handed Weapon Is Worth Double, Per Implicit and Per Affix" |
+
+**A judgement, approved by the coordinating session on 2026-09-11.** The
+tenth-of-maximum-health threshold covers the whole pooled chance, including chance
+from a passive node or an enchantment. The 2026-09-02 entry defines an incidental
+ailment as "one that comes from a gem, an affix or an enemy modifier rather than
+from the skill's own row", and a passive node is not the skill's own row.
+Mutilation Mastery's bleed, which predates this and does not apply the threshold,
+is issue [#1565](https://github.com/sdubois777/Cataclysm/issues/1565).
+
+**Two choices that follow existing rules rather than making new ones:**
+- The threshold is measured against the damage the blow dealt to health, which is
+  the figure the incidental stun has always used. So a blow a shield absorbed
+  applies nothing.
+- A blow that killed applies nothing, as `ApplyBurn` already refused to set a
+  corpse alight.
+
+### What each ailment does when it lands
+
+| Ailment | Applied as |
+| :-- | :-- |
+| Bleed, Poison, Disease, Necrosis, Burn | Damage over time under its `Keyword.DoT.*` tag: the row's damage a tick times the magnitude, for the row's duration, scaled by the attacker's three damage over time stats |
+| Stun | One pool with a blunt weapon's 10%. `StunApplication` turns the total into a chance and a length, 0.75 seconds up to 3, and `ApplyStun` applies it with every anti-stun-lock rule |
+| Madness | Its tag, for the row's 3 seconds times the magnitude. `UCataclysmTeams` reads the tag |
+| Shred | `ApplyNamedEffect` at the row's 10 times the magnitude, cutting the one generic resistance an enemy holds |
+| Cripple | Its tag, for the row's 4 seconds. An enemy's speed reads it at the row's 30% (#1152). A magnitude above 1 changes nothing until Cripple's magnitude is built |
+| Weaken | Its tag, for the row's 5 seconds. **It changes nothing yet:** no code reduces an enemy's damage for it |
+| Void Splinter | Nothing yet. A worn affix grants the stat, and the roll leaves it out until the effect is built, under the owner's answer of 2026-09-11 on #915 |
+
+The figures are the rows of `game/Data/StatusEffects.csv`. **A search of
+`game/Source/Cataclysm` found no code for the rest of what three of those rows
+describe:** Bleed ticking only while its target moves, Disease spreading when its
+target dies, and Necrosis denying healing. Apart from this change's own table,
+nothing names `Keyword.DoT.Poison`, `Keyword.DoT.Disease` or
+`Keyword.DoT.Necrosis`; `UCataclysmDebuffs` counts them only as members of the
+branch every damage over time hangs from.
+
+### Two changes to neighbouring behaviour
+
+- **A tick of damage over time no longer rolls a blunt weapon's stun.** A weapon's
+  sub-type is read off the actor the damage is credited to, so until this a tick of
+  damage over time from a character holding a blunt weapon could stun, if the tick
+  took a tenth of the target's maximum health. The chance to stun is a chance to
+  apply an effect on hit, and a tick is not a hit.
+- **The status effect table no longer warns about a row that is only its tag.**
+  Madness states a duration and nothing else, which is a whole row, and the chance
+  to madden reads it on every blow that lands it. A damage over time row with no
+  amount, and a row with no duration, still warn.
+
+### Tested
+
+Issue #899's pull request carries the results. The tests:
+- eight in the new `game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp`;
+- `AChanceToStunFromGearJoinsABluntWeaponsTen` in `CataclysmDamageTypeTests.cpp`;
+- `ARowThatIsOnlyItsTagDoesNotWarn` in `CataclysmDamageOverTimeTests.cpp`;
+- `AnAilmentAffixGrantsItsChanceAndATwoHandedWeaponDoublesIt` in
+  `CataclysmItemTests.cpp`;
+- and three tests that skipped the Ailment affixes until now:
+  `EveryStatAnAffixGrantsHasAnAttributeBehindIt`,
+  `EveryAffixInTheDataReachesTheCharacter` and `EveryAffixInTheDataGrantsSomething`.
+
+---
+
 ## 2026-09-11 — The ranged enchantments get their effect rows, each rolling its own number
 
 **Affects:** the Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`
@@ -1760,10 +1889,25 @@ different field.
 ### How it was built, on 2026-09-11
 
 In `ApplyPin`, `ApplyNamedEffect` and `ApplyDamageOverTime`, in
-`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`.
-`ApplyTagForDuration` is unchanged. An effect that is only a tag, such as Madness
-or a stun, states no figure to compare, so the newest application still replaces
-the running one.
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`, and since issue
+[#1576](https://github.com/sdubois777/Cataclysm/issues/1576) in
+`ApplyTagForDuration` as well.
+
+**An effect that is only a tag is compared by how long it lasts.** It was left out
+at first: an effect such as Madness or a stun states no figure, so the newest
+application replaced the running one. The on-hit ailment roll
+([#899](https://github.com/sdubois777/Cataclysm/issues/899)) gave Madness a figure,
+because its row says "Magnitude extends the duration", and a later ordinary
+Madness then cut a 7.5 second one to 3.
+
+**A judgement**, approved by the coordinating session on 2026-09-11 and on the
+owner's review list: for an effect whose only figure is its duration, the stronger
+application is the one that lasts longer.
+- A shorter application changes nothing.
+- A longer one extends the running one to its own length, by the same start-time
+  refresh the other three use, so the tag is never taken off and put back.
+- A stun is not affected in practice, because a stunned target cannot be stunned
+  again for five seconds and the longest stun is three.
 
 **What an application stated travels on the effect itself.** It is a set-by-caller
 number that no modifier reads, under the plain name `Cataclysm.StatedMagnitude`.

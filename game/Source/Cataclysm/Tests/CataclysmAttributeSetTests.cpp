@@ -253,8 +253,17 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * So the sheet stays at 46. The combat set grew by twelve and the class
 	 * resource set by seven, which is what this count exists to keep honest.
 	 * A stat a passive node supplies and no player reads is not a sheet stat.
+	 *
+	 * THE ELEVEN CHANCES TO APPLY AN AILMENT ON A HIT were added under issue
+	 * #899, taking this from 17 to 28. An affix grants each of them, as affixes
+	 * grant attack damage, the first entry above, so the rule most of these
+	 * entries apply does not decide them. The design document does, in terms:
+	 * the Ailment affixes "grant no number on the character sheet; what they
+	 * grant is a chance, and the effect is defined in the status effect data."
+	 * `sim/cataclysm_sim/affixes.py` keeps them apart from the sheet's stats in
+	 * the same way, as an `AilmentAffix` rather than a `StatAffix`.
 	 */
-	constexpr int32 OffSheetCombatStats = 17;
+	constexpr int32 OffSheetCombatStats = 28;
 
 	/**
 	 * How far healing may take the character. Issue #988.

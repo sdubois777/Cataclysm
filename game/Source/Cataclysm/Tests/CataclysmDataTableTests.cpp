@@ -107,8 +107,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// rather than as Effect=Stun.
 	//
 	// 50, not 46. Four player-applied debuffs were defined: Madness, Cripple,
-	// Shred and Weaken. All four were already applied by gems and by affixes,
-	// and none of them said what they did.
+	// Shred and Weaken. Gems and affixes already named all four as effects they
+	// apply, and none of the four said what it did.
 	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          54)
 	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
 	// one status effect in the data that nothing applied, and the Of Embers gem

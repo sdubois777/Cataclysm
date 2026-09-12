@@ -671,6 +671,28 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// is dropped before it reaches a character.
 			{TEXT("bleed_on_crit_chance"),
 			 Combat::GetBleedOnCritChanceAttribute()},
+
+			// THE CHANCE TO APPLY EACH AILMENT ON A HIT, eleven of them. Issue
+			// #899. Zero for every class. The eleven Ailment affixes of
+			// `game/Data/Affixes.csv` grant them as flat modifiers, and a passive
+			// node or an enchantment row naming one adds to the same stat. Here
+			// for the reason every other stat supplied by gear or by a node is:
+			// `ApplyTo` loops over this map, so a stat missing from it is dropped
+			// before it reaches a character. `UCataclysmAilments::Kinds` pairs
+			// the same names with the same attributes, and
+			// `Cataclysm.Ailments.EveryAilmentIsJoinedUpAcrossTheGame` checks that
+			// the two agree.
+			{TEXT("bleed_chance"), Combat::GetBleedChanceAttribute()},
+			{TEXT("poison_chance"), Combat::GetPoisonChanceAttribute()},
+			{TEXT("disease_chance"), Combat::GetDiseaseChanceAttribute()},
+			{TEXT("void_splinter_chance"), Combat::GetVoidSplinterChanceAttribute()},
+			{TEXT("necrosis_chance"), Combat::GetNecrosisChanceAttribute()},
+			{TEXT("burn_chance"), Combat::GetBurnChanceAttribute()},
+			{TEXT("madness_chance"), Combat::GetMadnessChanceAttribute()},
+			{TEXT("cripple_chance"), Combat::GetCrippleChanceAttribute()},
+			{TEXT("weaken_chance"), Combat::GetWeakenChanceAttribute()},
+			{TEXT("shred_chance"), Combat::GetShredChanceAttribute()},
+			{TEXT("stun_chance"), Combat::GetStunChanceAttribute()},
 		};
 	}();
 

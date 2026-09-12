@@ -160,6 +160,44 @@ namespace CataclysmTestWorld
 	};
 
 	/**
+	 * Pins the roll for every chance to apply an ailment. Issue #899.
+	 *
+	 * THE SAME SHAPE AS `FScopedCritRoll` ABOVE. 0 applies every ailment a blow
+	 * carries any chance of, because every chance above zero beats it; 100
+	 * applies none. A blunt weapon's own chance to stun is rolled against it too,
+	 * since it shares one pool with the chance to stun from gear.
+	 *
+	 * NOT SILENCED SUITE-WIDE, for the reason the cooldown skip roll is not: the
+	 * chances are zero for every character wearing no ailment affix, and no roll
+	 * is made for a chance of zero. A blunt weapon's own 10% was rolled on every
+	 * blunt blow before this helper existed, and still is.
+	 */
+	struct FScopedAilmentRoll
+	{
+		explicit FScopedAilmentRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.AilmentRoll"));
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Roll, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedAilmentRoll()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = -1.0f;
+	};
+
+	/**
 	 * Pins the difficulty tier for as long as it is in scope. Issue #1444.
 	 *
 	 * THE SAME SHAPE AS `FScopedCritRoll` ABOVE, AND FOR A SHARPER REASON. The
