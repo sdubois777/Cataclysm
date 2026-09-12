@@ -127,6 +127,40 @@ public:
 	 */
 	static FGameplayTag CooldownTag(ECataclysmAbilitySlot Slot);
 
+	/**
+	 * The stat that says a skill cannot be used at all. Issue #41, slice 3a.
+	 *
+	 * ABOVE ZERO MEANS LOCKED, and zero -- which is every character until
+	 * something says otherwise -- means usable. Asked with a fallback of zero,
+	 * so a character with no stat line at all is not locked.
+	 *
+	 * A STAT AND NOT A GAMEPLAY TAG, WHICH IS THE MAIN DECISION HERE. The
+	 * cooldown above is a tag, and copying that shape would need a row on the
+	 * Tags sheet of `docs/All_Things_Cataclysm.xlsx`, because
+	 * `game/Config/Tags/CataclysmTags.ini` is generated from it and says so in
+	 * its own header. A stat read through the pipeline needs nothing generated.
+	 * `UCataclysmDebuffs::DoNotExpireStat` is the precedent for an on-or-off
+	 * stat asked this way.
+	 *
+	 * AND IT MUST NOT REUSE THE COOLDOWN TAG, for three reasons that are not
+	 * about convenience. A silence would read to the player as a cooldown;
+	 * `UCataclysmSkillTemplate::RefundCooldown` removes every effect granting
+	 * that tag, so the Dagger's Slipstream refund would cancel a lock; and the
+	 * Aura and Basic slots have no cooldown tag to reuse.
+	 *
+	 * ONE NAME FOR EVERY SOURCE, because the scoping is already in the data.
+	 * `FCataclysmEnchantmentEffectRow::RequiredTags` means "tags a skill must
+	 * carry for this to apply to it. Empty applies to all", so a row scoped to
+	 * `Slot.Ultimate` locks one slot and an unscoped row locks every skill that
+	 * asks. Neither needs a second stat.
+	 *
+	 * THE WORD DIFFERS BY ROW AND THE STAT DOES NOT. The enchantment says
+	 * "disabled", the dungeon modifier Edict of Silence says "preventing all
+	 * skill usage". Naming it for the mechanism rather than for one row's
+	 * wording is what lets both use it.
+	 */
+	static const TCHAR* LockedStat;
+
 private:
 	/** The default class's maximum mana at a level, from the Class Stats line. */
 	static float DefaultMaxManaAtLevel(int32 Level);

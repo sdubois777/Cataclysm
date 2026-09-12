@@ -125,6 +125,8 @@ float UCataclysmSkillSlots::ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level)
 	return OnHitAtLevel100 * (DefaultMaxManaAtLevel(Level) / Reference);
 }
 
+const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
+
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)
 {
 	// The Basic Attack is automatic and the Aura is a toggle. Neither waits, so

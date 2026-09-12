@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For the Fervour pool a health cost fills. Issue #954.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -13106,6 +13107,233 @@ bool FCataclysmSkillEvadedBlowCarriesNothingTest::RunTest(const FString& Paramet
 		Armoured.Actor->GetActorLocation().Equals(ArmouredStood, 1.0f));
 	TestEqual(TEXT("and the caster was paid the slot's mana on hit"),
 		Second.Mana(), SecondManaBefore + PaidOnHit, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A skill that is locked. Issue #41, slice 3a.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLockRefusesASkillTest,
+	"Cataclysm.Skills.ALockedSkillIsRefusedAndAnUnlockedOneIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLockRefusesASkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// TWO CASTERS AND TWO FRESH SKILL INSTANCES, WHICH IS NOT TIDINESS.
+	// `AMovementSkillIsRefusedWhileStandingInAPit` in this file records why in
+	// its own comment: written as one caster casting twice, it passed while the
+	// check it covered was deliberately broken, because the SECOND activation
+	// was refused by the FIRST one's cooldown rather than by the thing under
+	// test. Neither instance here has ever been used, so no cooldown exists on
+	// either and the only difference between the two activations is the stat.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Free(World, FVector::ZeroVector);
+	FScopedFighter Locked(World, FVector(30 * M, 0, 0));
+
+	const TCHAR* const Row = TEXT("Mode=Blink; Range=9; Radius=2");
+	UCataclysmMovementSkill* FreeStep = GrantSkill<UCataclysmMovementSkill>(
+		Free, ECataclysmAbilitySlot::Movement, Row, TEXT("Ashwalk"),
+		TEXT("Slot.Movement"));
+	UCataclysmMovementSkill* LockedStep = GrantSkill<UCataclysmMovementSkill>(
+		Locked, ECataclysmAbilitySlot::Movement, Row, TEXT("Ashwalk"),
+		TEXT("Slot.Movement"));
+	if (!FreeStep || !LockedStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+
+	// THE LOCK, UNSCOPED, SO IT REACHES EVERY SKILL THAT ASKS. A flat modifier
+	// above zero is the whole state; there is no tag and no gameplay effect.
+	// `UCataclysmSkillSlots::LockedStat` says why it is a stat.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	FCataclysmStatModifier Lock;
+	Lock.Bucket = ECataclysmStatBucket::Flat;
+	Lock.Source = ECataclysmModifierSource::Enchantment;
+	Lock.Value = 1.0f;
+	Inputs.Modifiers.Add(Lock);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillSlots::LockedStat), Inputs);
+	Locked.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE CONTROL FIRST, so every figure below is evidence of the lock rather
+	// than of a skill refused for some entirely different reason.
+	TestTrue(TEXT("a character with no lock may use its skill"),
+		Activate(Free, FreeStep));
+
+	TestFalse(TEXT("and a locked character may not"),
+		Activate(Locked, LockedStep));
+
+	// AND THE LOCK IS THE ONLY DIFFERENCE. Taking it away lets the same fresh
+	// instance through, which is what says the refusal was the stat and not the
+	// caster, the row, or anything else about this fighter.
+	Locked.AbilitySystem->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
+	TestTrue(TEXT("and once the lock is gone the same skill activates"),
+		Activate(Locked, LockedStep));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLockScopeTest,
+	"Cataclysm.Skills.ALockScopedToOneSlotLeavesTheOtherSlotsAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLockScopeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE SCOPING IS THE WHOLE REASON ONE STAT SERVES EVERY SOURCE, and it is
+	// not code in this project -- it is `RequiredTags` on the modifier, which
+	// the stat pipeline already honours. Issue #41, slice 3a. The enchantment
+	// row "your own ultimate ability is disabled" is tagged `Slot.Ultimate`, and
+	// all 403 rows of `game/Data/WeaponSkills.csv` carry exactly one `Slot.` tag,
+	// so a lock scoped that way reaches the Ultimates and nothing else.
+	//
+	// ONE CASTER IS SAFE HERE WHERE THE TEST ABOVE NEEDED TWO, because the two
+	// skills sit in DIFFERENT slots and a cooldown is per slot -- using the
+	// movement skill cannot put the ultimate on cooldown. The trap the test
+	// above avoids is one skill used twice, not two skills used once.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=9; Radius=2"), TEXT("Ashwalk"),
+		TEXT("Slot.Movement"));
+	UCataclysmSelfBuffSkill* Ultimate = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Duration=6"),
+		TEXT("Test Ultimate"), TEXT("Slot.Ultimate"));
+	if (!Step || !Ultimate)
+	{
+		AddError(TEXT("Could not grant both skills."));
+		return false;
+	}
+
+	const FGameplayTag UltimateSlot =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Slot.Ultimate")));
+	if (!TestTrue(TEXT("the Slot.Ultimate tag exists"), UltimateSlot.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	FCataclysmStatModifier Lock;
+	Lock.Bucket = ECataclysmStatBucket::Flat;
+	Lock.Source = ECataclysmModifierSource::Enchantment;
+	Lock.Value = 1.0f;
+	Lock.RequiredTags.AddTag(UltimateSlot);
+	Inputs.Modifiers.Add(Lock);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillSlots::LockedStat), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE SCOPED SLOT IS REFUSED AND THE OTHER IS NOT, which is the assertion
+	// pair that makes this a scope test rather than a lock test. Either one
+	// alone would pass for an implementation that ignored `RequiredTags`
+	// entirely -- refusing everything, or refusing nothing.
+	TestFalse(TEXT("a lock scoped to the Ultimate slot refuses the Ultimate"),
+		Activate(Caster, Ultimate));
+	TestTrue(TEXT("and leaves a skill in another slot alone"),
+		Activate(Caster, Step));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLockSparesBasicAttackTest,
+	"Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLockSparesBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	// THE DESIGN REQUIREMENT THIS PINS. Edict of Silence, the dungeon modifier
+	// issue #41's slice 3b builds, says "Only basic attacks function during this
+	// period". So an unscoped lock -- which is what that row needs -- must leave
+	// the basic attack alone, or a player has every slot refused and nothing to
+	// swing, which is being unable to act rather than being silenced.
+	//
+	// THIS TEST WAS ASKED FOR AS A SAFEGUARD AND FOUND A REAL FAULT. The claim
+	// it was meant to protect was that the basic attack cannot reach the lock at
+	// all, because `UCataclysmBasicAttack` is a function library rather than an
+	// ability. THAT IS TRUE OF THAT CLASS AND FALSE OF THE BASIC ATTACK:
+	// `UCataclysmBasicAttack::Swing` finds a granted ability by its slot tag and
+	// calls `TryActivateAbility`, and that ability is a
+	// `UCataclysmSkillTemplate` whose `Slot` is `BasicAttack` -- granted as a
+	// `UCataclysmStrikeSkill`, exactly as this test grants it below. So it
+	// arrives at the lock like every other skill and the exemption has to be
+	// written by name.
+	//
+	// WHICH THIS FILE ALREADY DOES TWICE, for the same reason: the
+	// planted-weapon refusal and the health-cost path both exempt the Basic slot
+	// by name. So the exemption the lock needs is the house pattern rather than
+	// a special case invented for it.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+
+	// A MOVEMENT SKILL AS THE CONTROL, AND IT IS NOT OPTIONAL. Without it, the
+	// basic attack swinging could mean the lock was never applied at all, and
+	// this test would pass against an implementation with no lock in it.
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=9; Radius=2"), TEXT("Ashwalk"),
+		TEXT("Slot.Movement"));
+
+	// THE BASIC ATTACK GRANTED THE WAY THE GAME GRANTS IT: a Strike skill in the
+	// Basic slot, at level 100. `CataclysmBasicAttackTests.cpp` does the same.
+	const FGameplayAbilitySpecHandle Handle =
+		Caster.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(),
+			ECataclysmAbilitySlot::BasicAttack, /*Level=*/100, Caster.Actor);
+	FGameplayAbilitySpec* Spec =
+		Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmStrikeSkill* Swing =
+		Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!Step || !Swing)
+	{
+		AddError(TEXT("Could not grant the movement skill and the basic attack."));
+		return false;
+	}
+	Swing->SkillName = TEXT("Basic Attack");
+	Swing->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=2.4; Angle=120; MaxTargets=1"));
+
+	// THE LOCK ON EVERYTHING: no `RequiredTags`, so it reaches every skill that
+	// asks. This is the shape slice 3b needs.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	FCataclysmStatModifier Lock;
+	Lock.Bucket = ECataclysmStatBucket::Flat;
+	Lock.Source = ECataclysmModifierSource::DungeonRule;
+	Lock.Value = 1.0f;
+	Inputs.Modifiers.Add(Lock);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillSlots::LockedStat), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE CONTROL: the lock really is on.
+	TestFalse(TEXT("a lock on everything refuses an ordinary skill"),
+		Activate(Caster, Step));
+
+	// AND THE REQUIREMENT: the basic attack still swings.
+	TestTrue(TEXT("but the basic attack still swings under the same lock"),
+		UCataclysmBasicAttack::Swing(Caster.AbilitySystem));
 
 	return true;
 }

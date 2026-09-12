@@ -354,6 +354,82 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	const FGameplayTagContainer* TargetTags,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
+	// A LOCKED SKILL REFUSES BEFORE ANYTHING ELSE IS ASKED. Issue #41, slice 3a.
+	// `UCataclysmSkillSlots::LockedStat` carries the whole argument for being a
+	// stat rather than a tag; this is where it is read.
+	//
+	// BEFORE `Super::` AND NOT AFTER, for two reasons. It is the cheapest
+	// refusal, and it is the more specific one: a player whose skill is locked
+	// should not be told it is on cooldown, which is what letting the engine's
+	// checks run first would put in `OptionalRelevantTags`.
+	//
+	// NOTHING IS SPENT EITHER WAY. Cost and cooldown are only CHECKED here;
+	// `CommitAbility`, reached from `CommitAndBegin`, is what spends them. So
+	// this is not the "refused before it costs anything" claim -- every refusal
+	// in this function has that property. It is about which reason wins.
+	//
+	// ASKED WITH THIS SKILL'S OWN TAGS, which is what makes one stat serve both
+	// a lock on a single slot and a lock on everything.
+	// `UCataclysmAbilitySystemComponent::StatForSkill` passes them into the stat
+	// pipeline, which scopes each modifier by them, and every designed skill
+	// carries a `Slot.<Name>` tag -- measured, 403 of the 403 rows in
+	// `game/Data/WeaponSkills.csv`, across six slot names. So an enchantment row
+	// scoped to `Slot.Ultimate` reaches only Ultimates with no code here knowing
+	// about slots at all.
+	//
+	// THE BASIC ATTACK IS EXEMPTED BY NAME, AND A COMMENT HERE ONCE CLAIMED IT
+	// DID NOT NEED TO BE. That claim was wrong and it is worth saying why, so
+	// nobody removes this. `UCataclysmBasicAttack` is a function library, which
+	// is true and is NOT the same as the basic attack being no ability: its
+	// `Swing` finds a granted ability by slot tag and calls
+	// `TryActivateAbility`, and that ability is a `UCataclysmSkillTemplate`
+	// whose `Slot` is `BasicAttack`. So it arrives here like everything else,
+	// and an UNSCOPED lock would take it away.
+	//
+	// WHICH THE DESIGN FORBIDS. Edict of Silence, the dungeon modifier slice 3b
+	// builds, says "Only basic attacks function during this period" -- so the one
+	// thing that must keep working is the one an unscoped lock would stop. A
+	// player with every slot refused and no basic attack cannot act at all.
+	//
+	// AND THIS FILE ALREADY DOES IT TWICE, which is what settles it as the house
+	// pattern rather than a special case invented here: the planted-weapon
+	// refusal exempts the Basic slot with the reason in terms -- "refusing every
+	// slot would leave them unable to act at all ... which reads as the game
+	// having stopped working rather than as a cost" -- and the health-cost path
+	// returns early on it.
+	//
+	// IT COSTS NOTHING TODAY AND IS NOT DEAD CODE. Slice 3a's only source is
+	// scoped to `Slot.Ultimate` and no row carries `Slot.Basic`, so nothing
+	// reaches this yet. It is here for slice 3b, and a test asserts it rather
+	// than leaving it to be discovered.
+	//
+	// A FALLBACK OF ZERO MEANS AN UNKNOWN CHARACTER IS NOT LOCKED. A creature's
+	// ability system is never given a character stat line and a player's has
+	// none before its first refresh; refusing those would take every skill away
+	// from them.
+	//
+	// NOTHING TURNS THIS ON YET, AND THAT IS DELIBERATE RATHER THAN UNFINISHED.
+	// The enchantment effect row that would set the stat has to be authored in
+	// the design workbook, which another branch held when this was written, and
+	// git cannot merge a binary file. Issue #1628 carries that row, the
+	// `RequiredTags=Slot.Ultimate` scoping it needs, and the three engine-side
+	// steps that come with it. A reader finding a lock that nothing locks should
+	// read #1628 rather than assume this was abandoned.
+	if (Slot != ECataclysmAbilitySlot::BasicAttack)
+	{
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<const UCataclysmAbilitySystemComponent>(
+					ActorInfo ? ActorInfo->AbilitySystemComponent.Get()
+							  : nullptr))
+		{
+			if (Cataclysm->StatForSkill(FName(UCataclysmSkillSlots::LockedStat),
+										SkillTags, 0.0f) > 0.0f)
+			{
+				return false;
+			}
+		}
+	}
+
 	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags,
 								   OptionalRelevantTags))
 	{

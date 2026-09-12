@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A skill can be locked, and the basic attack is exempted by name
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and
+`.cpp`, and `CataclysmSkillTemplate.cpp` beside them; and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`. **Applied, with no
+source yet.** Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41), the first half of the
+third slice of making the 117 dungeon modifiers do what their rows say.
+
+### What was missing
+
+Nothing in the game could take a skill away from a character. Four dungeon
+modifier rows and three enchantment rows need that and none of them worked, and
+`Celestial_Edict_of_Silence` — "Every 90 seconds, a divine silence sweeps the
+dungeon for 15 seconds, preventing all skill usage. Only basic attacks function
+during this period." — is the test suite's canonical example of a modifier that
+does nothing.
+
+### What is built, and what was deliberately not
+
+**A stat, read through the stat pipeline, above zero meaning locked.**
+`UCataclysmSkillTemplate::CanActivateAbility` refuses before calling the engine's
+cost and cooldown checks, so a locked skill is not reported as being on cooldown
+instead.
+
+**NOT A GAMEPLAY TAG, and that is the decision rather than a detail.** Copying the
+cooldown's shape would need a row on the Tags sheet of
+`docs/All_Things_Cataclysm.xlsx`, because `game/Config/Tags/CataclysmTags.ini` is
+generated from it and says so in its own header. A stat needs nothing generated,
+and `UCataclysmDebuffs::DoNotExpireStat` is the precedent for an on-or-off stat
+asked with a fallback of zero.
+
+**AND NOT THE COOLDOWN TAG REUSED**, for three reasons that are not convenience: a
+silence would read to the player as a cooldown; `RefundCooldown` removes every
+effect granting that tag, so the Dagger's Slipstream refund would cancel a lock;
+and the Aura and Basic slots have no cooldown tag to reuse.
+
+**One stat name serves every source, because the scoping already existed in the
+data.** `FCataclysmEnchantmentEffectRow::RequiredTags` means "tags a skill must
+carry for this to apply to it. Empty applies to all", and `StatForSkill` passes the
+skill's own tags into the pipeline. Measured: all **403** rows of
+`game/Data/WeaponSkills.csv` carry exactly one slot tag, across six names, with no
+`Slot.Basic` among them. So a row scoped to `Slot.Ultimate` locks one slot and an
+unscoped row locks everything, with no code knowing about slots.
+
+### The basic attack is an ability, and a first version of this said it was not
+
+This is recorded because the reasoning that nearly shipped was wrong, and the code
+comment now exists to stop the exemption being removed as redundant.
+
+The claim was that the basic attack cannot reach the check, because
+`UCataclysmBasicAttack` is a function library rather than an ability. **That is
+true of that class and false of the basic attack.** Its `Swing` finds a granted
+ability by slot tag and calls `TryActivateAbility`, and that ability is a
+`UCataclysmSkillTemplate` whose slot is the basic attack — granted as a
+`UCataclysmStrikeSkill`, which is how `CataclysmBasicAttackTests.cpp` grants it.
+
+**And this file already exempted that slot twice, with the reason in terms:**
+"refusing every slot would leave them unable to act at all for ten seconds, which
+reads as the game having stopped working rather than as a cost." So the exemption
+is the pattern in that file, not a special case invented for the lock.
+
+**It did not bite this half and would have bitten the next**, and the two are kept
+apart rather than the first excusing the second: this half's only intended source
+is scoped to one slot, while Edict of Silence needs the lock unscoped.
+
+**What found it was being asked for a test.** The request was made on the
+expectation that the exemption held today and might not later. Writing it required
+deciding what the basic attack is, which is the question neither session had asked.
+A test request turns out to be a way to audit a premise and not only to guard
+against drift.
+
+### One judgement, and the genre supports it
+
+**A lock refuses the next activation and does not interrupt a skill already
+running.** Ruled by the coordinating session and supported by what shipped games
+do: a silence gates *starting* a skill in Path of Exile 1 and 2, in Diablo IV's
+Daze, and in Torchlight Infinite, and interrupting is what stun is for. Grim Dawn
+is the one counter-example and it pairs its lock with a resistance stat this game
+does not have.
+
+**NO GAME REACHED DOCUMENTS WHETHER A SILENCE SEVERS A SKILL ALREADY
+CHANNELLING.** That interaction is unsettled everywhere, and recording the absence
+is worth as much as recording a finding: the next person does not repeat the
+search.
+
+### Nothing sets this stat yet, and that is deliberate
+
+The enchantment effect row that would set it has to be authored in
+`docs/All_Things_Cataclysm.xlsx`, which another branch held a committed change to
+while this was written — and git cannot merge a binary file, so a second editor
+means one change losing work.
+[#1628](https://github.com/sdubois777/Cataclysm/issues/1628) carries that row, its
+scoping, why its value kind must be flat, and the three engine-side steps that come
+with it. **The refusal site's comment says the same**, so a reader finding a lock
+that nothing locks is sent there rather than guessing whether it was abandoned.
+
+### A defect found while placing this, filed and not fixed
+
+`UCataclysmGameplayAbility::CanActivateAbility` does not ask whether a character
+may act at all. Measured: zero references to being stunned or unable to act in that
+file, and the five in `CataclysmSkillTemplate.cpp` are all about a skill that
+*applies* stun to a target. The only refusal is in the player controller's press
+handler, so **a stunned character can still use a skill activated by any other
+route.** [#1627](https://github.com/sdubois777/Cataclysm/issues/1627). One
+mechanism per change, and a lock and a stun are two.
+
+### What the player cannot see yet
+
+**A locked slot looks like any other.** The genre research says a mark on the skill
+bar alone is the weakest option — the one shipped game with a real skill lock shows
+the player almost nothing and is the game whose players complain about that — so a
+character-side indication is worth proposing separately.
+
+**For the silence in the second half this is already ruled differently**: the
+on-screen notice is part of that feature rather than a follow-up, because without
+it fifteen seconds of dead key presses is indistinguishable from the game being
+broken. Issue
+[#1591](https://github.com/sdubois777/Cataclysm/issues/1591) stays open for the
+general problem of every floor rule's state being invisible; that notice will not
+be a fix for it.
+
+
+---
+
 ## 2026-09-12 — A blow records whether whoever threw it is staggered, and that fact is read off the actor rather than off a creature
 
 **Affects:** `ECataclysmStatCondition`, `FCataclysmBlowContext`,
