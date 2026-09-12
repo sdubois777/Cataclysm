@@ -94,6 +94,7 @@ namespace
 		Blow.bIsRanged = Hit.bIsRanged;
 		Blow.bIsSpell = Hit.bIsSpell;
 		Blow.bOpponentIsBoss = Hit.bFromBoss;
+		Blow.bOpponentIsStaggered = Hit.bFromStaggered;
 		return Blow;
 	}
 

@@ -73,6 +73,7 @@ namespace
 		{ TEXT("hit_is_ranged_attack"),         ECataclysmStatCondition::HitIsRangedAttack },
 		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
 	};
 
 	struct FNamedStatScale
@@ -131,8 +132,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsRangedAttack:
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
+	case ECataclysmStatCondition::OpponentIsStaggered:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the six says so
+		// nothing for a number to be compared against. Each of the seven says so
 		// in its own comment in the header.
 		return false;
 
@@ -304,6 +306,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::OpponentIsBoss:
 		return State.Blow.bOpponentIsBoss;
+
+	case ECataclysmStatCondition::OpponentIsStaggered:
+		// THE SAME TWO RULES AS THE BLOW PREDICATES ABOVE. Issue #45. A caller
+		// with no blow in hand leaves this false, and a drawback that costs the
+		// character something only while its attacker is staggered is correctly
+		// withheld from a character sheet that has no attacker at all.
+		return State.Blow.bOpponentIsStaggered;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved

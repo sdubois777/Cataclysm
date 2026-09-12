@@ -2,6 +2,58 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A blow records whether whoever threw it is staggered, and that fact is read off the actor rather than off a creature
+
+**Affects:** `ECataclysmStatCondition`, `FCataclysmBlowContext`,
+`NamedStatConditions`, `ConditionTakesAValue` and the condition predicate in
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`;
+`FCataclysmIncomingHit` and `BlowOf` in `CataclysmDamageCalculation.h` and
+`.cpp`; the hit-building step in `CataclysmVitalAttributeSet.cpp`; `CONDITIONS`
+in `tools/generate_datatables.py`; and the tests in
+`CataclysmDamageBySourceTests.cpp` and `CataclysmPassiveTreeTests.cpp`.
+Issue #45.
+
+**What it is for.** `EnchantmentsNegative.csv` line 151 reads "Staggered enemies
+deal 15%-30% increased damage to you". It is the tenth row of the family built
+under issue #666: a `damage_taken` row on the wearer, gated on a fact about the
+incoming blow. The four existing facts say what kind of blow it was and whether
+a boss threw it; this is a thirteenth condition, `opponent_is_staggered`, saying
+whether whoever threw it is staggered.
+
+**The fact is read off the causer as an actor, NOT inside the cast to the enemy
+creature class.** That cast is where `bFromBoss` is read, because a boss is a
+creature rarity and only an enemy creature can have one. The Staggered state is
+different: a landed knockback, pull or knockdown leaves it on anything it moves,
+and the player is a legitimate attacker. Reading it inside that cast would leave
+it false for every blow a player throws — silently, with the row simply never
+firing. The two facts sit next to each other and are deliberately read in
+different places, and both places say why.
+
+**A value-less condition has to be named in six places, not three.** The three
+obvious ones are the list of condition kinds, the name table the engine reads,
+and `CONDITIONS` in the generator. Issue #1581 added two more: a helper saying
+whether a condition compares a number, whose default is that it does, and a
+deliberate second copy of that list in the passive tree tests so the test cannot
+agree with the code by construction. The sixth is the predicate itself — the
+code that answers yes or no. A name added everywhere but there is a condition the
+engine knows and nothing judges, and the switch's fallthrough refuses it, so
+every row carrying it would grant nothing with nothing to say so.
+
+**Not in this change: the data row.** The row is authored on the Enchantment
+Effects sheet of `docs/All_Things_Cataclysm.xlsx`, which is with another session.
+The mechanism is built and tested with rows made up inside the tests, exactly as
+the four conditions of #666 were built before their data rows existed, and the
+row follows when the workbook returns.
+
+**Two tests, and the weaker one cannot fail on the line that matters.** The
+table-driven test checks every condition against every kind of blow, but it fills
+the blow in by hand, so it would pass unchanged if nothing ever read the state
+off the attacker. `AHitFromAStaggeredAttackerSaysSoAndAnUnstaggeredOneDoesNot`
+drives real hits from a genuinely staggered creature and an unstaggered one, and
+it is the only test here that can fail on that line.
+
+---
+
 ## 2026-09-12 — An authored name this build cannot judge grants nothing, and one list of names is read by everything
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`, with

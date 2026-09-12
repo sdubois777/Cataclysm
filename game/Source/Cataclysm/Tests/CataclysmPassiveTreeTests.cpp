@@ -1514,13 +1514,13 @@ namespace CataclysmPassiveConditionTest
 	}
 
 	/**
-	 * The six predicates that compare nothing, written out here rather than
+	 * The seven predicates that compare nothing, written out here rather than
 	 * asked of the function under test.
 	 *
 	 * DELIBERATELY A SECOND COPY OF THAT LIST. Asking
 	 * `UCataclysmStatPipeline::ConditionTakesAValue` what to expect would make
 	 * the test agree with the code by construction and pass whatever the code
-	 * said. Writing the six out means a change to either one has to be made in
+	 * said. Writing the seven out means a change to either one has to be made in
 	 * both places on purpose.
 	 */
 	bool ComparesNothing(const FString& Name)
@@ -1530,7 +1530,8 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("hit_is_melee_attack")
 			|| Name == TEXT("hit_is_ranged_attack")
 			|| Name == TEXT("hit_is_spell")
-			|| Name == TEXT("opponent_is_boss");
+			|| Name == TEXT("opponent_is_boss")
+			|| Name == TEXT("opponent_is_staggered");
 	}
 }
 

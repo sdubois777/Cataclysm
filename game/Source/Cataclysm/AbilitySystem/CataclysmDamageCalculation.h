@@ -190,6 +190,17 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bFromBoss = false;
+
+	/**
+	 * Whether whoever threw the blow is staggered. Issue #45.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, not as an enemy creature. A
+	 * knockback, pull or knockdown leaves the Staggered state on anything it
+	 * moves, the player included, so this is not a creature rarity the way
+	 * `bFromBoss` above is and is read outside that cast.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromStaggered = false;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */

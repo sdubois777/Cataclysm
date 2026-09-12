@@ -135,7 +135,8 @@ namespace CataclysmDamageBySourceTest
 
 	/** A 400 point hit carrying these facts and nothing else. */
 	FCataclysmIncomingHit HitOf(bool bMelee, bool bRanged, bool bSpell,
-								bool bFromBoss = false)
+								bool bFromBoss = false,
+								bool bFromStaggered = false)
 	{
 		FCataclysmIncomingHit Hit;
 		Hit.Damage = 400.0f;
@@ -143,6 +144,7 @@ namespace CataclysmDamageBySourceTest
 		Hit.bIsRanged = bRanged;
 		Hit.bIsSpell = bSpell;
 		Hit.bFromBoss = bFromBoss;
+		Hit.bFromStaggered = bFromStaggered;
 		return Hit;
 	}
 
@@ -186,6 +188,8 @@ bool FCataclysmDamageBySourceEachRowTest::RunTest(const FString& Parameters)
 		{ TEXT("ranged attacks"), ECataclysmStatCondition::HitIsRangedAttack },
 		{ TEXT("spells"), ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("bosses"), ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("staggered attackers"),
+		  ECataclysmStatCondition::OpponentIsStaggered },
 	};
 
 	struct FKind
@@ -203,6 +207,9 @@ bool FCataclysmDamageBySourceEachRowTest::RunTest(const FString& Parameters)
 		  ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("a boss's hit"), HitOf(false, false, false, true),
 		  ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("a staggered attacker's hit"),
+		  HitOf(false, false, false, false, true),
+		  ECataclysmStatCondition::OpponentIsStaggered },
 		// `Always` is no row's condition, so this hit meets none of them.
 		{ TEXT("a hit that says nothing"), HitOf(false, false, false),
 		  ECataclysmStatCondition::Always },
@@ -559,6 +566,138 @@ bool FCataclysmDamageBySourceBossTest::RunTest(const FString& Parameters)
 		Struck(Boss, Defender), BossPlain * 0.5f, 0.01f);
 	TestEqual(TEXT("a Herald's hit does not"),
 		Struck(Herald, Defender), HeraldPlain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceStaggeredTest,
+	"Cataclysm.DamageBySource.AHitFromAStaggeredAttackerSaysSoAndAnUnstaggeredOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceStaggeredTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// WHY THIS EXISTS BESIDE THE TABLE-DRIVEN TEST ABOVE. That one fills the
+	// hit in by hand, so it would pass unchanged even if nothing ever read the
+	// Staggered state off the attacker. This drives real hits, so it is the only
+	// test here that can fail on the line that reads it. Issue #45, for
+	// "Staggered enemies deal 15%-30% increased damage to you".
+	//
+	// THREE ATTACKERS, AND THE THIRD IS NOT A CREATURE. A staggered creature and
+	// an unstaggered one show the condition is read at all. The third, a bare
+	// actor, is what shows it is read in the right PLACE: see the comment beside
+	// it further down.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Spawn = [World](const FVector& Where)
+	{
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+	};
+	ACataclysmEnemyCharacter* Staggered = Spawn(FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Steady = Spawn(FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Spawn(FVector(0.0f, 1000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Defender = Spawn(FVector(1000.0f, 1000.0f, 0.0f));
+	if (!TestNotNull(TEXT("an attacker to stagger"), Staggered)
+		|| !TestNotNull(TEXT("one to leave alone"), Steady)
+		|| !TestNotNull(TEXT("a control"), Control)
+		|| !TestNotNull(TEXT("a defender"), Defender))
+	{
+		return false;
+	}
+
+	Staggered->SetAttackDamage(100.0f);
+	Steady->SetAttackDamage(100.0f);
+
+	// ON THE PLAYER'S SIDE, AS A PLAYER WOULD BE, with health enough for every
+	// hit here. The same arrangement the boss test above uses.
+	for (ACataclysmEnemyCharacter* Target : { Control, Defender })
+	{
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(1'000'000.0f);
+	}
+	UCataclysmAbilitySystemComponent* Guarded =
+		Cast<UCataclysmAbilitySystemComponent>(Defender->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the defender's ability system"), Guarded))
+	{
+		return false;
+	}
+	TakeDamageThrough(Guarded,
+		{ Row(ECataclysmStatCondition::OpponentIsStaggered, -50.0f) });
+
+	// STAGGER ONE OF THE TWO, AND CHECK IT TOOK. A stagger that never landed
+	// would make both attackers alike and every assertion below pass for the
+	// wrong reason.
+	//
+	// BOTH WHAT THE CALL REPORTS AND WHAT THE CHARACTER CARRIES, because the
+	// two can disagree: a call that refused would return false while a tag left
+	// by something else was still present, and checking only the tag would read
+	// that as a stagger this test applied.
+	const bool bApplied =
+		UCataclysmSkillEffects::ApplyStagger(Staggered, Staggered);
+	if (!TestTrue(TEXT("the stagger was applied"), bApplied)
+		|| !TestTrue(TEXT("and the attacker carries it"),
+					 UCataclysmSkillEffects::IsStaggered(Staggered))
+		|| !TestFalse(TEXT("and the other one does not"),
+					  UCataclysmSkillEffects::IsStaggered(Steady)))
+	{
+		return false;
+	}
+
+	// PLAIN ACTORS, not enemy creatures, because one attacker below is neither.
+	// `ApplyHit` takes actors anyway; the boss test above narrows its own copy
+	// to creatures only because both of its attackers are.
+	const auto Struck = [](AActor* From, AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float StaggeredPlain = Struck(Staggered, Control);
+	const float SteadyPlain = Struck(Steady, Control);
+	if (!TestTrue(TEXT("both hits land for something"),
+				  StaggeredPlain > 0.0f && SteadyPlain > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a staggered attacker's hit meets the row"),
+		Struck(Staggered, Defender), StaggeredPlain * 0.5f, 0.01f);
+	TestEqual(TEXT("an unstaggered attacker's hit does not"),
+		Struck(Steady, Defender), SteadyPlain, 0.01f);
+
+	// AND AN ATTACKER THAT IS NOT AN ENEMY CREATURE AT ALL, which is the case
+	// this test exists for as much as the two above.
+	//
+	// WITHOUT IT THE HEADER'S CLAIM IS UNTESTED. `bFromStaggered` is read off
+	// the causer as a plain actor rather than inside the cast to the enemy
+	// creature class, and the comment there says putting it inside that cast
+	// would leave it false for every blow a player throws. Both attackers above
+	// ARE enemy creatures, so that mistake would still answer correctly for
+	// them and nothing would fail. A bare actor is what makes the claim
+	// checkable, and `FScopedFighter` is one: it spawns an AActor and fits it
+	// with the attribute sets and weapon damage a blow needs.
+	const FScopedFighter Outsider(World);
+	if (!TestTrue(TEXT("the bare attacker is staggered"),
+				  UCataclysmSkillEffects::ApplyStagger(Outsider.Actor,
+													   Outsider.Actor)))
+	{
+		return false;
+	}
+
+	const float OutsiderPlain = Struck(Outsider.Actor, Control);
+	if (!TestTrue(TEXT("its plain hit lands for something"), OutsiderPlain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a staggered attacker that is no creature also meets the row"),
+		Struck(Outsider.Actor, Defender), OutsiderPlain * 0.5f, 0.01f);
 
 	return true;
 }
