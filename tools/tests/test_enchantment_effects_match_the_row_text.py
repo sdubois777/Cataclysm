@@ -114,15 +114,25 @@ JUDGED_NUMBERS = {
 #: `docs/DECISIONS.md` at the same time.
 #: Seven rows over seven enchantments until 2026-09-11, when the ranged
 #: enchantments' rows were written, and 64 over 56 until the four buildable
-#: sets got their eight rows.
-AUTHORED_ROWS = 81
-AUTHORED_ENCHANTMENTS = 73
+#: sets got their eight rows, and 81 over 73 until Brute's Heart and Demon
+#: King's Regalia got six rows between them on 2026-09-12.
+AUTHORED_ROWS = 87
+AUTHORED_ENCHANTMENTS = 77
 
 #: The named sets whose rows are written, by the identifier their Weight column
-#: carries: Archon's Aegis, Mana Weaver, Divine Retribution and Warlord's Will.
-#: The other ten wait for what their rows need, and `docs/DECISIONS.md` says
-#: what each one waits for.
-SETS_THAT_WORK = [5, 8, 16, 17]
+#: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
+#: Regalia (11), Divine Retribution (16) and Warlord's Will (17). The other
+#: eight wait for what their rows need, and `docs/DECISIONS.md` says what each
+#: one waits for.
+#:
+#: SIX OF FOURTEEN SINCE 2026-09-12, and four before that. Brute's Heart and
+#: Demon King's Regalia were both waiting for one reading: an attacker asking
+#: how far away its target is, which is `target_within_metres`. Their 2-piece
+#: bonuses differ by one word -- one says "increased" and the other "more" --
+#: which is why that reading is a condition on a row rather than a value added
+#: in code. Their drawbacks needed nothing new and are written with them,
+#: because a set is written whole or not at all.
+SETS_THAT_WORK = [5, 8, 9, 11, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
