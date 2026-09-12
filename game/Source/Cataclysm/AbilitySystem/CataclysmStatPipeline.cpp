@@ -74,6 +74,7 @@ namespace
 		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
 		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
+		{ TEXT("target_is_staggered"),          ECataclysmStatCondition::TargetIsStaggered },
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
 		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
@@ -140,10 +141,11 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
 	case ECataclysmStatCondition::OpponentIsStaggered:
+	case ECataclysmStatCondition::TargetIsStaggered:
 	case ECataclysmStatCondition::WhileMoving:
 	case ECataclysmStatCondition::WhileStationary:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the nine says
+		// nothing for a number to be compared against. Each of the ten says
 		// so in its own comment in the header.
 		//
 		// THE LAST TWO ARE ISSUE #41'S SLICE 2: whether the character moved in
@@ -327,6 +329,19 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character something only while its attacker is staggered is correctly
 		// withheld from a character sheet that has no attacker at all.
 		return State.Blow.bOpponentIsStaggered;
+
+	case ECataclysmStatCondition::TargetIsStaggered:
+		// THE MIRROR OF THE CASE ABOVE, READING A DIFFERENT FIELD, and that is the
+		// whole safeguard. `Blow` is filled only on the defender's damage taken
+		// lookup and `bTargetIsStaggered` only on the attacker's own lookups, so a
+		// row carrying the wrong one of this pair reads a field nothing filled and
+		// grants nothing. It cannot read the staggered state of the character at
+		// the other end of the blow and quietly answer with it.
+		//
+		// FALSE IS ALSO "NO TARGET IN HAND", and both meanings refuse together. A
+		// character sheet built with no blow and no target answers false here, so
+		// a bonus conditioned on a staggered target is correctly withheld from it.
+		return State.bTargetIsStaggered;
 
 	case ECataclysmStatCondition::WhileMoving:
 		// NO THRESHOLD, SO `Value` IS NOT READ. A caller with no character leaves

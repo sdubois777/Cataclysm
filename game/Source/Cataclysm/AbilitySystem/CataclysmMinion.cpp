@@ -115,6 +115,20 @@ namespace
 		// rather than a safeguard, and it would vanish the moment a minion's blow
 		// carried its skill's tags.
 		Delivery.bCarriesNoTargetDistance = true;
+
+		// AND IT REPORTS NO STATE OF ITS TARGET EITHER, the eighth. Issue #45.
+		//
+		// THE SAME GROUND AS THE SEVENTH AND A WEAKER CASE FOR MEASURING IT. The
+		// distance above at least reports the wrong end of the blow; whether this
+		// minion's target is staggered is a fact about that target and is exactly
+		// the same whoever struck it, so there is no wrong number here to point
+		// at. It is refused purely because a player's conditional damage bonus
+		// should not reach a minion's blow -- which is the real reason the
+		// seventh is refused as well, stated there in full.
+		//
+		// SET TOGETHER WITH THE SEVENTH AND ALWAYS WILL BE. If a third reading of
+		// the target appears, the three should become one flag.
+		Delivery.bCarriesNoTargetState = true;
 		return Delivery;
 	}
 

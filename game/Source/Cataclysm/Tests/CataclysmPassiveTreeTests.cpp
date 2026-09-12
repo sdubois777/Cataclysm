@@ -1514,13 +1514,13 @@ namespace CataclysmPassiveConditionTest
 	}
 
 	/**
-	 * The seven predicates that compare nothing, written out here rather than
+	 * The ten predicates that compare nothing, written out here rather than
 	 * asked of the function under test.
 	 *
 	 * DELIBERATELY A SECOND COPY OF THAT LIST. Asking
 	 * `UCataclysmStatPipeline::ConditionTakesAValue` what to expect would make
 	 * the test agree with the code by construction and pass whatever the code
-	 * said. Writing the nine out means a change to either one has to be made
+	 * said. Writing the ten out means a change to either one has to be made
 	 * in both places on purpose.
 	 */
 	bool ComparesNothing(const FString& Name)
@@ -1532,6 +1532,10 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("hit_is_spell")
 			|| Name == TEXT("opponent_is_boss")
 			|| Name == TEXT("opponent_is_staggered")
+			// ISSUE #45 AGAIN, AND THE MIRROR OF THE NAME ABOVE. One asks whether
+			// whoever threw the blow is staggered and the other whether the
+			// character being hit is, and they read separate fields on purpose.
+			|| Name == TEXT("target_is_staggered")
 			// ISSUE #41'S SLICE 2. The other three movement conditions compare
 			// a number, so they are deliberately absent.
 			|| Name == TEXT("while_moving")
@@ -1623,7 +1627,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSharedConditionTableTest,
  * passive row naming one of the four would have been granted with no condition.
  *
  * AND IT CARRIES NO VALUE, which is the second half of the same row. This is
- * one of the six predicates that compare nothing, so a build copying the value
+ * one of the ten predicates that compare nothing, so a build copying the value
  * across would hand it a threshold it has no meaning for.
  */
 bool FCataclysmPassiveSharedConditionTableTest::RunTest(const FString&)
@@ -1749,7 +1753,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEveryConditionNameTest,
  * carry.
  *
  * AND THE VALUE RULE FOR EACH, which is the other half of reading a condition.
- * Every row here is handed a value of 7; the six predicates that compare
+ * Every row here is handed a value of 7; the ten predicates that compare
  * nothing must come out with none, and the rest must carry it.
  */
 bool FCataclysmPassiveEveryConditionNameTest::RunTest(const FString&)

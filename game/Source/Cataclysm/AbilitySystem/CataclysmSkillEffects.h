@@ -230,6 +230,34 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCarriesNoTargetDistance = false;
 
 	/**
+	 * This blow reports no STATE of its target, so a row conditioned on one
+	 * grants nothing for it. Issue #45.
+	 *
+	 * THE EIGHTH OF THE EXCLUSIONS A MINION'S BLOW SETS, and the second of the
+	 * kind the one above is. The first six each stop a CAPABILITY of the
+	 * summoner's from crossing -- its critical strike, its penetration, its
+	 * weapon, its leech, its ailment chances -- and in each case the number that
+	 * would have crossed was simply the wrong number. These last two are refused
+	 * on a different ground: a player's conditional damage bonus should not reach
+	 * a minion's blow at all, which is how the genre works. Path of Exile treats
+	 * a minion's actions as separate from its summoner's, and Last Epoch's own
+	 * documentation says a character's modifiers do not apply unless minions are
+	 * specified. `docs/DECISIONS.md` carries the sources.
+	 *
+	 * IT IS A SEPARATE FLAG FROM THE DISTANCE ABOVE BECAUSE IT EXCLUDES A
+	 * DIFFERENT READING, not because the reason differs. The distance one is
+	 * refused even though the number it would report is defensible; this one is
+	 * refused even though the state it would report is simply CORRECT -- whether
+	 * the minion's target is staggered is a fact about that target and does not
+	 * depend on who struck it. Only the ownership of the bonus decides it.
+	 *
+	 * A MINION SETS BOTH TOGETHER AND ALWAYS WILL. If a third reading of the
+	 * target ever appears, the three should become one flag rather than three.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCarriesNoTargetState = false;
+
+	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
 	 * take whatever the attacker's own attribute holds.
 	 *
@@ -961,7 +989,8 @@ public:
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
 							   const FGameplayTagContainer& SkillTags,
 							   float SkillHealthCostPercent = -1.0f,
-							   float TargetDistanceMetres = -1.0f);
+							   float TargetDistanceMetres = -1.0f,
+							   bool bTargetIsStaggered = false);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -1001,7 +1030,8 @@ public:
 								   const FGameplayTagContainer& SkillTags,
 								   float SkillHealthCostPercent = -1.0f,
 								   float MetresMovedBeforeBlow = -1.0f,
-								   float TargetDistanceMetres = -1.0f);
+								   float TargetDistanceMetres = -1.0f,
+								   bool bTargetIsStaggered = false);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -1021,7 +1051,8 @@ public:
 							  const FGameplayTagContainer& SkillTags,
 							  float SkillHealthCostPercent = -1.0f,
 							  float MetresMovedBeforeBlow = -1.0f,
-							  float TargetDistanceMetres = -1.0f);
+							  float TargetDistanceMetres = -1.0f,
+							  bool bTargetIsStaggered = false);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

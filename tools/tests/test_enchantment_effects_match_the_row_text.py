@@ -115,9 +115,17 @@ JUDGED_NUMBERS = {
 #: Seven rows over seven enchantments until 2026-09-11, when the ranged
 #: enchantments' rows were written, and 64 over 56 until the four buildable
 #: sets got their eight rows, and 81 over 73 until Brute's Heart and Demon
-#: King's Regalia got six rows between them on 2026-09-12.
-AUTHORED_ROWS = 87
-AUTHORED_ENCHANTMENTS = 77
+#: King's Regalia got six rows between them on 2026-09-12, and 87 over 77
+#: until the two staggered damage enchantments got three rows between them
+#: later the same day. Issue #45.
+#:
+#: THREE ROWS FOR TWO ENCHANTMENTS, WHICH IS THE SHEET'S PATTERN AND NOT A
+#: MISCOUNT. "Staggered enemies take 20%-35% increased damage from all sources"
+#: is the wearer's own damage across its types, so it is an `attack_damage` row
+#: and a `spell_damage` row; "Staggered enemies deal 15%-30% increased damage to
+#: you" is damage the wearer takes, which is `damage_taken` alone.
+AUTHORED_ROWS = 90
+AUTHORED_ENCHANTMENTS = 79
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

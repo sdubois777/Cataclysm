@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — "Enemies take increased damage from all sources" is the wearer's own damage across its types, and the staggered pair reads from both ends
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillEffects.h`
+and `.cpp`, `CataclysmMinion.cpp`, `tools/generate_datatables.py`, the
+"Enchantment Effects" sheet of `docs/All_Things_Cataclysm.xlsx` and the
+`game/Data/EnchantmentEffects.csv` generated from it. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45). **Applied.**
+
+### The question
+
+`game/Data/EnchantmentsPositive.csv` has the row **"Staggered enemies take
+20%-35% increased damage from all sources"**. "From all sources" has two readings
+and they are different mechanisms:
+
+| Reading | What it means |
+| :-- | :-- |
+| **A** | the wearer deals more damage, across all of its damage types, to a staggered target |
+| **B** | a debuff on the enemy, so that every attacker hitting it deals more |
+
+B is a real mechanic in this genre and is not what was built. It would need a
+debuff applied to the enemy that every attacker's pipeline reads, which is a
+mechanism rather than a condition, and it would need its own plan.
+
+### The workbook's own tags answer it, three times over
+
+This is a measurement of this project's data rather than a claim about another
+game. Seven rows across the two enchantment files use the phrase "from all
+sources". They split cleanly by whose stat they carry:
+
+| Row | Tags |
+| :-- | :-- |
+| Staggered enemies take 20%-35% increased damage from all sources | `Keyword.Stagger, Stat.Offense.Global` |
+| Debuffed enemies take 10%-20% increased damage from all sources | `Type.Debuff, Stat.Offense.Global` |
+| Enemies with 5 or more bleed stacks take 20%-40% increased damage from all sources | `Keyword.DoT.Bleed, Stat.Offense.Global` |
+| You take 10%-20% increased damage from all sources while your shield is active | `Stat.Defense.Global` |
+| Reaper's Embrace (2-Piece Bonus): You gain 10% more life from all sources | `Stat.Defense.Life` |
+
+**Every row phrased about ENEMIES taking more carries `Stat.Offense.Global`, the
+wearer's offence.** Under reading B the row would be a property of the enemy and
+would not carry the wearer's offence stat at all. The rows phrased about what the
+wearer takes carry a defence stat instead. So the workbook already says which of
+the two it means, consistently, and reading A is what it says.
+
+**"All sources" therefore means all of the wearer's damage TYPES**, which is why
+the row is authored as two effect rows, one on `attack_damage` and one on
+`spell_damage`. That is the sheet's existing pattern and not a choice made here:
+every enchantment whose words state a general "increased damage" the wearer deals
+is written as those two together — nine of them, including both rows that already
+use a target-side condition. `damage_over_time_taken` is a separate stat and no
+"all sources" row uses it, so the phrase does not reach damage over time either.
+
+### What the genre research settled, and what it did not
+
+It settled the bucket. Maxroll's Path of Exile 2 damage-scaling guide states that
+sources of "increased damage taken" are **additive with each other**, which is
+this project's `increased` bucket, so the rows are `increased` and not `more`.
+Source: <https://maxroll.gg/poe2/getting-started/damage-scaling>.
+
+**It did not settle the ally question.** Two sources were read and neither states
+whether a modifier worded as "enemies take increased damage" applies to allies'
+hits in Path of Exile. That gap is recorded rather than filled: the decision rests
+on this project's own tagging, above, and not on a genre fact that was not found.
+
+### The two readings of the same state, and why they are separate names
+
+`opponent_is_staggered` already existed for "Staggered enemies deal 15%-30%
+increased damage to you", read on the defender's damage-taken lookup. This adds
+`target_is_staggered`, read on the attacker's own lookups. **They are separate
+names reading separate fields on purpose**, exactly as `target_within_metres` and
+`opponent_beyond_metres` are: the blow record is filled only on the defender's
+lookup and `bTargetIsStaggered` only on the attacker's, so a row carrying the
+wrong one of the pair reads a field nothing filled and grants nothing, rather than
+answering with the staggered state of the character at the other end.
+
+### A minion's blow earns none of it
+
+`FCataclysmHitDelivery::bCarriesNoTargetState` is the eighth exclusion a minion's
+blow sets. A minion strikes with the summoner as the attacker, so every
+attacker-side reading reaches its blow unless it is stopped.
+
+**The ground is the seventh exclusion's rather than its own, and the case is
+stricter.** A distance measured on a minion's blow is the summoner's distance to
+the minion's target, so that one at least reports the wrong end. Whether the
+minion's target is staggered is a fact about that target and is the same whoever
+struck it — there is no wrong number to point at. It is refused purely because a
+player's conditional damage bonus should not reach a minion's blow at all. Path of
+Exile treats a minion's actions as separate from its summoner's, and Last Epoch's
+documentation says a character's modifiers do not apply unless minions are
+specified; those sources are already recorded in this log beside the seventh.
+
+### What this moves
+
+Two of the ten enchantment rows that mention being staggered now grant something,
+where none did. The owner's ruling of 2026-09-11 already defines that family —
+"the ten enchantments apply that state, check for it, or make it last longer" —
+and both of these are the "check for it" kind, so no new ruling was needed.
+
+**Enchantment rows that do something in play go from 77 of 575 to 79 of 575**, and
+the effect rows behind them from 87 to **90** — three rows for two enchantments,
+because the "from all sources" one is written as an `attack_damage` row and a
+`spell_damage` row while the damage-taken one is `damage_taken` alone. Both counts
+are pinned in `tools/tests/test_enchantment_effects_match_the_row_text.py`, which
+refuses to let the coverage move without this entry moving with it.
+
+The remaining eight all need something to HAPPEN rather than a number to change:
+four apply the Staggered state, two extend or gate it, and two are event-shaped.
+
+---
+
 ## 2026-09-12 — A skill can be locked, and the basic attack is exempted by name
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and

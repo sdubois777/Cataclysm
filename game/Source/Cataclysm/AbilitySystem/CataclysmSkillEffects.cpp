@@ -344,7 +344,8 @@ bool UCataclysmSkillEffects::IsRanged(const FGameplayTagContainer& SkillTags)
 float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
 										   const FGameplayTagContainer& SkillTags,
 										   float SkillHealthCostPercent,
-										   float TargetDistanceMetres)
+										   float TargetDistanceMetres,
+										   bool bTargetIsStaggered)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -374,7 +375,7 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 								  FromAttribute, SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
-								  TargetDistanceMetres)
+								  TargetDistanceMetres, bTargetIsStaggered)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -396,7 +397,8 @@ float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
 float UCataclysmSkillEffects::IncreasesForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
-	float MetresMovedBeforeBlow, float TargetDistanceMetres)
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -411,13 +413,14 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	return FMath::Max(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
 				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
-				  TargetDistanceMetres));
+				  TargetDistanceMetres, bTargetIsStaggered));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
-	float MetresMovedBeforeBlow, float TargetDistanceMetres)
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -428,7 +431,8 @@ float UCataclysmSkillEffects::MoreForSkill(
 	return Cataclysm
 		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
 											  MetresMovedBeforeBlow,
-											  TargetDistanceMetres)
+											  TargetDistanceMetres,
+											  bTargetIsStaggered)
 		: 1.0f;
 }
 
@@ -618,11 +622,27 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		? -1.0f
 		: UCataclysmTargeting::MetresBetween(Instigator, Target);
 
+	// AND WHETHER THAT TARGET IS STAGGERED, read once for this blow beside the
+	// distance above and given to the same three lookups. Issue #45.
+	// "Staggered enemies take 20%-35% increased damage from all sources" is the
+	// row, and `IsStaggered` is the one answer to that question in the tree.
+	//
+	// A BLOW THAT CARRIES NO TARGET STATE REPORTS FALSE, WHICH REFUSES, and that
+	// is a minion's blow again. The ground is NOT the one the distance gives:
+	// the staggered state of the minion's target is the right reading rather
+	// than a wrong one, since it is a fact about the target and not about where
+	// the summoner stands. It is refused because of WHOSE bonus it is -- a
+	// player's conditional damage bonus does not reach a minion's blow.
+	// `bCarriesNoTargetState` carries that, beside the seven exclusions already
+	// there.
+	const bool bTargetIsStaggered =
+		!Delivery.bCarriesNoTargetState && IsStaggered(Target);
+
 	const float Folded = IncreasesBehindAttackDamage(Source);
 	const float Applying =
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						  Delivery.MetresMovedBeforeBlow,
-						  TargetDistanceMetres);
+						  TargetDistanceMetres, bTargetIsStaggered);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -654,10 +674,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float BeforeIncreases =
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
 		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
-					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres);
+					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres,
+					  bTargetIsStaggered);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
-						TargetDistanceMetres)
+						TargetDistanceMetres, bTargetIsStaggered)
 		: 0.0f;
 
 	const float Damage = ModifiedDamage(
