@@ -11495,6 +11495,110 @@ bool FCataclysmPyreGrowsWithBlowsTakenTest::RunTest(const FString&)
 }
 
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreHealingCutTest,
+	"Cataclysm.Skills.ACurseCutsTheLivingPyresReturnWithoutCoolingThePyre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// LIVING PYRE RETURNS HEALTH BY ITS OWN ROUTE, REACHED BY NEITHER
+	// `UCataclysmRegeneration::TopUp` NOR THE HEALING CEILING. Issue #41, slice
+	// 5. That is why the healing-received reduction is read here as well: a
+	// curse claiming to reduce healing would otherwise leave this skill healing
+	// at full strength, silently and in the player's favour. The ceiling still
+	// misses it, which is issue #1607 and deliberately not fixed here.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=4; Duration=6; Interval=1; Burn=1; "
+			 "Immune=Stun, Slow, Displacement; MoreDamagePer=8; "
+			 "ScalingSource=HitTaken; HealthFromHitTaken=25"),
+		TEXT("Living Pyre"), TEXT("Element.Demonic"));
+	if (!Pyre)
+	{
+		AddError(TEXT("Could not grant the pyre."));
+		return false;
+	}
+
+	// HURT FIRST, SO THERE IS ROOM TO HEAL INTO. A full character is returned
+	// nothing, which would make every assertion below pass for an
+	// implementation that returned nothing at all.
+	Caster.Set(Vital::GetHealthAttribute(), 50000.0f);
+	TestTrue(TEXT("it activates"), Activate(Caster, Pyre));
+
+	// UNCURSED, THE ROW'S OWN FIGURE: 25% of 400 is 100.
+	const float Full = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+	TestEqual(TEXT("with no curse a blow dealing 400 returns 100"),
+		Full, 100.0f, 0.01f);
+	TestEqual(TEXT("and one blow is counted"), Pyre->BlowsTaken, 1);
+
+	// AND HALF OF IT UNDER A REDUCTION OF FIFTY.
+	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 50.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 50000.0f);
+	const float Wounded = Caster.Health();
+	const float Halved = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a reduction of fifty halves the return"),
+		Halved, 50.0f, 0.01f);
+	TestEqual(TEXT("and the holder's health rose by exactly that"),
+		Caster.Health() - Wounded, 50.0f, 0.01f);
+
+	// THE PYRE STILL GETS HOTTER, WHICH IS THE POINT OF THIS ASSERTION. The row
+	// ties its 8% per hit to the hits taken rather than to the health returned,
+	// so a curse on healing must not cool the fire. An implementation that
+	// counted the blow only when it healed would land on 1 here.
+	TestEqual(TEXT("and the curse did not stop the blow being counted"),
+		Pyre->BlowsTaken, 2);
+
+	// A FULL HUNDRED RETURNS NOTHING, and the blow is still counted.
+	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 100.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 50000.0f);
+	const float Nothing = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a reduction of a hundred returns nothing"),
+		Nothing, 0.0f, 0.01f);
+	TestEqual(TEXT("the holder gained no health"),
+		Caster.Health(), 50000.0f, 0.01f);
+	TestEqual(TEXT("and the blow was still counted"), Pyre->BlowsTaken, 3);
+
+	// AND A VALUE PAST A HUNDRED RETURNS NOTHING RATHER THAN TAKING HEALTH.
+	//
+	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT THIS SKILL'S, and this
+	// comment claimed the opposite until a guard proof disproved it. Issue #41,
+	// slice 5. A write to the base value DOES reach `PreAttributeChange` on its
+	// way to the current value, and `GetNumericAttribute` reads the current
+	// value, so the skill is handed 100 here and never 150. Breaking this
+	// skill's own clamp changes nothing a test can see; it is kept against a
+	// replicated value, which does not pass through `PreAttributeChange`.
+	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 150.0f);
+	const float PastFull = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a reduction past a hundred returns nothing"),
+		PastFull, 0.0f, 0.01f);
+	TestEqual(TEXT("and takes no health either"),
+		Caster.Health(), 50000.0f, 0.01f);
+
+	// AND A NEGATIVE VALUE RETURNS THE ROW'S PLAIN FIGURE RATHER THAN MORE,
+	// because without a floor at zero a curse on healing would make the pyre
+	// return MORE than an uncursed one. Held by the attribute set's clamp, for
+	// the reason given above, so this assertion is about that clamp and not
+	// about this function's.
+	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), -100.0f);
+	const float Negative = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
+
+	TestEqual(TEXT("a negative reduction returns the plain 100, not more"),
+		Negative, 100.0f, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPyreReturnsHealthTest,
 	"Cataclysm.Skills.TheLivingPyreReturnsHealthFromEveryBlowItsHolderTakes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

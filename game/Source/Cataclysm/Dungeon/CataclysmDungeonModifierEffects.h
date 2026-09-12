@@ -83,12 +83,30 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ResistanceMorePercent = 0.0f;
 
+	/**
+	 * How many percentage points less of each healing amount arrives. Death's
+	 * Embrace. Issue #41, slice 5.
+	 *
+	 * THE AMOUNT AND NOT THE RATE, which is what makes it reach everything. It
+	 * writes `UCataclysmVitalAttributeSet::HealingReceivedReduction`, whose own
+	 * comment carries the scope: health regeneration, life leech and direct
+	 * healing alike, health only. A rule wanting the RATES alone -- Withered
+	 * Ground says "recovery (regen/leech)" -- wants a Less multiplier on
+	 * `health_regen` and `mana_regen` instead, and needs nothing here.
+	 *
+	 * IT GROWS WHILE THE PLAYER STAYS ON THE FLOOR and is gone when they take
+	 * the stairs, so it is worked out on the beat rather than once a floor.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float HealingReceivedLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
 		return MaxHealthLessPercent <= 0.0f && MaxEnergyShieldLessPercent <= 0.0f
 			&& MaxManaLessPercent <= 0.0f && ResistanceLessPercent <= 0.0f
-			&& ResistanceMorePercent <= 0.0f;
+			&& ResistanceMorePercent <= 0.0f
+			&& HealingReceivedLessPercent <= 0.0f;
 	}
 };
 
@@ -103,11 +121,18 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * Dimensions changed a floor at all, and it did so by drawing another modifier
  * that did nothing either. Issue #1558 records the score half of that.
  *
- * WHAT IS BUILT HERE, AND IT IS FOUR. The first two change the player's own
+ * WHAT IS BUILT HERE, AND IT IS FIVE. The first two change the player's own
  * maximums floor by floor, which is the cheapest shape a modifier comes in: no
  * new actor, no new creature, no art. The two that issue #41's slice 2 added
  * are the first that change while the player plays rather than once a floor,
- * and both read the movement state `UCataclysmMovement` keeps.
+ * and both read the movement state `UCataclysmMovement` keeps. The fifth,
+ * slice 5's Death's Embrace, is the first to change what a player's healing is
+ * worth rather than what their bars hold.
+ *
+ * THE FIFTH IS ALSO THE FIRST TO USE THE FLAT BUCKET. The other four take a
+ * share of a stat with a real base, so a Less multiplier says what they mean;
+ * `healing_received_reduction` is zero for every class, and a multiplier on zero
+ * is zero however large it is.
  *
  * | Row | Its words | What happens |
  * | :-- | :-- | :-- |
@@ -115,6 +140,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * | `Famine_Dehydration` | "Each floor the player's maximum resource is reduced by 1%." | maximum mana is 1% less per floor, up to 60% |
  * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
  * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
+ * | `Death_Death_s_Embrace` | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." | one stack every 10 seconds spent on the floor, each taking 10 percentage points off every amount of health restored, up to 5 stacks; the stairs clear them |
  *
  * `docs/DECISIONS.md` carries the judgements these needed. FOUR ARE THE FIRST
  * TWO RULES', dated 2026-09-11: that a floor's share is taken as a Less
@@ -135,6 +161,13 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * stack plus one for each whole second past the threshold -- rather than in a
  * constant of its own.
  *
+ * THREE MORE ARE SLICE 5'S, dated 2026-09-12, and Death's Embrace's row states
+ * no number either: what one stack takes off healing, the most stacks it
+ * reaches, and how long a stack takes to arrive. All three are constants here.
+ * The first two have a published range to sit inside -- Path of Exile's map
+ * modifiers run 10% to 60% less recovery -- and the third has no precedent in
+ * any game found.
+ *
  * A PLAIN CLASS OF STATICS OVER PLAIN STRUCTS, the shape
  * `FCataclysmDungeonFloorRules` and `UCataclysmDungeonModifierRules` already
  * use, for the reason they give: the automation tests run with `-nullrhi`, and a
@@ -152,6 +185,7 @@ public:
 	static const TCHAR* DehydrationKey;
 	static const TCHAR* ForcedMarchKey;
 	static const TCHAR* NihilsEmbraceKey;
+	static const TCHAR* DeathsEmbraceKey;
 
 	/**
 	 * What Starvation takes per floor, and the most it takes.
@@ -236,6 +270,45 @@ public:
 	static constexpr float NihilsEmbraceRewardSeconds = 20.0f;
 
 	/**
+	 * Death's Embrace: what one stack of Embrace of Death takes off the healing
+	 * a player receives, the most stacks it reaches, and how long one takes to
+	 * arrive.
+	 *
+	 * ALL THREE ARE JUDGEMENTS. The row states no number: "Players periodically
+	 * gain stacks of a debuff called ""Embrace of Death,"" which reduces healing
+	 * received. Stacks reset when entering a new floor." The Python test fails if
+	 * it ever states one, at which point these stop being judgements.
+	 *
+	 * FIFTY PER CENT AT WORST SITS INSIDE WHAT THE GENRE PUBLISHES. Path of Exile
+	 * runs reduced recovery on MAP modifiers, the closest thing in the genre to a
+	 * dungeon modifier, from "10% less Recovery Rate" to "60% less Recovery Rate
+	 * of Life and Energy Shield"; items sit at "(20-30)% reduced Recovery rate"
+	 * and keystones at "50% less Life Regeneration Rate". Five stacks of ten is
+	 * inside that range and below its top, which suits a row whose danger weight
+	 * is 10 where the heaviest in the set are 15. NOT SIXTY: this is not the
+	 * harshest recovery row in the set, and the two that are -- Necrotic Ground's
+	 * 50% and Withered Ground's 80% -- state their own figures in the data.
+	 *
+	 * FIVE STACKS IS THIS PROJECT'S OWN CAP, matching Forced March, so a player
+	 * reads the two alike.
+	 *
+	 * TEN SECONDS A STACK IS THE ONE FIGURE WITH NO PRECEDENT ANYWHERE. No game
+	 * found publishes an interval at which a healing-reduction stack arrives, so
+	 * it rests on the row's word "periodically" and on what a floor lasts: fifty
+	 * seconds to the cap is about one floor's fighting, which fits a row whose
+	 * stacks "reset when entering a new floor". A player who clears briskly never
+	 * sees the cap and one who lingers does.
+	 *
+	 * EXPECT ALL THREE TO NEED TUNING. The one comparable lever with published
+	 * figures -- a World of Warcraft dungeon affix adding a share of maximum
+	 * health per stack -- was retuned twice in eleven days by its own developers,
+	 * which `docs/DECISIONS.md` already records for Forced March.
+	 */
+	static constexpr float DeathsEmbracePercentPerStack = 10.0f;
+	static constexpr int32 DeathsEmbraceMostStacks = 5;
+	static constexpr float DeathsEmbraceSecondsPerStack = 10.0f;
+
+	/**
 	 * How much of what this row says has been built.
 	 *
 	 * NOT BUILT FOR EVERY KEY THIS FILE DOES NOT NAME, a key that is not a row
@@ -306,6 +379,29 @@ public:
 	 *        Nothing or less takes nothing
 	 */
 	static float NihilsEmbraceResistanceLost(float MetresWalked);
+
+	/**
+	 * How many stacks of Embrace of Death a player has. Issue #41, slice 5.
+	 *
+	 * NONE FOR THE FIRST TEN SECONDS OF A FLOOR, then one every ten, capped. A
+	 * player who takes the stairs promptly never carries one, which is the row's
+	 * "stacks reset when entering a new floor" read as a reward for moving on
+	 * rather than only as a mercy.
+	 *
+	 * THE STAIRS CLEAR THEM WITHOUT A CALL OF THEIR OWN, the way moving clears
+	 * Forced March: the figure asked about is the time spent on THIS floor, and a
+	 * new floor puts that back to nothing.
+	 *
+	 * @param SecondsOnFloor seconds the player has spent on this floor. Nothing
+	 *        or less carries no stacks
+	 */
+	static int32 DeathsEmbraceStacksAfter(float SecondsOnFloor);
+
+	/**
+	 * What that many stacks take off each amount of healing, in percentage
+	 * points. Issue #41, slice 5.
+	 */
+	static float DeathsEmbraceHealingLessPercent(int32 Stacks);
 
 	/**
 	 * What the modifiers in force on a floor do to the player.

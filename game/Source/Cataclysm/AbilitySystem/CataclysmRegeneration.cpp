@@ -56,6 +56,49 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		return;
 	}
 
+	// AND A CURSE MAY CUT HOW MUCH OF EACH AMOUNT ARRIVES. Issue #41, slice 5.
+	// The dungeon modifier Death's Embrace: "Players periodically gain stacks of
+	// a debuff called Embrace of Death, which reduces healing received."
+	//
+	// ON THE GAIN AND NOT ON THE CEILING, which is the whole difference between
+	// this stat and the ceiling reduction below, and the two are a hazard to each
+	// other. This cuts how much of each amount ARRIVES; that caps how HIGH the
+	// amounts may take a character. Someone at half health under a fifty per cent
+	// reduction is healed half as fast and may still reach full.
+	//
+	// REGENERATION AND LEECH ALIKE, because both arrive here and the project
+	// owner ruled on 2026-09-12 that healing received covers everything that
+	// restores health. So an enchantment row reading "healing effects on you are
+	// reduced" reduces regeneration too; that its words do not say so is issue
+	// #1609.
+	//
+	// HEALTH ONLY, which is the ruling rather than the shape of the code: mana
+	// and the energy shield come through this same function. Reducing THEIR
+	// rates needs nothing here -- a Less multiplier on `mana_regen` reaches it
+	// through the stat pipeline, the way Starvation already works on
+	// `max_health`.
+	//
+	// BEFORE THE CEILING BELOW, so the two compose in the order the player reads
+	// them: this much was offered, this much arrives, and it may not take you
+	// past there. Neither touches the other's variable, so the order changes no
+	// number -- it is written this way to be read.
+	//
+	// A FULL HUNDRED RETURNS RATHER THAN APPLYING NOTHING. Fervour is what would
+	// notice: it is emptied by the health that came back, so a zero would raise a
+	// healing event that healed nobody.
+	if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())
+	{
+		const float AmountReduction = FMath::Clamp(
+			AbilitySystem.GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute()),
+			0.0f, 100.0f);
+		Gain *= (100.0f - AmountReduction) / 100.0f;
+		if (Gain <= 0.0f)
+		{
+			return;
+		}
+	}
+
 	const float Current = AbilitySystem.GetNumericAttribute(Pool);
 	float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
 

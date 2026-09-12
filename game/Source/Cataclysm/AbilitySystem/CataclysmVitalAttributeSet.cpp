@@ -104,6 +104,7 @@ UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 	InitManaLeech(0.0f);
 	InitEnergyShieldLeech(0.0f);
 	InitHealingCeilingReduction(0.0f);
+	InitHealingReceivedReduction(0.0f);
 	InitDamage(0.0f);
 }
 
@@ -125,6 +126,7 @@ void UCataclysmVitalAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealingCeilingReduction);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealingReceivedReduction);
 	// Damage is a meta attribute. It is never replicated.
 }
 
@@ -163,16 +165,29 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		// shield is a design position, not an error state.
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
-	else if (Attribute == GetHealingCeilingReductionAttribute())
+	else if (Attribute == GetHealingCeilingReductionAttribute()
+		|| Attribute == GetHealingReceivedReductionAttribute())
 	{
-		// HELD BETWEEN 0 AND 100, BECAUSE IT IS A SHARE OF MAXIMUM HEALTH TAKEN
-		// OFF THE CEILING. Issue #988. Below zero it would RAISE the ceiling
-		// above maximum health, and past one hundred it would put the ceiling
-		// below zero, which is not "cannot be healed" but a negative amount of
-		// health to be healed to.
+		// BOTH ARE A SHARE OF A HUNDRED AND BOTH ARE HELD INSIDE IT, and they
+		// are clamped together because the same two arguments apply to each.
+		// Issue #988 added the first and issue #41's slice 5 the second. WHAT
+		// THEY MEAN DIFFERS and the header says which is which: the ceiling caps
+		// how HIGH healing may take a character, the reduction cuts how much of
+		// each amount ARRIVES.
 		//
-		// A HUNDRED IS LEGITIMATE and means healing restores nothing at all. No
-		// node states it, and it is not a data error if one ever does.
+		// BELOW ZERO EACH WOULD INVERT ITSELF. A negative ceiling reduction
+		// would RAISE the ceiling above maximum health; a negative healing
+		// reduction would make a curse heal more than no curse at all.
+		//
+		// PAST A HUNDRED EACH WOULD GO THROUGH ZERO. A ceiling reduction past
+		// one hundred puts the ceiling below zero, which is not "cannot be
+		// healed" but a negative amount of health to be healed to; a healing
+		// reduction past one hundred would turn healing into damage by a route
+		// nothing else in the game uses.
+		//
+		// A HUNDRED IS LEGITIMATE FOR BOTH and means healing restores nothing at
+		// all. No node states either, and it is not a data error if one ever
+		// does.
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 	}
 }
@@ -1402,6 +1417,7 @@ TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()
 		GetEnergyShieldRegenAttribute(), GetLifeLeechAttribute(),
 		GetManaLeechAttribute(), GetEnergyShieldLeechAttribute(),
 		GetHealingCeilingReductionAttribute(),
+		GetHealingReceivedReductionAttribute(),
 		GetDamageAttribute(),
 	};
 }
@@ -1419,3 +1435,4 @@ CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, LifeLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealingCeilingReduction)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealingReceivedReduction)

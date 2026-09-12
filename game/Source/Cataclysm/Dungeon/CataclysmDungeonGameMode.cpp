@@ -524,9 +524,17 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 
 	BringTheNextWaveIn();
 
-	// AND THE TWO MODIFIERS THAT CHANGE WHILE THE PLAYER PLAYS. Issue #41,
-	// slice 2. On this beat rather than a timer of their own, and after the wave
-	// check because a wave arriving is what the player is looking at.
+	// AND THE THREE MODIFIERS THAT CHANGE WHILE THE PLAYER PLAYS. Issue #41,
+	// slices 2 and 5. On this beat rather than a timer of their own, and after
+	// the wave check because a wave arriving is what the player is looking at.
+	//
+	// A BEAT IS TAKEN TO BE A QUARTER OF A SECOND BY THE RULES BELOW, AND THE
+	// LINE ABOVE IS WHY THAT IS NOT QUITE TRUE. Zeroing rather than subtracting
+	// is right for the wave and means a frame longer than the interval yields
+	// one beat however long it was, so below four frames a second those rules
+	// run slow. It is in the player's favour, it does not bite at a playable
+	// frame rate, and the fix belongs in the rules rather than here because the
+	// wave must keep the behaviour the comment above defends. Issue #1613.
 	StepFloorRulesThatChange();
 }
 
@@ -1593,13 +1601,15 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 
 void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 {
-	// NOTHING TO DO ON A FLOOR CARRYING NEITHER, which is almost every floor, and
-	// this is what that costs: two tests of a short array.
+	// NOTHING TO DO ON A FLOOR CARRYING NONE OF THEM, which is almost every
+	// floor, and this is what that costs: three tests of a short array.
 	const bool bForcedMarch = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ForcedMarchKey));
 	const bool bNihilsEmbrace = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::NihilsEmbraceKey));
-	if (!bForcedMarch && !bNihilsEmbrace)
+	const bool bDeathsEmbrace = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::DeathsEmbraceKey));
+	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace)
 	{
 		return;
 	}
@@ -1626,6 +1636,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bNihilsEmbrace)
 	{
 		StepNihilsEmbrace(Player, AbilitySystem);
+	}
+
+	// A FLOOR CARRYING BOTH OF THE STAT RULES REFRESHES TWICE ON THE RARE BEAT
+	// WHERE BOTH MOVE, and the result is right either way: each sets its own
+	// field before asking for the apply, and the apply reads every field. The
+	// second refresh is the one that stands and it carries both changes. Issue
+	// #41, slice 5.
+	if (bDeathsEmbrace)
+	{
+		StepDeathsEmbrace(Player, AbilitySystem);
 	}
 }
 
@@ -1692,13 +1712,65 @@ void ACataclysmDungeonGameMode::StepNihilsEmbrace(
 	ResistanceLessApplied = Less;
 	ResistanceMoreApplied = More;
 
-	// THE FLOOR'S OWN EFFECTS AS WELL, because applying replaces them wholesale:
-	// a floor carrying Starvation and The Nihil's Embrace has to keep both.
+	// THROUGH THE ONE APPLIER, WHICH THIS FUNCTION USED TO DO ITSELF. Issue #41,
+	// slice 5. It built its own effects and set the two resistance fields, which
+	// was correct while it was the only beat-driven rule and would have zeroed
+	// Death's Embrace's field the moment a floor carried both.
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+}
+
+void ACataclysmDungeonGameMode::StepDeathsEmbrace(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// THE TIME SPENT ON THIS FLOOR IS THE WHOLE STATE. Taking the stairs puts it
+	// back to nothing, which is the row's "stacks reset when entering a new
+	// floor" with nothing stored per stack -- the same shape Forced March uses,
+	// where moving clears the stacks by clearing what they are counted from.
+	DeathsEmbraceSecondsOnFloor += SecondsBetweenWaveChecks;
+
+	const int32 Stacks =
+		UCataclysmDungeonModifierEffects::DeathsEmbraceStacksAfter(
+			DeathsEmbraceSecondsOnFloor);
+
+	// ONLY WHEN THE COUNT ACTUALLY MOVED, which is once every ten seconds rather
+	// than four times a second. The refresh inside the apply rewrites the
+	// character's whole standing stat line, which is the argument
+	// `StepNihilsEmbrace` makes above for the same guard.
+	if (Stacks == DeathsEmbraceStacksApplied)
+	{
+		return;
+	}
+
+	DeathsEmbraceStacksApplied = Stacks;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+}
+
+void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!Player)
+	{
+		return;
+	}
+
+	// THE FLOOR'S OWN EFFECTS FIRST, because applying replaces them wholesale: a
+	// floor carrying Starvation and The Nihil's Embrace has to keep both.
 	FCataclysmPlayerFloorEffects Effects =
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 			FloorBrief.Modifiers, FloorBrief.FloorNumber);
-	Effects.ResistanceLessPercent = Less;
-	Effects.ResistanceMorePercent = More;
+
+	// AND EVERY BEAT-DRIVEN FIELD FROM THIS OBJECT, WHICH IS WHY THERE IS ONE
+	// APPLIER AND NOT ONE PER RULE. Issue #41, slice 5. The fields are read
+	// unconditionally rather than behind a test of the floor's modifiers,
+	// because a rule the floor does not carry leaves its field at nothing and
+	// nothing is what the effects already hold.
+	Effects.ResistanceLessPercent = ResistanceLessApplied;
+	Effects.ResistanceMorePercent = ResistanceMoreApplied;
+	Effects.HealingReceivedLessPercent =
+		UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
+			DeathsEmbraceStacksApplied);
 
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
@@ -1770,6 +1842,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// character; forgetting it here is what makes the next beat put it back.
 		ResistanceLessApplied = 0.0f;
 		ResistanceMoreApplied = 0.0f;
+
+		// AND DEATH'S EMBRACE'S STACKS GO WITH THE FLOOR, which its row states
+		// outright: "Stacks reset when entering a new floor." Issue #41, slice 5.
+		// It is the only one of these rules whose reset the data asks for rather
+		// than the code needing it, and it is the same line, because the call
+		// above has already taken the reduction off the character.
+		DeathsEmbraceSecondsOnFloor = 0.0f;
+		DeathsEmbraceStacksApplied = 0;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is

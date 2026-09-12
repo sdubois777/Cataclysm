@@ -204,6 +204,63 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, HealingCeilingReduction)
 
 	/**
+	 * How many percentage points to take off the health that healing restores.
+	 * Issue #41, slice 5.
+	 *
+	 *     restored = offered * (100 - clamp(this, 0, 100)) / 100
+	 *
+	 * NOT THE SAME THING AS THE CEILING ABOVE, and the two are easy to confuse.
+	 * The ceiling says how HIGH healing may take a character; this says how much
+	 * of each amount arrives. A character at half health with a 50% reduction is
+	 * healed half as fast and may still reach full.
+	 *
+	 * IT COVERS EVERY ROUTE THAT RESTORES HEALTH -- regeneration, life leech and
+	 * direct healing alike -- which the project owner ruled on 2026-09-12 from
+	 * three options. So the rows that say "healing effects are reduced" reduce
+	 * regeneration too, and the enchantment rows that name regeneration or leech
+	 * ALONE are narrower modifiers that stack with this one. That difference
+	 * between what a broad row says and what it now does is issue #1609.
+	 *
+	 * HEALTH ONLY, like the ceiling, and for its reason: mana and the energy
+	 * shield come through the same function, and a stat named for healing that
+	 * silently cut mana would make one word mean two things ten lines apart.
+	 * Reducing the regeneration RATES of the other pools needs nothing new -- a
+	 * Less multiplier on `mana_regen` reaches it through the stat pipeline.
+	 *
+	 * A REDUCTION RATHER THAN A MULTIPLIER, which is the ceiling's argument
+	 * repeated because it holds here too. A stat holding the multiplier would
+	 * need 0 to mean "no change", which reads as "no healing at all", and two
+	 * sources of it would sum in the flat bucket to remove the effect. Written
+	 * as a reduction, the default of 0 means no change with no sentinel, and two
+	 * curses stack in the restrictive direction -- which is what a player
+	 * expects two curses to do.
+	 *
+	 * IT IS READ WHERE HEALTH ARRIVES, AND THERE IS NO ONE SUCH PLACE.
+	 * `UCataclysmRegeneration::TopUp` covers health regeneration and life leech
+	 * for any character; the Fist Ultimate Living Pyre returns health by its own
+	 * route, reached by neither that function nor the ceiling. This is read at
+	 * both of them.
+	 *
+	 * A THIRD ROUTE IS NOT REDUCED, AND THAT IS KNOWN RATHER THAN MISSED. The
+	 * enemy modifier Sacrifice restores a quarter of a creature's maximum health
+	 * when it devours a nearby ally, and reads neither this stat nor the
+	 * ceiling. It writes a BASE value where the other two modify the current
+	 * one, which is a decision of its own rather than a line to add. Issue
+	 * #1611. THE COUNT IN THIS COMMENT SAID TWO UNTIL THAT WAS FILED: the
+	 * sentence "the one place regeneration and leech both restore health" is
+	 * exactly true and had been read twice as "the one place health is
+	 * restored".
+	 *
+	 * THAT THERE IS NO SINGLE PLACE IS ISSUE #1608, and that the ceiling misses
+	 * Living Pyre is issue #1607. Neither is fixed here, and this stat is applied
+	 * at each site rather than in a shared helper so that closing them stays a
+	 * separate decision.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealingReceivedReduction)
+	FGameplayAttributeData HealingReceivedReduction;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, HealingReceivedReduction)
+
+	/**
 	 * Meta attribute. Not replicated, and zeroed after every execution.
 	 *
 	 * Exists so that mitigation is resolved in exactly one place instead of
@@ -229,4 +286,5 @@ protected:
 	UFUNCTION() void OnRep_ManaLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_EnergyShieldLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealingCeilingReduction(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealingReceivedReduction(const FGameplayAttributeData& OldValue);
 };

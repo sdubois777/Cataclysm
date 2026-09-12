@@ -232,6 +232,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("healing_ceiling_reduction"),
 			 Vital::GetHealingCeilingReductionAttribute()},
 
+			// AND HOW MUCH OF EACH AMOUNT ARRIVES, as a reduction. Issue #41,
+			// slice 5. Zero for every class; its sources are dungeon modifiers
+			// and enchantments rather than a class line. Here for the reason
+			// the ceiling above is here: a stat this map does not name is
+			// granted in silence and reaches no attribute.
+			{TEXT("healing_received_reduction"),
+			 Vital::GetHealingReceivedReductionAttribute()},
+
 			// THE OTHER TWO LEECHES JOINED IT IN ISSUE #895. Life leech had an
 			// entry here and the other two did not, so two of the three affixes
 			// were dropped before they reached an attribute. All three then

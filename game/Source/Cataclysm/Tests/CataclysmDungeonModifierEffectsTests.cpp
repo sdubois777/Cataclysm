@@ -76,6 +76,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName ForcedMarch(TEXT("War_Forced_March"));
 	const FName NihilsEmbrace(TEXT("Void_The_Nihil_s_Embrace"));
 
+	/** And slice 5's, which changes during play too. */
+	const FName DeathsEmbrace(TEXT("Death_Death_s_Embrace"));
+
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
@@ -1048,6 +1051,318 @@ bool FCataclysmModifierCleanseTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("the cleansed player still carries a modifier"), After))
 	{
 		TestTrue(TEXT("and it is a gain now, not a loss"), After->Value > 0.0f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEmbraceStacksTest,
+	"Cataclysm.DungeonModifierEffects.EmbraceOfDeathArrivesEveryTenSecondsToFive",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEmbraceStacksTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC WITH NO WORLD AT ALL, which is why every figure here is
+	// typed by hand. Issue #41, slice 5. Death's Embrace states no number of its
+	// own, so all three are judgements: 10 percentage points a stack, 5 stacks
+	// at most, one stack every 10 seconds.
+
+	// NOTHING FOR THE FIRST TEN SECONDS OF A FLOOR. A player who takes the
+	// stairs promptly never carries a stack.
+	TestEqual(TEXT("a floor just entered carries no stacks"),
+			  Effects::DeathsEmbraceStacksAfter(0.0f), 0);
+	TestEqual(TEXT("and nine seconds still carries none"),
+			  Effects::DeathsEmbraceStacksAfter(9.0f), 0);
+	TestEqual(TEXT("nor does a tenth of a second short of ten"),
+			  Effects::DeathsEmbraceStacksAfter(9.9f), 0);
+
+	// THEN ONE EVERY TEN SECONDS, COUNTED DOWN TO WHOLE STACKS.
+	TestEqual(TEXT("ten seconds is one stack"),
+			  Effects::DeathsEmbraceStacksAfter(10.0f), 1);
+	TestEqual(TEXT("and nineteen is still one"),
+			  Effects::DeathsEmbraceStacksAfter(19.9f), 1);
+	TestEqual(TEXT("thirty seconds is three"),
+			  Effects::DeathsEmbraceStacksAfter(30.0f), 3);
+
+	// AND FIVE IS THE MOST, HOWEVER LONG THE PLAYER LINGERS. Fifty seconds
+	// reaches it, which is about one floor's fighting.
+	TestEqual(TEXT("fifty seconds reaches the cap of five"),
+			  Effects::DeathsEmbraceStacksAfter(50.0f), 5);
+	TestEqual(TEXT("and ten minutes is still five"),
+			  Effects::DeathsEmbraceStacksAfter(600.0f), 5);
+
+	// A NEGATIVE TIME CARRIES NOTHING, the same answer the movement conditions
+	// give for "no character to read".
+	TestEqual(TEXT("a negative time carries no stacks"),
+			  Effects::DeathsEmbraceStacksAfter(-5.0f), 0);
+
+	// WHAT THE STACKS TAKE OFF HEALING, in percentage points.
+	TestEqual(TEXT("no stacks take nothing"),
+			  Effects::DeathsEmbraceHealingLessPercent(0), 0.0f, 0.01f);
+	TestEqual(TEXT("one stack takes ten"),
+			  Effects::DeathsEmbraceHealingLessPercent(1), 10.0f, 0.01f);
+	TestEqual(TEXT("three stacks take thirty"),
+			  Effects::DeathsEmbraceHealingLessPercent(3), 30.0f, 0.01f);
+	TestEqual(TEXT("five stacks take fifty, which is the worst it gets"),
+			  Effects::DeathsEmbraceHealingLessPercent(5), 50.0f, 0.01f);
+
+	// AND THE SHARE IS CLAMPED HERE AS WELL AS IN THE COUNT, because this is
+	// public and a caller holding a stack count from elsewhere must not be able
+	// to ask for more than the cap.
+	TestEqual(TEXT("a count past the cap still takes only fifty"),
+			  Effects::DeathsEmbraceHealingLessPercent(99), 50.0f, 0.01f);
+	TestEqual(TEXT("and a negative count takes nothing"),
+			  Effects::DeathsEmbraceHealingLessPercent(-3), 0.0f, 0.01f);
+
+	// FIFTY IS NOT A HUNDRED, SAID AS AN ASSERTION. At the cap a cursed player
+	// is healed half as fast rather than not at all, which is what keeps the row
+	// a hazard rather than a wall.
+	TestTrue(TEXT("even the cap leaves half the healing arriving"),
+			 Effects::DeathsEmbraceHealingLessPercent(
+				 Effects::DeathsEmbraceMostStacks) < 100.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEmbraceBeatTest,
+	"Cataclysm.DungeonModifierEffects.DeathsEmbraceCutsHealingAndTheStairsClearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEmbraceBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Death's Embrace"),
+			 Mode->FloorBrief.Modifiers.Contains(DeathsEmbrace));
+
+	// THE BEAT IS COUNTED IN BEATS AND NOT IN WORLD TIME, so a stack arrives
+	// after forty of them rather than after one Tick carrying ten seconds. That
+	// is the same convention Forced March's per-beat share uses.
+	const auto Beats = [Mode](int32 Count)
+	{
+		for (int32 Beat = 0; Beat < Count; ++Beat)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+	};
+	const auto Reduction = [&Player]()
+	{
+		return Player.Read(Vital::GetHealingReceivedReductionAttribute());
+	};
+
+	// A FLOOR JUST ENTERED CUTS NOTHING, asserted first so every figure below is
+	// evidence of the rule rather than of a character that started cursed.
+	Beats(1);
+	TestEqual(TEXT("a floor just entered cuts no healing"),
+			  Reduction(), 0.0f, 0.01f);
+
+	// AND STILL NOTHING A BEAT SHORT OF TEN SECONDS. Thirty-nine beats is 9.75
+	// seconds, which is the assertion that says the interval is read rather than
+	// a stack being granted on the first beat.
+	Beats(38);
+	TestEqual(TEXT("thirty-nine beats is short of ten seconds and cuts nothing"),
+			  Reduction(), 0.0f, 0.01f);
+
+	// THE FORTIETH BEAT IS TEN SECONDS EXACTLY, and a quarter is a power of two
+	// so forty of them is ten with no rounding to argue about.
+	Beats(1);
+	TestEqual(TEXT("ten seconds on the floor is one stack, cutting ten"),
+			  Reduction(), Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	// IT GROWS WHILE THE PLAYER STAYS. Thirty seconds is three stacks.
+	Beats(80);
+	TestEqual(TEXT("thirty seconds is three stacks, cutting thirty"),
+			  Reduction(), 3.0f * Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	// AND STOPS AT THE CAP. Fifty seconds reaches five stacks, and two hundred
+	// more beats change nothing.
+	Beats(80);
+	const float AtCap =
+		Effects::DeathsEmbraceMostStacks * Effects::DeathsEmbracePercentPerStack;
+	TestEqual(TEXT("fifty seconds reaches the cap"), Reduction(), AtCap, 0.01f);
+
+	Beats(200);
+	TestEqual(TEXT("and lingering past it changes nothing"),
+			  Reduction(), AtCap, 0.01f);
+
+	// THE STAIRS CLEAR THEM, WHICH THE ROW ASKS FOR OUTRIGHT: "Stacks reset when
+	// entering a new floor." This is the one part of this rule the data promises
+	// rather than the code needing, so it is asserted on its own.
+	// THROUGH `GoToFloor` AND NOT `BuildFloor`, AND THE FIRST VERSION OF THIS
+	// TEST GOT IT WRONG. `BuildFloor` is an internal step: it rebuilds the floor
+	// brief and never calls `ApplyFloorRulesToPlayer`, which is what holds the
+	// reset. Its only caller outside the tests is `GoToFloor`, which calls it
+	// and then applies the floor's rules -- so taking the stairs always resets,
+	// and a test driving `BuildFloor` was exercising a path play never takes. It
+	// failed, and it failed for the test's reason rather than the code's.
+	//
+	// THE SETUP ABOVE STILL USES `BuildFloor` ON PURPOSE, because all it needs
+	// is a floor whose brief carries the row, which is what `BuildFloor` does.
+	// The difference between the two calls is exactly what this assertion is
+	// about.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a new floor clears every stack"), Reduction(), 0.0f, 0.01f);
+
+	// AND THEY BUILD UP AGAIN FROM NOTHING, so the reset clears the clock as
+	// well as the count. Clearing only the count would put a stack back on the
+	// very next beat, because the clock would still read past fifty seconds.
+	Beats(38);
+	TestEqual(TEXT("and the new floor's clock starts from nothing too"),
+			  Reduction(), 0.0f, 0.01f);
+	Beats(2);
+	TestEqual(TEXT("then earns its first stack ten seconds in"),
+			  Reduction(), Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	// A FLOOR WITHOUT THE ROW CUTS NOTHING, which is what says the beat reads the
+	// floor's list rather than cursing everybody.
+	Mode->DungeonModifiers = {Starvation};
+	if (!TestTrue(TEXT("the third floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beats(200);
+	TestEqual(TEXT("a floor without Death's Embrace cuts no healing"),
+			  Reduction(), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierTwoBeatRulesTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingBothBeatRulesKeepsBothOfThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierTwoBeatRulesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THIS IS THE TEST THAT FAILS WITHOUT ONE APPLIER, and it is worth saying
+	// what it catches. Issue #41, slice 5.
+	// `UCataclysmDungeonModifierEffects::ApplyToCharacter` replaces the WHOLE set
+	// of dungeon stat modifiers. Slice 2's `StepNihilsEmbrace` assembled its own
+	// effects and set only the two resistance fields, which was correct while it
+	// was the only rule working on the beat. A second such rule written the same
+	// way zeroes the first's field every time it applies, so the two undo each
+	// other four times a second and which one survives depends on the order they
+	// are called in. Nothing about either rule on its own would show it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// A FLOOR CARRYING STARVATION AS WELL, so the floor's own per-floor rule is
+	// in the same assertion: it is the field neither beat rule writes, and a
+	// rebuild that dropped it would be the same class of fault.
+	Mode->DungeonModifiers = {NihilsEmbrace, DeathsEmbrace, Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WALK FAR ENOUGH FOR THE NIHIL'S EMBRACE TO TAKE SOMETHING, and stay long
+	// enough for Death's Embrace to grant stacks. Forty beats is ten seconds.
+	Player.Walk(0.0f);
+	Player.Walk(Effects::NihilsEmbraceMetresPerResistancePercent * 3.0f);
+	for (int32 Beat = 0; Beat < 40; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	// BOTH ARE ON THE CHARACTER AT ONCE. Either assertion alone passes with the
+	// broken shape, depending on the call order, and that is exactly why both
+	// are here.
+	TestEqual(TEXT("Death's Embrace is cutting the player's healing"),
+			  Player.Read(Vital::GetHealingReceivedReductionAttribute()),
+			  Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	const FCataclysmStatModifier* Lost =
+		DungeonRuleOn(Player.AbilitySystem,
+					  *UCataclysmItemModifiers::ResistanceStatFor(
+						  TEXT("War")).ToString());
+	if (TestNotNull(TEXT("and The Nihil's Embrace still has its resistance"),
+					Lost))
+	{
+		TestTrue(TEXT("as a loss"), Lost->Value < 0.0f);
+	}
+
+	// AND THE FLOOR'S OWN RULE SURVIVED BOTH OF THEM.
+	const FCataclysmStatModifier* Starved =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (TestNotNull(TEXT("and Starvation still has its maximum health"),
+					Starved))
+	{
+		TestTrue(TEXT("as a loss"), Starved->Value < 0.0f);
+	}
+
+	// WALKING FURTHER MOVES ONE AND LEAVES THE OTHER, which is the interleaving
+	// the broken shape gets wrong on a single beat rather than over time.
+	Player.Walk(Effects::NihilsEmbraceMetresPerResistancePercent * 3.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	TestEqual(TEXT("a beat that only moved the resistance kept the healing cut"),
+			  Player.Read(Vital::GetHealingReceivedReductionAttribute()),
+			  Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	// AND A SECOND STACK LEAVES THE RESISTANCE WHERE IT WAS.
+	for (int32 Beat = 0; Beat < 40; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+	TestEqual(TEXT("a second stack arrived"),
+			  Player.Read(Vital::GetHealingReceivedReductionAttribute()),
+			  2.0f * Effects::DeathsEmbracePercentPerStack, 0.01f);
+
+	const FCataclysmStatModifier* StillLost =
+		DungeonRuleOn(Player.AbilitySystem,
+					  *UCataclysmItemModifiers::ResistanceStatFor(
+						  TEXT("War")).ToString());
+	if (TestNotNull(TEXT("and the resistance loss is still there"), StillLost))
+	{
+		TestTrue(TEXT("as a loss"), StillLost->Value < 0.0f);
 	}
 
 	return true;
