@@ -2,6 +2,155 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — The skill lock's first source is a movement enchantment, because the ultimate one is half a set
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
+and `.cpp`; `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`; the
+Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx` and the
+`game/Data/EnchantmentEffects.csv` generated from it; and three test files under
+`game/Source/Cataclysm/Tests/` — `CataclysmEnchantmentEffectTests.cpp`,
+`CataclysmAttributeSetTests.cpp` and `CataclysmPlayerClassStatsTests.cpp`.
+**Applied.**
+Issues [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1628](https://github.com/sdubois777/Cataclysm/issues/1628). The entry below this
+one built the lock; this gives it somewhere to live and something to set it.
+
+### The enchantment the issue named cannot be written, and reading the generator is what said so
+
+[#1628](https://github.com/sdubois777/Cataclysm/issues/1628) asked for one row
+setting the lock from `Negative_Your_own_ultimate_ability_is_disabled`. That row is
+typed `Set` with weight 14 in `game/Data/EnchantmentsNegative.csv`, and a set row
+carries its set's identifier in the `Weight` column rather than a weight. So it is
+the **Null Emperor set's drawback**, and `tools/generate_datatables.py` refuses half
+a set on the owner's ruling of 2026-09-08: a set's first bonus and its drawback turn
+on together, so half of one is a cost with no bonus.
+
+Writing it demands that set's first bonus, three rows down in
+`game/Data/EnchantmentsPositive.csv`: "a 25% chance to silence an **enemy** for
+1 second". That is a chance, on hit, applying a timed state to a target — three
+things this game has not got, and a larger piece of work than the lock was.
+[#1652](https://github.com/sdubois777/Cataclysm/issues/1652) carries it.
+
+**The small change asked for would have been a second mechanism in disguise**, and
+nothing about the CSV row says so. The set rules are in the generator and the
+identifier is hidden in a column named for something else.
+
+### Four negative enchantments take a skill away, and three of them are blocked
+
+| row | type | what blocks it |
+| :-- | :-- | :-- |
+| `Your own ultimate ability is disabled` | Set 14 | enemy-side silence, [#1652](https://github.com/sdubois777/Cataclysm/issues/1652) |
+| `Your ultimate ability cannot be used unless you are below 50% HP` | Generic | a missing predicate, [#1653](https://github.com/sdubois777/Cataclysm/issues/1653) |
+| `Can't use a basic attack` | Generic | the lock's own exemption, [#1651](https://github.com/sdubois777/Cataclysm/issues/1651) |
+| `You cannot use movement abilities while stationary for more than 2 seconds` | Generic | **nothing** |
+
+**The ultimate row fails on a boundary rather than on an idea.** "Cannot be used
+unless below 50%" means locked at or above 50, and the three health predicates are
+`health_at_or_below`, `health_below` and `health_above` — the last strictly above.
+There is no `health_at_or_above`, the pipeline has no "not", and a character can park
+on exactly half health and stay there, so `health_above` would let the ultimate fire
+where the row forbids it. That is the same reason `health_below` and
+`health_at_or_below` are two predicates and not one.
+
+**The basic-attack row fails on a decision taken in the entry below this one.** The
+refusal exempts the basic attack **unconditionally**, which is right for a
+dungeon-wide silence and wrong for a row whose entire content is that cost, and there
+is no `Slot.Basic` tag to scope a lock to it: all 403 weapon skill rows carry one of
+six slot tags and the basic attack is not one of those rows at all. Recorded because
+the exemption is argued for at length in the code and the argument does not cover
+this case.
+
+### What was built, and every figure in it is measured
+
+One row: `skill_locked`, `flat`, **1**, required tag `Slot.Movement`, condition
+`stationary_for_seconds` with **2**.
+
+- **`stationary_for_seconds` already existed**, added by slice 2 of
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41). The lock's first source
+  is a condition the same brief built earlier.
+- **`Slot.Movement` is on 79 of the 403 rows** of `game/Data/WeaponSkills.csv`; the
+  six slot tags account for all 403 with one each.
+- **`EnchantmentModifierFor` in `game/Source/Cataclysm/Items/CataclysmItem.cpp`**
+  parses required tags into the modifier and resolves the condition by name, so both
+  survive the trip from the row.
+- **The condition is judged at the moment of the ask.** In
+  `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+  `StatForSkill` calls `CurrentConditions`, whose comment says it is "ASKED FRESH
+  EVERY TIME, not cached", and it reads the movement clock off the component. So the
+  lock turns on and off as the player stands and moves, with nothing applied or
+  removed.
+
+**REQUIRED TAGS IS `Slot.Movement` ALONE and not the enchantment's own two tags.**
+`ModifierApplies` requires **every** tag in the container, and no weapon skill
+carries `Scope.WhileStationary`, so writing both would scope the lock to the empty
+set. It would read as a lock that does not work rather than as a row written wrong.
+
+### One judgement, and it is about sequencing rather than about a number
+
+**Nothing in this row needed a figure chosen.** It states its slot, its predicate and
+its threshold, which is unusual in this data and worth recording: the genre research
+that the rest of this brief has needed does not apply, because there is nothing left
+open to decide. The judgement is that **the lock's first source should be the row
+that needs nothing new**, rather than waiting for the ultimate row the issue named.
+A stat with no source is a stat nothing can show to be wired up, and the route from
+gear to a refused activation is what had never been run.
+
+**THE ONE BOUNDARY MISMATCH THAT WAS ACCEPTED, stated rather than buried.** The row
+says "more than 2 seconds" and the condition compares **at least**. Those differ at
+exactly t = 2.000 s, an instant an accumulating clock passes through; health, by
+contrast, can sit on its boundary indefinitely. So the same mismatch that disqualifies
+the ultimate row is harmless here, and the reason is the shape of the quantity rather
+than the size of the gap.
+
+### The map entry is not bookkeeping, and this is the part that reads as trivial
+
+`UCataclysmPlayerClassStats::ApplyTo` records a stat's inputs inside a lambda called
+from two loops, **both over `StatToAttribute()`**, and there is no pass over the
+modifier map. A stat missing from that map has its modifiers gathered and then
+dropped, and `StatForSkill` answers its fallback for ever. A second gate sits beside
+it: the loop skips any stat whose attribute **set** the component does not hold. So
+the lock needed an attribute and a name, and without either it was unreachable by
+any route rather than merely unused.
+
+The entry uses `UCataclysmSkillSlots::LockedStat` rather than the spelled-out name,
+which is the precedent the `DebuffsDoNotExpire` entry above it sets. One spelling of
+a stat name is the point: a second is how the refusal that reads it and the map that
+records it drift apart with nothing reporting the disagreement.
+
+### And the test that merged with the lock could not have shown any of that
+
+`Cataclysm.Skills.ALockedSkillIsRefusedAndAnUnlockedOneIsNot` sets the lock by
+calling `SetStatInputs` and hand-building the modifier. That writes the very map
+`StatForSkill` reads, so it never runs `ApplyTo`, never consults
+`StatToAttribute()`, and **would pass with the attribute and the map entry both
+absent.** It proves the refusal and cannot prove there is a way to cause one.
+
+So the new test runs the route gear takes: an item worn, `RefreshAttributes`, and the
+stat read with a real skill's tags. **Its tags come out of
+`game/Data/WeaponSkills.csv` rather than being typed**, because a lock scoped to a
+tag no skill carries is scoped to the empty set, and two tests that both type
+`Slot.Movement` agree with each other rather than with the game.
+
+**Standing still has to be started.** `SecondsSinceMoved` answers -1 for a character
+that has never moved and `ConditionHolds` refuses an unknown reading, so a character
+that has stood perfectly still since it spawned is not stationary as far as the
+condition is concerned. The first sample is what begins standing still, which the
+engine comment states and a test would otherwise get wrong in the direction that
+looks like a feature that does not work.
+
+### A step every data row carries and no C++-only slice did
+
+A change to `game/Data/*.csv` leaves the DataTable asset under
+`game/Content/Data/` holding the previous numbers, and **that asset is what a
+packaged build loads** because `game/Data/` is not cooked.
+`tools/tests/test_datatable_assets_are_current.py` fails until the asset is rebuilt,
+which needs the Unreal editor. Measured here: it named
+`['EnchantmentEffects.csv']` before the rebuild. Worth recording because this is the
+first change in this brief to touch `game/Data/`, and every modifier slice that adds
+a row carries the same editor-bound step.
+
+---
+
 ## 2026-09-12 — A patch of ground can last until the player leaves the floor, and drawing one needs two separate numbers rather than one
 
 **Affects:** `SpawnForTheFloor`, `FloorDrawSeconds`, `FloorRedrawSeconds`,
