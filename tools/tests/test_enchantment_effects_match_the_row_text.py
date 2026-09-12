@@ -115,8 +115,8 @@ JUDGED_NUMBERS = {
 #: Seven rows over seven enchantments until 2026-09-11, when the ranged
 #: enchantments' rows were written, and 64 over 56 until the four buildable
 #: sets got their eight rows.
-AUTHORED_ROWS = 72
-AUTHORED_ENCHANTMENTS = 64
+AUTHORED_ROWS = 81
+AUTHORED_ENCHANTMENTS = 73
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis, Mana Weaver, Divine Retribution and Warlord's Will.

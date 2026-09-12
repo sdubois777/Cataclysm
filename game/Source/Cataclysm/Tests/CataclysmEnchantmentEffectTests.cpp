@@ -60,6 +60,56 @@ namespace CataclysmEnchantmentEffectTest
 	/** A real affix granting increased maximum health, top value 12. */
 	const TCHAR* IncreasedHealthAffix = TEXT("Stat_Increased_maximum_health");
 
+	/**
+	 * The nine rows that say you take damage from a named source. Issue #666.
+	 *
+	 * EACH EXPECTED VALUE IS THE FAR END OF THE ROW'S RANGE, because a rolled
+	 * enchantment built in code carries a roll of 1 and
+	 * `UCataclysmItemValues::EnchantmentValue` puts a roll of 1 on the second
+	 * number. `Cataclysm.Enchantments.ARangeRollsAtThePrecisionItIsWrittenIn`
+	 * holds that default.
+	 *
+	 * THE BUCKET FOLLOWS THE WORDS. "Less" and "more" are multipliers of their
+	 * own; "increased" joins the one additive sum.
+	 */
+	struct FSourceRow
+	{
+		const TCHAR* Name;
+		bool bBenefit;
+		float Value;
+		ECataclysmStatBucket Bucket;
+		ECataclysmStatCondition Condition;
+	};
+
+	const FSourceRow SourceRows[] = {
+		{TEXT("Positive_You_take_20_40_less_damage_from_Boss_enemies"), true,
+		 -40.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::OpponentIsBoss},
+		{TEXT("Positive_You_take_20_40_less_damage_from_spells"), true,
+		 -40.0f, ECataclysmStatBucket::More, ECataclysmStatCondition::HitIsSpell},
+		{TEXT("Positive_You_take_15_30_less_damage_from_melee_attacks"), true,
+		 -30.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::HitIsMeleeAttack},
+		{TEXT("Positive_You_take_5_20_less_damage_from_melee_attacks"), true,
+		 -20.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::HitIsMeleeAttack},
+		{TEXT("Negative_You_take_20_35_more_damage_from_melee_attacks"), false,
+		 35.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::HitIsMeleeAttack},
+		{TEXT("Negative_You_take_20_35_increased_damage_from_spells"), false,
+		 35.0f, ECataclysmStatBucket::Increased,
+		 ECataclysmStatCondition::HitIsSpell},
+		{TEXT("Negative_You_take_15_25_increased_damage_from_Boss_enem"), false,
+		 25.0f, ECataclysmStatBucket::Increased,
+		 ECataclysmStatCondition::OpponentIsBoss},
+		{TEXT("Negative_Take_10_20_more_damage_from_Boss_enemies"), false,
+		 20.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::OpponentIsBoss},
+		{TEXT("Negative_You_take_10_30_more_damage_from_ranged_attacks"), false,
+		 30.0f, ECataclysmStatBucket::More,
+		 ECataclysmStatCondition::HitIsRangedAttack},
+	};
+
 	/** Loads a generated table so tests read the real data, not a fixture. */
 	template <typename RowType>
 	UDataTable* LoadCsv(const TCHAR* FileName)
@@ -132,6 +182,21 @@ namespace CataclysmEnchantmentEffectTest
 				bAllReal = false;
 			}
 		}
+		// AND THE NINE ROWS THAT NAME A SOURCE, each looked up in the table its
+		// own half belongs to. Issue #666.
+		for (const FSourceRow& Row : SourceRows)
+		{
+			const UDataTable* Table = Row.bBenefit ? Out.Positive : Out.Negative;
+			if (!Table->FindRow<FCataclysmEnchantmentRow>(
+					FName(Row.Name), TEXT("LoadAll"), /*bWarnIfMissing=*/false))
+			{
+				Test.AddError(FString::Printf(
+					TEXT("%s is not a row of Enchantments%s.csv."), Row.Name,
+					Row.bBenefit ? TEXT("Positive") : TEXT("Negative")));
+				bAllReal = false;
+			}
+		}
+
 		return bAllReal;
 	}
 
@@ -578,6 +643,70 @@ bool FCataclysmEnchantmentEffectAttributesTest::RunTest(const FString& Parameter
 	// Without this the loop above passes on an empty table, which is what a
 	// stale or unbuilt asset looks like.
 	TestTrue(TEXT("the effect table has its rows"), Checked >= 7);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentEffectSourceRowTest,
+	"Cataclysm.Enchantments.ARowNamingItsSourceMovesDamageTakenUnderThatCondition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentEffectSourceRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	// EACH ROW WORN ON ITS OWN, paired with a row of the other half that has no
+	// effect written. So damage taken gets exactly one modifier, and nothing
+	// below can be satisfied by the other half of the pair.
+	//
+	// WHAT WOULD BE WRONG WITHOUT THE CONDITION: a character wearing "you take
+	// 20%-40% less damage from spells" would take less damage from everything,
+	// silently and in the player's favour. That is the failure these check for.
+	for (const FSourceRow& Row : SourceRows)
+	{
+		const TCHAR* Positive = Row.bBenefit ? Row.Name : BenefitWithNoEffect;
+		const TCHAR* Negative = Row.bBenefit ? DrawbackWithNoEffect : Row.Name;
+
+		int32 Added = 0;
+		const FTotals Totals = Gather(
+			Tables, {Carrying(TEXT("Head_Helm"), Positive, Negative)}, Added);
+
+		const TArray<FCataclysmStatModifier>* Taken =
+			Totals.Find(FName(TEXT("damage_taken")));
+		if (!TestNotNull(
+				*FString::Printf(TEXT("%s moves damage taken"), Row.Name), Taken)
+			|| !TestEqual(*FString::Printf(TEXT("%s exactly once"), Row.Name),
+						  Taken->Num(), 1))
+		{
+			continue;
+		}
+
+		const FCataclysmStatModifier& Modifier = (*Taken)[0];
+		TestEqual(*FString::Printf(TEXT("%s at the top of its range"), Row.Name),
+				  Modifier.Value, Row.Value);
+		TestEqual(
+			*FString::Printf(TEXT("%s in the bucket its words state"), Row.Name),
+			static_cast<int32>(Modifier.Bucket), static_cast<int32>(Row.Bucket));
+		TestEqual(
+			*FString::Printf(TEXT("%s only for a hit from its source"), Row.Name),
+			static_cast<int32>(Modifier.Condition),
+			static_cast<int32>(Row.Condition));
+		TestEqual(*FString::Printf(TEXT("%s comparing no value"), Row.Name),
+				  Modifier.ConditionValue, 0.0f);
+		TestEqual(
+			*FString::Printf(TEXT("%s from the enchantment source"), Row.Name),
+			static_cast<int32>(Modifier.Source),
+			static_cast<int32>(ECataclysmModifierSource::Enchantment));
+	}
+
+	// Without this the loop above passes having worn nothing at all.
+	TestEqual(TEXT("nine rows that name a source are written"),
+			  static_cast<int32>(UE_ARRAY_COUNT(SourceRows)), 9);
 	return true;
 }
 

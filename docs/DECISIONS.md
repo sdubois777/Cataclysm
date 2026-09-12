@@ -2,6 +2,79 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — Nine enchantment rows that name where a hit came from now change damage taken, and three of the twelve cannot yet
+
+**Affects:** the Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`
+(9 new rows, 81 in all, over 73 enchantments), `game/Data/EnchantmentEffects.csv`
+and `game/Content/Data/DT_EnchantmentEffects.uasset`; the pinned row counts in
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`, `docs/README.md` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; and one new test in
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`. Issue #666,
+for epic #45.
+
+**No new mechanism, and no new stat.** The four conditions on the blow —
+`hit_is_melee_attack`, `hit_is_ranged_attack`, `hit_is_spell` and
+`opponent_is_boss` — were built on 2026-09-11 under the entry below, and
+`damage_taken` already runs through the three buckets. This change is the data
+that uses them, and the rule it follows is the one the project owner ruled that
+day: each row is its own "more" or "less" multiplier on damage taken, used only
+for hits from that source, and the 75% cap on flat damage reduction does not
+reach it.
+
+**The nine rows, each `damage_taken` with no condition value.**
+
+| Row | Words | Bucket | Value | Condition |
+| :-- | :-- | :-- | :-- | :-- |
+| P036 | You take 20%-40% less damage from Boss enemies | more | -20 to -40 | `opponent_is_boss` |
+| P109 | You take 20%-40% less damage from spells | more | -20 to -40 | `hit_is_spell` |
+| P186 | You take 15%-30% less damage from melee attacks | more | -15 to -30 | `hit_is_melee_attack` |
+| P197 | You take 5-20% less damage from melee attacks | more | -5 to -20 | `hit_is_melee_attack` |
+| N037 | You take 20%-35% more damage from melee attacks | more | 20 to 35 | `hit_is_melee_attack` |
+| N082 | You take 20%-35% increased damage from spells | increased | 20 to 35 | `hit_is_spell` |
+| N096 | You take 15%-25% increased damage from Boss enemies | increased | 15 to 25 | `opponent_is_boss` |
+| N105 | Take 10%-20% more damage from Boss enemies | more | 10 to 20 | `opponent_is_boss` |
+| N116 | You take 10%-30% more damage from ranged attacks | more | 10 to 30 | `hit_is_ranged_attack` |
+
+**The bucket follows the words,** which is the rule every other effect row is
+held to by `tools/tests/test_enchantment_effects_match_the_row_text.py`: "less"
+and "more" are multipliers of their own, "increased" joins the one additive sum.
+The sign follows them too, so a row that takes damage away is negative.
+
+**Three of the twelve are not written, and each needs the same missing thing:**
+two conditions at once, which one modifier cannot hold.
+
+| Row | Words | What it also needs |
+| :-- | :-- | :-- |
+| N120 | You take 15%-25% more damage from melee attacks while moving | a moving state, which nothing records |
+| N138 | While stationary you take 20%-35% increased damage from ranged attacks | a stationary state, which nothing records |
+| N160 | You take 20%-35% increased damage from melee attacks while your HP is above 75% | nothing new; only the second condition |
+
+**Twelve rows are worded this way, counted rather than estimated.** A search of
+`game/Data/EnchantmentsPositive.csv` and `game/Data/EnchantmentsNegative.csv` for
+a sentence naming a melee attack, a ranged attack, a spell or a Boss as the
+source of damage taken returns those twelve and no others. Two other figures are
+in circulation and neither is a count of this: issue #666's title says "eight
+enchantments", but its body says "about eight" and labels its own table "A sample
+rather than the whole list"; and the coordinating session's queue said fourteen,
+which has been queried and is unresolved at the time of writing.
+
+**The four tags are not four stats.** `Stat.Defense.Global`,
+`Stat.Defense.Melee`, `Stat.Defense.Spell` and `Stat.Defense.Ranged` sort these
+rows on the workbook's Tags sheet. Searching by those tags finds 28 rows, most of
+which are about something else entirely — dealing more damage to bosses,
+absorbing a spell, doubling armour against melee, reflecting a melee hit — which
+is why the wording and not the tag decides what belongs here. The Damage
+Calculation section of `docs/Cataclysm_GDD_v2.md` already states this, and states
+the combination rule and the cap; that paragraph landed on 2026-09-11 and needed
+no change.
+
+**What the paragraph in #666 asked for already existed.** That issue asks for a
+statement in the design document saying whether scoped damage reduction is one
+stat or several, how it combines with the global figure, and what the cap applies
+to. All three are in that section already. What was missing was only the rows.
+
+---
+
 ## 2026-09-11 — Void Splinter takes a share of the target's current health on each tick, and never takes a boss below half its maximum
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`,

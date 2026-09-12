@@ -71,3 +71,12 @@ Positive_Divine_Retribution_2_Piece_Bonus_Your_energy#1,Positive_Divine_Retribut
 Negative_Your_health_is_reduced_by_10#1,Negative_Your_health_is_reduced_by_10,max_health,increased,-10.0,-10.0,,,0.0,,0.0
 Positive_Warlord_s_Will_2_Piece_Bonus_Your_armor_is_in#1,Positive_Warlord_s_Will_2_Piece_Bonus_Your_armor_is_in,armor,increased,25.0,25.0,,,0.0,,0.0
 Negative_Your_movement_speed_is_reduced_by_10_1#1,Negative_Your_movement_speed_is_reduced_by_10_1,movement_speed,increased,-10.0,-10.0,,,0.0,,0.0
+Positive_You_take_20_40_less_damage_from_Boss_enemies#1,Positive_You_take_20_40_less_damage_from_Boss_enemies,damage_taken,more,-20.0,-40.0,,opponent_is_boss,0.0,,0.0
+Positive_You_take_20_40_less_damage_from_spells#1,Positive_You_take_20_40_less_damage_from_spells,damage_taken,more,-20.0,-40.0,,hit_is_spell,0.0,,0.0
+Positive_You_take_15_30_less_damage_from_melee_attacks#1,Positive_You_take_15_30_less_damage_from_melee_attacks,damage_taken,more,-15.0,-30.0,,hit_is_melee_attack,0.0,,0.0
+Positive_You_take_5_20_less_damage_from_melee_attacks#1,Positive_You_take_5_20_less_damage_from_melee_attacks,damage_taken,more,-5.0,-20.0,,hit_is_melee_attack,0.0,,0.0
+Negative_You_take_20_35_more_damage_from_melee_attacks#1,Negative_You_take_20_35_more_damage_from_melee_attacks,damage_taken,more,20.0,35.0,,hit_is_melee_attack,0.0,,0.0
+Negative_You_take_20_35_increased_damage_from_spells#1,Negative_You_take_20_35_increased_damage_from_spells,damage_taken,increased,20.0,35.0,,hit_is_spell,0.0,,0.0
+Negative_You_take_15_25_increased_damage_from_Boss_enem#1,Negative_You_take_15_25_increased_damage_from_Boss_enem,damage_taken,increased,15.0,25.0,,opponent_is_boss,0.0,,0.0
+Negative_Take_10_20_more_damage_from_Boss_enemies#1,Negative_Take_10_20_more_damage_from_Boss_enemies,damage_taken,more,10.0,20.0,,opponent_is_boss,0.0,,0.0
+Negative_You_take_10_30_more_damage_from_ranged_attacks#1,Negative_You_take_10_30_more_damage_from_ranged_attacks,damage_taken,more,10.0,30.0,,hit_is_ranged_attack,0.0,,0.0

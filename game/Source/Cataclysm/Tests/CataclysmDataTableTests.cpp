@@ -376,7 +376,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// `class_resource`, which always existed.
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        208)
 
-	// SEVENTY-TWO ROWS OVER SIXTY-FOUR ENCHANTMENTS. Issue #45. The first seven
+	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
 	// an item kept where inside a range it rolled, are forty-eight ranged
 	// enchantments and P031, whose number was chosen under the owner's
@@ -386,7 +386,15 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// its drawback, for Archon's Aegis, Mana Weaver, Divine Retribution and
 	// Warlord's Will. The other ten sets are held, each waiting for something
 	// its rows need, which `docs/DECISIONS.md` lists set by set.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     72)
+	//
+	// AND NINE THAT NAME WHERE THE HIT CAME FROM, on 2026-09-12: "you take
+	// 20%-40% less damage from spells" and the like. Each is a `damage_taken`
+	// row carrying one of `hit_is_melee_attack`, `hit_is_ranged_attack`,
+	// `hit_is_spell` or `opponent_is_boss`, so it multiplies only a hit from
+	// that source. Issue #666. TWELVE rows are worded that way and three are
+	// not written: each of those needs two conditions at once, which one
+	// modifier cannot hold.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     81)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
