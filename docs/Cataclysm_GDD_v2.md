@@ -246,7 +246,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 
   
 
-**Gamepad support is partial.** The left stick moves the character in both schemes. The six ability slots are not bound to a gamepad yet.
+**Gamepad support is partial.** The left stick moves the character in both schemes. The seven ability slots are not bound to a gamepad yet.
 
   
 
@@ -559,7 +559,7 @@ Combat is real-time top-down action. Players must read and dodge telegraphed ene
 
 ### **Skill Slots**
 
-Each player has six skill slots. The basic attack is on the left mouse button and is enhanced by all damage types present.
+Each player has seven skill slots: basic attack, heavy, special, support, aura, movement and ultimate. Those are the defaults rather than restrictions, and `game/Data/SkillSlots.csv` holds the same seven. The basic attack is on the left mouse button and is enhanced by all damage types present.
 
   
 
@@ -567,7 +567,7 @@ The equipped weapons determine the **pool** of skills a player can draw from, no
 
   
 
-A player carrying several damage types will have far more skills available than slots to hold them. Choosing which six to take is part of building a character, and it is why gear that widens the pool is valuable even when its raw statistics are no better.
+A player carrying several damage types will have far more skills available than slots to hold them. Choosing which of them to take is part of building a character, and it is why gear that widens the pool is valuable even when its raw statistics are no better.
 
   
 
@@ -1425,6 +1425,10 @@ Final Regeneration = Base Regeneration × (1 + Sum of Increases)
   
 
 Read literally as 1% of maximum health per second, 50 points of Vitality would return half the character's health every second. The base regeneration rate is a small flat value per second, supplied the same way base health is. This applies to health, mana and energy shield regeneration alike.
+
+  
+
+**Health regeneration runs at its full rate during combat.** There is no combat suppression and no out-of-combat bonus: the rate above is the rate at all times. The project owner settled this on 2026-09-12, asked directly because this document had never said either way and two enchantment rows turned on the answer. This document states no combat suppression for mana or energy shield regeneration either.
 
   
 
@@ -4953,7 +4957,7 @@ Those are the same `Shape` and `ShapeParams` columns that `game/Data/WeaponSkill
 
   
 
-A Movement skill — one of the six skill slots, on a cooldown of 5 seconds typically and 3 at the shortest — is a **recovery**, not the intended answer. A player who read the marker too late can still cross it, because the largest legal marker is smaller than the shortest Movement-shape skill range. It is never required.
+A Movement skill — one of the seven skill slots, on a cooldown of 5 seconds typically and 3 at the shortest — is a **recovery**, not the intended answer. A player who read the marker too late can still cross it, because the largest legal marker is smaller than the shortest Movement-shape skill range. It is never required.
 
   
 
@@ -7363,7 +7367,7 @@ All cosmetics are purely visual — no pay-to-win, ever.
 
 | Risk | Mitigation |
 | :-: | :-: |
-| Skill matrix scope creep (11 weapons × 8 damage types × 6 slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
+| Skill matrix scope creep (11 weapons × 8 damage types × 6 non-basic slots = 528+ skills) | Launch with one complete damage type per patch. Use tag-based design to maximize re-use and make each skill feel distinct. |
 | Time pressure mechanics frustrating casual players | The lethality mode (Standard, Hardcore or Heretic) lets players tune the urgency, and Standard is the default. Permanent meta-progression ensures no run feels wasted. |
 | Passive tree complexity overwhelming new players | Strong visual design with clear branching and class fantasy. Beginner preset builds. In-game tooltips on all node interactions. |
 | Enchantment system creating too much variance in loot quality | Weight system ensures common drops are consistently useful. Weight-1 enchantments are rare enough that they feel like jackpots, not baseline expectations. |

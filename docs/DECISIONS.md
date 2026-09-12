@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — The owner's answers on the skill slot count, regeneration in combat, an armour row's stacking, and what Reaper's Embrace restores
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, changed in six places by this entry.
+`game/Data/EnchantmentsPositive.csv` rows 117 and 193 and
+`game/Data/EnchantmentsNegative.csv` row 82 follow as separate work and are not
+touched here. **Partly applied:** the design document corrections are in this
+change; no data row is. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45), making every
+enchantment row do in play what its Effect text says.
+
+**Five questions went to the project owner on 2026-09-12,** put by the
+coordinating session as options with a recommendation on each. Four were answered
+as recommended. The fifth was answered in a way that reversed a decision this log
+already carried; it was put back to the owner with that evidence, and they kept
+the original answer. So four of the five change something and the fifth changes
+nothing.
+
+### The skill slot count is seven, and the data was right all along
+
+**The owner's words:** "it should be 7. basic attack, heavy, special, support,
+aura, movement, ultimate are the defaults. They can all be swapped out for
+whatever."
+
+`game/Data/SkillSlots.csv` has held exactly those seven rows throughout, so the
+design document was wrong and the data was right. Four sentences changed:
+
+| Sentence | Now |
+| :-- | :-- |
+| "The six ability slots are not bound to a gamepad yet" | seven |
+| "Each player has six skill slots." | seven, and the seven are named |
+| "Choosing which six to take" | "Choosing which of them to take" |
+| "A Movement skill — one of the six skill slots" | seven |
+
+**The "choosing which six" sentence lost its count rather than gaining one, and
+that is deliberate.** With seven slots of which the basic attack is supplied by
+the weapon, a player chooses six from the pool; but the owner said all seven
+defaults "can be swapped out for whatever", which would make it seven. The
+document does not settle which, so it now asserts neither.
+
+**THREE SENTENCES SAYING "SIX" ARE CORRECT AND WERE LEFT ALONE.** They count the
+six NON-BASIC slots rather than the slots:
+
+- "how many of a pairing's six skills exist"
+- "a unique set of six skills (one per non-basic slot)"
+- "a rider on it would silently move all six of the others"
+
+**AND THE DERIVED FIGURE IN THE RISKS TABLE WAS NOT WRONG EITHER.** "11 weapons
+× 8 damage types × 6 slots = 528+ skills" reads as a slot count and was very
+nearly changed to 616. Measured instead: `game/Data/WeaponSkills.csv` holds 403
+rows and its `Slot` column is Heavy 79, Movement 79, Special 79, Support 79,
+Ultimate 79, Aura 8, and **no Basic rows at all**. The matrix produces six skills
+per weapon-and-damage-type pairing because it produces no basic attacks, so 528
+stands. The cell now says "6 non-basic slots", so the next person sweeping slot
+counts does not stop on it as two of us did.
+
+**THE DOCUMENT ALREADY SAID SO IN ITS OWN WORDS,** in a sentence nobody in this
+round had read: "The basic attack is the seventh slot and it does not come from
+that matrix. It comes from the weapon type alone." So the document held both
+halves of the answer the whole time — seven slots, six of them from the matrix —
+and said "seven" in two places rather than the one that had been noticed. The
+count was wrong in four sentences; it was never wrong everywhere.
+
+**Affix slots are a different thing and none was touched.** Several sentences say
+six or 6 about affix slots, stash tabs and sockets. MOST USE THE DIGIT RATHER
+THAN THE WORD, so a sweep for "six" does not see them at all and would report
+itself complete.
+
+**AND THE SWEEP WAS NOT FINISHED UNTIL IT PRINTED MATCHES RATHER THAN LINES.** A
+search that shows whole lines drops the ones too long to display, and this
+document has many. FOUR HITS WERE HIDING IN THEM, including the "seventh slot"
+sentence quoted above, which is the one that settles the whole question. Asking
+the search for the matched text alone found all four. Of the other three, two are
+the stash — "600 slots, as six tabs of 100" — and one is affix slots serving six
+skills; none needed changing, but none had been looked at either. A sweep is not
+complete because it returned; it is complete when every hit has been read.
+
+### Health regeneration runs at its full rate during combat
+
+**The owner ruled there is no combat suppression and no out-of-combat bonus.**
+`docs/Cataclysm_GDD_v2.md` had never said either way — searched before the
+question was put — so this is a new rule rather than a correction, and it now
+sits beside the regeneration formula in section IV.
+
+Two enchantment rows turn on it, in opposite directions. NEITHER IS CHANGED HERE:
+
+- `game/Data/EnchantmentsPositive.csv` row 117, "Your HP regeneration continues
+  at 50% effectiveness during combat", **has nothing left to grant**: it promises
+  half of what every character already has. It must be REPLACED with a different
+  benefit rather than reworded.
+- `game/Data/EnchantmentsNegative.csv` row 82, "HP regeneration is disabled
+  during combat", **stays, and is a stronger drawback than it was**, because what
+  it now removes is the full rate.
+
+### The armour row applies once and is worth more for it
+
+**`game/Data/EnchantmentsPositive.csv` row 193 becomes "Hitting an enemy reduces
+their armor by 10%-20% for 5 seconds".** It reads "by 2%-4% for 5 seconds,
+stacking indefinitely" today: the stacking clause goes and the single application
+rises.
+
+**THE 10%-20% IS A JUDGEMENT AND NOT A DERIVATION.** The owner chose it from
+three ranges offered. No shipped game in the genre publishes a conversion from an
+indefinitely stacking debuff to a single application, so there is nothing to read
+the figure off, and this is recorded as a judgement so a later reader tunes it
+against play rather than hunting for the source it came from.
+
+### Reaper's Embrace restores more healing, not more health
+
+**"10% more healing received from all sources" is about sources of healing.** The
+owner confirmed it does not mean maximum health. This agrees with what this log
+already held: the Reaper's Embrace line further down routes it to a stat for life
+recovered from all sources.
+
+### The Gatekeeper's Soulfall stays an attack — asked twice, answered the same way
+
+**Nothing changes and nothing is rebuilt.** The decision of 2026-09-11 stands:
+Soulfall sends `Type.Projectile, Type.Ranged`. That followed the owner's own rule
+— a spell is what a spellcaster casts — applied to `game/Data/EnemyArchetypes.csv`,
+which describes the Succubus as "Ranged caster. Slow but powerful attacks" and the
+Gatekeeper as "Multi-phase towering demon".
+
+**It was reopened on 2026-09-12 in error, and the owner confirmed the original
+answer.** The question reached them as one with no evidence either way. There was
+evidence: this log already held the decision and its reason. Put back to them with
+the entry's own words, the two archetype descriptions and the design document's
+listing of Soulfall as a Special-slot Projectile, they kept it an attack.
+
+**WHY IT WAS REOPENED IS WORTH MORE THAN THE ANSWER, and the coordinating session
+asked for it to be recorded rather than left out.** Its working copy was 27
+commits behind `development`. It searched this file there for "spellcaster type"
+and for "towering demon", found neither, and had run a control first — so the
+zeros read as evidence of absence. Development's copy of this file is 2,098,409
+bytes against that copy's 2,013,117, and holds each of those phrases exactly once.
+
+**A CONTROLLED SEARCH OF THE WRONG FILE IS STILL A SEARCH OF THE WRONG FILE.**
+`CLAUDE.md` already says no working directory is authoritative and that a rule
+should be read out of git. The fault was not a careless method — the method was
+careful — it was a careless source underneath it, which is harder to notice
+precisely because the method looks sound. The next session will also have a stale
+copy.
+
+**What was at stake, for a future reader weighing it again:** one tag, and with it
+whether every "damage from spells" row applies to Soulfall and whether every
+ranged-attack row stops applying.
+
+---
+
 ## 2026-09-12 — A character can read how far away the enemy hitting it stood, and a damage over time tick reports no distance at all
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.h` and `.cpp`,
