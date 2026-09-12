@@ -235,13 +235,26 @@ public:
 	 * curses stack in the restrictive direction -- which is what a player
 	 * expects two curses to do.
 	 *
-	 * IT IS READ IN TWO PLACES BECAUSE HEALTH IS RESTORED IN TWO PLACES.
-	 * `UCataclysmRegeneration::TopUp` covers regeneration and life leech; the
-	 * Fist Ultimate Living Pyre returns health by its own route and is reached by
-	 * neither that function nor the ceiling. That there is no single place is
-	 * issue #1608, and that the ceiling misses Living Pyre is issue #1607;
-	 * neither is fixed here, and this stat is applied at both sites rather than
-	 * in a shared helper so that closing them stays a separate decision.
+	 * IT IS READ WHERE HEALTH ARRIVES, AND THERE IS NO ONE SUCH PLACE.
+	 * `UCataclysmRegeneration::TopUp` covers health regeneration and life leech
+	 * for any character; the Fist Ultimate Living Pyre returns health by its own
+	 * route, reached by neither that function nor the ceiling. This is read at
+	 * both of them.
+	 *
+	 * A THIRD ROUTE IS NOT REDUCED, AND THAT IS KNOWN RATHER THAN MISSED. The
+	 * enemy modifier Sacrifice restores a quarter of a creature's maximum health
+	 * when it devours a nearby ally, and reads neither this stat nor the
+	 * ceiling. It writes a BASE value where the other two modify the current
+	 * one, which is a decision of its own rather than a line to add. Issue
+	 * #1611. THE COUNT IN THIS COMMENT SAID TWO UNTIL THAT WAS FILED: the
+	 * sentence "the one place regeneration and leech both restore health" is
+	 * exactly true and had been read twice as "the one place health is
+	 * restored".
+	 *
+	 * THAT THERE IS NO SINGLE PLACE IS ISSUE #1608, and that the ceiling misses
+	 * Living Pyre is issue #1607. Neither is fixed here, and this stat is applied
+	 * at each site rather than in a shared helper so that closing them stays a
+	 * separate decision.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealingReceivedReduction)
 	FGameplayAttributeData HealingReceivedReduction;

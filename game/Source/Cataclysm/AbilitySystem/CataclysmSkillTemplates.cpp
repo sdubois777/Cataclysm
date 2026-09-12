@@ -3649,7 +3649,33 @@ float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
 		AbilitySystem->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
 	const float Current =
 		AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
-	const float Wanted = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
+	const float Offered = DealtToHealth * Params.HealthFromHitTaken / 100.0f;
+
+	// AND A CURSE MAY CUT HOW MUCH OF IT ARRIVES. Issue #41, slice 5. The
+	// dungeon modifier Death's Embrace reduces healing received, and the project
+	// owner ruled on 2026-09-12 that this counts: the stat covers every route
+	// that restores health, and returning health from a blow taken is one.
+	//
+	// HERE AND NOT IN A HELPER SHARED WITH `UCataclysmRegeneration::TopUp`, AND
+	// THAT IS THE POINT. A helper would carry the healing ceiling as well, and
+	// this skill escaping the ceiling is a separate open question -- issue #1607,
+	// with issue #1608 for there being nowhere to put either. So the reduction
+	// lands here on its own and the ceiling stays off, rather than this change
+	// deciding #1607 in passing.
+	//
+	// OFF THE ABILITY SYSTEM, SO IT WORKS FOR WHOEVER HOLDS THE AURA rather than
+	// for a player alone. Nothing grants the stat to a creature today; the
+	// enchantment row "Disease effects reduce enemy healing by 50%-100%" is what
+	// will.
+	//
+	// THE PYRE STILL GETS HOTTER. `BlowsTaken` is counted above this, and the
+	// row ties its 8% per hit to the hits taken rather than to the health
+	// returned, so a curse that cuts the healing does not cool the fire.
+	const float AmountReduction = FMath::Clamp(
+		AbilitySystem->GetNumericAttribute(
+			Vitals::GetHealingReceivedReductionAttribute()),
+		0.0f, 100.0f);
+	const float Wanted = Offered * (100.0f - AmountReduction) / 100.0f;
 	const float Given = FMath::Clamp(Wanted, 0.0f, FMath::Max(0.0f, Maximum - Current));
 
 	if (Given <= 0.0f)
