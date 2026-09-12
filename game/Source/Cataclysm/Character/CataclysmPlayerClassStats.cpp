@@ -634,6 +634,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("dot_frequency"), Combat::GetDotFrequencyAttribute()},
 			{TEXT("dot_duration"), Combat::GetDotDurationAttribute()},
 
+			// THE TWO SIDES OF A STAGGER THIS CHARACTER APPLIES. Issue #45.
+			// `stagger_duration` is a percentage of normal like the three above
+			// it; `stagger_health_ceiling_reduction` is percentage points taken
+			// off the health above which a target cannot be staggered, and is a
+			// REDUCTION so that zero changes nothing.
+			//
+			// NEITHER IS `debuff_duration_taken`, which is the TARGET's and
+			// lengthens every timed effect put on it. Both reach one stagger.
+			{TEXT("stagger_duration"), Combat::GetStaggerDurationAttribute()},
+			{TEXT("stagger_health_ceiling_reduction"),
+			 Combat::GetStaggerHealthCeilingReductionAttribute()},
+
 			// Everything else the class table names.
 			{TEXT("movement_speed"), Combat::GetMovementSpeedAttribute()},
 

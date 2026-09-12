@@ -37,6 +37,8 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitDotDamage(100.0f);
 	InitDotFrequency(100.0f);
 	InitDotDuration(100.0f);
+	InitStaggerDuration(100.0f);
+	InitStaggerHealthCeilingReduction(0.0f);
 
 	InitPenetration(0.0f);
 	// Zero, not 100, because it is an added percentage rather than a
@@ -170,6 +172,9 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDamage);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotFrequency);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StaggerDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet,
+						StaggerHealthCeilingReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
@@ -237,6 +242,30 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 		|| Attribute == GetBleedOnCritChanceAttribute()
 		|| Attribute == GetDebuffSpreadChanceAttribute()
 		|| Attribute == GetDeathSpreadChanceAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
+		return;
+	}
+
+	// A SHARE OF A HUNDRED, HELD INSIDE IT, AND NOT A CHANCE. Issue #45.
+	//
+	// THE REASONING IS ALREADY WRITTEN AND IS NOT REPEATED HERE. This is the
+	// same shape as `HealingCeilingReduction` in the VITAL set, and the comment
+	// on that clamp gives both arguments for it: "BELOW ZERO EACH WOULD INVERT
+	// ITSELF" -- a negative ceiling reduction would RAISE the ceiling above the
+	// maximum -- and past a hundred it "would go through zero". Read that one.
+	//
+	// A HUNDRED IS LEGITIMATE and means this character cannot stagger anything
+	// at all, because the ceiling is then zero and no living target is at or
+	// below zero health. No row states it, and it is not a data error if one
+	// ever does.
+	//
+	// THE PRECEDENT IS IN THE VITAL SET AND THIS STAT IS IN THE COMBAT SET, and
+	// that difference is deliberate rather than an oversight: the stat belongs
+	// to the character doing the staggering, which is an offence-side reading,
+	// while the healing ceiling belongs to the character being healed. The
+	// reasoning for the clamp transfers even though the location does not.
+	if (Attribute == GetStaggerHealthCeilingReductionAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
 		return;
@@ -326,6 +355,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
 		GetDotDamageAttribute(), GetDotFrequencyAttribute(),
 		GetDotDurationAttribute(), GetPenetrationAttribute(),
+		GetStaggerDurationAttribute(),
+		GetStaggerHealthCeilingReductionAttribute(),
 		GetArmorPenetrationAttribute(),
 		GetSpellDamageAttribute(),
 		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
@@ -368,6 +399,8 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AreaOfEffect)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDamage)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerHealthCeilingReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)
