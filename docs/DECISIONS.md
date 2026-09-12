@@ -2,6 +2,188 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — Two characters reach one stagger's duration and their scalars multiply, and a stagger can be refused by the target's health without refusing the shove
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
+and `.cpp`, `CataclysmSkillEffects.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, the new
+`game/Source/Cataclysm/Tests/CataclysmStaggerGateTests.cpp`,
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx` and the data
+files generated from it, and the two enchantment rows named below. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45). **Applied.**
+
+### The two rows
+
+| Row | The stat it needs |
+| :-- | :-- |
+| "Stagger effects you apply last 50%-100% longer" (P253) | `stagger_duration`, base 100, written `increased` |
+| "You cannot stagger enemies above 50% HP" (N151) | `stagger_health_ceiling_reduction`, base 0, written `flat` |
+
+Both are read off the character **applying** the stagger, inside
+`UCataclysmSkillEffects::ApplyStagger`.
+
+**THE `P253` AND `N151` CODES ARE ROW POSITIONS, NOT IDENTIFIERS.** They are
+1-based positions in `game/Data/EnchantmentsPositive.csv` and
+`EnchantmentsNegative.csv`. Nothing in the data carries them: they appear in no
+CSV, in no source file, and the workbook's `Enchantments` sheet has no identifier
+column. They exist only in this log. **A row inserted above one re-points it and
+every code after it, to a real row, so nothing reads as wrong.** That is issue
+[#1672](https://github.com/sdubois777/Cataclysm/issues/1672). The row text quoted
+in the table above is the durable reference; the code is a convenience.
+
+### The duration: the two scalars MULTIPLY, and the first answer here was that they sum
+
+`ApplyTagForDuration` already lets the **target's** `debuff_duration_taken`
+lengthen any timed effect. P253 is the **applier's**. So one duration carries a
+modifier from each end.
+
+**The first answer written for this was that they sum, reasoned from this
+project's three-bucket damage shape, and reading the code showed it was the wrong
+question.** `UCataclysmDebuffs::DurationOn` computes
+`DurationSeconds * Percent / NormalDuration`, where `Percent` is the target's
+stat put through that character's own stat pipeline with a base of 100. So the
+sum already happens — **inside one character's attribute line**. A second
+character's stat cannot join it; there is no sum available between two characters'
+attribute lines.
+
+So each character's own lengtheners sum in that character's pipeline, and the two
+resulting scalars multiply:
+
+```
+Seconds x (applier's stagger_duration / 100) x (target's debuff_duration_taken / 100)
+```
+
+An applier at 200 against a target at 150 gives **3.0 seconds**. Summing them
+would give 2.5. `Cataclysm.StaggerGate.TheApplierAndTheTargetBothLengthenItAndTheyMultiply`
+pins that with those numbers, chosen because they separate the two answers.
+
+**THIS IS AN EXTENSION OF A SHAPE ADOPTED FOR DAMAGE AND NOT A FINDING OF THE
+RESEARCH THAT ADOPTED IT.** The three-bucket pipeline
+`(base + flat) x (1 + increases) x more` was taken from Path of Exile, Last Epoch
+and Torchlight Infinite, all of whom use it for **damage**. Applying its
+sum-within-a-side and multiply-across-sides habit to a **duration** is a
+reasonable move and it is still an extension. A reader should not take durations
+to have been part of that research.
+
+### The duration stat's base of 100 is stated in code, and it has to be
+
+`stagger_duration` is named by **no line in `game/Data/ClassStats.csv`** and it
+must not be: no class differs on it, no affix grants it, nothing scales it, and
+one enchantment is its only source. That is the recorded rule for keeping a stat
+off the character sheet.
+
+**But a stat no class line names resolves to zero, and the zero is written over
+the attribute set's constructor.** `UCataclysmPlayerClassStats::ApplyTo` resolves
+every stat the name-to-attribute map names; `UCataclysmClassStats::BaseFor`
+answers zero for a stat no line names; the resolved zero replaces the 100 the
+constructor states. So the base is stated in
+`UCataclysmPlayerClassStats::EngineSuppliedBases`, the third place a base can
+come from, beside the three stats already there.
+
+**This was a real defect in the first version of this change and every test
+passed over it.** With the map entry present and the base entry absent, a player's
+`stagger_duration` resolved to zero, `ApplyStagger` scaled every stagger by zero
+and refused it, and **no player would have staggered anything.** Adding the stat
+to the map is what activated it: leaving it out would have left the feature merely
+unreachable.
+
+The tests could not see it because they spawn creatures and write attributes by
+hand, and **a creature's attributes never go through `ApplyTo`** — the
+constructor's 100 survives and the fallback answers correctly. The player's route
+was the broken one and only the working route was tested.
+`Cataclysm.StaggerGate.ACharacterWhoseStatsCameFromTheClassTableStillStaggers`
+now takes the other route.
+
+It is the same failure `debuff_duration_taken` carries its own warning about, one
+entry above where this one belongs: an `increased` row with no base under it
+resolves to nothing.
+
+**The name is stated in two places that nothing cross-checks** —
+`ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`, which is what lets an
+enchantment row name the stat at all, and `EngineSuppliedBases()` in C++, which
+is what puts the base on a character. Each has a guard covering only its own
+side, so a stat missing from **both** is invisible to both. Writing only the
+Python half would have let the data generate and left every player at zero. That
+gap is issue [#1674](https://github.com/sdubois777/Cataclysm/issues/1674), which
+also records that the existing engine-side check walks the entries that are
+present and so cannot see one deleted.
+
+### Neither stat is bounded above, and that is consistency rather than an argument
+
+Nothing clamps `debuff_duration_taken` today — `PreAttributeChange` on the combat
+attribute set clamps only critical strike chance and four `*_chance` stats. So
+the target-side lengthener is already unbounded and `stagger_duration` matching
+it **introduces no unboundedness that was not already here.**
+
+**It is NOT justified by the recorded position that multiplicative sources need
+no cap because they cannot reach immunity.** That argument is about damage. A
+marker held for an arbitrarily long time has a different consequence from damage
+made large, and borrowing the argument would put a justification in the record
+that does not fit what it justifies.
+
+### The ceiling is a REDUCTION, so the default changes nothing
+
+`stagger_health_ceiling_reduction` holds percentage points taken off the health
+above which this character cannot stagger. At the default of zero the ceiling is
+100, and no living target is above 100 per cent of its own maximum, so **every
+character without the row staggers exactly what it staggered before.**
+
+That shape is `healing_ceiling_reduction`'s, whose own comment gives the reason:
+a stat holding the ceiling itself would have to start at 100 and every row would
+write a negative.
+
+**It is clamped to 0-100 for the reasons that stat's comment already gives** —
+"BELOW ZERO EACH WOULD INVERT ITSELF", and past a hundred it "would go through
+zero" — and this entry cites rather than repeats them, because a copied comment
+goes stale independently of the one it copies.
+
+**The precedent is in the VITAL attribute set and this stat is in the COMBAT set,
+deliberately.** The healing ceiling belongs to the character being healed; this
+one belongs to the character doing the staggering, which is an offence-side
+reading. The reasoning for the clamp transfers even though the location does not.
+
+### It withholds the MARKER, not the shove
+
+Being staggered does not stop a target acting — that is the owner's answer of
+2026-09-11 and this log already records it. The state is a marker that other rows
+read.
+
+So a refused stagger **still knocks back, pulls or knocks down.** Only the tag is
+withheld, and the rows conditioned on it do not fire against a healthy target.
+Refusing the displacement would have been a much larger change than the row asks
+for, and `Cataclysm.StaggerGate.ARefusedStaggerStillKnocksTheTargetBack` asserts
+the target actually moves.
+
+### Two of the eleven rows had no need named for them, and one of those is now built anyway
+
+The entry above listing what the eleven staggered rows need gives **nine** needs
+for **eleven** rows. The two not covered:
+
+- **P092**, "Staggered enemies take 20%-35% increased damage from all sources", is
+  not the list's "a damage taken increase while staggered" — that is **N150**,
+  damage the wearer takes. P092 is the wearer's own offence, which its
+  `Stat.Offense.Global` tag says.
+- **P255**, "Charge skills knock down enemies they hit for 1-2 seconds", reaches
+  the state indirectly: `ApplyKnockdown` calls `ApplyStagger`. **A keyword search
+  for "stagger" therefore misses it** — that sentence is worth more to the next
+  reader than the row is.
+
+**P092 HAS SINCE BEEN BUILT WITHOUT ITS NEED EVER BEING NAMED**, as two rows in
+`game/Data/EnchantmentEffects.csv` carrying the `target_is_staggered` condition,
+on `attack_damage` and `spell_damage`. N150 is built too, on `damage_taken` under
+`opponent_is_staggered`.
+
+That is the reason the gap survived: **nothing depended on the list being
+complete.** A list of needs that no check reads can be wrong for as long as it
+likes, and the work goes on around it. P255 is still unnamed and still unbuilt,
+and it follows this change.
+
+**The difference between the owner's ten and this log's eleven is still not
+resolved**, and is deliberately left as it stands: only the owner can say which
+row they were not counting.
+
+---
+
 ## 2026-09-12 — The skill lock's first source is a movement enchantment, because the ultimate one is half a set
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
@@ -2032,8 +2214,16 @@ session.
 2. **The second is not scaled by crowd control resistance.** It does not need to
    be: a target that resists a shove entirely is never moved, and
    `ApplyKnockback` and `ApplyPull` then leave no stagger at all. The state's own
-   duration is a flat second, lengthened only by the target's debuff duration
-   stat, as every timed effect here is.
+   duration is a flat second, lengthened by the target's debuff duration stat as
+   every timed effect here is.
+
+   **CORRECTED 2026-09-12: this said "lengthened ONLY by the target's debuff
+   duration stat", and that stopped being true the same day.** The character
+   APPLYING the stagger now carries a `stagger_duration` stat of its own, so one
+   stagger's duration is scaled from both ends and the two scalars multiply. The
+   entry at the top of this log records that. The word is corrected here rather
+   than left to be overridden, because a reader asking how long a stagger lasts
+   can land on either entry and this one reads as a complete answer.
 3. **Eleven enchantment rows read this state, not ten.** The owner's answer says
    ten. `game/Data/EnchantmentsPositive.csv` has nine and
    `EnchantmentsNegative.csv` has two: P092, P093, P224, P253, P254, P255, P268,
