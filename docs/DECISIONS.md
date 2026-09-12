@@ -129,6 +129,19 @@ binding to the hit, death and skill-used announcements was in a test.
    ([Blizzard forums, 2023](https://us.forums.blizzard.com/en/d4/t/aspect-of-inner-calm-stacks-resetting-when-attacking-at-standstill-bugged-legendary-effect/24971)).
    Reusing the regeneration timer rather than adding one is why the cost is a position
    comparison per character per quarter second.
+
+   **The threshold is what governs the standing-still clock, and the distance is not.**
+   `NoteMovedMetres` adds to the two distance tallies and, separately, stamps the moment
+   from the world clock; the stamp never reads the distance. So a break that makes the
+   sampler report a distance of zero leaves
+   `Cataclysm.Movement.TheStandingStillClockGrowsAndAMoveResetsIt` passing, correctly,
+   because the clock still resets on a move — while a break that removes the threshold
+   does fail it, since the threshold decides whether the sampler calls `NoteMovedMetres`
+   or `NoteDidNotMove`. **This is recorded because the obvious prediction is wrong.**
+   That test was predicted to notice the distance break during the guard proofs of
+   [#1603](https://github.com/sdubois777/Cataclysm/pull/1603) and did not; the guard
+   still fired on two other tests. The next person to break the distance will expect the
+   clock test to object, and it will not, and the test is sound rather than weak.
 4. **A creature's and a minion's own swings reset their own clocks**, a judgement made
    for consistency: the conditions read the same way on both sides of a fight, so a
    creature can carry a "while stationary" bonus exactly as a player can.
