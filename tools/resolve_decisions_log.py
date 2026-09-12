@@ -206,7 +206,15 @@ def _main(argv: list[str] | None = None) -> int:
     # `encoding="utf-8"` then fails inside subprocess's reader thread and sees
     # `AttributeError: 'NoneType' object has no attribute 'strip'` -- naming
     # nothing about the cause -- while the EXIT CODE IS STILL 0.
+    #
+    # BOTH STREAMS, AND STDERR IS THE ONE THAT MATTERS MORE. The first version of
+    # this reconfigured stdout alone, which fixed the path being tested and left
+    # the path that was not: every REFUSED message goes to stderr and quotes the
+    # two headings. Measured -- with stdout alone reconfigured, a refusing run
+    # gives the caller `stderr is None` and no reason at all. The message you
+    # need when something has gone wrong is exactly the one that was lost.
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--path", type=pathlib.Path, default=DEFAULT_PATH,

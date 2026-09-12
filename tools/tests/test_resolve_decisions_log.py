@@ -14,6 +14,7 @@ others, so these tests would pass or fail by platform rather than by behaviour.
 """
 
 import pathlib
+import subprocess
 import sys
 
 import pytest
@@ -248,3 +249,101 @@ def test_conflict_headings_reports_both_sides_in_marker_order():
     data = conflicted([THEIRS], [MINE], OLDER)
     assert resolver.conflict_headings(data) == (THEIRS[0].decode(),
                                                 MINE[0].decode())
+
+
+# --- the refusal has to reach the caller ------------------------------------
+
+EM_DASH_HEADING = "## 2026-09-12 — an entry whose heading holds an em dash"
+
+
+def test_a_refusal_naming_an_em_dash_heading_reaches_a_caller(tmp_path):
+    """Run as a subprocess, because only that exercises the stream encoding.
+
+    WHY THIS TEST EXISTS. Headings in this log contain an EM DASH, and a child
+    Python on Windows writes its streams as cp1252, which encodes that character
+    as one byte that is not valid UTF-8. A caller capturing with
+    `encoding="utf-8"` then dies inside subprocess's reader thread and receives
+    **None** for that stream, with the exit code unchanged -- so checking the
+    exit code before reading does not save it.
+
+    AND THE FIRST FIX COVERED STDOUT ALONE, WHICH LEFT THIS PATH BROKEN. Every
+    refusal goes to stderr and quotes both headings, so a refusing run gave the
+    caller no reason at all while a succeeding run captured cleanly. The half
+    that was lost is the half you read when something has gone wrong. Found by
+    another session reading the refusal messages for an unrelated purpose.
+    """
+    mine = [EM_DASH_HEADING.encode("utf-8"), b"", b"**Affects:** nothing.", b""]
+    log_path = tmp_path / "DECISIONS.md"
+    log_path.write_bytes(conflicted([THEIRS], [mine], OLDER))
+
+    finished = subprocess.run(
+        [sys.executable, str(pathlib.Path(resolver.__file__)),
+         "--path", str(log_path), "resolve", "--mine", "matches-neither-heading"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+
+    assert finished.stderr is not None, (
+        "stderr came back as None, which means it could not be decoded as UTF-8. "
+        "The caller gets no reason for the refusal at all.")
+    assert finished.stdout is not None, "stdout came back as None"
+    assert "REFUSED" in finished.stderr, finished.stderr
+    assert EM_DASH_HEADING in finished.stderr, (
+        "the refusal did not carry the heading it is about")
+    assert finished.returncode != 0, "a refusal must not exit 0"
+
+
+def test_a_refusal_survives_a_caller_that_decodes_the_bytes_itself(tmp_path):
+    """The other capture mode, which fails differently and needs its own case.
+
+    THE SYMPTOM DEPENDS ON HOW THE CALLER CAPTURES, and the two look nothing
+    alike. Measured with the stderr stream left at the console code page:
+
+      text=True, encoding="utf-8"   the decode happens inside subprocess's
+                                    reader thread, which dies, and the caller
+                                    receives stderr=None -- silence
+      capture_output=True, bytes    the bytes arrive and the CALLER'S OWN
+                                    .decode("utf-8") raises UnicodeDecodeError
+
+    The test above covers the first. This covers the second, which is the one
+    where a caller at least gets an exception naming the encoding.
+
+    **The return code is 1 in both**, so a caller that checks it before reading
+    the message is protected by neither.
+    """
+    mine = [EM_DASH_HEADING.encode("utf-8"), b"", b"**Affects:** nothing.", b""]
+    log_path = tmp_path / "DECISIONS.md"
+    log_path.write_bytes(conflicted([THEIRS], [mine], OLDER))
+
+    finished = subprocess.run(
+        [sys.executable, str(pathlib.Path(resolver.__file__)),
+         "--path", str(log_path), "resolve", "--mine", "matches-neither-heading"],
+        capture_output=True,          # raw bytes: the decode is ours
+    )
+
+    assert finished.returncode != 0, "a refusal must not exit 0"
+    try:
+        message = finished.stderr.decode("utf-8")
+    except UnicodeDecodeError as bad:
+        raise AssertionError(
+            f"the refusal was not written as UTF-8, so a caller decoding it "
+            f"raises instead of reading the reason: {bad}") from bad
+    assert "REFUSED" in message, message
+    assert EM_DASH_HEADING in message
+
+
+def test_a_successful_run_also_reaches_a_caller(tmp_path):
+    """The path the first fix did cover, kept so a regression names which half."""
+    mine = [EM_DASH_HEADING.encode("utf-8"), b"", b"**Affects:** nothing.", b""]
+    log_path = tmp_path / "DECISIONS.md"
+    log_path.write_bytes(conflicted([THEIRS], [mine], OLDER))
+
+    finished = subprocess.run(
+        [sys.executable, str(pathlib.Path(resolver.__file__)),
+         "--path", str(log_path), "resolve", "--mine", "em dash"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+
+    assert finished.stdout is not None, "stdout came back as None"
+    assert finished.returncode == 0, finished.stderr
+    assert EM_DASH_HEADING in finished.stdout
+    assert separator_faults(log_path.read_bytes()) == []
