@@ -1083,6 +1083,21 @@ public:
 	static float ShareOfHealthTick(float Share, float Health, float MaxHealth,
 								   bool bIsBoss);
 
+	/**
+	 * How much this effect may still take from a target: what a boss holds above
+	 * half its maximum health, and all of its health for anything else.
+	 * Issue #915.
+	 *
+	 * THE FLOOR IN ONE PLACE, ASKED AT TWO. `ShareOfHealthTick` above asks
+	 * before the target's defences, so a boss's armour and resistance still
+	 * lower the tick. `UCataclysmVitalAttributeSet` asks again about what
+	 * finally reaches health, because a stat making the boss take more damage
+	 * than normal would otherwise carry the one tick that reaches the line past
+	 * it. The coordinating session asked for the second on 2026-09-11.
+	 */
+	static float ShareOfHealthRoomLeft(float Health, float MaxHealth,
+									   bool bIsBoss);
+
 	/** The share of its maximum health a boss is held at. Issue #915. */
 	static constexpr float BossFloorShareOfMaxHealth = 0.5f;
 

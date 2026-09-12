@@ -1482,27 +1482,33 @@ float UCataclysmSkillEffects::ShareOfHealthTick(float Share, float Health,
 	}
 
 	const float Amount = Share * Health;
+	return FMath::Min(Amount, ShareOfHealthRoomLeft(Health, MaxHealth, bIsBoss));
+}
+
+float UCataclysmSkillEffects::ShareOfHealthRoomLeft(float Health, float MaxHealth,
+													 bool bIsBoss)
+{
+	// A BOSS IS NEVER TAKEN BELOW HALF ITS MAXIMUM HEALTH BY THIS EFFECT, so
+	// what it may still take from a boss is whatever the boss holds above that
+	// line, and nothing once it is at or below it. Issue #915. The owner asked
+	// for bosses to be protected; the form and the number are a judgement the
+	// coordinating session approved on 2026-09-11, and `docs/DECISIONS.md`
+	// carries the sources: Diablo 2's Static Field stops at 50% of a monster's
+	// health in Hell, and Grim Dawn instead gives bosses a high resistance to
+	// damage of this kind.
+	//
+	// ANYTHING ELSE MAY BE TAKEN WHOLE, which is all the health it has.
+	//
+	// ASKED TWICE FOR ONE TICK, AND BOTH ARE NEEDED. `ShareOfHealthTick` asks
+	// before the target's defences, which is what keeps a boss's armour and
+	// resistance worth having against it, and `UCataclysmVitalAttributeSet`
+	// asks again about what finally reaches health, so a stat making the boss
+	// take more damage than normal cannot carry a tick past the line.
 	if (!bIsBoss)
 	{
-		return Amount;
+		return FMath::Max(0.0f, Health);
 	}
-
-	// A BOSS IS NEVER TAKEN BELOW HALF ITS MAXIMUM HEALTH BY IT, checked on
-	// every tick, so a tick that would cross the line stops at it and every
-	// tick after that deals nothing. Issue #915. The owner asked for bosses to
-	// be protected, and the form and the number are a judgement the
-	// coordinating session approved on 2026-09-11: Diablo 2's Static Field
-	// stops at 50% of a monster's health in Hell, and Grim Dawn instead gives
-	// bosses a high resistance to damage of this kind. `docs/DECISIONS.md`
-	// carries why a floor and not a resistance.
-	//
-	// BEFORE THE TARGET'S DEFENCES, as that approval states. Armour and
-	// resistance then take their part of what is left, so they only keep a
-	// boss further above the line. A stat making the boss take more damage can
-	// carry the one tick that reaches the line past it, by that increase, and
-	// every tick after that deals nothing.
-	const float Floor = BossFloorShareOfMaxHealth * MaxHealth;
-	return FMath::Clamp(Health - Floor, 0.0f, Amount);
+	return FMath::Max(0.0f, Health - BossFloorShareOfMaxHealth * MaxHealth);
 }
 
 bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(

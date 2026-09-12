@@ -522,6 +522,84 @@ CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterBossTest,
 	return true;
 }
 
+CATACLYSM_VOID_SPLINTER_TEST(FCataclysmVoidSplinterBossTakingMoreTest,
+	"Cataclysm.VoidSplinter.ABossThatTakesMoreDamageIsStillHeldAtHalf")
+{
+	using namespace CataclysmVoidSplinterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CASE THE FIRST CHECK ALONE DOES NOT COVER. The floor is worked out
+	// before the target's defences, and a stat that makes the boss take MORE
+	// damage than normal is applied after them. With 150% damage taken and no
+	// second check, the tick that reaches the line would deal one and a half
+	// times what the line allows: from 5,500 health the allowed 500 would land
+	// as 750 and leave 4,750, below half of 10,000.
+	ACataclysmEnemyCharacter* Boss = SpawnCreature(World,
+		ACataclysmEnemyCharacter::FirstBossRarityStep, FVector(900.0f, 0.0f, 0.0f));
+	ON_SCOPE_EXIT
+	{
+		if (IsValid(Boss))
+		{
+			Boss->Destroy();
+		}
+	};
+	if (!TestNotNull(TEXT("a boss"), Boss))
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* BossSystem =
+		UCataclysmTargeting::AbilitySystemOf(Boss);
+	if (!TestNotNull(TEXT("its ability system"), BossSystem))
+	{
+		return false;
+	}
+	BossSystem->SetNumericAttributeBase(Combat::GetDamageTakenAttribute(), 150.0f);
+
+	// THE PRECONDITIONS: a boss, at 10,000 health, taking half as much again as
+	// an ordinary target. Without the last of these the test would pass for the
+	// reason the test above already covers.
+	TestTrue(TEXT("rung 4 is a boss"), Boss->IsBoss());
+	TestEqual(TEXT("it starts at 10,000"),
+		HealthOf(BossSystem), StartingHealth, 0.01f);
+	TestEqual(TEXT("and takes 150% of what lands"),
+		BossSystem->GetNumericAttribute(Combat::GetDamageTakenAttribute()),
+		150.0f, 0.01f);
+
+	const FSplinterFighter Attacker(World);
+	TestTrue(TEXT("a Void Splinter of 30% a tick lands on it"),
+		UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+			Attacker.Actor, Boss, 0.3f, 10.0f, SplinterTag()));
+
+	float Lowest = StartingHealth;
+	for (int32 Step = 0; Step < 60; ++Step)
+	{
+		CataclysmTestWorld::RunClock(World, 0.1f);
+		Lowest = FMath::Min(Lowest, HealthOf(BossSystem));
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("In six seconds the boss at 150%% damage taken fell no lower than "
+			 "%.0f."), Lowest));
+
+	const float Half = StartingHealth * 0.5f;
+	TestTrue(FString::Printf(
+		TEXT("it is never taken below half, and its lowest was %.0f"), Lowest),
+		Lowest >= Half - 0.5f);
+
+	// AND IT REALLY REACHED THE LINE, so the test is not passing because the
+	// ticks were too small to get there.
+	TestTrue(FString::Printf(TEXT("and it did reach the line, at %.0f"), Lowest),
+		Lowest <= Half + 0.5f);
+	return true;
+}
+
 #undef CATACLYSM_VOID_SPLINTER_TEST
 
 #endif // WITH_AUTOMATION_TESTS

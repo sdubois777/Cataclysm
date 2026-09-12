@@ -62,10 +62,14 @@ The project owner answered #915 on 2026-09-11, through the coordinating session:
 - **Why half.** It is Diablo 2's figure at its highest difficulty. The research
   settles that a floor is a shape a shipped game uses; the number for this game is
   the judgement.
-- **Before the target's defences.** Armour and resistance take their part of what is
-  left, so they only keep a boss further above the line. A stat making the boss take
-  more damage can carry the one tick that reaches the line past it, by that increase,
-  and every tick after that deals nothing.
+- **Checked twice: before the target's defences, and again on what reaches health.**
+  The first check is what keeps a boss's defences worth having, because armour and
+  resistance then take their part of a tick that has already been held to the line.
+  The second holds the rule exactly: a stat that makes the boss take MORE damage
+  than normal would otherwise carry the one tick that reaches the line past it, by
+  the amount of that increase. With both, this effect cannot take a boss below half
+  its maximum health whatever its damage taken stat says. The coordinating session
+  asked for the second check on 2026-09-11.
 - **Which creatures.** Those `ACataclysmEnemyCharacter::IsBoss` answers yes for: the
   Boss and Cataclysm Boss rarities, rung 4 and up. A Herald, one rung below, is not
   protected. It is the line the rule that a boss cannot be stunned already uses.
