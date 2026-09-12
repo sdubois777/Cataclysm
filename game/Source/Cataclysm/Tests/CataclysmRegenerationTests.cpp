@@ -758,4 +758,152 @@ bool FCataclysmHealingCeilingTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingReceivedTest,
+	"Cataclysm.Regeneration.AHealingReductionCutsTheAmountAndIsNotTheCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHealingReceivedTest::RunTest(const FString&)
+{
+	using namespace CataclysmRegenerationTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE DUNGEON MODIFIER DEATH'S EMBRACE: "Players periodically gain stacks of
+	// a debuff called Embrace of Death, which reduces healing received." Issue
+	// #41, slice 5. The project owner ruled that healing received covers
+	// everything that restores health, so it applies to regeneration and life
+	// leech here as well as to direct healing.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	UAbilitySystemComponent* System = Player ? SystemOf(Player) : nullptr;
+	if (!TestNotNull(TEXT("a player with an ability system"), System))
+	{
+		return false;
+	}
+
+	Write(Player, Vital::GetMaxHealthAttribute(), 1'000.0f);
+
+	// A CHARACTER WITHOUT THE CURSE IS HEALED IN FULL, asserted first so every
+	// figure below is evidence of the reduction and not of anything else.
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("with no reduction, all of the healing lands"),
+			  Read(Player, Vital::GetHealthAttribute()), 200.0f, 0.01f);
+
+	// AND HALF OF IT ARRIVES UNDER A REDUCTION OF FIFTY.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), 50.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a reduction of fifty halves what arrives"),
+			  Read(Player, Vital::GetHealthAttribute()), 150.0f, 0.01f);
+
+	// THIS IS THE ASSERTION THAT TELLS THE TWO STATS APART, AND THE REASON THIS
+	// TEST EXISTS. A reduction of fifty is NOT a ceiling of fifty per cent: a
+	// character offered enough healing still reaches FULL health, only more
+	// slowly. An implementation that lowered the ceiling instead would stop this
+	// at 500, and every other figure in this test would still be right.
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a halved amount still reaches full health when offered "
+				   "enough"),
+			  Read(Player, Vital::GetHealthAttribute()), 1'000.0f, 0.01f);
+
+	// MANA IS NOT TOUCHED BY IT. The stat is named for healing and health only,
+	// and mana comes through this same function, so this keeps the two apart --
+	// the same argument the healing ceiling's own test makes.
+	Write(Player, Vital::GetMaxManaAttribute(), 1'000.0f);
+	Write(Player, Vital::GetManaAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetManaAttribute(), Vital::GetMaxManaAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("mana is restored in full despite the healing reduction"),
+			  Read(Player, Vital::GetManaAttribute()), 200.0f, 0.01f);
+
+	// A FULL HUNDRED RESTORES NOTHING AT ALL, which is legitimate rather than a
+	// data error: no row states it today and one may.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), 100.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a reduction of a hundred restores nothing"),
+			  Read(Player, Vital::GetHealthAttribute()), 100.0f, 0.01f);
+
+	// AND A VALUE PAST A HUNDRED STILL RESTORES NOTHING RATHER THAN DEALING
+	// DAMAGE.
+	//
+	// IT IS THE ATTRIBUTE SET'S CLAMP THAT DOES THIS, NOT THE READING SITE'S,
+	// and this comment said the opposite until a guard proof disproved it. Issue
+	// #41, slice 5. A write to the BASE value does reach `PreAttributeChange`:
+	// `SetAttributeBaseValue` sets the base unclamped, then -- with no
+	// aggregator on the attribute -- calls `InternalUpdateNumericalAttribute`,
+	// which reaches `FGameplayAttribute::SetNumericValueChecked`, which calls
+	// `PreAttributeChange` before setting the CURRENT value. `GetNumericAttribute`
+	// reads the current value, so the site is handed 100 here and never 150.
+	//
+	// WHICH MEANS THE SITE'S OWN CLAMP CANNOT BE TESTED FROM HERE, and breaking
+	// it changes nothing: two guard cases were spent proving exactly that. It is
+	// kept because replication writes the current value through
+	// GAMEPLAYATTRIBUTE_REPNOTIFY, which does NOT pass through
+	// `PreAttributeChange`, so a client can hold an out-of-range figure. That is
+	// a real reason to keep it and not a reason to call it proven.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), 150.0f);
+	Write(Player, Vital::GetHealthAttribute(), 500.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a reduction past a hundred restores nothing and takes "
+				   "nothing"),
+			  Read(Player, Vital::GetHealthAttribute()), 500.0f, 0.01f);
+
+	// AND A NEGATIVE VALUE RESTORES THE PLAIN AMOUNT RATHER THAN MORE THAN IT,
+	// because without a floor at zero a curse on healing would HEAL its victim
+	// harder than no curse at all.
+	//
+	// THE SAME CORRECTION APPLIES HERE: it is the attribute set's clamp that
+	// holds this, not the site's, for the reason given above. The negative never
+	// reaches the site either.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), -50.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a negative reduction restores the plain amount, not more"),
+			  Read(Player, Vital::GetHealthAttribute()), 200.0f, 0.01f);
+
+	// AND THE TWO STATS COMPOSE. A reduction of fifty and a ceiling reduction of
+	// fifty: the ceiling is 500, the amount offered is halved, and a character
+	// on 100 offered 5000 stops at the ceiling rather than anywhere else.
+	Write(Player, Vital::GetHealingReceivedReductionAttribute(), 50.0f);
+	Write(Player, Vital::GetHealingCeilingReductionAttribute(), 50.0f);
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/5'000.0f, FGameplayTagContainer());
+	TestEqual(TEXT("a halved amount still stops at a halved ceiling"),
+			  Read(Player, Vital::GetHealthAttribute()), 500.0f, 0.01f);
+
+	// AND A SMALL AMOUNT UNDER BOTH LANDS HALVED, so the ceiling above is a
+	// ceiling rather than the thing doing the halving.
+	Write(Player, Vital::GetHealthAttribute(), 100.0f);
+	UCataclysmRegeneration::TopUp(
+		*System, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+		/*Gain=*/100.0f, FGameplayTagContainer());
+	TestEqual(TEXT("and an amount that fits under the ceiling lands halved"),
+			  Read(Player, Vital::GetHealthAttribute()), 150.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

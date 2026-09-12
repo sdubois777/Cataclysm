@@ -318,6 +318,17 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("healing_ceiling_reduction"),
 		 TEXT("the Masochist's Point of No Return node, as a flat modifier")},
 
+		// Issue #41, slice 5. How much of each amount of healing arrives, as a
+		// reduction so that zero means no change. NOT THE CEILING ABOVE: that
+		// caps how HIGH healing may take a character, this cuts how much of
+		// each amount ARRIVES. Zero for every class, and no class line may name
+		// it -- its sources are the dungeon modifier Death's Embrace and the
+		// enchantment rows that reduce healing received, none of which is a
+		// class trait.
+		{TEXT("healing_received_reduction"),
+		 TEXT("the dungeon modifier Death's Embrace and the healing "
+			  "enchantment rows, as a flat modifier")},
+
 		// Issue #991. What share of a health cost is taken later rather than
 		// now. Zero for every class, and the Masochist's Deferred Payment node
 		// is its only source.

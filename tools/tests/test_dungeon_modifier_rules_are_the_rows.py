@@ -2,11 +2,13 @@
 say what the rules take.
 
 WHY THIS EXISTS. Issue #41. `game/Source/Cataclysm/Dungeon/
-CataclysmDungeonModifierEffects.h` and `.cpp` give four of the 117 rows of
+CataclysmDungeonModifierEffects.h` and `.cpp` give five of the 117 rows of
 `game/Data/DungeonModifiers.csv` a rule: Starvation takes 1% of maximum health
 and energy shield a floor up to 60%, Dehydration 1% of maximum mana a floor,
 Forced March a share of maximum health a second from a player standing still,
-and The Nihil's Embrace a point of every resistance for each stretch walked.
+The Nihil's Embrace a point of every resistance for each stretch walked, and
+Death's Embrace a share of every amount of healing for each stretch of time the
+player stays on the floor.
 The C++ automation tests prove the rules do that, and they build every number
 they check by hand, so all of them would keep passing through two changes that
 break the game:
@@ -178,3 +180,49 @@ def test_the_nihils_embrace_says_permanent_and_asks_for_a_boss():
         f"The Nihil's Embrace row now names {named}. The cleanse's boss "
         "threshold is no longer a judgement; check it against the row and "
         "update docs/DECISIONS.md.")
+
+
+def test_deaths_embrace_states_no_number_of_its_own():
+    """All three of its constants are judgements: its row states no number.
+
+    IF THE ROW EVER STATES ONE, this fails, so the C++ constants are checked
+    against it and `docs/DECISIONS.md` stops calling them judgements.
+    """
+    words = flat(rows()["Death_Death_s_Embrace"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Death's Embrace row now states a number. Check "
+        "DeathsEmbracePercentPerStack, DeathsEmbraceMostStacks and "
+        "DeathsEmbraceSecondsPerStack against it and update "
+        "docs/DECISIONS.md.")
+
+
+def test_deaths_embrace_says_it_stacks_cuts_healing_and_resets_on_a_floor():
+    """Three wordings the rule rests on, one of them load-bearing.
+
+    THE RESET IS THE ONE PART THIS ROW ASKS FOR RATHER THAN THE CODE NEEDING.
+    Starvation's per-floor share and Forced March's clearing both fall out of
+    what they are counted from; "Stacks reset when entering a new floor" is a
+    promise in the data, and `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer`
+    puts `DeathsEmbraceSecondsOnFloor` and `DeathsEmbraceStacksApplied` back to
+    nothing to keep it. If the row stops saying this, that reset is wrong.
+
+    "HEALING RECEIVED" IS WHY THE STAT IS AN AMOUNT AND NOT A RATE. The row does
+    not say "regeneration" or "recovery", which Withered Ground and the
+    regeneration enchantment rows do, so this one reduces every route that
+    restores health rather than the rates alone.
+    """
+    words = flat(rows()["Death_Death_s_Embrace"]["Description"]).lower()
+
+    assert "gain stacks" in words, words
+    assert "reduces healing received" in words, words
+    assert "reset when entering a new floor" in words, words
+
+    rate = [word for word in ("regeneration", "regen", "leech", "recovery")
+            if word in words]
+    assert not rate, (
+        f"The Death's Embrace row now names {rate}. It reduces the AMOUNT of "
+        "healing through healing_received_reduction, and a row naming a rate "
+        "wants a Less multiplier on health_regen instead; check the rule "
+        "against the row and update docs/DECISIONS.md.")

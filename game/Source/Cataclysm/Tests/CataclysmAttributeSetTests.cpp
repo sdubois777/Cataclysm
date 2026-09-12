@@ -266,14 +266,32 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	constexpr int32 OffSheetCombatStats = 28;
 
 	/**
-	 * How far healing may take the character. Issue #988.
+	 * How far healing may take the character, and how much of each amount
+	 * arrives. Issues #988 and #41.
 	 *
-	 * THE FIRST VITAL ATTRIBUTE THAT IS NOT A SHEET STAT, which is why this
-	 * constant did not exist before. No player reads a healing ceiling as a
-	 * stat and no class line names it; the Masochist's Point of No Return
-	 * keystone is its only source, as a flat modifier.
+	 * THE FIRST VITAL ATTRIBUTE THAT IS NOT A SHEET STAT was the healing
+	 * ceiling, which is why this constant did not exist before. No player reads
+	 * a healing ceiling as a stat and no class line names it; the Masochist's
+	 * Point of No Return keystone is its only source, as a flat modifier.
+	 *
+	 * TWO SINCE ISSUE #41'S SLICE 5 ADDED THE HEALING RECEIVED REDUCTION, which
+	 * is off the sheet by the same argument and not by analogy: no affix grants
+	 * it, nothing scales it, it has no baseline of its own, and its sources are
+	 * the dungeon modifier Death's Embrace and three enchantment rows. A player
+	 * sees healing arrive more slowly; they do not read a percentage.
+	 *
+	 * THE TWO ARE NOT THE SAME STAT and the distinction is the reason both
+	 * exist. The ceiling caps how HIGH healing may take a character; the
+	 * reduction cuts how much of each amount ARRIVES. Someone at half health
+	 * under a fifty per cent reduction is healed half as fast and may still
+	 * reach full.
+	 *
+	 * RAISING THIS IS WHAT KEEPS THE SHEET AT 46. The sheet count below is
+	 * derived by subtracting the off-sheet stats, so a new attribute nobody
+	 * declares off the sheet is counted as on it -- which is exactly how both
+	 * assertions failed on the first run of slice 5.
 	 */
-	constexpr int32 OffSheetVitalStats = 1;
+	constexpr int32 OffSheetVitalStats = 2;
 
 	/**
 	 * The three Fervour rates, and the two added health costs. See the note
@@ -382,8 +400,11 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 		Combat, 28 + OffSheetCombatStats);
 	// Thirteen since mana leech and energy shield leech were added for #214.
 	// Fourteen since the healing ceiling reduction joined them for #988, which
-	// is off the sheet and counted apart for that reason.
-	TestEqual(TEXT("Fourteen vital attributes including the damage meta"),
+	// is off the sheet and counted apart for that reason. Fifteen since the
+	// healing received reduction joined it for #41's slice 5, which is off the
+	// sheet for the same reason -- see `OffSheetVitalStats`, which is what this
+	// figure is written in terms of so that the sheet count stays at 46.
+	TestEqual(TEXT("Fifteen vital attributes including the damage meta"),
 		Vitals, 13 + OffSheetVitalStats);
 	// Five since the three Fervour rates were added for #954: the pool, its
 	// maximum, and the three rates that move it. Six since the added health cost
