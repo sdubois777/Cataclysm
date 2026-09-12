@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — An authored name this build cannot judge grants nothing, and one list of names is read by everything
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`, with
+`CataclysmStatPipeline.h` and `.cpp` and `CataclysmDataRows.h` beside it; and
+their tests. **Applied.** Issue
+[#1581](https://github.com/sdubois777/Cataclysm/issues/1581).
+
+### What was wrong
+
+`UCataclysmPassiveTree::AccumulateInto` read a passive row's condition name
+through a chain of comparisons it kept itself, which knew eight names.
+`UCataclysmStatPipeline::ConditionNamed` knew twelve. Nothing compared the two:
+the test that holds the names together reads the generator and the stat
+pipeline, and said in its own words that this chain was not read there.
+
+So the four names issue [#1578](https://github.com/sdubois777/Cataclysm/pull/1578)
+added were known to the generator, known to the engine's table, and unknown to
+the passive tree. A row naming one reached the final branch, which logged a
+warning and applied the modifier with **no condition at all**.
+
+### The rule
+
+**A name this build cannot judge grants nothing.** It is not applied with the
+condition dropped, and it is not guessed at.
+
+The direction is the whole of the decision, and it is a judgement rather than
+anything read off the design. The alternatives were to refuse to load the table,
+which takes a data fault in one row and turns it into a game that will not
+start, and to keep applying the bonus unconditionally, which is what was
+happening. Granting nothing is the only one of the three whose failure a player
+notices as "this node does nothing" rather than as a bonus they were never
+promised, and a bonus nobody was promised is the failure that survives
+playtesting because nobody reports it.
+
+**It is the direction the rest of the pipeline already took**, which is what
+makes it a rule rather than a preference: `ConditionHolds` refuses a condition
+it cannot judge, `UCataclysmItemModifiers` refuses the whole modifier, and an
+unknown scale in this same function was already made worth nothing. The
+condition half was the one place that went the other way.
+
+**The two halves still grant nothing differently, on purpose.** An unknown
+condition drops the row; an unknown scale keeps it and makes it worth zero. Both
+are worth nothing to the character and they differ only in the count
+`AccumulateInto` returns, which a caller reads to tell "nothing applied" from
+"nothing was spent". Changing the scale half is a separate question and is not
+part of this.
+
+### And one list, read by everything
+
+Both name chains are gone. The passive tree reads `ConditionNamed` and
+`ScaleNamed`, which is what enchantment effects always read. `CONDITIONS` in
+`tools/generate_datatables.py` refuses a name the engine's table does not hold,
+and one test holds those two lists equal.
+
+**Three lists cannot be held equal by a test that reads two of them**, which is
+the general lesson and the reason this is written down. The check existed, it
+passed, and it was blind to the list that was actually wrong. A second test now
+refuses a chain of condition enumerators in the passive tree at all, because
+continuous integration builds no C++ and would otherwise never see one return.
+
+### Sources
+
+None. No genre research applies: this is a rule about what an engine does with
+data it cannot read, not about how a mechanic should feel.
+
+---
+
 ## 2026-09-12 — Nine enchantment rows that name where a hit came from now change damage taken, and three of the twelve cannot yet
 
 **Affects:** the Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`

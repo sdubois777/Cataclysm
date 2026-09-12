@@ -2,6 +2,9 @@
 
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmCharacterCreation.h"
+// For the one table of condition and scale names both authored sources read
+// through, rather than a chain of comparisons kept in this file. Issue #1581.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Data/CataclysmDataRows.h"
 #include "Cataclysm.h"
 #include "Engine/DataTable.h"
@@ -881,123 +884,50 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 
 			// AND THE STATE OF THE CHARACTER IT DEPENDS ON, IF ANY. Issue #959.
 			// An empty column is `Always`, which is every row before that issue.
-			// An unrecognised one is left as `Always` here rather than guessed at,
-			// and `tools/generate_datatables.py` refuses to write one, so the only
-			// way to reach this line with a name is a hand-edited CSV.
-			if (Effect->Condition.Equals(TEXT("health_at_or_below"),
-										 ESearchCase::IgnoreCase))
+			//
+			// READ THROUGH THE ONE SHARED TABLE RATHER THAN A CHAIN KEPT HERE.
+			// Issue #1581. This function used to compare the name against eight
+			// names of its own while `UCataclysmStatPipeline::ConditionNamed`
+			// knew twelve, and nothing compared the two lists: the test that
+			// holds the names together reads the generator and the pipeline, and
+			// said in its own words that this chain was not read there. So the
+			// four names issue #1578 added were known to the generator, known to
+			// the pipeline, and unknown here.
+			//
+			// AN UNRECOGNISED NAME NOW GRANTS NOTHING, WHICH IS THE FIX. It used
+			// to leave the modifier at `Always`, so a row this build could not
+			// judge became a bonus that held ALL the time -- silently, and in
+			// the player's favour. Granting nothing is the direction the scale
+			// below already took, and the direction `ConditionHolds` takes for a
+			// condition it cannot judge.
+			if (!Effect->Condition.IsEmpty())
 			{
-				Modifier.Condition =
-					ECataclysmStatCondition::HealthAtOrBelowPercent;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(TEXT("health_below"),
-											  ESearchCase::IgnoreCase))
-			{
-				// THE SAME PERCENTAGE READ WITH A STRICT COMPARISON. Issue
-				// #1051. The Final Vow's first option, The Last Drop, says
-				// "While below 20% health", and it is the only node in the game
-				// that states a health threshold as a state and words it
-				// "below". The two predicates differ at exactly the threshold,
-				// which is why there are two rather than one.
-				//
-				// THE NAMES ARE ONE PREFIX OF THE OTHER, so the order of these
-				// two branches would matter if either used a prefix comparison.
-				// Both use `Equals`, so it does not; this is said here because
-				// the next person to add a health predicate will read it.
-				Modifier.Condition = ECataclysmStatCondition::HealthBelowPercent;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(TEXT("health_above"),
-											  ESearchCase::IgnoreCase))
-			{
-				// AND THE OTHER SIDE OF THE SAME READING. Issue #1070. The
-				// Second Vow's third option, Ceaseless Penance, says "while you
-				// are above 50% health", and it is the only node in the game
-				// that asks whether health is still HIGH rather than whether it
-				// has fallen far enough.
-				//
-				// THE THIRD NAME BEGINNING "health_", so the note above about
-				// prefixes applies to it too: all three use `Equals`, so the
-				// order of these branches does not matter.
-				Modifier.Condition = ECataclysmStatCondition::HealthAbovePercent;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(
-						 TEXT("seconds_after_foreign_damage"),
-						 ESearchCase::IgnoreCase))
-			{
-				// A WINDOW OPENED BY A DIFFERENT EVENT FROM THE ONE BELOW, which
-				// is why there is an enumerator for each rather than one timer
-				// carrying an event name. Issue #975.
-				Modifier.Condition =
-					ECataclysmStatCondition::WithinSecondsOfForeignDamage;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(TEXT("seconds_after_health_cost"),
-											  ESearchCase::IgnoreCase))
-			{
-				// A WINDOW MEASURED IN SECONDS RATHER THAN A PERCENTAGE, which
-				// is the only difference between the two. Issue #962. The value
-				// column carries whichever unit the condition names, and
-				// `tools/generate_datatables.py` holds the allowed range for
-				// each so a percentage cannot be written where seconds belong.
-				Modifier.Condition =
-					ECataclysmStatCondition::WithinSecondsOfHealthCost;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(TEXT("skill_health_cost_above"),
-											  ESearchCase::IgnoreCase))
-			{
-				// A CONDITION ABOUT THE SKILL IN HAND RATHER THAN ABOUT THE
-				// CHARACTER, which is the first of its kind here. Issue #983.
-				// Grand Tithe is the node. The value is a percentage of maximum
-				// health, like the threshold two branches up, but the comparison
-				// is strictly greater than rather than at or below.
-				Modifier.Condition =
-					ECataclysmStatCondition::SkillHealthCostAbovePercent;
-				Modifier.ConditionValue = Effect->ConditionValue;
-			}
-			else if (Effect->Condition.Equals(TEXT("while_bleeding"),
-											  ESearchCase::IgnoreCase))
-			{
-				// A CONDITION ABOUT WHAT THE CHARACTER IS CARRYING rather than
-				// about where one of its own numbers stands. Issue #962. Thirst
-				// for Pain is the node: "While you are Bleeding, +2% increased
-				// Attack Speed per point."
-				//
-				// THE VALUE COLUMN IS DELIBERATELY NOT COPIED, because this
-				// predicate compares nothing. The kind of effect is the
-				// enumerator itself. `tools/generate_datatables.py` refuses to
-				// write a value on a row carrying this, so there is none to
-				// carry across.
-				Modifier.Condition = ECataclysmStatCondition::WhileBleeding;
-			}
-			else if (Effect->Condition.Equals(
-						 TEXT("class_resource_at_maximum"),
-						 ESearchCase::IgnoreCase))
-			{
-				// A CONDITION ABOUT THE TOP OF THE CLASS RESOURCE BAR.
-				// Issue #1026. Communion of Pain is the node: "While your
-				// Fervour is at maximum you deal 20% more damage and take 20%
-				// more damage."
-				//
-				// THE VALUE COLUMN IS DELIBERATELY NOT COPIED, the same as the
-				// predicate above and for the same reason. "At maximum" names
-				// the top of whatever bar the class has rather than a number,
-				// and a threshold would have to choose between points and a
-				// percentage of the maximum, which disagree for a Ritualist.
-				Modifier.Condition =
-					ECataclysmStatCondition::ClassResourceAtMaximum;
-			}
-			else if (!Effect->Condition.IsEmpty())
-			{
-				UE_LOG(LogCataclysm, Warning,
-					   TEXT("Passive node '%s' names the condition '%s', which "
-							"this build does not know. The bonus was applied with "
-							"no condition. Regenerate game/Data/PassiveEffects.csv "
-							"from the workbook."),
-					   *Effect->Node, *Effect->Condition);
+				if (!UCataclysmStatPipeline::ConditionNamed(Effect->Condition,
+															Modifier.Condition))
+				{
+					UE_LOG(LogCataclysm, Warning,
+						   TEXT("Passive node '%s' names the condition '%s', "
+								"which this build does not know. The row granted "
+								"nothing, rather than granting its bonus with no "
+								"condition at all. Regenerate "
+								"game/Data/PassiveEffects.csv from the workbook."),
+						   *Effect->Node, *Effect->Condition);
+					continue;
+				}
+
+				// AND THE NUMBER IT COMPARES, FOR THE PREDICATES THAT COMPARE
+				// ONE. Six of the twelve compare nothing -- being Bleeding, the
+				// class resource being full, and the four that ask what kind of
+				// blow this is -- and a value copied onto one of those is a
+				// number the predicate was never meant to have.
+				// `ConditionTakesAValue` is the single statement of which are
+				// which; this file used to say it by copying the value in six
+				// branches and not in two.
+				if (UCataclysmStatPipeline::ConditionTakesAValue(
+						Modifier.Condition))
+				{
+					Modifier.ConditionValue = Effect->ConditionValue;
+				}
 			}
 
 			// AND THE STATE ITS SIZE GROWS WITH, IF ANY. Issue #968. A different
@@ -1005,111 +935,47 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			// applies at all, this decides how large it is when it does. A row
 			// may carry both.
 			//
+			// READ THROUGH THE SHARED TABLE TOO, for the reason the condition
+			// above is. Issue #1581. This was a second chain, of nine names, and
+			// it happened to match `UCataclysmStatPipeline::ScaleNamed` exactly.
+			// Nothing held the two together, so the next name added to either
+			// one would have parted them the way the condition names had already
+			// parted.
+			//
 			// AN UNRECOGNISED NAME IS MADE WORTH NOTHING RATHER THAN LEFT FIXED,
-			// which is the opposite of what the condition above does, and
-			// deliberately. An unknown condition left as `Always` grants a bonus
-			// more often than the design said. An unknown scale left as `Fixed`
-			// would grant its full value at EVERY state -- for Vicious Onslaught
-			// that is the bonus for a character at death's door, handed to one
-			// at full health. Zero is the safe direction here, the same way
-			// refusing is the safe direction there.
-			if (Effect->Scale.Equals(TEXT("health_missing"),
-									 ESearchCase::IgnoreCase))
+			// which is what this half always did and is kept deliberately. An
+			// unknown scale left as `Fixed` would grant its FULL value at every
+			// state -- for Vicious Onslaught that is the bonus for a character at
+			// death's door, handed to one at full health. A step of nothing makes
+			// `ScaledValue` answer zero.
+			//
+			// SO THE TWO HALVES GRANT NOTHING IN TWO DIFFERENT WAYS, and that is
+			// deliberate rather than an oversight. An unknown condition drops the
+			// row; an unknown scale keeps it and makes it worth zero. Both are
+			// worth nothing to the character. They differ only in the count
+			// `AccumulateInto` returns, and a caller reads that count to tell
+			// "nothing applied" from "nothing was spent".
+			if (!Effect->Scale.IsEmpty())
 			{
-				Modifier.Scale =
-					ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("class_resource_held"),
-										  ESearchCase::IgnoreCase))
-			{
-				// A COUNT OF POINTS HELD RATHER THAN A PERCENTAGE MISSING, which
-				// is the whole difference between the two. Issue #980. The
-				// Masochist's Reciprocity keystone is the node.
-				Modifier.Scale =
-					ECataclysmStatScale::PerPointOfClassResourceHeld;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("health_owed"),
-										  ESearchCase::IgnoreCase))
-			{
-				// WHAT IS OWED RATHER THAN WHAT IS MISSING, which are different
-				// readings of health and not two names for one. Issue #994. A
-				// character that deferred a cost owes health it still has.
-				// Compound Interest and The Reckoning are the two nodes.
-				Modifier.Scale =
-					ECataclysmStatScale::PerPercentOfMaximumHealthOwed;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("life_leech"),
-										  ESearchCase::IgnoreCase))
-			{
-				// A READING OF A STAT RATHER THAN OF A STATE, unlike the three
-				// above. Issue #1045. Glutton is the node: "Your retaliation
-				// damage is increased by 1% for every 1% of life leech you
-				// have."
-				Modifier.Scale = ECataclysmStatScale::PerPercentOfLifeLeech;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("momentum_stacks"),
-										  ESearchCase::IgnoreCase))
-			{
-				// A COUNT OF STACKS RATHER THAN A READING OF HEALTH OR OF THE
-				// POOL. Issues #1002, #1003 and #1004. Three kinds, three names,
-				// and they must not be interchangeable: each is granted by a
-				// different event and lasts a different length of time, so a
-				// build that mapped one onto another would give a node somebody
-				// else's stacks and nothing would report it.
-				Modifier.Scale =
-					ECataclysmStatScale::PerStackOfSanguineMomentum;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("bloodlust_stacks"),
-										  ESearchCase::IgnoreCase))
-			{
-				Modifier.Scale = ECataclysmStatScale::PerStackOfBloodlust;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("carnage_stacks"),
-										  ESearchCase::IgnoreCase))
-			{
-				Modifier.Scale = ECataclysmStatScale::PerStackOfCarnage;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("debuffs_carried"),
-										  ESearchCase::IgnoreCase))
-			{
-				// A COUNT OF WHAT IS BEING DONE TO THE CHARACTER rather than of
-				// anything the character earned. Issue #962. Four nodes grow
-				// with it, and `UCataclysmDebuffs` says what counts as one.
-				Modifier.Scale = ECataclysmStatScale::PerDebuffCarried;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (Effect->Scale.Equals(TEXT("minions_held"),
-										  ESearchCase::IgnoreCase))
-			{
-				// A COUNT OF WHAT THE CHARACTER COMMANDS. Issue #1518. The
-				// Ritualist's generator grows with it, and
-				// `UCataclysmCommand::ThingsCommandedBy` says what counts as
-				// one -- imps and thralls together, which is what the tree
-				// means by "minion".
-				Modifier.Scale = ECataclysmStatScale::PerMinionHeld;
-				Modifier.ScaleStep = Effect->ScaleStep;
-			}
-			else if (!Effect->Scale.IsEmpty())
-			{
-				// A step of nothing makes `ScaledValue` answer zero.
-				Modifier.Scale =
-					ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
-				Modifier.ScaleStep = 0.0f;
+				if (UCataclysmStatPipeline::ScaleNamed(Effect->Scale,
+													   Modifier.Scale))
+				{
+					Modifier.ScaleStep = Effect->ScaleStep;
+				}
+				else
+				{
+					Modifier.Scale =
+						ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+					Modifier.ScaleStep = 0.0f;
 
-				UE_LOG(LogCataclysm, Warning,
-					   TEXT("Passive node '%s' names the scale '%s', which this "
-							"build does not know. The bonus was made worth "
-							"nothing rather than worth its full value. "
-							"Regenerate game/Data/PassiveEffects.csv from the "
-							"workbook."),
-					   *Effect->Node, *Effect->Scale);
+					UE_LOG(LogCataclysm, Warning,
+						   TEXT("Passive node '%s' names the scale '%s', which "
+								"this build does not know. The bonus was made "
+								"worth nothing rather than worth its full value. "
+								"Regenerate game/Data/PassiveEffects.csv from the "
+								"workbook."),
+						   *Effect->Node, *Effect->Scale);
+				}
 			}
 
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);

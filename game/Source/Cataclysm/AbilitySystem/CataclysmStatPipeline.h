@@ -1157,13 +1157,44 @@ public:
 	 * here is caught when the tests run, rather than a row granting nothing with
 	 * only a log line to say so.
 	 *
-	 * NOT YET WHAT THE PASSIVE TREE READS THROUGH. `UCataclysmPassiveTree::
-	 * AccumulateInto` still carries its own chain of the same names. Moving it
-	 * onto this waits for the passive-tree work on another branch to merge, so
-	 * the two edits do not collide.
+	 * BOTH AUTHORED SOURCES READ THROUGH THIS SINCE ISSUE #1581. Enchantment
+	 * effects always did, through `UCataclysmItemModifiers`;
+	 * `UCataclysmPassiveTree::AccumulateInto` carried its own chain of eight of
+	 * these names until then, and a name in this table but not in that chain was
+	 * applied by the passive tree with NO condition at all -- a bonus that held
+	 * all the time. Nothing compared the two lists, because the test above reads
+	 * this file and the generator and did not read that chain.
 	 */
 	static bool ConditionNamed(const FString& Name,
 							   ECataclysmStatCondition& OutCondition);
+
+	/**
+	 * Every condition name a data sheet may write, in this file's own order.
+	 * Issue #1581.
+	 *
+	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
+	 * TWICE. A test naming the conditions by hand passes for ever after somebody
+	 * adds a thirteenth, which is the drift that put the passive tree eight
+	 * names behind this table in the first place.
+	 */
+	static void AllConditionNames(TArray<FString>& OutNames);
+
+	/**
+	 * Whether a condition compares `ConditionValue` against anything.
+	 * Issue #1581.
+	 *
+	 * SIX OF THE TWELVE COMPARE NOTHING: `WhileBleeding`,
+	 * `ClassResourceAtMaximum` and the four that ask what kind of blow this is.
+	 * Each says so in its own comment above, and
+	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
+	 * one, so there is no number to carry across.
+	 *
+	 * A READER COPYING THE VALUE ANYWAY IS WRONG EVEN THOUGH IT LOOKS HARMLESS,
+	 * because the column is only empty while the generator is the only writer.
+	 * A hand-edited sheet, or a future condition that does compare something,
+	 * would make a predicate judge a number it was never meant to have.
+	 */
+	static bool ConditionTakesAValue(ECataclysmStatCondition Condition);
 
 	/**
 	 * The scale a data sheet names, or false for a name this build does not

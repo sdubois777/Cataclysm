@@ -1936,9 +1936,18 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 * to say "one value today: `health_at_or_below`" and there were seven by the
 	 * time anybody noticed. `CONDITIONS` in `tools/generate_datatables.py` is
 	 * the list; it carries the units and the allowed range for each and refuses
-	 * any other name, so a condition this build cannot judge cannot reach the
-	 * game. `ECataclysmStatCondition` in `CataclysmStatPipeline.h` is the
-	 * engine's side of the same list.
+	 * any other name. `ECataclysmStatCondition` in `CataclysmStatPipeline.h` is
+	 * the engine's side of the same list, reached through
+	 * `UCataclysmStatPipeline::ConditionNamed`.
+	 *
+	 * "THE GENERATOR REFUSES IT, SO IT CANNOT REACH THE GAME" WAS WRITTEN HERE
+	 * AND IT WAS NOT TRUE. Issue #1581. It held only while THREE lists agreed,
+	 * and the third was `UCataclysmPassiveTree::AccumulateInto`'s own chain of
+	 * `Equals` comparisons, which nothing compared against the other two. Four
+	 * names added to the generator and to the engine's table in #1578 were
+	 * missing from that chain, and a row naming one would have been applied with
+	 * no condition at all. The chain is gone and the passive tree reads this
+	 * list, so there are two lists again and one test holds them together.
 	 *
 	 * TWO OF THEM ARE THE SAME THRESHOLD READ DIFFERENTLY, which is worth
 	 * knowing before adding a third: `health_at_or_below` and `health_below`
