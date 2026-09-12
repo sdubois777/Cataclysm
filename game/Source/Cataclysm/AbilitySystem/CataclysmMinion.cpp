@@ -72,7 +72,7 @@ namespace
 		Delivery.bCannotPenetrate = true;
 		Delivery.bCarriesNoWeaponSubType = true;
 
-		// AND NO LEECH, the fourth of the six. Leech is read off the attacker
+		// AND NO LEECH, the fourth of the seven. Leech is read off the attacker
 		// when a hit lands and a minion's blow is dealt in its summoner's name,
 		// so without this a Ravager's imps would heal the Ravager with every
 		// blow. The design names leech among what does not cross. Issue #895.
@@ -91,6 +91,30 @@ namespace
 		// carry its summoner's chance to bleed from gear. The design names
 		// "chance to apply an ailment" among what does not cross. Issue #899.
 		Delivery.bCarriesNoAilmentChance = true;
+
+		// AND IT REPORTS NO DISTANCE TO ITS TARGET, the seventh. Issue #1596.
+		//
+		// THIS ONE IS NOT LIKE THE SIX ABOVE AND THE DIFFERENCE IS WORTH SAYING.
+		// Each of those stops a CAPABILITY of the summoner's from crossing -- its
+		// critical strike, its penetration, its weapon, its leech, its ailment
+		// chances -- and in each case the number that would have crossed was
+		// simply the wrong number. Here the number is defensible: a distance
+		// measured on this blow is the summoner's distance to the minion's
+		// target, and "enemies within 5 meters of you" is a question about where
+		// the WEARER stands, so that is arguably what the sentence asks for.
+		//
+		// IT IS REFUSED ON A DIFFERENT GROUND: a player's conditional damage
+		// bonus should not reach a minion's blow at all. Path of Exile treats a
+		// minion's actions as separate from its summoner's, and Last Epoch's own
+		// documentation says a character's modifiers do not apply unless minions
+		// are specified. `docs/DECISIONS.md` carries the sources and the ruling.
+		//
+		// AND IT IS SAID HERE RATHER THAN LEFT TO HAPPEN BY ITSELF. A row scoped
+		// to a skill tag already cannot match this blow, because the two ApplyHit
+		// calls below pass an empty tag container -- but that is a coincidence
+		// rather than a safeguard, and it would vanish the moment a minion's blow
+		// carried its skill's tags.
+		Delivery.bCarriesNoTargetDistance = true;
 		return Delivery;
 	}
 

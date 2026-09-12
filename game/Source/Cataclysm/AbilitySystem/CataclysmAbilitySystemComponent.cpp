@@ -297,7 +297,7 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
-	float MetresMovedBeforeBlow) const
+	float MetresMovedBeforeBlow, float TargetDistanceMetres) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -317,12 +317,14 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   CurrentConditions(SkillHealthCostPercent, Blow,
-								 MetresMovedBeforeBlow)).Final;
+								 MetresMovedBeforeBlow,
+								 TargetDistanceMetres)).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
-	float SkillHealthCostPercent, float MetresMovedBeforeBlow) const
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
+	float TargetDistanceMetres) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -345,13 +347,15 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   CurrentConditions(SkillHealthCostPercent,
 								 FCataclysmBlowContext(),
-								 MetresMovedBeforeBlow))
+								 MetresMovedBeforeBlow,
+								 TargetDistanceMetres))
 			   .SumOfIncreases / 100.0f;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
-	float SkillHealthCostPercent, float MetresMovedBeforeBlow) const
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
+	float TargetDistanceMetres) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -381,10 +385,19 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	// the skill's cost does: it belongs to the blow. Issue #41, slice 2. The
 	// call above is deliberately left without it, because that one is what
 	// went into the attribute with nothing known about the character.
+	//
+	// AND SO DOES HOW FAR AWAY THE TARGET STOOD. Issue #1596. THE "MORE" BUCKET
+	// IS THE WHOLE REASON THAT READING IS A CONDITION ON A ROW RATHER THAN A
+	// VALUE ADDED IN CODE: Demon King's Regalia's 2-piece bonus is "You deal 25%
+	// MORE damage to enemies that are within 5 meters of you", and a value added
+	// into the increases sum could not express it. So this call must carry it,
+	// and a version of this function that took the reading without passing it
+	// would leave that row silently worth nothing.
 	const float Applying = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
 		CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
-						  MetresMovedBeforeBlow)).MoreMultiplier;
+						  MetresMovedBeforeBlow,
+						  TargetDistanceMetres)).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -393,7 +406,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
-	float MetresMovedBeforeBlow) const
+	float MetresMovedBeforeBlow, float TargetDistanceMetres) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -601,6 +614,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// has a distance to hand, and "your first melee attack after moving 5 metres"
 	// is a question about that blow rather than about this instant.
 	State.MetresMovedBeforeBlow = MetresMovedBeforeBlow;
+
+	// AND HOW FAR AWAY THE CHARACTER BEING HIT STOOD, passed straight through for
+	// the same reason, including its negative default. Issue #1596. Only a lookup
+	// with a target in hand has one, which is the attacker's own attack damage and
+	// spell damage; every other caller leaves it unknown and the condition reading
+	// it refuses.
+	State.TargetDistanceMetres = TargetDistanceMetres;
 
 	return State;
 }
