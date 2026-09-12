@@ -619,6 +619,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Masochist's The Second Vow node, third option, as a flat "
 			  "modifier")},
 
+		// Issue #41, slice 3. Whether this character's skills may be used at
+		// all. Zero for every class, and NO CLASS LINE MAY EVER NAME IT: a
+		// class whose every member could not use their skills is not a class.
+		// Its sources are an enchantment scoped to the Ultimate slot and the
+		// dungeon modifier Edict of Silence unscoped.
+		{TEXT("skill_locked"),
+		 TEXT("the enchantment that disables the Ultimate slot, and the dungeon "
+			  "modifier Edict of Silence, as a flat modifier")},
+
 		// Issue #1071, Carnivore, the second option of the Masochist's fourth
 		// capstone. Whether taking a hit grants a stack of Carnage, and whether
 		// Carnage has no maximum. Zero for every class, and neither row carries

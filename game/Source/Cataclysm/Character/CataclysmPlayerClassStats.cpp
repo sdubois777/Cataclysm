@@ -15,6 +15,10 @@
 // For the names of the three regeneration rates, shared with the code that asks
 // for them rather than spelled a second time here. Issue #1038.
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For the stat name the skill lock is recorded under. Issue #41,
+// slice 3: the map below uses the constant rather than a second
+// spelling of the name.
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 // For the three retaliation stat names, shared with the code that reads them
 // rather than spelled a second time here. Issues #1047 and #1048.
@@ -487,6 +491,23 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// character's recorded stat line for `StatForSkill` to find.
 			{FString(UCataclysmDebuffs::DoNotExpireStat),
 			 Combat::GetDebuffsDoNotExpireAttribute()},
+
+			// AND WHETHER THIS CHARACTER'S SKILLS MAY BE USED AT ALL. Issue
+			// #41, slice 3. Zero for every class; its sources are an
+			// enchantment scoped to the Ultimate slot and the dungeon modifier
+			// Edict of Silence unscoped.
+			//
+			// THE CONSTANT AND NOT THE SPELLED-OUT NAME, as the entry above
+			// does. One spelling of a stat name is the point: a second one is
+			// how the refusal that reads it and the map that records it drift
+			// apart, and nothing would report the disagreement.
+			//
+			// WITHOUT THIS ENTRY THE LOCK CANNOT WORK AT ALL, which is worth
+			// saying because it looks like bookkeeping. `ApplyTo` resolves only
+			// the stats this map names, so a stat missing from it never has its
+			// inputs recorded and `StatForSkill` answers its fallback for ever.
+			{FString(UCataclysmSkillSlots::LockedStat),
+			 Combat::GetSkillLockedAttribute()},
 
 			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
 			// THEM. The three resistance families in game/Data/Affixes.csv are

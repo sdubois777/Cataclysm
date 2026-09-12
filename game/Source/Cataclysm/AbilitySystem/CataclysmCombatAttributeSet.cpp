@@ -115,6 +115,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// Ceaseless Penance, because that row carries a health condition and a
 	// conditional bonus is never folded into an attribute.
 	InitDebuffsDoNotExpire(0.0f);
+	InitSkillLocked(0.0f);
 
 	InitNovaDamageOfMissingHealth(0.0f);
 
@@ -202,6 +203,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDurationTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffsDoNotExpire);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SkillLocked);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AuraDebuffDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffSpreadChance);
@@ -342,6 +344,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
 		GetDebuffDurationTakenAttribute(), GetDebuffsDoNotExpireAttribute(),
+		GetSkillLockedAttribute(),
 		GetNovaDamageOfMissingHealthAttribute(),
 		GetAuraDebuffDurationAttribute(), GetDebuffSpreadChanceAttribute(),
 		GetDeathSpreadChanceAttribute(), GetDamageVsSharedDebuffAttribute(),
@@ -398,6 +401,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffsDoNotExpire)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SkillLocked)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AuraDebuffDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffSpreadChance)
