@@ -69,7 +69,7 @@ namespace
 		{TEXT("Void Splinter"), TEXT("void_splinter_chance"),
 		 TEXT("Cataclysm.AilmentChance.VoidSplinter"),
 		 TEXT("DoT_Void_Splinter"), TEXT("Keyword.DoT.VoidSplinter"),
-		 &Combat::GetVoidSplinterChanceAttribute, EShape::NotBuilt},
+		 &Combat::GetVoidSplinterChanceAttribute, EShape::ShareOfCurrentHealth},
 		{TEXT("Necrosis"), TEXT("necrosis_chance"),
 		 TEXT("Cataclysm.AilmentChance.Necrosis"),
 		 TEXT("DoT_Necrosis"), TEXT("Keyword.DoT.Necrosis"),
@@ -153,11 +153,6 @@ TMap<FName, float> UCataclysmAilments::ChancesFor(
 
 	for (const FCataclysmAilmentKind& Kind : EveryKind)
 	{
-		if (Kind.Shape == EShape::NotBuilt)
-		{
-			continue;
-		}
-
 		const FGameplayAttribute Attribute = Kind.Attribute();
 		if (!Attacker->HasAttributeSetForAttribute(Attribute))
 		{
@@ -209,11 +204,6 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 	int32 Applied = 0;
 	for (const FCataclysmAilmentKind& Kind : EveryKind)
 	{
-		if (Kind.Shape == EShape::NotBuilt)
-		{
-			continue;
-		}
-
 		float Total = Spec.GetSetByCallerMagnitude(FName(Kind.DataName),
 			/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/0.0f);
 
@@ -265,7 +255,7 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
 							   const UGameplayAbility* Skill)
 {
-	if (Kind.Shape == EShape::Stun || Kind.Shape == EShape::NotBuilt)
+	if (Kind.Shape == EShape::Stun)
 	{
 		return false;
 	}
@@ -314,6 +304,15 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 	case EShape::AtItsRowsFigures:
 		return UCataclysmSkillEffects::ApplyNamedEffect(Instigator, Target, Tag,
 			Row.DurationSeconds);
+
+	case EShape::ShareOfCurrentHealth:
+		// THE ROW'S SHARE OF CURRENT HEALTH A TICK, TIMES THE MAGNITUDE, so 250%
+		// takes 2.5% where the row says 1%. Issue #915. The design document's
+		// table says magnitude scales Void Splinter's damage, and the owner's
+		// answer on #915 keeps that. The row states a percent and the applier
+		// takes a fraction.
+		return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(Instigator, Target,
+			Row.PercentOfCurrentHealth / 100.0f * Scale, Row.DurationSeconds, Tag);
 
 	default:
 		return false;

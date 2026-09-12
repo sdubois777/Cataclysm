@@ -386,6 +386,48 @@ CATACLYSM_CONTAGION_TEST(FCataclysmContagionSpreadOneTest,
 	return true;
 }
 
+CATACLYSM_CONTAGION_TEST(FCataclysmContagionSpreadVoidSplinterTest,
+	"Cataclysm.Contagion.ASpreadVoidSplinterTakesItsShareOfHealth")
+{
+	using namespace CataclysmContagionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to stand in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ISSUE #915. Void Splinter's row states a share of the target's current
+	// health and no amount a tick, so `SpreadOne` handed it to the one applier
+	// left, `ApplyTagForDuration`, and the target carried the tag and took
+	// nothing. Nothing could put Void Splinter on anybody then, so nothing
+	// noticed. The chance to apply it can now.
+	const FGameplayTag Splinter = Tag(TEXT("Keyword.DoT.VoidSplinter"));
+	if (!TestTrue(TEXT("the vocabulary still has the Void Splinter tag"),
+				  Splinter.IsValid()))
+	{
+		return false;
+	}
+
+	FContagionCombatant Spreader(World);
+	FContagionCombatant Victim(World, FVector(2 * ContagionMetre, 0.0f, 0.0f));
+
+	TestTrue(TEXT("a Void Splinter can be put on somebody"),
+		UCataclysmContagion::SpreadOne(Spreader.Actor, Victim.Actor, Splinter));
+	TestTrue(TEXT("and the target is now carrying it"), Victim.Carries(Splinter));
+	TestEqual(TEXT("for the row's four seconds"),
+		Victim.LongestEffect(), 4.0f, 0.01f);
+
+	// AND IT TAKES THE ROW'S 1% OF CURRENT HEALTH WHEN IT TICKS, which is 100 of
+	// the target's 10,000. The first tick lands a second after the spread.
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	TestEqual(TEXT("its first tick takes 1% of the target's 10,000"),
+		10'000.0f - Victim.Vitals->GetHealth(), 100.0f, 0.01f);
+
+	return true;
+}
+
 CATACLYSM_CONTAGION_TEST(FCataclysmContagionPickTest,
 	"Cataclysm.Contagion.OnlyADebuffThatCouldLandIsEverChosen")
 {

@@ -594,4 +594,51 @@ CATACLYSM_DOT_TEST(FCataclysmEmptyRowStillWarnsTest,
 	return true;
 }
 
+CATACLYSM_DOT_TEST(FCataclysmShareOfHealthRowIsQuietTest,
+	"Cataclysm.DamageOverTime.AShareOfCurrentHealthRowDoesNotWarn")
+{
+	using namespace CataclysmStatusEffectWarningTest;
+
+	// VOID SPLINTER STATES A DURATION AND A SHARE OF THE TARGET'S CURRENT
+	// HEALTH, and `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` applies
+	// exactly that. Issue #915. The chance to apply it reads this row on every
+	// blow that lands it, so the warning would fire on each of them.
+	const FGameplayTag Splinter = TagNamed(TEXT("Keyword.DoT.VoidSplinter"));
+	if (!TestTrue(TEXT("Keyword.DoT.VoidSplinter is a gameplay tag"),
+				  Splinter.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatusEffectNumbers Numbers;
+	TArray<FString> Warned;
+	{
+		FScopedWarningCapture Capture;
+		Numbers = UCataclysmSkillEffects::NumbersForEffectTag(Splinter);
+		Warned = Capture.CataclysmWarningsContaining(WarningNeedle);
+	}
+
+	// THE PRECONDITION: the row is still the shape this test is about, a
+	// duration and a share of current health with no amount a tick.
+	TestEqual(TEXT("Void Splinter lasts four seconds"), Numbers.DurationSeconds,
+		4.0f, 0.001f);
+	TestEqual(TEXT("and takes 1% of current health a tick"),
+		Numbers.PercentOfCurrentHealth, 1.0f, 0.001f);
+	TestEqual(TEXT("and states no flat amount per tick"),
+		Numbers.FlatDamagePerTick, 0.0f, 0.001f);
+
+	TestEqual(FString::Printf(
+		TEXT("reading it writes no unusable-row warning, and wrote %d: %s"),
+		Warned.Num(), Warned.Num() > 0 ? *Warned[0] : TEXT("")),
+		Warned.Num(), 0);
+
+	// AND IT IS STILL NOT A FIXED AMOUNT A TICK, for the reason the Shred test
+	// above gives: the callers reading `bUsable` would apply it as one worth
+	// nothing.
+	TestFalse(TEXT("and is still not usable as a fixed amount a tick"),
+		Numbers.bUsable);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

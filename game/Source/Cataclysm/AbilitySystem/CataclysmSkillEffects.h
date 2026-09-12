@@ -269,6 +269,21 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	TMap<FName, float> AilmentChances;
 
 	/**
+	 * The share of the target's current health each tick of this effect takes,
+	 * as a fraction, so 0.01 is 1%. Or -1 for every effect that is not Void
+	 * Splinter. Issue #915.
+	 *
+	 * A SHARE AND NOT AN AMOUNT, because the amount is not known when the effect
+	 * lands: it is a share of the health the target has at each tick, so it
+	 * falls as the target does. `ApplyTypedSpec` writes it onto the effect, and
+	 * the target's `UCataclysmVitalAttributeSet` turns it into damage when a
+	 * tick arrives. `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` is the
+	 * one caller that sets it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float ShareOfCurrentHealth = -1.0f;
+
+	/**
 	 * The `Element.*` tag of the skill dealing this blow, for colour only.
 	 *
 	 * WHAT IT IS FOR. A player's effects were all drawn white because the only
@@ -360,9 +375,10 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	/**
 	 * What one tick deals as a percent of the target's current health.
 	 *
-	 * CARRIED BUT NOT USABLE THROUGH THIS PATH, which computes one fixed amount
+	 * NOT USABLE THROUGH `ApplyDamageOverTime`, which computes one fixed amount
 	 * per tick up front. A share of current health is a different amount every
-	 * tick. Only Void Splinter states one, and nothing implements it; issue #915.
+	 * tick, so `ApplyShareOfHealthOverTime` applies it instead. Only Void
+	 * Splinter states one. Issue #915.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
 	float PercentOfCurrentHealth = 0.0f;
@@ -1014,6 +1030,78 @@ public:
 									const UGameplayAbility* Skill = nullptr);
 
 	/**
+	 * Apply a share of the target's current health as damage over time. Void
+	 * Splinter, which is the only effect stating one. Issue #915.
+	 *
+	 * A SHARE AND NOT AN AMOUNT. `game/Data/StatusEffects.csv` gives Void
+	 * Splinter "1% of current HP per second over 4 seconds", so what a tick
+	 * deals depends on the health the target has when it lands, and
+	 * `ApplyDamageOverTime` above works out one fixed amount up front. The
+	 * share travels on the effect under `ShareOfCurrentHealthDataName`, and the
+	 * target's `UCataclysmVitalAttributeSet` turns it into damage on each tick.
+	 *
+	 * TWO OF THE ATTACKER'S THREE STATS. The project owner answered on #915 on
+	 * 2026-09-11: the damage over time damage stat does not raise the share,
+	 * and frequency and duration still apply. A chance past 100% still raises
+	 * it; that is the caller's magnitude, already in `SharePerTick`.
+	 *
+	 * THE STRONGEST APPLICATION WINS, BY SHARE A SECOND, as
+	 * `ApplyDamageOverTime` compares damage a second. Issue #1503. An equal or
+	 * weaker one only refreshes how long the running one lasts, and never
+	 * shortens it.
+	 *
+	 * A BOSS IS NEVER TAKEN BELOW HALF ITS MAXIMUM HEALTH BY IT. See
+	 * `ShareOfHealthTick`.
+	 *
+	 * @param SharePerTick     a fraction of current health, so 0.01 is 1%
+	 * @param DurationSeconds  before the attacker's duration stat
+	 * @param EffectTag        granted for the duration, and what makes it one
+	 *                         stack
+	 * @return whether anything was applied or refreshed
+	 */
+	static bool ApplyShareOfHealthOverTime(AActor* Instigator, AActor* Target,
+										   float SharePerTick, float DurationSeconds,
+										   const FGameplayTag& EffectTag);
+
+	/**
+	 * What one tick of a share of current health deals, before the target's
+	 * armour and resistance. Issue #915.
+	 *
+	 * THE SHARE TIMES THE HEALTH THE TARGET HAS NOW, so each tick is smaller
+	 * than the one before and it never finishes anything off on its own.
+	 *
+	 * A BOSS IS HELD AT HALF ITS MAXIMUM HEALTH. A tick that would take it lower
+	 * stops at that line, and a tick against a boss already below it deals
+	 * nothing. The owner asked for bosses to be protected and left the form and
+	 * the number to a judgement, which `docs/DECISIONS.md` records with its
+	 * sources. A boss is what `ACataclysmEnemyCharacter::IsBoss` says: the Boss
+	 * and Cataclysm Boss rarities.
+	 *
+	 * @param Share    a fraction of current health, so 0.01 is 1%
+	 * @param bIsBoss  whether the target is a boss
+	 */
+	static float ShareOfHealthTick(float Share, float Health, float MaxHealth,
+								   bool bIsBoss);
+
+	/**
+	 * How much this effect may still take from a target: what a boss holds above
+	 * half its maximum health, and all of its health for anything else.
+	 * Issue #915.
+	 *
+	 * THE FLOOR IN ONE PLACE, ASKED AT TWO. `ShareOfHealthTick` above asks
+	 * before the target's defences, so a boss's armour and resistance still
+	 * lower the tick. `UCataclysmVitalAttributeSet` asks again about what
+	 * finally reaches health, because a stat making the boss take more damage
+	 * than normal would otherwise carry the one tick that reaches the line past
+	 * it. The coordinating session asked for the second on 2026-09-11.
+	 */
+	static float ShareOfHealthRoomLeft(float Health, float MaxHealth,
+									   bool bIsBoss);
+
+	/** The share of its maximum health a boss is held at. Issue #915. */
+	static constexpr float BossFloorShareOfMaxHealth = 0.5f;
+
+	/**
 	 * Grant a tag for a duration and nothing else.
 	 *
 	 * WHAT A BUFF OR A DEBUFF IS UNTIL ITS MAGNITUDE CAN BE APPLIED. Burning
@@ -1094,6 +1182,15 @@ public:
 	 * nothing is ever scoped by this one.
 	 */
 	static const TCHAR* StatedMagnitudeDataName;
+
+	/**
+	 * The name the share of current health one tick of Void Splinter takes
+	 * travels under, on the effect itself. Issue #915.
+	 *
+	 * A PLAIN NAME AND NOT A GAMEPLAY TAG, for the reason
+	 * `StatedMagnitudeDataName` above gives.
+	 */
+	static const TCHAR* ShareOfCurrentHealthDataName;
 
 	/**
 	 * Copy every debuff this actor carries onto each of these others.

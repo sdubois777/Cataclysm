@@ -213,7 +213,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 	if (Data.EvaluatedData.Attribute == GetDamageAttribute())
 	{
-		const float LocalDamage = GetDamage();
+		// A TICK OF VOID SPLINTER STATES A SHARE OF THIS CHARACTER'S HEALTH AND
+		// NOT AN AMOUNT, and the amount is worked out here, from the health it
+		// has now. Issue #915. The effect carries a damage of one only so that a
+		// tick arrives at all; an effect carrying no share keeps its own damage.
+		// `ShareOfHealthTick` holds the rule that a boss is never taken below
+		// half its maximum health by it, applied before resistance.
+		const float ShareOfCurrentHealth = Data.EffectSpec.GetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::ShareOfCurrentHealthDataName),
+			/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/-1.0f);
+		const ACataclysmEnemyCharacter* AsEnemy =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		const float LocalDamage = ShareOfCurrentHealth >= 0.0f
+			? UCataclysmSkillEffects::ShareOfHealthTick(ShareOfCurrentHealth,
+				GetHealth(), GetMaxHealth(), AsEnemy && AsEnemy->IsBoss())
+			: GetDamage();
 		SetDamage(0.0f);
 
 		if (LocalDamage > 0.0f)
@@ -561,12 +575,36 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// console variable, then the game mode, then tier 1 -- and a world
 			// with no game mode gets exactly the answer this line used to
 			// hard-code, so nothing that does not care is changed by it.
-			const FCataclysmDamageResult Outcome =
+			FCataclysmDamageResult Resolved =
 				UCataclysmDamageCalculation::Resolve(
 					Hit, GetOwningAbilitySystemComponent(),
 					ACataclysmGameMode::DifficultyTierIn(GetOwningActor()),
 					/*EvasionRoll=*/-1.0f, /*BlockRoll=*/-1.0f,
 					CVarCritRoll.GetValueOnAnyThread());
+
+			// AND A BOSS'S FLOOR IS CHECKED A SECOND TIME, ON WHAT CAME OUT.
+			// Issue #915. The first check is made before the target's defences,
+			// in `ShareOfHealthTick` above, which is what keeps a boss's
+			// resistance worth having against Void Splinter. A stat that makes
+			// the boss take MORE damage than normal would otherwise carry the
+			// one tick that reaches the line past it, so what finally reaches
+			// health is held to the same line here.
+			//
+			// ONLY A SHARE TICK ON A BOSS IS TOUCHED. Every other blow arrives
+			// exactly as the calculation resolved it, and `ShareOfHealthRoomLeft`
+			// answers a target's whole health for anything that is not a boss.
+			if (ShareOfCurrentHealth >= 0.0f)
+			{
+				Resolved.DealtToHealth = FMath::Min(Resolved.DealtToHealth,
+					UCataclysmSkillEffects::ShareOfHealthRoomLeft(
+						GetHealth(), GetMaxHealth(),
+						AsEnemy && AsEnemy->IsBoss()));
+			}
+
+			// EVERYTHING BELOW READS THIS, so the second check reaches the health
+			// write, the floating number, the leech and everything else that asks
+			// what the blow dealt.
+			const FCataclysmDamageResult& Outcome = Resolved;
 
 			// RECORDED ON THE CHARACTER, SO THE BLOW'S SENDER CAN LEARN WHAT
 			// BECAME OF IT. Issue #1156. Everything above this line happens

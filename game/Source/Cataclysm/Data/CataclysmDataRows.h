@@ -338,11 +338,13 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 *
 	 * IT CANNOT GO THROUGH THE ORDINARY DAMAGE OVER TIME PATH, which computes one
 	 * fixed amount per tick up front. A share of current health is a different
-	 * amount every tick because current health changes between them. That is
-	 * part of why nothing implements Void Splinter yet. Issue #915 also records
-	 * that the damage over time stats multiply this percentage, which at twelve
-	 * affix slots would remove about three quarters of a boss's health from one
-	 * application.
+	 * amount every tick because current health changes between them, so
+	 * `UCataclysmSkillEffects::ApplyShareOfHealthOverTime` applies it and the
+	 * target works out each tick. Issue #915 recorded that the damage over time
+	 * stats would multiply this percentage, which at twelve affix slots would
+	 * remove about three quarters of a boss's health from one application. The
+	 * project owner's answer: the damage stat does not raise it, frequency and
+	 * duration still apply, and bosses are protected.
 	 *
 	 * A SEPARATE FIELD RATHER THAN A STRING NAMING WHICH BASIS APPLIES. A
 	 * misspelled basis would silently read as one of the other two and apply the
