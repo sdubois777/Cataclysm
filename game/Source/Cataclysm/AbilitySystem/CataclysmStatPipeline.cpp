@@ -79,6 +79,7 @@ namespace
 		{ TEXT("metres_moved_before_attack"),   ECataclysmStatCondition::MetresMovedBeforeAttack },
 		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
 		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
+		{ TEXT("target_within_metres"),         ECataclysmStatCondition::TargetWithinMetres },
 	};
 
 	struct FNamedStatScale
@@ -365,6 +366,32 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// correct whatever the sheet holds.
 		return State.Blow.OpponentDistanceMetres >= 0.0f
 			&& State.Blow.OpponentDistanceMetres > Value;
+
+	case ECataclysmStatCondition::TargetWithinMetres:
+		// AT OR WITHIN, BECAUSE BOTH ROWS WRITE "within 5 meters". A target
+		// standing at exactly 5 metres IS within 5 metres and earns the bonus.
+		// That is the OPPOSITE boundary from `OpponentBeyondMetres` directly
+		// above, whose node writes "more than", and the two are next to each
+		// other on purpose so the difference is read rather than assumed.
+		//
+		// A DIFFERENT FIELD FROM THE ONE ABOVE, AND THAT IS THE WHOLE SAFEGUARD.
+		// The blow context is filled only on the defender's damage taken lookup;
+		// `TargetDistanceMetres` is filled only on the attacker's own lookups. So
+		// a row that used the wrong one of these two conditions reads -1 and
+		// grants nothing, rather than reading a plausible number from the wrong
+		// end of the blow.
+		//
+		// A NEGATIVE READING IS "NOT KNOWN" AND REFUSES, and zero is a real
+		// distance here for the same reason it is above: two characters can stand
+		// on one spot. So the guard cannot be folded into the comparison -- and
+		// folding it would be worse here than above, because -1 is at or within
+		// every threshold a sheet may write, so every row would hold on every
+		// blow that knew nothing.
+		//
+		// A MINION'S BLOW REPORTS -1 DELIBERATELY, so this grants nothing for
+		// one. `docs/DECISIONS.md` carries that with the genre sources behind it.
+		return State.TargetDistanceMetres >= 0.0f
+			&& State.TargetDistanceMetres <= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved

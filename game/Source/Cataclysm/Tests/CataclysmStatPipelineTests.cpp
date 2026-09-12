@@ -200,6 +200,20 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/**
+	 * A target standing this many metres away. Negative is not known.
+	 *
+	 * THE OTHER END OF THE SAME BLOW FROM `StruckFrom` ABOVE, and a separate
+	 * field on purpose. That one is filled only on the defender's damage taken
+	 * lookup; this one only on the attacker's own lookups. Issue #1596.
+	 */
+	FCataclysmStatConditions TargetAt(float Metres)
+	{
+		FCataclysmStatConditions State;
+		State.TargetDistanceMetres = Metres;
+		return State;
+	}
+
 	/** An increase that applies only inside a window after foreign damage. */
 	FCataclysmStatModifier IncreasedAfterForeignDamage(float Value, float Seconds)
 	{
@@ -1689,6 +1703,93 @@ bool FCataclysmPipelineDistanceThresholdTest::RunTest(const FString& Parameters)
 	// struct carries and what every lookup but the damage taken step passes.
 	TestFalse(TEXT("a state with no blow in it refuses"),
 		FPipeline::ConditionHolds(Beyond, 6.0f, FCataclysmStatConditions()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineTargetWithinTest,
+	"Cataclysm.StatPipeline.ATargetAtTheThresholdIsWithinItAndTheTwoDistancesDoNotCross",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * How far away the character being HIT stood, as a predicate. Issue #1596.
+ *
+ * THE TWO ROWS: Brute's Heart's 2-piece bonus, "You gain 25% increased damage
+ * against enemies that are within 5 meters of you", and Demon King's Regalia's,
+ * which says the same with "more" in place of "increased".
+ *
+ * AT OR WITHIN, BECAUSE BOTH ROWS WRITE "within 5 meters", so a target standing
+ * at exactly 5 metres earns the bonus. THAT IS THE OPPOSITE BOUNDARY FROM THE
+ * TEST ABOVE, whose node writes "more than", and the two are tested next to each
+ * other on purpose: the pair is the whole reason the project keeps
+ * `HealthAtOrBelowPercent` and `HealthBelowPercent` as separate predicates.
+ *
+ * THE FOLDED-GUARD CASE IS FAR MORE DANGEROUS HERE THAN ABOVE, and that is the
+ * case worth writing this test for. For "beyond", folding the unknown guard into
+ * the comparison hides the fault until a sheet writes a negative threshold. For
+ * "within", -1 is at or within EVERY threshold a sheet may write, so a folded
+ * guard would make every distance-conditioned row hold on every blow that knew
+ * nothing -- which is most blows in the game.
+ *
+ * AND THE LAST PART CHECKS THE TWO READINGS DO NOT CROSS. They are separate
+ * fields filled by separate routes, so a row using the wrong one of the two
+ * conditions must grant nothing rather than read a plausible number from the
+ * wrong end of the blow.
+ */
+bool FCataclysmPipelineTargetWithinTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	const ECataclysmStatCondition Within =
+		ECataclysmStatCondition::TargetWithinMetres;
+	const ECataclysmStatCondition Beyond =
+		ECataclysmStatCondition::OpponentBeyondMetres;
+
+	// THE BOUNDARY, IN THREE LINES. Five metres is what both rows write.
+	TestTrue(TEXT("a target at exactly five metres IS within five"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(5.0f)));
+	TestFalse(TEXT("and one a hair further is not"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(5.1f)));
+	TestTrue(TEXT("and one a hair nearer is"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(4.9f)));
+
+	// WELL INSIDE AND WELL OUTSIDE, so the test says this is a comparison rather
+	// than something that happens to answer at the boundary.
+	TestTrue(TEXT("a target at arm's reach is within five"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(1.0f)));
+	TestFalse(TEXT("and one across the room is not"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(20.0f)));
+
+	// ZERO IS A REAL DISTANCE, NOT AN ABSENT ONE, for the reason the test above
+	// gives: two characters can stand on one spot.
+	TestTrue(TEXT("nought metres is a real reading and is within five"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(0.0f)));
+	TestFalse(TEXT("and nought metres is NOT within a threshold below it"),
+		FPipeline::ConditionHolds(Within, -1.0f, TargetAt(0.0f)));
+
+	// AN UNKNOWN DISTANCE REFUSES, AND THIS IS THE CASE THAT MATTERS MOST. A
+	// folded guard would make -1 "within 5" and every row hold on every blow
+	// with no target in hand, which is 32 of the 33 lookups in the game. A
+	// minion's blow reports -1 deliberately, so this is also what makes a
+	// minion's blow earn nothing.
+	TestFalse(TEXT("an unknown distance refuses an ordinary threshold"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(-1.0f)));
+	TestFalse(TEXT("and refuses a large one, which a folded guard would pass"),
+		FPipeline::ConditionHolds(Within, 100.0f, TargetAt(-1.0f)));
+	TestFalse(TEXT("and a state with no target in it refuses"),
+		FPipeline::ConditionHolds(Within, 5.0f, FCataclysmStatConditions()));
+
+	// AND THE TWO DISTANCES DO NOT CROSS. A state carrying only the defender's
+	// reading must not satisfy the attacker's predicate, and the other way
+	// round, whatever the numbers are. This is what makes a row that names the
+	// wrong one of the two conditions grant nothing instead of reading the
+	// distance from the wrong end of the blow.
+	TestFalse(TEXT("the attacker's predicate refuses a state holding only the "
+				   "defender's reading"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(1.0f)));
+	TestFalse(TEXT("and the defender's predicate refuses one holding only the "
+					"attacker's"),
+		FPipeline::ConditionHolds(Beyond, 6.0f, TargetAt(20.0f)));
 
 	return true;
 }

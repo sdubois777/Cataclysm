@@ -286,7 +286,8 @@ public:
 	float AttackDamageIncreasesForSkill(
 		const FGameplayTagContainer& SkillTags,
 		float SkillHealthCostPercent = -1.0f,
-		float MetresMovedBeforeBlow = -1.0f) const;
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f) const;
 
 	/**
 	 * How much larger one skill's hit should be than the attack-damage
@@ -318,7 +319,8 @@ public:
 	float AttackDamageMoreForSkill(
 		const FGameplayTagContainer& SkillTags,
 		float SkillHealthCostPercent = -1.0f,
-		float MetresMovedBeforeBlow = -1.0f) const;
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -403,7 +405,8 @@ public:
 					   float SkillHealthCostPercent = -1.0f,
 					   const FCataclysmBlowContext& Blow =
 						   FCataclysmBlowContext(),
-					   float MetresMovedBeforeBlow = -1.0f) const;
+					   float MetresMovedBeforeBlow = -1.0f,
+					   float TargetDistanceMetres = -1.0f) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -422,11 +425,16 @@ public:
 	 *        last attack, measured when the skill in hand was paid for, or -1
 	 *        for no blow in hand. Not a property of the character either, for
 	 *        the reason the two above are not. Issue #41, slice 2.
+	 * @param TargetDistanceMetres  how far away the character being HIT stood,
+	 *        or -1 for no target in hand. The mirror of `Blow`'s own distance,
+	 *        read from the other end of the same blow, and passed in for the same
+	 *        reason. Issue #1596.
 	 */
 	FCataclysmStatConditions CurrentConditions(
 		float SkillHealthCostPercent = -1.0f,
 		const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
-		float MetresMovedBeforeBlow = -1.0f) const;
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f) const;
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.

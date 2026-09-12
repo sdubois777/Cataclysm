@@ -398,7 +398,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// that source. Issue #666. TWELVE rows are worded that way and three are
 	// not written: each of those needs two conditions at once, which one
 	// modifier cannot hold.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     81)
+	// 81 UNTIL 2026-09-12, when the first effect rows any SET bonus in this game
+	// has ever had were written: six, being the 2-piece bonus and the drawback of
+	// Brute's Heart and of Demon King's Regalia. Before them, 0 of the 81 rows
+	// belonged to a set, so every set bonus in the game granted nothing.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     87)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

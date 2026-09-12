@@ -442,12 +442,13 @@ enum class ECataclysmStatCondition : uint8
 	 *
 	 * FOR THE DAMAGE TAKEN LOOKUP, SO THE OTHER SIDE IS THE ATTACKER, exactly as
 	 * `OpponentIsBoss` above. A row wanting the reverse -- the ATTACKER asking
-	 * how far away its target is, which Brute's Heart and Demon King's Regalia
-	 * both need -- cannot use this and is
-	 * https://github.com/sdubois777/Cataclysm/issues/1596. The blow context
+	 * how far away its target is -- must use `TargetWithinMetres` below, which
+	 * reads a different number carried by a different route. The blow context
 	 * reaches only the defender's damage taken lookup, which was established by
 	 * counting every call of `StatForSkill`: 33 outside tests, and exactly one
-	 * passes a blow.
+	 * passes a blow. THIS COMMENT SAID THE REVERSE READING DID NOT EXIST AND WAS
+	 * ONLY AN ISSUE NUMBER; it was built by
+	 * https://github.com/sdubois777/Cataclysm/issues/1596.
 	 *
 	 * STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". A character
 	 * standing at exactly 6 metres is not more than 6 metres away, so it takes
@@ -460,6 +461,48 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OpponentBeyondMetres
 		UMETA(DisplayName = "Opponent Beyond Metres"),
+
+	/**
+	 * The character being HIT stood at most `ConditionValue` metres away when the
+	 * blow was worked out. Issue #1596.
+	 *
+	 * THE MIRROR OF `OpponentBeyondMetres` ABOVE AND NOT A SPECIAL CASE OF IT.
+	 * That one serves the damage taken lookup, where the other side of the blow
+	 * is the attacker. This one serves the ATTACKER's own lookups, where the
+	 * other side is the target. They read different fields filled by different
+	 * routes, so a row cannot quietly get the wrong one: whichever number is not
+	 * on the path in hand is -1, and -1 refuses.
+	 *
+	 * AT OR WITHIN, BECAUSE BOTH ROWS WRITE "within 5 meters". A target standing
+	 * at exactly 5 metres IS within 5 metres and earns the bonus. That is the
+	 * opposite boundary from `OpponentBeyondMetres`, whose node writes "more
+	 * than", and the project keeps `HealthAtOrBelowPercent` and
+	 * `HealthBelowPercent` apart for this same reason.
+	 *
+	 * THE TWO ROWS, AND WHY THIS IS A CONDITION RATHER THAN A TERM ADDED IN CODE.
+	 * Brute's Heart's 2-piece bonus is "You gain 25% INCREASED damage against
+	 * enemies that are within 5 meters of you" and Demon King's Regalia's is "You
+	 * deal 25% MORE damage to enemies that are within 5 meters of you". One is an
+	 * increase and the other a multiplier. A value added into the increases sum
+	 * could express the first and would silently mis-build the second, which
+	 * looks right on a fresh character and wrong on an invested one.
+	 *
+	 * THE MELEE TAG ON BOTH ROWS IS NOT HONOURED, RULED BY THE PROJECT OWNER ON
+	 * 2026-09-12. Any attack type earns the bonus when the target is within 5
+	 * metres, so a ranged or spell build has to close the distance. Honouring it
+	 * would have made the condition nearly always true: the longest melee weapon
+	 * shape reaches 3.3 metres and enemies default to 2. See
+	 * https://github.com/sdubois777/Cataclysm/issues/1620 for the scope tags in
+	 * general, which nothing enforces.
+	 *
+	 * AN UNKNOWN DISTANCE REFUSES, which is what -1 means, and zero is a real
+	 * distance because two characters can stand on one spot. A MINION'S BLOW
+	 * REPORTS -1 DELIBERATELY: a player's conditional damage bonus does not reach
+	 * a minion's blow, which is how the genre works and what `docs/DECISIONS.md`
+	 * records with its sources.
+	 */
+	TargetWithinMetres
+		UMETA(DisplayName = "Target Within Metres"),
 };
 
 /**
@@ -992,11 +1035,44 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * NEGATIVE MEANS NO BLOW IS IN HAND. Zero is a real reading and means the
 	 * character had not moved since its own last attack.
 	 *
-	 * NOT THE DISTANCE TO THE OPPONENT, which `FCataclysmBlowContext` above is
-	 * promised and which the hit notice already carries under that name.
+	 * NOT EITHER DISTANCE BETWEEN THE TWO CHARACTERS. There are now three
+	 * distance-shaped readings in this struct and they are easy to confuse, so:
+	 *
+	 *   MetresMovedBeforeBlow       how far the ATTACKER travelled, this field
+	 *   Blow.OpponentDistanceMetres how far away the ATTACKER stood, filled only
+	 *                               on the defender's damage taken lookup
+	 *   TargetDistanceMetres        how far away the TARGET stood, filled only on
+	 *                               the attacker's own lookups
+	 *
+	 * The second and third are the same measurement read from opposite ends, and
+	 * whichever one is not on the path in hand is -1, which refuses.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float MetresMovedBeforeBlow = -1.0f;
+
+	/**
+	 * How far away the character being HIT stood, in metres, when the blow was
+	 * worked out. Issue #1596.
+	 *
+	 * FILLED ONLY ON THE ATTACKER'S OWN LOOKUPS -- its attack damage, both
+	 * buckets, and its spell damage -- because those are the ones with a target
+	 * in hand. `UCataclysmSkillEffects::ApplyHit` measures it once with
+	 * `UCataclysmTargeting::MetresBetween`, which is the one definition of the
+	 * distance between two actors in the tree, and passes it to all three.
+	 *
+	 * NEGATIVE MEANS NOT KNOWN, and zero is a real distance, because two
+	 * characters can stand on one spot. So the guard cannot be folded into the
+	 * comparison: `>= 0` first, then the threshold.
+	 *
+	 * A MINION'S BLOW REPORTS -1 DELIBERATELY. `ACataclysmMinion` strikes with the
+	 * summoner as the attacker, so a number measured here would be the summoner's
+	 * distance to the minion's target. That number is defensible by the row's own
+	 * sentence, and it is refused anyway: a player's conditional damage bonus does
+	 * not reach a minion's blow. `FCataclysmHitDelivery::bCarriesNoTargetDistance`
+	 * says so at the call site, beside the five exclusions already there.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TargetDistanceMetres = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

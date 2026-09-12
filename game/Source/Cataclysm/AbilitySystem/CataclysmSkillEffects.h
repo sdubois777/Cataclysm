@@ -203,6 +203,33 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bCarriesNoAilmentChance = false;
 
 	/**
+	 * This blow reports no distance to its target, so a row conditioned on
+	 * one grants nothing for it. Issue #1596.
+	 *
+	 * THE SIXTH OF THE EXCLUSIONS A MINION'S BLOW SETS, and it is here for
+	 * the reason the five above are: a minion strikes with the SUMMONER as
+	 * the attacker, so every attacker-side reading reaches it unless it is
+	 * stopped. A distance measured on that blow would be the summoner's
+	 * distance to the minion's target.
+	 *
+	 * THAT NUMBER IS DEFENSIBLE AND IS REFUSED ANYWAY. "Enemies within 5
+	 * meters of you" is a question about where the WEARER stands, so the
+	 * summoner's distance is arguably the right reading. The refusal is not
+	 * about the number: a player's conditional damage bonus should not reach
+	 * a minion's blow at all, which is how the genre works. Path of Exile
+	 * treats a minion's actions as separate from its summoner's, and Last
+	 * Epoch's own documentation says a character's modifiers do not apply
+	 * unless minions are specified. `docs/DECISIONS.md` carries the sources.
+	 *
+	 * SAID HERE RATHER THAN LEFT TO HAPPEN BY ITSELF. A row scoped to a
+	 * skill tag already cannot match a minion's blow, because that blow
+	 * passes no tags -- but that is a coincidence, not a safeguard, and it
+	 * would disappear the moment a minion's blow carried its skill's tags.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	bool bCarriesNoTargetDistance = false;
+
+	/**
 	 * The base critical strike chance of the skill dealing this blow, or -1 to
 	 * take whatever the attacker's own attribute holds.
 	 *
@@ -933,7 +960,8 @@ public:
 	 */
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
 							   const FGameplayTagContainer& SkillTags,
-							   float SkillHealthCostPercent = -1.0f);
+							   float SkillHealthCostPercent = -1.0f,
+							   float TargetDistanceMetres = -1.0f);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -972,7 +1000,8 @@ public:
 	static float IncreasesForSkill(const UAbilitySystemComponent* Source,
 								   const FGameplayTagContainer& SkillTags,
 								   float SkillHealthCostPercent = -1.0f,
-								   float MetresMovedBeforeBlow = -1.0f);
+								   float MetresMovedBeforeBlow = -1.0f,
+								   float TargetDistanceMetres = -1.0f);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -991,7 +1020,8 @@ public:
 	static float MoreForSkill(const UAbilitySystemComponent* Source,
 							  const FGameplayTagContainer& SkillTags,
 							  float SkillHealthCostPercent = -1.0f,
-							  float MetresMovedBeforeBlow = -1.0f);
+							  float MetresMovedBeforeBlow = -1.0f,
+							  float TargetDistanceMetres = -1.0f);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

@@ -343,7 +343,8 @@ bool UCataclysmSkillEffects::IsRanged(const FGameplayTagContainer& SkillTags)
 
 float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
 										   const FGameplayTagContainer& SkillTags,
-										   float SkillHealthCostPercent)
+										   float SkillHealthCostPercent,
+										   float TargetDistanceMetres)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -363,8 +364,17 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float Value = Cataclysm
+		// THE POSITIONAL ARGUMENTS IN BETWEEN ARE SPELT OUT BECAUSE THE GAP IS
+		// REAL. A spell's damage receives the skill's cost and, since issue
+		// #1596, how far away the target stood -- but NO blow context and NOT
+		// the distance the character moved, so a spell damage row conditioned
+		// on either of those silently grants nothing. That gap is older than
+		// this line and is recorded as its own issue.
 		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
-								  FromAttribute, SkillHealthCostPercent)
+								  FromAttribute, SkillHealthCostPercent,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  TargetDistanceMetres)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -386,7 +396,7 @@ float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
 float UCataclysmSkillEffects::IncreasesForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
-	float MetresMovedBeforeBlow)
+	float MetresMovedBeforeBlow, float TargetDistanceMetres)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -400,13 +410,14 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	// turn a blow into healing rather than into a very small blow.
 	return FMath::Max(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
-				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow));
+				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
+				  TargetDistanceMetres));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
-	float MetresMovedBeforeBlow)
+	float MetresMovedBeforeBlow, float TargetDistanceMetres)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -416,7 +427,8 @@ float UCataclysmSkillEffects::MoreForSkill(
 	// exactly as it was before this existed.
 	return Cataclysm
 		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
-											  MetresMovedBeforeBlow)
+											  MetresMovedBeforeBlow,
+											  TargetDistanceMetres)
 		: 1.0f;
 }
 
@@ -594,10 +606,23 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// drew for a health condition. `Folded` is what was put INTO the
 	// attribute, worked out with no skill in hand, so it must stay worked out
 	// that way or the bonus would be divided straight back out again.
+	// HOW FAR AWAY THE TARGET STOOD, MEASURED ONCE FOR THIS BLOW and read by
+	// all three of the lookups below. Issue #1596. `MetresBetween` is the one
+	// definition of the distance between two actors in the tree, so a row and
+	// the hit announcement cannot disagree about one strike.
+	//
+	// A BLOW THAT CARRIES NO TARGET DISTANCE REPORTS -1, WHICH REFUSES. That
+	// is a minion's blow: see `bCarriesNoTargetDistance` for why the reading
+	// is refused rather than measured from the summoner.
+	const float TargetDistanceMetres = Delivery.bCarriesNoTargetDistance
+		? -1.0f
+		: UCataclysmTargeting::MetresBetween(Instigator, Target);
+
 	const float Folded = IncreasesBehindAttackDamage(Source);
 	const float Applying =
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
-						  Delivery.MetresMovedBeforeBlow);
+						  Delivery.MetresMovedBeforeBlow,
+						  TargetDistanceMetres);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -629,9 +654,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float BeforeIncreases =
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
 		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
-					  Delivery.MetresMovedBeforeBlow);
+					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres);
 	const float Flat = IsSpell(SkillTags)
-		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent)
+		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
+						TargetDistanceMetres)
 		: 0.0f;
 
 	const float Damage = ModifiedDamage(

@@ -3294,8 +3294,9 @@ CONDITIONS = {
     # wanting the reverse -- the attacker reading how far away its target is,
     # which Brute's Heart and Demon King's Regalia both need -- is a different
     # mechanism entirely, because the blow context reaches only the damage
-    # taken lookup. Issue #1596. Naming this one "opponent" would invite a
-    # designer to write it on an attacker's row and get nothing.
+    # taken lookup. Naming this one "opponent" would invite a designer to write
+    # it on an attacker's row and get nothing. THAT REVERSE READING NOW EXISTS
+    # as `target_within_metres` below; this comment said it did not.
     #
     # STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". A character at
     # exactly 6 metres takes full damage, the same boundary
@@ -3307,6 +3308,34 @@ CONDITIONS = {
     # is 10 metres. A hundred is well past anything a skill reaches, so a
     # threshold above it would be a row nothing could ever satisfy.
     "attacker_beyond_metres": (0.0, 100.0, "a distance in metres"),
+    # "You gain 25% increased damage against enemies that are within 5 meters of
+    # you" is `target_within_metres` with 5. Brute's Heart's 2-piece set bonus is
+    # the row, and Demon King's Regalia's says the same with "more" instead of
+    # "increased". Issue #1596.
+    #
+    # THE MIRROR OF THE ROW ABOVE, READ FROM THE OTHER END OF THE BLOW. That one
+    # is the DEFENDER asking how far away the character hitting it stood; this is
+    # the ATTACKER asking how far away its target is. They are separate names
+    # because they are separate readings carried by separate routes, and a row
+    # using the wrong one of the two gets nothing rather than a number from the
+    # wrong end.
+    #
+    # AT OR WITHIN, BECAUSE BOTH ROWS WRITE "within 5 meters". A target standing
+    # at exactly 5 metres earns the bonus. That is the opposite boundary from
+    # `attacker_beyond_metres`, whose node writes "more than", and the pair is
+    # deliberate: `health_at_or_below` and `health_below` are kept apart for the
+    # same reason.
+    #
+    # THE MELEE SCOPE TAG ON BOTH ROWS IS NOT HONOURED, RULED BY THE PROJECT
+    # OWNER ON 2026-09-12, so `RequiredTags` stays empty and any attack type
+    # earns the bonus within the distance. Honouring it would have made the
+    # condition nearly always true: the longest melee weapon shape reaches 3.3
+    # metres and enemies default to 2. Issue #1620 carries the scope tags in
+    # general, which nothing enforces.
+    #
+    # THE SAME 0 TO 100 METRE BOUND AND THE SAME JUDGEMENT BEHIND IT as the row
+    # above. A threshold past 100 would be a row nothing could satisfy.
+    "target_within_metres": (0.0, 100.0, "a distance in metres"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
