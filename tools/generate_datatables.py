@@ -3263,6 +3263,25 @@ CONDITIONS = {
     # moves, the player included.
     "opponent_is_staggered": None,
 
+    # "Staggered enemies take 20%-35% increased damage from all sources" is
+    # `target_is_staggered`, and it takes no value. Issue #45. It is the mirror
+    # of `opponent_is_staggered` above: the same state, asked from the other end
+    # of the blow.
+    #
+    # TWO NAMES AND NOT ONE, for the reason `target_within_metres` and
+    # `opponent_beyond_metres` are two. The engine fills the blow record only on
+    # the defender's damage taken lookup and the target reading only on the
+    # attacker's own lookups, so a row carrying the wrong one of this pair reads
+    # a field nothing filled and grants nothing, rather than quietly answering
+    # with the staggered state of the character at the other end.
+    #
+    # "FROM ALL SOURCES" IS THE WEARER'S OWN DAMAGE ACROSS ITS TYPES, which is
+    # why the row is written as an `attack_damage` row and a `spell_damage` row
+    # rather than as anything applied to the enemy. The row carries
+    # `Stat.Offense.Global`, as do both other rows whose words use that phrase
+    # about enemies.
+    "target_is_staggered": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #

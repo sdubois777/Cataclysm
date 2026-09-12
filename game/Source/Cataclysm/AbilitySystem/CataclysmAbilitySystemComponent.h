@@ -287,7 +287,8 @@ public:
 		const FGameplayTagContainer& SkillTags,
 		float SkillHealthCostPercent = -1.0f,
 		float MetresMovedBeforeBlow = -1.0f,
-		float TargetDistanceMetres = -1.0f) const;
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false) const;
 
 	/**
 	 * How much larger one skill's hit should be than the attack-damage
@@ -320,7 +321,8 @@ public:
 		const FGameplayTagContainer& SkillTags,
 		float SkillHealthCostPercent = -1.0f,
 		float MetresMovedBeforeBlow = -1.0f,
-		float TargetDistanceMetres = -1.0f) const;
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -406,7 +408,8 @@ public:
 					   const FCataclysmBlowContext& Blow =
 						   FCataclysmBlowContext(),
 					   float MetresMovedBeforeBlow = -1.0f,
-					   float TargetDistanceMetres = -1.0f) const;
+					   float TargetDistanceMetres = -1.0f,
+					   bool bTargetIsStaggered = false) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -434,7 +437,8 @@ public:
 		float SkillHealthCostPercent = -1.0f,
 		const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
 		float MetresMovedBeforeBlow = -1.0f,
-		float TargetDistanceMetres = -1.0f) const;
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false) const;
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.

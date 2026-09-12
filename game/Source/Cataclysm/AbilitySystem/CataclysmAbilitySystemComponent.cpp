@@ -297,7 +297,8 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
-	float MetresMovedBeforeBlow, float TargetDistanceMetres) const
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -318,13 +319,14 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   CurrentConditions(SkillHealthCostPercent, Blow,
 								 MetresMovedBeforeBlow,
-								 TargetDistanceMetres)).Final;
+								 TargetDistanceMetres,
+								 bTargetIsStaggered)).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
-	float TargetDistanceMetres) const
+	float TargetDistanceMetres, bool bTargetIsStaggered) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -348,14 +350,15 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   CurrentConditions(SkillHealthCostPercent,
 								 FCataclysmBlowContext(),
 								 MetresMovedBeforeBlow,
-								 TargetDistanceMetres))
+								 TargetDistanceMetres,
+								 bTargetIsStaggered))
 			   .SumOfIncreases / 100.0f;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
-	float TargetDistanceMetres) const
+	float TargetDistanceMetres, bool bTargetIsStaggered) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -397,7 +400,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
 		CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
 						  MetresMovedBeforeBlow,
-						  TargetDistanceMetres)).MoreMultiplier;
+						  TargetDistanceMetres,
+						  bTargetIsStaggered)).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -406,7 +410,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
-	float MetresMovedBeforeBlow, float TargetDistanceMetres) const
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -621,6 +626,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// spell damage; every other caller leaves it unknown and the condition reading
 	// it refuses.
 	State.TargetDistanceMetres = TargetDistanceMetres;
+
+	// AND WHETHER THAT CHARACTER IS STAGGERED, the second reading of the target
+	// and passed through for the same reasons. Issue #45. Only a lookup with a
+	// target in hand has one; every other caller leaves it false, and false is
+	// what the condition reading it refuses on.
+	//
+	// NO THIRD VALUE FOR "NOT KNOWN", unlike the distance above, and none is
+	// needed. The distance needs -1 because zero is a real distance, so "no
+	// target" and "touching" would otherwise be the same reading. A bool has no
+	// such collision: "not staggered" and "no target" both mean no bonus.
+	State.bTargetIsStaggered = bTargetIsStaggered;
 
 	return State;
 }

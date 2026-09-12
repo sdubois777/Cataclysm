@@ -521,6 +521,31 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OpponentIsStaggered
 		UMETA(DisplayName = "Opponent Is Staggered"),
+
+	/**
+	 * The character being HIT is staggered. Issue #45.
+	 *
+	 * "Staggered enemies take 20%-35% increased damage from all sources" is a
+	 * row, and it is the mirror of `OpponentIsStaggered` directly above: the
+	 * same question about the same state, asked from the other end of the blow.
+	 *
+	 * THE TWO ARE DELIBERATELY SEPARATE NAMES READING SEPARATE FIELDS, for the
+	 * reason `TargetWithinMetres` and `OpponentBeyondMetres` are. The blow record
+	 * is filled only on the defender's damage taken lookup and
+	 * `bTargetIsStaggered` only on the attacker's own lookups, so a row that used
+	 * the wrong one of this pair reads a field nothing filled and grants nothing,
+	 * rather than reading the staggered state of the character at the wrong end.
+	 *
+	 * "FROM ALL SOURCES" IS THE WEARER'S OWN DAMAGE, ACROSS ITS TYPES, and that
+	 * is the workbook's reading rather than a choice made in this file. The row
+	 * carries `Stat.Offense.Global`, the wearer's offence, as do both other rows
+	 * whose words use that phrase about enemies; the rows using it about damage
+	 * the wearer takes carry `Stat.Defense.*` instead. A debuff on the enemy that
+	 * every attacker's pipeline read would be a different mechanism and is not
+	 * this one. `docs/DECISIONS.md` carries the evidence and the rejection.
+	 */
+	TargetIsStaggered
+		UMETA(DisplayName = "Target Is Staggered"),
 };
 
 /**
@@ -1099,6 +1124,32 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float TargetDistanceMetres = -1.0f;
 
+	/**
+	 * Whether the character being HIT is staggered. Issue #45.
+	 *
+	 * THE SECOND READING OF THE TARGET FILLED ONLY ON THE ATTACKER'S OWN LOOKUPS,
+	 * beside `TargetDistanceMetres` above and for the same reasons. It is the
+	 * mirror of `Blow.bOpponentIsStaggered`, which is the same state read from the
+	 * other end and filled only on the defender's damage taken lookup.
+	 *
+	 * FALSE IS BOTH "NOT STAGGERED" AND "NO TARGET IN HAND", and unlike the
+	 * distance beside it there is no third value to tell those apart. That costs
+	 * nothing, because both answers refuse: a lookup with no target must not grant
+	 * a bonus conditioned on one. The distance needs its -1 only because zero is a
+	 * real distance, and a bool has no such collision.
+	 *
+	 * A MINION'S BLOW REPORTS FALSE DELIBERATELY, exactly as the distance reports
+	 * -1. `ACataclysmMinion` strikes with the summoner as the attacker, so every
+	 * attacker-side reading reaches it unless it is stopped, and a player's
+	 * conditional damage bonus should not reach a minion's blow at all.
+	 * `FCataclysmHitDelivery::bCarriesNoTargetState` says so at the call site.
+	 * Note that the ground is different from the distance's: the staggered state
+	 * of the minion's target is the RIGHT reading, not a wrong one, and it is
+	 * refused anyway because of whose bonus it is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsStaggered = false;
+
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
 	{
@@ -1458,7 +1509,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a twenty-first, which is the drift that put the passive tree eight
+	 * adds a twenty-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -1467,10 +1518,11 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINE OF THE TWENTY COMPARE NOTHING: `WhileBleeding`,
+	 * TEN OF THE TWENTY-ONE COMPARE NOTHING: `WhileBleeding`,
 	 * `ClassResourceAtMaximum`, the three that ask what kind of blow this is,
-	 * the two that ask whether whoever threw it is a boss or staggered, and the
-	 * two that ask whether the character is moving or standing still.
+	 * the two that ask whether whoever threw it is a boss or staggered, the
+	 * two that ask whether the character is moving or standing still, and the
+	 * one that asks whether the character being hit is staggered.
 	 * Each says so in its own comment above, and
 	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
 	 * one, so there is no number to carry across.

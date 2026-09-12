@@ -86,3 +86,6 @@ Negative_You_take_10_more_damage_from_all_sources#1,Negative_You_take_10_more_da
 Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2#1,Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2,attack_damage,more,25.0,25.0,,target_within_metres,5.0,,0.0
 Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2#2,Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2,spell_damage,more,25.0,25.0,,target_within_metres,5.0,,0.0
 Negative_Ranged_attacks_deal_20_more_damage_to_you#1,Negative_Ranged_attacks_deal_20_more_damage_to_you,damage_taken,more,20.0,20.0,,hit_is_ranged_attack,0.0,,0.0
+Positive_Staggered_enemies_take_20_35_increased_damage#1,Positive_Staggered_enemies_take_20_35_increased_damage,attack_damage,increased,20.0,35.0,,target_is_staggered,0.0,,0.0
+Positive_Staggered_enemies_take_20_35_increased_damage#2,Positive_Staggered_enemies_take_20_35_increased_damage,spell_damage,increased,20.0,35.0,,target_is_staggered,0.0,,0.0
+Negative_Staggered_enemies_deal_15_30_increased_damage#1,Negative_Staggered_enemies_deal_15_30_increased_damage,damage_taken,increased,15.0,30.0,,opponent_is_staggered,0.0,,0.0
