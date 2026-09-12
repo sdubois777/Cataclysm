@@ -204,6 +204,54 @@ public:
 	FGameplayAttributeData DotDuration;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, DotDuration)
 
+	/**
+	 * How long a stagger THIS character applies lasts, as a percentage. 100 is
+	 * unchanged, the shape `DotDuration` above already has. Issue #45.
+	 *
+	 * "Stagger effects you apply last 50%-100% longer" is the row.
+	 *
+	 * THE OTHER END OF THE SAME DURATION IS `DebuffDurationTaken`, which is the
+	 * TARGET's and lengthens every timed effect put on it. Both apply to one
+	 * stagger, and they are separate attributes because they belong to separate
+	 * characters: each is the sum of its own owner's increases, and the two
+	 * resulting scalars multiply. `docs/DECISIONS.md` records why, and records
+	 * that extending the damage pipeline's shape to a duration is an extension
+	 * of it rather than something the research behind it established.
+	 *
+	 * UNBOUNDED, LIKE ITS SIBLING. Nothing clamps `DebuffDurationTaken` either,
+	 * so this introduces no unboundedness that was not already here. It is NOT
+	 * justified by the argument that multiplicative sources cannot reach
+	 * immunity -- that argument is about damage, and a marker held for a long
+	 * time is a different consequence from damage made large.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_StaggerDuration)
+	FGameplayAttributeData StaggerDuration;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, StaggerDuration)
+
+	/**
+	 * Percentage points taken off the health ceiling for staggering. Issue #45.
+	 *
+	 * "You cannot stagger enemies above 50% HP" is the row, and it grants 50.
+	 *
+	 * A REDUCTION AND NOT THE CEILING ITSELF, which is the shape
+	 * `HealingCeilingReduction` already has and the reason for it: zero leaves
+	 * the ceiling where it was, so a character without the row is unchanged by a
+	 * single number. A stat holding the ceiling would have to start at 100 and
+	 * every row would write a negative.
+	 *
+	 * THE CEILING IS THE TARGET'S HEALTH PERCENTAGE. At the default reduction of
+	 * zero it is 100, and nothing is above 100 per cent, so every target can be
+	 * staggered. At 50 a target above half health cannot.
+	 *
+	 * IT REFUSES THE TAG RATHER THAN THE DISPLACEMENT. Being staggered does not
+	 * stop a target acting; it is a marker other rows read. So a refused stagger
+	 * still knocks back, pulls or knocks down exactly as before -- only the
+	 * marker is withheld, and the rows conditioned on it do not fire.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_StaggerHealthCeilingReduction)
+	FGameplayAttributeData StaggerHealthCeilingReduction;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, StaggerHealthCeilingReduction)
+
 	/** Percentage points subtracted from a target's RESISTANCE. */
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_Penetration)
 	FGameplayAttributeData Penetration;
@@ -809,6 +857,9 @@ protected:
 	UFUNCTION() void OnRep_DotDamage(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DotFrequency(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DotDuration(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_StaggerDuration(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_StaggerHealthCeilingReduction(
+		const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Penetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SpellDamage(const FGameplayAttributeData& OldValue);

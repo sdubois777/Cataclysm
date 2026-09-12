@@ -281,6 +281,14 @@ namespace
 	}
 }
 
+// THE TWO STATS A STAGGERING CHARACTER CAN CARRY. Issue #45. Spelled here
+// exactly as `game/Data/EnchantmentEffects.csv` spells them, and held to the
+// engine by the stat-name map in `CataclysmPlayerClassStats.cpp`.
+const TCHAR* UCataclysmSkillEffects::StaggerDurationStat =
+	TEXT("stagger_duration");
+const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
+	TEXT("stagger_health_ceiling_reduction");
+
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
@@ -1987,14 +1995,116 @@ namespace
 	}
 }
 
+namespace
+{
+	/** One of the staggering character's own stats, by name. Zero when unknown. */
+	float StaggerStatOf(const AActor* Instigator, const TCHAR* Stat,
+						const FGameplayAttribute& Attribute, float WhenUnknown)
+	{
+		const UAbilitySystemComponent* Source =
+			UCataclysmTargeting::AbilitySystemOf(Instigator);
+		if (!Source || !Source->HasAttributeSetForAttribute(Attribute))
+		{
+			return WhenUnknown;
+		}
+
+		const float Held = Source->GetNumericAttribute(Attribute);
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+		// ASKED FOR RATHER THAN READ, so a future row carrying a condition works,
+		// and NO SKILL TAGS -- a displacement is not a skill and carries none of
+		// its own. Both are the choices `UCataclysmDebuffs::DurationOn` makes for
+		// the other end of this same duration.
+		return Asking ? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
+											 Held)
+					  : Held;
+	}
+}
+
 bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
 										  float Seconds)
 {
+	// A HEALTH CEILING THE STAGGERING CHARACTER CAN CARRY. Issue #45, for
+	// "You cannot stagger enemies above 50% HP".
+	//
+	// THE STAT IS A REDUCTION OF THE CEILING, so zero leaves it at 100 and
+	// nothing is above 100 per cent -- a character without the row staggers
+	// exactly what it staggered before. That is the shape
+	// `HealingCeilingReduction` already has and it is why it is a reduction.
+	//
+	// IT WITHHOLDS THE MARKER, NOT THE SHOVE. Being staggered does not stop the
+	// target acting; it is a state other rows read. The knockback, pull or
+	// knockdown that got here has already landed and is untouched -- only the
+	// tag is refused, so the rows conditioned on it do not fire against a
+	// healthy target.
+	const float Reduction = FMath::Clamp(
+		StaggerStatOf(Instigator, StaggerHealthCeilingStat,
+					  UCataclysmCombatAttributeSet::
+						  GetStaggerHealthCeilingReductionAttribute(),
+					  /*WhenUnknown=*/0.0f),
+		0.0f, 100.0f);
+	if (Reduction > 0.0f)
+	{
+		const UAbilitySystemComponent* Struck =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Struck)
+		{
+			// NO ATTRIBUTES MEANS NO HEALTH TO COMPARE, and a target whose health
+			// cannot be read is not a target the ceiling can refuse. Left
+			// staggerable rather than refused, because refusing on an unknown
+			// would make the row stronger than it says.
+			return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Seconds);
+		}
+
+		const float MaxHealth = Struck->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Health = Struck->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (MaxHealth > 0.0f)
+		{
+			const float Percent =
+				FMath::Clamp(Health / MaxHealth * 100.0f, 0.0f, 100.0f);
+			if (Percent > 100.0f - Reduction)
+			{
+				return false;
+			}
+		}
+	}
+
+	// AND HOW LONG THE STAGGER THIS CHARACTER APPLIES LASTS. Issue #45, for
+	// "Stagger effects you apply last 50%-100% longer". A percentage of normal,
+	// 100 unchanged, which is the shape `DotDuration` has.
+	//
+	// TWO CHARACTERS REACH ONE DURATION AND THEY MULTIPLY. This is the
+	// instigator's; `ApplyTagForDuration` then applies the TARGET's
+	// `debuff_duration_taken` to the result. Each is already the sum of its own
+	// owner's increases, because each runs through that owner's stat pipeline,
+	// so the two scalars multiply rather than summing across characters. There
+	// is no sum available between two characters' attribute lines.
+	// `docs/DECISIONS.md` records that, and records that extending the damage
+	// pipeline's shape to a duration is an extension rather than a finding of
+	// the research that adopted it.
+	const float Applied = StaggerStatOf(
+		Instigator, StaggerDurationStat,
+		UCataclysmCombatAttributeSet::GetStaggerDurationAttribute(),
+		/*WhenUnknown=*/NormalStaggerDuration);
+	const float Scaled =
+		Seconds * FMath::Max(0.0f, Applied) / NormalStaggerDuration;
+	if (Scaled <= 0.0f)
+	{
+		// A DURATION TAKEN TO NOTHING APPLIES NOTHING, rather than an effect with
+		// no duration, which the engine treats as lasting for ever. The same
+		// guard `ApplyTagForDuration` makes for the target's side. Unreachable
+		// today: nothing lowers this stat.
+		return false;
+	}
+
 	// A TAG HELD FOR A DURATION, which is the shape every timed state in this
 	// file takes. `ApplyTagForDuration` also lets the target's own debuff
 	// duration stat lengthen it, which is what the Masochist branch pays for,
 	// and keeps the longer of two applications rather than cutting one short.
-	return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Seconds);
+	return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Scaled);
 }
 
 bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,

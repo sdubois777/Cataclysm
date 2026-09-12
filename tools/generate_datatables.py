@@ -4140,6 +4140,20 @@ ENGINE_SUPPLIED_BASES = {
     "debuff_duration_taken":
         "UCataclysmDebuffs::NormalDuration, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",
+
+    # AND HOW LONG A STAGGER THIS CHARACTER APPLIES TO SOMEONE ELSE RUNS, at 100
+    # for normal. Issue #45. The MIRROR of the entry above rather than a repeat
+    # of it: that one is how long a harmful effect put ON this character runs.
+    # Both scale one stagger's duration, from opposite ends.
+    #
+    # THE ENCHANTMENT THAT MOVES IT IS AN `increased` ROW -- "Stagger effects you
+    # apply last 50%-100% longer" -- so without a base under it the stat resolves
+    # to zero, `ApplyStagger` scales by zero and refuses, and no player staggers
+    # anything at all. The attribute set's constructor stating 100 does not save
+    # it: `ApplyTo` writes the resolved zero over that.
+    "stagger_duration":
+        "UCataclysmSkillEffects::NormalStaggerDuration, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
 }
 
 

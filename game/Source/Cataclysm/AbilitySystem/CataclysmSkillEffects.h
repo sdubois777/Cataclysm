@@ -1498,6 +1498,25 @@ public:
 	static constexpr float StaggerSeconds = 1.0f;
 
 	/**
+	 * What `stagger_duration` reads as unchanged. Issue #45.
+	 *
+	 * A PERCENTAGE OF NORMAL, 100 MEANING NO CHANGE, which is the shape
+	 * `dot_damage`, `dot_frequency`, `dot_duration` and `area_of_effect` all
+	 * have, and the same constant `UCataclysmDebuffs::NormalDuration` uses for
+	 * the target's end of this duration.
+	 */
+	static constexpr float NormalStaggerDuration = 100.0f;
+
+	/** How long a stagger THIS character applies lasts, as a percentage. #45. */
+	static const TCHAR* StaggerDurationStat;
+
+	/**
+	 * Percentage points off the health above which this character cannot
+	 * stagger. Issue #45. A REDUCTION, so zero refuses nothing.
+	 */
+	static const TCHAR* StaggerHealthCeilingStat;
+
+	/**
 	 * Leave a target staggered for a second.
 	 *
 	 * IT DOES NOT STOP THE TARGET ACTING. That is the owner's answer of
