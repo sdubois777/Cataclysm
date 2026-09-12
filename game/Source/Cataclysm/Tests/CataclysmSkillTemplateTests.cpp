@@ -302,6 +302,112 @@ bool FCataclysmSkillCommitsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillWalkedDistanceTest,
+	"Cataclysm.Skills.ABlowCarriesTheDistanceWalkedBeforeTheAttackNotAfter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The distance a blow carries is measured before the attack, not after it.
+ * Issue #41, slice 2.
+ *
+ * WHAT THIS GUARDS, AND IT IS THE WHOLE REASON THE PER-BLOW VALUE EXISTS.
+ * `CommitAndBegin` reads the character's walk since its own last attack into
+ * `LastMetresMovedBeforeUse`, and THEN clears the tally by noting the attack.
+ * `HitTargets` copies that field onto every blow. Reverse those two lines and
+ * the field is always zero -- so the Ravager capstone option Headlong, "your
+ * first melee attack after moving 5 metres deals 50% increased damage", would
+ * never fire, and nothing would say so. The build succeeds, every other test in
+ * this slice passes, and the feature does nothing in play.
+ *
+ * IT READS WHAT THE SKILL RECORDED, the way the health-cost test above reads
+ * `LastHealthCostPercentOfMaximum` after a real activation, rather than
+ * constructing the state and asserting it holds what was put into it.
+ */
+bool FCataclysmSkillWalkedDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	// NOTHING RECORDED UNTIL IT IS USED, which is what -1 means. Zero cannot be
+	// the sentinel: a skill used by a character that had not walked a step
+	// measured a real distance of nothing.
+	TestTrue(TEXT("an unused skill has recorded no distance"),
+			 Strike->LastMetresMovedBeforeUse < 0.0f);
+
+	// TEN METRES WALKED SINCE ITS OWN LAST ATTACK.
+	Caster.AbilitySystem->NoteMovedMetres(10.0f);
+	TestEqual(TEXT("the tally holds the walk before the attack"),
+			  Caster.AbilitySystem->MetresMovedSinceOwnAttack(), 10.0f, 0.01f);
+
+	TestTrue(TEXT("It activates"), Activate(Caster, Strike));
+
+	// THE ASSERTION THIS TEST EXISTS FOR. Reading after the reset instead of
+	// before it makes this zero.
+	TestEqual(TEXT("the skill recorded the ten metres walked before it"),
+			  Strike->LastMetresMovedBeforeUse, 10.0f, 0.01f);
+
+	// AND THE TALLY WAS CLEARED BY THE ATTACK, which is the other half and what
+	// makes the NEXT attack the first one after moving. Without this assertion a
+	// version that read the distance and never cleared it would pass.
+	TestEqual(TEXT("and the attack cleared the tally"),
+			  Caster.AbilitySystem->MetresMovedSinceOwnAttack(), 0.0f, 0.01f);
+
+	// AND THE RECORDED DISTANCE IS WHAT A CONDITION READS. Headlong asks for
+	// five metres; ten satisfies it and nothing does not. Asked through the same
+	// call the damage path uses, so this is the number a blow would be scaled
+	// by rather than a restatement of the field above.
+	FCataclysmStatModifier Headlong;
+	Headlong.Bucket = ECataclysmStatBucket::Increased;
+	Headlong.Source = ECataclysmModifierSource::PassiveKeystone;
+	Headlong.Value = 50.0f;
+	Headlong.Condition = ECataclysmStatCondition::MetresMovedBeforeAttack;
+	Headlong.ConditionValue = 5.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(Headlong);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayTagContainer NoTags;
+
+	TestEqual(TEXT("ten metres recorded is +50% damage"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(
+				  NoTags, -1.0f, Strike->LastMetresMovedBeforeUse),
+			  0.5f, 0.0001f);
+
+	// A DISTANCE OF NOTHING IS A REAL ANSWER AND FAILS THE CONDITION, which is
+	// what a blow would carry if the read moved after the reset.
+	TestEqual(TEXT("a distance of nothing is worth nothing"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(
+				  NoTags, -1.0f, 0.0f),
+			  0.0f, 0.0001f);
+
+	// AND AN UNKNOWN DISTANCE IS REFUSED TOO, so a caller that measured nothing
+	// does not get the bonus by default.
+	TestEqual(TEXT("and an unknown distance is refused"),
+			  Caster.AbilitySystem->AttackDamageIncreasesForSkill(
+				  NoTags, -1.0f, -1.0f),
+			  0.0f, 0.0001f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillRefusedWithoutManaTest,
 	"Cataclysm.Skills.ASkillIsRefusedWhenTheManaIsNotThere",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

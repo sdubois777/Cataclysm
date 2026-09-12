@@ -5,9 +5,14 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
 const TCHAR* UCataclysmDungeonModifierEffects::DehydrationKey = TEXT("Famine_Dehydration");
+const TCHAR* UCataclysmDungeonModifierEffects::ForcedMarchKey =
+	TEXT("War_Forced_March");
+const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
+	TEXT("Void_The_Nihil_s_Embrace");
 
 namespace
 {
@@ -28,6 +33,33 @@ namespace
 	const TCHAR* const DungeonModifierEffectsMaxEnergyShieldStat = TEXT("max_energy_shield");
 	const TCHAR* const DungeonModifierEffectsMaxManaStat = TEXT("max_mana");
 
+	/**
+	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
+	 *
+	 * SIGNED, AND THE SIGN IS WHAT MAKES A LESS. The pipeline multiplies by
+	 * (1 + Value / 100), so -10 is x0.9 and +10 is x1.1, and it floors a Less at
+	 * -99 so no rule can take a number to nothing. The most any rule here takes
+	 * is 60, well inside that.
+	 *
+	 * ONE PLACE BUILDS THE MODIFIER, which is why the two callers below pass a
+	 * sign rather than each building their own.
+	 */
+	void DungeonModifierEffectsAddMultiplier(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, FName Stat, float Value)
+	{
+		if (FMath::IsNearlyZero(Value))
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+
+		Into.FindOrAdd(Stat).Add(Modifier);
+	}
+
 	/** One Less multiplier from a dungeon rule, or nothing for a share of zero. */
 	void DungeonModifierEffectsAddLess(
 		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
@@ -38,23 +70,17 @@ namespace
 			return;
 		}
 
-		FCataclysmStatModifier Modifier;
-		Modifier.Bucket = ECataclysmStatBucket::More;
-		Modifier.Source = ECataclysmModifierSource::DungeonRule;
-
-		// NEGATIVE, WHICH IS WHAT MAKES A MORE A LESS. The pipeline multiplies by
-		// (1 + Value / 100), so -10 is x0.9, and it floors a Less at -99 so no
-		// rule can take a maximum to nothing. 60 is the most either rule here
-		// takes, well inside that.
-		Modifier.Value = -LessPercent;
-
-		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+		DungeonModifierEffectsAddMultiplier(Into, FName(Stat), -LessPercent);
 	}
 }
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
 {
-	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey))
+	// FOUR ARE BUILT, AND THE LAST TWO WERE ADDED BY ISSUE #41'S SLICE 2. Forced
+	// March and The Nihil's Embrace do everything their rows describe, including
+	// that row's cleanse on a high tier enemy's defeat, so neither is "partly".
+	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
+		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -76,6 +102,8 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 	return {
 		FName(StarvationKey),
 		FName(DehydrationKey),
+		FName(ForcedMarchKey),
+		FName(NihilsEmbraceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -90,6 +118,42 @@ float UCataclysmDungeonModifierEffects::ShareTakenOnFloor(float PercentPerFloor,
 	}
 
 	return FMath::Min(PercentPerFloor * static_cast<float>(FloorNumber), MostPercent);
+}
+
+int32 UCataclysmDungeonModifierEffects::ForcedMarchStacksAfter(
+	float SecondsStoodStill)
+{
+	// NOTHING UNTIL THE ROW'S THRESHOLD, and nothing at all for a character that
+	// cannot be asked: a negative wait means "no character to read", which is the
+	// same reading the movement conditions refuse on. Both fail this comparison.
+	if (SecondsStoodStill < ForcedMarchSecondsBeforeDamage)
+	{
+		return 0;
+	}
+
+	// ONE A SECOND PAST THE THRESHOLD, in whole seconds, so three seconds exactly
+	// is the first stack and four seconds is the second.
+	const int32 Stacks =
+		1 + FMath::FloorToInt(SecondsStoodStill - ForcedMarchSecondsBeforeDamage);
+	return FMath::Min(Stacks, ForcedMarchMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::ForcedMarchSharePerSecond(int32 Stacks)
+{
+	return FMath::Max(0, Stacks) * ForcedMarchPercentPerStackPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::NihilsEmbraceResistanceLost(
+	float MetresWalked)
+{
+	if (MetresWalked <= 0.0f || NihilsEmbraceMetresPerResistancePercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Points = FMath::FloorToFloat(
+		MetresWalked / NihilsEmbraceMetresPerResistancePercent);
+	return FMath::Min(Points, NihilsEmbraceMostResistancePercent);
 }
 
 FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
@@ -131,6 +195,28 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  Effects.MaxEnergyShieldLessPercent);
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
 								  Effects.MaxManaLessPercent);
+
+	// AND THE NIHIL'S EMBRACE, ON ALL EIGHT RESISTANCES. Issue #41, slice 2. The
+	// row says "your resistances", and this game holds one resistance per
+	// Cataclysm damage type rather than a single number, so that is eight
+	// modifiers rather than one.
+	//
+	// BUILT FROM THE SHIPPING LIST OF DAMAGE TYPES rather than eight names typed
+	// here, so a type renamed in the design workbook moves this with it.
+	//
+	// THE LOSS AND THE REWARD SHARE EVERY STAT AND THE SAME BUCKET, so the
+	// pipeline adds them: a cleanse puts the loss back to nothing and starts the
+	// reward, and a character that walks again while the reward runs carries both
+	// at once.
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat,
+											-Effects.ResistanceLessPercent);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat,
+											Effects.ResistanceMorePercent);
+	}
+
 	return Modifiers;
 }
 
@@ -174,6 +260,20 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("maximum mana %.0f%% less"),
 									Effects.MaxManaLessPercent));
+	}
+
+	// THE NIHIL'S EMBRACE, IN BOTH DIRECTIONS. Issue #41, slice 2. The per-floor
+	// log and the floor panel both read this, and a rule taking a player's
+	// resistances with nothing saying so would read as a fault in the game.
+	if (Effects.ResistanceLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% less"),
+									Effects.ResistanceLessPercent));
+	}
+	if (Effects.ResistanceMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% more"),
+									Effects.ResistanceMorePercent));
 	}
 	return FString::Join(Clauses, TEXT(", "));
 }

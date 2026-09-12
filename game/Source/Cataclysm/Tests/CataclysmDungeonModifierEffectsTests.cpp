@@ -6,6 +6,11 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -21,7 +26,9 @@
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -39,10 +46,24 @@
  * stats through the equipment component the way the game does, and read the
  * attribute back.
  *
- * WHAT IS NOT COVERED, said plainly: that `ApplyFloorRulesToPlayer` finds the
- * player and shows the panel. A test world has no player controller, which
- * `Tests/CataclysmTestWorld.h` records, so the finding and the panel are two
- * calls nothing here reaches. `ApplyFloorRulesTo`, which does the work, is.
+ * THE PLAYER LOOKUP IS COVERED SINCE ISSUE #41'S SLICE 2, and this paragraph
+ * used to say the opposite. It said a test world has no player controller, so
+ * `ApplyFloorRulesToPlayer` finding the player was reached by nothing. What is
+ * true is that a test world is GIVEN no player controller unless a test spawns
+ * one: the four tests at the end of this file spawn a player state, an
+ * `APlayerController` and a player character and call `AController::Possess`,
+ * after which `GetFirstPlayerController()->GetPawn()` answers. Fourteen other
+ * test files already did this.
+ *
+ * `AController::Possess` AND NOT `APawn::PossessedBy`, WHICH IS THE TRAP. The
+ * pawn's half tells the pawn which controller has it and does not tell the
+ * CONTROLLER which pawn it has, so the lookup finds the controller and
+ * `GetPawn` answers null. `CataclysmDroppedItemTests.cpp` records losing time
+ * to exactly that.
+ *
+ * WHAT IS STILL NOT COVERED, said plainly: the floor panel. Showing it needs a
+ * `ACataclysmPlayerController`, and these tests possess with a plain
+ * `APlayerController`, so the panel call is skipped rather than checked.
  */
 
 namespace CataclysmDungeonModifierEffectsTest
@@ -50,6 +71,59 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName Starvation(TEXT("Famine_Starvation"));
 	const FName Dehydration(TEXT("Famine_Dehydration"));
 	const FName EdictOfSilence(TEXT("Celestial_Edict_of_Silence"));
+
+	/** The two rows of issue #41's slice 2, which change during play. */
+	const FName ForcedMarch(TEXT("War_Forced_March"));
+	const FName NihilsEmbrace(TEXT("Void_The_Nihil_s_Embrace"));
+
+	/**
+	 * A player the dungeon game mode's beat can find, and the creature-free parts
+	 * of a real one: a player state holding the ability system component, a
+	 * controller, and a possessed pawn.
+	 *
+	 * `AController::Possess` AND NOT `APawn::PossessedBy`. The pawn's half does
+	 * not tell the controller which pawn it has, and the beat reaches the player
+	 * through `GetFirstPlayerController()->GetPawn()`, which would answer null.
+	 */
+	struct FPossessedPlayer
+	{
+		explicit FPossessedPlayer(UWorld* World)
+		{
+			PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+			Controller = World->SpawnActor<APlayerController>();
+			Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+			if (!PlayerState || !Controller || !Character)
+			{
+				return;
+			}
+			Controller->SetPlayerState(PlayerState);
+			Controller->Possess(Character);
+			AbilitySystem = Cast<UCataclysmAbilitySystemComponent>(
+				Character->GetAbilitySystemComponent());
+		}
+
+		bool IsUsable() const { return Character && AbilitySystem; }
+
+		float Read(const FGameplayAttribute& Attribute) const
+		{
+			return AbilitySystem->GetNumericAttribute(Attribute);
+		}
+
+		/** Walk this far along X in one sample, so the walk is counted. */
+		void Walk(float Metres) const
+		{
+			const FVector Where = Character->GetActorLocation();
+			Character->SetActorLocation(Where + FVector(
+				Metres * UCataclysmMovement::CentimetresPerMetre, 0.0f, 0.0f));
+			UCataclysmMovement::SampleStep(Character);
+		}
+
+		ACataclysmPlayerState* PlayerState = nullptr;
+		APlayerController* Controller = nullptr;
+		ACataclysmPlayerCharacter* Character = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
 
 	/**
 	 * A character holding every attribute set a real one holds, and equipment.
@@ -418,7 +492,8 @@ bool FCataclysmModifierEffectsFollowTheFloorTest::RunTest(const FString& Paramet
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
 	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
 	{
 		return false;
@@ -522,7 +597,8 @@ bool FCataclysmModifierEffectsConsoleTest::RunTest(const FString& Parameters)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
 	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
 	{
 		return false;
@@ -611,6 +687,368 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 			  FString(TEXT("Floor 5: 4 dungeon modifiers")));
 	TestEqual(TEXT("in the singular for one"), Layout::HeadingFor(1, 1),
 			  FString(TEXT("Floor 1: 1 dungeon modifier")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierStacksTest,
+	"Cataclysm.DungeonModifierEffects.ForcedMarchStacksOnlyAfterThreeSecondsStill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierStacksTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW STATES THE THREE SECONDS AND NOTHING ELSE: "You take stacking
+	// damage if you stand still for >3s." The share, the rate and the cap are
+	// judgements recorded in `docs/DECISIONS.md`, so they are read from the
+	// constants here rather than typed, and
+	// `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row
+	// ever states one of its own.
+	const float Threshold = Effects::ForcedMarchSecondsBeforeDamage;
+	const int32 Most = Effects::ForcedMarchMostStacks;
+
+	// BELOW THE THRESHOLD, NOTHING AT ALL.
+	TestEqual(TEXT("a character that just moved has no stacks"),
+			  Effects::ForcedMarchStacksAfter(0.0f), 0);
+	TestEqual(TEXT("nor one a moment before the threshold"),
+			  Effects::ForcedMarchStacksAfter(Threshold - 0.01f), 0);
+
+	// THE ROW SAYS "FOR MORE THAN 3s", so exactly three seconds is not yet
+	// standing still for more than three. The first stack arrives once the
+	// threshold is passed.
+	TestEqual(TEXT("the first stack arrives just past the threshold"),
+			  Effects::ForcedMarchStacksAfter(Threshold + 0.01f), 1);
+
+	// ONE A SECOND AFTER THAT. This rate has no constant of its own: it is the
+	// shape of this function, one stack plus one for each whole second past the
+	// threshold.
+	TestEqual(TEXT("two stacks a second later"),
+			  Effects::ForcedMarchStacksAfter(Threshold + 1.0f), 2);
+	TestEqual(TEXT("three the second after"),
+			  Effects::ForcedMarchStacksAfter(Threshold + 2.0f), 3);
+
+	// AND IT STOPS. Without a cap the one comparable mechanism in the genre
+	// kills in about five seconds, and this row's danger weight is the low end
+	// of the scale.
+	TestEqual(TEXT("it stops at the cap"),
+			  Effects::ForcedMarchStacksAfter(Threshold + Most + 10.0f), Most);
+	TestEqual(TEXT("and a minute still is still the cap"),
+			  Effects::ForcedMarchStacksAfter(60.0f), Most);
+
+	// A NEGATIVE WAIT IS "NO CHARACTER TO READ" AND TAKES NOTHING, the same
+	// answer the movement conditions give. Without this a character nothing
+	// could be read from would be treated as standing still for ever.
+	TestEqual(TEXT("an unknown wait takes nothing"),
+			  Effects::ForcedMarchStacksAfter(-1.0f), 0);
+
+	// WHAT A STACK COSTS, per second, as a share of maximum health.
+	TestEqual(TEXT("no stacks cost nothing"),
+			  Effects::ForcedMarchSharePerSecond(0), 0.0f, 0.001f);
+	TestEqual(TEXT("one stack costs the share"),
+			  Effects::ForcedMarchSharePerSecond(1),
+			  Effects::ForcedMarchPercentPerStackPerSecond, 0.001f);
+	TestEqual(TEXT("five stacks cost five times it"),
+			  Effects::ForcedMarchSharePerSecond(Most),
+			  Effects::ForcedMarchPercentPerStackPerSecond * Most, 0.001f);
+	TestEqual(TEXT("and a negative count costs nothing"),
+			  Effects::ForcedMarchSharePerSecond(-1), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierEffectsNihilLossTest,
+	"Cataclysm.DungeonModifierEffects.TheNihilsEmbraceTakesAPointPerStretchWalked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierEffectsNihilLossTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const float PerPoint = Effects::NihilsEmbraceMetresPerResistancePercent;
+	const float Most = Effects::NihilsEmbraceMostResistancePercent;
+
+	// WHOLE POINTS, ROUNDED DOWN. The row says "slowly and permanently reduced"
+	// and states no number, so the distance per point is a judgement; what is
+	// not a judgement is that a player should see a whole number change rather
+	// than a fraction crawling.
+	TestEqual(TEXT("standing still costs nothing"),
+			  Effects::NihilsEmbraceResistanceLost(0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("half the distance costs nothing yet"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint * 0.5f), 0.0f, 0.001f);
+	TestEqual(TEXT("the whole distance costs one point"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint), 1.0f, 0.001f);
+	TestEqual(TEXT("and one and a half still costs one"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint * 1.5f), 1.0f, 0.001f);
+	TestEqual(TEXT("twice it costs two"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint * 2.0f), 2.0f, 0.001f);
+
+	// AND IT STOPS, because a resistance falling without limit turns a long
+	// floor into an unwinnable one. The sister row Starvation states a cap of
+	// its own; this one does not, so the cap is a judgement.
+	TestEqual(TEXT("the loss stops at the cap"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint * Most), Most, 0.001f);
+	TestEqual(TEXT("and walking far past it takes no more"),
+			  Effects::NihilsEmbraceResistanceLost(PerPoint * Most * 10.0f),
+			  Most, 0.001f);
+
+	// A NEGATIVE DISTANCE TAKES NOTHING rather than giving resistance back.
+	TestEqual(TEXT("a negative distance takes nothing"),
+			  Effects::NihilsEmbraceResistanceLost(-50.0f), 0.0f, 0.001f);
+
+	// ALL EIGHT RESISTANCES, AND THE MODIFIERS SAY SO. The row says "your
+	// resistances", so one type would be wrong. Read out of the stat inputs
+	// rather than off eight attributes, the way the Starvation tests read
+	// max_health.
+	FCataclysmPlayerFloorEffects Losing;
+	Losing.ResistanceLessPercent = 4.0f;
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		Effects::StatModifiersFor(Losing);
+
+	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(Type);
+		const TArray<FCataclysmStatModifier>* On = Modifiers.Find(Stat);
+		if (!TestNotNull(*FString::Printf(TEXT("%s carries a modifier"),
+										  *Stat.ToString()),
+						 On))
+		{
+			continue;
+		}
+		TestEqual(*FString::Printf(TEXT("%s loses four"), *Stat.ToString()),
+				  (*On)[0].Value, -4.0f, 0.001f);
+	}
+
+	TestEqual(TEXT("and eight of them, one per damage type"),
+			  Modifiers.Num(), UCataclysmItemModifiers::DamageTypeNames().Num());
+
+	// THE REWARD IS THE SAME EIGHT STATS THE OTHER WAY UP, so a cleansed player
+	// reads a gain rather than a smaller loss.
+	FCataclysmPlayerFloorEffects Rewarded;
+	Rewarded.ResistanceMorePercent = Effects::NihilsEmbraceRewardResistancePercent;
+	const TMap<FName, TArray<FCataclysmStatModifier>> Reward =
+		Effects::StatModifiersFor(Rewarded);
+	const FName War = UCataclysmItemModifiers::ResistanceStatFor(TEXT("War"));
+	if (const TArray<FCataclysmStatModifier>* On = Reward.Find(War))
+	{
+		TestTrue(TEXT("the reward is a gain and not a loss"), (*On)[0].Value > 0.0f);
+	}
+	else
+	{
+		AddError(TEXT("the reward put no modifier on resistance_war"));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierMarchBeatTest,
+	"Cataclysm.DungeonModifierEffects.ForcedMarchTakesHealthFromAStandingPlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierMarchBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ForcedMarch};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Forced March"),
+			 Mode->FloorBrief.Modifiers.Contains(ForcedMarch));
+
+	// THE FIRST SAMPLE STARTS THE STANDING-STILL CLOCK. Without it the player
+	// has never been sampled and the beat reads an unknown wait.
+	Player.Walk(0.0f);
+	const float Full = Player.Read(Vital::GetHealthAttribute());
+	TestTrue(TEXT("the player starts with some health"), Full > 0.0f);
+
+	// STANDING STILL FOR LESS THAN THE ROW'S THRESHOLD COSTS NOTHING.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("two seconds still costs nothing"),
+			  Player.Read(Vital::GetHealthAttribute()), Full, 0.01f);
+
+	// PAST IT, THE BEAT TAKES A SHARE. Driven through Tick because the beat is
+	// private and the header says a test ticks this actor.
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const float Hurt = Player.Read(Vital::GetHealthAttribute());
+	TestTrue(TEXT("standing still past the threshold costs health"), Hurt < Full);
+
+	// AND MOVING CLEARS IT. The stacks are derived from the clock rather than
+	// stored, so one sample at a new place stops the damage entirely.
+	Player.Walk(5.0f);
+	const float AfterMoving = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("moving stops the damage at once"),
+			  Player.Read(Vital::GetHealthAttribute()), AfterMoving, 0.01f);
+
+	// A FLOOR WITHOUT THE ROW TAKES NOTHING, which is what says the beat reads
+	// the floor's list rather than hurting everybody.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	Mode->BuildFloor();
+	Player.Walk(0.0f);
+
+	// THE BASELINE IS TAKEN AFTER A BEAT HAS ALREADY RUN ON THE NEW FLOOR, and
+	// this is the correction to a first version of this test that failed.
+	// Changing the floor applies its rules, Starvation lowers maximum health, and
+	// the stat refresh that follows moves the health attribute -- upwards here,
+	// by 3.83 -- so a baseline read on the line after `BuildFloor` captures a
+	// number that is still settling. The test then reported the rule taking
+	// NEGATIVE damage. Reading it after one beat measures what the beat does and
+	// nothing else, which is the only thing this assertion is about.
+	CataclysmTestWorld::RunClock(World, 10.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const float OnAnotherFloor = Player.Read(Vital::GetHealthAttribute());
+
+	CataclysmTestWorld::RunClock(World, 10.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("a floor without Forced March takes nothing"),
+			  Player.Read(Vital::GetHealthAttribute()), OnAnotherFloor, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifierCleanseTest,
+	"Cataclysm.DungeonModifierEffects.ABossDeathCleansesTheNihilsEmbrace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifierCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it, so the binding is made the way StartPlay makes it.
+	if (UCataclysmCombatEvents* Announcer = UCataclysmCombatEvents::In(World))
+	{
+		Mode->StartPlay();
+		TestTrue(TEXT("the announcer exists"), Announcer != nullptr);
+	}
+
+	Mode->DungeonModifiers = {NihilsEmbrace};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WALK FAR ENOUGH TO LOSE SOMETHING, then let the beat apply it.
+	Player.Walk(0.0f);
+	const float Enough =
+		Effects::NihilsEmbraceMetresPerResistancePercent * 3.0f;
+	Player.Walk(Enough);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* Lost =
+		DungeonRuleOn(Player.AbilitySystem,
+					  *UCataclysmItemModifiers::ResistanceStatFor(
+						  TEXT("War")).ToString());
+	if (!TestNotNull(TEXT("walking cost some War resistance"), Lost))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the loss is a negative multiplier"), Lost->Value < 0.0f);
+
+	// A COMMON CREATURE'S DEATH CLEANSES NOTHING. The row asks for "a high tier
+	// enemy", and which rung that means is a judgement recorded in
+	// docs/DECISIONS.md: the boss test, rarity 4 and 5.
+	ACataclysmEnemyCharacter* Common = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a common creature spawned"), Common))
+	{
+		return false;
+	}
+	Common->SetRarityStep(0);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Common, 100000.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* StillLost =
+		DungeonRuleOn(Player.AbilitySystem,
+					  *UCataclysmItemModifiers::ResistanceStatFor(
+						  TEXT("War")).ToString());
+	if (TestNotNull(TEXT("a Common's death left the loss alone"), StillLost))
+	{
+		TestTrue(TEXT("still a loss"), StillLost->Value < 0.0f);
+	}
+
+	// A BOSS'S DEATH GIVES EVERY POINT BACK AND GRANTS THE REWARD. Killed with a
+	// real blow so the announcement travels the path the game uses, through
+	// UCataclysmSkillEffects::MarkDead.
+	//
+	// SPAWNED WITH COLLISION HANDLING SET, and this is the correction to a first
+	// version that failed. The Common above is still standing, creatures carry a
+	// capsule, and the default handling refuses a spawn whose place is blocked --
+	// so `SpawnActor` answered null and the test reported "a boss spawned" as the
+	// failure, which names the symptom and not the cause. Asking the engine to
+	// adjust the location says what the test actually needs: a boss somewhere,
+	// not a boss at one exact point. A larger distance chosen by eye would work
+	// today and break when somebody changes a capsule radius.
+	FActorSpawnParameters BossSpawn;
+	BossSpawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, BossSpawn);
+	if (!TestNotNull(TEXT("a boss spawned"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestTrue(TEXT("and it really is a boss"), Boss->IsBoss());
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	TestTrue(TEXT("the boss died"), UCataclysmSkillEffects::IsDead(Boss));
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* After =
+		DungeonRuleOn(Player.AbilitySystem,
+					  *UCataclysmItemModifiers::ResistanceStatFor(
+						  TEXT("War")).ToString());
+	if (TestNotNull(TEXT("the cleansed player still carries a modifier"), After))
+	{
+		TestTrue(TEXT("and it is a gain now, not a loss"), After->Value > 0.0f);
+	}
 
 	return true;
 }

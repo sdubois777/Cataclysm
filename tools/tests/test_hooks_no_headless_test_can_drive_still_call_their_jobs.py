@@ -90,6 +90,15 @@ HOOKS = {
                 "their own -- Infernal Sacrifice eating an ally, Unholy "
                 "Sigils laying a sigil, and Inferno Charge setting off, "
                 "issue #742",
+            "UCataclysmMovement::SampleStep":
+                "comparing the character's position with the last sample, so "
+                "it knows whether it is moving, how long it has stood still "
+                "and how far it has walked. Deleting it leaves every one of "
+                "those readings frozen at its starting value, which reads as "
+                "a character that never moves: no passive node or floor rule "
+                "asking about movement would ever fire, and the two dungeon "
+                "modifiers that watch it would do nothing. Issue #41, "
+                "slice 2",
         },
         "questions": {
             "UCataclysmSkillEffects::IsDead",

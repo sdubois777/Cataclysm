@@ -3,7 +3,9 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -521,6 +523,11 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 	SinceWaveCheckSeconds = 0.0f;
 
 	BringTheNextWaveIn();
+
+	// AND THE TWO MODIFIERS THAT CHANGE WHILE THE PLAYER PLAYS. Issue #41,
+	// slice 2. On this beat rather than a timer of their own, and after the wave
+	// check because a wave arriving is what the player is looking at.
+	StepFloorRulesThatChange();
 }
 
 void ACataclysmDungeonGameMode::StartPlay()
@@ -554,6 +561,21 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
 	// Issue #41.
 	ApplyFloorRulesToPlayer();
+
+	// AND A DEATH ANYWHERE ON THE FLOOR REACHES THE NIHIL'S EMBRACE'S CLEANSE.
+	// Issue #41, slice 2.
+	//
+	// BOUND ONCE HERE RATHER THAN ASKED FOR ON THE BEAT, because a death is an
+	// event: nothing on a character says one happened a moment ago.
+	//
+	// NOT UNBOUND, AND THAT IS SAFE. The subsystem belongs to the world, so it
+	// cannot outlive this game mode, and a binding to a destroyed object is
+	// skipped rather than called.
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+	{
+		Events->OnDeath.AddUObject(
+			this, &ACataclysmDungeonGameMode::OnSomethingDied);
+	}
 }
 
 int32 ACataclysmDungeonGameMode::ChooseSeed(int64 Entropy) const
@@ -1523,7 +1545,8 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
-	// maximums and hides the floor panel.
+	// maximums, gives back the resistance The Nihil's Embrace had taken, stops
+	// Forced March counting, and hides the floor panel. Issue #41, slice 2.
 	ApplyFloorRulesToPlayer();
 }
 
@@ -1568,6 +1591,165 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 		AbilitySystem, Equipment);
 }
 
+void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
+{
+	// NOTHING TO DO ON A FLOOR CARRYING NEITHER, which is almost every floor, and
+	// this is what that costs: two tests of a short array.
+	const bool bForcedMarch = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::ForcedMarchKey));
+	const bool bNihilsEmbrace = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::NihilsEmbraceKey));
+	if (!bForcedMarch && !bNihilsEmbrace)
+	{
+		return;
+	}
+
+	// THE SAME ROUTE `ApplyFloorRulesToPlayer` TAKES to the player's character, so
+	// the two cannot disagree about whose floor rules these are.
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player
+		? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent())
+		: nullptr;
+	if (!Player || !AbilitySystem)
+	{
+		return;
+	}
+
+	if (bForcedMarch)
+	{
+		StepForcedMarch(Player, AbilitySystem);
+	}
+	if (bNihilsEmbrace)
+	{
+		StepNihilsEmbrace(Player, AbilitySystem);
+	}
+}
+
+void ACataclysmDungeonGameMode::StepForcedMarch(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// THE SECONDS SINCE THE PLAYER LAST MOVED ARE THE WHOLE STATE. Moving puts
+	// them back to nothing, which clears every stack without anything being
+	// stored. A character that cannot be asked reads a negative wait and takes
+	// nothing.
+	const int32 Stacks = UCataclysmDungeonModifierEffects::ForcedMarchStacksAfter(
+		AbilitySystem->SecondsSinceMoved());
+	if (Stacks <= 0)
+	{
+		return;
+	}
+
+	// A SHARE OF MAXIMUM HEALTH, FOR THIS BEAT'S LENGTH. The row's figure is per
+	// second and this runs four times a second, so each beat takes a quarter of
+	// it.
+	const float Maximum = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Share =
+		UCataclysmDungeonModifierEffects::ForcedMarchSharePerSecond(Stacks);
+	const float Amount = Maximum * Share / 100.0f * SecondsBetweenWaveChecks;
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+
+	// NOT A HIT, WHICH IS THE WHOLE POINT. The damage comes from the floor rather
+	// than from an attacker, so no evasion roll, no block, no armour, no
+	// resistance, no critical strike and no ailment touch it. The player is its
+	// own instigator because nothing else dealt it.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepNihilsEmbrace(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	const float Walked = FMath::Max(
+		0.0f, AbilitySystem->MetresWalkedTotal() - MetresWalkedAtLastCleanse);
+	const float Less =
+		UCataclysmDungeonModifierEffects::NihilsEmbraceResistanceLost(Walked);
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const float More = NihilsEmbraceRewardUntilSeconds > Now
+		? UCataclysmDungeonModifierEffects::NihilsEmbraceRewardResistancePercent
+		: 0.0f;
+
+	// ONLY WHEN SOMETHING ACTUALLY CHANGED. Setting the modifiers is cheap, but
+	// the refresh that follows rewrites the character's whole standing stat line,
+	// and a player walking in a straight line changes this number once every ten
+	// metres rather than four times a second.
+	if (FMath::IsNearlyEqual(Less, ResistanceLessApplied)
+		&& FMath::IsNearlyEqual(More, ResistanceMoreApplied))
+	{
+		return;
+	}
+
+	ResistanceLessApplied = Less;
+	ResistanceMoreApplied = More;
+
+	// THE FLOOR'S OWN EFFECTS AS WELL, because applying replaces them wholesale:
+	// a floor carrying Starvation and The Nihil's Embrace has to keep both.
+	FCataclysmPlayerFloorEffects Effects =
+		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
+			FloorBrief.Modifiers, FloorBrief.FloorNumber);
+	Effects.ResistanceLessPercent = Less;
+	Effects.ResistanceMorePercent = More;
+
+	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
+													  Player->GetEquipment());
+}
+
+void ACataclysmDungeonGameMode::OnSomethingDied(
+	const FCataclysmDeathNotice& Notice)
+{
+	if (!FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::NihilsEmbraceKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM'S OWN RARITY, NOT THE NOTICE'S BOSS FACT. That fact says whether
+	// a boss DEALT the last blow, and this row asks about who died.
+	//
+	// A BOSS OR A CATACLYSM BOSS, AND THAT IS A JUDGEMENT recorded in
+	// `docs/DECISIONS.md`. It is the line the game already draws for a boss, and a
+	// Herald sits below it deliberately -- a mini-boss the player meets often --
+	// so a cleanse a Herald satisfied would be routine rather than the objective
+	// the row asks for.
+	const ACataclysmEnemyCharacter* Died =
+		Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Died || !Died->IsBoss())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	const UCataclysmAbilitySystemComponent* AbilitySystem = Player
+		? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent())
+		: nullptr;
+	if (!World || !AbilitySystem)
+	{
+		return;
+	}
+
+	// EVERY POINT BACK AT ONCE, by moving the baseline up to where the character
+	// has walked to, and a bounded reward on top. The beat applies both within a
+	// quarter of a second.
+	MetresWalkedAtLastCleanse = AbilitySystem->MetresWalkedTotal();
+	NihilsEmbraceRewardUntilSeconds =
+		World->GetTimeSeconds()
+		+ UCataclysmDungeonModifierEffects::NihilsEmbraceRewardSeconds;
+}
+
 void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 {
 	UWorld* World = GetWorld();
@@ -1581,6 +1763,27 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		ApplyFloorRulesTo(
 			Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()),
 			Player->GetEquipment());
+
+		// AND WHAT THE BEAT HAD PUT ON THE PLAYER IS GONE WITH IT. Issue #41,
+		// slice 2. The call above replaces the floor's modifiers wholesale, so
+		// the resistance The Nihil's Embrace had taken is no longer on the
+		// character; forgetting it here is what makes the next beat put it back.
+		ResistanceLessApplied = 0.0f;
+		ResistanceMoreApplied = 0.0f;
+
+		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
+		// modifiers once the player has left, and the row's reduction is
+		// permanent within a dungeon rather than across a run.
+		if (FloorBrief.Modifiers.IsEmpty())
+		{
+			if (const UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(
+						Player->GetAbilitySystemComponent()))
+			{
+				MetresWalkedAtLastCleanse = Cataclysm->MetresWalkedTotal();
+			}
+			NihilsEmbraceRewardUntilSeconds = -1.0f;
+		}
 	}
 
 	if (ACataclysmPlayerController* Cataclysm = Cast<ACataclysmPlayerController>(Controller))

@@ -385,7 +385,8 @@ float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
 
 float UCataclysmSkillEffects::IncreasesForSkill(
 	const UAbilitySystemComponent* Source,
-	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent)
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
+	float MetresMovedBeforeBlow)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -399,12 +400,13 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	// turn a blow into healing rather than into a very small blow.
 	return FMath::Max(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
-				  SkillTags, SkillHealthCostPercent));
+				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
 	const UAbilitySystemComponent* Source,
-	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent)
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
+	float MetresMovedBeforeBlow)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -413,7 +415,8 @@ float UCataclysmSkillEffects::MoreForSkill(
 	// is the right answer for it: its attribute is then the whole of the hit,
 	// exactly as it was before this existed.
 	return Cataclysm
-		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent)
+		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
+											  MetresMovedBeforeBlow)
 		: 1.0f;
 }
 
@@ -593,7 +596,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// that way or the bonus would be divided straight back out again.
 	const float Folded = IncreasesBehindAttackDamage(Source);
 	const float Applying =
-		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent);
+		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
+						  Delivery.MetresMovedBeforeBlow);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -624,7 +628,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// attack damage's as well would count a node that grants both twice.
 	const float BeforeIncreases =
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
-		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent);
+		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
+					  Delivery.MetresMovedBeforeBlow);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent)
 		: 0.0f;

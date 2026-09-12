@@ -261,7 +261,7 @@ by `git add` with no error and no warning. Guarded by
   [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
   [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
 
-  **Every dungeon carries dungeon modifiers, and two of the 117 change the
+  **Every dungeon carries dungeon modifiers, and four of the 117 change the
   player.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
   difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
   modifiers of every Cataclysm the run is facing. The sum of their danger scores
@@ -275,12 +275,27 @@ by `git add` with no error and no warning. Guarded by
   Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
   the game had ever read, and the Modifier Score was a hard-coded zero.
 
-  **Three modifiers of the 117 do something on a floor, and the other 114 are a
+  **Five modifiers of the 117 do something on a floor, and the other 112 are a
   name and a number.** `UCataclysmDungeonModifierEffects` in
-  `game/Source/Cataclysm/Dungeon/` holds the two that change the player:
+  `game/Source/Cataclysm/Dungeon/` holds the four that change the player.
   Starvation takes 1% of maximum health and energy shield a floor, up to 60%,
   and Dehydration 1% of maximum mana a floor, up to 60%. Both reach the player
-  through the stat line that gear and the passive tree already use. The third is
+  through the stat line that gear and the passive tree already use, and both
+  take their share once a floor.
+  **The other two change while the player plays**, on the dungeon game mode's
+  quarter-second beat, and both read the movement state of issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)'s slice 2. Forced
+  March takes 1% of maximum health a second for each stack from a player who has
+  stood still for more than three seconds, one stack a second up to five, and
+  moving clears every stack; that damage is not a hit, so no evasion, block,
+  armour, resistance, critical strike or ailment touches it. The Nihil's Embrace
+  takes 1% off every resistance for each 10 metres walked, down to 10% off, and
+  defeating a Boss or Cataclysm Boss gives every point back and grants 10% more
+  for 20 seconds. Seven of those numbers are judgements rather than the rows',
+  because the two rows state only the three seconds; `docs/DECISIONS.md` records
+  each, and **nothing on screen yet shows the player a stack or a lost point**,
+  which is issue
+  [#1591](https://github.com/sdubois777/Cataclysm/issues/1591). The fifth is
   `Chaos_Unstable_Dimensions`, "Unstable Dimensions": every floor of a dungeon
   carrying it draws one extra modifier of its own. It was built through
   `FCataclysmDungeonFloorRules`, the same seam three dungeon sub-types use, and

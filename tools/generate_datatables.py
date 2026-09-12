@@ -3236,6 +3236,53 @@ CONDITIONS = {
     # `ACataclysmEnemyCharacter::IsBoss` says: the Boss and Cataclysm Boss
     # rarities, and not a Herald, which is the line the stun rule already uses.
     "opponent_is_boss": None,
+
+    # "While moving" is `while_moving` and "while stationary" is
+    # `while_stationary`, and neither takes a value. Issue #41, slice 2.
+    #
+    # TWO NAMES RATHER THAN ONE WITH A FLAG, because a row reads as its own
+    # sentence: an enchantment says "while moving you deal increased damage" and
+    # another says "while stationary you take less damage", and neither should
+    # have to be written as the negation of the other.
+    #
+    # NEITHER IS THE OTHER'S NEGATION IN THE ENGINE EITHER. A caller with no
+    # character in hand, such as the character sheet, is refused by both.
+    "while_moving": None,
+    "while_stationary": None,
+
+    # "After remaining stationary for 3 seconds" is `stationary_for_seconds`
+    # with 3, and the comparison is AT LEAST: three seconds of standing still
+    # meets a threshold of three. Issue #41, slice 2.
+    #
+    # THE SAME BOUND AS THE TWO WINDOWS ABOVE, and for the same reason: the
+    # design's longest wait is a few seconds, and anything past a minute is
+    # likelier to be a number in the wrong column than a deliberate wait.
+    "stationary_for_seconds": (0.0, 60.0, "a number of seconds"),
+
+    # "While you have not attacked in the last 3 seconds" is
+    # `not_attacked_for_seconds` with 3, also AT LEAST. Issue #41, slice 2.
+    #
+    # THE CHARACTER'S OWN ATTACK, not a blow it took, which
+    # `seconds_after_foreign_damage` above covers. Every attack a character
+    # makes resets it, creatures and minions included, so the reading means
+    # the same thing on both sides of a fight.
+    "not_attacked_for_seconds": (0.0, 60.0, "a number of seconds"),
+
+    # "Your first melee attack after moving 5 metres" is
+    # `metres_moved_before_attack` with 5, AT LEAST again. Issue #41, slice 2.
+    #
+    # "FIRST" IS THE RESET RATHER THAN A FLAG. The distance is counted since the
+    # character's own last attack, so the first attack after moving five
+    # metres reads five or more and the next reads about nothing. That is what
+    # makes this a condition rather than an event.
+    #
+    # METRES, WHICH IS WHAT THE ROWS SAY, while the engine measures in
+    # centimetres. `UCataclysmMovement` divides once, where the sample is taken.
+    #
+    # A HUNDRED METRES IS THE SANITY LIMIT, not a design rule: the longest
+    # distance any row states is five, and a floor is not a hundred metres of
+    # walking between two attacks.
+    "metres_moved_before_attack": (0.0, 100.0, "a number of metres"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

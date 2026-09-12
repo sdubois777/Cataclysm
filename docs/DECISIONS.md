@@ -2,6 +2,233 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A character knows whether it is moving, Forced March damages one that stands still, and The Nihil's Embrace takes resistance as it walks
+
+**Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmMovement.h` and
+`.cpp`; `CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmSkillTemplate.h` and `.cpp` and `CataclysmSkillEffects.h` and `.cpp`
+beside them; `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`;
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` and
+`CataclysmDungeonGameMode.h` and `.cpp`;
+`game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`;
+`tools/generate_datatables.py`; and the tests beside them. **Applied.** Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41), the second slice of making
+the 117 dungeon modifiers do what their rows say.
+
+### What was missing
+
+Nothing in the game could say whether a character was moving, how long it had stood
+still, or how far it had walked. Two rows of `game/Data/DungeonModifiers.csv` need
+exactly that, and both did nothing:
+
+| Row | Its words |
+| :-- | :-- |
+| `War_Forced_March`, weight 5.0 | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." |
+| `Void_The_Nihil_s_Embrace`, weight 15.0 | "The dungeon is filled with a constant, humming void energy. As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." |
+
+**Between them the two rows state one number: Forced March's three seconds.** Every
+other size, rate and limit is unstated, as is what "a high tier enemy" means. A long
+list of passive nodes and enchantment rows waits on the same state — "while moving",
+"while stationary", "stationary for more than 3 seconds", "if you have not moved in
+the last 2 seconds", "while you have not attacked in the last 3 seconds" — and so
+does the Ravager capstone option Headlong, "your first melee attack after moving 5
+metres deals 50% increased damage".
+
+### What is built
+
+**A character measures its own movement.** `UCataclysmMovement::SampleStep` runs in
+the quarter-second timer that already pays regeneration for the player, creatures and
+minions alike, so all three get the same readings. It compares the character's
+position with the last sample, ignoring a horizontal move below 0.05 metres, and
+writes to the ability system component, which holds four readings:
+
+| Reading | What it means |
+| :-- | :-- |
+| whether it moved in the last sample | the plain moving and stationary conditions |
+| seconds since it last moved | 0 while it is moving; drives "stationary for N seconds" and Forced March |
+| metres moved since its own last attack | reset at each of its own attacks; serves Headlong |
+| seconds since its own last attack | its own attack, not being attacked |
+
+A fifth, **the total distance walked, is never reset**, because the tally above goes
+back to nothing at every attack and a loss that must survive until a kill needs a
+number no attack disturbs.
+
+**Five condition names** reach the data through the shared table that the generator,
+the engine and the passive tree all read: `while_moving` and `while_stationary`, which
+compare nothing, and `stationary_for_seconds`, `not_attacked_for_seconds` and
+`metres_moved_before_attack`, which hold when the reading is **at least** the number
+in the row.
+
+**The distance a blow carries is measured when the skill is paid for, not when the
+blow lands.** Headlong asks about the attack; a swing lands after its wind-up and a
+projectile later still, by which time the character has walked further. So
+`CommitAndBegin` copies the tally onto the ability and then resets it, which is what
+makes the next attack the first one after moving.
+
+**An instant relocation adds no distance and does not count as moving.** Each place
+that moves a character instantly says so, rather than the sampler trying to infer a
+teleport from a large step, so a new instant move cannot be missed silently. A leap
+and a charge count their travel; a blink, a recall, a position swap and a floor's
+placement of the player do not.
+
+**The two dungeon modifier rows run on the dungeon game mode's existing quarter-second
+beat**, the one that already looks at whether a wave should arrive, rather than on
+timers of their own. Both act on the player alone, so neither cost grows with a
+Horde's crowd, and on a floor carrying neither the whole beat is two tests of a short
+array.
+
+| Row | What happens |
+| :-- | :-- |
+| Forced March | After 3 seconds without moving, one stack a second up to 5. Each stack takes 1% of maximum health a second, so the beat takes a quarter of that. Moving clears every stack at once, because the stacks are derived from the standing-still clock and are not stored. |
+| The Nihil's Embrace | Every 10 metres walked takes 1% off all eight resistances, down to 10% off. Defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds. |
+
+**Forced March's damage is not a hit.** It goes through
+`UCataclysmSkillEffects::ReduceHealthDirectly`, so no evasion roll, block, armour,
+resistance, critical strike or ailment touches it: the damage comes from the floor
+rather than from an attacker. That function's comment said retaliation was its only
+caller, and this is the second; the comment is corrected.
+
+**The cleanse reads the victim's own rarity.** The death notice's "from a boss" fact
+describes whoever dealt the last blow, and this row asks about who died, so the
+handler casts the victim and uses the boss test. A kill moves the baseline up to where
+the character has walked to, which gives every point back without a second counter.
+The reward is a world time the bonus lasts until rather than a new timed effect,
+because the beat recomputes from scratch anyway.
+
+**The resistance is re-applied only when it changes** — by a whole percent of loss, or
+when the reward starts or ends. Setting the modifiers is cheap, but the stat refresh
+that follows rewrites the character's whole standing stat line, and a player walking
+in a straight line changes the number once every ten metres rather than four times a
+second.
+
+**This is the first production reader of slice 4's combat notices.** Before it, every
+binding to the hit, death and skill-used announcements was in a test.
+
+### Four judgements about the movement state itself
+
+1. **Any change of position counts as moving, whatever caused it.** Research, not a
+   judgement: a Path of Exile developer states it outright — "If it changes—for any
+   reason—you moved", covering walking, movement skills and being knocked back
+   ([pathofexile.com forum, Aug 2017](https://www.pathofexile.com/forum/view-thread/1968903/page/1)).
+   Last Epoch agrees where it says anything, counting a movement skill's travel as
+   movement; Torchlight Infinite states that Moving and Standing Still are mutually
+   exclusive ([tlidb.com](https://tlidb.com/Stand_Still)).
+2. **A teleport is not movement.** Research: Path of Exile 2 states "Teleportation
+   does not count towards the distance travelled"
+   ([poe2db.tw](https://poe2db.tw/us/Momentum)), and Diablo IV's guidance says
+   instantaneous movement does not break a standing-still bonus
+   ([maxroll.gg](https://maxroll.gg/d4/wiki/aspect-of-inner-calm)). **A judgement where
+   the sources disagree:** a Path of Exile developer says a teleport still resets a
+   bonus that builds while standing still, because you did move. This game does the
+   opposite and starts the standing-still clock afresh without adding distance, so a
+   teleport neither earns distance nor counts as having moved.
+3. **Sampling four times a second, ignoring a move below 0.05 metres, is a
+   judgement.** No game documents a sampling rate. The threshold answers a failure
+   Diablo IV players reported, where tiny unintended steps while attacking in place
+   reset a standing-still bonus
+   ([Blizzard forums, 2023](https://us.forums.blizzard.com/en/d4/t/aspect-of-inner-calm-stacks-resetting-when-attacking-at-standstill-bugged-legendary-effect/24971)).
+   Reusing the regeneration timer rather than adding one is why the cost is a position
+   comparison per character per quarter second.
+4. **A creature's and a minion's own swings reset their own clocks**, a judgement made
+   for consistency: the conditions read the same way on both sides of a fight, so a
+   creature can carry a "while stationary" bonus exactly as a player can.
+
+### Eight judgements about the two rows, seven of them numbers
+
+These were made under the standing arrangement that a session takes a number the design
+leaves open from genre research and records it here as a labelled judgement for the
+owner's review. **None of the eight is a design statement.**
+
+1. **A stack costs 1% of maximum health a second.** A share of a maximum rather than a
+   flat number, which is what every comparable mechanism does, so it stays meaningful
+   at every character level.
+2. **One stack is added each second.** This one has no constant of its own: it is the
+   shape of `ForcedMarchStacksAfter`, one stack plus one for each whole second past the
+   row's threshold.
+3. **It stops at 5 stacks**, so at worst 5% of maximum health a second. The row's
+   weight of 5.0 is the low end of the danger scale, which says nuisance rather than
+   threat, and the one comparable uncapped mechanism kills in about five seconds. A
+   character that stops for ten seconds has lost roughly a third of its health and is
+   in no danger once it moves; one that stands still for half a minute dies. That is
+   the "run and gun" the row asks for.
+4. **Stacks are cleared by moving rather than decaying**, so the rule is legible:
+   moving is the answer and the player sees the stacks go. It also means no stack is
+   stored anywhere — they are derived from the clock.
+5. **Every 10 metres walked costs 1% of every resistance.** The row says "slowly", and
+   this is slow enough that a floor's walking costs a few points. Tied to distance
+   rather than to time because the row says "as you move".
+6. **The loss stops at 10% off every resistance.** −10% to all resistances is the one
+   verified figure in the genre for a run-long resistance penalty, from Diablo IV's
+   Infernal Offer "The Withered Wanderer". A resistance that fell without limit would
+   turn a long floor into an unwinnable one, and the sister row Starvation states a cap
+   of its own. **What could not be verified:** whether that offer's penalty lasts the
+   run or is timed. The number is sourced; its duration is not.
+7. **The reward is 10% to all resistances for 20 seconds**, on top of every lost point
+   being returned at once. Twenty seconds is the shorter of two verified windows for a
+   reward granted by killing a rare enemy in the genre. Ten percent matches the size of
+   the penalty it cancels, so the reward reads as the curse lifting and a moment of
+   grace rather than as a new power.
+8. **"A high tier enemy" means the boss test: rarity steps 4 and 5, Boss and Cataclysm
+   Boss.** Two reasons. The Void Splinter floor rule already uses that test to mean "a
+   boss" in a floor rule, so reusing it adds no third meaning of the word; and a Herald
+   at step 3 is, by `CataclysmEnemyCharacter.h`'s own account, a mini-boss the player
+   meets often, so a cleanse a Herald satisfied would be routine rather than the
+   objective the row asks for. **The cost of this judgement, stated plainly:** that line
+   was drawn for a different rule — the anti-stun-lock rule that a boss cannot be
+   stunned at all — so if the owner later moves it for stun reasons, the cleanse moves
+   with it unless this choice is revisited.
+
+### What the genre settles here, and what it does not
+
+**It does not settle either row.** No action role-playing game found has a mechanic
+that damages a character for standing still, and none has a defence that is stripped
+gradually and restored by a kill. Both rows are therefore judgements with no direct
+precedent, and saying so is more useful than dressing them up as derived.
+
+What the research did supply is the shape of the parts: that standing-still and
+moving bonuses are built from a clock with the delay stated in the modifier's own text
+rather than from a global grace period; that a distance bonus is always capped; and
+that a penalty to all resistances of about ten points is a size a shipped game uses.
+
+Two sources a claim rests on are weaker than the rest and are named as such. The Path
+of Exile delve-darkness figures — a stack every 0.25 seconds, 2% of life a second per
+stack, death at 20 stacks — come from one page that marks them "confirmation needed"
+after a named patch and whose raw numbers disagree with its own prose, so they are
+treated as an older version of that mechanic. The Diablo IV resistance figure loads
+from two sources that agree on the number and neither of which says how long it lasts.
+
+### These numbers are expected to need tuning, and here is the honest reason
+
+The closest comparable lever anywhere with published figures is a World of Warcraft
+dungeon affix that adds a small share of maximum health per stack, caps at four
+stacks, and is cleared by healing to full. **Its own developers retuned it twice in
+eleven days.** That is the argument for settling these seven numbers against real play
+rather than arguing them to death first, and for treating every one of them as a dial
+rather than as a decision. It is not an action role-playing game, so it is context and
+not precedent.
+
+### Stacking damage on the player does not breach the one-stack rule
+
+Forced March stacks on the player, and that is consistent with the design rather than
+an exception to it. The entry of 2026-09-05 titled "Correction: the stacking added
+today does not resolve issue #913" states the rule as **"An enemy carries at most one
+stack of any effect the player applies"**, quoted there from `docs/Cataclysm_GDD_v2.md`,
+and records that the opposite direction is already listed as consistent — naming the
+Toxic Bond enemy modifier, "which applies a poison stack to the player on being hit".
+Forced March is that same direction. This cites the decisions log rather than the issue
+body, because the log is the record this project treats as authoritative.
+
+### What the player cannot see yet
+
+**Nothing on screen shows a Forced March stack, or a lost point of resistance, or the
+reward a cleanse grants.** The floor panel lists the modifiers in force on the floor,
+so the rule's existence is visible; its state is not. A player who cannot see why their
+health is falling reads it as a fault in the game. That gap is issue
+[#1591](https://github.com/sdubois777/Cataclysm/issues/1591)'s subject and is recorded
+rather than left unsaid.
+
+---
+
 ## 2026-09-12 — An authored name this build cannot judge grants nothing, and one list of names is read by everything
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`, with

@@ -73,6 +73,11 @@ namespace
 		{ TEXT("hit_is_ranged_attack"),         ECataclysmStatCondition::HitIsRangedAttack },
 		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
+		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
+		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
+		{ TEXT("metres_moved_before_attack"),   ECataclysmStatCondition::MetresMovedBeforeAttack },
+		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
 	};
 
 	struct FNamedStatScale
@@ -131,9 +136,16 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsRangedAttack:
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
+	case ECataclysmStatCondition::WhileMoving:
+	case ECataclysmStatCondition::WhileStationary:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the six says so
-		// in its own comment in the header.
+		// nothing for a number to be compared against. Each of the eight says
+		// so in its own comment in the header.
+		//
+		// THE LAST TWO ARE ISSUE #41'S SLICE 2: whether the character moved in
+		// the last sample, and whether it did not. Its other three movement
+		// conditions DO compare a number -- a wait in seconds or a distance in
+		// metres -- so they belong under the default below and not here.
 		return false;
 
 	case ECataclysmStatCondition::Always:
@@ -304,6 +316,34 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::OpponentIsBoss:
 		return State.Blow.bOpponentIsBoss;
+
+	case ECataclysmStatCondition::WhileMoving:
+		// NO THRESHOLD, SO `Value` IS NOT READ. A caller with no character leaves
+		// this false and is refused, the argument `WhileBleeding` makes.
+		return State.bIsMoving;
+
+	case ECataclysmStatCondition::WhileStationary:
+		// THE OPPOSITE OF THE ABOVE WITHOUT BEING ITS NEGATION. A caller with no
+		// character must be refused by both, so this asks for a character first:
+		// a negative clock is no character to read.
+		return State.SecondsSinceMoved >= 0.0f && !State.bIsMoving;
+
+	case ECataclysmStatCondition::StationaryForSeconds:
+		// AT LEAST THAT LONG, so three seconds of standing still meets a threshold
+		// of three. A negative clock is no character to read and refuses.
+		return State.SecondsSinceMoved >= 0.0f && State.SecondsSinceMoved >= Value;
+
+	case ECataclysmStatCondition::MetresMovedBeforeAttack:
+		// AT LEAST THAT FAR, measured before the blow in hand. Negative means no
+		// blow in hand, the way the skill's cost does, and refuses.
+		return State.MetresMovedBeforeBlow >= 0.0f
+			&& State.MetresMovedBeforeBlow >= Value;
+
+	case ECataclysmStatCondition::NotAttackedForSeconds:
+		// AT LEAST THAT LONG SINCE THE CHARACTER'S OWN ATTACK. Negative is no
+		// character to read and refuses.
+		return State.SecondsSinceOwnAttack >= 0.0f
+			&& State.SecondsSinceOwnAttack >= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -604,6 +644,24 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return FString::Printf(
 			TEXT("a window of %.1f seconds. A window has to be longer than "
 				 "nothing or the bonus never applies."),
+			Modifier.ConditionValue);
+	}
+
+	// AND THE THREE MOVEMENT THRESHOLDS ARE THE SAME SHAPE. Issue #41, slice 2.
+	// Each compares at least, so a threshold of nothing or less is met by every
+	// character at every moment: standing still for at least no time is standing
+	// still. The node would read as conditional and be unconditional, which is
+	// the silent failure the checks above exist for.
+	if ((Modifier.Condition == ECataclysmStatCondition::StationaryForSeconds
+			|| Modifier.Condition == ECataclysmStatCondition::NotAttackedForSeconds
+			|| Modifier.Condition
+				== ECataclysmStatCondition::MetresMovedBeforeAttack)
+		&& Modifier.ConditionValue <= 0.0f)
+	{
+		return FString::Printf(
+			TEXT("a movement threshold of %.1f. Each of these compares at least, "
+				 "so a threshold of nothing is met always and the bonus would be "
+				 "unconditional."),
 			Modifier.ConditionValue);
 	}
 

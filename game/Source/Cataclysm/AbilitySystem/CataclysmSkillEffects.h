@@ -251,6 +251,28 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float SkillHealthCostPercent = -1.0f;
 
 	/**
+	 * How far the attacker had moved since its own last attack when the skill
+	 * behind this blow was paid for, in metres. Issue #41, slice 2.
+	 *
+	 * HERE FOR THE REASON THE SKILL'S COST ABOVE IS. It belongs to the skill and
+	 * to the moment it was used, and `UCataclysmSkillEffects::ApplyHit` receives
+	 * the skill's tags rather than the skill, so the number has to travel with the
+	 * blow. Headlong's "first melee attack after moving 5 metres" reads it.
+	 *
+	 * NOT THE DISTANCE TO THE TARGET, which the hit notice carries separately
+	 * under that name.
+	 *
+	 * -1 IS THE ORDINARY CASE. A creature's attack, a minion's blow and a burning
+	 * patch of ground never had a skill behind them, and each correctly refuses a
+	 * condition about how far a skill's user had walked.
+	 *
+	 * ZERO IS A REAL ANSWER, so it cannot be the sentinel: it means the attacker
+	 * had not moved since its own last attack.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float MetresMovedBeforeBlow = -1.0f;
+
+	/**
 	 * The attacker's chance to apply each ailment with this blow, in percent,
 	 * keyed by the name it travels under on the damage effect. Issue #899.
 	 *
@@ -579,12 +601,18 @@ public:
 	 * a death, because the vital attribute set handles the Health attribute
 	 * changing as well as the Damage one.
 	 *
-	 * RETALIATION IS THE ONLY CALLER AND THE SHAPE COMES FROM THE GENRE. Last
-	 * Epoch's reflected damage "does not Hit and instead directly reduces Health
-	 * and Ward without going through damage calculations", and Path of Exile's
-	 * reflected damage cannot critically strike, cannot cause ailments and does
-	 * not trigger on-hit effects. Without this, two characters who both retaliate
-	 * would reflect at one another without end.
+	 * TWO CALLERS, AND THE SHAPE COMES FROM THE GENRE. Retaliation was the
+	 * first. Last Epoch's reflected damage "does not Hit and instead directly
+	 * reduces Health and Ward without going through damage calculations", and
+	 * Path of Exile's reflected damage cannot critically strike, cannot cause
+	 * ailments and does not trigger on-hit effects. Without this, two characters
+	 * who both retaliate would reflect at one another without end.
+	 *
+	 * THE SECOND IS A FLOOR RULE, since issue #41's slice 2. The Forced March
+	 * dungeon modifier takes health from a player who stands still, and that
+	 * damage comes from the floor rather than from an attacker, so none of
+	 * evasion, block, armour, resistance, a critical strike or an ailment should
+	 * touch it either.
 	 *
 	 * @return whether any health was taken
 	 */
@@ -943,7 +971,8 @@ public:
 	 */
 	static float IncreasesForSkill(const UAbilitySystemComponent* Source,
 								   const FGameplayTagContainer& SkillTags,
-								   float SkillHealthCostPercent = -1.0f);
+								   float SkillHealthCostPercent = -1.0f,
+								   float MetresMovedBeforeBlow = -1.0f);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -961,7 +990,8 @@ public:
 	 */
 	static float MoreForSkill(const UAbilitySystemComponent* Source,
 							  const FGameplayTagContainer& SkillTags,
-							  float SkillHealthCostPercent = -1.0f);
+							  float SkillHealthCostPercent = -1.0f,
+							  float MetresMovedBeforeBlow = -1.0f);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

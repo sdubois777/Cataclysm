@@ -151,6 +151,34 @@ public:
 	float LastHealthCostPercentOfMaximum = -1.0f;
 
 	/**
+	 * How far the character had moved since its own last attack when this skill
+	 * was last used, in metres. Issue #41, slice 2.
+	 *
+	 * WHAT IT IS FOR. Headlong, option 3 of the Ravager capstone at 25 points,
+	 * reads "your first melee attack after moving 5 metres deals 50% increased
+	 * damage". That asks about the attack rather than about this instant, so the
+	 * distance is measured when the skill is paid for and travels with the blow,
+	 * the way the health cost above does.
+	 *
+	 * "FIRST" IS THE RESET RATHER THAN A FLAG. Paying for a skill reads the tally
+	 * the character has been keeping and then clears it, so the next use reads
+	 * whatever has been walked since this one and the second attack in a row
+	 * reads about nothing.
+	 *
+	 * IT OUTLIVES THE CAST THAT WROTE IT, for the reason the health cost does: an
+	 * ability is instanced per actor, and a projectile that lands seconds later
+	 * should read what its own cast measured. `CommitAndBegin` writes it on every
+	 * use, so a use that followed no movement records a real zero rather than
+	 * keeping the last one's figure.
+	 *
+	 * -1 MEANS THE SKILL HAS NOT BEEN USED YET, or that there was no ability
+	 * system component of this project's own to ask. Zero means it was used and
+	 * the character had not moved since its own last attack.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float LastMetresMovedBeforeUse = -1.0f;
+
+	/**
 	 * The targets that evaded the last set of blows this skill sent.
 	 *
 	 * READ THROUGH `BlowLandedOn`, which is where the reasoning is. Kept as the

@@ -109,6 +109,89 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** An increase that applies only while the character is moving. #41 */
+	FCataclysmStatModifier IncreasedWhileMoving(float Value)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::WhileMoving;
+		return Modifier;
+	}
+
+	/** An increase that applies only while the character is not moving. #41 */
+	FCataclysmStatModifier IncreasedWhileStationary(float Value)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::WhileStationary;
+		return Modifier;
+	}
+
+	/** An increase that needs the character to have stood still AT LEAST this
+	 *  long. #41 */
+	FCataclysmStatModifier IncreasedWhenStationaryFor(float Value, float Seconds)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::StationaryForSeconds;
+		Modifier.ConditionValue = Seconds;
+		return Modifier;
+	}
+
+	/** An increase that needs the character not to have attacked for AT LEAST
+	 *  this long. #41 */
+	FCataclysmStatModifier IncreasedWhenNotAttackedFor(float Value, float Seconds)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::NotAttackedForSeconds;
+		Modifier.ConditionValue = Seconds;
+		return Modifier;
+	}
+
+	/** An increase that needs the blow's own snapshot to be AT LEAST this far.
+	 *  The Ravager capstone option Headlong's second clause. #41 */
+	FCataclysmStatModifier IncreasedAfterMovingMetres(float Value, float Metres)
+	{
+		FCataclysmStatModifier Modifier = Increased(Value);
+		Modifier.Condition = ECataclysmStatCondition::MetresMovedBeforeAttack;
+		Modifier.ConditionValue = Metres;
+		return Modifier;
+	}
+
+	/**
+	 * A character that last moved this many seconds ago.
+	 *
+	 * A NEGATIVE ARGUMENT IS "NO CHARACTER TO READ" and not "never moved", which
+	 * is the difference this slice's readings are built around: a character's
+	 * clock starts when it spawns, so a freshly spawned one reads 0. The
+	 * character sheet, which asks about nobody, is what reads -1.
+	 *
+	 * ZERO SECONDS AND MOVING ARE THE SAME INSTANT, so this says both: the
+	 * sampler sets the stamp and the moved flag together.
+	 */
+	FCataclysmStatConditions Stationary(float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceMoved = Seconds;
+		State.bIsMoving = Seconds == 0.0f;
+		return State;
+	}
+
+	/** A character that last attacked this many seconds ago. Negative is "no
+	 *  character to read". */
+	FCataclysmStatConditions SinceOwnAttack(float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceOwnAttack = Seconds;
+		return State;
+	}
+
+	/** A blow struck after the character had walked this far. Negative is
+	 *  "nothing measured a distance for this blow". */
+	FCataclysmStatConditions AfterWalking(float Metres)
+	{
+		FCataclysmStatConditions State;
+		State.MetresMovedBeforeBlow = Metres;
+		return State;
+	}
+
 	/** An increase that applies only inside a window after foreign damage. */
 	FCataclysmStatModifier IncreasedAfterForeignDamage(float Value, float Seconds)
 	{
@@ -622,6 +705,205 @@ bool FCataclysmPipelineHealthCostWindowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a real window is not"),
 		FPipeline::ValidateModifier(
 			IncreasedAfterHealthCost(16.0f, 2.0f)).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineMovingTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnWhetherTheCharacterIsMoving",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineMovingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// TWO PREDICATES THAT COMPARE NOTHING, unlike every other one in this file.
+	// A Saboteur node gives "+5% of your current evasion chance per point while
+	// moving"; a Ritualist node gives spell damage "while you have not moved".
+	// Issue #41, slice 2.
+	TArray<FCataclysmStatModifier> Moving = { IncreasedWhileMoving(20.0f) };
+	TArray<FCataclysmStatModifier> Still = { IncreasedWhileStationary(20.0f) };
+
+	TestEqual(TEXT("a moving character gets the moving bonus"),
+		FPipeline::Evaluate(100.0f, Moving, NoTags, Stationary(0.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and not the stationary one"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(0.0f)).Final,
+		100.0f, 0.01f);
+
+	TestEqual(TEXT("a character standing still gets the stationary bonus"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(3.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and not the moving one"),
+		FPipeline::Evaluate(100.0f, Moving, NoTags, Stationary(3.0f)).Final,
+		100.0f, 0.01f);
+
+	// THE TWO ARE EXACTLY OPPOSITE FOR A CHARACTER THAT CAN BE READ, which is
+	// what Torchlight Infinite states outright: Moving and Standing Still "are
+	// mutually exclusive". Said as one assertion so a change that made both
+	// true, or neither, fails here.
+	for (const float Seconds : {0.0f, 0.25f, 1.0f, 60.0f})
+	{
+		const FCataclysmStatConditions State = Stationary(Seconds);
+		const bool bMovingApplied =
+			FPipeline::Evaluate(100.0f, Moving, NoTags, State).Final > 100.0f;
+		const bool bStillApplied =
+			FPipeline::Evaluate(100.0f, Still, NoTags, State).Final > 100.0f;
+		TestNotEqual(
+			*FString::Printf(
+				TEXT("at %.2f seconds since moving, exactly one of the two holds"),
+				Seconds),
+			bMovingApplied, bStillApplied);
+	}
+
+	// NEITHER APPLIES TO A READING OF -1, AND THAT IS THE WHOLE POINT OF -1. It
+	// means "no character to read", not "never moved": a character's clock
+	// starts when it spawns. Without this the character sheet would show a
+	// stationary bonus as though the character were standing still, and the
+	// sheet asks about nobody.
+	TestEqual(TEXT("an unknown reading gets no stationary bonus"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(-1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("nor a moving one"),
+		FPipeline::Evaluate(100.0f, Moving, NoTags, Stationary(-1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and the character sheet, which knows nothing, gets neither"),
+		FPipeline::Evaluate(100.0f, Still, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("said for the moving half too"),
+		FPipeline::Evaluate(100.0f, Moving, NoTags).Final, 100.0f, 0.01f);
+
+	// AND NEITHER TAKES A THRESHOLD, so neither can be refused for one.
+	TestTrue(TEXT("a moving bonus is legal with no threshold"),
+		FPipeline::ValidateModifier(IncreasedWhileMoving(20.0f)).IsEmpty());
+	TestTrue(TEXT("and a stationary one is"),
+		FPipeline::ValidateModifier(IncreasedWhileStationary(20.0f)).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineMovementStepsTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanDependOnHowLongStillOrHowFarWalked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPipelineMovementStepsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	// THREE PREDICATES THAT COMPARE A NUMBER, and all three read AT LEAST.
+	// A Bulwark node gives damage reduction "while you have not moved in the
+	// last 2 seconds"; its capstone doubles block "while you have not attacked
+	// in the last 3 seconds"; the Ravager capstone option Headlong gives "your
+	// first melee attack after moving 5 metres" 50% increased damage.
+	// Issue #41, slice 2.
+	TArray<FCataclysmStatModifier> Still = {
+		IncreasedWhenStationaryFor(20.0f, 2.0f) };
+	TArray<FCataclysmStatModifier> Quiet = {
+		IncreasedWhenNotAttackedFor(30.0f, 3.0f) };
+	TArray<FCataclysmStatModifier> Walked = {
+		IncreasedAfterMovingMetres(50.0f, 5.0f) };
+
+	// BELOW THE THRESHOLD, NOTHING.
+	TestEqual(TEXT("one second still is not two"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("two seconds quiet is not three"),
+		FPipeline::Evaluate(100.0f, Quiet, NoTags, SinceOwnAttack(2.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("four metres is not five"),
+		FPipeline::Evaluate(100.0f, Walked, NoTags, AfterWalking(4.0f)).Final,
+		100.0f, 0.01f);
+
+	// AT THE THRESHOLD EXACTLY, THE BONUS APPLIES. "At least" is the reading
+	// every one of these three uses, and it matches the window predicates above,
+	// which include their last instant. Two predicates disagreeing about their
+	// own boundaries would be worse than either answer.
+	TestEqual(TEXT("exactly two seconds still counts"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(2.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("exactly three seconds quiet counts"),
+		FPipeline::Evaluate(100.0f, Quiet, NoTags, SinceOwnAttack(3.0f)).Final,
+		130.0f, 0.01f);
+	TestEqual(TEXT("exactly five metres counts"),
+		FPipeline::Evaluate(100.0f, Walked, NoTags, AfterWalking(5.0f)).Final,
+		150.0f, 0.01f);
+
+	// AND ABOVE IT, STILL. Unlike a window, none of these runs out: standing
+	// still longer does not stop the character being still.
+	TestEqual(TEXT("and a minute still"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(60.0f)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and a minute quiet"),
+		FPipeline::Evaluate(100.0f, Quiet, NoTags, SinceOwnAttack(60.0f)).Final,
+		130.0f, 0.01f);
+	TestEqual(TEXT("and a hundred metres"),
+		FPipeline::Evaluate(100.0f, Walked, NoTags, AfterWalking(100.0f)).Final,
+		150.0f, 0.01f);
+
+	// A NEGATIVE READING IS REFUSED BY ALL THREE, because it means no character
+	// was read rather than a character that has done nothing.
+	TestEqual(TEXT("an unknown standing-still reading is refused"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, Stationary(-1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("an unknown last-attack reading is refused"),
+		FPipeline::Evaluate(100.0f, Quiet, NoTags, SinceOwnAttack(-1.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("a blow nothing measured a distance for is refused"),
+		FPipeline::Evaluate(100.0f, Walked, NoTags, AfterWalking(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// A DISTANCE OF ZERO IS A REAL ANSWER AND NOT AN UNKNOWN ONE, which is why
+	// the unknown value is -1 rather than 0. A blow struck without walking a
+	// step measured nothing walked, and a node asking for five metres refuses
+	// it, while a node asking for none would be satisfied.
+	TArray<FCataclysmStatModifier> AnyDistance = {
+		IncreasedAfterMovingMetres(50.0f, 0.0f) };
+	TestEqual(TEXT("a blow after no walking is refused by a five-metre node"),
+		FPipeline::Evaluate(100.0f, Walked, NoTags, AfterWalking(0.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and satisfies one asking for no distance at all"),
+		FPipeline::Evaluate(100.0f, AnyDistance, NoTags, AfterWalking(0.0f)).Final,
+		150.0f, 0.01f);
+
+	// THE THREE PREDICATES ARE INDEPENDENT, so a state that knows one and not
+	// the others answers each on its own merits rather than returning early.
+	FCataclysmStatConditions StillButNeverAttacked = Stationary(5.0f);
+	TestEqual(TEXT("standing still is judged when the attack clock is unknown"),
+		FPipeline::Evaluate(100.0f, Still, NoTags, StillButNeverAttacked).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("and the attack clock is still refused by that same state"),
+		FPipeline::Evaluate(100.0f, Quiet, NoTags, StillButNeverAttacked).Final,
+		100.0f, 0.01f);
+
+	// AND A THRESHOLD OF NOTHING IS REFUSED WHEN THE DATA IS CHECKED rather
+	// than quietly granting the bonus to everybody. `ValidateModifier` is what
+	// data import calls. All three valued predicates are checked, because a
+	// bound added for one and forgotten for the others is the likely mistake.
+	TestTrue(TEXT("zero seconds still is reported as illegal"),
+		!FPipeline::ValidateModifier(
+			IncreasedWhenStationaryFor(20.0f, 0.0f)).IsEmpty());
+	TestTrue(TEXT("and a negative one"),
+		!FPipeline::ValidateModifier(
+			IncreasedWhenStationaryFor(20.0f, -2.0f)).IsEmpty());
+	TestTrue(TEXT("zero seconds quiet is reported as illegal"),
+		!FPipeline::ValidateModifier(
+			IncreasedWhenNotAttackedFor(30.0f, 0.0f)).IsEmpty());
+	TestTrue(TEXT("and a negative one"),
+		!FPipeline::ValidateModifier(
+			IncreasedWhenNotAttackedFor(30.0f, -3.0f)).IsEmpty());
+	TestTrue(TEXT("zero metres walked is reported as illegal"),
+		!FPipeline::ValidateModifier(
+			IncreasedAfterMovingMetres(50.0f, 0.0f)).IsEmpty());
+	TestTrue(TEXT("and a negative one"),
+		!FPipeline::ValidateModifier(
+			IncreasedAfterMovingMetres(50.0f, -5.0f)).IsEmpty());
+
+	TestTrue(TEXT("real thresholds are not"),
+		FPipeline::ValidateModifier(
+			IncreasedWhenStationaryFor(20.0f, 2.0f)).IsEmpty()
+		&& FPipeline::ValidateModifier(
+			IncreasedWhenNotAttackedFor(30.0f, 3.0f)).IsEmpty()
+		&& FPipeline::ValidateModifier(
+			IncreasedAfterMovingMetres(50.0f, 5.0f)).IsEmpty());
 
 	return true;
 }
