@@ -13,6 +13,7 @@
 // For the Fervour that arrives from the passage of time. Issue #1008.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -274,6 +275,19 @@ void ACataclysmCharacterBase::RegenerationStep()
 	//
 	// IT REFUSES A CORPSE ITSELF, the same as the four above.
 	UCataclysmEnemyModifiers::TimedStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND WHERE THIS CHARACTER IS, SO THAT ITS MOVEMENT CAN BE READ. Issue #41,
+	// slice 2. Rows ask whether a character is moving, how long it has stood
+	// still, and how far it has walked since its own last attack, and nothing
+	// could answer before this.
+	//
+	// A TWELFTH JOB ON THIS STEP, for the reason every one above gives, and it
+	// suits this one especially: the step already runs for the player, every
+	// creature and every minion, so all three get the same readings.
+	//
+	// IT KEEPS NO CLOCK OF ITS OWN. The sample only says what it saw; the
+	// character's ability system component stamps the clocks from the world.
+	UCataclysmMovement::SampleStep(this);
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

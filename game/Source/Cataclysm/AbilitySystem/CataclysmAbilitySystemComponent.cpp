@@ -296,7 +296,8 @@ int32 UCataclysmAbilitySystemComponent::AddStatModifier(
 
 float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
-	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow) const
+	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
+	float MetresMovedBeforeBlow) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -315,12 +316,13 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// design's own words on it.
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
-			   CurrentConditions(SkillHealthCostPercent, Blow)).Final;
+			   CurrentConditions(SkillHealthCostPercent, Blow,
+								 MetresMovedBeforeBlow)).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
-	float SkillHealthCostPercent) const
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -341,13 +343,15 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	// in the same units or one cannot be undone and the other applied.
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
-			   CurrentConditions(SkillHealthCostPercent))
+			   CurrentConditions(SkillHealthCostPercent,
+								 FCataclysmBlowContext(),
+								 MetresMovedBeforeBlow))
 			   .SumOfIncreases / 100.0f;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
-	float SkillHealthCostPercent) const
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -372,10 +376,15 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
 		FCataclysmStatConditions()).MoreMultiplier;
 
-	// AND WHAT THIS SKILL, AT THIS INSTANT, SHOULD CARRY.
+	// AND WHAT THIS SKILL, AT THIS INSTANT, SHOULD CARRY. The distance the
+	// character had walked before this use travels here too, for the reason
+	// the skill's cost does: it belongs to the blow. Issue #41, slice 2. The
+	// call above is deliberately left without it, because that one is what
+	// went into the attribute with nothing known about the character.
 	const float Applying = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
-		CurrentConditions(SkillHealthCostPercent)).MoreMultiplier;
+		CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
+						  MetresMovedBeforeBlow)).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -383,7 +392,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 }
 
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
-	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow) const
+	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
+	float MetresMovedBeforeBlow) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -576,6 +586,22 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// all false, which the four conditions reading them refuse.
 	State.Blow = Blow;
 
+	// AND WHAT THIS CHARACTER'S MOVEMENT IS DOING. Issue #41, slice 2. Three
+	// readings from this component's own clocks, which the 0.25-second step on
+	// `ACataclysmCharacterBase` keeps. A component that has never been sampled
+	// answers -1 and the movement conditions refuse, the same rule the readings
+	// above follow.
+	State.bIsMoving = IsMoving();
+	State.SecondsSinceMoved = SecondsSinceMoved();
+	State.SecondsSinceOwnAttack = SecondsSinceOwnAttack();
+
+	// AND HOW FAR IT MOVED BEFORE THE BLOW IN HAND, which is the third reading
+	// here that is not a state of the character. Passed through unchanged,
+	// including its negative default: only a skill that has just been paid for
+	// has a distance to hand, and "your first melee attack after moving 5 metres"
+	// is a question about that blow rather than about this instant.
+	State.MetresMovedBeforeBlow = MetresMovedBeforeBlow;
+
 	return State;
 }
 
@@ -602,6 +628,97 @@ float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
 	// backwards in play, but a test that sets it by hand can, and a negative
 	// answer would read as "never paid" and shut a window that had just opened.
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHealthCostAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteMovedMetres(float Metres)
+{
+	bMovedInLastSample = true;
+
+	// THE DISTANCE IS COUNTED WHETHER OR NOT THERE IS A WORLD, because it needs
+	// no clock. A negative distance is refused rather than subtracted: a sampler
+	// measures a length, and a length is not negative.
+	MetresMovedSinceOwnAttackSoFar += FMath::Max(0.0f, Metres);
+
+	// NO WORLD MEANS NO CLOCK, so the stamp keeps its "never" value, which is the
+	// same answer the three timestamps beside it give.
+	if (const UWorld* World = GetWorld())
+	{
+		LastMovedAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteDidNotMove()
+{
+	bMovedInLastSample = false;
+
+	// THE FIRST SAMPLE STARTS THE CLOCK EVEN THOUGH NOTHING MOVED. Without this a
+	// character that has never moved would read "never", the stationary
+	// conditions would refuse it, and a bonus for standing still would never
+	// reach the one character most obviously standing still. A character is
+	// watched from its first sample, so that is when standing still begins.
+	if (LastMovedAtSeconds < 0.0f)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			LastMovedAtSeconds = World->GetTimeSeconds();
+		}
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteSampledAt(const FVector& Where)
+{
+	LastSampledLocation = Where;
+	bHasSampledLocation = true;
+}
+
+void UCataclysmAbilitySystemComponent::NoteRelocatedInstantly()
+{
+	// THE CLOCK ONLY: no distance, and the character is not marked as moving.
+	// Issue #41, slice 2.
+	if (const UWorld* World = GetWorld())
+	{
+		LastMovedAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteOwnAttack()
+{
+	// THE TALLY GOES BACK TO NOTHING WHETHER OR NOT THERE IS A WORLD, because
+	// that is what makes the next attack the first one after moving: the distance
+	// is counted from here.
+	MetresMovedSinceOwnAttackSoFar = 0.0f;
+
+	if (const UWorld* World = GetWorld())
+	{
+		LastOwnAttackAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMoved() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMovedAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// CLAMPED AT ZERO for the reason `SecondsSinceHealthCostPaid` is: a test that
+	// sets world time by hand can move it backwards, and a negative answer would
+	// read as "never moved" and hand a standing-still bonus to a character that
+	// had just moved.
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovedAtSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceOwnAttack() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastOwnAttackAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// CLAMPED AT ZERO FOR THE SAME REASON AS THE READING ABOVE.
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastOwnAttackAtSeconds);
 }
 
 void UCataclysmAbilitySystemComponent::NoteHealthDebtDueIn(float Seconds)

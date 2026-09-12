@@ -285,7 +285,8 @@ public:
 	 */
 	float AttackDamageIncreasesForSkill(
 		const FGameplayTagContainer& SkillTags,
-		float SkillHealthCostPercent = -1.0f) const;
+		float SkillHealthCostPercent = -1.0f,
+		float MetresMovedBeforeBlow = -1.0f) const;
 
 	/**
 	 * How much larger one skill's hit should be than the attack-damage
@@ -316,7 +317,8 @@ public:
 	 */
 	float AttackDamageMoreForSkill(
 		const FGameplayTagContainer& SkillTags,
-		float SkillHealthCostPercent = -1.0f) const;
+		float SkillHealthCostPercent = -1.0f,
+		float MetresMovedBeforeBlow = -1.0f) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -400,7 +402,8 @@ public:
 					   float Fallback,
 					   float SkillHealthCostPercent = -1.0f,
 					   const FCataclysmBlowContext& Blow =
-						   FCataclysmBlowContext()) const;
+						   FCataclysmBlowContext(),
+					   float MetresMovedBeforeBlow = -1.0f) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -415,10 +418,15 @@ public:
 	 *        than read. Issue #983.
 	 * @param Blow  what the blow being taken is, for the four conditions that
 	 *        ask about it. Only the damage taken lookup has one. Issue #666.
+	 * @param MetresMovedBeforeBlow  how far the character moved since its own
+	 *        last attack, measured when the skill in hand was paid for, or -1
+	 *        for no blow in hand. Not a property of the character either, for
+	 *        the reason the two above are not. Issue #41, slice 2.
 	 */
 	FCataclysmStatConditions CurrentConditions(
 		float SkillHealthCostPercent = -1.0f,
-		const FCataclysmBlowContext& Blow = FCataclysmBlowContext()) const;
+		const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
+		float MetresMovedBeforeBlow = -1.0f) const;
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.
@@ -446,6 +454,113 @@ public:
 	 * test without one can be. Both mean the window is shut.
 	 */
 	float SecondsSinceHealthCostPaid() const;
+
+	/**
+	 * Record that this character moved, and how far. Issue #41, slice 2.
+	 *
+	 * CALLED BY THE 0.25-SECOND STEP ON `ACataclysmCharacterBase` AND NOWHERE
+	 * ELSE. That step measures the distance since its own last sample, so the
+	 * caller says how far rather than this working it out.
+	 *
+	 * IT DOES THREE THINGS: stamps the clock the stationary conditions read, adds
+	 * the distance to the tally since this character's own last attack, and marks
+	 * the character as moving until a sample says otherwise.
+	 */
+	void NoteMovedMetres(float Metres);
+
+	/**
+	 * Record that the last sample saw this character in the same place.
+	 * Issue #41, slice 2.
+	 *
+	 * THE OTHER HALF OF THE SAMPLE, and it exists because "moving" has to stop
+	 * being true without anything else happening.
+	 *
+	 * IT STARTS THE CLOCK IF NOTHING HAS YET, which is how a character that has
+	 * never moved comes to read a real number of seconds rather than "never". A
+	 * character is watched from its first sample, so that is when standing still
+	 * begins to be measured.
+	 */
+	void NoteDidNotMove();
+
+	/**
+	 * Record that this character was put somewhere else at once. Issue #41.
+	 *
+	 * A BLINK, A RECALL, A POSITION SWAP, A FLICKER, THE PHASEWALKER MODIFIER, OR
+	 * THE PLACEMENT OF THE PLAYER AT A FLOOR'S START. It stamps the clock, adds no
+	 * distance, and does not mark the character as moving: a teleport is not
+	 * movement, but a bonus that builds up while standing still should not survive
+	 * one. That division is a judgement recorded in `docs/DECISIONS.md`.
+	 *
+	 * CALLED AT EACH PLACE THAT RELOCATES A CHARACTER RATHER THAN INFERRED. The
+	 * sampler cannot tell a blink from a very fast walk, so a new instant move
+	 * that forgets to call this would be counted as walking.
+	 */
+	void NoteRelocatedInstantly();
+
+	/**
+	 * Record that this character attacked. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK: a skill being paid for, a creature's ability, a creature's
+	 * or a minion's swing. Every attack a character makes resets its own clocks,
+	 * creatures and minions included, so a condition means the same thing on both
+	 * sides of a fight. That is a judgement recorded in `docs/DECISIONS.md`.
+	 *
+	 * IT RESETS THE DISTANCE TALLY TO NOTHING, which is what makes "your first
+	 * melee attack after moving 5 metres" the first one: the next attack reads
+	 * whatever has been walked since this one.
+	 */
+	void NoteOwnAttack();
+
+	/**
+	 * How long ago this character moved, in seconds, or -1 if it has never been
+	 * sampled. Issue #41, slice 2.
+	 *
+	 * -1 ALSO ANSWERS "THERE IS NO WORLD TO ASK", the way
+	 * `SecondsSinceHealthCostPaid` does, and the stationary conditions refuse on
+	 * it rather than treating an unknown as a long wait.
+	 */
+	float SecondsSinceMoved() const;
+
+	/**
+	 * How long ago this character attacked, in seconds, or -1 if it has not
+	 * attacked since it spawned. Issue #41, slice 2.
+	 */
+	float SecondsSinceOwnAttack() const;
+
+	/** Whether the last sample saw this character moving. Issue #41, slice 2. */
+	bool IsMoving() const { return bMovedInLastSample; }
+
+	/**
+	 * Whether a movement sample has looked at this character yet.
+	 * Issue #41, slice 2.
+	 */
+	bool HasSampledLocation() const { return bHasSampledLocation; }
+
+	/** Where the last movement sample saw this character. Issue #41, slice 2. */
+	FVector SampledLocation() const { return LastSampledLocation; }
+
+	/**
+	 * Record where a movement sample has just seen this character.
+	 * Issue #41, slice 2.
+	 *
+	 * HERE RATHER THAN ON THE CHARACTER, so that every reading the movement
+	 * conditions use sits in one place. The clocks this position is compared
+	 * against are on this component, and splitting the two would make two places
+	 * that can disagree.
+	 */
+	void NoteSampledAt(const FVector& Where);
+
+	/**
+	 * How far this character has moved since its own last attack, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * ZERO IS A REAL READING and means it has not moved since then, which is why
+	 * this is not -1 for a character that has never moved.
+	 */
+	float MetresMovedSinceOwnAttack() const
+	{
+		return MetresMovedSinceOwnAttackSoFar;
+	}
 
 	/**
 	 * Record that health owed falls due this many seconds from now.
@@ -996,6 +1111,63 @@ protected:
 	 * worth a few seconds and the next hit rebuilds it.
 	 */
 	float LastForeignDamageAtSeconds = -1.0f;
+
+	/**
+	 * When this character last moved, in world seconds. Issue #41, slice 2.
+	 *
+	 * NEGATIVE MEANS IT HAS NOT BEEN SAMPLED YET, told apart from "moved at world
+	 * time zero" for the reason the three timestamps above it are. The first
+	 * sample stamps it whether the character moved or not, so a character that
+	 * never moves still reads a real number of seconds.
+	 *
+	 * STAMPED BY AN INSTANT RELOCATION TOO, which adds no distance.
+	 *
+	 * NOT REPLICATED AND NOT SAVED. It is worth a few seconds and the next sample
+	 * rebuilds it.
+	 */
+	float LastMovedAtSeconds = -1.0f;
+
+	/**
+	 * When this character last attacked, in world seconds. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK, not a blow it took, which `LastForeignDamageAtSeconds`
+	 * above covers. Negative means it has not attacked since it spawned.
+	 */
+	float LastOwnAttackAtSeconds = -1.0f;
+
+	/**
+	 * How far this character has moved since its own last attack, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * ZERO RATHER THAN NEGATIVE, because it is a distance a sampler adds to
+	 * rather than a measurement that can be unknown, and zero is the true reading
+	 * for a character that has not moved. An instant relocation adds nothing.
+	 */
+	float MetresMovedSinceOwnAttackSoFar = 0.0f;
+
+	/**
+	 * Whether the last sample saw this character in a different place.
+	 * Issue #41, slice 2.
+	 *
+	 * FALSE UNTIL A SAMPLE SAYS OTHERWISE, which is what "not moving" means for a
+	 * character that has just spawned.
+	 */
+	bool bMovedInLastSample = false;
+
+	/**
+	 * Where the last movement sample saw this character. Issue #41, slice 2.
+	 *
+	 * MEANINGLESS UNTIL THE FLAG BELOW IS TRUE, which is why there are two fields
+	 * rather than a position with a sentinel: every position in the world is a
+	 * position a character could really be at, including the origin.
+	 *
+	 * NOT REPLICATED AND NOT SAVED, like the clocks above it: the next sample
+	 * rebuilds it a quarter of a second later.
+	 */
+	FVector LastSampledLocation = FVector::ZeroVector;
+
+	/** Whether a movement sample has looked at this character yet. Issue #41. */
+	bool bHasSampledLocation = false;
 
 	/**
 	 * When the health this character owes falls due, in world seconds.

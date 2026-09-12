@@ -892,6 +892,33 @@ CONDITION_WORDS = {
     # the same way `health_at_or_below` refuses a node that says "dropping
     # below".
     "class_resource_at_maximum": ("fervour is at maximum", None),
+
+    # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
+    # PassiveEffects.csv uses any of them yet, so these entries are not
+    # exercised today; they are here because a name missing from this map is a
+    # name whose row nothing compares against its node's own words.
+    "while_moving": ("while moving", None),
+    "while_stationary": ("while stationary", None),
+
+    # TWO WORDINGS EXIST FOR THIS ONE IN THE NODES, and the fragment chosen here
+    # matches only the first: "after remaining stationary for 3 seconds" and
+    # "while you have not moved in the last 2 seconds". A node written the
+    # second way will fail this check, and that is the check working: whoever
+    # writes the first such row has to either reword the node or widen this
+    # entry, rather than discovering later that the row and the sentence
+    # disagreed.
+    "stationary_for_seconds": ("stationary for", "{value:g} second"),
+
+    # "while you have not attacked in the last 3 seconds" is the only wording in
+    # the trees, and "not attacked" is unique to it.
+    "not_attacked_for_seconds": ("not attacked", "{value:g} second"),
+
+    # "your first melee attack after moving 5 metres deals 50% increased
+    # damage". The fragment is the distance half and not the word "first",
+    # because what the condition promises is the distance; "first" is the
+    # reset, which happens because the tally restarts at every attack the
+    # character makes.
+    "metres_moved_before_attack": ("after moving", "{value:g} metre"),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a

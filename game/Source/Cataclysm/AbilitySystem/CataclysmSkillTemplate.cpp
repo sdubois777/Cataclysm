@@ -130,6 +130,33 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 
 	PayHealthCost();
 
+	// AND HOW FAR THE CHARACTER HAD MOVED BEFORE THIS USE, READ AND THEN CLEARED.
+	// Issue #41, slice 2. Headlong asks about "your first melee attack after
+	// moving 5 metres", which is a question about this use rather than about the
+	// instant a blow resolves: a swing lands after its wind-up and a projectile
+	// lands later still, by which time the character has walked further.
+	//
+	// A DIRECT CALL RATHER THAN THROUGH THE SKILL-USED NOTICE ABOVE, because that
+	// notice returns at once when nothing is listening, and this has to happen
+	// whether anything listens or not.
+	//
+	// CLEARING IT HERE IS WHAT MAKES THE NEXT ATTACK THE FIRST ONE. The
+	// character's tally starts again from this moment, so a second attack reads
+	// about nothing unless the character walked again in between.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(
+				GetAbilitySystemComponentFromActorInfo()))
+	{
+		LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack();
+		Cataclysm->NoteOwnAttack();
+	}
+	else
+	{
+		// NOTHING OF THIS PROJECT'S OWN MEASURED ANYTHING, and -1 is the reading
+		// the condition refuses on rather than treating as no distance.
+		LastMetresMovedBeforeUse = -1.0f;
+	}
+
 	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
 	// Every one of the eight skill shapes calls this function first, so one call
 	// here gives all of them the beat that was missing: a skill used to begin
@@ -1625,6 +1652,11 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// `PayHealthCost`, which writes this on every use whether it charged
 	// anything or not.
 	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
+
+	// AND HOW FAR THE CHARACTER HAD WALKED BEFORE THIS USE, for the same reason
+	// again: Headlong asks about the attack, and `CommitAndBegin` measured it when
+	// the skill was paid for. Issue #41, slice 2.
+	Delivery.MetresMovedBeforeBlow = LastMetresMovedBeforeUse;
 
 	// AND THIS SKILL ITSELF, SO WHAT IT HITS CAN NAME IT. Issue #41, slice 4.
 	// Carried on the effect context; see `FCataclysmHitDelivery::Skill`.
