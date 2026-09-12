@@ -372,9 +372,36 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// a lock on a single slot and a lock on everything.
 	// `UCataclysmAbilitySystemComponent::StatForSkill` passes them into the stat
 	// pipeline, which scopes each modifier by them, and every designed skill
-	// carries a `Slot.<Name>` tag. So an enchantment row scoped to
-	// `Slot.Ultimate` reaches only Ultimates with no code here knowing about
-	// slots at all.
+	// carries a `Slot.<Name>` tag -- measured, 403 of the 403 rows in
+	// `game/Data/WeaponSkills.csv`, across six slot names. So an enchantment row
+	// scoped to `Slot.Ultimate` reaches only Ultimates with no code here knowing
+	// about slots at all.
+	//
+	// THE BASIC ATTACK IS EXEMPTED BY NAME, AND A COMMENT HERE ONCE CLAIMED IT
+	// DID NOT NEED TO BE. That claim was wrong and it is worth saying why, so
+	// nobody removes this. `UCataclysmBasicAttack` is a function library, which
+	// is true and is NOT the same as the basic attack being no ability: its
+	// `Swing` finds a granted ability by slot tag and calls
+	// `TryActivateAbility`, and that ability is a `UCataclysmSkillTemplate`
+	// whose `Slot` is `BasicAttack`. So it arrives here like everything else,
+	// and an UNSCOPED lock would take it away.
+	//
+	// WHICH THE DESIGN FORBIDS. Edict of Silence, the dungeon modifier slice 3b
+	// builds, says "Only basic attacks function during this period" -- so the one
+	// thing that must keep working is the one an unscoped lock would stop. A
+	// player with every slot refused and no basic attack cannot act at all.
+	//
+	// AND THIS FILE ALREADY DOES IT TWICE, which is what settles it as the house
+	// pattern rather than a special case invented here: the planted-weapon
+	// refusal exempts the Basic slot with the reason in terms -- "refusing every
+	// slot would leave them unable to act at all ... which reads as the game
+	// having stopped working rather than as a cost" -- and the health-cost path
+	// returns early on it.
+	//
+	// IT COSTS NOTHING TODAY AND IS NOT DEAD CODE. Slice 3a's only source is
+	// scoped to `Slot.Ultimate` and no row carries `Slot.Basic`, so nothing
+	// reaches this yet. It is here for slice 3b, and a test asserts it rather
+	// than leaving it to be discovered.
 	//
 	// A FALLBACK OF ZERO MEANS AN UNKNOWN CHARACTER IS NOT LOCKED. A creature's
 	// ability system is never given a character stat line and a player's has
@@ -388,14 +415,18 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// `RequiredTags=Slot.Ultimate` scoping it needs, and the three engine-side
 	// steps that come with it. A reader finding a lock that nothing locks should
 	// read #1628 rather than assume this was abandoned.
-	if (const UCataclysmAbilitySystemComponent* Cataclysm =
-			Cast<const UCataclysmAbilitySystemComponent>(
-				ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr))
+	if (Slot != ECataclysmAbilitySlot::BasicAttack)
 	{
-		if (Cataclysm->StatForSkill(FName(UCataclysmSkillSlots::LockedStat),
-									SkillTags, 0.0f) > 0.0f)
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<const UCataclysmAbilitySystemComponent>(
+					ActorInfo ? ActorInfo->AbilitySystemComponent.Get()
+							  : nullptr))
 		{
-			return false;
+			if (Cataclysm->StatForSkill(FName(UCataclysmSkillSlots::LockedStat),
+										SkillTags, 0.0f) > 0.0f)
+			{
+				return false;
+			}
 		}
 	}
 
