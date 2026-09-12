@@ -784,3 +784,136 @@ def test_named_failures_is_empty_for_a_crashed_run() -> None:
         "an empty named_failures must not be read as a verdict; the summary is "
         "what says the run did not finish")
 
+
+
+# --------------------------------------------------------------------------
+# The command line says what the build did. Issue #1599.
+# --------------------------------------------------------------------------
+#
+# WHY THIS IS TESTED AGAINST CAPTURED OUTPUT AND NOT A REAL BUILD. The same
+# reason as everything above: the reading is what can go wrong, and a real
+# build needs the engine, the machine and several minutes. The three captures
+# at the top of this file are real runs, so a line derived from them is derived
+# from what UnrealBuildTool actually prints.
+
+
+def test_what_it_did_names_the_files_for_a_build_that_compiled() -> None:
+    """`Build: Succeeded` on its own is printed identically whether a build
+    compiled everything or nothing, and issue #139 is the incident where those
+    two were confused. This is the line that tells them apart."""
+    said = outcome(BUILD_THAT_COMPILED).what_it_did
+    assert "4 actions" in said
+    assert "1 file compiled" in said, (
+        f"the line should say how many files were compiled. It reads: {said!r}")
+    assert "Module.Cataclysm.cpp" in said, (
+        f"four files or fewer are named outright. It reads: {said!r}")
+
+
+def test_what_it_did_says_a_build_that_did_nothing_did_nothing() -> None:
+    """The issue #139 shape: succeeded, compiled nothing, target already
+    current. It has to be unmistakable rather than merely different."""
+    said = outcome(BUILD_THAT_DID_NOTHING).what_it_did
+    assert "up to date" in said
+    assert "nothing compiled" in said
+    assert "0 actions" in said, (
+        f"the action count is what distinguishes this case. It reads: {said!r}")
+
+
+def test_the_two_readings_do_not_produce_the_same_line() -> None:
+    """The whole point, stated as one assertion. A change that made both cases
+    print the same thing would pass both tests above and reintroduce the
+    fault."""
+    assert (outcome(BUILD_THAT_COMPILED).what_it_did
+            != outcome(BUILD_THAT_DID_NOTHING).what_it_did)
+
+
+def test_what_it_did_does_not_invent_an_action_count() -> None:
+    """`actions` is None when the output never stated one. Printing that as 0
+    would claim the build ran no actions, which is a different statement from
+    not knowing."""
+    said = BuildOutcome(0, "", "Succeeded", (), False, None).what_it_did
+    assert "actions unknown" in said, (
+        f"an unread action count must say so rather than print a number. It "
+        f"reads: {said!r}")
+    assert "0 action" not in said
+
+
+def test_what_it_did_counts_rather_than_names_a_long_list() -> None:
+    """A full rebuild compiles hundreds of files. Naming them all would bury
+    the counts in front of them."""
+    from unreal_build import NAMED_COMPILE_LIMIT
+    many = tuple(f"File{index}.cpp" for index in range(NAMED_COMPILE_LIMIT + 1))
+    said = BuildOutcome(0, "", "Succeeded", many, False, len(many)).what_it_did
+    assert f"{len(many)} files compiled" in said
+    assert "File0.cpp" not in said, (
+        f"a list longer than {NAMED_COMPILE_LIMIT} should be counted, not "
+        f"named. It reads: {said!r}")
+
+    few = many[:NAMED_COMPILE_LIMIT]
+    named = BuildOutcome(0, "", "Succeeded", few, False, len(few)).what_it_did
+    assert "File0.cpp" in named, (
+        f"a list of exactly {NAMED_COMPILE_LIMIT} is still named. It reads: "
+        f"{named!r}")
+
+
+def test_the_build_command_prints_what_it_did(monkeypatch, capsys) -> None:
+    """The command line, not only the property.
+
+    THIS IS THE HALF ISSUE #1599 IS ABOUT. `build()` has always returned the
+    file list and the action count; `main` threw them away and printed the
+    result word alone. Testing the property without testing the command would
+    leave exactly the gap the issue reports.
+
+    `build` IS REPLACED RATHER THAN RUN. A real build needs the engine and the
+    machine, and what is being checked is what `main` does with the answer.
+    """
+    import unreal_build as module
+
+    captured = outcome(BUILD_THAT_COMPILED)
+    monkeypatch.setattr(module, "build", lambda *args, **kwargs: captured)
+
+    assert module.main(["build"]) == 0
+    printed = capsys.readouterr().out
+
+    assert "Build: Succeeded" in printed
+    assert "4 actions" in printed, (
+        f"the command must print what the build did, not only that it "
+        f"succeeded. It printed: {printed!r}")
+    assert "Module.Cataclysm.cpp" in printed
+
+
+def test_the_build_command_says_when_it_compiled_nothing(
+        monkeypatch, capsys) -> None:
+    """The other reading, through the command. A session that had just rebased
+    and got `Build: Succeeded` could not tell which of these two it had."""
+    import unreal_build as module
+
+    captured = outcome(BUILD_THAT_DID_NOTHING)
+    monkeypatch.setattr(module, "build", lambda *args, **kwargs: captured)
+
+    assert module.main(["build"]) == 0
+    printed = capsys.readouterr().out
+
+    assert "up to date" in printed
+    assert "nothing compiled" in printed, (
+        f"the command must say the build compiled nothing. It printed: "
+        f"{printed!r}")
+
+
+def test_a_failed_build_still_prints_the_compilers_own_words(
+        monkeypatch, capsys) -> None:
+    """Neighbouring behaviour, so the new line cannot have displaced it. A
+    compilation error is the thing the caller needs and there is no summary of
+    it better than the one the compiler wrote."""
+    import unreal_build as module
+
+    captured = outcome(BUILD_THAT_FAILED, returncode=6)
+    monkeypatch.setattr(module, "build", lambda *args, **kwargs: captured)
+
+    assert module.main(["build"]) == 1
+    printed = capsys.readouterr().out
+
+    assert "Build: Failed" in printed
+    assert "error C2065" in printed, (
+        f"the compiler's own error must still be printed. It printed: "
+        f"{printed!r}")

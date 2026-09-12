@@ -25,6 +25,13 @@ said everything was fine.
 whether the build did nothing at all, and `prove_cpp_guard()` refuses to report a
 result from a build that compiled nothing.
 
+**`python tools/unreal_build.py build` prints that too, since issue #1599.** Its
+line reads `Build: Succeeded - 3 actions, 2 files compiled: ...` or `Build:
+Succeeded - target already up to date, 0 actions, nothing compiled`. Until then
+it printed `Build: Succeeded` and nothing else whenever the build had work to
+do, so the command everyone runs could not answer the question this docstring
+opens with, and a session had to call `build()` from a Python prompt to get it.
+
 **The unity build hides the filename.** UnrealBuildTool merges a module's .cpp
 files into `Module.<Module>.cpp`, so a compile line usually names the blob rather
 than the file. It also uses `git status` to pick an "adaptive non-unity working
@@ -111,6 +118,16 @@ UP_TO_DATE = "Target is up to date"
 
 #: `Using Unreal Build Accelerator local executor to run 4 action(s)`.
 ACTION_COUNT = re.compile(r"to run (\d+) action\(s\)")
+
+#: How many compiled files `BuildOutcome.what_it_did` will name before it prints
+#: the count alone. Issue #1599.
+#:
+#: TWELVE, BECAUSE THAT IS WHAT AN ORDINARY BUILD COMPILES. A module's .cpp
+#: files are normally merged into a handful of unity blobs, so a build after an
+#: edit to one or two files reports single figures; a full rebuild reports
+#: hundreds and naming them would bury the counts in front of them, which are
+#: the part a reader needs first.
+NAMED_COMPILE_LIMIT = 12
 
 #: How the automation runner reports one test, in `game/Saved/Logs/Cataclysm.log`:
 #: `... Test Completed. Result={Success} Name={Cataclysm.Skills.AThing} ...`
@@ -227,6 +244,53 @@ class BuildOutcome:
             return f"Result: {self.result}, target up to date, nothing compiled"
         compiled = ", ".join(self.compiled) if self.compiled else "nothing"
         return f"Result: {self.result}, compiled {compiled}"
+
+    @property
+    def what_it_did(self) -> str:
+        """What the build actually did, for the command line to print.
+
+        WHY THE COMMAND HAS TO SAY THIS. Issue #1599. `Build: Succeeded` is
+        printed identically whether the build compiled every source file or
+        none of them, and telling those two apart is the question this
+        project's own rules say to ask about a build. Issue #139 is the
+        incident: a restored source file looked older than the object built
+        from the broken version, so the build reported success, compiled
+        nothing, and the tests ran against the broken binary. Reading the
+        source and reading the build output both said everything was fine.
+
+        SEPARATE FROM `summary`, which `require_compiled` puts inside a raised
+        error and reads as a sentence about a failure. This one is appended to
+        a line that has already said whether the build succeeded, so it states
+        only the work.
+
+        THE ACTION COUNT IS INCLUDED EVEN THOUGH THE FILE COUNT IS USUALLY
+        ENOUGH, because they answer different questions. A link step and a
+        metadata write are actions and compile no file, so a build reporting
+        four actions and one compiled file is ordinary rather than suspicious,
+        and a reader who sees only one of the two numbers cannot tell.
+
+        `actions` IS None WHEN THE OUTPUT NEVER STATED ONE. That is said out
+        loud rather than printed as 0, because zero actions is a real and
+        meaningful answer and "the line was not there to read" is not the same
+        claim.
+        """
+        actions = ("actions unknown" if self.actions is None
+                   else f"{self.actions} action{'' if self.actions == 1 else 's'}")
+
+        if self.up_to_date:
+            return f"target already up to date, {actions}, nothing compiled"
+
+        if not self.compiled:
+            return f"{actions}, no file compiled"
+
+        count = (f"{len(self.compiled)} file"
+                 f"{'' if len(self.compiled) == 1 else 's'} compiled")
+        # THE NAMES WHEN THE LIST IS SHORT. A full rebuild compiles hundreds and
+        # printing them all would bury the counts above, which are the part a
+        # reader needs first.
+        if len(self.compiled) <= NAMED_COMPILE_LIMIT:
+            return f"{actions}, {count}: " + ", ".join(self.compiled)
+        return f"{actions}, {count}"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -707,8 +771,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not (arguments.command == "tests" and arguments.no_build):
         outcome = build(arguments.target)
-        print(f"Build: {outcome.result}"
-              f"{' (nothing to do)' if outcome.up_to_date else ''}")
+        # WHAT IT DID, NOT ONLY THAT IT SUCCEEDED. Issue #1599. This line used
+        # to read `Build: Succeeded`, with `(nothing to do)` appended only when
+        # the target was already current -- so a build that DID compile said
+        # nothing whatever about what it compiled, and a session that had just
+        # rebased could not tell from the command whether its sources had been
+        # built. `build()` has always returned the file list, the action count
+        # and the up-to-date flag; the command threw all three away.
+        print(f"Build: {outcome.result} - {outcome.what_it_did}")
 
         if not outcome.succeeded:
             # THE COMPILER'S OWN WORDS, NOT A SUMMARY OF THEM. A compilation
