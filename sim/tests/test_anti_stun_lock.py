@@ -220,15 +220,80 @@ def unwrapped(text: str) -> str:
     return " ".join(text.split())
 
 
-@pytest.fixture(scope="module")
-def gdd() -> str:
+#: The heading of the section that settles what offensive crowd control gear
+#: exists. See `crowd_control_gear_section` for why one test needs it.
+CROWD_CONTROL_GEAR_HEADING = (
+    "### **Enemies displace the player, and the rule above applies with the "
+    "player as the target**")
+
+
+def gdd_path():
     import pathlib
 
-    root = pathlib.Path(__file__).resolve().parents[2]
-    path = root / "docs" / "Cataclysm_GDD_v2.md"
+    return (pathlib.Path(__file__).resolve().parents[2]
+            / "docs" / "Cataclysm_GDD_v2.md")
+
+
+@pytest.fixture(scope="module")
+def gdd() -> str:
+    path = gdd_path()
     if not path.is_file():
         pytest.skip("the design document is not present")
     return unwrapped(path.read_text(encoding="utf-8"))
+
+
+def cut_section(text: str) -> str:
+    """The crowd control gear section of `text`, cut at the next heading.
+
+    WHY A SECTION AND NOT THE WHOLE FILE. Issue #789. The test that uses this
+    used to assert that the phrase "not yet decided" appeared nowhere in the
+    whole document, which is about 7,400 lines. That phrase is ordinary English
+    in a document whose purpose is to record which questions are settled and
+    which are open, so the document could not say a question was open, in those
+    three words, in any section at all.
+
+    IT HAD ALREADY DONE DAMAGE. On 2026-08-21 a new section describing what a
+    dungeon floor is said "Which family each Cataclysm uses is not yet decided.
+    That there is a choice to make is." The test failed. That sentence has
+    nothing to do with stun, with crowd control or with gear, and it was
+    reworded to get past a guard that was not aimed at it -- so a true sentence
+    about a different subject was changed to suit this test. The failure message
+    named crowd control affixes and issues #298 and #299, which is a false alarm
+    with a misleading explanation.
+
+    WHY THIS SECTION AND NOT THE STUN SECTION. Issue #789 proposes scoping to
+    "the stun section's heading and the next heading". That does not work, and
+    it was measured before this was written: the stun section runs from
+    `### **Stun and the Anti-Stun-Lock Rule**` to the heading below it, and the
+    sentence recording that this question was settled -- which the same test
+    also asserts is present -- is not inside it. It is in this section, the one
+    after. Scoping to the stun section would have made the second half of that
+    test fail on a correct document.
+
+    A FUNCTION AND NOT ONLY A FIXTURE, so the test that proves the scoping works
+    can cut a section out of a modified copy of the document without writing to
+    the file. See `test_a_deferred_question_elsewhere_does_not_fail_this_check`.
+    """
+    start = text.find(CROWD_CONTROL_GEAR_HEADING)
+    assert start != -1, (
+        "the design document no longer has the section headed "
+        f"{CROWD_CONTROL_GEAR_HEADING!r}, which is where it settles what "
+        "offensive crowd control gear exists. Issues #298, #299 and #789.")
+
+    after = start + len(CROWD_CONTROL_GEAR_HEADING)
+    ends = [position for position in (text.find("\n### ", after),
+                                      text.find("\n## ", after),
+                                      text.find("\n# ", after))
+            if position != -1]
+    return unwrapped(text[start:min(ends) if ends else len(text)])
+
+
+@pytest.fixture(scope="module")
+def crowd_control_gear_section() -> str:
+    path = gdd_path()
+    if not path.is_file():
+        pytest.skip("the design document is not present")
+    return cut_section(path.read_text(encoding="utf-8"))
 
 
 def test_the_design_document_has_the_section():
@@ -278,7 +343,8 @@ def test_the_document_says_a_designed_stun_skips_the_threshold(gdd):
             "threshold") in gdd
 
 
-def test_the_document_records_that_point_four_is_now_answered(gdd):
+def test_the_document_records_that_point_four_is_now_answered(
+        crowd_control_gear_section):
     """The project owner answered three of the issue's four questions and
     deferred the fourth. The fourth was which crowd control affixes exist, and
     it was answered on 2026-08-16 by issues #298 and #299.
@@ -286,14 +352,86 @@ def test_the_document_records_that_point_four_is_now_answered(gdd):
     THIS USED TO ASSERT "not yet decided" WAS IN THE DOCUMENT, which was right
     while it was true. A document that still deferred a settled question would
     send the next reader to re-ask it.
+
+    AND IT USED TO SEARCH THE WHOLE DOCUMENT FOR IT. Issue #789. Both halves now
+    read one section, the one that settles this question. See
+    `crowd_control_gear_section` for what that cost and for why the stun
+    section, which the issue proposed, is the wrong one.
     """
-    assert "not yet decided" not in gdd, (
-        "the design document defers a crowd control gear question again. Both "
-        "were answered on 2026-08-16: an affix grants a chance to stun (#298) "
-        "and no affix scales a stun's duration (#299).")
-    assert "settled on 2026-08-16" in gdd, (
+    assert "not yet decided" not in crowd_control_gear_section, (
+        "the design document defers a crowd control gear question again, in "
+        "the section that settles it. Both were answered on 2026-08-16: an "
+        "affix grants a chance to stun (#298) and no affix scales a stun's "
+        "duration (#299).")
+    assert "settled on 2026-08-16" in crowd_control_gear_section, (
         "the design document no longer records when the crowd control gear "
         "question was settled, so it reads as though it never was.")
+
+
+def test_the_search_is_actually_scoped_to_one_section(
+        gdd, crowd_control_gear_section):
+    """The point of issue #789, stated as an assertion.
+
+    WITHOUT THIS the narrowing above is cosmetic. A fixture that returned the
+    whole document -- because a heading was reworded and the cut fell at the end
+    of the file, say -- would satisfy every assertion in the test above and
+    quietly restore the document-wide ban this change exists to remove.
+
+    THE MARGIN IS DELIBERATELY LOOSE. This asserts that the section is a small
+    part of the document, not that it is any particular size, because the
+    section is prose and will grow.
+    """
+    assert crowd_control_gear_section in gdd, (
+        "the section fixture is not reading the same document as the whole-file "
+        "one")
+    assert len(crowd_control_gear_section) < len(gdd) / 10, (
+        f"the section the crowd control gear question is checked in is "
+        f"{len(crowd_control_gear_section)} characters of a "
+        f"{len(gdd)}-character document, which is not a section. The whole "
+        "point of issue #789 is that this check reads one section and not the "
+        "whole file.")
+
+
+#: The sentence that was reworded on 2026-08-21 to get past the old check. It
+#: is about which family a Cataclysm draws from and has nothing to do with stun,
+#: with crowd control or with gear. Issue #789.
+A_SENTENCE_ELSEWHERE = ("Which family each Cataclysm uses is not yet decided. "
+                        "That there is a choice to make is.")
+
+
+def test_a_deferred_question_elsewhere_does_not_fail_this_check():
+    """The fault, reproduced, and then shown not to happen any more.
+
+    HOW IT IS DONE WITHOUT EDITING THE DOCUMENT. The document is authoritative
+    and this test does not write to it. It reads the file, adds the sentence to
+    a copy held in memory, and cuts the section out of that copy with the same
+    function the fixture uses.
+
+    BOTH DIRECTIONS ARE CHECKED. The sentence inside the section still fails,
+    because the check is worth keeping: a document that defers a settled
+    question sends the next reader to re-ask it. The sentence outside it no
+    longer does, which is the whole of issue #789.
+    """
+    path = gdd_path()
+    if not path.is_file():
+        pytest.skip("the design document is not present")
+    text = path.read_text(encoding="utf-8")
+
+    # Appended after everything, so it is plainly outside every section.
+    outside = cut_section(text + "\n\n" + A_SENTENCE_ELSEWHERE)
+    assert "not yet decided" not in outside, (
+        "a sentence elsewhere in the design document still reaches the crowd "
+        "control gear check. The search is not scoped. Issue #789.")
+
+    heading_at = text.index(CROWD_CONTROL_GEAR_HEADING)
+    put_inside = (text[:heading_at + len(CROWD_CONTROL_GEAR_HEADING)]
+                  + "\n\n" + A_SENTENCE_ELSEWHERE
+                  + text[heading_at + len(CROWD_CONTROL_GEAR_HEADING):])
+    inside = cut_section(put_inside)
+    assert "not yet decided" in inside, (
+        "the same sentence written INSIDE the section is not seen either, so "
+        "this check has stopped being able to fire at all. That is worse than "
+        "the false alarm issue #789 reported.")
 
 
 # --- What the rule covers, said once ----------------------------------------
