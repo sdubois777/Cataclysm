@@ -19,6 +19,10 @@
 // slice 3: the map below uses the constant rather than a second
 // spelling of the name.
 #include "AbilitySystem/CataclysmSkillSlots.h"
+// For the two stagger stat names and the 100 that is a normal stagger's
+// length, shared with `ApplyStagger` which reads them rather than spelled a
+// second time here. Issue #45.
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 // For the three retaliation stat names, shared with the code that reads them
 // rather than spelled a second time here. Issues #1047 and #1048.
@@ -642,8 +646,22 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			//
 			// NEITHER IS `debuff_duration_taken`, which is the TARGET's and
 			// lengthens every timed effect put on it. Both reach one stagger.
-			{TEXT("stagger_duration"), Combat::GetStaggerDurationAttribute()},
-			{TEXT("stagger_health_ceiling_reduction"),
+			//
+			// THE CONSTANTS AND NOT THE SPELLED-OUT NAMES, for the reason the
+			// skill lock entry above gives: `ApplyStagger` reads these stats by
+			// the same constants, and a second spelling is how the code that
+			// reads a stat and the map that records it drift apart with nothing
+			// reporting the disagreement.
+			//
+			// `stagger_duration` ALSO NEEDS AN ENTRY IN `EngineSuppliedBases`
+			// below, and that is not bookkeeping. Its base of 100 lives in the
+			// attribute set's constructor, which `ApplyTo` overwrites: `BaseFor`
+			// answers zero for a stat no class line names, and the recorded stat
+			// line would then hold zero. Every stagger a player applied would be
+			// scaled to nothing and refused.
+			{FString(UCataclysmSkillEffects::StaggerDurationStat),
+			 Combat::GetStaggerDurationAttribute()},
+			{FString(UCataclysmSkillEffects::StaggerHealthCeilingStat),
 			 Combat::GetStaggerHealthCeilingReductionAttribute()},
 
 			// Everything else the class table names.
@@ -795,6 +813,26 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 		// happening to the conversion window.
 		{FName(UCataclysmDebuffs::DurationStat),
 		 UCataclysmDebuffs::NormalDuration},
+
+		// AND HOW LONG A STAGGER THIS CHARACTER APPLIES RUNS, at 100 for normal.
+		// Issue #45. The FOURTH stat of this shape, and it meets the same rule:
+		// no affix grants it, nothing scales it, no class differs on it, and one
+		// enchantment is its only source.
+		//
+		// THE ENTRY ABOVE IS ITS MIRROR AND NOT ITS DUPLICATE. That one is how
+		// long a harmful effect put ON this character runs; this one is how long
+		// a stagger this character applies to SOMEONE ELSE runs. Both scale one
+		// stagger's duration, from opposite ends, and they multiply.
+		//
+		// WITHOUT THIS THE STAT IS ZERO FOR EVERY PLAYER AND NO PLAYER STAGGERS
+		// ANYTHING. The attribute set's constructor states 100, and that is not
+		// enough: `ApplyTo` resolves every stat this class's map names, `BaseFor`
+		// answers zero for a stat no class line names, and the resolved zero is
+		// written over the constructor's 100. `ApplyStagger` then scales by
+		// zero and refuses. The enemy-side tests cannot see this, because a
+		// spawned creature's attributes are never put through `ApplyTo`.
+		{FName(UCataclysmSkillEffects::StaggerDurationStat),
+		 UCataclysmSkillEffects::NormalStaggerDuration},
 	};
 
 	return Map;
