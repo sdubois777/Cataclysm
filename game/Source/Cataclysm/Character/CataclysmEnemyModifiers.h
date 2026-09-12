@@ -555,13 +555,17 @@ public:
 	 * ALLIES AND NOT ITSELF. `FindAlliesInSphere` excludes the instigator,
 	 * which is what the row asks for -- "all **other** enemies".
 	 *
-	 * @param Character   the medic. Anything that is not a living creature
-	 *                    heals nobody
-	 * @param StepSeconds how long since the last step, for the pulse clock
-	 * @return how many allies were healed this call, which is zero on every
-	 *         step between pulses
+	 * IT DOES NOT KEEP THE CLOCK AND MUST NOT. `AuraStep` owns
+	 * `SecondsSinceAuraPulse` and calls this when a pulse is due. An earlier
+	 * draft kept its own copy of those three lines, which meant a creature
+	 * that was both the medic and carried an aura advanced the one clock
+	 * twice a step and fired everything at twice the intended rate.
+	 *
+	 * @param Character the medic. Anything that is not a creature heals
+	 *                  nobody
+	 * @return how many allies this pulse healed
 	 */
-	static int32 HealAlliesStep(AActor* Character, float StepSeconds);
+	static int32 HealAlliesPulse(AActor* Character);
 
 	/**
 	 * Whether a row belongs to a Cataclysm a creature of this one may draw.

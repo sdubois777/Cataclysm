@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -1753,13 +1754,19 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandThroughHitsTest,
 
 namespace CataclysmMedicTest
 {
-	/** One full second of the per-character step, which runs four times a second. */
+	/**
+	 * One full second of the per-character step, which runs four times a second.
+	 *
+	 * THROUGH `AuraStep` AND NOT THROUGH THE HEALING DIRECTLY, because that is
+	 * what `CataclysmCharacterBase` calls. Driving the healing on its own would
+	 * pass whether or not anything had wired it to a creature's step.
+	 */
 	static int32 OneSecondOfSteps(AActor* Medic)
 	{
 		int32 Healed = 0;
 		for (int32 Step = 0; Step < 4; ++Step)
 		{
-			Healed += UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f);
+			Healed += UCataclysmEnemyModifiers::AuraStep(Medic, 0.25f);
 		}
 		return Healed;
 	}
@@ -1790,6 +1797,22 @@ namespace CataclysmMedicTest
 		return Creature;
 	}
 
+	static ACataclysmEnemyCharacter* TheFloorsMedic(UWorld* World,
+												   const FVector& Where,
+												   float Maximum, float Current)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			WoundedCreature(World, Where, Maximum, Current);
+		if (Creature != nullptr)
+		{
+			// WHAT THE DUNGEON DOES AT SPAWN, done by hand here.
+			// `ACataclysmDungeonGameMode::ChooseTheFloorsMedic` sets this on one
+			// creature when the floor carries `War_Field_Medic`.
+			Creature->bHealsAlliesForTheFloorRule = true;
+		}
+		return Creature;
+	}
+
 	static float HealthOf(const AActor* Who)
 	{
 		const UAbilitySystemComponent* ASC =
@@ -1812,7 +1835,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsAWoundedAllyTest,
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	ACataclysmEnemyCharacter* Medic =
-		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 500.0f);
 	ACataclysmEnemyCharacter* Ally =
 		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
 	if (!TestNotNull(TEXT("a medic"), Medic)
@@ -1857,7 +1880,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicDoesNotHealItselfTest,
 	// rule written here. It is worth a test because a medic that healed itself
 	// would be far harder to kill than the row intends.
 	ACataclysmEnemyCharacter* Medic =
-		WoundedCreature(World, FVector::ZeroVector, 500.0f, 200.0f);
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 200.0f);
 	ACataclysmEnemyCharacter* Ally =
 		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
 	if (!TestNotNull(TEXT("a wounded medic"), Medic)
@@ -1892,7 +1915,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsNeitherFarNorHostileTest,
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	ACataclysmEnemyCharacter* Medic =
-		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 500.0f);
 
 	// JUST INSIDE AND JUST OUTSIDE THE SIX METRES, so this measures the radius
 	// rather than some much larger difference.
@@ -1946,7 +1969,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmDeadMedicHealsNobodyTest,
 	// because nothing pulses for a dead one -- the opposite of a floor hazard,
 	// which must outlive the death that created it. Issue #1605.
 	ACataclysmEnemyCharacter* Medic =
-		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 500.0f);
 	ACataclysmEnemyCharacter* Ally =
 		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 200.0f);
 	if (!TestNotNull(TEXT("a medic"), Medic)
@@ -1992,7 +2015,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsOncePerPulseTest,
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	ACataclysmEnemyCharacter* Medic =
-		WoundedCreature(World, FVector::ZeroVector, 500.0f, 500.0f);
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 500.0f);
 	ACataclysmEnemyCharacter* Ally =
 		WoundedCreature(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 100.0f);
 	if (!TestNotNull(TEXT("a medic"), Medic)
@@ -2006,7 +2029,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsOncePerPulseTest,
 	// times a second and every other test here would still pass.
 	for (int32 Step = 0; Step < 3; ++Step)
 	{
-		UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f);
+		UCataclysmEnemyModifiers::AuraStep(Medic, 0.25f);
 	}
 
 	TestEqual(TEXT("nothing is healed before the second is up"),
@@ -2014,8 +2037,63 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicHealsOncePerPulseTest,
 
 	// THE FOURTH STEP COMPLETES THE SECOND.
 	TestEqual(TEXT("the fourth step pulses"),
-			  UCataclysmEnemyModifiers::HealAlliesStep(Medic, 0.25f), 1);
+			  UCataclysmEnemyModifiers::AuraStep(Medic, 0.25f), 1);
 	TestEqual(TEXT("and it healed once, not four times"),
+			  HealthOf(Ally), 125.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicAndAuraShareOneClockTest,
+	"Cataclysm.EnemyModifiers.AMedicCarryingAnAuraStillPulsesOncePerSecond")
+{
+	using namespace CataclysmMedicTest;
+
+	// THIS IS THE CASE THE EARLIER SHAPE COULD NOT HAVE HAD. The healing used
+	// to keep its own copy of the pulse clock, so a creature that was both the
+	// floor's medic and carried an aura advanced ONE field twice every step and
+	// everything it did fired twice as often as the design states.
+	//
+	// NO OTHER TEST HERE CAN SEE IT, because every other one gives the medic no
+	// modifier rows, and with none the second clock was never advanced.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Medic =
+		TheFloorsMedic(World, FVector::ZeroVector, 500.0f, 500.0f);
+	ACataclysmEnemyCharacter* Ally =
+		TheFloorsMedic(World, FVector(200.0f, 0.0f, 0.0f), 500.0f, 100.0f);
+	if (!TestNotNull(TEXT("a medic"), Medic)
+		|| !TestNotNull(TEXT("a wounded ally"), Ally))
+	{
+		return false;
+	}
+
+	// THE ALLY IS NOT A SECOND MEDIC. TheFloorsMedic marks whatever it makes,
+	// and two medics healing each other would make the arithmetic below mean
+	// nothing.
+	Ally->bHealsAlliesForTheFloorRule = false;
+
+	// AND THE MEDIC ALSO CARRIES AN AURA, which is the whole point: both
+	// behaviours now read and clear the same field.
+	Medic->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HellfireAuraRow));
+
+	// THREE QUARTERS OF A SECOND. A clock advanced twice a step would already
+	// have passed one second here and healed.
+	for (int32 Step = 0; Step < 3; ++Step)
+	{
+		UCataclysmEnemyModifiers::AuraStep(Medic, 0.25f);
+	}
+	TestEqual(TEXT("nothing is healed before the second is up"),
+			  HealthOf(Ally), 100.0f, 0.01f);
+
+	// THE FOURTH STEP COMPLETES THE SECOND, and heals once rather than twice.
+	UCataclysmEnemyModifiers::AuraStep(Medic, 0.25f);
+	TestEqual(TEXT("and then it heals five percent once, not twice"),
 			  HealthOf(Ally), 125.0f, 0.01f);
 
 	return true;
@@ -2026,8 +2104,12 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicStepIsSafeTest,
 {
 	// THE SAME REFUSAL THE AURA STEP MAKES, for the same reason: whatever calls
 	// this may hand it a player, or a null from a torn-down world.
+	//
+	// THE HEALING DIRECTLY RATHER THAN THROUGH `AuraStep`, because the step's
+	// own refusal already has a test of its own and this one is about the
+	// healing keeping its guard even though its only caller checks first.
 	TestEqual(TEXT("a null actor heals nobody"),
-			  UCataclysmEnemyModifiers::HealAlliesStep(nullptr, 0.25f), 0);
+			  UCataclysmEnemyModifiers::HealAlliesPulse(nullptr), 0);
 
 	return true;
 }

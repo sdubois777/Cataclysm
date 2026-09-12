@@ -21,6 +21,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
@@ -2929,6 +2930,106 @@ bool FCataclysmDungeonModeOrdinaryHasNoWavesTest::RunTest(const FString& Paramet
 			  Mode->ChooseFloorNumber(), 1);
 	TestEqual(TEXT("and no floor was descended"), Mode->FloorsDescended, 0);
 	TestEqual(TEXT("and no wave arrived"), Mode->WavesArrived, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorChoosesOneMedicTest,
+	"Cataclysm.DungeonMode.AFloorCarryingFieldMedicGivesExactlyOneCreatureTheRole",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorChoosesOneMedicTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THROUGH `PopulateFloor` AND NOT BY CALLING THE CHOOSER, because what is
+	// in doubt is whether anything in the game reaches it at all. A test that
+	// called the chooser directly would pass on a branch where the two call
+	// sites had been deleted.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestNotNull(TEXT("it built a floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const FName MedicKey =
+		FName(UCataclysmDungeonModifierEffects::FieldMedicKey);
+
+	// THE CONTROL FIRST, AND IT IS THE HALF THAT MATTERS MOST. Without it a
+	// rule that marked a medic on every floor, rule or no rule, would pass the
+	// half below and look correct.
+	Mode->FloorBrief.Modifiers.Remove(MedicKey);
+	if (!TestTrue(TEXT("a floor without the rule still has creatures on it"),
+				  Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	int32 MedicsWithoutTheRule = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++MedicsWithoutTheRule;
+		}
+	}
+	TestEqual(TEXT("a floor without the rule has no medic"),
+			  MedicsWithoutTheRule, 0);
+
+	// NOW THE SAME FLOOR CARRYING THE RULE.
+	Mode->ClearFloorEnemies();
+	Mode->FloorBrief.Modifiers.AddUnique(MedicKey);
+	if (!TestTrue(TEXT("and it populates again"), Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	int32 Medics = 0;
+	int32 RarestStep = MIN_int32;
+	int32 MedicStep = MIN_int32;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		RarestStep = FMath::Max(RarestStep, Enemy->RarityStep);
+		if (Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++Medics;
+			MedicStep = Enemy->RarityStep;
+		}
+	}
+
+	TestEqual(TEXT("a floor carrying the rule has exactly one medic"),
+			  Medics, 1);
+
+	// AND IT IS THE RAREST CREATURE THERE, which is the nearest thing to the
+	// row's "elite" the game can say today.
+	TestEqual(TEXT("and the medic is the rarest creature on the floor"),
+			  MedicStep, RarestStep);
+
+	// AND A SECOND POPULATION DOES NOT ADD A SECOND ONE while the first is
+	// still standing.
+	Mode->PopulateFloor();
+	int32 MedicsAfterMore = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++MedicsAfterMore;
+		}
+	}
+	TestEqual(TEXT("populating again leaves the floor with one medic"),
+			  MedicsAfterMore, 1);
 
 	return true;
 }

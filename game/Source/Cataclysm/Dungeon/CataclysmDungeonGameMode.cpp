@@ -992,6 +992,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 			}
 		}
 		WaveSpawned = Spawned;
+
+		// AND ONE OF THEM IS THE FLOOR'S MEDIC, if the floor carries that rule.
+		// After the loop rather than inside it, because the choice is the
+		// rarest creature and rarity is not known until each one has spawned.
+		ChooseTheFloorsMedic();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -1119,6 +1124,54 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	return Enemy;
 }
 
+void ACataclysmDungeonGameMode::ChooseTheFloorsMedic()
+{
+	// ONLY A FLOOR CARRYING THE RULE HAS A MEDIC. `FloorBrief.Modifiers` is
+	// the floor's own list rather than the dungeon's, so a Volatile dungeon
+	// that draws Field Medic onto one floor puts a medic on that floor only.
+	if (!FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::FieldMedicKey)))
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Rarest = nullptr;
+	for (ACataclysmEnemyCharacter* Enemy : FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		if (Enemy->bHealsAlliesForTheFloorRule)
+		{
+			// THE FLOOR ALREADY HAS ONE AND IT IS STILL HERE. A second would
+			// heal alongside the first, which the row does not ask for.
+			return;
+		}
+
+		if (Rarest == nullptr || Enemy->RarityStep > Rarest->RarityStep)
+		{
+			// STRICTLY GREATER, so a tie keeps the earlier creature and the
+			// choice does not depend on how the list happens to be ordered
+			// beyond the order the population pass placed them in.
+			Rarest = Enemy;
+		}
+	}
+
+	if (Rarest == nullptr)
+	{
+		// AN EMPTY FLOOR HAS NO MEDIC, rather than the rule failing.
+		return;
+	}
+
+	Rarest->bHealsAlliesForTheFloorRule = true;
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s is this floor's medic, at rarity step %d."),
+		*Rarest->GetName(), Rarest->RarityStep);
+}
+
 // ---------------------------------------------------------------------------
 // Waves, for a Horde dungeon. Issue #1467
 // ---------------------------------------------------------------------------
@@ -1164,6 +1217,11 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("The arriving wave is all on the floor: %d creatures."),
 			WaveSpawned);
+
+		// NOW AND NOT EARLIER, for the reason the ordinary route waits too: the
+		// choice is the rarest creature, and a wave that is still arriving may
+		// yet bring a rarer one.
+		ChooseTheFloorsMedic();
 	}
 
 	return Arrived;

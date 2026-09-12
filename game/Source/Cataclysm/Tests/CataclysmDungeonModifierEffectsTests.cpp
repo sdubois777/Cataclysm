@@ -1398,4 +1398,76 @@ bool FCataclysmModifierEffectsRealRowsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFieldMedicPartlyBuiltTest,
+	"Cataclysm.DungeonModifierEffects.TheFieldMedicRowIsPartlyBuiltAndNotBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFieldMedicPartlyBuiltTest::RunTest(const FString& Parameters)
+{
+	// THE ROW HAS TWO HALVES AND ONE OF THEM IS BUILT. It heals all other
+	// enemies in a radius, which works; it "does not attack", which cannot be
+	// said at all because nothing in the game stops a creature attacking.
+	// Issue #1680.
+	//
+	// PINNED SO THAT FINISHING THE OTHER HALF HAS TO COME BACK HERE. Marking
+	// it Built while a creature can still swing would put a wrong answer in
+	// the one place the project asks what is finished.
+	TestEqual(TEXT("the Field Medic row is partly built"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::FieldMedicKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+
+	// AND A CONTROL, so "partly" is not what this returns for everything.
+	TestEqual(TEXT("Starvation is fully built"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::StarvationKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryBuiltKeyIsListedTest,
+	"Cataclysm.DungeonModifierEffects.EveryRowWithSomethingBuiltIsInTheRuleList",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEveryBuiltKeyIsListedTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table =
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_DungeonModifiers would not load."));
+		return false;
+	}
+
+	// THE DIRECTION THE OTHER TEST CANNOT CHECK, and the reason this exists.
+	// `EveryRuleNamesARowOfTheTable` walks `KeysWithARule` and asks about each
+	// entry it finds, so a key that SHOULD be in that list and is not never
+	// enters its loop. Death's Embrace was exactly that for a while: returned
+	// as Built and absent from the list, with nothing able to see it.
+	// Issue #1677.
+	const TArray<FName> Listed = UCataclysmDungeonModifierEffects::KeysWithARule();
+	int32 Checked = 0;
+	for (const FName RowKey : Table->GetRowNames())
+	{
+		if (UCataclysmDungeonModifierEffects::BuiltStateOf(RowKey)
+			== ECataclysmModifierBuilt::NotBuilt)
+		{
+			continue;
+		}
+
+		++Checked;
+		TestTrue(FString::Printf(
+					 TEXT("%s has something built, so it must be listed as having a "
+						  "rule"), *RowKey.ToString()),
+				 Listed.Contains(RowKey));
+	}
+
+	// AND THE WALK ITSELF HAPPENED. Without this the test passes on a table
+	// that loaded with no rows, which is the failure it would least notice.
+	TestTrue(TEXT("at least one row has something built"), Checked > 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

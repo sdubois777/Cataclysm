@@ -596,6 +596,37 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	TArray<TObjectPtr<ACataclysmEnemyCharacter>> FloorEnemies;
 
+	/**
+	 * Give one creature on this floor the Field Medic role, if the floor
+	 * carries that rule and nothing living has it yet.
+	 *
+	 * WHAT THE ROW ASKS FOR. `War_Field_Medic`: "An elite 'Medic' enemy is
+	 * present on each floor. It does not attack, but constantly heals all
+	 * other enemies in a large radius." Issue #1648. The half it does not
+	 * attack is issue #1680 and is not built.
+	 *
+	 * CALLED WHEN A FLOOR'S CREATURES ARE ALL DOWN, from both routes: after
+	 * the loop that puts an ordinary floor down at once, and when an arriving
+	 * wave's last creature lands. Rarity is decided inside
+	 * `SpawnPlacedCreature`, so there is nothing to compare until then.
+	 *
+	 * THE RAREST CREATURE ON THE FLOOR, AND THE FIRST OF THEM ON A TIE, which
+	 * is the nearest thing to "elite" the game can say today. Deterministic
+	 * on purpose: the same floor chooses the same creature.
+	 *
+	 * ONE LIVING MEDIC AT A TIME, asked by looking rather than remembered in a
+	 * flag, so there is no per-floor state to reset wrongly. A medic that is
+	 * killed and cleaned up leaves the floor without one, which is the point
+	 * of the rule; on a Horde floor a later wave may then bring another.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE THE REAL THING RATHER THAN A COPY OF ITS
+	 * RULE. `FloorEnemies` above and `FloorBrief` are public for the same
+	 * reason: a test that had to build a whole dungeon to reach this would
+	 * not get written, and a pure helper tested on its own would not prove
+	 * that anything calls it.
+	 */
+	void ChooseTheFloorsMedic();
+
 	// ----------------------------------------------------------------------
 	// Waves, for a Horde dungeon. Issue #1467
 	//

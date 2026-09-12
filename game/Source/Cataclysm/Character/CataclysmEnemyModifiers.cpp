@@ -368,18 +368,28 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 {
 	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
-	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
+	if (Enemy == nullptr)
 	{
 		// THE PLAYER COMES THROUGH HERE EVERY STEP, because the step this hangs
-		// off is on the shared character base. So does every Common creature.
+		// off is on the shared character base.
 		return 0;
 	}
 
 	const bool bBurns = Carries(Enemy->ModifierRows, HellfireAuraRow);
 	const bool bStripsResistance =
 		Carries(Enemy->ModifierRows, AbyssalAuraRow);
-	if (!bBurns && !bStripsResistance)
+
+	// AND WHETHER THE FLOOR MADE THIS ONE ITS MEDIC, WHICH IS NOT A MODIFIER
+	// ROW. Being a medic comes from `game/Data/DungeonModifiers.csv` and is
+	// set at spawn; `ModifierRows` holds keys from a different table. The
+	// field's own comment says why the two are kept apart.
+	const bool bHealsAllies = Enemy->bHealsAlliesForTheFloorRule;
+
+	if (!bBurns && !bStripsResistance && !bHealsAllies)
 	{
+		// EVERY COMMON CREATURE COMES THROUGH HERE, carrying no aura and not
+		// being the floor's medic. The check that used to stand here asked
+		// whether `ModifierRows` was empty, which a medic can be.
 		return 0;
 	}
 
@@ -398,6 +408,24 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		return 0;
 	}
 	Enemy->SecondsSinceAuraPulse = 0.0f;
+
+	// ONE CLOCK, ADVANCED AND CLEARED IN ONE PLACE, AND EVERYTHING DUE FIRES
+	// FROM IT. The medic's pulse kept a second copy of those three lines
+	// until issue #1648 was wired up, so a creature that was both the floor's
+	// medic and carried an aura advanced the one clock twice every step and
+	// fired everything at twice the rate the design states.
+	int32 Touched = 0;
+	if (bHealsAllies)
+	{
+		Touched += HealAlliesPulse(Enemy);
+	}
+
+	if (!bBurns && !bStripsResistance)
+	{
+		// A MEDIC CARRYING NEITHER AURA IS FINISHED. What follows searches for
+		// this creature's ENEMIES, which for a medic is work with no result.
+		return Touched;
+	}
 
 	const UWorld* World = Enemy->GetWorld();
 	if (World == nullptr)
@@ -426,7 +454,6 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 			UCataclysmSkillEffects::NumbersForEffectTag(AbyssalTag).DurationSeconds;
 	}
 
-	int32 Touched = 0;
 	for (AActor* Target : Caught)
 	{
 		bool bAnythingLanded = false;
@@ -851,8 +878,7 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	return Acted;
 }
 
-int32 UCataclysmEnemyModifiers::HealAlliesStep(AActor* Character,
-											   float StepSeconds)
+int32 UCataclysmEnemyModifiers::HealAlliesPulse(AActor* Character)
 {
 	ACataclysmEnemyCharacter* Medic = Cast<ACataclysmEnemyCharacter>(Character);
 	if (Medic == nullptr)
@@ -875,13 +901,6 @@ int32 UCataclysmEnemyModifiers::HealAlliesStep(AActor* Character,
 	{
 		return 0;
 	}
-
-	Medic->SecondsSinceAuraPulse += StepSeconds;
-	if (!AuraPulseIsDue(Medic->SecondsSinceAuraPulse))
-	{
-		return 0;
-	}
-	Medic->SecondsSinceAuraPulse = 0.0f;
 
 	const UWorld* World = Medic->GetWorld();
 	if (World == nullptr)

@@ -186,6 +186,7 @@ public:
 	static const TCHAR* ForcedMarchKey;
 	static const TCHAR* NihilsEmbraceKey;
 	static const TCHAR* DeathsEmbraceKey;
+	static const TCHAR* FieldMedicKey;
 
 	/**
 	 * What Starvation takes per floor, and the most it takes.
