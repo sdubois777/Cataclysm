@@ -2567,3 +2567,170 @@ def test_soulfalls_ground_burns_the_player_and_nobody_else(
     assert "nobody on the Gatekeeper's own side" in soulfall.note, (
         "Soulfall's note no longer says whose side its ground burns, so the "
         "riders above and the prose beside them do not agree.")
+
+
+# --------------------------------------------------------------------------
+# The prose under an ability table, checked against the designed numbers.
+# Issue #468.
+# --------------------------------------------------------------------------
+#
+# WHAT WENT WRONG. Issue #463 changed the Brute's rock throw from `Speed=1200`
+# to `Speed=600` on 2026-08-09. It updated the table row. It did not update the
+# paragraph four lines below it, which still read "Speed 1200 is the Succubus's
+# Soulfire figure, the slowest projectile any player skill uses." So the
+# document stated two different speeds for the same attack, four lines apart,
+# and the whole suite was green for a day.
+#
+# WHY `assert_row_matches` COULD NOT CATCH IT. That check asks whether the RIGHT
+# value is present in the table cell. It never asks whether a WRONG one is also
+# present somewhere else in the section. A section holding `Speed=600` in its
+# table and "Speed 1200" in its prose satisfies it completely.
+
+#: A parameter's name followed by a number, in a sentence: "Speed 1200 is",
+#: "Range 10 metres is". The form the stale sentence took.
+PROSE_FIGURE = re.compile(r"\b(?P<key>[A-Z][A-Za-z]*)\s+(?P<value>\d+(?:\.\d+)?)\b")
+
+
+def prose_of(enemy: str) -> str:
+    """One enemy's subsection with its tables and backticked spans removed.
+
+    TABLE ROWS GO because `assert_row_matches` already checks those, and a row
+    reading `| Rip and Toss | ... | Range=10; ... |` would otherwise be read as
+    prose by the pattern above.
+
+    BACKTICKED SPANS GO because a parameter list is written in them, and so is
+    the occasional inline mention of a constant. What is left is the sentences a
+    person reads to find out WHY a number is what it is, which is the copy issue
+    #468 is about.
+    """
+    text = GDD.read_text(encoding="utf-8")
+    marker = SUBSECTION_MARKER.format(name=enemy)
+    start = text.find(marker)
+    assert start != -1, (
+        f"docs/Cataclysm_GDD_v2.md has no {marker} subsection.")
+    after = start + len(marker)
+    ends = [position for position in (text.find("\n### ", after),
+                                      text.find("\n# ", after),
+                                      text.find(NEXT_SECTION, after))
+            if position != -1]
+    section = text[start:min(ends) if ends else len(text)]
+
+    without_tables = "\n".join(line for line in section.splitlines()
+                               if not line.lstrip().startswith("|"))
+    return unwrapped(re.sub(r"`[^`]*`", " ", without_tables))
+
+
+def designed_values(enemy: str) -> dict[str, set[str]]:
+    """Every value each parameter name takes across one enemy's abilities.
+
+    A SET PER NAME AND NOT ONE VALUE PER ABILITY, deliberately. The Gatekeeper's
+    Soulfall has `Range=14` and its Call the Damned has `Range=4`, and a
+    sentence saying "Range 4" is about the second. Nothing in the prose says
+    which ability it means, so the strongest statement the text supports is that
+    a number written beside a parameter name is one of the values that enemy's
+    abilities actually give it. Demanding a particular ability's value would
+    fail on a correct document.
+    """
+    from cataclysm_sim.enemy_abilities import abilities
+
+    out: dict[str, set[str]] = {}
+    for ability in abilities(enemy):
+        for key, value in ability.params.items():
+            out.setdefault(key, set()).add(f"{value}")
+    return out
+
+
+def enemies_with_abilities() -> list[str]:
+    from cataclysm_sim.enemy_abilities import ABILITIES
+
+    return sorted(ABILITIES)
+
+
+def prose_figures(enemy: str) -> list[tuple[str, str]]:
+    """Every parameter name followed by a number in one enemy's prose."""
+    designed = designed_values(enemy)
+    found = []
+    for match in PROSE_FIGURE.finditer(prose_of(enemy)):
+        key = match.group("key")
+        if key in designed:
+            found.append((key, match.group("value")))
+    return found
+
+
+@pytest.mark.parametrize("enemy", enemies_with_abilities())
+def test_a_number_in_the_prose_is_one_the_ability_table_states(enemy):
+    """The check issue #468 was opened for.
+
+    WHAT THIS COVERS, AND IT IS NARROW TODAY. Measured 2026-09-12: the seven
+    enemies have 18 abilities between them carrying 68 parameter values, 64 of
+    them numeric, and THREE of those appear in prose in this form -- all three
+    in the Brute's subsection, all three correct. Six of the seven enemies have
+    none at all.
+
+    THAT IS NOT THE SAME AS COVERING THREE THINGS. A guard covers every instance
+    added after it, not only the ones present when it was written. The design
+    document is actively edited, which is exactly when prose drifts from a
+    table, and the moment anybody writes "Speed 1200 is the slowest projectile"
+    under a table saying 600, this fails. The three values it covers today are
+    the floor, not the ceiling. DO NOT DELETE THIS ON THE GROUNDS THAT IT GUARDS
+    THREE NUMBERS.
+
+    WHAT IT DOES NOT COVER, so that nobody mistakes it for the general check:
+
+      * A NUMBER WRITTEN WITH ITS UNIT AND WITHOUT ITS PARAMETER NAME. "2.1
+        metres" and "a tenth of a second" are invisible here. That is the
+        stronger shape, and it is issue #1634. **That gap is demonstrated and
+        not only described**: a break making the prose say "It stuns for 1.9
+        seconds" against a designed `StunSeconds=1.5` leaves this quiet, and the
+        proof is in the pull request that added this and in #1634.
+      * ANYTHING INSIDE A BACKTICKED SPAN, which `prose_of` strips, because a
+        parameter list is written that way and `assert_row_matches` already
+        reads it.
+      * ANY TABLE ROW, for the same reason.
+      * WHICH ABILITY A SENTENCE IS ABOUT. See `designed_values`: a number is
+        accepted if it is one of the values that enemy's abilities give the
+        named parameter, because the prose does not say which ability it means.
+        So a sentence about Soulfall quoting Call the Damned's Range passes.
+    """
+    designed = designed_values(enemy)
+    wrong = []
+    for key, value in prose_figures(enemy):
+        if value in designed[key]:
+            continue
+        # "10" against a designed 10.0, and the reverse.
+        try:
+            if any(float(value) == float(each) for each in designed[key]):
+                continue
+        except ValueError:
+            pass
+        wrong.append(f"the prose says {key} {value} and "
+                     f"{enemy}'s abilities give {key} "
+                     f"{' or '.join(sorted(designed[key]))}")
+
+    assert not wrong, (
+        f"the {enemy}'s section states a parameter value in its prose that no "
+        "ability of that enemy has. The table and the sentences under it have "
+        "to agree; issue #463 changed a table row and left the paragraph below "
+        "it saying the old number, and nothing noticed for a day. Issue #468. "
+        "-- " + "; ".join(sorted(wrong)))
+
+
+def test_the_prose_check_is_reading_something():
+    """A check over no text passes and proves nothing.
+
+    THE COUNT IS NOT PINNED, only that it is not zero. Pinning three would fail
+    the next time somebody writes a sentence, which is the opposite of what this
+    guard is for.
+    """
+    found = {enemy: prose_figures(enemy) for enemy in enemies_with_abilities()}
+    total = sum(len(hits) for hits in found.values())
+    assert total > 0, (
+        "no enemy subsection states a parameter name followed by a number in "
+        "its prose, so the check above compares nothing at all and passes "
+        "whatever the document says. If the prose genuinely stopped doing this, "
+        "that test is now inert and should be deleted rather than left looking "
+        "like cover. Issue #468.")
+
+    assert any(prose_of(enemy) for enemy in enemies_with_abilities()), (
+        "every enemy subsection is empty once tables and backticked spans are "
+        "removed, so `prose_of` is stripping more than it should")
