@@ -1119,3 +1119,26 @@ float UCataclysmAbilitySystemComponent::GetStatModifierValue(int32 Handle) const
 	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);
 	return Index == INDEX_NONE ? 0.0f : StatModifiers[Index].Value;
 }
+
+int32 UCataclysmAbilitySystemComponent::ExecutePeriodicEffectsGrantingForTests(
+	const FGameplayTag& GrantedTag)
+{
+	if (!GrantedTag.IsValid())
+	{
+		return 0;
+	}
+
+	// FOUND THE WAY `UCataclysmSkillEffects::RemoveEffectsGranting` FINDS THEM:
+	// by the tag the effect grants this character, which for a damage-over-time
+	// effect is its ailment.
+	FGameplayTagContainer Granted;
+	Granted.AddTag(GrantedTag);
+	const TArray<FActiveGameplayEffectHandle> Running = GetActiveEffects(
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granted));
+
+	for (const FActiveGameplayEffectHandle& Handle : Running)
+	{
+		ExecutePeriodicEffect(Handle);
+	}
+	return Running.Num();
+}

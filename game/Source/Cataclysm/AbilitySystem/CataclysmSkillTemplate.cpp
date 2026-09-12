@@ -6,6 +6,8 @@
 // knows nothing about it.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
+// For announcing a skill once it has been paid for. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 // For the health cost a character adds to every skill. Issue #970.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For marking a cursed creature so its curse passes on when it dies.
@@ -119,6 +121,12 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 				   /*bReplicateEndAbility=*/true, /*bWasCancelled=*/true);
 		return false;
 	}
+
+	// ANNOUNCED ONCE IT HAS BEEN PAID FOR, which is the commit above. Issue #41,
+	// slice 4. Every one of the eight skill shapes and the basic attack pass
+	// through here, and a skill the cost or the cooldown refused has already
+	// returned, so a refused press announces nothing.
+	UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot);
 
 	PayHealthCost();
 
@@ -1112,7 +1120,8 @@ int32 UCataclysmSkillTemplate::IgniteAroundConsumed(
 			// rather than a chance on hit.
 			if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage,
 												  /*bScalesWithInstigator=*/true,
-												  /*bBurnIsDesigned=*/true))
+												  /*bBurnIsDesigned=*/true,
+												  /*DealtBy=*/nullptr, /*Skill=*/this))
 			{
 				++Lit;
 			}
@@ -1200,7 +1209,8 @@ int32 UCataclysmSkillTemplate::SpreadFireAround(AActor* From)
 		// so without that decision this would light nobody at all.
 		if (UCataclysmSkillEffects::ApplyBurn(Self, Caught, HitDamage,
 											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true))
+											  /*bBurnIsDesigned=*/true,
+											  /*DealtBy=*/nullptr, /*Skill=*/this))
 		{
 			++Lit;
 		}
@@ -1616,6 +1626,10 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// anything or not.
 	Delivery.SkillHealthCostPercent = LastHealthCostPercentOfMaximum;
 
+	// AND THIS SKILL ITSELF, SO WHAT IT HITS CAN NAME IT. Issue #41, slice 4.
+	// Carried on the effect context; see `FCataclysmHitDelivery::Skill`.
+	Delivery.Skill = this;
+
 	float Total = 0.0f;
 
 	// EVERYTHING THIS USE PINNED, KEPT SO THAT `OnDeath=Release` CAN BIND IT
@@ -1724,7 +1738,8 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		{
 			UCataclysmSkillEffects::ApplyBurn(Self, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true);
+											  /*bBurnIsDesigned=*/true,
+											  /*DealtBy=*/nullptr, /*Skill=*/this);
 		}
 
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.

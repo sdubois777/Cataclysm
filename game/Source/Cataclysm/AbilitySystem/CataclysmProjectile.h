@@ -8,6 +8,7 @@
 #include "CataclysmProjectile.generated.h"
 
 class ACataclysmProjectile;
+class UGameplayAbility;
 class UStaticMeshComponent;
 
 /** Told when a projectile has finished flying, and where it stopped. */
@@ -111,6 +112,9 @@ public:
 	 * @param InSkillHealthCostPercent what the firing skill cost, as a share of
 	 *   the firer's maximum health. -1, the default, means no skill cost is
 	 *   known, which is what an enemy's thrown rock passes. Issue #983.
+	 * @param InFiringSkill the skill that fired it, carried so what it hits can
+	 *   name the skill. Null, the default, for anything no skill fired, such as
+	 *   an enemy's thrown rock. Issue #41, slice 4.
 	 * @return the projectile, or null if the world or the caster is missing, or if
 	 *   it was given neither a speed nor a flight time
 	 */
@@ -123,7 +127,8 @@ public:
 									  UStaticMesh* InBodyMesh = nullptr,
 									  float InFlightSeconds = 0.0f,
 									  float InCritChancePercent = -1.0f,
-									  float InSkillHealthCostPercent = -1.0f);
+									  float InSkillHealthCostPercent = -1.0f,
+									  const UGameplayAbility* InFiringSkill = nullptr);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -591,6 +596,14 @@ private:
 	 * Issue #983.
 	 */
 	float SkillHealthCostPercent = -1.0f;
+
+	/**
+	 * The skill that fired it, carried for the reason the two figures above
+	 * are: it lands after that skill has finished. Given to every blow it
+	 * deals and every burn it leaves, so the hit and death notices can name
+	 * the skill. Issue #41, slice 4.
+	 */
+	TWeakObjectPtr<const UGameplayAbility> FiringSkill;
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;

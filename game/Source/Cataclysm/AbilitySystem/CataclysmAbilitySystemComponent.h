@@ -8,6 +8,9 @@
 // For what a blow resolved to, which this component records for the caller that
 // applied it. Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the last blow this character took, which a death reads to say who
+// dealt it. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmLeech.h"
 // For the kinds of stack this component keeps a count of. Issue #1002. The
 // header carries the enumerator and forward-declares this class, so including
@@ -860,6 +863,36 @@ public:
 		return ResolvedHitStamp;
 	}
 
+	/**
+	 * Keeps the blow that just landed as this character's last. Issue #41, slice
+	 * 4. Written by `UCataclysmCombatEvents::NoteBlow` for every blow that
+	 * reached health, and read by `UCataclysmCombatEvents::NoteDeath`, which is
+	 * how a death says who dealt it. See `FCataclysmLastBlow`.
+	 */
+	void RecordLastBlow(FCataclysmLastBlow&& Blow)
+	{
+		LastBlow = MoveTemp(Blow);
+	}
+
+	/** The last blow that reached this character's health. */
+	const FCataclysmLastBlow& GetLastBlow() const
+	{
+		return LastBlow;
+	}
+
+	/**
+	 * Runs one tick, now, of every running effect that grants this tag. FOR
+	 * TESTS. Issue #41, slice 4.
+	 *
+	 * WHY IT EXISTS. A damage-over-time effect ticks on the world's timers,
+	 * which an automation test world never runs, and the engine's
+	 * `ExecutePeriodicEffect` is protected. Without this, no test could watch a
+	 * bleed tick land, so none could check what a death from one says.
+	 *
+	 * @return how many effects ran a tick
+	 */
+	int32 ExecutePeriodicEffectsGrantingForTests(const FGameplayTag& GrantedTag);
+
 protected:
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
@@ -1099,4 +1132,7 @@ protected:
 	 */
 	FCataclysmDamageResult LastResolvedHit;
 	uint32 ResolvedHitStamp = 0;
+
+	/** See `RecordLastBlow`. Not replicated, for the reason the record above gives. */
+	FCataclysmLastBlow LastBlow;
 };

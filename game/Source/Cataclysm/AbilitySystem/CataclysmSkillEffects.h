@@ -9,6 +9,7 @@
 
 class UAbilitySystemComponent;
 class UDataTable;
+class UGameplayAbility;
 class UGameplayEffect;
 struct FGameplayEffectContextHandle;
 
@@ -288,6 +289,42 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	FGameplayTag SkillElement;
+
+	/**
+	 * The actor that dealt the blow, when that is not the instigator. Issue #41,
+	 * slice 4.
+	 *
+	 * FOR A SUMMONED MINION, whose blow is dealt in its summoner's name, so the
+	 * instigator and the causer are both the summoner and nothing else on the
+	 * effect says a minion was involved. `ApplyDirectDamage` records this as
+	 * the effect context's source object. The hit and death notices read it,
+	 * and nothing that works out damage does.
+	 *
+	 * EMPTY IS THE ORDINARY CASE, for every blow a character deals itself.
+	 */
+	UPROPERTY()
+	TWeakObjectPtr<AActor> DealtBy;
+
+	/**
+	 * The skill that dealt the blow, when a skill did. Issue #41, slice 4.
+	 *
+	 * CARRIED TO THE TARGET ON THE EFFECT CONTEXT, with the engine's own
+	 * `FGameplayEffectContext::SetAbility`, so the hit and death notices can
+	 * name it. The coordinating session chose that field on 2026-09-11 over a
+	 * context type of this project's own, which would need an ability system
+	 * globals class and a line of config.
+	 *
+	 * THE NOTICES READ THE INSTANCE, NOT THE CLASS. The context keeps both, and
+	 * every player skill is an instance of one of the eight template classes
+	 * with its name and tags set on the instance from its row, so the class
+	 * default object names no skill at all. `UCataclysmCombatEvents` reads
+	 * `GetAbilityInstance_NotReplicated`.
+	 *
+	 * EMPTY FOR A BLOW NO SKILL DEALT: a creature's attack, a minion's blow,
+	 * retaliation. Not a UPROPERTY, because nothing reflects it and a weak
+	 * pointer needs no reflection to be safe.
+	 */
+	TWeakObjectPtr<const UGameplayAbility> Skill;
 
 	/** A hit that covers ground rather than touching one target. */
 	static FCataclysmHitDelivery Area()
@@ -616,11 +653,21 @@ public:
 	 *                   would pass false. A chance to burn from gear does not
 	 *                   come here: `UCataclysmAilments::RollOnLandedBlow` applies
 	 *                   the same threshold once for every ailment. Issue #899
+	 * @param DealtBy  the actor that dealt the blow, when that is not the
+	 *                 instigator: a minion, whose burn is applied in its
+	 *                 summoner's name. Recorded as the effect context's source
+	 *                 object for the hit and death notices, and read by nothing
+	 *                 that works out damage. Issue #41, slice 4
+	 * @param Skill    the skill that applied it, when a skill did. Carried on
+	 *                 the effect context so the notice of every tick can name
+	 *                 it; see `FCataclysmHitDelivery::Skill`. Issue #41, slice 4
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
 						  bool bScalesWithInstigator = true,
-						  bool bBurnIsDesigned = false);
+						  bool bBurnIsDesigned = false,
+						  AActor* DealtBy = nullptr,
+						  const UGameplayAbility* Skill = nullptr);
 
 	/**
 	 * A percentage-of-normal stat read as a plain multiplier.
@@ -953,11 +1000,18 @@ public:
 	 *                     name. A minion's burn is applied with its summoner as
 	 *                     the instigator, and the design names damage over time
 	 *                     among what a minion does not take from its summoner.
+	 * @param DealtBy      the actor that dealt it, when that is not the
+	 *                     instigator. Recorded as the context's source object;
+	 *                     see `ApplyBurn`. Issue #41, slice 4
+	 * @param Skill        the skill that applied it, when a skill did; see
+	 *                     `ApplyBurn`. Issue #41, slice 4
 	 */
 	static bool ApplyDamageOverTime(AActor* Instigator, AActor* Target,
 									float DamagePerTick, float DurationSeconds,
 									const FGameplayTag& EffectTag,
-									bool bScalesWithInstigator = true);
+									bool bScalesWithInstigator = true,
+									AActor* DealtBy = nullptr,
+									const UGameplayAbility* Skill = nullptr);
 
 	/**
 	 * Grant a tag for a duration and nothing else.

@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+// For the skill that fired it, which its blows carry. Issue #41, slice 4.
+#include "Abilities/GameplayAbility.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -156,7 +158,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
 	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent,
-	float InSkillHealthCostPercent)
+	float InSkillHealthCostPercent, const UGameplayAbility* InFiringSkill)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InRadiusCm <= 0.0f)
@@ -270,6 +272,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->SkillTags = InSkillTags;
 	Projectile->CritChancePercent = InCritChancePercent;
 	Projectile->SkillHealthCostPercent = InSkillHealthCostPercent;
+	Projectile->FiringSkill = InFiringSkill;
 	Projectile->bBurns = bInBurns;
 
 	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
@@ -600,6 +603,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// this blow with whatever was last paid. Issue #983.
 	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
 
+	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
+	Delivery.Skill = FiringSkill;
+
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Firer, Target, DamagePercent, SkillTags, Delivery, &Resolved);
@@ -625,7 +631,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		{
 			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,
-											  /*bBurnIsDesigned=*/true);
+											  /*bBurnIsDesigned=*/true,
+											  /*DealtBy=*/nullptr,
+											  /*Skill=*/FiringSkill.Get());
 		}
 	}
 }

@@ -202,6 +202,39 @@ HOOKS = {
         },
         "questions": set(),
     },
+    # TWO HOOKS IN THE CREATURE BRAIN, AND THEY ARE WHERE A CREATURE'S ABILITY
+    # BEGINS. Issue #41, slice 4. No creature ability goes through the skill
+    # template's `CommitAndBegin`, which is where a player's skill is announced,
+    # so the brain announces it straight after each of its two
+    # `UseEnemyAbility` calls: one after a wind-up and one with none. Getting a
+    # creature's brain to choose and use an ability in an automation test takes
+    # a whole fight's scaffolding, so this reads the two calls instead.
+    #
+    # THEY ANSWER `bool` AND `ECataclysmBrainAction`, not `void` like every hook
+    # above, which is what the `returns` key is for.
+    "ACataclysmEnemyController::ContinueWindUp": {
+        "file": CHARACTER / "CataclysmEnemyController.cpp",
+        "returns": "bool",
+        "jobs": {
+            "UCataclysmCombatEvents::NoteCreatureAbility":
+                "announcing a creature's telegraphed ability as a skill "
+                "used, which the movement state reads to know when a "
+                "creature last attacked, issue #41",
+        },
+        "questions": set(),
+    },
+    "ACataclysmEnemyController::UseAbilitiesOn": {
+        "file": CHARACTER / "CataclysmEnemyController.cpp",
+        "returns": "ECataclysmBrainAction",
+        "jobs": {
+            "UCataclysmCombatEvents::NoteCreatureAbility":
+                "announcing a creature's ability with no wind-up as a "
+                "skill used, issue #41",
+        },
+        "questions": {
+            "UCataclysmCommand::AttackIntervalScaleFor",
+        },
+    },
 }
 
 
@@ -265,7 +298,7 @@ EVERY_JOB = [
 
 @pytest.mark.parametrize("hook,call,what_it_does", EVERY_JOB)
 def test_the_hook_runs_this_job(hook: str, call: str, what_it_does: str) -> None:
-    body = body_of(HOOKS[hook]["file"], hook)
+    body = body_of(HOOKS[hook]["file"], hook, HOOKS[hook].get("returns", "void"))
     assert call in body, (
         f"{hook} does not call {call}, which is {what_it_does}. Nothing else "
         f"calls it, so the feature does nothing in play. Every automation test "
@@ -282,7 +315,7 @@ def test_the_jobs_are_pinned(hook: str) -> None:
     here rather than finding out later.
     """
     spec = HOOKS[hook]
-    body = body_of(spec["file"], hook)
+    body = body_of(spec["file"], hook, spec.get("returns", "void"))
 
     called = {name.rstrip("( \t")
               for name in re.findall(r"\bUCataclysm\w+::\w+\s*\(", body)}

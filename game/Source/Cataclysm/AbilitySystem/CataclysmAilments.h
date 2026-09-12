@@ -9,6 +9,7 @@
 
 class AActor;
 class UAbilitySystemComponent;
+class UGameplayAbility;
 struct FGameplayEffectSpec;
 struct FGameplayTagContainer;
 
@@ -189,8 +190,12 @@ public:
 	 *
 	 * @param Magnitude  one for a chance up to 100%, and the chance divided by
 	 *                   100 past it
+	 * @param Skill      the skill whose blow rolled it, if a skill's blow
+	 *                   did. Carried on the effect context, so that the
+	 *                   notice of each tick names it. Issue #41, slice 4
 	 * @return whether anything was applied
 	 */
 	static bool Apply(AActor* Instigator, AActor* Target,
-					  const FCataclysmAilmentKind& Kind, float Magnitude);
+					  const FCataclysmAilmentKind& Kind, float Magnitude,
+					  const UGameplayAbility* Skill = nullptr);
 };

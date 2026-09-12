@@ -249,7 +249,11 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 		float Chance = 0.0f;
 		float Magnitude = 1.0f;
 		Application(Total, Chance, Magnitude);
-		if (AilmentRoll() < Chance && Apply(Applier, Defender, Kind, Magnitude))
+		// THE SKILL WHOSE BLOW ROLLED IT goes on the ailment too, so that
+		// every tick of it names the skill. Issue #41, slice 4.
+		if (AilmentRoll() < Chance
+			&& Apply(Applier, Defender, Kind, Magnitude,
+					 Spec.GetContext().GetAbilityInstance_NotReplicated()))
 		{
 			++Applied;
 		}
@@ -258,7 +262,8 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 }
 
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
-							   const FCataclysmAilmentKind& Kind, float Magnitude)
+							   const FCataclysmAilmentKind& Kind, float Magnitude,
+							   const UGameplayAbility* Skill)
 {
 	if (Kind.Shape == EShape::Stun || Kind.Shape == EShape::NotBuilt)
 	{
@@ -292,7 +297,8 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		return Row.bUsable
 			&& UCataclysmSkillEffects::ApplyDamageOverTime(Instigator, Target,
 				Row.FlatDamagePerTick * Scale, Row.DurationSeconds, Tag,
-				/*bScalesWithInstigator=*/true);
+				/*bScalesWithInstigator=*/true,
+				/*DealtBy=*/nullptr, Skill);
 
 	case EShape::StrongerWithMagnitude:
 		// NO DAMAGE TYPE, so it cuts the one generic resistance an enemy holds,
