@@ -50,6 +50,23 @@ collects `sim/tests/` and `tools/tests/` together. Running `sim/tests/` on its
 own, as the narrowed example further down this file does, misses more than half
 the suite; narrow deliberately, not by habit.
 
+**Never add `-q` to `python -m pytest`.** `pyproject.toml` already sets
+`addopts = "-q"`, so a second one gives pytest `-qq` -- and at `-qq` **no count
+line is printed at all**. The run still reaches 100%, still exits 0, and writes
+nothing to standard error, so the log looks healthy and the one figure every pull
+request quotes is simply absent. It is not the shell: the same suite lost it
+through PowerShell and through Git Bash, and both got it back when the flag was
+dropped. `tools/prove_guard.py` line 118 records the sibling, where a collection
+error under that same configured `-q` prints neither "collected" nor the session
+banner. Measured 2026-09-12; it cost two full suite runs and two sessions hit it
+independently. Issue #1612.
+
+**For any run you intend to quote, take a second count that no flag can
+silence:** `python -u -m pytest --junit-xml=<a path outside the repository>`. Its
+`testsuite` element carries `tests`, `failures`, `errors` and `skipped` as
+attributes, so passes are `tests` minus the other three. Two sources agreeing is
+what makes a figure worth publishing.
+
 ```bash
 # Unreal, run from game/. The engine bundles its own .NET 10; invoking
 # UnrealBuildTool.exe directly fails without a system-wide .NET 10 install.
