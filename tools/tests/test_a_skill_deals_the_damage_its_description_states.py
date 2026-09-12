@@ -39,7 +39,14 @@ SKILL_SLOTS = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
 #:
 #: `UCataclysmSkillTemplate::GetDamagePercent` answers the skill's own figure and
 #: falls back to the slot's when the skill states none. Issue #836 records why
-#: that order is right, and 393 of the 403 rows take the fallback.
+#: that order is right, and most rows take the fallback.
+#:
+#: THIS SAID "393 OF THE 403 ROWS" AND NEITHER NUMBER WAS RIGHT. Issue #1243.
+#: Measured 2026-09-12: `game/Data/WeaponSkills.csv` holds 403 rows, 12 state a
+#: damage percentage and 391 sit at this sentinel. Writing the designed skills'
+#: numbers is the rest of issue #836, so both figures move whenever one is
+#: filled in, and no replacement count is written here.
+#: `test_both_kinds_of_row_exist` below reads the file instead of restating it.
 NO_FIGURE_STATED = -1.0
 
 #: A percentage of weapon damage, as the descriptions write it.
@@ -89,6 +96,40 @@ def test_the_weapon_skills_table_is_readable(skill_rows) -> None:
     assert "DamagePercent" in skill_rows[0], (
         "WeaponSkills.csv has no DamagePercent column, so this check cannot "
         "compare anything. Run tools/generate_datatables.py.")
+
+
+def test_both_kinds_of_row_exist(skill_rows) -> None:
+    """Some rows state a damage percentage of their own and some take the
+    slot's. Both have to exist or half the tests in this file compare nothing.
+
+    WHY THIS REPLACED A COUNT IN A COMMENT. Issue #1243. Three comments in
+    `tools/generate_datatables.py` and one here stated how many rows were blank,
+    and every one of them had gone stale, because writing the designed skills'
+    numbers is ongoing work under issue #836 and each one filled in moves both
+    figures. This asserts the shape instead of the count, so it stays true while
+    the work continues and still fails if either kind disappears.
+
+    NO UPPER OR LOWER BOUND ON THE SPLIT beyond one of each, deliberately. A
+    bound would be another number going stale for the same reason.
+    """
+    stated = [row for row in skill_rows
+              if float(row["DamagePercent"]) != NO_FIGURE_STATED]
+    fallback = [row for row in skill_rows
+                if float(row["DamagePercent"]) == NO_FIGURE_STATED]
+
+    assert stated, (
+        "no row in WeaponSkills.csv states a damage percentage of its own, so "
+        "`test_every_row_stating_a_percentage_of_weapon_damage_deals_it` below "
+        "compares nothing at all and passes whatever the sheet says.")
+    assert fallback, (
+        "every row in WeaponSkills.csv now states its own damage percentage, "
+        "so nothing takes the slot's figure any more. That may be the end of "
+        "issue #836 rather than a fault, but the fallback in "
+        "`UCataclysmSkillTemplate::GetDamagePercent` is then unreached and the "
+        "comments describing it need rewriting.")
+    assert len(stated) + len(fallback) == len(skill_rows), (
+        "some row's DamagePercent is neither a stated figure nor the "
+        "no-figure marker")
 
 
 def test_every_row_stating_a_percentage_of_weapon_damage_deals_it(

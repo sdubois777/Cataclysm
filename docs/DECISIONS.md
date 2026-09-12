@@ -7523,13 +7523,26 @@ Recomputed from the new growth rather than chosen: a city falls on the first day
 defence. **They were 14 / 23 / 34 / 47.** The same closed form still returns the
 old four at a growth of 10, which is how the derivation was checked.
 
-Against a median walk of 12 / 20 / 33 days as `sim/cataclysm_sim/policies.py`
-states it — 14 / 22 / 33 as
-[#1364](https://github.com/sdubois777/Cataclysm/issues/1364) measured it — the
-player’s slack goes from **a day or none to eleven, seventeen and twenty-two
-days**. Before this, the median player arrived on the day the Outpost fell. A
-Pillar Siege still cannot be answered at any dose: 70 days against a median walk
-of 123.
+Against a median walk of 14 / 23 / 37 days, the player’s slack goes from **a day
+or none to eleven, sixteen and eighteen days**. Before this, the median player
+arrived on the day the Outpost fell. A Pillar Siege still cannot be answered at
+any dose: 70 days against a median walk of 123.
+
+> **The walk figures in this entry were 12 / 20 / 33 and the slack was eleven,
+> seventeen and twenty-two, until 2026-09-12.** This entry was written while
+> `sim/cataclysm_sim/policies.py` and
+> [#1364](https://github.com/sdubois777/Cataclysm/issues/1364) disagreed, at
+> 12 / 20 / 33 against 14 / 22 / 33, and it quoted both. That disagreement is
+> gone and both figures are superseded: the medians moved again under
+> [#1369](https://github.com/sdubois777/Cataclysm/issues/1369), which changed a
+> dungeon spawn weight, and under
+> [#1357](https://github.com/sdubois777/Cataclysm/issues/1357), which changed
+> when a campaign ends. `policies.py` now states 14 / 23 / 37 / 123, re-measured
+> over 10,000 campaigns, and `sim/tests/test_the_siege_prose_in_policies_is_true.py`
+> re-measures it on every run. The correction is issue
+> [#1376](https://github.com/sdubois777/Cataclysm/issues/1376). **The 25 / 39 /
+> 55 / 70 days a Siege leaves did not move**, so only the walk and the
+> subtraction changed.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 
