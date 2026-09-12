@@ -639,6 +639,9 @@ void UCataclysmAbilitySystemComponent::NoteMovedMetres(float Metres)
 	// measures a length, and a length is not negative.
 	MetresMovedSinceOwnAttackSoFar += FMath::Max(0.0f, Metres);
 
+	// AND THE TOTAL, WHICH NO ATTACK RESETS. Issue #41, slice 2.
+	MetresWalkedTotalSoFar += FMath::Max(0.0f, Metres);
+
 	// NO WORLD MEANS NO CLOCK, so the stamp keeps its "never" value, which is the
 	// same answer the three timestamps beside it give.
 	if (const UWorld* World = GetWorld())

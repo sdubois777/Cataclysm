@@ -38,9 +38,16 @@ enum class ECataclysmModifierBuilt : uint8
  * knowing how the stat pipeline stores anything. `StatModifiersFor` is the one
  * place they become modifiers.
  *
- * EVERY FIELD IS A PERCENTAGE TAKEN OFF A FINISHED MAXIMUM, and zero is exactly
- * "nothing taken". A default-constructed one is a floor whose modifiers do
- * nothing to the player, which is what every floor was before issue #41.
+ * EVERY FIELD IS A PERCENTAGE OF A FINISHED NUMBER, and zero is exactly
+ * "nothing". Four are taken off -- three maximums and every resistance --
+ * and one is added to every resistance. A default-constructed one is a floor
+ * whose modifiers do nothing to the player, which is what every floor was
+ * before issue #41.
+ *
+ * THE LAST TWO ARE NOT PER-FLOOR SHARES, unlike the three above them. They
+ * change while the player plays, so the dungeon game mode works them out on
+ * its quarter-second beat and sets them here before applying. Issue #41,
+ * slice 2.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmPlayerFloorEffects
@@ -59,11 +66,29 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float MaxManaLessPercent = 0.0f;
 
-	/** Whether this takes nothing from anything. */
+	/**
+	 * How much less of every resistance, in percent. The Nihil's Embrace.
+	 * Issue #41, slice 2.
+	 *
+	 * IT GROWS AS THE CHARACTER WALKS and is given back by a cleanse, so it is
+	 * worked out on the beat rather than once a floor.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ResistanceLessPercent = 0.0f;
+
+	/**
+	 * How much more of every resistance, in percent: The Nihil's Embrace's reward
+	 * for defeating a high tier enemy, while it lasts. Issue #41, slice 2.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ResistanceMorePercent = 0.0f;
+
+	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
 		return MaxHealthLessPercent <= 0.0f && MaxEnergyShieldLessPercent <= 0.0f
-			&& MaxManaLessPercent <= 0.0f;
+			&& MaxManaLessPercent <= 0.0f && ResistanceLessPercent <= 0.0f
+			&& ResistanceMorePercent <= 0.0f;
 	}
 };
 
@@ -78,20 +103,37 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * Dimensions changed a floor at all, and it did so by drawing another modifier
  * that did nothing either. Issue #1558 records the score half of that.
  *
- * WHAT IS BUILT HERE, AND IT IS THE FIRST TWO. Both change the player's own
+ * WHAT IS BUILT HERE, AND IT IS FOUR. The first two change the player's own
  * maximums floor by floor, which is the cheapest shape a modifier comes in: no
- * new actor, no new creature, no art.
+ * new actor, no new creature, no art. The two that issue #41's slice 2 added
+ * are the first that change while the player plays rather than once a floor,
+ * and both read the movement state `UCataclysmMovement` keeps.
  *
  * | Row | Its words | What happens |
  * | :-- | :-- | :-- |
  * | `Famine_Starvation` | "Each floor the players's maximum hp and energy shield are reduced by 1%. Up to 60%." | maximum health and maximum energy shield are 1% less per floor, up to 60% |
  * | `Famine_Dehydration` | "Each floor the player's maximum resource is reduced by 1%." | maximum mana is 1% less per floor, up to 60% |
+ * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
+ * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
  *
- * `docs/DECISIONS.md` carries the four judgements these needed, dated
- * 2026-09-11: that a floor's share is taken as a Less multiplier on the finished
- * maximum rather than as a negative increase; that floor 1 already counts; that
- * Dehydration stops at 60% although its row states no cap; and that "maximum
- * resource" means maximum mana.
+ * `docs/DECISIONS.md` carries the judgements these needed. FOUR ARE THE FIRST
+ * TWO RULES', dated 2026-09-11: that a floor's share is taken as a Less
+ * multiplier on the finished maximum rather than as a negative increase; that
+ * floor 1 already counts; that Dehydration stops at 60% although its row states
+ * no cap; and that "maximum resource" means maximum mana.
+ *
+ * EIGHT MORE ARE SLICE 2'S, dated 2026-09-12, because its two rows between them
+ * state one number -- Forced March's three seconds -- and nothing else. Seven of
+ * the eight are numbers: what a stack costs a second, how often one is added,
+ * the most stacks Forced March reaches, the walk one point of resistance costs,
+ * the most The Nihil's Embrace takes, the size of the reward a cleanse grants,
+ * and how long it lasts. The eighth is which rung of the rarity ladder a cleanse
+ * needs, where a Boss counts and a Herald deliberately does not.
+ *
+ * ONLY SIX OF THE SEVEN NUMBERS ARE CONSTANTS HERE. How often a stack is added
+ * is one a second, and it lives in the shape of `ForcedMarchStacksAfter` -- one
+ * stack plus one for each whole second past the threshold -- rather than in a
+ * constant of its own.
  *
  * A PLAIN CLASS OF STATICS OVER PLAIN STRUCTS, the shape
  * `FCataclysmDungeonFloorRules` and `UCataclysmDungeonModifierRules` already
@@ -108,6 +150,8 @@ public:
 	/** The row keys of the modifiers built here. */
 	static const TCHAR* StarvationKey;
 	static const TCHAR* DehydrationKey;
+	static const TCHAR* ForcedMarchKey;
+	static const TCHAR* NihilsEmbraceKey;
 
 	/**
 	 * What Starvation takes per floor, and the most it takes.
@@ -130,6 +174,66 @@ public:
 	 */
 	static constexpr float DehydrationPercentPerFloor = 1.0f;
 	static constexpr float DehydrationMostPercent = 60.0f;
+
+	/**
+	 * Forced March: how long a character may stand still before it is hurt, what
+	 * each stack costs a second, and the most stacks it reaches.
+	 *
+	 * THE THREE SECONDS ARE THE ROW'S OWN FIGURE: "You take stacking damage if
+	 * you stand still for >3s".
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row
+	 * stops saying it.
+	 *
+	 * THE OTHER TWO ARE JUDGEMENTS AND THE ROW STATES NEITHER. One per cent of
+	 * maximum health a second per stack, capped at five stacks, means a character
+	 * that stops for ten seconds has lost about a third of its health and is in no
+	 * danger once it moves, while one that stands still for half a minute dies.
+	 * That is the "run and gun" the row asks for, at a danger score of 5 out of
+	 * the table's range.
+	 *
+	 * NO GAME IN THE GENRE PUBLISHES A FIGURE FOR THIS, which is why both are
+	 * judgements rather than borrowed. The nearest are a Path of Exile mechanic
+	 * that kills in five seconds with no cap at all, and a World of Warcraft
+	 * dungeon affix of a few per cent of maximum health a stack capped at four --
+	 * which its own developers retuned twice in eleven days. **Expect these to
+	 * need tuning against real play.** `docs/DECISIONS.md` records all of it.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH RATHER THAN A FLAT NUMBER, which is what both of
+	 * those do, so it means the same thing at every character level.
+	 */
+	static constexpr float ForcedMarchSecondsBeforeDamage = 3.0f;
+	static constexpr float ForcedMarchPercentPerStackPerSecond = 1.0f;
+	static constexpr int32 ForcedMarchMostStacks = 5;
+
+	/**
+	 * The Nihil's Embrace: how far the player walks for each point of resistance
+	 * lost, the most it takes, and what defeating a high tier enemy gives back.
+	 *
+	 * ALL FOUR ARE JUDGEMENTS. The row states no number at all: "As you move, your
+	 * resistances are slowly and permanently reduced. To cleanse the effect, you
+	 * must defeat a high tier enemy. The boss's defeat will restore all of your
+	 * resistances and grant a temporary buff." The Python test above fails if the
+	 * row ever states one of its own, at which point the judgement stops being a
+	 * judgement.
+	 *
+	 * TEN METRES A POINT IS WHAT "SLOWLY" WAS TAKEN TO MEAN: a floor's worth of
+	 * walking costs a few points rather than a character's whole defence.
+	 *
+	 * TEN PER CENT IS THE FLOOR, and it is the one figure here with a precedent:
+	 * a Diablo IV run modifier takes 10% of all resistances for a whole run.
+	 * Without a limit a long floor would take every point a character has, which
+	 * is why the coordinating session asked for one, as it did for the per-floor
+	 * rule whose own row states no cap.
+	 *
+	 * THE REWARD MATCHES THE PENALTY IT CANCELS, for twenty seconds, which is the
+	 * shorter of the two windows Path of Exile gives a reward for killing a rare
+	 * monster. It reads as the curse lifted and a moment of grace rather than as a
+	 * new power.
+	 */
+	static constexpr float NihilsEmbraceMetresPerResistancePercent = 10.0f;
+	static constexpr float NihilsEmbraceMostResistancePercent = 10.0f;
+	static constexpr float NihilsEmbraceRewardResistancePercent = 10.0f;
+	static constexpr float NihilsEmbraceRewardSeconds = 20.0f;
 
 	/**
 	 * How much of what this row says has been built.
@@ -169,6 +273,39 @@ public:
 	 */
 	static float ShareTakenOnFloor(float PercentPerFloor, float MostPercent,
 								   int32 FloorNumber);
+
+	/**
+	 * How many stacks of Forced March's damage a character has. Issue #41.
+	 *
+	 * NONE UNTIL THE ROW'S THREE SECONDS HAVE PASSED, then one a second, capped.
+	 * Moving clears them, which needs no call of its own: the wait asked about is
+	 * the seconds since the character last moved, and moving puts that back to
+	 * nothing.
+	 *
+	 * @param SecondsStoodStill seconds since the character last moved. A negative
+	 *        wait is "no character to read" and takes nothing, the same answer the
+	 *        movement conditions give
+	 */
+	static int32 ForcedMarchStacksAfter(float SecondsStoodStill);
+
+	/**
+	 * What that many stacks cost a second, as a share of maximum health.
+	 * Issue #41.
+	 */
+	static float ForcedMarchSharePerSecond(int32 Stacks);
+
+	/**
+	 * How much of every resistance The Nihil's Embrace has taken, in percent.
+	 * Issue #41.
+	 *
+	 * WHOLE POINTS, COUNTED DOWN, because a resistance is shown to the player as a
+	 * whole number and a rule that moves a number they are watching should move it
+	 * in steps they can see.
+	 *
+	 * @param MetresWalked how far the character has walked since the last cleanse.
+	 *        Nothing or less takes nothing
+	 */
+	static float NihilsEmbraceResistanceLost(float MetresWalked);
 
 	/**
 	 * What the modifiers in force on a floor do to the player.

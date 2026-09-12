@@ -928,6 +928,75 @@ private:
 	float SinceWaveCheckSeconds = 0.0f;
 
 	/**
+	 * One beat of the two dungeon modifiers that change while the player plays.
+	 * Issue #41, slice 2.
+	 *
+	 * ON THE WAVE CHECK'S BEAT RATHER THAN A TIMER OF ITS OWN, for the reason that
+	 * check gives: a quarter of a second is faster than a player notices, and a
+	 * timer per rule is one more thing to cancel.
+	 *
+	 * BOTH RULES ACT ON THE PLAYER ALONE, so this does not grow with a Horde's
+	 * crowd: it is two tests of the floor's modifier list on a floor carrying
+	 * neither.
+	 */
+	void StepFloorRulesThatChange();
+
+	/**
+	 * Forced March: take a share of maximum health from a player standing still.
+	 * Issue #41, slice 2.
+	 */
+	void StepForcedMarch(class ACataclysmPlayerCharacter* Player,
+						 class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The Nihil's Embrace: the resistance its walking has cost, and the reward a
+	 * cleanse granted while it lasts. Issue #41, slice 2.
+	 */
+	void StepNihilsEmbrace(class ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * A death anywhere on the floor, for The Nihil's Embrace's cleanse.
+	 * Issue #41, slice 2.
+	 *
+	 * IT ONLY RECORDS. The beat above applies what it records, within a quarter of
+	 * a second, so a death does no stat work inside the notice it arrived on.
+	 */
+	void OnSomethingDied(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * How far the player had walked when The Nihil's Embrace was last cleansed.
+	 * Issue #41, slice 2.
+	 *
+	 * THE LOSS IS THE DIFFERENCE between this and the total the character keeps,
+	 * which is why a cleanse needs no second counter: it moves this up to where
+	 * the character is now and the difference becomes nothing.
+	 *
+	 * IT SURVIVES A FLOOR, because the row says the reduction is permanent. It is
+	 * put back to nothing when the player leaves the dungeon and the floor carries
+	 * no modifiers at all.
+	 */
+	float MetresWalkedAtLastCleanse = 0.0f;
+
+	/**
+	 * World time until which The Nihil's Embrace's reward lasts, or negative for
+	 * no reward running. Issue #41, slice 2.
+	 */
+	float NihilsEmbraceRewardUntilSeconds = -1.0f;
+
+	/**
+	 * What the last beat put on the player, so a beat that changes nothing asks
+	 * for no stat refresh. Issue #41, slice 2.
+	 *
+	 * A REFRESH REWRITES THE CHARACTER'S WHOLE STANDING STAT LINE, so doing it
+	 * four times a second for a number that has not moved would be waste. Both go
+	 * back to nothing when a floor's rules are applied, because that replaces the
+	 * floor's modifiers wholesale and the next beat has to put these back.
+	 */
+	float ResistanceLessApplied = 0.0f;
+	float ResistanceMoreApplied = 0.0f;
+
+	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order
 	 * the population pass placed them, so the first placed is the first to
 	 * arrive. Issue #1544; see `WaveCreaturesPerFrame`.

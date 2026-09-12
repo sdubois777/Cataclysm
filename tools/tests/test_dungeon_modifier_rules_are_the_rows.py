@@ -2,9 +2,11 @@
 say what the rules take.
 
 WHY THIS EXISTS. Issue #41. `game/Source/Cataclysm/Dungeon/
-CataclysmDungeonModifierEffects.h` and `.cpp` give two of the 117 rows of
+CataclysmDungeonModifierEffects.h` and `.cpp` give four of the 117 rows of
 `game/Data/DungeonModifiers.csv` a rule: Starvation takes 1% of maximum health
-and energy shield a floor up to 60%, and Dehydration 1% of maximum mana a floor.
+and energy shield a floor up to 60%, Dehydration 1% of maximum mana a floor,
+Forced March a share of maximum health a second from a player standing still,
+and The Nihil's Embrace a point of every resistance for each stretch walked.
 The C++ automation tests prove the rules do that, and they build every number
 they check by hand, so all of them would keep passing through two changes that
 break the game:
@@ -105,3 +107,74 @@ def test_dehydrations_cap_is_still_a_judgement_and_not_the_rows():
     assert "up to" not in words, (
         "The Dehydration row now states a cap. Check "
         "DehydrationMostPercent against it and update docs/DECISIONS.md.")
+
+
+def test_forced_march_still_says_its_three_second_threshold():
+    """The only number either new row states, and the rule reads it."""
+    words = flat(rows()["War_Forced_March"]["Description"])
+    seconds = constant("ForcedMarchSecondsBeforeDamage")
+
+    assert f">{seconds:g}s" in words, words
+    assert "stacking damage" in words, words
+
+
+def test_forced_marchs_size_rate_and_cap_are_judgements_not_the_rows():
+    """Its row says when the damage starts and nothing about how big it is.
+
+    IF THE ROW EVER STATES A SHARE, A RATE OR A CAP, this fails, so the two
+    C++ constants are checked against it and `docs/DECISIONS.md` stops
+    calling them judgements.
+    """
+    words = flat(rows()["War_Forced_March"]["Description"])
+
+    assert "%" not in words, (
+        "The Forced March row now states a percentage. Check "
+        "ForcedMarchPercentPerStackPerSecond against it and update "
+        "docs/DECISIONS.md.")
+    assert [c for c in words if c.isdigit()] == ["3"], (
+        "The Forced March row now states a number besides its three-second "
+        "threshold. Check ForcedMarchPercentPerStackPerSecond and "
+        "ForcedMarchMostStacks against it and update docs/DECISIONS.md.")
+
+
+def test_the_nihils_embrace_states_no_number_of_its_own():
+    """All four of its constants are judgements: its row states no number.
+
+    IF THE ROW EVER STATES ONE, this fails, so the C++ constants are checked
+    against it and `docs/DECISIONS.md` stops calling them judgements.
+    """
+    words = flat(rows()["Void_The_Nihil_s_Embrace"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Nihil's Embrace row now states a number. Check "
+        "NihilsEmbraceMetresPerResistancePercent, "
+        "NihilsEmbraceMostResistancePercent, "
+        "NihilsEmbraceRewardResistancePercent and "
+        "NihilsEmbraceRewardSeconds against it and update "
+        "docs/DECISIONS.md.")
+
+
+def test_the_nihils_embrace_says_permanent_and_asks_for_a_boss():
+    """Two wordings the rule rests on: a permanent loss, a boss that ends it.
+
+    THE ROW'S OWN WORDS ARE THE EVIDENCE. "permanently" is why the distance
+    walked is not forgotten when the player takes the stairs, and "high tier
+    enemy" with "boss" is why the cleanse uses the game's own boss line.
+
+    IT NAMES NO RUNG OF THE RARITY LADDER, which is what keeps the exact
+    line a judgement: a Herald is a mini-boss the player meets often and
+    deliberately does not satisfy the cleanse.
+    """
+    words = flat(rows()["Void_The_Nihil_s_Embrace"]["Description"]).lower()
+
+    assert "permanently reduced" in words, words
+    assert "high tier enemy" in words, words
+    assert "boss" in words, words
+
+    named = [rung for rung in ("common", "elite", "legendary", "herald")
+             if rung in words]
+    assert not named, (
+        f"The Nihil's Embrace row now names {named}. The cleanse's boss "
+        "threshold is no longer a judgement; check it against the row and "
+        "update docs/DECISIONS.md.")

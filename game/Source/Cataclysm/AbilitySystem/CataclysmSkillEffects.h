@@ -601,12 +601,18 @@ public:
 	 * a death, because the vital attribute set handles the Health attribute
 	 * changing as well as the Damage one.
 	 *
-	 * RETALIATION IS THE ONLY CALLER AND THE SHAPE COMES FROM THE GENRE. Last
-	 * Epoch's reflected damage "does not Hit and instead directly reduces Health
-	 * and Ward without going through damage calculations", and Path of Exile's
-	 * reflected damage cannot critically strike, cannot cause ailments and does
-	 * not trigger on-hit effects. Without this, two characters who both retaliate
-	 * would reflect at one another without end.
+	 * TWO CALLERS, AND THE SHAPE COMES FROM THE GENRE. Retaliation was the
+	 * first. Last Epoch's reflected damage "does not Hit and instead directly
+	 * reduces Health and Ward without going through damage calculations", and
+	 * Path of Exile's reflected damage cannot critically strike, cannot cause
+	 * ailments and does not trigger on-hit effects. Without this, two characters
+	 * who both retaliate would reflect at one another without end.
+	 *
+	 * THE SECOND IS A FLOOR RULE, since issue #41's slice 2. The Forced March
+	 * dungeon modifier takes health from a player who stands still, and that
+	 * damage comes from the floor rather than from an attacker, so none of
+	 * evasion, block, armour, resistance, a critical strike or an ailment should
+	 * touch it either.
 	 *
 	 * @return whether any health was taken
 	 */

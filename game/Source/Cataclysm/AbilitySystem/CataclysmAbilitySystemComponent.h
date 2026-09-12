@@ -563,6 +563,20 @@ public:
 	}
 
 	/**
+	 * How far this character has walked in total, in metres. Issue #41, slice 2.
+	 *
+	 * NEVER RESET, which is what the tally above cannot be: that one goes back to
+	 * nothing at every attack, because "the first attack after moving 5 metres"
+	 * asks about the walk since the last one. A floor rule that takes something
+	 * away until a kill gives it back needs a number no attack disturbs, and
+	 * remembers for itself where the count stood when it last gave it back.
+	 *
+	 * AN INSTANT RELOCATION ADDS NOTHING HERE EITHER, for the reason it adds
+	 * nothing to the tally: a teleport is not walking.
+	 */
+	float MetresWalkedTotal() const { return MetresWalkedTotalSoFar; }
+
+	/**
 	 * Record that health owed falls due this many seconds from now.
 	 * Issue #991.
 	 *
@@ -1144,6 +1158,14 @@ protected:
 	 * for a character that has not moved. An instant relocation adds nothing.
 	 */
 	float MetresMovedSinceOwnAttackSoFar = 0.0f;
+
+	/**
+	 * How far this character has walked in total, in metres. Issue #41, slice 2.
+	 *
+	 * ZERO RATHER THAN NEGATIVE, like the tally above it and for the same reason:
+	 * it is a distance added to rather than a measurement that can be unknown.
+	 */
+	float MetresWalkedTotalSoFar = 0.0f;
 
 	/**
 	 * Whether the last sample saw this character in a different place.
