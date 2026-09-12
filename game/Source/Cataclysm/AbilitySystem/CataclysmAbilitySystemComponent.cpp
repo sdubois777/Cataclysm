@@ -14,6 +14,13 @@
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
+// For the character the nearby enemies are measured from. Issue #1597.
+#include "Character/CataclysmCharacterBase.h"
+// For the nearby enemies a conditional or scaling bonus counts. Issue
+// #1597. The lists it keeps are the same ones a creature's target search
+// reads, so counting enemies near a character costs no second walk of the
+// level.
+#include "Character/CataclysmTargetCandidates.h"
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
 // For the one spelling of "attack_damage" that ApplyTo records the stat under.
@@ -317,10 +324,12 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	// design's own words on it.
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
-			   CurrentConditions(SkillHealthCostPercent, Blow,
-								 MetresMovedBeforeBlow,
-								 TargetDistanceMetres,
-								 bTargetIsStaggered)).Final;
+			   WithEnemiesInReach(
+				   Inputs->Modifiers,
+				   CurrentConditions(SkillHealthCostPercent, Blow,
+									 MetresMovedBeforeBlow,
+									 TargetDistanceMetres,
+									 bTargetIsStaggered))).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
@@ -347,11 +356,13 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	// in the same units or one cannot be undone and the other applied.
 	return UCataclysmStatPipeline::Evaluate(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
-			   CurrentConditions(SkillHealthCostPercent,
-								 FCataclysmBlowContext(),
-								 MetresMovedBeforeBlow,
-								 TargetDistanceMetres,
-								 bTargetIsStaggered))
+			   WithEnemiesInReach(
+				   Inputs->Modifiers,
+				   CurrentConditions(SkillHealthCostPercent,
+									 FCataclysmBlowContext(),
+									 MetresMovedBeforeBlow,
+									 TargetDistanceMetres,
+									 bTargetIsStaggered)))
 			   .SumOfIncreases / 100.0f;
 }
 
@@ -398,10 +409,12 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	// would leave that row silently worth nothing.
 	const float Applying = UCataclysmStatPipeline::Evaluate(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
-		CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
-						  MetresMovedBeforeBlow,
-						  TargetDistanceMetres,
-						  bTargetIsStaggered)).MoreMultiplier;
+		WithEnemiesInReach(
+			Inputs->Modifiers,
+			CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
+							  MetresMovedBeforeBlow,
+							  TargetDistanceMetres,
+							  bTargetIsStaggered))).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -637,6 +650,57 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// target" and "touching" would otherwise be the same reading. A bool has no
 	// such collision: "not staggered" and "no target" both mean no bonus.
 	State.bTargetIsStaggered = bTargetIsStaggered;
+
+	return State;
+}
+
+FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
+	const TArray<FCataclysmStatModifier>& Modifiers,
+	FCataclysmStatConditions State) const
+{
+	// THE WIDEST REACH ANY ROW ASKS ABOUT, and nothing at all if none does.
+	// Issue #1597. This loop is the whole cost to a lookup that counts no
+	// enemies, which is almost every lookup in the game.
+	float Widest = -1.0f;
+	for (const FCataclysmStatModifier& Modifier : Modifiers)
+	{
+		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
+			|| Modifier.Scale == ECataclysmStatScale::PerEnemyInReach)
+		{
+			Widest = FMath::Max(Widest, Modifier.ReachMetres);
+		}
+	}
+
+	// A ROW THAT ASKS WITHOUT A REACH IS STILL NOTHING TO WALK. Its own
+	// reach is -1, so it counts nobody either way, and a list of such rows
+	// leaves `Widest` negative and walks no characters.
+	if (Widest <= 0.0f)
+	{
+		return State;
+	}
+
+	// MEASURED FROM THE AVATAR AND NOT FROM THIS COMPONENT'S OWNER. A
+	// player's ability system lives on its player state, which stands
+	// nowhere; the avatar is the body the rows are about. An ability system
+	// with no avatar has no position, so there is nothing near it.
+	const ACataclysmCharacterBase* Character =
+		Cast<ACataclysmCharacterBase>(GetAvatarActor());
+	if (!Character)
+	{
+		return State;
+	}
+
+	// NO SUBSYSTEM MEANS NO LISTS, which is what a world built without
+	// subsystems gives. The conditions keep their empty list and every row
+	// that counts enemies grants nothing, which is the same answer an empty
+	// room gives.
+	if (UCataclysmTargetCandidates* Candidates =
+			UCataclysmTargetCandidates::In(GetWorld()))
+	{
+		Candidates->HostileDistancesWithinMetres(
+			Character, Character->GetActorLocation(), Widest,
+			State.HostileDistancesMetres);
+	}
 
 	return State;
 }
