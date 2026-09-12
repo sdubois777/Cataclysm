@@ -12,11 +12,13 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Save/CataclysmSaveApply.h"
@@ -513,6 +515,94 @@ bool FCataclysmSaveClearingTakesEverythingNotRestored::RunTest(const FString&)
 
 	TestEqual(TEXT("nothing is left in flight, on the ground, or telegraphed"),
 		InFlight, 0);
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * Clearing the floor takes the terrain a skill raised on it.
+ *
+ * A SEPARATE TEST FROM THE ONE ABOVE BECAUSE IT GUARDS A DIFFERENT MISTAKE.
+ * That one checks the five things section 6 of the save design names. Terrain
+ * is not one of them -- it was simply never added to the sweep, and was named
+ * in neither the list of what is destroyed nor the header's list of what is
+ * deliberately kept. Issue #1647.
+ *
+ * ALL FOUR KINDS, because only one of them is a swept zone in the same sense
+ * as burning ground. A wall is solid geometry that the navigation system can
+ * see, so a wall surviving a floor change is an obstacle in the new floor that
+ * nothing in its generation knows about. A test covering only a pit would miss
+ * the worst case.
+ *
+ * THE COUNT BEFORE CLEARING IS ASSERTED, not assumed. If the four spawns
+ * failed, none left afterwards would be true for a reason that has nothing to
+ * do with clearing, and the test would pass having measured nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClearingTheFloorTakesTerrain,
+	"Cataclysm.SaveApply.ClearingTheFloorTakesTheTerrainRaisedOnIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClearingTheFloorTakesTerrain::RunTest(const FString&)
+{
+	using namespace CataclysmSaveFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	// WHOSE SKILL LEFT IT. `ACataclysmTerrain::Spawn` refuses an invalid owner,
+	// and a plain actor is enough because nothing here asks the owner anything
+	// -- the sweep destroys by class and takes no side.
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("a caster to leave the terrain"), Caster))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	constexpr float M = 100.0f;
+
+	int32 Raised = 0;
+	Raised += ACataclysmTerrain::Spawn(
+		Caster, ECataclysmTerrainKind::Pit, FVector::ZeroVector,
+		FVector::ZeroVector, /*SizeCm=*/3 * M, /*Duration=*/12.0f,
+		/*HoldSeconds=*/2.0f) ? 1 : 0;
+	Raised += ACataclysmTerrain::Spawn(
+		Caster, ECataclysmTerrainKind::Fissure, FVector(0.0f, 5 * M, 0.0f),
+		FVector(0.0f, 5 * M, 0.0f), /*SizeCm=*/2 * M, /*Duration=*/6.0f,
+		/*HoldSeconds=*/0.0f) ? 1 : 0;
+	Raised += ACataclysmTerrain::Spawn(
+		Caster, ECataclysmTerrainKind::Thicket, FVector(0.0f, 10 * M, 0.0f),
+		FVector(0.0f, 10 * M, 0.0f), /*SizeCm=*/3 * M, /*Duration=*/12.0f,
+		/*HoldSeconds=*/6.0f) ? 1 : 0;
+	Raised += ACataclysmTerrain::Spawn(
+		Caster, ECataclysmTerrainKind::Wall, FVector(10 * M, 0.0f, 0.0f),
+		FVector(20 * M, 0.0f, 0.0f), /*SizeCm=*/10 * M, /*Duration=*/8.0f,
+		/*HoldSeconds=*/0.0f) ? 1 : 0;
+
+	if (!TestEqual(TEXT("one of each of the four kinds was raised"), Raised, 4))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const int32 Cleared = UCataclysmFloorContents::ClearTheFloor(*World);
+
+	TestEqual(TEXT("clearing the floor reported taking all four"), Cleared, Raised);
+
+	int32 Standing = 0;
+	for (TActorIterator<ACataclysmTerrain> It(World); It; ++It)
+	{
+		Standing += IsValid(*It) ? 1 : 0;
+	}
+
+	// THE ASSERTION THE ISSUE IS ABOUT. Every floor is built at the world
+	// origin and the actor is reused, so floor 5 occupies the coordinates
+	// floor 1 did. Terrain left behind is standing inside the new floor.
+	TestEqual(TEXT("no terrain is left standing on the next floor"), Standing, 0);
 
 	World->DestroyWorld(false);
 	return true;
