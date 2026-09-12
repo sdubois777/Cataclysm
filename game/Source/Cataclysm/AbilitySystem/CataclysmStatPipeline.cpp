@@ -64,6 +64,7 @@ namespace
 		{ TEXT("health_at_or_below"),           ECataclysmStatCondition::HealthAtOrBelowPercent },
 		{ TEXT("health_below"),                 ECataclysmStatCondition::HealthBelowPercent },
 		{ TEXT("health_above"),                 ECataclysmStatCondition::HealthAbovePercent },
+		{ TEXT("health_at_or_above"),           ECataclysmStatCondition::HealthAtOrAbovePercent },
 		{ TEXT("seconds_after_health_cost"),    ECataclysmStatCondition::WithinSecondsOfHealthCost },
 		{ TEXT("seconds_after_foreign_damage"), ECataclysmStatCondition::WithinSecondsOfForeignDamage },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
@@ -233,6 +234,27 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// accident. The character sheet has to be refused on purpose, the same
 		// way the two predicates above refuse it.
 		return State.HealthPercent >= 0.0f && State.HealthPercent > Value;
+
+	case ECataclysmStatCondition::HealthAtOrAbovePercent:
+		// AT OR ABOVE, WHICH IS THE WHOLE DIFFERENCE FROM THE PREDICATE ABOVE.
+		// Issues #1653 and #41. "Your ultimate ability cannot be used unless you
+		// are below 50% HP" locks the skill at exactly half health, where
+		// `HealthAbovePercent` would release it.
+		//
+		// AN UNKNOWN STATE REFUSES, the same as the three above. An unknown
+		// health reads -1, which is not at or above any threshold the validator
+		// allows, so the comparison alone would already answer no -- by accident,
+		// exactly as `HealthAbovePercent` says of itself, and only while the
+		// 0-to-100 bound holds.
+		//
+		// MEASURED, BECAUSE THE FIRST VERSION OF THIS COMMENT CLAIMED THE
+		// OPPOSITE. With a reading of -1 the comparison alone answers yes for
+		// `HealthAtOrBelowPercent` and `HealthBelowPercent` at every allowed
+		// threshold, and no for both upward predicates. So the guard changes an
+		// answer for the two that point down and for neither that points up. It
+		// is written out in all four so that none depends on a bound enforced in
+		// another function.
+		return State.HealthPercent >= 0.0f && State.HealthPercent >= Value;
 
 	case ECataclysmStatCondition::WithinSecondsOfHealthCost:
 		// A NEGATIVE READING IS "NEVER PAID ONE, OR NOT KNOWN", and both answer
@@ -671,9 +693,18 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// that never applies -- the same silent failure, arrived at from the
 	// opposite side. A bound written as a list is a bound somebody has to
 	// remember to extend.
+	//
+	// ALL FOUR SINCE ISSUES #1653 AND #41, AND THAT WARNING WAS EARNED. The
+	// sentence above predicted that a list-shaped bound would need extending by
+	// hand, and `HealthAtOrAbovePercent` is the extension it predicted. Nothing
+	// would have failed had it been left out: an unbounded threshold is exactly
+	// the silent failure this check exists to catch, so the omission would have
+	// been invisible until a sheet wrote 150.
 	if ((Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
 		 || Modifier.Condition == ECataclysmStatCondition::HealthBelowPercent
-		 || Modifier.Condition == ECataclysmStatCondition::HealthAbovePercent)
+		 || Modifier.Condition == ECataclysmStatCondition::HealthAbovePercent
+		 || Modifier.Condition
+			== ECataclysmStatCondition::HealthAtOrAbovePercent)
 		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
 	{
 		return FString::Printf(

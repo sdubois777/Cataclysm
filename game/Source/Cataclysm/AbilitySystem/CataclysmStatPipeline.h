@@ -161,6 +161,50 @@ enum class ECataclysmStatCondition : uint8
 	HealthAbovePercent		UMETA(DisplayName = "Health Above Percent"),
 
 	/**
+	 * The character's health is AT OR ABOVE `ConditionValue` percent of its
+	 * maximum. Issues #1653 and #41.
+	 *
+	 * THE FOURTH HEALTH PREDICATE AND THE SECOND THAT POINTS UPWARDS. It differs
+	 * from `HealthAbovePercent` above at exactly the threshold and nowhere else,
+	 * which is the same single reading that makes `HealthAtOrBelowPercent` and
+	 * `HealthBelowPercent` two predicates rather than one.
+	 *
+	 * WHAT ASKS FOR IT, and it is a row rather than a hypothetical. The
+	 * enchantment "Your ultimate ability cannot be used unless you are below 50%
+	 * HP" locks the skill when health is at or above 50. Written with
+	 * `HealthAbovePercent` instead, a character sitting on exactly half health
+	 * could use a skill the sentence forbids -- so the row would be delivered
+	 * differently from how it reads, for one value of health.
+	 *
+	 * A CHARACTER CAN SIT ON THIS BOUNDARY AND STAY THERE, which is why the
+	 * distinction is worth an enumerator. That is not true of every threshold:
+	 * `StationaryForSeconds` compares at least against rows that say "more
+	 * than", and those differ only at an instant an accumulating clock passes
+	 * through. Health is a state a character can hold, so the boundary is
+	 * reachable and the two readings really are different rules.
+	 *
+	 * NOT `HealthBelowPercent` NEGATED, for the reason `HealthAbovePercent`
+	 * gives: strictly below 50 and at or above 50 are complements, but a
+	 * modifier carries one predicate and there is no "not".
+	 *
+	 * AN UNKNOWN READING REFUSES, and the guard is written out rather than left
+	 * to the comparison -- the same reason `HealthAbovePercent` gives. An unknown
+	 * health reads -1, which is not at or above any threshold the validator
+	 * allows, so the comparison alone would already answer no. By accident,
+	 * though: it depends on that 0-to-100 bound holding. A negative threshold
+	 * would make `HealthPercent >= Value` pass for a character sheet with no
+	 * character.
+	 *
+	 * SO THE FOUR SPLIT TWO AND TWO ON THIS, which is worth stating because the
+	 * first draft of this comment claimed the opposite. The guard changes an
+	 * answer for `HealthAtOrBelowPercent` and `HealthBelowPercent`, where -1 is
+	 * below and at-or-below every allowed threshold; it changes no answer for the
+	 * two that point upwards. All four write it out anyway, so that none of them
+	 * relies on a bound enforced somewhere else.
+	 */
+	HealthAtOrAbovePercent	UMETA(DisplayName = "Health At Or Above Percent"),
+
+	/**
 	 * The character paid a health cost within the last `ConditionValue` seconds.
 	 *
 	 * A WINDOW THAT OPENS ON AN EVENT AND SHUTS BY ITSELF, which is the second
