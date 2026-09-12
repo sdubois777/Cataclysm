@@ -99,6 +99,52 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	return Zone;
 }
 
+ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
+	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
+	float DamagePerTick, bool bAffectsEveryone)
+{
+	// NO DURATION TO REFUSE. The other two spawn functions check it because a
+	// patch with no stated life would burn for nothing; this one has no stated
+	// life by design and ends when the floor does.
+	if (!IsValid(Owner) || HalfWidthCm <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = Owner->GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	// SPAWNED IN TWO STEPS, for the reason SpawnAlong gives at length:
+	// UWorld::SpawnActor runs BeginPlay before it returns, and BeginPlay is
+	// where a patch asks to be drawn and starts its timers. Everything it
+	// reads has to be set before FinishSpawning.
+	const FTransform Where(FRotator::ZeroRotator, Start);
+	ACataclysmGroundZone* Zone = World->SpawnActorDeferred<ACataclysmGroundZone>(
+		ACataclysmGroundZone::StaticClass(), Where, Owner, /*Instigator=*/nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Zone)
+	{
+		return nullptr;
+	}
+
+	Zone->RadiusCm = HalfWidthCm;
+	Zone->DamagePerTick = DamagePerTick;
+	Zone->bBurnsEveryone = bAffectsEveryone;
+	Zone->bLastsTheFloor = true;
+	Zone->FarEnd = Zone->GetActorLocation() + (End - Start);
+
+	// AND NO SetLifeSpan AT ALL, WHICH IS THE WHOLE OF "LASTS THE FLOOR".
+	// UCataclysmFloorContents::ClearTheFloor destroys every zone in the world
+	// when the player leaves a floor, so that is what ends this one.
+
+	Zone->FinishSpawning(Where);
+
+	return Zone;
+}
+
 void ACataclysmGroundZone::BeginPlay()
 {
 	Super::BeginPlay();
@@ -117,8 +163,14 @@ void ACataclysmGroundZone::BeginPlay()
 	// player leaves draws the system's authored white. That is issue #803 and
 	// not a fault here: a zone carries no skill tags of its own to read an
 	// Element.* tag from, unlike UCataclysmStrikeSkill which does.
+	// A TIMED PATCH IS DRAWN FOR ITS WHOLE LIFE SPAN, EXACTLY AS BEFORE. A
+	// floor-lasting one has no life span, so GetLifeSpan() is zero and passing
+	// it would draw nothing at all -- the patch would sweep, damage and curse
+	// correctly while being invisible, which reads as working and is not.
+	const float DrawSeconds = bLastsTheFloor ? FloorDrawSeconds : GetLifeSpan();
+
 	UCataclysmGroundEffect::PlayFor(this, GetActorLocation(), FarEnd, RadiusCm,
-									GetLifeSpan(),
+									DrawSeconds,
 									UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
 
 	if (UWorld* World = GetWorld())
@@ -129,7 +181,32 @@ void ACataclysmGroundZone::BeginPlay()
 		World->GetTimerManager().SetTimer(
 			SweepTimer, this, &ACataclysmGroundZone::Sweep,
 			TickSeconds, /*bLoop=*/true, /*InFirstDelay=*/TickSeconds);
+
+		// AND A FLOOR-LASTING PATCH ASKS TO BE DRAWN AGAIN BEFORE THE LAST
+		// DRAWING ENDS. One drawing lasts FloorDrawSeconds and this fires every
+		// FloorRedrawSeconds, which is shorter, so the two overlap rather than
+		// meeting. See the two constants: making them equal leaves a frame with
+		// nothing drawn and the patch blinks.
+		if (bLastsTheFloor)
+		{
+			World->GetTimerManager().SetTimer(
+				RedrawTimer, this, &ACataclysmGroundZone::Redraw,
+				FloorRedrawSeconds, /*bLoop=*/true,
+				/*InFirstDelay=*/FloorRedrawSeconds);
+		}
 	}
+}
+
+void ACataclysmGroundZone::Redraw()
+{
+	UCataclysmGroundEffect::PlayFor(this, GetActorLocation(), FarEnd, RadiusCm,
+									FloorDrawSeconds,
+									UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
+
+	// COUNTED SO A TEST CAN SEE IT. Nothing else about a drawing is observable
+	// under the automation run's -nullrhi, so without this a patch that stopped
+	// asking would be invisible in play and silent in the suite.
+	++RedrawsAsked;
 }
 
 void ACataclysmGroundZone::Sweep()
