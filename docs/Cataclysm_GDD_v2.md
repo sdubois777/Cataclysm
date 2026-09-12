@@ -2467,6 +2467,7 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 | Slow, such as Cripple | No | Slower is still able to act |
 | Damage reduction, such as Weaken | No | Weaker is still able to act |
 | Displacement, such as a 4 metre knockback | No | The target can act on arrival |
+| Stagger | No | A staggered target can still act. It is a state other effects read rather than a hold |
 | Disarm | No | Movement and any skill that does not need the weapon still work |
 | Madness | **Partly** | The target operates every part of itself, but not for the side that owns it. It gets the immunity window and boss immunity, and not the damage threshold. See below |
 
@@ -2519,6 +2520,14 @@ of its uses.
   
 
 **A knockdown is a hard stop, so it carries all three parts of the rule.** It stops the target acting for a stated number of seconds, which is the whole of what a stun does; the target simply happens to be on the floor. Two Ultimates knock down — Warlord's Decree for 2 seconds and Cataclysm for 3 — and both are longer than every stun any skill grants, which run 0.75 to 1.5 seconds. Leaving knockdown outside the rule would mean the longest hold in the game is the one nothing limits, and that it works on a boss while Shield Bash's 1.5 seconds does not. The same exemption applies as for stun: a skill whose stated effect is to knock down ignores the damage threshold, and does **not** ignore boss immunity or the immunity window. The two share one window rather than one each, because two 3-second holds taken in turn is exactly the failure the window exists to stop.
+
+  
+
+**A landed displacement also leaves the target Staggered for 1 second.** The project owner answered on 2026-09-11: "A knockback, pull or knockdown also leaves the target Staggered for 1 second." Asked whether a staggered target can still act, the owner answered yes. So a stagger is not a hold, it takes none of the three rules above, and it needs none of its own. It is a state that other effects read: eleven enchantments apply it, lengthen it, check for it or restrict it, and none of them is written yet.
+
+  
+
+**The three verbs are the ones the owner named.** A knockback and a pull leave the state only when the displacement actually lands, so a shove an immunity refused, or one that crowd control resistance stopped entirely, leaves nothing. A drag is a pull applied after the caster has moved, so it leaves the state too. A knockdown leaves it as well, inside the seconds it already holds the target. **A launch does not**, because the owner named three verbs and a launch is not one of them; `docs/DECISIONS.md` records that as a judgement and what it would take to change it. The tag is `State.Staggered` and `UCataclysmSkillEffects::ApplyStagger` is what applies it.
 
   
 

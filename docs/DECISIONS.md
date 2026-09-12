@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-12 — A landed knockback, pull or knockdown leaves the target Staggered for a second, and the state does not stop it acting
+
+**Affects:** `ApplyStagger`, `StaggeredTag`, `IsStaggered` and `StaggerSeconds`
+in `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`, and
+the three functions that call them, `ApplyKnockback`, `ApplyPull` and
+`ApplyKnockdown`; the Tags sheet of `docs/All_Things_Cataclysm.xlsx` and the
+generated `game/Config/Tags/CataclysmTags.ini`; the new
+`game/Source/Cataclysm/Tests/CataclysmStaggerTests.cpp`; section VI of
+`docs/Cataclysm_GDD_v2.md`. Issue #45.
+
+**The project owner's two answers of 2026-09-11,** relayed by the coordinating
+session.
+
+- **What a stagger is:** "A knockback, pull or knockdown also leaves the target
+  Staggered for 1 second. The ten enchantments apply that state, check for it,
+  or make it last longer."
+- **Whether a staggered target can act:** asked "Can a Staggered enemy still
+  act? Recommended: yes", the owner answered **"yes"**.
+
+| Piece | What it does |
+| :-- | :-- |
+| The state | `State.Staggered`, a tag held for a second, added to the workbook's Tags sheet and generated into the tag file the game reads. It follows `State.Untargetable`, which is the other state that does not stop the target acting. |
+| Applying it | `ApplyStagger` puts the tag on through `ApplyTagForDuration`, the path every timed state here uses. So the target's own debuff duration stat lengthens it, and the longer of two applications wins rather than the newer. |
+| Where it is applied | `ApplyKnockback` and `ApplyPull`, each only when the displacement landed, and `ApplyKnockdown` when the knockdown lands. A drag is a pull applied after the caster has moved, so a drag staggers through the same call. |
+| What it stops | Nothing. No controller and no skill reads the tag to refuse an action, which is the owner's answer. `IsStaggered` answers a question; `IsStunned` and `IsKnockedDown` are what stop a character. |
+
+**Labelled judgements,** made under the owner's delegation of 2026-09-11:
+
+1. **A launch does not stagger.** The owner named three verbs: a knockback, a
+   pull and a knockdown. A launch is the fourth displacement in the game, used
+   by the Warhammer's Upthrust, and it is left out rather than read in. To
+   change it, one call is added to `ApplyLaunch`. The alternative, staggering
+   inside the shared displacement helper, would have covered a launch and a drag
+   together, and was not chosen because it goes past the owner's words.
+2. **The second is not scaled by crowd control resistance.** It does not need to
+   be: a target that resists a shove entirely is never moved, and
+   `ApplyKnockback` and `ApplyPull` then leave no stagger at all. The state's own
+   duration is a flat second, lengthened only by the target's debuff duration
+   stat, as every timed effect here is.
+3. **Eleven enchantment rows read this state, not ten.** The owner's answer says
+   ten. `game/Data/EnchantmentsPositive.csv` has nine and
+   `EnchantmentsNegative.csv` has two: P092, P093, P224, P253, P254, P255, P268,
+   P293, P307, N150 and N151. The difference is recorded rather than resolved,
+   because which row the owner was not counting cannot be read off the data.
+
+**Not in this change.** None of those eleven rows. They need what their own
+words ask for: a root, a gadget trigger, a first-hit scope, a retaliation
+trigger, a zone-entry trigger, a heavy attack cooldown reset, a damage taken
+increase while staggered, a stagger duration stat, and a restriction on
+staggering a target above half health.
+
+---
+
 ## 2026-09-11 — One world subsystem announces every hit, death and skill used, and each blow names the skill that dealt it
 
 **Affects:** the new `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h`
