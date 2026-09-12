@@ -83,6 +83,7 @@ namespace
 		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
 		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
 		{ TEXT("target_within_metres"),         ECataclysmStatCondition::TargetWithinMetres },
+		{ TEXT("enemies_in_reach_at_least"),    ECataclysmStatCondition::EnemiesInReachAtLeast },
 	};
 
 	struct FNamedStatScale
@@ -101,7 +102,36 @@ namespace
 		{ TEXT("carnage_stacks"),      ECataclysmStatScale::PerStackOfCarnage },
 		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
+		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 	};
+
+	/**
+	 * How many hostile characters stand within this many metres.
+	 *
+	 * ONE COPY, READ BY BOTH THE CONDITION AND THE SCALE. They ask the same
+	 * question of the same list and a second loop would be a second answer.
+	 *
+	 * A NEGATIVE REACH COUNTS NOTHING, which is what a row that is not about
+	 * anything nearby carries, and what a row whose radius was never authored
+	 * carries too. Both should grant nothing rather than count everybody.
+	 */
+	int32 EnemiesInReach(const FCataclysmStatConditions& State, float ReachMetres)
+	{
+		if (ReachMetres < 0.0f)
+		{
+			return 0;
+		}
+
+		int32 Counted = 0;
+		for (const float Metres : State.HostileDistancesMetres)
+		{
+			if (Metres <= ReachMetres)
+			{
+				++Counted;
+			}
+		}
+		return Counted;
+	}
 }
 
 bool UCataclysmStatPipeline::ConditionNamed(const FString& Name,
@@ -186,7 +216,8 @@ bool UCataclysmStatPipeline::ScaleNamed(const FString& Name,
 
 bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 										   float Value,
-										   const FCataclysmStatConditions& State)
+										   const FCataclysmStatConditions& State,
+										   float ReachMetres)
 {
 	switch (Condition)
 	{
@@ -438,6 +469,22 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// one. `docs/DECISIONS.md` carries that with the genre sources behind it.
 		return State.TargetDistanceMetres >= 0.0f
 			&& State.TargetDistanceMetres <= Value;
+
+	case ECataclysmStatCondition::EnemiesInReachAtLeast:
+		// AT LEAST `Value` OF THEM, WITHIN THE ROW'S OWN REACH. Issue #1597.
+		// "While an enemy is within 4 metres" is this with a value of one;
+		// "while three or more enemies are within 4 metres" is the same
+		// condition with three. One name serves both because the first is a
+		// special case of the second.
+		//
+		// A VALUE BELOW ONE REFUSES RATHER THAN HOLDING ALWAYS. "At least
+		// nought enemies" is true of an empty room, so a row whose count was
+		// never authored would grant its bonus everywhere. Refusing makes
+		// that visible as a row granting nothing instead of invisible as a
+		// row granting everything. The generator refuses it on import; this
+		// is what happens if one reaches the game anyway.
+		return Value >= 1.0f
+			&& static_cast<float>(EnemiesInReach(State, ReachMetres)) >= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -613,6 +660,23 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	// a Ritualist standing alone.
 	case ECataclysmStatScale::PerMinionHeld:
 		return StackedValue(Modifier, State.MinionsHeld);
+
+	// PER ENEMY STANDING WITHIN THE ROW'S OWN REACH. Issue #1597, and the
+	// third scale that is a count of things after debuffs carried and
+	// minions held.
+	//
+	// A CHARACTER ALONE GETS NOTHING, by the same arithmetic and with no
+	// special case: `StackedValue` multiplies by a count of zero. That is
+	// the case a build that forgets the count gets wrong, in the player's
+	// favour and invisibly.
+	//
+	// UNCAPPED, RULED BY THE PROJECT OWNER ON 2026-09-12. A Horde wave has
+	// been measured at 125 to 174 creatures at once, so this grows without
+	// bound in the mode the owner plays. `docs/DECISIONS.md` records that a
+	// cap was put to them with a recommendation and declined, and quotes the
+	// design's existing rule that multiplicative sources need no cap.
+	case ECataclysmStatScale::PerEnemyInReach:
+		return StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres));
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full
@@ -628,7 +692,8 @@ bool UCataclysmStatPipeline::ModifierApplies(const FCataclysmStatModifier& Modif
 	// THE CHARACTER'S STATE FIRST, because it is the cheaper question and
 	// because a modifier carrying both a condition and a required tag needs both.
 	// Issue #959.
-	if (!ConditionHolds(Modifier.Condition, Modifier.ConditionValue, State))
+	if (!ConditionHolds(Modifier.Condition, Modifier.ConditionValue, State,
+						Modifier.ReachMetres))
 	{
 		return false;
 	}

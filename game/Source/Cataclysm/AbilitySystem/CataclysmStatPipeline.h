@@ -590,6 +590,36 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetIsStaggered
 		UMETA(DisplayName = "Target Is Staggered"),
+
+	/**
+	 * At least `ConditionValue` enemies stand within the row's own `ReachMetres`.
+	 * Issue #1597.
+	 *
+	 * ONE NAME FOR BOTH SHAPES THE ROWS USE, because "while an enemy is within 4
+	 * metres" is "at least one". Two names would have been two things to hold
+	 * equal for no gain. `Ravager_keystone_a_kA` is the row that needs a number
+	 * other than one: "You take 15% less damage while THREE OR MORE enemies are
+	 * within 4 metres of you."
+	 *
+	 * THE RADIUS IS ON THE ROW AND NOT HERE, which is why this reads a count and
+	 * `ReachMetres` carries the distance. A condition holds one number and this
+	 * question asks two. Three radii appear in the authored rows -- 3, 4 and 8
+	 * metres -- so a fixed radius would have been convenient now and wrong later.
+	 * Path of Exile's developers say the same of their own "nearby": it is
+	 * deliberately not one measurement, and four different distances are used.
+	 *
+	 * COUNTED CENTRE TO CENTRE, the same arithmetic as
+	 * `UCataclysmTargeting::MetresBetween`, so a node saying "within 4 metres"
+	 * agrees with every other distance the game reports for that pair.
+	 * `UCataclysmTargetCandidates::HostileDistancesWithinMetres` records why that
+	 * is deliberately NOT the capsule test a creature's target search uses.
+	 *
+	 * AN EMPTY READING REFUSES. A lookup with no character in hand carries no
+	 * distances at all, and a row asking for at least one enemy correctly gets
+	 * nothing rather than holding by accident.
+	 */
+	EnemiesInReachAtLeast
+		UMETA(DisplayName = "Enemies In Reach At Least"),
 };
 
 /**
@@ -783,6 +813,31 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerMinionHeld
 		UMETA(DisplayName = "Per Minion Held"),
+
+	/**
+	 * Per enemy standing within the row's own `ReachMetres`. Issue #1597.
+	 *
+	 * THE THIRD SCALE THAT IS A COUNT OF THINGS, after `PerDebuffCarried` and
+	 * `PerMinionHeld`, and built the same way for the same reason. The entry of
+	 * 2026-09-09 in `docs/DECISIONS.md` records that the Ritualist's generator
+	 * "needed no new mechanism, only a new count"; this is that sentence again
+	 * with a different count.
+	 *
+	 * NOT CAPPED, AND THE PROJECT OWNER RULED SO ON 2026-09-12 having been asked.
+	 * `Ravager_keystone_d_kB` is "You deal 2% more damage for each enemy within 4
+	 * metres of you", and a Horde wave has been measured at 125 to 174 creatures
+	 * at once, so the count is unbounded in the mode the owner plays. It is not a
+	 * new exception: `docs/Cataclysm_GDD_v2.md` already says "Multiplicative
+	 * sources are not capped because they cannot reach immunity... there is no
+	 * bound on how many may combine." The decisions entry carries the ruling, the
+	 * quotation, and that a cap was considered and declined.
+	 *
+	 * IT READS ZERO WITH NOBODY IN REACH, which is what makes a character alone
+	 * gain nothing rather than the row's bare value -- the case a build that
+	 * forgets the count gets wrong, exactly as `PerMinionHeld` records.
+	 */
+	PerEnemyInReach
+		UMETA(DisplayName = "Per Enemy In Reach"),
 };
 
 /**
@@ -1194,6 +1249,31 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetIsStaggered = false;
 
+	/**
+	 * How far away each hostile character near this one is, in metres. Empty
+	 * means either that nobody is near or that this lookup never asked. Issue
+	 * #1597.
+	 *
+	 * DISTANCES RATHER THAN A COUNT, because the radius belongs to the ROW and
+	 * one state serves every row in a stat's list. A character carrying rows at
+	 * three and at four metres needs one walk, not two, and each row counts the
+	 * entries inside its own `ReachMetres`.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS. `UCataclysmAbilitySystemComponent`
+	 * looks at the modifiers first and leaves this empty unless one of them uses
+	 * `EnemiesInReachAtLeast` or `PerEnemyInReach`, so a stat lookup that does not
+	 * count enemies walks nothing. That matters because a stat is worked out many
+	 * times a second: the project owner's Horde capture of 2026-09-10 measured the
+	 * physics sphere query this deliberately avoids at 809 to 855 milliseconds of
+	 * EVERY SECOND of game time, holding the frame rate at 2.5 frames a second.
+	 *
+	 * EMPTY AND "NOBODY IS NEAR" ARE THE SAME ANSWER HERE, and that is safe
+	 * because both mean every row reading it grants nothing. A row asking for at
+	 * least one enemy refuses, and a row scaling per enemy scales by zero.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> HostileDistancesMetres;
+
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
 	{
@@ -1285,6 +1365,31 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	float ScaleStep = 0.0f;
+
+	/**
+	 * How far "in reach" is for this row, in metres. Negative means the row is
+	 * not about anything near the character. Issue #1597.
+	 *
+	 * A FOURTH NUMBER, BECAUSE COUNTING ENEMIES NEARBY ASKS TWO QUESTIONS AT
+	 * ONCE: how far away, and how many. `ConditionValue` holds the count for
+	 * `EnemiesInReachAtLeast` and `ScaleStep` holds the size per enemy for
+	 * `PerEnemyInReach`, so neither of them can also hold the distance.
+	 *
+	 * THREE ALTERNATIVES WERE REJECTED. A single project-wide radius: three
+	 * radii appear in the authored rows, and the genre deliberately varies it.
+	 * Encoding the radius in the condition's name: that multiplies names by
+	 * distance. Borrowing `ScaleStep` on a row that has no scale: it reads as a
+	 * scale, and it breaks the first row wanting a count condition and a scale
+	 * together.
+	 *
+	 * NOT TO BE CONFUSED WITH THE CONDITION `TargetWithinMetres`, which is about
+	 * the one character being hit rather than a count of who is nearby, and which
+	 * carries its distance in `ConditionValue` because it asks only one question.
+	 * This field is named for the reach a count uses, and the condition and scale
+	 * that read it are both named "in reach" to match.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ReachMetres = -1.0f;
 };
 
 /**
@@ -1455,7 +1560,8 @@ public:
 	/** Whether the character is in the state this condition names. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static bool ConditionHolds(ECataclysmStatCondition Condition, float Value,
-							   const FCataclysmStatConditions& State);
+							   const FCataclysmStatConditions& State,
+							   float ReachMetres = -1.0f);
 
 	/**
 	 * What this modifier is worth right now, after any scaling. Issue #968.
