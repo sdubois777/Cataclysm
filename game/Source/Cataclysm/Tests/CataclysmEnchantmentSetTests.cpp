@@ -4,6 +4,11 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For the bucket and the condition a set's modifier carries, which the two
+// tests of the real distance-conditioned sets assert by name. Issue #1596.
+// Reachable through `Items/CataclysmItem.h` below, and named here because these
+// tests read those enumerations rather than only the value.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
@@ -50,11 +55,25 @@ namespace CataclysmEnchantmentSetTest
 	const TCHAR* Ordinary = TEXT("Ordinary");
 	const TCHAR* OrdinaryDrawback = TEXT("Ordinary_Drawback");
 
-	/** Real row names, for the one test that reads the real tables. */
+	/** Real row names, for the tests that read the real tables. */
 	const TCHAR* ArchonMarker =
 		TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
 	const TCHAR* ArchonDrawback =
 		TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+
+	/**
+	 * And the two sets that were waiting for one reading: an attacker asking how
+	 * far away its target is. Issue #1596. Their drawbacks needed nothing new and
+	 * are written with them, because a set is written whole or not at all.
+	 */
+	const TCHAR* BruteMarker =
+		TEXT("Positive_Brute_s_Heart_2_Piece_Bonus_You_gain_25_incr");
+	const TCHAR* BruteDrawback =
+		TEXT("Negative_You_take_10_more_damage_from_all_sources");
+	const TCHAR* RegaliaMarker =
+		TEXT("Positive_Demon_King_s_Regalia_2_Piece_Bonus_You_deal_2");
+	const TCHAR* RegaliaDrawback =
+		TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you");
 
 	/**
 	 * The benefits: three thresholds on set A, one on set B, one on set C, and
@@ -206,6 +225,20 @@ namespace CataclysmEnchantmentSetTest
 	{
 		const TArray<FCataclysmStatModifier>* Found = Totals.Find(FName(Stat));
 		return Found && Found->Num() == 1 ? (*Found)[0].Value : 0.0f;
+	}
+
+	/**
+	 * One stat's only modifier, or null, for a test that asserts more about it
+	 * than its value. Issue #1596 needed the BUCKET and the CONDITION as well:
+	 * two set bonuses say the same sentence about a distance, one as an increase
+	 * and one as a multiplier, and a test reading only the value would pass for
+	 * either.
+	 */
+	const FCataclysmStatModifier* OnlyModifierOn(const FTotals& Totals,
+												const TCHAR* Stat)
+	{
+		const TArray<FCataclysmStatModifier>* Found = Totals.Find(FName(Stat));
+		return Found && Found->Num() == 1 ? &(*Found)[0] : nullptr;
 	}
 }
 
@@ -467,6 +500,135 @@ CATACLYSM_TEST(FCataclysmSetRealArchonsAegisTest,
 	TestEqual(TEXT("by 10, as its words say"),
 			  OnlyValueOn(Totals, TEXT("movement_speed")), -10.0f);
 	TestEqual(TEXT("two modifiers in all"), Added, 2);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmSetRealBrutesHeartTest,
+	"Cataclysm.EnchantmentSets.TwoBrutesHeartPiecesGrantADistanceConditionedIncreaseAndItsDrawback")
+{
+	using namespace CataclysmEnchantmentSetTest;
+
+	FTables Tables;
+	if (!RealTables(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE REAL ROWS, WHICH DID NOT EXIST UNTIL ISSUE #1596. "Brute's Heart
+	// (2-Piece Bonus): You gain 25% increased damage against enemies that are
+	// within 5 meters of you", and the set's drawback, "You take 10% more damage
+	// from all sources". This set granted NOTHING before them, because it was
+	// waiting for a reading the game did not have: an attacker asking how far
+	// away its target is.
+	int32 Added = 0;
+	const FTotals Totals =
+		Gather(Tables, Pieces(2, BruteMarker, BruteDrawback), Added);
+
+	TestEqual(TEXT("three modifiers in all"), Added, 3);
+
+	// BOTH HALVES OF "damage", because the project owner ruled on 2026-09-12 that
+	// the DISTANCE is the constraint and the row's melee scope tag is not
+	// honoured. A ranged or spell build has to close the distance rather than
+	// being shut out, so the sheet carries one row for attack damage and one for
+	// spell damage.
+	for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage")})
+	{
+		const FCataclysmStatModifier* Row = OnlyModifierOn(Totals, Stat);
+		if (!TestNotNull(*FString::Printf(TEXT("%s carries one modifier"), Stat),
+						 Row))
+		{
+			continue;
+		}
+		TestEqual(TEXT("increased by 25, as its words say"), Row->Value, 25.0f);
+		TestTrue(TEXT("in the increases bucket rather than as a multiplier"),
+				 Row->Bucket == ECataclysmStatBucket::Increased);
+		TestTrue(TEXT("conditioned on how far away the TARGET stood"),
+				 Row->Condition == ECataclysmStatCondition::TargetWithinMetres);
+		TestEqual(TEXT("at five metres, as its words say"),
+				  Row->ConditionValue, 5.0f);
+
+		// AND IT REQUIRES NO TAG, WHICH IS THE OWNER'S RULING WRITTEN AS A TEST
+		// RATHER THAN AS A COMMENT. The enchantment row carries
+		// `Scope.MeleeOnly`, nothing in the game honours it, and the ruling was
+		// that any attack type earns the bonus inside the distance. If somebody
+		// fills this in later, this line is what says the ruling changed --
+		// instead of the change being noticed in play, where a melee reach of at
+		// most 3.3 metres against a 5 metre threshold would make the condition
+		// nearly always true. Issue #1620 carries the scope tags in general.
+		TestTrue(TEXT("and requires no tag of the skill in hand"),
+				 Row->RequiredTags.IsEmpty());
+	}
+
+	const FCataclysmStatModifier* Cost =
+		OnlyModifierOn(Totals, TEXT("damage_taken"));
+	if (TestNotNull(TEXT("the drawback moves damage taken once"), Cost))
+	{
+		TestEqual(TEXT("by 10 more, as its words say"), Cost->Value, 10.0f);
+		TestTrue(TEXT("as a multiplier"),
+				 Cost->Bucket == ECataclysmStatBucket::More);
+		TestTrue(TEXT("and from all sources, so with no condition at all"),
+				 Cost->Condition == ECataclysmStatCondition::Always);
+	}
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmSetRealDemonKingsRegaliaTest,
+	"Cataclysm.EnchantmentSets.TwoDemonKingsRegaliaPiecesGrantTheSameConditionAsAMultiplierNotAnIncrease")
+{
+	using namespace CataclysmEnchantmentSetTest;
+
+	FTables Tables;
+	if (!RealTables(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE SAME SENTENCE AS BRUTE'S HEART WITH ONE WORD CHANGED, AND THAT WORD IS
+	// WHY ISSUE #1596 IS A CONDITION ON A ROW AND NOT A VALUE ADDED IN CODE.
+	// Brute's Heart says "25% INCREASED damage"; this says "You deal 25% MORE
+	// damage to enemies that are within 5 meters of you". A value added into the
+	// increases sum could express the first and would silently mis-build this
+	// one, which looks right on a fresh character and wrong on an invested one.
+	//
+	// Its drawback is "Ranged attacks deal 20% more damage to you", which needed
+	// nothing new: a hit already records whether it was ranged.
+	int32 Added = 0;
+	const FTotals Totals =
+		Gather(Tables, Pieces(2, RegaliaMarker, RegaliaDrawback), Added);
+
+	TestEqual(TEXT("three modifiers in all"), Added, 3);
+
+	for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage")})
+	{
+		const FCataclysmStatModifier* Row = OnlyModifierOn(Totals, Stat);
+		if (!TestNotNull(*FString::Printf(TEXT("%s carries one modifier"), Stat),
+						 Row))
+		{
+			continue;
+		}
+		TestEqual(TEXT("25, as its words say"), Row->Value, 25.0f);
+		TestTrue(TEXT("AS A MULTIPLIER AND NOT AN INCREASE, which is the whole "
+					  "difference from Brute's Heart"),
+				 Row->Bucket == ECataclysmStatBucket::More);
+		TestTrue(TEXT("on the same condition as Brute's Heart"),
+				 Row->Condition == ECataclysmStatCondition::TargetWithinMetres);
+		TestEqual(TEXT("at the same five metres"), Row->ConditionValue, 5.0f);
+		TestTrue(TEXT("and requiring no tag either"), Row->RequiredTags.IsEmpty());
+	}
+
+	const FCataclysmStatModifier* Cost =
+		OnlyModifierOn(Totals, TEXT("damage_taken"));
+	if (TestNotNull(TEXT("the drawback moves damage taken once"), Cost))
+	{
+		TestEqual(TEXT("by 20 more, as its words say"), Cost->Value, 20.0f);
+		TestTrue(TEXT("as a multiplier"),
+				 Cost->Bucket == ECataclysmStatBucket::More);
+		TestTrue(TEXT("and only from a ranged attack, which needed no new "
+					  "reading at all"),
+				 Cost->Condition == ECataclysmStatCondition::HitIsRangedAttack);
+	}
 
 	return true;
 }
