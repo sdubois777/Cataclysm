@@ -45,8 +45,14 @@ class CATACLYSM_API UCataclysmFloorContents : public UBlueprintFunctionLibrary
 
 public:
 	/**
-	 * Destroy every creature, drop, projectile, ground effect and telegraph
-	 * marker in the world.
+	 * Destroy every creature, drop, projectile, ground effect, telegraph
+	 * marker and floor hazard source in the world.
+	 *
+	 * THE HAZARD SOURCE IS THE ACTOR A FLOOR'S HAZARDS ARE DEALT IN THE NAME
+	 * OF. `ACataclysmFloorHazardSource` exists only to carry an
+	 * ability system component, because every route in
+	 * `UCataclysmSkillEffects` refuses a source that has none.
+	 * Its whole life is one floor.
 	 *
 	 * CREATURES INCLUDE ONES NOBODY IS TRACKING.
 	 * `ACataclysmDungeonGameMode::ClearFloorEnemies` walks the array the floor

@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -66,6 +67,18 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World)
 	Destroyed += FloorContentsDestroyEvery<ACataclysmProjectile>(World);
 	Destroyed += FloorContentsDestroyEvery<ACataclysmGroundZone>(World);
 	Destroyed += FloorContentsDestroyEvery<ACataclysmTelegraphMarker>(World);
+
+	// AND WHOSE NAME THE FLOOR'S HAZARDS WERE DEALT IN, LAST OF ALL. A floor
+	// hazard is owned by an ACataclysmFloorHazardSource rather than by a
+	// creature or by the game mode, because every route that applies anything
+	// in UCataclysmSkillEffects refuses unless the source resolves to an
+	// ability system component. That actor's whole life is one floor, so it
+	// goes when the floor does and the next floor makes its own.
+	//
+	// AFTER THE HAZARDS RATHER THAN BEFORE, so the order reads the way the
+	// ownership does. Nothing depends on it -- both are destroyed in the same
+	// call and a zone whose owner has gone simply sweeps nothing.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmFloorHazardSource>(World);
 
 	return Destroyed;
 }
