@@ -70,6 +70,7 @@ a day either way, which is what the tolerance is for.
 from __future__ import annotations
 
 import inspect
+import pathlib
 import re
 import statistics
 from collections import Counter
@@ -466,3 +467,159 @@ class TestWhichKindsOfDungeonCarryASiege:
             f"the docstring's own two numbers disagree: {stated_total} Sieges "
             f"over 10,000 campaigns is {stated_total / 10_000:.2f} a campaign, "
             f"not {stated_rate}")
+
+
+# ---------------------------------------------------------------------------
+# The two places that copy the median walk. Issue #1376.
+# ---------------------------------------------------------------------------
+#
+# WHY THIS SECTION EXISTS. The figures above are re-measured against real
+# campaigns, so `policies.py` cannot go stale without this file failing. Two
+# other files quote the same medians and neither was read by anything, so both
+# went stale and stayed stale through several re-measurements:
+#
+#   * `docs/DECISIONS.md`, in the entry headed "An unattended Siege now takes
+#     25 / 39 / 55 / 70 days". It quoted 12 / 20 / 33 and 14 / 22 / 33 side by
+#     side, because it was written while `policies.py` and issue #1364
+#     disagreed, and it stated a slack of eleven, seventeen and twenty-two days.
+#   * `sim/cataclysm_sim/config.py`, on `siege_damage_growth_per_day`. It quoted
+#     14 / 22 / 33.
+#
+# WHAT THESE CHECK, AND WHAT THEY DELIBERATELY DO NOT. They tie the copies to
+# `policies.py` and run no campaigns. The expensive re-measurement above already
+# holds `policies.py` to reality, so one measurement now protects three files and
+# these cost nothing. A copy that disagrees with `policies.py` is wrong whether
+# or not `policies.py` is right, and if `policies.py` is wrong the tests above
+# are what say so.
+
+#: This checkout's root. Two directories up from `sim/tests/`.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+DECISIONS = REPO_ROOT / "docs" / "DECISIONS.md"
+CONFIG = REPO_ROOT / "sim" / "cataclysm_sim" / "config.py"
+
+#: The three sizes a Siege can be answered at. The Pillar is quoted separately
+#: in both copies, as a walk of 123 days against the 70 a Siege leaves, and
+#: cannot be answered at all.
+ANSWERABLE = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY]
+
+
+#: A line's indent and whatever it opens with: a Python comment's `#`, a
+#: Markdown blockquote's `>`, or nothing. Stripped before the wrapping is taken
+#: out, or the marker ends up inside the sentence.
+LEADER = re.compile(r"^[ \t]*(?:#+|>+)?[ \t]*")
+
+
+def flattened(path) -> str:
+    """A file's text with its line wrapping and comment markers taken out.
+
+    Both copies are hard-wrapped prose, so a figure can be split across two
+    lines -- "against a median walk of" on one and "14 / 23 / 37" on the next.
+    A search against the raw text finds nothing and reads as a clean file that
+    is not clean.
+
+    THE MARKERS HAVE TO GO WITH THE WRAPPING, and this check found that out by
+    failing on its own first draft. Joining the lines of a Python comment block
+    without stripping the `#` gives "against a median walk of # 14 / 23 / 37",
+    which matches nothing either. The same is true of a Markdown blockquote's
+    `>`.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return " ".join(" ".join(LEADER.sub("", line) for line in lines).split())
+
+
+def walk_figures() -> str:
+    """The three answerable medians as both copies write them: "14 / 23 / 37"."""
+    walks = stated_walks()
+    return " / ".join(str(walks[tier]) for tier in ANSWERABLE)
+
+
+def file_states(path, phrase: str) -> bool:
+    """Whether a file states `phrase`, once its wrapping is taken out.
+
+    THE ANSWER IS COMPUTED HERE AND NOT INSIDE AN `assert`, AND THAT IS NOT A
+    STYLE CHOICE. `docs/DECISIONS.md` flattens to about 2,100,000 characters, and
+    pytest rewrites an assertion so it can explain what failed. For a FAILING
+    `x not in <2,100,000 characters>` that explanation does not finish: measured
+    2026-09-12, it ran past a 300 second timeout, while the same failure with the
+    answer computed first reported in 0.11 seconds. A failing `x in ...` is not
+    affected -- that one reports in 0.01 seconds -- so only one of the two
+    directions is dangerous, and writing both this way is what stops the next
+    person having to remember which.
+
+    The first version of the checks below had the string in the expression. It
+    did not look like a fault, because it only appears when the guard fires, so
+    it would have shipped and then hung continuous integration the first time
+    one of these copies went stale -- which is the exact thing the guard exists
+    to catch.
+    """
+    return phrase in flattened(path)
+
+
+class TestTheCopiesOfTheMedianWalk:
+    """Issue #1376. Neither copy was read by anything until this class."""
+
+    def test_the_decisions_log_quotes_the_medians_policies_states(self):
+        wanted = f"Against a median walk of {walk_figures()} days"
+        assert file_states(DECISIONS, wanted), (
+            f"docs/DECISIONS.md no longer says {wanted!r}. "
+            f"`sim/cataclysm_sim/policies.py` states a median walk of "
+            f"{walk_figures()} days, re-measured by the tests above. Follow it "
+            "there rather than deleting this check. Issue #1376.")
+
+    def test_the_decisions_log_quotes_the_slack_that_subtraction_gives(self):
+        """The subtraction and not only the walks, for the reason the
+        days-to-empty checks above give: a hand edit that moves one number and
+        not the other reads perfectly and is wrong."""
+        walks = stated_walks()
+        slack = [days_to_empty(tier) - walks[tier] for tier in ANSWERABLE]
+        words = {11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
+                 15: "fifteen", 16: "sixteen", 17: "seventeen",
+                 18: "eighteen", 19: "nineteen", 20: "twenty",
+                 21: "twenty-one", 22: "twenty-two"}
+        missing = [day for day in slack if day not in words]
+        assert not missing, (
+            f"the slack is now {slack} days and this check can only spell "
+            f"{sorted(words)}. Add the missing word rather than dropping the "
+            "check.")
+
+        spelled = ", ".join(words[day] for day in slack[:-1])
+        wanted = f"{spelled} and {words[slack[-1]]} days"
+        assert file_states(DECISIONS, wanted), (
+            f"docs/DECISIONS.md no longer states the slack as {wanted!r}. "
+            f"A fresh Siege leaves {[days_to_empty(t) for t in ANSWERABLE]} "
+            f"days and the median walk is {[walks[t] for t in ANSWERABLE]}, "
+            f"which subtracts to {slack}. Issue #1376.")
+
+    def test_the_tuning_constants_comment_quotes_the_same_medians(self):
+        wanted = f"against a median walk of {walk_figures()}"
+        assert file_states(CONFIG, wanted), (
+            f"sim/cataclysm_sim/config.py no longer says {wanted!r} in the "
+            "comment on `siege_damage_growth_per_day`. The median walk does not "
+            "depend on that constant, so the comment is quoting a current "
+            "figure and has to follow `policies.py`. Issue #1376.")
+
+    def test_neither_copy_still_carries_a_superseded_figure(self):
+        """The three medians this entry has stated over its life. Two are gone
+        and must not come back by a copy being restored from an old draft."""
+        superseded = ("12 / 20 / 33", "14 / 22 / 33")
+        live = walk_figures()
+        for path in (DECISIONS, CONFIG):
+            for figure in superseded:
+                if figure == live:
+                    continue
+                # `docs/DECISIONS.md` records the superseded pair on purpose,
+                # inside the note that says they are superseded. That note is
+                # the record of the correction and must survive; what must not
+                # come back is the sentence stating one as current.
+                #
+                # THE ANSWER IS COMPUTED BEFORE THE `assert` AND MUST STAY THAT
+                # WAY. This is the failing `not in` the note on `says` measures:
+                # with the text inside the expression it does not finish.
+                still_there = file_states(path, f"median walk of {figure}")
+                assert not still_there, (
+                    f"{path.name} states a median walk of {figure}, which was "
+                    f"superseded. `sim/cataclysm_sim/policies.py` states "
+                    f"{live}. Issue #1376.")

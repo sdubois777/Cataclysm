@@ -714,10 +714,16 @@ def weapon_skills(book) -> list[dict]:
 #: slot, so a skill taking its damage from whichever slot it happened to be put
 #: in would be worth 250% of weapon damage on one key and 400% on another.
 #:
-#: EVERY CELL IS BLANK TODAY AND THAT IS DELIBERATE. The mechanism lands before
-#: the numbers so that nothing changes until a number is written: a blank falls
-#: back to the slot's figure, which is what the game did before. Writing the 112
-#: designed skills' numbers is the rest of issue #836.
+#: MOST CELLS ARE BLANK AND THAT IS DELIBERATE. The mechanism landed before the
+#: numbers so that nothing changed until a number was written: a blank falls back
+#: to the slot's figure, which is what the game did before. Writing the 112
+#: designed skills' numbers is the rest of issue #836, and it has started.
+#:
+#: THIS SAID "EVERY CELL IS BLANK TODAY" AND STOPPED BEING TRUE. Issue #1243.
+#: Twelve rows state a damage percentage now. No count is written here any more,
+#: because it changes every time a designed skill's number is filled in, and a
+#: comment that states one is wrong from the next commit onwards. The column
+#: itself is the only place worth reading it from.
 #:
 #: NOT ZERO, for the same reason the critical strike sentinel is not. A Support
 #: skill deals 0% of weapon damage, a skill may have no cooldown, and a skill may
@@ -728,8 +734,13 @@ UNSTATED_SKILL_NUMBER = -1.0
 def skill_number(cell: str, what: str, where: str) -> float:
     """A per-skill damage, cooldown or mana cost, or -1 when the cell is blank.
 
-    Blank is the ordinary case and is not a fault: every one of the 398 rows is
-    blank today.
+    Blank is the ordinary case and is not a fault: most rows state no figure of
+    their own and take their slot's.
+
+    THIS SAID "EVERY ONE OF THE 398 ROWS IS BLANK TODAY" AND WAS WRONG TWICE
+    OVER. Issue #1243. There are more rows than that now, and twelve of them
+    state a damage percentage. The count is deliberately not replaced with
+    another one; see the comment on `UNSTATED_SKILL_NUMBER` above.
     """
     if not cell:
         return UNSTATED_SKILL_NUMBER
@@ -768,8 +779,13 @@ UNSTATED_CRIT_CHANCE = -1.0
 def skill_crit_chance(cell: str, where: str) -> float:
     """The Crit Chance cell as a number, or -1 when the cell is blank.
 
-    Blank is the ordinary case and is not a fault: all 398 rows are blank today,
-    and a skill that says nothing about critical strikes should not have to.
+    Blank is the ordinary case and is not a fault: every row is blank, and a
+    skill that says nothing about critical strikes should not have to.
+
+    THE ROW COUNT THAT USED TO BE IN THIS SENTENCE IS GONE. Issue #1243. It said
+    398 and there are more than that now. Unlike the damage percentage above,
+    "every row" is still true here -- no skill states a critical strike chance of
+    its own -- so the claim survives and only the number went.
     """
     if not cell:
         return UNSTATED_CRIT_CHANCE

@@ -578,8 +578,9 @@ class TuningConfig:
     #
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
-    # city in 14 / 23 / 34 / 47 days by size against a median walk of about
-    # 14 / 22 / 33, so the player arrived on the day the city fell; at 2.5 it
+    # city in 14 / 23 / 34 / 47 days by size against a median walk of
+    # 14 / 23 / 37, so the player arrived on the day the city fell for the two
+    # smaller sizes and after it had fallen for the third; at 2.5 it
     # takes 25 / 39 / 55 / 70. Damage dealt grows with the SQUARE of the days a
     # Siege has stood, so this number buys days back far more slowly than it
     # looks: halving it to 5 takes an Outpost only from 14 days to 19, while
