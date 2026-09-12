@@ -319,7 +319,20 @@ cycle each:
   removes the `mcp__unreal__*` tools until it is back.
 - **`Result: Succeeded` is not evidence that anything was built**, and grepping
   for `Result:` alone hides the reason a build failed. Read the whole tail of the
-  output. `unreal_build.build()` returns which files were compiled.
+  output. **`python tools/unreal_build.py build` says what it did**, since issue
+  #1599:
+
+  ```
+  Build: Succeeded - 3 actions, 2 files compiled: CataclysmStatPipeline.cpp, CataclysmPassiveTree.cpp
+  Build: Succeeded - target already up to date, 0 actions, nothing compiled
+  ```
+
+  Read that line rather than the result word. Until #1599 the command printed
+  `Build: Succeeded` and nothing else whenever the build had work to do, so this
+  entry sent readers to `unreal_build.build()` and a session had to call it from
+  a Python prompt to answer the question. The function still returns the same
+  three things -- the compiled file list, the action count and
+  `BuildOutcome.up_to_date` -- for a caller that wants them as data.
 - **The automation test command writes nothing useful to standard output.**
   Redirecting it captures only the software development kit validation banner.
   The results are in `game/Saved/Logs/Cataclysm.log`.
@@ -428,7 +441,9 @@ someone still working by accident.
 **What a worktree does not have.** `game/Content/Paragon*/` is gitignored
 (`.gitignore` line 83) and no Paragon file is in git, so the art exists only in
 the main checkout at `C:\Projects\Cataclysm`. A worktree never has it, which is
-why the fifteen tests described above report themselves as skipped there.
+why the tests described above report themselves as skipped there. **This said
+"the fifteen tests" until issue #1284**, after the sentence it refers to had
+stopped naming a number.
 
 **No working directory is authoritative, the main checkout included. Read a rule
 you are about to quote out of git.**

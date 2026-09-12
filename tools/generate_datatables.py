@@ -5250,7 +5250,12 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, rows in sorted(tables.items()):
         print(f"  {name + '.csv':<28}{len(rows):>5} rows")
-    print(f"Wrote {len(tables)} CSVs to game/Data/")
+    # THE DIRECTORY IT ACTUALLY WROTE TO, NOT `game/Data/`. Issue #1487. This
+    # line named `game/Data/` whatever `--output-dir` was, because the option
+    # was added after the message. The safe way to see what a workbook edit does
+    # is to generate into a scratch directory and compare, and this line told
+    # you that had written over the repository's data instead.
+    print(f"Wrote {len(tables)} CSVs to {args.output_dir}")
     return 0
 
 

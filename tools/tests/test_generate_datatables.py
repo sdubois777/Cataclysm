@@ -1789,6 +1789,46 @@ class TestAgainstTheRealWorkbook:
             "Run: python tools/generate_datatables.py"
         )
 
+    def test_the_closing_line_names_the_directory_it_wrote_to(
+            self, tmp_path, capsys):
+        """Issue #1487. This line read `Wrote N CSVs to game/Data/` whatever
+        `--output-dir` was, because the option was added after the message.
+
+        WHY IT MATTERS ENOUGH FOR A TEST. Generating into a scratch directory
+        and comparing is the safe way to see what a workbook edit does, instead
+        of writing over `game/Data/` and hoping to undo it. The old line said
+        that run had written over the repository's data, so the next person
+        either loses a `git status` establishing it had not, or believes it and
+        restores files that were never touched.
+
+        IT WRITES SOMEWHERE HARMLESS AND CHECKS IT LANDED THERE, so this also
+        fails if `--output-dir` stops being honoured, not only if the message
+        stops naming it.
+        """
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+
+        destination = tmp_path / "generated"
+        assert gen.main(["--output-dir", str(destination)]) == 0
+
+        written = sorted(path.name for path in destination.glob("*.csv"))
+        assert written, (
+            f"--output-dir {destination} produced no CSVs, so the message this "
+            "test reads describes nothing.")
+
+        printed = capsys.readouterr().out.splitlines()
+        closing = printed[-1]
+        assert str(destination) in closing, (
+            f"the closing line names the wrong directory. It reads "
+            f"{closing!r} and the files were written to {destination}.")
+        assert "game/Data/" not in closing, (
+            f"the closing line still names game/Data/ although --output-dir "
+            f"sent the CSVs to {destination}. It reads {closing!r}. "
+            "Issue #1487.")
+        assert f"{len(written)} " in closing, (
+            f"the closing line reads {closing!r} and {len(written)} CSVs were "
+            "written, so the count does not describe the run.")
+
     def test_every_table_has_rows(self):
         if not gen.WORKBOOK.is_file():
             pytest.skip("design workbook not present")
