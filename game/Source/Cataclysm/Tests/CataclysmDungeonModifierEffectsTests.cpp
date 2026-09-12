@@ -1215,8 +1215,19 @@ bool FCataclysmModifierEmbraceBeatTest::RunTest(const FString& Parameters)
 	// THE STAIRS CLEAR THEM, WHICH THE ROW ASKS FOR OUTRIGHT: "Stacks reset when
 	// entering a new floor." This is the one part of this rule the data promises
 	// rather than the code needing, so it is asserted on its own.
-	Mode->FloorNumber = 2;
-	if (!TestNotNull(TEXT("the next floor was built"), Mode->BuildFloor()))
+	// THROUGH `GoToFloor` AND NOT `BuildFloor`, AND THE FIRST VERSION OF THIS
+	// TEST GOT IT WRONG. `BuildFloor` is an internal step: it rebuilds the floor
+	// brief and never calls `ApplyFloorRulesToPlayer`, which is what holds the
+	// reset. Its only caller outside the tests is `GoToFloor`, which calls it
+	// and then applies the floor's rules -- so taking the stairs always resets,
+	// and a test driving `BuildFloor` was exercising a path play never takes. It
+	// failed, and it failed for the test's reason rather than the code's.
+	//
+	// THE SETUP ABOVE STILL USES `BuildFloor` ON PURPOSE, because all it needs
+	// is a floor whose brief carries the row, which is what `BuildFloor` does.
+	// The difference between the two calls is exactly what this assertion is
+	// about.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
 	{
 		return false;
 	}
@@ -1235,8 +1246,10 @@ bool FCataclysmModifierEmbraceBeatTest::RunTest(const FString& Parameters)
 	// A FLOOR WITHOUT THE ROW CUTS NOTHING, which is what says the beat reads the
 	// floor's list rather than cursing everybody.
 	Mode->DungeonModifiers = {Starvation};
-	Mode->FloorNumber = 3;
-	Mode->BuildFloor();
+	if (!TestTrue(TEXT("the third floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
 	Beats(200);
 	TestEqual(TEXT("a floor without Death's Embrace cuts no healing"),
 			  Reduction(), 0.0f, 0.01f);
