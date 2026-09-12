@@ -85,8 +85,10 @@ One row: `skill_locked`, `flat`, **1**, required tag `Slot.Movement`, condition
 carries `Scope.WhileStationary`, so writing both would scope the lock to the empty
 set. It would read as a lock that does not work rather than as a row written wrong.
 
-**THE COVERAGE THIS TAKES THE SHEET TO IS 88 ROWS OVER 78 ENCHANTMENTS**, from 87
-over 77. `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` in
+**THE COVERAGE THIS TAKES THE SHEET TO IS 91 ROWS OVER 80
+ENCHANTMENTS**, from 90 over 79 -- both figures read off the regenerated file
+rather than added to the previous ones, because the second counts distinct
+enchantments and not rows. `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` in
 `tools/tests/test_enchantment_effects_match_the_row_text.py` pin those two figures so
 that the coverage only moves when somebody means it to, and that check asks for this
 log to be changed in the same breath. The 88th row is the first in the file to take a

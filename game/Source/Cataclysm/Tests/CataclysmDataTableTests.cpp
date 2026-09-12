@@ -408,7 +408,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// wearer's own damage across its types and so is an `attack_damage` row and a
 	// `spell_damage` row, while "Staggered enemies deal 15%-30% increased damage
 	// to you" is damage the wearer takes and is `damage_taken` alone.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     90)
+	// AND 91 WITH THE SKILL LOCK'S FIRST SOURCE, which is the first row in
+	// this file to take a skill away rather than change a number: "You cannot use
+	// movement abilities while stationary for more than 2 seconds", granting
+	// `skill_locked` scoped to `Slot.Movement` under the condition
+	// `stationary_for_seconds`. Issues #41 and #1628.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     91)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

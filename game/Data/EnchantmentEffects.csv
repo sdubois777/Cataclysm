@@ -89,3 +89,4 @@ Negative_Ranged_attacks_deal_20_more_damage_to_you#1,Negative_Ranged_attacks_dea
 Positive_Staggered_enemies_take_20_35_increased_damage#1,Positive_Staggered_enemies_take_20_35_increased_damage,attack_damage,increased,20.0,35.0,,target_is_staggered,0.0,,0.0
 Positive_Staggered_enemies_take_20_35_increased_damage#2,Positive_Staggered_enemies_take_20_35_increased_damage,spell_damage,increased,20.0,35.0,,target_is_staggered,0.0,,0.0
 Negative_Staggered_enemies_deal_15_30_increased_damage#1,Negative_Staggered_enemies_deal_15_30_increased_damage,damage_taken,increased,15.0,30.0,,opponent_is_staggered,0.0,,0.0
+Negative_You_cannot_use_movement_abilities_while_stationa#1,Negative_You_cannot_use_movement_abilities_while_stationa,skill_locked,flat,1.0,1.0,Slot.Movement,stationary_for_seconds,2.0,,0.0

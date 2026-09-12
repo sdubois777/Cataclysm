@@ -140,8 +140,13 @@ JUDGED_NUMBERS = {
 #: is the wearer's own damage across its types, so it is an `attack_damage` row
 #: and a `spell_damage` row; "Staggered enemies deal 15%-30% increased damage to
 #: you" is damage the wearer takes, which is `damage_taken` alone.
-AUTHORED_ROWS = 90
-AUTHORED_ENCHANTMENTS = 79
+#:
+#: 91 OVER 80 SINCE THE SKILL LOCK GOT ITS FIRST SOURCE, the same
+#: day: "You cannot use movement abilities while stationary for more than 2
+#: seconds" is the first row in this file to take a skill away rather than change
+#: a number. Issues #41 and #1628.
+AUTHORED_ROWS = 91
+AUTHORED_ENCHANTMENTS = 80
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
