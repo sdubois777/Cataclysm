@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "EngineUtils.h"
@@ -848,6 +849,101 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	}
 
 	return Acted;
+}
+
+int32 UCataclysmEnemyModifiers::HealAlliesStep(AActor* Character,
+											   float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Medic = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Medic == nullptr)
+	{
+		// THE PLAYER AND ANY OTHER ACTOR COME THROUGH HERE HARMLESSLY, the same
+		// refusal AuraStep makes for the same reason: the step this hangs off
+		// is on the shared character base.
+		return 0;
+	}
+
+	// A DEAD MEDIC HEALS NOBODY. The regeneration timer is cleared on death,
+	// but a step already in flight would otherwise land afterwards -- the same
+	// guard AuraStep carries above.
+	//
+	// AND IT IS WHY NO DEATH HOOK IS NEEDED. A creature-carried aura ends when
+	// the creature does because nothing calls this for a dead one, rather than
+	// because something noticed the death. That is the opposite of a floor
+	// hazard, which must outlive the death that created it -- issue #1605.
+	if (UCataclysmSkillEffects::IsDead(Medic))
+	{
+		return 0;
+	}
+
+	Medic->SecondsSinceAuraPulse += StepSeconds;
+	if (!AuraPulseIsDue(Medic->SecondsSinceAuraPulse))
+	{
+		return 0;
+	}
+	Medic->SecondsSinceAuraPulse = 0.0f;
+
+	const UWorld* World = Medic->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// ALLIES AND NOT ENEMIES, and not itself: FindAlliesInSphere excludes the
+	// instigator, which is what "all other enemies" asks for. It also excludes
+	// the dead, so a corpse is not healed back into the fight.
+	//
+	// THE SAME RADIUS EVERY AURA IN THIS GAME USES. Six metres, the project
+	// owner's decision of 2026-09-05, and the reason it is one number is that a
+	// player learns the distance once.
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Medic, Medic->GetActorLocation(), AuraRadiusCm);
+
+	int32 Healed = 0;
+	for (AActor* Ally : Allies)
+	{
+		UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Ally);
+		if (AbilitySystem == nullptr)
+		{
+			continue;
+		}
+
+		// A SHARE OF EACH ALLY'S OWN MAXIMUM RATHER THAN A FLAT AMOUNT, so one
+		// figure works for a Common creature and for a boss without being
+		// meaningless to one of them.
+		const float Maximum = AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Gain = Maximum * MedicHealPercentOfMaximumPerPulse / 100.0f;
+		if (Gain <= 0.0f)
+		{
+			// A CREATURE WITH NO MAXIMUM HEALTH IS NOT HEALED, rather than being
+			// given nothing and counted as though it had been.
+			continue;
+		}
+
+		// THROUGH TopUp RATHER THAN WRITING THE ATTRIBUTE, because that is what
+		// honours the maximum, the healing-received stat and everything else
+		// standing between a restoration and a health bar.
+		//
+		// NO Keyword.Regeneration TAG. That tag scopes a passive node to a
+		// character's own regeneration, and this is one creature healing
+		// another. Leech passes nothing for the same reason.
+		UCataclysmRegeneration::TopUp(
+			*AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Gain);
+		++Healed;
+	}
+
+	if (Healed > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s healed %d all%s for %.0f%% of maximum each."),
+			*Medic->GetName(), Healed, Healed == 1 ? TEXT("y") : TEXT("ies"),
+			MedicHealPercentOfMaximumPerPulse);
+	}
+
+	return Healed;
 }
 
 bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)
