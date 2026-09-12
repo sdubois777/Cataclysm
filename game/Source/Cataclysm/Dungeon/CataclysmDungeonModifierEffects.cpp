@@ -197,8 +197,20 @@ float UCataclysmDungeonModifierEffects::NihilsEmbraceResistanceLost(
 int32 UCataclysmDungeonModifierEffects::DeathsEmbraceStacksAfter(
 	float SecondsOnFloor)
 {
-	if (SecondsOnFloor < DeathsEmbraceSecondsPerStack
-		|| DeathsEmbraceSecondsPerStack <= 0.0f)
+	// A SIGN TEST AND NOT A THRESHOLD, AND IT WAS WRITTEN AS A THRESHOLD UNTIL A
+	// GUARD PROOF SHOWED THE THRESHOLD DECIDED NOTHING. Issue #41, slice 5. It
+	// read `SecondsOnFloor < DeathsEmbraceSecondsPerStack`, which looks like the
+	// rule -- no stack before ten seconds -- and is already answered by the
+	// floor division below: FloorToInt(9.9 / 10) is 0. The only input the two
+	// disagree about is a NEGATIVE one, where the division gives
+	// FloorToInt(-0.5) == -1 and a caller would be handed a negative stack
+	// count. So the condition does the work of a sign test and now says so.
+	//
+	// THE SECOND HALF GUARDS A DIVISION, not a rule. The interval is a
+	// compile-time 10.0f and can never be zero today; taking the test out would
+	// leave a division by a constant somebody could later set to zero, and
+	// FloorToInt of an infinity is undefined.
+	if (SecondsOnFloor <= 0.0f || DeathsEmbraceSecondsPerStack <= 0.0f)
 	{
 		return 0;
 	}

@@ -841,11 +841,23 @@ bool FCataclysmHealingReceivedTest::RunTest(const FString&)
 			  Read(Player, Vital::GetHealthAttribute()), 100.0f, 0.01f);
 
 	// AND A VALUE PAST A HUNDRED STILL RESTORES NOTHING RATHER THAN DEALING
-	// DAMAGE. The attribute clamps in `PreAttributeChange`, which a write to the
-	// BASE value does not go through -- so this reaches the reading site with
-	// 150 on it, and the clamp there is what stops healing turning into harm.
-	// Written this way on purpose: it is the site's clamp being tested, not the
-	// attribute set's.
+	// DAMAGE.
+	//
+	// IT IS THE ATTRIBUTE SET'S CLAMP THAT DOES THIS, NOT THE READING SITE'S,
+	// and this comment said the opposite until a guard proof disproved it. Issue
+	// #41, slice 5. A write to the BASE value does reach `PreAttributeChange`:
+	// `SetAttributeBaseValue` sets the base unclamped, then -- with no
+	// aggregator on the attribute -- calls `InternalUpdateNumericalAttribute`,
+	// which reaches `FGameplayAttribute::SetNumericValueChecked`, which calls
+	// `PreAttributeChange` before setting the CURRENT value. `GetNumericAttribute`
+	// reads the current value, so the site is handed 100 here and never 150.
+	//
+	// WHICH MEANS THE SITE'S OWN CLAMP CANNOT BE TESTED FROM HERE, and breaking
+	// it changes nothing: two guard cases were spent proving exactly that. It is
+	// kept because replication writes the current value through
+	// GAMEPLAYATTRIBUTE_REPNOTIFY, which does NOT pass through
+	// `PreAttributeChange`, so a client can hold an out-of-range figure. That is
+	// a real reason to keep it and not a reason to call it proven.
 	Write(Player, Vital::GetHealingReceivedReductionAttribute(), 150.0f);
 	Write(Player, Vital::GetHealthAttribute(), 500.0f);
 	UCataclysmRegeneration::TopUp(
@@ -856,12 +868,12 @@ bool FCataclysmHealingReceivedTest::RunTest(const FString&)
 			  Read(Player, Vital::GetHealthAttribute()), 500.0f, 0.01f);
 
 	// AND A NEGATIVE VALUE RESTORES THE PLAIN AMOUNT RATHER THAN MORE THAN IT,
-	// which is the half of the site's clamp that can actually be observed.
-	// Without a floor at zero a curse on healing would HEAL its victim harder
-	// than no curse at all. The upper bound cannot be caught by a test here,
-	// because a reduction past a hundred makes the gain negative and the
-	// `Gain <= 0` return above catches it before the arithmetic can do harm --
-	// so the assertion above passes either way, and this one does not.
+	// because without a floor at zero a curse on healing would HEAL its victim
+	// harder than no curse at all.
+	//
+	// THE SAME CORRECTION APPLIES HERE: it is the attribute set's clamp that
+	// holds this, not the site's, for the reason given above. The negative never
+	// reaches the site either.
 	Write(Player, Vital::GetHealingReceivedReductionAttribute(), -50.0f);
 	Write(Player, Vital::GetHealthAttribute(), 100.0f);
 	UCataclysmRegeneration::TopUp(

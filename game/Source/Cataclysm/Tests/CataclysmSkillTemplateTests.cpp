@@ -11568,10 +11568,15 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 		Caster.Health(), 50000.0f, 0.01f);
 	TestEqual(TEXT("and the blow was still counted"), Pyre->BlowsTaken, 3);
 
-	// AND A VALUE PAST A HUNDRED RETURNS NOTHING RATHER THAN TAKING HEALTH. The
-	// attribute's clamp lives in `PreAttributeChange`, which a write to the base
-	// value skips, so this reaches the skill with 150 on it and the clamp there
-	// is what is being tested.
+	// AND A VALUE PAST A HUNDRED RETURNS NOTHING RATHER THAN TAKING HEALTH.
+	//
+	// THE ATTRIBUTE SET'S CLAMP IS WHAT HOLDS THIS, NOT THIS SKILL'S, and this
+	// comment claimed the opposite until a guard proof disproved it. Issue #41,
+	// slice 5. A write to the base value DOES reach `PreAttributeChange` on its
+	// way to the current value, and `GetNumericAttribute` reads the current
+	// value, so the skill is handed 100 here and never 150. Breaking this
+	// skill's own clamp changes nothing a test can see; it is kept against a
+	// replicated value, which does not pass through `PreAttributeChange`.
 	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), 150.0f);
 	const float PastFull = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
 
@@ -11580,12 +11585,11 @@ bool FCataclysmPyreHealingCutTest::RunTest(const FString&)
 	TestEqual(TEXT("and takes no health either"),
 		Caster.Health(), 50000.0f, 0.01f);
 
-	// AND A NEGATIVE VALUE RETURNS THE ROW'S PLAIN FIGURE RATHER THAN MORE.
-	// This is the half of the clamp that can be observed here: without a floor
-	// at zero, a curse on healing would make the pyre return MORE than an
-	// uncursed one. The assertion above cannot catch the upper bound, because
-	// `FMath::Clamp(Wanted, 0.0f, ...)` below already floors a negative amount
-	// at nothing, so it passes with or without the clamp on the stat.
+	// AND A NEGATIVE VALUE RETURNS THE ROW'S PLAIN FIGURE RATHER THAN MORE,
+	// because without a floor at zero a curse on healing would make the pyre
+	// return MORE than an uncursed one. Held by the attribute set's clamp, for
+	// the reason given above, so this assertion is about that clamp and not
+	// about this function's.
 	Caster.Set(Vital::GetHealingReceivedReductionAttribute(), -100.0f);
 	const float Negative = Pyre->NoteBlowTaken(/*DealtToHealth=*/400.0f);
 
