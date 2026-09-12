@@ -465,12 +465,21 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		return Result;
 	}
 
-	// 1. Evasion. Direct attacks only; area damage lands regardless.
+	// 1. Evasion. Direct attacks only; area damage lands regardless, and so does
+	// every tick of damage over time.
+	//
+	// A TICK IS NOT A DIRECT ATTACK, AND USED TO BE ROLLED AGAINST LIKE ONE.
+	// Issue #1584. The design's damage table gives evasion to "Direct attacks
+	// only", and its paragraph on critical strikes cites Last Epoch that a
+	// damage over time effect is not a hit and so cannot be dodged. Until this,
+	// an Imp's 25% evasion stopped about a quarter of the bleed, burn, poison,
+	// disease and necrosis ticks on it, and a player's evasion did the same to
+	// an enemy's.
 	//
 	// AND A BLOW MAY REFUSE TO BE DODGED. The Perfect Aim enemy modifier
 	// reads "Attacks cannot be dodged", and evasion is rolled here on the
 	// target, so the only place an attacker can refuse it is on the blow.
-	if (!Hit.bIsArea && !Hit.bCannotBeEvaded && Combat)
+	if (!Hit.bIsArea && !Hit.bIsDamageOverTime && !Hit.bCannotBeEvaded && Combat)
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);
