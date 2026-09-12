@@ -1333,6 +1333,56 @@ VALUE_FORMS = {
     # one further thrall at the 30 a thrall reserves". A flat maximum on a
     # resource with another name would need its own form, and should get one.
     "class_resource": "{value:g} maximum Fervour",
+
+    # THE THREE RATES ON THE MASOCHIST'S FIRST SPINE NODE, which are the rows
+    # issue #990 was opened about. Each is a COUNT OF FERVOUR PER ONE PER CENT OF
+    # HEALTH, and each was worth 1, so the default percent form looked for "1%"
+    # and found it -- in the share of health, which is a different quantity in
+    # the same sentence. All three passed, none of them for its own reason.
+    #
+    # THE NODE READS: "Health you lose generates Fervour: 1 per 1% of maximum
+    # health lost to damage, and 1 per 1% of maximum health spent as an ability
+    # cost. While you have this, healing removes Fervour at the same rate, 1 per
+    # 1% of maximum health restored ..."
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, for the reason the
+    # Ritualist's two entries above give: without them the three rows all look
+    # for the same text, so a workbook that swapped two of them would still
+    # pass. "lost", "spent" and "restored" are what keep the three apart, and
+    # they are the words the sentence already uses.
+    #
+    # THAT THE FORMS CLOSE THE SWAP IS MEASURED, NOT ARGUED. It was put to this
+    # file as a doubt -- that typing the three as counts fixes the units and
+    # leaves the swap open, because all three still appear in one sentence.
+    # Three cases were run on 2026-09-12, each as a break in a `git archive`
+    # copy:
+    #
+    #   A. Exchange the Stat of two rows while both values stay 1.0.
+    #      NOT CAUGHT, and correctly so: that produces an identical set of
+    #      node, stat and value, so there is nothing for any check to notice.
+    #   B. Give the three rates 2, 3 and 4 and leave the node saying 1.
+    #      Caught by `test_every_value_appears_in_the_nodes_own_description`.
+    #   C. THE REAL SWAP. Reword the node to say 2 lost, 3 spent and 4
+    #      restored, then exchange the first two in the sheet, so every number
+    #      in the sentence still appears somewhere in the sheet and only the
+    #      pairing is wrong.
+    #      CAUGHT, by the same test.
+    #
+    # C is the one that decides it. Before these three entries existed, all
+    # three rows looked for a bare percentage and C would have passed.
+    #
+    # THE "1%" INSIDE EACH FORM IS THE DENOMINATOR AND NOT THIS ROW'S VALUE. It
+    # is the share of health that earns one Fervour, and it is part of the rate
+    # the design states. A node reworded to grant per 2% of health fails here,
+    # which is the right outcome for a check that ties the sheet to the words.
+    #
+    # WHAT WAS MEASURED BEFORE WRITING THESE. All 40 flat rows across 35 stats,
+    # checked one at a time against their node's text on 2026-09-12. Every other
+    # unclassified stat is a real percentage and was already correct; these three
+    # were the only rows matching a number that belongs to something else.
+    "fervour_from_damage": "{value:g} per 1% of maximum health lost",
+    "fervour_from_cost": "{value:g} per 1% of maximum health spent",
+    "fervour_lost_to_healing": "{value:g} per 1% of maximum health restored",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -1568,6 +1618,78 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
         )
+
+
+def text_the_check_looks_for(row: dict) -> str:
+    """The exact string `test_every_value_appears_in_the_nodes_own_description`
+    searches the description for. Shared so the test below cannot drift from the
+    one above it."""
+    form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
+            if row["ValueKind"] == "flat" else "{value:g}%")
+    return form.format(value=abs(float(row["ValuePerPoint"])))
+
+
+def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
+    """Two rows satisfied by the same words are one check, not two.
+
+    WHAT THIS CATCHES, and it is the fault issue #990 was opened about. The
+    Masochist's first spine node grants three separate rates -- Fervour per one
+    per cent of health lost, per one per cent spent, and Fervour removed per one
+    per cent restored -- each worth 1. The default form appended a percent sign
+    to every value, so all three looked for "1%", and all three found it in the
+    SHARE OF HEALTH written in the same sentence. Three rows passed, none for its
+    own reason, and a workbook that swapped two of them would have passed too.
+
+    FLAT ROWS ONLY, AND THAT RESTRICTION IS THE WHOLE DESIGN OF THIS CHECK. An
+    `increased` or a `more` row is a percentage of its stat whatever the stat is,
+    and one sentence routinely states one percentage covering several: "+2%
+    increased attack and spell damage per point" is two rows correctly satisfied
+    by one "2%". Measured 2026-09-12: applied to every row this fires on 21
+    nodes, all of them correct; applied to flat rows only it fires on none.
+
+    A FLAT ROW IS DIFFERENT because it states a quantity of the thing -- "10
+    Fervour", "4 metres", "1 per 1% of maximum health lost" -- so two flat rows
+    on one node describe two different quantities and the sentence has to say
+    both. `VALUE_FORMS` is how a stat says which words follow its number.
+
+    ROWS STATED IN WORDS ARE LEFT OUT, because `VALUE_IN_WORDS` already checks
+    each against its own distinct phrase and its own expected value.
+
+    WHAT THIS DOES NOT CATCH, MEASURED RATHER THAN ASSUMED. It needs TWO rows
+    looking for the same text. Removing one of the three Fervour entries from
+    `VALUE_FORMS` leaves one row on the percent default and two on their own
+    forms, so nothing collides and this stays quiet -- measured 2026-09-12, 19
+    passed. Removing two of the three does collide and this fires. So a single
+    unclassified count on a node whose other rows are classified still slips
+    through here; what this catches is the shape the original fault had, where
+    several rows fell back together.
+    """
+    from collections import Counter, defaultdict
+
+    by_node = defaultdict(list)
+    for row in effects:
+        if row["ValueKind"] != "flat":
+            continue
+        if (row["Node"], row["Stat"]) in VALUE_IN_WORDS:
+            continue
+        by_node[row["Node"]].append((text_the_check_looks_for(row), row["Stat"]))
+
+    assert by_node, (
+        "no flat row reaches this check at all, so it compares nothing. Either "
+        "the sheet has no flat rows left or the exemptions now cover all of "
+        "them.")
+
+    for node, entries in sorted(by_node.items()):
+        for printed, count in Counter(text for text, _ in entries).items():
+            if count == 1:
+                continue
+            stats = sorted(stat for text, stat in entries if text == printed)
+            raise AssertionError(
+                f"{node}: {count} flat rows are all checked against the same "
+                f"text {printed!r} -- {', '.join(stats)}. Each row needs an "
+                "entry in VALUE_FORMS carrying the words that follow its own "
+                "number, or the rows can satisfy each other and a workbook "
+                "that swapped two of them would still pass. Issue #990.")
 
 
 #: Words a node uses when its own effect takes something away.
