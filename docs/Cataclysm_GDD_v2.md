@@ -7333,6 +7333,56 @@ All cosmetics are purely visual — no pay-to-win, ever.
 
 # **XV. Development Roadmap**
 
+**Two of the five milestones this project tracks work against were not defined
+here until 2026-09-12.** Phase 1, Phase 2 and Phase 3 were. "Phase 0 —
+Foundations" and "Design Documentation" existed only as one-line descriptions on
+GitHub, with no definition in this document or in `docs/DECISIONS.md`, while 47
+and 133 issues respectively were closed against them. The two below were written
+from that closed work rather than from an intent nobody had recorded, and they
+are here so that the next person sorting an issue has something to read.
+
+## **Phase 0 — Foundations**
+
+**Everything that must exist before a game feature can be built, and everything
+that produces, checks or drives the game rather than being part of it.**
+
+  - The engine project and its core systems, brought into existence — the Unreal
+    project itself, the Gameplay Ability System, the attribute sets, the gameplay
+    tag table, the input scheme, the animation pipeline.
+  - The machinery around the game: the pipeline that turns the design workbook
+    into what the engine reads, the build and test wrappers, the test
+    infrastructure, continuous integration, and the project's own instructions.
+  - The headless simulation in `sim/` and the analysis scripts that derive
+    numbers from it, which are a tool for answering design questions rather than
+    part of the shipped game.
+  - Third-party content: acquiring the art packs, deciding how they are stored,
+    and keeping the editor's configuration from fighting the repository.
+
+**How to recognise one: if fixing it changes what happens in play, it is not
+Phase 0.**
+
+## **Design Documentation**
+
+**Work whose deliverable is the design record itself** — this document, the
+design workbook `docs/All_Things_Cataclysm.xlsx`, the gameplay tag vocabulary, or
+the passive tree definitions.
+
+  - **A gap.** The design does not say something it needs to say: a number never
+    set, a system described but never specified, an entity that exists in one
+    place and not another.
+  - **A contradiction.** Two parts of the design record disagree, or the design
+    record disagrees with the workbook, the tag vocabulary or the simulation.
+  - **Designing new content.** Writing the skills, a passive tree, or an enemy's
+    abilities, where what is produced is design rather than code.
+
+**It is decided by the deliverable and not by which phase consumes it.** Designing
+the vertical slice's Demonic skills is Design Documentation even though the slice
+is Phase 1, because what is produced is a design.
+
+**It is not a phase.** It sits in this list beside four things that are
+sequential stages, and it is not one: work has been closed against it throughout,
+alongside Phase 0 and Phase 1 both.
+
 ## **Phase 1 — Vertical Slice**
 
   - Implement one full Cataclysm (Demonic) with 5-7 enemy types and a complete boss.
