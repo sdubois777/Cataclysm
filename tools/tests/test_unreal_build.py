@@ -598,7 +598,12 @@ def build_that_compiled_thing() -> BuildOutcome:
 
 def test_it_breaks_builds_tests_restores_and_rebuilds_in_that_order(
         tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two builds and one test run, and the file back as it was."""
+    """Two builds and TWO test runs, and the file back as it was.
+
+    ONE TEST RUN UNTIL ISSUE #1663, which is why this docstring said so. The
+    tests now run again after the restore, because a guard proof is two claims
+    and this function produced only the first.
+    """
     source = a_source_file(tmp_path, monkeypatch)
     original = source.read_bytes()
 
@@ -617,9 +622,12 @@ def test_it_breaks_builds_tests_restores_and_rebuilds_in_that_order(
 
     assert result.failed, "a failing test is what proves the guard"
     assert builds.calls == 2, "one build for the break and one for the restore"
-    assert seen_during_the_test_run == ["float Reach() { return 0.0f; }\n"], (
-        "the tests did not run while the file was broken, so a failure among "
-        "them proves nothing")
+    assert seen_during_the_test_run == ["float Reach() { return 0.0f; }\n",
+                                       "float Reach() { return 250.0f; }\n"], (
+        "the tests must run while the file is BROKEN and then again once it is "
+        "RESTORED, in that order. A failure in the first run proves nothing on "
+        "its own: a test that always fails produces the same thing. Issue "
+        "#1663.")
     assert source.read_bytes() == original, "the file was not restored"
 
 
@@ -667,6 +675,177 @@ def test_a_bad_restore_build_does_not_hide_the_failure_that_came_first(
         "the restore build's own problem was dropped entirely. It has to reach "
         "the caller too -- a repository left with a stale binary is the fault "
         "issue #139 is about.")
+
+
+# ---------------------------------------------------------------------------
+# Both halves of the proof. Issue #1663.
+#
+# A guard proof is two claims: the test FAILS without the fix, and the test
+# PASSES with it. prove_cpp_guard only ever ran the tests once, with the break
+# in place, so it produced the first and never the second -- and a test that
+# fails for the wrong reason, or always, gives a byte-identical result.
+# ---------------------------------------------------------------------------
+
+
+class RunsSeen:
+    """A tester that records the file's text and the prefix at each run."""
+
+    def __init__(self, source: pathlib.Path, *outcomes: TestOutcome) -> None:
+        self.source = source
+        self.remaining = list(outcomes)
+        self.texts: list[str] = []
+        self.prefixes: list[str] = []
+
+    def __call__(self, prefix: str) -> TestOutcome:
+        # READ INSIDE THE RUN, because "which binary did these tests see" is the
+        # whole question this file exists to answer.
+        self.texts.append(self.source.read_text(encoding="utf-8"))
+        self.prefixes.append(prefix)
+        return self.remaining.pop(0) if self.remaining else TestOutcome(1, ("a",), ())
+
+
+def test_the_tests_run_again_after_the_restore_and_both_halves_are_kept(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The second run must see the RESTORED file, not the broken one."""
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source,
+                    TestOutcome(2, ("a",), ("b",)),   # broken: the guard fired
+                    TestOutcome(2, ("a", "b"), ()))   # restored: everything passes
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing", builder=builds, tester=runs)
+
+    assert runs.texts == ["float Reach() { return 0.0f; }\n",
+                          "float Reach() { return 250.0f; }\n"], (
+        "the two runs did not see the broken file and then the restored one, "
+        "so the pair says nothing")
+    assert builds.calls == 2, (
+        "the second test run must cost a RUN and not a build. The restore "
+        "build at the end of the finally already leaves a correct binary.")
+    assert result.named_failures == ("b",), "the broken half is unchanged"
+    assert result.tests_restored is not None, "the restored half was not kept"
+    assert result.tests_restored.failed == (), "the restored half should pass"
+
+
+def test_a_test_that_always_fails_is_not_a_proof(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE WHOLE POINT OF THE ISSUE.
+
+    This is the result that used to be indistinguishable from a good one: the
+    named test failed while the files were broken, `crashed` is False, and the
+    count matches. It also fails with the files restored, so it was never
+    sensitive to the break at all.
+    """
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source,
+                    TestOutcome(2, ("a",), ("b",)),   # broken: fails
+                    TestOutcome(2, ("a",), ("b",)))   # restored: fails the same way
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing", builder=builds, tester=runs)
+
+    assert result.named_failures == ("b",), (
+        "the broken half looks exactly like a successful proof, which is why "
+        "this was invisible")
+    assert not result.proved, (
+        "a test that fails in BOTH halves proves nothing, and this is the case "
+        "prove_cpp_guard could not tell from a good one")
+    assert "b" in result.summary, "the summary must name what failed afterwards"
+
+
+def test_a_test_that_fails_broken_and_passes_restored_is_a_proof(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pair held, which is the only result that means the guard works."""
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source,
+                    TestOutcome(2, ("a",), ("b",)),
+                    TestOutcome(2, ("a", "b"), ()))
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing", builder=builds, tester=runs)
+
+    assert result.proved, (
+        "failing with the break in and passing with it out is the whole pair, "
+        "and nothing else counts")
+
+
+def test_a_break_the_test_never_noticed_is_not_a_proof_either(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Passing both times means the test is blind to the mechanism."""
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source,
+                    TestOutcome(2, ("a", "b"), ()),
+                    TestOutcome(2, ("a", "b"), ()))
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing", builder=builds, tester=runs)
+
+    assert not result.proved, "nothing noticed the break, so nothing is proved"
+
+
+def test_both_halves_are_run_with_the_same_prefix(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two halves selected differently cannot be compared to each other."""
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source,
+                    TestOutcome(2, ("a",), ("b",)),
+                    TestOutcome(2, ("a", "b"), ()))
+
+    prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        test_prefix="Cataclysm.Thing.", builder=builds, tester=runs)
+
+    assert runs.prefixes == ["Cataclysm.Thing.", "Cataclysm.Thing."], (
+        "the halves were selected differently, so a difference between them "
+        "could be the selection rather than the code")
+
+
+def test_a_run_that_raised_does_not_spend_a_second_test_run(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An edit that changed nothing raises. There is nothing to pair."""
+    source = a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = RunsSeen(source)
+
+    with pytest.raises(ValueError):
+        prove_cpp_guard({"Thing.cpp": lambda text: text},
+                        builder=builds, tester=runs)
+
+    assert runs.texts == [], (
+        "a proof that never got as far as breaking the file must not spend an "
+        "editor start on a second run")
+
+
+def test_a_break_that_did_not_compile_pairs_nothing(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No first half means no pair, and no second run to waste on it.
+
+    A break that stops the file compiling never runs the tests, so there is
+    nothing for a restored run to be compared against.
+    """
+    a_source_file(tmp_path, monkeypatch)
+    builds = RecordedBuilds(outcome(BUILD_THAT_FAILED, returncode=6),
+                            build_that_compiled_thing())
+    runs = RunsSeen(tmp_path / "Thing.cpp")
+
+    result = prove_cpp_guard(
+        {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+        builder=builds, tester=runs)
+
+    assert runs.texts == [], "no tests should have run at all"
+    assert result.tests_restored is None, (
+        "there is no first half to pair with, so claiming a second one would "
+        "invite a reader to compare it against nothing")
+    assert not result.proved
 
 
 # ---------------------------------------------------------------------------
