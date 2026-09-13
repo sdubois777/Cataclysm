@@ -199,10 +199,18 @@ rather than from a test's `Tick` call, and the fireball that does not exist.
 
 ## 2026-09-13 — A minion's health and damage come from its own type row, raised by its summoner's level, and its blow takes the figure as given
 
-**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`,
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
 `game/Source/Cataclysm/Tests/CataclysmMinionOwnStatsTests.cpp`,
 `tools/tests/test_minion_damage.py`. Issue
 [#340](https://github.com/sdubois777/Cataclysm/issues/340). **Applied.**
+
+Every path above is written out in full rather than as the usual
+"`CataclysmMinion.h` and `` `.cpp` ``" shorthand, so that all four are read by
+`tools/tests/test_the_decisions_log_names_real_files.py`. That check skips any
+backticked item with no slash in it, which is what a bare suffix is. Issue
+[#1709](https://github.com/sdubois777/Cataclysm/issues/1709) carries the general
+case.
 
 **The shape was not decided here.** The project owner ruled on 2026-08-06, issue
 [#209](https://github.com/sdubois777/Cataclysm/issues/209), that a minion reaches
