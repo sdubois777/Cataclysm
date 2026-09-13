@@ -428,10 +428,26 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// Issue #1515. Cold Reading is the node: "+2% increased Spell Damage per
 		// point while your Energy Shield is full."
 		//
-		// THE SAME THREE CLAUSES AS THE CLASS RESOURCE ABOVE, IN THE SAME ORDER,
-		// FOR THE SAME THREE REASONS. The reading has to be known, the bar has
-		// to be able to hold something, and then the shield has to be at the top
-		// of it. The header entry says why each is kept.
+		// THE SAME THREE CLAUSES AS THE CLASS RESOURCE ABOVE, IN THE SAME ORDER.
+		// The reading has to be known, the bar has to be able to hold something,
+		// and then the shield has to be at the top of it.
+		//
+		// THE FIRST CLAUSE IS REDUNDANT TODAY AND IS KEPT ANYWAY. Say so rather
+		// than let a reader assume all three do work. `CurrentConditions` writes
+		// both readings together inside one block or writes neither, so a shield
+		// reading below zero always comes with a maximum below zero -- and the
+		// middle clause refuses that already. Whenever the middle clause passes,
+		// the first has passed too. It cannot be broken in a way any test
+		// distinguishes, and no guard proof for it exists, because there is no
+		// reachable state where it is the clause doing the refusing.
+		//
+		// IT IS KEPT FOR TWO REASONS. `ClassResourceAtMaximum` above carries the
+		// identical redundancy for the identical reason, and a reader comparing
+		// the two should find the same shape rather than wonder which is wrong.
+		// And the redundancy is a property of the FILL, not of this predicate: a
+		// future fill that wrote the maximum from one attribute set and the
+		// shield from another would make the two readings disagree about being
+		// known, and this clause is what would refuse the half-read state.
 		//
 		// THE MIDDLE CLAUSE CARRIES MORE WEIGHT HERE THAN IT DOES ABOVE. Only
 		// the Ritualist has a `max_energy_shield` line in
