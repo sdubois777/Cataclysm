@@ -91,7 +91,7 @@ modifier carries one condition.
 At a fourth and a fifth, the right answer is a column naming the ailment on the
 row, and this decision should be revisited rather than extended.**
 
-Twenty-seven debuffs, two ends of the blow and every combination between them is
+Twenty-eight debuffs, two ends of the blow and every combination between them is
 not a vocabulary. Three names are what three nodes need. The parameterised column
 was considered and rejected **for now** on cost: it adds a field to
 `FCataclysmPassiveEffectRow`, so a new CSV column, a workbook column insertion,
@@ -171,7 +171,7 @@ the argument for moving a line somebody drew on purpose belongs to the owner.
 The ailments travel as a **tag container** on each side rather than a boolean per
 ailment: `FCataclysmStatConditions::TargetDebuffs` and
 `FCataclysmBlowContext::OpponentDebuffs`. A fact about the target is threaded
-through eight signatures between where the blow is struck and where the condition
+through seven functions between where the blow is struck and where the condition
 is judged, and `bTargetIsStaggered` costs one parameter on each of them. A
 container costs one parameter once, and a later ailment condition costs none.
 

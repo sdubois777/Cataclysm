@@ -72,9 +72,18 @@ public:
 	 * THE SHEET AN EFFECT COMES FROM IS NOW A SEGMENT OF ITS TAG.
 	 * `tools/generate_gameplay_tags.py` emits `Status.Buff.DivineAegis` from the
 	 * Buffs sheet and `Status.Debuff.Cripple` from the Debuffs sheet, so naming
-	 * `Status.Debuff` here takes all 27 named curses and cannot take a buff. The
+	 * `Status.Debuff` here takes all 28 named curses and cannot take a buff. The
 	 * project owner chose this over an exclusion list on 2026-09-04; see
 	 * `docs/DECISIONS.md`.
+	 *
+	 * THAT FIGURE SAID 27 AND WAS ONE SHORT. Measured 2026-09-13 from
+	 * `game/Data/StatusEffects.csv`: 28 rows whose `EffectKind` is `Debuff`. The
+	 * count went stale the way every hand-written count does, by the sheet
+	 * growing, and nothing compares it against anything. **It is worth knowing
+	 * that this sentence is the reason the branch quoting it got the number
+	 * wrong too** -- a count copied out of a comment is not a measurement, and
+	 * this one was copied into three other files before anybody counted the
+	 * rows.
 	 *
 	 * `State.StunImmune` IS THE CASE THAT PROVES A BRANCH IS NOT ENOUGH BY
 	 * ITSELF. It is granted to the target at the same instant as `State.Stunned`,

@@ -659,7 +659,7 @@ enum class ECataclysmStatCondition : uint8
 	 * node's sentence says it pays when both are present and not otherwise, and
 	 * only one condition can say that: a modifier carries one condition.
 	 *
-	 * IT DOES NOT SCALE AND THAT IS DELIBERATE. Twenty-seven debuffs, two ends
+	 * IT DOES NOT SCALE AND THAT IS DELIBERATE. Twenty-eight debuffs, two ends
 	 * of the blow and every combination is not a vocabulary. A name is added
 	 * when a node's own sentence names the ailment, never speculatively, and at
 	 * a fourth and fifth the right answer is a column naming the ailment on the
@@ -1001,7 +1001,7 @@ struct CATACLYSM_API FCataclysmBlowContext
 	 * signature chain rather than this struct. A fact about the target has to be
 	 * read where the blow is struck and threaded through every lookup between
 	 * there and `ConditionHolds`; `bOpponentIsStaggered` above costs one
-	 * parameter on each of eight of them. Twenty-seven debuffs cannot each cost
+	 * parameter on each of seven of them. Twenty-eight debuffs cannot each cost
 	 * that, so the tags travel once and a condition names the one it wants.
 	 *
 	 * EMPTY IS "NO BLOW, OR NOTHING CARRIED", AND BOTH CORRECTLY REFUSE. A

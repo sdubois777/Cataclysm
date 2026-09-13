@@ -752,7 +752,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetAilments(
 	// here would be a third, on every blow every creature in the game throws.
 	//
 	// THIS LOOP IS THE WHOLE COST TO A LOOKUP THAT ASKS ABOUT NO AILMENT, which
-	// is every lookup in the game today except two rows on one Ravager node.
+	// is every lookup in the game today except one row on each of two Ravager
+	// nodes.
 	bool bAsked = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{

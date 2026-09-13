@@ -3451,7 +3451,7 @@ CONDITIONS = {
     # `UCataclysmStatPipeline::Accumulate` sums increases, so a row for each
     # ailment would pay when EITHER is present and pay TWICE when both are.
     #
-    # THIS SET DOES NOT SCALE AND IS NOT MEANT TO. Twenty-seven debuffs, two
+    # THIS SET DOES NOT SCALE AND IS NOT MEANT TO. Twenty-eight debuffs, two
     # ends of the blow and every combination is not a vocabulary. Add a name
     # when a node's own sentence names the ailment, never speculatively; at a
     # fourth and a fifth the right answer is a column naming the ailment on the

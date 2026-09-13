@@ -653,9 +653,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetAilmentOpponentSideTest,
  * vocabulary is not left untested while the row waits.
  *
  * THE SECOND HALF IS THE ONE WORTH HAVING. `target_carries_cripple` is put on
- * the same defender's line and must grant nothing, because `TargetDebuffs` is
+ * another defender's line and must grant nothing, because `TargetDebuffs` is
  * filled only on the attacker's own lookups. A build that filled one container
  * from both ends would pass every other test in this file and fail here.
+ *
+ * ONE ATTACKER AND THREE DEFENDERS, NOT TWO ATTACKERS AND ONE DEFENDER, AND THE
+ * REASON IS A CHANGE THAT HAS NOT BEEN MADE YET. Weaken's own designed effect is
+ * to reduce the damage of whoever carries it, by 20%. **Nothing applies that
+ * today** -- `CataclysmSkillEffects.cpp` says so where it lists the effects its
+ * stat column deliberately excludes: "Weaken's damage reduction is applied by
+ * nothing yet, and building it is separate work." So a test comparing a Weakened
+ * attacker against a clean one would pass now and fail the day somebody builds
+ * it, for a reason nothing to do with this condition.
+ *
+ * ONE ATTACKER STRIKES ALL THREE, so whatever its own Weaken does to its damage
+ * is the same in every reading and cancels out of every ratio below. The test
+ * measures the defenders' rows, which is what it is for.
  */
 bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 {
@@ -668,27 +681,26 @@ bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	ACataclysmEnemyCharacter* Weakened =
+	ACataclysmEnemyCharacter* Attacker =
 		SpawnAilmentCreatureAt(World, FVector(2.0f * AilmentM, 0.0f, 0.0f));
-	ACataclysmEnemyCharacter* Clean =
+	ACataclysmEnemyCharacter* Guarded =
 		SpawnAilmentCreatureAt(World, FVector(0.0f, 2.0f * AilmentM, 0.0f));
-	ACataclysmEnemyCharacter* Defender =
+	ACataclysmEnemyCharacter* Unguarded =
 		SpawnAilmentCreatureAt(World, FVector(-2.0f * AilmentM, 0.0f, 0.0f));
 	ACataclysmEnemyCharacter* Crossed =
 		SpawnAilmentCreatureAt(World, FVector(0.0f, -2.0f * AilmentM, 0.0f));
-	if (!TestNotNull(TEXT("an attacker to weaken"), Weakened)
-		|| !TestNotNull(TEXT("one to leave alone"), Clean)
-		|| !TestNotNull(TEXT("a defender"), Defender)
-		|| !TestNotNull(TEXT("and a defender for the crossed row"), Crossed))
+	if (!TestNotNull(TEXT("an attacker to weaken"), Attacker)
+		|| !TestNotNull(TEXT("a defender carrying the row"), Guarded)
+		|| !TestNotNull(TEXT("one carrying no row at all"), Unguarded)
+		|| !TestNotNull(TEXT("and one carrying the crossed row"), Crossed))
 	{
 		return false;
 	}
 
-	Weakened->SetAttackDamage(100.0f);
-	Clean->SetAttackDamage(100.0f);
-	for (ACataclysmEnemyCharacter* Guarded : {Defender, Crossed})
+	Attacker->SetAttackDamage(100.0f);
+	for (ACataclysmEnemyCharacter* Hit : {Guarded, Unguarded, Crossed})
 	{
-		Guarded->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Hit->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
 	}
 
 	// A DAMAGE TAKEN LINE, THE WAY `UCataclysmPlayerClassStats::ApplyTo` RECORDS
@@ -720,8 +732,8 @@ bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 		return true;
 	};
 
-	if (!TestTrue(TEXT("the defender's line was recorded"),
-				  TakeDamageUnder(Defender,
+	if (!TestTrue(TEXT("the guarded defender's line was recorded"),
+				  TakeDamageUnder(Guarded,
 								  ECataclysmStatCondition::OpponentCarriesWeaken))
 		|| !TestTrue(TEXT("and the crossed defender's"),
 					 TakeDamageUnder(
@@ -731,31 +743,46 @@ bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 		return false;
 	}
 
+	// THE UNGUARDED DEFENDER IS GIVEN NO STAT LINE AT ALL, which is what an enemy
+	// has, and is the baseline both ratios below are taken against.
+
 	const FGameplayTag Weaken = UCataclysmDebuffs::WeakenTag();
 	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+
+	// BOTH AILMENTS ON THE ONE ATTACKER. The Weaken is what the guarded
+	// defender's row asks about. The Cripple is for the crossed half: that row
+	// asks whether the character being HIT carries Cripple, and putting a Cripple
+	// on the attacker instead is what makes the assertion sharp -- a build that
+	// filled one container from both ends of the blow would find it and apply the
+	// row.
 	if (!TestTrue(TEXT("the Weaken was applied to the attacker"),
-				  ApplyAilment(Weakened, Weakened, TEXT("Weaken")))
-		|| !TestTrue(TEXT("and it carries it"), CarriesAilment(Weakened, Weaken))
-		|| !TestFalse(TEXT("and the other attacker does not"),
-					  CarriesAilment(Clean, Weaken)))
-	{
-		return false;
-	}
-
-	// AND A CRIPPLE ON THE SAME ATTACKER, for the crossed half below. The crossed
-	// row asks whether the character being HIT carries Cripple; putting it on the
-	// attacker instead is what makes the assertion sharp, because a build that
-	// filled one container from both ends would find it and apply the row.
-	if (!TestTrue(TEXT("the Cripple was applied to the attacker"),
-				  ApplyAilment(Weakened, Weakened, TEXT("Cripple")))
+				  ApplyAilment(Attacker, Attacker, TEXT("Weaken")))
+		|| !TestTrue(TEXT("and it carries it"), CarriesAilment(Attacker, Weaken))
+		|| !TestTrue(TEXT("the Cripple was applied to the attacker"),
+					 ApplyAilment(Attacker, Attacker, TEXT("Cripple")))
 		|| !TestTrue(TEXT("and it carries that too"),
-					 CarriesAilment(Weakened, Cripple)))
+					 CarriesAilment(Attacker, Cripple)))
 	{
 		return false;
 	}
 
-	const auto StrikeFor = [&](ACataclysmEnemyCharacter* Attacker,
-							   ACataclysmEnemyCharacter* Target)
+	// AND NO DEFENDER CARRIES EITHER. The crossed row would hold for the right
+	// reason if the defender it is on were itself Crippled, which would make that
+	// assertion pass without saying anything about which end is read.
+	for (ACataclysmEnemyCharacter* Hit : {Guarded, Unguarded, Crossed})
+	{
+		if (!TestFalse(TEXT("a defender carries no Cripple"),
+					   CarriesAilment(Hit, Cripple))
+			|| !TestFalse(TEXT("and no Weaken"), CarriesAilment(Hit, Weaken)))
+		{
+			return false;
+		}
+	}
+
+	// ONE ATTACKER, THREE TARGETS. Whatever the attacker's own Weaken does to its
+	// damage -- nothing today, possibly 20% less once somebody builds it -- is
+	// the same in all three readings and cancels out of both ratios below.
+	const auto Strike = [&](ACataclysmEnemyCharacter* Target)
 	{
 		FCataclysmDamageResult Resolved;
 		UCataclysmSkillEffects::ApplyHit(Attacker, Target, 100.0f,
@@ -764,36 +791,30 @@ bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 		return Resolved.DealtToHealth;
 	};
 
-	const float FromWeakened = StrikeFor(Weakened, Defender);
-	const float FromClean = StrikeFor(Clean, Defender);
-	if (!TestTrue(TEXT("both blows landed on the defender"),
-				  FromWeakened > 0.0f && FromClean > 0.0f))
+	const float OnGuarded = Strike(Guarded);
+	const float OnUnguarded = Strike(Unguarded);
+	const float OnCrossed = Strike(Crossed);
+	if (!TestTrue(TEXT("all three blows landed"),
+				  OnGuarded > 0.0f && OnUnguarded > 0.0f && OnCrossed > 0.0f))
 	{
 		return false;
 	}
 
 	TestEqual(*FString::Printf(
-				  TEXT("A WEAKENED ATTACKER'S BLOW IS HALVED AND A CLEAN ONE'S "
-					   "IS NOT: %.2f against %.2f"),
-				  FromWeakened, FromClean),
-			  FromWeakened / FromClean, 0.5f, 0.01f);
+				  TEXT("A DEFENDER WHOSE ROW ASKS ABOUT THE ATTACKER'S WEAKEN "
+					   "TAKES HALF: %.2f against %.2f"),
+				  OnGuarded, OnUnguarded),
+			  OnGuarded / OnUnguarded, 0.5f, 0.01f);
 
-	// THE CROSSED ROW GRANTS NOTHING. Same attacker, carrying Cripple, against a
-	// defender whose row asks about the ailments of the character being HIT.
-	const float CrossedFromCrippled = StrikeFor(Weakened, Crossed);
-	const float CrossedFromClean = StrikeFor(Clean, Crossed);
-	if (!TestTrue(TEXT("both blows landed on the crossed defender"),
-				  CrossedFromCrippled > 0.0f && CrossedFromClean > 0.0f))
-	{
-		return false;
-	}
-
+	// THE CROSSED ROW GRANTS NOTHING. The same blow from the same attacker, which
+	// really is carrying Cripple, against a defender whose row asks about the
+	// ailments of the character being HIT.
 	TestEqual(*FString::Printf(
 				  TEXT("A ROW READING THE TARGET'S AILMENTS ON THE DEFENDER'S "
 					   "OWN LOOKUP GRANTS NOTHING, so the pair cannot be "
 					   "crossed: %.2f against %.2f"),
-				  CrossedFromCrippled, CrossedFromClean),
-			  CrossedFromCrippled, CrossedFromClean, 0.01f);
+				  OnCrossed, OnUnguarded),
+			  OnCrossed, OnUnguarded, 0.01f);
 
 	return true;
 }
