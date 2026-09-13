@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A subjugated enemy is a minion, is healed to full when taken, and says so in its own description
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp`,
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/WeaponSkills.csv`. Issues
+[#340](https://github.com/sdubois777/Cataclysm/issues/340),
+[#898](https://github.com/sdubois777/Cataclysm/issues/898),
+[#1713](https://github.com/sdubois777/Cataclysm/issues/1713),
+[#1715](https://github.com/sdubois777/Cataclysm/issues/1715). **One of three
+applied.**
+
+**The project owner ruled three things about Subjugate**, the Ritualist's Staff
+ultimate, which takes an enemy below half health and makes it fight for you
+permanently. In their words: the enemy you take over "should be considered a
+minion", "it should heal to full", and "turn their healthbar green so you know
+it's yours".
+
+**Only the heal is built.** The other two are recorded here because an owner
+ruling that lives only in a chat log between sessions is the thing this file
+exists to prevent.
+
+### Healed to full, once, at the moment of taking
+
+Subjugate only works on a target the blow left below half health, so without this
+every thrall arrives damaged and one taken at a sliver dies to the next blow
+after joining — a creature the player spent an ultimate and 30 reserved Fervour
+on.
+
+**A direct write of the health attribute rather than a healing effect.** The
+maximum is read rather than assumed, because a creature's maximum comes from its
+archetype and the difficulty tier.
+
+**Whether a curse should cut it is open and the code does not decide it**, issue
+[#1713](https://github.com/sdubois777/Cataclysm/issues/1713). The owner also
+ruled, on 2026-09-12, that healing received is "one stat covering every route
+that restores health", and taking a creature and healing it is such a route — so
+on a floor carrying Death's Embrace the two rulings pull opposite ways.
+
+**It cannot arise yet, which is why the change shipped rather than waited.**
+Measured: `healing_received_reduction` reaches a character through the player's
+class stat map and through a dungeon rule, and both of the dungeon rule's call
+sites apply it to the **player**. A thrall is a creature, so its reduction is
+zero whatever the floor and every reading behaves identically. The enchantment
+row "Disease effects reduce enemy healing by 50%-100%" is what will make it live.
+
+**Living Pyre is not precedent for this.** It escapes the healing *ceiling*,
+which is a different stat, and its own comment records that the escape is an open
+question — issue #1607 — which its author deliberately declined to settle.
+
+### The description now says so, and did not
+
+`game/Data/WeaponSkills.csv` is generated from the "Weapon Skills" sheet of
+`docs/All_Things_Cataclysm.xlsx`, so the text was changed in the workbook and the
+table regenerated. The row now reads "you take it permanently: it is restored to
+full health, fights for you until it dies…".
+
+**No test required this and none would have caught it.**
+`tools/tests/test_a_skill_states_the_keys_its_description_promises.py` names
+Subjugate, but it runs description to behaviour — every promise in the text must
+be built — and not the other way, so a behaviour missing from the text passes it.
+A clean suite was not evidence the description had been checked.
+
+**Written as "restored to full health" rather than "healed" on purpose.** A
+search of a description for `heal` matches `health`, and that substring already
+caused one false reading of this very row during the work.
+
+### Considered a minion: what is already true and what is not
+
+**A thrall already counts as a minion** for the Fervour it generates, for the
+per-minion-held scaling and for following, settled by the decision of 2026-09-08
+and already built. **It is not an `ACataclysmMinion`** and that is deliberate: a
+thrall is an ordinary enemy character.
+
+**What the ruling still asks for is the gear-modifier path**, and it is not built
+because nothing is. The four minion affixes in `game/Data/Affixes.csv` grant
+`minion_damage`, `minion_health` and `minion_attack_speed`, and those three stats
+have no gameplay attribute anywhere, so they never reach a character at all —
+issue [#898](https://github.com/sdubois777/Cataclysm/issues/898).
+
+**A minion carries no gameplay tags either.** The `Tags` column of
+`game/Data/MinionTypes.csv` is authored and read by nothing, and the only loose
+gameplay tag any character holds is "Dead", so the affixes are keyed by stat name
+rather than by tag today.
+
+**Attack speed is the piece to build first**, and the reason is not that a route
+exists — it does not. `UCataclysmCommand::AttackIntervalScaleFor` reads a status
+effect's Strength, not a commander's stat line. It is first because its
+**application point is shared**: it is applied in
+`ACataclysmEnemyController`, which drives a summoned minion and a possessed enemy
+alike, so one change proves the seam on both. Damage is not shared — a minion
+deals a figure from its type row with its summoner as instigator, and a thrall
+deals its own attack damage with itself as instigator.
+
+### Minions update live rather than snapshotting
+
+The owner ruled that minions should be updated "anytime gear/passives/skills
+change" rather than locking their stats at summon, and added that the concern
+"probably extends beyond just minions". **Not built, and not urgent by the same
+ruling.**
+
+The genre agrees: Path of Exile's developers removed most snapshotting
+deliberately, and Last Epoch's third season made minions "correctly update their
+stats whenever nodes or equipment are swapped out, even if the minions were
+previously already summoned". **Diablo 4 was not established** — the guide
+dedicated to the question could not be read, and it is left unknown rather than
+characterised from a search result.
+
+**A per-swing read is live by construction**, so this constrains health, which is
+set once at spawn, and not a stat asked for at the moment of a blow.
+
+### The green health bar
+
+Not built, and **it is not established that there is a bar to colour.** The only
+interface code reading a creature's health is the floating damage-number path.
+Either the bar over a creature is a Blueprint asset invisible from C++, or it
+does not exist. That is a measurement nobody has taken with the editor open, and
+it is recorded here as unknown rather than guessed at.
+
+---
+
 ## 2026-09-13 — Infernal Rain drops patches of burning ground near the player, and five of its six figures are judgements
 
 **Affects:**
