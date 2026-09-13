@@ -2,13 +2,22 @@
 say what the rules take.
 
 WHY THIS EXISTS. Issue #41. `game/Source/Cataclysm/Dungeon/
-CataclysmDungeonModifierEffects.h` and `.cpp` give five of the 117 rows of
+CataclysmDungeonModifierEffects.h` and `.cpp` give a few of the 117 rows of
 `game/Data/DungeonModifiers.csv` a rule: Starvation takes 1% of maximum health
 and energy shield a floor up to 60%, Dehydration 1% of maximum mana a floor,
 Forced March a share of maximum health a second from a player standing still,
-The Nihil's Embrace a point of every resistance for each stretch walked, and
+The Nihil's Embrace a point of every resistance for each stretch walked,
 Death's Embrace a share of every amount of healing for each stretch of time the
-player stays on the floor.
+player stays on the floor, the Field Medic heals other enemies and does not
+attack, Unstable Dimensions draws another modifier onto the floor, and Infernal
+Rain drops patches of burning ground.
+
+THAT LIST IS NOT A COUNT, AND IT USED TO BE ONE. This paragraph said "five of the
+117 rows" and named five; three rules had been added since without it moving, so
+it was wrong before anybody read it. `UCataclysmDungeonModifierEffects::
+KeysWithARule` is the list two automation tests actually hold to the table, and
+`test_every_row_key_the_rules_name_is_a_row_of_the_table` below needs no count at
+all -- it reads whatever keys the source names.
 The C++ automation tests prove the rules do that, and they build every number
 they check by hand, so all of them would keep passing through two changes that
 break the game:
@@ -180,6 +189,81 @@ def test_the_nihils_embrace_says_permanent_and_asks_for_a_boss():
         f"The Nihil's Embrace row now names {named}. The cleanse's boss "
         "threshold is no longer a judgement; check it against the row and "
         "update docs/DECISIONS.md.")
+
+
+def test_infernal_rain_still_says_its_patches_last_ten_seconds():
+    """The one number its row states, and the rule reads it.
+
+    `InfernalRainPatchSeconds` is not a judgement for that reason, and it is the
+    only one of Infernal Rain's six constants that is not.
+    """
+    words = flat(rows()["Demonic_Infernal_Rain"]["Description"])
+    seconds = constant("InfernalRainPatchSeconds")
+
+    assert f"for {seconds:g} seconds" in words, words
+    assert "patches of burning ground" in words, words
+
+
+def test_infernal_rains_cadence_cap_share_and_reach_are_judgements():
+    """Its row states the ten seconds and nothing else about the rain.
+
+    FIVE OF ITS SIX CONSTANTS ARE JUDGEMENTS: how often a patch falls, how many
+    burn at once, how wide one is, how much of the player's maximum health a
+    second in one costs, and how far from the player they land.
+    `docs/DECISIONS.md` records each. IF THE ROW EVER STATES ONE, this fails, so
+    the constant is checked against it and the log stops calling it a judgement.
+    """
+    words = flat(rows()["Demonic_Infernal_Rain"]["Description"])
+
+    assert "%" not in words, (
+        "The Infernal Rain row now states a percentage. Check "
+        "InfernalRainPercentPerSecond against it and update docs/DECISIONS.md.")
+    assert [c for c in words if c.isdigit()] == ["1", "0"], (
+        "The Infernal Rain row now states a number besides its ten seconds. "
+        "Check InfernalRainSecondsBetweenPatches, InfernalRainMostPatches, "
+        "InfernalRainRadiusCm, InfernalRainPercentPerSecond and "
+        "InfernalRainFallsWithinCm against it and update docs/DECISIONS.md.")
+
+
+def test_infernal_rain_asks_for_ground_rather_than_a_hit():
+    """Why the rule lays a timed patch instead of damaging the player directly.
+
+    "leaving patches of burning ground" is the wording the whole shape rests on:
+    ground is a thing to walk out of, so the patch is placed away from the
+    player's feet and expires, rather than being an unavoidable hit. The C++ test
+    `AFloorCarryingInfernalRainDropsTypedPatches` asserts both of those against
+    the patch it produces.
+
+    AND "FIRE DAMAGE" IS THE ROW'S OWN CATACLYSM TYPE. There is no Fire among the
+    eight resistances; the row's `CataclysmType` column says Demonic, and the
+    rule reads that column rather than naming a type itself.
+    """
+    row = rows()["Demonic_Infernal_Rain"]
+    words = flat(row["Description"]).lower()
+
+    assert "patches of burning ground" in words, words
+    assert "over time" in words, words
+    assert row["CataclysmType"] == "Demonic", row["CataclysmType"]
+
+
+def test_infernal_rain_names_combat_zones_which_the_game_has_no_concept_of():
+    """The reading "near the player" is a judgement, and this is what dates it.
+
+    THE ROW SAYS "in combat zones". Nothing in the game tracks where fighting is
+    happening: `ECataclysmFloorLayout::Arena` is a whole floor's shape rather
+    than a region inside one. So the rule drops patches near the player, which
+    `docs/DECISIONS.md` records as a judgement.
+
+    THIS TEST IS A REMINDER AND NOT A GUARD, and says so plainly: it fails if the
+    row stops saying "combat zones", which is the moment to re-read the
+    judgement. It cannot notice the game GAINING a combat-zone concept, which is
+    the other thing that would retire the judgement.
+    """
+    words = flat(rows()["Demonic_Infernal_Rain"]["Description"]).lower()
+
+    assert "combat zones" in words, (
+        "The Infernal Rain row no longer says 'combat zones'. Re-read the "
+        "judgement in docs/DECISIONS.md that reads it as 'near the player'.")
 
 
 def test_deaths_embrace_states_no_number_of_its_own():

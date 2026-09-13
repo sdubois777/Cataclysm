@@ -990,6 +990,23 @@ private:
 	 * Death's Embrace: the stacks the time on this floor has earned, and what
 	 * they take off the player's healing. Issue #41, slice 5.
 	 */
+	/**
+	 * Drop an Infernal Rain patch if one is due. Issues #1605 and #41.
+	 *
+	 * THE ROW: "Fireballs rain in combat zones, leaving patches of burning ground
+	 * that deal fire damage over time for 10 seconds."
+	 *
+	 * IT TAKES THE PLAYER BECAUSE IT NEEDS TWO THINGS FROM THEM: where the
+	 * fighting is, which is the only reading of "in combat zones" this rule can
+	 * take cheaply on every beat, and their maximum health, because a modifier's
+	 * damage here is a share of that rather than a flat figure.
+	 *
+	 * THE ONLY WRITER OF `InfernalRainSecondsSinceLastPatch`. See that field.
+	 */
+	void StepInfernalRain(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
 	void StepDeathsEmbrace(class ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
@@ -1085,6 +1102,35 @@ private:
 	 */
 	float DeathsEmbraceSecondsOnFloor = 0.0f;
 	int32 DeathsEmbraceStacksApplied = 0;
+
+	/**
+	 * How long since Infernal Rain last dropped a patch, and what is still alight.
+	 *
+	 * ONE THING ADVANCES IT, AND THAT IS `StepInfernalRain`. A fault repaired
+	 * earlier today had two functions each advancing and resetting one timer: a
+	 * creature running both pulsed at twice the intended rate, and on the step it
+	 * fell due whichever ran first reset it so the other never fired.
+	 *
+	 * THE FLOOR RESET WRITES IT TOO, AND SAYING "ONE WRITER" WOULD BE FALSE. An
+	 * earlier version of this comment said exactly that. Forgetting the clock when
+	 * the floor changes is a different act from counting towards the next patch,
+	 * and the rule needs both; what must stay true is that only one thing adds to
+	 * it.
+	 *
+	 * THE PATCHES ARE WEAK AND COUNTED BY ASKING, not tracked by being told. A
+	 * patch destroys itself when its ten seconds end and
+	 * `UCataclysmFloorContents::ClearTheFloor` destroys every one when the floor
+	 * does, so "how many are alight" is "how many of these are still valid" and
+	 * nothing has to notice an expiry. The patch actor keeps its own drawings the
+	 * same way and for the same reason.
+	 *
+	 * BOTH GO BACK TO NOTHING ON A NEW FLOOR. The clock, so the first patch of a
+	 * floor does not arrive on its first beat carrying the last floor's wait; the
+	 * list, because those actors are gone and a stale list would count expired
+	 * patches against the cap and stop the rain.
+	 */
+	float InfernalRainSecondsSinceLastPatch = 0.0f;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> InfernalRainPatches;
 
 	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order

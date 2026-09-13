@@ -13,6 +13,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::DeathsEmbraceKey =
 	TEXT("Death_Death_s_Embrace");
 const TCHAR* UCataclysmDungeonModifierEffects::ForcedMarchKey =
 	TEXT("War_Forced_March");
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalRainKey =
+	TEXT("Demonic_Infernal_Rain");
 const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
 	TEXT("Void_The_Nihil_s_Embrace");
 const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
@@ -133,11 +135,22 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		return ECataclysmModifierBuilt::Built;
 	}
 
-	// PARTLY. Its rule draws another dungeon modifier onto the floor, where the
-	// row asks for "a new, random modifier to all enemies on the next floor", and
-	// it adds that modifier on floor 1 as well, where no floor has been cleared.
-	// Question 3 of the modifier plan asks the owner which it should draw.
-	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
+	// TWO ARE PARTLY BUILT, AND FOR DIFFERENT REASONS.
+	//
+	// UNSTABLE DIMENSIONS. Its rule draws another dungeon modifier onto the
+	// floor, where the row asks for "a new, random modifier to all enemies on the
+	// next floor", and it adds that modifier on floor 1 as well, where no floor
+	// has been cleared. Question 3 of the modifier plan asks the owner which it
+	// should draw.
+	//
+	// INFERNAL RAIN. Its burning ground is built, typed off its own row and timed
+	// to the ten seconds the row states; nothing draws a fireball falling into
+	// it, so "fireballs rain" is not what a player sees. Issue #1699. Saying
+	// `Built` here would put a wrong answer on the floor panel, which is the one
+	// place the project tells the player what is finished -- the same reason the
+	// Field Medic was held at `Partly` until #1680.
+	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
+		|| RowKey == FName(InfernalRainKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -145,14 +158,61 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	return ECataclysmModifierBuilt::NotBuilt;
 }
 
+bool UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
+	float SecondsSinceLastPatch, int32 PatchesAlive)
+{
+	// THE CAP IS CHECKED FIRST, so a floor already carrying its limit does no
+	// arithmetic and, more importantly, does not swallow the clock: the caller
+	// keeps counting and drops one the instant a patch expires, rather than
+	// waiting a further whole cadence.
+	if (PatchesAlive >= InfernalRainMostPatches)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// five, so twenty beats in twenty-one answer no; insisting on strictly past
+	// would put every patch one beat later than the figure says for no reason
+	// anybody could observe.
+	return SecondsSinceLastPatch >= InfernalRainSecondsBetweenPatches;
+}
+
+float UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
+	float MaximumHealth)
+{
+	// A CHARACTER WITH NO MAXIMUM HEALTH TAKES NOTHING, rather than a negative
+	// figure reaching the patch. A zero here would produce a patch that does
+	// nothing at all, which is the right answer for a reading nobody can have.
+	//
+	// WHY "DOES NOTHING AT ALL" AND NOT "IS REFUSED". `ACataclysmGroundZone::Sweep`
+	// skips a patch only when it neither damages nor applies an effect. An earlier
+	// version of this comment said the sweep refuses a non-positive damage
+	// outright, which WAS true and stopped being true with issue #1701: a patch
+	// carrying an effect and no damage now does sweep, because Singularity Wells
+	// needs a well that slows without damaging. Infernal Rain's patches carry no
+	// effect, so for them a zero damage still means a patch that does nothing.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * InfernalRainPercentPerSecond / 100.0f;
+}
+
 TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 {
-	// SEVEN, AND TWO OF THEM WERE MISSING BEFORE ISSUE #1677. This list and
+	// EIGHT, AND TWO WERE MISSING BEFORE ISSUE #1677. This list and
 	// `BuiltStateOf` above are two statements of the same fact, and nothing
 	// made them agree: `DeathsEmbraceKey` was returned as Built and was absent
 	// from here. The test that reads these walks THIS list and asks
 	// `BuiltStateOf` about each entry, so a key missing from here never enters
-	// the loop and the gap could not be seen from either end.
+	// the loop and the gap could not be seen from either end. Since #1677 a
+	// second test walks the table instead, which is the direction that catches
+	// an absence.
+	//
+	// THE COUNT IN THIS COMMENT IS THE KIND OF THING THAT GOES STALE. It is here
+	// because it made the #1677 gap visible to a reader, and the two tests are
+	// what actually hold it. Count the entries rather than trusting the word.
 	return {
 		FName(StarvationKey),
 		FName(DehydrationKey),
@@ -160,6 +220,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(NihilsEmbraceKey),
 		FName(DeathsEmbraceKey),
 		FName(FieldMedicKey),
+		FName(InfernalRainKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }

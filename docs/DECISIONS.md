@@ -2,6 +2,201 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Infernal Rain drops patches of burning ground near the player, and five of its six figures are judgements
+
+**Affects:**
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h`, and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`.
+Issues [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1605](https://github.com/sdubois777/Cataclysm/issues/1605), which carries the
+eight hazard rows. **Applied, and the row is `Partly` built rather than `Built`
+— see the last section.**
+
+**Every path above is written out in full rather than in this log's usual
+shorthand, and that is deliberate.**
+`tools/tests/test_the_decisions_log_names_real_files.py` keeps only backticked
+items that contain a slash, so a bare filename and a bare suffix are both skipped
+and neither is checked. The shorthand is readable and the full form is checkable,
+and until issue [#1709](https://github.com/sdubois777/Cataclysm/issues/1709) is
+settled those two are in tension.
+
+**And nothing illustrative belongs inside one of these blocks.** An earlier
+version of this entry put a placeholder file name in the list while explaining the
+shorthand. Measured: it was the only name in the whole log that resolved to
+nothing, and it would have failed the very fix #1709 proposes — a block is prose
+to a reader and a list of real files to that test, and it cannot be both.
+
+### The row, and what it settles
+
+| Row | Its words |
+| :-- | :-- |
+| `Demonic_Infernal_Rain`, weight 10.0 | "Fireballs rain in combat zones, leaving patches of burning ground that deal fire damage over time for 10 seconds." |
+
+**It states one number and the rule needs six.** The ten seconds is the row's.
+The cadence, the cap, the radius, the per-second share and how far from the player
+the patches land are not in the row, and five of the six are therefore chosen
+here. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row
+ever states another number, so this split cannot quietly stop being true.
+
+| Figure | Value | Where it comes from |
+| :-- | :-- | :-- |
+| `InfernalRainPatchSeconds` | 10 s | **The row.** "for 10 seconds" |
+| `InfernalRainRadiusCm` | 300 cm | **Borrowed from this project.** `SoulfallGroundRadiusCm`, the Gatekeeper's burning ground, so a patch is the size a player has already learned to step out of |
+| `InfernalRainPercentPerSecond` | 2% of maximum health | **A judgement** |
+| `InfernalRainSecondsBetweenPatches` | 5 s | **A judgement** |
+| `InfernalRainMostPatches` | 3 | **A judgement** |
+| `InfernalRainFallsWithinCm` | 1200 cm | **A judgement** |
+
+### "In combat zones" is read as "near the player", and that is a judgement
+
+**The game has no combat-zone concept to bind to.** `ECataclysmFloorLayout::Arena`
+is a whole floor's shape rather than a region inside one, and nothing anywhere
+tracks where fighting is happening. The player's position is the only thing this
+rule can locate on every beat.
+
+**The genre supports the reading rather than leaving it to taste.** Diablo IV's
+Volcanic dungeon affix is almost this row and says where its hazard goes: gouts of
+flame periodically erupt *near players*. So "near the player" is what a shipped
+game means by the same sentence.
+
+**Twelve metres at the furthest, and no closer than just past the patch's own
+radius.** Far enough that a patch is not laid on a standing player's feet, near
+enough that a few steps is not an escape from the modifier itself.
+
+**"Just past" and not "at", and the centimetre is load-bearing.**
+`UCataclysmTargeting::IsInLine` decides who is inside a patch with `<=`, so a
+patch centred at exactly the radius *does* cover a standing player and damages
+them before they can react. Path of Exile 2's players complain about exactly that
+in its own burning-ground modifier — a patch that damages instantly on appearing —
+so the nearest distance is one centimetre past the radius. That is what makes
+"the player is outside it when it is laid" a guarantee rather than something that
+is almost always true. The automation test asserts it both ways: the patch's own
+`Covers` says no to the player's feet and yes to its own centre, so the placer's
+arithmetic and the patch's notion of its own extent cannot drift apart.
+
+### Two per cent a second, and why it is lower than Forced March
+
+A full ten-second stay costs a fifth of maximum health. **Forced March reaches
+five per cent a second** and its own comment says a character standing still for
+half a minute dies; that rule punishes not moving, and this one punishes standing
+in a marked place you can walk out of, so it should cost less per second and still
+be worth moving for. A `static_assert` holds the whole-stay cost under one hundred
+per cent of maximum health, because the row describes ground to leave rather than
+a death sentence for being caught once.
+
+**A share of maximum health rather than a flat figure**, which is what the dungeon
+modifiers beside it do, for the reason
+`ForcedMarchPercentPerStackPerSecond` already states: a share means the same thing
+at every character level.
+
+### The project's other burning-ground rule was rejected, and this is why
+
+**A creature's burning ground is priced as a share of an ordinary hit.**
+`ACataclysmGatekeeperCharacter` takes `WeaponDamageOf` its own ability system
+times `SoulfallGroundPercent`, and the percentage is `100 / duration` so that a
+full stay costs exactly one hit — 10% over 10 seconds for the Gatekeeper, 25%
+over 4 for the Hellhound. It is a good rule and it cannot be used here.
+
+**A floor hazard has no ordinary hit.** `ACataclysmFloorHazardSource` carries no
+attribute sets at all, deliberately: the damage calculation reads the *defender's*
+attributes, not the source's. So there is no weapon damage for that share to be a
+share of, and borrowing the rule would have meant inventing a weapon for the
+floor.
+
+### Five seconds and three at once are one decision, not two
+
+**The cadence is shorter than the patch life on purpose, and that is what rain
+means.** Two patches is the steady state and three allows the transient. A
+`static_assert` fails if the cadence ever reaches the patch life, because at that
+point one patch expires before the next falls and the modifier is one hazard at a
+time rather than rain.
+
+**The cap is checked before the clock, and the order is observable.** A floor at
+its limit does no arithmetic and, more to the point, does not swallow the clock:
+the caller keeps counting, so the beat a patch expires on drops the next one at
+once rather than waiting a further whole cadence. Both halves are asserted,
+because an implementation that asked the clock first passes a test that only
+checks "a full floor drops nothing".
+
+### What the genre research settled, and what it did not
+
+| Question | Answer | Source |
+| :-- | :-- | :-- |
+| Is a periodic fire hazard falling near the player a shipped dungeon affix? | Yes, almost word for word | Diablo IV, Volcanic: gouts of flame periodically erupt near players |
+| Does any shipped version publish a cadence, a cap, a radius or a rate? | **No. None of them publishes a single number** | Diablo IV's dungeon affixes carry no numerical values at all; the Path of Exile 2 threads state none either |
+| Is a map-wide burning ground modifier a shape players accept? | Contested, and it is the tuning that is contested | Path of Exile 2 Early Access feedback threads |
+| Can such a hazard be too punishing? | Yes, and this is the commonest complaint | Players report it hurting badly even at high fire resistance |
+| Is the hazard being hard to SEE a real defect or a nicety? | **A real defect, and shipped** | A Path of Exile 2 thread asks for the effect to be made more visible and says there is "no indication" when it catches you |
+| **What cadence, cap, share and reach should a dungeon-wide version use?** | **Not settled by anything** | — |
+
+**The last row is why four of the six figures are labelled judgements rather than
+derived.** Expect them to need tuning against real play, which the Forced March
+entry says of its own figures too.
+
+**Two of those rows changed decisions already taken on this branch rather than
+only informing this one.**
+
+- **Players suspecting a hazard ignores their resistances is what the first commit
+  on this branch fixes.** `ACataclysmGroundZone::Sweep` damages with its owner as
+  the source, and `DamageTypeOf` typed only `ACataclysmEnemyCharacter`, so every
+  floor hazard in this game met none of the player's eight resistances. A floor
+  hazard now carries a `DamageType` and Infernal Rain reads it off the row's own
+  `CataclysmType` column rather than naming one, so a row retyped in the workbook
+  retypes its hazard with no code change.
+- **Visibility is why this row is `Partly` built.** See below.
+
+### Why the row is `Partly` built and not `Built`
+
+`ECataclysmModifierBuilt::Partly` means "Some of what the row describes happens
+and some does not", and **the floor panel shows that answer to the player**, so it
+has to be honest rather than generous.
+
+**The burning ground is built. The fireball is not.** A patch falls, carries the
+row's type, is the stated size, burns for the stated ten seconds and costs a share
+of the player's maximum health a second. Nothing draws anything falling into it,
+so what a player sees is ground catching fire out of nowhere — and the row
+names the fireballs first. Issue
+[#1699](https://github.com/sdubois777/Cataclysm/issues/1699) is that half.
+
+**This is the same call the Field Medic row got**, held at `Partly` until issue
+[#1680](https://github.com/sdubois777/Cataclysm/issues/1680) built its second
+half, for the reason recorded then: marking a row built while part of it is
+missing puts a wrong answer in the one place the project tells the player what is
+finished. The automation test asserting `Partly` says in its own comment that it
+is written to be revisited.
+
+**And the genre says this half is not cosmetic.** The Path of Exile 2 complaint
+above is specifically that the hazard cannot be told apart from the player's own
+effects and gives no indication when it catches you. A patch with nothing falling
+into it has exactly that problem.
+
+Sources:
+[Nightmare Dungeons in Diablo 4 — Maxroll](https://maxroll.gg/d4/resources/nightmare-dungeons),
+[Make "Patches of Burning Ground" Effect More Visible and Less Frustrating — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3714415),
+[Tone down burning ground mod on waystone — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3679327).
+
+### What drives it, and what is not covered
+
+`ACataclysmDungeonGameMode::StepInfernalRain` runs on the quarter-second beat
+beside the three rules that change a player's stats, and last of them, so a floor
+carrying both kinds finishes its stat work in one pass before an actor is spawned.
+It is the only thing that advances its own clock; the per-floor reset in
+`ApplyFloorRulesToPlayer` clears it, which is a different act and the rule needs
+both.
+
+**The step is private and the test drives `Tick`**, which is the answer this
+project already gives at `ContinueTheWaveArriving`: a test that called a step
+directly would prove the step and not that anything in the game ever runs it.
+
+**Said plainly, what no test covers:** that the beat is reached from a real frame
+rather than from a test's `Tick` call, and the fireball that does not exist.
+
+---
+
 ## 2026-09-13 — A Field Medic restores five percent of each ally's own maximum health per pulse, and the pack is what bounds it
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and
