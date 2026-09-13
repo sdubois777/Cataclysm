@@ -164,8 +164,10 @@ public:
 	 * a table lookup for every swing of every minion in a Horde wave.
 	 *
 	 * ZERO MEANS NO TYPE WAS NAMED, and `AttackTarget` then falls back to the
-	 * old share of the summoner. Both callers in the game name a type; a
-	 * minion without one exists only in the tests that predate the type table.
+	 * old share of the summoner. That is reachable in the game rather than
+	 * only in tests: `CataclysmSkillTemplates.cpp:3260` produces an empty type
+	 * name whenever a summoning skill's shape parameters name no minion kind.
+	 * No shipped skill row leaves it empty today.
 	 */
 	float OwnDamagePerHit = 0.0f;
 

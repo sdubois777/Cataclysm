@@ -47,8 +47,9 @@
  * whose row could not be found spawns carrying the defaults and falls back to
  * the old share, so a stale imported asset would turn "it deals its own damage"
  * into a confusing failure rather than a clear one.
- * `Cataclysm.AI.AGadgetStaysWhereItIsPutAndACreatureFollows` reads the same
- * precondition the same way and says the same thing about it.
+ * `Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer`
+ * reads the same precondition the same way, at
+ * `CataclysmEnemyBehaviourTests.cpp:730`.
  */
 namespace CataclysmMinionOwnStatsTest
 {
@@ -433,9 +434,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTypelessMinionTest,
  *
  * WHY IT EXISTS AT ALL, AND IT IS NOT ONLY A TEST FIXTURE.
  * `CataclysmSkillTemplates.cpp:3260` hands `Spawn` an empty type name when a
- * summoning skill's shape parameters name no minion kind, so a mis-authored
- * row degrades to this rather than spawning nothing. No shipped row does it
- * today. Three tests that predate the type table summon one and
+ * summoning skill's shape parameters name no minion kind. A mis-authored row
+ * then fields a creature that deals nothing at all, because
+ * `ApplyDirectDamage` refuses a figure of zero or less -- the minion still
+ * spawns, it simply never hurts anything -- which is what the fallback
+ * prevents. No shipped row does it today.
+ *
+ * Three tests that predate the type table also summon one and
  * assert the old share, and they exist to check other things -- that an imp
  * never turns on its summoner, that it cannot take the summoner's critical
  * strike, that a burning minion sets what it hits alight. Forcing them into the
