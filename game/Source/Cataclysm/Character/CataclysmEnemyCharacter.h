@@ -980,8 +980,14 @@ public:
 	 * and `EnemyArchetypes.csv` carries it per archetype for when this is read
 	 * from data rather than declared.
 	 *
-	 * THIS IS THE ONLY DAMAGE IN THE GAME THAT CARRIES A TYPE, and that is a
-	 * ruling rather than an omission. The project owner settled it on 2026-08-12:
+	 * A CREATURE AND A FLOOR HAZARD ARE THE ONLY TWO THINGS IN THE GAME WHOSE
+	 * DAMAGE CARRIES A TYPE. This said "the only damage in the game" until a
+	 * floor hazard gained one, and the hazard is the same rule rather than a
+	 * second one: see the second paragraph below, and
+	 * `ACataclysmFloorHazardSource::DamageType`.
+	 *
+	 * THAT A PLAYER'S DAMAGE CARRIES NONE IS A RULING RATHER THAN AN OMISSION.
+	 * The project owner settled it on 2026-08-12:
 	 * "the only damage that should actually be typed is enemy damage so the
 	 * player's resistances can take effect". A player has eight resistances
 	 * because eight Cataclysms attack them, so an enemy's hit has to say which one

@@ -38,6 +38,7 @@
 // step, so rule three has to ask the enemy class. Issue #395.
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
@@ -925,8 +926,35 @@ FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
 	// instigator passed down the chain is that character rather than the thing it
 	// sent. So an enemy's projectile is Demonic and a player's is untyped, which
 	// is the same rule and not a special case.
-	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
-	return Enemy ? Enemy->DamageType : NAME_None;
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Attacker))
+	{
+		return Enemy->DamageType;
+	}
+
+	// AND A FLOOR HAZARD'S SOURCE, WHICH IS THE SAME RULE AND NOT A SECOND ONE.
+	// The paragraph above says a projectile's hit is typed by whoever fired it
+	// because the instigator passed down the chain is that character rather than
+	// the thing it sent. A floor hazard is exactly that shape, and
+	// `ACataclysmGroundZone::Sweep` passes its owner as the source.
+	//
+	// UNTIL THIS EXISTED EVERY HAZARD MET NO RESISTANCE. The owner is a plain
+	// actor, so the cast above answered nothing, no element reached the spec, and
+	// `UCataclysmDamageCalculation` had nothing to select -- so a Demonic
+	// modifier's burning ground ignored a player's Demonic resistance entirely.
+	// That contradicted the stated reason for the rule, which is that the
+	// player's resistances should take effect.
+	//
+	// ITS TYPE IS EMPTY UNTIL A MODIFIER SETS IT, so a hazard nobody typed
+	// behaves exactly as it did before this change rather than picking a default
+	// that would be wrong for seven modifiers out of eight.
+	if (const ACataclysmFloorHazardSource* Hazard =
+			Cast<ACataclysmFloorHazardSource>(Attacker))
+	{
+		return Hazard->DamageType;
+	}
+
+	return NAME_None;
 }
 
 void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
