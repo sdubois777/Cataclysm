@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A capped curse divides its magnitude at the cap rather than applying a rate, and Cripple is not moved onto the shared effect path
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and
+`.cpp`, `CataclysmSkillEffects.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmEnemyCommanderTests.cpp`. Issue
+[#1256](https://github.com/sdubois777/Cataclysm/issues/1256).
+
+### What was broken
+
+Cripple's row in the Status Effects sheet says *"Magnitude raises the reduction
+to a cap of 80%, then extends the duration instead."* **None of it was built.**
+Every Cripple in the game was the designed 30% however it was applied, and
+`StrengthCap` was read by no code anywhere in `game/Source` — declared on the row
+struct, described in one comment as not reached and not checked, and read by
+nothing.
+
+### THE DOCUMENT FIXES THE SHAPE; THIS FIXES THE DIVISION
+
+`docs/Cataclysm_GDD_v2.md` states the rule twice, as a general case and per
+effect, and says magnitude **"is never wasted"** — naming Stun as the one effect
+where it is:
+
+> | A strength with a cap, such as a slow | The strength up to that cap, then the duration instead |
+>
+> | Cripple | The reduction, to a cap of 80%, then the duration |
+> | Stun | The duration, to a cap of 3 seconds, **and then nothing** |
+
+**So no rate had to be invented, and the project owner did not have to supply
+one.** What the document does not say is how the multiplier divides at the cap.
+**That division is the judgement recorded here:**
+
+```
+CapScale = StrengthCap / Strength            80/30, about 2.67
+Scale <= CapScale    strength scales, duration stays at the row's figure
+Scale >  CapScale    strength sits at the cap
+                     duration = the row's figure * (Scale / CapScale)
+```
+
+| Total chance | Magnitude | Reduction | Duration |
+| --: | --: | --: | --: |
+| 100% | 1.0 | 30% | 4.0 s |
+| 267% | 2.67 | **80%, the cap** | 4.0 s |
+| 800% | 8.0 | 80% | **12.0 s** |
+
+**Multiplicative rather than a rate in seconds per surplus point, for four
+reasons.** It is **continuous** — `Scale / CapScale` is exactly 1 at the cap, so
+the two sides meet there. It **wastes nothing**, which the document requires. It
+**needs no constant the design states nowhere**. And it **reuses the `Scale`
+semantics both existing shapes already use**, so the three read as one idea: the
+multiplier that would have gone into strength goes into duration at the same
+rate.
+
+**The alternative it was chosen over** is a stated number of seconds per surplus
+point. That has a step at the cap unless its constant is chosen to cancel, and it
+is a figure nobody has.
+
+### CRIPPLE IS NOT MOVED ONTO THE SHARED PATH, AND THE ISSUE ASKED FOR THAT
+
+[#1256](https://github.com/sdubois777/Cataclysm/issues/1256) proposed filling the
+`MovesStat` column and deleting `CrippleMultiplier`, warning that otherwise the
+effect "lands twice". **Measured, it would have landed zero times.** Three
+reasons, each sufficient alone:
+
+1. **Nothing reads an enemy's speed attributes.** Walk speed is
+   `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and the attack interval
+   divides by the same. Across `game/Source` the only reference to
+   `GetMovementSpeed()` or `GetAttackSpeed()` is in a test. **A player's speed
+   does read that attribute**, so a test reasoning about "the speed attribute"
+   passes on a player and proves nothing about a curse the player applies to
+   enemies.
+2. **`ApplyNamedEffect` SUBTRACTS an absolute amount.** Right for Shred taking 10
+   off a resistance of 40; wrong for Cripple's 30, which means thirty per cent
+   slower.
+3. **An enemy's `attack_speed` starts at zero and is never written**, so
+   `FMath::Min(Size, Current)` is zero there and no modifier is added at all.
+
+**Two of those three were already written in this file** — the entry for the
+Cripple slow says an enemy would have to read the attribute "as a ratio to a base
+it does not hold", and that the curse reduces attack speed, "which is not the
+movement speed attribute at all". **That reasoning was here, and an issue was
+written proposing the migration anyway.**
+
+**Every other stale record found recently was WRONG and unread. This one was
+RIGHT and unread.** The check that catches it is cheap: read the design log entry
+for a mechanism before proposing work against it.
+
+### The store already existed and one path did not use it
+
+`ApplyStating` writes what an application stated as a set-by-caller magnitude and
+`RunningApplicationOf` reads it back — both built for the strongest-wins rule.
+**`ApplyTagForDuration` applied its effect directly instead**, so every tag-only
+effect stated zero and the comparison was nothing against nothing. It now takes
+an optional figure. **Nothing new was designed.**
+
+### A consequence for every tag-only effect, stated rather than folded in
+
+The [#1576](https://github.com/sdubois777/Cataclysm/issues/1576) judgement
+compares tag-only effects **by duration**, because they have "no figure but its
+duration". **An application stating one is no longer that case**, so the owner's
+ruling of 2026-09-09 applies in full: the stronger figure wins, and a weaker one
+still refreshes the duration without shortening it.
+
+**Behaviour-preserving by construction for every existing caller** — around 35
+non-test call sites, none of which can pass a figure — **and construction is not
+evidence.** The full suite passing is what supports that claim.
+
+### Weaken is the other half and is deliberately not in this change
+
+Weaken's reduction is applied by **nothing**, so there is no behaviour to
+reproduce and any result would look plausible. **Cripple went first because it
+works today and is therefore the only reference available**: the change is proved
+by an existing test, left untouched, that applies the curse stating no figure and
+asserts the row's own figure.
+
+---
+
 ## 2026-09-13 — Withered Ground leaves a patch on every death, with no cap and no chance, and its 80% reaches two of the four stats it names
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
