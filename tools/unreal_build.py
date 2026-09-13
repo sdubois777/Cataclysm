@@ -775,6 +775,22 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     # the whole fault issue #1663 is about. Losing four builds is the cheaper
     # mistake. The worktree is safe either way: the restore and its rebuild have
     # both completed by the time this line runs.
+    #
+    # THAT MUCH IS A JUDGEMENT. TWO FACTS SETTLE IT.
+    #
+    # A CAUGHT FAILURE WOULD PASS THE DOCUMENTED ASSERTION. `CLAUDE.md` tells
+    # every caller to write `assert result.named_failures`, and on a returned
+    # half-proof that is populated and truthy. So catching would hand back an
+    # object that satisfies the project's own instructions -- from the one
+    # function whose job is now to refuse half-proofs. An exception cannot be
+    # swallowed by a caller following the documentation; a returned object with
+    # `proved` False can be, by exactly the caller in a hurry.
+    #
+    # AND IT WOULD GIVE ONE SIGNAL TWO MEANINGS. `tests_restored` of None already
+    # means "there was no first half to pair with". A failed second run setting
+    # it to None as well would make it mean "the second half was attempted and
+    # failed" too, with no way to tell them apart -- which is issue #1657's defect
+    # reproduced inside the function, and a thing this file exists to stop.
     if broken.build.succeeded and broken.tests.performed is not None:
         return dataclasses.replace(broken, tests_restored=tester(test_prefix))
     return broken
