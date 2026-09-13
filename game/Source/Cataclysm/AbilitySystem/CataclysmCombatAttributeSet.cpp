@@ -39,6 +39,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitDotDuration(100.0f);
 	InitStaggerDuration(100.0f);
 	InitStaggerHealthCeilingReduction(0.0f);
+	InitKnockdownSeconds(0.0f);
 
 	InitPenetration(0.0f);
 	// Zero, not 100, because it is an added percentage rather than a
@@ -175,6 +176,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StaggerDuration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet,
 						StaggerHealthCeilingReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, KnockdownSeconds);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetration);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
@@ -357,6 +359,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetDotDurationAttribute(), GetPenetrationAttribute(),
 		GetStaggerDurationAttribute(),
 		GetStaggerHealthCeilingReductionAttribute(),
+		GetKnockdownSecondsAttribute(),
 		GetArmorPenetrationAttribute(),
 		GetSpellDamageAttribute(),
 		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
@@ -401,6 +404,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerDuration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerHealthCeilingReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, KnockdownSeconds)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetration)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)

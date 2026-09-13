@@ -13338,4 +13338,265 @@ bool FCataclysmLockSparesBasicAttackTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A knockdown the CHARACTER carries, rather than one the skill row states.
+// Issue #45, for "Charge skills knock down enemies they hit for 1-2 seconds".
+//
+// THREE OF THESE FIVE TEST THE FAILING DIRECTION, and that is the point. A read
+// site that ignored the skill's tags would knock down on every skill; a read
+// site that ignored whether the blow landed would knock down on a miss. Neither
+// is visible to a test that only checks that a charge knocks down.
+// --------------------------------------------------------------------------
+
+namespace CataclysmChargeKnockdownTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Seconds of knockdown this character's skills carry. */
+	void GiveKnockdown(FScopedFighter& Fighter, float Seconds)
+	{
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetKnockdownSecondsAttribute(), Seconds);
+	}
+
+	/** The Tags cell a charge skill carries, read the way the real path reads it. */
+	const TCHAR* ChargeTags = TEXT("Type.Strike, Type.Melee, Keyword.Charge");
+
+	/** The same minus the keyword, so only the scoping differs. */
+	const TCHAR* PlainTags = TEXT("Type.Strike, Type.Melee");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownLandsTest,
+	"Cataclysm.Skills.AChargeSkillKnocksDownWhenTheCharacterCarriesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChargeKnockdownLandsTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	GiveKnockdown(Caster, 1.5f);
+
+	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Charge"), ChargeTags);
+	if (!Charge)
+	{
+		AddError(TEXT("Could not grant the charge."));
+		return false;
+	}
+
+	TestFalse(TEXT("the target is not knocked down before the charge"),
+		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	if (!TestTrue(TEXT("the charge activates"), Activate(Caster, Charge)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and the target it hit is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownIsScopedTest,
+	"Cataclysm.Skills.ASkillWithoutTheChargeKeywordDoesNotKnockDown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FAILING DIRECTION FOR THE SCOPING, and the reason it is worth a test.
+ *
+ * The row is scoped with `RequiredTags=Keyword.Charge`, and the only thing that
+ * enforces that is the read site passing the skill's own tags into the lookup. A
+ * read site that passed an empty tag container would answer the same number for
+ * every skill, and `AChargeSkillKnocksDownWhenTheCharacterCarriesIt` above would
+ * still pass. This one fails.
+ *
+ * THE SAME CHARACTER, THE SAME STAT, THE SAME SKILL SHAPE. Only the Tags cell
+ * differs, so nothing else can explain a difference in the outcome.
+ */
+bool FCataclysmChargeKnockdownIsScopedTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	GiveKnockdown(Caster, 1.5f);
+
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Not A Charge"), PlainTags);
+	if (!Plain)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the strike activates"), Activate(Caster, Plain)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a skill without the charge keyword knocks nothing down"),
+		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownDefaultTest,
+	"Cataclysm.Skills.ACharacterWithoutTheRowChargesExactlyAsItDidBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE TEST THAT MAKES THIS SAFE TO MERGE. Every skill that lands on a target now
+ * passes through the new reading, so a default of anything but zero would change
+ * every charge in the game and no other test here would say so.
+ */
+bool FCataclysmChargeKnockdownDefaultTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	// NO CALL TO GiveKnockdown. This is the character every other test in this
+	// file uses, and the point is that it is unchanged.
+	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Charge"), ChargeTags);
+	if (!Charge)
+	{
+		AddError(TEXT("Could not grant the charge."));
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the charge activates"), Activate(Caster, Charge)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a character carrying no knockdown knocks nothing down"),
+		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownStaggersTest,
+	"Cataclysm.Skills.AChargeThatKnocksDownAlsoLeavesTheTargetStaggered",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * CONFIRMED RATHER THAN ASSUMED. `ApplyKnockdown` calls `ApplyStagger`, so this
+ * row reaches the staggered state without naming it -- which is why a keyword
+ * search of the enchantment rows for "stagger" finds ten of the eleven that read
+ * that state and misses this one. The free behaviour is asserted here so that a
+ * later change to `ApplyKnockdown` cannot remove it in silence.
+ */
+bool FCataclysmChargeKnockdownStaggersTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	GiveKnockdown(Caster, 1.5f);
+
+	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Charge"), ChargeTags);
+	if (!Charge || !TestTrue(TEXT("the charge activates"),
+							 Activate(Caster, Charge)))
+	{
+		AddError(TEXT("Could not run the charge."));
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the target is knocked down"),
+			UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and staggered, which the knockdown does for free"),
+		UCataclysmSkillEffects::IsStaggered(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownNeedsALandedBlowTest,
+	"Cataclysm.Skills.AnEvadedChargeKnocksNothingDown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FAILING DIRECTION FOR THE LANDED GUARD.
+ *
+ * An evaded blow carries nothing to its target, which is the rule the pull, the
+ * drag and the knockback beside this reading already follow. A read site that
+ * left out the `bLanded` guard would knock down a target the charge missed, and
+ * every other test in this group would still pass.
+ *
+ * THE EVADE IS FORCED RATHER THAN ROLLED. Evasion is compared against a roll
+ * between 0 and 100 and the attribute is not clamped, so a thousand evades every
+ * time and the test cannot flake.
+ *
+ * AND IT IS A DIRECT ATTACK, WHICH IS WHAT MAKES THE EVADE POSSIBLE AT ALL.
+ * Evasion is skipped for area damage, and area is decided by two specific tags
+ * rather than by a skill having a radius. These tags carry neither, so this blow
+ * is evadable -- if a later change gave charges an area tag, this test would
+ * stop testing what it says and the first assertion below is what would notice.
+ */
+bool FCataclysmChargeKnockdownNeedsALandedBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	GiveKnockdown(Caster, 1.5f);
+
+	Enemy.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 1000.0f);
+
+	const float HealthBefore = Enemy.Health();
+
+	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Charge"), ChargeTags);
+	if (!Charge || !TestTrue(TEXT("the charge activates"),
+							 Activate(Caster, Charge)))
+	{
+		AddError(TEXT("Could not run the charge."));
+		return false;
+	}
+
+	// THE BLOW REALLY WAS EVADED, checked before the knockdown so that a failure
+	// says which half broke. If the charge ever became area damage this would
+	// fail here rather than passing for the wrong reason.
+	if (!TestEqual(TEXT("the blow was evaded, so the target took nothing"),
+			Enemy.Health(), HealthBefore))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("and an evaded charge knocks nothing down"),
+		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

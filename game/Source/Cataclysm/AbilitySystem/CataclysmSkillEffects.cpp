@@ -288,6 +288,8 @@ const TCHAR* UCataclysmSkillEffects::StaggerDurationStat =
 	TEXT("stagger_duration");
 const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
 	TEXT("stagger_health_ceiling_reduction");
+const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
+	TEXT("knockdown_seconds");
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");

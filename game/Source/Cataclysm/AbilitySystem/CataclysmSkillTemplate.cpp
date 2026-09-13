@@ -1947,6 +1947,46 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		{
 			Pinned.Add(Target);
 		}
+
+		// AND A KNOCKDOWN THIS CHARACTER CARRIES RATHER THAN THE ROW STATING
+		// ONE. Issue #45, for "Charge skills knock down enemies they hit for 1-2
+		// seconds". The stat is scoped by its own `RequiredTags` to the keyword
+		// the row names, so the skill's tags decide whether it applies.
+		//
+		// HERE AND NOT IN `ApplyForcedMovementTo`, WHICH IS WHERE IT LOOKS LIKE
+		// IT BELONGS. That function returns at its first statement when the row
+		// states no forced movement -- and a charge skill states none, which is
+		// the entire case this row exists for. Reading the stat in there would
+		// leave the enchantment doing nothing, with every test still passing.
+		//
+		// GUARDED BY `bLanded` FOR THE REASON ABOVE: an evaded blow carries
+		// nothing to its target, and a charge that missed must not knock down.
+		//
+		// DESIGNED, SO IT SKIPS THE DAMAGE THRESHOLD AND NOTHING ELSE. The
+		// shared stun-immunity window and boss immunity still apply, which are
+		// the two guards the design paragraph on `ApplyKnockdown` actually
+		// argues for. THE DESIGN TEXT SAYS "a SKILL whose stated effect is to
+		// knock down" AND THIS IS AN ENCHANTMENT, so this is a ruling rather
+		// than a clean reading: it is the coordinating session's call, made on
+		// the grounds that the row states the effect without qualification and
+		// passing false would make it false for a weak charge.
+		if (bLanded)
+		{
+			if (const UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Self)))
+			{
+				const float Seconds = Cataclysm->StatForSkill(
+					FName(UCataclysmSkillEffects::KnockdownSecondsStat),
+					SkillTags, 0.0f);
+				if (Seconds > 0.0f)
+				{
+					UCataclysmSkillEffects::ApplyKnockdown(
+						Self, Target, Seconds, Dealt,
+						/*bKnockdownIsDesigned=*/true);
+				}
+			}
+		}
 	}
 
 	// A LINE IS BOUND ONLY WHEN THE ROW ASKS FOR ONE. `OnDeath` may take three

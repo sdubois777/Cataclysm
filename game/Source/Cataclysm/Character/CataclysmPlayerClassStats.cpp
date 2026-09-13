@@ -664,6 +664,20 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{FString(UCataclysmSkillEffects::StaggerHealthCeilingStat),
 			 Combat::GetStaggerHealthCeilingReductionAttribute()},
 
+			// AND HOW LONG A SKILL THIS CHARACTER LANDS KNOCKS ITS TARGET DOWN
+			// FOR. Issue #45, for "Charge skills knock down enemies they hit for
+			// 1-2 seconds". Zero for every class; one enchantment is its only
+			// source, and it scopes itself to charge skills with its own
+			// `RequiredTags` rather than through this name.
+			//
+			// NO ENGINE-SUPPLIED BASE, UNLIKE `stagger_duration` ABOVE IT. That
+			// one is written `increased` over a base of 100, so a base of zero
+			// would make it worth nothing. This is written `flat`, and a flat row
+			// supplies its own stat, so zero is the right answer for a character
+			// without the row.
+			{FString(UCataclysmSkillEffects::KnockdownSecondsStat),
+			 Combat::GetKnockdownSecondsAttribute()},
+
 			// Everything else the class table names.
 			{TEXT("movement_speed"), Combat::GetMovementSpeedAttribute()},
 
