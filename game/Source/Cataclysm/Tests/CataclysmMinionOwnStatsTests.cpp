@@ -431,8 +431,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTypelessMinionTest,
 /**
  * The fallback, pinned rather than left incidental.
  *
- * WHY IT EXISTS AT ALL. Both callers in the game name a type. A minion without
- * one is a test fixture: three tests that predate the type table summon one and
+ * WHY IT EXISTS AT ALL, AND IT IS NOT ONLY A TEST FIXTURE.
+ * `CataclysmSkillTemplates.cpp:3260` hands `Spawn` an empty type name when a
+ * summoning skill's shape parameters name no minion kind, so a mis-authored
+ * row degrades to this rather than spawning nothing. No shipped row does it
+ * today. Three tests that predate the type table summon one and
  * assert the old share, and they exist to check other things -- that an imp
  * never turns on its summoner, that it cannot take the summoner's critical
  * strike, that a burning minion sets what it hits alight. Forcing them into the

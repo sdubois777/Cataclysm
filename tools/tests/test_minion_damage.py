@@ -300,8 +300,12 @@ def test_the_attribute_channel_is_recorded_as_still_missing():
 
     THIS ASSERTS THE GAP IS TRACKED, NOT THAT IT IS CLOSED. `CataclysmMinion.h`
     still declares `DamagePercentOfSummoner`, which is now reached only by a
-    minion summoned with no type name -- a shape that exists in tests written
-    before the type table and nowhere in the game. When the attribute channel
+    minion summoned with no type name. That is a reachable runtime path and
+    not only a test shape: `CataclysmSkillTemplates.cpp:3260` produces an
+    empty type name when a summoning skill's shape parameters name no minion
+    kind. No shipped skill row does so today, which
+    `test_every_demonic_minion_skill_produces_a_type_the_table_defines` in
+    `test_minion_stat_blocks.py` is what holds. When the attribute channel
     lands and that fallback goes, rewrite this test rather than deleting it.
     """
     header = MINION_HEADER.read_text(encoding="utf-8")

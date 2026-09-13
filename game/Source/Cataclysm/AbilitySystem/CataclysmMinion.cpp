@@ -72,6 +72,16 @@ namespace
 	 * player state, and an ENEMY summoner has none -- so every minion summoned
 	 * by anything but a player takes this path.
 	 * `UCataclysmEquipmentComponent` asks the same question the same way.
+	 *
+	 * AND WHAT IT FALLS BACK TO IS A PREVIEW CONTROL, WHICH IS FILED RATHER
+	 * THAN FIXED HERE. `UCataclysmPlayerClassStats::ChosenLevel` is
+	 * documented as "which level the console variable asks for", meant for
+	 * previewing class stats in the editor rather than describing anything
+	 * in the world. Nothing in the game reaches it today: both places that
+	 * create a minion are player weapon skills, at
+	 * `CataclysmSkillTemplates.cpp` lines 3022 and 3263, and a player pawn
+	 * has a player state. Issue #1702 carries it, and it has no fix yet
+	 * because an enemy has no level of its own to use instead.
 	 */
 	int32 LevelOfSummoner(const AActor* Summoner)
 	{
@@ -477,9 +487,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// armour and resistance all run, and `Resolved` reports what they made of
 	// it.
 	//
-	// A MINION WITH NO TYPE FALLS BACK TO THE OLD SHARE. Both callers in the
-	// game name a type; a typeless minion exists only in the tests that
-	// predate the type table, which this file already preserves on purpose.
+	// A MINION WITH NO TYPE FALLS BACK TO THE OLD SHARE, AND THE GAME CAN
+	// REACH THAT. `CataclysmSkillTemplates.cpp:3260` produces an empty type
+	// name whenever a summoning skill's shape parameters name no minion
+	// kind, and the deployable template at line 3022 passes its own name
+	// through the same way. No shipped skill row leaves it empty today --
+	// `test_every_demonic_minion_skill_produces_a_type_the_table_defines`
+	// in `tools/tests/test_minion_stat_blocks.py` holds that -- so this is
+	// what a mis-authored row degrades to, not a shape only tests reach.
+	// Three tests older than the minion type table also summon one.
 	FCataclysmDamageResult Resolved;
 	float Dealt = 0.0f;
 	if (OwnDamagePerHit > 0.0f)
