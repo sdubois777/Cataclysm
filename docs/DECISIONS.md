@@ -136,9 +136,16 @@ this was checked rather than assumed.
 
 ### An unknown reading refuses, because these are bonuses
 
-The rule stated in the entry below this one — an unknown reading must never make
-a row stronger than its own sentence — sends both of these to refusing. A
-drawback may deliberately go the other way; these do not.
+The rule that **an unknown reading must never make a row stronger than its own
+sentence** sends both of these to refusing. A drawback may deliberately go the
+other way; these do not.
+
+**That rule is stated in the entry whose heading ends "…and an unknown reading
+must never make a row stronger than its own sentence", dated 2026-09-13.** Named
+rather than placed: this file is newest-first and entries are prepended, so "the
+entry below this one" stops being true the moment another same-day entry lands
+between them — which is exactly what happens when two branches carrying entries
+merge one after the other.
 
 ### Greater-or-equal rather than equal, and it is reachable in play
 
