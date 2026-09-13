@@ -85,7 +85,8 @@ namespace
 		{TEXT("Cripple"), TEXT("cripple_chance"),
 		 TEXT("Cataclysm.AilmentChance.Cripple"),
 		 TEXT("Debuff_Cripple"), TEXT("Status.Debuff.Cripple"),
-		 &Combat::GetCrippleChanceAttribute, EShape::AtItsRowsFigures},
+		 &Combat::GetCrippleChanceAttribute,
+		 EShape::StrongerThenLongerWithMagnitude},
 		{TEXT("Weaken"), TEXT("weaken_chance"),
 		 TEXT("Cataclysm.AilmentChance.Weaken"),
 		 TEXT("Debuff_Weaken"), TEXT("Status.Debuff.Weaken"),
@@ -304,6 +305,43 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 	case EShape::AtItsRowsFigures:
 		return UCataclysmSkillEffects::ApplyNamedEffect(Instigator, Target, Tag,
 			Row.DurationSeconds);
+
+	case EShape::StrongerThenLongerWithMagnitude:
+	{
+		// THE CAP IS ON THE REDUCTION, NOT ON THE MULTIPLIER. `Strength` is the
+		// slow in per cent -- 30 means 30% slower -- so `StrengthCap` of 80
+		// means an 80% slow. `CrippleMultiplier` turns whichever figure it
+		// receives into `1 - figure/100`.
+		//
+		// A ROW WITH NO CAP TAKES THE WHOLE MULTIPLIER INTO STRENGTH, which is
+		// the honest reading of an empty column rather than a special case:
+		// the generator's own comment says an empty cap means no NUMERIC cap.
+		const float Capped = Row.StrengthCap > 0.0f
+			? FMath::Min(Row.Strength * Scale, Row.StrengthCap)
+			: Row.Strength * Scale;
+
+		// HOW MUCH OF THE MULTIPLIER REACHED THE CAP, and the rest extends the
+		// duration. Guarded on a strength of zero because that would divide by
+		// nothing; such a row has no reduction to raise, so all of the
+		// multiplier is surplus and the duration takes it.
+		const float CapScale = (Row.StrengthCap > 0.0f && Row.Strength > 0.0f)
+			? Row.StrengthCap / Row.Strength
+			: 0.0f;
+
+		const float Longer = (CapScale > 0.0f && Scale > CapScale)
+			? Scale / CapScale
+			: 1.0f;
+
+		// THE TAG CARRIES THE FIGURE, because this reduction is a PERCENTAGE and
+		// `ApplyNamedEffect` subtracts an absolute amount from an attribute --
+		// right for Shred taking 10 off a resistance, wrong here. No enemy
+		// attribute is read for speed in any case: an enemy's walk speed is
+		// `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and its attack
+		// interval divides by the same, neither of which reads one. Issue #1256
+		// records the measurement.
+		return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
+			Tag, Row.DurationSeconds * Longer, Capped);
+	}
 
 	case EShape::ShareOfCurrentHealth:
 		// THE ROW'S SHARE OF CURRENT HEALTH A TICK, TIMES THE MAGNITUDE, so 250%

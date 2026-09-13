@@ -479,6 +479,25 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	float Strength = 0.0f;
 
 	/**
+	 * Where that strength stops and the surplus rolls into duration instead.
+	 * Issue #1256.
+	 *
+	 * ZERO MEANS NO NUMERIC CAP rather than a cap of nothing, which is the
+	 * generator's own reading of an empty column: Shred's cap is the target's
+	 * resistance reaching zero, a property of the target and not a number of
+	 * this effect's. A caller must therefore ask whether it is above zero
+	 * before treating it as a limit.
+	 *
+	 * IT WAS EXPOSED HERE ONLY WHEN SOMETHING FINALLY READ IT. The column has
+	 * existed since issue #904 and no code anywhere read it until issue #1256:
+	 * `docs/DECISIONS.md` recorded that this struct "does not even expose the
+	 * `StrengthCap` column", and Cripple's row promised a cap of 80% that
+	 * nothing could enforce.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Status Effect")
+	float StrengthCap = 0.0f;
+
+	/**
 	 * False when no row was found, or when the row states nothing this path can
 	 * apply -- no duration, or no flat amount and no percent of the hit.
 	 */
@@ -1238,10 +1257,33 @@ public:
 	 * effect that is only a tag has no figure but its duration, so the longer of
 	 * two applications wins: a shorter one changes nothing, and a longer one
 	 * extends the running one to its own length.
+	 *
+	 * @param StatedStrength  the figure this application claims, or zero for an
+	 *        effect that states none. Issue #1256.
+	 *
+	 *        WHY AN EFFECT WITH NO STAT TO MOVE MAY STILL STATE A FIGURE.
+	 *        Cripple's 30 is a PERCENTAGE slow that
+	 *        `ACataclysmEnemyCharacter::CrippleMultiplier` turns into a
+	 *        multiplier. It cannot go through `ApplyNamedEffect`, which
+	 *        SUBTRACTS its figure from an attribute -- that is right for Shred
+	 *        taking 10 off a resistance and wrong for a percentage, and no
+	 *        enemy attribute is read for speed in any case. So the figure
+	 *        travels with the tag and the reader asks for it.
+	 *
+	 *        ZERO LEAVES EVERY EXISTING CALLER EXACTLY AS IT WAS, which is all
+	 *        of them: no caller passed a figure before this parameter existed.
+	 *
+	 * THE 1576 EXEMPTION ENDS WHERE A FIGURE BEGINS, and that is a behaviour
+	 * change worth stating. That judgement compares tag-only effects BY
+	 * DURATION because they "have no figure but its duration". An application
+	 * that states one is no longer that case, so the ruling it was an exception
+	 * to applies again: the stronger application's figure wins, and a weaker
+	 * one still refreshes the duration without shortening it.
 	 */
 	static bool ApplyTagForDuration(AActor* Instigator, AActor* Target,
 									const FGameplayTag& EffectTag,
-									float DurationSeconds);
+									float DurationSeconds,
+									float StatedStrength = 0.0f);
 
 	/**
 	 * Apply a named status effect together with the stat change it carries.
@@ -1302,6 +1344,27 @@ public:
 	 * nothing is ever scoped by this one.
 	 */
 	static const TCHAR* StatedMagnitudeDataName;
+
+	/**
+	 * What the running application of this effect on this actor STATED, or a
+	 * negative number when nothing is running or it stated nothing. Issue #1256.
+	 *
+	 * WHAT ASKS FOR IT. `ACataclysmEnemyCharacter::CrippleMultiplier` read the
+	 * Status Effects row's static `Strength` and so applied the designed 30%
+	 * however the curse was applied -- no magnitude reached it, and the row's
+	 * own sentence promising a cap of 80% could not be true.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the convention this project uses for every reading
+	 * that may be absent, and the caller falls back to the row. Zero is NOT that
+	 * signal: an application may legitimately state nothing, which is every
+	 * tag-only effect, and a caller that wants the row's figure in that case has
+	 * to ask for it rather than receive it by accident.
+	 *
+	 * THE STRONGEST RUNNING APPLICATION IS THE ONE ANSWERED, which is the rule
+	 * the store was built for rather than a choice made here.
+	 */
+	static float StatedStrengthOn(const AActor* Target,
+								  const FGameplayTag& EffectTag);
 
 	/**
 	 * The name the share of current health one tick of Void Splinter takes

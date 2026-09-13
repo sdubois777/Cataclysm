@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -261,6 +262,161 @@ bool FCataclysmCrippleSlowsACreature::RunTest(const FString&)
 		Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk);
 	TestEqual(TEXT("and attacks on its designed interval again"),
 		Imp->SecondsBetweenAttacks(), DesignedInterval);
+
+	return true;
+}
+
+/**
+ * Magnitude raises Cripple's reduction to the row's cap and then extends its
+ * duration instead. Issue #1256.
+ *
+ * THE TEST ABOVE IS THE CONTROL FOR THIS ONE AND IS DELIBERATELY UNCHANGED. It
+ * applies Cripple stating no figure, which is what every caller did before this
+ * change, and asserts the row's own 30%. **If this change moved the base case,
+ * that test fails** -- so the before-and-after is an existing test passing
+ * rather than a new one asserting.
+ *
+ * WHAT WAS BROKEN. `UCataclysmAilments::Apply` discarded the magnitude for
+ * Cripple entirely: its shape was `AtItsRowsFigures`, which passes the row's
+ * duration and nothing else. So every Cripple in the game was the designed 30%
+ * however it was applied, and the row's own sentence -- "Magnitude raises the
+ * reduction to a cap of 80%, then extends the duration instead" -- was true of
+ * nothing. `StrengthCap` was read by no code anywhere.
+ *
+ * THE FIGURES ARE READ FROM THE ROW AND NOT TYPED, so re-tuning the curse in the
+ * sheet does not break this test. With the sheet as it stands, Strength 30 and
+ * StrengthCap 80 give a cap scale of 80/30, about 2.67.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmCrippleScalesToItsCapThenLasts,
+	"Cataclysm.Enemy.CripplesMagnitudeRaisesItsReductionToTheCapThenItsDuration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCrippleScalesToItsCapThenLasts::RunTest(const FString&)
+{
+	using namespace CataclysmCommanderTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(TEXT("Cripple"));
+	if (!TestNotNull(TEXT("Cripple is an ailment kind"), Kind))
+	{
+		return false;
+	}
+
+	const FCataclysmStatusEffectNumbers Row =
+		UCataclysmSkillEffects::NumbersForEffectTag(CrippleTag());
+
+	// THE ROW HAS TO STATE BOTH OR THIS TEST MEASURES NOTHING. A strength of
+	// zero would make every reduction zero and a cap of zero would mean no cap,
+	// and either way the assertions below would pass over an unscaled curse.
+	if (!TestTrue(FString::Printf(
+			TEXT("the Cripple row states a strength and a cap, got %.1f and %.1f"),
+			Row.Strength, Row.StrengthCap),
+		Row.Strength > 0.0f && Row.StrengthCap > Row.Strength))
+	{
+		return false;
+	}
+
+	const float CapScale = Row.StrengthCap / Row.Strength;
+
+	// --- MAGNITUDE ONE IS TODAY'S BEHAVIOUR, EXACTLY -----------------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector::ZeroVector);
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(500.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("Cripple applies at magnitude one"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, 1.0f));
+
+		TestEqual(TEXT("at magnitude one the reduction is the row's own figure"),
+			Imp->CrippleMultiplier(), 1.0f - Row.Strength / 100.0f);
+	}
+
+	// --- BELOW THE CAP, THE REDUCTION SCALES -------------------------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector(100.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(600.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		// HALFWAY TO THE CAP, so the figure is scaled and still under it. Taken
+		// from the row rather than typed, so it stays halfway if the sheet moves.
+		const float Half = 1.0f + (CapScale - 1.0f) * 0.5f;
+		TestTrue(TEXT("Cripple applies below the cap"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, Half));
+
+		TestEqual(TEXT("below the cap the reduction is the row's figure times the magnitude"),
+			Imp->CrippleMultiplier(), 1.0f - Row.Strength * Half / 100.0f, 0.001f);
+	}
+
+	// --- AT AND ABOVE THE CAP, THE REDUCTION STOPS -------------------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector(200.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(700.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		// TWICE THE SCALE THAT REACHES THE CAP. The reduction stops at the cap
+		// and the leftover doubles the duration.
+		TestTrue(TEXT("Cripple applies above the cap"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, CapScale * 2.0f));
+
+		TestEqual(TEXT("above the cap the reduction is the cap and no more"),
+			Imp->CrippleMultiplier(), 1.0f - Row.StrengthCap / 100.0f, 0.001f);
+
+		// AND THE SURPLUS WENT SOMEWHERE, WHICH IS THE HALF A REDUCTION CANNOT
+		// SHOW. The curse is still on the creature after its own designed
+		// duration has passed, which it would not be if the leftover magnitude
+		// had been discarded.
+		CataclysmTestWorld::RunClock(World, Row.DurationSeconds * 1.5f);
+		TestTrue(TEXT("and the curse outlives the row's own duration"),
+			UCataclysmSkillEffects::HasTag(Imp, CrippleTag()));
+	}
+
+	// --- A WEAKER APPLICATION DOES NOT LOWER A RUNNING ONE -----------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector(300.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(800.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		// THE STRONGEST APPLICATION WINS, which is the owner's ruling of
+		// 2026-09-09. Cripple only joins that rule now that it states a figure:
+		// until this change every tag-only effect stated zero and the comparison
+		// was nothing against nothing.
+		TestTrue(TEXT("a strong Cripple applies"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, CapScale));
+		const float Strong = Imp->CrippleMultiplier();
+
+		TestTrue(TEXT("and a weaker one applies too"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, 1.0f));
+
+		TestEqual(TEXT("but the weaker one does not lift the stronger reduction"),
+			Imp->CrippleMultiplier(), Strong, 0.001f);
+	}
 
 	return true;
 }

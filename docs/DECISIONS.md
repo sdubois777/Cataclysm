@@ -14965,6 +14965,24 @@ every Cripple in the game is the designed 30% and the 80 cap is never approached
 `FCataclysmStatusEffectNumbers` does not even expose the `StrengthCap` column.
 Issue #1144 is the column that would change that.
 
+**BUILT ON 2026-09-13 BY ISSUE #1256, SO THE PARAGRAPH ABOVE IS NO LONGER TRUE.**
+The magnitude survives, the cap is enforced and the surplus extends the duration,
+and `FCataclysmStatusEffectNumbers` now exposes `StrengthCap`. The entry at the
+top of this file dated 2026-09-13 carries the shape and the judgement.
+
+**AND IT WAS NOT DONE THE WAY #1144 EXPECTED.** That issue proposed filling the
+`MovesStat` column and deleting `CrippleMultiplier`. **The paragraph immediately
+above this one already said why that cannot work** — an enemy would have to read
+the movement speed attribute "as a ratio to a base it does not hold", and "Cripple
+reduces attack speed as well, which is not the movement speed attribute at all".
+
+**That reasoning was written here and the issue proposed the migration anyway.**
+It was re-derived from the code for #1256, along with a third reason neither had:
+the shared path SUBTRACTS an absolute amount, which is right for Shred taking 10
+off a resistance and wrong for a percentage. **A correct analysis sitting in the
+design log did not stop an issue being written against it**, which is worth more
+as a lesson than the curse is.
+
 ### What holds it
 
 `Cataclysm.Enemy.CrippleSlowsACreaturesWalkingAndItsAttacking` curses an Imp and
