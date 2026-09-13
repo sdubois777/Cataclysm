@@ -19,8 +19,9 @@
 /**
  * A summoner's minion attack speed reaching what it commands. Issue #898.
  *
- * WHAT WAS WRONG. `game/Data/Affixes.csv` grants `minion_attack_speed` at 15 per
- * cent on five gear slots, and no gameplay attribute for any minion stat exists
+ * WHAT WAS WRONG. `game/Data/Affixes.csv` grants `minion_attack_speed` on five
+ * gear slots, worth 15 per cent at tier 7 and gear level +10 -- the best a player
+ * can find -- and no gameplay attribute for any minion stat exists
  * anywhere in the project. The two passes that fill a character's stat line are
  * driven by the stat-to-attribute map, so the stat was resolved by nothing and
  * reached nothing. **A player who found the affix got no benefit and no message.**
@@ -34,21 +35,31 @@
  * type row with its summoner as instigator, and a thrall deals its own attack
  * damage with itself as instigator -- so damage needs its own work.
  *
- * **SO TWO OF THESE FOUR TESTS ARE THE POINT AND TWO ARE THE GUARD.** That one
- * change reaches both kinds of commanded creature is the whole argument for
- * doing attack speed first, so it is proved on both rather than on a minion and
- * assumed for the other.
+ * **THE FIVE TESTS BELOW DIVIDE THREE WAYS.**
  *
- * AND TWO TESTS ARE ABOUT WHAT DOES NOT MOVE, because the figure is applied in
- * the controller every creature in the game shares: a commander with no such
- * gear must change nothing, and a creature following nobody must be untouched.
+ * TWO ARE THE POINT: a summoned minion and a subjugated enemy each swing faster.
+ * That one change reaches both kinds of commanded creature is the whole argument
+ * for doing attack speed first, so it is proved on both rather than on a minion
+ * and assumed for the other.
+ *
+ * ONE IS ABOUT WHAT DOES NOT MOVE, because the figure is applied in the
+ * controller every creature in the game shares. A creature following nobody must
+ * be untouched, and it is measured in a world where another character DOES carry
+ * the increase, so that case can fail rather than passing by default.
+ *
+ * ONE PINS THE TRAP -- that asking this stat for its VALUE rather than its
+ * increases returns zero, silently -- AND ONE EXERCISES THE STEP THE OTHER FOUR
+ * SUPPLY FOR THEMSELVES, which is gear putting the stat into a character's stat
+ * line at all. Without that last one the other four would every one of them pass
+ * in a build where no gear could reach a character.
  */
 namespace CataclysmMinionAttackSpeedTest
 {
 	/** Centimetres in a metre, so a case can place a character in metres. */
 	constexpr float M = 100.0f;
 
-	/** What the test grants. Not the affix's 15, so the two cannot be confused. */
+	/** What the test grants. Not the affix's top roll of 15, so a reading of 15
+	 *  here could only have come from the data rather than from this line. */
 	constexpr float IncreasePercent = 25.0f;
 
 	/**
