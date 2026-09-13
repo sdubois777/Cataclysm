@@ -269,6 +269,13 @@ def test_the_superseded_run_is_only_ever_named_as_superseded(document):
     for stale in ('Read the clear rate as "about one in thirty-five"',
                   "the pooled 95% interval is 1 in 28 to 1 in 42",
                   "met in most campaigns"):
-        assert stale not in document, (
+        # THE ANSWER IS COMPUTED BEFORE THE ASSERT ON PURPOSE. Issue #1635: a
+        # failing `x not in <470,000 characters>` written inside the assert
+        # expression takes about 90 seconds to report, because pytest renders
+        # the whole string; the same failure with the boolean computed first
+        # reports in 0.11s. Measured on this file: three of the seven guard
+        # proof cases took 77 to 104 seconds before this change and 0.1s after.
+        is_live = stale in document
+        assert not is_live, (
             f"a statement from the superseded run is live again: {stale!r}"
         )
