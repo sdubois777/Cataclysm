@@ -264,7 +264,7 @@ public:
 	static constexpr int32 ForcedMarchMostStacks = 5;
 
 	/**
-	 * Infernal Rain's four figures, and which of them are judgements.
+	 * Infernal Rain's six figures, and which of them are judgements.
 	 *
 	 * THE ROW STATES ONE OF THEM. "patches of burning ground that deal fire
 	 * damage over time for 10 seconds" gives the life outright, so
@@ -293,11 +293,18 @@ public:
 	 * March says of its own figures too.
 	 *
 	 * FIVE SECONDS BETWEEN PATCHES IS A JUDGEMENT TAKEN FROM A SHAPE RATHER THAN
-	 * A FIGURE. Diablo IV's Meteor Enchantment rains meteors on nearby enemies
-	 * "every few seconds", each leaving a patch that damages what stands in it
-	 * per second; Path of Exile 2's burning ground is avoided "entirely by
-	 * careful positioning". Neither publishes a number for a dungeon-wide
-	 * version, so the five is mine. `docs/DECISIONS.md` names both sources.
+	 * A FIGURE, AND NOTHING SHIPPED PUBLISHES THE FIGURE. Diablo IV's Volcanic
+	 * dungeon affix is almost this row -- gouts of flame periodically erupt near
+	 * players while in combat -- and it states no number at all: not a cadence,
+	 * not a radius, not a duration, not a rate. Nor do Path of Exile 2's own
+	 * threads about its burning-ground map modifier. So the five is mine.
+	 * `docs/DECISIONS.md` names the sources.
+	 *
+	 * AND WHERE A SHIPPED VERSION WENT WRONG IS WHY THIS IS THE LOW SIDE. Path of
+	 * Exile 2's Early Access feedback on the same modifier is that it hurts badly
+	 * even at high fire resistance, and that a patch cannot be told apart from
+	 * the player's own effects. The first is an argument for a modest share; the
+	 * second is issue #1699 and why this row is `Partly` built.
 	 *
 	 * THREE AT ONCE IS WHAT MAKES THE CADENCE SAFE. Five seconds against a
 	 * ten-second life accumulates on purpose -- that is what rain means -- where
@@ -305,11 +312,19 @@ public:
 	 * stops patches accumulating faster than they expire. Two is the steady
 	 * state, three allows the transient, and a long fight cannot fill the floor.
 	 *
-	 * TWELVE METRES IS "IN COMBAT ZONES" MADE CONCRETE. The player is the only
-	 * thing this rule can locate cheaply on every beat, and where the player is
-	 * fighting is where the fireballs should fall. Far enough that a patch is not
-	 * dropped on their feet with no warning, near enough that moving a few steps
-	 * is not an escape from the modifier itself.
+	 * TWELVE METRES IS "IN COMBAT ZONES" MADE CONCRETE, AND THE READING IS NOT
+	 * ONLY MINE. The game has no combat-zone concept to bind to --
+	 * `ECataclysmFloorLayout::Arena` is a whole floor's shape rather than a
+	 * region inside one, and nothing tracks where fighting is happening -- so the
+	 * player's position is the only thing this rule can locate on every beat.
+	 * Diablo IV's Volcanic affix settles that this is what a shipped game means
+	 * by the sentence: its flames erupt near players, while in combat.
+	 *
+	 * THE DISTANCE ITSELF IS THE JUDGEMENT. Far enough that a patch is not
+	 * dropped on a standing player's feet with no warning -- Path of Exile 2's
+	 * players complain about exactly that, a patch that damages instantly on
+	 * appearing -- and near enough that moving a few steps is not an escape from
+	 * the modifier itself.
 	 */
 	static constexpr float InfernalRainPatchSeconds = 10.0f;
 	static constexpr float InfernalRainRadiusCm = 300.0f;
