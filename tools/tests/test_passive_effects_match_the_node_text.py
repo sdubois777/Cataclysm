@@ -437,7 +437,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Wearing Them Down`, has its condition built and no row: it grants increased
 #: DAMAGE REDUCTION, and which stat that row should target is with the project
 #: owner on issue #1748.
-AUTHORED_ROWS = 240
+#:
+#: AND TO 242 ON 2026-09-13. Two more nodes, `Cornered Quarry` and `Broken Will`,
+#: which are the first rows in the game to ask how much health the character
+#: being HIT has left. Issue #1515. Every health predicate before them read the
+#: character's own health or a cost.
+AUTHORED_ROWS = 242
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -696,7 +701,17 @@ AUTHORED_ROWS = 240
 #: change's two is 40, which is wrong -- work merged in between raised it. The
 #: line eight comments up already says "incrementing a count preserves a wrong
 #: one" and this is what it was warning about.
-AUTHORED_NODES = 174
+#: AND TO 176 ON 2026-09-13, bought with code for the third time in one day and
+#: by the same route each time. Issue #1515. The stat pipeline gained a
+#: predicate reading the TARGET's share of its own maximum health, which no
+#: existing one could express: all eight health predicates before it were the
+#: character's own or a cost. `Cornered Quarry` and `Broken Will` followed.
+#:
+#: MEASURED, NOT INCREMENTED, AND THE TREE FIGURES WITH IT. The Ravager is 46 of
+#: its 74 and the Ritualist 52 of its 74. The entry above says the Ravager was
+#: 45; adding one to that happens to be right here and was still not how this
+#: was arrived at, because the same addition was wrong two changes ago.
+AUTHORED_NODES = 176
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
