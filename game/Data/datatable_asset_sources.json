@@ -41,7 +41,7 @@
       "asset": "DT_DungeonModifiers",
       "csv": "DungeonModifiers.csv",
       "rows": 117,
-      "csv_sha256": "2725d0b6fcfe63aa63585b99d7ee7860f4691a9f770017aba1cdc114c3464985"
+      "csv_sha256": "48ed13f8c8f72baa06277326bcd576bf47817c1aae84f4be4290816c06b16fa3"
     },
     {
       "asset": "DT_ElementVisuals",

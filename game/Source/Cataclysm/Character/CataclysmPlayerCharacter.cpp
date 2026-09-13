@@ -1039,9 +1039,11 @@ void ACataclysmPlayerCharacter::Revive()
 	// brand built up before the death.
 	//
 	// BEFORE THE REFILL, BECAUSE THE REFILL READS THE MAXIMUMS. An effect that
-	// lowered one -- Withering Touch's row describes one -- would otherwise be
-	// refilled to the lowered figure and then lifted, and the character would
-	// stand up short of full.
+	// lowered one -- the dungeon modifier Wasting Sickness describes one --
+	// would otherwise be refilled to the lowered figure and then lifted, and
+	// the character would stand up short of full. That row was called
+	// Withering Touch until 2026-09-13; it was renamed because an enemy
+	// modifier of the same name describes a different effect.
 	//
 	// AFTER `ClearDead` HAS REFUSED A CHARACTER THAT WAS NOT DEAD, for the reason
 	// the refill is after it: run on the living, this would be a free cleanse.
