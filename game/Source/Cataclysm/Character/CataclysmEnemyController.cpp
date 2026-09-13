@@ -546,6 +546,25 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	// nothing while its target stands behind it.
 	FaceTarget(Driven, Target);
 
+	// AND A CREATURE THAT STARTS NOTHING HOSTILE STOPS HERE. Issue #1680.
+	//
+	// AFTER `StopMovement` AND `FaceTarget`, WHICH IS THE WHOLE SHAPE OF THIS.
+	// It still walks to its target and still turns to it; it simply never
+	// strikes. Refusing earlier -- by declining to pick a target at all --
+	// would stop the walking too, and a creature whose roam radius is zero
+	// would then stand where it spawned for the whole floor. The row wants
+	// the player to have to deal with the medic, which they need not do if it
+	// never comes to them.
+	//
+	// BEFORE THE STATE IS RECORDED, not after. `Attacking` is set below ahead
+	// of the interval check, so setting it and skipping the blow would report
+	// a creature attacking for a whole floor while it never does.
+	if (Driven->TakesNoHostileAction())
+	{
+		LastAction = ECataclysmBrainAction::NotAttacking;
+		return LastAction;
+	}
+
 	LastAction = ECataclysmBrainAction::Attacking;
 
 	const UWorld* World = GetWorld();
@@ -1040,6 +1059,20 @@ int32 ACataclysmEnemyController::ChooseAbility(float DistanceCm) const
 ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	ACataclysmCharacterBase* Driven, AActor* Target, float DistanceCm)
 {
+	// A CREATURE THAT STARTS NOTHING HOSTILE CHOOSES NO ABILITY. Issue #1680.
+	//
+	// BEFORE `ChooseAbility` RATHER THAN AFTER, so no wind-up can begin: this
+	// is the only place one ever starts, which is why `ContinueWindUp` needs
+	// no guard of its own.
+	//
+	// `Idle` MEANS "NO ABILITY" HERE, not "do nothing" -- the comment further
+	// down says so. The caller falls through to the swing, which refuses
+	// separately and reports `NotAttacking`.
+	if (Driven->TakesNoHostileAction())
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
 

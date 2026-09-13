@@ -1398,30 +1398,38 @@ bool FCataclysmModifierEffectsRealRowsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFieldMedicPartlyBuiltTest,
-	"Cataclysm.DungeonModifierEffects.TheFieldMedicRowIsPartlyBuiltAndNotBuilt",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFieldMedicBuiltTest,
+	"Cataclysm.DungeonModifierEffects.TheFieldMedicRowIsBuiltNowThatItDoesNotAttack",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmFieldMedicPartlyBuiltTest::RunTest(const FString& Parameters)
+bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 {
-	// THE ROW HAS TWO HALVES AND ONE OF THEM IS BUILT. It heals all other
-	// enemies in a radius, which works; it "does not attack", which cannot be
-	// said at all because nothing in the game stops a creature attacking.
-	// Issue #1680.
+	// THIS TEST ASSERTED `Partly` UNTIL ISSUE #1680, AND CHANGING IT IS THE
+	// POINT OF IT. It was written to be revisited: its previous comment said
+	// marking the row Built while a creature could still swing would put a
+	// wrong answer in the one place the project asks what is finished.
 	//
-	// PINNED SO THAT FINISHING THE OTHER HALF HAS TO COME BACK HERE. Marking
-	// it Built while a creature can still swing would put a wrong answer in
-	// the one place the project asks what is finished.
-	TestEqual(TEXT("the Field Medic row is partly built"),
+	// **This is not a test weakened to fit a change.** The row has two halves
+	// -- "constantly heals all other enemies in a large radius" and "it does
+	// not attack" -- and both are now built. The second half is why this line
+	// moved.
+	TestEqual(TEXT("the Field Medic row is built"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(UCataclysmDungeonModifierEffects::FieldMedicKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+
+	// AND A CONTROL IN EACH DIRECTION, so "built" is not simply what this
+	// returns for everything. One row is still partly built and one has no
+	// rule at all.
+	TestEqual(TEXT("Unstable Dimensions is still only partly built"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
-	// AND A CONTROL, so "partly" is not what this returns for everything.
-	TestEqual(TEXT("Starvation is fully built"),
+	TestEqual(TEXT("and a row with no rule is not built at all"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
-				  FName(UCataclysmDungeonModifierEffects::StarvationKey))),
-			  static_cast<int32>(ECataclysmModifierBuilt::Built));
+				  FName(TEXT("Void_Singularity_Wells")))),
+			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
 
 	return true;
 }

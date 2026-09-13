@@ -309,6 +309,31 @@ public:
 	 */
 	virtual bool StaysWhereItIsPut() const { return false; }
 
+	/**
+	 * True when this character must start no hostile action at all.
+	 *
+	 * WHAT IT STOPS, AND WHERE. Its own swing and its abilities, refused in
+	 * `ACataclysmEnemyController`; and the modifier auras and the charge,
+	 * refused in `UCataclysmEnemyModifiers`. Those are two separate systems
+	 * and a creature has to be silent in both, which is why the answer lives
+	 * here rather than in either of them.
+	 *
+	 * WHAT IT DOES NOT STOP, DELIBERATELY. Moving, turning and being targeted;
+	 * and anything that fires because this character was HIT -- retaliation,
+	 * the brand that goes off after enough blows land, the charm on whoever
+	 * struck. **Responding to being attacked is not attacking**, and a
+	 * creature that cannot be safely hit is a different thing from one that
+	 * attacks. Issue #1680 records that reading.
+	 *
+	 * FALSE HERE, WHICH IS THE ANSWER FOR THE PLAYER AND FOR EVERY CREATURE
+	 * BUT ONE. Only a floor's Field Medic says otherwise today.
+	 *
+	 * HERE RATHER THAN ON THE ENEMY, so the controller can ask any character
+	 * it drives without a cast -- the same arrangement `StaysWhereItIsPut`
+	 * above uses and for the same reason.
+	 */
+	virtual bool TakesNoHostileAction() const { return false; }
+
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}
 

@@ -3845,4 +3845,134 @@ bool FCataclysmBehaviourWidenedSightTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMedicInReachDoesNotSwingTest,
+	"Cataclysm.AI.AMedicInReachFacesItsTargetAndNeverSwings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMedicInReachDoesNotSwingTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THE SAME SHAPE AS THE STUN TEST ABOVE, and for its reason: prove the
+	// creature attacks and takes health first, then change one thing and prove
+	// it does neither. Without the first half, "did nothing" passes for any
+	// reason at all, including a creature that never reached its target.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetHealth(1000.0f);
+	Brute.Actor->SetAttackDamage(35.0f);
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	FScopedFighter Player(World, FVector(20 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	// Spend the abilities, then stand in contact so only the swing is left.
+	Player.Actor->SetActorLocation(FVector(200.0f, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+	SpendAbilities(World, Brain, 200.0f);
+
+	const float Contact = ACataclysmBruteCharacter::DesignedMeleeReachCm - 10.0f;
+	Player.Actor->SetActorLocation(FVector(Contact, 0.0f,
+		Player.Actor->GetActorLocation().Z));
+
+	const float BeforeOrdinary = Player.Health();
+	TestEqual(TEXT("an ordinary creature in reach attacks"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+	TestTrue(TEXT("and the player lost health"),
+		Player.Health() < BeforeOrdinary);
+
+	// ONE THING CHANGES: the floor makes this creature its medic.
+	Brute.Actor->bHealsAlliesForTheFloorRule = true;
+	TestTrue(TEXT("it now says it starts nothing hostile"),
+		Brute.Actor->TakesNoHostileAction());
+
+	// Past the attack interval, so it is due to swing and only the rule holds
+	// it -- the same reason the stun test winds the clock on.
+	AdvanceWorldClock(World,
+		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds + 0.1);
+
+	const float BeforeMedic = Player.Health();
+	TestEqual(TEXT("a medic in reach reports that it is not attacking"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::NotAttacking));
+	TestEqual(TEXT("and the player took nothing"),
+		Player.Health(), BeforeMedic);
+
+	// AND IT REPORTS SOMETHING OF ITS OWN RATHER THAN STILL SAYING `Attacking`.
+	// That state is recorded before the interval is checked, so a creature
+	// that merely skipped the blow would keep claiming to attack all floor.
+	TestNotEqual(TEXT("and it does not still claim to be attacking"),
+		static_cast<int32>(Brain->LastAction),
+		static_cast<int32>(ECataclysmBrainAction::Attacking));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMedicStillWalksToThePlayerTest,
+	"Cataclysm.AI.AMedicOutOfReachStillWalksTowardThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMedicStillWalksToThePlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehaviourTest;
+
+	// THIS IS THE HALF THE OBVIOUS IMPLEMENTATION WOULD HAVE BROKEN. Making a
+	// creature passive by refusing it a target stops its walking and its
+	// turning as well, and a creature whose roam radius is zero -- which is
+	// most of them -- then stands where it spawned for the whole floor. The
+	// player could simply walk away from the medic, and the row exists to make
+	// them deal with it. Issue #1680.
+	//
+	// IT ALSO CATCHES THE ABILITY GATE, WHICH I DID NOT INTEND AND WHICH IS
+	// WORTH SAYING. At this distance a creature that is allowed to act winds
+	// up an ability rather than walking, so with the gate broken this reports
+	// `WindingUp` instead of `Chasing`. I predicted this test would be
+	// unaffected by breaking the switch and it was not. The test is right; the
+	// claim about what it was sensitive to was wrong.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedBrute Brute(World, FVector::ZeroVector);
+	Brute.Actor->SetHealth(1000.0f);
+	Brute.Actor->bHealsAlliesForTheFloorRule = true;
+	ACataclysmEnemyController* Brain = Brute.Brain();
+	if (!Brain)
+	{
+		AddError(TEXT("A spawned Brute has no controller."));
+		return false;
+	}
+
+	// WELL INSIDE WHAT IT NOTICES FROM AND WELL OUTSIDE ITS REACH.
+	FScopedFighter Player(World, FVector(10 * M, 0, 0), ECataclysmTeam::Players,
+						  /*Health=*/100000.0f, /*AttackDamage=*/0.0f);
+
+	TestEqual(TEXT("a medic that can see the player walks at it"),
+		static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Chasing));
+
+	// AND IT HAS A TARGET, which is what a refusal to pick one would have
+	// taken away along with the walking and the facing.
+	TestNotNull(TEXT("and it has chosen a target"), Brain->CurrentTarget.Get());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

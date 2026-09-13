@@ -144,6 +144,27 @@ enum class ECataclysmBrainAction : uint8
 	 * after it.
 	 */
 	Following,
+
+	/**
+	 * In reach of its target, facing it, and deliberately not striking.
+	 *
+	 * WHY THIS IS NOT `Attacking` WITH THE BLOW REMOVED. The attacking state
+	 * is recorded before the attack interval is checked, so a creature in
+	 * reach but cooling down already reports `Attacking` -- correctly, that
+	 * is what it is doing. A medic reporting the same thing for a whole floor
+	 * while never striking would be wrong in a log and would leave a test
+	 * nothing to read. The stun does not have that problem because it reports
+	 * `Stunned`, and this is the same answer for the same reason.
+	 *
+	 * NONE OF THE TEN ABOVE FITS. `Turning` is a creature turning to face
+	 * before a directional ability, and `Pinned` says in as many words that a
+	 * pinned creature in reach still reports `Attacking`.
+	 *
+	 * Appended, like Roaming, WindingUp, Stunned, Turning, Charging, Pinned
+	 * and Following, because this is a UENUM and inserting renumbers every
+	 * value after it.
+	 */
+	NotAttacking,
 };
 
 /**
