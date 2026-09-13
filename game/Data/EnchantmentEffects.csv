@@ -92,3 +92,13 @@ Negative_Staggered_enemies_deal_15_30_increased_damage#1,Negative_Staggered_enem
 Negative_You_cannot_use_movement_abilities_while_stationa#1,Negative_You_cannot_use_movement_abilities_while_stationa,skill_locked,flat,1.0,1.0,Slot.Movement,stationary_for_seconds,2.0,,0.0
 Positive_Stagger_effects_you_apply_last_50_100_longer#1,Positive_Stagger_effects_you_apply_last_50_100_longer,stagger_duration,increased,50.0,100.0,,,0.0,,0.0
 Negative_You_cannot_stagger_enemies_above_50_HP#1,Negative_You_cannot_stagger_enemies_above_50_HP,stagger_health_ceiling_reduction,flat,50.0,50.0,,,0.0,,0.0
+Positive_While_moving_you_take_10_20_less_damage#1,Positive_While_moving_you_take_10_20_less_damage,damage_taken,more,-10.0,-20.0,,while_moving,0.0,,0.0
+Positive_While_stationary_you_take_15_30_less_damage#1,Positive_While_stationary_you_take_15_30_less_damage,damage_taken,more,-15.0,-30.0,,while_stationary,0.0,,0.0
+Negative_While_moving_your_skills_deal_15_25_less_damag#1,Negative_While_moving_your_skills_deal_15_25_less_damag,attack_damage,more,-15.0,-25.0,,while_moving,0.0,,0.0
+Negative_While_moving_your_skills_deal_15_25_less_damag#2,Negative_While_moving_your_skills_deal_15_25_less_damag,spell_damage,more,-15.0,-25.0,,while_moving,0.0,,0.0
+Negative_Your_ultimate_ability_deals_30_50_less_damage#1,Negative_Your_ultimate_ability_deals_30_50_less_damage,attack_damage,more,-30.0,-50.0,Slot.Ultimate,,0.0,,0.0
+Negative_Your_ultimate_ability_deals_30_50_less_damage#2,Negative_Your_ultimate_ability_deals_30_50_less_damage,spell_damage,more,-30.0,-50.0,Slot.Ultimate,,0.0,,0.0
+Negative_Your_melee_attacks_deal_10_30_less_damage#1,Negative_Your_melee_attacks_deal_10_30_less_damage,attack_damage,more,-10.0,-30.0,Type.Melee,,0.0,,0.0
+Negative_Your_melee_attacks_deal_10_30_less_damage#2,Negative_Your_melee_attacks_deal_10_30_less_damage,spell_damage,more,-10.0,-30.0,Type.Melee,,0.0,,0.0
+Negative_Charge_skills_deal_20_35_less_damage_on_impact#1,Negative_Charge_skills_deal_20_35_less_damage_on_impact,attack_damage,more,-20.0,-35.0,Keyword.Charge,,0.0,,0.0
+Negative_Charge_skills_deal_20_35_less_damage_on_impact#2,Negative_Charge_skills_deal_20_35_less_damage_on_impact,spell_damage,more,-20.0,-35.0,Keyword.Charge,,0.0,,0.0

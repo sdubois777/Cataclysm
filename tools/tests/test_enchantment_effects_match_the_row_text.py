@@ -151,8 +151,14 @@ JUDGED_NUMBERS = {
 #: cannot stagger enemies above 50% HP". ONE ROW EACH, so both numbers move by
 #: two -- unlike the three-rows-for-two-enchantments entry above, where one
 #: enchantment needed a row per damage type. Issue #45.
-AUTHORED_ROWS = 93
-AUTHORED_ENCHANTMENTS = 82
+#:
+#: AND 103 OVER 88 SINCE THE FIRST SIX DAMAGE-CHANGE ROWS THAT NEEDED NO NEW
+#: MECHANISM, issue #1686 group A. SIX ENCHANTMENTS AND TEN ROWS: a row about
+#: the damage a character's own skills deal becomes one row on `attack_damage`
+#: and one on `spell_damage`, which is what the built "Melee skills deal
+#: 20%-40% increased damage" does. The two about damage TAKEN are one row each.
+AUTHORED_ROWS = 103
+AUTHORED_ENCHANTMENTS = 88
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
