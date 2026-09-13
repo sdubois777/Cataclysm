@@ -108,6 +108,30 @@ public:
 						   const FVector& Origin, float RadiusCm);
 
 	/**
+	 * The hostile character FURTHEST from `Origin` and still within `RadiusCm`,
+	 * or null. Issue #340.
+	 *
+	 * WHAT ASKS FOR IT. `game/Data/MinionTypes.csv` gives every minion a
+	 * `TargetMode`, and the Ballista's says `Furthest`. Its row struct has always
+	 * said "the Ballista deliberately picks the furthest"; until this existed
+	 * nothing read the column and it picked the nearest like everything else.
+	 *
+	 * THE SAME WALK AS `NearestHostile`, WITH THE COMPARISON REVERSED, and both
+	 * go through one private implementation rather than two copies. The two
+	 * differ by one operator, and a second copy of "which characters can this one
+	 * reach" is how two answers to one question drift apart.
+	 *
+	 * NOT `HostileDistancesWithinMetres`, AND THE REASON IS IN THAT FUNCTION'S
+	 * OWN COMMENT. It returns distances rather than a character, so it cannot
+	 * name a target; and it measures centre to centre where this asks whether a
+	 * capsule reaches into a sphere, which that comment records as able to
+	 * disagree "by about a body's width". Choosing a target with the other
+	 * arithmetic would quietly move which enemy every creature picks.
+	 */
+	AActor* FurthestHostile(const ACataclysmCharacterBase* Searcher,
+							const FVector& Origin, float RadiusCm);
+
+	/**
 	 * How far away each hostile character within `Metres` is, in metres, for a
 	 * passive row that counts the enemies near a character. Issue #1597.
 	 *
@@ -150,6 +174,19 @@ public:
 	//~ End
 
 private:
+	/**
+	 * The one walk behind `NearestHostile` and `FurthestHostile`.
+	 *
+	 * `bFurthest` REVERSES ONE COMPARISON AND NOTHING ELSE. The walk keeps the
+	 * cheap test in front of the expensive one either way: a distance is
+	 * arithmetic, and the hostility test reads ability systems and walks owner
+	 * chains, so it is asked only of a candidate that would beat the best so far.
+	 * Reversing the comparison keeps that ordering rather than losing it.
+	 */
+	AActor* HostileAtOneEnd(const ACataclysmCharacterBase* Searcher,
+							const FVector& Origin, float RadiusCm,
+							bool bFurthest);
+
 	void BuildTheListsIfStale();
 	void WatchForMadnessOn(ACataclysmCharacterBase* Character, const FGameplayTag& Madness);
 	void NoteCharacterSpawned(AActor* Actor);

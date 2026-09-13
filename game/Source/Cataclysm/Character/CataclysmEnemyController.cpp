@@ -231,17 +231,37 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	// `Exclusive/GameThread/EnemyTargetSearch`, the figure the sphere was measured
 	// by, so captures from before and after the change compare directly.
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnemyTargetSearch);
+	// AND WHICH END OF THAT ORDER THE BODY WANTS. Issue #340. Every character in
+	// the game answers "nearest" except a minion whose type row says otherwise,
+	// which today is the Ballista alone -- its skill description promises it
+	// "fires massive bolts at the furthest enemy within 15 meters". The question
+	// is asked of the character rather than decided here, so a creature gaining
+	// the same preference later needs no change in this file.
 	if (UCataclysmTargetCandidates* Candidates = UCataclysmTargetCandidates::In(GetWorld()))
 	{
-		return Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
+		return Driven->PicksTheFurthestTarget()
+			? Candidates->FurthestHostile(Driven, Driven->GetActorLocation(), Sight)
+			: Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
 	}
 
 	// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
 	// asks the sphere, which answers the same question more slowly.
+	// THIS PATH HONOURS THE TARGET MODE TOO, THOUGH NOTHING IN THE GAME REACHES
+	// IT. Issue #340. Leaving it on nearest would make two routes to one question
+	// answer differently, and the next reader would have no way to tell which was
+	// intended. The sphere sorts nearest first and then truncates, so asking for
+	// one result can only ever give the nearest -- the whole list is needed
+	// before the furthest can be taken from the end of it.
+	const bool bFurthest = Driven->PicksTheFurthestTarget();
 	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
+		GetWorld(), Driven, Driven->GetActorLocation(), Sight,
+		/*MaxTargets=*/bFurthest ? 0 : 1);
 
-	return Nearby.IsEmpty() ? nullptr : Nearby[0];
+	if (Nearby.IsEmpty())
+	{
+		return nullptr;
+	}
+	return bFurthest ? Nearby.Last() : Nearby[0];
 }
 
 ECataclysmBrainAction ACataclysmEnemyController::Think()

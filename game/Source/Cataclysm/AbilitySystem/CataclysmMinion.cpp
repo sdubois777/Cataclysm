@@ -365,6 +365,21 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		Minion->NoticeRadiusCm = Type->NoticeRadiusCm;
 		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
 
+		// AND WHICH ENEMY IT GOES FOR. Issue #340. The column says "Nearest" for
+		// four rows and "Furthest" for the Ballista.
+		//
+		// ANYTHING THAT IS NOT "Furthest" MEANS NEAREST, INCLUDING AN EMPTY
+		// COLUMN AND A MISSPELLING. Nearest is what every character in the game
+		// does and what this minion did before the column was read, so an
+		// unreadable value leaves behaviour exactly as it was rather than
+		// inventing a third answer. `tools/tests/test_minion_stat_blocks.py` is
+		// what holds the column to its two spellings; this is the fallback for a
+		// build whose data got past it.
+		//
+		// CASE-INSENSITIVE, because the column is prose a designer types.
+		Minion->bPicksFurthestTarget = Type->TargetMode.Equals(
+			TEXT("Furthest"), ESearchCase::IgnoreCase);
+
 		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
 		// centimetres, the same conversion the shape parameters make.
 		// A ZERO IS NOT A MISSING NUMBER HERE: it is what makes a turret, a

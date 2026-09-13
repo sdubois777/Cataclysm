@@ -236,10 +236,36 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	bool bStaysWhereItIsPut = false;
 
+	/**
+	 * Whether it shoots the furthest enemy in range rather than the nearest.
+	 * Issue #340.
+	 *
+	 * READ OFF THE TYPE'S `TargetMode` COLUMN, which says "Nearest" for four of
+	 * the five rows and "Furthest" for the Ballista. That column's own comment in
+	 * `game/Data/CataclysmDataRows.h` has always said "the Ballista deliberately
+	 * picks the furthest"; until this field existed nothing read the column and a
+	 * ballista shot the nearest enemy like everything else, so the comment was
+	 * false rather than merely unimplemented.
+	 *
+	 * THE SKILL PROMISES IT IN WORDS A PLAYER READS, which is what makes this a
+	 * broken promise rather than an unread column. `War_Spear_Special` in
+	 * `game/Data/WeaponSkills.csv` says the ballista "fires massive bolts at the
+	 * furthest enemy within 15 meters every 2 seconds", and
+	 * `docs/Cataclysm_GDD_v2.md` states the same in its skill table.
+	 *
+	 * WHY A BALLISTA WANTS THE FURTHEST. It reaches 15 metres where an imp
+	 * reaches 2, so left on nearest it spends its range shooting whatever has
+	 * already closed on the player. Picking the furthest is what makes a long
+	 * reach worth having.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bPicksFurthestTarget = false;
+
 	//~ Driven by ACataclysmEnemyController
 	virtual float AttackReachCm() const override { return ReachCm; }
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
 	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
+	virtual bool PicksTheFurthestTarget() const override { return bPicksFurthestTarget; }
 
 	/**
 	 * A DEPLOYED GADGET NEVER WALKS, AND THIS IS WHAT SAYS SO TO THE BRAIN.

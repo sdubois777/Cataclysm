@@ -260,6 +260,22 @@ public:
 	virtual int32 CurrentPhase() const { return 1; }
 
 	/**
+	 * Whether this character attacks the furthest enemy it can reach rather than
+	 * the nearest. False for everything but a minion whose type row says so.
+	 * Issue #340.
+	 *
+	 * HERE FOR THE REASON `CurrentPhase` ABOVE GIVES: the controller drives every
+	 * character in the game and can ask without a cast.
+	 *
+	 * A BOOLEAN RATHER THAN THE COLUMN'S TEXT, because "Nearest" and "Furthest"
+	 * are the only two values `game/Data/MinionTypes.csv` uses and the controller
+	 * has no use for the spelling. `ACataclysmMinion::Spawn` reads the column
+	 * once and answers this from what it found, so an unknown value is settled
+	 * there, where the row is in hand, rather than here on every search.
+	 */
+	virtual bool PicksTheFurthestTarget() const { return false; }
+
+	/**
 	 * Its health just changed. Inert here.
 	 *
 	 * THE SAME SHAPE AS `HandleDeath`, and called from the same two places in

@@ -269,6 +269,19 @@ void UCataclysmTargetCandidates::HostileDistancesWithinMetres(
 AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase* Searcher,
 												   const FVector& Origin, float RadiusCm)
 {
+	return HostileAtOneEnd(Searcher, Origin, RadiusCm, /*bFurthest=*/false);
+}
+
+AActor* UCataclysmTargetCandidates::FurthestHostile(const ACataclysmCharacterBase* Searcher,
+													const FVector& Origin, float RadiusCm)
+{
+	return HostileAtOneEnd(Searcher, Origin, RadiusCm, /*bFurthest=*/true);
+}
+
+AActor* UCataclysmTargetCandidates::HostileAtOneEnd(const ACataclysmCharacterBase* Searcher,
+													const FVector& Origin, float RadiusCm,
+													bool bFurthest)
+{
 	LookedAt = 0;
 	if (!Searcher || RadiusCm <= 0.0f)
 	{
@@ -277,8 +290,12 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 
 	BuildTheListsIfStale();
 
-	ACataclysmCharacterBase* Nearest = nullptr;
-	double NearestDistanceSquared = TNumericLimits<double>::Max();
+	// THE STARTING VALUE IS THE ONE NOTHING CAN BEAT, at whichever end was asked
+	// for. A squared distance is never negative, so -1 is beaten by the first
+	// candidate that is hostile and in range.
+	ACataclysmCharacterBase* Best = nullptr;
+	double BestDistanceSquared =
+		bFurthest ? -1.0 : TNumericLimits<double>::Max();
 
 	const auto LookAt = [&](const TArray<TWeakObjectPtr<ACataclysmCharacterBase>>& Entries)
 	{
@@ -296,19 +313,28 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 
 			// CHEAPEST FIRST. A distance is arithmetic and so is a capsule; the
 			// hostility test reads ability systems and walks owner chains, so it
-			// is asked only of a candidate that would be nearer than the best so
-			// far.
+			// is asked only of a candidate that would beat the best so far. The
+			// reversal below keeps that ordering rather than losing it.
 			const double DistanceSquared =
 				FVector::DistSquared(Candidate->GetActorLocation(), Origin);
-			if (DistanceSquared >= NearestDistanceSquared
+			//
+			// STRICTLY BEATS, AT BOTH ENDS, so a tie is won by whichever candidate
+			// the lists reach first whichever end was asked for. Two characters
+			// exactly the same distance away is a tie the list order settles, and
+			// this is what stops it settling one way for nearest and the other way
+			// for furthest.
+			const bool bBeatsBest = bFurthest
+				? DistanceSquared > BestDistanceSquared
+				: DistanceSquared < BestDistanceSquared;
+			if (!bBeatsBest
 				|| !CapsuleReachesInto(Candidate, Origin, RadiusCm)
 				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher))
 			{
 				continue;
 			}
 
-			Nearest = Candidate;
-			NearestDistanceSquared = DistanceSquared;
+			Best = Candidate;
+			BestDistanceSquared = DistanceSquared;
 		}
 	};
 
@@ -327,5 +353,5 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 		LookAt(bWholeList ? List.Everyone : List.Maddened);
 	}
 
-	return Nearest;
+	return Best;
 }

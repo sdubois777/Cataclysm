@@ -1080,7 +1080,15 @@ struct FCataclysmMinionTypeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	float NoticeRadiusCm = 0.0f;
 
-	/** "Nearest" or "Furthest". The Ballista deliberately picks the furthest. */
+	/**
+	 * "Nearest" or "Furthest". The Ballista deliberately picks the furthest.
+	 *
+	 * THIS SENTENCE WAS FALSE UNTIL ISSUE #340 READ THE COLUMN. Nothing looked at
+	 * it, so a ballista picked the nearest enemy like every other character, and
+	 * the comment described an intention rather than the game.
+	 * `ACataclysmMinion::Spawn` reads it now and
+	 * `ACataclysmEnemyController::ChooseTarget` acts on it.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	FString TargetMode;
 
