@@ -8515,4 +8515,140 @@ bool FCataclysmPassiveRefitOnResizeTest::RunTest(const FString&)
 
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFinalPactPerMinionTest,
+	"Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersGrantNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_capstone_200` option 2, and the fault no count can see.
+ *
+ * THE OPTION: "Each minion you have grants you 4% more damage and 4% increased
+ * Maximum Energy Shield." Three rows -- "damage" unqualified is attack damage
+ * and spell damage in this project, so the damage half is two rows.
+ *
+ * WHY THIS TEST EXISTS RATHER THAN THE ROW COUNTS. `AUTHORED_OPTIONS` in
+ * `tools/tests/test_passive_effects_match_the_node_text.py` counts capstone
+ * options that have at least one row. **Writing `Option=1` instead of `Option=2`
+ * moves that count identically**: one option filled either way. The row count,
+ * the node count and the sentence check are all blind to WHICH option, and these
+ * rows carry no condition for the sentence check to compare. **A wrong option
+ * number means the player who picks the second choice receives nothing while a
+ * different choice pays out twice, and nothing else in the suite would say so.**
+ *
+ * IT DOES NOT TEST WHETHER THE MINION COUNT WORKS. That scale is exercised by
+ * `Cataclysm.Fervour.MinionsHeldGenerateFervourEverySecond` and two setups in
+ * `CataclysmCommandTests.cpp`, and re-proving a proven mechanism is the
+ * expensive kind of redundancy.
+ *
+ * THE BUCKETS ARE THE SECOND JOB. The node's sentence says "more damage" and
+ * "increased Maximum Energy Shield", which are different words for different
+ * arithmetic: one multiplies and one joins the additive sum. **Swapping them
+ * produces a plausible number rather than an error**, so the buckets are
+ * asserted by name.
+ */
+bool FCataclysmFinalPactPerMinionTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+	const FName Capstone(TEXT("Ritualist_capstone_200"));
+
+	// A POINT IN THE CAPSTONE AND NO CHOICE MADE. The point is spent and
+	// nothing has been picked, so nothing is granted. This is the baseline the
+	// two assertions below are measured against.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Capstone, 1);
+	if (!TestEqual(TEXT("no option has been chosen"),
+				   Allocation.ChosenOptionIn(Capstone), 0))
+	{
+		return false;
+	}
+
+	const auto ModifiersFor = [&](int32 Option)
+	{
+		FCataclysmPassiveAllocation Picked;
+		Picked.Add(Capstone, 1);
+		if (Option > 0)
+		{
+			Picked.SetChosenOption(Capstone, Option);
+		}
+		TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+		const int32 Added = UCataclysmPassiveTree::AccumulateInto(
+			Totals, Picked, NodeTable, EffectTable, Demonic);
+		return TPair<int32, TMap<FName, TArray<FCataclysmStatModifier>>>(
+			Added, MoveTemp(Totals));
+	};
+
+	TestEqual(TEXT("with no option chosen the capstone grants nothing"),
+			  ModifiersFor(0).Key, 0);
+
+	// OPTION 2 GRANTS EXACTLY THREE MODIFIERS.
+	const auto Second = ModifiersFor(2);
+	if (!TestEqual(TEXT("option 2 grants three modifiers"), Second.Key, 3))
+	{
+		return false;
+	}
+
+	// AND THE OTHER TWO OPTIONS GRANT NOTHING. This is the half that catches a
+	// wrong option number: if these rows carried Option=1, this assertion would
+	// fail and the count-based checks would not.
+	TestEqual(TEXT("option 1 grants nothing, because it is unauthored"),
+			  ModifiersFor(1).Key, 0);
+	TestEqual(TEXT("option 3 grants nothing, because it is unauthored"),
+			  ModifiersFor(3).Key, 0);
+
+	// THE THREE STATS, AND THE BUCKET EACH LANDS IN.
+	const TMap<FName, TArray<FCataclysmStatModifier>>& Granted = Second.Value;
+	const auto OneModifier = [&](const TCHAR* Stat)
+		-> const FCataclysmStatModifier*
+	{
+		const TArray<FCataclysmStatModifier>* Rows = Granted.Find(FName(Stat));
+		if (!TestNotNull(*FString::Printf(TEXT("%s is granted"), Stat), Rows)
+			|| !TestEqual(*FString::Printf(TEXT("%s is granted once"), Stat),
+						  Rows->Num(), 1))
+		{
+			return nullptr;
+		}
+		return &(*Rows)[0];
+	};
+
+	for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage")})
+	{
+		if (const FCataclysmStatModifier* Row = OneModifier(Stat))
+		{
+			TestEqual(*FString::Printf(TEXT("%s is 4 per minion"), Stat),
+					  Row->Value, 4.0f);
+			TestEqual(*FString::Printf(TEXT("%s MULTIPLIES, because the node "
+										   "says \"more damage\""), Stat),
+					  static_cast<int32>(Row->Bucket),
+					  static_cast<int32>(ECataclysmStatBucket::More));
+			TestEqual(*FString::Printf(TEXT("%s scales per minion held"), Stat),
+					  static_cast<int32>(Row->Scale),
+					  static_cast<int32>(ECataclysmStatScale::PerMinionHeld));
+		}
+	}
+
+	if (const FCataclysmStatModifier* Shield = OneModifier(TEXT("max_energy_shield")))
+	{
+		TestEqual(TEXT("the shield row is 4 per minion"), Shield->Value, 4.0f);
+		TestEqual(TEXT("and JOINS THE ADDITIVE SUM, because the node says "
+					   "\"increased Maximum Energy Shield\" and not \"more\""),
+				  static_cast<int32>(Shield->Bucket),
+				  static_cast<int32>(ECataclysmStatBucket::Increased));
+		TestEqual(TEXT("and scales per minion held"),
+				  static_cast<int32>(Shield->Scale),
+				  static_cast<int32>(ECataclysmStatScale::PerMinionHeld));
+	}
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
