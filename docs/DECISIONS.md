@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A stat may deliberately have no gameplay attribute, and the list that says which is the list the engine already loops over
+
+**Affects:**
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.h`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmEquipmentTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`,
+`tools/generate_datatables.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`,
+`docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` and
+`docs/README.md`.
+Issues [#898](https://github.com/sdubois777/Cataclysm/issues/898) and
+[#1733](https://github.com/sdubois777/Cataclysm/issues/1733). **Applied.**
+
+### What was refused, and by what
+
+Thirteen Ritualist passive nodes and one capstone option granted nothing and
+**could not be authored**. Four separate checks refused any data row naming
+`minion_damage`, `minion_health` or `minion_attack_speed`:
+
+| Check | Where | What it did |
+| :-- | :-- | :-- |
+| `validate_passive_effects` | `tools/generate_datatables.py` | refused to write the sheet at all, so the data file never regenerated. **This failed first** |
+| `test_every_stat_is_one_the_game_supplies` | `tools/tests/test_passive_effects_match_the_node_text.py` | failed on all fifteen rows |
+| `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` | `CataclysmPassiveTreeTests.cpp` | failed, the stats having no attribute |
+| `test_no_node_is_worth_nothing_to_its_own_class` | same Python file | **found during the work, not in the proposal** |
+
+**All four gave the same reason and it had stopped being true.** Each says a stat
+with no gameplay attribute is dropped in silence, because
+`UCataclysmPlayerClassStats::ApplyTo` loops over `StatToAttribute()` rather than
+over the modifiers it is handed. Since
+[#1724](https://github.com/sdubois777/Cataclysm/pull/1724) a third pass loops over
+a named list and **records** those stats without writing any attribute.
+
+### The decision
+
+**A stat may deliberately have no gameplay attribute when nothing multiplies a
+base — and the list naming which stats those are is the list the engine already
+loops over, not a second one written beside it.**
+
+`UCataclysmPlayerClassStats::StatsWithNoAttribute()` is that list. Four places
+read it: the pass that records the stats, the two automation tests above, and the
+data generator, which parses it out of the C++ rather than restating it.
+
+**Why these three cannot have an attribute.** A minion's damage, health and attack
+interval come from its own row in `game/Data/MinionTypes.csv`, whose columns are
+`BaseHealth`, `BaseDamage` and `AttackIntervalSeconds`, raised by its summoner's
+level. The summoner's gear and passives supply an **increase** to apply to that
+figure rather than a value of their own.
+`UCataclysmAbilitySystemComponent::IncreasesForStat` returns the sum of the
+increases, and bespoke code applies it. **There is nothing for an attribute to
+hold.**
+
+### Sharing the list that does real work is the whole point
+
+[#1025](https://github.com/sdubois777/Cataclysm/issues/1025) is why. An exemption
+list there was **inert**: naming a stat in it did nothing except silence a check,
+so an entry could name code nothing ever called. It did — `The Breaking Point`
+opened a conversion window of zero seconds for as long as the node existed, and
+five further nodes that counted on it were starved. **One inert exemption, six
+dead nodes.**
+
+`ApplyTo` loops over this list, so **adding a name has an immediate effect** and a
+dead entry of that kind cannot exist in it.
+
+### Recording is not reading, so there is also a keeper
+
+`minion_damage` was recorded and read by nothing between
+[#1724](https://github.com/sdubois777/Cataclysm/pull/1724) and
+[#1732](https://github.com/sdubois777/Cataclysm/pull/1732). So sharing the working
+list is necessary and not sufficient.
+
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` walks the list,
+finds a probe for each name, and each probe **grants the stat and asserts the
+reading code's answer changes** — a shorter attack interval, a larger blow, more
+maximum health. **A name with no probe fails by name before any probe runs**,
+which is the discriminating step.
+
+**A source search could not hold this promise**, and the existing keeper for the
+other exemption list says so in its own words: *"It CANNOT check that the code is
+ever called, which is exactly what went wrong — `BaseWindowSeconds` existed the
+whole time."*
+
+### What it unblocked
+
+Fifteen rows: thirteen nodes granting increased Minion Damage, Health or Attack
+Speed, and two rows for `Bound Servants` — one of three **permanent** choices on
+the Ritualist's 25-point capstone, which reads *"Your minions deal 25% increased
+damage and have 25% increased health"* and had never paid out anything while its
+two siblings worked.
+
+`AUTHORED_NODES` carried a comment saying it could not be raised again by
+authoring and that the next rise had to be bought with code. **It was**, by #1724
+and #1732, and that comment now says so.
+
+### The scope, which is a shape rather than a number
+
+**Three members today**, and `StatsNoAttributeIsWrittenFrom` in
+`CataclysmEquipmentTests.cpp` is exact in both directions, so a fourth stat with
+no attribute would already be failing a test that passes.
+
+**Six unbuilt passive nodes name quantities that have no stat at all yet** — the
+duration and magnitude of Cripple and Weaken, Fervour gained from enemies near
+you, the damage of an imp's explosion, and the duration of what you summon. Each
+will need its own decision when its node is built: a base supplied by a flat row,
+a new gameplay attribute, or this exemption. **They are not six more members**, and
+the mechanism is the same size either way.
+
+### What is deliberately not decided here
+
+**`Set Upon`** — *"+2% increased Minion Damage per point against enemies you have
+damaged in the last 2 seconds"* — is excluded. None of the 24 conditions reads the
+target's health or recent damage; the opponent-side ones are `OpponentIsBoss`,
+`OpponentBeyondMetres`, `TargetWithinMetres`, `OpponentIsStaggered` and
+`TargetIsStaggered`. It waits on a condition that does not exist.
+
+---
+
 ## 2026-09-13 — A feasting creature gains 4% attack speed per stack up to five, and gains no movement speed at all
 
 **Affects:**

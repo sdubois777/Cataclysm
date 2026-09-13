@@ -178,6 +178,23 @@ const UDataTable* UCataclysmPlayerClassStats::LoadAttributeTable()
 	return Table;
 }
 
+const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
+{
+	// A PLAIN FILE-SCOPE-LIFETIME STATIC IS SAFE HERE, unlike `StatToAttribute`
+	// below, because these are strings rather than reflected properties. There
+	// is nothing to look up and nothing that has to be ready first.
+	//
+	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
+	// attack speed. Nothing depends on it; it is stated so that a diff adding a
+	// fourth name is obviously an addition rather than a reshuffle.
+	static const TArray<FString> Stats = {
+		TEXT("minion_damage"),
+		TEXT("minion_health"),
+		TEXT("minion_attack_speed"),
+	};
+	return Stats;
+}
+
 const TMap<FString, FGameplayAttribute>&
 UCataclysmPlayerClassStats::StatToAttribute()
 {
@@ -1113,11 +1130,12 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// from whatever the character happens to carry would turn a misspelling into
 	// a stat, silently. Three names, and adding a fourth is a decision somebody
 	// makes rather than a side effect of a typo.
-	static const TArray<FString> WithoutAnAttribute = {
-		TEXT("minion_damage"), TEXT("minion_health"),
-		TEXT("minion_attack_speed"),
-	};
-	for (const FString& Stat : WithoutAnAttribute)
+	//
+	// THE LIST MOVED OUT OF THIS FUNCTION FOR ISSUE #1733, because three other
+	// places need the same three names and were each keeping their own copy. It
+	// is `StatsWithNoAttribute()` now, and its header says what the exemption
+	// promises and what keeps the promise.
+	for (const FString& Stat : StatsWithNoAttribute())
 	{
 		FCataclysmStatBreakdown Breakdown;
 		Resolve(Stat, nullptr, Breakdown);

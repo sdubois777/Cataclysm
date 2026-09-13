@@ -421,7 +421,16 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: is worth nothing. `bleed_on_crit_chance` and `debuff_spread_chance` are the
 #: existing rows of that shape; `crit_chance` uses `increased` and is right to,
 #: because it has a real base of 5.
-AUTHORED_ROWS = 223
+#: AND TO 238 ON 2026-09-13, for the fifteen rows the three minion stats
+#: allowed once they stopped being refused. Issue #1733. Thirteen nodes granting
+#: increased Minion Damage, Health or Attack Speed, plus two rows for
+#: `Bound Servants`, the first option of the Ritualist's 25-point capstone,
+#: which reads "Your minions deal 25% increased damage and have 25% increased
+#: health" and had never granted anything.
+#:
+#: RE-DERIVED FROM THE REGENERATED FILE RATHER THAN ADDED TO. Incrementing a
+#: count preserves a wrong one.
+AUTHORED_ROWS = 238
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -659,7 +668,12 @@ AUTHORED_ROWS = 223
 #: worth saying beside a figure described as what the feature is judged on. It
 #: cannot be raised again by authoring; the next rise has to be bought with
 #: code.
-AUTHORED_NODES = 159
+#: AND TO 172 ON 2026-09-13, WHICH IS THE CEILING BEING LIFTED RATHER THAN
+#: REACHED. The sentence above said this could not rise again by authoring and
+#: that the next rise had to be bought with code. It was, by #1724 and #1732:
+#: the three minion stats are now read by the engine, and #1733 stopped three
+#: checks refusing rows that name them. Thirteen nodes followed.
+AUTHORED_NODES = 172
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -720,7 +734,11 @@ AUTHORED_NODES = 159
 #: grants 3% increased Armor and 3% increased Attack Damage". Issue
 #: #1597. Its node already had a row for option 3, so `AUTHORED_NODES`
 #: did not move for it and this number did.
-AUTHORED_OPTIONS = 17
+#: AND TO 18 ON 2026-09-13, for `Bound Servants`, the first option of the
+#: Ritualist's 25-point capstone. Issue #1733. Its node already had rows for
+#: options 2 and 3, so `AUTHORED_NODES` did not move for it and this number did
+#: -- the same shape as `Wade In` above.
+AUTHORED_OPTIONS = 18
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -790,7 +808,22 @@ def stats() -> set[str]:
             # nearest a Python test can get to holding the other side of it. The
             # rest is held in the engine, by
             # `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`.
-            | set(gen.ENGINE_SUPPLIED_BASES))
+            | set(gen.ENGINE_SUPPLIED_BASES)
+            # AND THE STATS THAT DELIBERATELY HAVE NO ATTRIBUTE, since #1733.
+            #
+            # A DIFFERENT KIND OF ENTRY FROM THE LINE ABOVE, and the difference
+            # is the whole reason it is a separate call. `ENGINE_SUPPLIED_BASES`
+            # promises code puts a BASE on the character. These three have no
+            # base and can have none: a minion's damage, health and attack
+            # interval come from its own type row, and a summoner's gear supplies
+            # an increase to apply to that rather than a value of its own.
+            #
+            # READ OUT OF THE C++ RATHER THAN RESTATED. `ENGINE_SUPPLIED_BASES`
+            # is a Python restatement held honest by a symbol-existence check;
+            # this one cannot drift because there is only one list.
+            # `test_the_exempt_stats_are_read_from_the_engine` below states what
+            # that parse is allowed to return.
+            | gen.stats_with_no_attribute())
 
 
 @pytest.fixture(scope="module")
@@ -2043,6 +2076,28 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
         | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
         | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
         | set(gen.ENGINE_SUPPLIED_BASES)
+        # AND THE STATS THAT NEED NO BASE AT ALL, since issue #1733.
+        #
+        # THE TWO LINES ABOVE AND BELOW MEAN OPPOSITE THINGS AND SIT IN ONE SET,
+        # which is how the next reader misreads it, so: `ENGINE_SUPPLIED_BASES`
+        # promises a base EXISTS and names the code that puts it on the
+        # character. This one says NO BASE IS NEEDED, because nothing multiplies
+        # one. `IncreasesForStat` returns the sum of the increases and the engine
+        # applies that to the minion's own figure from `game/Data/
+        # MinionTypes.csv`, whose columns are BaseHealth, BaseDamage and
+        # AttackIntervalSeconds. The base is on the minion and cannot be on the
+        # character.
+        #
+        # SO "THIS CLASS HAS NO BASE FOR IT" IS TRUE HERE AND WILL STAY TRUE,
+        # and it still does not mean the node does nothing -- which is the
+        # premise this test rests on and the reason it fires on all thirteen.
+        #
+        # IT DOES NOT WEAKEN WHAT THIS CATCHES. A node granting any OTHER stat
+        # its class has no base for still fails, which is what caught #1105.
+        # `test_the_dead_node_check_still_catches_a_stat_with_no_base` holds
+        # that, because a test that was just widened cannot prove itself by
+        # passing.
+        | gen.stats_with_no_attribute()
     )
 
     #: A flat row supplies its stat to the tree it is in, and only to that tree.
@@ -2084,6 +2139,45 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
         + "\n\nEither give the class a base -- a flat row on a node in the same "
           "tree is how issue #1105 was fixed -- or take the node's rows off a "
           "stat it cannot have.")
+
+
+def test_the_exempt_stats_are_read_from_the_engine():
+    """The stats exempt from needing an attribute come out of the C++, not a copy.
+
+    WHAT THIS GUARDS, AND IT IS THE PARSE RATHER THAN THE NAMES. `gen.
+    stats_with_no_attribute()` reads
+    `UCataclysmPlayerClassStats::StatsWithNoAttribute()` out of the engine source.
+    If that accessor is renamed or reshaped, the regex stops matching. A parse
+    that returned an empty set on failure would silently refuse every passive row
+    that needs the exemption, and the error would name a data row rather than the
+    parse -- which is the wrong place to look and the expensive kind of wrong.
+
+    SO THE FUNCTION RAISES AND THIS CHECKS IT RETURNS SOMETHING, rather than
+    checking for particular names. Naming the three here would put back the second
+    copy the whole change exists to remove: the point is that Python holds no
+    list, so a name added or removed in the C++ needs no edit here.
+
+    IT DOES ASSERT THE SHAPE, because a parse that matched the wrong construct
+    could return real-looking rubbish. Every name is a lower-case stat identifier,
+    which is what every stat name in this project is.
+
+    WHAT IT CANNOT CHECK: that anything READS these stats. That is an exemption's
+    promise, it is held in the engine by
+    `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and issue
+    #1025 is what an unkept one costs.
+    """
+    names = gen.stats_with_no_attribute()
+
+    assert names, (
+        "the exempt-stat list parsed to nothing. gen.stats_with_no_attribute() "
+        "raises rather than returning empty, so reaching this means the "
+        "contract changed.")
+
+    for name in names:
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", name), (
+            f"{name!r} came out of the exempt-stat parse and is not shaped like "
+            f"a stat name, so the regex is matching the wrong construct in "
+            f"CataclysmPlayerClassStats.cpp.")
 
 
 def test_every_engine_supplied_base_names_code_that_exists():

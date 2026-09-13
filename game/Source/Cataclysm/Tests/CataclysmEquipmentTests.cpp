@@ -1288,56 +1288,40 @@ namespace CataclysmEquipmentTest
 	/**
 	 * The stat names an affix grants that ApplyTo writes no attribute from.
 	 *
-	 * THE LIST HOLDS TWO KINDS OF ENTRY AND THE COMMENT BESIDE EACH SAYS WHICH.
-	 * Most are known faults with an issue: a stat that ought to reach an
-	 * attribute and does not. The three minion stats are the other kind -- they
-	 * are meant to have no attribute, and the comment beside them says why and
-	 * what reads them instead.
+	 * IT USED TO HOLD TWO KINDS OF ENTRY AND NOW HOLDS ONE. Every fault has been
+	 * struck out as its work landed: #894 gave twelve of them attributes --
+	 * evasion, block chance, critical strike chance, penetration and the eight
+	 * resistances; #895 took mana and energy shield leech, cooldown reduction
+	 * and the eight damage-against-a-type names; #897 took the eight primary
+	 * attributes, once a character could spend an attribute point and an
+	 * increase had something to increase.
 	 *
-	 * The list is exact in both directions: a stat missing an attribute that is
-	 * not named here fails the test, and a stat named here that now has one
-	 * fails it too, so a fault has to be struck out as the work lands rather
-	 * than left standing.
+	 * SO WHAT REMAINS IS NOT A LIST OF FAULTS. The three minion stats are meant
+	 * to have no attribute, which is why this no longer keeps its own copy of
+	 * them: it asks the engine.
+	 *
+	 * THE LIST IS EXACT IN BOTH DIRECTIONS, which is the property worth keeping.
+	 * A stat missing an attribute that is not on it fails the test, and a stat
+	 * on it that now has one fails the test too. That is what guarantees a
+	 * fourth stat with no attribute cannot appear unnoticed.
+	 *
+	 * READ FROM `UCataclysmPlayerClassStats::StatsWithNoAttribute()` SINCE
+	 * #1733. Three places needed these same three names and each had a copy; the
+	 * one the engine actually loops over is now the only one. Its header says
+	 * what the exemption promises and which test keeps the promise.
 	 */
 	const TSet<FString>& StatsNoAttributeIsWrittenFrom()
 	{
-		static const TSet<FString> Stats = {
-			// #894 DELETED TWELVE NAMES FROM HERE -- evasion, block chance,
-			// critical strike chance, penetration and the eight resistances --
-			// by giving each a StatToAttribute entry. The arithmetic that reads
-			// them already existed, which is what made that issue the cheap one.
-			//
-			// #895 HAS EMPTIED ITS SHARE OF THIS LIST. Mana leech and energy
-			// shield leech went when leech was built, cooldown reduction went
-			// when UCataclysmGameplayAbility::ApplyCooldown started dividing by
-			// it, and the eight damage-against-a-type names went when a hit
-			// started reading the target's own damage type.
-			//
-			// #897 EMPTIED ITS SHARE OF THIS LIST TOO. The eight primary
-			// attributes -- agility, ferocity, constitution, vitality, mind,
-			// spirit, efficacy and luck -- went when a character could first
-			// spend an attribute point, because until then an increase to an
-			// attribute had nothing to increase. Issue #50 is what supplied the
-			// points and this file's AttributesWearing spends one in each.
-
-			// #898. No gameplay attribute for any minion stat exists, and
-			// THESE THREE ARE MEANT TO HAVE NONE rather than to be waiting for
-			// one. A minion's damage, health and attack interval come from its
-			// own row in game/Data/MinionTypes.csv, raised by its summoner's
-			// level. A summoner's gear supplies an INCREASE to apply to that
-			// figure, not a value of its own, so there is nothing for an
-			// attribute to hold.
-			//
-			// SO THEY STAY HERE EVEN ONCE THEY WORK, AND ONE OF THEM ALREADY
-			// DOES. The third pass of UCataclysmPlayerClassStats::ApplyTo
-			// records all three into the character's stat inputs without
-			// writing any attribute, and UCataclysmCommand::AttackIntervalScaleFor
-			// reads minion_attack_speed back out through
-			// UCataclysmAbilitySystemComponent::IncreasesForStat. Minion damage
-			// and minion health are recorded and not yet read by anything.
-			TEXT("minion_damage"), TEXT("minion_health"),
-			TEXT("minion_attack_speed"),
-		};
+		static const TSet<FString> Stats = []
+		{
+			TSet<FString> Made;
+			for (const FString& Stat :
+				 UCataclysmPlayerClassStats::StatsWithNoAttribute())
+			{
+				Made.Add(Stat);
+			}
+			return Made;
+		}();
 		return Stats;
 	}
 
