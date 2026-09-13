@@ -105,10 +105,16 @@ namespace CataclysmMinionGearTest
 	 * checks. `CataclysmMinionOwnStatsTests.cpp` still measures against
 	 * 1,000,000 and passes for exactly that reason.
 	 *
-	 * 10,000 STEPS IN UNITS OF ABOUT 0.001, which is fifty times inside the
-	 * tolerance these cases ask for, and the two largest blows here take 551 of
-	 * it -- so nothing approaches death and a reading is the blow rather than
-	 * the health that was left.
+	 * 10,000 STEPS IN UNITS OF 0.0009766, ten times inside the 0.01 tolerance
+	 * these cases ask for. The worst error any figure in this file actually
+	 * suffers at that pool is 0.0002, because a rounding error is at most half a
+	 * step and these values do not sit at the worst point -- so the margin in
+	 * practice is fifty-fold and the margin guaranteed by the step alone is
+	 * tenfold. The tenfold one is the number to design against.
+	 *
+	 * AND IT IS STILL LARGE ENOUGH: the two largest blows here take 551 of it, so
+	 * nothing approaches death and a reading is the blow rather than the health
+	 * that was left.
 	 */
 	constexpr float TargetHealthPool = 10'000.0f;
 
