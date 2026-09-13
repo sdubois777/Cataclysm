@@ -197,6 +197,121 @@ rather than from a test's `Tick` call, and the fireball that does not exist.
 
 ---
 
+## 2026-09-13 — A minion's health and damage come from its own type row, raised by its summoner's level, and its blow takes the figure as given
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmMinionOwnStatsTests.cpp`,
+`tools/tests/test_minion_damage.py`. Issue
+[#340](https://github.com/sdubois777/Cataclysm/issues/340). **Applied.**
+
+Every path above is written out in full rather than as the usual
+"`CataclysmMinion.h` and `` `.cpp` ``" shorthand, so that all four are read by
+`tools/tests/test_the_decisions_log_names_real_files.py`. That check skips any
+backticked item with no slash in it, which is what a bare suffix is. Issue
+[#1709](https://github.com/sdubois777/Cataclysm/issues/1709) carries the general
+case.
+
+**The shape was not decided here.** The project owner ruled on 2026-08-06, issue
+[#209](https://github.com/sdubois777/Cataclysm/issues/209), that a minion reaches
+its summoner through three things and no others: its side, its base health and
+damage raised by the summoner's level, and increased damage from one primary
+attribute declared per minion type. This records how the second of those three
+was built, and nothing about whether it is the right rule.
+
+**The first and third channels are not built by this.** The third — increased
+damage from a primary attribute — is stated in `game/Data/MinionScaling.csv`
+(spirit for creatures, agility for machines, one percent of damage per point) and
+no code in the engine reads that table. The only read of a `PercentPerPoint`
+column is `CataclysmClassStats.cpp:198`, and it reads the player attribute table,
+not the minion one.
+
+**A flat damage entry point rather than a percentage one, and that is the whole
+point of the change.** `UCataclysmSkillEffects::ApplyHit` computes a percentage
+of the caster's weapon damage and runs the caster's own stat modifiers over it
+before handing the result to `UCataclysmSkillEffects::ApplyDirectDamage`. A minion
+calling `ApplyHit` would therefore let every increase its summoner carries reach
+its blow, which would be a fourth channel whatever the design says. It calls
+`ApplyDirectDamage`, which takes the figure as given.
+
+This is not a path invented for minions. `ACataclysmGroundZone` uses the same one
+in `ACataclysmGroundZone::Sweep` for a damaging area on the floor, where the zone
+deals the figure it was built with and no stat of the caster's is read at the
+moment it ticks. `CataclysmNova.cpp`, `CataclysmRetaliation.cpp`,
+`CataclysmSkillTemplates.cpp` and `CataclysmEnemyModifiers.cpp` are the other
+four callers.
+
+**The summoner stays the instigator.** The Conduit keystone reads "damage dealt by
+your minions counts as damage you dealt, for every effect of yours that asks", and
+which side a blow belongs to is decided the same way. Making the minion the
+instigator would have been a smaller change to write and would have broken both.
+The defender's mitigation still runs: this is not `ReduceHealthDirectly`, so
+evasion, block, armour and resistance all apply.
+
+**The summoner's level is read once, at spawn.** It comes from the summoner's
+player state when the summoner is a player pawn, and otherwise from the level the
+class stats are being previewed at — which is the path every non-player summoner
+takes, not a test-only corner. It cannot change while that minion exists.
+
+**Maximum health is written before current health, and the order is not
+incidental.** The vital attribute set clamps health to the maximum in
+`PreAttributeChange`, so raising the current value first would clamp it straight
+back down to the old maximum. `ACataclysmEnemyCharacter` sets a creature's health
+the same way and records the same reason.
+
+**A minion summoned with no type name still takes thirty percent of its
+summoner's weapon damage, and the game can reach that.**
+`CataclysmSkillTemplates.cpp:3260` produces an empty type name whenever a
+summoning skill's shape parameters name no minion kind, so a mis-authored row
+degrades to the old share rather than spawning a creature with no damage at
+all. No shipped skill row leaves it empty today, and
+`test_every_demonic_minion_skill_produces_a_type_the_table_defines` in `tools/tests/test_minion_stat_blocks.py` is what holds that.
+
+Three tests written before the minion type table also summon a typeless
+minion, and they check other things entirely — that an imp never turns on its summoner, that it cannot
+take its summoner's critical strike, that a burning minion sets what it hits
+alight. Forcing those into the new model would have damaged tests that are about
+none of this, so the seam is deliberate and is asserted rather than left
+incidental.
+
+**The per-level arithmetic had to be measured, because no document states it.**
+The design documents and `game/Data/MinionTypes.csv` state a base figure and a
+per-level figure and never say which of the two readings applies. A minion uses
+`Base + PerLevel * Level`. The other reading, `Base + PerLevel * (Level - 1)`, is
+what `CataclysmClassStats.cpp:152`, `CataclysmSkillSlots.cpp:83` and
+`sim/cataclysm_sim/character.py:261` use for a player.
+
+The minion table's numbers were authored against the first reading, and
+`tools/tests/test_minion_stat_blocks.py` lines 49 and 54 have computed them that
+way since before this code existed. Measured: at difficulty tier 1 the reference
+character is level 12, its own basic attack deals 382 a second, and three imps
+deal 410 a second under `Base + PerLevel * Level` against 378 under
+`Base + PerLevel * (Level - 1)`. So
+`test_three_imps_out_damage_the_summoners_own_basic_attack_at_every_tier` fails
+under the player reading at tier 1. Tiers 2 to 8 hold under either.
+
+**The two conventions are left different and the difference is filed**, as issue
+[#1700](https://github.com/sdubois777/Cataclysm/issues/1700), because changing
+either is a balance change nobody asked for.
+
+**A test that recorded this gap was rewritten rather than deleted.**
+`tools/tests/test_minion_damage.py` held
+`test_the_code_is_recorded_as_behind_the_design`, whose stated reason was that the
+constants "cannot be changed in the same work, because `Build.bat` refuses to run
+while the Unreal editor is open, and a C++ change that cannot be compiled should
+not be shipped". They have now been changed and compiled, so that reason is false.
+It is now two tests: one guarding the half that is built, one recording the half
+that is not.
+
+That test also checked a name that was never stale. Its list was
+`DamagePercentOfSummoner` and `AttackIntervalSeconds`, and the second matched as a
+substring of `DefaultAttackIntervalSeconds` — a fallback that the spawn code
+overwrites from the type row, and has for as long as the type table has existed.
+Half of what it reported as behind the design was already correct when it was
+written.
+
+---
+
 ## 2026-09-13 — A Field Medic restores five percent of each ally's own maximum health per pulse, and the pack is what bounds it
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and

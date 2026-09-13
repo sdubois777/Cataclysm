@@ -11,6 +11,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
+// For the level a minion's own health and damage are raised by, and for the
+// fallback when the summoner has no player state. Issue #340.
+#include "Character/CataclysmPlayerClassStats.h"
+#include "GameFramework/Pawn.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Data/CataclysmDataRows.h"
@@ -56,6 +61,68 @@ namespace
 	 * reaches its summoner through exactly three channels and this is not one of
 	 * them. Issue #676.
 	 */
+	/**
+	 * The level a minion's own base health and damage are raised by.
+	 *
+	 * THE SUMMONER'S, NOT THE MINION'S. A minion has no level of its own; the
+	 * design's phrase is "the type's own base, raised by the summoner's
+	 * level".
+	 *
+	 * THE FALLBACK IS NOT A CORNER CASE. A character's level lives on its
+	 * player state, and an ENEMY summoner has none -- so every minion summoned
+	 * by anything but a player takes this path.
+	 * `UCataclysmEquipmentComponent` asks the same question the same way.
+	 *
+	 * AND WHAT IT FALLS BACK TO IS A PREVIEW CONTROL, WHICH IS FILED RATHER
+	 * THAN FIXED HERE. `UCataclysmPlayerClassStats::ChosenLevel` is
+	 * documented as "which level the console variable asks for", meant for
+	 * previewing class stats in the editor rather than describing anything
+	 * in the world. Nothing in the game reaches it today: both places that
+	 * create a minion are player weapon skills, at
+	 * `CataclysmSkillTemplates.cpp` lines 3022 and 3263, and a player pawn
+	 * has a player state. Issue #1702 carries it, and it has no fix yet
+	 * because an enemy has no level of its own to use instead.
+	 */
+	int32 LevelOfSummoner(const AActor* Summoner)
+	{
+		if (const APawn* Pawn = Cast<const APawn>(Summoner))
+		{
+			if (const ACataclysmPlayerState* State =
+					Pawn->GetPlayerState<ACataclysmPlayerState>())
+			{
+				return State->GetCharacterLevel();
+			}
+		}
+		return UCataclysmPlayerClassStats::ChosenLevel();
+	}
+
+	/**
+	 * A base figure raised by a level, which is how the minion type table is
+	 * read.
+	 *
+	 * `Base + PerLevel * Level`, AND THE ARITHMETIC IS NOT A CHOICE. The other
+	 * reading, `Base + PerLevel * (Level - 1)`, is what the simulation's
+	 * character model uses for a PLAYER -- and the minion table's numbers were
+	 * authored against this one. `tools/tests/test_minion_stat_blocks.py`
+	 * asserts three imps out-damage their summoner's basic attack at every
+	 * difficulty tier; at tier 1 that is 410 a second against the summoner's
+	 * 382 under this arithmetic and 378 under the other, so the other fails.
+	 * Every tier from 2 upward holds either way, which is why it had to be
+	 * measured rather than argued.
+	 *
+	 * THE TWO CONVENTIONS DIFFER BY ONE LEVEL'S WORTH AND NOTHING SAYS THEY
+	 * ARE MEANT TO. Issue #1700 carries it, rather than quietly aligning them,
+	 * because changing either is a balance change nobody asked for. Everything
+	 * about a minion uses this form -- `tools/tests/test_minion_stat_blocks.py`
+	 * lines 49 and 54 have since before this code was written -- and everything
+	 * about a player uses the other, in `CataclysmClassStats.cpp`,
+	 * `CataclysmSkillSlots.cpp` and `sim/cataclysm_sim/character.py`.
+	 */
+	float RaisedByLevel(float Base, float PerLevel, int32 Level)
+	{
+		return Base + PerLevel * static_cast<float>(Level);
+	}
+
 	FCataclysmHitDelivery MinionDelivery(ACataclysmMinion* Minion, bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
@@ -309,6 +376,33 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		{
 			Movement->MaxWalkSpeed = Type->MoveSpeed * 100.0f;
 		}
+
+		// AND ITS OWN HEALTH AND DAMAGE, RAISED BY THE SUMMONER'S LEVEL. Issue
+		// #340. The decision of 2026-08-06 reversed the rule this file used to
+		// carry -- a minion deals its OWN damage, not a share of its summoner's
+		// weapon -- and the four columns behind it have been in
+		// `game/Data/MinionTypes.csv` since, read by nothing.
+		//
+		// THE LEVEL IS READ ONCE. It cannot change while this minion exists.
+		const int32 Level = LevelOfSummoner(InSummoner);
+		Minion->OwnDamagePerHit =
+			RaisedByLevel(Type->BaseDamage, Type->DamagePerLevel, Level);
+
+		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental: the
+		// vital attribute set clamps health to the maximum in
+		// `PreAttributeChange`, so raising the current value first would clamp
+		// it straight back down to the old maximum.
+		// `ACataclysmEnemyCharacter` sets a creature's health the same way and
+		// records the same reason.
+		const float OwnHealth =
+			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level);
+		if (Minion->AbilitySystemComponent && OwnHealth > 0.0f)
+		{
+			Minion->AbilitySystemComponent->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), OwnHealth);
+			Minion->AbilitySystemComponent->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), OwnHealth);
+		}
 	}
 	else if (!InTypeName.IsEmpty())
 	{
@@ -322,11 +416,10 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 			*InTypeName);
 	}
 
-	// HEALTH IS DELIBERATELY NOT SET FROM THE TYPE. The table states BaseHealth
-	// and HealthPerLevel, and applying them needs the summoner's level, which
-	// nothing in this module can read yet. Issue #340 holds that half, together
-	// with the damage model. HealthPercent is accepted so a caller need not know
-	// that, and is recorded rather than silently dropped.
+	// HEALTH FROM THE TYPE IS SET ABOVE, WHERE THE ROW IS IN HAND. This one is
+	// the share a DEPLOYED machine was told to start at, which is a different
+	// number: Iron Fortress deploys a ballista at a stated percentage. It is
+	// recorded and not yet applied -- issue #340's remaining half.
 	Minion->DeployedHealthPercent = HealthPercent;
 
 	// The summoner's side, not one of its own. A Ritualist's imps must be
@@ -361,13 +454,63 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		return;
 	}
 
-	// Damage comes from the SUMMONER's weapon, not the minion's own, which it
-	// has none of. So a Ritualist's imps get stronger as the Ritualist does,
-	// which is how every minion in the genre scales.
+	// ITS OWN DAMAGE, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #340. This
+	// file dealt 30% of the summoner's weapon until the decision of 2026-08-06
+	// reversed that: "a minion reaches its summoner through three channels and
+	// nothing else: its side, its base health and damage raised by the
+	// summoner's level, and increased damage from one primary attribute
+	// declared per minion type".
+	//
+	// `ApplyDirectDamage` RATHER THAN `ApplyHit`, AND THAT IS THE WHOLE POINT.
+	// `ApplyHit` computes weapon damage times a percentage and runs the
+	// CASTER'S stat modifiers over it before handing the result to this same
+	// function. Going through it would let every increase the summoner carries
+	// reach a minion's blow -- a fourth channel, whatever the design says.
+	// This one takes the figure as given.
+	//
+	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
+	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
+	// floor: a zone deals the figure it was built with to everything standing
+	// in it, and no stat of the caster's is read at the moment it ticks.
+	// `CataclysmNova.cpp`, `CataclysmRetaliation.cpp`,
+	// `CataclysmSkillTemplates.cpp` and `CataclysmEnemyModifiers.cpp` are the
+	// other four callers.
+	//
+	// THE SUMMONER IS STILL THE INSTIGATOR. The Conduit keystone reads "damage
+	// dealt by your minions counts as damage you dealt, for every effect of
+	// yours that asks", and which side the blow belongs to is decided the same
+	// way. Making the minion the instigator would be a smaller change to write
+	// and would break both.
+	//
+	// THE DEFENDER'S MITIGATION STILL APPLIES. This is not
+	// `ReduceHealthDirectly`, which bypasses every layer; evasion, block,
+	// armour and resistance all run, and `Resolved` reports what they made of
+	// it.
+	//
+	// A MINION WITH NO TYPE FALLS BACK TO THE OLD SHARE, AND THE GAME CAN
+	// REACH THAT. `CataclysmSkillTemplates.cpp:3260` produces an empty type
+	// name whenever a summoning skill's shape parameters name no minion
+	// kind, and the deployable template at line 3022 passes its own name
+	// through the same way. No shipped skill row leaves it empty today --
+	// `test_every_demonic_minion_skill_produces_a_type_the_table_defines`
+	// in `tools/tests/test_minion_stat_blocks.py` holds that -- so this is
+	// what a mis-authored row degrades to, not a shape only tests reach.
+	// Three tests older than the minion type table also summon one.
 	FCataclysmDamageResult Resolved;
-	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
-		MinionDelivery(this, /*bIsArea=*/false), &Resolved);
+	float Dealt = 0.0f;
+	if (OwnDamagePerHit > 0.0f)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(
+			Summoner, Target, OwnDamagePerHit,
+			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
+		Dealt = OwnDamagePerHit;
+	}
+	else
+	{
+		Dealt = UCataclysmSkillEffects::ApplyHit(
+			Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
+			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
+	}
 
 	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
 	// same reason its blow takes no critical strike, no penetration, no weapon
