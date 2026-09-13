@@ -123,6 +123,60 @@ namespace
 		return Base + PerLevel * static_cast<float>(Level);
 	}
 
+	/**
+	 * What a summoner's gear and passives do to one of its minions' own figures,
+	 * as a multiplier. 1.25 is twenty-five per cent more. Issue #898.
+	 *
+	 * A MODIFIER THAT NAMES MINIONS IS NOT A FOURTH CHANNEL. The decision of
+	 * 2026-08-06 lists three channels and then says, in the next sentence,
+	 * "Everything else is blocked unless a modifier names minions", and the
+	 * owner's reversal it records has three parts of which the third is "minion
+	 * affixes exist on gear on top of that". `minion_damage` and `minion_health`
+	 * are the case that qualifier exists for. `AttackTarget` used to quote the
+	 * three-channel sentence without it, which read as forbidding this.
+	 *
+	 * THE INCREASES AND NOT THE STAT'S VALUE. Neither stat has a base and neither
+	 * can have one -- a minion's damage and health come from its own row in
+	 * `game/Data/MinionTypes.csv`, raised by its summoner's level -- so asking
+	 * for the value would return zero however much gear was worn.
+	 * `UCataclysmAbilitySystemComponent::IncreasesForStat` exists for that.
+	 *
+	 * A SUM RATHER THAN A SEPARATE MULTIPLIER, AND THE DESIGN REQUIRES IT. The
+	 * same entry says "an attribute's contribution and an affix's contribution
+	 * add. They cannot multiply each other", and gives the reason: every
+	 * catastrophic minion scaling failure in the survey behind that decision was
+	 * multiplicative. `IncreasesForStat` returns the SUM of the increases, so
+	 * when the attribute channel is built it lands in the same bucket and adds.
+	 *
+	 * A REDUCTION IS KEPT AND ONLY THE RESULT IS FLOORED. Ten rows of
+	 * `game/Data/PassiveEffects.csv` already carry a negative value, so a node
+	 * reducing minion damage is a thing the data can express. Clamping the
+	 * increases at zero would discard a designed drawback in silence; flooring
+	 * the multiplier only stops a figure below -100% turning into negative
+	 * damage or negative health.
+	 *
+	 * AN EMPTY TAG CONTAINER, for the reason `CataclysmCommand.cpp` records: all
+	 * four minion affix rows carry no scope tags, the affix table has no column
+	 * for them, and a minion carries no gameplay tags to test a narrower one
+	 * against.
+	 */
+	float SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner));
+		if (!Theirs)
+		{
+			// NO STAT LINE, WHICH IS ORDINARY RATHER THAN A FAULT: an enemy
+			// summoner is never given one, and a player's is empty until the
+			// first refresh. Nothing recorded means nothing added.
+			return 1.0f;
+		}
+
+		return FMath::Max(0.0f, 1.0f + Theirs->IncreasesForStat(
+			FName(Stat), FGameplayTagContainer()));
+	}
+
 	FCataclysmHitDelivery MinionDelivery(ACataclysmMinion* Minion, bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
@@ -394,8 +448,33 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		// it straight back down to the old maximum.
 		// `ACataclysmEnemyCharacter` sets a creature's health the same way and
 		// records the same reason.
+		//
+		// HEALTH IS TAKEN ONCE, AT THE SUMMONING, AND THAT IS A SNAPSHOT. Issue
+		// #898. Damage is read fresh at every blow and attack speed at every
+		// swing, so this is the one minion figure that does not follow a gear
+		// change. It is a pool: the maximum is written to an attribute here and
+		// nothing re-runs this when equipment or passives change.
+		//
+		// AND THAT IS THE CASE THE DESIGN ALREADY NAMES. The decision of
+		// 2026-09-13, section "Minions update live rather than snapshotting",
+		// records the owner's ruling that minions should update "anytime
+		// gear/passives/skills change", calls it "Not built, and not urgent by
+		// the same ruling", and says where it bites: "A per-swing read is live
+		// by construction, so this constrains health, which is set once at
+		// spawn, and not a stat asked for at the moment of a blow."
+		//
+		// So damage and attack speed satisfy that ruling by the way they are
+		// read, and this line is the one place it is outstanding. Deferred by
+		// the ruling rather than missed.
+		//
+		// A MULTIPLIER OF ZERO LEAVES THE MINION ITS DEFAULT HEALTH rather than
+		// being born dead, because the guard below already refuses a figure of
+		// zero -- which it was written for a type row that states no health. No
+		// shipped data reaches -100% minion health; this says what would happen
+		// rather than adding a floor nobody chose.
 		const float OwnHealth =
-			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level);
+			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level)
+			* SummonerMultiplierFor(InSummoner, TEXT("minion_health"));
 		if (Minion->AbilitySystemComponent && OwnHealth > 0.0f)
 		{
 			Minion->AbilitySystemComponent->SetNumericAttributeBase(
@@ -459,14 +538,32 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// reversed that: "a minion reaches its summoner through three channels and
 	// nothing else: its side, its base health and damage raised by the
 	// summoner's level, and increased damage from one primary attribute
-	// declared per minion type".
+	// declared per minion type. **Everything else is blocked unless a modifier
+	// names minions.**"
+	//
+	// THAT LAST SENTENCE USED TO BE MISSING FROM THIS COMMENT, and without it
+	// the rule reads as forbidding minion gear. It does not: the same entry
+	// summarises the owner's reversal in three parts, the third being "minion
+	// affixes exist on gear on top of that", and it names an existing
+	// minion-inheritance enchantment as a deliberate exception. A stat called
+	// `minion_damage` is the case the qualifier is for. Issue #898.
 	//
 	// `ApplyDirectDamage` RATHER THAN `ApplyHit`, AND THAT IS THE WHOLE POINT.
 	// `ApplyHit` computes weapon damage times a percentage and runs the
 	// CASTER'S stat modifiers over it before handing the result to this same
-	// function. Going through it would let every increase the summoner carries
-	// reach a minion's blow -- a fourth channel, whatever the design says.
-	// This one takes the figure as given.
+	// function. Going through it would let EVERY increase the summoner carries
+	// reach a minion's blow -- their increased attack damage, their increased
+	// fire damage, all of it -- and that is the fourth channel the rule blocks.
+	// The multiplier applied below is not: it comes from one stat that names
+	// minions and nothing else.
+	//
+	// THE THIRD CHANNEL IS STILL NOT BUILT. `game/Data/MinionScaling.csv` names
+	// one primary attribute per minion type and is read by nothing in the
+	// engine. Issue #898 carries it -- "three models of minion scaling
+	// disagree" -- and it is blocked on the same thing a scoped modifier is: it
+	// matches on `RequiresTag` and a minion carries no gameplay tags. So after
+	// this change two of the three channels work and the attribute one does
+	// not.
 	//
 	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
 	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
@@ -500,10 +597,27 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	float Dealt = 0.0f;
 	if (OwnDamagePerHit > 0.0f)
 	{
+		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
+		// #898. Until this, `game/Data/Affixes.csv` granted `minion_damage` and
+		// nothing in the engine read it.
+		//
+		// HERE RATHER THAN AT THE SUMMONING, so that it is not a snapshot. A
+		// player who changes gear sees this blow change on the next swing, the
+		// same way `UCataclysmCommand::AttackIntervalScaleFor` already reads
+		// minion attack speed fresh. Only health is frozen, because it is a
+		// pool; `Spawn` records why.
+		//
+		// THE BRANCH STILL TESTS THE TYPE ROW'S OWN FIGURE, NOT THIS ONE. A
+		// multiplier of zero must not send a typed minion down the typeless
+		// fallback below, which deals a share of the summoner's weapon and is a
+		// different rule entirely.
+		const float Damage = OwnDamagePerHit
+			* SummonerMultiplierFor(Summoner, TEXT("minion_damage"));
+
 		UCataclysmSkillEffects::ApplyDirectDamage(
-			Summoner, Target, OwnDamagePerHit,
+			Summoner, Target, Damage,
 			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
-		Dealt = OwnDamagePerHit;
+		Dealt = Damage;
 	}
 	else
 	{
