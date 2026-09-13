@@ -114,32 +114,23 @@ namespace
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
 {
-	// FIVE ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, and
-	// slice 5 Death's Embrace. Each does everything its row describes -- The
-	// Nihil's Embrace including its cleanse on a high tier enemy's defeat, and
-	// Death's Embrace including the reset on a new floor -- so none is "partly".
+	// SIX ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, slice
+	// 5 Death's Embrace, and issue #1648 the Field Medic. Each does everything
+	// its row describes -- The Nihil's Embrace including its cleanse on a high
+	// tier enemy's defeat, Death's Embrace including the reset on a new floor,
+	// and the Field Medic including "it does not attack" -- so none is
+	// "partly".
+	//
+	// THE FIELD MEDIC WAS `Partly` UNTIL ISSUE #1680, and it was marked so
+	// deliberately: the healing worked and nothing in the game could stop a
+	// creature attacking, so calling it built would have been a wrong answer
+	// in the one place the project asks what is finished. #1680 built the
+	// missing half, so the answer changes.
 	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
 		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
-		|| RowKey == FName(DeathsEmbraceKey))
+		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey))
 	{
 		return ECataclysmModifierBuilt::Built;
-	}
-
-	// PARTLY, AND WHICH HALF IS MISSING IS NAMED. The row is "An elite 'Medic'
-	// enemy is present on each floor. It does not attack, but constantly heals
-	// all other enemies in a large radius."
-	//
-	// THE HEALING IS BUILT. `PopulateFloor` marks one creature and
-	// `UCataclysmEnemyModifiers::AuraStep` heals its living allies within the
-	// aura radius once a second.
-	//
-	// "IT DOES NOT ATTACK" IS NOT BUILT, and nothing in the game can express
-	// it: there is no lever anywhere under `game/Source/` that stops a
-	// creature attacking. Saying `Built` here would put a wrong answer into
-	// the one place the project asks what is finished. Issue #1680.
-	if (RowKey == FName(FieldMedicKey))
-	{
-		return ECataclysmModifierBuilt::Partly;
 	}
 
 	// PARTLY. Its rule draws another dungeon modifier onto the floor, where the

@@ -649,6 +649,25 @@ public:
 	virtual float AttackReachCm() const override { return MeleeReachCm; }
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
 	virtual void AttackTarget(AActor* Target) override;
+
+	/**
+	 * A creature the floor made its medic starts nothing hostile.
+	 *
+	 * THE ROW SAYS SO TWICE. `War_Field_Medic` reads "It does not attack",
+	 * and states its purpose as forcing the player "to prioritize a
+	 * **non-threatening** enemy". A creature that burns everything standing
+	 * near it is threatening even if it never swings, so the reading that
+	 * satisfies the row covers the modifier auras and not only the swing.
+	 * Issue #1680.
+	 *
+	 * ONE MARK, TWO CONSEQUENCES. The same flag makes this creature heal its
+	 * allies and stops it harming anybody. They are not separable: the row
+	 * describes one creature.
+	 */
+	virtual bool TakesNoHostileAction() const override
+	{
+		return bHealsAlliesForTheFloorRule;
+	}
 	//~ End
 
 	// ----------------------------------------------------------------------

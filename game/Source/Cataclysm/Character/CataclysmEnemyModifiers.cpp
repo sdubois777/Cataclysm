@@ -375,11 +375,34 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		return 0;
 	}
 
-	const bool bBurns = Carries(Enemy->ModifierRows, HellfireAuraRow);
-	const bool bStripsResistance =
-		Carries(Enemy->ModifierRows, AbyssalAuraRow);
+	// A CREATURE THAT STARTS NOTHING HOSTILE BURNS AND STRIPS NOBODY, however
+	// its modifiers were drawn. Issue #1680.
+	//
+	// THIS IS NOT AN EDGE CASE. The floor's medic is chosen as the rarest
+	// creature there, and rarity is how many modifiers a creature draws, so a
+	// medic is the creature most likely to have drawn one of these: 17% at
+	// Elite rising to 55% at Boss, out of a pool of 18 rows of which three are
+	// hostile with no decision behind them.
+	//
+	// SO WITHOUT THIS, MOST MEDICS WOULD WALK UP AND BURN THE PLAYER while
+	// never swinging, and the row exists to put a NON-THREATENING enemy on the
+	// floor.
+	const bool bHostile = !Enemy->TakesNoHostileAction();
 
-	// AND WHETHER THE FLOOR MADE THIS ONE ITS MEDIC, WHICH IS NOT A MODIFIER
+	const bool bBurns =
+		bHostile && Carries(Enemy->ModifierRows, HellfireAuraRow);
+	const bool bStripsResistance =
+		bHostile && Carries(Enemy->ModifierRows, AbyssalAuraRow);
+
+	// AND WHETHER THE FLOOR MADE THIS ONE ITS MEDIC. TODAY THIS IS EXACTLY THE
+	// OPPOSITE OF `bHostile` ABOVE, AND BOTH NAMES ARE KEPT ON PURPOSE. They
+	// ask different questions -- one is "may this creature harm anybody", the
+	// other is "does this creature heal its allies" -- and they happen to have
+	// the same answer only because the medic is the one creature that takes no
+	// hostile action. A second such creature would separate them. Collapsing
+	// them into one would read as tidying and would be wrong.
+	//
+	// IT IS NOT A MODIFIER
 	// ROW. Being a medic comes from `game/Data/DungeonModifiers.csv` and is
 	// set at spawn; `ModifierRows` holds keys from a different table. The
 	// field's own comment says why the two are kept apart.
@@ -778,7 +801,14 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	}
 
 	// -- Infernal Sacrifice ---------------------------------------------
-	if (Carries(Enemy->ModifierRows, InfernalSacrificeRow))
+	// A MEDIC DOES NOT EAT ITS OWN PATIENTS, AND THAT IS A SEPARATE RULING
+	// FROM THE ONE ABOVE. Consuming an ally is plainly not an attack, so
+	// "it does not attack" does not reach it. What reaches it is the other
+	// half of the same row: the medic "constantly heals all other enemies in
+	// a large radius". A trait that consumes one contradicts what the row
+	// says the creature DOES, not merely what it is for. Issue #1680.
+	if (Carries(Enemy->ModifierRows, InfernalSacrificeRow)
+		&& !Enemy->TakesNoHostileAction())
 	{
 		Enemy->SecondsSinceSacrifice += StepSeconds;
 		if (Enemy->SecondsSinceSacrifice >= SacrificeIntervalSeconds)
@@ -842,7 +872,10 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	}
 
 	// -- Inferno Charge -------------------------------------------------
-	if (Carries(Enemy->ModifierRows, InfernoChargeRow) && !Enemy->IsCharging())
+	// AND A MEDIC NEVER CHARGES. Issue #1680, the same reading: a creature
+	// that dashes at the player and deals damage on arrival is threatening.
+	if (Carries(Enemy->ModifierRows, InfernoChargeRow) && !Enemy->IsCharging()
+		&& !Enemy->TakesNoHostileAction())
 	{
 		Enemy->SecondsSinceInfernoCharge += StepSeconds;
 		if (Enemy->SecondsSinceInfernoCharge >= InfernoChargeIntervalSeconds)

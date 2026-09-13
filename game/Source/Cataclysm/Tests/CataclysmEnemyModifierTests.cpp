@@ -2114,4 +2114,221 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicStepIsSafeTest,
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A medic starts nothing hostile, whatever it drew. Issue #1680
+// ---------------------------------------------------------------------------
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicBurnsNobodyTest,
+	"Cataclysm.EnemyModifiers.AMedicWithABurningAuraBurnsNobody")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// WHY THIS CASE EXISTS AT ALL. The floor's medic is chosen as the rarest
+	// creature there, and rarity is how many modifiers a creature draws -- so
+	// the medic is the creature MOST likely to have drawn a burning aura.
+	// Between 17% at Elite and 55% at Boss carry one of the three traits that
+	// harm without the creature deciding to.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Burner =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Burner))
+	{
+		return false;
+	}
+	Burner->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Burner->SetHealth(500.0f);
+	Burner->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HellfireAuraRow));
+
+	ACataclysmPlayerCharacter* Victim = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("somebody to burn"), Victim))
+	{
+		return false;
+	}
+	Victim->SetActorLocation(FVector(200.0f, 0.0f, 0.0f));
+
+	// THE CONTROL, AND IT IS THE HALF THAT MATTERS. Without it, "caught
+	// nobody" passes for a creature that was never in range, never pulsed, or
+	// never carried the aura at all.
+	int32 TouchedOrdinary = 0;
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		TouchedOrdinary += UCataclysmEnemyModifiers::AuraStep(Burner, 0.25f);
+	}
+	TestEqual(TEXT("an ordinary creature's burning aura catches the player"),
+			  TouchedOrdinary, 1);
+
+	// ONE THING CHANGES.
+	Burner->bHealsAlliesForTheFloorRule = true;
+	Burner->SecondsSinceAuraPulse = 0.0f;
+
+	int32 TouchedAsMedic = 0;
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		TouchedAsMedic += UCataclysmEnemyModifiers::AuraStep(Burner, 0.25f);
+	}
+	TestEqual(TEXT("and the same creature as the floor's medic catches nobody"),
+			  TouchedAsMedic, 0);
+
+	return true;
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmMedicNeitherChargesNorEatsTest,
+	"Cataclysm.EnemyModifiers.AMedicNeitherChargesNorEatsAnAlly")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// TWO TRAITS, TWO SEPARATE REASONS, AND THEY ARE TESTED TOGETHER ONLY
+	// BECAUSE ONE FUNCTION DRIVES BOTH.
+	//
+	// The charge goes because a creature that dashes at the player and hurts
+	// it is threatening, and the row exists to put a non-threatening enemy on
+	// the floor.
+	//
+	// EATING AN ALLY IS NOT AN ATTACK AND GOES FOR A DIFFERENT REASON: the row
+	// says the medic "constantly heals all other enemies in a large radius",
+	// and a trait that consumes one contradicts what the creature DOES rather
+	// than what it is for.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Carrier =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Carrier))
+	{
+		return false;
+	}
+	Carrier->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Carrier->SetHealth(500.0f);
+	// BOTH TRAITS, THE SAME TWO THE MEDIC BELOW CARRIES. The control has to
+	// differ from the medic in the MARK and in nothing else. The first draft
+	// gave this creature only the charge, so it could never have eaten
+	// anybody -- and that went unnoticed because the assertion was reading a
+	// destroyed actor and reporting whatever it found.
+	Carrier->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernoChargeRow));
+	Carrier->ModifierRows.Add(
+		FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+
+	ACataclysmPlayerCharacter* Quarry = SpawnPlayerWithState(World);
+	if (!TestNotNull(TEXT("somebody to charge"), Quarry))
+	{
+		return false;
+	}
+	Quarry->SetActorLocation(FVector(900.0f, 0.0f, 0.0f));
+
+	// SOMEBODY FOR THE ORDINARY CREATURE TO EAT, 100cm away and well inside
+	// the six metres the sacrifice searches.
+	ACataclysmEnemyCharacter* Meal =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(100.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("an ally for the ordinary creature"), Meal))
+	{
+		return false;
+	}
+	Meal->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Meal->SetHealth(500.0f);
+
+	// HELD WEAKLY, BECAUSE BEING EATEN DESTROYS IT. The sacrifice calls the
+	// creature's death handler, and a dead creature destroys itself once its
+	// death animation has played -- well inside the twelve seconds stepped
+	// below. Reading a raw pointer afterwards is undefined, and the first
+	// draft of this test did exactly that: the same assertion passed in one
+	// run and failed in the next, which is how the break proof found it.
+	TWeakObjectPtr<ACataclysmEnemyCharacter> EatenAlly = Meal;
+
+	// TWELVE SECONDS AT A QUARTER OF A SECOND A STEP. The charge fires every
+	// twelve and the sacrifice every six, so both have a chance.
+	//
+	// BOTH CONTROLS MATTER AND THE SECOND ONE MATTERS MORE. Without showing
+	// that an ordinary creature DOES eat its ally here, "the medic's ally
+	// survived" would pass if the sacrifice never reached that far, never came
+	// due, or found nothing it was willing to eat.
+	for (int32 Step = 0; Step < 48; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Carrier, 0.25f);
+	}
+	if (!TestTrue(TEXT("an ordinary creature carrying the charge charges"),
+				  Carrier->IsCharging()))
+	{
+		return false;
+	}
+	// GONE OR DEAD, BECAUSE BOTH MEAN EATEN. A creature that has been
+	// sacrificed may still be lying there or may already have destroyed
+	// itself, and which one it is depends on timing this test does not
+	// control.
+	const bool bMealIsGone = !EatenAlly.IsValid()
+		|| UCataclysmSkillEffects::IsDead(EatenAlly.Get());
+	if (!TestTrue(TEXT("and an ordinary creature eats the ally beside it"),
+				  bMealIsGone))
+	{
+		return false;
+	}
+
+	// NOW THE SAME THING AT THE SAME PLACES, WITH ONE DIFFERENCE.
+	//
+	// The first pair is destroyed and the medic takes the identical position,
+	// so the geometry is not what separates the two halves -- the mark is. A
+	// medic parked somewhere else could have failed to charge because the
+	// player was out of range and failed to eat because nothing was near it.
+	Carrier->Destroy();
+	if (EatenAlly.IsValid())
+	{
+		EatenAlly->Destroy();
+	}
+
+	ACataclysmEnemyCharacter* Medic =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a medic"), Medic))
+	{
+		return false;
+	}
+	Medic->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Medic->SetHealth(500.0f);
+	Medic->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernoChargeRow));
+	Medic->ModifierRows.Add(
+		FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+	Medic->bHealsAlliesForTheFloorRule = true;
+
+	ACataclysmEnemyCharacter* Patient =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(100.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("an ally for the medic"), Patient))
+	{
+		return false;
+	}
+	Patient->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Patient->SetHealth(500.0f);
+
+	// HELD WEAKLY FOR THE REASON THE FIRST ONE IS, even though this one is
+	// expected to survive: if the rule ever breaks, this ally is eaten and
+	// destroyed, and the assertion below would then be reading freed memory
+	// rather than reporting a failure.
+	TWeakObjectPtr<ACataclysmEnemyCharacter> MedicsAlly = Patient;
+
+	for (int32 Step = 0; Step < 48; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Medic, 0.25f);
+	}
+
+	TestFalse(TEXT("a medic carrying the charge never charges"),
+			  Medic->IsCharging());
+	TestTrue(TEXT("and the ally beside it is untouched"),
+			 MedicsAlly.IsValid()
+				 && !UCataclysmSkillEffects::IsDead(MedicsAlly.Get()));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
