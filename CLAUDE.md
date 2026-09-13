@@ -214,19 +214,33 @@ result = break_and_run(
     {"sim/cataclysm_sim/character.py":
         lambda t: t.replace("DEFAULT_SKILL_CRIT_CHANCE = 5.0",
                             "DEFAULT_SKILL_CRIT_CHANCE = 0.0")},
-    ["python", "-m", "pytest", "sim/tests", "-q"],
+    ["python", "-m", "pytest", "sim/tests"],
 )
-print(result.summary)            # the last line pytest printed
-assert result.named_failures     # these tests noticed
+print(result.summary)            # says PROVED, or which half is missing
+assert result.proved             # failed with the break in, passed with it out
 ```
 
-**Assert on `named_failures`, not on `failed`.** `failed` says only that the
-command exited non-zero, and a break that stops a module importing does that
-without running a single test -- so a worthless guard reported as proven. Issue
-#1314. `named_failures` is the tests that reached their assertions and failed,
-which is what a guard proof means. `result.crashed` tells the two apart if you
-want the fuller story, and `result.summary` says "NO MEASUREMENT" rather than
-leaving a bare False to be read as a guard that did not fire.
+**`assert result.proved`, because one half is not a proof.** A guard proof is two
+claims -- the test fails without the fix and passes with it -- and until issue
+#1735 this helper ran the command once, with the break in place, and returned
+only that. A test that fails for the wrong reason, or that was already failing,
+gives a byte-identical failing half. `break_and_run` now runs the command again
+after restoring the files, and `proved` is true only when a named test failed
+with the break in and nothing failed with it out.
+
+**No `-q` in that command.** `pyproject.toml` already sets `addopts = "-q"`, so
+adding one gives pytest `-qq`, which is the rule stated in bold near the top of
+this file. It mattered here: at `-qq` the count line is not printed at all.
+
+**If you assert on one field rather than on `proved`, assert on `named_failures`
+and never on `failed`.** `failed` says only that the command exited non-zero, and
+a break that stops a module importing does that without running a single test --
+so a worthless guard reported as proven. Issue #1314. `named_failures` is the
+tests that reached their assertions and failed, which is what the failing half of
+a guard proof means, and it is what `proved` requires before it looks at the
+restored half at all. `result.crashed` tells the two apart if you want the fuller
+story, and `result.summary` says "NO MEASUREMENT" rather than leaving a bare
+False to be read as a guard that did not fire.
 
 `named_failures` gives every test that noticed. Run verbatim, that break trips
 five:
@@ -280,11 +294,24 @@ result = prove_cpp_guard(
     {"game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp":
         lambda t: t.replace("GetWorld(), Firer, Previous, Current, BodyRadiusCm);",
                             "GetWorld(), Firer, Current, Current, BodyRadiusCm);")},
-    test_prefix="Cataclysm.Skills",
+    test_prefix="Cataclysm.Skills.",
 )
-print(result.summary)            # which tests failed, read from the log
-assert result.named_failures     # these tests noticed
+print(result.summary)            # says PROVED, or which half is missing
+assert result.proved             # failed with the break in, passed with it out
 ```
+
+**Note the trailing dot on the prefix.** The engine's filter is a
+case-insensitive **string** prefix, not a group name, so `Cataclysm.Skills` also
+selects the group `Cataclysm.SkillShape` -- lowercased, one is a prefix of the
+other. Measured on `development`: `Cataclysm.Skills` performs **218** tests and
+`Cataclysm.Skills.` performs **208**. Four builds are spent either way, so the
+ten extra are ten tests' worth of run time for nothing, and a count registered
+before the run will not match.
+
+**`assert result.proved`, for the same reason as the Python example above.**
+`prove_cpp_guard` has run both halves since the change for issue #1663, and
+`proved` is true only when a named test failed with the break in and nothing
+failed with it out.
 
 **The same rule, for the opposite reason.** A crashed Unreal run reports no
 failures at all, so `failed` used to read as a guard that did not notice --
@@ -306,10 +333,19 @@ had no `named_failures` until issue #1455; both examples were rewritten together
 when issue #1314 added it to the Python side and only one of the two classes
 gained the property. Two sessions lost time to it before anyone read the class.
 
+**`proved` is spelled the same in both, and the restored half is not.** It is
+`tests_restored` on `CppGuardResult` and `restored` on `GuardResult`, and the
+difference is deliberate: the Unreal one holds a `TestOutcome`, which is test
+results, while the Python one holds a whole `GuardResult` carrying an exit code,
+output and any files disturbed underneath the run. Naming that `tests_restored`
+would name it after the minority of its contents. Issue #1741.
+
 It breaks the files, builds, refuses to go on unless the build actually compiled
 them, runs the automation tests, restores the files with a modification time
-forced past the break, and rebuilds. Four builds' worth of time, so narrow
-`test_prefix` to the tests that matter.
+forced past the break, rebuilds, and **runs the tests a second time against the
+restored binaries**. That last run is the passing half, and it is why `proved`
+can say anything at all. Four builds' worth of time, so narrow `test_prefix` to
+the tests that matter -- with a trailing dot, as above.
 
 Three facts about the Unreal build and test commands that will otherwise cost a
 cycle each:
