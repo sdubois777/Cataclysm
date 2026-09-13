@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Three dungeon modifiers are renamed because a name is a DataTable row key, and the dungeon side moves rather than the enemy side
+
+**Affects:** the Dungeon Modifiers sheet of `docs/All_Things_Cataclysm.xlsx`, the
+`game/Data/DungeonModifiers.csv` generated from it,
+`game/Content/Data/DT_DungeonModifiers.uasset` built from that,
+`sim/cataclysm_sim/modifiers.py`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, and
+`tools/tests/test_one_name_belongs_to_one_table.py` (new). Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+**If you are reading an older entry in this file and looking for a row it names, the
+three renames are: Infernal Brand is now Brand of the Aggressor, Withering Touch is now
+Wasting Sickness, and All Consuming is now Nothing Is Forgotten — but only on the
+dungeon side. The enemy modifiers of those three names are unchanged.** Entries above
+this one written before 2026-09-13 use the old names; they are dated records and were
+not rewritten.
+
+### The question
+
+Three names were in both `game/Data/DungeonModifiers.csv` and
+`game/Data/EnemyModifiers.csv`, describing different mechanics in each:
+
+| Key | The dungeon row | The enemy row |
+| :-- | :-- | :-- |
+| `Demonic_Infernal_Brand` | a stack on the player for **hitting**, erupting at **20** for 20% of their own maximum health | a stack on the player for **being hit**, exploding at **5** |
+| `Famine_Withering_Touch` | reduces maximum health and mana, permanent until a floor boss dies | reduces damage output briefly |
+| `Void_All_Consuming` | kills feed a portion of the creature's stats to the floor's final boss | two stacks of void splinter on hit |
+
+A `Name` is the DataTable row key. Two rows with one key are not addressable separately,
+and code asking for that key gets whichever table it loaded.
+
+### Why the generator did not catch it
+
+`unique()` in `tools/generate_datatables.py` suffixes duplicate names **within one
+sheet**. A name appearing once on each of two sheets is unique in both passes, so nothing
+compared them.
+
+### What it had already cost
+
+The survey of which of the 117 dungeon rows have code asked whether each row's key
+appears in `game/Source`. `Demonic_Infernal_Brand` does:
+`UCataclysmEnemyModifiers::InfernalBrandRow` in
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp` is exactly that string.
+**That code is the enemy modifier's.** The dungeon row would have been recorded as built
+and dropped off the list of what to build next.
+
+### The decision: keep both sets, rename the dungeon side
+
+The project owner ruled that both mechanics are wanted and the collision is the only
+defect. The dungeon side moves because **the only code reference belongs to the enemy
+side**, so renaming the enemy side would edit working code to fix a data fault.
+
+| Was | Is now | Key it produces |
+| :-- | :-- | :-- |
+| Infernal Brand | **Brand of the Aggressor** | `Demonic_Brand_of_the_Aggressor` |
+| Withering Touch | **Wasting Sickness** | `Famine_Wasting_Sickness` |
+| All Consuming | **Nothing Is Forgotten** | `Void_Nothing_Is_Forgotten` |
+
+**The key is not a column.** `row_name(cataclysm, name)` builds it from the player-facing
+modifier name, so a key cannot change without changing what a player reads. That is why
+this is three cells in the workbook and a regenerate rather than an edit to a CSV, and
+why three new player-facing names had to be chosen and approved rather than derived.
+
+Each new name describes the same mechanic from a different angle, so no design changed.
+"Nothing Is Forgotten" is the dungeon row's own opening words: "Enemies that the player
+kills aren't forgotten".
+
+### Two files outside the two tables had to move with it
+
+- **`sim/cataclysm_sim/modifiers.py` holds a complete second copy of the 117-row roster**
+  by player-facing name and weight. `tools/tests/test_dungeon_modifier_port.py` compares
+  `(CataclysmType, ModifierName, Weight)` in both directions.
+- **`CataclysmPlayerCharacter.cpp` named the dungeon row in a comment** explaining why a
+  death's cleanse runs before the health refill. No test pinned the phrase.
+
+**There is exactly one complete second copy, and that is measured rather than assumed.**
+Counting how many of the 117 dungeon-only display names each tracked file contains:
+
+```
+sim/cataclysm_sim/modifiers.py   117 of 117     a roster
+docs/DECISIONS.md                 36 of 117     prose discussing rows
+docs/Cataclysm_GDD_v2.md           7 of 117     Corrupted Stalker, Dead Rising,
+                                                Edict of Silence, Hellfire,
+                                                Reality Twister, Soul Harvest, Starvation
+```
+
+**That measurement replaces a weaker one that reached the same conclusion.** The design
+document was first checked by searching it for three dungeon-only names and finding none.
+It names seven, so those three were an unlucky sample: a three-name probe returning zero
+cannot tell "no roster" from "a roster missing those three".
+
+### What was deliberately left alone
+
+Every other occurrence of the three phrases is the enemy modifier or the status effect it
+applies: `game/Data/StatusEffects.csv`, `game/Config/Tags/CataclysmTags.ini` (whose own
+comment names the Debuffs sheet as its source), `CataclysmStacks.h` and `.cpp`,
+`CataclysmEnemyModifiers.*`, `CataclysmVitalAttributeSet.cpp`, five test files, and
+`docs/Cataclysm_GDD_v2.md` line 5644, whose paragraph is explicitly about
+`game/Data/EnemyModifiers.csv`. Twenty-one files were searched and each given a verdict.
+
+### The guard, written to fail before the rename
+
+`tools/tests/test_one_name_belongs_to_one_table.py` asserts no `Name` appears in both
+tables, and names the colliding rows with both descriptions when it fires. It was
+committed **while the defect was present** and its failure quoted, so it is a measurement
+rather than a guard added beside a fixed problem. It carries a second test asserting both
+tables yielded rows, because the real check passes on two empty files.
+
+### Two of the agreed controls were wrong, and running them is what showed it
+
+One asserted the other two old keys would appear in neither table. **They cannot
+disappear:** all three are also enemy modifier rows, and the enemy side is not renamed.
+One compared the `ModifierName` column for equality, which is the column the change
+exists to alter. Both are recorded because a control that cannot hold is worse than no
+control: it gets quoted.
+
+### A workbook edit needs its round trip verified by something other than itself
+
+Three cells differing across all 27 sheets, compared against a byte copy taken
+immediately before the save. **The stronger check was unplanned:**
+`tools/generate_datatables.py` rewrites all 29 CSV files it owns on every run and read
+the saved workbook through a different code path — **28 of 29 came back byte-identical**,
+`game/Data/EnemyModifiers.csv` among them.
+
+The three things an openpyxl save destroys without erroring were re-measured rather than
+cited from the August 2026 check, which was made when the file had 16 sheets: **0 formula
+cells, 0 charts, 0 images** across the 27 it has now.
+
+---
+
 ## 2026-09-13 — A modifier may ask how much health the character being hit has left, it is measured before the blow lands, and an unknown reading must never make a row stronger than its own sentence
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
