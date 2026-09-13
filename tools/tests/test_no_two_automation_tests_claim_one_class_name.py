@@ -35,9 +35,11 @@ clean result that is indistinguishable from one where all sixteen ran. Reading
 the source says the behaviour is covered; it is not, because the body never
 executed. Issue #1666.
 
-That warning was printed on every editor start for at least five days before
-anyone read it: it appears in nine logs kept under `.claude/` in this
-repository, the earliest dated 2026-09-08.
+Registration happens when the game module loads, so that warning is printed
+whether or not any test is then run. It sat unread for five days: nine log files
+in one worktree, from seven distinct editor starts, the earliest dated
+2026-09-08. Those files are in untracked `.claude/crash-evidence-*` and
+`.claude/playtest-*` directories, so they are local evidence and not in git.
 
 WHY A PYTHON TEST. Same reason as
 `test_no_two_files_share_an_anonymous_helper.py`: continuous integration never
