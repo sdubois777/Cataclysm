@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -21,8 +22,10 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -78,6 +81,12 @@ namespace CataclysmDungeonModifierEffectsTest
 
 	/** And slice 5's, which changes during play too. */
 	const FName DeathsEmbrace(TEXT("Death_Death_s_Embrace"));
+
+	/**
+	 * And the one that changes the FLOOR rather than the player. Issues #1605
+	 * and #41.
+	 */
+	const FName InfernalRain(TEXT("Demonic_Infernal_Rain"));
 
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
@@ -1419,11 +1428,21 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 
 	// AND A CONTROL IN EACH DIRECTION, so "built" is not simply what this
-	// returns for everything. One row is still partly built and one has no
-	// rule at all.
+	// returns for everything. Two rows are partly built and one has no rule at
+	// all. This sentence said "one row" until Infernal Rain became the second.
 	TestEqual(TEXT("Unstable Dimensions is still only partly built"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
 				  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+
+	// INFERNAL RAIN IS THE SECOND, AND THIS LINE IS WRITTEN TO BE REVISITED the
+	// way the Field Medic's was. Its burning ground is built, typed and timed;
+	// nothing draws a fireball falling into it, which is the half the row names
+	// first. Issue #1699 is that half. When it lands this becomes `Built` and
+	// Unstable Dimensions is the only `Partly` control left.
+	TestEqual(TEXT("Infernal Rain is partly built: no fireball is drawn"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
 	TestEqual(TEXT("and a row with no rule is not built at all"),
@@ -1474,6 +1493,329 @@ bool FCataclysmEveryBuiltKeyIsListedTest::RunTest(const FString& Parameters)
 	// AND THE WALK ITSELF HAPPENED. Without this the test passes on a table
 	// that loaded with no rows, which is the failure it would least notice.
 	TestTrue(TEXT("at least one row has something built"), Checked > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalRainCadenceTest,
+	"Cataclysm.DungeonModifierEffects.InfernalRainDropsOnItsCadenceAndStopsAtItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalRainCadenceTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHEN INFERNAL RAIN DROPS A PATCH, and what is being held here is the
+	// judgement rather than the arithmetic. Issues #1605 and #41.
+	//
+	// THE ROW STATES ONE FIGURE AND THIS RULE NEEDS FOUR. "Fireballs rain in
+	// combat zones, leaving patches of burning ground that deal fire damage over
+	// time for 10 seconds" gives the ten seconds; the cadence, the cap, the share
+	// and the distance are all judgements recorded in docs/DECISIONS.md. A chosen
+	// figure drifts silently, so this is what makes changing one deliberate.
+	const float Cadence = Effects::InfernalRainSecondsBetweenPatches;
+	const int32 Cap = Effects::InfernalRainMostPatches;
+
+	// NOTHING ON THE FIRST BEAT OF A FLOOR. A quarter of a second is not five.
+	TestFalse(TEXT("no patch falls before the cadence has passed"),
+		Effects::InfernalRainPatchIsDue(0.25f, 0));
+	TestFalse(TEXT("nor a hair before it"),
+		Effects::InfernalRainPatchIsDue(Cadence - 0.01f, 0));
+
+	// AT THE FIGURE, NOT PAST IT. The beat is a quarter of a second and the
+	// cadence is five, so insisting on strictly past would put every patch one
+	// beat later than the figure says, for no reason anybody could observe.
+	TestTrue(TEXT("one falls at exactly the cadence"),
+		Effects::InfernalRainPatchIsDue(Cadence, 0));
+	TestTrue(TEXT("and at any time past it"),
+		Effects::InfernalRainPatchIsDue(Cadence * 3.0f, 0));
+
+	// THE CAP HOLDS HOWEVER LONG THE FLOOR HAS WAITED, because the function asks
+	// it before it asks the clock.
+	TestTrue(TEXT("one below the cap still drops"),
+		Effects::InfernalRainPatchIsDue(Cadence, Cap - 1));
+	TestFalse(TEXT("at the cap nothing drops"),
+		Effects::InfernalRainPatchIsDue(Cadence, Cap));
+	TestFalse(TEXT("and a long wait does not defeat the cap"),
+		Effects::InfernalRainPatchIsDue(Cadence * 100.0f, Cap));
+	TestFalse(TEXT("nor does somehow being above it"),
+		Effects::InfernalRainPatchIsDue(Cadence * 100.0f, Cap + 5));
+
+	// AND THE CLOCK IS NOT SWALLOWED BY A FULL FLOOR. This is the half that a
+	// test checking only "a full floor drops nothing" would miss: the caller goes
+	// on counting while the floor is full, so the beat a patch expires on drops
+	// the next one at once rather than starting a fresh five seconds.
+	TestTrue(TEXT("the beat a patch expires on drops the next one at once"),
+		Effects::InfernalRainPatchIsDue(Cadence * 4.0f, Cap - 1));
+
+	// THE TWO FIGURES THEMSELVES, so a change to either is a change to this test.
+	// The cadence must be shorter than the patch life or the patches never
+	// overlap and the modifier is one hazard at a time rather than rain. The
+	// header states the same thing as a static_assert and this is its runtime
+	// twin; the assertion is the one that cannot be skipped, this one is the one
+	// that says why when it trips.
+	TestTrue(FString::Printf(
+		TEXT("the cadence %.1fs is shorter than the patch life %.1fs"),
+		Cadence, Effects::InfernalRainPatchSeconds),
+		Cadence < Effects::InfernalRainPatchSeconds);
+	TestTrue(TEXT("more than one patch may burn at once"), Cap > 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalRainDamageTest,
+	"Cataclysm.DungeonModifierEffects.InfernalRainCostsAShareOfMaximumHealthASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalRainDamageTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT ONE SECOND IN AN INFERNAL RAIN PATCH COSTS. Issues #1605 and #41.
+	//
+	// A SHARE OF MAXIMUM HEALTH RATHER THAN A FLAT FIGURE, which is what the
+	// dungeon modifiers beside it already do: `ForcedMarchPercentPerStackPerSecond`
+	// carries the reason in its own comment, that a share means the same thing at
+	// every character level.
+	//
+	// AND DELIBERATELY NOT THE RULE A CREATURE'S BURNING GROUND USES. That one is
+	// a share of an ordinary hit, sized so a full stay costs exactly one hit:
+	// `ACataclysmGatekeeperCharacter` prices its patch from `WeaponDamageOf` its
+	// own ability system. A floor hazard has no weapon damage and carries no
+	// attribute sets at all -- deliberately, because the damage calculation reads
+	// the defender's attributes and not the source's -- so there is no ordinary
+	// hit for that share to be a share of.
+	//
+	// THE PATCH SWEEPS ONCE A SECOND, so this one figure is both the per-second
+	// share and the per-sweep damage, with no conversion to get wrong.
+
+	// A THOUSAND MAXIMUM HEALTH MAKES THE ARITHMETIC READABLE: two per cent is 20.
+	const float Expected =
+		1'000.0f * Effects::InfernalRainPercentPerSecond / 100.0f;
+	TestEqual(TEXT("a second in the fire costs its share of maximum health"),
+		Effects::InfernalRainDamagePerSecond(1'000.0f), Expected, 0.01f);
+
+	// IT SCALES WITH THE CHARACTER, which is the whole reason it is a share.
+	TestEqual(TEXT("twice the maximum health costs twice as much"),
+		Effects::InfernalRainDamagePerSecond(2'000.0f), Expected * 2.0f, 0.01f);
+
+	// A WHOLE STAY COSTS LESS THAN EVERYTHING. The row describes ground to walk
+	// out of, not a death sentence for being caught in it once.
+	const float WholeStay = Effects::InfernalRainDamagePerSecond(1'000.0f)
+		* Effects::InfernalRainPatchSeconds;
+	TestTrue(FString::Printf(
+		TEXT("a whole stay in one patch costs %.0f of 1000"), WholeStay),
+		WholeStay < 1'000.0f);
+	TestTrue(TEXT("and costs enough to be worth moving for"), WholeStay > 0.0f);
+
+	// NO MAXIMUM HEALTH MEANS NO DAMAGE, rather than a negative figure reaching
+	// the patch and healing whoever stands in it. A zero here produces no patch at
+	// all, because the placer refuses a non-positive damage, and that is the right
+	// answer for a reading nobody can have.
+	TestEqual(TEXT("a character with no maximum health takes nothing"),
+		Effects::InfernalRainDamagePerSecond(0.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and a negative reading takes nothing rather than healing"),
+		Effects::InfernalRainDamagePerSecond(-500.0f), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalRainBeatTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingInfernalRainDropsTypedPatches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE WHOLE RULE, DRIVEN THE WAY THE GAME DRIVES IT. Issues #1605 and #41.
+	//
+	// THROUGH `Tick` AND NOT BY CALLING THE STEP. `StepInfernalRain` is private,
+	// and the header states the reason at `ContinueTheWaveArriving`: a test that
+	// called a step directly would prove the step and not that anything in the
+	// game ever runs it. This is the same shape the three other beat tests in
+	// this file use.
+	//
+	// WHAT MAKES THIS WORTH WRITING rather than trusting the two arithmetic tests
+	// above it. Slice 2 shipped two mechanisms that were never called, and the
+	// fault was invisible to every test of their arithmetic. This one asserts
+	// that a floor carrying the row produces an actor, that the actor carries the
+	// damage type off the row, and that a floor without the row produces nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// ONE BEAT IS ONE `Tick` OF THE INTERVAL, because `Tick` zeroes its counter
+	// rather than subtracting the interval from it. The number of beats a cadence
+	// takes is derived from the two figures so that changing either keeps this
+	// test measuring the cadence rather than a number of beats I typed.
+	const auto Beats = [Mode](int32 How)
+	{
+		for (int32 Index = 0; Index < How; ++Index)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+	};
+	const int32 BeatsPerCadence = FMath::CeilToInt(
+		Effects::InfernalRainSecondsBetweenPatches
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestTrue(TEXT("a cadence is more than one beat"), BeatsPerCadence > 1);
+
+	const auto CountPatches = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	};
+	const auto FirstPatch = [World]() -> ACataclysmGroundZone*
+	{
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	// THE FLOOR WITHOUT THE ROW IS TESTED FIRST, AND ON PURPOSE. Doing it last
+	// would need the patches this rule has already dropped cleared out, and
+	// `BuildFloor` does not clear them -- `UCataclysmFloorContents::ClearTheFloor`
+	// is called by `GoToFloor`. Asking the question on a floor that has never
+	// rained is the same question with nothing to unpick.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Beats(BeatsPerCadence * 2);
+	TestEqual(TEXT("a floor without Infernal Rain rains nothing"),
+			  CountPatches(), 0);
+	TestNull(TEXT("and makes no hazard source at all"),
+			 ACataclysmFloorHazardSource::Existing(World));
+
+	// NOW THE FLOOR THAT CARRIES IT. Changing the floor also forgets the clock,
+	// through `ApplyFloorRulesToPlayer`, so the cadence below is measured from
+	// this line rather than from the beats just spent.
+	Mode->DungeonModifiers = {InfernalRain};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the raining floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Infernal Rain"),
+			 Mode->FloorBrief.Modifiers.Contains(InfernalRain));
+
+	const float MaximumHealth = Player.Read(Vital::GetMaxHealthAttribute());
+	TestTrue(TEXT("the player has a maximum health to take a share of"),
+			 MaximumHealth > 0.0f);
+
+	// NOTHING UNTIL THE CADENCE HAS PASSED, which is what says the rain is paced
+	// rather than being one patch a beat.
+	Beats(BeatsPerCadence - 1);
+	TestEqual(TEXT("no patch falls before the cadence has passed"),
+			  CountPatches(), 0);
+
+	// AND ONE ON THE BEAT IT FALLS DUE.
+	Beats(1);
+	TestEqual(TEXT("the cadence's beat drops exactly one patch"),
+			  CountPatches(), 1);
+
+	ACataclysmGroundZone* Patch = FirstPatch();
+	if (!TestNotNull(TEXT("the patch is readable"), Patch))
+	{
+		return false;
+	}
+
+	// WHAT THE PATCH IS. Its radius and its damage come from the two figures, and
+	// its damage is the share of THIS player's maximum health rather than a flat
+	// number, which is the difference between this rule and a creature's burning
+	// ground.
+	TestEqual(TEXT("the patch is as wide as the figure says"),
+			  Patch->RadiusCm, Effects::InfernalRainRadiusCm, 0.01f);
+	TestEqual(TEXT("it burns for a share of the player's maximum health"),
+			  Patch->DamagePerTick,
+			  Effects::InfernalRainDamagePerSecond(MaximumHealth), 0.01f);
+
+	// AND IT IS TIMED RATHER THAN LASTING THE FLOOR, which matters because five
+	// other rows of issue #1605 want the floor-long kind and would look the same
+	// from the outside if this flag were wrong.
+	TestFalse(TEXT("the patch expires rather than lasting the floor"),
+			  Patch->bLastsTheFloor);
+
+	// WHERE IT FELL: near the player, at the player's own height, and not on
+	// their feet. `Covers` is the patch's own answer to "is this point inside
+	// me", so asking it about the player's feet is the assertion that the row
+	// describes ground to walk out of rather than an unavoidable hit.
+	const FVector Feet = Player.Character->GetActorLocation();
+	const FVector Fell = Patch->GetActorLocation();
+	TestEqual(TEXT("it fell at the player's own height"), Fell.Z, Feet.Z, 1.0f);
+	TestFalse(TEXT("it did not fall on the player's feet"), Patch->Covers(Feet));
+	const float Away = FVector::Dist2D(Fell, Feet);
+	TestTrue(FString::Printf(TEXT("it fell %.0fcm away, within %.0f"),
+							 Away, Effects::InfernalRainFallsWithinCm),
+			 Away <= Effects::InfernalRainFallsWithinCm);
+	TestTrue(TEXT("and no closer than its own radius"),
+			 Away >= Effects::InfernalRainRadiusCm - 0.01f);
+
+	// THE TYPE, WHICH IS THE WHOLE REASON THE FIRST COMMIT ON THIS BRANCH EXISTS.
+	// Untyped hazard damage meets none of the player's eight resistances.
+	ACataclysmFloorHazardSource* Source =
+		ACataclysmFloorHazardSource::Existing(World);
+	if (!TestNotNull(TEXT("the rain made a hazard source"), Source))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the hazard is typed Demonic, as its row says"),
+			  Source->DamageType, FName(TEXT("Demonic")));
+
+	// WHAT THIS CANNOT TELL APART, said plainly: reading the row's type and
+	// splitting the row's KEY on its first underscore. `Demonic_Infernal_Rain`
+	// begins with its own type, as every key in the table does, so both produce
+	// "Demonic" here. The test for that is the row-reading itself, in the
+	// implementation, and a row retyped in the workbook is what would show the
+	// difference. This assertion is worth keeping anyway: it is what fails if
+	// nothing sets the type at all, which is the fault that was there before.
+
+	// THE CAP. Four cadences' worth of beats with nothing expiring, because
+	// `Mode->Tick` does not move the world's clock and a patch dies on a timer.
+	Beats(BeatsPerCadence * (Effects::InfernalRainMostPatches + 2));
+	TestEqual(TEXT("the rain stops at its cap however long the floor goes on"),
+			  CountPatches(), Effects::InfernalRainMostPatches);
+
+	// AND IT RESUMES WHEN THEY BURN OUT. This is what says the rule asks what is
+	// still alight rather than remembering what it lit: the list holds weak
+	// pointers and a patch destroying itself is the expiry. `RunClock` moves the
+	// world's clock and the timer manager and ticks no actor, so it expires the
+	// patches without adding a beat.
+	CataclysmTestWorld::RunClock(World, Effects::InfernalRainPatchSeconds + 1.0f);
+	TestEqual(TEXT("the patches burn out on their own"), CountPatches(), 0);
+	Beats(BeatsPerCadence);
+	TestTrue(TEXT("and the rain starts again once there is room"),
+			 CountPatches() > 0);
 
 	return true;
 }

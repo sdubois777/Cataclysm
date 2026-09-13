@@ -184,6 +184,29 @@ public:
 	static const TCHAR* StarvationKey;
 	static const TCHAR* DehydrationKey;
 	static const TCHAR* ForcedMarchKey;
+
+	/**
+	 * The row that rains fireballs and leaves burning ground. Issues #1605, #41.
+	 *
+	 * `Partly`, AND THE MISSING HALF IS THE FIREBALL. The burning ground is
+	 * built: a patch falls near the player on a cadence, carries the row's own
+	 * Cataclysm type so one of the player's eight resistances meets it, and burns
+	 * for the ten seconds the row states. Nothing draws a fireball falling into
+	 * it, and the row says fireballs rain, so `BuiltStateOf` answers `Partly`
+	 * and the floor panel tells the player so. Issue #1699.
+	 *
+	 * "IN COMBAT ZONES" IS READ AS "NEAR THE PLAYER", because the game has no
+	 * combat-zone concept to bind to. `ECataclysmFloorLayout::Arena` is a floor's
+	 * whole shape rather than a region inside one, and nothing tracks where
+	 * fighting is happening. `docs/DECISIONS.md` records that as a judgement.
+	 *
+	 * AN EARLIER VERSION OF THIS COMMENT SAID THE KEY WAS DELIBERATELY ABSENT
+	 * FROM `KeysWithARule`, and that was true while the rule was unwritten. It is
+	 * in that list now, and the two move together: `EveryRuleNamesARowOfTheTable`
+	 * walks the list and asks the state, `EveryRowWithSomethingBuiltIsInTheRuleList`
+	 * walks the table and asks the list, so a half-done edit fails.
+	 */
+	static const TCHAR* InfernalRainKey;
 	static const TCHAR* NihilsEmbraceKey;
 	static const TCHAR* DeathsEmbraceKey;
 	static const TCHAR* FieldMedicKey;
@@ -239,6 +262,74 @@ public:
 	static constexpr float ForcedMarchSecondsBeforeDamage = 3.0f;
 	static constexpr float ForcedMarchPercentPerStackPerSecond = 1.0f;
 	static constexpr int32 ForcedMarchMostStacks = 5;
+
+	/**
+	 * Infernal Rain's four figures, and which of them are judgements.
+	 *
+	 * THE ROW STATES ONE OF THEM. "patches of burning ground that deal fire
+	 * damage over time for 10 seconds" gives the life outright, so
+	 * `InfernalRainPatchSeconds` is not a choice.
+	 *
+	 * THE RADIUS IS BORROWED FROM THIS PROJECT RATHER THAN CHOSEN. The
+	 * Gatekeeper's Soulfall burning ground is `SoulfallGroundRadiusCm = 300`, so
+	 * a burning patch in this game is three metres across the radius and this one
+	 * is the same size as the one a player has already learned to step out of.
+	 *
+	 * THE DAMAGE IS A SHARE OF MAXIMUM HEALTH, WHICH IS WHAT A MODIFIER USES.
+	 * `ForcedMarchPercentPerStackPerSecond` above states the reason in its own
+	 * comment: a share "means the same thing at every character level".
+	 *
+	 * AND THE OTHER PROJECT RULE IS DELIBERATELY NOT USED. A creature's burning
+	 * ground deals `100 / duration` percent OF AN ORDINARY HIT, so a full stay
+	 * costs exactly one hit -- 10 over 10 seconds for the Gatekeeper, 25 over 4
+	 * for the Hellhound. **A floor hazard has no ordinary hit**, so there is
+	 * nothing for that percentage to be a percentage of.
+	 *
+	 * TWO PER CENT A SECOND IS A JUDGEMENT, and a full ten-second stay therefore
+	 * costs a fifth of maximum health. Forced March reaches five per cent a
+	 * second and its comment says a character standing still for half a minute
+	 * dies; a patch can be walked out of, so it should cost less per second and
+	 * still be worth moving for. Expect tuning against real play, which Forced
+	 * March says of its own figures too.
+	 *
+	 * FIVE SECONDS BETWEEN PATCHES IS A JUDGEMENT TAKEN FROM A SHAPE RATHER THAN
+	 * A FIGURE. Diablo IV's Meteor Enchantment rains meteors on nearby enemies
+	 * "every few seconds", each leaving a patch that damages what stands in it
+	 * per second; Path of Exile 2's burning ground is avoided "entirely by
+	 * careful positioning". Neither publishes a number for a dungeon-wide
+	 * version, so the five is mine. `docs/DECISIONS.md` names both sources.
+	 *
+	 * THREE AT ONCE IS WHAT MAKES THE CADENCE SAFE. Five seconds against a
+	 * ten-second life accumulates on purpose -- that is what rain means -- where
+	 * the Gatekeeper's ground asserts that lasting exactly its cooldown is what
+	 * stops patches accumulating faster than they expire. Two is the steady
+	 * state, three allows the transient, and a long fight cannot fill the floor.
+	 *
+	 * TWELVE METRES IS "IN COMBAT ZONES" MADE CONCRETE. The player is the only
+	 * thing this rule can locate cheaply on every beat, and where the player is
+	 * fighting is where the fireballs should fall. Far enough that a patch is not
+	 * dropped on their feet with no warning, near enough that moving a few steps
+	 * is not an escape from the modifier itself.
+	 */
+	static constexpr float InfernalRainPatchSeconds = 10.0f;
+	static constexpr float InfernalRainRadiusCm = 300.0f;
+	static constexpr float InfernalRainPercentPerSecond = 2.0f;
+	static constexpr float InfernalRainSecondsBetweenPatches = 5.0f;
+	static constexpr int32 InfernalRainMostPatches = 3;
+	static constexpr float InfernalRainFallsWithinCm = 1'200.0f;
+
+	static_assert(
+		InfernalRainSecondsBetweenPatches < InfernalRainPatchSeconds,
+		"Infernal Rain's patches no longer overlap. A cadence at or beyond the "
+		"patch life means one patch expires before the next falls, which is not "
+		"rain -- it is one hazard at a time. The cap is what bounds the "
+		"accumulation, not the cadence.");
+
+	static_assert(
+		InfernalRainPercentPerSecond * InfernalRainPatchSeconds < 100.0f,
+		"Standing in one Infernal Rain patch for its whole life now costs a "
+		"character its entire maximum health. The row describes a hazard to "
+		"walk out of, not a death sentence for being caught once.");
 
 	/**
 	 * The Nihil's Embrace: how far the player walks for each point of resistance
@@ -361,6 +452,34 @@ public:
 	 *        movement conditions give
 	 */
 	static int32 ForcedMarchStacksAfter(float SecondsStoodStill);
+
+	/**
+	 * Whether Infernal Rain should drop a patch now, and what it should deal.
+	 *
+	 * TWO PLAIN FUNCTIONS RATHER THAN ARITHMETIC INSIDE THE BEAT, which is the
+	 * shape every rule in this file already takes: the decision can then be
+	 * tested by passing numbers in, with no world, no floor and no player.
+	 *
+	 * @param SecondsSinceLastPatch  how long since one last fell
+	 * @param PatchesAlive           how many of this modifier's patches are still
+	 *                               burning
+	 * @return whether one falls on this beat
+	 */
+	static bool InfernalRainPatchIsDue(float SecondsSinceLastPatch,
+									   int32 PatchesAlive);
+
+	/**
+	 * What one second in an Infernal Rain patch costs a character.
+	 *
+	 * A SHARE OF THE CHARACTER'S OWN MAXIMUM HEALTH, so the figure means the same
+	 * thing at every level. The patch actor sweeps once a second -- its own
+	 * `TickSeconds` is 1 -- so this is both the per-second share and the
+	 * per-sweep damage, with no conversion to get wrong.
+	 *
+	 * @param MaximumHealth  the character's maximum health
+	 * @return the damage one sweep deals, or zero for a maximum of nothing
+	 */
+	static float InfernalRainDamagePerSecond(float MaximumHealth);
 
 	/**
 	 * What that many stacks cost a second, as a share of maximum health.

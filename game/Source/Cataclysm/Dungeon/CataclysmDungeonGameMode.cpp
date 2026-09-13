@@ -9,7 +9,9 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
@@ -1657,6 +1659,112 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 		AbilitySystem, Equipment);
 }
 
+void ACataclysmDungeonGameMode::StepInfernalRain(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL ALIGHT, ASKED RATHER THAN REMEMBERED. A patch destroys itself
+	// when its life ends, so a weak pointer going invalid IS the expiry and
+	// nothing has to be told about it.
+	InfernalRainPatches.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Patch)
+	{
+		return !Patch.IsValid();
+	});
+
+	// THE ONE PLACE THIS CLOCK MOVES. See the field's comment: a second writer is
+	// the fault that was repaired in the creature auras earlier today.
+	InfernalRainSecondsSinceLastPatch += SecondsBetweenWaveChecks;
+	if (!UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
+			InfernalRainSecondsSinceLastPatch, InfernalRainPatches.Num()))
+	{
+		return;
+	}
+
+	// THE SOURCE, AND THE TYPE THAT MAKES A RESISTANCE APPLY. Without the type
+	// this patch would meet none of the player's eight resistances, which is what
+	// the first commit on this branch exists to fix. It is read off the row rather
+	// than chosen, so the damage cannot disagree with the modifier that placed it.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// THE TYPE COMES OUT OF THE ROW AND IS NOT WRITTEN HERE. Every row of
+	// game/Data/DungeonModifiers.csv carries a CataclysmType -- this one is
+	// Demonic -- so reading it means the damage cannot disagree with the modifier
+	// that placed it, and a row retyped in the workbook retypes its hazard with no
+	// code change. A constant here would be this file's opinion of the data.
+	//
+	// AN UNREADABLE TABLE LEAVES THE TYPE ALONE RATHER THAN GUESSING. An empty
+	// type is untyped damage, which meets no resistance -- harsher than the row
+	// intends -- so a missing table must not silently produce one.
+	if (const FCataclysmDungeonModifierRow* Row =
+			UCataclysmDungeonModifierTable::FindRow(
+				UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+				FName(UCataclysmDungeonModifierEffects::InfernalRainKey)))
+	{
+		Source->DamageType = FName(*Row->CataclysmType);
+	}
+	else
+	{
+		return;
+	}
+
+	// A SHARE OF THE PLAYER'S OWN MAXIMUM HEALTH, READ THROUGH THE ABILITY SYSTEM
+	// the same way `StepForcedMarch` reads it below, so the two rules cannot
+	// disagree about what a character's maximum health is.
+	//
+	// `InfernalRainDamagePerSecond` answers zero for a character with no maximum,
+	// and nothing is spawned for a reading nobody can have. The check below is not
+	// belt and braces: a patch refuses a non-positive damage in its own sweep, so
+	// without it this rule would place invisible patches for ever.
+	const float PerSecond =
+		UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	if (PerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	// WHERE IT FALLS. "In combat zones" read as "near the player", which is the
+	// only thing this rule can locate on every beat. Flattened to the player's own
+	// height so a patch is on the floor they are standing on rather than at a
+	// height picked from a random vector.
+	const FVector Centre = Player->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Away = FMath::FRandRange(
+		UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
+		UCataclysmDungeonModifierEffects::InfernalRainFallsWithinCm);
+	const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+						Centre.Y + Away * FMath::Sin(Angle),
+						Centre.Z);
+
+	// NOT ON THE PLAYER'S FEET, WHICH IS WHY THE NEAREST DISTANCE IS THE PATCH'S
+	// OWN RADIUS. A patch centred where they stand catches them with no chance to
+	// move, and the row describes ground to get off rather than an unavoidable
+	// hit. At exactly that distance it still clips them, which is the warning.
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
+		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
+		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond);
+	if (!Patch)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
+		// rather than waiting a whole cadence for a patch that never existed.
+		return;
+	}
+
+	InfernalRainPatches.Add(Patch);
+	InfernalRainSecondsSinceLastPatch = 0.0f;
+}
+
 void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 {
 	// NOTHING TO DO ON A FLOOR CARRYING NONE OF THEM, which is almost every
@@ -1667,7 +1775,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::NihilsEmbraceKey));
 	const bool bDeathsEmbrace = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::DeathsEmbraceKey));
-	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace)
+
+	// AND THE ONE RULE HERE THAT CHANGES THE FLOOR RATHER THAN THE PLAYER.
+	// Issues #1605 and #41. Everything else in this function puts a stat
+	// modifier on the character; this one drops a patch of burning ground and
+	// touches no stat at all.
+	const bool bInfernalRain = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::InfernalRainKey));
+	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain)
 	{
 		return;
 	}
@@ -1704,6 +1819,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bDeathsEmbrace)
 	{
 		StepDeathsEmbrace(Player, AbilitySystem);
+	}
+
+	// LAST, AND IT NEEDS NO ABILITY SYSTEM. The three above put stat modifiers on
+	// the character and share one applier; this one spawns an actor. It is called
+	// after them so that a floor carrying both kinds does its stat work in one
+	// pass before anything else happens on the beat.
+	if (bInfernalRain)
+	{
+		StepInfernalRain(Player, AbilitySystem);
 	}
 }
 
@@ -1908,6 +2032,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// above has already taken the reduction off the character.
 		DeathsEmbraceSecondsOnFloor = 0.0f;
 		DeathsEmbraceStacksApplied = 0;
+
+		// AND INFERNAL RAIN FORGETS BOTH ITS CLOCK AND ITS PATCHES. The clock so
+		// the first patch of a floor does not arrive on its first beat carrying
+		// the last floor's wait; the list because those actors are already gone --
+		// `UCataclysmFloorContents::ClearTheFloor` destroys every patch with the
+		// rest of the floor -- and a stale list would count expired patches
+		// against the cap and stop the rain entirely.
+		InfernalRainSecondsSinceLastPatch = 0.0f;
+		InfernalRainPatches.Empty();
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
