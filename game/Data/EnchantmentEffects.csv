@@ -102,3 +102,7 @@ Negative_Your_melee_attacks_deal_10_30_less_damage#1,Negative_Your_melee_attacks
 Negative_Your_melee_attacks_deal_10_30_less_damage#2,Negative_Your_melee_attacks_deal_10_30_less_damage,spell_damage,more,-10.0,-30.0,Type.Melee,,0.0,,0.0
 Negative_Charge_skills_deal_20_35_less_damage_on_impact#1,Negative_Charge_skills_deal_20_35_less_damage_on_impact,attack_damage,more,-20.0,-35.0,Keyword.Charge,,0.0,,0.0
 Negative_Charge_skills_deal_20_35_less_damage_on_impact#2,Negative_Charge_skills_deal_20_35_less_damage_on_impact,spell_damage,more,-20.0,-35.0,Keyword.Charge,,0.0,,0.0
+Negative_Spells_deal_20_35_less_damage_while_you_are_mo#1,Negative_Spells_deal_20_35_less_damage_while_you_are_mo,attack_damage,more,-20.0,-35.0,Type.Spell,while_moving,0.0,,0.0
+Negative_Spells_deal_20_35_less_damage_while_you_are_mo#2,Negative_Spells_deal_20_35_less_damage_while_you_are_mo,spell_damage,more,-20.0,-35.0,Type.Spell,while_moving,0.0,,0.0
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#1,Negative_Ranged_skills_deal_15_30_less_damage_at_close,attack_damage,more,-15.0,-30.0,Type.Ranged,target_within_metres,5.0,,0.0
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#2,Negative_Ranged_skills_deal_15_30_less_damage_at_close,spell_damage,more,-15.0,-30.0,Type.Ranged,target_within_metres,5.0,,0.0

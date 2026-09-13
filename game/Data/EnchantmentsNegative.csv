@@ -133,7 +133,7 @@ Negative_Your_class_resource_decays_twice_as_fast,Your class resource decays twi
 Negative_Buff_effects_applied_to_you_last_30_50_less_ti,Buff effects applied to you last 30%-50% less time,Generic,4.0,Type.Buff,True
 Negative_Debuffs_applied_to_you_last_30_50_longer,Debuffs applied to you last 30%-50% longer,Generic,4.0,Type.Debuff,True
 Negative_Melee_skills_cost_5_10_of_your_maximum_HP_to_u,Melee skills cost 5%-10% of your maximum HP to use,Generic,3.0,"Type.Melee, Stat.Resource.HP",True
-Negative_Ranged_skills_deal_15_30_less_damage_at_close,Ranged skills deal 15%-30% less damage at close range,Generic,4.0,Type.Ranged,True
+Negative_Ranged_skills_deal_15_30_less_damage_at_close,Ranged skills deal 15%-30% less damage at close range (within 5 meters),Generic,4.0,Type.Ranged,True
 Negative_While_moving_you_take_15_25_increased_damage,While moving you take 15%-25% increased damage,Generic,4.0,"Scope.WhileMoving, Stat.Defense.Global",True
 Negative_While_moving_your_skills_deal_15_25_less_damag,While moving your skills deal 15%-25% less damage,Generic,4.0,"Scope.WhileMoving, Stat.Offense.Global",True
 Negative_While_stationary_you_take_20_35_increased_dama,While stationary you take 20%-35% increased damage from ranged attacks,Generic,4.0,"Scope.WhileStationary, Stat.Defense.Ranged",True

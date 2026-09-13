@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — "Close range" on an enchantment is five metres, and the sentence says so rather than the table saying it quietly
+
+**Affects:**
+`docs/All_Things_Cataclysm.xlsx` (the Enchantments sheet),
+`game/Data/EnchantmentsNegative.csv` and
+`game/Data/EnchantmentEffects.csv`.
+Issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686). Made under
+the project owner's delegation of 2026-09-11, which lets a session choose a
+number a sentence does not state and record it here for review.
+
+### The question
+
+"Ranged skills deal 15%-30% less damage at close range" could not be written,
+because "close range" is not a distance. The condition that expresses it,
+`TargetWithinMetres`, takes a number and the sentence supplies none.
+
+### Five metres
+
+| where the figure comes from | what it says |
+| :-- | :-- |
+| every distance row already in this file | four rows use `target_within_metres` and **all four are at 5.0** |
+| `CataclysmStatPipeline.h`, on that condition | the longest melee weapon shape reaches **3.3 metres** and enemies default to **2** |
+| Diablo IV | "Close" is the melee circle, about **5 metres**; anything outside it is "Distant" |
+
+So five metres is the distance at which an enemy has closed on a ranged
+character, it is the figure the game already uses for exactly this reading, and
+it agrees with how the nearest shipped game in the genre draws the same line.
+**It is a judgement rather than a figure read off the design**, and it is here so
+that it can be changed in one place.
+
+Path of Exile's Point Blank is the closest genre mechanism to the row itself —
+projectile damage falling off with distance — but it is a **gradient** over the
+distance travelled rather than a threshold, and it scales in the opposite
+direction: full damage close, less far away. It is evidence that "how far away
+the target is" is a normal thing for an ARPG to price, and not evidence for a
+number, so it is named here and not leaned on.
+
+### The sentence changed, and the test did not
+
+The words now read:
+
+> Ranged skills deal 15%-30% less damage at close range (within 5 meters)
+
+**`test_every_condition_value_appears_in_the_words_too` is why, and it was right
+to refuse the row.** It requires a row's condition value to appear as a number in
+its enchantment's own words. A threshold a player cannot read is a hidden number,
+and the four rows already using this condition all state their distance. Widening
+the test would have bought this one row at the price of the check that keeps
+every future one honest.
+
+`JUDGED_NUMBERS` could not excuse it either:
+`test_every_judged_number_is_still_needed` requires an excused sentence to state
+**no** number, and this one states two.
+
+### What the reword costs, measured rather than assumed
+
+**Nothing, because the row name does not move.** An enchantment's DataTable row
+name is built from the **first 48 characters** of its sentence
+(`tools/generate_datatables.py`, `row_name(kind, text[:48])`), and those 48
+characters end at the space after "close". So an appended clause leaves the name
+`Negative_Ranged_skills_deal_15_30_less_damage_at_close` exactly as it was.
+
+**That is what makes it safe rather than tidy.**
+`FCataclysmRolledEnchantment` stores the enchantment's **row name** on a dropped
+item, so a renamed row would orphan every saved item carrying it. A reword that
+changed the first 48 characters would have that cost and this one does not.
+
+The generator still reads exactly one range in the sentence, `(15.0, 30.0)`, so
+the count `STATED_RANGES` pins does not move either.
+
+### What the coverage moves to, and the four places that state it
+
+Read off the regenerated `game/Data/EnchantmentEffects.csv`, not added to the
+old figures: **107 rows over 90 enchantments**, from 103 over 88. Two
+enchantments and four rows, because a row about the damage a character's own
+skills deal becomes one row on attack damage and one on spell damage.
+
+| where | what it holds | what catches a stale one |
+| :-- | :-- | :-- |
+| `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` | the row count for this table | the Unreal automation run |
+| `docs/README.md` | a row count per workbook sheet | `test_docs_readme_sheet_table_is_true.py` |
+| `tools/tests/test_enchantment_effects_match_the_row_text.py` | `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` | its own test |
+| this entry | the same two numbers | **nothing** |
+
+**The two numbers do not move by the same amount**, which is why both are read
+rather than one inferred from the other: four rows over two enchantments.
+
+### The other row this unblocks needed no such choice
+
+"Spells deal 20%-35% less damage while you are moving" states everything it
+needs. Both rows are `RequiredTags` plus one condition — the tag for the skill
+type and the condition for the rest — which works because
+`FCataclysmStatModifier` requires **both** to hold. That direction rule is
+[#1697](https://github.com/sdubois777/Cataclysm/issues/1697)'s and it is why
+these two were never really blocked: `RequiredTags` means the skill in the
+character's **own** hand, so it can scope a row about damage **dealt** and cannot
+scope one about damage **taken**.
+
+---
+
 ## 2026-09-13 — An enchantment row's own words decide which damage-reduction bucket it feeds: "damage reduction" is the flat stat capped at 75%, "less damage" is a multiplier
 
 **Affects:**
