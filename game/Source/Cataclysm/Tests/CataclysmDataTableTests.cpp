@@ -395,7 +395,28 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// FIVE OF THE SEVEN ARE FLAT AND NOT INCREASED, because `CrippleChance` and
 	// `WeakenChance` both start at zero and `(base + flat) * (1 + increases)`
 	// makes an increase against nothing worth nothing.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        223)
+	//
+	// AND 238 SINCE THE THREE MINION STATS STOPPED BEING REFUSED. Issue #1733.
+	// The sentence above said 223 was every node that could be written at all,
+	// and that was true while three checks refused any row naming a stat with no
+	// gameplay attribute. They no longer do: those three stats are deliberately
+	// without one and bespoke code reads their increases, which
+	// `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` holds
+	// them to.
+	//
+	// THIRTEEN NODES AND ONE CAPSTONE OPTION, FIFTEEN ROWS. The option is
+	// `Bound Servants` on the Ritualist's 25-point capstone, which needs two
+	// rows because its sentence names two stats -- the same shape as `Wade In`
+	// above.
+	//
+	// THESE FIFTEEN ARE `increased` AND NOT `flat`, WHICH IS THE OPPOSITE OF THE
+	// PARAGRAPH ABOVE and worth saying so the two do not read as inconsistent.
+	// A `flat` row is right when a stat has a base of zero that something adds
+	// to. Nothing adds to these: `IncreasesForStat` returns the SUM OF THE
+	// INCREASES, which the engine applies to the minion's own figure from
+	// `game/Data/MinionTypes.csv`. A flat row would land in a bucket nothing
+	// reads.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        238)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -421,7 +421,16 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: is worth nothing. `bleed_on_crit_chance` and `debuff_spread_chance` are the
 #: existing rows of that shape; `crit_chance` uses `increased` and is right to,
 #: because it has a real base of 5.
-AUTHORED_ROWS = 223
+#: AND TO 238 ON 2026-09-13, for the fifteen rows the three minion stats
+#: allowed once they stopped being refused. Issue #1733. Thirteen nodes granting
+#: increased Minion Damage, Health or Attack Speed, plus two rows for
+#: `Bound Servants`, the first option of the Ritualist's 25-point capstone,
+#: which reads "Your minions deal 25% increased damage and have 25% increased
+#: health" and had never granted anything.
+#:
+#: RE-DERIVED FROM THE REGENERATED FILE RATHER THAN ADDED TO. Incrementing a
+#: count preserves a wrong one.
+AUTHORED_ROWS = 238
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -659,7 +668,12 @@ AUTHORED_ROWS = 223
 #: worth saying beside a figure described as what the feature is judged on. It
 #: cannot be raised again by authoring; the next rise has to be bought with
 #: code.
-AUTHORED_NODES = 159
+#: AND TO 172 ON 2026-09-13, WHICH IS THE CEILING BEING LIFTED RATHER THAN
+#: REACHED. The sentence above said this could not rise again by authoring and
+#: that the next rise had to be bought with code. It was, by #1724 and #1732:
+#: the three minion stats are now read by the engine, and #1733 stopped three
+#: checks refusing rows that name them. Thirteen nodes followed.
+AUTHORED_NODES = 172
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -720,7 +734,11 @@ AUTHORED_NODES = 159
 #: grants 3% increased Armor and 3% increased Attack Damage". Issue
 #: #1597. Its node already had a row for option 3, so `AUTHORED_NODES`
 #: did not move for it and this number did.
-AUTHORED_OPTIONS = 17
+#: AND TO 18 ON 2026-09-13, for `Bound Servants`, the first option of the
+#: Ritualist's 25-point capstone. Issue #1733. Its node already had rows for
+#: options 2 and 3, so `AUTHORED_NODES` did not move for it and this number did
+#: -- the same shape as `Wade In` above.
+AUTHORED_OPTIONS = 18
 
 #: How many capstone options are named at all, across every tree.
 #:
