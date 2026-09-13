@@ -199,12 +199,27 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 		// reading, and `test_condition_lists_agree_with_the_code.py` holds this
 		// list against two others rather than against this number.
 		//
-		// AND WRITING IT OUT DID NOT WORK. The change that corrected this count
-		// from ten to thirteen left the header's own count saying "TEN OF THE
-		// TWENTY-ONE" -- the very sentence the line above points at -- while
-		// adding 131 lines to that same file. Both were stale for two further
-		// changes. A count written out is still a count nobody re-derives, so
-		// the defence recorded here is weaker than it reads.
+		// ITS RECORD IS TWO FAILURES AND ONE SUCCESS, AND THE SUCCESS IS WHY IT
+		// IS STILL HERE. The failures first, because they are the reason to
+		// doubt it: the change that corrected this count from ten to thirteen
+		// left the header's own count reading "TEN OF THE TWENTY-ONE" -- the
+		// very sentence the line above points at -- while adding 131 lines to
+		// that same file; and the paragraph below went stale the same way,
+		// having said "the last two" while those two were last.
+		//
+		// THE SUCCESS IS THE CHANGE THAT ADDED `EnergyShieldAtMaximum`. Issue
+		// #1515. Somebody reading this switch for an unrelated reason saw the
+		// number, counted the case labels, got thirteen, and noticed their own
+		// change made it fourteen -- before publishing. That is the job this
+		// sentence was written for, and it is the first time it has done it.
+		//
+		// SO DO NOT DELETE THE NUMBER ON THE STRENGTH OF THE FAILURES ALONE.
+		// A defence is easiest to remove at the moment its record looks worst,
+		// which is usually just before anybody has tried using it as intended.
+		// Membership is enforced elsewhere --
+		// `test_condition_lists_agree_with_the_code.py` holds this list against
+		// two others -- so the number protects nothing a test covers, and is
+		// kept for the reader rather than for the suite.
 		//
 		// `WhileMoving` AND `WhileStationary` ARE ISSUE #41'S SLICE 2: whether the
 		// character moved in the last sample, and whether it did not. Its other
