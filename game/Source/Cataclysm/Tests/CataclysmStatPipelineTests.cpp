@@ -6,6 +6,8 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "GameplayEffectAggregator.h"
 #include "GameplayEffectTypes.h"
@@ -2544,6 +2546,123 @@ bool FCataclysmPipelineHealthAtOrAboveTest::RunTest(const FString& Parameters)
 			.Contains(TEXT("health threshold")));
 	TestTrue(TEXT("and a legal one is not"),
 		FPipeline::ValidateModifier(AtOrAboveHealth(1.0f, 50.0f)).IsEmpty());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pricing a hit, which is where the pipeline is run for real. Issue #1685.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pricing a hit asks the character what is true of it.
+ *
+ * WHAT IS WRONG. `UCataclysmSkillEffects::ModifiedDamage` runs the whole stat
+ * pipeline over a character's runtime modifier list and passes NO condition
+ * state. `UCataclysmStatPipeline::Evaluate` defaults that argument to an empty
+ * `FCataclysmStatConditions`, so every condition on a runtime modifier is asked
+ * against a world in which nothing is true, and the modifier is worth nothing.
+ *
+ * FOUR LIVE DAMAGE PATHS GO THROUGH IT: retaliation, a hit, a skill template's
+ * hit damage, and a damage-over-time tick.
+ *
+ * WHY NOTHING NOTICED, AND WHY THIS FILE COULD NOT HAVE CAUGHT IT. Every other
+ * test here hands `Evaluate` a state it built itself -- `AtHealth(10.0f)`,
+ * `Stationary(3.0f)`, `SinceHealthCost(1.0f)`. So the pipeline is thoroughly
+ * checked at reading a state, and NOTHING checked whether the one caller that
+ * runs it for a real character supplies one. A test that supplies the missing
+ * step cannot see the step missing.
+ *
+ * AND BOTH RUNTIME MODIFIERS IN THE GAME TODAY ARE UNCONDITIONAL -- a skill's
+ * own self buff and an aura's ally increase -- so the fault costs nothing yet.
+ * The first conditional one anybody writes is silently worth zero, in the
+ * player's favour, with nothing in the data, the log or a test saying so.
+ *
+ * THE TWO CONTROLS ARE WHAT MAKE THE THIRD CHECK MEAN ONE THING. If the
+ * pipeline applied the modifier when handed a state, and the character's own
+ * reading of itself satisfied the modifier, then a hit priced at the base
+ * amount can only be `ModifiedDamage` failing to ask.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPricedHitAsksTheCharacterTest,
+	"Cataclysm.StatPipeline.PricingAHitAsksWhatIsTrueOfTheCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPricedHitAsksTheCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	// NO WORLD, because none is needed. `CurrentConditions` reads attribute
+	// sets and never asks for a clock or an actor's location, so a bare
+	// component with a vital attribute set is a character as far as a health
+	// condition is concerned. Every other test in this file works the same way.
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>();
+
+	// Raw pointer on purpose: AddAttributeSetSubobject is a template and a
+	// TObjectPtr deduces the wrapper rather than the set.
+	UCataclysmVitalAttributeSet* Vitals =
+		NewObject<UCataclysmVitalAttributeSet>(AbilitySystem);
+	AbilitySystem->AddAttributeSetSubobject(Vitals);
+
+	// A CHARACTER AT A TENTH OF ITS HEALTH, well under the threshold below, so
+	// the check is not about where the boundary falls.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// 50% increased, while at or below half health. Written large so that a
+	// wrong answer is the base amount rather than something near it.
+	const FCataclysmStatModifier WhileHurt = IncreasedBelowHealth(50.0f, 50.0f);
+	TArray<FCataclysmStatModifier> Modifiers = { WhileHurt };
+
+	// --- CONTROL ONE: the pipeline applies it when handed a state ----------
+
+	TestEqual(
+		TEXT("handed a state saying the character is at a tenth of its health, "
+			 "the pipeline applies the increase"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, AtHealth(10.0f)).Final,
+		150.0f, 0.01f);
+
+	// --- CONTROL TWO: the character's own reading of itself satisfies it ----
+	//
+	// This is the state `ModifiedDamage` could ask for and does not. Checking
+	// it separately means a failure below cannot be blamed on the attribute set
+	// being unset, on `CurrentConditions` refusing a character with no world,
+	// or on the threshold being read the wrong way round.
+
+	TestEqual(
+		TEXT("and the character's own reading of itself satisfies it too"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							AbilitySystem->CurrentConditions()).Final,
+		150.0f, 0.01f);
+
+	// --- THE SUBJECT -------------------------------------------------------
+
+	AbilitySystem->AddStatModifier(WhileHurt);
+	TestEqual(TEXT("the character is holding it"),
+		AbilitySystem->GetStatModifiers().Num(), 1);
+
+	TestEqual(
+		TEXT("so pricing a hit through ModifiedDamage applies it as well"),
+		UCataclysmSkillEffects::ModifiedDamage(AbilitySystem, 100.0f, NoTags),
+		150.0f, 0.01f);
+
+	// --- AND THE CASE THAT WAS NEVER BROKEN, WHICH IS WHY NOTHING NOTICED ---
+	//
+	// An unconditional modifier has always worked through this path, and both
+	// runtime modifiers the game adds today are unconditional. Checking it here
+	// says that this change fixes the conditional case WITHOUT disturbing the
+	// case everything currently relies on.
+
+	UCataclysmAbilitySystemComponent* Plain =
+		NewObject<UCataclysmAbilitySystemComponent>();
+	Plain->AddStatModifier(Increased(50.0f));
+	TestEqual(
+		TEXT("an unconditional increase prices the same, with no attribute set "
+			 "and nothing true of the character at all"),
+		UCataclysmSkillEffects::ModifiedDamage(Plain, 100.0f, NoTags),
+		150.0f, 0.01f);
 
 	return true;
 }
