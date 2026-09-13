@@ -1288,11 +1288,16 @@ namespace CataclysmEquipmentTest
 	/**
 	 * The stat names an affix grants that ApplyTo writes no attribute from.
 	 *
-	 * EVERY ENTRY IS A KNOWN FAULT WITH AN ISSUE, not a stat that is meant to
-	 * be absent. The list is exact in both directions: a stat missing an
-	 * attribute that is not named here fails the test, and a stat named here
-	 * that now has one fails it too, so the list has to be shortened as the
-	 * work lands rather than left standing.
+	 * THE LIST HOLDS TWO KINDS OF ENTRY AND THE COMMENT BESIDE EACH SAYS WHICH.
+	 * Most are known faults with an issue: a stat that ought to reach an
+	 * attribute and does not. The three minion stats are the other kind -- they
+	 * are meant to have no attribute, and the comment beside them says why and
+	 * what reads them instead.
+	 *
+	 * The list is exact in both directions: a stat missing an attribute that is
+	 * not named here fails the test, and a stat named here that now has one
+	 * fails it too, so a fault has to be struck out as the work lands rather
+	 * than left standing.
 	 */
 	const TSet<FString>& StatsNoAttributeIsWrittenFrom()
 	{
@@ -1315,8 +1320,21 @@ namespace CataclysmEquipmentTest
 			// attribute had nothing to increase. Issue #50 is what supplied the
 			// points and this file's AttributesWearing spends one in each.
 
-			// #898. No gameplay attribute for any minion stat exists at all,
-			// so unlike everything above there is nothing to map these to.
+			// #898. No gameplay attribute for any minion stat exists, and
+			// THESE THREE ARE MEANT TO HAVE NONE rather than to be waiting for
+			// one. A minion's damage, health and attack interval come from its
+			// own row in game/Data/MinionTypes.csv, raised by its summoner's
+			// level. A summoner's gear supplies an INCREASE to apply to that
+			// figure, not a value of its own, so there is nothing for an
+			// attribute to hold.
+			//
+			// SO THEY STAY HERE EVEN ONCE THEY WORK, AND ONE OF THEM ALREADY
+			// DOES. The third pass of UCataclysmPlayerClassStats::ApplyTo
+			// records all three into the character's stat inputs without
+			// writing any attribute, and UCataclysmCommand::AttackIntervalScaleFor
+			// reads minion_attack_speed back out through
+			// UCataclysmAbilitySystemComponent::IncreasesForStat. Minion damage
+			// and minion health are recorded and not yet read by anything.
 			TEXT("minion_damage"), TEXT("minion_health"),
 			TEXT("minion_attack_speed"),
 		};
