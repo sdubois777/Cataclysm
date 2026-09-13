@@ -417,15 +417,22 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// each of them holds zero of zero. Without this clause all of them would
 		// satisfy a node written for a full shield.
 		//
-		// GREATER-OR-EQUAL RATHER THAN EQUAL, AND IT IS DEFENSIVE RATHER THAN
-		// REACHABLE IN PLAY. `UCataclysmVitalAttributeSet` clamps the shield to
-		// its maximum in `PreAttributeChange` and again in
-		// `PostGameplayEffectExecute`, so a gameplay effect cannot push it over.
-		// `SetEnergyShield` writes through without clamping, and the attribute
-		// set itself calls it that way, so a future writer that forgets the
-		// clamp would put the pool above its top. This answers "full" for that
-		// character instead of silently answering "not full", and it costs
-		// nothing to a pool that is clamped correctly.
+		// GREATER-OR-EQUAL RATHER THAN EQUAL, AND THE DIFFERENCE IS REACHABLE IN
+		// ORDINARY PLAY RATHER THAN DEFENSIVE. `UCataclysmVitalAttributeSet`
+		// clamps the shield to its maximum whenever the SHIELD changes -- in
+		// `PreAttributeChange`, in `PostGameplayEffectExecute`, and where a blow
+		// is absorbed -- and never when the MAXIMUM changes. There is no
+		// proportional adjustment on the maximum the way some attribute sets
+		// carry one. So lowering `MaxEnergyShield` leaves the current shield
+		// standing above it: raise the maximum, fill the shield, lower the
+		// maximum, and the character holds more shield than its bar now has.
+		// Any effect or item that grants maximum energy shield and then ends
+		// produces exactly that.
+		//
+		// SUCH A CHARACTER IS FULL, AND `==` WOULD ANSWER NO. Its shield is at
+		// the top of its bar and over it, which is what the node's sentence
+		// means by full, so the test that pins this writes the state the way the
+		// game reaches it rather than by writing a raw number.
 		return State.EnergyShieldHeld >= 0.0f
 			&& State.EnergyShieldMaximum > 0.0f
 			&& State.EnergyShieldHeld >= State.EnergyShieldMaximum;
