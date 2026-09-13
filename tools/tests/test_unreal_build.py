@@ -598,7 +598,12 @@ def build_that_compiled_thing() -> BuildOutcome:
 
 def test_it_breaks_builds_tests_restores_and_rebuilds_in_that_order(
         tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two builds and one test run, and the file back as it was."""
+    """Two builds and TWO test runs, and the file back as it was.
+
+    ONE TEST RUN UNTIL ISSUE #1663, which is why this docstring said so. The
+    tests now run again after the restore, because a guard proof is two claims
+    and this function produced only the first.
+    """
     source = a_source_file(tmp_path, monkeypatch)
     original = source.read_bytes()
 
@@ -617,9 +622,12 @@ def test_it_breaks_builds_tests_restores_and_rebuilds_in_that_order(
 
     assert result.failed, "a failing test is what proves the guard"
     assert builds.calls == 2, "one build for the break and one for the restore"
-    assert seen_during_the_test_run == ["float Reach() { return 0.0f; }\n"], (
-        "the tests did not run while the file was broken, so a failure among "
-        "them proves nothing")
+    assert seen_during_the_test_run == ["float Reach() { return 0.0f; }\n",
+                                       "float Reach() { return 250.0f; }\n"], (
+        "the tests must run while the file is BROKEN and then again once it is "
+        "RESTORED, in that order. A failure in the first run proves nothing on "
+        "its own: a test that always fails produces the same thing. Issue "
+        "#1663.")
     assert source.read_bytes() == original, "the file was not restored"
 
 

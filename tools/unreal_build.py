@@ -370,6 +370,25 @@ class CppGuardResult:
     build: BuildOutcome
     tests: TestOutcome
 
+    #: The same tests, run again after the files were restored and rebuilt.
+    #:
+    #: THE OTHER HALF OF THE PROOF, AND IT DID NOT EXIST UNTIL ISSUE #1663. A
+    #: guard proof is two claims -- the test FAILS without the fix and PASSES
+    #: with it -- and this function produced only the first. A test that fails
+    #: for the wrong reason, or always, gave a byte-identical result: the named
+    #: test failed, `crashed` False, the count matching. Every ordinary defect in
+    #: a new test survived it untouched.
+    #:
+    #: `None` WHEN THERE IS NO FIRST HALF TO PAIR WITH, which is a break that did
+    #: not compile and a run that never reported how many tests it performed.
+    #: Claiming a second half there would invite a reader to compare it against
+    #: nothing.
+    #:
+    #: IT COSTS A TEST RUN AND NO BUILD. The restore at the end of this
+    #: function's `finally` already rebuilds and refuses to go on unless that
+    #: rebuild compiled, so a correct binary is standing by the time this runs.
+    tests_restored: TestOutcome | None = None
+
     @property
     def crashed(self) -> bool:
         """The test run did not finish, so it says nothing about the guard.
@@ -429,6 +448,27 @@ class CppGuardResult:
         return self.tests.any_failed or not self.build.succeeded
 
     @property
+    def proved(self) -> bool:
+        """Both halves held, which is the only result that means anything.
+
+        THE TEST FAILED WITH THE BREAK IN AND PASSED WITH IT OUT. Either half
+        alone is worthless: a test that fails both times was never sensitive to
+        the mechanism, and a test that passes both times never noticed the
+        break. Issue #1663.
+
+        FALSE WHEN THERE IS NO SECOND HALF, including a break that did not
+        compile and a run that crashed. Those say the measurement did not
+        happen, and `summary` tells them apart from a guard that did not fire.
+        """
+        if self.tests_restored is None:
+            return False
+        if self.crashed or self.tests_restored.crashed:
+            return False
+        if not self.named_failures:
+            return False
+        return not self.tests_restored.failed
+
+    @property
     def summary(self) -> str:
         if not self.build.succeeded:
             return f"the build itself failed: {self.build.summary}"
@@ -437,7 +477,27 @@ class CppGuardResult:
                     "it performed, so it did not finish and says nothing about "
                     "the guard. Read game/Saved/Logs/Cataclysm.log for why, and "
                     "run it again. Issue #1313. " + self.tests.summary)
-        return self.tests.summary
+
+        line = f"with the break in: {self.tests.summary}"
+        if self.tests_restored is None:
+            return line
+
+        line += f" | restored: {self.tests_restored.summary}"
+
+        # THE TWO ANSWERS THAT ARE NOT A PROOF, EACH SAID IN ITS OWN WORDS.
+        # Before issue #1663 both of these printed exactly what a successful
+        # proof printed, because only the first half was ever measured.
+        if self.tests_restored.crashed:
+            return ("NO MEASUREMENT of the second half: the run after the "
+                    "restore never reported how many tests it performed. " + line)
+        if self.tests_restored.failed:
+            return ("NOT A PROOF: " + ", ".join(self.tests_restored.failed)
+                    + " failed with the files RESTORED as well, so nothing here "
+                      "was sensitive to the break. " + line)
+        if not self.named_failures:
+            return ("NOT A PROOF: nothing failed with the break in, so no test "
+                    "here notices it. " + line)
+        return "PROVED: " + line
 
 
 def module_of(source_path: str) -> str | None:
@@ -665,7 +725,7 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
         else:
             tests = TestOutcome(None, (), ())
 
-        return CppGuardResult(broken_build, tests)
+        broken = CppGuardResult(broken_build, tests)
     except BaseException as error:
         first_failure = error
         raise
@@ -689,6 +749,28 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                     "The restore build was also unsatisfactory, and this is "
                     "reported as a note so it does not hide the failure above:"
                     f"\n{restore_failure}")
+
+    # THE SECOND HALF, AND IT IS OUT HERE RATHER THAN IN THE `finally` ON
+    # PURPOSE. Issue #1663 adds it; issue #384 says where it may not go. That
+    # `finally` is built so a failure during the restore cannot hide the failure
+    # that caused the run to unwind -- it keeps `first_failure` and attaches the
+    # restore's complaint as a note rather than raising over it. A test run can
+    # fail, crash, or find the machine taken, and any of those inside that block
+    # would do exactly what #384 stopped. Out here it runs only when nothing
+    # raised, because a raised proof never reaches this line at all.
+    #
+    # AND ONLY WHEN THERE IS A FIRST HALF TO PAIR IT WITH. A break that did not
+    # compile never ran the tests, and a crashed run never said how many it
+    # performed; pairing either with a fresh run would invite a reader to
+    # compare a real measurement against nothing. Both leave `performed` as
+    # None, so one test covers both.
+    #
+    # THE SAME `test_prefix`, WHICH IS WHAT MAKES THE TWO COMPARABLE. Passing it
+    # again rather than re-deriving it also means the selection rules cannot
+    # differ between the halves, whatever they are.
+    if broken.build.succeeded and broken.tests.performed is not None:
+        return dataclasses.replace(broken, tests_restored=tester(test_prefix))
+    return broken
 
 
 # ---------------------------------------------------------------------------
