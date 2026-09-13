@@ -980,4 +980,177 @@ bool FCataclysmFloorPatchAlwaysEndsItsDrawings::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A patch that travels through the level. Issue #1649
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPatchCarriesItsWholeSelf,
+	"Cataclysm.Effects.ATravellingPatchCarriesItsFarEndAndKeepsItsLength",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPatchCarriesItsWholeSelf::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	// THE FAR END IS A WORLD POSITION, WHICH IS THE TRAP THIS EXISTS FOR.
+	// Moving the actor alone drags the near end away and leaves the far end
+	// where it was, so the shape stretches instead of travelling. Nothing else
+	// in the project would have said so: the patch would still damage, still
+	// draw, and simply be the wrong shape.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	// A LONG PATCH, because a round one cannot show a far end being left
+	// behind -- its two ends are the same point.
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnAlong(
+		Caster, FVector::ZeroVector, FVector(6.0f * M, 0.0f, 0.0f),
+		/*HalfWidthCm=*/2.0f * M, /*Duration=*/30.0f, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a long patch"), Patch))
+	{
+		return false;
+	}
+
+	const FVector StartedAt = Patch->GetActorLocation();
+	const FVector FarEndWas = Patch->FarEnd;
+	const float LengthWas = (FarEndWas - StartedAt).Size();
+
+	// THE CONTROL FIRST. A patch that was never told to travel must not move
+	// when stepped, or "it moved" below means nothing.
+	Patch->TravelStep(1.0f);
+	if (!TestEqual(TEXT("a patch that does not travel does not move"),
+				   Patch->GetActorLocation(), StartedAt))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it has travelled nothing"), Patch->TravelledCm, 0.0f);
+
+	// NOW SEND IT SIDEWAYS, across its own length rather than along it, so a
+	// far end that failed to follow would change the length rather than just
+	// the position.
+	Patch->TravelAt(FVector(0.0f, 1.0f * M, 0.0f));
+	Patch->TravelStep(2.0f);
+
+	const FVector Moved = FVector(0.0f, 2.0f * M, 0.0f);
+
+	TestEqual(TEXT("the patch moved by two seconds of travel"),
+			  Patch->GetActorLocation(), StartedAt + Moved);
+	TestEqual(TEXT("and its far end moved with it"),
+			  Patch->FarEnd, FarEndWas + Moved);
+	// CAST BECAUSE A VECTOR LENGTH IS DOUBLE PRECISION IN THIS ENGINE and the
+	// recorded length is single, which leaves the comparison ambiguous between
+	// two overloads rather than simply narrowing.
+	TestEqual(TEXT("so its length is unchanged"),
+			  static_cast<float>(
+				  (Patch->FarEnd - Patch->GetActorLocation()).Size()),
+			  LengthWas, 0.01f);
+	TestEqual(TEXT("and it recorded how far it has come"),
+			  Patch->TravelledCm, 2.0f * M, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoundPatchStaysRound,
+	"Cataclysm.Effects.ARoundPatchThatTravelsDoesNotBecomeALongOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoundPatchStaysRound::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	// WHETHER A PATCH IS LONG IS DECIDED BY COMPARING ITS TWO ENDS, every time
+	// it is asked. So a round patch whose far end was left behind would begin
+	// answering that it is long, and would then be drawn and swept as a line.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.0f * M,
+		/*Duration=*/30.0f, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a round patch"), Patch))
+	{
+		return false;
+	}
+
+	if (!TestFalse(TEXT("it starts round"), Patch->IsLong()))
+	{
+		return false;
+	}
+
+	Patch->TravelAt(FVector(2.0f * M, 0.0f, 0.0f));
+	Patch->TravelStep(3.0f);
+
+	TestTrue(TEXT("it really moved"), Patch->TravelledCm > 0.0f);
+	TestFalse(TEXT("and it is still round"), Patch->IsLong());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOnlyATravellingPatchTicks,
+	"Cataclysm.Effects.OnlyAPatchThatTravelsCostsAFrame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOnlyATravellingPatchTicks::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	// EVERY PATCH IN THE GAME BEFORE THIS DID NO PER-FRAME WORK, and the
+	// constructor gives the reason: it finds who is standing in it on a timer a
+	// second apart, so ticking would ask sixty times as often for the same
+	// answer. Travelling needs a per-frame step, and this pins that the cost
+	// falls only on a patch that asked for it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Caster = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("caster"), Caster))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
+		Caster, FVector::ZeroVector, /*RadiusCm=*/3.0f * M,
+		/*Duration=*/30.0f, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a patch"), Patch))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("an ordinary patch does not tick"),
+			  Patch->IsActorTickEnabled());
+
+	Patch->TravelAt(FVector(1.0f * M, 0.0f, 0.0f));
+	TestTrue(TEXT("one that travels does"), Patch->IsActorTickEnabled());
+
+	// AND STOPPING COSTS NOTHING AGAIN.
+	Patch->TravelAt(FVector::ZeroVector);
+	TestFalse(TEXT("and one that stops travelling stops ticking"),
+			  Patch->IsActorTickEnabled());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

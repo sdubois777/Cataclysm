@@ -15,9 +15,16 @@
 
 ACataclysmGroundZone::ACataclysmGroundZone()
 {
-	// Nothing to do per frame. It sweeps on a timer, a second apart, and a tick
-	// would run it sixty times more often for the same result.
-	PrimaryActorTick.bCanEverTick = false;
+	// NOTHING TO DO PER FRAME, FOR ALMOST EVERY PATCH. It finds who is standing
+	// in it on a timer a second apart, and ticking would ask sixty times as
+	// often for the same answer.
+	//
+	// SO TICKING IS POSSIBLE AND OFF, RATHER THAN IMPOSSIBLE. A patch that
+	// travels needs a per-frame step, and `bCanEverTick = false` cannot be
+	// turned on later -- it is decided once, here. `TravelAt` enables it for
+	// the one patch that asks. Issue #1649.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bReplicates = true;
 
 	// See the header. Without a root component the actor has no position and
@@ -217,6 +224,58 @@ void ACataclysmGroundZone::Redraw()
 	// under the automation run's -nullrhi, so without this a patch that stopped
 	// asking would be invisible in play and silent in the suite.
 	++RedrawsAsked;
+}
+
+void ACataclysmGroundZone::TravelAt(const FVector& CentimetresPerSecond)
+{
+	TravelPerSecond = CentimetresPerSecond;
+
+	// ONLY A PATCH THAT ACTUALLY MOVES TICKS. Setting this to zero turns it
+	// back off, so a patch that stops travelling stops costing a frame.
+	SetActorTickEnabled(!TravelPerSecond.IsNearlyZero());
+}
+
+void ACataclysmGroundZone::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	TravelStep(DeltaSeconds);
+}
+
+void ACataclysmGroundZone::TravelStep(float StepSeconds)
+{
+	if (StepSeconds <= 0.0f || TravelPerSecond.IsNearlyZero())
+	{
+		return;
+	}
+
+	const FVector Delta = TravelPerSecond * StepSeconds;
+
+	// NOT SWEPT AGAINST THE WORLD, AND THAT IS NOT AN OVERSIGHT. This actor's
+	// root is a bare `USceneComponent` with no collision shape, so a swept move
+	// would test nothing and simply cost more. What stops a patch leaving the
+	// floor is whoever decides where to send it, not this.
+	AddActorWorldOffset(Delta);
+
+	// THE FAR END IS A WORLD POSITION, SO IT HAS TO BE CARRIED BY HAND. Moving
+	// the actor alone would drag the near end away and leave the far end where
+	// it was, stretching the shape instead of moving it -- and `IsLong` decides
+	// by comparing the two, so a round patch that travelled would start
+	// reporting itself as a long one.
+	FarEnd += Delta;
+
+	// AND THE VISUAL EFFECTS, WHICH ARE NOT ATTACHED TO THIS ACTOR.
+	// `UCataclysmGroundEffect::PlayFor` spawns them at a location rather than
+	// parenting them -- its header says so in as many words -- so a patch that
+	// moved without this would slide out from under its own fire.
+	for (const TWeakObjectPtr<UNiagaraComponent>& Drawing : Drawings)
+	{
+		if (Drawing.IsValid())
+		{
+			Drawing->AddWorldOffset(Delta);
+		}
+	}
+
+	TravelledCm += Delta.Size();
 }
 
 void ACataclysmGroundZone::Sweep()

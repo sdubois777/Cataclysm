@@ -328,8 +328,56 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Ground Zone")
 	void Sweep();
 
+	/**
+	 * Make this patch travel, in centimetres per second along each axis.
+	 *
+	 * WHAT ASKS FOR IT. Funereal Procession: "A slow-moving line of spectral
+	 * pallbearers moves through the dungeon; contact causes heavy damage and
+	 * fear." Nothing in the game could move an area. Issue #1649.
+	 *
+	 * ZERO MEANS IT STAYS WHERE IT WAS PUT, which is every patch in the game
+	 * before this and every one after it that does not ask otherwise.
+	 *
+	 * THIS IS WHAT TURNS TICKING ON. A patch that does not travel still does
+	 * not tick, for the reason the constructor gives: it finds who is standing
+	 * in it on a timer a second apart, and ticking would ask sixty times as
+	 * often for the same answer.
+	 */
+	void TravelAt(const FVector& CentimetresPerSecond);
+
+	/**
+	 * Move the patch by one step of travel. Does nothing if it does not travel.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is not a style choice: automation
+	 * tests build a world with `UWorld::CreateWorld` and never tick it, so a
+	 * patch that moved only from `Tick` could not be tested at all. Every
+	 * repeating thing in this project exposes its one repetition the same way
+	 * -- `Sweep` above, `ACataclysmProjectile::Step`, `SwingOnce`, `Pulse`.
+	 *
+	 * IT CARRIES THREE THINGS AND NOT ONE. The actor, the far end, and the
+	 * visual effects. See the definition for why each has to be moved by hand.
+	 */
+	void TravelStep(float StepSeconds);
+
+	/**
+	 * How far along each axis this patch moves in a second. Zero: it does not.
+	 *
+	 * IN CENTIMETRES BECAUSE EVERY DISTANCE IN THIS FILE IS. `RadiusCm` above
+	 * and `AuraRadiusCm` beside it are both centimetres, and one file mixing
+	 * units is how a patch ends up a hundred times too fast.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground")
+	FVector TravelPerSecond = FVector::ZeroVector;
+
+	/** How far this patch has travelled in total, in centimetres. Read by tests. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground")
+	float TravelledCm = 0.0f;
+
 protected:
 	virtual void BeginPlay() override;
+
+	/** Drives `TravelStep` in play. Only ever enabled on a patch that travels. */
+	virtual void Tick(float DeltaSeconds) override;
 
 	/**
 	 * Called only when a life span runs out, which is what makes it useful.
