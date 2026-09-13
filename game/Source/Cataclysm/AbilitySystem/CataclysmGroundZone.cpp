@@ -15,9 +15,16 @@
 
 ACataclysmGroundZone::ACataclysmGroundZone()
 {
-	// Nothing to do per frame. It sweeps on a timer, a second apart, and a tick
-	// would run it sixty times more often for the same result.
-	PrimaryActorTick.bCanEverTick = false;
+	// NOTHING TO DO PER FRAME, FOR ALMOST EVERY PATCH. It finds who is standing
+	// in it on a timer a second apart, and ticking would ask sixty times as
+	// often for the same answer.
+	//
+	// SO TICKING IS POSSIBLE AND OFF, RATHER THAN IMPOSSIBLE. A patch that
+	// travels needs a per-frame step, and `bCanEverTick = false` cannot be
+	// turned on later -- it is decided once, here. `TravelAt` enables it for
+	// the one patch that asks. Issue #1649.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bReplicates = true;
 
 	// See the header. Without a root component the actor has no position and
@@ -219,12 +226,79 @@ void ACataclysmGroundZone::Redraw()
 	++RedrawsAsked;
 }
 
+void ACataclysmGroundZone::TravelAt(const FVector& CentimetresPerSecond)
+{
+	TravelPerSecond = CentimetresPerSecond;
+
+	// ONLY A PATCH THAT ACTUALLY MOVES TICKS. Setting this to zero turns it
+	// back off, so a patch that stops travelling stops costing a frame.
+	SetActorTickEnabled(!TravelPerSecond.IsNearlyZero());
+}
+
+void ACataclysmGroundZone::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	TravelStep(DeltaSeconds);
+}
+
+void ACataclysmGroundZone::TravelStep(float StepSeconds)
+{
+	if (StepSeconds <= 0.0f || TravelPerSecond.IsNearlyZero())
+	{
+		return;
+	}
+
+	const FVector Delta = TravelPerSecond * StepSeconds;
+
+	// NOT SWEPT AGAINST THE WORLD, AND THAT IS NOT AN OVERSIGHT. This actor's
+	// root is a bare `USceneComponent` with no collision shape, so a swept move
+	// would test nothing and simply cost more. What stops a patch leaving the
+	// floor is whoever decides where to send it, not this.
+	AddActorWorldOffset(Delta);
+
+	// THE FAR END IS A WORLD POSITION, SO IT HAS TO BE CARRIED BY HAND. Moving
+	// the actor alone would drag the near end away and leave the far end where
+	// it was, stretching the shape instead of moving it -- and `IsLong` decides
+	// by comparing the two, so a round patch that travelled would start
+	// reporting itself as a long one.
+	FarEnd += Delta;
+
+	// AND THE VISUAL EFFECTS, WHICH ARE NOT ATTACHED TO THIS ACTOR.
+	// `UCataclysmGroundEffect::PlayFor` spawns them at a location rather than
+	// parenting them -- its header says so in as many words -- so a patch that
+	// moved without this would slide out from under its own fire.
+	for (const TWeakObjectPtr<UNiagaraComponent>& Drawing : Drawings)
+	{
+		if (Drawing.IsValid())
+		{
+			Drawing->AddWorldOffset(Delta);
+		}
+	}
+
+	TravelledCm += Delta.Size();
+}
+
 void ACataclysmGroundZone::Sweep()
 {
 	// Named Source rather than Instigator: AActor already has a member of that
 	// name, and shadowing it is an error at this project's warning level.
 	AActor* Source = GetOwner();
-	if (!IsValid(Source) || DamagePerTick <= 0.0f)
+
+	// WHAT THIS PATCH ACTUALLY DOES TO WHOEVER STANDS IN IT. Either or both.
+	const bool bDamages = DamagePerTick > 0.0f;
+	const bool bCurses = AppliedEffect.IsValid() && AppliedEffectSeconds > 0.0f;
+
+	// A PATCH THAT DOES NEITHER IS SKIPPED, AND UNTIL ISSUE #1649 THE TEST WAS
+	// ONLY ABOUT DAMAGE. A patch carrying a curse and no damage returned here
+	// without ever asking who was inside, so it silently did nothing while
+	// looking authored -- and `LastSweepCount` reported zero, which reads as
+	// "nobody was standing in it" rather than "it never looked".
+	//
+	// SINGULARITY WELLS IS THE ROW THAT NEEDS THIS: "Pulsing void orbs pull
+	// players and projectiles toward them, dealing void damage and slowing
+	// movement by 40%." A well authored to slow without damaging would have
+	// been the first thing to hit it.
+	if (!IsValid(Source) || (!bDamages && !bCurses))
 	{
 		LastSweepCount = 0;
 		return;
@@ -255,15 +329,22 @@ void ACataclysmGroundZone::Sweep()
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bIsDamageOverTime = true;
-		UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, DamagePerTick,
-												  Delivery);
+		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
+		// now, and a hit of zero is still a hit: it would announce itself, count
+		// towards anything that reacts to being struck, and read in a combat log
+		// as an attack that did nothing.
+		if (bDamages)
+		{
+			UCataclysmSkillEffects::ApplyDirectDamage(Source, Target,
+													  DamagePerTick, Delivery);
+		}
 
 		// AND THE CURSE, IF THIS ZONE CARRIES ONE. The Wand's Foul Wake: "the
 		// ground you fled ... strips the Demonic resistance of anything that
 		// walks into it". Laid on every sweep, which refreshes rather than
 		// stacks, so the curse runs its own duration from the moment the target
 		// last stood here.
-		if (AppliedEffect.IsValid() && AppliedEffectSeconds > 0.0f)
+		if (bCurses)
 		{
 			UCataclysmSkillEffects::ApplyNamedEffect(
 				Source, Target, AppliedEffect, AppliedEffectSeconds,
