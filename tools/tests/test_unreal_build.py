@@ -732,7 +732,10 @@ def test_a_failed_restore_after_a_compiled_break_says_the_binaries_hold_it(
             {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
             builder=builds, tester=lambda prefix: TestOutcome(2, ("a",), ("b",)))
 
-    message = str(raised.value)
+    # READ FROM THE NOTES, NOT THE MESSAGE. This file's existing test for the
+    # restore failure does the same, because add_note is how this function
+    # attaches context without replacing the exception that explains the run.
+    message = " ".join(getattr(raised.value, "__notes__", []))
     assert "CONTAIN THE BREAK" in message, (
         "the break compiled and the tests ran against those binaries, and the "
         "restore rebuild then failed, so the binaries in this worktree still "
@@ -752,7 +755,7 @@ def test_a_failed_restore_after_a_break_that_did_not_compile_says_they_are_clean
             {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
             builder=builds, tester=lambda prefix: TestOutcome(0, (), ()))
 
-    message = str(raised.value)
+    message = " ".join(getattr(raised.value, "__notes__", []))
     assert "CONTAIN THE BREAK" not in message, (
         "the break never compiled, so nothing ever ran and the binaries are from "
         f"the last good build. Calling this dangerous is a false alarm: {message}")
