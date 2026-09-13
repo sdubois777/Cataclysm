@@ -771,9 +771,19 @@ enum class ECataclysmStatCondition : uint8
 	 * shield, so there is no disagreement between classes to point at. The
 	 * conclusion survives on a different fact: `max_energy_shield` is 40 with 8
 	 * added per level, so the top of the bar moves as a character grows. A
-	 * points threshold of 48 would read as "full" at level one and as about 40%
+	 * points threshold of 40 would be exactly full at level one and about 36%
 	 * of the bar at level ten. Points and percentage still disagree; they
 	 * disagree over one character's lifetime rather than between two classes.
+	 *
+	 * THOSE FIGURES SAID 48 AND 40% AND WERE WRONG, BECAUSE THEY USED THE
+	 * MINION FORMULA FOR A CLASS STAT. `UCataclysmClassStats::BaseFor` computes
+	 * `Base + PerLevel * (Level - 1)` and says so -- "the per-level gain applies
+	 * to levels ABOVE the first, so a level 1 character has exactly the base" --
+	 * while `RaisedByLevel` in `CataclysmMinion.cpp` computes
+	 * `Base + PerLevel * Level` and carries its own comment warning that the two
+	 * readings differ. So the bar is 40 at level one and 112 at level ten, not
+	 * 48 and 120. **48 is the level TWO maximum**, which is why the wrong figure
+	 * looked reasonable.
 	 * A future "while your Energy Shield is above 75%" is a threshold and wants
 	 * its own enumerator, exactly as a future "while above 75 Fervour" does.
 	 *

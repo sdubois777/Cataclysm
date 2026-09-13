@@ -67,9 +67,33 @@ kind to catch because the conclusion checks out.
 
 **The conclusion survives on a different disagreement: levels instead of
 classes.** `max_energy_shield` is 40 with **8 added per level**, so the top of the
-bar moves as a character grows. A points threshold of 48 reads as "full" at level
-one and as about 40% of the bar at level ten. Points and percentage still
+bar moves as a character grows. A points threshold of 40 is exactly full at level
+one and about **36%** of the bar at level ten. Points and percentage still
 disagree — over one character's own lifetime rather than between two classes.
+
+**THOSE FIGURES WERE FIRST WRITTEN AS 48 AND 40%, AND THEY WERE WRONG.** Recorded
+because the mistake is reusable and the wrong numbers reached two merged files
+before anyone read them.
+
+**A class stat and a minion stat scale differently, and the code says so in both
+places.** `UCataclysmClassStats::BaseFor` computes `Base + PerLevel * (Level - 1)`
+with the comment *"the per-level gain applies to levels ABOVE the first, so a
+level 1 character has exactly the base"*. `RaisedByLevel` in
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` computes
+`Base + PerLevel * Level`, and its own comment warns that the other reading is
+what the simulation uses. **I read the minion one and applied it to a class
+stat.**
+
+| | level 1 | level 10 |
+| :-- | --: | --: |
+| what the class formula gives | **40** | **112** |
+| what the minion formula gives | 48 | 120 |
+
+**48 is the level TWO maximum**, which is exactly why the wrong figure survived
+being read back: it is a real number from the right table, just not the one the
+sentence claimed. **The argument was unaffected — points and percentage still
+disagree across levels — so nothing downstream was wrong, which is the reason
+nobody would have found it.**
 
 **A future "while your Energy Shield is above 75%" wants its own name**, exactly
 as a future "while above 75 Fervour" does. Those are thresholds; these are not.
