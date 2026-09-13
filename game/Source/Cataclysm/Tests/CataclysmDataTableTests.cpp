@@ -378,7 +378,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// third option, "You take 25% less damage from enemies more than 6 metres
 	// away from you", had no row at all until a character could read how far
 	// away the enemy hitting it stood.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        209)
+	//
+	// AND 216 SINCE FIVE RAVAGER NODES LEARNED TO COUNT THE ENEMIES STANDING
+	// NEAR A CHARACTER. Issue #1597. Seven rows rather than five: `In Among
+	// Them` says "you deal 2% more damage" without naming a type, which is
+	// attack damage AND spell damage by the decision of 2026-08-25, and `Wade
+	// In` names two stats in one sentence. They are also the first rows to
+	// carry a `ReachMetres`, which is the radius the count is taken inside.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        216)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

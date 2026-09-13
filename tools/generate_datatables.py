@@ -3681,26 +3681,53 @@ def passive_effects(book) -> list[dict]:
                 f"{scale!r}, which the game cannot judge. Known: "
                 f"{', '.join(sorted(SCALES))}.")
 
-        # THE TWO NAMES THAT COUNT NEARBY ENEMIES NEED A RADIUS AND THERE IS
-        # NOWHERE TO WRITE ONE YET. Issue #1597. The engine reads both, and a
-        # modifier carries its own `ReachMetres`, but the sheet has no
-        # `Reach Metres` column and this file does not carry one through, so
-        # every row using them would arrive with a reach of -1 and count
-        # nobody.
+        # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
+        # Issue #1597. A condition carries one number and "three or more
+        # enemies within four metres" is two of them, so the radius needs a
+        # column rather than a share of `Condition Value`. A scale row has the
+        # same problem from the other side: `Scale Step` already holds how
+        # many enemies one step is worth.
         #
-        # REFUSED RATHER THAN IMPORTED, which is the direction this file
-        # always chooses: a row that cannot work must say so at import rather
-        # than be a node granting nothing that nobody notices. DELETE THIS
-        # BLOCK in the change that adds the column.
-        needs_a_reach = {"enemies_in_reach_at_least", "enemies_in_reach"}
-        named = needs_a_reach & {condition, scale}
-        if named:
+        # A ROW USING EITHER NAME MUST STATE ONE, because a modifier with no
+        # reach counts nobody. That is the failure this refuses: the node
+        # would import cleanly, grant nothing, and say so nowhere.
+        #
+        # AND NO OTHER ROW MAY STATE ONE, because nothing would read it. A
+        # number in a column the game never looks at is a statement somebody
+        # believes is doing something.
+        #
+        # A RADIUS PER ROW RATHER THAN ONE CONSTANT, which is the decision of
+        # 2026-09-12 in `docs/DECISIONS.md`: Path of Exile's developers state
+        # that "nearby" is set per effect, and this game's own rows need 3, 4
+        # and 8 metres.
+        #
+        # THE SAME 0 TO 100 METRE BOUND `target_within_metres` USES, and the
+        # same judgement behind it: a radius past 100 would cover any room the
+        # game has, so it is far likelier to be a number in the wrong column.
+        counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach"}
+        named = counts_enemies & {condition, scale}
+        written_reach = clean(_cell(raw, headers, "Reach Metres"))
+        reach_metres = -1.0
+        if named and not written_reach:
             raise DataError(
                 f"Passive Effects row {index}: {node} names "
                 f"{', '.join(sorted(named))}, which counts the enemies within a "
-                f"radius. The radius needs a 'Reach Metres' column on this "
-                f"sheet, and that column is not built yet, so the row would "
-                f"count nobody. Issue #1597.")
+                f"radius, and states no 'Reach Metres'. A row with no radius "
+                f"counts nobody, so the node would grant nothing.")
+        if written_reach and not named:
+            raise DataError(
+                f"Passive Effects row {index}: {node} states a 'Reach Metres' "
+                f"of {written_reach!r} and names neither "
+                f"{' nor '.join(sorted(counts_enemies))}. Nothing would read "
+                f"it. Leave the column empty.")
+        if named:
+            reach_metres = number(_cell(raw, headers, "Reach Metres"),
+                                  "Reach Metres", index)
+            if not 0.0 < reach_metres <= 100.0:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a reach of "
+                    f"{reach_metres}, and a radius takes metres above 0 and up "
+                    f"to 100. A reach of nothing counts nobody.")
 
         scale_step = 0.0
         if scale:
@@ -3755,6 +3782,7 @@ def passive_effects(book) -> list[dict]:
             "Scale": scale,
             "ScaleStep": scale_step,
             "Option": option,
+            "ReachMetres": reach_metres,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE

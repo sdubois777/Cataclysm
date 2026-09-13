@@ -981,41 +981,41 @@ namespace CataclysmPassiveEffectTest
 		Table->RowStruct = FCataclysmPassiveEffectRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option\r\n"
+			"Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres\r\n"
 			// A plain increase on a node that holds five points, so the
 			// multiplication by the points held is visible rather than assumed.
-			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0\r\n"
+			"Ravager_mid#1,Ravager_mid,armor,increased,3.0,,,0,,0,0,-1\r\n"
 			// A more multiplier, which is the other bucket a passive may use.
-			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0\r\n"
+			"Ravager_side#1,Ravager_side,damage_reduction,more,1.5,,,0,,0,0,-1\r\n"
 			// AND A SECOND STAT ON THAT SAME NODE. Issue #953. The Masochist's
 			// starting node grants three Fervour rates at once and two other
 			// nodes grant a health increase and an armour increase together, so
 			// one row per node is a shape the design does not fit.
-			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0\r\n"
+			"Ravager_side#2,Ravager_side,crit_multiplier,increased,7.0,,,0,,0,0,-1\r\n"
 			// A scoped one, to prove the tag column reaches the modifier.
-			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0\r\n"
+			"Ravager_root#1,Ravager_root,area_of_effect,increased,10.0,Type.Trap,,0,,0,0,-1\r\n"
 			// AND ONE THAT DEPENDS ON THE CHARACTER'S HEALTH. Issue #959, and
 			// it proves the two condition columns reach the modifier.
-			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0\r\n"
+			"Ravager_low#1,Ravager_low,crit_chance,increased,3.0,,health_at_or_below,20,,0,0,-1\r\n"
 			// AND ONE THAT DEPENDS ON A WINDOW AFTER AN EVENT. Issue #962. It is
 			// a second row on the SAME node deliberately: a new node would change
 			// the rectangle the tree occupies and move an unrelated layout test's
 			// answer.
-			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0\r\n"
+			"Ravager_low#2,Ravager_low,attack_speed,increased,2.0,,seconds_after_health_cost,2,,0,0,-1\r\n"
 			// AND ONE WHOSE SIZE GROWS WITH A STATE rather than switching on and
 			// off with it. Issue #968. A third row on the same node, for the same
 			// reason the second one is.
-			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0\r\n"
+			"Ravager_low#3,Ravager_low,max_health,increased,2.0,,,0,health_missing,5,0,-1\r\n"
 			// AND ONE UNDER THE SECOND KIND OF TIMED WINDOW. Issue #975. The
 			// two windows are separate names and separate enumerators, so
 			// covering one says nothing at all about the other.
-			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0\r\n"
+			"Ravager_low#4,Ravager_low,movement_speed,increased,1.0,,seconds_after_foreign_damage,5,,0,0,-1\r\n"
 			// AND ONE THAT GROWS WITH WHAT THE CHARACTER OWES. Issue #994. A
 			// SECOND scale, and telling it apart from the one above is the
 			// point: health missing and health owed are different states of one
 			// character, so a build that mapped either name onto either
 			// enumerator would pass every check written before this row.
-			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0\r\n"
+			"Ravager_low#5,Ravager_low,life_leech,increased,1.0,,,0,health_owed,5,0,-1\r\n"
 			// AND THREE COUNTS OF STACKS, ONE PER KIND. Issues #1002, #1003 and
 			// #1004. All three are here rather than one of them, because the
 			// three names must not be interchangeable: each kind is granted by a
@@ -1023,29 +1023,36 @@ namespace CataclysmPassiveEffectTest
 			// that mapped two of the names onto one enumerator would hand a node
 			// somebody else's stacks with nothing reporting it. One row cannot
 			// catch that; three can.
-			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0\r\n"
-			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0\r\n"
-			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0\r\n"
+			"Ravager_low#6,Ravager_low,armor,increased,1.0,,,0,momentum_stacks,1,0,-1\r\n"
+			"Ravager_low#7,Ravager_low,magic_find,increased,1.0,,,0,bloodlust_stacks,1,0,-1\r\n"
+			"Ravager_low#8,Ravager_low,dot_damage,increased,1.0,,,0,carnage_stacks,1,0,-1\r\n"
 			// AND A COUNT OF THE DEBUFFS THE CHARACTER IS UNDER. Issue #962. A
 			// fourth count beside the three stacks, and its own row for the same
 			// argument: a build that mapped this name onto a stack enumerator
 			// would count something the character EARNED instead of something
 			// being DONE to it, and every check above would still pass.
-			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0\r\n"
+			"Ravager_low#9,Ravager_low,spell_damage,increased,1.0,,,0,debuffs_carried,1,0,-1\r\n"
 			// AND A CONDITION THAT NAMES AN EFFECT RATHER THAN A THRESHOLD.
 			// Issue #962. It is the only condition that reads no value, so it is
 			// the only one where the value column could be carried across and
 			// compared against with nothing reporting it.
-			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0\r\n"
+			"Ravager_low#10,Ravager_low,evasion,increased,3.0,,while_bleeding,0,,0,0,-1\r\n"
 			// AND A THRESHOLD THAT POINTS UPWARDS. Issue #1070. Ceaseless
 			// Penance is the only node in the game asking whether health is
 			// still HIGH, and the failure if the name goes unrecognised is the
 			// worst of the three: the row is left UNCONDITIONAL, so the option
 			// would hold a character's debuffs still at every health rather
 			// than only above half.
-			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0\r\n"
+			"Ravager_low#11,Ravager_low,block_chance,flat,1.0,,health_above,50,,0,0,-1\r\n"
+			// AND ONE THAT COUNTS THE ENEMIES STANDING NEARBY. Issue #1597. The
+			// only row here carrying a `ReachMetres`, and the only one that can
+			// show the column travelling from a table row to a modifier. Every
+			// other row carries -1, which is what a row that counts no enemies
+			// carries, so a build that dropped the column on the way would leave
+			// this one indistinguishable from all of them.
+			"Ravager_low#12,Ravager_low,retaliation,increased,4.0,,enemies_in_reach_at_least,3,,0,0,4\r\n"
 			// And one in the OTHER tree, which a Demonic character cannot reach.
-			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0\r\n"
+			"Bulwark_root#1,Bulwark_root,armor,increased,50.0,,,0,,0,0,-1\r\n"
 			// A CAPSTONE'S THREE OPTIONS, ONE ROW EACH. Issue #1029. Only the
 			// option the player chose may apply, and a capstone with no choice
 			// made yet grants none of the three.
@@ -1055,9 +1062,9 @@ namespace CataclysmPassiveEffectTest
 			// third says the skip is by option NUMBER rather than by "not the
 			// first one". Each grants a different stat so the test can tell which
 			// of the three arrived.
-			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1\r\n"
-			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2\r\n"
-			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3\r\n"));
+			"Ravager_cap#1,Ravager_cap,armor,increased,10.0,,,0,,0,1,-1\r\n"
+			"Ravager_cap#2,Ravager_cap,evasion,increased,20.0,,,0,,0,2,-1\r\n"
+			"Ravager_cap#3,Ravager_cap,magic_find,increased,30.0,,,0,,0,3,-1\r\n"));
 
 		for (const FString& Problem : Problems)
 		{
@@ -1420,6 +1427,39 @@ bool FCataclysmPassiveConditionReachesTheModifierTest::RunTest(const FString&)
 				  (*Movement)[0].ConditionValue, 5.0f);
 	}
 
+	// AND HOW FAR "NEAR" IS MAKES THE TRIP AS A COLUMN OF ITS OWN. Issue
+	// #1597. The same node carries `enemies_in_reach_at_least` with a count of
+	// 3 and a reach of 4, which is the shape `Unbreaking` uses: "You take 15%
+	// less damage while three or more enemies are within 4 metres of you".
+	//
+	// THREE NUMBERS HAVE TO ARRIVE SEPARATELY -- the value, the count and the
+	// radius -- and the radius is the one with nothing to fall back on. A
+	// modifier whose reach was dropped on the way carries -1 and counts
+	// NOBODY, so the node would grant nothing at all and no log line would
+	// mention it.
+	const TArray<FCataclysmStatModifier>* Retaliation =
+		Modifiers.Find(FName(TEXT("retaliation")));
+	if (TestNotNull(TEXT("the node also granted retaliation"), Retaliation)
+		&& TestEqual(TEXT("exactly one of it"), Retaliation->Num(), 1))
+	{
+		TestEqual(TEXT("four per point times eight points"),
+				  (*Retaliation)[0].Value, 32.0f);
+		TestEqual(TEXT("and it carries the enemies-in-reach condition"),
+				  static_cast<int32>((*Retaliation)[0].Condition),
+				  static_cast<int32>(
+					  ECataclysmStatCondition::EnemiesInReachAtLeast));
+		TestEqual(TEXT("asking for the count the table states"),
+				  (*Retaliation)[0].ConditionValue, 3.0f);
+		TestEqual(TEXT("within the reach the table states"),
+				  (*Retaliation)[0].ReachMetres, 4.0f);
+	}
+
+	// AND A ROW THAT COUNTS NO ENEMIES STILL CARRIES NO REACH, which is the
+	// control on the four lines above. A build that stamped one row's radius
+	// onto every modifier it made would pass every one of them and fail this.
+	TestEqual(TEXT("a row that counts no enemies carries no reach"),
+			  (*Chance)[0].ReachMetres, -1.0f);
+
 	// AND A CONDITION THAT NAMES AN EFFECT MAKES THE TRIP TOO. Issue #962. The
 	// same node carries `while_bleeding`, which is the shape Thirst for Pain
 	// uses, and it is the only condition in the vocabulary that compares
@@ -1502,8 +1542,8 @@ namespace CataclysmPassiveConditionTest
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(
 			FString::Printf(
 				TEXT("Name,Node,Stat,ValueKind,ValuePerPoint,RequiredTags,")
-				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option\r\n")
-				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0\r\n"),
+				TEXT("Condition,ConditionValue,Scale,ScaleStep,Option,ReachMetres\r\n")
+				TEXT("Ravager_low#1,Ravager_low,%s,increased,3.0,,%s,%s,,0,0,-1\r\n"),
 				Stat, Condition, Value));
 
 		for (const FString& Problem : Problems)
