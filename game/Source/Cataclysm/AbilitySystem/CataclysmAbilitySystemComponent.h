@@ -880,8 +880,13 @@ public:
 	 * Remove every stack of a kind, as if none had ever been granted.
 	 * Issue #1534.
 	 *
-	 * THE ONLY WAY TO REMOVE STACKS. `GrantStack` never does, whatever it is
-	 * passed, and otherwise a stack leaves only when its window runs out.
+	 * REMOVES EVERY STACK, AND `SpendStack` BELOW REMOVES ONE. Those two are
+	 * the whole of removal: `GrantStack` never removes anything, whatever it
+	 * is passed, and otherwise a stack leaves only when its window runs out.
+	 *
+	 * THIS COMMENT READ "THE ONLY WAY TO REMOVE STACKS" UNTIL ISSUE #1720,
+	 * and it was true when written. It is recorded rather than deleted because
+	 * the sentence is quoted in the pull request that added the other one.
 	 *
 	 * A FUNCTION OF ITS OWN RATHER THAN A CAP OF ZERO MEANING "CLEAR". That
 	 * would have made the one wrong call right, but every grant passes
@@ -895,6 +900,48 @@ public:
 	 * zeros every character starts with.
 	 */
 	void ClearStacks(ECataclysmStackKind Kind);
+
+	/**
+	 * Remove ONE stack of a kind, leaving the rest and their expiry alone.
+	 *
+	 * THE SECOND WAY TO REMOVE STACKS, AND THE FIRST THAT LEAVES ANY. Issue
+	 * #1720. `ClearStacks` above is all or nothing, and its own comment calls
+	 * itself "THE ONLY WAY TO REMOVE STACKS" because until now it was. A row in
+	 * `game/Data/StatusEffects.csv` wants the other half: Touch of Nothing says
+	 * "When a player gains a buff, a stack of this debuff is consumed to negate
+	 * that buff completely", which spends one and keeps the others.
+	 *
+	 * IT DOES NOT MOVE THE EXPIRY, AND THAT IS THE DECISION IN IT. `GrantStack`
+	 * refreshes the whole lot because gaining one does; spending one is not
+	 * gaining one, so the stacks that remain go on expiring when they always
+	 * would have. Read off the genre for the same reason the refresh rule was:
+	 * Path of Exile refreshes a charge's duration when a charge is GAINED and
+	 * not when one is spent, so spending cannot be used to hold a count open for
+	 * ever. `docs/DECISIONS.md` carries the source for the refresh half.
+	 *
+	 * IT TAKES THE WINDOW FOR THE REASON `StacksHeld` DOES: this component does
+	 * not know any kind's window, and spending from a count that has already
+	 * lapsed must take nothing rather than take one off a number nobody can
+	 * still see. `UCataclysmStacks::Spend` is what callers should use; it knows
+	 * the kind's own window.
+	 *
+	 * SPENDING FROM NOTHING IS AN ORDINARY ANSWER AND NOT A MISTAKE, so it is
+	 * reported and not warned about. A cap of zero makes `GrantStack` log a
+	 * warning because only a caller error produces one; a debuff whose stacks
+	 * ran out before the player gained a buff is the mechanic working. A warning
+	 * there would fire on ordinary play.
+	 *
+	 * @param WindowSeconds  how long this kind's stacks last, so that a lapsed
+	 *                       count is spent from rather than a stale field
+	 * @return whether a stack was actually taken. False when the character held
+	 *         none, when the count had already lapsed, and when there is no
+	 *         world to time it against. **A caller that ignores this will treat
+	 *         a debuff that has run out as though it had just absorbed
+	 *         something**, which is exactly the silent disagreement between a
+	 *         caller and this component that issue #1534 was.
+	 */
+	bool SpendStack(ECataclysmStackKind Kind, float WindowSeconds);
+
 
 	/**
 	 * Clear everything temporary on this character, because it died and is

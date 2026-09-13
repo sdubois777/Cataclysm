@@ -1115,6 +1115,48 @@ void UCataclysmAbilitySystemComponent::ClearStacks(ECataclysmStackKind Kind)
 	StackGrantedAtSeconds[Index] = 0.0f;
 }
 
+bool UCataclysmAbilitySystemComponent::SpendStack(ECataclysmStackKind Kind,
+												  float WindowSeconds)
+{
+	const int32 Index = static_cast<int32>(Kind);
+	if (Index < 0 || Index >= UCataclysmStacks::KindCount)
+	{
+		return false;
+	}
+
+	// ASKED THROUGH `StacksHeld` RATHER THAN READ OFF THE FIELD, which is the
+	// same choice `GrantStack` makes and for the same reason: the window is
+	// applied in one place. A count that lapsed two seconds ago holds nothing,
+	// so there is nothing to spend, and this must not take one off a number
+	// nobody can still see. It also covers the no-world case without a branch
+	// of its own, because `StacksHeld` answers nothing when it cannot read a
+	// clock.
+	const int32 Standing = StacksHeld(Kind, WindowSeconds);
+
+	// NOTHING TO SPEND IS AN ANSWER, NOT A FAULT. No warning: see the header.
+	// This is also the floor. `Standing` cannot be negative -- `StacksHeld`
+	// returns a stored count that only `GrantStack` writes, and it writes
+	// `Min(Standing + 1, Cap)` -- so refusing at zero is what keeps the count
+	// off negative numbers, rather than a clamp after the subtraction.
+	if (Standing <= 0)
+	{
+		return false;
+	}
+
+	// AND THE EXPIRY IS LEFT EXACTLY WHERE IT WAS. Spending is not gaining, so
+	// the stacks that remain go on expiring when they always would have. A
+	// version that refreshed here would let a debuff be held open for ever by
+	// something that is supposed to be using it up.
+	StackCounts[Index] = Standing - 1;
+
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("%s spent a stack of %s, %d left."),
+		   *GetNameSafe(GetOwner()), UCataclysmStacks::NameOf(Kind),
+		   StackCounts[Index]);
+
+	return true;
+}
+
 FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 {
 	FCataclysmWhatDeathEnded Ended;
