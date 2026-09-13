@@ -278,8 +278,11 @@ namespace
 	 * modifier with no required tags applies to everything, which is what all
 	 * four minion affixes in `game/Data/Affixes.csv` are. A narrower one --
 	 * "increased minion melee damage" -- would need the minion's own tags, and
-	 * a minion carries none: the `Tags` column of `game/Data/MinionTypes.csv`
-	 * is authored and read by nothing. That is a separate piece of work and it
+	 * a minion carries none. The `Tags` column of `game/Data/MinionTypes.csv`
+	 * is imported into `FCataclysmMinionTypeRow::Tags` and nothing reads that
+	 * field: `CataclysmMinion.cpp` never mentions it, and the test that checks
+	 * every referenced tag resolves covers `WeaponSkills.csv` and the two
+	 * enchantment files, not this one. That is a separate piece of work and it
 	 * is why this passes an empty container rather than pretending to filter.
 	 */
 	float MinionAttackSpeedFor(const AActor* Follower)

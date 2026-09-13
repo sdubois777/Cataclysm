@@ -189,7 +189,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionAttackSpeedReachesAThrallTest,
  * The second half, and the reason attack speed was built before damage.
  *
  * A THRALL IS NOT AN `ACataclysmMinion`. It stays the enemy character it was,
- * which the decision of 2026-09-08 records as deliberate. So this passing is not
+ * which the decision of 2026-09-02, "an enemy can be taken rather than
+ * summoned", records as deliberate: "Nothing is destroyed and nothing is
+ * spawned", because replacing the creature with a minion "would have given
+ * every thrall in the game the same three attacks". So this passing is not
  * implied by the minion test passing -- it is a different class reaching the
  * same answer through the one place the two share.
  */
