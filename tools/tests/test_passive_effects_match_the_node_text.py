@@ -442,7 +442,17 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: which are the first rows in the game to ask how much health the character
 #: being HIT has left. Issue #1515. Every health predicate before them read the
 #: character's own health or a cost.
-AUTHORED_ROWS = 242
+#:
+#: AND TO 245 ON 2026-09-13. Three rows for ONE capstone option -- `The Final
+#: Pact`'s second, "Each minion you have grants you 4% more damage and 4%
+#: increased Maximum Energy Shield". **No new mechanism at all**: `minions_held`
+#: already existed and `Masochist_capstone_100#5` and `#6` are the same sentence
+#: shape with a different scale.
+#:
+#: THREE ROWS FOR ONE OPTION IS THE UNQUALIFIED WORD "DAMAGE". This project
+#: writes it as `attack_damage` plus `spell_damage`, which is why the damage half
+#: is two rows and the energy shield half is one.
+AUTHORED_ROWS = 245
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -714,7 +724,13 @@ AUTHORED_ROWS = 242
 #: its 74 and the Ritualist 52 of its 74. The entry above says the Ravager was
 #: 45; adding one to that happens to be right here and was still not how this
 #: was arrived at, because the same addition was wrong two changes ago.
-AUTHORED_NODES = 176
+#: AND TO 177 ON 2026-09-13, WHICH IS ONE AND NOT THREE. Three rows landed but
+#: they are all on `Ritualist_capstone_200`, which had none, so exactly one node
+#: gained its first row. **Measured, not added** -- adding the row count to the
+#: node count is the mistake this entry exists to stop.
+#:
+#: THE RAVAGER DID NOT MOVE. It is 46 of its 74 and the Ritualist 53 of its 74.
+AUTHORED_NODES = 177
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -779,7 +795,16 @@ AUTHORED_NODES = 176
 #: Ritualist's 25-point capstone. Issue #1733. Its node already had rows for
 #: options 2 and 3, so `AUTHORED_NODES` did not move for it and this number did
 #: -- the same shape as `Wade In` above.
-AUTHORED_OPTIONS = 18
+#: AND TO 19 ON 2026-09-13. `The Final Pact`'s second option, the one capstone
+#: option in either Demonic tree that could be authored with no new mechanism.
+#:
+#: THIS COUNT IS THE REASON THIS TEST EXISTS AND IT CAUGHT ITS OWN CASE. A
+#: briefing listing the counts this change moves named three -- the row count in
+#: `CataclysmDataTableTests.cpp`, `AUTHORED_ROWS` and `AUTHORED_NODES` -- and not
+#: this one. **A change authoring a capstone OPTION moves a count that a change
+#: authoring a plain node does not**, which is exactly the blind spot recorded
+#: above: a capstone counts once however many of its three options work.
+AUTHORED_OPTIONS = 19
 
 #: How many capstone options are named at all, across every tree.
 #:

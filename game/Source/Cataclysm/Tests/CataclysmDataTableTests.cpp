@@ -416,7 +416,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// INCREASES, which the engine applies to the minion's own figure from
 	// `game/Data/MinionTypes.csv`. A flat row would land in a bucket nothing
 	// reads.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        242)
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        245)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
