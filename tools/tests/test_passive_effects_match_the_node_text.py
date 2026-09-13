@@ -452,7 +452,19 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: THREE ROWS FOR ONE OPTION IS THE UNQUALIFIED WORD "DAMAGE". This project
 #: writes it as `attack_damage` plus `spell_damage`, which is why the damage half
 #: is two rows and the energy shield half is one.
-AUTHORED_ROWS = 245
+#:
+#: AND TO 246 ON 2026-09-13. ONE row, for `Cold Reading`
+#: (`Ritualist_basic_c_a2`): "+2% increased Spell Damage per point while your
+#: Energy Shield is full". Issue #1515. It is one row and not two because the
+#: node names `Spell Damage` specifically rather than the unqualified word the
+#: entry above is about.
+#:
+#: IT NEEDED A NEW PREDICATE, `energy_shield_at_maximum`. Nothing could read an
+#: energy shield at all: `class_resource_at_maximum` asks the same question about
+#: a different pool, and the six health predicates read health. The condition and
+#: the row land together, which is what `target_health_below` did two changes
+#: ago rather than a choice made here.
+AUTHORED_ROWS = 246
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -730,7 +742,17 @@ AUTHORED_ROWS = 245
 #: node count is the mistake this entry exists to stop.
 #:
 #: THE RAVAGER DID NOT MOVE. It is 46 of its 74 and the Ritualist 53 of its 74.
-AUTHORED_NODES = 177
+#:
+#: AND TO 178 ON 2026-09-13. One node, `Cold Reading`
+#: (`Ritualist_basic_c_a2`), which had no row. Issue #1515.
+#:
+#: MEASURED AGAIN RATHER THAN ADDED, and the tree figures with it: the Ravager
+#: is 46 of its 74 and DID NOT MOVE, the Ritualist is 54 of its 74. Adding one
+#: to the entry above happens to be right again, and is again not how this was
+#: arrived at. The counts were read out of `game/Data/PassiveEffects.csv` and
+#: `game/Data/PassiveNodes.csv` together, by matching each node's name against
+#: the set of nodes holding a row.
+AUTHORED_NODES = 178
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:

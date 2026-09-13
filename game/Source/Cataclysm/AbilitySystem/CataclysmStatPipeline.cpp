@@ -199,13 +199,16 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 		// reading, and `test_condition_lists_agree_with_the_code.py` holds this
 		// list against two others rather than against this number.
 		//
-		// ITS RECORD IS TWO FAILURES AND ONE SUCCESS, AND THE SUCCESS IS WHY IT
-		// IS STILL HERE. The failures first, because they are the reason to
-		// doubt it: the change that corrected this count from ten to thirteen
-		// left the header's own count reading "TEN OF THE TWENTY-ONE" -- the
-		// very sentence the line above points at -- while adding 131 lines to
-		// that same file; and the paragraph below went stale the same way,
-		// having said "the last two" while those two were last.
+		// IT FAILED ON ITS OWN AUTHOR, IN THE COMMIT THAT WROTE IT. Issue #1750
+		// added the three ailment conditions above, corrected THIS count from
+		// ten to thirteen, wrote the sentence about a list nobody counts, added
+		// 131 lines to the header -- and left the header's own count reading
+		// "TEN OF THE TWENTY-ONE", which is the sentence the line above points
+		// at. Writing the rule down and breaking it were the same commit.
+		//
+		// AND THE PARAGRAPH BELOW WENT STALE THE SAME WAY, having said "the
+		// last two" while those two were last. Two records of drift, in one
+		// comment, about itself.
 		//
 		// THE SUCCESS IS THE CHANGE THAT ADDED `EnergyShieldAtMaximum`. Issue
 		// #1515. Somebody reading this switch for an unrelated reason saw the
@@ -213,7 +216,12 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 		// change made it fourteen -- before publishing. That is the job this
 		// sentence was written for, and it is the first time it has done it.
 		//
-		// SO DO NOT DELETE THE NUMBER ON THE STRENGTH OF THE FAILURES ALONE.
+		// SO THE HONEST ACCOUNT IS ONE FAILURE AND ONE SUCCESS, AND NEITHER HALF
+		// ALONE IS FAIR. Quoting only the failure argues for deleting a defence
+		// that has since worked; quoting only the success hides that it failed
+		// immediately, on the person who wrote it.
+		//
+		// SO DO NOT DELETE THE NUMBER ON THE STRENGTH OF THE FAILURE ALONE.
 		// A defence is easiest to remove at the moment its record looks worst,
 		// which is usually just before anybody has tried using it as intended.
 		// Membership is enforced elsewhere --
