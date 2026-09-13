@@ -209,8 +209,11 @@ above; it passes now.**
 **Why it is derived from the KIND of change rather than its content.** A review
 derives its checks from the diff — rows added, counts moved, tests written — and
 **an omission leaves no diff to derive a check from.** The pull request adding
-`energy_shield_at_maximum` was reviewed against 21 separate controls and not one
-of them could have asked whether the change recorded its decisions.
+`energy_shield_at_maximum` was reviewed carefully — the reviewing session reports
+21 separate controls, **a figure quoted from its report rather than measured
+here** — and **not one of them could have asked whether the change recorded its
+decisions**. That part is not a quote: it follows from the outcome, since the
+entry was missing and the change merged.
 
 **Two scale names are the same gap and are deliberately not covered**:
 `health_missing` and `health_owed`, used by nine rows and mentioned nowhere here.

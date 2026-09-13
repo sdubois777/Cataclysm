@@ -22,9 +22,12 @@ recorded**, and every argument about how they behave existed only as a comment i
 WHY AN OMISSION IS THE HARD CASE. A review derives its checks from the diff: rows
 added, counts moved, tests written. **An omission leaves no diff to derive a
 check from**, so a control set built that way is structurally blind to it. The
-pull request that added `energy_shield_at_maximum` was reviewed against 21
-controls and none of them could have asked this question. This check is derived
-from the KIND of change instead: if the vocabulary grew, the log must say so.
+pull request that added `energy_shield_at_maximum` was reviewed carefully -- the
+session that reviewed it reports running 21 separate controls, a figure taken
+from its report rather than measured here -- and **none of them could have asked
+this question**, which is demonstrable from the outcome: the entry was missing
+and the change merged anyway. This check is derived from the KIND of change
+instead: if the vocabulary grew, the log must say so.
 
 WHAT THIS DELIBERATELY DOES NOT DO. It cannot tell a real entry from the name
 appearing in a passing sentence, and it does not try -- a name mentioned nowhere
