@@ -5,10 +5,16 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-09-13 — Infernal Rain drops patches of burning ground near the player, and five of its six figures are judgements
 
 **Affects:**
-`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`;
-`CataclysmDungeonGameMode.h` and `.cpp` beside them;
-`game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h`; and the tests
-beside them. Issue
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h`, and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`.
+Every one written out in full rather than in this log's usual shorthand, because
+`tools/tests/test_the_decisions_log_names_real_files.py` keeps only backticked
+items containing a slash — so "`X.h` and `.cpp`" leaves the `.cpp` unchecked, and
+a bare filename is not checked at all. Issue
 [#41](https://github.com/sdubois777/Cataclysm/issues/41), and
 [#1605](https://github.com/sdubois777/Cataclysm/issues/1605) which carries the
 eight hazard rows. **Applied, and the row is `Partly` built rather than `Built`
