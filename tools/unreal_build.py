@@ -153,6 +153,30 @@ TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests perform
 #: into a set rather than counted. Issue #467.
 SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
 
+#: The engine refusing to register a test, capturing the C++ class name.
+#:
+#: A REFUSED TEST DOES NOT RUN, IS NOT LISTED, AND IS NOT COUNTED, so the run
+#: reports a clean pass with one test missing. Unreal registers a test under its
+#: CLASS name -- the macro passes `TEXT(#TClass)` to `FAutomationTestBase` -- in a
+#: `TMap<FString, ...>`, which compares keys without regard to case. Two classes
+#: one letter's capitalisation apart are one key and the second is refused.
+#:
+#: That happened and cost a month. Issue #1666. The warning was printed at every
+#: editor start throughout and nobody read it, because reading it means finding
+#: one line in a log of roughly 370,000 characters.
+#:
+#: THE CLASS NAME IS THE ONLY THING THE ENGINE CAN NAME HERE. The readable test
+#: name lives on the instance that never registered, so it is not in the message
+#: and cannot be. The class name is also the identifier somebody has to change,
+#: which makes it the more useful of the two to report.
+#:
+#: UNLIKE `SKIPPED_HALF`, THIS WORDING IS THE ENGINE'S AND NOT THIS PROJECT'S. An
+#: engine upgrade could change it and silence every refusal.
+#: `tools/tests/test_unreal_build.py` reads the engine source and fails when the
+#: sentence is no longer there.
+REFUSED_REGISTRATION = re.compile(
+    r"Failed to register test with the name '([^']+)'")
+
 
 class BuildDidNothing(RuntimeError):
     """A build reported success without compiling anything that was asked for.
@@ -315,6 +339,15 @@ class TestOutcome:
     #: them had a subject left. Issue #467.
     skipped_half: tuple[str, ...] = ()
 
+    #: C++ test classes the engine refused to register, so their tests never ran.
+    #:
+    #: NOT THE SAME KIND OF THING AS `skipped_half`, which is why it is a
+    #: separate field rather than another entry in that one. A skipped half is a
+    #: test that ran and checked less than its name claims; this is a test that
+    #: did not run at all and is absent from every count in the report. Issue
+    #: #1736.
+    refused_registration: tuple[str, ...] = ()
+
     @property
     def crashed(self) -> bool:
         """The run never reported how many tests it performed.
@@ -360,6 +393,21 @@ class TestOutcome:
         if self.skipped_half:
             line += (f". {len(self.skipped_half)} skipped part of what they "
                      f"check: " + ", ".join(self.skipped_half))
+
+        # SAID LAST BECAUSE IT IS THE ONLY ONE THAT MAKES THE COUNT ITSELF WRONG.
+        # A failure and a skipped half are both statements about tests that ran;
+        # this says a test did not, so every number earlier in the line is short
+        # by however many are named here. Putting it at the end keeps it next to
+        # nothing else and makes it the last thing read.
+        if self.refused_registration:
+            line += (f". The engine refused to register "
+                     f"{len(self.refused_registration)}, so they did not run "
+                     f"and are not in the counts above: "
+                     + ", ".join(self.refused_registration)
+                     + ". Those are C++ class names. A class name is the "
+                       "registry key and is compared without regard to case, so "
+                       "the cause is usually another test class whose name "
+                       "differs only in capitalisation. Issue #1666.")
         return line
 
 
@@ -619,12 +667,22 @@ def parse_test_log(text: str) -> TestOutcome:
     # routes on purpose. See SKIPPED_HALF.
     skipped = sorted(set(SKIPPED_HALF.findall(text)))
 
+    # DE-DUPLICATED DEFENSIVELY, NOT BECAUSE IT IS KNOWN TO REPEAT. Measured on
+    # 2026-09-13: the engine printed this exactly once per refusal, in each of
+    # nine logs, and a log holds one editor run -- `Cataclysm.log` carries a
+    # single "Log file open" line and is overwritten at the next start. That is
+    # unlike the skips above, which really are written twice by two routes.
+    # A set costs nothing and means a log that did hold two runs would report one
+    # collision once rather than as two separate problems.
+    refused = sorted(set(REFUSED_REGISTRATION.findall(text)))
+
     performed_match = TESTS_PERFORMED.search(text)
     return TestOutcome(
         int(performed_match.group(1)) if performed_match else None,
         tuple(succeeded),
         tuple(failed),
         tuple(skipped),
+        tuple(refused),
     )
 
 
