@@ -1195,11 +1195,22 @@ hit. `crowd_control_resistance` cannot. Nothing in the data, the generator or th
 stat name says which is which.
 
 **The same shape was found in a second place while checking this.**
-`UCataclysmSkillEffects::ModifiedDamage` runs the pipeline over every runtime stat
-modifier with an empty condition state, on a live damage path used by retaliation
-and three skill-template sites. It costs nothing today — the only two places that
-add a runtime modifier both add unconditional ones — and it is a trap set for the
-first conditional one anybody writes.
+`UCataclysmSkillEffects::ModifiedDamage` ran the pipeline over every runtime stat
+modifier with an empty condition state, on a live damage path used by retaliation,
+a hit, and three skill-template sites. It cost nothing at the time — the only two
+places that add a runtime modifier both add unconditional ones — and it was a trap
+set for the first conditional one anybody writes.
+
+**Both halves of that are now fixed, and the counts above were wrong by one.**
+Issue [#1685](https://github.com/sdubois777/Cataclysm/issues/1685) made the call
+ask the character what is true of it, which covers health, stacks, debuffs and
+movement. Issue [#1729](https://github.com/sdubois777/Cataclysm/issues/1729) passes
+through the four facts that belong to the blow rather than to the character — the
+health cost paid, the distance moved, the target's distance and whether the target
+was staggered. **There are five call sites, not four**: the sentence above missed
+`CataclysmSkillEffects.cpp`'s own call from `ApplyHit`, which is the only one of
+the five that has those facts to give. The other four have no blow in hand and
+pass nothing, which is the correct answer for them rather than a remaining gap.
 
 ### What this change unblocks, which is a different count from the cap's
 
