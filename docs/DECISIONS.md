@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A Field Medic restores five percent of each ally's own maximum health per pulse, and the pack is what bounds it
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h` and
+`.cpp`. Issue [#1648](https://github.com/sdubois777/Cataclysm/issues/1648).
+**Applied.**
+
+**A share of each ally's own maximum rather than a flat amount**, so one figure
+works for a Common creature and for a boss without being meaningless to one of
+them.
+
+**What bounds it is the pack, not the target.** One medic heals every ally in
+range at once, so four nearby creatures make it twenty percent of a creature's
+health restored across the pack every second. The per-target figure is modest
+precisely because the pack multiplies it.
+
+**It is a judgement and not derived from anything.** The row states no rate at
+all. The genre offered nothing to read it off: Diablo 4 has no affix that
+continuously heals other monsters, its nearest being a shared life pool, which is
+a different mechanism. What is claimed is that five percent is in the range where
+the row's stated purpose can work, and it wants tuning against play.
+
+**The other two numbers were not chosen here.** The radius is the six metres every
+aura in this game uses, the project owner's decision of 2026-09-05, and the pulse
+is the one-second interval this system already had.
+
+---
+
+## 2026-09-13 — The floor's medic is the rarest creature on it, and a floor of Common creatures still gets one
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+`.cpp`. Issue [#1648](https://github.com/sdubois777/Cataclysm/issues/1648).
+**Applied.**
+
+The row asks for "an elite 'Medic' enemy". **Taking the highest rarity present
+already gives an Elite or rarer creature on any floor that has one**, and prefers
+a Legendary over an Elite, which is right because a Legendary is not less elite
+than an Elite. First of them on a tie, so the choice is deterministic.
+
+**On a floor where every creature is Common, this appoints a Common medic rather
+than none, and that is the decision.** The row says a medic "is present on each
+floor", and its purpose — forcing the player to deal with a non-threatening
+enemy first — still works with a weak one. Requiring Elite or rarer would make
+the modifier do nothing at all on those floors: roughly one floor in eight at four
+creatures, since rarity is drawn per creature with no guaranteed count.
+
+**Not fixed by promoting a creature's rarity**, because the independent draw is a
+recorded design decision and overriding it to make one modifier work would be the
+wrong trade.
+
+---
+
+## 2026-09-13 — A killed Field Medic is not replaced, and a later Horde wave may bring another
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+`.cpp`. Issue [#1648](https://github.com/sdubois777/Cataclysm/issues/1648).
+**Applied.**
+
+The choice runs at two moments only: when an ordinary floor's creatures are all
+down, and when an arriving wave's last creature lands. **It does not run again
+when the medic dies.**
+
+**That is the point of the rule rather than a gap in it.** The row exists to force
+the player to prioritise the medic. Killing it is the answer the rule asks them to
+find, and a floor that grows a replacement takes the answer away.
+
+**A later wave on a Horde floor may bring a new one, for the opposite reason:** a
+wave is a fresh encounter with its own creatures, not a continuation of the one
+the player already solved.
+
+Recorded because the two-call-site shape reads as an oversight and is not one.
+
+---
+
+## 2026-09-13 — "It does not attack" covers a medic's damaging auras, and its ally-eating trait goes on a separate ground
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`,
+`CataclysmEnemyCharacter.h`, `CataclysmEnemyController.h` and `.cpp`,
+`CataclysmEnemyModifiers.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`. Issue
+[#1680](https://github.com/sdubois777/Cataclysm/issues/1680). **Applied.**
+
+**Two rulings, on separate grounds, and they are recorded separately because one
+does not follow from the other.**
+
+**First: the damaging auras and the charge go, because the row calls the creature
+non-threatening.** The row does not only say "it does not attack" — it states
+its purpose as forcing the player "to prioritize a **non-threatening** enemy". A
+creature that burns everything standing near it is threatening even if it never
+swings, so a gate covering only swings and abilities produces the thing the row
+says it is not.
+
+**This is not a corner case.** The medic is chosen as the rarest creature on the
+floor, and rarity is how many modifiers a creature draws, so the medic is the
+creature most likely to have drawn one: seventeen percent at Elite rising to
+fifty-five at Boss, from a pool of eighteen rows of which three harm with no
+decision behind them.
+
+**Second: the trait that consumes a nearby ally goes too, and NOT under the
+clause above.** Eating an ally is plainly not an attack. What reaches it is the
+other half of the same row: the medic "constantly heals all other enemies in a
+large radius". A trait that consumes one contradicts what the row says the
+creature **does**, not merely what it is for.
+
+**What is deliberately not suppressed.** Moving and turning, because a medic that
+cannot reposition stands where it spawned and the player walks away from it. And
+anything that fires because the creature was **hit** — retaliation, the brand,
+the charm on whoever struck. Responding to being attacked is not attacking, and a
+creature that cannot be safely hit is a different thing from one that attacks.
+
+**PROVISIONAL, AND THAT IS PART OF THE RECORD.** Both rulings were made by the
+coordinating session on the project owner's behalf, from the row's own stated
+purpose rather than from an answer by the owner. It has been put to them and they
+may reverse either in a sentence. An entry that recorded a ruling without
+recording that would read as settled a month from now.
+
+---
+
 ## 2026-09-12 — Two characters reach one stagger's duration and their scalars multiply, and a stagger can be refused by the target's health without refusing the shove
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
