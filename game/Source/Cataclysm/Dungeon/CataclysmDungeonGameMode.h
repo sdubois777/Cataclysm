@@ -1035,6 +1035,30 @@ private:
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Withered Ground: whether the player is standing on a patch of Barren
+	 * Earth right now. Issue #41.
+	 *
+	 * IT ONLY READS. Patches are placed by `NoteDeathForWitheredGround` when a
+	 * creature dies; this asks, every beat, whether any of them covers the
+	 * player, and sets the field the one applier reads.
+	 *
+	 * THE SAME SHAPE AS `StepSingularityWells` AND FOR THE SAME REASON. The
+	 * reading must not sit inside the placing branch: the beat a player walks
+	 * OFF a patch is a beat on which nothing was placed, and a reduction left
+	 * behind would follow them around the floor.
+	 *
+	 * STANDING ON TWO PATCHES IS THE SAME AS STANDING ON ONE, deliberately.
+	 * The row states one figure and says nothing about overlapping patches,
+	 * and this row's patches overlap far more readily than the other two
+	 * hazards' -- they are placed wherever creatures die, which on a floor
+	 * with a choke point is repeatedly the same few metres. Stacking would
+	 * reach the pipeline's floor after two.
+	 */
+	void StepWitheredGround(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1056,13 +1080,41 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
-	 * A death anywhere on the floor, for The Nihil's Embrace's cleanse.
-	 * Issue #41, slice 2.
+	 * A death anywhere on the floor, for whichever rules the floor carries.
+	 * Issue #41, slices 2 and 6.
 	 *
-	 * IT ONLY RECORDS. The beat above applies what it records, within a quarter of
-	 * a second, so a death does no stat work inside the notice it arrived on.
+	 * IT DISPATCHES AND DOES NOTHING ITSELF. Each rule below tests for its own
+	 * row and returns if the floor does not carry it. This used to hold one
+	 * rule's logic behind a single early return on that rule's key, which is
+	 * the shape that stops a second listener from ever being added.
+	 *
+	 * THEY ONLY RECORD AND PLACE. No stat work happens inside the notice a
+	 * death arrived on; the beat applies what they record, within a quarter of
+	 * a second.
 	 */
 	void OnSomethingDied(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * The Nihil's Embrace's cleanse, on a boss's defeat. Issue #41, slice 2.
+	 */
+	void NoteDeathForNihilsEmbrace(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Withered Ground's patch of Barren Earth, where a creature died.
+	 * Issue #41.
+	 *
+	 * EVERY DEATH, WITH NO CAP AND NO CHANCE, because the row states the
+	 * trigger and states no limit: "Enemies leave patches of Barren Earth on
+	 * death." A cap would make that sentence stop being true at whichever
+	 * enemy hit it, and a chance would need a number the row does not give.
+	 *
+	 * THE PATCH IS OWNED BY THE FLOOR AND NOT BY THE CREATURE THAT DIED.
+	 * `ACataclysmFloorHazardSource` exists for this: every route that applies
+	 * anything refuses unless the source resolves to an ability system
+	 * component, and a corpse cannot be that. Its own header names this row
+	 * as one of the two reasons it was written.
+	 */
+	void NoteDeathForWitheredGround(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * How far the player had walked when The Nihil's Embrace was last cleansed.
@@ -1177,6 +1229,24 @@ private:
 	float SingularityWellsSecondsSinceLastWell = 0.0f;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> SingularityWells;
 	float SingularityWellsSlowApplied = 0.0f;
+
+	/**
+	 * Withered Ground's patches on this floor, and the reduction in force.
+	 * Issue #41.
+	 *
+	 * NO CLOCK, WHICH IS THE DIFFERENCE FROM THE TWO HAZARD RULES ABOVE. Those
+	 * place on a cadence and hold a timer; a patch of Barren Earth is placed
+	 * by a death, so there is nothing to advance and nothing to reset.
+	 *
+	 * THE PATCHES LAST THE FLOOR, so this list only ever shrinks by something
+	 * destroying a patch -- which `UCataclysmFloorContents::ClearTheFloor` does
+	 * when the player leaves. A weak pointer going invalid IS that.
+	 *
+	 * THE REDUCTION IN FORCE IS REMEMBERED SO A BEAT THAT CHANGES NOTHING ASKS
+	 * FOR NO REFRESH, which every beat-driven field here does.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> WitheredGroundPatches;
+	float WitheredGroundRecoveryLessApplied = 0.0f;
 
 	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order

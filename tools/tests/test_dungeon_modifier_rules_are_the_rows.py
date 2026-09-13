@@ -222,6 +222,56 @@ def test_singularity_wells_other_five_figures_are_judgements():
         "docs/DECISIONS.md.")
 
 
+def test_withered_ground_still_says_it_takes_eighty_per_cent():
+    """The one number its row states, and the rule uses it as stated.
+
+    `WitheredGroundRecoveryLessPercent` is not a judgement for that reason. It is
+    the only one of this rule's two constants that came with the row; the patch
+    radius did not.
+    """
+    words = flat(rows()["Famine_Withered_Ground"]["Description"])
+    percent = constant("WitheredGroundRecoveryLessPercent")
+
+    assert f"is reduced by {percent:g}%" in words, words
+
+
+def test_withered_ground_still_names_all_four_kinds_of_recovery():
+    """The row asks for four stats and the rule writes four Less multipliers.
+
+    WHY THIS IS WORTH PINNING. Two of the four are worth nothing to almost every
+    character today -- `game/Data/ClassStats.csv` gives `life_leech` to one class
+    and gives no class any `mana_leech`, and a multiplier on a base of zero is
+    zero. So somebody tidying up could remove the two leech modifiers, see no test
+    fail and no behaviour change, and quietly make the rule stop matching its row.
+    This is what would notice.
+    """
+    words = flat(rows()["Famine_Withered_Ground"]["Description"])
+    source = (EFFECTS_DIR / "CataclysmDungeonModifierEffects.cpp").read_text(
+        encoding="utf-8")
+
+    assert "Health and Mana recovery (regen/leech)" in words, words
+    for stat in ("health_regen", "mana_regen", "life_leech", "mana_leech"):
+        assert f'TEXT("{stat}")' in source, (
+            f"the Withered Ground row says 'Health and Mana recovery "
+            f"(regen/leech)' and {stat!r} is no longer named in "
+            "CataclysmDungeonModifierEffects.cpp. Four stats are what that phrase "
+            "means: health and mana regeneration, and life and mana leech.")
+
+
+def test_withered_grounds_patch_radius_is_a_judgement_not_the_rows():
+    """Its row states the 80% and nothing else.
+
+    The patch radius is not the row's. `docs/DECISIONS.md` records it. IF THE ROW
+    EVER STATES ONE, this fails, so the constant is checked against it and the log
+    stops calling it a judgement.
+    """
+    words = flat(rows()["Famine_Withered_Ground"]["Description"])
+
+    assert [c for c in words if c.isdigit()] == ["8", "0"], (
+        "The Withered Ground row now states a number besides its 80%. Check "
+        "WitheredGroundPatchRadiusCm against it and update docs/DECISIONS.md.")
+
+
 def test_singularity_wells_damage_is_void_and_comes_from_its_own_column():
     """Why the wells are typed without any type being named in code.
 

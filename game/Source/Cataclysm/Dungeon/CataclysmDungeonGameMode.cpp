@@ -1936,8 +1936,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// Issues #1605 and #41. It does both: it places actors AND it moves a stat.
 	const bool bSingularityWells = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::SingularityWellsKey));
+	// AND WITHERED GROUND, WHICH PLACES NOTHING HERE. Its patches are placed by
+	// a death; this beat only asks whether the player is standing on one.
+	// Issue #41.
+	const bool bWitheredGround = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::WitheredGroundKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
-		&& !bSingularityWells)
+		&& !bSingularityWells && !bWitheredGround)
 	{
 		return;
 	}
@@ -1992,6 +1997,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bSingularityWells)
 	{
 		StepSingularityWells(Player, AbilitySystem);
+	}
+
+	// AND WITHERED GROUND, WHICH ONLY READS. It spawns nothing on the beat, so
+	// its position in this order does not matter the way the two above it do.
+	// It is last because it was written last. Issue #41.
+	if (bWitheredGround)
+	{
+		StepWitheredGround(Player, AbilitySystem);
 	}
 }
 
@@ -2123,11 +2136,34 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// nothing, and nothing is what the effects already hold.
 	Effects.MovementSpeedLessPercent = SingularityWellsSlowApplied;
 
+	// AND THE RECOVERY WITHERED GROUND IS TAKING. Read unconditionally like the
+	// rest, for the same reason: a floor without that row leaves the field at
+	// nothing, and nothing is what the effects already hold. Issue #41.
+	//
+	// PLAIN ASSIGNMENT IS SAFE ONLY WHILE NO PER-FLOOR RULE WRITES THIS FIELD.
+	// `PlayerEffectsFor` above fills the three per-floor fields and leaves the
+	// beat-driven ones alone, so these assignments land on nothing. A per-floor
+	// rule that later wrote one of them would have its value overwritten here,
+	// on a floor that also carried the beat rule and not otherwise -- a fault
+	// that depends on which other modifier the floor rolled. Issue #1765.
+	Effects.RecoveryLessPercent = WitheredGroundRecoveryLessApplied;
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
 
 void ACataclysmDungeonGameMode::OnSomethingDied(
+	const FCataclysmDeathNotice& Notice)
+{
+	// ONE NOTICE, EVERY RULE THAT WANTS IT, EACH TESTING FOR ITS OWN ROW.
+	// Issue #41. This function held The Nihil's Embrace's logic behind a single
+	// early return on that rule's key, which is the shape that stops a second
+	// listener from being added without rewriting the first.
+	NoteDeathForNihilsEmbrace(Notice);
+	NoteDeathForWitheredGround(Notice);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
 	const FCataclysmDeathNotice& Notice)
 {
 	if (!FloorBrief.Modifiers.Contains(
@@ -2171,6 +2207,114 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NihilsEmbraceRewardUntilSeconds =
 		World->GetTimeSeconds()
 		+ UCataclysmDungeonModifierEffects::NihilsEmbraceRewardSeconds;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::WitheredGroundKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE. The row says "Enemies leave patches", and
+	// this notice is sent for every death on the floor including the player's.
+	// A patch left where the player died would punish them for dying in a place
+	// they are about to stand up in.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// WHOSE NAME IT IS DEALT IN. Nothing here damages, so the owner is not
+	// needed for a damage route -- but a patch with no owner has no ability
+	// system component behind it, and `ACataclysmFloorHazardSource`'s own header
+	// records that every apply route refuses in that case. Using it here keeps
+	// this row's patch the same kind of object as the other two hazards', so a
+	// later change that gives Barren Earth something to apply does not have to
+	// rebuild the ownership first.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// WHERE THE CREATURE DIED, WHICH THE NOTICE CARRIES. The other two hazard
+	// rules pick a random point near the player because nothing in the world
+	// tells them where to put one. This row does not choose: "Enemies leave
+	// patches of Barren Earth ON DEATH" names the place.
+	//
+	// START AND END THE SAME POINT MAKES IT ROUND, the way a well is made round.
+	//
+	// NO DAMAGE PER TICK, WHICH IS THE FIRST HAZARD HERE THAT DOES NOT BURN. The
+	// row takes recovery away and nothing else. Since issue #1701 a zone with no
+	// damage still sweeps, and this one does not even need that -- the reduction
+	// is a stat modifier the beat applies, not something the patch does to
+	// whoever it finds. The patch is a shape to stand in and a thing to see.
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Notice.Location, Notice.Location,
+		Effects::WitheredGroundPatchRadiusCm, 0.0f);
+	if (!Patch)
+	{
+		return;
+	}
+
+	WitheredGroundPatches.Add(Patch);
+}
+
+void ACataclysmDungeonGameMode::StepWitheredGround(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Player || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL THERE, ASKED RATHER THAN REMEMBERED. A patch is destroyed
+	// with the rest of the floor's contents, so a weak pointer going invalid IS
+	// that.
+	WitheredGroundPatches.RemoveAll(
+		[](const TWeakObjectPtr<ACataclysmGroundZone>& Patch)
+		{
+			return !Patch.IsValid();
+		});
+
+	// EACH PATCH IS ASKED WHETHER IT COVERS THE PLAYER. `Covers` is the same test
+	// a zone's own sweep makes, so what reduces a character's recovery and what
+	// the patch is drawn as cannot disagree about where the patch is.
+	const FVector Feet = Player->GetActorLocation();
+	bool bOnAPatch = false;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : WitheredGroundPatches)
+	{
+		if (Patch.IsValid() && Patch->Covers(Feet))
+		{
+			bOnAPatch = true;
+			break;
+		}
+	}
+
+	// ONE PATCH OR SIX MAKE NO DIFFERENCE, and it matters more here than it does
+	// for the two hazards placed at random: these are placed wherever creatures
+	// die, which on a floor with a choke point is repeatedly the same few metres.
+	// The row states one figure and says nothing about overlapping patches, and
+	// stacking 80% twice would reach the pipeline's floor at once.
+	const float Wanted = bOnAPatch ? Effects::WitheredGroundRecoveryLessPercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, WitheredGroundRecoveryLessApplied))
+	{
+		WitheredGroundRecoveryLessApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
@@ -2222,6 +2366,17 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		SingularityWellsSecondsSinceLastWell = 0.0f;
 		SingularityWells.Empty();
 		SingularityWellsSlowApplied = 0.0f;
+
+		// AND WITHERED GROUND FORGETS ITS PATCHES AND ITS REDUCTION. Issue #41.
+		// TWO LINES AND NOT THREE, because this rule holds no clock: its patches
+		// are placed by deaths rather than by a cadence, so there is no wait to
+		// carry across a floor. The list because
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
+		// actors; the reduction because the call above has already taken it off
+		// the character, so leaving the figure here would make the next beat
+		// believe it was still applied and never put it back.
+		WitheredGroundPatches.Empty();
+		WitheredGroundRecoveryLessApplied = 0.0f;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is

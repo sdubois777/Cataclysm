@@ -91,6 +91,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one that changes both: it places actors AND moves a stat. */
 	const FName SingularityWells(TEXT("Void_Singularity_Wells"));
 
+	/** And the one whose patches are placed by a death rather than a clock. */
+	const FName WitheredGround(TEXT("Famine_Withered_Ground"));
+
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
@@ -2167,6 +2170,289 @@ bool FCataclysmWellBeatTest::RunTest(const FString& Parameters)
 	Beats(BeatsPerCadence * (Effects::SingularityWellsMostWells + 2));
 	TestEqual(TEXT("the floor stops at its cap however long it goes on"),
 			  CountWells(), Effects::SingularityWellsMostWells);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWitheredGroundTest,
+	"Cataclysm.DungeonModifierEffects.ADeathLeavesGroundThatTakesRecoveryFromWhoeverStandsOnIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE WHOLE RULE, DRIVEN THE WAY THE GAME DRIVES IT. Issue #41.
+	//
+	// IT NEVER REFRESHES THE ATTRIBUTES ITSELF. `ApplyToCharacter` calls
+	// `UCataclysmEquipmentComponent::RefreshAttributes`, so the rule is the only
+	// thing that writes the attributes this test reads. A test that refreshed them
+	// would pass with the rule's own apply deleted.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it, so the binding is made the way StartPlay makes it. This is
+	// the same line the boss-cleanse test above needs, for the same reason.
+	//
+	// LEAVING IT OUT IS WHAT THE FIRST RUN OF THIS TEST DID. Every earlier
+	// assertion passed -- the rule is wired into the beat, a floor without the row
+	// places nothing, forty beats with nothing dying place nothing -- and then a
+	// creature died and no patch appeared, because nothing was listening. The rule
+	// was right and the test was one line short.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+	const auto CountPatches = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	};
+
+	// A CREATURE THAT CAN BE KILLED WHEREVER IT IS PUT. The collision override is
+	// the correction another test in this file records: creatures carry a capsule
+	// and the default handling refuses a blocked spawn, which reads as "no creature
+	// spawned" and names the symptom rather than the cause.
+	//
+	// IT ASSERTS EACH STEP RATHER THAN ONLY THE OUTCOME, and that is the
+	// correction to a first version of this test. That version asserted only that
+	// a creature spawned, and its failure read "its death leaves exactly one patch
+	// to be 1, but it was 0" -- which cannot tell four faults apart: a creature
+	// spawned with no health, a blow that did not kill, a death notice that never
+	// reached the dungeon game mode, or a patch spawn that refused. A failing test
+	// that does not say which side is wrong costs a whole build to find out.
+	// WHERE THE LAST CREATURE KILLED BY THE HELPER BELOW WAS STANDING.
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return nullptr;
+		}
+
+		// IT HAS HEALTH TO LOSE. A creature whose maximum health is zero is
+		// already dead, and `UCataclysmSkillEffects::MarkDead` refuses a second
+		// time -- so no death would be announced and nothing downstream would
+		// run, with no error naming the cause.
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health = Theirs->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+
+		// WHERE IT ACTUALLY STANDS, READ BEFORE THE BLOW. The spawn above passes
+		// `AdjustIfPossibleButAlwaysSpawn`, which lets the engine move the actor
+		// when the asked-for spot is blocked -- so the point passed in is a
+		// request and not a fact. Read after the blow it would be a dead actor's
+		// location, which is a thing this project has been bitten by.
+		StoodAt = Creature->GetActorLocation();
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
+		}
+		return Creature;
+	};
+
+	// A FLOOR WITHOUT THE ROW FIRST, so the negative case needs nothing unpicked.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("a creature to kill on the plain floor"),
+					 KillACreatureAt(FVector(900.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	Beat();
+	TestEqual(TEXT("a death on a floor without Withered Ground leaves no patch"),
+			  CountPatches(), 0);
+	TestNull(TEXT("and makes no hazard source at all"),
+			 ACataclysmFloorHazardSource::Existing(World));
+
+	// NOW THE FLOOR THAT CARRIES IT. Changing the floor also empties the patch
+	// list, through `ApplyFloorRulesToPlayer`.
+	Mode->DungeonModifiers = {WitheredGround};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the withered floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Withered Ground"),
+			 Mode->FloorBrief.Modifiers.Contains(WitheredGround));
+
+	// THE RATES BEFORE ANY PATCH EXISTS, which the reduction is measured against.
+	const float FullHealthRegen = Player.Read(Vital::GetHealthRegenAttribute());
+	const float FullManaRegen = Player.Read(Vital::GetManaRegenAttribute());
+	if (!TestTrue(TEXT("the player has health regeneration to lose"),
+				  FullHealthRegen > 0.0f)
+		|| !TestTrue(TEXT("and mana regeneration to lose"), FullManaRegen > 0.0f))
+	{
+		return false;
+	}
+
+	// NO CLOCK PLACES ONE. The two hazard rules beside this one drop something on
+	// a cadence; this one waits for a death, so a floor where nothing dies stays
+	// clear however long it runs.
+	for (int32 Index = 0; Index < 40; ++Index)
+	{
+		Beat();
+	}
+	TestEqual(TEXT("ten seconds of beats with nothing dying places no patch"),
+			  CountPatches(), 0);
+
+	// A DEATH, WELL AWAY FROM THE PLAYER so the patch is somewhere to walk to
+	// rather than somewhere they already stand.
+	const FVector DiedAt(1500.0f, 0.0f, 0.0f);
+	if (!TestNotNull(TEXT("a creature to kill on the withered floor"),
+					 KillACreatureAt(DiedAt)))
+	{
+		return false;
+	}
+	// THE HAZARD SOURCE FIRST. The rule makes it before it asks for a patch, so
+	// its presence says the death reached the handler and its absence says the
+	// handler never ran. Without this the next line's 0 means either.
+	TestNotNull(TEXT("the death reached the rule, which made a hazard source"),
+				ACataclysmFloorHazardSource::Existing(World));
+	TestEqual(TEXT("its death leaves exactly one patch"), CountPatches(), 1);
+
+	ACataclysmGroundZone* Patch = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			Patch = *It;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("the patch is readable"), Patch))
+	{
+		return false;
+	}
+
+	// WHAT THE PATCH IS: where the creature died, the house width, lasting the
+	// floor, and taking no health -- the first hazard here that does not burn.
+	TestTrue(FString::Printf(
+				 TEXT("the patch is where the creature stood: %s against %s"),
+				 *Patch->GetActorLocation().ToCompactString(),
+				 *StoodAt.ToCompactString()),
+			 Patch->GetActorLocation().Equals(StoodAt, 1.0));
+	TestEqual(TEXT("and as wide as the figure says"),
+			  Patch->RadiusCm, Effects::WitheredGroundPatchRadiusCm, 0.01f);
+	TestTrue(TEXT("and lasts the floor rather than expiring"),
+			 Patch->bLastsTheFloor);
+	TestEqual(TEXT("and takes no health, which the row does not ask for"),
+			  Patch->DamagePerTick, 0.0f, 0.01f);
+
+	// THE PLAYER IS OUTSIDE IT, ASSERTED BEFORE THE BEHAVIOUR IS. A test that only
+	// checked "standing on one reduces recovery" would pass whether or not the
+	// reduction was scoped to the patch at all, because the fault moves both
+	// readings. Saying where the player is, and how far away, makes a failure name
+	// the setup rather than sending the reader into the rule.
+	const FVector Outside = Player.Character->GetActorLocation();
+	TestTrue(FString::Printf(
+				 TEXT("the player stands %.0f cm from a patch of radius %.0f"),
+				 FVector::Dist(Outside, Patch->GetActorLocation()),
+				 Effects::WitheredGroundPatchRadiusCm),
+			 !Patch->Covers(Outside));
+	Beat();
+	TestEqual(TEXT("so a patch they are not on takes no health regeneration"),
+			  Player.Read(Vital::GetHealthRegenAttribute()), FullHealthRegen, 0.01f);
+	TestEqual(TEXT("and no mana regeneration"),
+			  Player.Read(Vital::GetManaRegenAttribute()), FullManaRegen, 0.01f);
+
+	// NOW STAND ON IT.
+	Player.Character->SetActorLocation(Patch->GetActorLocation());
+	TestTrue(TEXT("the player is now on the patch"),
+			 Patch->Covers(Player.Character->GetActorLocation()));
+
+	Beat();
+	const float Share = 1.0f - Effects::WitheredGroundRecoveryLessPercent / 100.0f;
+	TestEqual(FString::Printf(TEXT("health regeneration falls by the row's %.0f%%"),
+							  Effects::WitheredGroundRecoveryLessPercent),
+			  Player.Read(Vital::GetHealthRegenAttribute()),
+			  FullHealthRegen * Share, 0.05f);
+	TestEqual(TEXT("and mana regeneration by the same share"),
+			  Player.Read(Vital::GetManaRegenAttribute()),
+			  FullManaRegen * Share, 0.05f);
+
+	// AND WALKING OFF PUTS BOTH BACK. This is the half that fails if the rule only
+	// sets the reduction on beats where something died: the beat a player steps
+	// off a patch is a beat on which nothing was placed.
+	Player.Character->SetActorLocation(
+		Patch->GetActorLocation()
+		+ FVector(Effects::WitheredGroundPatchRadiusCm * 5.0f, 0.0f, 0.0f));
+	TestFalse(TEXT("the player is off every patch again"),
+			  Patch->Covers(Player.Character->GetActorLocation()));
+	Beat();
+	TestEqual(TEXT("health regeneration comes back"),
+			  Player.Read(Vital::GetHealthRegenAttribute()), FullHealthRegen, 0.01f);
+	TestEqual(TEXT("and so does mana regeneration"),
+			  Player.Read(Vital::GetManaRegenAttribute()), FullManaRegen, 0.01f);
+
+	// A SECOND DEATH LEAVES A SECOND PATCH, WHICH IS THE ROW'S OWN SENTENCE.
+	// "Enemies leave patches of Barren Earth on death" states the trigger and no
+	// limit, so a cap would make it stop being true at whichever enemy hit it.
+	// This is what fails if somebody adds one.
+	if (!TestNotNull(TEXT("a second creature to kill"),
+					 KillACreatureAt(FVector(-1500.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second death leaves a second patch, uncapped"),
+			  CountPatches(), 2);
 
 	return true;
 }

@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Withered Ground leaves a patch on every death, with no cap and no chance, and its 80% reaches two of the four stats it names
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp`, `CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` (new). Issue
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Famine_Withered_Ground`, weight 5.0, in `game/Data/DungeonModifiers.csv`: "Enemies
+leave patches of Barren Earth on death. While standing on it, your Health and Mana
+recovery (regen/leech) is reduced by 80%."
+
+### Every death, no cap, no chance — and that is the row rather than a choice
+
+The two hazard rules built before this one place on a clock and cap how many may exist
+at once. This one does neither, because the row states the trigger and states no limit.
+
+**A cap makes the row's own sentence false at whichever enemy hits it.** "Enemies leave
+patches of Barren Earth on death" stops being true at the fourth death if three is the
+limit. A chance per death would need a number the row does not give.
+
+**The only argument for a cap is actor count on a floor with many kills, which is a
+performance concern.** The project owner deprioritised performance work on 2026-09-10
+with "we need to progress forward", and the recorded rule from that day is not to make
+feature work wait on a performance capture. **If a limit is ever needed, the version to
+build is replacing the oldest patch, not refusing a new one**, because that is the only
+form that keeps the sentence true.
+
+### Two constants, and only one of them is a judgement
+
+| Constant | Value | Where it came from |
+| :-- | --: | :-- |
+| `WitheredGroundRecoveryLessPercent` | 80 | **the row states it.** The only hazard rule here whose main figure came with its row |
+| `WitheredGroundPatchRadiusCm` | 300 | a judgement, and it is the house figure |
+
+**300 cm because three separate things already use it** for a patch of ground a player
+stands in: the Gatekeeper's Soulfall burning ground, Infernal Rain's patches, and a
+Singularity Well. A fourth number would make this row's patch differently sized for no
+reason the row gives. A static assertion fails if the three stop agreeing.
+
+**80% applies unclamped.** `UCataclysmStatPipeline::LessMultiplierFloor` is −99, so a
+single reduction of 80 is well inside it and the figure keeps meaning what the row says.
+
+There is no cap constant and no cadence constant, because nothing here is placed by a
+clock.
+
+### THE 80% REACHES TWO OF THE FOUR STATS THE ROW NAMES, AND THAT IS THE DATA RATHER THAN THE CODE
+
+The row says "Health and Mana recovery (regen/leech)", which is four stats. A Less
+multiplies, and a multiplier on a base of zero is zero. Read out of
+`game/Data/ClassStats.csv`:
+
+| Stat | Who has a base |
+| :-- | :-- |
+| `health_regen` | **every class** — a Default row of 1.0, and Masochist 3.0 |
+| `mana_regen` | **every class** — a Default row of 1.0, and Ritualist 2.0 |
+| `life_leech` | the Ravager alone, 1.0. No Default row |
+| `mana_leech` | **no class at all** |
+
+So the regeneration half reaches everyone and the leech half reaches a Ravager and
+anyone whose gear grants leech.
+
+**All four are written anyway, and that is the decision rather than an oversight.** The
+row names leech; the reduction is correct for whoever carries it; and it becomes correct
+for everyone the day a class line or an affix grants leech, with no change to this rule.
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if any of the four stat
+names is removed — the break used to prove it removes `mana_leech`, the one no class
+carries, because deleting that changes no behaviour and no other test.
+
+### A new field rather than a shared one
+
+The reduction is a new float on `FCataclysmPlayerFloorEffects`. **Not a shared field**,
+for two reasons that point the same way: the per-beat fields are written with plain
+assignment on top of what the per-floor rules produce, so sharing one would silently
+erase the other rule's value on a floor carrying both (issue
+[#1765](https://github.com/sdubois777/Cataclysm/issues/1765)); and two separate fields
+become two multipliers, which compose the way every other pair of multipliers in this
+game composes — `Out.MoreMultiplier *= 1.0f + MoreValue / 100.0f`, with the comment
+"Each source multiplies on its own. They are NOT summed first."
+
+### Writing the guard first found a live defect
+
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` asserts that every
+field of that struct is named by both functions that walk it field by field. Written
+before the new field was added, it failed on the tree as it stood:
+`MovementSpeedLessPercent`, added for Singularity Wells, was in one reader and missing
+from the other.
+
+**Nothing observable was wrong, and saying so matters.** That function has one caller,
+which passes only the per-floor fields, where a per-beat field is always zero. The gap is
+real — a complete struct is built four times a second and the first caller that passes
+one gets a sentence with an effect missing — but the cost was not what it first looked.
+
+**That function has no C++ test of any kind**, which is how the omission survived. The
+new test guarantees a field is mentioned; nothing checks the wording.
+
+### Two faults in the automation test, none in the rule
+
+The test failed twice before passing, and the rule was not changed once. Recorded because
+both are reusable:
+
+- **`ACataclysmDungeonGameMode::StartPlay` binds the death notice, and a test world never
+  calls it.** The existing boss-cleanse test in the same file already calls it with a
+  comment saying why.
+- **A creature spawned with `AdjustIfPossibleButAlwaysSpawn` is not at the point it was
+  asked for** — that flag exists so a blocked spot does not refuse the spawn, which means
+  the engine may move it. The test now reads where the creature actually stood, captured
+  before the killing blow rather than after.
+
+**The first failure said only "zero patches", which four faults produce.** Adding an
+assertion per step — spawned, has health, died, the death reached the rule — is what made
+each run name exactly one thing.
+
+---
+
 ## 2026-09-13 — The ultimate-disabling enchantment is written, the predicate built for it is finally used, and a restriction inverts the unknown-reading rule
 
 **Affects:** the Enchantment Effects page of `docs/All_Things_Cataclysm.xlsx`, the
@@ -2863,12 +2981,38 @@ invalidated the reason given in the entry of 2026-09-02 for keeping burning
 ground and terrain as separate actors.
 
 **Read against all eight rows, nothing requires it.** Six state damage so it
-passes unchanged; Withered Ground's recovery reduction runs through
-`RegenerationScaleFor`, which walks the world's zones calling `Covers()` and
-never enters `Sweep()`; and Grasping Tentacles' grab is a pin on entry, which
-`ACataclysmTerrain`'s Thicket already does. **The 2026-09-02 split stands, for
-the reason it gives.** Recorded because a question examined and closed with no
-change leaves no trace, and the next person reopens it.
+passes unchanged; Withered Ground's recovery reduction does not need a sweep
+either (see the correction below); and Grasping Tentacles' grab is a pin on
+entry, which `ACataclysmTerrain`'s Thicket already does. **The 2026-09-02 split
+stands, for the reason it gives.** Recorded because a question examined and
+closed with no change leaves no trace, and the next person reopens it.
+
+> **Corrected on 2026-09-13, when the row was built.** This paragraph said
+> Withered Ground's reduction "runs through `RegenerationScaleFor`, which walks
+> the world's zones calling `Covers()` and never enters `Sweep()`". **It cannot
+> run through that function at all**, on three counts read out of
+> `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.cpp`:
+>
+> 1. it skips any zone whose owner is not the character asking
+>    (`Zone->GetOwner() != Who`), and a patch of Barren Earth is owned by the
+>    floor's hazard source rather than by the player;
+> 2. `AlsoHealItsOwner` stores `FMath::Max(1.0f, Scale)`, so a multiplier of
+>    0.2 is **not representable** -- the function exists to speed regeneration
+>    up, for the Fist's Blood Pyre, and `RegenerationScaleFor` returns early on
+>    any scale at or below 1;
+> 3. it is applied to health regeneration only, with a comment saying mana and
+>    the energy shield are deliberately untouched -- and this row names mana.
+>
+> **The conclusion the paragraph draws is still right**: this row needs no
+> sweep, so it does not require the refusal being discussed to be relaxed. Only
+> the stated reason was wrong. The route that works is four Less multipliers on
+> `health_regen`, `mana_regen`, `life_leech` and `mana_leech`, applied through
+> the same one applier every other floor rule uses, with the game mode asking
+> each patch `Covers()` on its own quarter-second beat.
+>
+> **Left in place rather than deleted, because somebody may have read it.** A
+> statement of fact about what a function does is not a dated decision, and this
+> one would have sent whoever built the row down a route that cannot work.
 
 ### The scope figure was wrong and the eight need two classes
 
