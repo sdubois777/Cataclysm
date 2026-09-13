@@ -366,6 +366,32 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   .SumOfIncreases / 100.0f;
 }
 
+float UCataclysmAbilitySystemComponent::IncreasesForStat(
+	FName Stat, const FGameplayTagContainer& Tags) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED FOR THIS STAT. Ordinary rather than a fault: an
+		// enemy's ability system is never given a character stat line, and a
+		// player's has none until the first refresh. Nothing recorded means
+		// nothing to add.
+		return 0.0f;
+	}
+
+	// PERCENTAGE POINTS OUT OF THE PIPELINE AND A FRACTION OUT OF HERE, the same
+	// conversion `AttackDamageIncreasesForSkill` makes and for the same reason:
+	// `SumOfIncreases` is 25 for +25% and every caller wants 0.25.
+	//
+	// THE BASE IS NOT READ AND MUST NOT BE. A stat reaching this function has no
+	// base by definition, so `Evaluate(...).Final` would be zero. Only the
+	// increases are asked for.
+	return UCataclysmStatPipeline::Evaluate(
+			   Inputs->Base, Inputs->Modifiers, Tags,
+			   WithEnemiesInReach(Inputs->Modifiers, CurrentConditions()))
+			   .SumOfIncreases / 100.0f;
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
