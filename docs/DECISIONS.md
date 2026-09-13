@@ -235,7 +235,7 @@ its blow, which would be a fourth channel whatever the design says. It calls
 `ApplyDirectDamage`, which takes the figure as given.
 
 This is not a path invented for minions. `ACataclysmGroundZone` uses the same one
-at `CataclysmGroundZone.cpp:258` for a damaging area on the floor, where the zone
+in `ACataclysmGroundZone::Sweep` for a damaging area on the floor, where the zone
 deals the figure it was built with and no stat of the caster's is read at the
 moment it ticks. `CataclysmNova.cpp`, `CataclysmRetaliation.cpp`,
 `CataclysmSkillTemplates.cpp` and `CataclysmEnemyModifiers.cpp` are the other

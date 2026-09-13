@@ -469,7 +469,7 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// This one takes the figure as given.
 	//
 	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
-	// same one at `CataclysmGroundZone.cpp:258` for a damaging area on the
+	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
 	// floor: a zone deals the figure it was built with to everything standing
 	// in it, and no stat of the caster's is read at the moment it ticks.
 	// `CataclysmNova.cpp`, `CataclysmRetaliation.cpp`,
