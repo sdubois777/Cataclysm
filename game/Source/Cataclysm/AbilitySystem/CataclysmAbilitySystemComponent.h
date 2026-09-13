@@ -291,6 +291,38 @@ public:
 		bool bTargetIsStaggered = false) const;
 
 	/**
+	 * The increases this character carries for a named stat, as a fraction.
+	 * 0.25 means twenty-five per cent. Issue #898.
+	 *
+	 * THE INCREASES AND NOT THE VALUE, AND THAT IS THE WHOLE REASON IT EXISTS.
+	 * `StatForSkill` returns `(base + flat) * (1 + increases)`, so a stat with
+	 * no base returns ZERO however large its increases are. The three minion
+	 * stats have no base and can have none: no class line names them, and a
+	 * minion's damage, health and attack interval come from its own type row
+	 * rather than from its summoner's character sheet.
+	 *
+	 * So the caller supplies the figure. A minion asks what its summoner's gear
+	 * adds and applies it to its own number.
+	 * `test_every_stat_is_one_the_game_supplies` in
+	 * `tools/tests/test_passive_effects_match_the_node_text.py` records the same
+	 * trap for authored rows: "an increase multiplies a base, so a stat nothing
+	 * supplies is worth zero. That failure is silent."
+	 *
+	 * `SumOfIncreases` IS SAFE WHERE THE VALUE IS NOT, because it is accumulated
+	 * from the modifiers alone and never multiplied by the base.
+	 *
+	 * NOTHING RECORDED MEANS NOTHING ADDED, which is ordinary rather than a
+	 * fault: an enemy is never given a character stat line, and a player has
+	 * none until its first refresh.
+	 *
+	 * @param Stat  the stat name, as the data file spells it
+	 * @param Tags  what to test a scoped modifier against. A minion passes its
+	 *              own tags, so a modifier naming minions applies and one naming
+	 *              a skill does not
+	 */
+	float IncreasesForStat(FName Stat, const FGameplayTagContainer& Tags) const;
+
+	/**
 	 * How much larger one skill's hit should be than the attack-damage
 	 * attribute already makes it, from "more" multipliers alone.
 	 *

@@ -1087,6 +1087,42 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		++Written;
 	}
 
+	// PASS THREE: THE STATS NO ATTRIBUTE EXISTS FOR. Issue #898.
+	//
+	// WHY THERE ARE ANY. `game/Data/Affixes.csv` grants `minion_damage`,
+	// `minion_health` and `minion_attack_speed`, and no gameplay attribute for
+	// any minion stat exists anywhere in the project. Both passes above are
+	// driven by `StatToAttribute()`, so these three were resolved by nothing and
+	// reached nothing: four authored affixes that did exactly nothing, and a
+	// player who found them got no benefit and no message.
+	//
+	// RECORDED RATHER THAN WRITTEN, because there is no attribute to write to.
+	// `Resolve` puts the stat's modifiers into `Inputs`, and a minion asks for
+	// them through `UCataclysmAbilitySystemComponent::IncreasesForStat`. Only a
+	// stat that actually has modifiers is recorded, which the lambda already
+	// ensures, so a character with no minion gear gains no entries.
+	//
+	// THE INCREASES ARE WHAT IS WANTED, NOT THE VALUE, AND THAT IS WHY NO BASE
+	// IS MISSING HERE. These three stats have no base and can have none: a
+	// minion's damage, health and attack interval come from its own row in
+	// `game/Data/MinionTypes.csv`, raised by its summoner's level. The summoner's
+	// gear adds increases to that figure rather than supplying one.
+	//
+	// A NAMED LIST RATHER THAN "EVERY STAT WITH NO ATTRIBUTE". Nothing validates
+	// the `Stat` column of an affix row against a vocabulary, so deriving this
+	// from whatever the character happens to carry would turn a misspelling into
+	// a stat, silently. Three names, and adding a fourth is a decision somebody
+	// makes rather than a side effect of a typo.
+	static const TArray<FString> WithoutAnAttribute = {
+		TEXT("minion_damage"), TEXT("minion_health"),
+		TEXT("minion_attack_speed"),
+	};
+	for (const FString& Stat : WithoutAnAttribute)
+	{
+		FCataclysmStatBreakdown Breakdown;
+		Resolve(Stat, nullptr, Breakdown);
+	}
+
 	// AND THE INPUTS GO ACROSS, SO A SKILL CAN ASK AGAIN. Issue #943.
 	//
 	// HERE RATHER THAN AFTER THE POOLS, because the pools are skipped entirely

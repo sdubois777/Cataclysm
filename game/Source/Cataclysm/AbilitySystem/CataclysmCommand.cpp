@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -266,36 +267,98 @@ AActor* UCataclysmCommand::OrderedTargetFor(const AActor* Follower)
 	return QuarryOf(CommanderOf(Follower));
 }
 
+namespace
+{
+	/**
+	 * What this creature's commander adds to its attack speed, as a fraction.
+	 * Zero when it follows nobody, when its commander has no such gear, and when
+	 * the commander is an enemy -- enemies carry no character stat line.
+	 *
+	 * AN EMPTY TAG CONTAINER, AND THAT IS CORRECT TODAY RATHER THAN LAZY. A
+	 * modifier with no required tags applies to everything, which is what all
+	 * four minion affixes in `game/Data/Affixes.csv` are. A narrower one --
+	 * "increased minion melee damage" -- would need the minion's own tags, and
+	 * a minion carries none. The `Tags` column of `game/Data/MinionTypes.csv`
+	 * is imported into `FCataclysmMinionTypeRow::Tags` and nothing reads that
+	 * field: `CataclysmMinion.cpp` never mentions it, and the test that checks
+	 * every referenced tag resolves covers `WeaponSkills.csv` and the two
+	 * enchantment files, not this one. That is a separate piece of work and it
+	 * is why this passes an empty container rather than pretending to filter.
+	 */
+	float MinionAttackSpeedFor(const AActor* Follower)
+	{
+		const AActor* Commander = UCataclysmCommand::CommanderOf(Follower);
+		if (!IsValid(Commander))
+		{
+			return 0.0f;
+		}
+
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Commander));
+		if (!Theirs)
+		{
+			return 0.0f;
+		}
+
+		return FMath::Max(0.0f, Theirs->IncreasesForStat(
+			FName(TEXT("minion_attack_speed")), FGameplayTagContainer()));
+	}
+}
+
 float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
 												const AActor* Target)
 {
-	if (!IsValid(Follower) || !IsValid(Target))
+	if (!IsValid(Follower))
 	{
 		return 1.0f;
 	}
+
+	// TWO THINGS SHORTEN THE INTERVAL AND THEY ARE INDEPENDENT, so they are
+	// worked out separately and multiplied. Issue #898. The mark depends on WHAT
+	// is being hit; the commander's minion attack speed does not, so a null
+	// target refuses the first and not the second.
+	float Scale = 1.0f;
 
 	// THE BONUS IS FOR HITTING THE MARK, NOT FOR THE MARK EXISTING. A creature
 	// ordered onto the quarry but swinging at something else on the way takes the
 	// plain interval.
-	if (OrderedTargetFor(Follower) != Target)
+	if (IsValid(Target) && OrderedTargetFor(Follower) == Target)
 	{
-		return 1.0f;
+		const float Percent =
+			UCataclysmSkillEffects::NumbersForEffectTag(QuarryTag()).Strength;
+
+		// A SHORTER INTERVAL, NOT A SMALLER ONE BY THE SAME PERCENTAGE. "30%
+		// attack speed" means 30% more swings in the same time, which is an
+		// interval of 1 / 1.30 -- about 0.769 -- and not 0.70. The header
+		// records why the two are not the same number.
+		//
+		// A SHEET THAT GIVES THE MARK NO ATTACK SPEED CHANGES NOTHING. The mark
+		// still orders the army; it simply does not hurry it.
+		if (Percent > 0.0f)
+		{
+			Scale /= 1.0f + Percent / 100.0f;
+		}
 	}
 
-	const float Percent =
-		UCataclysmSkillEffects::NumbersForEffectTag(QuarryTag()).Strength;
-	if (Percent <= 0.0f)
-	{
-		// The sheet gives the mark no attack speed. The mark still orders the
-		// army; it simply does not hurry it.
-		return 1.0f;
-	}
+	// AND THE COMMANDER'S GEAR AND PASSIVES, WHICH IS NEW. Issue #898. Until
+	// this, `game/Data/Affixes.csv` granted `minion_attack_speed` and nothing in
+	// the engine read it: a player who found the affix got nothing at all.
+	//
+	// THE INCREASES, NOT THE STAT'S VALUE. `minion_attack_speed` has no base and
+	// can have none -- a minion's interval comes from its own row in
+	// `game/Data/MinionTypes.csv` -- so asking for the value would return zero
+	// however much gear the summoner wore. `IncreasesForStat` exists for exactly
+	// that and its comment records why.
+	//
+	// IT REACHES A SUBJUGATED ENEMY AS WELL AS A SUMMONED MINION, which is the
+	// reason this is the first of the three minion stats to be built. The
+	// comment in `ACataclysmEnemyController` calls this "the one place a minion
+	// and a subjugated enemy share: they are different classes with different
+	// overrides and one controller". Damage has no such shared place.
+	Scale /= 1.0f + MinionAttackSpeedFor(Follower);
 
-	// A SHORTER INTERVAL, NOT A SMALLER ONE BY THE SAME PERCENTAGE. "30% attack
-	// speed" means 30% more swings in the same time, which is an interval of
-	// 1 / 1.30 -- about 0.769 -- and not 0.70. The header records why the two are
-	// not the same number.
-	return 1.0f / (1.0f + Percent / 100.0f);
+	return Scale;
 }
 
 int32 UCataclysmCommand::ThrallCountOf(const AActor* Commander)
