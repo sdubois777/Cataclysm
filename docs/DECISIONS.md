@@ -2,6 +2,74 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — An enchantment row's own words decide which damage-reduction bucket it feeds: "damage reduction" is the flat stat capped at 75%, "less damage" is a multiplier
+
+**Affects:**
+`game/Data/EnchantmentsPositive.csv`,
+`game/Data/EnchantmentEffects.csv` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h`.
+Issues [#666](https://github.com/sdubois777/Cataclysm/issues/666) and
+[#1686](https://github.com/sdubois777/Cataclysm/issues/1686). **Decided; the two
+rows it unblocks are not yet authored.**
+
+### The question
+
+Two enchantment rows grant damage reduction outright and could not be written,
+because it was not settled whether they join the flat stat, which is capped, or
+the multiplier bucket, which is not capped at the same figure. Seven already-built
+rows are multipliers. Nothing said which a new row should be.
+
+### Both mechanisms already exist and they combine differently
+
+| | how two sources combine | cap | where |
+| :-- | :-- | --: | :-- |
+| the flat **damage reduction** stat | **added**: 20% and 10% give 30% | **75%** | `EffectiveDamageReduction`, `DamageReductionCap` |
+| **"more" damage reduction** | **multiplied**, each taking a share of what is left | 99% | `CombinedMoreDamageReduction`, `MoreDamageReductionCap` |
+
+**The multiplicative arithmetic, which is what the project owner described and is
+already implemented:** a source of 20% and a source of 10% leave
+`0.8 x 0.9 = 0.72`, so 28% is reduced rather than 30%. Each source takes its share
+of what the previous ones left.
+
+### The rule
+
+**Read the row's own words.**
+
+- A row saying **"damage reduction"** feeds the flat stat and is inside the 75%
+  cap. That is what `docs/Cataclysm_GDD_v2.md` defines the phrase to mean, and
+  what a player reading it expects.
+- A row saying **"less damage"** or **"more damage"** is a multiplier and goes to
+  the other bucket, which is where every built row of that shape already is.
+
+**Chosen because it is checkable rather than a judgement per row.** Measured on
+`4c92b37d`: **exactly two rows use "damage reduction"** — both in
+`EnchantmentsPositive.csv`, and both are the two that were blocked — against
+**fifty** saying "less damage" or "more damage". The split is not close.
+
+### Two things worth knowing before touching either cap
+
+**The 75% is hard and nothing penetrates it**, so points above it are worth
+nothing. `docs/Cataclysm_GDD_v2.md` states it and it is the same figure as the
+armour cap.
+
+**The multiplicative bucket is capped at 99% and that cap is load-bearing, not
+belt and braces.** "Multiplicative stacking cannot reach 100%" is true of exact
+arithmetic and false of single-precision float: forty sources of 50% leave
+`9.1e-13` of the damage, and `100 * (1 - 9.1e-13)` rounds to exactly `100.0f`,
+which is immunity reached by the layer the design says cannot reach it. It was
+found by a test rather than by reading, because the Python model computes the same
+expression in double precision and stays under. Both are bounded the same way now,
+so they agree by construction rather than by both being far from the edge.
+
+### What this unblocks
+
+The two rows in group D of [#1686](https://github.com/sdubois777/Cataclysm/issues/1686)
+— `P249` and `P363`. **`P249` still needs one more thing**: it states a duration,
+"for 3 seconds", which is not a condition and may need a shape that does not exist
+yet. That is a separate question and this decision does not settle it.
+
+---
+
 ## 2026-09-13 — A stat may deliberately have no gameplay attribute, and the list that says which is the list the engine already loops over
 
 **Affects:**
