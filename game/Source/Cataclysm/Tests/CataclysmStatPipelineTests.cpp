@@ -2406,4 +2406,146 @@ bool FCataclysmPipelineHealthAboveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineHealthAtOrAboveTest,
+	"Cataclysm.StatPipeline.AtOrAboveAThresholdIncludesTheCharacterSittingOnIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The fourth health predicate, and the second of a pair pointing upwards.
+ * Issues #1653 and #41.
+ *
+ * WHY IT EXISTS, and it is a data row rather than a hypothetical. The enchantment
+ * "Your ultimate ability cannot be used unless you are below 50% HP" locks the
+ * skill when health is AT OR ABOVE 50. Written with `HealthAbovePercent`, which
+ * is strictly above, a character sitting on exactly half health could use a skill
+ * the sentence forbids -- so the row would be delivered differently from how it
+ * reads, for one value of health.
+ *
+ * THE BOUNDARY IS REACHABLE, WHICH IS WHAT MAKES IT WORTH AN ENUMERATOR. Health
+ * is a state a character can hold: a flat heal, a clamped maximum or a resting
+ * player can sit on exactly half and stay there. That is not true of every
+ * threshold -- `StationaryForSeconds` compares at least against rows that say
+ * "more than", and those differ only at an instant an accumulating clock passes
+ * through, which no player can occupy.
+ *
+ * THE TWO ARE ASSERTED SIDE BY SIDE ON ONE STATE rather than the new one alone.
+ * "At or above fifty holds at fifty" would pass whether or not the strict
+ * predicate still excludes that character, and the pair is the whole point.
+ */
+bool FCataclysmPipelineHealthAtOrAboveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	/** A flat 1 that applies at or above a share of maximum health. */
+	auto AtOrAboveHealth = [](float Value, float Percent)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = Value;
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrAbovePercent;
+		Modifier.ConditionValue = Percent;
+		return Modifier;
+	};
+
+	// EXACTLY HALF ITS HEALTH. Five hundred out of a thousand.
+	const FCataclysmStatConditions Exactly =
+		FCataclysmStatConditions::FromHealth(500.0f, 1'000.0f);
+	TestEqual(TEXT("the character is on exactly fifty per cent"),
+		Exactly.HealthPercent, 50.0f, 0.01f);
+
+	// THE WHOLE DIFFERENCE BETWEEN THE TWO PREDICATES, IN TWO LINES ON ONE STATE.
+	TestTrue(TEXT("at or above fifty includes a character on fifty"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 50.0f, Exactly));
+	TestFalse(TEXT("and strictly above fifty does not"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, Exactly));
+
+	// A HAIR ABOVE IT, BOTH HOLD. That is what says the new one is a boundary
+	// rather than being broken open -- it must not be a predicate that holds
+	// everywhere.
+	const FCataclysmStatConditions JustOver =
+		FCataclysmStatConditions::FromHealth(501.0f, 1'000.0f);
+	TestTrue(TEXT("at or above fifty holds just over it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 50.0f, JustOver));
+	TestTrue(TEXT("and strictly above fifty holds there too"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, JustOver));
+
+	// AND A HAIR UNDER IT, NEITHER DOES.
+	const FCataclysmStatConditions JustUnder =
+		FCataclysmStatConditions::FromHealth(499.0f, 1'000.0f);
+	TestFalse(TEXT("neither holds just under fifty"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 50.0f, JustUnder)
+		|| FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAbovePercent, 50.0f, JustUnder));
+
+	// AN UNKNOWN STATE REFUSES, AND THIS ASSERTION IS WEAKER THAN IT LOOKS.
+	// Measured: with a reading of -1 the comparison alone already answers no for
+	// both upward predicates, at every threshold the validator allows. So this
+	// pins the behaviour and does NOT demonstrate that the guard is doing the
+	// work -- it is the two DOWNWARD predicates where removing the guard changes
+	// an answer. Said out loud so nobody reads this line as proving more than it
+	// does.
+	const FCataclysmStatConditions Unknown =
+		FCataclysmStatConditions::FromHealth(500.0f, 0.0f);
+	TestTrue(TEXT("no maximum health means nothing is known"),
+		Unknown.HealthPercent < 0.0f);
+	TestFalse(TEXT("and an unknown state refuses it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 50.0f, Unknown));
+
+	// A THRESHOLD OF ZERO MEANS ALWAYS, which is the mirror of what zero means
+	// for "at or below" -- there it is "only at exactly no health". Legitimate
+	// rather than a data error, and worth pinning because the two endpoints of
+	// this predicate are easy to get backwards.
+	TestTrue(TEXT("at or above zero holds for a living character"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 0.0f, Exactly));
+	TestFalse(TEXT("but not for a caller with no character"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 0.0f, Unknown));
+
+	// AND A HUNDRED MEANS ONLY AT FULL HEALTH.
+	const FCataclysmStatConditions Full =
+		FCataclysmStatConditions::FromHealth(1'000.0f, 1'000.0f);
+	TestTrue(TEXT("at or above a hundred holds at full health"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 100.0f, Full));
+	TestFalse(TEXT("and not one point below it"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::HealthAtOrAbovePercent, 100.0f, JustOver));
+
+	// AND THE WHOLE PIPELINE AGREES WITH THE PREDICATE, which is the step that
+	// says the enumerator is wired in rather than merely declared. A modifier
+	// reaching `ConditionHolds` is not the same as one reaching `Evaluate`.
+	const TArray<FCataclysmStatModifier> Flag = { AtOrAboveHealth(1.0f, 50.0f) };
+	TestEqual(TEXT("the flag is worth one at exactly half health"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags, AtHealth(50.0f)).Final,
+		1.0f, 0.01f);
+	TestEqual(TEXT("and nothing just below it"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags, AtHealth(49.9f)).Final,
+		0.0f, 0.01f);
+	TestEqual(TEXT("and nothing to a caller with no character at all"),
+		FPipeline::Evaluate(0.0f, Flag, NoTags).Final, 0.0f, 0.01f);
+
+	// AND IT IS BOUNDED THE SAME WAY THE OTHER THREE ARE. The bound is written
+	// as a list of health predicates and its own comment warns that such a list
+	// has to be extended by hand; this is the assertion that would have caught
+	// the omission, since an unbounded threshold fails silently.
+	TestTrue(TEXT("a threshold above 100 is reported"),
+		FPipeline::ValidateModifier(AtOrAboveHealth(1.0f, 150.0f))
+			.Contains(TEXT("health threshold")));
+	TestTrue(TEXT("a negative threshold is reported too"),
+		FPipeline::ValidateModifier(AtOrAboveHealth(1.0f, -1.0f))
+			.Contains(TEXT("health threshold")));
+	TestTrue(TEXT("and a legal one is not"),
+		FPipeline::ValidateModifier(AtOrAboveHealth(1.0f, 50.0f)).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

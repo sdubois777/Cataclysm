@@ -3175,6 +3175,27 @@ CONDITIONS = {
     # sitting exactly on half health is not above it, so its debuffs expire.
     "health_above": (0.0, 100.0, "a percentage of maximum health"),
 
+    # "while you are at or above 50% health" is `health_at_or_above` with 50.
+    # Issues #1653 and #41.
+    #
+    # THE FOURTH HEALTH PREDICATE, AND THE SECOND PAIR. `health_at_or_below` and
+    # `health_below` differ only in whether a character sitting exactly on the
+    # number is included; this and `health_above` are the same pair pointing the
+    # other way. Four predicates, two thresholds, each read two ways.
+    #
+    # WHAT ASKS FOR IT IS A ROW THAT COULD NOT BE WRITTEN WITHOUT IT. "Your
+    # ultimate ability cannot be used unless you are below 50% HP" locks the
+    # skill when health is AT OR ABOVE 50, and `health_above` is strictly above,
+    # so a character on exactly half health could use a skill the sentence
+    # forbids. The pipeline has no "not", so `health_below` cannot be read
+    # backwards to cover it.
+    #
+    # ZERO MEANS ALWAYS AND A HUNDRED MEANS ONLY AT FULL HEALTH, which is the
+    # mirror of what the endpoints mean for `health_at_or_below`. Both are
+    # legitimate rather than data errors, the same judgement the three above
+    # carry.
+    "health_at_or_above": (0.0, 100.0, "a percentage of maximum health"),
+
     # "for 2 seconds after you pay a health cost" is
     # `seconds_after_health_cost` with 2. The upper bound is a sanity limit
     # rather than a design rule: the design's longest window is 5 seconds, and

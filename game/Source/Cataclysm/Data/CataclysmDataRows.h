@@ -1953,6 +1953,14 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 * knowing before adding a third: `health_at_or_below` and `health_below`
 	 * differ only in whether a character sitting exactly on the number is
 	 * included. Issue #1051.
+	 *
+	 * THERE ARE NOW TWO SUCH PAIRS, since issues #1653 and #41.
+	 * `health_above` and `health_at_or_above` are the same distinction pointing
+	 * the other way, so four of the health predicates are two thresholds each
+	 * read two ways. **A row naming the wrong one of a pair is delivered
+	 * differently from how its sentence reads for exactly one value of health**,
+	 * and nothing reports that: both names are valid, both apply, and the
+	 * character simply gets the modifier at a moment the words do not promise.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	FString Condition;
