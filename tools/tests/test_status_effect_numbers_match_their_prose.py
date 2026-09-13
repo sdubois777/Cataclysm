@@ -95,6 +95,22 @@ CLAIMS: dict[str, list[tuple[str, float, str]]] = {
         ("DurationSeconds", 0.75, "lasts 0.75 seconds at 100% chance to stun"),
         ("DurationCap", 3.0, "400% gives 3, which is the cap"),
     ],
+
+    # --- the first buff in the file with any number at all -------------------
+    # Every entry above is a Debuff or a DoT. Feasting is the first Buff row to
+    # state anything, and the Buffs sheet had no numeric column filled before
+    # it. Issue #1720.
+    #
+    # ONLY ONE OF ITS THREE NUMBERS IS A COLUMN. The sentence also states "up to
+    # 5 stacks" and "A stack lasts 5 seconds", and neither can be a column here:
+    # a stack cap and a stack window are read by UCataclysmStacks and there is
+    # nowhere in this table to put them. They are checked against the C++ that
+    # holds them by test_feasting_numbers_match_the_design.py, which is the same
+    # shape as test_commander_buff_matches_the_design.py and exists for the same
+    # reason -- continuous integration never builds the C++.
+    "Buff_Feasting": [
+        ("Strength", 4.0, "its attack speed is increased by 4%"),
+    ],
 }
 
 #: The seven numeric columns, in the order `tools/generate_datatables.py` reads

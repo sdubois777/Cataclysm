@@ -97,6 +97,29 @@ enum class ECataclysmStackKind : uint8
 	 */
 	InfernalBrand		UMETA(DisplayName = "Infernal Brand"),
 
+	/**
+	 * Granted to a CREATURE each time it is hit, while it carries the Feasting
+	 * buff. Each stack makes it attack faster.
+	 *
+	 * THE FIRST KIND HELD BY A CREATURE RATHER THAN BY THE PLAYER, and the
+	 * first whose effect is read outside this file's own callers:
+	 * `ACataclysmEnemyCharacter::FeastingMultiplier` counts them and shortens
+	 * the creature's attack interval. Every kind above is held by a player,
+	 * and the stat pipeline reads three of them.
+	 *
+	 * ITS MAGNITUDE IS IN THE DATA AND ITS COUNTING IS HERE. The 4% per stack
+	 * is the `Strength` column of the `Buff_Feasting` row in
+	 * `game/Data/StatusEffects.csv`; the window and the cap below are this
+	 * file's, because no column can hold them. `Debuff_Cripple` splits the
+	 * same way.
+	 *
+	 * ONLY WHILE THE BUFF IS ON. `NoteDamageTaken` refuses to grant one to a
+	 * character not carrying `Status.Buff.Feasting`, so a creature that gains
+	 * the buff part way through a fight starts at nothing rather than
+	 * inheriting a count from blows it took before.
+	 */
+	Feast				UMETA(DisplayName = "Feast"),
+
 	/** How many kinds there are. Not a kind. */
 	Count				UMETA(Hidden)
 };

@@ -730,12 +730,40 @@ public:
 	float CrippleMultiplier() const;
 
 	/**
+	 * What Feasting multiplies this creature's attack RATE by, or 1.0 when it
+	 * is not feasting. Issue #1720.
+	 *
+	 * ATTACK SPEED ONLY, WHICH IS WHY IT IS NOT IN `SpeedMultiplier` BELOW.
+	 * Commander and Cripple each name BOTH movement and attack speed, so they
+	 * share one function and cannot disagree. The `Buff_Feasting` row names one
+	 * of the two -- "its attack speed is increased" -- and a feasting creature
+	 * that also walked faster would be doing something its own row does not say.
+	 *
+	 * THE COUNT IS THE STACK SYSTEM'S AND THE PER-STACK FIGURE IS THE ROW'S.
+	 * `UCataclysmStacks` counts Feast stacks and caps them at five; the 4% each
+	 * one is worth is the `Strength` column of that row, so re-tuning it is a
+	 * data change. The same split `CrippleMultiplier` above makes.
+	 *
+	 * NEEDS NO REFRESH CALL, unlike the walk speed. An attack interval is asked
+	 * for when a blow is about to land, so a stack gained or lapsed a moment ago
+	 * is already counted. `RefreshWalkSpeed` exists because a movement component
+	 * holds its speed as state and has to be told.
+	 */
+	float FeastingMultiplier() const;
+
+	/**
 	 * Everything acting on this creature's movement and attack speed at once.
 	 *
 	 * ONE FUNCTION SO THE TWO STATS CANNOT DISAGREE. Commander raises both
 	 * and Cripple lowers both, so a creature that is inspired and crippled
 	 * gets 1.2 x 0.7 either way rather than one stat seeing both and the
 	 * other seeing one.
+	 *
+	 * IT IS NOT EVERYTHING ANY MORE, AND THAT IS DELIBERATE. `FeastingMultiplier`
+	 * above moves the attack interval and not the walk speed, because its row
+	 * names attack speed alone. The rule this function keeps is "anything naming
+	 * BOTH stats belongs here", not "everything belongs here". A later effect
+	 * naming both must go in this function rather than beside it.
 	 */
 	float SpeedMultiplier() const
 	{
@@ -769,7 +797,11 @@ public:
 		// DIVIDED BY EVERYTHING AT ONCE. Commander's 1.2 shortens the
 		// interval and Cripple's 0.7 lengthens it, which is what a reduction
 		// in attack SPEED means for an INTERVAL.
-		return DesignedSecondsBetweenAttacks() / SpeedMultiplier();
+		//
+		// AND FEASTING, WHICH THE WALK SPEED DOES NOT GET. Its row names
+		// attack speed alone. See `FeastingMultiplier`.
+		return DesignedSecondsBetweenAttacks()
+			/ (SpeedMultiplier() * FeastingMultiplier());
 	}
 
 	/**

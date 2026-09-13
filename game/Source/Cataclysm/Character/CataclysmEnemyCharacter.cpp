@@ -625,6 +625,50 @@ float ACataclysmEnemyCharacter::CrippleMultiplier() const
 	return FMath::Max(1.0f - Reduction / 100.0f, KINDA_SMALL_NUMBER);
 }
 
+float ACataclysmEnemyCharacter::FeastingMultiplier() const
+{
+	// THE TAG IS THE SINGLE SOURCE OF TRUTH, exactly as it is for Commander and
+	// Cripple above. A creature that is not feasting attacks at its designed
+	// rate whatever it may still be holding, and nothing has to clear the count:
+	// Feast stacks lapse on their own five seconds after the last blow.
+	const FGameplayTag Feasting =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
+
+	if (!UCataclysmSkillEffects::HasTag(this, Feasting))
+	{
+		return 1.0f;
+	}
+
+	// HOLDING THE BUFF AND NO STACKS IS THE ORDINARY OPENING STATE, before the
+	// creature has been hit at all. It attacks at its designed rate until the
+	// first blow lands, which is what the row describes.
+	const int32 Stacks = UCataclysmStacks::Held(AbilitySystemComponent,
+											   ECataclysmStackKind::Feast);
+	if (Stacks <= 0)
+	{
+		return 1.0f;
+	}
+
+	// THE ROW'S OWN FIGURE, so re-tuning it is a data change and not a build.
+	// Four per cent a stack as the sheet stands. Floored at nothing, because a
+	// negative would be a creature that slows down as it is hit, which no row
+	// says and which the caller would divide by.
+	const float PerStack = FMath::Max(
+		0.0f, UCataclysmSkillEffects::NumbersForEffectTag(Feasting).Strength);
+
+	// BOUNDED BY THE STACK CAP RATHER THAN BY A CLAMP WRITTEN HERE.
+	// `UCataclysmAbilitySystemComponent::GrantStack` never stores more than
+	// `UCataclysmStacks::CapFor` allows, which is five, so the most this returns
+	// is 1 + 5 x the row's figure -- 1.20 as the sheet stands, the same number
+	// Commander gives.
+	//
+	// AND IT CANNOT PRODUCE THE VALUE CRIPPLE HAD TO GUARD AGAINST. That one
+	// clamps its result away from zero because the attack interval DIVIDES by
+	// it and a multiplier of zero is an interval of infinity. This only ever
+	// grows, so the smallest it can return is exactly 1.
+	return 1.0f + Stacks * PerStack / 100.0f;
+}
+
 void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();

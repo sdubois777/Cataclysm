@@ -752,17 +752,24 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 		Names.Add(Stacks::NameOf(Kind));
 	}
 
-	// IN ENUM ORDER: Sanguine Momentum, Bloodlust, Carnage, Infernal Brand.
+	// IN ENUM ORDER: Sanguine Momentum, Bloodlust, Carnage, Infernal Brand,
+	// Feast.
+	//
+	// FEAST WAS APPENDED THE DAY AFTER THIS TEST LANDED AND THIS TEST IS WHAT
+	// REPORTED IT. That is the whole point of writing the numbers down: a
+	// fifth kind cannot arrive without somebody editing these three lines and
+	// saying what it answers. Its 5 and 5 are the `Buff_Feasting` row's own
+	// words -- "up to 5 stacks" and "A stack lasts 5 seconds".
 	// Three of these four windows are their node's own words; Infernal Brand's
 	// eight is a judgement recorded at `CataclysmStacks.cpp:24`, and it is the
 	// one a table would be likeliest to drop, because no design document states
 	// it.
 	TestEqual(TEXT("every kind's window in seconds, in enum order"),
 			  FString::Join(Windows, TEXT(" ")),
-			  FString(TEXT("3.00 5.00 8.00 8.00")));
+			  FString(TEXT("3.00 5.00 8.00 8.00 5.00")));
 
 	TestEqual(TEXT("every kind's cap, in enum order"),
-			  FString::Join(Caps, TEXT(" ")), FString(TEXT("5 5 10 5")));
+			  FString::Join(Caps, TEXT(" ")), FString(TEXT("5 5 10 5 5")));
 
 	// THE NAMES ARE ASSERTED BY NOTHING ELSE IN THE PROJECT. `NameOf` has one
 	// caller, the `Cataclysm.ShowStacks` console command, and a console command
@@ -771,7 +778,8 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 	TestEqual(TEXT("every kind's name, in enum order"),
 			  FString::Join(Names, TEXT(", ")),
 			  FString(TEXT(
-				  "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand")));
+				  "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand, "
+				  "Feast")));
 
 	// AND THE ARM THAT NO TEST REACHED, WHICH IS THE ONE A TABLE CHANGES. Both
 	// switches answer nothing for a kind they do not know and both say why in
