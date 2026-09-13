@@ -508,8 +508,20 @@ public:
 		FCataclysmStatConditions State) const;
 
 	/**
-	 * Fill in which debuffs the character being HIT is carrying, but only if one
-	 * of the rows about to be evaluated asks. Issue #1515.
+	 * Fill in what is true of the character being HIT -- which debuffs it is
+	 * carrying and how much health it has left -- but only what the rows about
+	 * to be evaluated actually ask for. Issue #1515.
+	 *
+	 * IT WAS `WithTargetAilments` AND ANSWERED ONE QUESTION. The health reading
+	 * was added here rather than in a second wrapper beside it because **one
+	 * pass over the modifier list answers both**, and a second wrapper would
+	 * walk the same list again for every lookup in the game. The name follows
+	 * `FCataclysmHitDelivery::bCarriesNoTargetState`, the flag that already
+	 * withholds all of this from a minion's blow.
+	 *
+	 * EACH FACT IS GATED SEPARATELY. A row asking only about health does not
+	 * make anything walk the target's tags, and a row asking only about ailments
+	 * does not make anything read its health.
 	 *
 	 * THE SAME SHAPE AS `WithEnemiesInReach` ABOVE AND FOR THE SAME REASON. The
 	 * answer depends on the rows being evaluated as well as on the target, and
@@ -520,15 +532,20 @@ public:
 	 *
 	 * STATIC, UNLIKE `WithEnemiesInReach`, because it reads nothing about this
 	 * component. That one measures from the avatar and needs the world's target
-	 * lists; this one asks the target actor what it is carrying.
+	 * lists; this one asks the target actor about itself.
 	 *
 	 * IT ANSWERS ONLY THE ATTACKER'S SIDE. `OpponentCarriesWeaken` reads
 	 * `FCataclysmBlowContext::OpponentDebuffs`, which describes whoever struck
 	 * this character and is filled where the incoming hit is built. Filling it
 	 * here would answer a question about one character with facts about another.
 	 *
-	 * @param Modifiers  the rows about to be evaluated, read only to find whether
-	 *        any of them asks about an ailment on the target
+	 * THE HEALTH READING USES `FCataclysmStatConditions::FromHealth`, the same
+	 * arithmetic the character's own share is computed with, so the two ends of a
+	 * blow cannot disagree about what a share of maximum health means. A target
+	 * with no ability system leaves it negative, which the condition refuses on.
+	 *
+	 * @param Modifiers  the rows about to be evaluated, read only to find which
+	 *        of the two facts, if either, is asked for
 	 * @param Target  the character being hit, or null for a lookup with no target
 	 *        in hand -- a character sheet, or any of the four callers that price
 	 *        a blow with no single target
@@ -536,7 +553,7 @@ public:
 	 *        caller can nest it inside `WithEnemiesInReach(...)` in one
 	 *        expression
 	 */
-	static FCataclysmStatConditions WithTargetAilments(
+	static FCataclysmStatConditions WithTargetState(
 		const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
 		FCataclysmStatConditions State);
 

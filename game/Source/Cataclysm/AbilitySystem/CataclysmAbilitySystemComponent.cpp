@@ -11,6 +11,10 @@
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+// For AbilitySystemOf, which `WithTargetState` uses to read the health of the
+// character being hit. Issue #1515. An actor with no ability system is the
+// "cannot be read" case the condition refuses on.
+#include "AbilitySystem/CataclysmTargeting.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -326,7 +330,7 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   WithEnemiesInReach(
 				   Inputs->Modifiers,
-				   WithTargetAilments(
+				   WithTargetState(
 					   Inputs->Modifiers, Target,
 					   CurrentConditions(SkillHealthCostPercent, Blow,
 										 MetresMovedBeforeBlow,
@@ -361,7 +365,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   WithEnemiesInReach(
 				   Inputs->Modifiers,
-				   WithTargetAilments(
+				   WithTargetState(
 					   Inputs->Modifiers, Target,
 					   CurrentConditions(SkillHealthCostPercent,
 										 FCataclysmBlowContext(),
@@ -443,7 +447,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
 		WithEnemiesInReach(
 			Inputs->Modifiers,
-			WithTargetAilments(
+			WithTargetState(
 				Inputs->Modifiers, Target,
 				CurrentConditions(SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
@@ -740,7 +744,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	return State;
 }
 
-FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetAilments(
+FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
 	FCataclysmStatConditions State)
 {
@@ -751,38 +755,78 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetAilments(
 	// round would walk two tag containers on every blow anybody strikes." A walk
 	// here would be a third, on every blow every creature in the game throws.
 	//
-	// THIS LOOP IS THE WHOLE COST TO A LOOKUP THAT ASKS ABOUT NO AILMENT, which
-	// is every lookup in the game today except one row on each of two Ravager
-	// nodes.
-	bool bAsked = false;
+	// ONE PASS ANSWERS BOTH QUESTIONS, which is why the health reading was added
+	// here rather than in a second wrapper beside this one. A lookup asking about
+	// neither pays one walk of its own modifier list and nothing else.
+	bool bWantsAilments = false;
+	bool bWantsHealth = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
-		if (Modifier.Condition == ECataclysmStatCondition::TargetCarriesCripple
-			|| Modifier.Condition
-				== ECataclysmStatCondition::TargetCarriesCrippleAndWeaken)
+		switch (Modifier.Condition)
 		{
-			bAsked = true;
+		case ECataclysmStatCondition::TargetCarriesCripple:
+		case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+			bWantsAilments = true;
+			break;
+		case ECataclysmStatCondition::TargetHealthBelowPercent:
+			bWantsHealth = true;
+			break;
+		default:
+			break;
+		}
+
+		if (bWantsAilments && bWantsHealth)
+		{
+			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
 		}
 	}
 
-	// NO ROW ASKING AND NO TARGET BOTH LEAVE IT EMPTY, and an empty container is
-	// what the conditions refuse on. The two cases are not distinguished because
-	// nothing could do anything differently with the distinction: a lookup with
-	// no row asking has no condition to answer.
-	if (!bAsked || !Target)
+	// NO ROW ASKING AND NO TARGET BOTH LEAVE EVERYTHING UNREAD, and unread is
+	// what the conditions refuse on -- an empty container for the ailments and a
+	// negative percentage for the health. The two cases are not distinguished
+	// because nothing could do anything differently with the distinction: a
+	// lookup with no row asking has no condition to answer.
+	if (!Target || (!bWantsAilments && !bWantsHealth))
 	{
 		return State;
 	}
 
-	// `OpponentCarriesWeaken` IS DELIBERATELY NOT IN THAT LOOP. It reads
+	// `OpponentCarriesWeaken` IS DELIBERATELY NOT IN THAT SWITCH. It reads
 	// `State.Blow.OpponentDebuffs`, which is the other end of the blow and is
 	// filled where the incoming hit is built, not here. A row carrying it is
 	// asking about whoever struck this character, and this function has the
 	// character this one is striking. Answering it from here would read the
 	// ailments of the wrong character, which is the exact fault the separate
 	// names exist to prevent.
-	State.TargetDebuffs = UCataclysmDebuffs::TagsOnActor(Target);
+	if (bWantsAilments)
+	{
+		State.TargetDebuffs = UCataclysmDebuffs::TagsOnActor(Target);
+	}
+
+	if (bWantsHealth)
+	{
+		// THE SHARED ARITHMETIC, so the two ends of a blow cannot compute a
+		// share differently. `FromHealth` clamps to 0-100 and leaves the
+		// reading negative when the maximum is not positive, which is the
+		// "cannot be read" case the condition refuses on.
+		//
+		// A TARGET WITH NO ABILITY SYSTEM IS THAT CASE TOO, and it is ordinary
+		// rather than a fault: a patch of burning ground and a piece of terrain
+		// are both actors and neither has health.
+		if (const UAbilitySystemComponent* Struck =
+				UCataclysmTargeting::AbilitySystemOf(Target))
+		{
+			State.TargetHealthPercent =
+				FCataclysmStatConditions::FromHealth(
+					Struck->GetNumericAttribute(
+						UCataclysmVitalAttributeSet::GetHealthAttribute()),
+					Struck->GetNumericAttribute(
+						UCataclysmVitalAttributeSet::GetMaxHealthAttribute()))
+					.HealthPercent;
+		}
+	}
+
 	return State;
 }
 

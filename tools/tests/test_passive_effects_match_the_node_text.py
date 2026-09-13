@@ -437,7 +437,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Wearing Them Down`, has its condition built and no row: it grants increased
 #: DAMAGE REDUCTION, and which stat that row should target is with the project
 #: owner on issue #1748.
-AUTHORED_ROWS = 240
+#:
+#: AND TO 242 ON 2026-09-13. Two more nodes, `Cornered Quarry` and `Broken Will`,
+#: which are the first rows in the game to ask how much health the character
+#: being HIT has left. Issue #1515. Every health predicate before them read the
+#: character's own health or a cost.
+AUTHORED_ROWS = 242
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -696,7 +701,20 @@ AUTHORED_ROWS = 240
 #: change's two is 40, which is wrong -- work merged in between raised it. The
 #: line eight comments up already says "incrementing a count preserves a wrong
 #: one" and this is what it was warning about.
-AUTHORED_NODES = 174
+#: AND TO 176 ON 2026-09-13, bought with code for the third time in one day and
+#: by the same route each time. Issue #1515. The stat pipeline gained a
+#: predicate reading the TARGET's share of its own maximum health, which no
+#: existing one could express: all six health predicates before it read the
+#: character's own health, its cost, or the time since it paid one. Measured from
+#: `CONDITIONS` in `tools/generate_datatables.py`, not counted by eye -- a first
+#: draft said eight by counting `FCataclysmStatConditions` FIELDS as predicates,
+#: which they are not. `Cornered Quarry` and `Broken Will` followed.
+#:
+#: MEASURED, NOT INCREMENTED, AND THE TREE FIGURES WITH IT. The Ravager is 46 of
+#: its 74 and the Ritualist 52 of its 74. The entry above says the Ravager was
+#: 45; adding one to that happens to be right here and was still not how this
+#: was arrived at, because the same addition was wrong two changes ago.
+AUTHORED_NODES = 176
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1104,6 +1122,28 @@ CONDITION_WORDS = {
     # a name whose row nothing compares against its node's own words -- the
     # reason the five movement conditions above were added before their rows.
     "opponent_carries_weaken": ("you have weakened", None),
+
+    # THE FIRST PREDICATE THAT READS SOMEBODY ELSE'S HEALTH. Issue #1515.
+    # `Cornered Quarry` says "against enemies below 35% health" and `Broken
+    # Will` says "against enemies below half health".
+    #
+    # THE FRAGMENT NAMES THE SUBJECT AND NOT JUST THE COMPARISON, which is what
+    # keeps this predicate and `health_below` apart. "below" alone appears in
+    # both a sentence about the character's own health and one about an enemy's,
+    # and the two are different rules on different characters. `health_above`
+    # above solves the same problem the same way, by requiring "you are above"
+    # rather than "above".
+    #
+    # NOT UNIQUE TO THESE TWO NODES, AND THAT IS CORRECT. `Berserker_twoh_007`
+    # and `Berserker_dw_013` also say "against enemies below", at 25% and 20%.
+    # Neither is authored yet and both would want exactly this predicate, so the
+    # fragment identifying a family rather than one node is the right breadth.
+    #
+    # THE VALUE FORM IS A MAPPING, for the reason `enemies_in_reach_at_least`
+    # below needs one: `Broken Will` writes its threshold as the word "half" and
+    # contains no "50" anywhere, so a numeric form would fail a correct row.
+    "target_health_below": ("against enemies below",
+                            {35.0: "35%", 50.0: "half health"}),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a
@@ -1118,8 +1158,26 @@ CONDITION_WORDS = {
 #: THE DIRECTION MATTERS AND ONLY ONE DIRECTION NEEDS GUARDING.
 #: `health_at_or_below` already refuses a node that says only "below", because
 #: "at or below" is not in it. This is the other way round.
+#: A VALUE MAY BE ONE PHRASE OR SEVERAL, and several means "none of these may
+#: appear". Widened for issue #1515, which added the second phrase below.
 CONDITION_WORDS_MUST_NOT_SAY = {
-    "health_below": "at or below",
+    # "at or below" -- the inclusive twin, as the paragraphs above explain.
+    #
+    # AND "against enemies below", WHICH IS A DIFFERENT CHARACTER'S HEALTH.
+    # Issue #1515. `health_below` reads the character's OWN health, and its
+    # required fragment is the bare word "below". `Cornered Quarry` says
+    # "against enemies below 35% health" -- which contains "below", does not
+    # contain "at or below", and states 35 -- so a row carrying `health_below`
+    # on that node passed both halves of this check before this entry existed.
+    #
+    # **That row would have read the attacking character's own health instead of
+    # its target's**, granting the bonus when the player was wounded rather than
+    # when the enemy was. Nothing at run time reports it: the arithmetic runs and
+    # the bonus simply arrives against the wrong characters.
+    #
+    # THE NEW PREDICATE CREATED THIS HOLE, so guarding it belongs to the change
+    # that added it rather than to whoever trips it later.
+    "health_below": ("at or below", "against enemies below"),
 }
 
 
@@ -1173,17 +1231,24 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         # AND THE WORDS OF THE PREDICATE NEXT DOOR, WHERE ONE CONTAINS THE
         # OTHER. Issue #1051. See CONDITION_WORDS_MUST_NOT_SAY above.
+        # ONE PHRASE OR SEVERAL, AND SEVERAL MEANS "NONE OF THESE". Issue #1515.
+        # The same one-or-many shape `expected_words` above already takes, and
+        # for the same reason: one predicate can be confusable with more than one
+        # other. `health_below` is confusable with its inclusive twin AND with
+        # the predicate that reads a TARGET's health.
         refused = CONDITION_WORDS_MUST_NOT_SAY.get(condition)
         if refused is not None:
-            assert refused not in words, (
-                f"{row['Node']} carries the condition {condition!r}, which "
-                f"means STRICTLY {expected_words}, and its description says "
-                f"{refused!r}:\n"
-                f"    {described}\n"
-                f"Those are different rules and they differ at exactly the "
-                f"threshold. Either the row should carry the other predicate or "
-                f"the node was reworded."
-            )
+            forbidden = ((refused,) if isinstance(refused, str)
+                         else tuple(refused))
+            for phrase in forbidden:
+                assert phrase not in words, (
+                    f"{row['Node']} carries the condition {condition!r}, which "
+                    f"means STRICTLY {expected_words}, and its description says "
+                    f"{phrase!r}:\n"
+                    f"    {described}\n"
+                    f"Those are different rules. Either the row should carry a "
+                    f"different predicate or the node was reworded."
+                )
 
         value = float(row["ConditionValue"])
 

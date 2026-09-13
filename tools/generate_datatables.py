@@ -3460,6 +3460,26 @@ CONDITIONS = {
     "target_carries_cripple": None,
     "target_carries_cripple_and_weaken": None,
     "opponent_carries_weaken": None,
+
+    # "against enemies below 35% health" is `target_health_below` with 35, and
+    # "against enemies below half health" is the same name with 50. Issue #1515.
+    #
+    # THE FIRST PREDICATE THAT READS SOMEBODY ELSE'S HEALTH. The four above it
+    # -- `health_at_or_below`, `health_below`, `health_above`,
+    # `health_at_or_above` -- are all the character's own, and
+    # `skill_health_cost_above` is a cost. None could express a bonus against a
+    # wounded enemy.
+    #
+    # STRICTLY BELOW, AND THERE IS NO INCLUSIVE TWIN. Both node sentences say
+    # "below" and neither says "at or below". The character's own pair exists
+    # because real nodes differ; the second name here waits for a node that
+    # needs it.
+    #
+    # THE SAME 0 TO 100 BOUND AS THE CHARACTER'S OWN, because a share of maximum
+    # health is between 0 and 100 whoever it belongs to. An unbounded threshold
+    # is a row that never applies or always does, which is the silent failure
+    # every entry here is bounded against.
+    "target_health_below": (0.0, 100.0, "a percentage of maximum health"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

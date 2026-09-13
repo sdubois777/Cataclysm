@@ -700,6 +700,55 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OpponentCarriesWeaken
 		UMETA(DisplayName = "Opponent Carries Weaken"),
+
+	/**
+	 * The character being HIT is below `ConditionValue` per cent of its maximum
+	 * health. Issue #1515.
+	 *
+	 * Two nodes:
+	 *
+	 *   Ravager_basic_d_a2     Cornered Quarry   below 35% health
+	 *   Ritualist_basic_a_stem1 Broken Will      below half health
+	 *
+	 * STRICTLY BELOW, AND THERE IS NO INCLUSIVE TWIN. Both node sentences say
+	 * "below" and neither says "at or below", so one name is what the data
+	 * needs. The character's own pair -- `HealthBelowPercent` and
+	 * `HealthAtOrBelowPercent` -- exists because real nodes differ, and the
+	 * second name here should be added when a node's sentence asks for it and
+	 * not before.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH, which is this project's reading in two other
+	 * places. `UCataclysmSkillEffects::ApplyStagger` compares
+	 * `Health / MaxHealth * 100` against the ceiling that "You cannot stagger
+	 * enemies above 50% HP" sets, and the Staff's Subjugate says why a share and
+	 * not an amount: "what matters is whether the blow was a real blow for that
+	 * creature, and a Common enemy and a Rare one do not have the same numbers."
+	 * `FCataclysmStatConditions::FromHealth` is the arithmetic, shared with the
+	 * character's own reading so the two ends of a blow cannot compute a share
+	 * differently.
+	 *
+	 * MEASURED BEFORE THE BLOW LANDS, AND SUBJUGATE MEASURES AFTER. That
+	 * difference is deliberate and is written here because nothing in the code
+	 * enforces it. Subjugate takes an enemy "if the blow leaves it below half
+	 * health", and `CataclysmSkillTemplates.cpp` states the rule for it: "the
+	 * health that matters is what is left when the damage has landed, not what
+	 * it had when the skill was pressed." **This condition must read the other
+	 * one**, because it increases the damage of the blow being priced and
+	 * reading the result of that blow would be circular. It comes out right
+	 * today purely because the stat lookup runs before the damage is applied --
+	 * so it is true by an ordering that carries meaning and says nothing about
+	 * itself, which is what a later tidy-up breaks without noticing.
+	 *
+	 * AN UNREADABLE TARGET EARNS NOTHING, AND THE STAGGER CEILING DOES THE
+	 * OPPOSITE ON PURPOSE. That code leaves a target whose health cannot be read
+	 * staggerable, "because refusing on an unknown would make the row stronger
+	 * than it says." **Same rule, opposite direction, decided by which way the
+	 * row points**: that one is a drawback, so refusing would widen it; these are
+	 * bonuses, so granting would widen them. `TargetHealthPercent` is negative
+	 * when nothing was read, and this refuses on it.
+	 */
+	TargetHealthBelowPercent
+		UMETA(DisplayName = "Target Health Below Percent"),
 };
 
 /**
@@ -1394,7 +1443,7 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * comparing anything and says why: "asking the other way round would walk two
 	 * tag containers on every blow anybody strikes." A walk here would be a third,
 	 * on every blow every creature throws. `UCataclysmAbilitySystemComponent::
-	 * WithTargetAilments` is the gate, and its whole cost to a lookup that asks
+	 * WithTargetState` is the gate, and its whole cost to a lookup that asks
 	 * about no ailment is one pass over that stat's own modifier list.
 	 *
 	 * EMPTY IS "NO TARGET, NOTHING CARRIED, OR NO ROW ASKED", AND ALL THREE
@@ -1404,6 +1453,27 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FGameplayTagContainer TargetDebuffs;
+
+	/**
+	 * How much health the character being HIT has left, as a percentage of its
+	 * own maximum. Negative means nothing was read. Issue #1515.
+	 *
+	 * NEGATIVE FOR "NOT READ", the same convention `HealthPercent` above uses and
+	 * for the same reason: zero is a real reading -- a target on no health at all
+	 * -- so "no target" and "dying" would otherwise be the same number.
+	 *
+	 * FILLED BESIDE `TargetDebuffs` AND GATED THE SAME WAY.
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` looks at the rows
+	 * first, and one pass over them answers both questions.
+	 *
+	 * THREE THINGS MAKE IT NEGATIVE AND ALL THREE CORRECTLY REFUSE: no target in
+	 * hand, a target whose health cannot be read, and no row in this lookup
+	 * asking about it. The second is the interesting one -- see
+	 * `ECataclysmStatCondition::TargetHealthBelowPercent` for why an unknown
+	 * refuses here while the stagger ceiling deliberately does not.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TargetHealthPercent = -1.0f;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

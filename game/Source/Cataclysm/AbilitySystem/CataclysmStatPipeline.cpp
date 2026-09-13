@@ -93,6 +93,7 @@ namespace
 		{ TEXT("target_carries_cripple_and_weaken"),
 												ECataclysmStatCondition::TargetCarriesCrippleAndWeaken },
 		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
+		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 	};
 
 	struct FNamedStatScale
@@ -444,6 +445,23 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// pays on both and not otherwise, and a modifier carries one condition.
 		return State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::CrippleTag())
 			&& State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::WeakenTag());
+
+	case ECataclysmStatCondition::TargetHealthBelowPercent:
+		// STRICTLY BELOW, so a target sitting exactly on the threshold is not
+		// below it and earns nothing. Issue #1515. That is the whole reason this
+		// is one name rather than a strict-and-inclusive pair: both node
+		// sentences say "below".
+		//
+		// NEGATIVE IS "NOT READ" AND REFUSES, which covers no target in hand, a
+		// target whose health cannot be read, and no row in this lookup asking.
+		// A bonus granted on an unknown would be worth more than its sentence
+		// says; the stagger ceiling refuses in the opposite direction for the
+		// same reason, because it is a drawback. See the header.
+		//
+		// THE VALUE IS A PERCENTAGE OF THE TARGET'S OWN MAXIMUM, bounded 0 to
+		// 100 by `ValidateModifier` below.
+		return State.TargetHealthPercent >= 0.0f
+			&& State.TargetHealthPercent < Value;
 
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// THE MIRROR OF THE TWO ABOVE, READING A DIFFERENT FIELD, and that is the
@@ -825,11 +843,19 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// would have failed had it been left out: an unbounded threshold is exactly
 	// the silent failure this check exists to catch, so the omission would have
 	// been invisible until a sheet wrote 150.
+	// ALL FIVE SINCE ISSUE #1515, AND THE FIFTH IS THE FIRST THAT READS SOMEBODY
+	// ELSE'S HEALTH. `TargetHealthBelowPercent` is a percentage of the TARGET's
+	// maximum rather than the character's own, which changes nothing about the
+	// bound: a share is between 0 and 100 whoever it belongs to. The warning
+	// four paragraphs up predicted this list would need extending by hand a
+	// second time, and it did.
 	if ((Modifier.Condition == ECataclysmStatCondition::HealthAtOrBelowPercent
 		 || Modifier.Condition == ECataclysmStatCondition::HealthBelowPercent
 		 || Modifier.Condition == ECataclysmStatCondition::HealthAbovePercent
 		 || Modifier.Condition
-			== ECataclysmStatCondition::HealthAtOrAbovePercent)
+			== ECataclysmStatCondition::HealthAtOrAbovePercent
+		 || Modifier.Condition
+			== ECataclysmStatCondition::TargetHealthBelowPercent)
 		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
 	{
 		return FString::Printf(
