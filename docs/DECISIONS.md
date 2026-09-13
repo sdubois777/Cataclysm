@@ -11,14 +11,24 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
 `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h`, and
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`.
-Every one written out in full rather than in this log's usual shorthand, because
-`tools/tests/test_the_decisions_log_names_real_files.py` keeps only backticked
-items containing a slash — so "`X.h` and `.cpp`" leaves the `.cpp` unchecked, and
-a bare filename is not checked at all. Issue
-[#41](https://github.com/sdubois777/Cataclysm/issues/41), and
-[#1605](https://github.com/sdubois777/Cataclysm/issues/1605) which carries the
+Issues [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1605](https://github.com/sdubois777/Cataclysm/issues/1605), which carries the
 eight hazard rows. **Applied, and the row is `Partly` built rather than `Built`
 — see the last section.**
+
+**Every path above is written out in full rather than in this log's usual
+shorthand, and that is deliberate.**
+`tools/tests/test_the_decisions_log_names_real_files.py` keeps only backticked
+items that contain a slash, so a bare filename and a bare suffix are both skipped
+and neither is checked. The shorthand is readable and the full form is checkable,
+and until issue [#1709](https://github.com/sdubois777/Cataclysm/issues/1709) is
+settled those two are in tension.
+
+**And nothing illustrative belongs inside one of these blocks.** An earlier
+version of this entry put a placeholder file name in the list while explaining the
+shorthand. Measured: it was the only name in the whole log that resolved to
+nothing, and it would have failed the very fix #1709 proposes — a block is prose
+to a reader and a list of real files to that test, and it cannot be both.
 
 ### The row, and what it settles
 
