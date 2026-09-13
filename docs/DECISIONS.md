@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A feasting creature gains 4% attack speed per stack up to five, and gains no movement speed at all
+
+**Affects:**
+`docs/All_Things_Cataclysm.xlsx`,
+`game/Data/StatusEffects.csv`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmStacks.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`,
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmEnemyCommanderTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmStacksTests.cpp`,
+`tools/tests/test_feasting_numbers_match_the_design.py`,
+`tools/tests/test_status_effect_numbers_match_their_prose.py` and
+`tools/tests/test_commander_buff_matches_the_design.py`.
+Issue [#1720](https://github.com/sdubois777/Cataclysm/issues/1720). **Applied.**
+
+### The row, and what it left open
+
+| Row | Its words, before this |
+| :-- | :-- |
+| `Buff_Feasting` | "This enemy gains a stack of "Feast" every time it is hit, and for every stack, its attack speed is increased." |
+
+**It states no number at all.** Three were needed and each is a judgement:
+
+| Figure | Value | Where it lives | Where it comes from |
+| :-- | --: | :-- | :-- |
+| attack speed per stack | 4% | the `Strength` column of the row | **Path of Exile**, whose Frenzy Charges grant 4% increased attack speed per charge. The genre's per-stack attack speed figure |
+| most stacks | 5 | `UCataclysmStacks::CapFor` | **Borrowed from this project**: three of the four stack kinds already here cap at 5 — Sanguine Momentum, Bloodlust and Infernal Brand |
+| how long a stack lasts | 5 s | `UCataclysmStacks::WindowSecondsFor` | **Borrowed**: Bloodlust lasts 5 seconds and is granted by TAKING DAMAGE, the same trigger this row states |
+
+**The product is why these three and not others.** Five stacks of 4% is 20%, which
+is exactly `ACataclysmEnemyCharacter::CommanderIncreasePercent` — the only other
+thing in the game that speeds a creature up. **A fully fed creature is as quick as
+an inspired one and no quicker**, which is a ceiling somebody can reason about
+without holding two unrelated numbers in mind.
+`tools/tests/test_feasting_numbers_match_the_design.py` pins that equality, so
+changing any of the three has to be deliberate.
+
+### Attack speed and not movement speed, which is the decision rather than the numbers
+
+**The row names one of the two stats.** Commander and Cripple, the only other
+effects on a creature's speed, each name **both** — so they share one function,
+`ACataclysmEnemyCharacter::SpeedMultiplier`, and its comment says why: "ONE
+FUNCTION SO THE TWO STATS CANNOT DISAGREE."
+
+**Putting Feasting there would have been wrong and would have looked right.**
+`RefreshWalkSpeed` also reads that function, so a feasting creature would have
+walked faster too. Nothing in the project would have reported it: no test
+measured a creature's walk speed while it held a buff that does not mention
+walking. **So the automation test's control is a number that must NOT move**, and
+the guard proof for it puts Feasting into `SpeedMultiplier` — the mistake the
+design invites — and confirms that only that test notices.
+
+**The rule the code now keeps** is "anything naming BOTH stats belongs in
+`SpeedMultiplier`", not "everything belongs there". A later effect naming both
+must go inside it rather than beside it.
+
+### What is deliberately not decided here
+
+**Nothing applies this buff to a creature yet.** The row describes an effect;
+which creature or dungeon modifier grants it is a separate question and a
+different file's job, exactly as it is for `Debuff_Withered_Touch`.
+
+**And the effect has two names.** The row calls it `Feasting` in its name column
+and `"Feast"` in its sentence, and both reach a player. Raised as issue
+[#1725](https://github.com/sdubois777/Cataclysm/issues/1725) rather than settled
+here, because a name a player reads is the project owner's call.
+
+---
+
 ## 2026-09-13 — Singularity Wells slows a player standing in one, and the figure that makes it fair is how much floor it covers rather than the 40%
 
 **Affects:**
